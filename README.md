@@ -21,11 +21,13 @@
 
 <div align="center">
 
-| ⚡ **Massive Document Knowledge Q&A**  |  📈 **Interactive Learning Visualization**  | <br>
-| 🧠 **Knowledge Reinforcement**  |  🔬 **Deep Research & Idea Generation** |
+⚡ **Massive Document Knowledge Q&A** &nbsp;•&nbsp; 📈 **Interactive Learning Visualization**<br>
+🧠 **Knowledge Reinforcement** &nbsp;•&nbsp; 🔬 **Deep Research & Idea Generation**
 
 </div>
 
+---
+> **[2025.12.30]** We release DeepTutor v0.1 ✨
 ---
 
 ## Key Features of DeepTutor

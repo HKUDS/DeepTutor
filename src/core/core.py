@@ -11,8 +11,15 @@ from typing import Any
 from dotenv import load_dotenv
 import yaml
 
-PROJECT_ROOT = Path(__file__).resolve().parent
-# Load DeepTutor.env first, then fallback to .env
+# PROJECT_ROOT points to the actual project root directory (DeepTutor/)
+# Path(__file__) = src/core/core.py
+# .parent = src/core/
+# .parent.parent = src/
+# .parent.parent.parent = DeepTutor/ (project root)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+# Load .env from project root directory
+# DeepTutor.env takes precedence, then fallback to .env
 load_dotenv(PROJECT_ROOT / "DeepTutor.env", override=False)
 load_dotenv(PROJECT_ROOT / ".env", override=False)
 
@@ -146,10 +153,8 @@ def get_agent_params(module_name: str) -> dict:
 
     # Try to load from agents.yaml
     try:
-        config_path = PROJECT_ROOT.parent / "config" / "agents.yaml"
-        if not config_path.exists():
-            # Try alternative path (when PROJECT_ROOT is src/core)
-            config_path = PROJECT_ROOT.parent.parent / "config" / "agents.yaml"
+        # PROJECT_ROOT is the project root directory, so config is at PROJECT_ROOT/config/
+        config_path = PROJECT_ROOT / "config" / "agents.yaml"
 
         if config_path.exists():
             with open(config_path, encoding="utf-8") as f:
