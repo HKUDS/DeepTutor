@@ -27,15 +27,11 @@
 </div>
 
 ---
-> **[2025.12.30]** Visit our [Official Website](https://hkuds.github.io/DeepTutor/) for more details!
-
-<<<<<<< HEAD
-> **[2025.12.30]** Check our [Official Website](https://hkuds.github.io/DeepTutor/) !
-
-> **[2026.1.1]** Happy New Years! Join our [GitHub Discussions](https://github.com/HKUDS/DeepTutor/discussions) — share your vision and ideas! 💬
-=======
 > **[2025.12.29]** DeepTutor v0.1 is now live! ✨
->>>>>>> c81168f271b9a2d35a81b0f1038cf7025d264df0
+
+> **[2025.12.30]** Visit our [Official Website](https://hkuds.github.io/DeepTutor/) for more details! !
+
+> **[2026.1.1]** Happy New Years! Join our [GitHub Discussions](https://github.com/HKUDS/DeepTutor/discussions) — shape the future of DeepTutor! 💬
 ---
 
 ## Key Features of DeepTutor
@@ -219,10 +215,9 @@
 ## 📋 Todo
 
 > 🌟 Star to follow our future updates!
-- [ ] Deep-coding from Idea Generation
-- [ ] Personal Memory Layer from Notebook
-- [ ] Alternative Choices of RAG Module
-- [ ] Support Local LLM Deployment
+- [ ] Project-based learning
+- [ ] deepcoding from idea generation
+- [ ] Personalized memory
 
 ## 🚀 Quick Start
 
@@ -257,8 +252,6 @@ bash scripts/install_all.sh
 
 # Alternative: Manual Installation
 python scripts/install_all.py
-
-# Note: The installer detects conda/venv for isolation. If no isolated environment is detected, it will print a warning but will continue installing.
 
 # Or Install Dependencies Manually
 pip install -r requirements.txt
