@@ -35,13 +35,7 @@ class DisplayManager:
 
     def __init__(self):
         self.rich_available = RICH_AVAILABLE
-        if not self.rich_available:
-            return
 
-        # Explicitly use raw stdout, bypass logger redirection
-        self.console = Console(file=sys.__stdout__)
-
-        # Status data
         self.agents_status = {
             "InvestigateAgent": "pending",
             "NoteAgent": "pending",
@@ -64,6 +58,16 @@ class DisplayManager:
         # Log buffer
         self.log_buffer = []
         self.max_log_lines = 20
+
+        # Early return if rich not available (but after initializing core attributes)
+        if not self.rich_available:
+            self.console = None
+            self.layout = None
+            self.live = None
+            return
+
+        # Explicitly use raw stdout, bypass logger redirection
+        self.console = Console(file=sys.__stdout__)
 
         # Layout
         self.layout = self._make_layout()

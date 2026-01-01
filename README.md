@@ -15,7 +15,7 @@
 
 [**Quick Start**](#quick-start) · [**Core Modules**](#core-modules) · [**FAQ**](#faq)
 
-[🇨🇳 中文](assets/README/README_CN.md) · [🇯🇵 日本語](assets/README/README_JA.md) · [🇪🇸 Español](assets/README/README_ES.md) · [🇫🇷 Français](assets/README/README_FR.md) · [🇸🇦 العربية](assets/README/README_AR.md)
+[🇨🇳 中文](assets/README/README_CN.md) · [🇯🇵 日本語](assets/README/README_JA.md) · [🇪🇸 Español](assets/README/README_ES.md) · [🇫🇷 Français](assets/README/README_FR.md) · [🇸🇦 العربية](assets/README/README_AR.md) · [🇷🇺 Русский](assets/README/README_RU.md) · [🇮🇳 हिन्दी](assets/README/README_HI.md) · [🇵🇹 Português](assets/README/README_PT.md)
 
 </div>
 
@@ -27,7 +27,9 @@
 </div>
 
 ---
-> **[2025.12.30]** Visit our [Official Website](https://hkuds.github.io/DeepTutor/) for more details!
+> **[2026.1.1]** Happy New Year! Join our [GitHub Discussions](https://github.com/HKUDS/DeepTutor/discussions) — shape the future of DeepTutor! 💬
+
+> **[2025.12.30]** Visit our [Official Website](https://hkuds.github.io/DeepTutor/) for more details! !
 
 > **[2025.12.29]** DeepTutor v0.1 is now live! ✨
 ---
@@ -213,9 +215,10 @@
 ## 📋 Todo
 
 > 🌟 Star to follow our future updates!
-- [ ] Project-based learning
-- [ ] deepcoding from idea generation
-- [ ] Personalized memory
+- [ ] Support Local LLM Services (e.g., ollama)
+- [ ] Refactor RAG Module (see [Discussions](https://github.com/HKUDS/DeepTutor/discussions))
+- [ ] Deep-coding from idea generation
+- [ ] Personalized Interaction with Notebook
 
 ## 🚀 Quick Start
 
@@ -229,13 +232,14 @@ cd DeepTutor
 # Set Up Virtual Environment (Choose One Option)
 
 # Option A: Using conda (Recommended)
-conda create -n aitutor python=3.10
-conda activate aitutor
+conda create -n deeptutor python=3.10
+conda activate deeptutor
 
 # Option B: Using venv
 python -m venv venv
 # On Windows:
 venv\Scripts\activate
+
 # On macOS/Linux:
 source venv/bin/activate
 ```
@@ -245,13 +249,11 @@ source venv/bin/activate
 Run the automated installation script to install all required dependencies:
 
 ```bash
-# Recommended: Automated Installation
+# Recommended
 bash scripts/install_all.sh
 
-# Alternative: Manual Installation
+# Alternative Python Scripts
 python scripts/install_all.py
-
-# Note: The installer detects conda/venv for isolation. If no isolated environment is detected, it will print a warning but will continue installing.
 
 # Or Install Dependencies Manually
 pip install -r requirements.txt
@@ -1357,15 +1359,9 @@ git commit --no-verify -m "Emergency fix"
 
 [![Forkers repo roster for @HKUDS/DeepTutor](https://reporoster.com/forks/dark/HKUDS/DeepTutor)](https://github.com/HKUDS/DeepTutor/network/members)
 
-<div align="center">
-  <a href="https://star-history.com/#HKUDS/DeepTutor&Date">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=Date&theme=dark" />
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=Date" />
-      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=Date" style="border-radius: 15px; box-shadow: 0 0 30px rgba(0, 217, 255, 0.3);" />
-    </picture>
-  </a>
-</div>
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=timeline&legend=top-left)](https://www.star-history.com/#HKUDS/DeepTutor&type=timeline&legend=top-left)
 
 ---
 

@@ -741,7 +741,7 @@ export default function ResearchPage() {
                 pre: ({ node, children, ...props }) => {
                   const child = React.Children.toArray(
                     children,
-                  )[0] as React.ReactElement;
+                  )[0] as React.ReactElement<{ className?: string }>;
                   if (child?.props?.className?.includes("language-mermaid")) {
                     return <>{children}</>;
                   }

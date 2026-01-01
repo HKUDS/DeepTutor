@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -15,6 +16,77 @@ def print_flush(*args, **kwargs):
     """Print with flush=True by default"""
     kwargs.setdefault("flush", True)
     print(*args, **kwargs)
+
+
+def terminate_process_tree(process, name="Process", timeout=5):
+    """
+    Terminate a process and all its children (process group).
+
+    On Unix: Uses process group (PGID) to kill all children including uvicorn workers.
+    On Windows: Uses taskkill /T to kill the process tree.
+
+    Args:
+        process: subprocess.Popen object
+        name: Display name for logging
+        timeout: Seconds to wait for graceful termination before SIGKILL
+    """
+    if process is None or process.poll() is not None:
+        return  # Process already terminated
+
+    pid = process.pid
+    print_flush(f"🛑 Stopping {name} (PID: {pid})...")
+
+    try:
+        if os.name == "nt":
+            # Windows: Use taskkill with /T to kill process tree
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
+                check=False,
+                stderr=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+            )
+        else:
+            # Unix: Kill the entire process group
+            pgid = os.getpgid(pid)
+
+            # Step 1: Send SIGTERM to the process group for graceful shutdown
+            try:
+                os.killpg(pgid, signal.SIGTERM)
+                print_flush(f"   Sent SIGTERM to process group {pgid}")
+            except ProcessLookupError:
+                print_flush(f"   Process group {pgid} already terminated")
+                return
+            except PermissionError:
+                # Fallback: try to terminate just the main process
+                print_flush("   Cannot kill process group, trying single process")
+                process.terminate()
+
+            # Step 2: Wait for graceful termination
+            try:
+                process.wait(timeout=timeout)
+                print_flush(f"   ✅ {name} terminated gracefully")
+                return
+            except subprocess.TimeoutExpired:
+                print_flush(f"   ⚠️ {name} did not terminate in {timeout}s, sending SIGKILL...")
+
+            # Step 3: Force kill with SIGKILL
+            try:
+                os.killpg(pgid, signal.SIGKILL)
+                process.wait(timeout=2)
+                print_flush(f"   ✅ {name} force killed")
+            except ProcessLookupError:
+                print_flush("   Process group already terminated")
+            except Exception as e:
+                print_flush(f"   ⚠️ Error during force kill: {e}")
+                # Last resort: try to kill just the main process
+                try:
+                    process.kill()
+                    process.wait(timeout=2)
+                except Exception:
+                    pass
+
+    except Exception as e:
+        print_flush(f"   ⚠️ Error stopping {name}: {e}")
 
 
 def start_backend():
@@ -67,18 +139,25 @@ def start_backend():
     if os.name == "nt":
         env["PYTHONLEGACYWINDOWSSTDIO"] = "0"
 
-    process = subprocess.Popen(
-        cmd,
-        cwd=project_root,  # Run in project root directory, not scripts directory
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        shell=False,
-        encoding="utf-8",
-        errors="replace",
-        env=env,
-    )
+    # Use start_new_session=True on Unix to create a new process group
+    # This allows us to kill all child processes (including uvicorn workers) at once
+    popen_kwargs = {
+        "cwd": project_root,  # Run in project root directory, not scripts directory
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.STDOUT,
+        "text": True,
+        "bufsize": 1,
+        "shell": False,
+        "encoding": "utf-8",
+        "errors": "replace",
+        "env": env,
+    }
+
+    # On Unix, create a new session so we can kill the entire process group
+    if os.name != "nt":
+        popen_kwargs["start_new_session"] = True
+
+    process = subprocess.Popen(cmd, **popen_kwargs)
 
     # Start a thread to output logs in real-time
     import threading
@@ -95,6 +174,8 @@ def start_backend():
     log_thread.start()
 
     print_flush(f"✅ Backend process started (PID: {process.pid})")
+    if os.name != "nt":
+        print_flush(f"   Process group ID (PGID): {os.getpgid(process.pid)}")
     return process
 
 
@@ -141,10 +222,11 @@ def start_frontend():
         print_flush("📦 Installing frontend dependencies...")
         print_flush("   This may take a few minutes, please wait...")
         try:
+            npm_cmd = shutil.which("npm") or "npm"
             process = subprocess.Popen(
-                "npm install",
+                [npm_cmd, "install"],
                 cwd=web_dir,
-                shell=True,
+                shell=False,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -211,17 +293,29 @@ def start_frontend():
     if os.name == "nt":
         env["PYTHONLEGACYWINDOWSSTDIO"] = "0"
 
+    npm_cmd = shutil.which("npm") or "npm"
+
+    # Use start_new_session=True on Unix to create a new process group
+    # This allows us to kill all child processes (including Next.js workers) at once
+    popen_kwargs = {
+        "cwd": web_dir,
+        "shell": False,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.STDOUT,
+        "text": True,
+        "bufsize": 1,
+        "env": env,
+        "encoding": "utf-8",
+        "errors": "replace",
+    }
+
+    # On Unix, create a new session so we can kill the entire process group
+    if os.name != "nt":
+        popen_kwargs["start_new_session"] = True
+
     frontend_process = subprocess.Popen(
-        f"npm run dev -- -p {frontend_port}",
-        cwd=web_dir,
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        env=env,
-        encoding="utf-8",
-        errors="replace",
+        [npm_cmd, "run", "dev", "--", "-p", str(frontend_port)],
+        **popen_kwargs,
     )
 
     # Start a thread to output frontend logs in real-time
@@ -239,6 +333,8 @@ def start_frontend():
     log_thread.start()
 
     print_flush(f"✅ Frontend process started (PID: {frontend_process.pid})")
+    if os.name != "nt":
+        print_flush(f"   Process group ID (PGID): {os.getpgid(frontend_process.pid)}")
     return frontend_process
 
 
@@ -340,34 +436,9 @@ if __name__ == "__main__":
 
         traceback.print_exc()
     finally:
-        if backend:
-            try:
-                if os.name == "nt":
-                    subprocess.run(
-                        ["taskkill", "/F", "/T", "/PID", str(backend.pid)],
-                        check=False,
-                        stderr=subprocess.DEVNULL,
-                        stdout=subprocess.DEVNULL,
-                    )
-                else:
-                    backend.terminate()
-                    backend.wait(timeout=5)
-            except Exception as e:
-                print_flush(f"Error stopping backend: {e}")
+        # Use terminate_process_tree to properly kill all child processes
+        # including uvicorn workers and Next.js child processes
+        terminate_process_tree(backend, name="Backend", timeout=5)
+        terminate_process_tree(frontend, name="Frontend", timeout=5)
 
-        if frontend:
-            try:
-                if os.name == "nt":
-                    subprocess.run(
-                        ["taskkill", "/F", "/T", "/PID", str(frontend.pid)],
-                        check=False,
-                        stderr=subprocess.DEVNULL,
-                        stdout=subprocess.DEVNULL,
-                    )
-                else:
-                    frontend.terminate()
-                    frontend.wait(timeout=5)
-            except Exception as e:
-                print_flush(f"Error stopping frontend: {e}")
-
-        print_flush("✅ Services stopped.")
+        print_flush("✅ All services stopped.")

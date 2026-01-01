@@ -1,13 +1,26 @@
 /** @type {import('next').NextConfig} */
-const path = require("path");
 
 const nextConfig = {
-  // Handle ESM packages compatibility
-  experimental: {
-    esmExternals: "loose",
+  // Move dev indicator to bottom-right corner
+  devIndicators: {
+    position: "bottom-right",
   },
+
+  // Transpile mermaid and related packages for proper ESM handling
+  transpilePackages: ["mermaid"],
+
+  // Turbopack configuration (Next.js 16+ uses Turbopack by default)
+  turbopack: {
+    resolveAlias: {
+      // Fix for mermaid's cytoscape dependency - use CJS version
+      // Use package-relative path for Turbopack
+      cytoscape: "cytoscape/dist/cytoscape.cjs.js",
+    },
+  },
+
+  // Webpack fallback for compatibility (used when --webpack flag is passed)
   webpack: (config, { isServer }) => {
-    // Fix for mermaid's cytoscape dependency - use CJS version
+    const path = require("path");
     config.resolve.alias = {
       ...config.resolve.alias,
       cytoscape: path.resolve(
@@ -18,8 +31,6 @@ const nextConfig = {
 
     return config;
   },
-  // Transpile mermaid and related packages
-  transpilePackages: ["mermaid"],
 };
 
 module.exports = nextConfig;

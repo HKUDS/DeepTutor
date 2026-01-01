@@ -183,9 +183,12 @@ export const questionReducer = (
       const questionId = event.question_id;
       if (!questionId) return state;
 
+      const focusString =
+        typeof event.focus === "string"
+          ? event.focus
+          : event.focus?.focus || "";
       const existingTask =
-        state.tasks[questionId] ||
-        ensureTask(state, questionId, event.focus || "");
+        state.tasks[questionId] || ensureTask(state, questionId, focusString);
 
       const statusMap: Record<string, QuestionTask["status"]> = {
         generating: "generating",
@@ -214,7 +217,7 @@ export const questionReducer = (
             ...existingTask,
             status: newStatus,
             round: event.round || existingTask.round,
-            focus: event.focus || existingTask.focus,
+            focus: focusString || existingTask.focus,
             lastUpdate: Date.now(),
           },
         },
@@ -231,7 +234,11 @@ export const questionReducer = (
       const result: QuestionResult = {
         success: true,
         question_id: questionId,
-        question: event.question,
+        question: event.question || {
+          question: "",
+          correct_answer: "",
+          explanation: "",
+        },
         validation: event.validation || {},
         rounds: event.rounds || 1,
         focus: event.focus,

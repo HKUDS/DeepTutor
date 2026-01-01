@@ -80,13 +80,94 @@ fi
 
 print_info "Using Python: $(which python)"
 print_info "Requirements file: $REQUIREMENTS_FILE"
+
+# Function to install with uv (faster and better resolver)
+install_with_uv() {
+    # Check if uv is available
+    if ! command -v uv &> /dev/null; then
+        print_info "Installing uv for better dependency resolution..."
+        if python -m pip install uv; then
+            print_success "uv installed successfully"
+        else
+            return 1
+        fi
+    fi
+
+    print_info "Using uv for faster dependency resolution..."
+    if python -m uv pip install -r "$REQUIREMENTS_FILE"; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Function to install with staged pip (avoids resolution-too-deep)
+install_with_pip_staged() {
+    print_info "Using staged pip installation to avoid dependency resolution issues..."
+
+    # Stage 1: Core dependencies
+    print_info "Stage 1/3: Installing core dependencies..."
+    if python -m pip install \
+        "python-dotenv>=1.0.0" \
+        "PyYAML>=6.0" \
+        "tiktoken>=0.5.0" \
+        "requests>=2.31.0" \
+        "openai>=1.0.0" \
+        "aiohttp>=3.9.0" \
+        "httpx>=0.25.0" \
+        "nest_asyncio>=1.5.8" \
+        "fastapi>=0.100.0" \
+        "uvicorn[standard]>=0.24.0" \
+        "websockets>=12.0" \
+        "python-multipart>=0.0.6" \
+        "pydantic>=2.0.0" \
+        "arxiv>=2.0.0" \
+        "pre-commit>=3.0.0"; then
+        print_success "Core dependencies installed"
+    else
+        print_error "Failed to install core dependencies"
+        return 1
+    fi
+
+    # Stage 2: lightrag-hku
+    print_info "Stage 2/3: Installing lightrag-hku..."
+    python -m pip install "lightrag-hku>=1.0.0" || print_warning "lightrag-hku installation had issues"
+
+    # Stage 3: raganything (complex dependencies)
+    print_info "Stage 3/3: Installing raganything (this may take a while)..."
+    if ! python -m pip install "raganything>=0.1.0"; then
+        print_warning "Standard install failed, trying with --no-deps..."
+        python -m pip install "raganything>=0.1.0" --no-deps || print_warning "raganything installation had issues"
+    fi
+
+    # Optional deps
+    python -m pip install "perplexityai>=0.1.0" "dashscope>=1.14.0" 2>/dev/null || true
+
+    return 0
+}
+
 print_info "Installing backend dependencies, please wait..."
 
-if python -m pip install -r "$REQUIREMENTS_FILE"; then
-    print_success "Backend dependencies installed successfully"
+# Strategy 1: Try uv first (recommended)
+print_info "Attempting installation with uv (recommended)..."
+if install_with_uv; then
+    print_success "Backend dependencies installed successfully with uv"
 else
-    print_error "Backend dependencies installation failed"
-    exit 1
+    print_warning "uv installation failed, falling back to staged pip installation..."
+
+    # Strategy 2: Staged pip installation
+    if install_with_pip_staged; then
+        print_success "Backend dependencies installed successfully with staged pip"
+    else
+        # Strategy 3: Direct pip as last resort
+        print_warning "Staged installation had issues, trying direct pip install..."
+        if python -m pip install -r "$REQUIREMENTS_FILE"; then
+            print_success "Backend dependencies installed successfully"
+        else
+            print_error "Backend dependencies installation failed"
+            exit 1
+        fi
+    fi
 fi
 
 # Step 2: Install frontend dependencies

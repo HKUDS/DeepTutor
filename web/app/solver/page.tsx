@@ -256,8 +256,10 @@ export default function SolverPage() {
                             <img
                               {...props}
                               src={
-                                resolveArtifactUrl(src ?? "", msg.outputDir) ||
-                                undefined
+                                resolveArtifactUrl(
+                                  typeof src === "string" ? src : "",
+                                  msg.outputDir,
+                                ) || undefined
                               }
                               loading="lazy"
                               className="max-w-full h-auto"
@@ -267,8 +269,10 @@ export default function SolverPage() {
                             <a
                               {...props}
                               href={
-                                resolveArtifactUrl(href ?? "", msg.outputDir) ||
-                                undefined
+                                resolveArtifactUrl(
+                                  typeof href === "string" ? href : "",
+                                  msg.outputDir,
+                                ) || undefined
                               }
                               target="_blank"
                               rel="noreferrer"
@@ -281,12 +285,17 @@ export default function SolverPage() {
                               className="overflow-x-auto max-w-full"
                             />
                           ),
-                          code: ({ node, inline, ...props }) => (
-                            <code
-                              {...props}
-                              className={inline ? "break-words" : "block"}
-                            />
-                          ),
+                          code: ({ node, className, children, ...props }) => {
+                            const isInline = !className;
+                            return (
+                              <code
+                                {...props}
+                                className={isInline ? "break-words" : "block"}
+                              >
+                                {children}
+                              </code>
+                            );
+                          },
                           table: ({ node, ...props }) => (
                             <div className="overflow-x-auto">
                               <table {...props} className="min-w-full" />
@@ -317,8 +326,10 @@ export default function SolverPage() {
                             <img
                               {...props}
                               src={
-                                resolveArtifactUrl(src ?? "", msg.outputDir) ||
-                                undefined
+                                resolveArtifactUrl(
+                                  typeof src === "string" ? src : "",
+                                  msg.outputDir,
+                                ) || undefined
                               }
                               loading="lazy"
                               className="max-w-full h-auto"
@@ -328,8 +339,10 @@ export default function SolverPage() {
                             <a
                               {...props}
                               href={
-                                resolveArtifactUrl(href ?? "", msg.outputDir) ||
-                                undefined
+                                resolveArtifactUrl(
+                                  typeof href === "string" ? href : "",
+                                  msg.outputDir,
+                                ) || undefined
                               }
                               target="_blank"
                               rel="noreferrer"
@@ -342,12 +355,17 @@ export default function SolverPage() {
                               className="overflow-x-auto max-w-full"
                             />
                           ),
-                          code: ({ node, inline, ...props }) => (
-                            <code
-                              {...props}
-                              className={inline ? "break-words" : "block"}
-                            />
-                          ),
+                          code: ({ node, className, children, ...props }) => {
+                            const isInline = !className;
+                            return (
+                              <code
+                                {...props}
+                                className={isInline ? "break-words" : "block"}
+                              >
+                                {children}
+                              </code>
+                            );
+                          },
                           table: ({ node, ...props }) => (
                             <div className="overflow-x-auto">
                               <table {...props} className="min-w-full" />

@@ -15,7 +15,7 @@
 
 [**快速开始**](#快速开始) · [**核心模块**](#核心模块) · [**常见问题**](#常见问题)
 
-[🇬🇧 English](../../README.md) · [🇯🇵 日本語](README_JA.md) · [🇪🇸 Español](README_ES.md) · [🇫🇷 Français](README_FR.md) · [🇸🇦 العربية](README_AR.md)
+[🇬🇧 English](../../README.md) · [🇯🇵 日本語](README_JA.md) · [🇪🇸 Español](README_ES.md) · [🇫🇷 Français](README_FR.md) · [🇸🇦 العربية](README_AR.md) · [🇷🇺 Русский](README_RU.md) · [🇮🇳 हिन्दी](README_HI.md) · [🇵🇹 Português](README_PT.md)
 
 </div>
 
@@ -26,6 +26,12 @@
 
 </div>
 
+---
+> **[2026.1.1]** 新年快乐！加入我们的 [GitHub Discussions](https://github.com/HKUDS/DeepTutor/discussions) — 一起塑造 DeepTutor 的未来！💬
+
+> **[2025.12.30]** 访问我们的 [官方网站](https://hkuds.github.io/DeepTutor/) 获取更多详情！
+
+> **[2025.12.29]** DeepTutor v0.1 正式发布！✨
 ---
 
 ## DeepTutor 的核心功能
@@ -65,7 +71,7 @@
 <img src="../../assets/gifs/solve.gif" width="100%">
 </a>
 <br>
-<sub>文档问答和分步问题求解</sub>
+<sub>带精确引用的多Agent问题求解</sub>
 
 </td>
 <td width="50%" align="center" valign="top">
@@ -75,7 +81,7 @@
 <img src="../../assets/gifs/guided-learning.gif" width="100%">
 </a>
 <br>
-<sub>带知识可视化解释的交互式 AI 学习</sub>
+<sub>带个性化问答的分步可视化解释</sub>
 
 </td>
 </tr>
@@ -94,7 +100,7 @@
 </a>
 
 **自定义题目**  
-<sub>带即时反馈的自动验证练习题</sub>
+<sub>自动验证的练习题生成</sub>
 
 </td>
 <td width="50%" valign="top" align="center">
@@ -123,7 +129,7 @@
 </a>
 
 **深度研究**  
-<sub>带文献综述的网络和论文搜索</sub>
+<sub>基于 RAG、网络和论文搜索的知识拓展</sub>
 
 </td>
 <td width="33%" align="center">
@@ -133,7 +139,7 @@
 </a>
 
 **自动化想法生成**  
-<sub>系统化头脑风暴和概念综合</sub>
+<sub>带双过滤工作流的系统化头脑风暴和概念综合</sub>
 
 </td>
 <td width="33%" align="center">
@@ -143,7 +149,7 @@
 </a>
 
 **交互式想法生成**  
-<sub>基于 RAG 的想法生成，具有多源见解</sub>
+<sub>带播客生成的 RAG 和网络搜索驱动的 Co-Writer</sub>
 
 </td>
 </tr>
@@ -211,9 +217,10 @@
 ## 📋 待做事项
 
 > 🌟 Star 以关注我们的未来更新！
-- [ ] 项目式学习
+- [ ] 支持本地 LLM 服务（如 ollama）
+- [ ] 重构 RAG 模块（见 [Discussions](https://github.com/HKUDS/DeepTutor/discussions)）
 - [ ] 从想法生成进行深度编码
-- [ ] 个性化记忆
+- [ ] 笔记本的个性化交互
 
 ## 🚀 快速开始
 
@@ -227,8 +234,8 @@ cd DeepTutor
 # 创建虚拟环境（选择一种方式）
 
 # 选项 A：使用 conda（推荐）
-conda create -n aitutor python=3.10
-conda activate aitutor
+conda create -n deeptutor python=3.10
+conda activate deeptutor
 
 # 选项 B：使用 venv
 python -m venv venv
@@ -312,7 +319,7 @@ cp .env.example .env
 
 ```bash
 # 确保虚拟环境已激活
-conda activate aitutor  # 或: source venv/bin/activate
+conda activate deeptutor  # 或: source venv/bin/activate
 
 # 启动 Web 界面（前端 + 后端）
 python scripts/start_web.py
@@ -358,7 +365,7 @@ data/
     ├── solve/                    # 问题求解结果和产物
     ├── question/                 # 生成的题目
     ├── research/                 # 研究报告和缓存
-    ├── co-writer/                # Co-Writer 文档和音频文件
+    ├── co-writer/                # 交互式想法生成文档和音频文件
     ├── notebook/                 # 笔记本记录和元数据
     ├── guide/                    # 引导式学习会话
     ├── logs/                     # 系统日志
@@ -450,58 +457,78 @@ data/user/solve/solve_YYYYMMDD_HHMMSS/
 
 </details>
 
-> **双Agent协作题目生成系统**，基于 **ReAct** 范式，自动生成并验证题目质量。
+> **双模式题目生成系统**，支持 **基于知识的自定义生成** 和 **参考试卷模仿**，带自动验证。
 
 **核心特性**
 
 | 特性 | 描述 |
 |:---:|:---|
+| 自定义模式 | **背景知识** → **题目规划** → **生成** → **单次验证**<br>分析题目相关性，无拒绝逻辑 |
+| 模仿模式 | **PDF 上传** → **MinerU 解析** → **题目提取** → **风格模仿**<br>基于参考试卷结构生成题目 |
 | ReAct 引擎 | 具有自主决策的 QuestionGenerationAgent (think → act → observe) |
-| 知识检查 | Agent 评估检索结果，知识不足时拒绝任务 |
-| 验证工作流 | 独立验证，包含详细反馈和修改建议 |
+| 验证分析 | 单次相关性分析，包含 `kb_coverage` 和 `extension_points` |
 | 题目类型 | 多选题、填空题、计算题、问答题等 |
-| 迭代优化 | 多轮协作（最多 10 轮），自动优化 |
-| 批量生成 | 自动需求分解，独立任务保证 |
-| 试卷模仿 | 基于参考试卷生成题目 |
+| 批量生成 | 带进度跟踪的并行处理 |
+| 完整持久化 | 保存所有中间文件（背景知识、计划、单个结果） |
+| 时间戳输出 | 模仿模式创建批次文件夹：`mimic_YYYYMMDD_HHMMSS_{pdf_name}/` |
 
 **使用方法**
 
+**自定义模式：**
 1. 访问 http://localhost:{frontend_port}/question
-2. 填写要求（知识点、难度、题型）
+2. 填写要求（知识点、难度、题型、数量）
 3. 点击"生成题目"
-4. 查看生成的题目和验证结果
+4. 查看生成的题目和验证报告
+
+**模仿模式：**
+1. 访问 http://localhost:{frontend_port}/question
+2. 切换到"模仿试卷"标签
+3. 上传 PDF 或提供已解析的试卷目录
+4. 等待解析 → 提取 → 生成
+5. 查看生成的题目和原始参考
 
 <details>
 <summary><b>Python API</b></summary>
 
-**单题生成：**
+**自定义模式 - 完整流程：**
 ```python
 import asyncio
 from src.agents.question import AgentCoordinator
 
 async def main():
-    coordinator = AgentCoordinator(kb_name="ai_textbook")
-    result = await coordinator.generate_question({
-        "knowledge_point": "线性卷积",
-        "difficulty": "medium",
-        "question_type": "choice"
-    })
+    coordinator = AgentCoordinator(
+        kb_name="ai_textbook",
+        output_dir="data/user/question"
+    )
 
-    if result.get("success"):
-        print(f"题目: {result['question']['question']}")
-    elif result.get("error") == "task_rejected":
-        print(f"Agent 拒绝: {result.get('reason')}")
+    # 从文本需求生成多个题目
+    result = await coordinator.generate_questions_custom(
+        requirement_text="生成 3 道关于深度学习基础的中等难度题目",
+        difficulty="medium",
+        question_type="choice",
+        count=3
+    )
+
+    print(f"✅ 生成 {result['completed']}/{result['requested']} 道题目")
+    for q in result['results']:
+        print(f"- 相关性: {q['validation']['relevance']}")
 
 asyncio.run(main())
 ```
 
-**批量生成：**
+**模仿模式 - PDF 上传：**
 ```python
-# 自动需求分解
-result = await coordinator.generate_questions_from_prompt(
-    requirement_text="生成 3 道关于多元极限的题目",
-    num_questions=3
+from src.agents.question.tools.exam_mimic import mimic_exam_questions
+
+result = await mimic_exam_questions(
+    pdf_path="exams/midterm.pdf",
+    kb_name="calculus",
+    output_dir="data/user/question/mimic_papers",
+    max_questions=5
 )
+
+print(f"✅ 生成 {result['successful_generations']} 道题目")
+print(f"输出: {result['output_file']}")
 ```
 
 </details>
@@ -509,8 +536,24 @@ result = await coordinator.generate_questions_from_prompt(
 <details>
 <summary><b>输出位置</b></summary>
 
+**自定义模式：**
 ```
-data/user/question/question_YYYYMMDD_HHMMSS/
+data/user/question/custom_YYYYMMDD_HHMMSS/
+├── background_knowledge.json      # RAG 检索结果
+├── question_plan.json              # 题目规划
+├── question_1_result.json          # 单个题目结果
+├── question_2_result.json
+└── ...
+```
+
+**模仿模式：**
+```
+data/user/question/mimic_papers/
+└── mimic_YYYYMMDD_HHMMSS_{pdf_name}/
+    ├── {pdf_name}.pdf                              # 原始 PDF
+    ├── auto/{pdf_name}.md                          # MinerU 解析的 markdown
+    ├── {pdf_name}_YYYYMMDD_HHMMSS_questions.json  # 提取的题目
+    └── {pdf_name}_YYYYMMDD_HHMMSS_generated_questions.json  # 生成的题目
 ```
 
 </details>
@@ -565,12 +608,12 @@ data/user/guide/
 ---
 
 <details>
-<summary><b>✏️ Co-Writer</b></summary>
+<summary><b>✏️ 交互式想法生成 (Co-Writer)</b></summary>
 
 <details>
 <summary><b>架构图</b></summary>
 
-![Co-Writer Architecture](../../assets/figs/co-writer.png)
+![Interactive IdeaGen Architecture](../../assets/figs/co-writer.png)
 
 </details>
 
@@ -829,31 +872,43 @@ data/user/research/
 <details>
 <summary><b>配置选项</b></summary>
 
-`config/research_config.yaml` 中的关键配置：
+`config/main.yaml`（research 部分）和 `config/agents.yaml` 中的关键配置：
 
 ```yaml
-# 执行模式
-researching:
-  execution_mode: "parallel"    # "series" 或 "parallel"
-  max_parallel_topics: 5        # 最大并发话题数（并行模式使用异步引用方法）
-  max_iterations: 5             # 每个话题的最大迭代次数
+# config/agents.yaml - Agent LLM 参数
+research:
+  temperature: 0.5
+  max_tokens: 12000
 
-# 工具开关
-  enable_rag_hybrid: true       # Hybrid RAG 检索
-  enable_rag_naive: true        # 基本 RAG 检索
-  enable_paper_search: true     # 学术论文搜索
-  enable_web_search: true       # 网络搜索
-  enable_run_code: true         # 代码执行
+# config/main.yaml - 研究设置
+research:
+  # 执行模式
+  researching:
+    execution_mode: "parallel"    # "series" 或 "parallel"
+    max_parallel_topics: 5        # 最大并发话题数
+    max_iterations: 5             # 每个话题的最大迭代次数
 
-# 队列限制
-queue:
-  max_length: 5                 # 队列中的最大话题数
+  # 工具开关
+    enable_rag_hybrid: true       # Hybrid RAG 检索
+    enable_rag_naive: true        # 基本 RAG 检索
+    enable_paper_search: true     # 学术论文搜索
+    enable_web_search: true       # 网络搜索（也受 tools.web_search.enabled 控制）
+    enable_run_code: true         # 代码执行
 
-# 报告
-reporting:
-  enable_inline_citations: true # 启用报告中的可点击 [N] 引用
+  # 队列限制
+  queue:
+    max_length: 5                 # 队列中的最大话题数
 
-# 预设：quick、medium、deep、auto
+  # 报告
+  reporting:
+    enable_inline_citations: true # 启用报告中的可点击 [N] 引用
+
+  # 预设：quick、medium、deep、auto
+
+# 全局工具开关
+tools:
+  web_search:
+    enabled: true                 # 全局网络搜索开关（优先级更高）
 ```
 
 </details>
@@ -996,7 +1051,7 @@ asyncio.run(main())
 <tr>
 <td align="center"><a href="../../src/agents/question/README.md">题目模块</a></td>
 <td align="center"><a href="../../src/agents/research/README.md">研究模块</a></td>
-<td align="center"><a href="../../src/agents/co_writer/README.md">Co-Writer 模块</a></td>
+<td align="center"><a href="../../src/agents/co_writer/README.md">交互式想法生成模块</a></td>
 <td align="center"><a href="../../src/agents/guide/README.md">引导模块</a></td>
 </tr>
 <tr>

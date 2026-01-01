@@ -15,7 +15,7 @@
 
 [**Démarrage Rapide**](#démarrage-rapide) · [**Modules Principaux**](#modules-principaux) · [**FAQ**](#faq)
 
-[🇬🇧 English](../../README.md) · [🇨🇳 中文](README_CN.md) · [🇯🇵 日本語](README_JA.md) · [🇪🇸 Español](README_ES.md) · [🇸🇦 العربية](README_AR.md)
+[🇬🇧 English](../../README.md) · [🇨🇳 中文](README_CN.md) · [🇯🇵 日本語](README_JA.md) · [🇪🇸 Español](README_ES.md) · [🇸🇦 العربية](README_AR.md) · [🇷🇺 Русский](README_RU.md) · [🇮🇳 हिन्दी](README_HI.md) · [🇵🇹 Português](README_PT.md)
 
 </div>
 
@@ -26,6 +26,12 @@
 
 </div>
 
+---
+> **[2026.1.1]** Bonne Année ! Rejoignez nos [GitHub Discussions](https://github.com/HKUDS/DeepTutor/discussions) — façonnez l'avenir de DeepTutor ! 💬
+
+> **[2025.12.30]** Visitez notre [Site Web Officiel](https://hkuds.github.io/DeepTutor/) pour plus de détails !
+
+> **[2025.12.29]** DeepTutor v0.1 est maintenant disponible ! ✨
 ---
 
 ## Caractéristiques Clés d'DeepTutor
@@ -65,7 +71,7 @@
 <img src="../../assets/gifs/solve.gif" width="100%">
 </a>
 <br>
-<sub>Q&A de Documents et Résolution de Problèmes Étape par Étape</sub>
+<sub>Résolution de Problèmes Multi-Agents avec Citations Exactes</sub>
 
 </td>
 <td width="50%" align="center" valign="top">
@@ -75,7 +81,7 @@
 <img src="../../assets/gifs/guided-learning.gif" width="100%">
 </a>
 <br>
-<sub>Apprentissage IA Interactif avec Explications Visuelles des Connaissances</sub>
+<sub>Explications Visuelles Étape par Étape avec Q&R Personnalisé</sub>
 
 </td>
 </tr>
@@ -94,7 +100,7 @@
 </a>
 
 **Questions Personnalisées**  
-<sub>Questions de Pratique Auto-Validées avec Retour Instantané</sub>
+<sub>Génération de Questions de Pratique Auto-Validées</sub>
 
 </td>
 <td width="50%" valign="top" align="center">
@@ -123,7 +129,7 @@
 </a>
 
 **Recherche Approfondie**  
-<sub>Recherche Web et d'Articles avec Revue de Littérature</sub>
+<sub>Extension des Connaissances depuis le Manuel avec RAG, Web et Recherche d'Articles</sub>
 
 </td>
 <td width="33%" align="center">
@@ -133,7 +139,7 @@
 </a>
 
 **IdeaGen Automatisé**  
-<sub>Remue-Méninges Systématique et Synthèse de Concepts</sub>
+<sub>Remue-Méninges Systématique et Synthèse de Concepts avec Flux de Travail à Double Filtre</sub>
 
 </td>
 <td width="33%" align="center">
@@ -143,7 +149,7 @@
 </a>
 
 **IdeaGen Interactif**  
-<sub>Génération d'Idées Alimentée par RAG avec Perspectives Multi-Sources</sub>
+<sub>Co-Writer Alimenté par RAG et Recherche Web avec Génération de Podcasts</sub>
 
 </td>
 </tr>
@@ -193,10 +199,10 @@
 ## 📋 À Faire
 
 > Suivez-nous pour nos futures mises à jour!
-- [ ] Apprentissage basé sur les projets
+- [ ] Support des services LLM locaux (ex. ollama)
+- [ ] Refactorisation du module RAG (voir [Discussions](https://github.com/HKUDS/DeepTutor/discussions))
 - [ ] Codage profond à partir de la génération d'idées
-- [ ] Mémoire personnalisée
-- [ ] Choix alternatif avec RAG naïf
+- [ ] Interaction personnalisée avec le carnet
 
 ## 🚀 Démarrage Rapide
 
@@ -210,8 +216,8 @@ cd DeepTutor
 # Créer un environnement virtuel (choisir une méthode)
 
 # Option A: Utiliser conda (Recommandé)
-conda create -n aitutor python=3.10
-conda activate aitutor
+conda create -n deeptutor python=3.10
+conda activate deeptutor
 
 # Option B: Utiliser venv
 python -m venv venv
@@ -293,7 +299,7 @@ Un manuel de science des données complet et difficile. Cette démo représente 
 
 ```bash
 # Assurez-vous que l'environnement virtuel est activé
-conda activate aitutor  # ou: source venv/bin/activate
+conda activate deeptutor  # ou: source venv/bin/activate
 
 # Démarrer l'interface web (frontend + backend)
 python scripts/start_web.py

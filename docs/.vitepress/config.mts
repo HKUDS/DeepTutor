@@ -46,6 +46,7 @@ export default defineConfig({
         {
           text: 'Community',
           items: [
+            { text: 'Discussions', link: '/community/discussions' },
             { text: 'Contributing', link: '/community/contributing' }
           ]
         }

@@ -15,7 +15,7 @@
 
 [**クイックスタート**](#クイックスタート) · [**コアモジュール**](#コアモジュール) · [**よくある質問**](#よくある質問)
 
-[🇬🇧 English](../../README.md) · [🇨🇳 中文](README_CN.md) · [🇪🇸 Español](README_ES.md) · [🇫🇷 Français](README_FR.md) · [🇸🇦 العربية](README_AR.md)
+[🇬🇧 English](../../README.md) · [🇨🇳 中文](README_CN.md) · [🇪🇸 Español](README_ES.md) · [🇫🇷 Français](README_FR.md) · [🇸🇦 العربية](README_AR.md) · [🇷🇺 Русский](README_RU.md) · [🇮🇳 हिन्दी](README_HI.md) · [🇵🇹 Português](README_PT.md)
 
 </div>
 
@@ -26,6 +26,12 @@
 
 </div>
 
+---
+> **[2026.1.1]** 新年あけましておめでとうございます！[GitHub Discussions](https://github.com/HKUDS/DeepTutor/discussions) に参加して、DeepTutor の未来を一緒に創りましょう！💬
+
+> **[2025.12.30]** 詳細は [公式ウェブサイト](https://hkuds.github.io/DeepTutor/) をご覧ください！
+
+> **[2025.12.29]** DeepTutor v0.1 がリリースされました！✨
 ---
 
 ## DeepTutor の主要機能
@@ -65,7 +71,7 @@
 <img src="../../assets/gifs/solve.gif" width="100%">
 </a>
 <br>
-<sub>ドキュメントQ&Aとステップバイステップの問題解決</sub>
+<sub>正確な引用を伴うマルチエージェント問題解決</sub>
 
 </td>
 <td width="50%" align="center" valign="top">
@@ -75,7 +81,7 @@
 <img src="../../assets/gifs/guided-learning.gif" width="100%">
 </a>
 <br>
-<sub>知識の視覚的説明を備えたインタラクティブなAI学習</sub>
+<sub>パーソナライズされたQ&Aを備えたステップバイステップの視覚的説明</sub>
 
 </td>
 </tr>
@@ -94,7 +100,7 @@
 </a>
 
 **カスタム質問**  
-<sub>即座のフィードバックを備えた自動検証の練習問題</sub>
+<sub>自動検証された練習問題の生成</sub>
 
 </td>
 <td width="50%" valign="top" align="center">
@@ -123,7 +129,7 @@
 </a>
 
 **深い研究**  
-<sub>文献レビューを備えたウェブおよび論文検索</sub>
+<sub>RAG、ウェブ、論文検索による教科書からの知識拡張</sub>
 
 </td>
 <td width="33%" align="center">
@@ -133,7 +139,7 @@
 </a>
 
 **自動化されたアイデア生成**  
-<sub>系統的なブレインストーミングと概念統合</sub>
+<sub>デュアルフィルターワークフローによる系統的なブレインストーミングと概念統合</sub>
 
 </td>
 <td width="33%" align="center">
@@ -143,7 +149,7 @@
 </a>
 
 **インタラクティブなアイデア生成**  
-<sub>マルチソースの洞察を備えたRAG駆動のアイデア生成</sub>
+<sub>ポッドキャスト生成を備えたRAGとウェブ検索駆動のCo-Writer</sub>
 
 </td>
 </tr>
@@ -211,9 +217,10 @@
 ## 📋 タスク
 
 > 🌟 今後の更新をフォローするために Star してください！
-- [ ] プロジェクトベースの学習
+- [ ] ローカル LLM サービスのサポート（例：ollama）
+- [ ] RAG モジュールのリファクタリング（[Discussions](https://github.com/HKUDS/DeepTutor/discussions) を参照）
 - [ ] アイデア生成からの深いコーディング
-- [ ] パーソナライズされたメモリ
+- [ ] ノートブックとのパーソナライズされたインタラクション
 
 ## 🚀 クイックスタート
 
@@ -227,8 +234,8 @@ cd DeepTutor
 # 仮想環境を作成（方法を選択）
 
 # オプション A: conda を使用（推奨）
-conda create -n aitutor python=3.10
-conda activate aitutor
+conda create -n deeptutor python=3.10
+conda activate deeptutor
 
 # オプション B: venv を使用
 python -m venv venv
@@ -312,7 +319,7 @@ cp .env.example .env
 
 ```bash
 # 仮想環境が有効化されていることを確認
-conda activate aitutor  # または: source venv/bin/activate
+conda activate deeptutor  # または: source venv/bin/activate
 
 # Web インターフェース（フロントエンド + バックエンド）を開始
 python scripts/start_web.py

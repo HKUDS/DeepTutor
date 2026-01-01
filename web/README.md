@@ -1,6 +1,6 @@
 # Web Frontend
 
-The Web frontend is a Next.js 14 application that provides the user interface for the DeepTutor system.
+The Web frontend is a Next.js 16 application that provides the user interface for the DeepTutor system.
 
 ## 📋 Overview
 
@@ -54,13 +54,14 @@ web/
 
 ## 🛠️ Technology Stack
 
-- **Framework**: Next.js 14 (App Router)
+- **Framework**: Next.js 16 (App Router + Turbopack)
+- **Runtime**: React 19
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
 - **UI Components**: Custom components with Lucide React icons
 - **Markdown**: react-markdown with KaTeX for math
 - **PDF Export**: jsPDF + html2canvas
-- **Animations**: Framer Motion
+- **Animations**: Framer Motion 11
 
 ## 📦 Dependencies
 
@@ -68,15 +69,15 @@ web/
 
 ```json
 {
-  "next": "14.0.3",
-  "react": "^18",
-  "react-dom": "^18",
+  "next": "^16.1.1",
+  "react": "^19.0.0",
+  "react-dom": "^19.0.0",
   "react-markdown": "^9.0.1",
-  "rehype-katex": "^7.0.0",
+  "rehype-katex": "^7.0.1",
   "remark-math": "^6.0.0",
-  "lucide-react": "^0.294.0",
-  "framer-motion": "^10.16.4",
-  "jspdf": "^2.5.1",
+  "lucide-react": "^0.460.0",
+  "framer-motion": "^11.15.0",
+  "jspdf": "^2.5.2",
   "html2canvas": "^1.4.1"
 }
 ```
@@ -95,6 +96,8 @@ npm install
 ```bash
 npm run dev
 ```
+
+This uses **Turbopack** by default for faster development builds.
 
 The frontend will be available at `http://localhost:3782` (or port configured in `config/main.yaml`).
 
@@ -273,6 +276,27 @@ NEXT_PUBLIC_API_BASE=http://localhost:8001
 NEXT_PUBLIC_WS_BASE=ws://localhost:8001
 ```
 
+### Next.js Configuration
+
+Key settings in `next.config.js`:
+
+```javascript
+const nextConfig = {
+  // Dev indicator position
+  devIndicators: {
+    position: "bottom-right",
+  },
+  // Turbopack configuration
+  turbopack: {
+    resolveAlias: {
+      cytoscape: "cytoscape/dist/cytoscape.cjs.js",
+    },
+  },
+  // Transpile packages
+  transpilePackages: ["mermaid"],
+};
+```
+
 ## 🔗 Related Modules
 
 - **Backend API**: `src/api/` - FastAPI backend
@@ -320,3 +344,4 @@ NEXT_PUBLIC_WS_BASE=ws://localhost:8001
 2. **WebSocket**: WebSocket URL must use `ws://` or `wss://` protocol
 3. **CORS**: Backend must allow frontend origin in CORS settings
 4. **Environment Variables**: Use `NEXT_PUBLIC_` prefix for client-side variables
+5. **Turbopack**: Development mode uses Turbopack by default for faster builds

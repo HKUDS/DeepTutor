@@ -818,7 +818,7 @@ export const ResearchDashboard: React.FC<ResearchDashboardProps> = ({
                         // Check if this pre contains a mermaid code block
                         const child = React.Children.toArray(
                           children,
-                        )[0] as React.ReactElement;
+                        )[0] as React.ReactElement<{ className?: string }>;
                         if (
                           child?.props?.className?.includes("language-mermaid")
                         ) {
