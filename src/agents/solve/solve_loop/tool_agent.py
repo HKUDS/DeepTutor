@@ -35,6 +35,8 @@ class ToolAgent(BaseAgent):
             use_prompt_loader=True,
             token_tracker=token_tracker,
         )
+        # Read web_search enabled config from tools.web_search.enabled
+        self.enable_web_search = config.get("tools", {}).get("web_search", {}).get("enabled", True)
 
     async def process(
         self,
@@ -209,6 +211,19 @@ class ToolAgent(BaseAgent):
             return answer, metadata
 
         if tool_type == "web_search":
+            # Check if web_search is enabled
+            if not self.enable_web_search:
+                self.logger.warning(
+                    "Tool call rejected (web_search): web_search is disabled in config. "
+                    "Falling back to RAG naive search."
+                )
+                # Fallback to RAG naive search when web_search is disabled
+                result = await rag_search(query=query, kb_name=kb_name, mode="naive")
+                answer = result.get("answer", "")
+                source, auto_sources = self._infer_sources(answer)
+                metadata = {"source": source, "auto_sources": auto_sources, "mode": "naive", "fallback_from": "web_search"}
+                return answer, metadata
+            
             result = web_search(query=query, output_dir=output_dir, verbose=verbose)
             answer = result.get("answer") or result.get("summary") or ""
             used_citation_ids = self._extract_answer_citations(answer)

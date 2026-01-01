@@ -32,8 +32,8 @@ logging:
   save_to_file: true
   console_output: true
   lightrag_forwarding:
-    enabled: true
-    min_level: DEBUG
+    enabled: false  # 设为 false 完全禁用 LightRAG 日志
+    min_level: WARNING  # 或设为 WARNING 只显示警告和错误
     add_prefix: true
     logger_names:
       knowledge_init: LightRAG-Init

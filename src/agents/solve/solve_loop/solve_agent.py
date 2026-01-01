@@ -40,6 +40,8 @@ class SolveAgent(BaseAgent):
             use_prompt_loader=True,
             token_tracker=token_tracker,
         )
+        # Read web_search enabled config from tools.web_search.enabled
+        self.enable_web_search = config.get("tools", {}).get("web_search", {}).get("enabled", True)
 
     async def process(
         self,
@@ -187,6 +189,25 @@ class SolveAgent(BaseAgent):
             raise ValueError(
                 "SolveAgent missing system prompt, please configure system in prompts/zh/solve_loop/solve_agent.yaml."
             )
+        
+        # If web_search is disabled, remove web_search from prompt
+        if not self.enable_web_search:
+            lines = prompt.split("\n")
+            filtered_lines = []
+            for line in lines:
+                # Skip lines that describe web_search
+                if "web_search" in line and (
+                    "Latest Info" in line or "Extracurricular" in line or
+                    "最新信息" in line or "课外知识" in line or
+                    "Select `web_search`" in line
+                ):
+                    continue
+                # Remove web_search from tool type list
+                if "web_search" in line:
+                    line = line.replace(" | web_search", "").replace("web_search | ", "").replace("| web_search", "")
+                filtered_lines.append(line)
+            prompt = "\n".join(filtered_lines)
+        
         return prompt
 
     def _build_user_prompt(self, context: dict[str, Any]) -> str:

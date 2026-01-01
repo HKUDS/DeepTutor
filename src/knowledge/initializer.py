@@ -65,8 +65,10 @@ class KnowledgeBaseInitializer:
         self.rag_storage_dir = self.kb_dir / "rag_storage"
         self.content_list_dir = self.kb_dir / "content_list"
 
-        self.api_key = api_key
-        self.base_url = base_url
+        # Get LLM configuration if api_key or base_url not provided
+        llm_cfg = get_llm_config()
+        self.api_key = api_key or llm_cfg.get("api_key")
+        self.base_url = base_url or llm_cfg.get("base_url")
         self.embedding_cfg = get_embedding_config()
         self.progress_tracker = progress_tracker or ProgressTracker(kb_name, self.base_dir)
 
@@ -281,10 +283,13 @@ class KnowledgeBaseInitializer:
         embedding_cfg = self.embedding_cfg
         embedding_api_key = embedding_cfg["api_key"] or self.api_key
         embedding_base_url = embedding_cfg["base_url"] or self.base_url
+        # Use openai_embed.func to access the unwrapped function
+        # This avoids double wrapping issues since openai_embed is already decorated
+        # with @wrap_embedding_func_with_attrs(embedding_dim=1536, ...)
         embedding_func = EmbeddingFunc(
             embedding_dim=embedding_cfg["dim"],
             max_token_size=embedding_cfg["max_tokens"],
-            func=lambda texts: openai_embed(
+            func=lambda texts: openai_embed.func(
                 texts,
                 model=embedding_cfg["model"],
                 api_key=embedding_api_key,

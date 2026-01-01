@@ -84,6 +84,8 @@ outputs/
 cache/
 **/cache/
 .cache/
+tests/
+test_results/
 
 # Log files
 *.log
