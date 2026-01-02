@@ -341,7 +341,7 @@ const nextConfig = {
 ## ⚠️ Notes
 
 1. **API URL**: Ensure API base URL matches backend configuration
-2. **WebSocket**: WebSocket URL must use `ws://` or `wss://` protocol
+2. **WebSocket**: WebSocket URL should use `wss://` for secure production environments (fallback to `ws://` for local development only)
 3. **CORS**: Backend must allow frontend origin in CORS settings
 4. **Environment Variables**: Use `NEXT_PUBLIC_` prefix for client-side variables
 5. **Turbopack**: Development mode uses Turbopack by default for faster builds

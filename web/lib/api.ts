@@ -45,7 +45,8 @@ export function apiUrl(path: string): string {
  * Note: backend_port is configured in config/main.yaml
  */
 export function wsUrl(path: string): string {
-  // Convert http:// to ws:// or https:// to wss://
+  // Security Hardening: Convert http to ws and https to wss.
+  // In production environments (where API_BASE_URL starts with https), this ensures secure websockets.
   const base = API_BASE_URL.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
 
   // Remove leading slash if present to avoid double slashes
