@@ -129,16 +129,20 @@ install_with_pip_staged() {
         return 1
     fi
 
-    # Stage 2: lightrag-hku
-    print_info "Stage 2/3: Installing lightrag-hku..."
-    python -m pip install "lightrag-hku>=1.0.0" || print_warning "lightrag-hku installation had issues"
+    # Stage 2: llama-index
+    print_info "Stage 2/3: Installing llama-index..."
+    python -m pip install "llama-index>=0.14.12" || print_warning "llama-index installation had issues"
 
-    # Stage 3: raganything (complex dependencies)
-    print_info "Stage 3/3: Installing raganything (this may take a while)..."
+    # Stage 3: raganything (includes lightrag-hku as dependency)
+    print_info "Stage 3/4: Installing raganything (includes lightrag-hku, this may take a while)..."
     if ! python -m pip install "raganything>=0.1.0"; then
         print_warning "Standard install failed, trying with --no-deps..."
         python -m pip install "raganything>=0.1.0" --no-deps || print_warning "raganything installation had issues"
     fi
+
+    # Stage 4: docling (alternative parser for Office/HTML documents)
+    print_info "Stage 4/4: Installing docling (document parser for Office/HTML)..."
+    python -m pip install "docling>=2.31.0" || print_warning "docling installation had issues (optional, can be skipped)"
 
     # Optional deps
     python -m pip install "perplexityai>=0.1.0" "dashscope>=1.14.0" 2>/dev/null || true
@@ -341,6 +345,21 @@ if python -c "import raganything" 2>/dev/null; then
 else
     print_error "  ✗ raganything not installed"
     ALL_OK=false
+fi
+
+# Check llama_index
+if python -c "import llama_index" 2>/dev/null; then
+    print_success "  ✓ llama_index"
+else
+    print_error "  ✗ llama_index not installed"
+    ALL_OK=false
+fi
+
+# Check docling (optional)
+if python -c "import docling" 2>/dev/null; then
+    print_success "  ✓ docling"
+else
+    print_warning "  ⚠ docling not installed (optional, for Office/HTML parsing)"
 fi
 
 # Check frontend node_modules

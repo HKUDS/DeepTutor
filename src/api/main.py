@@ -23,6 +23,7 @@ from src.api.routers import (
 )
 from src.logging import get_logger
 
+# Note: Don't set service_prefix here - start_web.py already adds [Backend] prefix
 logger = get_logger("API")
 
 CONFIG_DRIFT_ERROR_TEMPLATE = (
@@ -129,6 +130,17 @@ async def lifespan(app: FastAPI):
 
     # Validate configuration consistency
     validate_tool_consistency()
+
+    # Initialize LLM client early to set environment variables for LightRAG
+    # LightRAG reads OPENAI_API_KEY from os.environ internally, so we must
+    # set it before any RAG operations can happen
+    try:
+        from src.services.llm import get_llm_client
+
+        llm_client = get_llm_client()
+        logger.info(f"LLM client initialized: model={llm_client.config.model}")
+    except Exception as e:
+        logger.warning(f"Failed to initialize LLM client at startup: {e}")
 
     yield
     # Execute on shutdown

@@ -10,6 +10,7 @@ data/user/
 data/knowledge_bases/
 run_code_workspace/
 src/agents/question/reference_papers/
+src/services/rag/eg_only_for_analysis/
 
 # ============================================
 # Python Related

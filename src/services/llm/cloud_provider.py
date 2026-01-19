@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Cloud LLM Provider
 ==================
@@ -11,14 +12,27 @@ import os
 from typing import AsyncGenerator, Dict, List, Optional
 
 import aiohttp
-from lightrag.llm.openai import openai_complete_if_cache
 
 # Get loggers for suppression during fallback scenarios
 # (lightrag logs errors internally before raising exceptions)
 _lightrag_logger = logging.getLogger("lightrag")
 _openai_logger = logging.getLogger("openai")
 
-from .capabilities import supports_response_format
+# Lazy import for lightrag to avoid import errors when not installed
+_openai_complete_if_cache = None
+
+
+def _get_openai_complete_if_cache():
+    """Lazy load openai_complete_if_cache from lightrag."""
+    global _openai_complete_if_cache
+    if _openai_complete_if_cache is None:
+        from lightrag.llm.openai import openai_complete_if_cache
+
+        _openai_complete_if_cache = openai_complete_if_cache
+    return _openai_complete_if_cache
+
+
+from .capabilities import get_effective_temperature, supports_response_format
 from .config import get_token_limit_kwargs
 from .exceptions import LLMAPIError, LLMAuthenticationError, LLMConfigError
 from .utils import (
@@ -182,6 +196,7 @@ async def _openai_complete(
         _openai_logger.setLevel(logging.CRITICAL)
         try:
             # model and prompt must be positional arguments
+            openai_complete_if_cache = _get_openai_complete_if_cache()
             content = await openai_complete_if_cache(model, prompt, **lightrag_kwargs)
         finally:
             _lightrag_logger.setLevel(original_lightrag_level)
@@ -203,7 +218,9 @@ async def _openai_complete(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
             ],
-            "temperature": kwargs.get("temperature", 0.7),
+            "temperature": get_effective_temperature(
+                binding, model, kwargs.get("temperature", 0.7)
+            ),
         }
 
         # Handle max_tokens / max_completion_tokens based on model
@@ -279,7 +296,9 @@ async def _openai_stream(
     data = {
         "model": model,
         "messages": msg_list,
-        "temperature": kwargs.get("temperature", 0.7),
+        "temperature": get_effective_temperature(
+            binding, model, kwargs.get("temperature", 0.7)
+        ),
         "stream": True,
     }
 

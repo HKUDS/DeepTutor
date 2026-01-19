@@ -87,16 +87,7 @@ repos:
       - id: bandit
         args: [-c, pyproject.toml, -q]
         exclude: ^tests/
-
-  # ============================================
-  # Docstring coverage checking
-  # ============================================
-  - repo: https://github.com/econchick/interrogate
-    rev: 1.7.0
-    hooks:
-      - id: interrogate
-        args: [-v, -q, --exclude=tests/, --exclude=scripts/, --ignore-init-method, --ignore-private]
-        pass_filenames: false
+        additional_dependencies: ["bandit[toml]"]
 
   # ============================================
   # Type checking

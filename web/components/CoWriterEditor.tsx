@@ -22,7 +22,7 @@ import {
   ListOrdered,
   Quote,
   Link,
-  Image,
+  Image as ImageIcon,
   Table,
   Minus,
   Download,
@@ -53,6 +53,8 @@ import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import "katex/dist/katex.min.css";
 import { processLatexContent } from "@/lib/latex";
+import { loadFromStorage, saveToStorage, STORAGE_KEYS } from "@/lib/persistence";
+import { debounce } from "@/lib/debounce";
 
 interface CoWriterEditorProps {
   initialValue?: string;
@@ -63,13 +65,54 @@ const AI_MARK_REGEX = /<span\s+data-rough-notation="[^"]+">([^<]*)<\/span>/g;
 const AI_MARK_OPEN_TAG = /<span\s+data-rough-notation="[^"]+">/g;
 const AI_MARK_CLOSE_TAG = /<\/span>/g;
 
+// Default content for new documents
+const DEFAULT_COWRITER_CONTENT =
+  "# Welcome to Co-Writer\n\nSelect text to see the magic happen.\n\n## Features\n\n- **Bold** text with Ctrl+B\n- *Italic* text with Ctrl+I\n- <u>Underline</u> with Ctrl+U\n- <mark>Highlight</mark> with Ctrl+H\n- AI-powered editing and auto-marking\n";
+
 export default function CoWriterEditor({
   initialValue = "",
 }: CoWriterEditorProps) {
-  const [content, setContent] = useState(
-    initialValue ||
-      "# Welcome to Co-Writer\n\nSelect text to see the magic happen.\n\n## Features\n\n- **Bold** text with Ctrl+B\n- *Italic* text with Ctrl+I\n- <u>Underline</u> with Ctrl+U\n- <mark>Highlight</mark> with Ctrl+H\n- AI-powered editing and auto-marking\n",
+  // Track hydration to avoid SSR mismatch
+  const isHydrated = useRef(false);
+
+  // Initialize with default content (same on server and client)
+  const [content, setContent] = useState(initialValue || DEFAULT_COWRITER_CONTENT);
+
+  // Debounced save for content
+  const saveContent = useCallback(
+    debounce((text: string) => {
+      if (!isHydrated.current) return;
+      saveToStorage(STORAGE_KEYS.COWRITER_CONTENT, text);
+    }, 1000), // 1 second debounce for content to avoid too frequent saves while typing
+    []
   );
+
+  // Restore persisted content after hydration
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    // If initialValue was provided, don't load from storage
+    if (initialValue) {
+      isHydrated.current = true;
+      return;
+    }
+    
+    const persistedContent = loadFromStorage<string>(
+      STORAGE_KEYS.COWRITER_CONTENT,
+      DEFAULT_COWRITER_CONTENT
+    );
+    if (persistedContent !== DEFAULT_COWRITER_CONTENT) {
+      setContent(persistedContent);
+    }
+    isHydrated.current = true;
+  }, [initialValue]);
+
+  // Auto-save content on change (only after hydration)
+  useEffect(() => {
+    if (isHydrated.current) {
+      saveContent(content);
+    }
+  }, [content, saveContent]);
+
   const [selection, setSelection] = useState<{
     start: number;
     end: number;
@@ -337,6 +380,7 @@ export default function CoWriterEditor({
       // When restoring, need to map edits back to original content
       setRawContent("");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Only trigger on hideAiMarks toggle, not content changes
   }, [hideAiMarks]);
 
   // Merge edits with tags - smart AI mark protection
@@ -1341,7 +1385,7 @@ export default function CoWriterEditor({
               title="Link"
             />
             <ToolbarButton
-              icon={<Image className="w-4 h-4" />}
+              icon={<ImageIcon className="w-4 h-4" />}
               onClick={() => wrapSelection("![", "](url)")}
               title="Image"
             />
@@ -1472,7 +1516,7 @@ export default function CoWriterEditor({
             <div className="p-4 space-y-4">
               {/* Selected Text Preview */}
               <div className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-700 p-2 rounded-lg border border-slate-100 dark:border-slate-600 line-clamp-2 italic">
-                "{selection?.text}"
+                &quot;{selection?.text}&quot;
               </div>
 
               {/* Instruction Input */}
@@ -1832,7 +1876,7 @@ export default function CoWriterEditor({
                             </span>
                           </div>
                           <div className="text-xs text-slate-600 dark:text-slate-400 truncate mb-1">
-                            "{op.input?.original_text?.substring(0, 35)}..."
+                            &quot;{op.input?.original_text?.substring(0, 35)}...&quot;
                           </div>
                           <div className="flex items-center gap-2 text-[10px] text-slate-400 dark:text-slate-500">
                             {op.source && (

@@ -1,9 +1,9 @@
 name: Update Repo Roster
 
 on:
-  # Run twice a day (at 00:00 and 12:00 UTC)
+  # Run once a day (at 00:00 UTC)
   schedule:
-    - cron: '0 0,12 * * *'
+    - cron: '0 0 * * *'
   # Allow manual trigger
   workflow_dispatch:
   # Run when stars/forks might change (on push to main)

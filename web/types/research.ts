@@ -65,7 +65,7 @@ export interface ReportOutline {
   conclusion_instruction?: string;
 }
 
-export interface LogEntry {
+export interface ResearchLogEntry {
   id: string;
   timestamp: number;
   type: "info" | "success" | "warning" | "error";
@@ -106,7 +106,7 @@ export interface ResearchState {
     sectionIndex?: number;
     totalSections?: number;
   };
-  logs: LogEntry[]; // Global log stream
+  logs: ResearchLogEntry[]; // Global log stream
 }
 
 // WebSocket Event Types

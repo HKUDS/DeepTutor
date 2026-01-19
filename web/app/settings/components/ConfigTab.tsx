@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Plus, Trash2, Loader2, Pencil } from "lucide-react";
 import { apiUrl } from "@/lib/api";
 import { ConfigItem, ConfigType } from "../types";
@@ -35,11 +35,7 @@ export default function ConfigTab({
     message: string;
   } | null>(null);
 
-  useEffect(() => {
-    loadConfigs();
-  }, [configType]);
-
-  const loadConfigs = async () => {
+  const loadConfigs = useCallback(async () => {
     try {
       const res = await fetch(apiUrl(`/api/v1/config/${configType}`));
       if (res.ok) {
@@ -51,7 +47,11 @@ export default function ConfigTab({
     } finally {
       setLoading(false);
     }
-  };
+  }, [configType]);
+
+  useEffect(() => {
+    loadConfigs();
+  }, [loadConfigs]);
 
   const setActive = async (configId: string) => {
     try {

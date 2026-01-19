@@ -23,12 +23,14 @@ VALID_SOLVE_TOOLS = [
     "finish",
 ]
 
-# Logging symbols for different log levels
-LOG_SYMBOLS = {
-    "DEBUG": "·",
-    "INFO": "●",
-    "SUCCESS": "✓",
-    "WARNING": "⚠",
-    "ERROR": "✗",
-    "CRITICAL": "✗",
-}
+# Standard log level tags (used in unified logging format)
+LOG_LEVEL_TAGS = [
+    "DEBUG",
+    "INFO",
+    "SUCCESS",
+    "WARNING",
+    "ERROR",
+    "CRITICAL",
+    "PROGRESS",
+    "COMPLETE",
+]

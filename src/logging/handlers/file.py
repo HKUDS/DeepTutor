@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 File Log Handlers
 =================
@@ -13,24 +14,8 @@ from logging.handlers import RotatingFileHandler as BaseRotatingFileHandler
 from pathlib import Path
 from typing import Optional
 
-
-class FileFormatter(logging.Formatter):
-    """
-    Detailed file formatter for log files.
-    Format: TIMESTAMP [LEVEL] [Module] Message
-    """
-
-    def __init__(self):
-        super().__init__(
-            fmt="%(asctime)s [%(levelname)-8s] [%(module_name)-12s] %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-
-    def format(self, record: logging.LogRecord) -> str:
-        # Ensure module_name exists
-        if not hasattr(record, "module_name"):
-            record.module_name = record.name
-        return super().format(record)
+# Import FileFormatter from the main logger module to avoid duplication
+from ..logger import FileFormatter
 
 
 class FileHandler(logging.FileHandler):
@@ -143,7 +128,7 @@ class JSONFileHandler(logging.Handler):
             }
 
             # Add extra fields if present
-            for key in ["symbol", "display_level", "tool_name", "elapsed_ms", "tokens"]:
+            for key in ["display_level", "tool_name", "elapsed_ms", "tokens"]:
                 if hasattr(record, key):
                     entry[key] = getattr(record, key)
 
@@ -180,7 +165,7 @@ def create_task_logger(
     log_path.mkdir(parents=True, exist_ok=True)
 
     # Create logger
-    logger = logging.getLogger(f"ai_tutor.{module_name}.{task_id}")
+    logger = logging.getLogger(f"deeptutor.{module_name}.{task_id}")
     logger.setLevel(logging.DEBUG)
     logger.handlers.clear()
     logger.propagate = False

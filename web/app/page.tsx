@@ -94,13 +94,15 @@ export default function HomePage() {
     fetch(apiUrl("/api/v1/knowledge/list"))
       .then((res) => res.json())
       .then((data) => {
-        setKbs(data);
-        if (!chatState.selectedKb) {
-          const defaultKb = data.find((kb: KnowledgeBase) => kb.is_default);
+        // Ensure data is an array before processing
+        const kbList = Array.isArray(data) ? data : [];
+        setKbs(kbList);
+        if (!chatState.selectedKb && kbList.length > 0) {
+          const defaultKb = kbList.find((kb: KnowledgeBase) => kb.is_default);
           if (defaultKb) {
             setChatState((prev) => ({ ...prev, selectedKb: defaultKb.name }));
-          } else if (data.length > 0) {
-            setChatState((prev) => ({ ...prev, selectedKb: data[0].name }));
+          } else {
+            setChatState((prev) => ({ ...prev, selectedKb: kbList[0].name }));
           }
         }
       })

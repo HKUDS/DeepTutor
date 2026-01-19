@@ -224,9 +224,9 @@ def start_backend():
         try:
             for line in iter(process.stdout.readline, ""):
                 if line:
-                    print_flush(f"[Backend]  {line.rstrip()}")
+                    print_flush(f"[Backend] {line.rstrip()}")
         except Exception as e:
-            print_flush(f"[Backend]  Log output error: {e}")
+            print_flush(f"[Backend] Log output error: {e}")
 
     log_thread = threading.Thread(target=log_output, daemon=True)
     log_thread.start()

@@ -99,13 +99,54 @@ class ProgressTracker:
                 print(f"[ProgressTracker] Callback error: {e}")
 
     def _save_progress(self, progress: dict):
-        """Save progress to file"""
+        """Save progress to kb_config.json and local .progress.json file"""
+        # Save to kb_config.json (centralized config)
+        try:
+            from src.knowledge.manager import KnowledgeBaseManager
+
+            manager = KnowledgeBaseManager(base_dir=str(self.base_dir))
+
+            # Determine status based on stage
+            stage = progress.get("stage", "")
+            if stage == "completed":
+                status = "ready"
+            elif stage == "error":
+                status = "error"
+            elif stage in [
+                "initializing",
+                "processing_documents",
+                "processing_file",
+                "extracting_items",
+            ]:
+                status = "processing"
+            else:
+                status = "initializing"
+
+            # Update kb_config.json with status and progress
+            manager.update_kb_status(
+                name=self.kb_name,
+                status=status,
+                progress={
+                    "stage": progress.get("stage"),
+                    "message": progress.get("message"),
+                    "percent": progress.get("progress_percent", 0),
+                    "current": progress.get("current", 0),
+                    "total": progress.get("total", 0),
+                    "file_name": progress.get("file_name"),
+                    "error": progress.get("error"),
+                    "timestamp": progress.get("timestamp"),
+                },
+            )
+        except Exception as e:
+            print(f"[ProgressTracker] Failed to save progress to kb_config.json: {e}")
+
+        # Also save to local .progress.json file (for backward compatibility)
         try:
             self.kb_dir.mkdir(parents=True, exist_ok=True)
             with open(self.progress_file, "w", encoding="utf-8") as f:
                 json.dump(progress, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            print(f"[ProgressTracker] Failed to save progress: {e}")
+            print(f"[ProgressTracker] Failed to save progress to local file: {e}")
 
     def update(
         self,

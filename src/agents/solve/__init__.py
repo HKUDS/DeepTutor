@@ -33,6 +33,9 @@ from .analysis_loop import (
 
 # Main controller
 from .main_solver import MainSolver
+
+# Session management
+from .session_manager import SolverSessionManager, get_solver_session_manager
 from .memory import (
     InvestigateMemory,
     KnowledgeItem,
@@ -77,4 +80,7 @@ __all__ = [
     "ToolAgent",
     # Main Controller
     "MainSolver",
+    # Session Management
+    "SolverSessionManager",
+    "get_solver_session_manager",
 ]

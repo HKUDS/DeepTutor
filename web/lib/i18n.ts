@@ -129,6 +129,7 @@ export const translations = {
 
     // History Page
     "Chat History": "Chat History",
+    "Solver History": "Solver History",
     "All Activities": "All Activities",
     "Filter by type": "Filter by type",
     All: "All",
@@ -136,6 +137,10 @@ export const translations = {
     "No history found": "No history found",
     "Your activities will appear here": "Your activities will appear here",
     Continue: "Continue",
+    View: "View",
+    Close: "Close",
+    Search: "Search",
+    messages: "messages",
   },
   zh: {
     // Sidebar
@@ -261,13 +266,18 @@ export const translations = {
 
     // History Page
     "Chat History": "聊天历史",
+    "Solver History": "解题历史",
     "All Activities": "所有活动",
     "Filter by type": "按类型筛选",
     All: "全部",
     Chat: "聊天",
     "No history found": "未找到历史记录",
     "Your activities will appear here": "您的活动将显示在这里",
-    Continue: "继续对话",
+    Continue: "继续",
+    View: "查看",
+    Close: "关闭",
+    Search: "搜索",
+    messages: "条消息",
   },
 };
 

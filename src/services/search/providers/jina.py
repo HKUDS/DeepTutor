@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Jina Reader Search Provider
 

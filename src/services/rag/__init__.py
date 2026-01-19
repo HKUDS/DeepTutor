@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 RAG Service
 ===========
@@ -39,11 +40,19 @@ Usage:
 
 from .factory import get_pipeline, has_pipeline, list_pipelines, register_pipeline
 from .pipeline import RAGPipeline
-
-# Import pipeline classes for convenience
-from .pipelines.raganything import RAGAnythingPipeline
 from .service import RAGService
 from .types import Chunk, Document, SearchResult
+
+
+# Lazy import for RAGAnythingPipeline to avoid importing heavy dependencies at module load time
+def __getattr__(name: str):
+    """Lazy import for pipeline classes that depend on heavy libraries."""
+    if name == "RAGAnythingPipeline":
+        from .pipelines.raganything import RAGAnythingPipeline
+
+        return RAGAnythingPipeline
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     # Service (recommended entry point)
@@ -59,6 +68,6 @@ __all__ = [
     "list_pipelines",
     "register_pipeline",
     "has_pipeline",
-    # Pipeline implementations
+    # Pipeline implementations (lazy loaded)
     "RAGAnythingPipeline",
 ]

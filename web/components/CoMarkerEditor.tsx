@@ -22,7 +22,7 @@ import {
   ListOrdered,
   Quote,
   Link,
-  Image,
+  Image as ImageIcon,
   Table,
   Minus,
   Download,
@@ -337,6 +337,7 @@ export default function CoWriterEditor({
       // When restoring, need to map edits back to original content
       setRawContent("");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Only trigger on hideAiMarks toggle, not content changes
   }, [hideAiMarks]);
 
   // Merge edits with tags - smart AI mark protection
@@ -1339,7 +1340,7 @@ export default function CoWriterEditor({
               title="Link"
             />
             <ToolbarButton
-              icon={<Image className="w-4 h-4" />}
+              icon={<ImageIcon className="w-4 h-4" />}
               onClick={() => wrapSelection("![", "](url)")}
               title="Image"
             />
@@ -1470,7 +1471,7 @@ export default function CoWriterEditor({
             <div className="p-4 space-y-4">
               {/* Selected Text Preview */}
               <div className="text-xs text-slate-500 bg-slate-50 p-2 rounded-lg border border-slate-100 line-clamp-2 italic">
-                "{selection?.text}"
+                &quot;{selection?.text}&quot;
               </div>
 
               {/* Instruction Input */}
@@ -1830,7 +1831,7 @@ export default function CoWriterEditor({
                             </span>
                           </div>
                           <div className="text-xs text-slate-600 truncate mb-1">
-                            "{op.input?.original_text?.substring(0, 35)}..."
+                            &quot;{op.input?.original_text?.substring(0, 35)}...&quot;
                           </div>
                           <div className="flex items-center gap-2 text-[10px] text-slate-400">
                             {op.source && (

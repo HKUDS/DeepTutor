@@ -8,6 +8,7 @@ Handlers for streaming logs to WebSocket clients.
 
 import asyncio
 import logging
+from typing import Optional
 
 
 class WebSocketLogHandler(logging.Handler):
@@ -25,27 +26,24 @@ class WebSocketLogHandler(logging.Handler):
             await websocket.send_json(log_entry)
     """
 
-    # Symbols for different log types (matching ConsoleFormatter)
-    SYMBOLS = {
-        "DEBUG": "·",
-        "INFO": "●",
-        "SUCCESS": "✓",
-        "WARNING": "⚠",
-        "ERROR": "✗",
-        "CRITICAL": "✗",
-    }
-
-    def __init__(self, queue: asyncio.Queue, include_module: bool = True):
+    def __init__(
+        self,
+        queue: asyncio.Queue,
+        include_module: bool = True,
+        service_prefix: Optional[str] = None,
+    ):
         """
         Initialize WebSocket log handler.
 
         Args:
             queue: asyncio.Queue to put log entries into
             include_module: Whether to include module name in output
+            service_prefix: Optional service layer prefix (e.g., "Backend")
         """
         super().__init__()
         self.queue = queue
         self.include_module = include_module
+        self.service_prefix = service_prefix
         self.setFormatter(logging.Formatter("%(message)s"))
 
     def emit(self, record: logging.LogRecord):
@@ -53,25 +51,31 @@ class WebSocketLogHandler(logging.Handler):
         try:
             msg = self.format(record)
 
-            # Get symbol
+            # Get display level
             display_level = getattr(record, "display_level", record.levelname)
-            symbol = getattr(record, "symbol", self.SYMBOLS.get(display_level, "●"))
 
             # Get module name
             module_name = getattr(record, "module_name", record.name)
 
-            # Build formatted content
-            if self.include_module:
-                content = f"[{module_name}] {symbol} {msg}"
+            # Build formatted content with standard level tags (compact format)
+            level_tag = display_level
+            if self.service_prefix:
+                service_tag = f"[{self.service_prefix}]"
+                if self.include_module:
+                    content = f"{service_tag} {level_tag} [{module_name}] {msg}"
+                else:
+                    content = f"{service_tag} {level_tag} {msg}"
             else:
-                content = f"{symbol} {msg}"
+                if self.include_module:
+                    content = f"{level_tag} [{module_name}] {msg}"
+                else:
+                    content = f"{level_tag} {msg}"
 
             # Construct structured message
             log_entry = {
                 "type": "log",
                 "level": display_level,
                 "module": module_name,
-                "symbol": symbol,
                 "content": content,
                 "message": msg,
                 "timestamp": record.created,
@@ -93,7 +97,7 @@ class LogInterceptor:
 
     Usage:
         queue = asyncio.Queue()
-        logger = logging.getLogger("ai_tutor.Solver")
+        logger = logging.getLogger("deeptutor.Solver")
 
         with LogInterceptor(logger, queue):
             # All logs from this logger will be streamed to queue

@@ -17,6 +17,25 @@ import {
   DEFAULT_NAV_ORDER,
 } from "@/types/sidebar";
 
+// Helper to get initial sidebar width from localStorage
+function getInitialSidebarWidth(): number {
+  if (typeof window === "undefined") return SIDEBAR_DEFAULT_WIDTH;
+  const storedWidth = localStorage.getItem("sidebarWidth");
+  if (storedWidth) {
+    const width = parseInt(storedWidth, 10);
+    if (!isNaN(width) && width >= SIDEBAR_MIN_WIDTH && width <= SIDEBAR_MAX_WIDTH) {
+      return width;
+    }
+  }
+  return SIDEBAR_DEFAULT_WIDTH;
+}
+
+// Helper to get initial collapsed state from localStorage
+function getInitialCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem("sidebarCollapsed") === "true";
+}
+
 // Context type
 interface SidebarContextType {
   // Sidebar dimensions
@@ -35,11 +54,9 @@ interface SidebarContextType {
 const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
-  // Sidebar dimensions state
-  const [sidebarWidth, setSidebarWidthState] = useState<number>(
-    SIDEBAR_DEFAULT_WIDTH,
-  );
-  const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(false);
+  // Sidebar dimensions state - use lazy initialization
+  const [sidebarWidth, setSidebarWidthState] = useState<number>(getInitialSidebarWidth);
+  const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(getInitialCollapsed);
 
   // Sidebar customization state
   const [sidebarDescription, setSidebarDescriptionState] = useState<string>(
@@ -47,29 +64,6 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   );
   const [sidebarNavOrder, setSidebarNavOrderState] =
     useState<SidebarNavOrder>(DEFAULT_NAV_ORDER);
-
-  // Initialize sidebar state from localStorage
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const storedWidth = localStorage.getItem("sidebarWidth");
-      const storedCollapsed = localStorage.getItem("sidebarCollapsed");
-
-      if (storedWidth) {
-        const width = parseInt(storedWidth, 10);
-        if (
-          !isNaN(width) &&
-          width >= SIDEBAR_MIN_WIDTH &&
-          width <= SIDEBAR_MAX_WIDTH
-        ) {
-          setSidebarWidthState(width);
-        }
-      }
-
-      if (storedCollapsed) {
-        setSidebarCollapsedState(storedCollapsed === "true");
-      }
-    }
-  }, []);
 
   // Initialize sidebar customization from backend API
   useEffect(() => {

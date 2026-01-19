@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 File Type Router
 ================
@@ -284,3 +285,50 @@ class FileTypeRouter:
         """
         doc_type = cls.get_document_type(file_path)
         return doc_type in (DocumentType.TEXT, DocumentType.MARKDOWN)
+
+    @classmethod
+    def get_extensions_for_provider(cls, provider: str) -> set[str]:
+        """
+        Get supported file extensions for a specific RAG provider.
+
+        Args:
+            provider: RAG provider name (llamaindex, lightrag, raganything)
+
+        Returns:
+            Set of supported file extensions (with leading dot, e.g., {".pdf", ".txt"})
+        """
+        # Base text extensions supported by all providers
+        text_extensions = cls.TEXT_EXTENSIONS.copy()
+
+        if provider == "llamaindex":
+            # LlamaIndex: PDF + all text files (reads any text file directly)
+            return cls.MINERU_EXTENSIONS | text_extensions
+
+        elif provider == "lightrag":
+            # LightRAG: PDF + all text files (uses FileTypeRouter)
+            return cls.MINERU_EXTENSIONS | text_extensions
+
+        elif provider == "raganything":
+            # RAGAnything: PDF + Word + Images + all text files (full multimodal via MinerU)
+            return (
+                cls.MINERU_EXTENSIONS | cls.DOCX_EXTENSIONS | cls.IMAGE_EXTENSIONS | text_extensions
+            )
+
+        else:
+            # Default: same as llamaindex (most conservative)
+            logger.warning(f"Unknown provider '{provider}', using default extensions")
+            return cls.MINERU_EXTENSIONS | text_extensions
+
+    @classmethod
+    def get_glob_patterns_for_provider(cls, provider: str) -> list[str]:
+        """
+        Get glob patterns for file searching based on RAG provider.
+
+        Args:
+            provider: RAG provider name (llamaindex, lightrag, raganything)
+
+        Returns:
+            List of glob patterns (e.g., ["*.pdf", "*.txt", "*.md"])
+        """
+        extensions = cls.get_extensions_for_provider(provider)
+        return [f"*{ext}" for ext in sorted(extensions)]

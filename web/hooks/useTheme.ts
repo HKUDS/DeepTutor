@@ -1,7 +1,7 @@
 /**
  * useTheme hook for managing theme throughout the application
  */
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import {
   setTheme,
   getStoredTheme,
@@ -9,16 +9,26 @@ import {
   type Theme,
 } from "@/lib/theme";
 
-export function useTheme() {
-  const [theme, setThemeState] = useState<Theme | null>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
+// Use useSyncExternalStore for safe client-side initialization
+const emptySubscribe = () => () => {};
+function useIsClient() {
+  return useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  );
+}
 
-  useEffect(() => {
-    // Initialize theme from localStorage
-    const initialTheme = initializeTheme();
-    setThemeState(initialTheme);
-    setIsLoaded(true);
-  }, []);
+export function useTheme() {
+  const isClient = useIsClient();
+  const [theme, setThemeState] = useState<Theme>(() => {
+    // Lazy initialization - safe for SSR
+    if (typeof window !== "undefined") {
+      return initializeTheme();
+    }
+    return "light";
+  });
+  const isLoaded = isClient;
 
   const updateTheme = (newTheme: Theme) => {
     setTheme(newTheme);

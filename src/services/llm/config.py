@@ -26,6 +26,37 @@ load_dotenv(PROJECT_ROOT / "DeepTutor.env", override=False)
 load_dotenv(PROJECT_ROOT / ".env", override=False)
 
 
+def _setup_openai_env_vars_early():
+    """
+    Set OPENAI_API_KEY environment variable early for LightRAG compatibility.
+
+    LightRAG's internal functions (e.g., create_openai_async_client) read directly
+    from os.environ["OPENAI_API_KEY"] instead of using the api_key parameter.
+    This function ensures the environment variable is set as soon as this module
+    is imported, before any LightRAG operations can occur.
+
+    This is called at module load time to ensure env vars are set before any
+    RAG operations, including those in worker threads/processes.
+    """
+    binding = os.getenv("LLM_BINDING", "openai")
+    api_key = os.getenv("LLM_API_KEY")
+    base_url = os.getenv("LLM_HOST")
+
+    # Only set env vars for OpenAI-compatible bindings
+    if binding in ("openai", "azure_openai", "gemini"):
+        if api_key and not os.getenv("OPENAI_API_KEY"):
+            os.environ["OPENAI_API_KEY"] = api_key
+            logger.debug("Set OPENAI_API_KEY env var for LightRAG compatibility (early init)")
+
+        if base_url and not os.getenv("OPENAI_BASE_URL"):
+            os.environ["OPENAI_BASE_URL"] = base_url
+            logger.debug(f"Set OPENAI_BASE_URL env var to {base_url} (early init)")
+
+
+# Execute early setup at module import time
+_setup_openai_env_vars_early()
+
+
 @dataclass
 class LLMConfig:
     """LLM configuration dataclass."""

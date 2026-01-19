@@ -19,9 +19,8 @@ from typing import Any
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from dotenv import load_dotenv
-from lightrag.llm.openai import openai_complete_if_cache
 
-from src.services.llm import get_llm_config
+from src.services.llm import get_llm_client, get_llm_config
 
 load_dotenv(dotenv_path=".env", override=False)
 
@@ -62,18 +61,18 @@ async def _call_llm_async(
     temperature: float = 0.1,
     model: str = None,
 ) -> str:
-    """Asynchronously call LLM"""
-    # If model not specified, get from env_config
-    if model is None:
-        llm_cfg = get_llm_config()
-        model = llm_cfg.model
+    """Asynchronously call LLM using unified LLM service"""
+    # Get unified LLM client (handles all provider differences and env var setup)
+    llm_client = get_llm_client()
+    llm_model_func = llm_client.get_model_func()
 
-    result = openai_complete_if_cache(
-        model,
+    # If model not specified, use configured model
+    if model is None:
+        model = llm_client.config.model
+
+    result = llm_model_func(
         prompt,
         system_prompt=system_prompt,
-        api_key=api_key,
-        base_url=base_url,
         max_tokens=max_tokens,
         temperature=temperature,
     )

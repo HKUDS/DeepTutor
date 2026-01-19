@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import anthropic
 
 from ..registry import register_provider

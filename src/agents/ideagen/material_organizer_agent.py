@@ -25,6 +25,7 @@ class MaterialOrganizerAgent(BaseAgent):
         language: str = "en",
         api_key: str | None = None,
         base_url: str | None = None,
+        api_version: str | None = None,
         model: str | None = None,
     ):
         super().__init__(
@@ -32,6 +33,7 @@ class MaterialOrganizerAgent(BaseAgent):
             agent_name="material_organizer",
             api_key=api_key,
             base_url=base_url,
+            api_version=api_version,
             model=model,
             language=language,
         )

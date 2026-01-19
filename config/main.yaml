@@ -28,16 +28,15 @@ tools:
     enabled: true
     max_results: 5
 logging:
+  # Global log level for the entire system (DEBUG, INFO, WARNING, ERROR)
+  # This controls both DeepTutor logs and RAG module logs
   level: DEBUG
   save_to_file: true
   console_output: true
-  lightrag_forwarding:
-    enabled: true
-    min_level: DEBUG
-    add_prefix: true
-    logger_names:
-      knowledge_init: LightRAG-Init
-      rag_tool: LightRAG
+  # RAG module logger name mapping (optional customization)
+  rag_logger_names:
+    knowledge_init: RAG-Init
+    rag_tool: RAG
 question:
   # Refactored: no iteration loops (max_rounds removed)
   rag_query_count: 3

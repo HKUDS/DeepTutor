@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 Unified Prompt Manager - Single source of truth for all prompt loading.
 Supports multi-language, caching, and language fallbacks.

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Answer Consolidation - Generate answers from raw search results
 

@@ -27,11 +27,6 @@ interface FileSystemDirectoryReader {
   ): void;
 }
 
-declare global {
-  interface DataTransferItem {
-    webkitGetAsEntry?(): FileSystemEntry | null;
-  }
-}
 import {
   BookOpen,
   Database,
@@ -52,31 +47,37 @@ import {
 } from "lucide-react";
 import { apiUrl, wsUrl } from "@/lib/api";
 
+interface ProgressInfo {
+  stage: string;
+  message: string;
+  percent?: number;
+  progress_percent?: number; // Legacy field from WebSocket
+  current: number;
+  total: number;
+  file_name?: string;
+  error?: string;
+  timestamp?: string;
+}
+
 interface KnowledgeBase {
   name: string;
   is_default: boolean;
+  status?: string; // "initializing", "processing", "ready", "error"
+  progress?: ProgressInfo;
   statistics: {
     raw_documents: number;
     images: number;
     content_lists: number;
     rag_initialized: boolean;
     rag_provider?: string;
+    status?: string;
+    progress?: ProgressInfo;
     rag?: {
       chunks?: number;
       entities?: number;
       relations?: number;
     };
   };
-}
-
-interface ProgressInfo {
-  stage: string;
-  message: string;
-  current: number;
-  total: number;
-  file_name?: string;
-  progress_percent: number;
-  error?: string;
 }
 
 interface UploadFile {
@@ -121,28 +122,104 @@ export default function KnowledgePage() {
     return parts.length > 1 ? parts.pop()?.toLowerCase() || "" : "";
   };
 
-  // Supported file extensions (matching backend DocumentValidator.ALLOWED_EXTENSIONS)
-  const SUPPORTED_EXTENSIONS = [
-    "pdf",
-    "txt",
-    "md", // Documents
-    "doc",
-    "docx",
-    "rtf", // Word documents
-    "html",
-    "htm",
-    "xml",
-    "json", // Web/Data formats
-    "csv",
-    "xlsx",
-    "xls", // Spreadsheets
-    "pptx",
-    "ppt", // Presentations
-  ];
+  // Supported file extensions per RAG provider (based on actual backend capabilities)
+  const PROVIDER_SUPPORTED_EXTENSIONS: Record<string, string[]> = {
+    // LlamaIndex: PDF + plain text files only (uses PyMuPDF for PDF, direct read for text)
+    llamaindex: [
+      "pdf",
+      "txt",
+      "md",
+      "markdown",
+      "json",
+      "csv",
+      "html",
+      "htm",
+      "xml",
+      "yaml",
+      "yml",
+      "toml",
+      "tex",
+      "rst",
+      "log",
+    ],
+    // LightRAG: Same as LlamaIndex - PDF + plain text files (uses FileTypeRouter + PDFParser)
+    lightrag: [
+      "pdf",
+      "txt",
+      "md",
+      "markdown",
+      "json",
+      "csv",
+      "html",
+      "htm",
+      "xml",
+      "yaml",
+      "yml",
+      "toml",
+      "tex",
+      "rst",
+      "log",
+    ],
+    // RAGAnything: Full multimodal support - PDF, Word, Images, and plain text (uses MinerU)
+    raganything: [
+      "pdf",
+      "doc",
+      "docx",
+      "txt",
+      "md",
+      "markdown",
+      "json",
+      "csv",
+      "html",
+      "htm",
+      "xml",
+      "yaml",
+      "yml",
+      "toml",
+      "tex",
+      "rst",
+      "log",
+      "png",
+      "jpg",
+      "jpeg",
+      "gif",
+      "webp",
+      "bmp",
+      "tiff",
+      "tif",
+    ],
+  };
+
+  // Human-readable file type hints for each provider
+  const PROVIDER_FILE_HINTS: Record<string, string> = {
+    llamaindex: "PDF, TXT, MD, JSON, CSV, HTML, XML...",
+    lightrag: "PDF, TXT, MD, JSON, CSV, HTML, XML...",
+    raganything: "PDF, Word, 图片, TXT, MD, JSON, CSV, HTML...",
+  };
+
+  // Get supported extensions for current provider
+  const getSupportedExtensions = (provider: string): string[] => {
+    return (
+      PROVIDER_SUPPORTED_EXTENSIONS[provider] ||
+      PROVIDER_SUPPORTED_EXTENSIONS.llamaindex
+    );
+  };
+
+  // Get file type hint for current provider
+  const getFileTypeHint = (provider: string): string => {
+    return PROVIDER_FILE_HINTS[provider] || PROVIDER_FILE_HINTS.llamaindex;
+  };
+
+  // Get accept attribute for file input based on provider
+  const getAcceptAttribute = (provider: string): string => {
+    const extensions = getSupportedExtensions(provider);
+    return extensions.map((ext) => `.${ext}`).join(",");
+  };
 
   const isSupportedFile = (filename: string): boolean => {
     const ext = getFileExtension(filename);
-    return SUPPORTED_EXTENSIONS.includes(ext);
+    const supportedExtensions = getSupportedExtensions(ragProvider);
+    return supportedExtensions.includes(ext);
   };
 
   // Helper function to convert File to UploadFile
@@ -234,7 +311,7 @@ export default function KnowledgePage() {
 
       if (entry.isFile) {
         return new Promise((resolve) => {
-          (entry as FileSystemFileEntry).file(
+          (entry as unknown as FileSystemFileEntry).file(
             (file) => {
               if (isSupportedFile(file.name)) {
                 resolve([file]);
@@ -246,7 +323,9 @@ export default function KnowledgePage() {
           );
         });
       } else if (entry.isDirectory) {
-        return readDirectoryRecursively(entry as FileSystemDirectoryEntry);
+        return readDirectoryRecursively(
+          entry as unknown as FileSystemDirectoryEntry,
+        );
       }
       return [];
     };
@@ -481,6 +560,26 @@ export default function KnowledgePage() {
     fetchKnowledgeBases();
   }, [fetchKnowledgeBases]);
 
+  // Auto-poll when any KB is processing/initializing
+  useEffect(() => {
+    // Check if any KB is in processing/initializing state
+    const hasProcessingKb = kbs.some((kb) => {
+      const status = kb.statistics.status || kb.status;
+      return status === "initializing" || status === "processing";
+    });
+
+    if (!hasProcessingKb) {
+      return;
+    }
+
+    // Poll every 3 seconds while processing
+    const intervalId = setInterval(() => {
+      fetchKnowledgeBases();
+    }, 3000);
+
+    return () => clearInterval(intervalId);
+  }, [kbs, fetchKnowledgeBases]);
+
   // Fetch RAG providers
   useEffect(() => {
     const fetchRagProviders = async () => {
@@ -645,7 +744,7 @@ export default function KnowledgePage() {
     });
 
     kbsNamesRef.current = kbs.map((kb) => kb.name);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [kbs, loading]);
 
   // Cleanup all connections on component unmount
@@ -789,56 +888,21 @@ export default function KnowledgePage() {
       });
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.detail || "Creation failed");
+        showToast(errorData.detail || "Creation failed", "error");
+        setUploading(false);
+        return;
       }
 
       const result = await res.json();
-
-      // Immediately display new KB in frontend (optimistic update)
-      const newKb: KnowledgeBase = {
-        name: result.name,
-        is_default: false,
-        statistics: {
-          raw_documents: result.files?.length || 0,
-          images: 0,
-          content_lists: 0,
-          rag_initialized: false,
-          rag_provider: ragProvider,
-        },
-      };
-
-      // Add to list (if not exists)
-      setKbs((prev) => {
-        const exists = prev.some((kb) => kb.name === newKb.name);
-        if (exists) {
-          return prev;
-        }
-        return [newKb, ...prev];
-      });
-
-      // Initialize progress state
-      setProgressMap((prev) => ({
-        ...prev,
-        [newKb.name]: {
-          stage: "initializing",
-          message: "Initializing knowledge base...",
-          current: 0,
-          total: 0,
-          file_name: "",
-          progress_percent: 0,
-          timestamp: new Date().toISOString(),
-        },
-      }));
 
       setCreateModalOpen(false);
       clearAllFiles();
       setNewKbName("");
       setRagProvider("llamaindex"); // Reset to default
 
-      // Delay refresh to get full info (but user can already see the new KB)
-      setTimeout(async () => {
-        await fetchKnowledgeBases();
-      }, 1000);
+      // Immediately refresh to get the new KB from backend
+      // (Backend now registers KB to kb_config.json immediately with status)
+      await fetchKnowledgeBases();
 
       showToast("Knowledge base created successfully!", "success");
     } catch (err: any) {
@@ -879,6 +943,7 @@ export default function KnowledgePage() {
         addFiles(validFiles);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Helper functions are stable
   }, []);
 
   return (
@@ -1070,37 +1135,53 @@ export default function KnowledgePage() {
                       <Layers className="w-3 h-3" /> Status
                     </span>
                     {(() => {
-                      const progress = progressMap[kb.name];
-                      if (progress) {
-                        if (progress.stage === "completed") {
-                          return (
-                            <span className="text-emerald-600 dark:text-emerald-400 font-bold">
-                              Ready
-                            </span>
-                          );
-                        } else if (progress.stage === "error") {
-                          return (
-                            <span className="text-red-600 dark:text-red-400 font-bold">
-                              Error
-                            </span>
-                          );
-                        } else {
-                          // Display current stage and progress
-                          const stageLabels: Record<string, string> = {
-                            initializing: "Initializing",
-                            processing_documents: "Processing",
-                            processing_file: "Processing File",
-                            extracting_items: "Extracting Items",
-                          };
-                          const stageLabel =
-                            stageLabels[progress.stage] || progress.stage;
-                          return (
-                            <span className="text-blue-600 dark:text-blue-400 font-bold flex items-center gap-1">
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                              {stageLabel} {progress.progress_percent}%
-                            </span>
-                          );
-                        }
+                      // Priority: API progress > WebSocket progressMap > rag_initialized
+                      const apiProgress = kb.statistics.progress || kb.progress;
+                      const wsProgress = progressMap[kb.name];
+                      const progress = apiProgress || wsProgress;
+                      const status = kb.statistics.status || kb.status;
+
+                      if (
+                        status === "ready" ||
+                        progress?.stage === "completed"
+                      ) {
+                        return (
+                          <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                            Ready
+                          </span>
+                        );
+                      } else if (
+                        status === "error" ||
+                        progress?.stage === "error"
+                      ) {
+                        return (
+                          <span className="text-red-600 dark:text-red-400 font-bold">
+                            Error
+                          </span>
+                        );
+                      } else if (
+                        status === "initializing" ||
+                        status === "processing" ||
+                        progress
+                      ) {
+                        // Display current stage and progress
+                        const stageLabels: Record<string, string> = {
+                          initializing: "Initializing",
+                          processing_documents: "Processing",
+                          processing_file: "Processing File",
+                          extracting_items: "Extracting Items",
+                        };
+                        const stage =
+                          progress?.stage || status || "initializing";
+                        const stageLabel = stageLabels[stage] || stage;
+                        const percent =
+                          progress?.percent ?? progress?.progress_percent ?? 0;
+                        return (
+                          <span className="text-blue-600 dark:text-blue-400 font-bold flex items-center gap-1">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            {stageLabel} {percent}%
+                          </span>
+                        );
                       }
                       return (
                         <span
@@ -1119,19 +1200,36 @@ export default function KnowledgePage() {
                   </div>
                   <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
                     {(() => {
-                      const progress = progressMap[kb.name];
-                      if (progress) {
-                        const percent = progress.progress_percent;
+                      const apiProgress = kb.statistics.progress || kb.progress;
+                      const wsProgress = progressMap[kb.name];
+                      const progress = apiProgress || wsProgress;
+                      const status = kb.statistics.status || kb.status;
+
+                      if (
+                        progress ||
+                        status === "initializing" ||
+                        status === "processing"
+                      ) {
+                        const percent =
+                          progress?.percent ?? progress?.progress_percent ?? 0;
                         let bgColor = "bg-blue-500";
-                        if (progress.stage === "completed") {
+                        if (
+                          status === "ready" ||
+                          progress?.stage === "completed"
+                        ) {
                           bgColor = "bg-emerald-500";
-                        } else if (progress.stage === "error") {
+                        } else if (
+                          status === "error" ||
+                          progress?.stage === "error"
+                        ) {
                           bgColor = "bg-red-500";
                         }
                         return (
                           <div
                             className={`h-full rounded-full ${bgColor} transition-all duration-300`}
-                            style={{ width: `${percent}%` }}
+                            style={{
+                              width: `${Math.max(percent, status === "initializing" ? 5 : 0)}%`,
+                            }}
                           />
                         );
                       }
@@ -1143,29 +1241,39 @@ export default function KnowledgePage() {
                     })()}
                   </div>
                   {(() => {
-                    const progress = progressMap[kb.name];
-                    if (progress && progress.message) {
+                    const apiProgress = kb.statistics.progress || kb.progress;
+                    const wsProgress = progressMap[kb.name];
+                    const progress = apiProgress || wsProgress;
+                    const status = kb.statistics.status || kb.status;
+
+                    if (
+                      progress?.message ||
+                      (status && status !== "ready" && status !== "unknown")
+                    ) {
                       return (
                         <div className="mt-2 space-y-1">
                           <div className="text-[10px] text-slate-600 dark:text-slate-400 font-medium flex items-center justify-between">
-                            <span>{progress.message}</span>
+                            <span>
+                              {progress?.message || `Status: ${status}`}
+                            </span>
                             {/* Clear button for stuck states */}
-                            {progress.stage !== "completed" && (
-                              <button
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  await clearProgress(kb.name);
-                                  // Refresh KB list to show correct status
-                                  fetchKnowledgeBases();
-                                }}
-                                className="text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                                title="Clear progress status"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            )}
+                            {progress?.stage !== "completed" &&
+                              status !== "ready" && (
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    await clearProgress(kb.name);
+                                    // Refresh KB list to show correct status
+                                    fetchKnowledgeBases();
+                                  }}
+                                  className="text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                                  title="Clear progress status"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              )}
                           </div>
-                          {progress.file_name && (
+                          {progress?.file_name && (
                             <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
                               <FileText className="w-3 h-3" />
                               <span className="truncate">
@@ -1173,12 +1281,14 @@ export default function KnowledgePage() {
                               </span>
                             </div>
                           )}
-                          {progress.current > 0 && progress.total > 0 && (
-                            <div className="text-[10px] text-slate-400 dark:text-slate-500">
-                              File {progress.current} of {progress.total}
-                            </div>
-                          )}
-                          {progress.error && (
+                          {progress &&
+                            progress.current > 0 &&
+                            progress.total > 0 && (
+                              <div className="text-[10px] text-slate-400 dark:text-slate-500">
+                                File {progress.current} of {progress.total}
+                              </div>
+                            )}
+                          {progress?.error && (
                             <div className="text-[10px] text-red-600 dark:text-red-400 mt-1">
                               Error: {progress.error}
                             </div>
@@ -1343,7 +1453,7 @@ export default function KnowledgePage() {
                       }
                       e.target.value = ""; // Reset input to allow re-selecting same files
                     }}
-                    accept=".pdf,.txt,.md,.doc,.docx,.rtf,.html,.htm,.xml,.json,.csv,.xlsx,.xls,.pptx,.ppt"
+                    accept={getAcceptAttribute(ragProvider)}
                   />
 
                   {/* Drop zone / Click to upload area */}
@@ -1360,7 +1470,7 @@ export default function KnowledgePage() {
                         : "Drag & drop files or folders here"}
                     </span>
                     <span className="text-xs text-slate-400 dark:text-slate-500">
-                      PDF, Word, Excel, PPT, TXT, MD, HTML, CSV, JSON...
+                      {getFileTypeHint(ragProvider)}
                     </span>
                   </label>
 
@@ -1549,7 +1659,7 @@ export default function KnowledgePage() {
                     }
                     e.target.value = ""; // Reset input to allow re-selecting same files
                   }}
-                  accept=".pdf,.txt,.md,.doc,.docx,.rtf,.html,.htm,.xml,.json,.csv,.xlsx,.xls,.pptx,.ppt"
+                  accept={getAcceptAttribute(ragProvider)}
                 />
 
                 {/* Drop zone / Click to upload area */}
@@ -1566,7 +1676,7 @@ export default function KnowledgePage() {
                       : "Drag & drop files or folders here"}
                   </span>
                   <span className="text-xs text-slate-400 dark:text-slate-500">
-                    PDF, Word, Excel, PPT, TXT, MD, HTML, CSV, JSON...
+                    {getFileTypeHint(ragProvider)}
                   </span>
                 </label>
 

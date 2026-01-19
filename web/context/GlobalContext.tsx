@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
   useEffect,
+  useCallback,
 } from "react";
 import { wsUrl, apiUrl } from "@/lib/api";
 import {
@@ -14,6 +15,15 @@ import {
   getStoredTheme,
   type Theme,
 } from "@/lib/theme";
+import {
+  loadFromStorage,
+  saveToStorage,
+  persistState,
+  mergeWithDefaults,
+  STORAGE_KEYS,
+  EXCLUDE_FIELDS,
+} from "@/lib/persistence";
+import { debounce } from "@/lib/debounce";
 
 // Language storage key
 const LANGUAGE_STORAGE_KEY = "deeptutor-language";
@@ -61,6 +71,7 @@ interface ProgressInfo {
 
 // Solver State
 interface SolverState {
+  sessionId: string | null;
   isSolving: boolean;
   logs: LogEntry[];
   messages: ChatMessage[];
@@ -247,6 +258,8 @@ interface GlobalContextType {
   setSolverState: React.Dispatch<React.SetStateAction<SolverState>>;
   startSolver: (question: string, kb: string) => void;
   stopSolver: () => void;
+  newSolverSession: () => void;
+  loadSolverSession: (sessionId: string) => Promise<void>;
 
   // Question
   questionState: QuestionState;
@@ -307,9 +320,128 @@ interface GlobalContextType {
   setSidebarDescription: (description: string) => Promise<void>;
   sidebarNavOrder: SidebarNavOrder;
   setSidebarNavOrder: (order: SidebarNavOrder) => Promise<void>;
+
+  // Persistence utilities
+  clearAllPersistence: () => void;
 }
 
 const GlobalContext = createContext<GlobalContextType | undefined>(undefined);
+
+// --- Default State Constants ---
+// These are used for both initialization and state restoration
+
+const DEFAULT_SOLVER_STATE: SolverState = {
+  sessionId: null,
+  isSolving: false,
+  logs: [],
+  messages: [],
+  question: "",
+  selectedKb: "",
+  agentStatus: {
+    InvestigateAgent: "pending",
+    NoteAgent: "pending",
+    ManagerAgent: "pending",
+    SolveAgent: "pending",
+    ToolAgent: "pending",
+    ResponseAgent: "pending",
+    PrecisionAnswerAgent: "pending",
+  },
+  tokenStats: {
+    model: "Unknown",
+    calls: 0,
+    tokens: 0,
+    input_tokens: 0,
+    output_tokens: 0,
+    cost: 0.0,
+  },
+  progress: {
+    stage: null,
+    progress: {},
+  },
+};
+
+const DEFAULT_QUESTION_STATE: QuestionState = {
+  step: "config",
+  mode: "knowledge",
+  logs: [],
+  results: [],
+  topic: "",
+  difficulty: "medium",
+  type: "choice",
+  count: 1,
+  selectedKb: "",
+  progress: {
+    stage: null,
+    progress: {},
+    subFocuses: [],
+    activeQuestions: [],
+    completedQuestions: 0,
+    failedQuestions: 0,
+  },
+  agentStatus: {
+    QuestionGenerationAgent: "pending",
+    ValidationWorkflow: "pending",
+    RetrievalTool: "pending",
+  },
+  tokenStats: {
+    model: "Unknown",
+    calls: 0,
+    tokens: 0,
+    input_tokens: 0,
+    output_tokens: 0,
+    cost: 0.0,
+  },
+  uploadedFile: null,
+  paperPath: "",
+};
+
+const DEFAULT_RESEARCH_STATE: ResearchState = {
+  status: "idle",
+  logs: [],
+  report: null,
+  topic: "",
+  selectedKb: "",
+  progress: {
+    stage: null,
+    status: "",
+    executionMode: undefined,
+    totalBlocks: undefined,
+    currentBlock: undefined,
+    currentSubTopic: undefined,
+    currentBlockId: undefined,
+    iterations: undefined,
+    maxIterations: undefined,
+    toolsUsed: undefined,
+    currentTool: undefined,
+    currentQuery: undefined,
+    currentRationale: undefined,
+    queriesUsed: undefined,
+    activeTasks: undefined,
+    activeCount: undefined,
+    completedCount: undefined,
+    keptBlocks: undefined,
+    sections: undefined,
+    wordCount: undefined,
+    citations: undefined,
+  },
+};
+
+const DEFAULT_IDEAGEN_STATE: IdeaGenState = {
+  isGenerating: false,
+  generationStatus: "",
+  generatedIdeas: [],
+  progress: null,
+};
+
+const DEFAULT_CHAT_STATE: ChatState = {
+  sessionId: null,
+  messages: [],
+  isLoading: false,
+  selectedKb: "",
+  enableRag: false,
+  enableWebSearch: false,
+  currentStage: null,
+};
 
 export function GlobalProvider({ children }: { children: React.ReactNode }) {
   // --- UI Settings Logic ---
@@ -542,36 +674,36 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // --- Hydration tracking for persistence ---
+  // We need to restore state from localStorage AFTER hydration to avoid SSR mismatch
+  const isHydrated = useRef(false);
+
   // --- Solver Logic ---
-  const [solverState, setSolverState] = useState<SolverState>({
-    isSolving: false,
-    logs: [],
-    messages: [],
-    question: "",
-    selectedKb: "",
-    agentStatus: {
-      InvestigateAgent: "pending",
-      NoteAgent: "pending",
-      ManagerAgent: "pending",
-      SolveAgent: "pending",
-      ToolAgent: "pending",
-      ResponseAgent: "pending",
-      PrecisionAnswerAgent: "pending",
-    },
-    tokenStats: {
-      model: "Unknown",
-      calls: 0,
-      tokens: 0,
-      input_tokens: 0,
-      output_tokens: 0,
-      cost: 0.0,
-    },
-    progress: {
-      stage: null,
-      progress: {},
-    },
-  });
+  const [solverState, setSolverState] = useState<SolverState>(DEFAULT_SOLVER_STATE);
   const solverWs = useRef<WebSocket | null>(null);
+
+  // Debounced save for solver state
+  const saveSolverState = useCallback(
+    debounce((state: SolverState) => {
+      if (!isHydrated.current) return;
+      const toSave = persistState(
+        state,
+        EXCLUDE_FIELDS.SOLVER as unknown as (keyof SolverState)[]
+      );
+      saveToStorage(STORAGE_KEYS.SOLVER_STATE, toSave);
+    }, 500),
+    []
+  );
+
+  // Auto-save solver state on change (only after hydration)
+  useEffect(() => {
+    if (isHydrated.current) {
+      saveSolverState(solverState);
+    }
+  }, [solverState, saveSolverState]);
+
+  // Use ref to always have the latest sessionId in WebSocket callbacks
+  const solverSessionIdRef = useRef<string | null>(null);
 
   const startSolver = (question: string, kb: string) => {
     if (solverWs.current) solverWs.current.close();
@@ -610,13 +742,25 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
     solverWs.current = ws;
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ question, kb_name: kb }));
+      // Send question with current session_id (if any)
+      ws.send(JSON.stringify({
+        question,
+        kb_name: kb,
+        session_id: solverSessionIdRef.current,
+      }));
       addSolverLog({ type: "system", content: "Initializing connection..." });
     };
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (data.type === "log") {
+      if (data.type === "session") {
+        // Update session ID from backend
+        solverSessionIdRef.current = data.session_id;
+        setSolverState((prev) => ({
+          ...prev,
+          sessionId: data.session_id,
+        }));
+      } else if (data.type === "log") {
         addSolverLog(data);
       } else if (data.type === "agent_status") {
         setSolverState((prev) => ({
@@ -640,18 +784,16 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
           },
         }));
       } else if (data.type === "result") {
-        // Extract relative path from output_dir if possible, or just store the full path name
-        // data.output_dir is likely absolute path on server.
-        // We need the directory name to construct URL: /api/outputs/solve/{dir_name}/...
-        // Assuming output_dir ends with "solve_YYYYMMDD_HHMMSS"
-        let dirName = "";
-        if (data.output_dir) {
+        // Use output_dir_name from backend if available, otherwise extract from output_dir
+        let dirName = data.output_dir_name || "";
+        if (!dirName && data.output_dir) {
           const parts = data.output_dir.split(/[/\\]/);
           dirName = parts[parts.length - 1];
         }
 
         setSolverState((prev) => ({
           ...prev,
+          sessionId: data.session_id || prev.sessionId,
           messages: [
             ...prev.messages,
             {
@@ -717,46 +859,81 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
     addSolverLog({ type: "system", content: "Solver stopped by user." });
   };
 
+  // Start a new solver session (clear current state)
+  const newSolverSession = () => {
+    if (solverWs.current) {
+      solverWs.current.close();
+      solverWs.current = null;
+    }
+    solverSessionIdRef.current = null;
+    setSolverState({
+      ...DEFAULT_SOLVER_STATE,
+      selectedKb: solverState.selectedKb, // Keep the selected KB
+    });
+  };
+
+  // Load a solver session from history
+  const loadSolverSession = async (sessionId: string) => {
+    try {
+      const response = await fetch(apiUrl(`/api/v1/solve/sessions/${sessionId}`));
+      if (!response.ok) {
+        throw new Error("Session not found");
+      }
+      const session = await response.json();
+
+      // Map session messages to ChatMessage format
+      const messages: ChatMessage[] = session.messages.map((msg: any) => ({
+        role: msg.role,
+        content: msg.content,
+        outputDir: msg.output_dir,
+      }));
+
+      solverSessionIdRef.current = session.session_id;
+
+      setSolverState((prev) => ({
+        ...prev,
+        sessionId: session.session_id,
+        messages,
+        selectedKb: session.kb_name || prev.selectedKb,
+        tokenStats: session.token_stats || prev.tokenStats,
+        question: messages.length > 0 && messages[0].role === "user" ? messages[0].content : "",
+        isSolving: false,
+        logs: [],
+        progress: { stage: null, progress: {} },
+      }));
+    } catch (error) {
+      console.error("Failed to load solver session:", error);
+      throw error;
+    }
+  };
+
   const addSolverLog = (log: LogEntry) => {
     setSolverState((prev) => ({ ...prev, logs: [...prev.logs, log] }));
   };
 
   // --- Question Logic ---
-  const [questionState, setQuestionState] = useState<QuestionState>({
-    step: "config",
-    mode: "knowledge",
-    logs: [],
-    results: [],
-    topic: "",
-    difficulty: "medium",
-    type: "choice",
-    count: 1,
-    selectedKb: "",
-    progress: {
-      stage: null,
-      progress: {},
-      subFocuses: [],
-      activeQuestions: [],
-      completedQuestions: 0,
-      failedQuestions: 0,
-    },
-    agentStatus: {
-      QuestionGenerationAgent: "pending",
-      ValidationWorkflow: "pending",
-      RetrievalTool: "pending",
-    },
-    tokenStats: {
-      model: "Unknown",
-      calls: 0,
-      tokens: 0,
-      input_tokens: 0,
-      output_tokens: 0,
-      cost: 0.0,
-    },
-    uploadedFile: null,
-    paperPath: "",
-  });
+  const [questionState, setQuestionState] = useState<QuestionState>(DEFAULT_QUESTION_STATE);
   const questionWs = useRef<WebSocket | null>(null);
+
+  // Debounced save for question state
+  const saveQuestionState = useCallback(
+    debounce((state: QuestionState) => {
+      if (!isHydrated.current) return;
+      const toSave = persistState(
+        state,
+        EXCLUDE_FIELDS.QUESTION as unknown as (keyof QuestionState)[]
+      );
+      saveToStorage(STORAGE_KEYS.QUESTION_STATE, toSave);
+    }, 500),
+    []
+  );
+
+  // Auto-save question state on change (only after hydration)
+  useEffect(() => {
+    if (isHydrated.current) {
+      saveQuestionState(questionState);
+    }
+  }, [questionState, saveQuestionState]);
 
   const startQuestionGen = (
     topic: string,
@@ -1370,37 +1547,28 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
   };
 
   // --- Research Logic ---
-  const [researchState, setResearchState] = useState<ResearchState>({
-    status: "idle",
-    logs: [],
-    report: null,
-    topic: "",
-    selectedKb: "",
-    progress: {
-      stage: null,
-      status: "",
-      executionMode: undefined,
-      totalBlocks: undefined,
-      currentBlock: undefined,
-      currentSubTopic: undefined,
-      currentBlockId: undefined,
-      iterations: undefined,
-      maxIterations: undefined,
-      toolsUsed: undefined,
-      currentTool: undefined,
-      currentQuery: undefined,
-      currentRationale: undefined,
-      queriesUsed: undefined,
-      activeTasks: undefined,
-      activeCount: undefined,
-      completedCount: undefined,
-      keptBlocks: undefined,
-      sections: undefined,
-      wordCount: undefined,
-      citations: undefined,
-    },
-  });
+  const [researchState, setResearchState] = useState<ResearchState>(DEFAULT_RESEARCH_STATE);
   const researchWs = useRef<WebSocket | null>(null);
+
+  // Debounced save for research state
+  const saveResearchState = useCallback(
+    debounce((state: ResearchState) => {
+      if (!isHydrated.current) return;
+      const toSave = persistState(
+        state,
+        EXCLUDE_FIELDS.RESEARCH as unknown as (keyof ResearchState)[]
+      );
+      saveToStorage(STORAGE_KEYS.RESEARCH_STATE, toSave);
+    }, 500),
+    []
+  );
+
+  // Auto-save research state on change (only after hydration)
+  useEffect(() => {
+    if (isHydrated.current) {
+      saveResearchState(researchState);
+    }
+  }, [researchState, saveResearchState]);
 
   const startResearch = (
     topic: string,
@@ -1570,26 +1738,148 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
   };
 
   // --- IdeaGen Logic ---
-  const [ideaGenState, setIdeaGenState] = useState<IdeaGenState>({
-    isGenerating: false,
-    generationStatus: "",
-    generatedIdeas: [],
-    progress: null,
-  });
+  const [ideaGenState, setIdeaGenState] = useState<IdeaGenState>(DEFAULT_IDEAGEN_STATE);
+
+  // Debounced save for ideagen state
+  const saveIdeaGenState = useCallback(
+    debounce((state: IdeaGenState) => {
+      if (!isHydrated.current) return;
+      const toSave = persistState(
+        state,
+        EXCLUDE_FIELDS.IDEAGEN as unknown as (keyof IdeaGenState)[]
+      );
+      saveToStorage(STORAGE_KEYS.IDEAGEN_STATE, toSave);
+    }, 500),
+    []
+  );
+
+  // Auto-save ideagen state on change (only after hydration)
+  useEffect(() => {
+    if (isHydrated.current) {
+      saveIdeaGenState(ideaGenState);
+    }
+  }, [ideaGenState, saveIdeaGenState]);
 
   // --- Chat Logic ---
-  const [chatState, setChatState] = useState<ChatState>({
-    sessionId: null,
-    messages: [],
-    isLoading: false,
-    selectedKb: "",
-    enableRag: false,
-    enableWebSearch: false,
-    currentStage: null,
-  });
+  const [chatState, setChatState] = useState<ChatState>(DEFAULT_CHAT_STATE);
   const chatWs = useRef<WebSocket | null>(null);
   // Use ref to always have the latest sessionId in WebSocket callbacks (avoid closure issues)
   const sessionIdRef = useRef<string | null>(null);
+
+  // Debounced save for chat state
+  const saveChatState = useCallback(
+    debounce((state: ChatState) => {
+      if (!isHydrated.current) return;
+      const toSave = persistState(
+        state,
+        EXCLUDE_FIELDS.CHAT as unknown as (keyof ChatState)[]
+      );
+      saveToStorage(STORAGE_KEYS.CHAT_STATE, toSave);
+    }, 500),
+    []
+  );
+
+  // Auto-save chat state on change (only after hydration)
+  useEffect(() => {
+    if (isHydrated.current) {
+      saveChatState(chatState);
+    }
+  }, [chatState, saveChatState]);
+
+  // --- Restore persisted state after hydration ---
+  useEffect(() => {
+    // This runs only on client after hydration
+    if (typeof window === "undefined") return;
+
+    // Load persisted states
+    const persistedSolver = loadFromStorage<Partial<SolverState>>(
+      STORAGE_KEYS.SOLVER_STATE,
+      {}
+    );
+    const persistedQuestion = loadFromStorage<Partial<QuestionState>>(
+      STORAGE_KEYS.QUESTION_STATE,
+      {}
+    );
+    const persistedResearch = loadFromStorage<Partial<ResearchState>>(
+      STORAGE_KEYS.RESEARCH_STATE,
+      {}
+    );
+    const persistedIdeaGen = loadFromStorage<Partial<IdeaGenState>>(
+      STORAGE_KEYS.IDEAGEN_STATE,
+      {}
+    );
+    const persistedChat = loadFromStorage<Partial<ChatState>>(
+      STORAGE_KEYS.CHAT_STATE,
+      {}
+    );
+
+    // Restore solver state
+    if (Object.keys(persistedSolver).length > 0) {
+      setSolverState((prev) =>
+        mergeWithDefaults(
+          persistedSolver,
+          prev,
+          EXCLUDE_FIELDS.SOLVER as unknown as (keyof SolverState)[]
+        )
+      );
+    }
+
+    // Restore question state
+    if (Object.keys(persistedQuestion).length > 0) {
+      setQuestionState((prev) =>
+        mergeWithDefaults(
+          persistedQuestion,
+          prev,
+          EXCLUDE_FIELDS.QUESTION as unknown as (keyof QuestionState)[]
+        )
+      );
+    }
+
+    // Restore research state (reset running status to idle)
+    if (Object.keys(persistedResearch).length > 0) {
+      setResearchState((prev) => {
+        const merged = mergeWithDefaults(
+          persistedResearch,
+          prev,
+          EXCLUDE_FIELDS.RESEARCH as unknown as (keyof ResearchState)[]
+        );
+        if (merged.status === "running") {
+          merged.status = "idle";
+        }
+        return merged;
+      });
+    }
+
+    // Restore ideagen state
+    if (Object.keys(persistedIdeaGen).length > 0) {
+      setIdeaGenState((prev) =>
+        mergeWithDefaults(
+          persistedIdeaGen,
+          prev,
+          EXCLUDE_FIELDS.IDEAGEN as unknown as (keyof IdeaGenState)[]
+        )
+      );
+    }
+
+    // Restore chat state
+    if (Object.keys(persistedChat).length > 0) {
+      setChatState((prev) => {
+        const merged = mergeWithDefaults(
+          persistedChat,
+          prev,
+          EXCLUDE_FIELDS.CHAT as unknown as (keyof ChatState)[]
+        );
+        // Also update sessionIdRef
+        if (merged.sessionId) {
+          sessionIdRef.current = merged.sessionId;
+        }
+        return merged;
+      });
+    }
+
+    // Mark as hydrated after restoring state
+    isHydrated.current = true;
+  }, []);
 
   const sendChatMessage = (message: string) => {
     if (!message.trim() || chatState.isLoading) return;
@@ -1805,6 +2095,22 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // --- Clear All Persistence ---
+  const clearAllPersistence = useCallback(() => {
+    // Import clearAllStorage dynamically to avoid circular dependencies
+    import("@/lib/persistence").then(({ clearAllStorage }) => {
+      clearAllStorage();
+    });
+
+    // Reset all states to defaults
+    setSolverState(DEFAULT_SOLVER_STATE);
+    setQuestionState(DEFAULT_QUESTION_STATE);
+    setResearchState(DEFAULT_RESEARCH_STATE);
+    setIdeaGenState(DEFAULT_IDEAGEN_STATE);
+    setChatState(DEFAULT_CHAT_STATE);
+    sessionIdRef.current = null;
+  }, []);
+
   return (
     <GlobalContext.Provider
       value={{
@@ -1812,6 +2118,8 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
         setSolverState,
         startSolver,
         stopSolver,
+        newSolverSession,
+        loadSolverSession,
         questionState,
         setQuestionState,
         startQuestionGen,
@@ -1841,6 +2149,7 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
         setSidebarDescription,
         sidebarNavOrder,
         setSidebarNavOrder,
+        clearAllPersistence,
       }}
     >
       {children}

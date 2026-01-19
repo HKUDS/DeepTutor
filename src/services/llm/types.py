@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from typing import Any, AsyncGenerator, Dict, Optional
 
 from pydantic import BaseModel, Field

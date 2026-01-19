@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 LLM Service
 ===========
@@ -47,8 +48,8 @@ Usage:
     from src.services.llm import sanitize_url, is_local_llm_server
 """
 
-# Also expose the providers for direct access if needed
-from . import cloud_provider, local_provider
+# Note: cloud_provider and local_provider are lazy-loaded via __getattr__
+# to avoid importing lightrag at module load time
 from .capabilities import (
     DEFAULT_CAPABILITIES,
     MODEL_OVERRIDES,
@@ -139,7 +140,7 @@ __all__ = [
     "DEFAULT_MAX_RETRIES",
     "DEFAULT_RETRY_DELAY",
     "DEFAULT_EXPONENTIAL_BACKOFF",
-    # Providers
+    # Providers (lazy loaded)
     "cloud_provider",
     "local_provider",
     # Utils
@@ -150,3 +151,16 @@ __all__ = [
     "clean_thinking_tags",
     "extract_response_content",
 ]
+
+
+def __getattr__(name: str):
+    """Lazy import for provider modules that depend on heavy libraries."""
+    if name == "cloud_provider":
+        from . import cloud_provider
+
+        return cloud_provider
+    if name == "local_provider":
+        from . import local_provider
+
+        return local_provider
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

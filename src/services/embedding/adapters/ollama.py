@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Ollama Embedding Adapter for local embeddings."""
 
 import logging

@@ -174,7 +174,7 @@ export default function GuidePage() {
             <p className="text-sm text-slate-400 dark:text-slate-500 max-w-md text-center leading-relaxed">
               Select a notebook, and the system will generate a personalized
               learning plan. Through interactive pages and intelligent Q&A,
-              you'll gradually master all the content.
+              you&apos;ll gradually master all the content.
             </p>
           </div>
         ) : isCompleted ? (

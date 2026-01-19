@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Base LLM Provider - Unified interface and configuration.
 """

@@ -15,6 +15,7 @@ import {
   Search,
   Sparkles,
   FileText,
+  Trash2,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -53,7 +54,7 @@ const resolveArtifactUrl = (url?: string | null, outputDir?: string) => {
 };
 
 export default function SolverPage() {
-  const { solverState, setSolverState, startSolver } = useGlobal();
+  const { solverState, setSolverState, startSolver, newSolverSession } = useGlobal();
 
   // Local state for input
   const [inputQuestion, setInputQuestion] = useState("");
@@ -176,7 +177,7 @@ export default function SolverPage() {
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
             Smart Solver
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
             <select
               value={solverState.selectedKb}
               onChange={(e) =>
@@ -193,6 +194,16 @@ export default function SolverPage() {
                 </option>
               ))}
             </select>
+            {solverState.messages.length > 0 && (
+              <button
+                onClick={newSolverSession}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+                title="New Session"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                New
+              </button>
+            )}
           </div>
         </div>
 
@@ -253,7 +264,8 @@ export default function SolverPage() {
                           resolveArtifactUrl(url, msg.outputDir)
                         }
                         components={{
-                          img: ({ node, src, ...props }) => (
+                          img: ({ node, src, alt, ...props }) => (
+                            // eslint-disable-next-line @next/next/no-img-element -- Dynamic images from markdown content
                             <img
                               {...props}
                               src={
@@ -262,6 +274,7 @@ export default function SolverPage() {
                                   msg.outputDir,
                                 ) || undefined
                               }
+                              alt={alt || "Solution image"}
                               loading="lazy"
                               className="max-w-full h-auto"
                             />
@@ -323,7 +336,8 @@ export default function SolverPage() {
                           resolveArtifactUrl(url, msg.outputDir)
                         }
                         components={{
-                          img: ({ node, src, ...props }) => (
+                          img: ({ node, src, alt, ...props }) => (
+                            // eslint-disable-next-line @next/next/no-img-element -- Dynamic images from markdown content
                             <img
                               {...props}
                               src={
@@ -332,6 +346,7 @@ export default function SolverPage() {
                                   msg.outputDir,
                                 ) || undefined
                               }
+                              alt={alt || "Solution image"}
                               loading="lazy"
                               className="max-w-full h-auto"
                             />

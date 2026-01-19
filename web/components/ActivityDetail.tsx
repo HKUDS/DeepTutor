@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { X, FileText, HelpCircle, Search, Clock, Database } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -9,6 +9,16 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { processLatexContent } from "@/lib/latex";
+
+// Hook to safely detect client-side rendering
+const emptySubscribe = () => () => {};
+function useIsClient() {
+  return useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  );
+}
 
 interface ActivityDetailProps {
   activity: any;
@@ -19,13 +29,7 @@ export default function ActivityDetail({
   activity,
   onClose,
 }: ActivityDetailProps) {
-  const [mounted, setMounted] = useState(false);
-
-  // Ensure we're on the client before rendering portal
-  useEffect(() => {
-    setMounted(true);
-    return () => setMounted(false);
-  }, []);
+  const mounted = useIsClient();
 
   // Handle escape key to close modal
   useEffect(() => {

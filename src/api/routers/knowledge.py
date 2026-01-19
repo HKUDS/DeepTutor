@@ -551,13 +551,28 @@ async def create_knowledge_base(
         except ValueError as e:
             raise HTTPException(status_code=500, detail=f"LLM config error: {e!s}")
 
-        progress_tracker = ProgressTracker(name, _kb_base_dir)
-
         logger.info(f"Creating KB: {name}")
 
-        progress_tracker.update(
-            ProgressStage.INITIALIZING, "Initializing knowledge base...", current=0, total=0
+        # Register KB to kb_config.json immediately with "initializing" status
+        # This ensures the KB appears in the list right away
+        manager.update_kb_status(
+            name=name,
+            status="initializing",
+            progress={
+                "stage": "initializing",
+                "message": "Initializing knowledge base...",
+                "percent": 0,
+                "current": 0,
+                "total": len(files),
+            },
         )
+        # Also store rag_provider in config (reload and update)
+        manager.config = manager._load_config()
+        if name in manager.config.get("knowledge_bases", {}):
+            manager.config["knowledge_bases"][name]["rag_provider"] = rag_provider
+            manager._save_config()
+
+        progress_tracker = ProgressTracker(name, _kb_base_dir)
 
         initializer = KnowledgeBaseInitializer(
             kb_name=name,

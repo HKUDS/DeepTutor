@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Web Search Base Provider - Abstract base class for all search providers
 

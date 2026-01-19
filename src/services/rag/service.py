@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 RAG Service
 ===========
@@ -5,11 +6,15 @@ RAG Service
 Unified RAG service providing a single entry point for all RAG operations.
 """
 
+import json
 import os
 from pathlib import Path
+import shutil
 from typing import Any, Dict, List, Optional
 
 from src.logging import get_logger
+
+from .factory import get_pipeline, has_pipeline, list_pipelines
 
 # Default knowledge base directory
 DEFAULT_KB_BASE_DIR = str(
@@ -59,8 +64,6 @@ class RAGService:
     def _get_pipeline(self):
         """Get or create pipeline instance."""
         if self._pipeline is None:
-            from .factory import get_pipeline
-
             self._pipeline = get_pipeline(self.provider, kb_base_dir=self.kb_base_dir)
         return self._pipeline
 
@@ -117,8 +120,6 @@ class RAGService:
         )
 
         # Get pipeline for the specific provider
-        from .factory import get_pipeline
-
         pipeline = get_pipeline(provider, kb_base_dir=self.kb_base_dir)
 
         result = await pipeline.search(query=query, kb_name=kb_name, mode=mode, **kwargs)
@@ -149,8 +150,6 @@ class RAGService:
             Provider name (e.g., 'llamaindex', 'lightrag', 'raganything')
         """
         try:
-            import json
-
             metadata_file = Path(self.kb_base_dir) / kb_name / "metadata.json"
 
             if metadata_file.exists():
@@ -192,8 +191,6 @@ class RAGService:
             return await pipeline.delete(kb_name=kb_name)
 
         # Fallback: delete directory manually
-        import shutil
-
         kb_dir = Path(self.kb_base_dir) / kb_name
         if kb_dir.exists():
             shutil.rmtree(kb_dir)
@@ -214,8 +211,6 @@ class RAGService:
             for p in providers:
                 print(f"{p['id']}: {p['description']}")
         """
-        from .factory import list_pipelines
-
         return list_pipelines()
 
     @staticmethod
@@ -239,6 +234,4 @@ class RAGService:
         Returns:
             True if provider exists
         """
-        from .factory import has_pipeline
-
         return has_pipeline(name)

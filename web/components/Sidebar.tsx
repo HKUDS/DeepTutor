@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -65,7 +65,7 @@ export default function Sidebar() {
   } = useGlobal();
   const lang = uiSettings.language;
 
-  const t = (key: string) => getTranslation(lang, key);
+  const t = useCallback((key: string) => getTranslation(lang, key), [lang]);
 
   const [showTooltip, setShowTooltip] = useState<string | null>(null);
 
@@ -82,19 +82,19 @@ export default function Sidebar() {
     null,
   );
 
-  // Build navigation items from saved order
-  const buildNavItems = (hrefs: string[]): NavItem[] => {
-    return hrefs
-      .filter((href) => ALL_NAV_ITEMS[href])
-      .map((href) => ({
-        name: t(ALL_NAV_ITEMS[href].nameKey),
-        href,
-        icon: ALL_NAV_ITEMS[href].icon,
-      }));
-  };
-
-  const navGroups = useMemo(
-    () => [
+  // Build navigation items from saved order - defined inside useMemo to properly capture dependencies
+  const navGroups = useMemo(() => {
+    const buildNavItems = (hrefs: string[]): NavItem[] => {
+      return hrefs
+        .filter((href) => ALL_NAV_ITEMS[href])
+        .map((href) => ({
+          name: t(ALL_NAV_ITEMS[href].nameKey),
+          href,
+          icon: ALL_NAV_ITEMS[href].icon,
+        }));
+    };
+    
+    return [
       {
         id: "start" as const,
         name: "WORKSPACE",
@@ -105,9 +105,8 @@ export default function Sidebar() {
         name: t("Learn") + " & " + t("Research"),
         items: buildNavItems(sidebarNavOrder.learnResearch),
       },
-    ],
-    [sidebarNavOrder, lang],
-  );
+    ];
+  }, [sidebarNavOrder, t]);
 
   // Handle description edit
   const handleDescriptionEdit = () => {

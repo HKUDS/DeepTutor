@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Web Search Types - Shared dataclasses and type definitions
 

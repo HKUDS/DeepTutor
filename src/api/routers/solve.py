@@ -11,9 +11,9 @@ import re
 import sys
 from typing import Any
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
-from src.agents.solve import MainSolver
+from src.agents.solve import MainSolver, SolverSessionManager
 from src.api.utils.history import ActivityType, history_manager
 from src.api.utils.log_interceptor import LogInterceptor
 from src.api.utils.task_id_manager import TaskIDManager
@@ -31,6 +31,66 @@ log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {
 logger = get_logger("SolveAPI", level="INFO", log_dir=log_dir)
 
 router = APIRouter()
+
+# Initialize session manager
+solver_session_manager = SolverSessionManager()
+
+
+# =============================================================================
+# REST Endpoints for Session Management
+# =============================================================================
+
+
+@router.get("/solve/sessions")
+async def list_solver_sessions(limit: int = 20):
+    """
+    List recent solver sessions.
+
+    Args:
+        limit: Maximum number of sessions to return
+
+    Returns:
+        List of session summaries
+    """
+    return solver_session_manager.list_sessions(limit=limit, include_messages=False)
+
+
+@router.get("/solve/sessions/{session_id}")
+async def get_solver_session(session_id: str):
+    """
+    Get a specific solver session with full message history.
+
+    Args:
+        session_id: Session identifier
+
+    Returns:
+        Complete session data including messages
+    """
+    session = solver_session_manager.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
+
+
+@router.delete("/solve/sessions/{session_id}")
+async def delete_solver_session(session_id: str):
+    """
+    Delete a solver session.
+
+    Args:
+        session_id: Session identifier
+
+    Returns:
+        Success message
+    """
+    if solver_session_manager.delete_session(session_id):
+        return {"status": "deleted", "session_id": session_id}
+    raise HTTPException(status_code=404, detail="Session not found")
+
+
+# =============================================================================
+# WebSocket Endpoint for Solving
+# =============================================================================
 
 
 @router.websocket("/solve")
@@ -81,15 +141,46 @@ async def websocket_solve(websocket: WebSocket):
                 logger.debug(f"Error in log_pusher: {e}")
                 break
 
+    session_id = None  # Track session for this connection
+
     try:
         # 1. Wait for the initial message with the question and config
         data = await websocket.receive_json()
         question = data.get("question")
         kb_name = data.get("kb_name", "ai_textbook")
+        session_id = data.get("session_id")  # Optional session ID
 
         if not question:
             await websocket.send_json({"type": "error", "content": "Question is required"})
             return
+
+        # Get or create session
+        if session_id:
+            session = solver_session_manager.get_session(session_id)
+            if not session:
+                # Session not found, create new one
+                session = solver_session_manager.create_session(
+                    title=question[:50] + ("..." if len(question) > 50 else ""),
+                    kb_name=kb_name,
+                )
+                session_id = session["session_id"]
+        else:
+            # Create new session
+            session = solver_session_manager.create_session(
+                title=question[:50] + ("..." if len(question) > 50 else ""),
+                kb_name=kb_name,
+            )
+            session_id = session["session_id"]
+
+        # Send session ID to frontend
+        await websocket.send_json({"type": "session", "session_id": session_id})
+
+        # Add user message to session
+        solver_session_manager.add_message(
+            session_id=session_id,
+            role="user",
+            content=question,
+        )
 
         task_key = f"solve_{kb_name}_{hash(str(question))}"
         task_id = task_manager.generate_task_id("solve", task_key)
@@ -247,13 +338,36 @@ async def websocket_solve(websocket: WebSocket):
                 )
 
             # Send final result
+            # Extract relative path from output_dir for frontend use
+            dir_name = ""
+            if output_dir_str:
+                parts = output_dir_str.replace("\\", "/").split("/")
+                dir_name = parts[-1] if parts else ""
+
             final_res = {
                 "type": "result",
+                "session_id": session_id,
                 "final_answer": final_answer,
                 "output_dir": output_dir_str,
+                "output_dir_name": dir_name,
                 "metadata": result.get("metadata"),
             }
             await safe_send_json(final_res)
+
+            # Save assistant message to session
+            if session_id:
+                solver_session_manager.add_message(
+                    session_id=session_id,
+                    role="assistant",
+                    content=final_answer,
+                    output_dir=dir_name,
+                )
+                # Update token stats in session
+                if display_manager:
+                    solver_session_manager.update_token_stats(
+                        session_id=session_id,
+                        token_stats=display_manager.stats.copy(),
+                    )
 
             # Save to history
             history_manager.add_entry(
@@ -263,6 +377,7 @@ async def websocket_solve(websocket: WebSocket):
                     "question": question,
                     "answer": result.get("final_answer"),
                     "kb_name": kb_name,
+                    "session_id": session_id,
                 },
                 summary=(
                     result.get("final_answer")[:100] + "..." if result.get("final_answer") else ""

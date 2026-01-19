@@ -4,7 +4,7 @@ import {
   ResearchEvent,
   TaskState,
   ThoughtEntry,
-  LogEntry,
+  ResearchLogEntry,
   TopicBlock,
   ReportOutline,
 } from "../types/research";
@@ -35,8 +35,8 @@ export const initialResearchState: ResearchState = {
 // Helper to create a log entry
 const createLog = (
   message: string,
-  type: LogEntry["type"] = "info",
-): LogEntry => ({
+  type: ResearchLogEntry["type"] = "info",
+): ResearchLogEntry => ({
   id: Math.random().toString(36).substring(7),
   timestamp: Date.now(),
   type,

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 LLM Factory - Central Hub for LLM Calls
 =======================================
@@ -51,8 +52,8 @@ from .utils import is_local_llm_server
 logger = get_logger("LLMFactory")
 
 # Default retry configuration
-DEFAULT_MAX_RETRIES = 3
-DEFAULT_RETRY_DELAY = 1.0  # seconds
+DEFAULT_MAX_RETRIES = 5  # Increased for complex agents like Research
+DEFAULT_RETRY_DELAY = 2.0  # seconds
 DEFAULT_EXPONENTIAL_BACKOFF = True
 
 
@@ -141,8 +142,8 @@ async def complete(
         api_version: API version for Azure OpenAI (optional)
         binding: Provider binding type (optional)
         messages: Pre-built messages array (optional)
-        max_retries: Maximum number of retry attempts (default: 3)
-        retry_delay: Initial delay between retries in seconds (default: 1.0)
+        max_retries: Maximum number of retry attempts (default: 5)
+        retry_delay: Initial delay between retries in seconds (default: 2.0)
         exponential_backoff: Whether to use exponential backoff (default: True)
         **kwargs: Additional parameters (temperature, max_tokens, etc.)
 
@@ -189,6 +190,9 @@ async def complete(
 
         return False
 
+    # Calculate total attempts for logging (1 initial + max_retries)
+    total_attempts = max_retries + 1
+
     # Define the actual completion function with tenacity retry
     @tenacity.retry(
         retry=(
@@ -196,10 +200,10 @@ async def complete(
             | tenacity.retry_if_exception_type(LLMTimeoutError)
             | tenacity.retry_if_exception(_is_retriable_llm_api_error)
         ),
-        wait=tenacity.wait_exponential(multiplier=retry_delay, min=retry_delay, max=60),
-        stop=tenacity.stop_after_attempt(max_retries + 1),
+        wait=tenacity.wait_exponential(multiplier=retry_delay, min=retry_delay, max=120),
+        stop=tenacity.stop_after_attempt(total_attempts),
         before_sleep=lambda retry_state: logger.warning(
-            f"LLM call failed (attempt {retry_state.attempt_number}/{max_retries + 1}), "
+            f"LLM call failed (attempt {retry_state.attempt_number}/{total_attempts}), "
             f"retrying in {retry_state.upcoming_sleep:.1f}s... Error: {str(retry_state.outcome.exception())}"
         ),
     )
@@ -268,8 +272,8 @@ async def stream(
         api_version: API version for Azure OpenAI (optional)
         binding: Provider binding type (optional)
         messages: Pre-built messages array (optional)
-        max_retries: Maximum number of retry attempts (default: 3)
-        retry_delay: Initial delay between retries in seconds (default: 1.0)
+        max_retries: Maximum number of retry attempts (default: 5)
+        retry_delay: Initial delay between retries in seconds (default: 2.0)
         exponential_backoff: Whether to use exponential backoff (default: True)
         **kwargs: Additional parameters (temperature, max_tokens, etc.)
 
@@ -305,10 +309,13 @@ async def stream(
         call_kwargs["binding"] = binding or "openai"
 
     # Retry logic for streaming (retry on connection errors)
+    # Total attempts = 1 initial + max_retries
+    total_attempts = max_retries + 1
     last_exception = None
     delay = retry_delay
+    max_delay = 120  # Cap maximum delay at 120 seconds (consistent with complete())
 
-    for attempt in range(max_retries + 1):
+    for attempt in range(total_attempts):
         try:
             # Route to appropriate provider
             if use_local:
@@ -328,13 +335,19 @@ async def stream(
 
             # Calculate delay for next attempt
             if exponential_backoff:
-                current_delay = delay * (2**attempt)
+                current_delay = min(delay * (2**attempt), max_delay)
             else:
                 current_delay = delay
 
             # Special handling for rate limit errors with retry_after
             if isinstance(e, LLMRateLimitError) and e.retry_after:
                 current_delay = max(current_delay, e.retry_after)
+
+            # Log retry attempt (consistent with complete() function)
+            logger.warning(
+                f"LLM streaming failed (attempt {attempt + 1}/{total_attempts}), "
+                f"retrying in {current_delay:.1f}s... Error: {str(e)}"
+            )
 
             # Wait before retrying
             await asyncio.sleep(current_delay)

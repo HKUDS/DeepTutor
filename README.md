@@ -12,7 +12,7 @@
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](LICENSE)
 
 <p align="center">
-  <a href="https://discord.gg/zpP9cssj"><img src="https://img.shields.io/badge/Discord-Join_Community-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://discord.gg/eRsjPgMU4t"><img src="https://img.shields.io/badge/Discord-Join_Community-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
   &nbsp;&nbsp;
   <a href="./Communication.md"><img src="https://img.shields.io/badge/Feishu-Join_Group-00D4AA?style=for-the-badge&logo=feishu&logoColor=white" alt="Feishu"></a>
   &nbsp;&nbsp;
@@ -37,8 +37,6 @@
 ---
 ### 📰 News
 
-> **[2026.1.15]** DeepTutor [v0.5.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.5.0) is out! Fixed multiple environment configuration and stability issues. We recommend everyone to pull the latest version! 🎉
-
 > **[2026.1.1]** Happy New Year! Join our [Discord Community](https://discord.gg/zpP9cssj), [Wechat Community](https://github.com/HKUDS/DeepTutor/issues/78), or [Discussions](https://github.com/HKUDS/DeepTutor/discussions) - shape the future of DeepTutor! 💬
 
 > **[2025.12.30]** Visit our [Official Website](https://hkuds.github.io/DeepTutor/) for more details!
@@ -47,9 +45,12 @@
 
 ### 📦 Releases
 
-> **[2026.1.15]** Release [v0.5.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.5.0) - Unified LLM & Embedding services, RAG pipeline selection, and major enhancements to Home, History, QuestionGen & Settings modules -- Thanks to all the contributors!
+> **[2026.1.18]** Release [v0.5.2](https://github.com/HKUDS/DeepTutor/releases/tag/v0.5.1) - Enhance RAG pipeline with Docling support and improve CI/CD workflows with several minor bugs fixed -- Thanks to all the feedbacks!
+
 <details>
 <summary>History releases</summary>
+
+> **[2026.1.15]** Release [v0.5.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.5.0) - Unified LLM & Embedding services, RAG pipeline selection, and major enhancements to Home, History, QuestionGen & Settings modules -- Thanks to all the contributors!
 
 > **[2026.1.9]** Release [v0.4.1](https://github.com/HKUDS/DeepTutor/releases/tag/v0.4.1) with LLM Provider system overhaul, Question Generation robustness improvements, and codebase cleanup - Thanks to all the contributors!
 
@@ -337,8 +338,8 @@ cp .env.example .env
 **Quick Start** — Build from source:
 
 ```bash
-docker compose up --build -d    # Build and start (~5-10 min first run)
-docker compose logs -f          # View logs
+docker compose up                  # Build and start (~11 min first run on mac mini M4)
+docker compose build --no-cache    # Clear cache and rebuild after pull the newest repo
 ```
 
 **Or use pre-built image** (faster):
@@ -1553,7 +1554,5 @@ We hope DeepTutor could become a gift for the community. 🎁
 This project is licensed under the ***[AGPL-3.0 License](LICENSE)***.
 
 *✨ Thanks for visiting **DeepTutor**!*
-
-<img src="https://visitor-badge.laobi.icu/badge?page_id=HKUDS.DeepTutor&style=for-the-badge&color=00d4ff" alt="Views">
 
 </div>

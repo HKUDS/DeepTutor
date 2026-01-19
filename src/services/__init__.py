@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Services Layer
 ==============
@@ -42,7 +43,9 @@ Usage:
     result = web_search("What is AI?")
 """
 
-from . import config, embedding, llm, prompt, rag, search, setup, tts
+# Note: rag and embedding modules are lazy-loaded via __getattr__
+# to avoid importing heavy dependencies (lightrag, llama_index) at module load time
+from . import config, llm, prompt, search, setup, tts
 
 __all__ = [
     "llm",
@@ -54,3 +57,16 @@ __all__ = [
     "setup",
     "config",
 ]
+
+
+def __getattr__(name: str):
+    """Lazy import for modules that depend on heavy libraries."""
+    if name == "rag":
+        from . import rag
+
+        return rag
+    if name == "embedding":
+        from . import embedding
+
+        return embedding
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

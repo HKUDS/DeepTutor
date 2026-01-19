@@ -1,9 +1,11 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 LightRAG Log Forwarder
 ======================
 
 Forwards LightRAG and RAG-Anything logs to DeepTutor's unified logging system.
+Uses the unified global log level from config/main.yaml -> logging.level
 """
 
 from contextlib import contextmanager
@@ -31,17 +33,21 @@ class LightRAGLogForwarder(logging.Handler):
 
     def emit(self, record: logging.LogRecord):
         """
-        Forward log record to DeepTutor logger.
-        All logs are forwarded as info level to maintain consistent format.
+        Forward log record to DeepTutor logger with proper level mapping.
         """
         try:
-            # Get the original message directly without adding [LightRAG] prefix
-            # LightRAG already formats messages appropriately (e.g., "DEBUG: xxx" for debug logs)
             message = record.getMessage()
 
-            # Use info() for all levels to maintain consistent format
-            # This ensures all logs appear as [RAGTool] ... (or [RAGTool] DEBUG: ... for debug)
-            self.ai_tutor_logger.info(message)
+            # Map LightRAG log levels to DeepTutor logger methods
+            level = record.levelno
+            if level >= logging.ERROR:
+                self.ai_tutor_logger.error(message)
+            elif level >= logging.WARNING:
+                self.ai_tutor_logger.warning(message)
+            elif level >= logging.INFO:
+                self.ai_tutor_logger.info(message)
+            else:
+                self.ai_tutor_logger.debug(message)
 
         except Exception:
             # Avoid errors in forwarding from affecting main flow
@@ -50,7 +56,7 @@ class LightRAGLogForwarder(logging.Handler):
 
 def get_lightrag_forwarding_config() -> dict:
     """
-    Load LightRAG forwarding configuration from main.yaml.
+    Load LightRAG forwarding configuration from config/main.yaml.
 
     Returns:
         dict: Configuration dictionary with defaults if not found
@@ -58,27 +64,28 @@ def get_lightrag_forwarding_config() -> dict:
     try:
         from src.services.config import load_config_with_main
 
-        # Use resolve() to get absolute path, ensuring correct project root regardless of working directory
+        from ..config import get_global_log_level
+
         project_root = Path(__file__).resolve().parent.parent.parent.parent
         config = load_config_with_main("solve_config.yaml", project_root)
+        logging_config = config.get("logging", {})
 
-        forwarding_config = config.get("logging", {}).get("lightrag_forwarding", {})
+        # Use the unified global log level
+        level = get_global_log_level()
 
         return {
-            "enabled": forwarding_config.get("enabled", True),
-            "min_level": forwarding_config.get("min_level", "INFO"),
-            "add_prefix": forwarding_config.get("add_prefix", True),
-            "logger_names": forwarding_config.get(
-                "logger_names", {"knowledge_init": "KnowledgeInit", "rag_tool": "RAGTool"}
+            "enabled": True,
+            "min_level": level,
+            "logger_names": logging_config.get(
+                "rag_logger_names", {"knowledge_init": "RAG-Init", "rag_tool": "RAG"}
             ),
         }
     except Exception:
         # Return defaults if config loading fails
         return {
             "enabled": True,
-            "min_level": "INFO",
-            "add_prefix": True,
-            "logger_names": {"knowledge_init": "KnowledgeInit", "rag_tool": "RAGTool"},
+            "min_level": "DEBUG",
+            "logger_names": {"knowledge_init": "RAG-Init", "rag_tool": "RAG"},
         }
 
 

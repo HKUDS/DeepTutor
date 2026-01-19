@@ -6,6 +6,8 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
+  startTransition,
 } from "react";
 import { apiUrl } from "@/lib/api";
 import { initializeTheme, setTheme, getStoredTheme } from "@/lib/theme";
@@ -13,6 +15,17 @@ import { UISettings, Theme, Language } from "@/types/common";
 
 // Language storage key
 const LANGUAGE_STORAGE_KEY = "deeptutor-language";
+
+// Helper to get initial settings
+function getInitialSettings(): UISettings {
+  if (typeof window === "undefined") {
+    return { theme: "light", language: "en" };
+  }
+  const initialTheme = initializeTheme();
+  const storedLanguage =
+    (localStorage.getItem(LANGUAGE_STORAGE_KEY) as Language) || "en";
+  return { theme: initialTheme, language: storedLanguage };
+}
 
 // Context type
 interface UISettingsContextType {
@@ -31,11 +44,8 @@ export function UISettingsProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [uiSettings, setUiSettings] = useState<UISettings>({
-    theme: "light",
-    language: "en",
-  });
-  const [isInitialized, setIsInitialized] = useState(false);
+  const [uiSettings, setUiSettings] = useState<UISettings>(getInitialSettings);
+  const isInitializedRef = useRef(false);
 
   const refreshSettings = useCallback(async () => {
     // Try to load from backend API first, fallback to localStorage
@@ -45,9 +55,11 @@ export function UISettingsProvider({
         const data = await res.json();
         const serverTheme = data.ui?.theme || "light";
         const serverLanguage = data.ui?.language || "en";
-        setUiSettings({
-          theme: serverTheme,
-          language: serverLanguage,
+        startTransition(() => {
+          setUiSettings({
+            theme: serverTheme,
+            language: serverLanguage,
+          });
         });
         setTheme(serverTheme);
         // Sync to localStorage as cache
@@ -71,9 +83,11 @@ export function UISettingsProvider({
         : "en";
 
     const themeToUse = storedTheme || "light";
-    setUiSettings({
-      theme: themeToUse,
-      language: storedLanguage,
+    startTransition(() => {
+      setUiSettings({
+        theme: themeToUse,
+        language: storedLanguage,
+      });
     });
     setTheme(themeToUse);
   }, []);
@@ -115,25 +129,12 @@ export function UISettingsProvider({
   }, []);
 
   useEffect(() => {
-    // Initialize settings on first render
-    if (!isInitialized) {
-      // First apply localStorage theme immediately to avoid flash
-      const initialTheme = initializeTheme();
-      const storedLanguage =
-        typeof window !== "undefined"
-          ? (localStorage.getItem(LANGUAGE_STORAGE_KEY) as Language) || "en"
-          : "en";
-
-      setUiSettings({
-        theme: initialTheme,
-        language: storedLanguage,
-      });
-      setIsInitialized(true);
-
-      // Then async load from server (which may override)
+    // Async load settings from server on first render (which may override localStorage)
+    if (!isInitializedRef.current) {
+      isInitializedRef.current = true;
       refreshSettings();
     }
-  }, [isInitialized, refreshSettings]);
+  }, [refreshSettings]);
 
   return (
     <UISettingsContext.Provider

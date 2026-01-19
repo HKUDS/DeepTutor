@@ -15,6 +15,8 @@ try:
     from .config import KNOWLEDGE_BASES_DIR, get_env_config, setup_paths
 
     setup_paths()
+    from src.services.rag.components.routing import FileTypeRouter
+
     from .extract_numbered_items import process_content_list
     from .initializer import KnowledgeBaseInitializer
     from .manager import KnowledgeBaseManager
@@ -28,6 +30,7 @@ except ImportError:
     from src.knowledge.extract_numbered_items import process_content_list
     from src.knowledge.initializer import KnowledgeBaseInitializer
     from src.knowledge.manager import KnowledgeBaseManager
+    from src.services.rag.components.routing import FileTypeRouter
 
 
 def list_knowledge_bases():
@@ -123,6 +126,12 @@ async def init_knowledge_base(args):
         return
 
     # Collect document files
+    # Use provider from env var or default to raganything (most comprehensive)
+    import os
+
+    provider = os.getenv("RAG_PROVIDER", "raganything")
+    glob_patterns = FileTypeRouter.get_glob_patterns_for_provider(provider)
+
     doc_files = []
     if args.docs:
         doc_files.extend(args.docs)
@@ -130,8 +139,8 @@ async def init_knowledge_base(args):
     if args.docs_dir:
         docs_dir = Path(args.docs_dir)
         if docs_dir.exists() and docs_dir.is_dir():
-            for ext in ["*.pdf", "*.docx", "*.doc", "*.txt", "*.md"]:
-                doc_files.extend([str(f) for f in docs_dir.glob(ext)])
+            for pattern in glob_patterns:
+                doc_files.extend([str(f) for f in docs_dir.glob(pattern)])
         else:
             print(f"✗ Error: Document directory does not exist: {args.docs_dir}\n")
             return

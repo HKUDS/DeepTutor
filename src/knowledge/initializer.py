@@ -21,6 +21,7 @@ import shutil
 from src.logging import get_logger
 from src.services.embedding import get_embedding_config
 from src.services.llm import get_llm_config
+from src.services.rag.components.routing import FileTypeRouter
 from src.services.rag.service import RAGService
 
 logger = get_logger("KnowledgeInit")
@@ -59,39 +60,33 @@ class KnowledgeBaseInitializer:
         self.rag_provider = rag_provider
 
     def _register_to_config(self):
-        """Register KB to kb_config.json (only knowledge_bases list, no default)."""
-        config_file = self.base_dir / "kb_config.json"
-        if config_file.exists():
-            try:
-                with open(config_file, encoding="utf-8") as f:
-                    config = json.load(f)
-            except Exception as e:
-                logger.warning(f"Failed to read config: {e}, creating new")
-                config = {"knowledge_bases": {}}
-        else:
-            config = {"knowledge_bases": {}}
+        """Register KB to kb_config.json using KnowledgeBaseManager for consistency."""
+        try:
+            from src.knowledge.manager import KnowledgeBaseManager
 
-        if "knowledge_bases" not in config:
-            config["knowledge_bases"] = {}
+            manager = KnowledgeBaseManager(base_dir=str(self.base_dir))
 
-        # Remove old "default" field if exists (migration)
-        if "default" in config:
-            del config["default"]
+            # Check if already registered (reload config to get latest)
+            manager.config = manager._load_config()
+            if self.kb_name in manager.config.get("knowledge_bases", {}):
+                logger.info("  ✓ Already registered in kb_config.json")
+                return
 
-        if self.kb_name not in config.get("knowledge_bases", {}):
-            config["knowledge_bases"][self.kb_name] = {
-                "path": self.kb_name,
-                "description": f"Knowledge base: {self.kb_name}",
-            }
-
-            try:
-                with open(config_file, "w", encoding="utf-8") as f:
-                    json.dump(config, indent=2, ensure_ascii=False, fp=f)
-                logger.info("  ✓ Registered to kb_config.json")
-            except Exception as e:
-                logger.warning(f"Failed to update config: {e}")
-        else:
-            logger.info("  ✓ Already registered in kb_config.json")
+            # Register with initializing status
+            manager.update_kb_status(
+                name=self.kb_name,
+                status="initializing",
+                progress={
+                    "stage": "initializing",
+                    "message": "Creating directory structure...",
+                    "percent": 0,
+                    "current": 0,
+                    "total": 0,
+                },
+            )
+            logger.info("  ✓ Registered to kb_config.json")
+        except Exception as e:
+            logger.warning(f"Failed to register to config: {e}")
 
     def _update_metadata_with_provider(self, provider: str):
         """Update metadata.json and centralized config with the RAG provider used."""
@@ -186,10 +181,11 @@ class KnowledgeBaseInitializer:
             total=0,
         )
 
-        # Get all documents in raw directory
+        # Get all documents in raw directory based on provider's supported extensions
         doc_files = []
-        for ext in ["*.pdf", "*.docx", "*.doc", "*.txt", "*.md"]:
-            doc_files.extend(list(self.raw_dir.glob(ext)))
+        glob_patterns = FileTypeRouter.get_glob_patterns_for_provider(provider)
+        for pattern in glob_patterns:
+            doc_files.extend(list(self.raw_dir.glob(pattern)))
 
         if not doc_files:
             logger.warning("No documents found to process")
@@ -274,80 +270,58 @@ class KnowledgeBaseInitializer:
 
     async def fix_structure(self):
         """
-        Fix the nested structure created by process_document_complete.
-        Flattens content_list directories and moves images to the correct location.
+        Clean up parser output directories after image migration.
+
+        NOTE: Image migration and path updates are now handled by the RAG pipeline
+        (raganything.py / raganything_docling.py) BEFORE RAG insertion. This ensures
+        RAG stores the correct canonical image paths (kb/images/) from the start.
+
+        This method now only:
+        1. Checks if there are any leftover nested directories to clean up
+        2. Removes empty temporary parser output directories
+
+        Supports both 'auto' (MinerU) and 'docling' parser output directories.
         """
-        logger.info("\nFixing directory structure...")
+        logger.info("\nChecking for leftover parser output directories...")
 
-        # Find nested content lists
-        content_list_moves = []
-        for doc_dir in self.content_list_dir.glob("*"):
+        # Support both 'auto' (MinerU) and 'docling' parser output directories
+        parser_subdirs = ["auto", "docling"]
+        cleaned_count = 0
+
+        # Find and remove empty parser output directories
+        for doc_dir in list(self.content_list_dir.glob("*")):
             if not doc_dir.is_dir():
                 continue
 
-            auto_dir = doc_dir / "auto"
-            if not auto_dir.exists():
-                continue
+            for parser_subdir in parser_subdirs:
+                subdir = doc_dir / parser_subdir
+                if subdir.exists():
+                    try:
+                        # Check if directory is empty or only contains empty subdirs
+                        has_content = any(
+                            f.is_file() or (f.is_dir() and any(f.iterdir()))
+                            for f in subdir.iterdir()
+                        )
 
-            # Find the _content_list.json file
-            for json_file in auto_dir.glob("*_content_list.json"):
-                target_file = self.content_list_dir / f"{doc_dir.name}.json"
-                content_list_moves.append((json_file, target_file))
+                        if not has_content:
+                            shutil.rmtree(subdir)
+                            cleaned_count += 1
+                            logger.debug(f"  Removed empty directory: {subdir}")
+                    except Exception as e:
+                        logger.debug(f"  Could not clean up {subdir}: {e}")
 
-        # Move content list files
-        for source, target in content_list_moves:
+            # Remove doc_dir if it's now empty
             try:
-                shutil.copy2(source, target)
-                logger.info(f"  ✓ Moved: {source.name} -> {target.name}")
-            except Exception as e:
-                logger.error(f"  ✗ Error moving {source.name}: {e!s}")
+                if doc_dir.exists() and not any(doc_dir.iterdir()):
+                    doc_dir.rmdir()
+                    logger.debug(f"  Removed empty directory: {doc_dir}")
+            except Exception:
+                pass
 
-        # Find and move nested images
-        for doc_dir in self.content_list_dir.glob("*"):
-            if not doc_dir.is_dir():
-                continue
-
-            auto_dir = doc_dir / "auto"
-            if not auto_dir.exists():
-                continue
-
-            images_dir = auto_dir / "images"
-            if images_dir.exists() and images_dir.is_dir():
-                image_count = 0
-                # Ensure target directory exists
-                self.images_dir.mkdir(parents=True, exist_ok=True)
-
-                for img_file in images_dir.glob("*"):
-                    if img_file.is_file() and img_file.exists():
-                        target_img = self.images_dir / img_file.name
-                        if not target_img.exists():
-                            try:
-                                # Ensure source file exists
-                                if not img_file.exists():
-                                    logger.warning(f"  ⚠ Source image not found: {img_file}")
-                                    continue
-                                shutil.copy2(img_file, target_img)
-                                image_count += 1
-                            except FileNotFoundError:
-                                logger.error(
-                                    f"  ✗ Error moving image {img_file.name}: Source file not found: {img_file}"
-                                )
-                            except Exception as e:
-                                logger.error(f"  ✗ Error moving image {img_file.name}: {e!s}")
-
-                if image_count > 0:
-                    logger.info(f"  ✓ Moved {image_count} images from {doc_dir.name}/auto/images/")
-
-        # Clean up nested directories
-        for doc_dir in self.content_list_dir.glob("*"):
-            if doc_dir.is_dir():
-                try:
-                    shutil.rmtree(doc_dir)
-                    logger.info(f"  ✓ Cleaned up: {doc_dir.name}/")
-                except Exception as e:
-                    logger.error(f"  ✗ Error removing {doc_dir.name}: {e!s}")
-
-        logger.info("✓ Structure fixed!")
+        if cleaned_count > 0:
+            logger.info(f"✓ Cleaned up {cleaned_count} empty parser directories")
+        else:
+            logger.info("✓ No cleanup needed (structure already organized)")
 
     def extract_numbered_items(self, batch_size: int = 20):
         """
@@ -563,6 +537,10 @@ Example usage:
         return
 
     # Collect document files
+    # Use provider from env var or default to raganything (most comprehensive)
+    provider = os.getenv("RAG_PROVIDER", "raganything")
+    glob_patterns = FileTypeRouter.get_glob_patterns_for_provider(provider)
+
     doc_files = []
     if args.docs:
         doc_files.extend(args.docs)
@@ -570,8 +548,8 @@ Example usage:
     if args.docs_dir:
         docs_dir = Path(args.docs_dir)
         if docs_dir.exists() and docs_dir.is_dir():
-            for ext in ["*.pdf", "*.docx", "*.doc", "*.txt", "*.md"]:
-                doc_files.extend([str(f) for f in docs_dir.glob(ext)])
+            for pattern in glob_patterns:
+                doc_files.extend([str(f) for f in docs_dir.glob(pattern)])
         else:
             logger.error(f"Error: Documents directory not found: {args.docs_dir}")
             return

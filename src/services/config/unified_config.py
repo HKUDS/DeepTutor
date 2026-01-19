@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Unified Configuration Manager
 =============================
@@ -537,7 +538,52 @@ class UnifiedConfigManager:
                 return False
 
         data["active_id"] = config_id
-        return self._save_configs(config_type, data)
+        success = self._save_configs(config_type, data)
+
+        # Update environment variables for LightRAG compatibility when LLM config changes
+        if success and config_type == ConfigType.LLM:
+            self._update_openai_env_vars_for_lightrag()
+
+        return success
+
+    def _update_openai_env_vars_for_lightrag(self):
+        """
+        Update OPENAI_API_KEY and OPENAI_BASE_URL environment variables for LightRAG.
+
+        LightRAG's internal functions read directly from os.environ["OPENAI_API_KEY"]
+        instead of using passed parameters. This method ensures the environment
+        variables are updated when the active LLM configuration changes.
+        """
+        try:
+            config = self.get_active_config(ConfigType.LLM)
+            if not config:
+                return
+
+            provider = config.get("provider", "openai")
+            api_key = config.get("api_key", "")
+            base_url = config.get("base_url", "")
+
+            # Only set env vars for OpenAI-compatible providers
+            if provider in ("openai", "azure_openai", "gemini", "deepseek"):
+                if api_key:
+                    os.environ["OPENAI_API_KEY"] = api_key
+                    logger.debug("Updated OPENAI_API_KEY env var for LightRAG compatibility")
+
+                if base_url:
+                    os.environ["OPENAI_BASE_URL"] = base_url
+                    logger.debug(f"Updated OPENAI_BASE_URL env var to {base_url}")
+
+            # Reset LLM client singleton to pick up new configuration
+            try:
+                from src.services.llm import reset_llm_client
+
+                reset_llm_client()
+                logger.debug("Reset LLM client singleton after config change")
+            except ImportError:
+                pass
+
+        except Exception as e:
+            logger.warning(f"Failed to update OpenAI env vars: {e}")
 
     def get_env_status(self, config_type: ConfigType) -> Dict[str, bool]:
         """Check which environment variables are configured for a service type."""

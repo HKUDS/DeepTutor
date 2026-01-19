@@ -92,6 +92,7 @@ export default function ResearchPage() {
         }
       })
       .catch((err) => console.error("Failed to fetch KBs:", err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Only run on mount
   }, []);
 
   // Auto-scroll Chat
@@ -116,6 +117,7 @@ export default function ResearchPage() {
         },
       ]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Only run on mount to set initial greeting
   }, []);
 
   // Select latest active task automatically if none selected

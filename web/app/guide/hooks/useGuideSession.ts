@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { apiUrl } from "@/lib/api";
 import {
   SessionState,
@@ -7,17 +7,89 @@ import {
   SelectedRecord,
   INITIAL_SESSION_STATE,
 } from "../types";
+import {
+  loadFromStorage,
+  saveToStorage,
+  persistState,
+  mergeWithDefaults,
+  STORAGE_KEYS,
+  EXCLUDE_FIELDS,
+} from "@/lib/persistence";
+import { debounce } from "@/lib/debounce";
+
+// Storage key for guide chat messages
+const GUIDE_CHAT_KEY = "guide_chat_messages";
+
+// Fields to exclude from guide session persistence
+const GUIDE_SESSION_EXCLUDE: (keyof SessionState)[] = [];
 
 /**
  * Hook for managing guide session state and API interactions
  */
 export function useGuideSession() {
-  const [sessionState, setSessionState] = useState<SessionState>(
-    INITIAL_SESSION_STATE,
-  );
+  // Track hydration to avoid SSR mismatch
+  const isHydrated = useRef(false);
+
+  // Initialize with defaults (same on server and client)
+  const [sessionState, setSessionState] = useState<SessionState>(INITIAL_SESSION_STATE);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
+
+  // Debounced save functions
+  const saveSessionState = useCallback(
+    debounce((state: SessionState) => {
+      if (!isHydrated.current) return;
+      const toSave = persistState(state, GUIDE_SESSION_EXCLUDE);
+      saveToStorage(STORAGE_KEYS.GUIDE_SESSION, toSave);
+    }, 500),
+    []
+  );
+
+  const saveChatMessages = useCallback(
+    debounce((messages: ChatMessage[]) => {
+      if (!isHydrated.current) return;
+      saveToStorage(GUIDE_CHAT_KEY, messages);
+    }, 500),
+    []
+  );
+
+  // Restore persisted state after hydration
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const persistedSession = loadFromStorage<Partial<SessionState>>(
+      STORAGE_KEYS.GUIDE_SESSION,
+      {}
+    );
+    const persistedChat = loadFromStorage<ChatMessage[]>(GUIDE_CHAT_KEY, []);
+
+    if (Object.keys(persistedSession).length > 0) {
+      setSessionState((prev) =>
+        mergeWithDefaults(persistedSession, prev, GUIDE_SESSION_EXCLUDE)
+      );
+    }
+
+    if (persistedChat.length > 0) {
+      setChatMessages(persistedChat);
+    }
+
+    isHydrated.current = true;
+  }, []);
+
+  // Auto-save session state (only after hydration)
+  useEffect(() => {
+    if (isHydrated.current) {
+      saveSessionState(sessionState);
+    }
+  }, [sessionState, saveSessionState]);
+
+  // Auto-save chat messages (only after hydration)
+  useEffect(() => {
+    if (isHydrated.current) {
+      saveChatMessages(chatMessages);
+    }
+  }, [chatMessages, saveChatMessages]);
 
   const addLoadingMessage = useCallback((message: string) => {
     const loadingMsg: ChatMessage = {
