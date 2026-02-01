@@ -120,7 +120,9 @@ export const ActiveTaskDetail: React.FC<ActiveTaskDetailProps> = ({ task }) => {
                         ? "bg-violet-50 dark:bg-violet-900/40 border-violet-200 dark:border-violet-800"
                         : thought.type === "tool_call"
                           ? "bg-amber-50 dark:bg-amber-900/40 border-amber-200 dark:border-amber-800"
-                          : "bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600"
+                          : thought.type === "note"
+                            ? "bg-emerald-50 dark:bg-emerald-900/40 border-emerald-200 dark:border-emerald-800"
+                            : "bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600"
                   }`}
                 >
                   {getThoughtIcon(thought.type)}
@@ -141,17 +143,38 @@ export const ActiveTaskDetail: React.FC<ActiveTaskDetailProps> = ({ task }) => {
                           ? "text-violet-600 dark:text-violet-400"
                           : thought.type === "tool_call"
                             ? "text-amber-600 dark:text-amber-400"
-                            : "text-slate-600 dark:text-slate-400"
+                            : thought.type === "note"
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : "text-slate-600 dark:text-slate-400"
                     }`}
                   >
-                    {thought.type.replace("_", " ")}
+                    {thought.type === "note"
+                      ? "Research Finding"
+                      : thought.type.replace("_", " ")}
                   </span>
                   <span className="text-[10px] text-slate-400 dark:text-slate-500">
                     {formatTimestamp(thought.timestamp)}
                   </span>
                 </div>
 
-                <div className="text-slate-700 dark:text-slate-200 leading-relaxed bg-slate-50/50 dark:bg-slate-700/50 rounded-lg p-3 border border-slate-100/50 dark:border-slate-600/50">
+                <div
+                  className={`leading-relaxed rounded-lg p-3 border ${
+                    thought.type === "note"
+                      ? "bg-emerald-50/70 dark:bg-emerald-900/30 border-emerald-200/70 dark:border-emerald-700/50 text-slate-700 dark:text-slate-200"
+                      : "bg-slate-50/50 dark:bg-slate-700/50 border-slate-100/50 dark:border-slate-600/50 text-slate-700 dark:text-slate-200"
+                  }`}
+                >
+                  {/* Show metadata header for notes */}
+                  {thought.type === "note" && thought.metadata && (
+                    <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400 mb-2 pb-2 border-b border-emerald-200/50 dark:border-emerald-700/30">
+                      <span className="font-semibold">
+                        [{thought.metadata.citation_id}]
+                      </span>
+                      <span className="text-emerald-500 dark:text-emerald-500">
+                        via {thought.metadata.tool_type}
+                      </span>
+                    </div>
+                  )}
                   <ReactMarkdown
                     components={{
                       p: ({ children }) => (

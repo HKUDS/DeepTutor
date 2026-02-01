@@ -134,6 +134,7 @@ export type ResearchEventType =
   | "generating_query"
   | "tool_calling"
   | "tool_completed"
+  | "note_generated"
   | "processing_notes"
   | "iteration_completed"
   | "new_topic_added"

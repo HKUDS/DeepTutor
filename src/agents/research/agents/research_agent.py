@@ -616,7 +616,7 @@ Tools already used: {", ".join(used_tools) if used_tools else "None"}
             # Step 3: Call tool
             raw_answer = await call_tool_callback(tool_type, query)
 
-            # Send progress after tool call
+            # Send progress after tool call (summary will be added after NoteAgent processes)
             send_progress(
                 "tool_completed",
                 iteration=iteration,
@@ -656,6 +656,17 @@ Tools already used: {", ".join(used_tools) if used_tools else "None"}
                 context=current_knowledge,
             )
             topic_block.add_tool_trace(trace)
+
+            # Send note_generated event with the summary for UI display
+            send_progress(
+                "note_generated",
+                iteration=iteration,
+                max_iterations=self.max_iterations,
+                tool_type=tool_type,
+                query=query,
+                summary=trace.summary,
+                citation_id=citation_id,
+            )
 
             # Step 6: Add citation information to citation manager
             # Support both sync and async citation_manager

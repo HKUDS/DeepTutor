@@ -400,6 +400,30 @@ export const researchReducer = (
       };
     }
 
+    case "note_generated": {
+      const blockId = event.block_id;
+      if (!blockId || !state.tasks[blockId]) return state;
+
+      const task = state.tasks[blockId];
+      // Add the research note/summary as a thought
+      return {
+        ...state,
+        tasks: {
+          ...state.tasks,
+          [blockId]: addThought(task, {
+            type: "note",
+            content: event.summary || "No summary generated",
+            metadata: {
+              tool_type: event.tool_type,
+              query: event.query,
+              citation_id: event.citation_id,
+            },
+            timestamp: Date.now(),
+          }),
+        },
+      };
+    }
+
     case "processing_notes": {
       const blockId = event.block_id;
       if (!blockId || !state.tasks[blockId]) return state;

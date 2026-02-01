@@ -25,6 +25,7 @@ import sys
 import tempfile
 from typing import Any, Dict, List
 
+import numpy as np
 from dotenv import load_dotenv
 
 from src.knowledge.extract_numbered_items import process_content_list
@@ -331,7 +332,9 @@ class DocumentAdder:
         embedding_client = get_embedding_client()
 
         async def unified_embed_func(texts):
-            return await embedding_client.embed(texts)
+            embeddings = await embedding_client.embed(texts)
+            # Convert list of lists to numpy array for LightRAG compatibility
+            return np.array(embeddings)
 
         embedding_func = EmbeddingFunc(
             embedding_dim=embedding_cfg.dim,
@@ -485,7 +488,9 @@ class DocumentAdder:
         embedding_client = get_embedding_client()
 
         async def unified_embed_func(texts):
-            return await embedding_client.embed(texts)
+            embeddings = await embedding_client.embed(texts)
+            # Convert list of lists to numpy array for LightRAG compatibility
+            return np.array(embeddings)
 
         embedding_func = EmbeddingFunc(
             embedding_dim=embedding_cfg.dim,

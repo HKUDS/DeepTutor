@@ -106,30 +106,77 @@ class LocateAgent(BaseAgent):
             try:
                 result = json.loads(response)
 
+                # Debug: Log the parsed result structure
+                self.logger.debug(f"Parsed JSON result type: {type(result).__name__}")
+                if isinstance(result, dict):
+                    self.logger.debug(f"Result keys: {list(result.keys())}")
+
                 if isinstance(result, list):
                     knowledge_points = result
                 elif isinstance(result, dict):
-                    knowledge_points = (
-                        result.get("knowledge_points")
-                        or result.get("points")
-                        or result.get("data")
-                        or []
-                    )
+                    # Check if dict IS a single knowledge point (has knowledge_title key)
+                    if "knowledge_title" in result or "title" in result:
+                        self.logger.debug("Result is a single knowledge point, wrapping in list")
+                        knowledge_points = [result]
+                    else:
+                        # Try multiple possible keys for array of points
+                        knowledge_points = (
+                            result.get("knowledge_points")
+                            or result.get("points")
+                            or result.get("data")
+                            or result.get("items")
+                            or result.get("learning_points")
+                            or []
+                        )
+                        # If still empty but dict has content, try to extract from first list-like value
+                        if not knowledge_points:
+                            for key, value in result.items():
+                                if isinstance(value, list) and len(value) > 0:
+                                    self.logger.debug(f"Found list in key '{key}' with {len(value)} items")
+                                    knowledge_points = value
+                                    break
                 else:
                     knowledge_points = []
 
+                self.logger.debug(f"Extracted {len(knowledge_points)} knowledge points")
+
                 validated_points = []
-                for point in knowledge_points:
+                for i, point in enumerate(knowledge_points):
                     if isinstance(point, dict):
+                        # Debug: Log point keys
+                        if i == 0:
+                            self.logger.debug(f"First point keys: {list(point.keys())}")
+
+                        # Try multiple key variations
+                        title = (
+                            point.get("knowledge_title")
+                            or point.get("title")
+                            or point.get("name")
+                            or "Unnamed knowledge point"
+                        )
+                        summary = (
+                            point.get("knowledge_summary")
+                            or point.get("summary")
+                            or point.get("description")
+                            or point.get("content")
+                            or ""
+                        )
+                        difficulty = (
+                            point.get("user_difficulty")
+                            or point.get("difficulty")
+                            or point.get("challenges")
+                            or ""
+                        )
+
                         validated_points.append(
                             {
-                                "knowledge_title": point.get(
-                                    "knowledge_title", "Unnamed knowledge point"
-                                ),
-                                "knowledge_summary": point.get("knowledge_summary", ""),
-                                "user_difficulty": point.get("user_difficulty", ""),
+                                "knowledge_title": title,
+                                "knowledge_summary": summary,
+                                "user_difficulty": difficulty,
                             }
                         )
+                    else:
+                        self.logger.debug(f"Point {i} is not a dict: {type(point).__name__}")
 
                 return {
                     "success": True,

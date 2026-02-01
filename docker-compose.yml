@@ -78,10 +78,20 @@ services:
     volumes:
       # Mount local config directory (read-only)
       - ./config:/app/config:ro
+      # Mount local src directory for development (read-only)
+      - ./src:/app/src:ro
       # Mount local data directory for persistence (read-write)
       # This ensures all outputs go to your local ./data directory
       - ./data/user:/app/data/user
       - ./data/knowledge_bases:/app/data/knowledge_bases
+
+    # Resource limits to prevent CPU/memory overload
+    # Note: For Docker Compose v2+, use 'deploy' section (requires swarm mode)
+    # For standalone, use 'cpus' and 'mem_limit' (deprecated but works)
+    # Alternative: Use 'docker update --cpus=8 --memory=12g deeptutor' after starting
+    cpus: '8'                  # Limit to 8 CPUs (adjust based on your system)
+    mem_limit: 12g             # Limit to 12GB RAM
+    mem_reservation: 4g        # Reserve 4GB RAM minimum
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${BACKEND_PORT:-8001}/"]
