@@ -329,6 +329,11 @@ def start_frontend():
         print_flush(f"📌 Using default API URL: {api_base_url}")
         print_flush("   💡 For remote access, set NEXT_PUBLIC_API_BASE in .env file")
 
+    # Get App Base Path
+    app_base_path = os.environ.get("NEXT_PUBLIC_APP_BASE_PATH", "")
+    if app_base_path:
+        print_flush(f"📌 Using App Base Path: {app_base_path}")
+
     # Generate/update .env.local file with port configuration
     # This ensures Next.js can read the backend port even if environment variables are not passed
     env_local_path = os.path.join(web_dir, ".env.local")
@@ -346,6 +351,7 @@ def start_frontend():
             f.write("#   NEXT_PUBLIC_API_BASE=http://your-server-ip:8001\n")
             f.write("# ============================================\n\n")
             f.write(f"NEXT_PUBLIC_API_BASE={api_base_url}\n")
+            f.write(f"NEXT_PUBLIC_APP_BASE_PATH={app_base_path}\n")
         print_flush(f"✅ Updated .env.local with API base: {api_base_url}")
     except Exception as e:
         print_flush(f"⚠️ Warning: Failed to update .env.local: {e}")
