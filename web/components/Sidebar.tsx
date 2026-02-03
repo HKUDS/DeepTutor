@@ -27,6 +27,7 @@ import {
   LucideIcon,
 } from "lucide-react";
 import { useGlobal } from "@/context/GlobalContext";
+import { appPath } from "@/lib/path";
 
 const SIDEBAR_EXPANDED_WIDTH = 256;
 const SIDEBAR_COLLAPSED_WIDTH = 64;
@@ -228,7 +229,7 @@ export default function Sidebar() {
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0">
                 <Image
-                  src="/logo.png"
+                  src={appPath("/logo.png")}
                   alt={t("DeepTutor Logo")}
                   width={32}
                   height={32}

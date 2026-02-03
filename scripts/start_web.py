@@ -361,6 +361,9 @@ def start_frontend():
     env = os.environ.copy()
     env["PORT"] = str(frontend_port)
     env["NEXT_PUBLIC_API_BASE"] = api_base_url
+    if app_base_path:
+        env["NEXT_PUBLIC_APP_BASE_PATH"] = app_base_path
+    
     # Set encoding environment variables for Windows
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONUTF8"] = "1"

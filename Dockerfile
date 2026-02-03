@@ -34,6 +34,7 @@ COPY web/ ./
 # Create .env.local with placeholder that will be replaced at runtime
 # Use a unique placeholder that can be safely replaced
 RUN echo "NEXT_PUBLIC_API_BASE=__NEXT_PUBLIC_API_BASE_PLACEHOLDER__" > .env.local
+RUN echo "NEXT_PUBLIC_APP_BASE_PATH=/__APP_BASE_PATH_PLACEHOLDER__" >> .env.local
 
 # Build Next.js for production with standalone output
 # This allows runtime environment variable injection
@@ -236,15 +237,48 @@ else
     echo "[Frontend]    Example: -e NEXT_PUBLIC_API_BASE_EXTERNAL=https://your-server.com:${BACKEND_PORT}"
 fi
 
+# Get App Base Path
+APP_BASE_PATH=${NEXT_PUBLIC_APP_BASE_PATH:-}
+# Remove trailing slash if present
+APP_BASE_PATH=${APP_BASE_PATH%/}
+if [ -n "$APP_BASE_PATH" ]; then
+    echo "[Frontend] 📌 Using App Base Path: ${APP_BASE_PATH}"
+fi
+
 echo "[Frontend] 🚀 Starting Next.js frontend on port ${FRONTEND_PORT}..."
 
 # Replace placeholder in built Next.js files
 # This is necessary because NEXT_PUBLIC_* vars are inlined at build time
-find /app/web/.next -type f \( -name "*.js" -o -name "*.json" \) -exec \
-    sed -i "s|__NEXT_PUBLIC_API_BASE_PLACEHOLDER__|${API_BASE}|g" {} \; 2>/dev/null || true
+# We must include html and css files as they may contain hardcoded paths
+# Use grep first to speed up and ensure we only touch files with the placeholder
+echo "[Frontend] 🔍 Scanning and replacing placeholders..."
+
+# 1. Replace API Base
+grep -lR "__NEXT_PUBLIC_API_BASE_PLACEHOLDER__" /app/web/.next | while read file; do
+    sed -i "s|__NEXT_PUBLIC_API_BASE_PLACEHOLDER__|${API_BASE}|g" "$file"
+done
+
+# 2. Replace App Base Path
+# We need to handle the leading slash in the placeholder /__APP_BASE_PATH_PLACEHOLDER__
+if [ -z "$APP_BASE_PATH" ]; then
+    # If empty, replace placeholder with empty string
+    echo "[Frontend] 🧹 Removing base path placeholder..."
+    grep -lR "/__APP_BASE_PATH_PLACEHOLDER__" /app/web/.next | while read file; do
+        sed -i "s|/__APP_BASE_PATH_PLACEHOLDER__||g" "$file"
+    done
+else
+    # If set, replace placeholder with actual path
+    echo "[Frontend] 🔄 Replacing base path placeholder with ${APP_BASE_PATH}..."
+    grep -lR "/__APP_BASE_PATH_PLACEHOLDER__" /app/web/.next | while read file; do
+        sed -i "s|/__APP_BASE_PATH_PLACEHOLDER__|${APP_BASE_PATH}|g" "$file"
+    done
+fi
 
 # Also update .env.local for any runtime reads
 echo "NEXT_PUBLIC_API_BASE=${API_BASE}" > /app/web/.env.local
+if [ -n "$APP_BASE_PATH" ]; then
+    echo "NEXT_PUBLIC_APP_BASE_PATH=${APP_BASE_PATH}" >> /app/web/.env.local
+fi
 
 # Start Next.js
 cd /app/web && exec node node_modules/next/dist/bin/next start -H 0.0.0.0 -p ${FRONTEND_PORT}
