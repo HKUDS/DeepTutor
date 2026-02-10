@@ -21,7 +21,7 @@ from src.agents.ideagen.material_organizer_agent import MaterialOrganizerAgent
 from src.api.utils.notebook_manager import NotebookManager
 from src.api.utils.task_id_manager import TaskIDManager
 from src.logging import get_logger
-from src.services.config import load_config_with_main
+from src.services.config import load_config_with_main, parse_language
 from src.services.llm import get_llm_config
 
 router = APIRouter()
@@ -31,6 +31,10 @@ project_root = Path(__file__).parent.parent.parent.parent
 config = load_config_with_main("solve_config.yaml", project_root)  # Use any config to get main.yaml
 log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {}).get("log_dir")
 logger = get_logger("IdeaGen", level="INFO", log_dir=log_dir)
+
+# Get language setting from config (unified in config/main.yaml system.language)
+lang_config = config.get("system", {}).get("language", "zh")
+IDEAGEN_LANGUAGE = parse_language(lang_config)
 
 
 class IdeaGenRequest(BaseModel):
@@ -197,6 +201,7 @@ async def websocket_ideagen(websocket: WebSocket):
                 api_key=llm_config.api_key,
                 base_url=llm_config.base_url,
                 model=llm_config.model,
+                language=IDEAGEN_LANGUAGE,
             )
 
             knowledge_points = await organizer.process(
@@ -256,6 +261,7 @@ async def websocket_ideagen(websocket: WebSocket):
             base_url=llm_config.base_url,
             model=llm_config.model,
             progress_callback=None,  # We manually manage status here
+            language=IDEAGEN_LANGUAGE,
         )
 
         filtered_points = await workflow.loose_filter(knowledge_points)
