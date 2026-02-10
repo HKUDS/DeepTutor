@@ -1,8 +1,11 @@
+import asyncio
 from datetime import datetime
 import json
 from pathlib import Path
 import re
+import tempfile
 from typing import Any, Dict, List, Optional, Tuple, Union
+import uuid
 
 try:
     from pptx import Presentation
@@ -15,6 +18,8 @@ except ImportError:
 from src.logging import get_logger
 from src.services.config import get_ppt_config
 from src.services.llm import complete as llm_complete
+from src.services.storage.file_store import save_file_record
+from src.services.storage.object_store import get_bucket_name, upload_file
 
 logger = get_logger("PPTGenerator")
 
@@ -67,7 +72,13 @@ class PPTGenerator:
         safe_title = self._sanitize_filename(final_title)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{safe_title}_{timestamp}.pptx"
-        output_path = self.export_dir / filename
+        bucket = get_bucket_name()
+        if bucket:
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pptx")
+            output_path = Path(temp_file.name)
+            temp_file.close()
+        else:
+            output_path = self.export_dir / filename
 
         # 3. Generate Style/Structure Specification via LLM if requested
         spec = None
@@ -100,19 +111,40 @@ class PPTGenerator:
         prs.save(str(output_path))
         logger.info(f"PPT generated: {output_path}")
 
-        # Assuming the export_dir is under data/user/..., construct relative path
-        # logic matches previous router implementation
-        # project_root/data/user/research/exports -> relative: research/exports/filename
-        # We'll try to determine relative path dynamically if possible, or assume standard structure
+        if bucket:
+            object_key = f"research/exports/{filename}"
+            await asyncio.to_thread(
+                upload_file,
+                bucket,
+                object_key,
+                str(output_path),
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            )
+            file_id = str(uuid.uuid4())
+            await asyncio.to_thread(
+                save_file_record,
+                file_id=file_id,
+                file_type="pptx",
+                filename=filename,
+                bucket=bucket,
+                object_key=object_key,
+                content_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                metadata={"title": final_title},
+            )
+            if output_path.exists():
+                output_path.unlink()
+            return {
+                "filename": filename,
+                "file_id": file_id,
+                "download_url": f"/api/v1/research/pptx/{file_id}",
+            }
+
         try:
-            # Try to find 'data' in path components
             parts = output_path.parts
             if "data" in parts and "user" in parts:
                 user_idx = parts.index("user")
-                # path after 'user'
                 relative_path = "/".join(parts[user_idx + 1 :])
             else:
-                # Fallback
                 relative_path = f"research/exports/{filename}"
         except ValueError:
             relative_path = f"research/exports/{filename}"

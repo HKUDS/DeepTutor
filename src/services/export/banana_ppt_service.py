@@ -132,6 +132,8 @@ class BananaPptService:
             image_data = self._generate_gemini_image(prompt, img_cfg)
         elif img_cfg.binding == "openai":
             image_data = self._generate_openai_image(prompt, img_cfg)
+        elif img_cfg.binding == "doubao":
+            image_data = self._generate_doubao_image(prompt, img_cfg)
         else:
             logger.warning(f"Unsupported image binding: {img_cfg.binding}")
             return ""
@@ -141,6 +143,83 @@ class BananaPptService:
 
         self._write_cached_image(cache_key, image_data)
         return image_data
+
+    def _generate_doubao_image(self, prompt: str, cfg: BananaPptImageConfig) -> Optional[str]:
+        """
+        Generate image using Doubao (Volcano Engine Ark) API.
+        Reference curl example: 
+        {
+          "model": "doubao-seedream-4-5-251128",
+          "prompt": "...",
+          "sequential_image_generation": "disabled",
+          "response_format": "url",
+          "size": "2K",
+          "stream": false,
+          "watermark": true
+        }
+        """
+        base = cfg.base_url.rstrip("/")
+        if "/api/v3" not in base and "/api/v1" not in base:
+            url = f"{base}/api/v3/images/generations"
+        else:
+            url = f"{base}/images/generations" if not base.endswith("/images/generations") else base
+            
+        headers = {
+            "Authorization": f"Bearer {cfg.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        # Use User's suggested size or fallback to aspect ratio mapping
+        size = cfg.aspect_ratio
+        if size == "16:9":
+            size = "1280x720"
+        elif size == "1:1":
+            size = "1024x1024"
+        # If the user enters a specific string like "2K", "512x512", use it directly.
+            
+        payload = {
+            "model": cfg.model,
+            "prompt": prompt,
+            "response_format": "b64_json", # Prefer b64 for local caching
+            "size": size,
+            "sequential_image_generation": "disabled",
+            "watermark": True
+        }
+        
+        try:
+            resp = requests.post(url, json=payload, headers=headers, timeout=60)
+            if resp.status_code != 200:
+                logger.warning(f"Doubao image request failed (b64): {resp.status_code} {resp.text}")
+                # If b64_json failed, try with 'url' as in user's example
+                payload["response_format"] = "url"
+                resp = requests.post(url, json=payload, headers=headers, timeout=60)
+                if resp.status_code != 200:
+                    logger.warning(f"Doubao image request failed (url): {resp.status_code} {resp.text}")
+                
+            resp.raise_for_status()
+            data = resp.json()
+            
+            items = data.get("data") or []
+            if not items:
+                logger.warning(f"Doubao image response empty: {data}")
+                return None
+                
+            item = items[0]
+            if "b64_json" in item:
+                return f"data:image/png;base64,{item['b64_json']}"
+            elif "url" in item:
+                # Download image from URL
+                img_url = item["url"]
+                img_resp = requests.get(img_url, timeout=30)
+                img_resp.raise_for_status()
+                b64 = base64.b64encode(img_resp.content).decode("utf-8")
+                return f"data:image/png;base64,{b64}"
+                
+            logger.warning(f"Doubao image response missing recognized data: {item}")
+            return None
+        except Exception as exc:
+            logger.warning(f"Doubao image request failed: {exc}")
+            return None
 
     def _trim_source(self, source: str, max_chars: int = 16000) -> str:
         cleaned = (source or "").strip()

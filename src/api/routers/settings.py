@@ -127,6 +127,41 @@ ENV_VAR_DEFINITIONS = {
         "default": "alloy",
         "sensitive": False,
     },
+    "TTS_PROVIDER": {
+        "description": "TTS provider: openai (OpenAI-compatible) or doubao (Doubao Podcast)",
+        "category": "tts",
+        "required": False,
+        "default": "openai",
+        "sensitive": False,
+    },
+    "TTS_DOUBAO_APP_ID": {
+        "description": "Doubao TTS App ID",
+        "category": "tts",
+        "required": False,
+        "default": "",
+        "sensitive": False,
+    },
+    "TTS_DOUBAO_ACCESS_TOKEN": {
+        "description": "Doubao TTS Access Token",
+        "category": "tts",
+        "required": False,
+        "default": "",
+        "sensitive": True,
+    },
+    "TTS_DOUBAO_CLUSTER": {
+        "description": "Doubao TTS Cluster (default: volc_ttos_samantha)",
+        "category": "tts",
+        "required": False,
+        "default": "volc_ttos_samantha",
+        "sensitive": False,
+    },
+    "TTS_DOUBAO_URL": {
+        "description": "Doubao TTS API URL (default: wss://openspeech.bytedance.com/api/v3/sami/podcasttts)",
+        "category": "tts",
+        "required": False,
+        "default": "wss://openspeech.bytedance.com/api/v3/sami/podcasttts",
+        "sensitive": False,
+    },
     # BananaPPT Image Configuration
     "BANANA_PPT_IMAGE_MODEL": {
         "description": "Image model name (e.g., gemini-2.5-flash-image, dall-e-3)",
@@ -150,7 +185,7 @@ ENV_VAR_DEFINITIONS = {
         "sensitive": False,
     },
     "BANANA_PPT_IMAGE_BINDING": {
-        "description": "Image provider binding: gemini or openai",
+        "description": "Image provider binding: gemini, openai, or doubao",
         "category": "banana_ppt",
         "required": False,
         "default": "gemini",
@@ -164,8 +199,22 @@ ENV_VAR_DEFINITIONS = {
         "sensitive": False,
     },
     # Web Search Configuration
+    "SEARCH_PROVIDER": {
+        "description": "Search provider: perplexity, baidu, volcengine",
+        "category": "search",
+        "required": False,
+        "default": "perplexity",
+        "sensitive": False,
+    },
     "PERPLEXITY_API_KEY": {
         "description": "Perplexity API key for web search functionality",
+        "category": "search",
+        "required": False,
+        "default": "",
+        "sensitive": True,
+    },
+    "VOLCENGINE_API_KEY": {
+        "description": "Volcano Engine API key for web search functionality",
         "category": "search",
         "required": False,
         "default": "",
@@ -192,12 +241,12 @@ ENV_CATEGORIES = {
     },
     "search": {
         "name": "Web Search Configuration",
-        "description": "External search API settings (Perplexity)",
+        "description": "External search API settings (Perplexity, Baidu, Volcano)",
         "icon": "search",
     },
     "banana_ppt": {
-        "name": "BananaPPT Image Configuration",
-        "description": "Image generation settings for Banana PPT export",
+        "name": "PPT Image Generation Configuration",
+        "description": "Image generation and export settings for PPT. Supports Gemini, OpenAI, and Doubao (Volcano Engine).",
         "icon": "settings",
     },
 }
@@ -661,6 +710,7 @@ async def test_env_config():
         llm_config = get_llm_config()
         results["llm"]["model"] = llm_config.model
         results["llm"]["status"] = "configured"
+        results["llm"]["base_url"] = llm_config.base_url
     except ValueError as e:
         results["llm"]["status"] = "not_configured"
         results["llm"]["error"] = str(e)
@@ -673,6 +723,7 @@ async def test_env_config():
         embedding_config = get_embedding_config()
         results["embedding"]["model"] = embedding_config.model
         results["embedding"]["status"] = "configured"
+        results["embedding"]["base_url"] = embedding_config.base_url
     except ValueError as e:
         results["embedding"]["status"] = "not_configured"
         results["embedding"]["error"] = str(e)
@@ -685,6 +736,8 @@ async def test_env_config():
         tts_config = get_tts_config()
         results["tts"]["model"] = tts_config.get("model")
         results["tts"]["status"] = "configured"
+        results["tts"]["provider"] = tts_config.get("provider", "openai")
+        results["tts"]["base_url"] = tts_config.get("base_url")
     except ValueError as e:
         results["tts"]["status"] = "not_configured"
         results["tts"]["error"] = str(e)
@@ -773,11 +826,12 @@ async def test_single_service(service: Literal["llm", "embedding", "tts"]):
         try:
             tts_config = get_tts_config()
             result["model"] = tts_config.get("model")
+            provider = tts_config.get("provider", "openai")
 
             # For TTS, just check if config is valid (actual audio test is expensive)
             if tts_config.get("model") and tts_config.get("base_url"):
                 result["status"] = "success"
-                result["message"] = f"Voice: {tts_config.get('voice', 'alloy')}"
+                result["message"] = f"Provider: {provider}, Model: {result['model']}"
             else:
                 result["status"] = "not_configured"
                 result["error"] = "Missing model or base_url"

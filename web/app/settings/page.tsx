@@ -118,9 +118,9 @@ interface EnvConfigResponse {
 }
 
 interface TestResults {
-  llm: { status: string; model: string | null; error: string | null };
-  embedding: { status: string; model: string | null; error: string | null };
-  tts: { status: string; model: string | null; error: string | null };
+  llm: { status: string; model: string | null; error: string | null; base_url?: string };
+  embedding: { status: string; model: string | null; error: string | null; base_url?: string };
+  tts: { status: string; model: string | null; error: string | null; base_url?: string; provider?: string };
 }
 
 interface LLMProvider {
@@ -169,13 +169,13 @@ export default function SettingsPage() {
     id: string;
     name: string;
     binding:
-      | "openai"
-      | "azure_openai"
-      | "ollama"
-      | "anthropic"
-      | "gemini"
-      | "groq"
-      | "openrouter";
+    | "openai"
+    | "azure_openai"
+    | "ollama"
+    | "anthropic"
+    | "gemini"
+    | "groq"
+    | "openrouter";
     base_url?: string;
     default_model: string;
     models: string[];
@@ -275,6 +275,8 @@ export default function SettingsPage() {
         error: string | null;
         response_time_ms: number | null;
         message: string | null;
+        base_url?: string;
+        provider?: string;
       }
     >
   >({});
@@ -492,8 +494,8 @@ export default function SettingsPage() {
       const method = isUpdate ? "PUT" : "POST";
       const url = isUpdate
         ? apiUrl(
-            `/api/v1/config/llm/${encodeURIComponent(originalProviderName!)}`,
-          )
+          `/api/v1/config/llm/${encodeURIComponent(originalProviderName!)}`,
+        )
         : apiUrl("/api/v1/config/llm/");
 
       const res = await fetch(url, {
@@ -713,14 +715,14 @@ export default function SettingsPage() {
         setTestResults((prev) =>
           prev
             ? {
-                ...prev,
-                [service]: {
-                  status:
-                    result.status === "success" ? "configured" : result.status,
-                  model: result.model,
-                  error: result.error,
-                },
-              }
+              ...prev,
+              [service]: {
+                status:
+                  result.status === "success" ? "configured" : result.status,
+                model: result.model,
+                error: result.error,
+              },
+            }
             : null,
         );
       }
@@ -810,7 +812,7 @@ export default function SettingsPage() {
             const errorData = await envRes.json();
             throw new Error(
               errorData.detail?.errors?.join(", ") ||
-                t("Failed to save environment variables"),
+              t("Failed to save environment variables"),
             );
           }
           // Reload env config immediately to get updated state (including persistence)
@@ -923,13 +925,12 @@ export default function SettingsPage() {
           <button
             onClick={handleSave}
             disabled={saving}
-            className={`py-2 px-6 rounded-lg font-medium flex items-center gap-2 transition-all ${
-              saving
-                ? "bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500"
-                : saveSuccess
-                  ? "bg-green-500 text-white"
-                  : "bg-blue-600 text-white hover:bg-blue-700"
-            }`}
+            className={`py-2 px-6 rounded-lg font-medium flex items-center gap-2 transition-all ${saving
+              ? "bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500"
+              : saveSuccess
+                ? "bg-green-500 text-white"
+                : "bg-blue-600 text-white hover:bg-blue-700"
+              }`}
           >
             {saving ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -967,60 +968,55 @@ export default function SettingsPage() {
         <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl mb-4">
           <button
             onClick={() => setActiveTab("general")}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
-              activeTab === "general"
-                ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
-                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
-            }`}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === "general"
+              ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
+              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+              }`}
           >
             <Sliders className="w-4 h-4" />
             {t("General Settings")}
           </button>
           <button
             onClick={() => setActiveTab("environment")}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
-              activeTab === "environment"
-                ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
-                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
-            }`}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === "environment"
+              ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
+              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+              }`}
           >
             <Key className="w-4 h-4" />
             {t("Environment Variables")}
             {testResults && (
               <span
-                className={`ml-1 w-2 h-2 rounded-full ${
-                  Object.values(testResults).every(
-                    (r) => r.status === "configured",
+                className={`ml-1 w-2 h-2 rounded-full ${Object.values(testResults).every(
+                  (r) => r.status === "configured",
+                )
+                  ? "bg-green-500"
+                  : Object.values(testResults).some(
+                    (r) => r.status === "error",
                   )
-                    ? "bg-green-500"
-                    : Object.values(testResults).some(
-                          (r) => r.status === "error",
-                        )
-                      ? "bg-red-500"
-                      : "bg-amber-500"
-                }`}
+                    ? "bg-red-500"
+                    : "bg-amber-500"
+                  }`}
               />
             )}
           </button>
           <button
             onClick={() => setActiveTab("local_models")}
-            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
-              activeTab === "local_models"
-                ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
-                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
-            }`}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === "local_models"
+              ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
+              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+              }`}
           >
             <Server className="w-4 h-4" />
             {t("LLM Providers")}
             {llmModeInfo && (
               <span
-                className={`ml-1 px-1.5 py-0.5 text-[9px] rounded font-medium ${
-                  llmModeInfo.mode === "hybrid"
-                    ? "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400"
-                    : llmModeInfo.mode === "api"
-                      ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
-                      : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
-                }`}
+                className={`ml-1 px-1.5 py-0.5 text-[9px] rounded font-medium ${llmModeInfo.mode === "hybrid"
+                  ? "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400"
+                  : llmModeInfo.mode === "api"
+                    ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                    : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
+                  }`}
               >
                 {llmModeInfo.mode.toUpperCase()}
               </span>
@@ -1045,15 +1041,14 @@ export default function SettingsPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {/* LLM Status */}
               <div
-                className={`p-3 rounded-lg border transition-all ${
-                  serviceTestResults.llm?.status === "success" ||
+                className={`p-3 rounded-lg border transition-all ${serviceTestResults.llm?.status === "success" ||
                   testResults?.llm?.status === "configured"
-                    ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
-                    : serviceTestResults.llm?.status === "error" ||
-                        testResults?.llm?.status === "error"
-                      ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
-                      : "bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600"
-                }`}
+                  ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
+                  : serviceTestResults.llm?.status === "error" ||
+                    testResults?.llm?.status === "error"
+                    ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
+                    : "bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600"
+                  }`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
@@ -1073,8 +1068,8 @@ export default function SettingsPage() {
                         serviceTestResults.llm?.status === "success"
                           ? "configured"
                           : serviceTestResults.llm?.status ||
-                              testResults?.llm?.status ||
-                              "unknown",
+                          testResults?.llm?.status ||
+                          "unknown",
                       )}
                   </div>
                 </div>
@@ -1118,15 +1113,14 @@ export default function SettingsPage() {
 
               {/* Embedding Status */}
               <div
-                className={`p-3 rounded-lg border transition-all ${
-                  serviceTestResults.embedding?.status === "success" ||
+                className={`p-3 rounded-lg border transition-all ${serviceTestResults.embedding?.status === "success" ||
                   testResults?.embedding?.status === "configured"
-                    ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
-                    : serviceTestResults.embedding?.status === "error" ||
-                        testResults?.embedding?.status === "error"
-                      ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
-                      : "bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600"
-                }`}
+                  ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
+                  : serviceTestResults.embedding?.status === "error" ||
+                    testResults?.embedding?.status === "error"
+                    ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
+                    : "bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600"
+                  }`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
@@ -1146,8 +1140,8 @@ export default function SettingsPage() {
                         serviceTestResults.embedding?.status === "success"
                           ? "configured"
                           : serviceTestResults.embedding?.status ||
-                              testResults?.embedding?.status ||
-                              "unknown",
+                          testResults?.embedding?.status ||
+                          "unknown",
                       )}
                   </div>
                 </div>
@@ -1193,15 +1187,14 @@ export default function SettingsPage() {
 
               {/* TTS Status */}
               <div
-                className={`p-3 rounded-lg border transition-all ${
-                  serviceTestResults.tts?.status === "success" ||
+                className={`p-3 rounded-lg border transition-all ${serviceTestResults.tts?.status === "success" ||
                   testResults?.tts?.status === "configured"
-                    ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
-                    : serviceTestResults.tts?.status === "error" ||
-                        testResults?.tts?.status === "error"
-                      ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
-                      : "bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600"
-                }`}
+                  ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
+                  : serviceTestResults.tts?.status === "error" ||
+                    testResults?.tts?.status === "error"
+                    ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
+                    : "bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600"
+                  }`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
@@ -1221,8 +1214,8 @@ export default function SettingsPage() {
                         serviceTestResults.tts?.status === "success"
                           ? "configured"
                           : serviceTestResults.tts?.status ||
-                              testResults?.tts?.status ||
-                              "unknown",
+                          testResults?.tts?.status ||
+                          "unknown",
                       )}
                   </div>
                 </div>
@@ -1233,7 +1226,12 @@ export default function SettingsPage() {
                     t("Not configured")}
                 </p>
                 <p className="text-[10px] text-slate-500 dark:text-slate-500 truncate mb-2">
-                  {editedEnvVars["TTS_URL"] || t("No endpoint")}
+                  {serviceTestResults.tts?.base_url ||
+                    testResults?.tts?.base_url ||
+                    (editedEnvVars["TTS_PROVIDER"] === "doubao"
+                      ? editedEnvVars["TTS_DOUBAO_URL"]
+                      : editedEnvVars["TTS_URL"]) ||
+                    t("No endpoint")}
                 </p>
                 {serviceTestResults.tts?.message && (
                   <p className="text-[9px] text-green-600 dark:text-green-400 truncate mb-2">
@@ -1295,11 +1293,10 @@ export default function SettingsPage() {
                           onClick={() =>
                             handleUIChange("theme", themeOption as any)
                           }
-                          className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${
-                            editedUI.theme === themeOption
-                              ? "bg-white dark:bg-slate-600 text-blue-600 dark:text-blue-400 shadow-sm"
-                              : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                          }`}
+                          className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${editedUI.theme === themeOption
+                            ? "bg-white dark:bg-slate-600 text-blue-600 dark:text-blue-400 shadow-sm"
+                            : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                            }`}
                         >
                           {themeOption === "light" ? (
                             <Sun className="w-3.5 h-3.5" />
@@ -1567,41 +1564,121 @@ export default function SettingsPage() {
                     {t("Text-to-Speech")}
                   </h2>
                 </div>
-                <div className="p-4 grid grid-cols-2 gap-4">
+                <div className="p-4 space-y-4">
+                  {/* Provider Selection */}
                   <div>
                     <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">
-                      {t("Default Voice")}
+                      {t("Provider")}
                     </label>
-                    <input
-                      type="text"
-                      value={editedConfig.tts?.default_voice || "Cherry"}
+                    <select
+                      value={editedConfig.tts?.provider || "openai"}
                       onChange={(e) =>
                         handleConfigChange(
                           "tts",
-                          "default_voice",
-                          e.target.value,
+                          "provider",
+                          e.target.value
                         )
                       }
-                      className="w-full p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-slate-100"
-                    />
+                      className="w-full p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                    >
+                      <option value="openai">OpenAI / Compatible</option>
+                      <option value="doubao">Doubao Podcast</option>
+                    </select>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">
-                      {t("Default Language")}
-                    </label>
-                    <input
-                      type="text"
-                      value={editedConfig.tts?.default_language || "English"}
-                      onChange={(e) =>
-                        handleConfigChange(
-                          "tts",
-                          "default_language",
-                          e.target.value,
-                        )
-                      }
-                      className="w-full p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-slate-100"
-                    />
-                  </div>
+
+                  {editedConfig.tts?.provider === "doubao" ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">
+                          {t("App ID")}
+                        </label>
+                        <input
+                          type="text"
+                          value={editedConfig.tts?.app_id || ""}
+                          onChange={(e) =>
+                            handleConfigChange(
+                              "tts",
+                              "app_id",
+                              e.target.value,
+                            )
+                          }
+                          className="w-full p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-slate-100"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">
+                          {t("Access Token")}
+                        </label>
+                        <input
+                          type="password"
+                          value={editedConfig.tts?.access_token || ""}
+                          onChange={(e) =>
+                            handleConfigChange(
+                              "tts",
+                              "access_token",
+                              e.target.value,
+                            )
+                          }
+                          className="w-full p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-slate-100"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">
+                          {t("Cluster")}
+                        </label>
+                        <input
+                          type="text"
+                          value={editedConfig.tts?.cluster || "volc_ttos_samantha"}
+                          onChange={(e) =>
+                            handleConfigChange(
+                              "tts",
+                              "cluster",
+                              e.target.value,
+                            )
+                          }
+                          placeholder="volc_ttos_samantha"
+                          className="w-full p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-slate-100"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">
+                          {t("Default Voice")}
+                        </label>
+                        <input
+                          type="text"
+                          value={editedConfig.tts?.default_voice || "Cherry"}
+                          onChange={(e) =>
+                            handleConfigChange(
+                              "tts",
+                              "default_voice",
+                              e.target.value,
+                            )
+                          }
+                          className="w-full p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-slate-100"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">
+                          {t("Default Language")}
+                        </label>
+                        <input
+                          type="text"
+                          value={editedConfig.tts?.default_language || "English"}
+                          onChange={(e) =>
+                            handleConfigChange(
+                              "tts",
+                              "default_language",
+                              e.target.value,
+                            )
+                          }
+                          className="w-full p-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-slate-100"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </section>
             </div>
@@ -1707,13 +1784,12 @@ export default function SettingsPage() {
               <button
                 onClick={handleEnvSave}
                 disabled={envSaving}
-                className={`w-full py-3 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-all ${
-                  envSaving
-                    ? "bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500"
-                    : envSaveSuccess
-                      ? "bg-green-500 text-white shadow-lg shadow-green-500/30"
-                      : "bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:shadow-lg hover:shadow-orange-500/30 hover:-translate-y-0.5"
-                }`}
+                className={`w-full py-3 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-all ${envSaving
+                  ? "bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500"
+                  : envSaveSuccess
+                    ? "bg-green-500 text-white shadow-lg shadow-green-500/30"
+                    : "bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:shadow-lg hover:shadow-orange-500/30 hover:-translate-y-0.5"
+                  }`}
               >
                 {envSaving ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
@@ -1736,33 +1812,30 @@ export default function SettingsPage() {
             {/* LLM Mode Status Banner */}
             {llmModeInfo && (
               <div
-                className={`p-4 rounded-xl border ${
-                  llmModeInfo.mode === "hybrid"
-                    ? "bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800"
-                    : llmModeInfo.mode === "api"
-                      ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800"
-                      : "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800"
-                }`}
+                className={`p-4 rounded-xl border ${llmModeInfo.mode === "hybrid"
+                  ? "bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800"
+                  : llmModeInfo.mode === "api"
+                    ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800"
+                    : "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800"
+                  }`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div
-                      className={`p-2 rounded-lg ${
-                        llmModeInfo.mode === "hybrid"
-                          ? "bg-purple-100 dark:bg-purple-800/30"
-                          : llmModeInfo.mode === "api"
-                            ? "bg-blue-100 dark:bg-blue-800/30"
-                            : "bg-emerald-100 dark:bg-emerald-800/30"
-                      }`}
+                      className={`p-2 rounded-lg ${llmModeInfo.mode === "hybrid"
+                        ? "bg-purple-100 dark:bg-purple-800/30"
+                        : llmModeInfo.mode === "api"
+                          ? "bg-blue-100 dark:bg-blue-800/30"
+                          : "bg-emerald-100 dark:bg-emerald-800/30"
+                        }`}
                     >
                       <Cpu
-                        className={`w-5 h-5 ${
-                          llmModeInfo.mode === "hybrid"
-                            ? "text-purple-600 dark:text-purple-400"
-                            : llmModeInfo.mode === "api"
-                              ? "text-blue-600 dark:text-blue-400"
-                              : "text-emerald-600 dark:text-emerald-400"
-                        }`}
+                        className={`w-5 h-5 ${llmModeInfo.mode === "hybrid"
+                          ? "text-purple-600 dark:text-purple-400"
+                          : llmModeInfo.mode === "api"
+                            ? "text-blue-600 dark:text-blue-400"
+                            : "text-emerald-600 dark:text-emerald-400"
+                          }`}
                       />
                     </div>
                     <div>
@@ -1772,11 +1845,10 @@ export default function SettingsPage() {
                           <span className="uppercase">{llmModeInfo.mode}</span>
                         </h3>
                         <span
-                          className={`px-2 py-0.5 text-[10px] rounded-full font-medium ${
-                            llmModeInfo.effective_source === "provider"
-                              ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300"
-                              : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
-                          }`}
+                          className={`px-2 py-0.5 text-[10px] rounded-full font-medium ${llmModeInfo.effective_source === "provider"
+                            ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300"
+                            : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
+                            }`}
                         >
                           {llmModeInfo.effective_source === "provider"
                             ? t("Using Provider")
@@ -1786,8 +1858,8 @@ export default function SettingsPage() {
                       <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
                         {llmModeInfo.mode === "hybrid"
                           ? t(
-                              "Both API and Local providers available. Active provider takes priority.",
-                            )
+                            "Both API and Local providers available. Active provider takes priority.",
+                          )
                           : llmModeInfo.mode === "api"
                             ? t("Only API (cloud) providers are used.")
                             : t("Only Local (self-hosted) providers are used.")}
@@ -1859,11 +1931,10 @@ export default function SettingsPage() {
                   <button
                     key={filter}
                     onClick={() => setProviderTypeFilter(filter)}
-                    className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                      providerTypeFilter === filter
-                        ? "bg-white dark:bg-slate-600 text-blue-600 dark:text-blue-400 shadow-sm"
-                        : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                    }`}
+                    className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${providerTypeFilter === filter
+                      ? "bg-white dark:bg-slate-600 text-blue-600 dark:text-blue-400 shadow-sm"
+                      : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                      }`}
                   >
                     {filter === "all"
                       ? t("All")
@@ -1881,10 +1952,10 @@ export default function SettingsPage() {
                 <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
               </div>
             ) : providers.filter(
-                (p) =>
-                  providerTypeFilter === "all" ||
-                  p.provider_type === providerTypeFilter,
-              ).length === 0 ? (
+              (p) =>
+                providerTypeFilter === "all" ||
+                p.provider_type === providerTypeFilter,
+            ).length === 0 ? (
               <div className="text-center p-8 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
                 <Server className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
                 <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -1929,11 +2000,10 @@ export default function SettingsPage() {
                                 </span>
                               )}
                               <span
-                                className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                                  provider.provider_type === "api"
-                                    ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
-                                    : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
-                                }`}
+                                className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${provider.provider_type === "api"
+                                  ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                                  : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
+                                  }`}
                               >
                                 {provider.provider_type === "api"
                                   ? `☁️ ${t("API")}`
@@ -2041,18 +2111,17 @@ export default function SettingsPage() {
                             setEditingProvider((prev) =>
                               prev
                                 ? {
-                                    ...prev,
-                                    provider_type: "local",
-                                    requires_key: false,
-                                  }
+                                  ...prev,
+                                  provider_type: "local",
+                                  requires_key: false,
+                                }
                                 : null,
                             )
                           }
-                          className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${
-                            editingProvider.provider_type === "local"
-                              ? "bg-white dark:bg-slate-600 text-emerald-600 dark:text-emerald-400 shadow-sm"
-                              : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                          }`}
+                          className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${editingProvider.provider_type === "local"
+                            ? "bg-white dark:bg-slate-600 text-emerald-600 dark:text-emerald-400 shadow-sm"
+                            : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                            }`}
                         >
                           🏠 {t("Local")}
                         </button>
@@ -2062,18 +2131,17 @@ export default function SettingsPage() {
                             setEditingProvider((prev) =>
                               prev
                                 ? {
-                                    ...prev,
-                                    provider_type: "api",
-                                    requires_key: true,
-                                  }
+                                  ...prev,
+                                  provider_type: "api",
+                                  requires_key: true,
+                                }
                                 : null,
                             )
                           }
-                          className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${
-                            editingProvider.provider_type === "api"
-                              ? "bg-white dark:bg-slate-600 text-blue-600 dark:text-blue-400 shadow-sm"
-                              : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                          }`}
+                          className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${editingProvider.provider_type === "api"
+                            ? "bg-white dark:bg-slate-600 text-blue-600 dark:text-blue-400 shadow-sm"
+                            : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                            }`}
                         >
                           ☁️ {t("API (Cloud)")}
                         </button>
@@ -2081,11 +2149,11 @@ export default function SettingsPage() {
                       <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
                         {editingProvider.provider_type === "local"
                           ? t(
-                              "Local servers (Ollama, LM Studio, vLLM) running on your machine.",
-                            )
+                            "Local servers (Ollama, LM Studio, vLLM) running on your machine.",
+                          )
                           : t(
-                              "Cloud API providers (OpenAI, Anthropic, DeepSeek, etc.).",
-                            )}
+                            "Cloud API providers (OpenAI, Anthropic, DeepSeek, etc.).",
+                          )}
                       </p>
                     </div>
 
@@ -2125,14 +2193,14 @@ export default function SettingsPage() {
                       </select>
                       {PROVIDER_PRESETS.find((p) => p.id === selectedPresetId)
                         ?.help_text && (
-                        <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
-                          {
-                            PROVIDER_PRESETS.find(
-                              (p) => p.id === selectedPresetId,
-                            )?.help_text
-                          }
-                        </p>
-                      )}
+                          <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                            {
+                              PROVIDER_PRESETS.find(
+                                (p) => p.id === selectedPresetId,
+                              )?.help_text
+                            }
+                          </p>
+                        )}
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -2190,41 +2258,40 @@ export default function SettingsPage() {
                               ? "http://localhost:11434/v1"
                               : "http://localhost:8080/v1"
                         }
-                        className={`w-full p-2 bg-slate-50 dark:bg-slate-700 border rounded-lg font-mono text-xs ${
-                          editingProvider.base_url.includes(
-                            "/chat/completions",
-                          ) || editingProvider.base_url.includes("/models/")
-                            ? "border-red-400 dark:border-red-500 ring-1 ring-red-400/30"
-                            : "border-slate-200 dark:border-slate-600"
-                        }`}
+                        className={`w-full p-2 bg-slate-50 dark:bg-slate-700 border rounded-lg font-mono text-xs ${editingProvider.base_url.includes(
+                          "/chat/completions",
+                        ) || editingProvider.base_url.includes("/models/")
+                          ? "border-red-400 dark:border-red-500 ring-1 ring-red-400/30"
+                          : "border-slate-200 dark:border-slate-600"
+                          }`}
                       />
                       {/* Base URL validation warning */}
                       {(editingProvider.base_url.includes(
                         "/chat/completions",
                       ) ||
                         editingProvider.base_url.includes("/models/")) && (
-                        <div className="mt-1.5 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                          <p className="text-[11px] text-red-600 dark:text-red-400 font-medium flex items-center gap-1">
-                            <AlertCircle className="w-3 h-3" />
-                            {t("Invalid URL format detected")}
-                          </p>
-                          <p className="text-[10px] text-red-500 dark:text-red-400/80 mt-0.5">
-                            {t(
-                              "Base URL should NOT include '/chat/completions' or '/models/'. The system will append these automatically.",
-                            )}
-                          </p>
-                          <p className="text-[10px] text-red-500 dark:text-red-400/80 mt-0.5">
-                            {t("Example")}:{" "}
-                            <code className="bg-red-100 dark:bg-red-800/30 px-1 rounded">
-                              http://127.0.0.1:1234
-                            </code>{" "}
-                            {t("or")}{" "}
-                            <code className="bg-red-100 dark:bg-red-800/30 px-1 rounded">
-                              http://127.0.0.1:1234/v1
-                            </code>
-                          </p>
-                        </div>
-                      )}
+                          <div className="mt-1.5 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                            <p className="text-[11px] text-red-600 dark:text-red-400 font-medium flex items-center gap-1">
+                              <AlertCircle className="w-3 h-3" />
+                              {t("Invalid URL format detected")}
+                            </p>
+                            <p className="text-[10px] text-red-500 dark:text-red-400/80 mt-0.5">
+                              {t(
+                                "Base URL should NOT include '/chat/completions' or '/models/'. The system will append these automatically.",
+                              )}
+                            </p>
+                            <p className="text-[10px] text-red-500 dark:text-red-400/80 mt-0.5">
+                              {t("Example")}:{" "}
+                              <code className="bg-red-100 dark:bg-red-800/30 px-1 rounded">
+                                http://127.0.0.1:1234
+                              </code>{" "}
+                              {t("or")}{" "}
+                              <code className="bg-red-100 dark:bg-red-800/30 px-1 rounded">
+                                http://127.0.0.1:1234/v1
+                              </code>
+                            </p>
+                          </div>
+                        )}
                       {/* Normal help text */}
                       {!editingProvider.base_url.includes(
                         "/chat/completions",
@@ -2240,30 +2307,30 @@ export default function SettingsPage() {
 
                     {PROVIDER_PRESETS.find((p) => p.id === selectedPresetId)
                       ?.requires_key && (
-                      <div>
-                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-                          {t("API Key")}{" "}
-                          <span className="text-slate-400">
-                            ({t("optional for local")})
-                          </span>
-                        </label>
-                        <input
-                          type="password"
-                          value={editingProvider.api_key}
-                          onChange={(e) =>
-                            setEditingProvider((prev) =>
-                              prev
-                                ? { ...prev, api_key: e.target.value }
-                                : null,
-                            )
-                          }
-                          placeholder={t(
-                            "Usually not required for local servers",
-                          )}
-                          className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg font-mono text-xs"
-                        />
-                      </div>
-                    )}
+                        <div>
+                          <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                            {t("API Key")}{" "}
+                            <span className="text-slate-400">
+                              ({t("optional for local")})
+                            </span>
+                          </label>
+                          <input
+                            type="password"
+                            value={editingProvider.api_key}
+                            onChange={(e) =>
+                              setEditingProvider((prev) =>
+                                prev
+                                  ? { ...prev, api_key: e.target.value }
+                                  : null,
+                              )
+                            }
+                            placeholder={t(
+                              "Usually not required for local servers",
+                            )}
+                            className="w-full p-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg font-mono text-xs"
+                          />
+                        </div>
+                      )}
 
                     <div>
                       <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1 flex justify-between">
@@ -2271,24 +2338,24 @@ export default function SettingsPage() {
                         {(PROVIDER_PRESETS.find(
                           (p) => p.id === selectedPresetId,
                         )?.models?.length ?? 0) > 0 && (
-                          <button
-                            onClick={() =>
-                              setCustomModelInput(!customModelInput)
-                            }
-                            className="text-[10px] text-blue-600 hover:underline"
-                          >
-                            {customModelInput
-                              ? t("Select from list")
-                              : t("Enter custom")}
-                          </button>
-                        )}
+                            <button
+                              onClick={() =>
+                                setCustomModelInput(!customModelInput)
+                              }
+                              className="text-[10px] text-blue-600 hover:underline"
+                            >
+                              {customModelInput
+                                ? t("Select from list")
+                                : t("Enter custom")}
+                            </button>
+                          )}
                       </label>
                       <div className="flex gap-2">
                         {!customModelInput &&
-                        (fetchedModels.length > 0 ||
-                          (PROVIDER_PRESETS.find(
-                            (p) => p.id === selectedPresetId,
-                          )?.models?.length ?? 0) > 0) ? (
+                          (fetchedModels.length > 0 ||
+                            (PROVIDER_PRESETS.find(
+                              (p) => p.id === selectedPresetId,
+                            )?.models?.length ?? 0) > 0) ? (
                           <div className="relative flex-1">
                             <select
                               value={editingProvider.model}

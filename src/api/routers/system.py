@@ -48,6 +48,7 @@ async def get_system_status():
         llm_config = get_llm_config()
         result["llm"]["model"] = llm_config.model
         result["llm"]["status"] = "configured"
+        result["llm"]["base_url"] = llm_config.base_url
     except ValueError as e:
         result["llm"]["status"] = "not_configured"
         result["llm"]["error"] = str(e)
@@ -60,6 +61,7 @@ async def get_system_status():
         embedding_config = get_embedding_config()
         result["embeddings"]["model"] = embedding_config.model
         result["embeddings"]["status"] = "configured"
+        result["embeddings"]["base_url"] = embedding_config.base_url
     except ValueError as e:
         result["embeddings"]["status"] = "not_configured"
         result["embeddings"]["error"] = str(e)
@@ -72,6 +74,8 @@ async def get_system_status():
         tts_config = get_tts_config()
         result["tts"]["model"] = tts_config.get("model")
         result["tts"]["status"] = "configured"
+        result["tts"]["provider"] = tts_config.get("provider", "openai")
+        result["tts"]["base_url"] = tts_config.get("base_url")
     except ValueError as e:
         result["tts"]["status"] = "not_configured"
         result["tts"]["error"] = str(e)
@@ -216,18 +220,34 @@ async def test_tts_connection():
 
     try:
         tts_config = get_tts_config()
-        model = tts_config["model"]
-        api_key = tts_config["api_key"]
-        base_url = tts_config["base_url"]
+        provider = tts_config.get("provider", "openai")
+        
+        if provider == "doubao":
+            app_id = tts_config.get("app_id")
+            access_token = tts_config.get("access_token")
+            
+            if not app_id or not access_token:
+                return TestResponse(
+                    success=False,
+                    message="TTS configuration incomplete (Doubao)",
+                    model="doubao-podcast",
+                    error="Missing Doubao AppID or Access Token",
+                )
+             
+            model = "doubao-podcast" 
 
-        # Verify configuration is complete
-        if not model or not api_key or not base_url:
-            return TestResponse(
-                success=False,
-                message="TTS configuration incomplete",
-                model=model,
-                error="Missing required configuration",
-            )
+        else:
+            model = tts_config.get("model")
+            api_key = tts_config.get("api_key")
+            base_url = tts_config.get("base_url")
+
+            if not model or not api_key or not base_url:
+                return TestResponse(
+                    success=False,
+                    message="TTS configuration incomplete",
+                    model=model,
+                    error="Missing required configuration",
+                )
 
         # For TTS, we just verify the config is valid
         # Actual audio generation would be expensive, so we skip it
@@ -235,7 +255,7 @@ async def test_tts_connection():
 
         return TestResponse(
             success=True,
-            message="TTS configuration valid",
+            message=f"TTS configuration valid ({provider})",
             model=model,
             response_time_ms=round(response_time, 2),
         )

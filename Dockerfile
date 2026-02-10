@@ -35,8 +35,7 @@ COPY web/ ./
 # Use a unique placeholder that can be safely replaced
 RUN echo "NEXT_PUBLIC_API_BASE=__NEXT_PUBLIC_API_BASE_PLACEHOLDER__" > .env.local
 
-# Build Next.js for production with standalone output
-# This allows runtime environment variable injection
+ENV NODE_OPTIONS=--max-old-space-size=4096
 RUN npm run build
 
 # ============================================

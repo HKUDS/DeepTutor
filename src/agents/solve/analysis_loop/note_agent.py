@@ -129,7 +129,6 @@ class NoteAgent(BaseAgent):
                         metadata=metadata_block,
                         stage="analysis",
                     )
-                    citation_memory.save()
                 except ValueError:
                     if verbose:
                         print(f"⚠️ cite_id not found in CitationMemory: {cite_id}")
@@ -142,8 +141,11 @@ class NoteAgent(BaseAgent):
                 }
             )
 
-        if processed_details and output_dir:
-            memory.save()
+        if processed_details:
+            if citation_memory:
+                citation_memory.save()
+            if output_dir:
+                memory.save()
 
         return {
             "success": len(failed_ids) == 0,

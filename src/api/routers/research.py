@@ -10,6 +10,7 @@ import traceback
 from typing import Any, Literal
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, WebSocket
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from src.agents.research.agents import RephraseAgent
@@ -26,6 +27,8 @@ from src.services.export.pdf_generator import PDFGenerator
 from src.services.export.ppt_generator import PPTGenerator
 from src.services.export.source_report import SourceReportGenerator
 from src.services.llm import get_llm_config
+from src.services.storage.file_store import get_file_record
+from src.services.storage.object_store import get_object_stream
 
 # Force stdout to use utf-8 to prevent encoding errors with emojis on Windows
 if sys.platform == "win32":
@@ -266,6 +269,29 @@ async def export_pptx(request: ExportPptxRequest):
         logger.error(f"PPT Export failed: {e}")
         # Return generic error
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/pptx/{file_id}")
+async def download_pptx(file_id: str):
+    record = get_file_record(file_id)
+    if not record or record.get("file_type") != "pptx":
+        raise HTTPException(status_code=404, detail="PPT not found")
+    response = get_object_stream(record["bucket"], record["object_key"])
+
+    def iter_stream():
+        try:
+            for chunk in response.stream(8192):
+                if chunk:
+                    yield chunk
+        finally:
+            response.close()
+            response.release_conn()
+
+    return StreamingResponse(
+        iter_stream(),
+        media_type=record["content_type"],
+        headers={"Content-Disposition": f'attachment; filename="{record["filename"]}"'},
+    )
 
 
 @router.post("/export_pdf")

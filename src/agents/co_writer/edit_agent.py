@@ -17,6 +17,7 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 from src.logging import LLMStats, get_logger
+from src.services.storage.history_store import list_history, upsert_history_item
 from src.services.config import get_agent_params, load_config_with_main
 from src.services.llm import complete as llm_complete
 from src.services.llm import get_llm_config
@@ -64,7 +65,6 @@ def print_stats():
 
 
 USER_DIR = Path(__file__).parent.parent.parent.parent / "data" / "user" / "co-writer"
-HISTORY_FILE = USER_DIR / "history.json"
 TOOL_CALLS_DIR = USER_DIR / "tool_calls"
 
 
@@ -77,20 +77,14 @@ def ensure_dirs():
 def load_history() -> list:
     """Load history"""
     ensure_dirs()
-    if HISTORY_FILE.exists():
-        try:
-            with open(HISTORY_FILE, encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            return []
-    return []
+    return list_history()
 
 
 def save_history(history: list):
     """Save history"""
     ensure_dirs()
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(history, f, ensure_ascii=False, indent=2)
+    for item in history:
+        upsert_history_item(item)
 
 
 def save_tool_call(call_id: str, tool_type: str, data: dict[str, Any]) -> str:
@@ -250,7 +244,6 @@ class EditAgent:
         )
 
         # 4. Record operation history
-        history = load_history()
         operation_record = {
             "id": operation_id,
             "timestamp": datetime.now().isoformat(),
@@ -262,8 +255,7 @@ class EditAgent:
             "tool_call_file": tool_call_file,
             "model": self.llm_config.model,
         }
-        history.append(operation_record)
-        save_history(history)
+        upsert_history_item(operation_record)
 
         logger.info(f"Operation {operation_id} recorded successfully")
 
@@ -315,7 +307,6 @@ class EditAgent:
         )
 
         # Record operation history
-        history = load_history()
         operation_record = {
             "id": operation_id,
             "timestamp": datetime.now().isoformat(),
@@ -327,8 +318,7 @@ class EditAgent:
             "tool_call_file": None,
             "model": self.llm_config.model,
         }
-        history.append(operation_record)
-        save_history(history)
+        upsert_history_item(operation_record)
 
         logger.info(f"Auto-mark operation {operation_id} recorded successfully")
 

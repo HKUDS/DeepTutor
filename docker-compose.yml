@@ -75,6 +75,26 @@ services:
       # Alternative: Direct API base URL (same priority as NEXT_PUBLIC_API_BASE_EXTERNAL)
       - NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE:-}
 
+      - POSTGRES_HOST=pg
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-deeptutor}
+      - POSTGRES_USER=${POSTGRES_USER:-deeptutor}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-deeptutor}
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-deeptutor}:${POSTGRES_PASSWORD:-deeptutor}@pg:5432/${POSTGRES_DB:-deeptutor}
+
+      - REDIS_URL=redis://redis:6379/0
+
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-deeptutor}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-deeptutor}
+      - MINIO_BUCKET=${MINIO_BUCKET:-deeptutor}
+      - MINIO_SECURE=false
+
+    depends_on:
+      - pg
+      - redis
+      - minio
+
     volumes:
       # Mount local config directory (read-only)
       - ./config:/app/config:ro
@@ -93,9 +113,56 @@ services:
     networks:
       - deeptutor-network
 
+  pg:
+    image: postgres:16-alpine
+    container_name: deeptutor-pg
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-deeptutor}
+      - POSTGRES_USER=${POSTGRES_USER:-deeptutor}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-deeptutor}
+    ports:
+      - "${POSTGRES_PORT_EXTERNAL:-5432}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - deeptutor-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: deeptutor-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT_EXTERNAL:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - deeptutor-network
+
+  minio:
+    image: minio/minio:RELEASE.2025-01-20T14-49-07Z
+    container_name: deeptutor-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-deeptutor}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:-deeptutor}
+    ports:
+      - "${MINIO_PORT_EXTERNAL:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT_EXTERNAL:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - deeptutor-network
+
 # ============================================
 # Networks
 # ============================================
 networks:
   deeptutor-network:
     driver: bridge
+
+volumes:
+  pg_data:
+  redis_data:
+  minio_data:

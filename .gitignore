@@ -48,6 +48,7 @@ env/
 venv/
 ENV/
 .venv/
+.local/
 env.bak/
 venv.bak/
 

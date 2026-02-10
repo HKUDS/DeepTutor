@@ -294,6 +294,22 @@ class ChatAgent(BaseAgent):
                         f"Web search returned {len(web_answer)} chars, "
                         f"{len(web_citations)} citations"
                     )
+                elif web_citations:
+                    # Fallback for providers that don't return an 'answer' (like volcengine)
+                    # Construct a combined context from snippets
+                    self.logger.info(f"Web search answer empty, using {len(web_citations)} citations as context")
+                    snippet_parts = []
+                    for i, cit in enumerate(web_citations[:10], 1):
+                        snippet = cit.get("snippet", "")
+                        title = cit.get("title", "")
+                        if snippet:
+                            snippet_parts.append(f"Source [{i}] ({title}): {snippet}")
+                    
+                    if snippet_parts:
+                        combined_snippets = "\n\n".join(snippet_parts)
+                        context_parts.append(f"[Web Search Results (Snippets)]\n{combined_snippets}")
+                        sources["web"] = web_citations[:5]
+                        self.logger.info(f"Combined {len(snippet_parts)} snippets into context ({len(combined_snippets)} chars)")
             except Exception as e:
                 self.logger.warning(f"Web search failed: {e}")
 
