@@ -213,6 +213,44 @@ class PPTConfig:
     style_templates: list[dict[str, str]] = field(default_factory=list)
 
 
+@dataclass
+class BananaPptOutlineConfig:
+    """BananaPPT outline generation settings."""
+
+    temperature: float = 0.4
+    max_tokens: int = 4000
+    model: str = ""
+    api_key: str = ""
+    base_url: str = ""
+    binding: str = ""
+
+
+@dataclass
+class BananaPptImageConfig:
+    """BananaPPT image generation settings."""
+
+    model: str
+    api_key: str
+    base_url: str
+    binding: str = "gemini"
+    aspect_ratio: str = "16:9"
+
+
+@dataclass
+class BananaPptConfig:
+    """BananaPPT configuration for frontend export flow."""
+
+    enabled: bool = False
+    max_slides: int = 15
+    outline: BananaPptOutlineConfig = field(default_factory=BananaPptOutlineConfig)
+    image: BananaPptImageConfig = field(
+        default_factory=lambda: BananaPptImageConfig(
+            model="", api_key="", base_url="", binding="gemini", aspect_ratio="16:9"
+        )
+    )
+    style_templates: list[dict[str, str]] = field(default_factory=list)
+
+
 def get_ppt_config(project_root: Optional[Path] = None) -> PPTConfig:
     """
     Get PPT-specific LLM configuration with fallback chain.
@@ -271,6 +309,89 @@ def get_ppt_config(project_root: Optional[Path] = None) -> PPTConfig:
     )
 
 
+def get_banana_ppt_config(project_root: Optional[Path] = None) -> BananaPptConfig:
+    """
+    Get BananaPPT configuration with fallback chain.
+
+    Priority:
+    1. main.yaml: export.banana_ppt section
+    2. Environment variables for image config
+
+    Args:
+        project_root: Project root directory (if None, will use PROJECT_ROOT)
+
+    Returns:
+        BananaPptConfig with resolved configuration
+    """
+    if project_root is None:
+        project_root = PROJECT_ROOT
+
+    config = load_config_with_main("main.yaml", project_root)
+    export_config = config.get("export", {})
+    banana_config = export_config.get("banana_ppt", {}) or {}
+    ppt_config = export_config.get("ppt", {}) or {}
+
+    outline_cfg = banana_config.get("outline", {}) or {}
+    image_cfg = banana_config.get("image", {}) or {}
+
+    def _get_value(cfg: dict[str, Any], yaml_key: str, env_key: str, default: Any = "") -> Any:
+        yaml_val = cfg.get(yaml_key)
+        if yaml_val:
+            return yaml_val
+        env_val = os.getenv(env_key)
+        if env_val:
+            return env_val.strip().strip("\"'")
+        return default
+
+    def _get_value_env_first(
+        cfg: dict[str, Any], yaml_key: str, env_key: str, default: Any = ""
+    ) -> Any:
+        env_val = os.getenv(env_key)
+        if env_val:
+            return env_val.strip().strip("\"'")
+        yaml_val = cfg.get(yaml_key)
+        if yaml_val:
+            return yaml_val
+        return default
+
+    enabled = bool(banana_config.get("enabled", False))
+    max_slides = int(banana_config.get("max_slides", ppt_config.get("max_slides", 15)))
+    style_templates = banana_config.get("style_templates")
+    if style_templates is None:
+        style_templates = ppt_config.get("style_templates", []) or []
+
+    outline = BananaPptOutlineConfig(
+        temperature=float(outline_cfg.get("temperature", 0.4)),
+        max_tokens=int(outline_cfg.get("max_tokens", 4000)),
+        model=str(outline_cfg.get("model", "")).strip(),
+        api_key=str(outline_cfg.get("api_key", "")).strip(),
+        base_url=str(outline_cfg.get("base_url", "")).strip(),
+        binding=str(outline_cfg.get("binding", "")).strip(),
+    )
+
+    image = BananaPptImageConfig(
+        model=_get_value_env_first(image_cfg, "model", "BANANA_PPT_IMAGE_MODEL", ""),
+        api_key=_get_value_env_first(image_cfg, "api_key", "BANANA_PPT_IMAGE_API_KEY", ""),
+        base_url=_get_value_env_first(
+            image_cfg, "base_url", "BANANA_PPT_IMAGE_BASE_URL", ""
+        ),
+        binding=_get_value_env_first(
+            image_cfg, "binding", "BANANA_PPT_IMAGE_BINDING", "gemini"
+        ),
+        aspect_ratio=_get_value_env_first(
+            image_cfg, "aspect_ratio", "BANANA_PPT_IMAGE_ASPECT_RATIO", "16:9"
+        ),
+    )
+
+    return BananaPptConfig(
+        enabled=enabled,
+        max_slides=max_slides,
+        outline=outline,
+        image=image,
+        style_templates=style_templates,
+    )
+
+
 __all__ = [
     "PROJECT_ROOT",
     "load_config_with_main",
@@ -278,6 +399,10 @@ __all__ = [
     "parse_language",
     "get_agent_params",
     "get_ppt_config",
+    "get_banana_ppt_config",
     "PPTConfig",
+    "BananaPptConfig",
+    "BananaPptOutlineConfig",
+    "BananaPptImageConfig",
     "_deep_merge",
 ]

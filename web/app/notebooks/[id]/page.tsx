@@ -43,6 +43,9 @@ import "katex/dist/katex.min.css";
 import { processLatexContent } from "@/lib/latex";
 import { apiUrl, wsUrl } from "@/lib/api";
 import { Mermaid } from "@/components/Mermaid";
+import PptPreviewModal from "@/components/ppt/PptPreviewModal";
+import { exportToPptx } from "@/lib/pptGenerator";
+import { PresentationOutline, SlideContent } from "@/types/ppt";
 
 interface NotebookRecord {
     id: string;
@@ -189,6 +192,14 @@ export default function NotebookDetailPage() {
     const [pptStylePreviewSvg, setPptStylePreviewSvg] = useState("");
     const [pptStylePreviewLoading, setPptStylePreviewLoading] = useState(false);
     const [pptStylePreviewError, setPptStylePreviewError] = useState("");
+    const [bananaPptEnabled, setBananaPptEnabled] = useState(true);
+    const [bananaPptMaxSlides, setBananaPptMaxSlides] = useState(15);
+    const [pptPreviewOpen, setPptPreviewOpen] = useState(false);
+    const [pptOutline, setPptOutline] = useState<PresentationOutline | null>(null);
+    const [pptGeneratingIndices, setPptGeneratingIndices] = useState<number[]>([]);
+    const [pptImageProgress, setPptImageProgress] = useState({ current: 0, total: 0 });
+    const [isPptGenerating, setIsPptGenerating] = useState(false);
+    const [isPptExporting, setIsPptExporting] = useState(false);
 
     // Add source modal
     const [showAddSourceModal, setShowAddSourceModal] = useState(false);
@@ -672,6 +683,7 @@ export default function NotebookDetailPage() {
     const ragEnabled = enableRag && !!selectedKb;
 
     const canExport = exportContentSource === "research" ? !!researchReport : hasSelectedSources;
+    const canExportPptContent = !!researchReport;
     const hasPptPresets = pptStyleTemplates.length > 0 && !!selectedPptStyleId;
     const needsSourceForStyle =
         pptStyleMode === "sources" ||
@@ -682,7 +694,15 @@ export default function NotebookDetailPage() {
         (pptStyleMode === "template" && pptTemplateUseLlm && pptTemplatePromptSource === "preset");
     const canUsePresetStyle = !needsPresetForStyle || hasPptPresets;
     const canUseTemplateStyle = pptStyleMode !== "template" || !!selectedPptTemplate;
-    const canExportPpt = canExport && canUseSourceStyle && canUsePresetStyle && canUseTemplateStyle;
+    const isPptBusy = isPptGenerating || isPptExporting;
+    const templateBlocked = pptStyleMode === "template";
+    const canExportPpt =
+        bananaPptEnabled &&
+        canExportPptContent &&
+        canUseSourceStyle &&
+        canUsePresetStyle &&
+        canUseTemplateStyle &&
+        !templateBlocked;
 
     useEffect(() => {
         setEnabledTools((prev) => {
@@ -853,6 +873,7 @@ export default function NotebookDetailPage() {
     useEffect(() => {
         fetchPptStyleTemplates();
         fetchPptTemplates();
+        fetchBananaPptConfig();
     }, []);
 
     useEffect(() => {
@@ -976,6 +997,26 @@ export default function NotebookDetailPage() {
             }
         } catch (err) {
             console.error("Failed to fetch PPT templates:", err);
+        }
+    };
+
+    const fetchBananaPptConfig = async () => {
+        try {
+            const res = await fetch(apiUrl("/api/v1/research/ppt_config"));
+            if (!res.ok) return;
+            const data = await res.json();
+            setBananaPptEnabled(Boolean(data.enabled));
+            if (typeof data.max_slides === "number") {
+                setBananaPptMaxSlides(data.max_slides);
+            }
+            if (Array.isArray(data.style_templates) && data.style_templates.length > 0) {
+                setPptStyleTemplates(data.style_templates);
+                if (!selectedPptStyleId) {
+                    setSelectedPptStyleId(data.style_templates[0].id);
+                }
+            }
+        } catch (err) {
+            console.error("Failed to fetch BananaPPT config:", err);
         }
     };
 
@@ -1904,11 +1945,42 @@ export default function NotebookDetailPage() {
         }
     };
 
+    const resetPptPreview = () => {
+        setPptPreviewOpen(false);
+        setPptOutline(null);
+        setPptGeneratingIndices([]);
+        setPptImageProgress({ current: 0, total: 0 });
+    };
+
+    const handleUpdatePptSlide = (index: number, updatedSlide: SlideContent) => {
+        setPptOutline((prev) => {
+            if (!prev) return prev;
+            const nextSlides = [...prev.slides];
+            nextSlides[index] = updatedSlide;
+            return { ...prev, slides: nextSlides };
+        });
+    };
+
+    const handleDownloadPptx = async () => {
+        if (!pptOutline) return;
+        setIsPptExporting(true);
+        try {
+            await exportToPptx(pptOutline);
+        } catch (err) {
+            console.error("PPTX export failed:", err);
+        } finally {
+            setIsPptExporting(false);
+        }
+    };
+
     const handleExportPdf = async () => {
         setIsExporting(true);
         try {
             const markdown = await getExportMarkdown();
-            if (!markdown) return;
+            if (!markdown) {
+                alert("没有可导出的内容");
+                return;
+            }
 
             const res = await fetch(apiUrl("/api/v1/research/export_pdf"), {
                 method: "POST",
@@ -1936,58 +2008,122 @@ export default function NotebookDetailPage() {
     };
 
     const handleExportPptx = async () => {
-        setIsExporting(true);
+        if (!bananaPptEnabled) {
+            alert("PPT 功能未启用");
+            return;
+        }
+        if (pptStyleMode === "template") {
+            alert("模板模式暂不支持 Banana PPT");
+            return;
+        }
+
+        setIsPptGenerating(true);
+        setPptOutline(null);
+        setPptImageProgress({ current: 0, total: 0 });
+        setPptPreviewOpen(true);
         try {
             const markdown = await getExportMarkdown();
             if (!markdown) return;
 
-            let stylePrompt = "";
-            if (pptStyleMode === "template") {
-                if (!selectedPptTemplate) {
-                    alert("请选择 PPT 模板");
-                    return;
-                }
-                if (pptTemplateUseLlm) {
-                    stylePrompt = await getPromptForSource(pptTemplatePromptSource);
-                    if (!stylePrompt) {
-                        return;
-                    }
-                }
-            } else {
-                stylePrompt = await getPptStylePrompt();
-                if (pptStyleMode === "preset" && !stylePrompt) {
-                    alert("请选择风格模板");
-                    return;
-                }
-                if (pptStyleMode === "sources" && !stylePrompt) {
-                    return;
-                }
+            const stylePrompt = await getPptStylePrompt();
+            if (pptStyleMode === "preset" && !stylePrompt) {
+                alert("请选择风格模板");
+                return;
+            }
+            if (pptStyleMode === "sources" && !stylePrompt) {
+                return;
             }
 
-            const res = await fetch(apiUrl("/api/v1/research/export_pptx"), {
+            const res = await fetch(apiUrl("/api/v1/research/ppt_outline"), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    markdown,
-                    title: notebook?.name || undefined,
+                    source_content: markdown,
                     style_prompt: stylePrompt || undefined,
-                    template_name: pptStyleMode === "template" ? selectedPptTemplate : undefined,
+                    max_slides: bananaPptMaxSlides,
                 }),
             });
 
-            if (!res.ok) throw new Error("导出失败");
+            if (!res.ok) throw new Error("生成失败");
 
-            const data = await res.json();
-            if (data.download_url) {
-                const a = document.createElement("a");
-                a.href = apiUrl(data.download_url);
-                a.download = data.filename || `${notebook?.name}.pptx`;
-                a.click();
+            const outline = (await res.json()) as PresentationOutline;
+            setPptOutline(outline);
+            setPptPreviewOpen(true);
+
+            const slides = outline.slides || [];
+            const slidesWithImages = slides
+                .map((slide, index) => ({ slide, index }))
+                .filter((item) => item.slide.imagePrompt);
+            const totalImages = slidesWithImages.length;
+            setPptImageProgress({ current: 0, total: totalImages });
+
+            if (!totalImages) {
+                setPptGeneratingIndices([]);
+                return;
             }
+
+            const updatedSlides = [...slides];
+            let generatedCount = 0;
+
+            const concurrency = Math.min(3, slidesWithImages.length);
+            let cursor = 0;
+
+            const startSlide = (index: number) => {
+                setPptGeneratingIndices((prev) =>
+                    prev.includes(index) ? prev : [...prev, index]
+                );
+            };
+
+            const finishSlide = (index: number) => {
+                setPptGeneratingIndices((prev) => prev.filter((i) => i !== index));
+            };
+
+            const runWorker = async () => {
+                while (cursor < slidesWithImages.length) {
+                    const current = slidesWithImages[cursor];
+                    cursor += 1;
+                    const slideIndex = current.index;
+
+                    startSlide(slideIndex);
+                    try {
+                        const imageRes = await fetch(apiUrl("/api/v1/research/ppt_image"), {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ prompt: current.slide.imagePrompt }),
+                        });
+                        if (imageRes.ok) {
+                            const imageData = await imageRes.json();
+                            if (imageData.image_data_url) {
+                                // Use the latest slide data from updatedSlides, not the stale closure reference
+                                updatedSlides[slideIndex] = {
+                                    ...updatedSlides[slideIndex],
+                                    generatedImageUrl: imageData.image_data_url,
+                                };
+                                console.log(`[PPT] Image loaded for slide ${slideIndex}, data length: ${imageData.image_data_url.length}`);
+                            }
+                        }
+                    } catch (err) {
+                        console.error("PPT image generation failed:", err);
+                    } finally {
+                        finishSlide(slideIndex);
+                        generatedCount += 1;
+                        setPptImageProgress({ current: generatedCount, total: totalImages });
+                        setPptOutline((prev) =>
+                            prev ? { ...prev, slides: [...updatedSlides] } : prev
+                        );
+                    }
+                }
+            };
+
+            await Promise.all(
+                Array.from({ length: concurrency }, () => runWorker())
+            );
         } catch (err) {
-            console.error("PPTX export failed:", err);
+            console.error("PPT outline generation failed:", err);
+            resetPptPreview();
         } finally {
-            setIsExporting(false);
+            setPptGeneratingIndices([]);
+            setIsPptGenerating(false);
         }
     };
 
@@ -2785,22 +2921,6 @@ export default function NotebookDetailPage() {
                                         </div>
                                     </button>
 
-                                    {/* Smart Solver */}
-                                    <button
-                                        onClick={() => setStudioMode("solver")}
-                                        className="w-full p-3 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 transition-all text-left"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center">
-                                                <Calculator className="w-4 h-4 text-blue-600" />
-                                            </div>
-                                            <div>
-                                                <h4 className="font-medium text-slate-900 text-sm">智能解题</h4>
-                                                <p className="text-xs text-slate-400">解答问题</p>
-                                            </div>
-                                        </div>
-                                    </button>
-
                                     {/* Guided Learning */}
                                     <button
                                         onClick={() => setStudioMode("guide")}
@@ -2863,7 +2983,7 @@ export default function NotebookDetailPage() {
                                     {/* PPT Export */}
                                     <button
                                         onClick={handleExportPptx}
-                                        disabled={!canExportPpt || isExporting}
+                                        disabled={!canExportPpt || isPptBusy}
                                         className="p-3 rounded-xl border border-slate-200 hover:border-orange-300 hover:bg-orange-50/50 transition-all text-center disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <Presentation className="w-5 h-5 text-orange-600 mx-auto mb-1" />
@@ -3091,22 +3211,24 @@ export default function NotebookDetailPage() {
                                     </div>
                                     <button
                                         onClick={handleExportPptx}
-                                        disabled={!canExportPpt || isExporting}
+                                        disabled={!canExportPpt || isPptBusy}
                                         className="px-6 py-3 bg-orange-600 text-white rounded-xl font-medium hover:bg-orange-700 disabled:opacity-50"
                                     >
-                                        {isExporting ? "导出中..." : "导出 PPT"}
+                                        {isPptBusy ? "导出中..." : "导出 PPT"}
                                     </button>
                                     {!canExportPpt && (
                                         <p className="text-xs text-slate-400 mt-3">
-                                            {!canExport
-                                                ? (exportContentSource === "research"
-                                                    ? "完成深度研究后可导出"
-                                                    : "选择来源后可导出")
-                                                : (!canUsePresetStyle
-                                                    ? "请选择预设风格"
-                                                    : (!canUseSourceStyle
-                                                        ? "选择来源后可生成风格"
-                                                        : "请选择 PPT 模板"))}
+                                            {!bananaPptEnabled
+                                                ? "PPT 功能未启用"
+                                                : (templateBlocked
+                                                    ? "模板模式暂不支持 Banana PPT"
+                                                    : (!canExportPptContent
+                                                        ? "完成深度研究后可导出"
+                                                        : (!canUsePresetStyle
+                                                            ? "请选择预设风格"
+                                                            : (!canUseSourceStyle
+                                                                ? "选择来源后可生成风格"
+                                                                : ""))))}
                                         </p>
                                     )}
                                 </div>
@@ -3184,36 +3306,6 @@ export default function NotebookDetailPage() {
                                         className="inline-block px-6 py-3 bg-purple-600 text-white rounded-xl font-medium hover:bg-purple-700 transition-colors"
                                     >
                                         打开题目生成器
-                                    </a>
-                                </div>
-                            </div>
-                        )
-                    }
-
-                    {/* Smart Solver Mode */}
-                    {
-                        studioMode === "solver" && (
-                            <div className="space-y-4">
-                                <button
-                                    onClick={() => setStudioMode("idle")}
-                                    className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700"
-                                >
-                                    <ArrowLeft className="w-4 h-4" />
-                                    返回
-                                </button>
-
-                                <div className="text-center py-8">
-                                    <Calculator className="w-12 h-12 text-blue-300 mx-auto mb-4" />
-                                    <p className="text-slate-700 font-medium mb-2">智能解题</p>
-                                    <p className="text-sm text-slate-400 mb-4">
-                                        使用 AI 解答问题
-                                    </p>
-                                    <a
-                                        href="/solver"
-                                        target="_blank"
-                                        className="inline-block px-6 py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors"
-                                    >
-                                        打开智能解题器
                                     </a>
                                 </div>
                             </div>
@@ -3439,6 +3531,18 @@ export default function NotebookDetailPage() {
                     </div>
                 )
             }
+            <PptPreviewModal
+                isOpen={pptPreviewOpen}
+                outline={pptOutline}
+                isExporting={isPptExporting}
+                imageProgress={
+                    pptImageProgress.total > 0 ? pptImageProgress : undefined
+                }
+                generatingSlideIndices={pptGeneratingIndices}
+                onClose={resetPptPreview}
+                onExport={handleDownloadPptx}
+                onUpdateSlide={handleUpdatePptSlide}
+            />
             {/* Selected Record Preview Modal */}
             {selectedRecord && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedRecord(null)}>

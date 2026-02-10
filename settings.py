@@ -62,6 +62,7 @@ class EmbeddingSettings(BaseSettings):
     dimension: int = Field(
         default=4096,
         description="Embedding vector dimension. Should check accordingly for selected embedding model",
+        validation_alias="EMBEDDING_DIM",
     )
 
     host: str = Field(

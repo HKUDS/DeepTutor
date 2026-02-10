@@ -23,7 +23,8 @@ project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.logging import Logger, get_logger
-from src.services.config import load_config_with_main
+from src.services.config import load_config_with_main, parse_language
+from src.services.prompt import get_prompt_manager
 from src.tools.rag_tool import rag_search
 
 
@@ -110,6 +111,18 @@ class AgentCoordinator:
         ).get("log_dir")
         self.logger: Logger = get_logger("QuestionGen", log_dir=log_dir)
 
+        # Get language setting from config (unified in config/main.yaml system.language)
+        lang_config = self.config.get("system", {}).get("language", "zh")
+        self.language = parse_language(lang_config)
+        self.logger.info(f"Language setting: {self.language}")
+
+        # Load coordinator prompts based on language
+        self._prompts = get_prompt_manager().load_prompts(
+            module_name="question",
+            agent_name="coordinator",
+            language=self.language,
+        )
+
         # Override max_rounds from config if available
         question_cfg = self.config.get("question", {})
         if isinstance(question_cfg, dict) and "max_rounds" in question_cfg:
@@ -134,6 +147,7 @@ class AgentCoordinator:
             max_iterations=max_gen_iterations,
             kb_name=kb_name,
             token_stats_callback=self.update_token_stats,
+            language=self.language,
         )
 
         # Instantiate validation workflow (fixed pipeline)
@@ -142,6 +156,7 @@ class AgentCoordinator:
             base_url=base_url,
             kb_name=kb_name,
             token_stats_callback=self.update_token_stats,
+            language=self.language,
         )
 
         # Message queue
@@ -378,32 +393,56 @@ class AgentCoordinator:
         self, requirement_text: str, num_queries: int
     ) -> list[str]:
         """Use LLM to produce semantic search queries directly from natural-language text."""
-        system_prompt = (
-            "【Role】You are a knowledge base retrieval assistant, preparing for question generation.\n"
-            "\n"
-            "【Current Task】Generate knowledge point retrieval queries to find theoretical explanations, definitions, and theorems in the knowledge base.\n"
-            "⚠️ Key: You are not generating questions now! You are looking for theoretical knowledge needed for question generation!\n"
-            "\n"
-            "【Output Rules】\n"
-            "1. Only output pure knowledge point names (theorem names, concept names, method names)\n"
-            "2. Each query should be 2-5 words\n"
-            "3. Do not include functions, numerical values, or calculation tasks\n"
-            "4. Do not use questions or task descriptions\n"
-        )
-
-        user_prompt = (
-            f"The user's question generation requirement is:\n{requirement_text}\n\n"
-            f"Please extract {num_queries} pure knowledge point names from it for knowledge base retrieval.\n\n"
-            "Correct examples:\n"
-            "✓ Taylor theorem\n"
-            "✓ Lagrange multipliers  \n"
-            "✓ critical points\n\n"
-            "Incorrect examples (do not generate):\n"
-            "✗ Apply Taylor's Theorem to approximate f(x,y)=... (This is a question)\n"
-            "✗ Find and classify critical points (This is a task)\n"
-            "✗ Use Lagrange multipliers to find maximum (This is an instruction)\n\n"
-            f'Return in JSON format: {{"queries": ["knowledge point 1", "knowledge point 2", ...]}}, containing exactly {num_queries} knowledge point names.'
-        )
+        # Load prompts from YAML file based on language setting
+        prompt_config = self._prompts.get("generate_search_queries", "")
+        if prompt_config and isinstance(prompt_config, str):
+            # Parse the YAML-style prompt config
+            import yaml
+            try:
+                parsed = yaml.safe_load(prompt_config)
+                system_prompt = parsed.get("system", "")
+                user_template = parsed.get("user_template", "")
+            except Exception:
+                system_prompt = ""
+                user_template = ""
+        else:
+            system_prompt = ""
+            user_template = ""
+        
+        # Fallback if prompts not loaded
+        if not system_prompt:
+            system_prompt = (
+                "【Role】You are a knowledge base retrieval assistant, preparing for question generation.\n"
+                "\n"
+                "【Current Task】Generate knowledge point retrieval queries to find theoretical explanations, definitions, and theorems in the knowledge base.\n"
+                "⚠️ Key: You are not generating questions now! You are looking for theoretical knowledge needed for question generation!\n"
+                "\n"
+                "【Output Rules】\n"
+                "1. Only output pure knowledge point names (theorem names, concept names, method names)\n"
+                "2. Each query should be 2-5 words\n"
+                "3. Do not include functions, numerical values, or calculation tasks\n"
+                "4. Do not use questions or task descriptions\n"
+            )
+        
+        if user_template:
+            user_prompt = user_template.format(
+                requirement_text=requirement_text,
+                num_queries=num_queries,
+            )
+        else:
+            user_prompt = (
+                f"The user's question generation requirement is:\n{requirement_text}\n\n"
+                f"Please extract {num_queries} pure knowledge point names from it for knowledge base retrieval.\n\n"
+                "Correct examples:\n"
+                "✓ Taylor theorem\n"
+                "✓ Lagrange multipliers  \n"
+                "✓ critical points\n\n"
+                "Incorrect examples (do not generate):\n"
+                "✗ Apply Taylor's Theorem to approximate f(x,y)=... (This is a question)\n"
+                "✗ Find and classify critical points (This is a task)\n"
+                "✗ Use Lagrange multipliers to find maximum (This is an instruction)\n\n"
+                f'Return in JSON format: {{"queries": ["knowledge point 1", "knowledge point 2", ...]}}, containing exactly {num_queries} knowledge point names.'
+            )
 
         try:
             content = await self._call_llm(system_prompt=system_prompt, user_prompt=user_prompt)
@@ -577,15 +616,40 @@ class AgentCoordinator:
         self, requirement_text: str, knowledge_summary: str
     ) -> bool:
         """Use LLM to determine whether retrieval results match the user's request."""
-        system_prompt = (
-            "You evaluate whether retrieved knowledge is relevant to a user's request. "
-            'Respond in JSON with key "relevant" (true/false) and optional "reason".'
-        )
-        user_prompt = (
-            f"User request:\n{requirement_text}\n\n"
-            f"Retrieved knowledge summary:\n{knowledge_summary}\n\n"
-            "Is the retrieved knowledge substantively relevant to the request?"
-        )
+        # Load prompts from YAML file based on language setting
+        prompt_config = self._prompts.get("check_retrieval_relevance", "")
+        if prompt_config and isinstance(prompt_config, str):
+            import yaml
+            try:
+                parsed = yaml.safe_load(prompt_config)
+                system_prompt = parsed.get("system", "")
+                user_template = parsed.get("user_template", "")
+            except Exception:
+                system_prompt = ""
+                user_template = ""
+        else:
+            system_prompt = ""
+            user_template = ""
+        
+        # Fallback if prompts not loaded
+        if not system_prompt:
+            system_prompt = (
+                "You evaluate whether retrieved knowledge is relevant to a user's request. "
+                'Respond in JSON with key "relevant" (true/false) and optional "reason".'
+            )
+        
+        if user_template:
+            user_prompt = user_template.format(
+                requirement_text=requirement_text,
+                knowledge_summary=knowledge_summary,
+            )
+        else:
+            user_prompt = (
+                f"User request:\n{requirement_text}\n\n"
+                f"Retrieved knowledge summary:\n{knowledge_summary}\n\n"
+                "Is the retrieved knowledge substantively relevant to the request?"
+            )
+        
         try:
             content = await self._call_llm(system_prompt=system_prompt, user_prompt=user_prompt)
             parsed = json.loads(content)
@@ -598,18 +662,44 @@ class AgentCoordinator:
         self, base_requirement: dict[str, Any], knowledge_summary: str, num_questions: int
     ) -> list[dict[str, Any]]:
         """Ask LLM to break the base requirement into multiple sub-requirements."""
-        system_prompt = (
-            "You are a curriculum designer. Given a base requirement and knowledge summary, "
-            "create distinct sub-requirements that all test the SAME knowledge point. "
-            "Each sub-requirement must describe a unique scenario and reasoning flow. "
-            'Output JSON with key "requirements" (array of length requested) where each item has: '
-            '"title", "question_type", "difficulty", "additional_requirements".'
-        )
-        user_prompt = (
-            f"Base requirement:\n{json.dumps(base_requirement, ensure_ascii=False, indent=2)}\n\n"
-            f"Knowledge summary:\n{knowledge_summary}\n\n"
-            f"Generate exactly {num_questions} sub-requirements in JSON."
-        )
+        # Load prompts from YAML file based on language setting
+        prompt_config = self._prompts.get("generate_child_requirements", "")
+        if prompt_config and isinstance(prompt_config, str):
+            import yaml
+            try:
+                parsed = yaml.safe_load(prompt_config)
+                system_prompt = parsed.get("system", "")
+                user_template = parsed.get("user_template", "")
+            except Exception:
+                system_prompt = ""
+                user_template = ""
+        else:
+            system_prompt = ""
+            user_template = ""
+        
+        # Fallback if prompts not loaded
+        if not system_prompt:
+            system_prompt = (
+                "You are a curriculum designer. Given a base requirement and knowledge summary, "
+                "create distinct sub-requirements that all test the SAME knowledge point. "
+                "Each sub-requirement must describe a unique scenario and reasoning flow. "
+                'Output JSON with key "requirements" (array of length requested) where each item has: '
+                '"title", "question_type", "difficulty", "additional_requirements".'
+            )
+        
+        if user_template:
+            user_prompt = user_template.format(
+                base_requirement=json.dumps(base_requirement, ensure_ascii=False, indent=2),
+                knowledge_summary=knowledge_summary,
+                num_questions=num_questions,
+            )
+        else:
+            user_prompt = (
+                f"Base requirement:\n{json.dumps(base_requirement, ensure_ascii=False, indent=2)}\n\n"
+                f"Knowledge summary:\n{knowledge_summary}\n\n"
+                f"Generate exactly {num_questions} sub-requirements in JSON."
+            )
+        
         try:
             content = await self._call_llm(system_prompt=system_prompt, user_prompt=user_prompt)
             parsed = json.loads(content)
@@ -634,14 +724,36 @@ class AgentCoordinator:
 
     async def _interpret_requirement_text(self, requirement_text: str) -> dict[str, Any]:
         """Convert a natural-language request into structured requirement fields."""
-        system_prompt = (
-            "You are an instruction parser for an exam-question generator. "
-            "Given a natural-language request, extract the core knowledge point, "
-            "difficulty (easy/medium/hard), preferred question type (choice/written), "
-            "and additional requirements. Return JSON with keys: "
-            '"knowledge_point", "difficulty", "question_type", "additional_requirements".'
-        )
-        user_prompt = f"Requirement:\n{requirement_text}\n\nReturn JSON only."
+        # Load prompts from YAML file based on language setting
+        prompt_config = self._prompts.get("interpret_requirement_text", "")
+        if prompt_config and isinstance(prompt_config, str):
+            import yaml
+            try:
+                parsed_config = yaml.safe_load(prompt_config)
+                system_prompt = parsed_config.get("system", "")
+                user_template = parsed_config.get("user_template", "")
+            except Exception:
+                system_prompt = ""
+                user_template = ""
+        else:
+            system_prompt = ""
+            user_template = ""
+        
+        # Fallback if prompts not loaded
+        if not system_prompt:
+            system_prompt = (
+                "You are an instruction parser for an exam-question generator. "
+                "Given a natural-language request, extract the core knowledge point, "
+                "difficulty (easy/medium/hard), preferred question type (choice/written), "
+                "and additional requirements. Return JSON with keys: "
+                '"knowledge_point", "difficulty", "question_type", "additional_requirements".'
+            )
+        
+        if user_template:
+            user_prompt = user_template.format(requirement_text=requirement_text)
+        else:
+            user_prompt = f"Requirement:\n{requirement_text}\n\nReturn JSON only."
+        
         try:
             content = await self._call_llm(system_prompt=system_prompt, user_prompt=user_prompt)
             parsed = json.loads(content)

@@ -14,7 +14,7 @@
 
 
 
-[**快速开始**](#快速开始) · [**核心模块**](#核心模块) · [**常见问题**](#常见问题)
+[**快速开始**](#快速开始) · [**部署指南**](../../DEPLOYMENT.md) · [**核心模块**](#核心模块) · [**常见问题**](#常见问题)
 
 [🇬🇧 English](../../README.md) · [🇯🇵 日本語](README_JA.md) · [🇪🇸 Español](README_ES.md) · [🇫🇷 Français](README_FR.md) · [🇸🇦 العربية](README_AR.md) · [🇷🇺 Русский](README_RU.md) · [🇮🇳 हिन्दी](README_HI.md) · [🇵🇹 Português](README_PT.md)
 
@@ -428,6 +428,7 @@ data/
     ├── co-writer/                # 交互式想法生成文档和音频文件
     ├── notebook/                 # 笔记本记录和元数据
     ├── guide/                    # 引导式学习会话
+    ├── ppt_images/               # PPT 生成图片缓存
     ├── logs/                     # 系统日志
     └── run_code_workspace/       # 代码执行工作区
 ```

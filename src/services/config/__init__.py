@@ -15,9 +15,13 @@ Usage:
 """
 
 from .loader import (
+    BananaPptConfig,
+    BananaPptImageConfig,
+    BananaPptOutlineConfig,
     PROJECT_ROOT,
     _deep_merge,
     get_agent_params,
+    get_banana_ppt_config,
     get_path_from_config,
     get_ppt_config,
     load_config_with_main,
@@ -31,6 +35,9 @@ __all__ = [
     "parse_language",
     "get_agent_params",
     "get_ppt_config",
+    "get_banana_ppt_config",
+    "BananaPptConfig",
+    "BananaPptOutlineConfig",
+    "BananaPptImageConfig",
     "_deep_merge",
 ]
-

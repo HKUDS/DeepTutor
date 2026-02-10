@@ -21,7 +21,7 @@
 
 
 
-[**Quick Start**](#quick-start) · [**Core Modules**](#core-modules) · [**FAQ**](#faq)
+[**Quick Start**](#quick-start) · [**Deployment**](DEPLOYMENT.md) · [**Core Modules**](#core-modules) · [**FAQ**](#faq)
 
 [🇨🇳 中文](assets/README/README_CN.md) · [🇯🇵 日本語](assets/README/README_JA.md) · [🇪🇸 Español](assets/README/README_ES.md) · [🇫🇷 Français](assets/README/README_FR.md) · [🇸🇦 العربية](assets/README/README_AR.md) · [🇷🇺 Русский](assets/README/README_RU.md) · [🇮🇳 हिन्दी](assets/README/README_HI.md) · [🇵🇹 Português](assets/README/README_PT.md)
 
@@ -475,6 +475,7 @@ data/
     ├── co-writer/                # Interactive IdeaGen documents and audio files
     ├── notebook/                 # Notebook records and metadata
     ├── guide/                    # Guided learning sessions
+    ├── ppt_images/               # PPT generation image cache
     ├── logs/                     # System logs
     └── run_code_workspace/       # Code execution workspace
 ```
@@ -1160,7 +1161,10 @@ asyncio.run(main())
 <td align="center"><a href="src/agents/guide/README.md">Guide Module</a></td>
 </tr>
 <tr>
-<td align="center" colspan="4"><a href="src/agents/ideagen/README.md">Automated IdeaGen Module</a></td>
+<td align="center"><a href="src/agents/ideagen/README.md">Automated IdeaGen Module</a></td>
+<td align="center"><a href="DEPLOYMENT.md">Deployment Guide</a></td>
+<td align="center"><a href="docs/banana_ppt_integration.md">PPT Export</a></td>
+<td align="center"><a href="docs/guide/troubleshooting.md">Troubleshooting</a></td>
 </tr>
 </table>
 

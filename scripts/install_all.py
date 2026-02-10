@@ -20,6 +20,22 @@ if sys.platform == "win32":
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
 
 
+def check_python_version():
+    """Check if Python version is compatible (>= 3.10)"""
+    if sys.version_info < (3, 10):
+        print("\n" + "=" * 60)
+        print("❌ Python Version Error")
+        print("=" * 60)
+        print(f"Current version: {sys.version.split()[0]}")
+        print("Required version: >= 3.10")
+        print("=" * 60)
+        print("Please install Python 3.10 or higher.")
+        print("Recommendation: Use a virtual environment or conda.")
+        print("Example (conda): conda create -n deeptutor python=3.11")
+        print("=" * 60 + "\n")
+        sys.exit(1)
+
+
 def print_step(message: str):
     """Print step information"""
     print(f"\n{'=' * 60}")
@@ -567,6 +583,9 @@ def main():
     print("This script will automatically install all frontend and backend dependencies")
     print("Execution flow: Backend dependencies -> Frontend dependencies -> Verify installation")
     print("=" * 60)
+
+    # Check Python version first
+    check_python_version()
 
     # Get project root directory
     script_dir = Path(__file__).parent

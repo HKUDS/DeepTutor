@@ -22,7 +22,7 @@ LLM_HOST=https://api.openai.com/v1
 EMBEDDING_MODEL=text-embedding-3-large
 EMBEDDING_API_KEY=your_api_key
 EMBEDDING_HOST=https://api.openai.com/v1
-EMBEDDING_DIMENSION=3072
+EMBEDDING_DIM=3072
 ```
 
 ### 可选配置

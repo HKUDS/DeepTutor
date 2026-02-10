@@ -18,7 +18,8 @@ from src.api.utils.history import ActivityType, history_manager
 from src.api.utils.notebook_manager import notebook_manager
 from src.api.utils.task_id_manager import TaskIDManager
 from src.logging import get_logger
-from src.services.config import get_ppt_config, load_config_with_main
+from src.services.config import get_banana_ppt_config, get_ppt_config, load_config_with_main
+from src.services.export.banana_ppt_service import BananaPptService
 from src.services.export.pdf_generator import PDFGenerator
 
 # Import the new PPTGenerator service
@@ -212,6 +213,16 @@ class PptStylePreviewRequest(BaseModel):
     style_prompt: str | None = None
 
 
+class BananaPptOutlineRequest(BaseModel):
+    source_content: str
+    style_prompt: str | None = None
+    max_slides: int | None = None
+
+
+class BananaPptImageRequest(BaseModel):
+    prompt: str
+
+
 @router.post("/export_pptx")
 async def export_pptx(request: ExportPptxRequest):
     project_root = Path(__file__).parent.parent.parent.parent
@@ -361,6 +372,52 @@ async def ppt_style_preview(request: PptStylePreviewRequest):
         }
     except Exception as e:
         logger.error(f"PPT style preview failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/ppt_config")
+async def get_ppt_config_for_banana():
+    project_root = Path(__file__).parent.parent.parent.parent
+    config = get_banana_ppt_config(project_root)
+    return {
+        "enabled": config.enabled,
+        "max_slides": config.max_slides,
+        "style_templates": config.style_templates,
+    }
+
+
+@router.post("/ppt_outline")
+async def generate_ppt_outline(request: BananaPptOutlineRequest):
+    project_root = Path(__file__).parent.parent.parent.parent
+    config = get_banana_ppt_config(project_root)
+    if not config.enabled:
+        raise HTTPException(status_code=403, detail="Banana PPT is disabled")
+
+    service = BananaPptService(project_root)
+    try:
+        return await service.generate_outline(
+            source_content=request.source_content,
+            style_prompt=request.style_prompt,
+            max_slides=request.max_slides,
+        )
+    except Exception as e:
+        logger.error(f"Banana PPT outline failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/ppt_image")
+async def generate_ppt_image(request: BananaPptImageRequest):
+    project_root = Path(__file__).parent.parent.parent.parent
+    config = get_banana_ppt_config(project_root)
+    if not config.enabled:
+        raise HTTPException(status_code=403, detail="Banana PPT is disabled")
+
+    service = BananaPptService(project_root)
+    try:
+        image_data_url = await service.generate_image(request.prompt)
+        return {"image_data_url": image_data_url}
+    except Exception as e:
+        logger.error(f"Banana PPT image failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -167,6 +167,20 @@ export:
         name: "Business Pitch"
         prompt: "Use a modern business deck style with bold accent color, sharp contrast, and short impactful bullets."
 
+  banana_ppt:
+    enabled: true
+    max_slides: 15
+    outline:
+      temperature: 0.4
+      max_tokens: 4000
+    image:
+      model: "gemini-2.5-flash-image"
+      api_key: ""
+      base_url: ""
+      binding: "gemini"
+      aspect_ratio: "16:9"
+    style_templates: []
+
 # =============================================================================
 # Agent Configuration Overrides
 # =============================================================================

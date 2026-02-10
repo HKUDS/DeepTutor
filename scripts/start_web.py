@@ -26,6 +26,22 @@ def print_flush(*args, **kwargs):
     print(*args, **kwargs)
 
 
+def check_python_version():
+    """Check if Python version is compatible (>= 3.10)"""
+    if sys.version_info < (3, 10):
+        print_flush("\n" + "=" * 60)
+        print_flush("❌ Python Version Error")
+        print_flush("=" * 60)
+        print_flush(f"Current version: {sys.version.split()[0]}")
+        print_flush("Required version: >= 3.10")
+        print_flush("=" * 60)
+        print_flush("Please install Python 3.10 or higher.")
+        print_flush("Recommendation: Use a virtual environment or conda.")
+        print_flush("Example (conda): conda create -n deeptutor python=3.11")
+        print_flush("=" * 60 + "\n")
+        sys.exit(1)
+
+
 # Windows-specific: Use SetConsoleCtrlHandler to prevent Ctrl+C from propagating to children
 # and handle it only in the parent process
 if os.name == "nt":
@@ -417,6 +433,9 @@ if __name__ == "__main__":
     print_flush("=" * 50)
     print_flush("DeepTutor Web Platform Launcher")
     print_flush("=" * 50)
+
+    # Check Python version first
+    check_python_version()
 
     # Initialize user data directories
     try:

@@ -76,7 +76,7 @@ ENV_VAR_DEFINITIONS = {
         "default": "",
         "sensitive": False,
     },
-    "EMBEDDING_DIMENSION": {
+    "EMBEDDING_DIM": {
         "description": "Vector dimension: 3072 (text-embedding-3-large), 768 (nomic-embed-text), 1024 (mxbai)",
         "category": "embedding",
         "required": False,
@@ -127,6 +127,42 @@ ENV_VAR_DEFINITIONS = {
         "default": "alloy",
         "sensitive": False,
     },
+    # BananaPPT Image Configuration
+    "BANANA_PPT_IMAGE_MODEL": {
+        "description": "Image model name (e.g., gemini-2.5-flash-image, dall-e-3)",
+        "category": "banana_ppt",
+        "required": False,
+        "default": "",
+        "sensitive": False,
+    },
+    "BANANA_PPT_IMAGE_API_KEY": {
+        "description": "API key for BananaPPT image generation",
+        "category": "banana_ppt",
+        "required": False,
+        "default": "",
+        "sensitive": True,
+    },
+    "BANANA_PPT_IMAGE_BASE_URL": {
+        "description": "Image API base URL (e.g., https://generativelanguage.googleapis.com/v1beta)",
+        "category": "banana_ppt",
+        "required": False,
+        "default": "",
+        "sensitive": False,
+    },
+    "BANANA_PPT_IMAGE_BINDING": {
+        "description": "Image provider binding: gemini or openai",
+        "category": "banana_ppt",
+        "required": False,
+        "default": "gemini",
+        "sensitive": False,
+    },
+    "BANANA_PPT_IMAGE_ASPECT_RATIO": {
+        "description": "Image aspect ratio (default: 16:9)",
+        "category": "banana_ppt",
+        "required": False,
+        "default": "16:9",
+        "sensitive": False,
+    },
     # Web Search Configuration
     "PERPLEXITY_API_KEY": {
         "description": "Perplexity API key for web search functionality",
@@ -158,6 +194,11 @@ ENV_CATEGORIES = {
         "name": "Web Search Configuration",
         "description": "External search API settings (Perplexity)",
         "icon": "search",
+    },
+    "banana_ppt": {
+        "name": "BananaPPT Image Configuration",
+        "description": "Image generation settings for Banana PPT export",
+        "icon": "settings",
     },
 }
 
