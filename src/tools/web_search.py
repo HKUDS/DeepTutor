@@ -24,6 +24,66 @@ class SearchProvider(str, Enum):
 
     PERPLEXITY = "perplexity"
     BAIDU = "baidu"
+    VOLCENGINE = "volcengine"
+
+
+class VolcengineSearch:
+    """Volcano Engine Integrated Information Search client"""
+
+    SEARCH_ENDPOINT = "https://open.feedcoopapi.com/search_api/web_search"
+
+    def __init__(self, api_key: str):
+        """
+        Initialize Volcano Engine Search client
+
+        Args:
+            api_key: Volcano Engine API Key
+        """
+        self.api_key = api_key
+        self.headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }
+
+    def search(
+        self,
+        query: str,
+        page_size: int = 10,
+        page_index: int = 1,
+    ) -> dict:
+        """
+        Perform search using Volcano Engine API
+
+        Args:
+            query: Search query
+            page_size: Number of results (default: 10)
+            page_index: Page number (default: 1)
+
+        Returns:
+            dict: API response containing search results
+        """
+        payload = {
+            "query": query,
+            "page_size": page_size,
+            "page_index": page_index,
+            "SearchType": "web",
+        }
+
+        response = requests.post(
+            self.SEARCH_ENDPOINT, headers=self.headers, json=payload, timeout=30
+        )
+
+        if response.status_code != 200:
+            error_msg = f"Volcengine Search API error: {response.status_code}"
+            try:
+                error_data = response.json()
+                if "msg" in error_data:
+                    error_msg += f" - {error_data['msg']}"
+            except:
+                error_msg += f" - {response.text}"
+            raise Exception(error_msg)
+
+        return response.json()
 
 
 class BaiduAISearch:
@@ -109,6 +169,64 @@ class BaiduAISearch:
             )
 
         return response.json()
+
+
+def _search_with_volcengine(query: str, verbose: bool = False) -> dict:
+    """
+    Perform search using Volcano Engine API
+
+    Args:
+        query: Search query
+        verbose: Whether to print detailed information
+
+    Returns:
+        dict: Standardized search result
+    """
+    api_key = os.environ.get("VOLCENGINE_API_KEY")
+    if not api_key:
+        raise ValueError("VOLCENGINE_API_KEY environment variable is not set")
+
+    client = VolcengineSearch(api_key=api_key)
+    response = client.search(query=query)
+
+    # Standardize result
+    result = {
+        "timestamp": datetime.now().isoformat(),
+        "query": query,
+        "provider": "volcengine",
+        "answer": "",  # Volcano search API mainly returns search results, summary might need LLM
+        "response": response,
+        "search_results": [],
+        "citations": [],
+    }
+
+    # Parse search results
+    if "Result" in response and "WebResults" in response["Result"]:
+        result_list = response["Result"]["WebResults"]
+        for i, item in enumerate(result_list, 1):
+            search_result = {
+                "title": item.get("Title", ""),
+                "url": item.get("Url", ""),
+                "date": item.get("PublishTime", ""),
+                "snippet": item.get("Snippet", "") or item.get("Summary", ""),
+                "source": item.get("SiteName", ""),
+            }
+            result["search_results"].append(search_result)
+            
+            citation_data = {
+                "id": i,
+                "reference": f"[{i}]",
+                "url": search_result["url"],
+                "title": search_result["title"],
+                "snippet": search_result["snippet"],
+            }
+            result["citations"].append(citation_data)
+
+    if verbose:
+        print(f"[Volcengine] Query: {query}")
+        print(f"[Volcengine] Results found: {len(result['search_results'])}")
+
+    return result
 
 
 def _search_with_baidu(
@@ -380,9 +498,11 @@ def web_search(
             )
         elif provider == "perplexity":
             result = _search_with_perplexity(query=query, verbose=verbose)
+        elif provider == "volcengine":
+            result = _search_with_volcengine(query=query, verbose=verbose)
         else:
             raise ValueError(
-                f"Unsupported search provider: {provider}. Use 'perplexity' or 'baidu'."
+                f"Unsupported search provider: {provider}. Use 'perplexity', 'baidu', or 'volcengine'."
             )
 
         # If output directory provided, save results

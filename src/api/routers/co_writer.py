@@ -1,10 +1,12 @@
+import asyncio
 from pathlib import Path
 import sys
 import traceback
 from typing import Literal
+import tempfile
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 # Ensure co_writer module can be imported
@@ -14,16 +16,14 @@ if str(project_root) not in sys.path:
 
 import json
 
-from src.agents.co_writer.edit_agent import (
-    TOOL_CALLS_DIR,
-    EditAgent,
-    load_history,
-    print_stats,
-)
-from src.agents.co_writer.narrator_agent import NarratorAgent
+from src.agents.co_writer.edit_agent import TOOL_CALLS_DIR, EditAgent, print_stats
+from src.agents.co_writer.narrator_agent import NarratorAgent, get_narrator_agent
 from src.logging import get_logger
 from src.services.config import load_config_with_main
 from src.services.tts import get_tts_config
+from src.services.storage.file_store import get_file_record, save_file_record
+from src.services.storage.history_store import get_history_item, list_history, update_history_item
+from src.services.storage.object_store import get_bucket_name, get_object_stream, upload_file
 
 router = APIRouter()
 
@@ -34,16 +34,6 @@ log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {
 logger = get_logger("CoWriter", level="INFO", log_dir=log_dir)
 
 agent = EditAgent()
-
-# Lazy load NarratorAgent (because TTS config may not exist)
-_narrator_agent = None
-
-
-def get_narrator_agent():
-    global _narrator_agent
-    if _narrator_agent is None:
-        _narrator_agent = NarratorAgent()
-    return _narrator_agent
 
 
 class EditRequest(BaseModel):
@@ -108,7 +98,7 @@ async def auto_mark_text(request: AutoMarkRequest):
 async def get_history():
     """Get all operation history"""
     try:
-        history = load_history()
+        history = list_history()
         return {"history": history, "total": len(history)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -118,10 +108,9 @@ async def get_history():
 async def get_operation(operation_id: str):
     """Get single operation details"""
     try:
-        history = load_history()
-        for op in history:
-            if op.get("id") == operation_id:
-                return op
+        item = get_history_item(operation_id)
+        if item:
+            return item
         raise HTTPException(status_code=404, detail="Operation not found")
     except HTTPException:
         raise
@@ -301,3 +290,100 @@ async def get_available_voices():
         },
     ]
     return {"voices": voices}
+
+
+@router.get("/stream_audio/{audio_id}")
+async def stream_audio(audio_id: str):
+    """
+    Stream audio generation for a specific audio ID.
+    If generation is pending, it triggers it.
+    If already generated, it streams from file.
+    """
+    from src.agents.co_writer.narrator_agent import (
+        get_pending_stream,
+        get_narrator_agent,
+        get_generation_lock,
+        remove_pending_stream,
+        set_pending_stream,
+    )
+    
+    narrator = get_narrator_agent()
+    file_record = get_file_record(audio_id)
+    if file_record:
+        response = get_object_stream(file_record["bucket"], file_record["object_key"])
+        def iter_stream():
+            try:
+                for chunk in response.stream(8192):
+                    if chunk:
+                        yield chunk
+            finally:
+                response.close()
+                response.release_conn()
+        return StreamingResponse(iter_stream(), media_type=file_record["content_type"])
+
+    pending = get_pending_stream(audio_id)
+    if not pending:
+        history_item = get_history_item(audio_id)
+        if history_item and history_item.get("status") == "pending_stream":
+            result = history_item.get("result") or {}
+            script = result.get("script")
+            voice = result.get("voice") or narrator.default_voice
+            provider = narrator.tts_config.get("provider", "openai") if narrator.tts_config else "openai"
+            if script:
+                set_pending_stream(audio_id, script, voice, provider)
+                pending = get_pending_stream(audio_id)
+
+    if pending:
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        temp_path = Path(temp_file.name)
+        temp_file.close()
+
+        async def stream_with_lock_and_cleanup():
+            lock = await get_generation_lock(audio_id)
+            async with lock:
+                try:
+                    async for chunk in narrator.generate_audio_stream(
+                        script=pending["script"],
+                        voice=pending["voice"],
+                        audio_id=audio_id,
+                        output_path=temp_path,
+                    ):
+                        yield chunk
+                finally:
+                    remove_pending_stream(audio_id)
+
+            bucket = get_bucket_name()
+            if not bucket:
+                raise HTTPException(status_code=500, detail="MinIO bucket not configured")
+            object_key = f"co-writer/audio/{audio_id}.mp3"
+            await asyncio.to_thread(
+                upload_file,
+                bucket,
+                object_key,
+                str(temp_path),
+                "audio/mpeg",
+            )
+            await asyncio.to_thread(
+                save_file_record,
+                file_id=audio_id,
+                file_type="audio",
+                filename=f"{audio_id}.mp3",
+                bucket=bucket,
+                object_key=object_key,
+                content_type="audio/mpeg",
+                metadata={"voice": pending.get("voice")},
+            )
+            history_item = get_history_item(audio_id)
+            if history_item:
+                history_item["status"] = "completed"
+                update_history_item(audio_id, history_item)
+            if temp_path.exists():
+                temp_path.unlink()
+
+        return StreamingResponse(
+            stream_with_lock_and_cleanup(),
+            media_type="audio/mpeg",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    raise HTTPException(status_code=404, detail="Audio not found or expired")

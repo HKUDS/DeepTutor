@@ -35,6 +35,8 @@ import {
     Search,
     CheckSquare,
     Square,
+    Mic,
+    Headphones,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
@@ -211,7 +213,10 @@ export default function NotebookDetailPage() {
     const [noteContent, setNoteContent] = useState("");
 
     // Studio state
-    const [studioMode, setStudioMode] = useState<"idle" | "research" | "question" | "solver" | "guide" | "ideagen" | "pdf" | "ppt" | "mindmap">("idle");
+    const [studioMode, setStudioMode] = useState<"idle" | "research" | "question" | "solver" | "guide" | "ideagen" | "pdf" | "ppt" | "mindmap" | "podcast">("idle");
+    const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
+    const [audioResult, setAudioResult] = useState<{ audioUrl?: string; audioId?: string } | null>(null);
+    const [audioError, setAudioError] = useState<string | null>(null);
 
     const normalizeTimestamp = (value?: number) => {
         if (!value) return Date.now();
@@ -2154,6 +2159,53 @@ export default function NotebookDetailPage() {
         }
     };
 
+    const handleGeneratePodcast = async () => {
+        setIsGeneratingAudio(true);
+        setAudioError(null);
+        setAudioResult(null);
+        try {
+            const markdown = await getExportMarkdown();
+            if (!markdown) {
+                setIsGeneratingAudio(false);
+                return;
+            }
+
+            const res = await fetch(apiUrl("/api/v1/co_writer/narrate"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    content: markdown,
+                    style: "friendly", // Default style
+                    skip_audio: false,
+                }),
+            });
+
+            if (!res.ok) {
+                const detail = await res.text();
+                throw new Error(detail || `HTTP ${res.status}`);
+            }
+
+            const data = await res.json();
+            if (data.has_audio && data.audio_url) {
+                const audioUrl = data.audio_url.startsWith("http")
+                    ? data.audio_url
+                    : apiUrl(data.audio_url);
+                setAudioResult({
+                    audioUrl: audioUrl,
+                    audioId: data.audio_id,
+                });
+                setStudioMode("podcast");
+            } else {
+                throw new Error(data.audio_error || "音频生成失败");
+            }
+        } catch (err: any) {
+            console.error("Podcast generation failed:", err);
+            setAudioError(err?.message || "播客生成失败，请稍后重试");
+        } finally {
+            setIsGeneratingAudio(false);
+        }
+    };
+
     const renderExportSourceToggle = () => (
         <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
             <span>内容来源</span>
@@ -2969,7 +3021,7 @@ export default function NotebookDetailPage() {
                                 <div className="mb-2">
                                     {renderExportSourceToggle()}
                                 </div>
-                                <div className="grid grid-cols-3 gap-2">
+                                <div className="grid grid-cols-4 gap-2">
                                     {/* PDF Export */}
                                     <button
                                         onClick={handleExportPdf}
@@ -2997,7 +3049,17 @@ export default function NotebookDetailPage() {
                                         className="p-3 rounded-xl border border-slate-200 hover:border-purple-300 hover:bg-purple-50/50 transition-all text-center disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <GitBranch className="w-5 h-5 text-purple-600 mx-auto mb-1" />
-                                        <span className="text-xs text-slate-600">思维导图</span>
+                                        <span className="text-xs text-slate-600">导图</span>
+                                    </button>
+
+                                    {/* Podcast */}
+                                    <button
+                                        onClick={() => setStudioMode("podcast")}
+                                        disabled={!canExport || isGeneratingAudio}
+                                        className="p-3 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 transition-all text-center disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        <Headphones className="w-5 h-5 text-indigo-600 mx-auto mb-1" />
+                                        <span className="text-xs text-slate-600">播客</span>
                                     </button>
                                 </div>
                                 {!canExport && (
@@ -3141,6 +3203,96 @@ export default function NotebookDetailPage() {
                                         </div>
                                     </div>
                                 )}
+                            </div>
+                        )
+                    }
+
+                    {/* Podcast Mode */}
+                    {
+                        studioMode === "podcast" && (
+                            <div className="space-y-4">
+                                <button
+                                    onClick={() => setStudioMode("idle")}
+                                    className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700"
+                                >
+                                    <ArrowLeft className="w-4 h-4" />
+                                    返回
+                                </button>
+
+                                <div className="text-center py-8">
+                                    <Mic className="w-12 h-12 text-indigo-300 mx-auto mb-4" />
+                                    <p className="text-slate-700 font-medium mb-2">音频播客</p>
+
+                                    {isGeneratingAudio ? (
+                                        <div className="flex flex-col items-center gap-4 py-4">
+                                            <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+                                            <p className="text-sm text-slate-500">正在生成播客音频，请稍候...</p>
+                                        </div>
+                                    ) : audioError ? (
+                                        <div className="p-3 bg-red-50 border border-red-200 rounded-xl mb-4">
+                                            <div className="flex items-center gap-2">
+                                                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                                                <span className="text-red-600 text-sm flex-1">{audioError}</span>
+                                            </div>
+                                            <button
+                                                onClick={() => handleGeneratePodcast()}
+                                                className="mt-2 text-xs text-red-500 hover:text-red-700 underline"
+                                            >
+                                                重试
+                                            </button>
+                                        </div>
+                                    ) : audioResult?.audioUrl ? (
+                                        <div className="space-y-4">
+                                            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                                                <audio
+                                                    controls
+                                                    src={audioResult.audioUrl}
+                                                    className="w-full h-10"
+                                                />
+                                            </div>
+                                            <div className="flex gap-2 justify-center">
+                                                <a
+                                                    href={audioResult.audioUrl}
+                                                    download={`podcast-${audioResult.audioId}.mp3`}
+                                                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
+                                                >
+                                                    <FileDown className="w-4 h-4" />
+                                                    下载音频
+                                                </a>
+                                                <button
+                                                    onClick={() => handleGeneratePodcast()}
+                                                    className="px-4 py-2 border border-slate-200 text-slate-600 bg-white rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors flex items-center gap-2"
+                                                >
+                                                    <Zap className="w-4 h-4" />
+                                                    重新生成
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            <p className="text-sm text-slate-400 mb-6">
+                                                将研究报告或来源内容转换为语音播客
+                                            </p>
+                                            <div className="mb-4">
+                                                {renderExportSourceToggle()}
+                                            </div>
+                                            <button
+                                                onClick={handleGeneratePodcast}
+                                                disabled={!canExport}
+                                                className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                                            >
+                                                生成播客音频
+                                            </button>
+                                            {!canExport && (
+                                                <p className="text-xs text-slate-400">
+                                                    {exportContentSource === "research"
+                                                        ? "完成深度研究后可生成"
+                                                        : "选择来源后可生成"}
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )
                     }

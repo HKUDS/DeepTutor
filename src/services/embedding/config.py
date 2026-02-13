@@ -114,6 +114,7 @@ def get_embedding_config() -> EmbeddingConfig:
         "huggingface": "HF",
         "ollama": "OLLAMA",
         "lm_studio": "LM_STUDIO",
+        "doubao": "DOUBAO",
     }
 
     prefix = prefix_map.get(binding, "")

@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional
 
 from .adapters.base import BaseEmbeddingAdapter
 from .adapters.cohere import CohereEmbeddingAdapter
+from .adapters.doubao import DoubaoEmbeddingAdapter
 from .adapters.jina import JinaEmbeddingAdapter
 from .adapters.ollama import OllamaEmbeddingAdapter
 from .adapters.openai_compatible import OpenAICompatibleEmbeddingAdapter
@@ -38,6 +39,7 @@ class EmbeddingProviderManager:
         "cohere": CohereEmbeddingAdapter,
         "ollama": OllamaEmbeddingAdapter,
         "lm_studio": OpenAICompatibleEmbeddingAdapter,  # LM Studio (OpenAI-compatible)
+        "doubao": DoubaoEmbeddingAdapter,  # Doubao (Volcano Engine)
     }
 
     def __init__(self):

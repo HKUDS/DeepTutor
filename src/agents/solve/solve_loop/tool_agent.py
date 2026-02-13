@@ -6,6 +6,7 @@ Responsible for reading tool calls in solve-chain, actually executing tools and 
 """
 
 from pathlib import Path
+import asyncio
 import re
 import sys
 import time
@@ -242,7 +243,9 @@ Rules:
             return answer, metadata
 
         if tool_type == "web_search":
-            result = web_search(query=query, output_dir=output_dir, verbose=verbose)
+            result = await asyncio.to_thread(
+                web_search, query=query, output_dir=output_dir, verbose=verbose
+            )
             answer = result.get("answer") or result.get("summary") or ""
             used_citation_ids = self._extract_answer_citations(answer)
             filtered_citations = self._select_web_citations(used_citation_ids, result)

@@ -1,7 +1,8 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+import time
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -48,6 +49,13 @@ async def lifespan(app: FastAPI):
         logger.info("Ensured 'User Notes' knowledge base exists")
     except Exception as e:
         logger.error(f"Failed to initialize 'User Notes' knowledge base: {e}")
+
+    try:
+        from src.services.storage import init_storage
+        init_storage()
+        logger.info("Storage initialized")
+    except Exception as e:
+        logger.warning(f"Storage initialization skipped/failed: {e}")
         
     yield
     # Execute on shutdown
@@ -64,6 +72,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    logger.debug(f"Request: {request.method} {request.url.path} - Processed in {process_time:.4f}s")
+    return response
 
 # Mount user directory as static root for generated artifacts
 # This allows frontend to access generated artifacts (images, PDFs, etc.)
@@ -127,20 +144,22 @@ if __name__ == "__main__":
     backend_port = get_backend_port(project_root)
 
     # Configure reload_excludes with absolute paths to properly exclude directories
-    venv_dir = project_root / "venv"
-    data_dir = project_root / "data"
     reload_excludes = [
-        str(d)
+        str(project_root / d)
         for d in [
-            venv_dir,
-            project_root / ".venv",
-            data_dir,
-            project_root / "web" / "node_modules",
-            project_root / "web" / ".next",
-            project_root / ".git",
+            "venv",
+            ".venv",
+            "data",
+            "web/node_modules",
+            "web/.next",
+            ".git",
+            "cache",
+            "reports",
         ]
-        if d.exists()
     ]
+
+    logger.info(f"Starting backend on port {backend_port} (reload=True)")
+    logger.debug(f"Reload excludes: {reload_excludes}")
 
     uvicorn.run(
         "api.main:app",

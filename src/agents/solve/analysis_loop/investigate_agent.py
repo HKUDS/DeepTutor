@@ -12,6 +12,7 @@ from typing import Any
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+import asyncio
 import json
 
 from src.agents.base_agent import BaseAgent
@@ -399,8 +400,10 @@ class InvestigateAgent(BaseAgent):
 
     async def _call_web_search(self, query: str, output_dir: str | None) -> dict[str, Any]:
         """Call Web Search"""
-        return web_search(query=query, output_dir=output_dir or "./cache", verbose=False)
+        return await asyncio.to_thread(
+            web_search, query=query, output_dir=output_dir or "./cache", verbose=False
+        )
 
     async def _call_query_item(self, identifier: str, kb_name: str) -> dict[str, Any]:
         """Call Query Item"""
-        return query_numbered_item(identifier=identifier, kb_name=kb_name)
+        return await asyncio.to_thread(query_numbered_item, identifier=identifier, kb_name=kb_name)

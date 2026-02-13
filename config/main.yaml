@@ -136,37 +136,29 @@ research:
         iteration_mode: flexible
       reporting:
         min_section_length: 500
-
-# Export settings for various output formats
 export:
   ppt:
-    # Dedicated LLM for PPT generation (leave empty to use default LLM)
-    # Recommended: nano-banana or similar text-to-design models
-    model: ""                    # e.g., "nano-banana"
-    api_key: ""                  # PPT-specific API key
-    base_url: ""                 # PPT-specific API endpoint
-    binding: "openai"            # API compatibility type
-    
-    # Generation parameters
-    temperature: 0.4             # Lower temperature for consistent structure
-    max_tokens: 2000             # Enough for JSON spec generation
-    max_slides: 15               # Default maximum slides
-    
-    # Default style prompt (used when frontend doesn't provide one)
-    default_style_prompt: ""
-
-    # Preset style templates for PPT generation
+    model: ''
+    api_key: ''
+    base_url: ''
+    binding: openai
+    temperature: 0.4
+    max_tokens: 2000
+    max_slides: 15
+    default_style_prompt: ''
     style_templates:
-      - id: "clean"
-        name: "Clean Minimal"
-        prompt: "Use a clean, minimal layout with ample white space, subtle gray dividers, and a calm, professional tone."
-      - id: "academic"
-        name: "Academic Report"
-        prompt: "Use a formal academic style with muted colors, clear section hierarchy, and emphasis on concise bullet points."
-      - id: "business"
-        name: "Business Pitch"
-        prompt: "Use a modern business deck style with bold accent color, sharp contrast, and short impactful bullets."
-
+    - id: clean
+      name: Clean Minimal
+      prompt: Use a clean, minimal layout with ample white space, subtle gray dividers,
+        and a calm, professional tone.
+    - id: academic
+      name: Academic Report
+      prompt: Use a formal academic style with muted colors, clear section hierarchy,
+        and emphasis on concise bullet points.
+    - id: business
+      name: Business Pitch
+      prompt: Use a modern business deck style with bold accent color, sharp contrast,
+        and short impactful bullets.
   banana_ppt:
     enabled: true
     max_slides: 15
@@ -174,16 +166,12 @@ export:
       temperature: 0.4
       max_tokens: 4000
     image:
-      model: "gemini-2.5-flash-image"
-      api_key: ""
-      base_url: ""
-      binding: "gemini"
-      aspect_ratio: "16:9"
+      model: gemini-2.5-flash-image
+      api_key: ''
+      base_url: ''
+      binding: gemini
+      aspect_ratio: '16:9'
     style_templates: []
-
-# =============================================================================
-# Agent Configuration Overrides
-# =============================================================================
 agents:
   chat_agent:
     max_history_tokens: 32000
