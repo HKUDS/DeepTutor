@@ -17,6 +17,7 @@ from src.api.routers import (
     knowledge,
     llm_provider,
     notebook,
+    notebook_chat,
     question,
     research,
     settings,
@@ -110,6 +111,7 @@ app.include_router(knowledge.router, prefix="/api/v1/knowledge", tags=["knowledg
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"])
 app.include_router(co_writer.router, prefix="/api/v1/co_writer", tags=["co_writer"])
 app.include_router(notebook.router, prefix="/api/v1/notebook", tags=["notebook"])
+app.include_router(notebook_chat.router, prefix="/api/v1/notebook", tags=["notebook"])
 app.include_router(guide.router, prefix="/api/v1/guide", tags=["guide"])
 app.include_router(ideagen.router, prefix="/api/v1/ideagen", tags=["ideagen"])
 app.include_router(settings.router, prefix="/api/v1/settings", tags=["settings"])

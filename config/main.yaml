@@ -21,6 +21,7 @@ tools:
     - ./src/tools
   web_search:
     enabled: true
+    max_results: 10
   query_item:
     enabled: true
     max_results: 5

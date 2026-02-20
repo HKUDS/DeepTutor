@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import {
     Send,
     Loader2,
@@ -47,6 +48,11 @@ interface KnowledgeBase {
 }
 
 export default function ChatPage() {
+    const searchParams = useSearchParams();
+    const sessionFromUrl = searchParams.get("session");
+    const CHAT_SETTINGS_KEY = "deeptutor.chat.settings";
+    const CHAT_ACTIVE_SESSION_KEY = "deeptutor.chat.active_session";
+
     // State
     const [messages, setMessages] = useState<ChatMessage[]>([
         {
@@ -65,7 +71,7 @@ export default function ChatPage() {
     // Settings
     const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
     const [selectedKb, setSelectedKb] = useState<string>("");
-    const [enableRag, setEnableRag] = useState(true);
+    const [enableRag, setEnableRag] = useState(false);
     const [enableWebSearch, setEnableWebSearch] = useState(false);
 
     // Notebook modal
@@ -75,6 +81,56 @@ export default function ChatPage() {
     // Refs
     const chatContainerRef = useRef<HTMLDivElement>(null);
     const wsRef = useRef<WebSocket | null>(null);
+
+    const readChatSettingsStore = () => {
+        try {
+            const raw = localStorage.getItem(CHAT_SETTINGS_KEY);
+            if (!raw) return {};
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== "object") return {};
+            return parsed as Record<string, { enableRag?: boolean; enableWebSearch?: boolean; selectedKb?: string }>;
+        } catch {
+            return {};
+        }
+    };
+
+    const writeChatSettingsStore = (
+        store: Record<string, { enableRag?: boolean; enableWebSearch?: boolean; selectedKb?: string }>
+    ) => {
+        try {
+            localStorage.setItem(CHAT_SETTINGS_KEY, JSON.stringify(store));
+        } catch {
+            // Ignore storage failures
+        }
+    };
+
+    const persistSessionSettings = (sid: string, settings: { enableRag: boolean; enableWebSearch: boolean; selectedKb: string }) => {
+        const store = readChatSettingsStore();
+        store[sid] = settings;
+        writeChatSettingsStore(store);
+    };
+
+    const loadSessionSettings = (
+        sid: string,
+        fallback?: { kb_name?: string; enable_rag?: boolean; enable_web_search?: boolean }
+    ) => {
+        const store = readChatSettingsStore();
+        if (store[sid]) {
+            return {
+                enableRag: !!store[sid].enableRag,
+                enableWebSearch: !!store[sid].enableWebSearch,
+                selectedKb: store[sid].selectedKb || "",
+            };
+        }
+        if (fallback) {
+            return {
+                enableRag: !!fallback.enable_rag,
+                enableWebSearch: !!fallback.enable_web_search,
+                selectedKb: fallback.kb_name || "",
+            };
+        }
+        return null;
+    };
 
     const fetchSessions = async () => {
         try {
@@ -96,7 +152,9 @@ export default function ChatPage() {
                 if (Array.isArray(data)) {
                     setKbs(data);
                     const defaultKb = data.find((kb: KnowledgeBase) => kb.is_default)?.name || data[0]?.name;
-                    if (defaultKb) setSelectedKb(defaultKb);
+                    if (defaultKb) {
+                        setSelectedKb((prev) => prev || defaultKb);
+                    }
                 }
             })
             .catch((err) => console.error("Failed to fetch KBs:", err));
@@ -107,6 +165,43 @@ export default function ChatPage() {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         fetchSessions();
     }, []);
+
+    // Auto-load session from URL query parameter (e.g., /chat?session=xxx)
+    useEffect(() => {
+        if (sessionFromUrl && sessionFromUrl !== sessionId) {
+            handleLoadSession(sessionFromUrl);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sessionFromUrl]);
+
+    // Restore last active session if no session in URL
+    useEffect(() => {
+        if (sessionFromUrl || sessionId) return;
+        try {
+            const lastSessionId = localStorage.getItem(CHAT_ACTIVE_SESSION_KEY);
+            if (lastSessionId) {
+                handleLoadSession(lastSessionId);
+            }
+        } catch {
+            // Ignore storage failures
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Persist tool settings for active session
+    useEffect(() => {
+        if (!sessionId) return;
+        persistSessionSettings(sessionId, {
+            enableRag,
+            enableWebSearch,
+            selectedKb,
+        });
+        try {
+            localStorage.setItem(CHAT_ACTIVE_SESSION_KEY, sessionId);
+        } catch {
+            // Ignore storage failures
+        }
+    }, [sessionId, enableRag, enableWebSearch, selectedKb]);
 
     // Auto-scroll
     useEffect(() => {
@@ -139,6 +234,11 @@ export default function ChatPage() {
             { id: assistantId, role: "assistant", content: "", isStreaming: true },
         ]);
 
+        // Build explicit history from current messages (excluding welcome and the new user message)
+        const historyForBackend = messages
+            .filter((msg) => msg.id !== "welcome" && (msg.role === "user" || msg.role === "assistant") && !msg.isStreaming && msg.content)
+            .map((msg) => ({ role: msg.role, content: msg.content }));
+
         // Open WebSocket
         const ws = new WebSocket(wsUrl("/api/v1/chat"));
         wsRef.current = ws;
@@ -148,6 +248,7 @@ export default function ChatPage() {
                 JSON.stringify({
                     message: userMessage.content,
                     session_id: sessionId,
+                    history: historyForBackend,
                     kb_name: selectedKb,
                     enable_rag: enableRag && !!selectedKb,
                     enable_web_search: enableWebSearch,
@@ -161,6 +262,16 @@ export default function ChatPage() {
 
                 if (data.type === "session") {
                     setSessionId(data.session_id);
+                    persistSessionSettings(data.session_id, {
+                        enableRag,
+                        enableWebSearch,
+                        selectedKb,
+                    });
+                    try {
+                        localStorage.setItem(CHAT_ACTIVE_SESSION_KEY, data.session_id);
+                    } catch {
+                        // Ignore storage failures
+                    }
                     fetchSessions(); // Refresh session list
                 } else if (data.type === "stream") {
                     setMessages((prev) =>
@@ -227,9 +338,17 @@ export default function ChatPage() {
         };
     };
 
-    // Start new chat
+    // Start new chat — fully reset state and close any active connection
     const handleNewChat = () => {
+        // Close any active WebSocket to prevent stale responses leaking in
+        if (wsRef.current) {
+            wsRef.current.close();
+            wsRef.current = null;
+        }
+        setIsLoading(false);
         setSessionId(null);
+        setEnableRag(false);
+        setEnableWebSearch(false);
         setMessages([
             {
                 id: "welcome",
@@ -237,15 +356,35 @@ export default function ChatPage() {
                 content: "👋 新对话已开始。有什么可以帮你的吗？",
             },
         ]);
+        try {
+            localStorage.removeItem(CHAT_ACTIVE_SESSION_KEY);
+        } catch {
+            // Ignore storage failures
+        }
     };
 
-    // Load session
+    // Load session — close active connection and replace messages entirely
     const handleLoadSession = async (sid: string) => {
+        // Close any active WebSocket
+        if (wsRef.current) {
+            wsRef.current.close();
+            wsRef.current = null;
+        }
+        setIsLoading(false);
+
         try {
             const res = await fetch(apiUrl(`/api/v1/chat/sessions/${sid}`));
             const data = await res.json();
             if (data.messages) {
                 setSessionId(sid);
+                const settings = loadSessionSettings(sid, data.settings);
+                if (settings) {
+                    setEnableRag(settings.enableRag);
+                    setEnableWebSearch(settings.enableWebSearch);
+                    if (settings.selectedKb) {
+                        setSelectedKb(settings.selectedKb);
+                    }
+                }
                 setMessages(
                     data.messages.map((msg: any, idx: number) => ({
                         id: `${sid}-${idx}`,

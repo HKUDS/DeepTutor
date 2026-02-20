@@ -186,6 +186,9 @@ class NotebookManager:
         incoming_report = session.get("research_report")
         if existing and not incoming_report and existing.get("research_report"):
             incoming_report = existing.get("research_report")
+        incoming_studio_state = session.get("studio_state")
+        if "studio_state" not in session and existing:
+            incoming_studio_state = existing.get("studio_state")
         incoming_messages = session.get("messages", [])
         if existing:
             existing_messages = existing.get("messages", [])
@@ -214,6 +217,7 @@ class NotebookManager:
             "sources": incoming_sources,
             "research_report": incoming_report,
             "research_state": session.get("research_state"),
+            "studio_state": incoming_studio_state,
             "created_at": created_at or now,
             "updated_at": session.get("updated_at") or now,
         }

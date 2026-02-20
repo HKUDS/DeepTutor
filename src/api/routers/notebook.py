@@ -327,6 +327,7 @@ class SessionSnapshot(BaseModel):
     sources: list[SessionSource] = []
     research_report: str | None = None
     research_state: dict | None = None
+    studio_state: dict | None = None
     created_at: float | None = None
     updated_at: float | None = None
 
@@ -584,7 +585,8 @@ async def upsert_session(
     """Create or update a chat session snapshot"""
     if not notebook_manager.get_notebook(notebook_id):
         raise HTTPException(status_code=404, detail="Notebook not found")
-    session = notebook_manager.upsert_session(notebook_id, request.dict())
+    payload = request.dict(exclude_none=True)
+    session = notebook_manager.upsert_session(notebook_id, payload)
     try:
         _sync_sources_kb(notebook_id, background_tasks)
     except Exception as e:
@@ -731,4 +733,3 @@ async def get_sources_kb_status(notebook_id: str):
     except Exception as e:
         logger.error(f"Failed to check sources KB status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-

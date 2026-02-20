@@ -105,6 +105,9 @@ export default function ResearchPage() {
 
   // WebSocket Ref
   const wsRef = useRef<WebSocket | null>(null);
+  // Track whether a result has been received for the current WebSocket session,
+  // so that ws.onclose does not clobber state with a stale restoreResearchState call.
+  const resultReceivedRef = useRef(false);
 
   const readPersistedState = (): PersistedResearchState | null => {
     try {
@@ -478,7 +481,10 @@ export default function ResearchPage() {
 
   // Start Research Function (Local)
   const startResearchLocal = (topic: string) => {
+    // Mark the old WebSocket as "done" so its onclose handler won't restore stale state
+    resultReceivedRef.current = true;
     if (wsRef.current) wsRef.current.close();
+    resultReceivedRef.current = false;
     clearPersistedState();
     dispatch({ type: "reset" });
     setSelectedTaskId(null);
@@ -563,6 +569,7 @@ export default function ResearchPage() {
             content: data.content.content || data.content, // Handle different log formats
           });
         } else if (data.type === "result") {
+          resultReceivedRef.current = true;
           if (data.research_id) {
             writePersistedState({ research_id: data.research_id });
           }
@@ -622,11 +629,18 @@ export default function ResearchPage() {
       console.error("WS Error", e);
       dispatch({ type: "error", content: "WebSocket connection failed" });
       setGlobalResearchState((prev) => ({ ...prev, status: "idle" }));
-      restoreResearchState("ws-error");
+      // Don't call restoreResearchState here — onerror is always followed by
+      // onclose (per WebSocket spec), so let onclose handle the restore to
+      // avoid restoring twice.
     };
 
     ws.onclose = () => {
-      restoreResearchState("ws-close");
+      // Only restore if the WebSocket closed unexpectedly (no result received).
+      // If a result was already processed, or a new research session replaced this
+      // WebSocket, restoring would clobber the current state with stale data.
+      if (!resultReceivedRef.current) {
+        restoreResearchState("ws-close");
+      }
     };
   };
 

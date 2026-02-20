@@ -323,6 +323,7 @@ class ChatAgent(BaseAgent):
         context: str = "",
         enable_rag: bool = False,
         enable_web_search: bool = False,
+        require_sources: bool = False,
     ) -> list[dict[str, str]]:
         """
         Build the messages array for the LLM API call.
@@ -333,21 +334,33 @@ class ChatAgent(BaseAgent):
             context: Retrieved context (RAG/Web)
             enable_rag: Whether RAG is enabled
             enable_web_search: Whether Web Search is enabled
+            require_sources: Whether to enforce strict grounded QA (notebook mode)
 
         Returns:
             List of message dicts for OpenAI API
         """
         messages = []
 
-        # Construct System Prompt based on mode
-        base_system_prompt = self.get_prompt("system", "You are a knowledgeable AI assistant.")
-        
+        # Select system prompt based on mode
+        if require_sources:
+            # Notebook mode: use notebook-specific system prompt
+            base_system_prompt = self.get_prompt("notebook_system", "You are a knowledgeable AI assistant.")
+        else:
+            # Chat mode: use open chat system prompt
+            base_system_prompt = self.get_prompt("system", "You are a knowledgeable AI assistant.")
+
         instructions = []
         if context:
-            # Enforce strict context usage if context is present
-            instructions.append("Answer the user's question based STRICTLY on the provided Reference Information.")
-            instructions.append("Do NOT use your own internal knowledge to answer. You must only use the information present in the Reference Information.")
-            instructions.append("If the answer is not found in the Reference Information, explicitly state that you cannot find the answer in the provided sources.")
+            if require_sources:
+                # Notebook mode: strict grounded QA — only answer from provided sources
+                instructions.append("Answer the user's question based STRICTLY on the provided Reference Information.")
+                instructions.append("Do NOT use your own internal knowledge to answer. You must only use the information present in the Reference Information.")
+                instructions.append("If the answer is not found in the Reference Information, explicitly state that you cannot find the answer in the provided sources.")
+            else:
+                # Chat mode: use context as supplementary reference, not as strict constraint
+                instructions.append("Reference Information is provided below for your consideration.")
+                instructions.append("Use it to enhance your answer, but you may also draw on your own knowledge to provide a comprehensive response.")
+                instructions.append("If the Reference Information is relevant, incorporate and cite it; if not, feel free to answer based on your own knowledge.")
 
             if enable_web_search:
                 instructions.append("The Reference Information contains Web Search Results.")
@@ -553,6 +566,7 @@ class ChatAgent(BaseAgent):
             context=context,
             enable_rag=enable_rag,
             enable_web_search=enable_web_search,
+            require_sources=require_sources,
         )
 
         if stream:

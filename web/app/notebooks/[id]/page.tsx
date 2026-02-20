@@ -2,7 +2,7 @@
 
 /* eslint-disable react-hooks/exhaustive-deps */
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
     ArrowLeft,
@@ -119,6 +119,48 @@ interface ResearchState {
     researchId?: string;
 }
 
+type StudioMode =
+    | "idle"
+    | "research"
+    | "question"
+    | "solver"
+    | "guide"
+    | "ideagen"
+    | "pdf"
+    | "ppt"
+    | "mindmap"
+    | "podcast";
+
+type ExportContentSource = "research" | "sources";
+
+type PptStyleMode = "default" | "preset" | "template" | "sources";
+
+type PptTemplatePromptSource = "preset" | "sources";
+
+type AudioResult = { audioUrl?: string; audioId?: string };
+
+interface PptStudioState {
+    styleMode?: PptStyleMode;
+    selectedStyleId?: string;
+    selectedTemplate?: string;
+    templateUseLlm?: boolean;
+    templatePromptSource?: PptTemplatePromptSource;
+    stylePreviewSvg?: string;
+    outline?: PresentationOutline | null;
+    previewOpen?: boolean;
+}
+
+interface PodcastStudioState {
+    audioResult?: AudioResult | null;
+}
+
+interface StudioState {
+    mode?: StudioMode;
+    exportContentSource?: ExportContentSource;
+    ppt?: PptStudioState;
+    podcast?: PodcastStudioState;
+}
+
 interface SessionSnapshot {
     session_id: string;
     title: string;
@@ -126,6 +168,7 @@ interface SessionSnapshot {
     sources: Source[];
     research_report?: string;
     research_state?: ResearchState | null;
+    studio_state?: StudioState | null;
     created_at: number;
     updated_at: number;
 }
@@ -157,6 +200,13 @@ export default function NotebookDetailPage() {
     const [isChatting, setIsChatting] = useState(false);
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
+    // Refs to always have the latest values for session saves (avoids React stale closure bugs)
+    const chatMessagesRef = useRef<ChatMessage[]>([]);
+    const sourcesRef = useRef<Source[]>([]);
+    const researchReportRef = useRef("");
+    const studioStateRef = useRef<StudioState | null>(null);
+    const studioHydrationRef = useRef(false);
+
     // Knowledge bases
     const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
     const [selectedKb, setSelectedKb] = useState<string>("");
@@ -176,12 +226,16 @@ export default function NotebookDetailPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [isSearching, setIsSearching] = useState(false);
 
+    // Keep refs in sync with state (for buildSessionSnapshot in async callbacks)
+    useEffect(() => { chatMessagesRef.current = chatMessages; }, [chatMessages]);
+    useEffect(() => { sourcesRef.current = sources; }, [sources]);
+
     // Deep Research config (from original research page)
     const [planMode, setPlanMode] = useState<"quick" | "medium" | "deep" | "auto">("medium");
     const [enabledTools, setEnabledTools] = useState<string[]>(["Web", "RAG"]);
     const [enableOptimization, setEnableOptimization] = useState(true);
-    const [exportContentSource, setExportContentSource] = useState<"research" | "sources">("research");
-    const [pptStyleMode, setPptStyleMode] = useState<"default" | "preset" | "template" | "sources">("default");
+    const [exportContentSource, setExportContentSource] = useState<ExportContentSource>("research");
+    const [pptStyleMode, setPptStyleMode] = useState<PptStyleMode>("default");
     const [pptStyleTemplates, setPptStyleTemplates] = useState<PptStyleTemplate[]>([]);
     const [selectedPptStyleId, setSelectedPptStyleId] = useState("");
     const [pptTemplates, setPptTemplates] = useState<PptTemplateInfo[]>([]);
@@ -190,7 +244,7 @@ export default function NotebookDetailPage() {
     const [researchStartTime, setResearchStartTime] = useState<number | null>(null);
     const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState<string>("");
     const [pptTemplateUseLlm, setPptTemplateUseLlm] = useState(false);
-    const [pptTemplatePromptSource, setPptTemplatePromptSource] = useState<"preset" | "sources">("preset");
+    const [pptTemplatePromptSource, setPptTemplatePromptSource] = useState<PptTemplatePromptSource>("preset");
     const [pptStylePreviewSvg, setPptStylePreviewSvg] = useState("");
     const [pptStylePreviewLoading, setPptStylePreviewLoading] = useState(false);
     const [pptStylePreviewError, setPptStylePreviewError] = useState("");
@@ -213,9 +267,9 @@ export default function NotebookDetailPage() {
     const [noteContent, setNoteContent] = useState("");
 
     // Studio state
-    const [studioMode, setStudioMode] = useState<"idle" | "research" | "question" | "solver" | "guide" | "ideagen" | "pdf" | "ppt" | "mindmap" | "podcast">("idle");
+    const [studioMode, setStudioMode] = useState<StudioMode>("idle");
     const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
-    const [audioResult, setAudioResult] = useState<{ audioUrl?: string; audioId?: string } | null>(null);
+    const [audioResult, setAudioResult] = useState<AudioResult | null>(null);
     const [audioError, setAudioError] = useState<string | null>(null);
 
     const normalizeTimestamp = (value?: number) => {
@@ -263,6 +317,71 @@ export default function NotebookDetailPage() {
             researchId: activeResearchId || undefined,
         };
     };
+
+    const normalizeAudioResult = (result?: AudioResult | null): AudioResult | null => {
+        if (!result) return null;
+        if (
+            result.audioUrl &&
+            !result.audioUrl.startsWith("http") &&
+            !result.audioUrl.startsWith("data:") &&
+            !result.audioUrl.startsWith("blob:")
+        ) {
+            return { ...result, audioUrl: apiUrl(result.audioUrl) };
+        }
+        return result;
+    };
+
+    const buildStudioState = (): StudioState => ({
+        mode: studioMode === "ppt" || studioMode === "podcast" ? studioMode : "idle",
+        exportContentSource,
+        ppt: {
+            styleMode: pptStyleMode,
+            selectedStyleId: selectedPptStyleId,
+            selectedTemplate: selectedPptTemplate,
+            templateUseLlm: pptTemplateUseLlm,
+            templatePromptSource: pptTemplatePromptSource,
+            stylePreviewSvg: pptStylePreviewSvg || "",
+            outline: pptOutline,
+            previewOpen: pptPreviewOpen,
+        },
+        podcast: {
+            audioResult: audioResult ? { ...audioResult } : null,
+        },
+    });
+
+    const hasStudioState = (state?: StudioState | null) => {
+        if (!state) return false;
+        if (state.mode && state.mode !== "idle") return true;
+        if (state.exportContentSource && state.exportContentSource !== "research") return true;
+        const ppt = state.ppt;
+        if (ppt?.outline) return true;
+        if (ppt?.previewOpen) return true;
+        if (ppt?.styleMode && ppt.styleMode !== "default") return true;
+        if (ppt?.templateUseLlm) return true;
+        if (ppt?.templatePromptSource && ppt.templatePromptSource !== "preset") return true;
+        const audio = state.podcast?.audioResult;
+        if (audio?.audioUrl || audio?.audioId) return true;
+        return false;
+    };
+
+    const studioState = useMemo(
+        () => buildStudioState(),
+        [
+            studioMode,
+            exportContentSource,
+            pptStyleMode,
+            selectedPptStyleId,
+            selectedPptTemplate,
+            pptTemplateUseLlm,
+            pptTemplatePromptSource,
+            pptStylePreviewSvg,
+            pptOutline,
+            pptPreviewOpen,
+            audioResult,
+        ]
+    );
+
+    useEffect(() => { studioStateRef.current = studioState; }, [studioState]);
 
     const ensureResearchReportMessage = (messages: ChatMessage[], report: string): ChatMessage[] => {
         if (!report) return messages;
@@ -316,6 +435,68 @@ export default function NotebookDetailPage() {
         setActiveResearchId(null);
         setPendingResearchRecovery(false);
         resetResearchUiState(true);
+    };
+
+    const resetStudioState = () => {
+        setStudioMode("idle");
+        setExportContentSource("research");
+        setPptStyleMode("default");
+        setSelectedPptStyleId("");
+        setSelectedPptTemplate("");
+        setPptTemplateUseLlm(false);
+        setPptTemplatePromptSource("preset");
+        setPptStylePreviewSvg("");
+        setPptStylePreviewLoading(false);
+        setPptStylePreviewError("");
+        setPptPreviewOpen(false);
+        setPptOutline(null);
+        setPptGeneratingIndices([]);
+        setPptImageProgress({ current: 0, total: 0 });
+        setIsPptGenerating(false);
+        setIsPptExporting(false);
+        setAudioResult(null);
+        setAudioError(null);
+        setIsGeneratingAudio(false);
+    };
+
+    const applyStudioState = (state?: StudioState | null) => {
+        studioHydrationRef.current = true;
+        const next = state || {};
+        const ppt = next.ppt || {};
+        const hasPodcastAudio = Boolean(
+            next.podcast?.audioResult?.audioUrl || next.podcast?.audioResult?.audioId
+        );
+        const hasPptOutline = Boolean(ppt.outline);
+        const resolvedMode =
+            next.mode && next.mode !== "idle"
+                ? next.mode
+                : hasPodcastAudio
+                    ? "podcast"
+                    : hasPptOutline
+                        ? "ppt"
+                        : "idle";
+        setStudioMode(resolvedMode);
+        setExportContentSource(next.exportContentSource || "research");
+        setPptStyleMode(ppt.styleMode || "default");
+        setSelectedPptStyleId(ppt.selectedStyleId || "");
+        setSelectedPptTemplate(ppt.selectedTemplate || "");
+        setPptTemplateUseLlm(typeof ppt.templateUseLlm === "boolean" ? ppt.templateUseLlm : false);
+        setPptTemplatePromptSource(ppt.templatePromptSource || "preset");
+        setPptStylePreviewSvg(ppt.stylePreviewSvg || "");
+        setPptStylePreviewLoading(false);
+        setPptStylePreviewError("");
+        setPptOutline(ppt.outline || null);
+        setPptPreviewOpen(Boolean(ppt.outline) && (ppt.previewOpen ?? true));
+        setPptGeneratingIndices([]);
+        setPptImageProgress({ current: 0, total: 0 });
+        setIsPptGenerating(false);
+        setIsPptExporting(false);
+        setAudioResult(normalizeAudioResult(next.podcast?.audioResult || null));
+        setAudioError(null);
+        setIsGeneratingAudio(false);
+        setTimeout(() => {
+            studioHydrationRef.current = false;
+        }, 0);
     };
 
     const fetchReportText = async (reportUrl: string) => {
@@ -436,7 +617,7 @@ export default function NotebookDetailPage() {
             }
         }
 
-        setTimeout(() => scheduleSessionSave(true), 0);
+        scheduleSessionSave(true);
     };
 
     const syncSessionsFromServer = async (reason: string) => {
@@ -477,6 +658,7 @@ export default function NotebookDetailPage() {
                 setSources(normalizeSources(target.sources || []));
                 setResearchReport(target.research_report || "");
                 applyResearchState(target.research_state);
+                applyStudioState(target.studio_state);
                 if (target.research_report) {
                     setPendingResearchRecovery(false);
                 }
@@ -529,14 +711,20 @@ export default function NotebookDetailPage() {
         const existing = sessions.find((session) => session.session_id === sessionId);
         const now = Date.now();
         const createdAt = existing ? existing.created_at : now;
-        const derivedTitle = formatSessionTitle(createdAt, chatMessages);
+        // Read from refs to guarantee latest values (not stale closure state)
+        const latestMessages = chatMessagesRef.current;
+        const latestSources = sourcesRef.current;
+        const latestResearchReport = researchReportRef.current;
+        const latestStudioState = studioStateRef.current || buildStudioState();
+        const derivedTitle = formatSessionTitle(createdAt, latestMessages);
         return {
             session_id: sessionId,
             title: derivedTitle,
-            messages: chatMessages,
-            sources,
-            research_report: researchReport || "",
+            messages: latestMessages,
+            sources: latestSources,
+            research_report: latestResearchReport || "",
             research_state: buildResearchState() || undefined,
+            studio_state: latestStudioState,
             created_at: createdAt,
             updated_at: now,
         };
@@ -560,7 +748,15 @@ export default function NotebookDetailPage() {
 
     const saveSessionSnapshot = async (snapshot: SessionSnapshot) => {
         if (!notebookId) return;
-        if (!snapshot.messages.length && !snapshot.sources.length && !snapshot.research_report) {
+        const isKnownSession = sessions.some((session) => session.session_id === snapshot.session_id);
+        const hasStudio = hasStudioState(snapshot.studio_state);
+        if (
+            !snapshot.messages.length &&
+            !snapshot.sources.length &&
+            !snapshot.research_report &&
+            !hasStudio &&
+            !isKnownSession
+        ) {
             return;
         }
         try {
@@ -581,21 +777,36 @@ export default function NotebookDetailPage() {
         }
     };
 
-    const scheduleSessionSave = (immediate = false, sessionIdOverride?: string) => {
-        const snapshot = buildSessionSnapshot(sessionIdOverride);
+    // Trigger state to ensure we always read the LATEST state during save
+    const [sessionSaveTrigger, setSessionSaveTrigger] = useState<{ time: number, immediate: boolean, sessionId?: string } | null>(null);
+
+    const scheduleSessionSave = useCallback((immediate = false, sessionIdOverride?: string) => {
+        setSessionSaveTrigger({ time: Date.now(), immediate, sessionId: sessionIdOverride });
+    }, []);
+
+    useEffect(() => {
+        if (!sessionSaveTrigger) return;
+        const { immediate, sessionId } = sessionSaveTrigger;
+
+        const snapshot = buildSessionSnapshot(sessionId);
         if (!snapshot) return;
+
         upsertSessionState(snapshot);
+
         if (sessionSaveTimerRef.current) {
             clearTimeout(sessionSaveTimerRef.current);
         }
+
         if (immediate) {
             void saveSessionSnapshot(snapshot);
             return;
         }
+
         sessionSaveTimerRef.current = setTimeout(() => {
             void saveSessionSnapshot(snapshot);
         }, 1200);
-    };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sessionSaveTrigger]);
 
     const ensureActiveSession = () => {
         if (currentSessionId) return currentSessionId;
@@ -618,10 +829,13 @@ export default function NotebookDetailPage() {
         setActiveResearchId(null);
         setPendingResearchRecovery(false);
         resetResearchUiState(true);
+        resetStudioState();
+        setHasSessionActivity(false);
     };
     const [researchTopic, setResearchTopic] = useState("");
     const [researchRunning, setResearchRunning] = useState(false);
     const [researchReport, setResearchReport] = useState("");
+    useEffect(() => { researchReportRef.current = researchReport; }, [researchReport]);
     const [mindmapCode, setMindmapCode] = useState("");
     const [isExporting, setIsExporting] = useState(false);
 
@@ -731,7 +945,7 @@ export default function NotebookDetailPage() {
             }
         }
         return list.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
-    }, [sessions, currentSessionId, chatMessages, sources, researchReport]);
+    }, [sessions, currentSessionId, chatMessages, sources, researchReport, studioState]);
 
     const currentSessionTitle = useMemo(() => {
         const current = sessions.find((session) => session.session_id === currentSessionId);
@@ -815,6 +1029,7 @@ export default function NotebookDetailPage() {
                         setSources(normalizeSources(active.sources || []));
                         setResearchReport(active.research_report || "");
                         applyResearchState(active.research_state);
+                        applyStudioState(active.studio_state);
                     }
                 }
             }
@@ -850,6 +1065,7 @@ export default function NotebookDetailPage() {
                     setSources(normalizeSources(latest.sources || []));
                     setResearchReport(latest.research_report || "");
                     applyResearchState(latest.research_state);
+                    applyStudioState(latest.studio_state);
                 }
                 localStorage.setItem(
                     sessionCacheKey,
@@ -882,6 +1098,7 @@ export default function NotebookDetailPage() {
     }, []);
 
     useEffect(() => {
+        if (studioHydrationRef.current) return;
         setPptStylePreviewSvg("");
         setPptStylePreviewError("");
     }, [pptStyleMode, selectedPptStyleId, pptTemplatePromptSource]);
@@ -900,11 +1117,16 @@ export default function NotebookDetailPage() {
         if (!currentSessionId || !hasSessionActivity) return;
         const snapshot = buildSessionSnapshot();
         if (!snapshot) return;
-        if (!snapshot.messages.length && !snapshot.sources.length && !snapshot.research_report) {
+        if (
+            !snapshot.messages.length &&
+            !snapshot.sources.length &&
+            !snapshot.research_report &&
+            !hasStudioState(snapshot.studio_state)
+        ) {
             return;
         }
         upsertSessionState(snapshot);
-    }, [chatMessages, sources, researchReport, currentSessionId, hasSessionActivity]);
+    }, [chatMessages, sources, researchReport, studioState, currentSessionId, hasSessionActivity]);
 
     useEffect(() => {
         if (!currentSessionId || !hasSessionActivity) return;
@@ -924,6 +1146,18 @@ export default function NotebookDetailPage() {
         currentSessionId,
         hasSessionActivity,
     ]);
+
+    useEffect(() => {
+        if (studioHydrationRef.current) return;
+        const hasStudio = hasStudioState(studioState);
+        if (!currentSessionId && !hasStudio) return;
+        if (!hasStudio && !hasSessionActivity) return;
+        const sessionId = currentSessionId || ensureActiveSession();
+        if (hasStudio && !hasSessionActivity) {
+            setHasSessionActivity(true);
+        }
+        scheduleSessionSave(false, sessionId);
+    }, [studioState, currentSessionId, hasSessionActivity, scheduleSessionSave]);
 
     useEffect(() => {
         if (!notebookId) return;
@@ -983,8 +1217,11 @@ export default function NotebookDetailPage() {
             const data = await res.json();
             const templates = data.templates || [];
             setPptStyleTemplates(templates);
-            if (!selectedPptStyleId && templates.length > 0) {
-                setSelectedPptStyleId(templates[0].id);
+            if (templates.length > 0) {
+                const ids = templates.map((template: PptStyleTemplate) => template.id);
+                if (!selectedPptStyleId || !ids.includes(selectedPptStyleId)) {
+                    setSelectedPptStyleId(templates[0].id);
+                }
             }
         } catch (err) {
             console.error("Failed to fetch PPT style templates:", err);
@@ -997,8 +1234,11 @@ export default function NotebookDetailPage() {
             if (!res.ok) return;
             const data = await res.json();
             setPptTemplates(data.templates || []);
-            if (!selectedPptTemplate && data.templates?.length > 0) {
-                setSelectedPptTemplate(data.templates[0].name);
+            if (data.templates?.length > 0) {
+                const templateNames = data.templates.map((template: PptTemplateInfo) => template.name);
+                if (!selectedPptTemplate || !templateNames.includes(selectedPptTemplate)) {
+                    setSelectedPptTemplate(data.templates[0].name);
+                }
             }
         } catch (err) {
             console.error("Failed to fetch PPT templates:", err);
@@ -1016,7 +1256,8 @@ export default function NotebookDetailPage() {
             }
             if (Array.isArray(data.style_templates) && data.style_templates.length > 0) {
                 setPptStyleTemplates(data.style_templates);
-                if (!selectedPptStyleId) {
+                const ids = data.style_templates.map((template: PptStyleTemplate) => template.id);
+                if (!selectedPptStyleId || !ids.includes(selectedPptStyleId)) {
                     setSelectedPptStyleId(data.style_templates[0].id);
                 }
             }
@@ -1118,7 +1359,7 @@ export default function NotebookDetailPage() {
             chatWsRef.current.close();
         }
 
-        const ws = new WebSocket(wsUrl("/api/v1/chat"));
+        const ws = new WebSocket(wsUrl("/api/v1/notebook/chat"));
         chatWsRef.current = ws;
         const assistantId = (Date.now() + 1).toString();
         let fullContent = "";
@@ -1179,7 +1420,7 @@ export default function NotebookDetailPage() {
                                 : msg
                         )
                     );
-                    setTimeout(() => scheduleSessionSave(true), 0);
+                    scheduleSessionSave(true);
                     ws.close();
                 } else if (data.type === "error") {
                     setChatError(data.message || "发生未知错误");
@@ -1190,7 +1431,7 @@ export default function NotebookDetailPage() {
                                 : msg
                         )
                     );
-                    setTimeout(() => scheduleSessionSave(true), 0);
+                    scheduleSessionSave(true);
                 }
             } catch {
                 // Ignore parse errors for malformed messages
@@ -1215,7 +1456,15 @@ export default function NotebookDetailPage() {
         ensureActiveSession();
         setHasSessionActivity(true);
 
-        const url = wsUrl("/api/v1/chat");
+        // 将用户查询作为聊天消息添加
+        const userMessage: ChatMessage = {
+            id: `fast-user-${Date.now()}`,
+            role: "user",
+            content: `🔍 快速搜索：${searchQuery}`,
+        };
+        setChatMessages((prev) => [...prev, userMessage]);
+
+        const url = wsUrl("/api/v1/notebook/chat");
         console.log("Fast Research connecting to:", url);
 
         setIsSearching(true);
@@ -1309,7 +1558,7 @@ export default function NotebookDetailPage() {
                             { id: `fast-${Date.now()}`, role: "assistant", content: `**快速搜索结果：** ${searchQuery}\n\n${finalContent}` }
                         ]);
                     }
-                    setTimeout(() => scheduleSessionSave(true), 0);
+                    scheduleSessionSave(true);
 
                     setSearchQuery("");
                     ws.close();
@@ -1317,7 +1566,7 @@ export default function NotebookDetailPage() {
                 } else if (data.type === "error") {
                     console.error("Fast Research Error:", data.content);
                     setChatError(data.content || "搜索失败");
-                    setTimeout(() => scheduleSessionSave(true), 0);
+                    scheduleSessionSave(true);
                     ws.close();
                     setIsSearching(false);
                 }
@@ -1347,7 +1596,7 @@ export default function NotebookDetailPage() {
             setSources((prev) =>
                 prev.map((s) => (s.id === sourceId ? { ...s, selected: !s.selected } : s))
             );
-            setTimeout(() => scheduleSessionSave(true, sessionId), 0);
+            scheduleSessionSave(true, sessionId);
             return;
         }
         let updatedSession: SessionSnapshot | null = null;
@@ -1371,7 +1620,7 @@ export default function NotebookDetailPage() {
         setHasSessionActivity(true);
         if (sessionId === currentSessionId) {
             setSources((prev) => prev.map((s) => ({ ...s, selected })));
-            setTimeout(() => scheduleSessionSave(true, sessionId), 0);
+            scheduleSessionSave(true, sessionId);
             return;
         }
         let updatedSession: SessionSnapshot | null = null;
@@ -1409,7 +1658,7 @@ export default function NotebookDetailPage() {
             return updatedSessions;
         });
         if (currentSessionId) {
-            setTimeout(() => scheduleSessionSave(true, currentSessionId), 0);
+            scheduleSessionSave(true, currentSessionId);
         }
         updatedSessions.forEach((session) => {
             if (session.session_id !== currentSessionId) {
@@ -1422,7 +1671,7 @@ export default function NotebookDetailPage() {
     const removeSource = (sourceId: string) => {
         setHasSessionActivity(true);
         setSources((prev) => prev.filter((s) => s.id !== sourceId));
-        setTimeout(() => scheduleSessionSave(true), 0);
+        scheduleSessionSave(true);
     };
 
     // Add note to notebook
@@ -1573,7 +1822,7 @@ export default function NotebookDetailPage() {
         };
         setHasSessionActivity(true);
         setSources(prev => [...prev, newSource]);
-        setTimeout(() => scheduleSessionSave(true), 0);
+        scheduleSessionSave(true);
         setSourceUrl("");
         setShowAddSourceModal(false);
     };
@@ -1588,6 +1837,14 @@ export default function NotebookDetailPage() {
         setHasSessionActivity(true);
         setResearchTopic(researchTopicToUse);
         setSearchQuery(researchTopicToUse);
+
+        // 将用户查询作为聊天消息添加
+        const userMessage: ChatMessage = {
+            id: `research-user-${Date.now()}`,
+            role: "user",
+            content: `🔬 深度研究：${researchTopicToUse}`,
+        };
+        setChatMessages((prev) => [...prev, userMessage]);
 
         if (wsRef.current) wsRef.current.close();
 
@@ -1706,7 +1963,7 @@ export default function NotebookDetailPage() {
                                 : msg
                         )
                     );
-                    setTimeout(() => scheduleSessionSave(true), 0);
+                    scheduleSessionSave(true);
                 } else if (data.type === "progress") {
                     // Handle progress events from backend
                     const stage = data.stage as "planning" | "researching" | "reporting";
@@ -1826,7 +2083,7 @@ export default function NotebookDetailPage() {
                 }
                 return prev;
             });
-            setTimeout(() => scheduleSessionSave(true, activeSessionId), 0);
+            scheduleSessionSave(true, activeSessionId);
             if (pendingRecoveryRef.current) {
                 setTimeout(() => {
                     void recoverResearchIfNeeded("ws-close");
