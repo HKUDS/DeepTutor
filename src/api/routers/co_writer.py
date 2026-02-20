@@ -355,33 +355,44 @@ async def stream_audio(audio_id: str):
                 finally:
                     remove_pending_stream(audio_id)
 
-            bucket = get_bucket_name()
-            if not bucket:
-                raise HTTPException(status_code=500, detail="MinIO bucket not configured")
-            object_key = f"co-writer/audio/{audio_id}.mp3"
-            await asyncio.to_thread(
-                upload_file,
-                bucket,
-                object_key,
-                str(temp_path),
-                "audio/mpeg",
-            )
-            await asyncio.to_thread(
-                save_file_record,
-                file_id=audio_id,
-                file_type="audio",
-                filename=f"{audio_id}.mp3",
-                bucket=bucket,
-                object_key=object_key,
-                content_type="audio/mpeg",
-                metadata={"voice": pending.get("voice")},
-            )
-            history_item = get_history_item(audio_id)
-            if history_item:
-                history_item["status"] = "completed"
-                update_history_item(audio_id, history_item)
-            if temp_path.exists():
-                temp_path.unlink()
+            try:
+                bucket = get_bucket_name()
+                if not bucket:
+                    logger.warning("MinIO bucket not configured, skipping audio file save.")
+                else:
+                    object_key = f"co-writer/audio/{audio_id}.mp3"
+                    await asyncio.to_thread(
+                        upload_file,
+                        bucket,
+                        object_key,
+                        str(temp_path),
+                        "audio/mpeg",
+                    )
+                    await asyncio.to_thread(
+                        save_file_record,
+                        file_id=audio_id,
+                        file_type="audio",
+                        filename=f"{audio_id}.mp3",
+                        bucket=bucket,
+                        object_key=object_key,
+                        content_type="audio/mpeg",
+                        metadata={"voice": pending.get("voice")},
+                    )
+
+                history_item = get_history_item(audio_id)
+                if history_item:
+                    history_item["status"] = "completed"
+                    update_history_item(audio_id, history_item)
+
+            except Exception as e:
+                logger.warning(
+                    f"⚠️ Failed to save audio file to MinIO or update DB: {e}. "
+                    "This is expected if MinIO/PostgreSQL is not running. "
+                    "The audio stream has already been successfully sent to the user."
+                )
+            finally:
+                if temp_path.exists():
+                    temp_path.unlink()
 
         return StreamingResponse(
             stream_with_lock_and_cleanup(),
