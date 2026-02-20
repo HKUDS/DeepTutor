@@ -226,10 +226,11 @@ class ChatAgent(BaseAgent):
             enable_web_search: Whether to use Web Search
 
         Returns:
-            Tuple of (context_string, sources_dict)
+            Tuple of (context_string, sources_dict, exceptions_list)
         """
         context_parts = []
         sources = {"rag": [], "web": []}
+        exceptions = []
 
         # RAG retrieval
         if enable_rag and kb_name:
@@ -254,6 +255,7 @@ class ChatAgent(BaseAgent):
                     self.logger.info(f"RAG retrieved {len(rag_answer)} chars")
             except Exception as e:
                 self.logger.warning(f"RAG search failed: {e}")
+                exceptions.append(f"知识库检索异常: {str(e)}")
 
         # Selected sources KB retrieval (always-on if provided)
         if sources_kb_name and sources_kb_name != kb_name:
@@ -278,6 +280,7 @@ class ChatAgent(BaseAgent):
                     self.logger.info(f"Sources KB retrieved {len(sources_answer)} chars")
             except Exception as e:
                 self.logger.warning(f"Sources KB search failed: {e}")
+                exceptions.append(f"来源检索异常: {str(e)}")
 
         # Web search
         if enable_web_search:
@@ -312,9 +315,10 @@ class ChatAgent(BaseAgent):
                         self.logger.info(f"Combined {len(snippet_parts)} snippets into context ({len(combined_snippets)} chars)")
             except Exception as e:
                 self.logger.warning(f"Web search failed: {e}")
+                exceptions.append(f"网络搜索异常: {str(e)}")
 
         context = "\n\n".join(context_parts)
-        return context, sources
+        return context, sources, exceptions
 
     def build_messages(
         self,
@@ -519,7 +523,7 @@ class ChatAgent(BaseAgent):
         truncated_history = self.truncate_history(history)
 
         # Retrieve context if needed
-        context, sources = await self.retrieve_context(
+        context, sources, exceptions = await self.retrieve_context(
             message=message,
             kb_name=kb_name,
             sources_kb_name=sources_kb_name,
@@ -537,27 +541,48 @@ class ChatAgent(BaseAgent):
             self.logger.info(f"Added {len(history_context)} chars from conversation history reports")
 
         # Check if we should fail without sources
-        # Now we're more lenient: allow answering based on conversation history
-        if require_sources and not context.strip():
-            self.logger.warning(
-                f"No context found for query (kb_name={kb_name}, sources_kb_name={sources_kb_name})"
-            )
-            fallback = "未在已选来源或知识库中找到相关信息。"
-            if stream:
-                async def stream_generator():
-                    yield {
-                        "type": "complete",
-                        "response": fallback,
-                        "sources": sources,
-                        "truncated_history": truncated_history,
-                    }
+        # Strict Grounded QA Error Handling
+        if require_sources:
+            if exceptions and not context.strip():
+                # If APIs failed and we have no context, explicitly fail
+                self.logger.warning(f"Strict mode failed due to exceptions: {exceptions}")
+                fallback = f"检索服务发生异常，由于当前为严谨引用问答模式，暂无法为您解答。\n详细错误：\n" + "\n".join([f"- {e}" for e in exceptions])
+                if stream:
+                    async def stream_generator():
+                        yield {
+                            "type": "complete",
+                            "response": fallback,
+                            "sources": sources,
+                            "truncated_history": truncated_history,
+                        }
+                    return stream_generator()
+                return {
+                    "response": fallback,
+                    "sources": sources,
+                    "truncated_history": truncated_history,
+                }
+            
+            elif not context.strip():
+                # APis worked but found nothing
+                self.logger.warning(
+                    f"No context found for query (kb_name={kb_name}, sources_kb_name={sources_kb_name})"
+                )
+                fallback = "未在已选来源或知识库中找到相关信息。"
+                if stream:
+                    async def stream_generator():
+                        yield {
+                            "type": "complete",
+                            "response": fallback,
+                            "sources": sources,
+                            "truncated_history": truncated_history,
+                        }
 
-                return stream_generator()
-            return {
-                "response": fallback,
-                "sources": sources,
-                "truncated_history": truncated_history,
-            }
+                    return stream_generator()
+                return {
+                    "response": fallback,
+                    "sources": sources,
+                    "truncated_history": truncated_history,
+                }
 
         # Build messages for LLM
         messages = self.build_messages(

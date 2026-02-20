@@ -1461,11 +1461,25 @@ export default function NotebookDetailPage() {
         ws.onerror = () => {
             clearTimeout(connectionTimeout);
             setChatError("WebSocket 连接失败，请检查网络或后端服务");
+            setChatMessages((prev) =>
+                prev.map((msg) =>
+                    msg.id === assistantId && msg.isStreaming
+                        ? { ...msg, content: "抱歉，由于网络或服务异常，连接已中断。请重试。", isStreaming: false }
+                        : msg
+                )
+            );
             setIsChatting(false);
         };
 
         ws.onclose = () => {
             clearTimeout(connectionTimeout);
+            setChatMessages((prev) =>
+                prev.map((msg) =>
+                    msg.id === assistantId && msg.isStreaming
+                        ? { ...msg, content: "连接被异常中断。如有网络波动，请检查后重试。", isStreaming: false }
+                        : msg
+                )
+            );
             setIsChatting(false);
         };
     };

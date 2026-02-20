@@ -597,7 +597,11 @@ class NarratorAgent:
                 logger.info(f"Saved narration history item {audio_id}")
                 
             except Exception as e:
-                logger.error(f"Failed to save history: {e}")
+                logger.warning(
+                    f"⚠️ Failed to save podcast history to database: {e}. "
+                    "This is expected if PostgreSQL is not running (e.g., local non-Docker env). "
+                    "The audio generation will continue normally."
+                )
 
         else:
             if not self.tts_config:

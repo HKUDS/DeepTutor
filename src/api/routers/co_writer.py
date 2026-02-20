@@ -101,7 +101,9 @@ async def get_history():
         history = list_history()
         return {"history": history, "total": len(history)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.warning(f"⚠️ Failed to get history (DB might be down): {e}")
+        # Return empty list instead of 500 error to allow UI to render without history
+        return {"history": [], "total": 0}
 
 
 @router.get("/history/{operation_id}")
@@ -115,7 +117,8 @@ async def get_operation(operation_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.warning(f"⚠️ Failed to get operation {operation_id} (DB might be down): {e}")
+        raise HTTPException(status_code=404, detail="Operation not found (or DB error)")
 
 
 @router.get("/tool_calls/{operation_id}")
