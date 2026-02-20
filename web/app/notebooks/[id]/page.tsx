@@ -219,6 +219,33 @@ export default function NotebookDetailPage() {
     const [hasSessionActivity, setHasSessionActivity] = useState(false);
     const sessionSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const sessionCacheKey = `notebook-session-cache-${notebookId}`;
+
+    // Helper to cache sessions safely without hitting 5MB LocalStorage limits
+    const saveToLocalStorageSafe = (key: string, data: any) => {
+        try {
+            // 首先尝试完整保存，如果没超容量就正常用
+            localStorage.setItem(key, JSON.stringify(data));
+        } catch (e) {
+            console.warn("localStorage quota exceeded, switching to metadata-only cache fallback:", e);
+            try {
+                // 回退方案：如果爆了，只在本地缓存会话列表的轻量级元数据（用于秒开左侧目录），不缓存正文。
+                // 这样进入页面时右侧会短暂空白一瞬间，然后通过网络请求加载完整数据。绝对不会出现截断文本覆盖后端的情况。
+                const lightData = {
+                    currentSessionId: data.currentSessionId,
+                    sessions: (data.sessions || []).map((s: any) => ({
+                        session_id: s.session_id,
+                        title: s.title,
+                        created_at: s.created_at,
+                        updated_at: s.updated_at
+                    }))
+                };
+                localStorage.setItem(key, JSON.stringify(lightData));
+            } catch (err) {
+                console.warn("Cache metadata fallback also failed", err);
+            }
+        }
+    };
+
     const [collapsedSessionIds, setCollapsedSessionIds] = useState<Record<string, boolean>>({});
 
     // Sources panel (new)
@@ -1067,9 +1094,9 @@ export default function NotebookDetailPage() {
                     applyResearchState(latest.research_state);
                     applyStudioState(latest.studio_state);
                 }
-                localStorage.setItem(
+                saveToLocalStorageSafe(
                     sessionCacheKey,
-                    JSON.stringify({ sessions: normalized, currentSessionId: latest?.session_id || "" })
+                    { sessions: normalized, currentSessionId: latest?.session_id || "" }
                 );
             } catch (err) {
                 console.error("Failed to load sessions:", err);
@@ -1161,14 +1188,7 @@ export default function NotebookDetailPage() {
 
     useEffect(() => {
         if (!notebookId) return;
-        try {
-            localStorage.setItem(
-                sessionCacheKey,
-                JSON.stringify({ sessions, currentSessionId })
-            );
-        } catch (err) {
-            console.error("Failed to persist session cache:", err);
-        }
+        saveToLocalStorageSafe(sessionCacheKey, { sessions, currentSessionId });
     }, [sessions, currentSessionId, notebookId]);
 
     const fetchNotebook = async () => {
