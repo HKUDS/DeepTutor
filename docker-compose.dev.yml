@@ -29,7 +29,6 @@ services:
       - ./web/types:/app/web/types:ro
       - ./web/public:/app/web/public:ro
       - ./web/tsconfig.json:/app/web/tsconfig.json:ro
-      - ./web/next-env.d.ts:/app/web/next-env.d.ts:ro
       - ./web/tailwind.config.js:/app/web/tailwind.config.js:ro
       - ./web/postcss.config.js:/app/web/postcss.config.js:ro
 

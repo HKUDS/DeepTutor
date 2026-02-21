@@ -299,6 +299,16 @@ export default function NotebookDetailPage() {
     const [audioResult, setAudioResult] = useState<AudioResult | null>(null);
     const [audioError, setAudioError] = useState<string | null>(null);
 
+    // Podcast config state
+    const [podcastSpeakers, setPodcastSpeakers] = useState<Array<{ id: string; name: string; gender: string }>>([
+        { id: "zh_female_mizaitongxue_v2_saturn_bigtts", name: "米仔同学 (女)", gender: "female" },
+        { id: "zh_male_dayixiansheng_v2_saturn_bigtts", name: "大义先生 (男)", gender: "male" },
+    ]);
+    const [podcastSpeakerA, setPodcastSpeakerA] = useState("zh_female_mizaitongxue_v2_saturn_bigtts");
+    const [podcastSpeakerB, setPodcastSpeakerB] = useState("zh_male_dayixiansheng_v2_saturn_bigtts");
+    const [podcastSpeechRate, setPodcastSpeechRate] = useState(1.0);
+    const [audioBlobUrl, setAudioBlobUrl] = useState<string | null>(null);
+
     const normalizeTimestamp = (value?: number) => {
         if (!value) return Date.now();
         return value < 1000000000000 ? value * 1000 : value;
@@ -1122,6 +1132,20 @@ export default function NotebookDetailPage() {
         fetchPptStyleTemplates();
         fetchPptTemplates();
         fetchBananaPptConfig();
+        // Fetch available podcast speakers
+        (async () => {
+            try {
+                const res = await fetch(apiUrl("/api/v1/co_writer/tts/doubao_speakers"));
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.speakers && data.speakers.length > 0) {
+                        setPodcastSpeakers(data.speakers);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to fetch podcast speakers:", err);
+            }
+        })();
     }, []);
 
     useEffect(() => {
@@ -2454,6 +2478,11 @@ export default function NotebookDetailPage() {
         setIsGeneratingAudio(true);
         setAudioError(null);
         setAudioResult(null);
+        // Clean up previous blob URL
+        if (audioBlobUrl) {
+            URL.revokeObjectURL(audioBlobUrl);
+            setAudioBlobUrl(null);
+        }
         try {
             const markdown = await getExportMarkdown();
             if (!markdown) {
@@ -2461,13 +2490,18 @@ export default function NotebookDetailPage() {
                 return;
             }
 
+            // Step 1: Trigger narration (returns quickly, audio generated in background)
             const res = await fetch(apiUrl("/api/v1/co_writer/narrate"), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     content: markdown,
-                    style: "friendly", // Default style
+                    style: "friendly",
                     skip_audio: false,
+                    podcast_config: {
+                        speakers: [podcastSpeakerA, podcastSpeakerB],
+                        speech_rate: podcastSpeechRate,
+                    },
                 }),
             });
 
@@ -2477,18 +2511,57 @@ export default function NotebookDetailPage() {
             }
 
             const data = await res.json();
-            if (data.has_audio && data.audio_url) {
-                const audioUrl = data.audio_url.startsWith("http")
-                    ? data.audio_url
-                    : apiUrl(data.audio_url);
-                setAudioResult({
-                    audioUrl: audioUrl,
-                    audioId: data.audio_id,
-                });
-                setStudioMode("podcast");
-            } else {
+            if (!data.has_audio || !data.audio_id) {
                 throw new Error(data.audio_error || "音频生成失败");
             }
+
+            const audioId = data.audio_id;
+            const audioUrl = data.audio_url.startsWith("http")
+                ? data.audio_url
+                : apiUrl(data.audio_url);
+
+            // Step 2: Poll for completion (every 3s, max 5 minutes)
+            const maxPolls = 100;
+            let audioReady = false;
+            for (let i = 0; i < maxPolls; i++) {
+                await new Promise((r) => setTimeout(r, 3000));
+                try {
+                    const statusRes = await fetch(
+                        apiUrl(`/api/v1/co_writer/audio_status/${audioId}`)
+                    );
+                    if (!statusRes.ok) continue;
+                    const statusData = await statusRes.json();
+                    if (statusData.status === "ready") {
+                        audioReady = true;
+                        break;
+                    }
+                    if (statusData.status === "failed") {
+                        throw new Error(statusData.error || "音频生成失败");
+                    }
+                    // "generating" → continue polling
+                } catch (pollErr: any) {
+                    if (pollErr?.message?.includes("音频生成失败")) throw pollErr;
+                    // Network glitch on poll → retry
+                }
+            }
+            if (!audioReady) {
+                throw new Error("音频生成超时，请稍后重试");
+            }
+
+            // Step 3: Fetch complete audio from MinIO (instant, with Content-Length)
+            const audioRes = await fetch(audioUrl);
+            if (!audioRes.ok) {
+                throw new Error(`音频获取失败: HTTP ${audioRes.status}`);
+            }
+            const audioBlob = await audioRes.blob();
+            const blobUrl = URL.createObjectURL(audioBlob);
+            setAudioBlobUrl(blobUrl);
+
+            setAudioResult({
+                audioUrl: audioUrl,
+                audioId: audioId,
+            });
+            setStudioMode("podcast");
         } catch (err: any) {
             console.error("Podcast generation failed:", err);
             setAudioError(err?.message || "播客生成失败，请稍后重试");
@@ -2679,6 +2752,78 @@ export default function NotebookDetailPage() {
                     )}
                 </div>
             )}
+        </div>
+    );
+
+    const renderPodcastConfigPanel = () => (
+        <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 text-left">
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                播客配置
+            </div>
+            <div className="space-y-3">
+                {/* Speaker A */}
+                <div>
+                    <label className="block text-xs text-slate-500 mb-1">发声人 A</label>
+                    <select
+                        value={podcastSpeakerA}
+                        onChange={(e) => setPodcastSpeakerA(e.target.value)}
+                        className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    >
+                        {podcastSpeakers.map((s) => (
+                            <option key={s.id} value={s.id}>
+                                {s.name}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+                {/* Speaker B */}
+                <div>
+                    <label className="block text-xs text-slate-500 mb-1">发声人 B</label>
+                    <select
+                        value={podcastSpeakerB}
+                        onChange={(e) => setPodcastSpeakerB(e.target.value)}
+                        className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    >
+                        {podcastSpeakers.map((s) => (
+                            <option key={s.id} value={s.id}>
+                                {s.name}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+                {/* Speech Rate */}
+                <div>
+                    <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                        <span>语速</span>
+                        <span className="font-medium text-indigo-600">{podcastSpeechRate.toFixed(1)}x</span>
+                    </div>
+                    <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={
+                            podcastSpeechRate <= 1.0
+                                ? ((podcastSpeechRate - 0.5) / 0.5) * 50
+                                : 50 + ((podcastSpeechRate - 1.0) / 1.0) * 50
+                        }
+                        onChange={(e) => {
+                            const pos = parseInt(e.target.value);
+                            const rate =
+                                pos <= 50
+                                    ? 0.5 + (pos / 50) * 0.5
+                                    : 1.0 + ((pos - 50) / 50) * 1.0;
+                            setPodcastSpeechRate(Math.round(rate * 10) / 10);
+                        }}
+                        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                    />
+                    <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
+                        <span>0.5x</span>
+                        <span>1.0x</span>
+                        <span>2.0x</span>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 
@@ -3510,7 +3655,7 @@ export default function NotebookDetailPage() {
                                     返回
                                 </button>
 
-                                <div className="text-center py-8">
+                                <div className="text-center py-4">
                                     <Mic className="w-12 h-12 text-indigo-300 mx-auto mb-4" />
                                     <p className="text-slate-700 font-medium mb-2">音频播客</p>
 
@@ -3537,13 +3682,13 @@ export default function NotebookDetailPage() {
                                             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                                                 <audio
                                                     controls
-                                                    src={audioResult.audioUrl}
+                                                    src={audioBlobUrl || audioResult.audioUrl}
                                                     className="w-full h-10"
                                                 />
                                             </div>
                                             <div className="flex gap-2 justify-center">
                                                 <a
-                                                    href={audioResult.audioUrl}
+                                                    href={apiUrl(`/api/v1/co_writer/download_audio/${audioResult.audioId}`)}
                                                     download={`podcast-${audioResult.audioId}.mp3`}
                                                     className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
                                                 >
@@ -3561,11 +3706,14 @@ export default function NotebookDetailPage() {
                                         </div>
                                     ) : (
                                         <div className="space-y-4">
-                                            <p className="text-sm text-slate-400 mb-6">
+                                            <p className="text-sm text-slate-400 mb-4">
                                                 将研究报告或来源内容转换为语音播客
                                             </p>
                                             <div className="mb-4">
                                                 {renderExportSourceToggle()}
+                                            </div>
+                                            <div className="mb-4">
+                                                {renderPodcastConfigPanel()}
                                             </div>
                                             <button
                                                 onClick={handleGeneratePodcast}

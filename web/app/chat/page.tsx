@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
     Send,
@@ -47,7 +47,7 @@ interface KnowledgeBase {
     is_default?: boolean;
 }
 
-export default function ChatPage() {
+function ChatPageContent() {
     const searchParams = useSearchParams();
     const sessionFromUrl = searchParams.get("session");
     const CHAT_SETTINGS_KEY = "deeptutor.chat.settings";
@@ -674,5 +674,13 @@ export default function ChatPage() {
                 />
             )}
         </div>
+    );
+}
+
+export default function ChatPage() {
+    return (
+        <Suspense fallback={<div className="h-screen flex items-center justify-center">加载中...</div>}>
+            <ChatPageContent />
+        </Suspense>
     );
 }

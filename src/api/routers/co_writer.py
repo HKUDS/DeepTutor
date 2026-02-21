@@ -5,7 +5,7 @@ import traceback
 from typing import Literal
 import tempfile
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
@@ -155,6 +155,12 @@ async def export_markdown(content: dict):
 # ================= TTS Narration Feature =================
 
 
+class PodcastConfig(BaseModel):
+    """播客配置（仅 Doubao Podcast 模式生效）"""
+    speakers: list[str] | None = None   # 发声人列表
+    speech_rate: float = 1.0            # 语速倍率 0.5~2.0 (1.0=正常)
+
+
 class NarrateRequest(BaseModel):
     """Narration request"""
 
@@ -162,6 +168,7 @@ class NarrateRequest(BaseModel):
     style: Literal["friendly", "academic", "concise"] = "friendly"
     voice: str | None = None  # If None, will use default value from config
     skip_audio: bool = False
+    podcast_config: PodcastConfig | None = None
 
 
 class NarrateResponse(BaseModel):
@@ -187,25 +194,31 @@ class ScriptOnlyRequest(BaseModel):
 
 
 @router.post("/narrate", response_model=NarrateResponse)
-async def narrate_content(request: NarrateRequest):
+async def narrate_content(request: NarrateRequest, background_tasks: BackgroundTasks):
     """
-    Generate note narration script and optionally generate TTS audio
-
-    - style: Narration style
-      - friendly: Friendly and approachable tutor style
-      - academic: Rigorous academic lecture style
-      - concise: Efficient and concise knowledge delivery style
-    - voice: TTS voice role (alloy, echo, fable, onyx, nova, shimmer)
-    - skip_audio: Whether to skip audio generation (set to true to return only script)
+    Generate note narration script and optionally generate TTS audio.
+    Audio generation is triggered as a background task and can be polled via /audio_status.
     """
     try:
         narrator = get_narrator_agent()
+        podcast_config_dict = None
+        if request.podcast_config:
+            podcast_config_dict = request.podcast_config.model_dump(exclude_none=True)
         result = await narrator.narrate(
             content=request.content,
             style=request.style,
             voice=request.voice,
             skip_audio=request.skip_audio,
+            podcast_config=podcast_config_dict,
         )
+
+        # Trigger background audio generation if audio was requested
+        if result.get("has_audio") and result.get("audio_id"):
+            background_tasks.add_task(
+                generate_audio_background,
+                audio_id=result["audio_id"],
+            )
+
         return result
     except ValueError as e:
         # TTS configuration related error
@@ -213,6 +226,131 @@ async def narrate_content(request: NarrateRequest):
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+async def generate_audio_background(audio_id: str):
+    """
+    Background task: generate audio, save to MinIO, update status.
+    Runs after /narrate response is sent.
+    """
+    from src.agents.co_writer.narrator_agent import (
+        get_pending_stream,
+        get_narrator_agent,
+        get_generation_lock,
+        remove_pending_stream,
+    )
+
+    pending = get_pending_stream(audio_id)
+    if not pending:
+        logger.warning(f"No pending stream found for {audio_id}, skipping background generation.")
+        return
+
+    narrator = get_narrator_agent()
+    lock = await get_generation_lock(audio_id)
+    async with lock:
+        # Double-check: another path may have already generated it
+        file_record = get_file_record(audio_id)
+        if file_record:
+            remove_pending_stream(audio_id)
+            return
+
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        temp_path = Path(temp_file.name)
+        temp_file.close()
+
+        try:
+            # Generate complete audio
+            async for chunk in narrator.generate_audio_stream(
+                script=pending["script"],
+                voice=pending["voice"],
+                audio_id=audio_id,
+                output_path=temp_path,
+                podcast_config=pending.get("podcast_config"),
+            ):
+                pass  # Chunks are written to temp_path by generate_audio_stream
+
+            remove_pending_stream(audio_id)
+
+            # Save to MinIO
+            try:
+                bucket = get_bucket_name()
+                if bucket:
+                    object_key = f"co-writer/audio/{audio_id}.mp3"
+                    upload_file(bucket, object_key, str(temp_path), "audio/mpeg")
+                    save_file_record(
+                        file_id=audio_id,
+                        file_type="audio",
+                        filename=f"{audio_id}.mp3",
+                        bucket=bucket,
+                        object_key=object_key,
+                        content_type="audio/mpeg",
+                        metadata={"voice": pending.get("voice")},
+                    )
+                    logger.info(f"✅ Background audio generation completed: {audio_id}")
+
+                history_item = get_history_item(audio_id)
+                if history_item:
+                    history_item["status"] = "completed"
+                    update_history_item(audio_id, history_item)
+
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to save audio to MinIO: {e}")
+                # Still mark as failed so polling can report it
+                history_item = get_history_item(audio_id)
+                if history_item:
+                    history_item["status"] = "failed"
+                    history_item["error"] = f"Storage error: {e}"
+                    update_history_item(audio_id, history_item)
+
+        except Exception as e:
+            remove_pending_stream(audio_id)
+            logger.error(f"❌ Background audio generation failed for {audio_id}: {e}")
+            traceback.print_exc()
+            # Update history status to "failed"
+            try:
+                history_item = get_history_item(audio_id)
+                if history_item:
+                    history_item["status"] = "failed"
+                    history_item["error"] = str(e)
+                    update_history_item(audio_id, history_item)
+            except Exception:
+                pass
+
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
+
+
+@router.get("/audio_status/{audio_id}")
+async def get_audio_status(audio_id: str):
+    """
+    Poll audio generation status.
+    Returns: {status: "generating" | "ready" | "failed" | "not_found", error?: string}
+    """
+    from src.agents.co_writer.narrator_agent import get_pending_stream
+
+    # Check MinIO storage first (definitive "ready" signal)
+    file_record = get_file_record(audio_id)
+    if file_record:
+        return {"status": "ready"}
+
+    # Check in-memory pending stream
+    pending = get_pending_stream(audio_id)
+    if pending:
+        return {"status": "generating"}
+
+    # Check DB history
+    history_item = get_history_item(audio_id)
+    if history_item:
+        status = history_item.get("status", "unknown")
+        if status == "failed":
+            return {"status": "failed", "error": history_item.get("error", "生成失败")}
+        if status in ("pending_stream", "generating"):
+            return {"status": "generating"}
+        if status == "completed":
+            return {"status": "ready"}
+
+    return {"status": "not_found"}
 
 
 @router.post("/narrate/script")
@@ -295,12 +433,59 @@ async def get_available_voices():
     return {"voices": voices}
 
 
+@router.get("/tts/doubao_speakers")
+async def get_doubao_speakers():
+    """
+    返回可用的 Doubao Podcast 发声人列表
+    """
+    speakers = [
+        {
+            "id": "zh_female_mizaitongxue_v2_saturn_bigtts",
+            "name": "米仔同学 (女)",
+            "gender": "female",
+            "language": "zh",
+        },
+        {
+            "id": "zh_male_dayixiansheng_v2_saturn_bigtts",
+            "name": "大义先生 (男)",
+            "gender": "male",
+            "language": "zh",
+        },
+        {
+            "id": "zh_female_shuangkuaisisi_moon_bigtts",
+            "name": "爽快思思 (女)",
+            "gender": "female",
+            "language": "zh",
+        },
+        {
+            "id": "zh_male_wennuanahu_moon_bigtts",
+            "name": "温暖阿虎 (男)",
+            "gender": "male",
+            "language": "zh",
+        },
+        {
+            "id": "zh_female_tianmeixiaoyuan_moon_bigtts",
+            "name": "甜美小源 (女)",
+            "gender": "female",
+            "language": "zh",
+        },
+        {
+            "id": "zh_male_yangguangqingse_moon_bigtts",
+            "name": "阳光青涩 (男)",
+            "gender": "male",
+            "language": "zh",
+        },
+    ]
+    return {"speakers": speakers}
+
+
 @router.get("/stream_audio/{audio_id}")
 async def stream_audio(audio_id: str):
     """
-    Stream audio generation for a specific audio ID.
-    If generation is pending, it triggers it.
-    If already generated, it streams from file.
+    Return complete audio for a specific audio ID.
+    If generation is pending, it triggers it, waits for completion, and returns the full file.
+    If already generated, it returns from storage.
+    Returns with Content-Length header so browsers can display duration and progress.
     """
     from src.agents.co_writer.narrator_agent import (
         get_pending_stream,
@@ -311,19 +496,27 @@ async def stream_audio(audio_id: str):
     )
     
     narrator = get_narrator_agent()
+
+    # Case 1: Already stored in MinIO — return complete file
     file_record = get_file_record(audio_id)
     if file_record:
-        response = get_object_stream(file_record["bucket"], file_record["object_key"])
-        def iter_stream():
-            try:
-                for chunk in response.stream(8192):
-                    if chunk:
-                        yield chunk
-            finally:
-                response.close()
-                response.release_conn()
-        return StreamingResponse(iter_stream(), media_type=file_record["content_type"])
+        try:
+            response = get_object_stream(file_record["bucket"], file_record["object_key"])
+            audio_bytes = response.read()
+            response.close()
+            response.release_conn()
+            return Response(
+                content=audio_bytes,
+                media_type=file_record["content_type"],
+                headers={
+                    "Content-Length": str(len(audio_bytes)),
+                    "Accept-Ranges": "bytes",
+                },
+            )
+        except Exception as e:
+            logger.warning(f"Failed to read from MinIO, will try re-generation: {e}")
 
+    # Case 2: Pending generation — check in-memory store or DB
     pending = get_pending_stream(audio_id)
     if not pending:
         history_item = get_history_item(audio_id)
@@ -337,67 +530,127 @@ async def stream_audio(audio_id: str):
                 pending = get_pending_stream(audio_id)
 
     if pending:
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-        temp_path = Path(temp_file.name)
-        temp_file.close()
-
-        async def stream_with_lock_and_cleanup():
-            lock = await get_generation_lock(audio_id)
-            async with lock:
+        lock = await get_generation_lock(audio_id)
+        async with lock:
+            # Double-check if another request already generated it
+            file_record = get_file_record(audio_id)
+            if file_record:
                 try:
-                    async for chunk in narrator.generate_audio_stream(
-                        script=pending["script"],
-                        voice=pending["voice"],
-                        audio_id=audio_id,
-                        output_path=temp_path,
-                    ):
-                        yield chunk
-                finally:
-                    remove_pending_stream(audio_id)
+                    response = get_object_stream(file_record["bucket"], file_record["object_key"])
+                    audio_bytes = response.read()
+                    response.close()
+                    response.release_conn()
+                    return Response(
+                        content=audio_bytes,
+                        media_type=file_record["content_type"],
+                        headers={
+                            "Content-Length": str(len(audio_bytes)),
+                            "Accept-Ranges": "bytes",
+                        },
+                    )
+                except Exception:
+                    pass
+
+            # Generate complete audio
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+            temp_path = Path(temp_file.name)
+            temp_file.close()
 
             try:
-                bucket = get_bucket_name()
-                if not bucket:
-                    logger.warning("MinIO bucket not configured, skipping audio file save.")
-                else:
-                    object_key = f"co-writer/audio/{audio_id}.mp3"
-                    await asyncio.to_thread(
-                        upload_file,
-                        bucket,
-                        object_key,
-                        str(temp_path),
-                        "audio/mpeg",
-                    )
-                    await asyncio.to_thread(
-                        save_file_record,
-                        file_id=audio_id,
-                        file_type="audio",
-                        filename=f"{audio_id}.mp3",
-                        bucket=bucket,
-                        object_key=object_key,
-                        content_type="audio/mpeg",
-                        metadata={"voice": pending.get("voice")},
-                    )
+                audio_data = bytearray()
+                async for chunk in narrator.generate_audio_stream(
+                    script=pending["script"],
+                    voice=pending["voice"],
+                    audio_id=audio_id,
+                    output_path=temp_path,
+                    podcast_config=pending.get("podcast_config"),
+                ):
+                    audio_data.extend(chunk)
 
-                history_item = get_history_item(audio_id)
-                if history_item:
-                    history_item["status"] = "completed"
-                    update_history_item(audio_id, history_item)
+                remove_pending_stream(audio_id)
+                audio_bytes = bytes(audio_data)
+
+                # Persist to MinIO
+                try:
+                    bucket = get_bucket_name()
+                    if bucket:
+                        object_key = f"co-writer/audio/{audio_id}.mp3"
+                        await asyncio.to_thread(
+                            upload_file,
+                            bucket,
+                            object_key,
+                            str(temp_path),
+                            "audio/mpeg",
+                        )
+                        await asyncio.to_thread(
+                            save_file_record,
+                            file_id=audio_id,
+                            file_type="audio",
+                            filename=f"{audio_id}.mp3",
+                            bucket=bucket,
+                            object_key=object_key,
+                            content_type="audio/mpeg",
+                            metadata={"voice": pending.get("voice")},
+                        )
+
+                    history_item = get_history_item(audio_id)
+                    if history_item:
+                        history_item["status"] = "completed"
+                        update_history_item(audio_id, history_item)
+
+                except Exception as e:
+                    logger.warning(
+                        f"⚠️ Failed to save audio file to MinIO or update DB: {e}. "
+                        "The audio will still be returned to the user."
+                    )
+                finally:
+                    if temp_path.exists():
+                        temp_path.unlink()
+
+                return Response(
+                    content=audio_bytes,
+                    media_type="audio/mpeg",
+                    headers={
+                        "Content-Length": str(len(audio_bytes)),
+                        "Accept-Ranges": "bytes",
+                    },
+                )
 
             except Exception as e:
-                logger.warning(
-                    f"⚠️ Failed to save audio file to MinIO or update DB: {e}. "
-                    "This is expected if MinIO/PostgreSQL is not running. "
-                    "The audio stream has already been successfully sent to the user."
-                )
-            finally:
+                remove_pending_stream(audio_id)
                 if temp_path.exists():
                     temp_path.unlink()
-
-        return StreamingResponse(
-            stream_with_lock_and_cleanup(),
-            media_type="audio/mpeg",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-        )
+                logger.error(f"Audio generation failed: {e}")
+                raise HTTPException(status_code=500, detail=f"Audio generation failed: {e}")
 
     raise HTTPException(status_code=404, detail="Audio not found or expired")
+
+
+@router.get("/download_audio/{audio_id}")
+async def download_audio(audio_id: str):
+    """
+    Download generated podcast audio file.
+    Returns with Content-Disposition header to trigger browser download.
+    """
+    file_record = get_file_record(audio_id)
+    if not file_record:
+        raise HTTPException(status_code=404, detail="Audio not found. Please generate the podcast first.")
+
+    try:
+        response = get_object_stream(file_record["bucket"], file_record["object_key"])
+        audio_bytes = response.read()
+        response.close()
+        response.release_conn()
+    except Exception as e:
+        logger.error(f"Failed to read audio from storage: {e}")
+        raise HTTPException(status_code=500, detail="Failed to read audio file")
+
+    filename = file_record.get("filename", f"podcast-{audio_id}.mp3")
+    return Response(
+        content=audio_bytes,
+        media_type="audio/mpeg",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(audio_bytes)),
+        },
+    )
