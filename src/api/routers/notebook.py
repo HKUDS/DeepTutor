@@ -3,6 +3,7 @@ Notebook API Router
 Provides notebook creation, querying, updating, deletion, and record management functions
 """
 
+import asyncio
 import hashlib
 import json
 from pathlib import Path
@@ -25,6 +26,7 @@ from src.knowledge.manager import KnowledgeBaseManager
 from src.logging import get_logger
 from src.services.config import load_config_with_main
 from src.services.llm import get_llm_config
+from src.tools.web_crawler import fetch_urls
 
 router = APIRouter()
 
@@ -183,6 +185,56 @@ def _format_source_markdown(source: dict) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
+async def _enrich_sources_with_content(sources: list[dict]) -> list[dict]:
+    """
+    Enrich sources by fetching web content for URLs that don't have content yet.
+    Returns a new list with enriched sources.
+    """
+    # Find sources that need fetching (type=web, has url, no content)
+    urls_to_fetch = []
+    url_to_source_idx = {}
+
+    for idx, source in enumerate(sources):
+        if (
+            source.get("type") == "web"
+            and source.get("url")
+            and not source.get("content")
+        ):
+            url = source["url"]
+            urls_to_fetch.append(url)
+            url_to_source_idx[url] = idx
+
+    if not urls_to_fetch:
+        return sources  # Nothing to fetch
+
+    logger.info(f"Fetching content for {len(urls_to_fetch)} source URLs")
+
+    # Fetch all URLs concurrently
+    fetch_results = await fetch_urls(urls_to_fetch, concurrency=5)
+
+    # Create enriched sources list
+    enriched = [s.copy() for s in sources]
+
+    for result in fetch_results:
+        url = result["url"]
+        idx = url_to_source_idx.get(url)
+        if idx is None:
+            continue
+
+        if result.get("error"):
+            logger.warning(f"Failed to fetch {url}: {result['error']}")
+            # Add error info to source
+            enriched[idx]["fetch_error"] = result["error"]
+        else:
+            # Successfully fetched
+            enriched[idx]["content"] = result["content"]
+            if result.get("title") and not enriched[idx].get("title"):
+                enriched[idx]["title"] = result["title"]
+            logger.info(f"Fetched {len(result['content'])} chars from {url}")
+
+    return enriched
+
+
 def _write_source_files(raw_dir: Path, sources: list[dict]) -> list[str]:
     raw_dir.mkdir(parents=True, exist_ok=True)
     file_paths = []
@@ -197,11 +249,14 @@ def _write_source_files(raw_dir: Path, sources: list[dict]) -> list[str]:
     return file_paths
 
 
-def _sync_sources_kb(notebook_id: str, background_tasks: BackgroundTasks) -> str | None:
+async def _sync_sources_kb(notebook_id: str, background_tasks: BackgroundTasks) -> str | None:
     sessions = notebook_manager.list_sessions(notebook_id)
     selected_sources = _collect_selected_sources(sessions)
     if not selected_sources:
         return None
+
+    # Enrich sources by fetching web content
+    selected_sources = await _enrich_sources_with_content(selected_sources)
 
     signature = _sources_signature(selected_sources)
     kb_name = _get_notebook_sources_kb_name(notebook_id)
@@ -588,7 +643,7 @@ async def upsert_session(
     payload = request.dict(exclude_none=True)
     session = notebook_manager.upsert_session(notebook_id, payload)
     try:
-        _sync_sources_kb(notebook_id, background_tasks)
+        await _sync_sources_kb(notebook_id, background_tasks)
     except Exception as e:
         print(f"Failed to sync session sources to KB: {e}")
     return {"session": session}
