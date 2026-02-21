@@ -12,7 +12,7 @@ import sys
 import time
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile
 from pydantic import BaseModel
 
 # Ensure module can be imported
@@ -185,10 +185,17 @@ def _format_source_markdown(source: dict) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
-async def _enrich_sources_with_content(sources: list[dict]) -> list[dict]:
+async def _enrich_sources_with_content(sources: list[dict], raw_dir: Path) -> list[dict]:
     """
     Enrich sources by fetching web content for URLs that don't have content yet.
-    Returns a new list with enriched sources.
+    Supports both HTML pages and PDF files.
+
+    Args:
+        sources: List of source dicts
+        raw_dir: Directory to save downloaded PDF files
+
+    Returns:
+        New list with enriched sources.
     """
     # Find sources that need fetching (type=web, has url, no content)
     urls_to_fetch = []
@@ -199,6 +206,7 @@ async def _enrich_sources_with_content(sources: list[dict]) -> list[dict]:
             source.get("type") == "web"
             and source.get("url")
             and not source.get("content")
+            and not source.get("file_path")  # Also check if file_path exists (for PDFs)
         ):
             url = source["url"]
             urls_to_fetch.append(url)
@@ -209,8 +217,8 @@ async def _enrich_sources_with_content(sources: list[dict]) -> list[dict]:
 
     logger.info(f"Fetching content for {len(urls_to_fetch)} source URLs")
 
-    # Fetch all URLs concurrently
-    fetch_results = await fetch_urls(urls_to_fetch, concurrency=5)
+    # Fetch all URLs concurrently (with PDF support)
+    fetch_results = await fetch_urls(urls_to_fetch, concurrency=5, pdf_save_dir=raw_dir)
 
     # Create enriched sources list
     enriched = [s.copy() for s in sources]
@@ -227,25 +235,54 @@ async def _enrich_sources_with_content(sources: list[dict]) -> list[dict]:
             enriched[idx]["fetch_error"] = result["error"]
         else:
             # Successfully fetched
-            enriched[idx]["content"] = result["content"]
-            if result.get("title") and not enriched[idx].get("title"):
-                enriched[idx]["title"] = result["title"]
-            logger.info(f"Fetched {len(result['content'])} chars from {url}")
+            if result.get("is_pdf"):
+                # PDF file downloaded
+                enriched[idx]["file_path"] = result["file_path"]
+                enriched[idx]["is_pdf"] = True
+                if result.get("title") and not enriched[idx].get("title"):
+                    enriched[idx]["title"] = result["title"]
+                logger.info(f"Downloaded PDF from {url} to {result['file_path']}")
+            else:
+                # HTML content extracted
+                enriched[idx]["content"] = result["content"]
+                if result.get("title") and not enriched[idx].get("title"):
+                    enriched[idx]["title"] = result["title"]
+                logger.info(f"Fetched {len(result['content'])} chars from {url}")
 
     return enriched
 
 
 def _write_source_files(raw_dir: Path, sources: list[dict]) -> list[str]:
+    """
+    Write source files to the raw directory.
+    For HTML sources: creates markdown files with content.
+    For PDF sources: the PDF file is already downloaded, just return its path.
+    """
     raw_dir.mkdir(parents=True, exist_ok=True)
     file_paths = []
+
     for source in sources:
+        # If it's a PDF that was already downloaded, just add its path
+        if source.get("is_pdf") and source.get("file_path"):
+            file_path = source["file_path"]
+            # Verify the file exists and is in the raw_dir
+            if Path(file_path).exists() and Path(file_path).parent == raw_dir:
+                file_paths.append(file_path)
+                logger.info(f"Using existing PDF: {file_path}")
+            else:
+                logger.warning(f"PDF file not found or not in raw_dir: {file_path}")
+            continue
+
+        # For HTML/text sources, create markdown file
         key = _source_key(source) or f"source-{len(file_paths)}"
         digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:12]
         filename = f"source_{digest}.md"
         file_path = raw_dir / filename
+
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(_format_source_markdown(source))
         file_paths.append(str(file_path))
+
     return file_paths
 
 
@@ -254,9 +291,6 @@ async def _sync_sources_kb(notebook_id: str, background_tasks: BackgroundTasks) 
     selected_sources = _collect_selected_sources(sessions)
     if not selected_sources:
         return None
-
-    # Enrich sources by fetching web content
-    selected_sources = await _enrich_sources_with_content(selected_sources)
 
     signature = _sources_signature(selected_sources)
     kb_name = _get_notebook_sources_kb_name(notebook_id)
@@ -271,6 +305,10 @@ async def _sync_sources_kb(notebook_id: str, background_tasks: BackgroundTasks) 
 
     kb_dir = Path(kb_manager.create_knowledge_base(kb_name, description=SOURCES_KB_DESCRIPTION))
     raw_dir = kb_dir / "raw"
+
+    # Enrich sources by fetching web content (including PDFs)
+    selected_sources = await _enrich_sources_with_content(selected_sources, raw_dir)
+
     file_paths = _write_source_files(raw_dir, selected_sources)
     _write_sources_manifest(kb_dir, signature, selected_sources)
 
@@ -647,6 +685,66 @@ async def upsert_session(
     except Exception as e:
         print(f"Failed to sync session sources to KB: {e}")
     return {"session": session}
+
+
+@router.post("/{notebook_id}/upload_source_pdf")
+async def upload_source_pdf(
+    notebook_id: str,
+    file: UploadFile,
+    background_tasks: BackgroundTasks,
+):
+    """
+    Upload a PDF file as a source for the notebook.
+    The PDF will be saved to the sources KB and processed for vectorization.
+    """
+    if not notebook_manager.get_notebook(notebook_id):
+        raise HTTPException(status_code=404, detail="Notebook not found")
+
+    # Validate file type
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+
+    # Check file size (50MB max)
+    content = await file.read()
+    if len(content) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="PDF file too large (max 50MB)")
+
+    # Create or get the sources KB
+    kb_name = _get_notebook_sources_kb_name(notebook_id)
+    kb_manager = KnowledgeBaseManager(base_dir=str(_kb_base_dir))
+
+    # Create KB if it doesn't exist
+    if kb_name not in kb_manager.list_knowledge_bases():
+        kb_dir = Path(kb_manager.create_knowledge_base(kb_name, description=SOURCES_KB_DESCRIPTION))
+    else:
+        kb_dir = kb_manager.get_knowledge_base_path(kb_name)
+
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save the PDF file
+    file_path = raw_dir / file.filename
+    file_path.write_bytes(content)
+
+    logger.info(f"Uploaded PDF source: {file.filename} ({len(content) / 1024:.1f}KB) to {file_path}")
+
+    # Trigger background processing
+    llm_cfg = get_llm_config()
+    background_tasks.add_task(
+        run_upload_processing_task,
+        kb_name=kb_name,
+        base_dir=str(_kb_base_dir),
+        api_key=llm_cfg.api_key,
+        base_url=llm_cfg.base_url,
+        uploaded_file_paths=[str(file_path)],
+    )
+
+    return {
+        "success": True,
+        "filename": file.filename,
+        "file_path": str(file_path),
+        "kb_name": kb_name,
+    }
 
 
 
