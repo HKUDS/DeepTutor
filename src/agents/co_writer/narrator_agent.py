@@ -311,7 +311,7 @@ class NarratorAgent:
             logger.warning(f"Failed to extract key points: {e}")
             return []
 
-    async def generate_audio(self, script: str, voice: str = None) -> dict[str, Any]:
+    async def generate_audio(self, script: str, voice: str = None, podcast_config: dict = None) -> dict[str, Any]:
         """
         Convert narration script to audio using OpenAI TTS API
 
@@ -373,7 +373,12 @@ class NarratorAgent:
                         "wss://openspeech.bytedance.com/api/v3/sami/podcasttts",
                     ),
                 )
-                audio_content = await client.generate_audio(script)
+                pc = podcast_config or {}
+                audio_content = await client.generate_audio(
+                    script,
+                    speakers=pc.get("speakers"),
+                    speech_rate=pc.get("speech_rate", 1.0),
+                )
             else:
                 # Create OpenAI client with custom base_url
                 from openai import OpenAI
@@ -421,6 +426,7 @@ class NarratorAgent:
         voice: str = None,
         audio_id: str = None,
         output_path: Path | None = None,
+        podcast_config: dict = None,
     ):
         """
         Generate audio stream and save to file simultaneously.
@@ -473,6 +479,9 @@ class NarratorAgent:
                         access_token=self.tts_config["access_token"],
                         base_url=self.tts_config.get("base_url", "wss://openspeech.bytedance.com/api/v3/sami/podcasttts"),
                     )
+                    pc = podcast_config or {}
+                    pc_speakers = pc.get("speakers")
+                    pc_speech_rate = pc.get("speech_rate", 1.0)
                     
                     # Split into smaller chunks to avoid server-side RPCTimeout
                     script_chunks = split_text(script, max_len=1500)
@@ -485,7 +494,11 @@ class NarratorAgent:
                         max_retries = 3
                         for attempt in range(max_retries):
                             try:
-                                async for audio_chunk in client.generate_audio_stream(chunk):
+                                async for audio_chunk in client.generate_audio_stream(
+                                    chunk,
+                                    speakers=pc_speakers,
+                                    speech_rate=pc_speech_rate,
+                                ):
                                     if audio_chunk:
                                         f.write(audio_chunk)
                                         f.flush()
@@ -537,6 +550,7 @@ class NarratorAgent:
         style: str = "friendly",
         voice: str = None,
         skip_audio: bool = False,
+        podcast_config: dict = None,
     ) -> dict[str, Any]:
         """
         Synthesize script and generate audio for a note.
@@ -592,12 +606,17 @@ class NarratorAgent:
                     script=script_result["script"],
                     voice=voice,
                     provider=provider,
+                    podcast_config=podcast_config,
                 )
                 upsert_history_item(history_item)
                 logger.info(f"Saved narration history item {audio_id}")
                 
             except Exception as e:
-                logger.error(f"Failed to save history: {e}")
+                logger.warning(
+                    f"⚠️ Failed to save podcast history to database: {e}. "
+                    "This is expected if PostgreSQL is not running (e.g., local non-Docker env). "
+                    "The audio generation will continue normally."
+                )
 
         else:
             if not self.tts_config:
@@ -622,11 +641,12 @@ def get_pending_stream(audio_id: str):
     # to find the pending stream while it's still generating or just started.
     return _PENDING_STREAMS.get(audio_id)
 
-def set_pending_stream(audio_id: str, script: str, voice: str, provider: str):
+def set_pending_stream(audio_id: str, script: str, voice: str, provider: str, podcast_config: dict = None):
     _PENDING_STREAMS[audio_id] = {
         "script": script,
         "voice": voice,
         "provider": provider,
+        "podcast_config": podcast_config,
     }
 
 async def get_generation_lock(audio_id: str) -> asyncio.Lock:

@@ -73,7 +73,7 @@ interface ChatSession {
 }
 
 export default function HistoryPage() {
-  const { uiSettings, loadChatSession } = useGlobal();
+  const { uiSettings } = useGlobal();
   const t = (key: string) => getTranslation(uiSettings.language, key);
   const router = useRouter();
 
@@ -129,16 +129,10 @@ export default function HistoryPage() {
     }
   };
 
-  const handleLoadChatSession = async (sessionId: string) => {
+  const handleLoadChatSession = (sessionId: string) => {
     setLoadingSessionId(sessionId);
-    try {
-      await loadChatSession(sessionId);
-      router.push("/");
-    } catch (err) {
-      console.error("Failed to load session:", err);
-    } finally {
-      setLoadingSessionId(null);
-    }
+    // Navigate directly to the chat page with session query parameter
+    router.push(`/chat?session=${sessionId}`);
   };
 
   const filteredEntries = entries.filter((entry) => {
@@ -244,11 +238,10 @@ export default function HistoryPage() {
                 <button
                   key={option.value}
                   onClick={() => setFilterType(option.value)}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
-                    filterType === option.value
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${filterType === option.value
                       ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm"
                       : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                  }`}
+                    }`}
                 >
                   {option.label}
                 </button>

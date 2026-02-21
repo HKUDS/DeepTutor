@@ -53,13 +53,15 @@ class KnowledgeBaseManager:
                     f"Warning: Knowledge base '{kb_name}' is in config but directory does not exist: {kb_dir}"
                 )
 
-        # If no config file or config is empty, fallback to scanning directory (backward compatibility)
-        if not kb_list and self.base_dir.exists():
+        # Always scan the directory for valid knowledge base directories as a fallback
+        # and merge them with those from the config file
+        if self.base_dir.exists():
             for item in self.base_dir.iterdir():
                 if item.is_dir() and item.name != "__pycache__":
-                    metadata_file = item / "metadata.json"
-                    if metadata_file.exists():
-                        kb_list.append(item.name)
+                    if item.name not in kb_list:
+                        metadata_file = item / "metadata.json"
+                        if metadata_file.exists():
+                            kb_list.append(item.name)
 
         return sorted(kb_list)
 

@@ -226,10 +226,11 @@ class ChatAgent(BaseAgent):
             enable_web_search: Whether to use Web Search
 
         Returns:
-            Tuple of (context_string, sources_dict)
+            Tuple of (context_string, sources_dict, exceptions_list)
         """
         context_parts = []
         sources = {"rag": [], "web": []}
+        exceptions = []
 
         # RAG retrieval
         if enable_rag and kb_name:
@@ -254,6 +255,7 @@ class ChatAgent(BaseAgent):
                     self.logger.info(f"RAG retrieved {len(rag_answer)} chars")
             except Exception as e:
                 self.logger.warning(f"RAG search failed: {e}")
+                exceptions.append(f"知识库检索异常: {str(e)}")
 
         # Selected sources KB retrieval (always-on if provided)
         if sources_kb_name and sources_kb_name != kb_name:
@@ -278,6 +280,7 @@ class ChatAgent(BaseAgent):
                     self.logger.info(f"Sources KB retrieved {len(sources_answer)} chars")
             except Exception as e:
                 self.logger.warning(f"Sources KB search failed: {e}")
+                exceptions.append(f"来源检索异常: {str(e)}")
 
         # Web search
         if enable_web_search:
@@ -312,9 +315,10 @@ class ChatAgent(BaseAgent):
                         self.logger.info(f"Combined {len(snippet_parts)} snippets into context ({len(combined_snippets)} chars)")
             except Exception as e:
                 self.logger.warning(f"Web search failed: {e}")
+                exceptions.append(f"网络搜索异常: {str(e)}")
 
         context = "\n\n".join(context_parts)
-        return context, sources
+        return context, sources, exceptions
 
     def build_messages(
         self,
@@ -323,6 +327,7 @@ class ChatAgent(BaseAgent):
         context: str = "",
         enable_rag: bool = False,
         enable_web_search: bool = False,
+        require_sources: bool = False,
     ) -> list[dict[str, str]]:
         """
         Build the messages array for the LLM API call.
@@ -333,21 +338,33 @@ class ChatAgent(BaseAgent):
             context: Retrieved context (RAG/Web)
             enable_rag: Whether RAG is enabled
             enable_web_search: Whether Web Search is enabled
+            require_sources: Whether to enforce strict grounded QA (notebook mode)
 
         Returns:
             List of message dicts for OpenAI API
         """
         messages = []
 
-        # Construct System Prompt based on mode
-        base_system_prompt = self.get_prompt("system", "You are a knowledgeable AI assistant.")
-        
+        # Select system prompt based on mode
+        if require_sources:
+            # Notebook mode: use notebook-specific system prompt
+            base_system_prompt = self.get_prompt("notebook_system", "You are a knowledgeable AI assistant.")
+        else:
+            # Chat mode: use open chat system prompt
+            base_system_prompt = self.get_prompt("system", "You are a knowledgeable AI assistant.")
+
         instructions = []
         if context:
-            # Enforce strict context usage if context is present
-            instructions.append("Answer the user's question based STRICTLY on the provided Reference Information.")
-            instructions.append("Do NOT use your own internal knowledge to answer. You must only use the information present in the Reference Information.")
-            instructions.append("If the answer is not found in the Reference Information, explicitly state that you cannot find the answer in the provided sources.")
+            if require_sources:
+                # Notebook mode: strict grounded QA — only answer from provided sources
+                instructions.append("Answer the user's question based STRICTLY on the provided Reference Information.")
+                instructions.append("Do NOT use your own internal knowledge to answer. You must only use the information present in the Reference Information.")
+                instructions.append("If the answer is not found in the Reference Information, explicitly state that you cannot find the answer in the provided sources.")
+            else:
+                # Chat mode: use context as supplementary reference, not as strict constraint
+                instructions.append("Reference Information is provided below for your consideration.")
+                instructions.append("Use it to enhance your answer, but you may also draw on your own knowledge to provide a comprehensive response.")
+                instructions.append("If the Reference Information is relevant, incorporate and cite it; if not, feel free to answer based on your own knowledge.")
 
             if enable_web_search:
                 instructions.append("The Reference Information contains Web Search Results.")
@@ -506,7 +523,7 @@ class ChatAgent(BaseAgent):
         truncated_history = self.truncate_history(history)
 
         # Retrieve context if needed
-        context, sources = await self.retrieve_context(
+        context, sources, exceptions = await self.retrieve_context(
             message=message,
             kb_name=kb_name,
             sources_kb_name=sources_kb_name,
@@ -524,27 +541,48 @@ class ChatAgent(BaseAgent):
             self.logger.info(f"Added {len(history_context)} chars from conversation history reports")
 
         # Check if we should fail without sources
-        # Now we're more lenient: allow answering based on conversation history
-        if require_sources and not context.strip():
-            self.logger.warning(
-                f"No context found for query (kb_name={kb_name}, sources_kb_name={sources_kb_name})"
-            )
-            fallback = "未在已选来源或知识库中找到相关信息。"
-            if stream:
-                async def stream_generator():
-                    yield {
-                        "type": "complete",
-                        "response": fallback,
-                        "sources": sources,
-                        "truncated_history": truncated_history,
-                    }
+        # Strict Grounded QA Error Handling
+        if require_sources:
+            if exceptions and not context.strip():
+                # If APIs failed and we have no context, explicitly fail
+                self.logger.warning(f"Strict mode failed due to exceptions: {exceptions}")
+                fallback = f"检索服务发生异常，由于当前为严谨引用问答模式，暂无法为您解答。\n详细错误：\n" + "\n".join([f"- {e}" for e in exceptions])
+                if stream:
+                    async def stream_generator():
+                        yield {
+                            "type": "complete",
+                            "response": fallback,
+                            "sources": sources,
+                            "truncated_history": truncated_history,
+                        }
+                    return stream_generator()
+                return {
+                    "response": fallback,
+                    "sources": sources,
+                    "truncated_history": truncated_history,
+                }
+            
+            elif not context.strip():
+                # APis worked but found nothing
+                self.logger.warning(
+                    f"No context found for query (kb_name={kb_name}, sources_kb_name={sources_kb_name})"
+                )
+                fallback = "未在已选来源或知识库中找到相关信息。"
+                if stream:
+                    async def stream_generator():
+                        yield {
+                            "type": "complete",
+                            "response": fallback,
+                            "sources": sources,
+                            "truncated_history": truncated_history,
+                        }
 
-                return stream_generator()
-            return {
-                "response": fallback,
-                "sources": sources,
-                "truncated_history": truncated_history,
-            }
+                    return stream_generator()
+                return {
+                    "response": fallback,
+                    "sources": sources,
+                    "truncated_history": truncated_history,
+                }
 
         # Build messages for LLM
         messages = self.build_messages(
@@ -553,6 +591,7 @@ class ChatAgent(BaseAgent):
             context=context,
             enable_rag=enable_rag,
             enable_web_search=enable_web_search,
+            require_sources=require_sources,
         )
 
         if stream:

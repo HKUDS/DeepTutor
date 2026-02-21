@@ -2,7 +2,7 @@
 
 /* eslint-disable react-hooks/exhaustive-deps */
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
     ArrowLeft,
@@ -119,6 +119,48 @@ interface ResearchState {
     researchId?: string;
 }
 
+type StudioMode =
+    | "idle"
+    | "research"
+    | "question"
+    | "solver"
+    | "guide"
+    | "ideagen"
+    | "pdf"
+    | "ppt"
+    | "mindmap"
+    | "podcast";
+
+type ExportContentSource = "research" | "sources";
+
+type PptStyleMode = "default" | "preset" | "template" | "sources";
+
+type PptTemplatePromptSource = "preset" | "sources";
+
+type AudioResult = { audioUrl?: string; audioId?: string };
+
+interface PptStudioState {
+    styleMode?: PptStyleMode;
+    selectedStyleId?: string;
+    selectedTemplate?: string;
+    templateUseLlm?: boolean;
+    templatePromptSource?: PptTemplatePromptSource;
+    stylePreviewSvg?: string;
+    outline?: PresentationOutline | null;
+    previewOpen?: boolean;
+}
+
+interface PodcastStudioState {
+    audioResult?: AudioResult | null;
+}
+
+interface StudioState {
+    mode?: StudioMode;
+    exportContentSource?: ExportContentSource;
+    ppt?: PptStudioState;
+    podcast?: PodcastStudioState;
+}
+
 interface SessionSnapshot {
     session_id: string;
     title: string;
@@ -126,6 +168,7 @@ interface SessionSnapshot {
     sources: Source[];
     research_report?: string;
     research_state?: ResearchState | null;
+    studio_state?: StudioState | null;
     created_at: number;
     updated_at: number;
 }
@@ -157,6 +200,13 @@ export default function NotebookDetailPage() {
     const [isChatting, setIsChatting] = useState(false);
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
+    // Refs to always have the latest values for session saves (avoids React stale closure bugs)
+    const chatMessagesRef = useRef<ChatMessage[]>([]);
+    const sourcesRef = useRef<Source[]>([]);
+    const researchReportRef = useRef("");
+    const studioStateRef = useRef<StudioState | null>(null);
+    const studioHydrationRef = useRef(false);
+
     // Knowledge bases
     const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
     const [selectedKb, setSelectedKb] = useState<string>("");
@@ -169,6 +219,33 @@ export default function NotebookDetailPage() {
     const [hasSessionActivity, setHasSessionActivity] = useState(false);
     const sessionSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const sessionCacheKey = `notebook-session-cache-${notebookId}`;
+
+    // Helper to cache sessions safely without hitting 5MB LocalStorage limits
+    const saveToLocalStorageSafe = (key: string, data: any) => {
+        try {
+            // 首先尝试完整保存，如果没超容量就正常用
+            localStorage.setItem(key, JSON.stringify(data));
+        } catch (e) {
+            console.warn("localStorage quota exceeded, switching to metadata-only cache fallback:", e);
+            try {
+                // 回退方案：如果爆了，只在本地缓存会话列表的轻量级元数据（用于秒开左侧目录），不缓存正文。
+                // 这样进入页面时右侧会短暂空白一瞬间，然后通过网络请求加载完整数据。绝对不会出现截断文本覆盖后端的情况。
+                const lightData = {
+                    currentSessionId: data.currentSessionId,
+                    sessions: (data.sessions || []).map((s: any) => ({
+                        session_id: s.session_id,
+                        title: s.title,
+                        created_at: s.created_at,
+                        updated_at: s.updated_at
+                    }))
+                };
+                localStorage.setItem(key, JSON.stringify(lightData));
+            } catch (err) {
+                console.warn("Cache metadata fallback also failed", err);
+            }
+        }
+    };
+
     const [collapsedSessionIds, setCollapsedSessionIds] = useState<Record<string, boolean>>({});
 
     // Sources panel (new)
@@ -176,12 +253,16 @@ export default function NotebookDetailPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [isSearching, setIsSearching] = useState(false);
 
+    // Keep refs in sync with state (for buildSessionSnapshot in async callbacks)
+    useEffect(() => { chatMessagesRef.current = chatMessages; }, [chatMessages]);
+    useEffect(() => { sourcesRef.current = sources; }, [sources]);
+
     // Deep Research config (from original research page)
     const [planMode, setPlanMode] = useState<"quick" | "medium" | "deep" | "auto">("medium");
     const [enabledTools, setEnabledTools] = useState<string[]>(["Web", "RAG"]);
     const [enableOptimization, setEnableOptimization] = useState(true);
-    const [exportContentSource, setExportContentSource] = useState<"research" | "sources">("research");
-    const [pptStyleMode, setPptStyleMode] = useState<"default" | "preset" | "template" | "sources">("default");
+    const [exportContentSource, setExportContentSource] = useState<ExportContentSource>("research");
+    const [pptStyleMode, setPptStyleMode] = useState<PptStyleMode>("default");
     const [pptStyleTemplates, setPptStyleTemplates] = useState<PptStyleTemplate[]>([]);
     const [selectedPptStyleId, setSelectedPptStyleId] = useState("");
     const [pptTemplates, setPptTemplates] = useState<PptTemplateInfo[]>([]);
@@ -190,7 +271,7 @@ export default function NotebookDetailPage() {
     const [researchStartTime, setResearchStartTime] = useState<number | null>(null);
     const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState<string>("");
     const [pptTemplateUseLlm, setPptTemplateUseLlm] = useState(false);
-    const [pptTemplatePromptSource, setPptTemplatePromptSource] = useState<"preset" | "sources">("preset");
+    const [pptTemplatePromptSource, setPptTemplatePromptSource] = useState<PptTemplatePromptSource>("preset");
     const [pptStylePreviewSvg, setPptStylePreviewSvg] = useState("");
     const [pptStylePreviewLoading, setPptStylePreviewLoading] = useState(false);
     const [pptStylePreviewError, setPptStylePreviewError] = useState("");
@@ -213,10 +294,20 @@ export default function NotebookDetailPage() {
     const [noteContent, setNoteContent] = useState("");
 
     // Studio state
-    const [studioMode, setStudioMode] = useState<"idle" | "research" | "question" | "solver" | "guide" | "ideagen" | "pdf" | "ppt" | "mindmap" | "podcast">("idle");
+    const [studioMode, setStudioMode] = useState<StudioMode>("idle");
     const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
-    const [audioResult, setAudioResult] = useState<{ audioUrl?: string; audioId?: string } | null>(null);
+    const [audioResult, setAudioResult] = useState<AudioResult | null>(null);
     const [audioError, setAudioError] = useState<string | null>(null);
+
+    // Podcast config state
+    const [podcastSpeakers, setPodcastSpeakers] = useState<Array<{ id: string; name: string; gender: string }>>([
+        { id: "zh_female_mizaitongxue_v2_saturn_bigtts", name: "米仔同学 (女)", gender: "female" },
+        { id: "zh_male_dayixiansheng_v2_saturn_bigtts", name: "大义先生 (男)", gender: "male" },
+    ]);
+    const [podcastSpeakerA, setPodcastSpeakerA] = useState("zh_female_mizaitongxue_v2_saturn_bigtts");
+    const [podcastSpeakerB, setPodcastSpeakerB] = useState("zh_male_dayixiansheng_v2_saturn_bigtts");
+    const [podcastSpeechRate, setPodcastSpeechRate] = useState(1.0);
+    const [audioBlobUrl, setAudioBlobUrl] = useState<string | null>(null);
 
     const normalizeTimestamp = (value?: number) => {
         if (!value) return Date.now();
@@ -263,6 +354,71 @@ export default function NotebookDetailPage() {
             researchId: activeResearchId || undefined,
         };
     };
+
+    const normalizeAudioResult = (result?: AudioResult | null): AudioResult | null => {
+        if (!result) return null;
+        if (
+            result.audioUrl &&
+            !result.audioUrl.startsWith("http") &&
+            !result.audioUrl.startsWith("data:") &&
+            !result.audioUrl.startsWith("blob:")
+        ) {
+            return { ...result, audioUrl: apiUrl(result.audioUrl) };
+        }
+        return result;
+    };
+
+    const buildStudioState = (): StudioState => ({
+        mode: studioMode === "ppt" || studioMode === "podcast" ? studioMode : "idle",
+        exportContentSource,
+        ppt: {
+            styleMode: pptStyleMode,
+            selectedStyleId: selectedPptStyleId,
+            selectedTemplate: selectedPptTemplate,
+            templateUseLlm: pptTemplateUseLlm,
+            templatePromptSource: pptTemplatePromptSource,
+            stylePreviewSvg: pptStylePreviewSvg || "",
+            outline: pptOutline,
+            previewOpen: pptPreviewOpen,
+        },
+        podcast: {
+            audioResult: audioResult ? { ...audioResult } : null,
+        },
+    });
+
+    const hasStudioState = (state?: StudioState | null) => {
+        if (!state) return false;
+        if (state.mode && state.mode !== "idle") return true;
+        if (state.exportContentSource && state.exportContentSource !== "research") return true;
+        const ppt = state.ppt;
+        if (ppt?.outline) return true;
+        if (ppt?.previewOpen) return true;
+        if (ppt?.styleMode && ppt.styleMode !== "default") return true;
+        if (ppt?.templateUseLlm) return true;
+        if (ppt?.templatePromptSource && ppt.templatePromptSource !== "preset") return true;
+        const audio = state.podcast?.audioResult;
+        if (audio?.audioUrl || audio?.audioId) return true;
+        return false;
+    };
+
+    const studioState = useMemo(
+        () => buildStudioState(),
+        [
+            studioMode,
+            exportContentSource,
+            pptStyleMode,
+            selectedPptStyleId,
+            selectedPptTemplate,
+            pptTemplateUseLlm,
+            pptTemplatePromptSource,
+            pptStylePreviewSvg,
+            pptOutline,
+            pptPreviewOpen,
+            audioResult,
+        ]
+    );
+
+    useEffect(() => { studioStateRef.current = studioState; }, [studioState]);
 
     const ensureResearchReportMessage = (messages: ChatMessage[], report: string): ChatMessage[] => {
         if (!report) return messages;
@@ -316,6 +472,68 @@ export default function NotebookDetailPage() {
         setActiveResearchId(null);
         setPendingResearchRecovery(false);
         resetResearchUiState(true);
+    };
+
+    const resetStudioState = () => {
+        setStudioMode("idle");
+        setExportContentSource("research");
+        setPptStyleMode("default");
+        setSelectedPptStyleId("");
+        setSelectedPptTemplate("");
+        setPptTemplateUseLlm(false);
+        setPptTemplatePromptSource("preset");
+        setPptStylePreviewSvg("");
+        setPptStylePreviewLoading(false);
+        setPptStylePreviewError("");
+        setPptPreviewOpen(false);
+        setPptOutline(null);
+        setPptGeneratingIndices([]);
+        setPptImageProgress({ current: 0, total: 0 });
+        setIsPptGenerating(false);
+        setIsPptExporting(false);
+        setAudioResult(null);
+        setAudioError(null);
+        setIsGeneratingAudio(false);
+    };
+
+    const applyStudioState = (state?: StudioState | null) => {
+        studioHydrationRef.current = true;
+        const next = state || {};
+        const ppt = next.ppt || {};
+        const hasPodcastAudio = Boolean(
+            next.podcast?.audioResult?.audioUrl || next.podcast?.audioResult?.audioId
+        );
+        const hasPptOutline = Boolean(ppt.outline);
+        const resolvedMode =
+            next.mode && next.mode !== "idle"
+                ? next.mode
+                : hasPodcastAudio
+                    ? "podcast"
+                    : hasPptOutline
+                        ? "ppt"
+                        : "idle";
+        setStudioMode(resolvedMode);
+        setExportContentSource(next.exportContentSource || "research");
+        setPptStyleMode(ppt.styleMode || "default");
+        setSelectedPptStyleId(ppt.selectedStyleId || "");
+        setSelectedPptTemplate(ppt.selectedTemplate || "");
+        setPptTemplateUseLlm(typeof ppt.templateUseLlm === "boolean" ? ppt.templateUseLlm : false);
+        setPptTemplatePromptSource(ppt.templatePromptSource || "preset");
+        setPptStylePreviewSvg(ppt.stylePreviewSvg || "");
+        setPptStylePreviewLoading(false);
+        setPptStylePreviewError("");
+        setPptOutline(ppt.outline || null);
+        setPptPreviewOpen(Boolean(ppt.outline) && (ppt.previewOpen ?? true));
+        setPptGeneratingIndices([]);
+        setPptImageProgress({ current: 0, total: 0 });
+        setIsPptGenerating(false);
+        setIsPptExporting(false);
+        setAudioResult(normalizeAudioResult(next.podcast?.audioResult || null));
+        setAudioError(null);
+        setIsGeneratingAudio(false);
+        setTimeout(() => {
+            studioHydrationRef.current = false;
+        }, 0);
     };
 
     const fetchReportText = async (reportUrl: string) => {
@@ -436,7 +654,7 @@ export default function NotebookDetailPage() {
             }
         }
 
-        setTimeout(() => scheduleSessionSave(true), 0);
+        scheduleSessionSave(true);
     };
 
     const syncSessionsFromServer = async (reason: string) => {
@@ -477,6 +695,7 @@ export default function NotebookDetailPage() {
                 setSources(normalizeSources(target.sources || []));
                 setResearchReport(target.research_report || "");
                 applyResearchState(target.research_state);
+                applyStudioState(target.studio_state);
                 if (target.research_report) {
                     setPendingResearchRecovery(false);
                 }
@@ -529,14 +748,20 @@ export default function NotebookDetailPage() {
         const existing = sessions.find((session) => session.session_id === sessionId);
         const now = Date.now();
         const createdAt = existing ? existing.created_at : now;
-        const derivedTitle = formatSessionTitle(createdAt, chatMessages);
+        // Read from refs to guarantee latest values (not stale closure state)
+        const latestMessages = chatMessagesRef.current;
+        const latestSources = sourcesRef.current;
+        const latestResearchReport = researchReportRef.current;
+        const latestStudioState = studioStateRef.current || buildStudioState();
+        const derivedTitle = formatSessionTitle(createdAt, latestMessages);
         return {
             session_id: sessionId,
             title: derivedTitle,
-            messages: chatMessages,
-            sources,
-            research_report: researchReport || "",
+            messages: latestMessages,
+            sources: latestSources,
+            research_report: latestResearchReport || "",
             research_state: buildResearchState() || undefined,
+            studio_state: latestStudioState,
             created_at: createdAt,
             updated_at: now,
         };
@@ -560,7 +785,15 @@ export default function NotebookDetailPage() {
 
     const saveSessionSnapshot = async (snapshot: SessionSnapshot) => {
         if (!notebookId) return;
-        if (!snapshot.messages.length && !snapshot.sources.length && !snapshot.research_report) {
+        const isKnownSession = sessions.some((session) => session.session_id === snapshot.session_id);
+        const hasStudio = hasStudioState(snapshot.studio_state);
+        if (
+            !snapshot.messages.length &&
+            !snapshot.sources.length &&
+            !snapshot.research_report &&
+            !hasStudio &&
+            !isKnownSession
+        ) {
             return;
         }
         try {
@@ -581,21 +814,36 @@ export default function NotebookDetailPage() {
         }
     };
 
-    const scheduleSessionSave = (immediate = false, sessionIdOverride?: string) => {
-        const snapshot = buildSessionSnapshot(sessionIdOverride);
+    // Trigger state to ensure we always read the LATEST state during save
+    const [sessionSaveTrigger, setSessionSaveTrigger] = useState<{ time: number, immediate: boolean, sessionId?: string } | null>(null);
+
+    const scheduleSessionSave = useCallback((immediate = false, sessionIdOverride?: string) => {
+        setSessionSaveTrigger({ time: Date.now(), immediate, sessionId: sessionIdOverride });
+    }, []);
+
+    useEffect(() => {
+        if (!sessionSaveTrigger) return;
+        const { immediate, sessionId } = sessionSaveTrigger;
+
+        const snapshot = buildSessionSnapshot(sessionId);
         if (!snapshot) return;
+
         upsertSessionState(snapshot);
+
         if (sessionSaveTimerRef.current) {
             clearTimeout(sessionSaveTimerRef.current);
         }
+
         if (immediate) {
             void saveSessionSnapshot(snapshot);
             return;
         }
+
         sessionSaveTimerRef.current = setTimeout(() => {
             void saveSessionSnapshot(snapshot);
         }, 1200);
-    };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sessionSaveTrigger]);
 
     const ensureActiveSession = () => {
         if (currentSessionId) return currentSessionId;
@@ -618,10 +866,13 @@ export default function NotebookDetailPage() {
         setActiveResearchId(null);
         setPendingResearchRecovery(false);
         resetResearchUiState(true);
+        resetStudioState();
+        setHasSessionActivity(false);
     };
     const [researchTopic, setResearchTopic] = useState("");
     const [researchRunning, setResearchRunning] = useState(false);
     const [researchReport, setResearchReport] = useState("");
+    useEffect(() => { researchReportRef.current = researchReport; }, [researchReport]);
     const [mindmapCode, setMindmapCode] = useState("");
     const [isExporting, setIsExporting] = useState(false);
 
@@ -731,7 +982,7 @@ export default function NotebookDetailPage() {
             }
         }
         return list.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
-    }, [sessions, currentSessionId, chatMessages, sources, researchReport]);
+    }, [sessions, currentSessionId, chatMessages, sources, researchReport, studioState]);
 
     const currentSessionTitle = useMemo(() => {
         const current = sessions.find((session) => session.session_id === currentSessionId);
@@ -815,6 +1066,7 @@ export default function NotebookDetailPage() {
                         setSources(normalizeSources(active.sources || []));
                         setResearchReport(active.research_report || "");
                         applyResearchState(active.research_state);
+                        applyStudioState(active.studio_state);
                     }
                 }
             }
@@ -850,10 +1102,11 @@ export default function NotebookDetailPage() {
                     setSources(normalizeSources(latest.sources || []));
                     setResearchReport(latest.research_report || "");
                     applyResearchState(latest.research_state);
+                    applyStudioState(latest.studio_state);
                 }
-                localStorage.setItem(
+                saveToLocalStorageSafe(
                     sessionCacheKey,
-                    JSON.stringify({ sessions: normalized, currentSessionId: latest?.session_id || "" })
+                    { sessions: normalized, currentSessionId: latest?.session_id || "" }
                 );
             } catch (err) {
                 console.error("Failed to load sessions:", err);
@@ -879,9 +1132,24 @@ export default function NotebookDetailPage() {
         fetchPptStyleTemplates();
         fetchPptTemplates();
         fetchBananaPptConfig();
+        // Fetch available podcast speakers
+        (async () => {
+            try {
+                const res = await fetch(apiUrl("/api/v1/co_writer/tts/doubao_speakers"));
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.speakers && data.speakers.length > 0) {
+                        setPodcastSpeakers(data.speakers);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to fetch podcast speakers:", err);
+            }
+        })();
     }, []);
 
     useEffect(() => {
+        if (studioHydrationRef.current) return;
         setPptStylePreviewSvg("");
         setPptStylePreviewError("");
     }, [pptStyleMode, selectedPptStyleId, pptTemplatePromptSource]);
@@ -900,11 +1168,16 @@ export default function NotebookDetailPage() {
         if (!currentSessionId || !hasSessionActivity) return;
         const snapshot = buildSessionSnapshot();
         if (!snapshot) return;
-        if (!snapshot.messages.length && !snapshot.sources.length && !snapshot.research_report) {
+        if (
+            !snapshot.messages.length &&
+            !snapshot.sources.length &&
+            !snapshot.research_report &&
+            !hasStudioState(snapshot.studio_state)
+        ) {
             return;
         }
         upsertSessionState(snapshot);
-    }, [chatMessages, sources, researchReport, currentSessionId, hasSessionActivity]);
+    }, [chatMessages, sources, researchReport, studioState, currentSessionId, hasSessionActivity]);
 
     useEffect(() => {
         if (!currentSessionId || !hasSessionActivity) return;
@@ -926,15 +1199,20 @@ export default function NotebookDetailPage() {
     ]);
 
     useEffect(() => {
-        if (!notebookId) return;
-        try {
-            localStorage.setItem(
-                sessionCacheKey,
-                JSON.stringify({ sessions, currentSessionId })
-            );
-        } catch (err) {
-            console.error("Failed to persist session cache:", err);
+        if (studioHydrationRef.current) return;
+        const hasStudio = hasStudioState(studioState);
+        if (!currentSessionId && !hasStudio) return;
+        if (!hasStudio && !hasSessionActivity) return;
+        const sessionId = currentSessionId || ensureActiveSession();
+        if (hasStudio && !hasSessionActivity) {
+            setHasSessionActivity(true);
         }
+        scheduleSessionSave(false, sessionId);
+    }, [studioState, currentSessionId, hasSessionActivity, scheduleSessionSave]);
+
+    useEffect(() => {
+        if (!notebookId) return;
+        saveToLocalStorageSafe(sessionCacheKey, { sessions, currentSessionId });
     }, [sessions, currentSessionId, notebookId]);
 
     const fetchNotebook = async () => {
@@ -983,8 +1261,11 @@ export default function NotebookDetailPage() {
             const data = await res.json();
             const templates = data.templates || [];
             setPptStyleTemplates(templates);
-            if (!selectedPptStyleId && templates.length > 0) {
-                setSelectedPptStyleId(templates[0].id);
+            if (templates.length > 0) {
+                const ids = templates.map((template: PptStyleTemplate) => template.id);
+                if (!selectedPptStyleId || !ids.includes(selectedPptStyleId)) {
+                    setSelectedPptStyleId(templates[0].id);
+                }
             }
         } catch (err) {
             console.error("Failed to fetch PPT style templates:", err);
@@ -997,8 +1278,11 @@ export default function NotebookDetailPage() {
             if (!res.ok) return;
             const data = await res.json();
             setPptTemplates(data.templates || []);
-            if (!selectedPptTemplate && data.templates?.length > 0) {
-                setSelectedPptTemplate(data.templates[0].name);
+            if (data.templates?.length > 0) {
+                const templateNames = data.templates.map((template: PptTemplateInfo) => template.name);
+                if (!selectedPptTemplate || !templateNames.includes(selectedPptTemplate)) {
+                    setSelectedPptTemplate(data.templates[0].name);
+                }
             }
         } catch (err) {
             console.error("Failed to fetch PPT templates:", err);
@@ -1016,7 +1300,8 @@ export default function NotebookDetailPage() {
             }
             if (Array.isArray(data.style_templates) && data.style_templates.length > 0) {
                 setPptStyleTemplates(data.style_templates);
-                if (!selectedPptStyleId) {
+                const ids = data.style_templates.map((template: PptStyleTemplate) => template.id);
+                if (!selectedPptStyleId || !ids.includes(selectedPptStyleId)) {
                     setSelectedPptStyleId(data.style_templates[0].id);
                 }
             }
@@ -1118,7 +1403,7 @@ export default function NotebookDetailPage() {
             chatWsRef.current.close();
         }
 
-        const ws = new WebSocket(wsUrl("/api/v1/chat"));
+        const ws = new WebSocket(wsUrl("/api/v1/notebook/chat"));
         chatWsRef.current = ws;
         const assistantId = (Date.now() + 1).toString();
         let fullContent = "";
@@ -1179,7 +1464,7 @@ export default function NotebookDetailPage() {
                                 : msg
                         )
                     );
-                    setTimeout(() => scheduleSessionSave(true), 0);
+                    scheduleSessionSave(true);
                     ws.close();
                 } else if (data.type === "error") {
                     setChatError(data.message || "发生未知错误");
@@ -1190,7 +1475,7 @@ export default function NotebookDetailPage() {
                                 : msg
                         )
                     );
-                    setTimeout(() => scheduleSessionSave(true), 0);
+                    scheduleSessionSave(true);
                 }
             } catch {
                 // Ignore parse errors for malformed messages
@@ -1200,11 +1485,25 @@ export default function NotebookDetailPage() {
         ws.onerror = () => {
             clearTimeout(connectionTimeout);
             setChatError("WebSocket 连接失败，请检查网络或后端服务");
+            setChatMessages((prev) =>
+                prev.map((msg) =>
+                    msg.id === assistantId && msg.isStreaming
+                        ? { ...msg, content: "抱歉，由于网络或服务异常，连接已中断。请重试。", isStreaming: false }
+                        : msg
+                )
+            );
             setIsChatting(false);
         };
 
         ws.onclose = () => {
             clearTimeout(connectionTimeout);
+            setChatMessages((prev) =>
+                prev.map((msg) =>
+                    msg.id === assistantId && msg.isStreaming
+                        ? { ...msg, content: "连接被异常中断。如有网络波动，请检查后重试。", isStreaming: false }
+                        : msg
+                )
+            );
             setIsChatting(false);
         };
     };
@@ -1215,7 +1514,15 @@ export default function NotebookDetailPage() {
         ensureActiveSession();
         setHasSessionActivity(true);
 
-        const url = wsUrl("/api/v1/chat");
+        // 将用户查询作为聊天消息添加
+        const userMessage: ChatMessage = {
+            id: `fast-user-${Date.now()}`,
+            role: "user",
+            content: `🔍 快速搜索：${searchQuery}`,
+        };
+        setChatMessages((prev) => [...prev, userMessage]);
+
+        const url = wsUrl("/api/v1/notebook/chat");
         console.log("Fast Research connecting to:", url);
 
         setIsSearching(true);
@@ -1309,7 +1616,7 @@ export default function NotebookDetailPage() {
                             { id: `fast-${Date.now()}`, role: "assistant", content: `**快速搜索结果：** ${searchQuery}\n\n${finalContent}` }
                         ]);
                     }
-                    setTimeout(() => scheduleSessionSave(true), 0);
+                    scheduleSessionSave(true);
 
                     setSearchQuery("");
                     ws.close();
@@ -1317,7 +1624,7 @@ export default function NotebookDetailPage() {
                 } else if (data.type === "error") {
                     console.error("Fast Research Error:", data.content);
                     setChatError(data.content || "搜索失败");
-                    setTimeout(() => scheduleSessionSave(true), 0);
+                    scheduleSessionSave(true);
                     ws.close();
                     setIsSearching(false);
                 }
@@ -1347,7 +1654,7 @@ export default function NotebookDetailPage() {
             setSources((prev) =>
                 prev.map((s) => (s.id === sourceId ? { ...s, selected: !s.selected } : s))
             );
-            setTimeout(() => scheduleSessionSave(true, sessionId), 0);
+            scheduleSessionSave(true, sessionId);
             return;
         }
         let updatedSession: SessionSnapshot | null = null;
@@ -1371,7 +1678,7 @@ export default function NotebookDetailPage() {
         setHasSessionActivity(true);
         if (sessionId === currentSessionId) {
             setSources((prev) => prev.map((s) => ({ ...s, selected })));
-            setTimeout(() => scheduleSessionSave(true, sessionId), 0);
+            scheduleSessionSave(true, sessionId);
             return;
         }
         let updatedSession: SessionSnapshot | null = null;
@@ -1409,7 +1716,7 @@ export default function NotebookDetailPage() {
             return updatedSessions;
         });
         if (currentSessionId) {
-            setTimeout(() => scheduleSessionSave(true, currentSessionId), 0);
+            scheduleSessionSave(true, currentSessionId);
         }
         updatedSessions.forEach((session) => {
             if (session.session_id !== currentSessionId) {
@@ -1422,7 +1729,7 @@ export default function NotebookDetailPage() {
     const removeSource = (sourceId: string) => {
         setHasSessionActivity(true);
         setSources((prev) => prev.filter((s) => s.id !== sourceId));
-        setTimeout(() => scheduleSessionSave(true), 0);
+        scheduleSessionSave(true);
     };
 
     // Add note to notebook
@@ -1573,7 +1880,7 @@ export default function NotebookDetailPage() {
         };
         setHasSessionActivity(true);
         setSources(prev => [...prev, newSource]);
-        setTimeout(() => scheduleSessionSave(true), 0);
+        scheduleSessionSave(true);
         setSourceUrl("");
         setShowAddSourceModal(false);
     };
@@ -1588,6 +1895,14 @@ export default function NotebookDetailPage() {
         setHasSessionActivity(true);
         setResearchTopic(researchTopicToUse);
         setSearchQuery(researchTopicToUse);
+
+        // 将用户查询作为聊天消息添加
+        const userMessage: ChatMessage = {
+            id: `research-user-${Date.now()}`,
+            role: "user",
+            content: `🔬 深度研究：${researchTopicToUse}`,
+        };
+        setChatMessages((prev) => [...prev, userMessage]);
 
         if (wsRef.current) wsRef.current.close();
 
@@ -1706,7 +2021,7 @@ export default function NotebookDetailPage() {
                                 : msg
                         )
                     );
-                    setTimeout(() => scheduleSessionSave(true), 0);
+                    scheduleSessionSave(true);
                 } else if (data.type === "progress") {
                     // Handle progress events from backend
                     const stage = data.stage as "planning" | "researching" | "reporting";
@@ -1826,7 +2141,7 @@ export default function NotebookDetailPage() {
                 }
                 return prev;
             });
-            setTimeout(() => scheduleSessionSave(true, activeSessionId), 0);
+            scheduleSessionSave(true, activeSessionId);
             if (pendingRecoveryRef.current) {
                 setTimeout(() => {
                     void recoverResearchIfNeeded("ws-close");
@@ -2163,6 +2478,11 @@ export default function NotebookDetailPage() {
         setIsGeneratingAudio(true);
         setAudioError(null);
         setAudioResult(null);
+        // Clean up previous blob URL
+        if (audioBlobUrl) {
+            URL.revokeObjectURL(audioBlobUrl);
+            setAudioBlobUrl(null);
+        }
         try {
             const markdown = await getExportMarkdown();
             if (!markdown) {
@@ -2170,13 +2490,18 @@ export default function NotebookDetailPage() {
                 return;
             }
 
+            // Step 1: Trigger narration (returns quickly, audio generated in background)
             const res = await fetch(apiUrl("/api/v1/co_writer/narrate"), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     content: markdown,
-                    style: "friendly", // Default style
+                    style: "friendly",
                     skip_audio: false,
+                    podcast_config: {
+                        speakers: [podcastSpeakerA, podcastSpeakerB],
+                        speech_rate: podcastSpeechRate,
+                    },
                 }),
             });
 
@@ -2186,18 +2511,57 @@ export default function NotebookDetailPage() {
             }
 
             const data = await res.json();
-            if (data.has_audio && data.audio_url) {
-                const audioUrl = data.audio_url.startsWith("http")
-                    ? data.audio_url
-                    : apiUrl(data.audio_url);
-                setAudioResult({
-                    audioUrl: audioUrl,
-                    audioId: data.audio_id,
-                });
-                setStudioMode("podcast");
-            } else {
+            if (!data.has_audio || !data.audio_id) {
                 throw new Error(data.audio_error || "音频生成失败");
             }
+
+            const audioId = data.audio_id;
+            const audioUrl = data.audio_url.startsWith("http")
+                ? data.audio_url
+                : apiUrl(data.audio_url);
+
+            // Step 2: Poll for completion (every 3s, max 5 minutes)
+            const maxPolls = 100;
+            let audioReady = false;
+            for (let i = 0; i < maxPolls; i++) {
+                await new Promise((r) => setTimeout(r, 3000));
+                try {
+                    const statusRes = await fetch(
+                        apiUrl(`/api/v1/co_writer/audio_status/${audioId}`)
+                    );
+                    if (!statusRes.ok) continue;
+                    const statusData = await statusRes.json();
+                    if (statusData.status === "ready") {
+                        audioReady = true;
+                        break;
+                    }
+                    if (statusData.status === "failed") {
+                        throw new Error(statusData.error || "音频生成失败");
+                    }
+                    // "generating" → continue polling
+                } catch (pollErr: any) {
+                    if (pollErr?.message?.includes("音频生成失败")) throw pollErr;
+                    // Network glitch on poll → retry
+                }
+            }
+            if (!audioReady) {
+                throw new Error("音频生成超时，请稍后重试");
+            }
+
+            // Step 3: Fetch complete audio from MinIO (instant, with Content-Length)
+            const audioRes = await fetch(audioUrl);
+            if (!audioRes.ok) {
+                throw new Error(`音频获取失败: HTTP ${audioRes.status}`);
+            }
+            const audioBlob = await audioRes.blob();
+            const blobUrl = URL.createObjectURL(audioBlob);
+            setAudioBlobUrl(blobUrl);
+
+            setAudioResult({
+                audioUrl: audioUrl,
+                audioId: audioId,
+            });
+            setStudioMode("podcast");
         } catch (err: any) {
             console.error("Podcast generation failed:", err);
             setAudioError(err?.message || "播客生成失败，请稍后重试");
@@ -2388,6 +2752,78 @@ export default function NotebookDetailPage() {
                     )}
                 </div>
             )}
+        </div>
+    );
+
+    const renderPodcastConfigPanel = () => (
+        <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 text-left">
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                播客配置
+            </div>
+            <div className="space-y-3">
+                {/* Speaker A */}
+                <div>
+                    <label className="block text-xs text-slate-500 mb-1">发声人 A</label>
+                    <select
+                        value={podcastSpeakerA}
+                        onChange={(e) => setPodcastSpeakerA(e.target.value)}
+                        className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    >
+                        {podcastSpeakers.map((s) => (
+                            <option key={s.id} value={s.id}>
+                                {s.name}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+                {/* Speaker B */}
+                <div>
+                    <label className="block text-xs text-slate-500 mb-1">发声人 B</label>
+                    <select
+                        value={podcastSpeakerB}
+                        onChange={(e) => setPodcastSpeakerB(e.target.value)}
+                        className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    >
+                        {podcastSpeakers.map((s) => (
+                            <option key={s.id} value={s.id}>
+                                {s.name}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+                {/* Speech Rate */}
+                <div>
+                    <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                        <span>语速</span>
+                        <span className="font-medium text-indigo-600">{podcastSpeechRate.toFixed(1)}x</span>
+                    </div>
+                    <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={
+                            podcastSpeechRate <= 1.0
+                                ? ((podcastSpeechRate - 0.5) / 0.5) * 50
+                                : 50 + ((podcastSpeechRate - 1.0) / 1.0) * 50
+                        }
+                        onChange={(e) => {
+                            const pos = parseInt(e.target.value);
+                            const rate =
+                                pos <= 50
+                                    ? 0.5 + (pos / 50) * 0.5
+                                    : 1.0 + ((pos - 50) / 50) * 1.0;
+                            setPodcastSpeechRate(Math.round(rate * 10) / 10);
+                        }}
+                        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                    />
+                    <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
+                        <span>0.5x</span>
+                        <span>1.0x</span>
+                        <span>2.0x</span>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 
@@ -3219,7 +3655,7 @@ export default function NotebookDetailPage() {
                                     返回
                                 </button>
 
-                                <div className="text-center py-8">
+                                <div className="text-center py-4">
                                     <Mic className="w-12 h-12 text-indigo-300 mx-auto mb-4" />
                                     <p className="text-slate-700 font-medium mb-2">音频播客</p>
 
@@ -3246,13 +3682,13 @@ export default function NotebookDetailPage() {
                                             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                                                 <audio
                                                     controls
-                                                    src={audioResult.audioUrl}
+                                                    src={audioBlobUrl || audioResult.audioUrl}
                                                     className="w-full h-10"
                                                 />
                                             </div>
                                             <div className="flex gap-2 justify-center">
                                                 <a
-                                                    href={audioResult.audioUrl}
+                                                    href={apiUrl(`/api/v1/co_writer/download_audio/${audioResult.audioId}`)}
                                                     download={`podcast-${audioResult.audioId}.mp3`}
                                                     className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
                                                 >
@@ -3270,11 +3706,14 @@ export default function NotebookDetailPage() {
                                         </div>
                                     ) : (
                                         <div className="space-y-4">
-                                            <p className="text-sm text-slate-400 mb-6">
+                                            <p className="text-sm text-slate-400 mb-4">
                                                 将研究报告或来源内容转换为语音播客
                                             </p>
                                             <div className="mb-4">
                                                 {renderExportSourceToggle()}
+                                            </div>
+                                            <div className="mb-4">
+                                                {renderPodcastConfigPanel()}
                                             </div>
                                             <button
                                                 onClick={handleGeneratePodcast}

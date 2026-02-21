@@ -145,16 +145,30 @@ class DoubaoPodcastClient:
         self.access_token = access_token
         self.base_url = base_url
 
-    async def generate_audio_stream(self, text: str, speakers: list[str] = None):
+    async def generate_audio_stream(self, text: str, speakers: list[str] = None, speech_rate: float = 1.0):
         """
         Generate podcast audio stream from raw text/markdown.
         Yields audio chunks (bytes).
+
+        Args:
+            text: Input text/markdown content
+            speakers: List of speaker voice IDs (default: one female + one male)
+            speech_rate: Speech speed multiplier 0.5~2.0 (1.0 = normal).
+                         Mapped to API's -500~500 scale linearly.
         """
         if not speakers:
              speakers = [
                 "zh_female_mizaitongxue_v2_saturn_bigtts",
                 "zh_male_dayixiansheng_v2_saturn_bigtts"
             ]
+
+        # Map UI speech_rate (0.5~2.0) to API speech_rate (-500~500)
+        # 0.5 -> -500, 1.0 -> 0, 2.0 -> 500  (linear: (rate - 1.0) * 1000 / 1.0)
+        # Clamp to valid range
+        clamped_rate = max(0.5, min(2.0, speech_rate))
+        api_speech_rate = int((clamped_rate - 1.0) * (500 / 1.0))
+        # Ensure it stays within -500..500
+        api_speech_rate = max(-500, min(500, api_speech_rate))
 
         request_id = str(uuid.uuid4())
         
@@ -181,7 +195,7 @@ class DoubaoPodcastClient:
             "audio_config": {
                 "format": "mp3",
                 "sample_rate": 24000,
-                "speech_rate": 0
+                "speech_rate": api_speech_rate
             }
         }
 
@@ -241,11 +255,11 @@ class DoubaoPodcastClient:
             logger.error(f"Doubao Podcast stream failed: {e}")
             raise
 
-    async def generate_audio(self, text: str, speakers: list[str] = None) -> bytes:
+    async def generate_audio(self, text: str, speakers: list[str] = None, speech_rate: float = 1.0) -> bytes:
         """
         Generate podcast audio from raw text/markdown (non-streaming wrapper).
         """
         audio_data = bytearray()
-        async for chunk in self.generate_audio_stream(text, speakers):
+        async for chunk in self.generate_audio_stream(text, speakers, speech_rate=speech_rate):
             audio_data.extend(chunk)
         return bytes(audio_data)
