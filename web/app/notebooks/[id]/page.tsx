@@ -2474,10 +2474,7 @@ export default function NotebookDetailPage() {
     return apiUrl(`/api/v1/co_writer/stream_audio/${audioId}`);
   };
 
-  const waitWithAbort = (
-    ms: number,
-    signal?: AbortSignal,
-  ): Promise<void> =>
+  const waitWithAbort = (ms: number, signal?: AbortSignal): Promise<void> =>
     new Promise((resolve, reject) => {
       if (signal?.aborted) {
         reject(new DOMException("Operation aborted", "AbortError"));
