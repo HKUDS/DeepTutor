@@ -10,9 +10,9 @@ Supports PDF download for later processing by RAGAnything.
 
 import asyncio
 import hashlib
+from pathlib import Path
 import re
 import time
-from pathlib import Path
 from typing import Optional
 from urllib.parse import unquote, urlparse
 
@@ -67,10 +67,24 @@ _CONTENT_DISPOSITION_FILENAME_RE = re.compile(
 
 # Common non-content URL patterns to skip (removed .pdf)
 _SKIP_EXTENSIONS = {
-    ".zip", ".tar", ".gz", ".rar",
-    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico",
-    ".mp3", ".mp4", ".avi", ".mov",
-    ".exe", ".dmg", ".deb", ".rpm",
+    ".zip",
+    ".tar",
+    ".gz",
+    ".rar",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".svg",
+    ".ico",
+    ".mp3",
+    ".mp4",
+    ".avi",
+    ".mov",
+    ".exe",
+    ".dmg",
+    ".deb",
+    ".rpm",
 }
 
 
@@ -147,10 +161,9 @@ def _is_pdf_response(
     lowered_type = content_type.lower()
     if "application/pdf" in lowered_type:
         return True
-    if (
-        "application/octet-stream" in lowered_type
-        and _filename_from_content_disposition(content_disposition).lower().endswith(".pdf")
-    ):
+    if "application/octet-stream" in lowered_type and _filename_from_content_disposition(
+        content_disposition
+    ).lower().endswith(".pdf"):
         return True
     if _url_looks_like_pdf(requested_url) or _url_looks_like_pdf(final_url):
         return True
@@ -225,8 +238,8 @@ async def _fetch_html_with_browser(url: str, timeout: float) -> dict:
 
 def _extract_with_readability(html: str, url: str) -> tuple[str, str]:
     """Extract main content using readability-lxml + markdownify."""
-    from readability import Document
     from markdownify import markdownify as md
+    from readability import Document
 
     doc = Document(html, url=url)
     title = doc.title() or ""
@@ -374,7 +387,9 @@ async def fetch_pdf(url: str, save_dir: Path, timeout: float = REQUEST_TIMEOUT) 
     return result
 
 
-async def fetch_url(url: str, timeout: float = REQUEST_TIMEOUT, pdf_save_dir: Optional[Path] = None) -> dict:
+async def fetch_url(
+    url: str, timeout: float = REQUEST_TIMEOUT, pdf_save_dir: Optional[Path] = None
+) -> dict:
     """
     Fetch a single URL and extract its main content.
 
@@ -494,7 +509,9 @@ async def fetch_url(url: str, timeout: float = REQUEST_TIMEOUT, pdf_save_dir: Op
 
                 file_path = save_dir / filename
                 file_path.write_bytes(resp.content)
-                logger.info(f"Downloaded PDF: {url} -> {file_path} ({len(resp.content) / 1024:.1f}KB)")
+                logger.info(
+                    f"Downloaded PDF: {url} -> {file_path} ({len(resp.content) / 1024:.1f}KB)"
+                )
 
                 return {
                     "url": final_url,
@@ -601,7 +618,9 @@ async def fetch_url(url: str, timeout: float = REQUEST_TIMEOUT, pdf_save_dir: Op
     return result
 
 
-async def fetch_urls(urls: list[str], concurrency: int = 5, pdf_save_dir: Optional[Path] = None) -> list[dict]:
+async def fetch_urls(
+    urls: list[str], concurrency: int = 5, pdf_save_dir: Optional[Path] = None
+) -> list[dict]:
     """
     Fetch multiple URLs concurrently.
 

@@ -5,9 +5,9 @@ Tests the web crawler, PDF download, and source enrichment logic.
 """
 
 import asyncio
+from pathlib import Path
 import sys
 import tempfile
-from pathlib import Path
 
 # Add project root to path
 project_root = Path(__file__).resolve().parents[1]
@@ -22,16 +22,19 @@ async def test_web_crawler():
 
     # Direct import to avoid __init__.py issues
     import importlib.util
+
     spec = importlib.util.spec_from_file_location(
-        "web_crawler",
-        project_root / "src/tools/web_crawler.py"
+        "web_crawler", project_root / "src/tools/web_crawler.py"
     )
     web_crawler = importlib.util.module_from_spec(spec)
 
     # Mock logger
     class MockLogger:
-        def info(self, msg): print(f"   [INFO] {msg}")
-        def warning(self, msg): print(f"   [WARN] {msg}")
+        def info(self, msg):
+            print(f"   [INFO] {msg}")
+
+        def warning(self, msg):
+            print(f"   [WARN] {msg}")
 
     web_crawler.logger = MockLogger()
     spec.loader.exec_module(web_crawler)
@@ -49,7 +52,7 @@ async def test_web_crawler():
     print(f"   Content length: {len(result.get('content', ''))} chars")
     print(f"   Error: {result['error']}")
 
-    if result.get('content'):
+    if result.get("content"):
         print(f"   First 150 chars: {result['content'][:150]}...")
 
     # Test 2: PDF URL (using a small test PDF)
@@ -65,8 +68,8 @@ async def test_web_crawler():
         print(f"   File path: {result.get('file_path', 'N/A')}")
         print(f"   Error: {result['error']}")
 
-        if result.get('file_path'):
-            file_size = Path(result['file_path']).stat().st_size
+        if result.get("file_path"):
+            file_size = Path(result["file_path"]).stat().st_size
             print(f"   File size: {file_size / 1024:.1f}KB")
 
     # Test 3: Multiple URLs (HTML + PDF)
@@ -80,14 +83,16 @@ async def test_web_crawler():
         results = await fetch_urls(urls, concurrency=3, pdf_save_dir=Path(tmpdir))
 
         for i, res in enumerate(results, 1):
-            status = "✓ Success" if not res['error'] else f"✗ Error: {res['error']}"
-            is_pdf = "PDF" if res.get('is_pdf') else "HTML"
+            status = "✓ Success" if not res["error"] else f"✗ Error: {res['error']}"
+            is_pdf = "PDF" if res.get("is_pdf") else "HTML"
             print(f"   {i}. [{is_pdf}] {res['url']}: {status}")
-            if not res['error']:
-                if res.get('is_pdf'):
+            if not res["error"]:
+                if res.get("is_pdf"):
                     print(f"      File: {res.get('file_path', 'N/A')}")
                 else:
-                    print(f"      Title: {res['title']}, Content: {len(res.get('content', ''))} chars")
+                    print(
+                        f"      Title: {res['title']}, Content: {len(res.get('content', ''))} chars"
+                    )
 
     print("\n✓ Web crawler tests passed!")
     return True, fetch_urls
@@ -139,8 +144,9 @@ async def test_source_enrichment(fetch_urls):
     with tempfile.TemporaryDirectory() as tmpdir:
         # Find URLs to fetch
         urls_to_fetch = [
-            s['url'] for s in sources
-            if s.get('type') == 'web' and s.get('url') and not s.get('content')
+            s["url"]
+            for s in sources
+            if s.get("type") == "web" and s.get("url") and not s.get("content")
         ]
 
         print(f"   URLs to fetch: {len(urls_to_fetch)}")
@@ -150,21 +156,21 @@ async def test_source_enrichment(fetch_urls):
 
             # Enrich sources
             enriched = [s.copy() for s in sources]
-            url_to_result = {r['url']: r for r in results}
+            url_to_result = {r["url"]: r for r in results}
 
             for i, source in enumerate(enriched):
-                if source.get('url') in url_to_result:
-                    result = url_to_result[source['url']]
-                    if not result.get('error'):
-                        if result.get('is_pdf'):
-                            enriched[i]['file_path'] = result['file_path']
-                            enriched[i]['is_pdf'] = True
+                if source.get("url") in url_to_result:
+                    result = url_to_result[source["url"]]
+                    if not result.get("error"):
+                        if result.get("is_pdf"):
+                            enriched[i]["file_path"] = result["file_path"]
+                            enriched[i]["is_pdf"] = True
                         else:
-                            enriched[i]['content'] = result['content']
-                        if result.get('title'):
-                            enriched[i]['title'] = result['title']
+                            enriched[i]["content"] = result["content"]
+                        if result.get("title"):
+                            enriched[i]["title"] = result["title"]
                     else:
-                        enriched[i]['fetch_error'] = result['error']
+                        enriched[i]["fetch_error"] = result["error"]
 
             print("\n3. Enriched sources:")
             for s in enriched:
@@ -216,6 +222,7 @@ async def main():
     except Exception as e:
         print(f"\n✗ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 

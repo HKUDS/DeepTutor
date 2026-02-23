@@ -3,7 +3,6 @@ Notebook API Router
 Provides notebook creation, querying, updating, deletion, and record management functions
 """
 
-import asyncio
 import hashlib
 import json
 from pathlib import Path
@@ -198,7 +197,9 @@ def _extract_legacy_notebook_id(kb_name: str) -> str:
     return match.group("notebook_id") if match else ""
 
 
-def _find_notebook_sources_kb_names(kb_manager: KnowledgeBaseManager, notebook_id: str) -> list[str]:
+def _find_notebook_sources_kb_names(
+    kb_manager: KnowledgeBaseManager, notebook_id: str
+) -> list[str]:
     notebook_id = (notebook_id or "").strip()
     if not notebook_id:
         return []
@@ -347,9 +348,7 @@ def _normalize_source_payload(source: dict) -> dict:
     content = (source.get("content") or "").strip()
     canonical_url = _canonicalize_source_url(source.get("url") or "")
     max_chars = (
-        REPORT_SOURCE_CONTENT_CHARS
-        if source.get("type") == "report"
-        else MAX_SOURCE_CONTENT_CHARS
+        REPORT_SOURCE_CONTENT_CHARS if source.get("type") == "report" else MAX_SOURCE_CONTENT_CHARS
     )
     if len(content) > max_chars:
         content = content[:max_chars] + "\n\n[truncated]"
@@ -368,7 +367,7 @@ def _normalize_source_payload(source: dict) -> dict:
 def _source_key(source: dict) -> str:
     canonical_url = _canonicalize_source_url(source.get("url") or "")
     key = canonical_url or source.get("url") or source.get("id") or source.get("title") or ""
-    return f"{source.get('type','')}-{key}"
+    return f"{source.get('type', '')}-{key}"
 
 
 def _dedupe_sources(sources: list[dict]) -> list[dict]:
@@ -632,14 +631,18 @@ async def _enrich_sources_with_content(sources: list[dict], raw_dir: Path) -> li
         fetched_at = result.get("fetched_at") or time.time()
 
         # Persist fetch metadata for observability/debugging.
-        enriched[idx]["requested_url"] = result.get("requested_url") or enriched[idx].get("url") or ""
+        enriched[idx]["requested_url"] = (
+            result.get("requested_url") or enriched[idx].get("url") or ""
+        )
         enriched[idx]["final_url"] = result.get("final_url") or result.get("url") or ""
         enriched[idx]["fetch_method"] = result.get("fetch_method") or "http"
         enriched[idx]["fetch_status"] = result.get("fetch_status") or ""
         enriched[idx]["content_type"] = result.get("content_type") or ""
         enriched[idx]["file_size"] = int(result.get("file_size") or 0)
         enriched[idx]["fetched_at"] = fetched_at
-        canonical_url = _canonicalize_source_url(enriched[idx].get("final_url") or enriched[idx].get("url") or "")
+        canonical_url = _canonicalize_source_url(
+            enriched[idx].get("final_url") or enriched[idx].get("url") or ""
+        )
         if canonical_url:
             enriched[idx]["canonical_url"] = canonical_url
 
@@ -760,7 +763,9 @@ async def _sync_sources_kb(notebook_id: str, background_tasks: BackgroundTasks) 
 
     kb_manager = KnowledgeBaseManager(base_dir=str(_kb_base_dir))
     matched_kb_names = _find_notebook_sources_kb_names(kb_manager, notebook_id)
-    kb_name = matched_kb_names[0] if matched_kb_names else _get_notebook_sources_kb_name(notebook_id)
+    kb_name = (
+        matched_kb_names[0] if matched_kb_names else _get_notebook_sources_kb_name(notebook_id)
+    )
 
     # Keep only one active sources KB per notebook.
     for stale_kb_name in matched_kb_names[1:]:
@@ -823,20 +828,21 @@ def _sync_notebook_sources_aliases(notebook_id: str) -> None:
         except Exception:
             logger.warning("Failed to sync aliases for sources KB '%s'", kb_name)
 
+
 async def _trigger_kb_indexing(kb_sync_info: dict, background_tasks: BackgroundTasks):
     """Trigger KB indexing for a synced note"""
     try:
         if not kb_sync_info:
             return
-            
+
         kb_name = kb_sync_info.get("kb_name")
         file_path = kb_sync_info.get("file_path")
-        
+
         if not kb_name or not file_path:
             return
-            
+
         llm_cfg = get_llm_config()
-        
+
         background_tasks.add_task(
             run_upload_processing_task,
             kb_name=kb_name,
@@ -1079,11 +1085,11 @@ async def add_record(request: AddRecordRequest, background_tasks: BackgroundTask
             metadata=request.metadata,
             kb_name=request.kb_name,
         )
-        
+
         # Trigger KB indexing if sync info is present
         if "kb_sync_info" in result and result["kb_sync_info"]:
             await _trigger_kb_indexing(result["kb_sync_info"], background_tasks)
-            
+
         return {
             "success": True,
             "record": result["record"],
@@ -1121,7 +1127,9 @@ class SingleRecordRequest(BaseModel):
 
 
 @router.post("/{notebook_id}/records")
-async def add_single_record(notebook_id: str, request: SingleRecordRequest, background_tasks: BackgroundTasks):
+async def add_single_record(
+    notebook_id: str, request: SingleRecordRequest, background_tasks: BackgroundTasks
+):
     """
     Add a record directly to a specific notebook
 
@@ -1143,11 +1151,11 @@ async def add_single_record(notebook_id: str, request: SingleRecordRequest, back
             metadata=request.metadata,
             kb_name=request.kb_name,
         )
-        
+
         # Trigger KB indexing if sync info is present
         if "kb_sync_info" in result and result["kb_sync_info"]:
             await _trigger_kb_indexing(result["kb_sync_info"], background_tasks)
-            
+
         return {
             "success": True,
             "record": result["record"],
@@ -1221,7 +1229,9 @@ async def upload_source_pdf(
     kb_manager = KnowledgeBaseManager(base_dir=str(_kb_base_dir))
     notebook_name = _get_notebook_name(notebook_id)
     matched_kb_names = _find_notebook_sources_kb_names(kb_manager, notebook_id)
-    kb_name = matched_kb_names[0] if matched_kb_names else _get_notebook_sources_kb_name(notebook_id)
+    kb_name = (
+        matched_kb_names[0] if matched_kb_names else _get_notebook_sources_kb_name(notebook_id)
+    )
 
     for stale_kb_name in matched_kb_names[1:]:
         try:
@@ -1243,7 +1253,9 @@ async def upload_source_pdf(
     file_path = raw_dir / safe_filename
     file_path.write_bytes(content)
 
-    logger.info(f"Uploaded PDF source: {safe_filename} ({len(content) / 1024:.1f}KB) to {file_path}")
+    logger.info(
+        f"Uploaded PDF source: {safe_filename} ({len(content) / 1024:.1f}KB) to {file_path}"
+    )
 
     # Trigger background processing
     llm_cfg = get_llm_config()
@@ -1262,7 +1274,6 @@ async def upload_source_pdf(
         "file_path": str(file_path),
         "kb_name": kb_name,
     }
-
 
 
 @router.post("/generate_title")
@@ -1289,14 +1300,11 @@ Do not wrap in quotes.
 Content:
 {cleaned_content[:1000]}...
 """
-        
+
         title = await openai_complete_if_cache(
-            model=llm_cfg.model,
-            prompt=prompt,
-            api_key=llm_cfg.api_key,
-            base_url=llm_cfg.base_url
+            model=llm_cfg.model, prompt=prompt, api_key=llm_cfg.api_key, base_url=llm_cfg.base_url
         )
-        
+
         title = title.strip().strip('"')
         if not title:
             title = _extract_markdown_title(cleaned_content)
@@ -1333,11 +1341,7 @@ async def get_sources_kb_status(notebook_id: str):
 
         # Check if KB exists
         if kb_name not in kb_manager.list_knowledge_bases():
-            return {
-                "ready": False,
-                "status": "not_created",
-                "progress": None
-            }
+            return {"ready": False, "status": "not_created", "progress": None}
 
         # Check progress file
         kb_dir = kb_manager.get_knowledge_base_path(kb_name)
@@ -1348,11 +1352,7 @@ async def get_sources_kb_status(notebook_id: str):
             # Check if rag_storage exists as a sign of completion
             rag_storage = kb_dir / "rag_storage"
             if rag_storage.exists():
-                return {
-                    "ready": True,
-                    "status": "ready",
-                    "progress": None
-                }
+                return {"ready": True, "status": "ready", "progress": None}
             else:
                 # KB exists but no storage yet - probably just started
                 return {
@@ -1361,44 +1361,29 @@ async def get_sources_kb_status(notebook_id: str):
                     "progress": {
                         "stage": "initializing",
                         "message": "准备中...",
-                        "progress_percent": 0
-                    }
+                        "progress_percent": 0,
+                    },
                 }
 
         # Read progress file
         try:
             with open(progress_file, encoding="utf-8") as f:
                 import json
+
                 progress = json.load(f)
 
             stage = progress.get("stage", "")
 
             if stage == "completed":
-                return {
-                    "ready": True,
-                    "status": "ready",
-                    "progress": None
-                }
+                return {"ready": True, "status": "ready", "progress": None}
             elif stage == "error":
-                return {
-                    "ready": False,
-                    "status": "error",
-                    "progress": progress
-                }
+                return {"ready": False, "status": "error", "progress": progress}
             else:
-                return {
-                    "ready": False,
-                    "status": "indexing",
-                    "progress": progress
-                }
+                return {"ready": False, "status": "indexing", "progress": progress}
         except Exception as e:
             logger.error(f"Failed to read progress file: {e}")
             # Assume ready if we can't read progress
-            return {
-                "ready": True,
-                "status": "ready",
-                "progress": None
-            }
+            return {"ready": True, "status": "ready", "progress": None}
 
     except Exception as e:
         logger.error(f"Failed to check sources KB status: {e}")

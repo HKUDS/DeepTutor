@@ -74,7 +74,7 @@ class KnowledgeBaseManager:
         kb_dir = self.base_dir / name
         if kb_dir.exists():
             # If it exists, just register it
-             pass 
+            pass
         else:
             kb_dir.mkdir(parents=True, exist_ok=True)
             # Create subdirectories

@@ -498,38 +498,40 @@ class NotebookManager:
             try:
                 # Late import to avoid circular dependency
                 from src.knowledge.manager import KnowledgeBaseManager
-                
+
                 # Get KB Manager
                 # Use project root relative to this file
                 project_root = Path(__file__).resolve().parents[3]
                 kb_base_dir = project_root / "data" / "knowledge_bases"
                 kb_manager = KnowledgeBaseManager(base_dir=str(kb_base_dir))
-                
+
                 kb_name = "User Notes"
-                
+
                 # Ensure KB exists
                 if kb_name not in kb_manager.list_knowledge_bases():
-                    kb_manager.create_knowledge_base(kb_name, description="Auto-generated from Notebook Notes")
-                
+                    kb_manager.create_knowledge_base(
+                        kb_name, description="Auto-generated from Notebook Notes"
+                    )
+
                 # Get raw directory
                 kb_path = kb_manager.get_knowledge_base_path(kb_name)
                 raw_dir = kb_path / "raw"
                 raw_dir.mkdir(parents=True, exist_ok=True)
-                
+
                 # Create filename from title
                 safe_title = "".join([c if c.isalnum() or c in "._- " else "_" for c in title])
                 filename = f"{safe_title}_{int(now)}.md"
                 file_path = raw_dir / filename
-                
+
                 # Save content
                 content = f"# {title}\n\n{output}"
                 with open(file_path, "w", encoding="utf-8") as f:
                     f.write(content)
-                    
+
                 kb_sync_info = {
                     "kb_name": kb_name,
                     "file_path": str(file_path),
-                    "filename": filename
+                    "filename": filename,
                 }
             except Exception as e:
                 print(f"Failed to sync note to KB: {e}")

@@ -26,8 +26,8 @@ from fastapi import (
 )
 from pydantic import BaseModel
 
-from src.api.utils.progress_broadcaster import ProgressBroadcaster
 from src.api.utils.notebook_manager import notebook_manager
+from src.api.utils.progress_broadcaster import ProgressBroadcaster
 from src.api.utils.task_id_manager import TaskIDManager
 from src.knowledge.add_documents import DocumentAdder
 from src.knowledge.initializer import KnowledgeBaseInitializer
@@ -170,11 +170,7 @@ def _load_source_display_name_map(kb_path: Path) -> dict[str, str]:
     for source in sources:
         if not isinstance(source, dict):
             continue
-        raw_filename = (
-            source.get("raw_filename")
-            or Path(source.get("file_path") or "").name
-            or ""
-        )
+        raw_filename = source.get("raw_filename") or Path(source.get("file_path") or "").name or ""
         if not raw_filename:
             continue
         display_name = (
@@ -709,6 +705,7 @@ async def list_files(kb_name: str):
 async def get_file(kb_name: str, filename: str):
     """Get a specific file from the knowledge base."""
     from fastapi.responses import FileResponse
+
     try:
         manager = get_kb_manager()
         raw_path = manager.get_raw_path(kb_name)
@@ -718,9 +715,7 @@ async def get_file(kb_name: str, filename: str):
             raise HTTPException(status_code=404, detail="File not found")
 
         return FileResponse(
-            path=file_path,
-            filename=filename,
-            media_type="application/octet-stream"
+            path=file_path, filename=filename, media_type="application/octet-stream"
         )
     except ValueError:
         raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")

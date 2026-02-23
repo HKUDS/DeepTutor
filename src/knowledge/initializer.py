@@ -409,9 +409,7 @@ class KnowledgeBaseInitializer:
                             rag, doc_file, fallback_text
                         )
                         if fallback_used:
-                            logger.info(
-                                f"  ✓ Fallback text ingestion complete: {doc_file.name}"
-                            )
+                            logger.info(f"  ✓ Fallback text ingestion complete: {doc_file.name}")
                 if fallback_used:
                     continue
                 error_msg = "Processing timeout (>10 minutes)"
@@ -437,9 +435,7 @@ class KnowledgeBaseInitializer:
                             rag, doc_file, fallback_text
                         )
                         if fallback_used:
-                            logger.info(
-                                f"  ✓ Fallback text ingestion complete: {doc_file.name}"
-                            )
+                            logger.info(f"  ✓ Fallback text ingestion complete: {doc_file.name}")
                 if not fallback_used:
                     error_msg = str(e)
                     logger.error(f"  ✗ Error processing {doc_file.name}: {error_msg}")

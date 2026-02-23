@@ -313,19 +313,25 @@ class ChatAgent(BaseAgent):
                 elif web_citations:
                     # Fallback for providers that don't return an 'answer' (like volcengine)
                     # Construct a combined context from snippets
-                    self.logger.info(f"Web search answer empty, using {len(web_citations)} citations as context")
+                    self.logger.info(
+                        f"Web search answer empty, using {len(web_citations)} citations as context"
+                    )
                     snippet_parts = []
                     for i, cit in enumerate(web_citations[:10], 1):
                         snippet = cit.get("snippet", "")
                         title = cit.get("title", "")
                         if snippet:
                             snippet_parts.append(f"Source [{i}] ({title}): {snippet}")
-                    
+
                     if snippet_parts:
                         combined_snippets = "\n\n".join(snippet_parts)
-                        context_parts.append(f"[Web Search Results (Snippets)]\n{combined_snippets}")
+                        context_parts.append(
+                            f"[Web Search Results (Snippets)]\n{combined_snippets}"
+                        )
                         sources["web"] = web_citations[:5]
-                        self.logger.info(f"Combined {len(snippet_parts)} snippets into context ({len(combined_snippets)} chars)")
+                        self.logger.info(
+                            f"Combined {len(snippet_parts)} snippets into context ({len(combined_snippets)} chars)"
+                        )
             except Exception as e:
                 self.logger.warning(f"Web search failed: {e}")
                 exceptions.append(f"网络搜索异常: {str(e)}")
@@ -361,7 +367,9 @@ class ChatAgent(BaseAgent):
         # Select system prompt based on mode
         if require_sources:
             # Notebook mode: use notebook-specific system prompt
-            base_system_prompt = self.get_prompt("notebook_system", "You are a knowledgeable AI assistant.")
+            base_system_prompt = self.get_prompt(
+                "notebook_system", "You are a knowledgeable AI assistant."
+            )
         else:
             # Chat mode: use open chat system prompt
             base_system_prompt = self.get_prompt("system", "You are a knowledgeable AI assistant.")
@@ -370,23 +378,39 @@ class ChatAgent(BaseAgent):
         if context:
             if require_sources:
                 # Notebook mode: strict grounded QA — only answer from provided sources
-                instructions.append("Answer the user's question based STRICTLY on the provided Reference Information.")
-                instructions.append("Do NOT use your own internal knowledge to answer. You must only use the information present in the Reference Information.")
-                instructions.append("If the answer is not found in the Reference Information, explicitly state that you cannot find the answer in the provided sources.")
+                instructions.append(
+                    "Answer the user's question based STRICTLY on the provided Reference Information."
+                )
+                instructions.append(
+                    "Do NOT use your own internal knowledge to answer. You must only use the information present in the Reference Information."
+                )
+                instructions.append(
+                    "If the answer is not found in the Reference Information, explicitly state that you cannot find the answer in the provided sources."
+                )
             else:
                 # Chat mode: use context as supplementary reference, not as strict constraint
-                instructions.append("Reference Information is provided below for your consideration.")
-                instructions.append("Use it to enhance your answer, but you may also draw on your own knowledge to provide a comprehensive response.")
-                instructions.append("If the Reference Information is relevant, incorporate and cite it; if not, feel free to answer based on your own knowledge.")
+                instructions.append(
+                    "Reference Information is provided below for your consideration."
+                )
+                instructions.append(
+                    "Use it to enhance your answer, but you may also draw on your own knowledge to provide a comprehensive response."
+                )
+                instructions.append(
+                    "If the Reference Information is relevant, incorporate and cite it; if not, feel free to answer based on your own knowledge."
+                )
 
             if enable_web_search:
                 instructions.append("The Reference Information contains Web Search Results.")
-                instructions.append("Please summarize these search results to provide a comprehensive and readable answer.")
+                instructions.append(
+                    "Please summarize these search results to provide a comprehensive and readable answer."
+                )
                 instructions.append("Do not just list links; synthesize the information.")
 
         # Combine instructions
         if instructions:
-            system_prompt = f"{base_system_prompt}\n\nInstructions:\n" + "\n".join(f"- {i}" for i in instructions)
+            system_prompt = f"{base_system_prompt}\n\nInstructions:\n" + "\n".join(
+                f"- {i}" for i in instructions
+            )
         else:
             system_prompt = base_system_prompt
 
@@ -394,7 +418,9 @@ class ChatAgent(BaseAgent):
 
         # Add context if available
         if context:
-            context_template = self.get_prompt("context_template", "Reference Information:\n{context}")
+            context_template = self.get_prompt(
+                "context_template", "Reference Information:\n{context}"
+            )
             context_msg = context_template.format(context=context)
             messages.append({"role": "system", "content": context_msg})
 
@@ -551,7 +577,9 @@ class ChatAgent(BaseAgent):
                 context = f"{context}\n\n{history_context}"
             else:
                 context = history_context
-            self.logger.info(f"Added {len(history_context)} chars from conversation history reports")
+            self.logger.info(
+                f"Added {len(history_context)} chars from conversation history reports"
+            )
 
         # Check if we should fail without sources
         # Strict Grounded QA Error Handling
@@ -559,8 +587,12 @@ class ChatAgent(BaseAgent):
             if exceptions and not context.strip():
                 # If APIs failed and we have no context, explicitly fail
                 self.logger.warning(f"Strict mode failed due to exceptions: {exceptions}")
-                fallback = f"检索服务发生异常，由于当前为严谨引用问答模式，暂无法为您解答。\n详细错误：\n" + "\n".join([f"- {e}" for e in exceptions])
+                fallback = (
+                    "检索服务发生异常，由于当前为严谨引用问答模式，暂无法为您解答。\n详细错误：\n"
+                    + "\n".join([f"- {e}" for e in exceptions])
+                )
                 if stream:
+
                     async def stream_generator():
                         yield {
                             "type": "complete",
@@ -568,13 +600,14 @@ class ChatAgent(BaseAgent):
                             "sources": sources,
                             "truncated_history": truncated_history,
                         }
+
                     return stream_generator()
                 return {
                     "response": fallback,
                     "sources": sources,
                     "truncated_history": truncated_history,
                 }
-            
+
             elif not context.strip():
                 # APis worked but found nothing
                 self.logger.warning(
@@ -582,6 +615,7 @@ class ChatAgent(BaseAgent):
                 )
                 fallback = "未在已选来源或知识库中找到相关信息。"
                 if stream:
+
                     async def stream_generator():
                         yield {
                             "type": "complete",

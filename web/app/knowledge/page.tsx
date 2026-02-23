@@ -526,9 +526,7 @@ export default function KnowledgePage() {
         await fetchKnowledgeBases();
       }, 1000);
 
-      alert(
-        "知识库创建成功！已在后台开始初始化。",
-      );
+      alert("知识库创建成功！已在后台开始初始化。");
     } catch (err: any) {
       console.error(err);
       alert(`创建知识库失败：${err.message}`);
@@ -621,7 +619,9 @@ export default function KnowledgePage() {
           {kbs.map((kb) => (
             <div
               key={kb.name}
-              onClick={() => router.push(`/knowledge/${encodeURIComponent(kb.name)}`)}
+              onClick={() =>
+                router.push(`/knowledge/${encodeURIComponent(kb.name)}`)
+              }
               className="group bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 hover:shadow-md transition-all duration-300 hover:-translate-y-1 overflow-hidden flex flex-col cursor-pointer"
             >
               {/* Card Header */}
@@ -734,7 +734,9 @@ export default function KnowledgePage() {
                               : "text-slate-400 dark:text-slate-500"
                           }
                         >
-                          {kb.statistics.rag_initialized ? "就绪" : "未建立索引"}
+                          {kb.statistics.rag_initialized
+                            ? "就绪"
+                            : "未建立索引"}
                         </span>
                       );
                     })()}
@@ -870,10 +872,11 @@ export default function KnowledgePage() {
                   上传文档
                 </label>
                 <div
-                  className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${dragActive
-                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30"
-                    : "border-slate-200 dark:border-slate-600 hover:border-blue-400 dark:hover:border-blue-500 bg-slate-50 dark:bg-slate-700/50"
-                    }`}
+                  className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
+                    dragActive
+                      ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30"
+                      : "border-slate-200 dark:border-slate-600 hover:border-blue-400 dark:hover:border-blue-500 bg-slate-50 dark:bg-slate-700/50"
+                  }`}
                   onDragEnter={handleDrag}
                   onDragLeave={handleDrag}
                   onDragOver={handleDrag}
