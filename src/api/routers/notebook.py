@@ -622,9 +622,8 @@ async def _enrich_sources_with_content(sources: list[dict], raw_dir: Path) -> li
                 break
         if idx is None:
             logger.warning(
-                "Skip fetched result because source index was not found: requested=%s final=%s",
-                result.get("requested_url"),
-                result.get("url"),
+                "Skip fetched result because source index was not found: "
+                f"requested={result.get('requested_url')} final={result.get('url')}"
             )
             continue
         url = result.get("url") or result.get("requested_url") or ""
@@ -678,11 +677,8 @@ async def _enrich_sources_with_content(sources: list[dict], raw_dir: Path) -> li
                     enriched[idx]["fetch_error"] = f"Skipped fetched content: {reason}"
                     enriched[idx]["content_chars"] = len((existing_content or "").strip())
                     logger.warning(
-                        "Skipped replacing content for %s (existing=%d, fetched=%d): %s",
-                        url,
-                        len(existing_content),
-                        len(fetched_content),
-                        reason,
+                        f"Skipped replacing content for {url} "
+                        f"(existing={len(existing_content)}, fetched={len(fetched_content)}): {reason}"
                     )
                     continue
 
@@ -693,10 +689,8 @@ async def _enrich_sources_with_content(sources: list[dict], raw_dir: Path) -> li
                 if result.get("title") and not enriched[idx].get("title"):
                     enriched[idx]["title"] = result["title"]
                 logger.info(
-                    "Fetched %d chars from %s (existing was %d chars)",
-                    len(fetched_content),
-                    url,
-                    len(existing_content),
+                    f"Fetched {len(fetched_content)} chars from {url} "
+                    f"(existing was {len(existing_content)} chars)"
                 )
 
     return enriched
@@ -772,7 +766,7 @@ async def _sync_sources_kb(notebook_id: str, background_tasks: BackgroundTasks) 
         try:
             kb_manager.delete_knowledge_base(stale_kb_name, confirm=True)
         except Exception:
-            logger.warning("Failed to delete stale sources KB '%s'", stale_kb_name)
+            logger.warning(f"Failed to delete stale sources KB '{stale_kb_name}'")
 
     if kb_name in kb_manager.list_knowledge_bases():
         kb_dir = kb_manager.get_knowledge_base_path(kb_name)
@@ -783,8 +777,8 @@ async def _sync_sources_kb(notebook_id: str, background_tasks: BackgroundTasks) 
             if not _manifest_has_retryable_fetch_failures(manifest):
                 return kb_name
             logger.info(
-                "Sources signature unchanged but previous fetch failures detected, retrying sync for '%s'",
-                kb_name,
+                "Sources signature unchanged but previous fetch failures detected, "
+                f"retrying sync for '{kb_name}'"
             )
         kb_manager.delete_knowledge_base(kb_name, confirm=True)
 
@@ -812,7 +806,7 @@ async def _sync_sources_kb(notebook_id: str, background_tasks: BackgroundTasks) 
             uploaded_file_paths=indexable_file_paths,
         )
     elif file_paths:
-        logger.info("No indexable source files for %s; raw files kept for inspection", kb_name)
+        logger.info(f"No indexable source files for {kb_name}; raw files kept for inspection")
 
     return kb_name
 
@@ -826,7 +820,7 @@ def _sync_notebook_sources_aliases(notebook_id: str) -> None:
             _ensure_sources_kb_alias_metadata(kb_dir, kb_name, notebook_id, notebook_name)
             _refresh_sources_manifest_display_names(kb_dir, notebook_name)
         except Exception:
-            logger.warning("Failed to sync aliases for sources KB '%s'", kb_name)
+            logger.warning(f"Failed to sync aliases for sources KB '{kb_name}'")
 
 
 async def _trigger_kb_indexing(kb_sync_info: dict, background_tasks: BackgroundTasks):
@@ -1033,7 +1027,7 @@ async def update_notebook(notebook_id: str, request: UpdateNotebookRequest):
             try:
                 _sync_notebook_sources_aliases(notebook_id)
             except Exception as e:
-                logger.warning("Failed to sync notebook sources aliases: %s", e)
+                logger.warning(f"Failed to sync notebook sources aliases: {e}")
         return {"success": True, "notebook": notebook}
     except HTTPException:
         raise
@@ -1237,7 +1231,7 @@ async def upload_source_pdf(
         try:
             kb_manager.delete_knowledge_base(stale_kb_name, confirm=True)
         except Exception:
-            logger.warning("Failed to delete stale sources KB '%s'", stale_kb_name)
+            logger.warning(f"Failed to delete stale sources KB '{stale_kb_name}'")
 
     # Create KB if it doesn't exist
     if kb_name not in kb_manager.list_knowledge_bases():
