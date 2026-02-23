@@ -147,6 +147,36 @@ async def lifespan(app: FastAPI):
     logger.info("Application shutdown")
 
 
+# ---------------------------------------------------------------------------
+# Starlette multipart upload size limit
+#
+# By default Starlette's ``MultiPartParser`` caps each individual file part at
+# 1 MB (the class-level ``max_file_size`` / ``max_part_size`` attribute).
+# Files that exceed this limit are rejected at the middleware layer *before*
+# the route handler runs, resulting in an HTTP 413 "Request Entity Too Large"
+# response — even when the file is well within DocumentValidator.MAX_FILE_SIZE
+# (100 MB).
+#
+# We raise the Starlette limit here to match the application-level cap so that
+# the framework streams larger uploads through to the route handler, which then
+# applies the real per-file size check via DocumentValidator.
+#
+# References:
+#   https://github.com/HKUDS/DeepTutor/issues/170
+#   https://github.com/encode/starlette/blob/master/starlette/formparsers.py
+# ---------------------------------------------------------------------------
+try:
+    from starlette.formparsers import MultiPartParser as _MultiPartParser
+
+    _UPLOAD_LIMIT_BYTES = 100 * 1024 * 1024  # 100 MB — matches DocumentValidator.MAX_FILE_SIZE
+    # Starlette ≥ 0.31 exposes ``max_file_size`` as a class attribute used as
+    # the default value for ``max_part_size`` in MultiPartParser.__init__().
+    _MultiPartParser.max_file_size = _UPLOAD_LIMIT_BYTES
+except (ImportError, AttributeError):
+    # Older Starlette versions do not enforce a part-level size limit;
+    # no patching is required.
+    pass
+
 app = FastAPI(
     title="DeepTutor API",
     version="1.0.0",
