@@ -2935,7 +2935,6 @@ export default function NotebookDetailPage() {
 
   useEffect(() => {
     if (studioMode !== "podcast") return;
-    if (isGeneratingAudio) return;
     if (!audioResult?.audioId || audioResult.audioUrl) return;
     const audioId = audioResult.audioId;
     const pendingAudioUrl = audioResult.audioUrl;
@@ -2988,7 +2987,6 @@ export default function NotebookDetailPage() {
     };
   }, [
     studioMode,
-    isGeneratingAudio,
     audioResult?.audioId,
     audioResult?.audioUrl,
     audioBlobUrl,
