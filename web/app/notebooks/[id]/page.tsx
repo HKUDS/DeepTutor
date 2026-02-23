@@ -215,6 +215,7 @@ export default function NotebookDetailPage() {
   const researchReportRef = useRef("");
   const studioStateRef = useRef<StudioState | null>(null);
   const studioHydrationRef = useRef(false);
+  const isMountedRef = useRef(true);
 
   // Knowledge bases
   const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
@@ -276,6 +277,12 @@ export default function NotebookDetailPage() {
   useEffect(() => {
     sourcesRef.current = sources;
   }, [sources]);
+  useEffect(
+    () => () => {
+      isMountedRef.current = false;
+    },
+    [],
+  );
 
   // Deep Research config (from original research page)
   const [planMode, setPlanMode] = useState<
@@ -358,6 +365,7 @@ export default function NotebookDetailPage() {
   );
   const [podcastSpeechRate, setPodcastSpeechRate] = useState(1.0);
   const [audioBlobUrl, setAudioBlobUrl] = useState<string | null>(null);
+  const recoveringAudioIdRef = useRef<string | null>(null);
 
   const normalizeTimestamp = (value?: number) => {
     if (!value) return Date.now();
@@ -564,6 +572,7 @@ export default function NotebookDetailPage() {
     setPptImageProgress({ current: 0, total: 0 });
     setIsPptGenerating(false);
     setIsPptExporting(false);
+    recoveringAudioIdRef.current = null;
     setAudioResult(null);
     setAudioError(null);
     setIsGeneratingAudio(false);
@@ -2456,6 +2465,101 @@ export default function NotebookDetailPage() {
     return data.markdown || "";
   };
 
+  const resolvePodcastAudioUrl = (
+    audioUrl: string | undefined,
+    audioId: string,
+  ) => {
+    if (audioUrl?.startsWith("http")) return audioUrl;
+    if (audioUrl) return apiUrl(audioUrl);
+    return apiUrl(`/api/v1/co_writer/stream_audio/${audioId}`);
+  };
+
+  const waitWithAbort = (ms: number, signal?: AbortSignal): Promise<void> =>
+    new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new DOMException("Operation aborted", "AbortError"));
+        return;
+      }
+      const onAbort = () => {
+        window.clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        reject(new DOMException("Operation aborted", "AbortError"));
+      };
+      const timer = window.setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, ms);
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+
+  const waitForAudioReady = useCallback(
+    async (
+      audioId: string,
+      streamUrl: string,
+      maxPolls = 100,
+      signal?: AbortSignal,
+    ): Promise<{ audioUrl: string; blobUrl: string }> => {
+      for (let i = 0; i < maxPolls; i++) {
+        await waitWithAbort(3000, signal);
+
+        try {
+          if (signal?.aborted) {
+            throw new DOMException("Operation aborted", "AbortError");
+          }
+          const statusRes = await fetch(
+            apiUrl(`/api/v1/co_writer/audio_status/${audioId}`),
+            { signal },
+          );
+          if (!statusRes.ok) {
+            throw new Error(`音频状态查询失败: HTTP ${statusRes.status}`);
+          }
+
+          const statusData = await statusRes.json();
+          if (statusData.status === "ready") {
+            const audioRes = await fetch(streamUrl, { signal });
+            if (!audioRes.ok) {
+              const fetchErr: any = new Error(
+                `音频获取失败: HTTP ${audioRes.status}`,
+              );
+              fetchErr.fatal = true;
+              throw fetchErr;
+            }
+            const audioBlob = await audioRes.blob();
+            const blobUrl = URL.createObjectURL(audioBlob);
+            return { audioUrl: streamUrl, blobUrl };
+          }
+          if (statusData.status === "failed") {
+            const failedErr: any = new Error(
+              statusData.error || "音频生成失败",
+            );
+            failedErr.fatal = true;
+            throw failedErr;
+          }
+          if (statusData.status === "not_found") {
+            const missingErr: any = new Error(
+              "音频任务不存在或已过期，请重新生成",
+            );
+            missingErr.fatal = true;
+            throw missingErr;
+          }
+        } catch (statusErr: any) {
+          if (statusErr?.name === "AbortError") {
+            throw statusErr;
+          }
+          if (statusErr?.fatal) {
+            throw statusErr;
+          }
+          if (i === maxPolls - 1) {
+            throw new Error("音频状态查询失败，请稍后重试");
+          }
+        }
+      }
+
+      throw new Error("音频生成超时，请稍后重试");
+    },
+    [],
+  );
+
   const getSelectedPptStylePrompt = () => {
     const selected = pptStyleTemplates.find(
       (tmpl) => tmpl.id === selectedPptStyleId,
@@ -2757,6 +2861,7 @@ export default function NotebookDetailPage() {
   const handleGeneratePodcast = async () => {
     setIsGeneratingAudio(true);
     setAudioError(null);
+    recoveringAudioIdRef.current = null;
     setAudioResult(null);
     // Clean up previous blob URL
     if (audioBlobUrl) {
@@ -2796,52 +2901,27 @@ export default function NotebookDetailPage() {
       }
 
       const audioId = data.audio_id;
-      const audioUrl = data.audio_url.startsWith("http")
-        ? data.audio_url
-        : apiUrl(data.audio_url);
+      const streamUrl = resolvePodcastAudioUrl(data.audio_url, audioId);
 
-      // Step 2: Poll for completion (every 3s, max 5 minutes)
-      const maxPolls = 100;
-      let audioReady = false;
-      for (let i = 0; i < maxPolls; i++) {
-        await new Promise((r) => setTimeout(r, 3000));
-        try {
-          const statusRes = await fetch(
-            apiUrl(`/api/v1/co_writer/audio_status/${audioId}`),
-          );
-          if (!statusRes.ok) continue;
-          const statusData = await statusRes.json();
-          if (statusData.status === "ready") {
-            audioReady = true;
-            break;
-          }
-          if (statusData.status === "failed") {
-            throw new Error(statusData.error || "音频生成失败");
-          }
-          // "generating" → continue polling
-        } catch (pollErr: any) {
-          if (pollErr?.message?.includes("音频生成失败")) throw pollErr;
-          // Network glitch on poll → retry
-        }
-      }
-      if (!audioReady) {
-        throw new Error("音频生成超时，请稍后重试");
-      }
-
-      // Step 3: Fetch complete audio from MinIO (instant, with Content-Length)
-      const audioRes = await fetch(audioUrl);
-      if (!audioRes.ok) {
-        throw new Error(`音频获取失败: HTTP ${audioRes.status}`);
-      }
-      const audioBlob = await audioRes.blob();
-      const blobUrl = URL.createObjectURL(audioBlob);
-      setAudioBlobUrl(blobUrl);
-
-      setAudioResult({
-        audioUrl: audioUrl,
-        audioId: audioId,
-      });
+      // Persist task identity immediately so refresh can continue polling with same audio_id.
+      recoveringAudioIdRef.current = audioId;
+      setAudioResult({ audioId });
       setStudioMode("podcast");
+      setHasSessionActivity(true);
+      scheduleSessionSave(true);
+
+      // Step 2: Poll status and fetch complete audio once ready.
+      const { audioUrl, blobUrl } = await waitForAudioReady(
+        audioId,
+        streamUrl,
+        100,
+      );
+      if (audioBlobUrl) {
+        URL.revokeObjectURL(audioBlobUrl);
+      }
+      setAudioBlobUrl(blobUrl);
+      setAudioResult({ audioId, audioUrl });
+      scheduleSessionSave(true);
     } catch (err: any) {
       console.error("Podcast generation failed:", err);
       setAudioError(err?.message || "播客生成失败，请稍后重试");
@@ -2849,6 +2929,67 @@ export default function NotebookDetailPage() {
       setIsGeneratingAudio(false);
     }
   };
+
+  useEffect(() => {
+    if (studioMode !== "podcast") return;
+    if (!audioResult?.audioId || audioResult.audioUrl) return;
+    const audioId = audioResult.audioId;
+    const pendingAudioUrl = audioResult.audioUrl;
+    if (recoveringAudioIdRef.current === audioId) return;
+
+    let cancelled = false;
+    const abortController = new AbortController();
+    recoveringAudioIdRef.current = audioId;
+
+    const resumeAudioPolling = async () => {
+      setIsGeneratingAudio(true);
+      setAudioError(null);
+      try {
+        const streamUrl = resolvePodcastAudioUrl(pendingAudioUrl, audioId);
+        const { audioUrl, blobUrl } = await waitForAudioReady(
+          audioId,
+          streamUrl,
+          300,
+          abortController.signal,
+        );
+        if (cancelled) {
+          URL.revokeObjectURL(blobUrl);
+          return;
+        }
+        if (audioBlobUrl) {
+          URL.revokeObjectURL(audioBlobUrl);
+        }
+        setAudioBlobUrl(blobUrl);
+        setAudioResult({ audioId, audioUrl });
+        setHasSessionActivity(true);
+        scheduleSessionSave(true);
+      } catch (err: any) {
+        if (err?.name === "AbortError") {
+          return;
+        }
+        if (!cancelled && isMountedRef.current) {
+          setAudioError(err?.message || "播客生成失败，请稍后重试");
+        }
+      } finally {
+        if (isMountedRef.current) {
+          setIsGeneratingAudio(false);
+        }
+      }
+    };
+
+    void resumeAudioPolling();
+    return () => {
+      cancelled = true;
+      abortController.abort();
+    };
+  }, [
+    studioMode,
+    audioResult?.audioId,
+    audioResult?.audioUrl,
+    audioBlobUrl,
+    waitForAudioReady,
+    scheduleSessionSave,
+  ]);
 
   const renderExportSourceToggle = () => (
     <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
@@ -4073,6 +4214,13 @@ export default function NotebookDetailPage() {
                         重新生成
                       </button>
                     </div>
+                  </div>
+                ) : audioResult?.audioId ? (
+                  <div className="flex flex-col items-center gap-4 py-4">
+                    <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+                    <p className="text-sm text-slate-500">
+                      正在恢复播客生成进度，请稍候...
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-4">

@@ -10,6 +10,7 @@ Supports PDF download for later processing by RAGAnything.
 
 import asyncio
 import hashlib
+import json
 from pathlib import Path
 import re
 import time
@@ -33,6 +34,7 @@ MOBILE_USER_AGENT = (
     "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
 )
 _TOUTIAO_DOMAINS = {"toutiao.com", "www.toutiao.com", "m.toutiao.com"}
+_MODELSCOPE_DOMAINS = {"modelscope.cn", "www.modelscope.cn"}
 _MOBILE_UA_DOMAINS = _TOUTIAO_DOMAINS
 _BROWSER_FALLBACK_DOMAINS = _TOUTIAO_DOMAINS
 _LOW_QUALITY_MARKERS = (
@@ -130,6 +132,113 @@ def _classify_low_quality_text(text: str) -> str | None:
 
 def _is_low_quality_text(text: str) -> bool:
     return _classify_low_quality_text(text) is not None
+
+
+def _extract_modelscope_detail_payload(html: str) -> dict:
+    """Extract embedded article payload from ModelScope pages."""
+    match = re.search(r'window\.__detail_data__\s*=\s*"(?P<data>.*?)"\s*;', html, re.S)
+    if not match:
+        return {}
+
+    escaped_payload = match.group("data")
+    try:
+        payload_json = json.loads(f'"{escaped_payload}"')
+        payload = json.loads(payload_json)
+    except Exception:
+        return {}
+
+    return payload if isinstance(payload, dict) else {}
+
+
+def _extract_modelscope_text(content_payload: str) -> str:
+    """Parse ModelScope rich-text content payload into plain text blocks."""
+    if not content_payload:
+        return ""
+
+    try:
+        tree = json.loads(content_payload)
+    except Exception:
+        return ""
+
+    blocks: list[str] = []
+    seen: set[str] = set()
+
+    def _normalize_text(text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip()
+
+    def _append_block(text: str) -> None:
+        normalized = _normalize_text(text)
+        if not normalized or normalized in seen:
+            return
+        seen.add(normalized)
+        blocks.append(normalized)
+
+    def _iter_children(node: list) -> list:
+        if len(node) > 1 and isinstance(node[1], dict):
+            return node[2:]
+        return node[1:]
+
+    def _collect_inline(node) -> str:
+        if isinstance(node, str):
+            return node
+        if not isinstance(node, list) or not node:
+            return ""
+
+        tag = node[0] if isinstance(node[0], str) else ""
+        attrs = node[1] if len(node) > 1 and isinstance(node[1], dict) else {}
+        children = _iter_children(node)
+
+        if tag == "img":
+            alt = str(attrs.get("alt") or "").strip()
+            if alt and alt != "图片":
+                return f"[Image: {alt}]"
+            return ""
+
+        if tag == "a":
+            anchor_text = "".join(_collect_inline(child) for child in children).strip()
+            href = str(attrs.get("href") or "").strip()
+            if href and anchor_text and href not in anchor_text:
+                return f"{anchor_text} ({href})"
+            if href:
+                return href
+            return anchor_text
+
+        return "".join(_collect_inline(child) for child in children)
+
+    def _walk_blocks(node) -> None:
+        if not isinstance(node, list) or not node:
+            return
+
+        tag = node[0] if isinstance(node[0], str) else ""
+        children = _iter_children(node)
+        block_tags = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "code"}
+
+        if tag in block_tags:
+            _append_block("".join(_collect_inline(child) for child in children))
+            return
+
+        for child in children:
+            _walk_blocks(child)
+
+    _walk_blocks(tree)
+    return "\n\n".join(blocks).strip()
+
+
+def _extract_modelscope_article(html: str) -> tuple[str, str]:
+    """Extract title and content for ModelScope article pages."""
+    payload = _extract_modelscope_detail_payload(html)
+    articles = payload.get("Articles")
+    if not isinstance(articles, list) or not articles:
+        return "", ""
+
+    article = articles[0] if isinstance(articles[0], dict) else {}
+    title = str(article.get("Title") or "").strip()
+    content_payload = str(article.get("Content") or "")
+    content = _extract_modelscope_text(content_payload)
+    if not content:
+        content = str(article.get("Desc") or "").strip()
+
+    return title, content
 
 
 def _url_looks_like_pdf(url: str) -> bool:
@@ -577,6 +686,24 @@ async def fetch_url(
                     result["error"] = "Low-quality placeholder page"
                     result["fetch_status"] = low_quality_status
                     return result
+
+        # ModelScope article pages keep rich text in embedded script payload.
+        if _domain_from_url(result["url"]) in _MODELSCOPE_DOMAINS:
+            embedded_title, embedded_content = _extract_modelscope_article(html)
+            if embedded_content:
+                if len(embedded_content) > MAX_CONTENT_LENGTH:
+                    embedded_content = (
+                        embedded_content[:MAX_CONTENT_LENGTH] + "\n\n[Content truncated]"
+                    )
+                result["title"] = embedded_title
+                result["content"] = embedded_content
+                result["content_chars"] = len(embedded_content)
+                result["fetch_status"] = (
+                    _STATUS_SUCCESS_BROWSER
+                    if result["fetch_method"] == "browser"
+                    else _STATUS_SUCCESS_HTTP
+                )
+                return result
 
         # Try readability first, fall back to basic
         try:

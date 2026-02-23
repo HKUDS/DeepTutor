@@ -12,12 +12,10 @@ import logging
 from pathlib import Path
 import re
 import sys
-from typing import Any, Dict, List, Optional
+import tempfile
+from typing import Any, Dict, List
 from urllib.parse import urlparse
 import uuid
-import tempfile
-
-from openai import OpenAI
 
 # Add project root for imports
 _project_root = Path(__file__).parent.parent.parent.parent
@@ -45,16 +43,20 @@ except Exception:
     logger = logging.getLogger(__name__)
 
 # Import shared stats from edit_agent
-from .edit_agent import get_stats
 from src.services.storage.file_store import save_file_record
 from src.services.storage.history_store import upsert_history_item
 from src.services.storage.object_store import get_bucket_name, upload_bytes
+
+from .edit_agent import get_stats
 
 # Define storage path (unified under user/co-writer/ directory)
 # Notes:
 # - Consistent with EditAgent's history records, both use user/co-writer as root directory
 # - Audio files are stored separately in audio subdirectory for static access via /api/outputs
 USER_DIR = Path(__file__).parent.parent.parent.parent / "data" / "user" / "co-writer" / "audio"
+DOUBAO_CHUNK_MAX_ATTEMPTS = 3
+DOUBAO_RETRY_BACKOFF_BASE_SECONDS = 1.0
+DOUBAO_RETRY_BACKOFF_MAX_SECONDS = 6.0
 
 
 def ensure_dirs():
@@ -63,7 +65,6 @@ def ensure_dirs():
 
 
 class NarratorAgent:
-
     """Note Narration Agent - Generate narration script and convert to audio"""
 
     def __init__(self, language: str = "en"):
@@ -108,59 +109,59 @@ class NarratorAgent:
             raise ValueError("TTS config is None")
 
         provider = self.tts_config.get("provider", "openai")
-        
+
         if provider == "doubao":
             required_keys = ["app_id", "access_token"]
             missing_keys = [key for key in required_keys if key not in self.tts_config]
             if missing_keys:
                 raise ValueError(f"TTS config missing required keys for Doubao: {missing_keys}")
-                
+
             # Log configuration info
             logger.info("TTS Configuration Loaded (Doubao):")
             logger.info(f"  Cluster: {self.tts_config.get('cluster')}")
             logger.info(f"  Base URL: {self.tts_config.get('base_url')}")
-            
+
         else:
             # Check required keys for OpenAI
             required_keys = ["model", "api_key", "base_url"]
             missing_keys = [key for key in required_keys if key not in self.tts_config]
             if missing_keys:
                 raise ValueError(f"TTS config missing required keys: {missing_keys}")
-    
+
             # Validate base_url format
             base_url = self.tts_config["base_url"]
             if not base_url:
                 raise ValueError("TTS config 'base_url' is empty")
-    
+
             if not isinstance(base_url, str):
                 raise ValueError(f"TTS config 'base_url' must be a string, got {type(base_url)}")
-    
+
             # Validate URL format
             if not base_url.startswith(("http://", "https://")):
                 raise ValueError(
                     f"TTS config 'base_url' must start with http:// or https://, got: {base_url}"
                 )
-    
+
             try:
                 parsed = urlparse(base_url)
                 if not parsed.netloc:
                     raise ValueError(f"TTS config 'base_url' has invalid format: {base_url}")
             except Exception as e:
                 raise ValueError(f"TTS config 'base_url' parsing error: {e}")
-    
+
             # Validate api_key
             api_key = self.tts_config.get("api_key")
             if not api_key:
                 raise ValueError("TTS config 'api_key' is empty")
-    
+
             if not isinstance(api_key, str) or len(api_key.strip()) == 0:
                 raise ValueError("TTS config 'api_key' must be a non-empty string")
-    
+
             # Validate model
             model = self.tts_config.get("model")
             if not model:
                 raise ValueError("TTS config 'model' is empty")
-    
+
             # Log configuration info (hide sensitive information)
             api_key_preview = f"{api_key[:8]}...{api_key[-4:]}" if len(api_key) > 12 else "*" * 10
             logger.info("TTS Configuration Loaded (OpenAI API):")
@@ -311,7 +312,9 @@ class NarratorAgent:
             logger.warning(f"Failed to extract key points: {e}")
             return []
 
-    async def generate_audio(self, script: str, voice: str = None, podcast_config: dict = None) -> dict[str, Any]:
+    async def generate_audio(
+        self, script: str, voice: str = None, podcast_config: dict = None
+    ) -> dict[str, Any]:
         """
         Convert narration script to audio using OpenAI TTS API
 
@@ -355,7 +358,9 @@ class NarratorAgent:
                 script = truncated[: last_period + 1]
             else:
                 script = truncated + "..."
-            logger.info(f"Script truncated from {original_script_length} to {len(script)} characters")
+            logger.info(
+                f"Script truncated from {original_script_length} to {len(script)} characters"
+            )
 
         provider = self.tts_config.get("provider", "openai")
         audio_id = str(uuid.uuid4())
@@ -382,6 +387,7 @@ class NarratorAgent:
             else:
                 # Create OpenAI client with custom base_url
                 from openai import OpenAI
+
                 client = OpenAI(
                     base_url=self.tts_config["base_url"],
                     api_key=self.tts_config["api_key"],
@@ -415,9 +421,7 @@ class NarratorAgent:
             }
 
         except Exception as e:
-            logger.error(
-                f"TTS generation failed: {type(e).__name__}: {e}", exc_info=True
-            )
+            logger.error(f"TTS generation failed: {type(e).__name__}: {e}", exc_info=True)
             raise ValueError(f"TTS generation failed: {type(e).__name__}: {e}")
 
     async def generate_audio_stream(
@@ -427,6 +431,7 @@ class NarratorAgent:
         audio_id: str = None,
         output_path: Path | None = None,
         podcast_config: dict = None,
+        retry_state: dict | None = None,
     ):
         """
         Generate audio stream and save to file simultaneously.
@@ -441,14 +446,20 @@ class NarratorAgent:
         # Use provided audio_id or generate new one
         if not audio_id:
             audio_id = str(uuid.uuid4())
-            
+
         if output_path is None:
             temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
             output_path = Path(temp_file.name)
             temp_file.close()
-        
+
         provider = self.tts_config.get("provider", "openai")
-        
+        retry_state_ref = retry_state if retry_state is not None else {}
+        retry_state_ref.setdefault("attempted_retries", 0)
+        retry_state_ref.setdefault("max_retries_per_chunk", DOUBAO_CHUNK_MAX_ATTEMPTS - 1)
+        retry_state_ref.setdefault("last_error", None)
+        retry_state_ref.setdefault("last_error_code", None)
+        retry_state_ref.setdefault("last_error_retryable", None)
+
         # Helper for splitting text into smaller chunks for Doubao to avoid RPCTimeout
         def split_text(text: str, max_len: int = 1000) -> List[str]:
             chunks = []
@@ -459,12 +470,12 @@ class NarratorAgent:
                     pos = text.rfind(p, 0, max_len)
                     if pos > split_pos:
                         split_pos = pos
-                
+
                 if split_pos == -1:
-                    split_pos = max_len # Fallback to hard split
-                
-                chunks.append(text[:split_pos + 1])
-                text = text[split_pos + 1:].strip()
+                    split_pos = max_len  # Fallback to hard split
+
+                chunks.append(text[: split_pos + 1])
+                text = text[split_pos + 1 :].strip()
             if text:
                 chunks.append(text)
             return chunks
@@ -473,26 +484,33 @@ class NarratorAgent:
             # Consume stream, write to file, and yield
             with open(output_path, "wb") as f:
                 if provider == "doubao":
-                    from src.services.tts.doubao_client import DoubaoPodcastClient
+                    from src.services.tts.doubao_client import (
+                        DoubaoPodcastClient,
+                        classify_doubao_podcast_error,
+                    )
+
                     client = DoubaoPodcastClient(
                         app_id=self.tts_config["app_id"],
                         access_token=self.tts_config["access_token"],
-                        base_url=self.tts_config.get("base_url", "wss://openspeech.bytedance.com/api/v3/sami/podcasttts"),
+                        base_url=self.tts_config.get(
+                            "base_url", "wss://openspeech.bytedance.com/api/v3/sami/podcasttts"
+                        ),
                     )
                     pc = podcast_config or {}
                     pc_speakers = pc.get("speakers")
                     pc_speech_rate = pc.get("speech_rate", 1.0)
-                    
+
                     # Split into smaller chunks to avoid server-side RPCTimeout
                     script_chunks = split_text(script, max_len=1500)
                     logger.info(f"Split script into {len(script_chunks)} chunks for Doubao")
-                    
+
                     for i, chunk in enumerate(script_chunks):
-                        logger.info(f"Processing chunk {i+1}/{len(script_chunks)} (len={len(chunk)})")
-                        
+                        logger.info(
+                            f"Processing chunk {i + 1}/{len(script_chunks)} (len={len(chunk)})"
+                        )
+
                         # Retry logic for each chunk
-                        max_retries = 3
-                        for attempt in range(max_retries):
+                        for attempt in range(DOUBAO_CHUNK_MAX_ATTEMPTS):
                             try:
                                 async for audio_chunk in client.generate_audio_stream(
                                     chunk,
@@ -503,21 +521,45 @@ class NarratorAgent:
                                         f.write(audio_chunk)
                                         f.flush()
                                         yield audio_chunk
-                                break # Success, move to next chunk
+                                break  # Success, move to next chunk
                             except Exception as e:
-                                if "RPCTimeout" in str(e) and attempt < max_retries - 1:
-                                    logger.warning(f"RPCTimeout on chunk {i+1}, retry {attempt+1}/{max_retries}")
-                                    await asyncio.sleep(1) # Wait a bit before retry
+                                classification = classify_doubao_podcast_error(e)
+                                retry_state_ref["last_error"] = str(e)
+                                retry_state_ref["last_error_code"] = classification.code
+                                retry_state_ref["last_error_retryable"] = classification.retryable
+
+                                if (
+                                    classification.retryable
+                                    and attempt < DOUBAO_CHUNK_MAX_ATTEMPTS - 1
+                                ):
+                                    retry_state_ref["attempted_retries"] += 1
+                                    retry_no = attempt + 1
+                                    backoff_seconds = min(
+                                        DOUBAO_RETRY_BACKOFF_MAX_SECONDS,
+                                        DOUBAO_RETRY_BACKOFF_BASE_SECONDS * (2**attempt),
+                                    )
+                                    logger.warning(
+                                        "Retryable Doubao error on chunk %s/%s "
+                                        "(attempt %s/%s, code=%s): %s",
+                                        i + 1,
+                                        len(script_chunks),
+                                        retry_no,
+                                        DOUBAO_CHUNK_MAX_ATTEMPTS - 1,
+                                        classification.code,
+                                        e,
+                                    )
+                                    await asyncio.sleep(backoff_seconds)
                                     continue
-                                raise # Re-raise if other error or no more retries
+                                raise  # Re-raise if other error or no more retries
                 else:
                     # OpenAI or other providers
                     # Truncate script if needed for OpenAI
                     openai_script = script
                     if len(openai_script) > 4096:
                         openai_script = openai_script[:4093] + "..."
-                        
+
                     from openai import OpenAI
+
                     client = OpenAI(
                         base_url=self.tts_config["base_url"],
                         api_key=self.tts_config["api_key"],
@@ -581,16 +623,18 @@ class NarratorAgent:
         if not skip_audio and self.tts_config:
             # Generate ID but defer generation to stream endpoint
             audio_id = str(uuid.uuid4())
-            
+
             provider = self.tts_config.get("provider", "openai") if self.tts_config else "openai"
-            
-            result.update({
-                "audio_url": f"/api/v1/co_writer/stream_audio/{audio_id}",
-                "audio_id": audio_id,
-                "voice": voice,
-                "has_audio": True,
-            })
-            
+
+            result.update(
+                {
+                    "audio_url": f"/api/v1/co_writer/stream_audio/{audio_id}",
+                    "audio_id": audio_id,
+                    "voice": voice,
+                    "has_audio": True,
+                }
+            )
+
             # Save to history (Persistence Fix)
             try:
                 history_item = {
@@ -610,7 +654,7 @@ class NarratorAgent:
                 )
                 upsert_history_item(history_item)
                 logger.info(f"Saved narration history item {audio_id}")
-                
+
             except Exception as e:
                 logger.warning(
                     f"⚠️ Failed to save podcast history to database: {e}. "
@@ -624,10 +668,12 @@ class NarratorAgent:
 
         return result
 
+
 # Simple in-memory store for pending streams and active locks
 _PENDING_STREAMS: Dict[str, Any] = {}
 _ACTIVE_GENERATIONS: Dict[str, asyncio.Lock] = {}
 _narrator_agent = None
+
 
 def get_narrator_agent():
     """Get or create singleton instance of NarratorAgent"""
@@ -636,12 +682,16 @@ def get_narrator_agent():
         _narrator_agent = NarratorAgent()
     return _narrator_agent
 
+
 def get_pending_stream(audio_id: str):
-    # Use get instead of pop to allow multiple requests (like browser range requests) 
+    # Use get instead of pop to allow multiple requests (like browser range requests)
     # to find the pending stream while it's still generating or just started.
     return _PENDING_STREAMS.get(audio_id)
 
-def set_pending_stream(audio_id: str, script: str, voice: str, provider: str, podcast_config: dict = None):
+
+def set_pending_stream(
+    audio_id: str, script: str, voice: str, provider: str, podcast_config: dict = None
+):
     _PENDING_STREAMS[audio_id] = {
         "script": script,
         "voice": voice,
@@ -649,16 +699,19 @@ def set_pending_stream(audio_id: str, script: str, voice: str, provider: str, po
         "podcast_config": podcast_config,
     }
 
+
 async def get_generation_lock(audio_id: str) -> asyncio.Lock:
     """Get or create a lock for a specific audio generation"""
     if audio_id not in _ACTIVE_GENERATIONS:
         _ACTIVE_GENERATIONS[audio_id] = asyncio.Lock()
     return _ACTIVE_GENERATIONS[audio_id]
 
+
 def remove_pending_stream(audio_id: str):
     """Clean up pending stream once finished"""
     _PENDING_STREAMS.pop(audio_id, None)
     _ACTIVE_GENERATIONS.pop(audio_id, None)
+
 
 __all__ = [
     "NarratorAgent",

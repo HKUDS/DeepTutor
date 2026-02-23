@@ -1,12 +1,14 @@
 import asyncio
+from datetime import datetime
 from pathlib import Path
 import sys
+import tempfile
+import time
 import traceback
 from typing import Literal
-import tempfile
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 # Ensure co_writer module can be imported
@@ -17,13 +19,13 @@ if str(project_root) not in sys.path:
 import json
 
 from src.agents.co_writer.edit_agent import TOOL_CALLS_DIR, EditAgent, print_stats
-from src.agents.co_writer.narrator_agent import NarratorAgent, get_narrator_agent
+from src.agents.co_writer.narrator_agent import get_narrator_agent
 from src.logging import get_logger
 from src.services.config import load_config_with_main
-from src.services.tts import get_tts_config
 from src.services.storage.file_store import get_file_record, save_file_record
 from src.services.storage.history_store import get_history_item, list_history, update_history_item
 from src.services.storage.object_store import get_bucket_name, get_object_stream, upload_file
+from src.services.tts import get_tts_config
 
 router = APIRouter()
 
@@ -34,6 +36,98 @@ log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {
 logger = get_logger("CoWriter", level="INFO", log_dir=log_dir)
 
 agent = EditAgent()
+_DEFAULT_AUDIO_PENDING_TTL_SECONDS = 60 * 60
+_AUDIO_TIMEOUT_ERROR = "Audio generation appears stalled. Please retry."
+
+
+def _load_audio_pending_ttl_seconds() -> int:
+    """Load stale-task timeout in seconds (0 disables timeout guard)."""
+    raw_value = config.get("co_writer", {}).get(
+        "audio_pending_ttl_seconds",
+        _DEFAULT_AUDIO_PENDING_TTL_SECONDS,
+    )
+    try:
+        ttl_seconds = int(raw_value)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid co_writer.audio_pending_ttl_seconds="
+            f"{raw_value}, fallback to {_DEFAULT_AUDIO_PENDING_TTL_SECONDS}"
+        )
+        ttl_seconds = _DEFAULT_AUDIO_PENDING_TTL_SECONDS
+    return max(0, ttl_seconds)
+
+
+AUDIO_PENDING_TTL_SECONDS = _load_audio_pending_ttl_seconds()
+
+
+def _normalize_tts_retry_state(retry_state: dict | None) -> dict:
+    """Normalize retry metrics to a stable structure for history payloads."""
+    retry_state = retry_state or {}
+    attempted = retry_state.get("attempted_retries")
+    max_retries = retry_state.get("max_retries_per_chunk")
+    return {
+        "attempted_retries": attempted if isinstance(attempted, int) else 0,
+        "max_retries_per_chunk": max_retries if isinstance(max_retries, int) else 0,
+        "last_error_code": retry_state.get("last_error_code"),
+        "last_error_retryable": retry_state.get("last_error_retryable"),
+        "last_error": retry_state.get("last_error"),
+    }
+
+
+def _attach_tts_retry_history(
+    history_item: dict,
+    retry_state: dict | None,
+    *,
+    include_error_class: bool = False,
+) -> None:
+    summary = _normalize_tts_retry_state(retry_state)
+    history_item["tts_retry"] = summary
+    if include_error_class:
+        retryable = summary.get("last_error_retryable")
+        if retryable is True:
+            history_item["error_type"] = "retryable"
+        elif retryable is False:
+            history_item["error_type"] = "non_retryable"
+        error_code = summary.get("last_error_code")
+        if isinstance(error_code, str) and error_code:
+            history_item["error_code"] = error_code
+
+
+def _history_age_seconds(history_item: dict) -> float | None:
+    """Estimate age of a history record in seconds from payload timestamp."""
+    ts_value = history_item.get("timestamp")
+    if ts_value is None:
+        return None
+
+    try:
+        if isinstance(ts_value, (int, float)):
+            created_at = float(ts_value)
+        else:
+            normalized = str(ts_value).replace("Z", "+00:00")
+            created_at = datetime.fromisoformat(normalized).timestamp()
+    except Exception:
+        return None
+
+    return max(0.0, time.time() - created_at)
+
+
+def _mark_audio_status_failed_timeout(
+    audio_id: str,
+    history_item: dict,
+    *,
+    age_seconds: float | None = None,
+) -> None:
+    """Mark stale audio tasks as failed and persist."""
+    history_item["status"] = "failed"
+    history_item["error"] = _AUDIO_TIMEOUT_ERROR
+    update_history_item(audio_id, history_item)
+    if age_seconds is None:
+        logger.warning(f"Mark audio task {audio_id} as timed out")
+    else:
+        logger.warning(
+            f"Mark audio task {audio_id} as timed out after {age_seconds:.1f}s "
+            f"(ttl={AUDIO_PENDING_TTL_SECONDS}s)"
+        )
 
 
 class EditRequest(BaseModel):
@@ -157,8 +251,9 @@ async def export_markdown(content: dict):
 
 class PodcastConfig(BaseModel):
     """播客配置（仅 Doubao Podcast 模式生效）"""
-    speakers: list[str] | None = None   # 发声人列表
-    speech_rate: float = 1.0            # 语速倍率 0.5~2.0 (1.0=正常)
+
+    speakers: list[str] | None = None  # 发声人列表
+    speech_rate: float = 1.0  # 语速倍率 0.5~2.0 (1.0=正常)
 
 
 class NarrateRequest(BaseModel):
@@ -234,9 +329,9 @@ async def generate_audio_background(audio_id: str):
     Runs after /narrate response is sent.
     """
     from src.agents.co_writer.narrator_agent import (
-        get_pending_stream,
-        get_narrator_agent,
         get_generation_lock,
+        get_narrator_agent,
+        get_pending_stream,
         remove_pending_stream,
     )
 
@@ -257,6 +352,7 @@ async def generate_audio_background(audio_id: str):
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
         temp_path = Path(temp_file.name)
         temp_file.close()
+        retry_state: dict = {}
 
         try:
             # Generate complete audio
@@ -266,6 +362,7 @@ async def generate_audio_background(audio_id: str):
                 audio_id=audio_id,
                 output_path=temp_path,
                 podcast_config=pending.get("podcast_config"),
+                retry_state=retry_state,
             ):
                 pass  # Chunks are written to temp_path by generate_audio_stream
 
@@ -291,6 +388,7 @@ async def generate_audio_background(audio_id: str):
                 history_item = get_history_item(audio_id)
                 if history_item:
                     history_item["status"] = "completed"
+                    _attach_tts_retry_history(history_item, retry_state)
                     update_history_item(audio_id, history_item)
 
             except Exception as e:
@@ -300,6 +398,7 @@ async def generate_audio_background(audio_id: str):
                 if history_item:
                     history_item["status"] = "failed"
                     history_item["error"] = f"Storage error: {e}"
+                    _attach_tts_retry_history(history_item, retry_state)
                     update_history_item(audio_id, history_item)
 
         except Exception as e:
@@ -312,6 +411,11 @@ async def generate_audio_background(audio_id: str):
                 if history_item:
                     history_item["status"] = "failed"
                     history_item["error"] = str(e)
+                    _attach_tts_retry_history(
+                        history_item,
+                        retry_state,
+                        include_error_class=True,
+                    )
                     update_history_item(audio_id, history_item)
             except Exception:
                 pass
@@ -327,7 +431,7 @@ async def get_audio_status(audio_id: str):
     Poll audio generation status.
     Returns: {status: "generating" | "ready" | "failed" | "not_found", error?: string}
     """
-    from src.agents.co_writer.narrator_agent import get_pending_stream
+    from src.agents.co_writer.narrator_agent import get_pending_stream, remove_pending_stream
 
     # Check MinIO storage first (definitive "ready" signal)
     file_record = get_file_record(audio_id)
@@ -346,6 +450,16 @@ async def get_audio_status(audio_id: str):
         if status == "failed":
             return {"status": "failed", "error": history_item.get("error", "生成失败")}
         if status in ("pending_stream", "generating"):
+            if AUDIO_PENDING_TTL_SECONDS > 0:
+                age = _history_age_seconds(history_item)
+                if age is not None and age > AUDIO_PENDING_TTL_SECONDS:
+                    _mark_audio_status_failed_timeout(
+                        audio_id,
+                        history_item,
+                        age_seconds=age,
+                    )
+                    remove_pending_stream(audio_id)
+                    return {"status": "failed", "error": _AUDIO_TIMEOUT_ERROR}
             return {"status": "generating"}
         if status == "completed":
             return {"status": "ready"}
@@ -488,13 +602,13 @@ async def stream_audio(audio_id: str):
     Returns with Content-Length header so browsers can display duration and progress.
     """
     from src.agents.co_writer.narrator_agent import (
-        get_pending_stream,
-        get_narrator_agent,
         get_generation_lock,
+        get_narrator_agent,
+        get_pending_stream,
         remove_pending_stream,
         set_pending_stream,
     )
-    
+
     narrator = get_narrator_agent()
 
     # Case 1: Already stored in MinIO — return complete file
@@ -524,7 +638,9 @@ async def stream_audio(audio_id: str):
             result = history_item.get("result") or {}
             script = result.get("script")
             voice = result.get("voice") or narrator.default_voice
-            provider = narrator.tts_config.get("provider", "openai") if narrator.tts_config else "openai"
+            provider = (
+                narrator.tts_config.get("provider", "openai") if narrator.tts_config else "openai"
+            )
             if script:
                 set_pending_stream(audio_id, script, voice, provider)
                 pending = get_pending_stream(audio_id)
@@ -555,6 +671,7 @@ async def stream_audio(audio_id: str):
             temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
             temp_path = Path(temp_file.name)
             temp_file.close()
+            retry_state: dict = {}
 
             try:
                 audio_data = bytearray()
@@ -564,6 +681,7 @@ async def stream_audio(audio_id: str):
                     audio_id=audio_id,
                     output_path=temp_path,
                     podcast_config=pending.get("podcast_config"),
+                    retry_state=retry_state,
                 ):
                     audio_data.extend(chunk)
 
@@ -596,6 +714,7 @@ async def stream_audio(audio_id: str):
                     history_item = get_history_item(audio_id)
                     if history_item:
                         history_item["status"] = "completed"
+                        _attach_tts_retry_history(history_item, retry_state)
                         update_history_item(audio_id, history_item)
 
                 except Exception as e:
@@ -621,6 +740,16 @@ async def stream_audio(audio_id: str):
                 if temp_path.exists():
                     temp_path.unlink()
                 logger.error(f"Audio generation failed: {e}")
+                history_item = get_history_item(audio_id)
+                if history_item:
+                    history_item["status"] = "failed"
+                    history_item["error"] = str(e)
+                    _attach_tts_retry_history(
+                        history_item,
+                        retry_state,
+                        include_error_class=True,
+                    )
+                    update_history_item(audio_id, history_item)
                 raise HTTPException(status_code=500, detail=f"Audio generation failed: {e}")
 
     raise HTTPException(status_code=404, detail="Audio not found or expired")
@@ -634,7 +763,9 @@ async def download_audio(audio_id: str):
     """
     file_record = get_file_record(audio_id)
     if not file_record:
-        raise HTTPException(status_code=404, detail="Audio not found. Please generate the podcast first.")
+        raise HTTPException(
+            status_code=404, detail="Audio not found. Please generate the podcast first."
+        )
 
     try:
         response = get_object_stream(file_record["bucket"], file_record["object_key"])
