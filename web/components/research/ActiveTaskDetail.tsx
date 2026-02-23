@@ -35,31 +35,31 @@ export const ActiveTaskDetail: React.FC<ActiveTaskDetailProps> = ({ task }) => {
     }
   };
 
-const getThoughtIcon = (type: ThoughtEntry["type"]) => {
-  switch (type) {
-    case "sufficiency":
-      return <BrainCircuit className="w-4 h-4 text-violet-500" />;
-    case "plan":
-      return <Search className="w-4 h-4 text-blue-500" />;
-    case "tool_call":
-      return <Database className="w-4 h-4 text-amber-500" />;
-    case "note":
-      return <PenTool className="w-4 h-4 text-emerald-500" />;
-    case "error":
-      return <AlertTriangle className="w-4 h-4 text-red-500" />;
-    default:
-      return <Terminal className="w-4 h-4 text-slate-400" />;
-  }
-};
+  const getThoughtIcon = (type: ThoughtEntry["type"]) => {
+    switch (type) {
+      case "sufficiency":
+        return <BrainCircuit className="w-4 h-4 text-violet-500" />;
+      case "plan":
+        return <Search className="w-4 h-4 text-blue-500" />;
+      case "tool_call":
+        return <Database className="w-4 h-4 text-amber-500" />;
+      case "note":
+        return <PenTool className="w-4 h-4 text-emerald-500" />;
+      case "error":
+        return <AlertTriangle className="w-4 h-4 text-red-500" />;
+      default:
+        return <Terminal className="w-4 h-4 text-slate-400" />;
+    }
+  };
 
-const formatTimestamp = (ts: number) => {
-  return new Date(ts).toLocaleTimeString(undefined, {
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-};
+  const formatTimestamp = (ts: number) => {
+    return new Date(ts).toLocaleTimeString(undefined, {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  };
 
   // Auto-scroll to bottom when new thoughts arrive
   useEffect(() => {

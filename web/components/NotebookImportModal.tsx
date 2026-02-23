@@ -234,7 +234,9 @@ export default function NotebookImportModal({
                     </span>
                   </div>
                   <div className="pl-6 text-xs text-slate-400 flex justify-between">
-                    <span>{nb.record_count} {t("records")}</span>
+                    <span>
+                      {nb.record_count} {t("records")}
+                    </span>
                   </div>
                 </div>
               ))

@@ -33,7 +33,10 @@ export const ActiveQuestionDetail: React.FC<ActiveQuestionDetailProps> = ({
   const t = (key: string) => getTranslation(uiSettings.language, key);
   const isMimicMode = mode === "mimic";
 
-  const getStatusBadge = (status: QuestionTask["status"], extended?: boolean) => {
+  const getStatusBadge = (
+    status: QuestionTask["status"],
+    extended?: boolean,
+  ) => {
     if (status === "done" && extended) {
       return (
         <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 flex items-center gap-1">

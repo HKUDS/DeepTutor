@@ -8,11 +8,7 @@ import React, {
   useEffect,
 } from "react";
 import { wsUrl, apiUrl } from "@/lib/api";
-import {
-  initializeTheme,
-  setTheme,
-  getStoredTheme,
-} from "@/lib/theme";
+import { initializeTheme, setTheme, getStoredTheme } from "@/lib/theme";
 
 // --- Types ---
 interface LogEntry {
@@ -70,16 +66,16 @@ interface SolverState {
 // Question Progress Info
 interface QuestionProgressInfo {
   stage:
-  | "planning"
-  | "researching"
-  | "generating"
-  | "validating"
-  | "complete"
-  // Mimic mode stages
-  | "uploading"
-  | "parsing"
-  | "extracting"
-  | null;
+    | "planning"
+    | "researching"
+    | "generating"
+    | "validating"
+    | "complete"
+    // Mimic mode stages
+    | "uploading"
+    | "parsing"
+    | "extracting"
+    | null;
   progress: {
     current?: number;
     total?: number;
@@ -207,7 +203,6 @@ interface IdeaGenState {
   generatedIdeas: ResearchIdea[];
   progress: { current: number; total: number } | null;
 }
-
 
 interface GlobalContextType {
   // Solver

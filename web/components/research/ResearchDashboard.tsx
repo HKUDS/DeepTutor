@@ -127,7 +127,9 @@ export const ResearchDashboard: React.FC<ResearchDashboardProps> = ({
 
   useEffect(() => {
     if (selectedPptTemplateId === "custom") return;
-    const tmpl = PPT_STYLE_TEMPLATES.find((t) => t.id === selectedPptTemplateId);
+    const tmpl = PPT_STYLE_TEMPLATES.find(
+      (t) => t.id === selectedPptTemplateId,
+    );
     if (!tmpl) return;
     if (pptStylePrompt !== tmpl.prompt) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -379,7 +381,11 @@ export const ResearchDashboard: React.FC<ResearchDashboardProps> = ({
                 </span>
               )}
               <span>
-                {t("Completed {0} / {1} topics", global.completedBlocks, global.totalBlocks)}
+                {t(
+                  "Completed {0} / {1} topics",
+                  global.completedBlocks,
+                  global.totalBlocks,
+                )}
               </span>
             </div>
           </div>
@@ -739,7 +745,8 @@ export const ResearchDashboard: React.FC<ResearchDashboardProps> = ({
               {/* Tab Content */}
               <div className="flex-1 overflow-hidden p-6 flex flex-col">
                 {activeProcessTab === "planning" && renderPlanningContent()}
-                {activeProcessTab === "researching" && renderResearchingContent()}
+                {activeProcessTab === "researching" &&
+                  renderResearchingContent()}
                 {activeProcessTab === "reporting" && renderReportingContent()}
               </div>
             </>
@@ -870,9 +877,7 @@ export const ResearchDashboard: React.FC<ResearchDashboardProps> = ({
                           {...props}
                         />
                       ),
-                      li: ({ ...props }) => (
-                        <li className="mb-2" {...props} />
-                      ),
+                      li: ({ ...props }) => <li className="mb-2" {...props} />,
                       table: ({ ...props }) => (
                         <div className="overflow-x-auto my-6">
                           <table
@@ -976,7 +981,9 @@ export const ResearchDashboard: React.FC<ResearchDashboardProps> = ({
                         // Check if this pre contains a mermaid code block
                         const child = React.Children.toArray(
                           children,
-                        )[0] as React.ReactElement<{ className?: string }>;
+                        )[0] as React.ReactElement<{
+                          className?: string;
+                        }>;
                         if (
                           child?.props?.className?.includes("language-mermaid")
                         ) {

@@ -10,15 +10,15 @@ export default function CoWriterPage() {
   const t = (key: string) => getTranslation(uiSettings.language, key);
 
   return (
-    <div className="h-screen animate-fade-in flex flex-col p-6">
+    <div className="h-screen animate-fade-in flex flex-col p-8">
       {/* Header */}
       <div className="mb-4 shrink-0">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
           <Edit3 className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-          Co-Writer
+          智能写作
         </h1>
         <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
-          {t("Intelligent markdown editor with AI-powered writing assistance.")}
+          基于 AI 辅助内容创作的智能 Markdown 编辑器
         </p>
       </div>
 

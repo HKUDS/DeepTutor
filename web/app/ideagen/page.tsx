@@ -517,8 +517,7 @@ export default function IdeaGenPage() {
           {/* User Thoughts Input */}
           <div className="p-3 border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
             <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-2">
-              你的想法{" "}
-              {selectedRecords.size > 0 ? "（可选）" : "（必填）"}
+              你的想法 {selectedRecords.size > 0 ? "（可选）" : "（必填）"}
             </label>
             <textarea
               value={userThoughts}
@@ -533,7 +532,8 @@ export default function IdeaGenPage() {
             />
             {selectedRecords.size === 0 && (
               <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                💡 你可以仅用文字描述生成想法，也可以选择上方笔记记录获得更丰富的上下文。
+                💡
+                你可以仅用文字描述生成想法，也可以选择上方笔记记录获得更丰富的上下文。
               </p>
             )}
           </div>

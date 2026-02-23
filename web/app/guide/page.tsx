@@ -426,7 +426,7 @@ ${html}
         const notebookName =
           notebookNames.length === 1
             ? notebookNames[0]
-        : `跨笔记本（${notebookNames.length} 个笔记本，${selectedRecords.size} 条记录）`;
+            : `跨笔记本（${notebookNames.length} 个笔记本，${selectedRecords.size} 条记录）`;
 
         setSessionState({
           session_id: data.session_id,
@@ -584,9 +584,7 @@ ${html}
             {
               id: `complete-${Date.now()}`,
               role: "system",
-              content:
-                data.message ||
-                "🎉 恭喜你完成了全部知识点！",
+              content: data.message || "🎉 恭喜你完成了全部知识点！",
               timestamp: Date.now(),
             },
           ]);
@@ -876,7 +874,7 @@ ${html}
                               </div>
                             ) : records.length === 0 ? (
                               <div className="py-2 text-xs text-slate-400 dark:text-slate-500 text-center">
-                              暂无记录
+                                暂无记录
                               </div>
                             ) : (
                               <>
@@ -1252,9 +1250,7 @@ ${html}
               onClick={() => setSidebarWide(!sidebarWide)}
               className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all"
               title={
-                sidebarWide
-                  ? "切换为窄侧边栏（1:3）"
-                  : "切换为宽侧边栏（3:1）"
+                sidebarWide ? "切换为窄侧边栏（1:3）" : "切换为宽侧边栏（3:1）"
               }
             >
               <ArrowRight

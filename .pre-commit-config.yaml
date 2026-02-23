@@ -55,9 +55,11 @@ repos:
       # Ruff linting - removing --exit-zero to ensure we catch issues before they land
       - id: ruff
         args: [--fix]
+        exclude: '^\.local/'
 
       # Ruff import sorting
       - id: ruff-format
+        exclude: '^\.local/'
 
   # ============================================
   # Frontend code formatting and linting

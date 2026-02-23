@@ -563,9 +563,7 @@ export default function QuestionPage() {
                       <ol className="text-xs space-y-1 list-decimal list-inside text-slate-600 dark:text-slate-400">
                         <li>上传 PDF 试卷文件</li>
                         <li>选择相关知识库</li>
-                        <li>
-                          系统将自动：解析 PDF → 提取题目 → 生成相似新题
-                        </li>
+                        <li>系统将自动：解析 PDF → 提取题目 → 生成相似新题</li>
                         <li>进度将实时显示</li>
                       </ol>
                     </div>
@@ -1030,9 +1028,7 @@ export default function QuestionPage() {
                         <div className="text-center text-slate-400 dark:text-slate-500 p-6">
                           <BookOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
                           <p className="text-sm font-medium">答案已隐藏</p>
-                          <p className="text-xs mt-1">
-                            提交答案后显示
-                          </p>
+                          <p className="text-xs mt-1">提交答案后显示</p>
                         </div>
                       </div>
                     )}

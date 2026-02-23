@@ -555,7 +555,7 @@ export default function KnowledgePage() {
   }, []);
 
   return (
-    <div className="animate-fade-in h-screen overflow-y-auto p-6">
+    <div className="animate-fade-in h-screen overflow-y-auto p-8">
       {/* Header */}
       <div className="flex justify-between items-end mb-8">
         <div>
@@ -563,8 +563,8 @@ export default function KnowledgePage() {
             <BookOpen className="w-8 h-8 text-blue-600 dark:text-blue-400" />
             知识库
           </h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-2">
-            管理并浏览你的知识内容仓库。
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+            管理并浏览你的知识内容仓库
           </p>
         </div>
         <div className="flex gap-3">

@@ -58,7 +58,10 @@ export const QuestionTaskGrid: React.FC<QuestionTaskGridProps> = ({
     }
   };
 
-  const getStatusIcon = (status: QuestionTask["status"], extended?: boolean) => {
+  const getStatusIcon = (
+    status: QuestionTask["status"],
+    extended?: boolean,
+  ) => {
     if (status === "done" && extended) {
       return <Zap className="w-4 h-4 text-amber-500" />;
     }
@@ -78,7 +81,10 @@ export const QuestionTaskGrid: React.FC<QuestionTaskGridProps> = ({
     }
   };
 
-  const getStatusColor = (status: QuestionTask["status"], extended?: boolean) => {
+  const getStatusColor = (
+    status: QuestionTask["status"],
+    extended?: boolean,
+  ) => {
     if (status === "done" && extended) {
       return "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300";
     }

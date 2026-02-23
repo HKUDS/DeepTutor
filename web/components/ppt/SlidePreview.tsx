@@ -1,59 +1,61 @@
-"use client"
+"use client";
 
-import React from 'react'
+import React from "react";
 
-import { SlideContent } from '@/types/ppt'
+import { SlideContent } from "@/types/ppt";
 
 interface SlidePreviewProps {
-  slide: SlideContent
-  index: number
-  themeColor?: string
-  accentColor?: string
-  isGenerating?: boolean
-  onUpdateSlide: (index: number, updatedSlide: SlideContent) => void
+  slide: SlideContent;
+  index: number;
+  themeColor?: string;
+  accentColor?: string;
+  isGenerating?: boolean;
+  onUpdateSlide: (index: number, updatedSlide: SlideContent) => void;
 }
 
 const SlidePreview: React.FC<SlidePreviewProps> = ({
   slide,
   index,
-  themeColor = '#3b82f6',
-  accentColor = '#f59e0b',
+  themeColor = "#3b82f6",
+  accentColor = "#f59e0b",
   isGenerating,
   onUpdateSlide,
 }) => {
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    onUpdateSlide(index, { ...slide, title: e.target.value })
-  }
+    onUpdateSlide(index, { ...slide, title: e.target.value });
+  };
 
   const handlePointChange = (pointIndex: number, newValue: string) => {
-    const updatedPoints = [...slide.points]
-    updatedPoints[pointIndex] = newValue
-    onUpdateSlide(index, { ...slide, points: updatedPoints })
-  }
+    const updatedPoints = [...slide.points];
+    updatedPoints[pointIndex] = newValue;
+    onUpdateSlide(index, { ...slide, points: updatedPoints });
+  };
 
-  const layout = slide.layout
+  const layout = slide.layout;
 
   const TextSection = ({
-    className = '',
+    className = "",
     centered = false,
     dark = false,
   }: {
-    className?: string
-    centered?: boolean
-    dark?: boolean
+    className?: string;
+    centered?: boolean;
+    dark?: boolean;
   }) => (
     <div
-      className={`p-5 overflow-y-auto flex flex-col ${centered ? 'items-center justify-center text-center' : ''
-        } ${className}`}
+      className={`p-5 overflow-y-auto flex flex-col ${
+        centered ? "items-center justify-center text-center" : ""
+      } ${className}`}
     >
       <div className="mb-3 w-full">
         <input
           type="text"
           value={slide.title}
           onChange={handleTitleChange}
-          className={`w-full bg-transparent border-none font-bold text-sm outline-none focus:ring-1 focus:ring-blue-100 rounded ${centered ? 'text-center' : ''
-            }`}
-          style={{ color: dark ? '#FFFFFF' : themeColor }}
+          className={`w-full bg-transparent border-none font-bold text-sm outline-none focus:ring-1 focus:ring-blue-100 rounded ${
+            centered ? "text-center" : ""
+          }`}
+          style={{ color: dark ? "#FFFFFF" : themeColor }}
           placeholder="Slide Title"
         />
       </div>
@@ -61,13 +63,14 @@ const SlidePreview: React.FC<SlidePreviewProps> = ({
         {slide.points.map((point, i) => (
           <div
             key={`${index}-${i}`}
-            className={`flex items-start text-[11px] group/point ${centered ? 'justify-center' : ''
-              }`}
+            className={`flex items-start text-[11px] group/point ${
+              centered ? "justify-center" : ""
+            }`}
           >
             {!centered && (
               <span
                 className="mr-2 font-bold shrink-0 mt-0.5"
-                style={{ color: dark ? '#FFFFFF' : accentColor }}
+                style={{ color: dark ? "#FFFFFF" : accentColor }}
               >
                 •
               </span>
@@ -76,27 +79,30 @@ const SlidePreview: React.FC<SlidePreviewProps> = ({
               rows={1}
               value={point}
               onChange={(e) => handlePointChange(i, e.target.value)}
-              className={`w-full bg-transparent border-none resize-none focus:ring-1 focus:ring-blue-50 rounded px-1 py-0.5 leading-tight outline-none ${centered ? 'text-center italic' : ''
-                }`}
-              style={{ color: dark ? '#FFFFFF' : '#4b5563' }}
+              className={`w-full bg-transparent border-none resize-none focus:ring-1 focus:ring-blue-50 rounded px-1 py-0.5 leading-tight outline-none ${
+                centered ? "text-center italic" : ""
+              }`}
+              style={{ color: dark ? "#FFFFFF" : "#4b5563" }}
               onInput={(e) => {
-                const target = e.target as HTMLTextAreaElement
-                target.style.height = 'auto'
-                target.style.height = `${target.scrollHeight}px`
+                const target = e.target as HTMLTextAreaElement;
+                target.style.height = "auto";
+                target.style.height = `${target.scrollHeight}px`;
               }}
             />
           </div>
         ))}
       </div>
     </div>
-  )
+  );
 
-  const ImageSection = ({ className = '' }: { className?: string }) => (
+  const ImageSection = ({ className = "" }: { className?: string }) => (
     <div className={`relative bg-gray-50 flex-shrink-0 ${className}`}>
       {isGenerating ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-50/80">
           <div className="w-6 h-6 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-2" />
-          <span className="text-[9px] text-gray-400 font-medium">Painting...</span>
+          <span className="text-[9px] text-gray-400 font-medium">
+            Painting...
+          </span>
         </div>
       ) : slide.generatedImageUrl ? (
         <img
@@ -123,11 +129,11 @@ const SlidePreview: React.FC<SlidePreviewProps> = ({
         </div>
       )}
     </div>
-  )
+  );
 
-  let content: React.ReactNode
+  let content: React.ReactNode;
   switch (layout) {
-    case 'SECTION_HEADER':
+    case "SECTION_HEADER":
       content = (
         <div
           className="w-full h-full flex items-center justify-center p-8"
@@ -140,9 +146,9 @@ const SlidePreview: React.FC<SlidePreviewProps> = ({
             className="w-full bg-transparent border-none font-black text-2xl text-white text-center outline-none focus:ring-1 focus:ring-white/30 rounded"
           />
         </div>
-      )
-      break
-    case 'QUOTE':
+      );
+      break;
+    case "QUOTE":
       content = (
         <div className="w-full h-full flex flex-col items-center justify-center p-10 relative">
           <span
@@ -159,12 +165,15 @@ const SlidePreview: React.FC<SlidePreviewProps> = ({
             ”
           </span>
         </div>
-      )
-      break
-    case 'OVERVIEW':
+      );
+      break;
+    case "OVERVIEW":
       content = (
         <div className="w-full h-full p-4 flex flex-col">
-          <div className="mb-2 border-b pb-1" style={{ borderColor: accentColor }}>
+          <div
+            className="mb-2 border-b pb-1"
+            style={{ borderColor: accentColor }}
+          >
             <input
               type="text"
               value={slide.title}
@@ -190,62 +199,65 @@ const SlidePreview: React.FC<SlidePreviewProps> = ({
             ))}
           </div>
         </div>
-      )
-      break
-    case 'SPLIT_RIGHT':
-    case 'SPLIT_IMAGE_RIGHT':
+      );
+      break;
+    case "SPLIT_RIGHT":
+    case "SPLIT_IMAGE_RIGHT":
       content = (
         <>
           <TextSection className="w-3/5" />
           <ImageSection className="w-2/5 border-l" />
         </>
-      )
-      break
-    case 'SPLIT_LEFT':
-    case 'SPLIT_IMAGE_LEFT':
+      );
+      break;
+    case "SPLIT_LEFT":
+    case "SPLIT_IMAGE_LEFT":
       content = (
         <>
           <ImageSection className="w-2/5 border-r" />
           <TextSection className="w-3/5" />
         </>
-      )
-      break
-    case 'TOP_IMAGE':
+      );
+      break;
+    case "TOP_IMAGE":
       content = (
         <div className="flex flex-col w-full">
           <ImageSection className="h-2/5 w-full border-b" />
           <TextSection className="h-3/5 w-full" />
         </div>
-      )
-      break
-    case 'TYPOGRAPHIC_WITH_IMAGE':
+      );
+      break;
+    case "TYPOGRAPHIC_WITH_IMAGE":
       content = (
         <div className="w-full h-full p-4 flex gap-4">
           <TextSection className="flex-1" />
           <div className="w-1/3 relative flex items-center justify-center">
             <div
               className="absolute inset-0 border-2"
-              style={{ borderColor: accentColor, margin: '10%' }}
+              style={{ borderColor: accentColor, margin: "10%" }}
             />
             <ImageSection className="w-4/5 h-4/5 shadow-md relative z-10" />
           </div>
         </div>
-      )
-      break
+      );
+      break;
     default:
       content = (
         <div className="flex w-full items-center justify-center">
-          <div className="w-2 h-full shrink-0" style={{ backgroundColor: themeColor }} />
+          <div
+            className="w-2 h-full shrink-0"
+            style={{ backgroundColor: themeColor }}
+          />
           <TextSection className="flex-1" />
         </div>
-      )
+      );
   }
 
   return (
     <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden flex flex-col aspect-[16/9] transition-all hover:shadow-xl group relative">
       <div className="absolute top-2 right-2 z-20">
         <span className="text-[7px] bg-slate-800/80 text-white px-1.5 py-0.5 rounded backdrop-blur-sm opacity-60 group-hover:opacity-100 transition-opacity uppercase font-bold">
-          {layout.replace(/_/g, ' ')}
+          {layout.replace(/_/g, " ")}
         </span>
       </div>
 
@@ -257,7 +269,7 @@ const SlidePreview: React.FC<SlidePreviewProps> = ({
         </div>
       )}
     </div>
-  )
-}
+  );
+};
 
-export default SlidePreview
+export default SlidePreview;

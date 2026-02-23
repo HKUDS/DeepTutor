@@ -227,7 +227,11 @@ export default function ResearchPage() {
     if (Array.isArray(ragSources)) {
       ragSources.forEach((s: any, idx: number) => {
         const title =
-          s.title || s.source || s.source_file || s.kb_name || `知识库来源 ${idx + 1}`;
+          s.title ||
+          s.source ||
+          s.source_file ||
+          s.kb_name ||
+          `知识库来源 ${idx + 1}`;
         const detailParts: string[] = [];
         if (s.page) detailParts.push(`页 ${s.page}`);
         if (s.chunk_id) detailParts.push(`段落 ${s.chunk_id}`);
@@ -303,7 +307,9 @@ export default function ResearchPage() {
     if (!researchId && persisted.topic) {
       try {
         const res = await fetch(
-          apiUrl(`/api/v1/research/latest?topic=${encodeURIComponent(persisted.topic)}`),
+          apiUrl(
+            `/api/v1/research/latest?topic=${encodeURIComponent(persisted.topic)}`,
+          ),
         );
         if (res.ok) {
           const data = await res.json();
@@ -810,18 +816,24 @@ export default function ResearchPage() {
 
   const selectedSourcesCount = sources.filter((s) => s.selected).length;
   const totalSourcesCount = sources.length;
-  const groupedSources = sources.reduce((acc, source) => {
-    const groupId = source.groupId || "ungrouped";
-    if (!acc[groupId]) {
-      acc[groupId] = {
-        groupId,
-        title: source.groupTitle || "未分组来源",
-        items: [],
-      };
-    }
-    acc[groupId].items.push(source);
-    return acc;
-  }, {} as Record<string, { groupId: string; title: string; items: SourceItem[] }>);
+  const groupedSources = sources.reduce(
+    (acc, source) => {
+      const groupId = source.groupId || "ungrouped";
+      if (!acc[groupId]) {
+        acc[groupId] = {
+          groupId,
+          title: source.groupTitle || "未分组来源",
+          items: [],
+        };
+      }
+      acc[groupId].items.push(source);
+      return acc;
+    },
+    {} as Record<
+      string,
+      { groupId: string; title: string; items: SourceItem[] }
+    >,
+  );
 
   const sourceGroups = Object.values(groupedSources).sort((a, b) => {
     const aTime = a.items[0]?.addedAt || 0;
@@ -895,10 +907,11 @@ export default function ResearchPage() {
                   <button
                     key={mode}
                     onClick={() => setPlanMode(mode)}
-                    className={`flex-1 py-1.5 text-xs font-medium rounded-md capitalize transition-all ${planMode === mode
-                      ? "bg-white dark:bg-slate-600 text-emerald-700 dark:text-emerald-400 shadow-sm border border-slate-100 dark:border-slate-500"
-                      : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
-                      }`}
+                    className={`flex-1 py-1.5 text-xs font-medium rounded-md capitalize transition-all ${
+                      planMode === mode
+                        ? "bg-white dark:bg-slate-600 text-emerald-700 dark:text-emerald-400 shadow-sm border border-slate-100 dark:border-slate-500"
+                        : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+                    }`}
                   >
                     {mode === "quick"
                       ? "快速"
@@ -936,10 +949,11 @@ export default function ResearchPage() {
                             : [...prev, tool.key],
                         );
                       }}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-medium transition-all border ${isSelected
-                        ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-700"
-                        : "bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600"
-                        }`}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-medium transition-all border ${
+                        isSelected
+                          ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-700"
+                          : "bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-600"
+                      }`}
                     >
                       <Icon className="w-3.5 h-3.5" />
                       {tool.label}
@@ -1040,22 +1054,25 @@ export default function ResearchPage() {
               </div>
             )}
             {sourceGroups.length === 0 && !restoreError && (
-              <div className="text-slate-400 dark:text-slate-500">
-                暂无来源
-              </div>
+              <div className="text-slate-400 dark:text-slate-500">暂无来源</div>
             )}
             {sourceGroups.map((group) => {
-              const selectedCount = group.items.filter((s) => s.selected).length;
+              const selectedCount = group.items.filter(
+                (s) => s.selected,
+              ).length;
               const allSelected = selectedCount === group.items.length;
               return (
                 <div key={group.groupId} className="space-y-2">
                   <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     <span className="truncate">{group.title}</span>
                     <button
-                      onClick={() => toggleGroupSelection(group.groupId, !allSelected)}
+                      onClick={() =>
+                        toggleGroupSelection(group.groupId, !allSelected)
+                      }
                       className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300"
                     >
-                      {allSelected ? "取消全选" : "全选"} {selectedCount}/{group.items.length}
+                      {allSelected ? "取消全选" : "全选"} {selectedCount}/
+                      {group.items.length}
                     </button>
                   </div>
                   {group.items.map((source) => (
@@ -1147,7 +1164,7 @@ export default function ResearchPage() {
                 }
                 placeholder={
                   state.global.stage !== "idle" &&
-                    state.global.stage !== "completed"
+                  state.global.stage !== "completed"
                     ? "研究进行中..."
                     : "请输入研究主题..."
                 }
@@ -1399,7 +1416,9 @@ export default function ResearchPage() {
                 pre: ({ children, ...props }) => {
                   const child = React.Children.toArray(
                     children,
-                  )[0] as React.ReactElement<{ className?: string }>;
+                  )[0] as React.ReactElement<{
+                    className?: string;
+                  }>;
                   if (child?.props?.className?.includes("language-mermaid")) {
                     return <>{children}</>;
                   }

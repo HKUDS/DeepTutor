@@ -412,7 +412,8 @@ export const QuestionDashboard: React.FC<QuestionDashboardProps> = ({
                   <strong className="capitalize">{globalDifficulty}</strong>
                 </span>
                 <span>
-                  {t("Type")}：<strong className="capitalize">{globalType}</strong>
+                  {t("Type")}：
+                  <strong className="capitalize">{globalType}</strong>
                 </span>
                 <span>
                   {t("Count")}：<strong>{globalCount}</strong>
@@ -435,7 +436,8 @@ export const QuestionDashboard: React.FC<QuestionDashboardProps> = ({
               {totalQuestions > 0 && (
                 <div className="flex gap-4 mt-2 text-xs text-amber-700 dark:text-amber-400">
                   <span>
-                    {t("Reference Questions Count")}：<strong>{totalQuestions}</strong>
+                    {t("Reference Questions Count")}：
+                    <strong>{totalQuestions}</strong>
                   </span>
                 </div>
               )}

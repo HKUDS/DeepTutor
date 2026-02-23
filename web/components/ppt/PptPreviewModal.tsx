@@ -1,25 +1,25 @@
-"use client"
+"use client";
 
-import React from 'react'
-import { X } from 'lucide-react'
+import React from "react";
+import { X } from "lucide-react";
 
-import SlidePreview from '@/components/ppt/SlidePreview'
-import { PresentationOutline, SlideContent } from '@/types/ppt'
+import SlidePreview from "@/components/ppt/SlidePreview";
+import { PresentationOutline, SlideContent } from "@/types/ppt";
 
 interface ImageProgress {
-  current: number
-  total: number
+  current: number;
+  total: number;
 }
 
 interface PptPreviewModalProps {
-  isOpen: boolean
-  outline: PresentationOutline | null
-  isExporting: boolean
-  imageProgress?: ImageProgress
-  generatingSlideIndices?: number[]
-  onClose: () => void
-  onExport: () => void
-  onUpdateSlide: (index: number, updatedSlide: SlideContent) => void
+  isOpen: boolean;
+  outline: PresentationOutline | null;
+  isExporting: boolean;
+  imageProgress?: ImageProgress;
+  generatingSlideIndices?: number[];
+  onClose: () => void;
+  onExport: () => void;
+  onUpdateSlide: (index: number, updatedSlide: SlideContent) => void;
 }
 
 export default function PptPreviewModal({
@@ -32,7 +32,7 @@ export default function PptPreviewModal({
   onExport,
   onUpdateSlide,
 }: PptPreviewModalProps) {
-  if (!isOpen) return null
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -49,7 +49,7 @@ export default function PptPreviewModal({
               disabled={!outline || isExporting}
               className="px-4 py-2 text-sm rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
             >
-              {isExporting ? '导出中...' : '导出 PPT'}
+              {isExporting ? "导出中..." : "导出 PPT"}
             </button>
             <button
               onClick={onClose}
@@ -77,7 +77,9 @@ export default function PptPreviewModal({
                     Theme
                   </span>
                 </div>
-                <h3 className="text-xl font-bold text-slate-900">{outline.title}</h3>
+                <h3 className="text-xl font-bold text-slate-900">
+                  {outline.title}
+                </h3>
                 {outline.subtitle && (
                   <p className="text-sm text-slate-500">{outline.subtitle}</p>
                 )}
@@ -85,7 +87,8 @@ export default function PptPreviewModal({
 
               {imageProgress && imageProgress.total > 0 && (
                 <div className="text-xs text-slate-500">
-                  图片生成 {Math.min(imageProgress.current, imageProgress.total)}/
+                  图片生成{" "}
+                  {Math.min(imageProgress.current, imageProgress.total)}/
                   {imageProgress.total}
                 </div>
               )}
@@ -114,5 +117,5 @@ export default function PptPreviewModal({
         )}
       </div>
     </div>
-  )
+  );
 }

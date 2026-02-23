@@ -245,7 +245,9 @@ export default function AddToNotebookModal({
                       autoFocus
                     />
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="text-xs text-slate-500">{t("Color")}：</span>
+                      <span className="text-xs text-slate-500">
+                        {t("Color")}：
+                      </span>
                       <div className="flex gap-1">
                         {COLORS.slice(0, 6).map((color) => (
                           <button
@@ -286,7 +288,9 @@ export default function AddToNotebookModal({
                 {notebooks.length === 0 ? (
                   <div className="py-8 text-center">
                     <FolderOpen className="w-10 h-10 text-slate-200 mx-auto mb-2" />
-                    <p className="text-sm text-slate-500">{t("No notebooks found")}</p>
+                    <p className="text-sm text-slate-500">
+                      {t("No notebooks found")}
+                    </p>
                     <p className="text-xs text-slate-400">
                       {t("Create your first notebook above")}
                     </p>
