@@ -54,7 +54,7 @@ export const exportToPptx = async (outline: PresentationOutline) => {
     const hasImage = !!slideData.generatedImageUrl
     const layout = slideData.layout
 
-    const bulletPoints = slideData.points.map((point) => ({
+    const bulletPoints = slideData.points.map(point => ({
       text: point,
       options: {
         bullet: true,
@@ -159,10 +159,7 @@ export const exportToPptx = async (outline: PresentationOutline) => {
           fontFace: 'Microsoft YaHei',
         })
       })
-    } else if (
-      (layout === 'SPLIT_RIGHT' || layout === 'SPLIT_IMAGE_RIGHT') &&
-      hasImage
-    ) {
+    } else if ((layout === 'SPLIT_RIGHT' || layout === 'SPLIT_IMAGE_RIGHT') && hasImage) {
       slide.addText(slideData.title, {
         x: 0.5,
         y: 0.4,
@@ -189,10 +186,7 @@ export const exportToPptx = async (outline: PresentationOutline) => {
         h: 5.625,
         sizing: { type: 'cover', w: 5, h: 5.625 },
       })
-    } else if (
-      (layout === 'SPLIT_LEFT' || layout === 'SPLIT_IMAGE_LEFT') &&
-      hasImage
-    ) {
+    } else if ((layout === 'SPLIT_LEFT' || layout === 'SPLIT_IMAGE_LEFT') && hasImage) {
       slide.addText(slideData.title, {
         x: 5.2,
         y: 0.4,

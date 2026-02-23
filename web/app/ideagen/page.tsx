@@ -1,6 +1,6 @@
-"use client";
+'use client'
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from 'react'
 import {
   Lightbulb,
   BookOpen,
@@ -12,345 +12,322 @@ import {
   Sparkles,
   Brain,
   Zap,
-} from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
-import "katex/dist/katex.min.css";
-import { apiUrl, wsUrl } from "@/lib/api";
-import { processLatexContent } from "@/lib/latex";
-import AddToNotebookModal from "@/components/AddToNotebookModal";
-import { useGlobal } from "@/context/GlobalContext";
+} from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
+import { apiUrl, wsUrl } from '@/lib/api'
+import { processLatexContent } from '@/lib/latex'
+import AddToNotebookModal from '@/components/AddToNotebookModal'
+import { useGlobal } from '@/context/GlobalContext'
 
 interface Notebook {
-  id: string;
-  name: string;
-  description: string;
-  record_count: number;
-  color: string;
+  id: string
+  name: string
+  description: string
+  record_count: number
+  color: string
 }
 
 interface NotebookRecord {
-  id: string;
-  title: string;
-  user_query: string;
-  output: string;
-  type: string;
+  id: string
+  title: string
+  user_query: string
+  output: string
+  type: string
 }
 
 interface ResearchIdea {
-  id: string;
-  knowledge_point: string;
-  description: string;
-  research_ideas: string[];
-  statement: string;
-  expanded: boolean;
-  selected: boolean;
+  id: string
+  knowledge_point: string
+  description: string
+  research_ideas: string[]
+  statement: string
+  expanded: boolean
+  selected: boolean
 }
 
 // Extended interface to include notebook info
 interface SelectedRecord extends NotebookRecord {
-  notebookId: string;
-  notebookName: string;
+  notebookId: string
+  notebookName: string
 }
 
 export default function IdeaGenPage() {
   // Global state for persistence across page navigation
-  const { ideaGenState, setIdeaGenState } = useGlobal();
+  const { ideaGenState, setIdeaGenState } = useGlobal()
 
   // Notebook selection - now supports multiple notebooks
-  const [notebooks, setNotebooks] = useState<Notebook[]>([]);
-  const [expandedNotebooks, setExpandedNotebooks] = useState<Set<string>>(
-    new Set(),
-  );
-  const [notebookRecordsMap, setNotebookRecordsMap] = useState<
-    Map<string, NotebookRecord[]>
-  >(new Map());
-  const [selectedRecords, setSelectedRecords] = useState<
-    Map<string, SelectedRecord>
-  >(new Map()); // recordId -> record with notebook info
-  const [loadingNotebooks, setLoadingNotebooks] = useState(true);
-  const [loadingRecordsFor, setLoadingRecordsFor] = useState<Set<string>>(
-    new Set(),
-  );
+  const [notebooks, setNotebooks] = useState<Notebook[]>([])
+  const [expandedNotebooks, setExpandedNotebooks] = useState<Set<string>>(new Set())
+  const [notebookRecordsMap, setNotebookRecordsMap] = useState<Map<string, NotebookRecord[]>>(
+    new Map()
+  )
+  const [selectedRecords, setSelectedRecords] = useState<Map<string, SelectedRecord>>(new Map()) // recordId -> record with notebook info
+  const [loadingNotebooks, setLoadingNotebooks] = useState(true)
+  const [loadingRecordsFor, setLoadingRecordsFor] = useState<Set<string>>(new Set())
 
   // User thoughts input
-  const [userThoughts, setUserThoughts] = useState("");
+  const [userThoughts, setUserThoughts] = useState('')
 
   // Use global state for generation (persists across navigation)
-  const isGenerating = ideaGenState.isGenerating;
-  const generationStatus = ideaGenState.generationStatus;
-  const generatedIdeas = ideaGenState.generatedIdeas;
-  const progress = ideaGenState.progress;
+  const isGenerating = ideaGenState.isGenerating
+  const generationStatus = ideaGenState.generationStatus
+  const generatedIdeas = ideaGenState.generatedIdeas
+  const progress = ideaGenState.progress
 
   const setIsGenerating = (val: boolean) =>
-    setIdeaGenState((prev) => ({ ...prev, isGenerating: val }));
+    setIdeaGenState(prev => ({ ...prev, isGenerating: val }))
   const setGenerationStatus = (val: string) =>
-    setIdeaGenState((prev) => ({ ...prev, generationStatus: val }));
+    setIdeaGenState(prev => ({ ...prev, generationStatus: val }))
   const setGeneratedIdeas = (
-    updater: ResearchIdea[] | ((prev: ResearchIdea[]) => ResearchIdea[]),
+    updater: ResearchIdea[] | ((prev: ResearchIdea[]) => ResearchIdea[])
   ) => {
-    setIdeaGenState((prev) => ({
+    setIdeaGenState(prev => ({
       ...prev,
-      generatedIdeas:
-        typeof updater === "function" ? updater(prev.generatedIdeas) : updater,
-    }));
-  };
+      generatedIdeas: typeof updater === 'function' ? updater(prev.generatedIdeas) : updater,
+    }))
+  }
   const setProgress = (val: { current: number; total: number } | null) =>
-    setIdeaGenState((prev) => ({ ...prev, progress: val }));
+    setIdeaGenState(prev => ({ ...prev, progress: val }))
 
   // Save modal
-  const [showSaveModal, setShowSaveModal] = useState(false);
-  const [ideaToSave, setIdeaToSave] = useState<ResearchIdea | null>(null);
+  const [showSaveModal, setShowSaveModal] = useState(false)
+  const [ideaToSave, setIdeaToSave] = useState<ResearchIdea | null>(null)
 
-  const wsRef = useRef<WebSocket | null>(null);
+  const wsRef = useRef<WebSocket | null>(null)
 
   // Load notebooks
   useEffect(() => {
-    fetchNotebooks();
+    fetchNotebooks()
     return () => {
       if (wsRef.current) {
-        wsRef.current.close();
+        wsRef.current.close()
       }
-    };
-  }, []);
+    }
+  }, [])
 
   const fetchNotebooks = async () => {
     try {
-      const res = await fetch(apiUrl("/api/v1/notebook/list"));
-      const data = await res.json();
+      const res = await fetch(apiUrl('/api/v1/notebook/list'))
+      const data = await res.json()
       const notebooksWithRecords = (data.notebooks || []).filter(
-        (nb: Notebook) => nb.record_count > 0,
-      );
-      setNotebooks(notebooksWithRecords);
-      setLoadingNotebooks(false);
+        (nb: Notebook) => nb.record_count > 0
+      )
+      setNotebooks(notebooksWithRecords)
+      setLoadingNotebooks(false)
     } catch (err) {
-      console.error("Failed to fetch notebooks:", err);
-      setLoadingNotebooks(false);
+      console.error('Failed to fetch notebooks:', err)
+      setLoadingNotebooks(false)
     }
-  };
+  }
 
   const fetchNotebookRecords = async (notebookId: string) => {
-    if (notebookRecordsMap.has(notebookId)) return; // Already fetched
+    if (notebookRecordsMap.has(notebookId)) return // Already fetched
 
-    setLoadingRecordsFor((prev) => new Set([...prev, notebookId]));
+    setLoadingRecordsFor(prev => new Set([...prev, notebookId]))
     try {
-      const res = await fetch(apiUrl(`/api/v1/notebook/${notebookId}`));
-      const data = await res.json();
-      setNotebookRecordsMap((prev) =>
-        new Map(prev).set(notebookId, data.records || []),
-      );
+      const res = await fetch(apiUrl(`/api/v1/notebook/${notebookId}`))
+      const data = await res.json()
+      setNotebookRecordsMap(prev => new Map(prev).set(notebookId, data.records || []))
     } catch (err) {
-      console.error("Failed to fetch notebook records:", err);
+      console.error('Failed to fetch notebook records:', err)
     } finally {
-      setLoadingRecordsFor((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(notebookId);
-        return newSet;
-      });
+      setLoadingRecordsFor(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(notebookId)
+        return newSet
+      })
     }
-  };
+  }
 
   const toggleNotebookExpanded = (notebookId: string) => {
-    const notebook = notebooks.find((nb) => nb.id === notebookId);
-    if (!notebook) return;
+    const notebook = notebooks.find(nb => nb.id === notebookId)
+    if (!notebook) return
 
-    setExpandedNotebooks((prev) => {
-      const newSet = new Set(prev);
+    setExpandedNotebooks(prev => {
+      const newSet = new Set(prev)
       if (newSet.has(notebookId)) {
-        newSet.delete(notebookId);
+        newSet.delete(notebookId)
       } else {
-        newSet.add(notebookId);
+        newSet.add(notebookId)
         // Fetch records when expanding
-        fetchNotebookRecords(notebookId);
+        fetchNotebookRecords(notebookId)
       }
-      return newSet;
-    });
-  };
+      return newSet
+    })
+  }
 
   const toggleRecordSelection = (
     record: NotebookRecord,
     notebookId: string,
-    notebookName: string,
+    notebookName: string
   ) => {
-    setSelectedRecords((prev) => {
-      const newMap = new Map(prev);
+    setSelectedRecords(prev => {
+      const newMap = new Map(prev)
       if (newMap.has(record.id)) {
-        newMap.delete(record.id);
+        newMap.delete(record.id)
       } else {
-        newMap.set(record.id, { ...record, notebookId, notebookName });
+        newMap.set(record.id, { ...record, notebookId, notebookName })
       }
-      return newMap;
-    });
-  };
+      return newMap
+    })
+  }
 
   const selectAllFromNotebook = (notebookId: string, notebookName: string) => {
-    const records = notebookRecordsMap.get(notebookId) || [];
-    setSelectedRecords((prev) => {
-      const newMap = new Map(prev);
-      records.forEach((r) =>
-        newMap.set(r.id, { ...r, notebookId, notebookName }),
-      );
-      return newMap;
-    });
-  };
+    const records = notebookRecordsMap.get(notebookId) || []
+    setSelectedRecords(prev => {
+      const newMap = new Map(prev)
+      records.forEach(r => newMap.set(r.id, { ...r, notebookId, notebookName }))
+      return newMap
+    })
+  }
 
   const deselectAllFromNotebook = (notebookId: string) => {
-    const records = notebookRecordsMap.get(notebookId) || [];
-    const recordIds = new Set(records.map((r) => r.id));
-    setSelectedRecords((prev) => {
-      const newMap = new Map(prev);
-      recordIds.forEach((id) => newMap.delete(id));
-      return newMap;
-    });
-  };
+    const records = notebookRecordsMap.get(notebookId) || []
+    const recordIds = new Set(records.map(r => r.id))
+    setSelectedRecords(prev => {
+      const newMap = new Map(prev)
+      recordIds.forEach(id => newMap.delete(id))
+      return newMap
+    })
+  }
 
   const clearAllSelections = () => {
-    setSelectedRecords(new Map());
-  };
+    setSelectedRecords(new Map())
+  }
 
   // Check if we can generate (either have records or user thoughts)
-  const canGenerate =
-    selectedRecords.size > 0 || userThoughts.trim().length > 0;
+  const canGenerate = selectedRecords.size > 0 || userThoughts.trim().length > 0
 
   const startGeneration = () => {
-    if (!canGenerate) return;
+    if (!canGenerate) return
 
-    setIsGenerating(true);
-    setGenerationStatus("Connecting...");
-    setGeneratedIdeas([]);
-    setProgress(null);
+    setIsGenerating(true)
+    setGenerationStatus('Connecting...')
+    setGeneratedIdeas([])
+    setProgress(null)
 
-    const ws = new WebSocket(wsUrl("/api/v1/ideagen/generate"));
-    wsRef.current = ws;
+    const ws = new WebSocket(wsUrl('/api/v1/ideagen/generate'))
+    wsRef.current = ws
 
     ws.onopen = () => {
-      setGenerationStatus("Initializing...");
+      setGenerationStatus('Initializing...')
       // Send records directly for cross-notebook support (can be empty if only user thoughts)
-      const recordsArray = Array.from(selectedRecords.values()).map((r) => ({
+      const recordsArray = Array.from(selectedRecords.values()).map(r => ({
         id: r.id,
         title: r.title,
         user_query: r.user_query,
         output: r.output,
         type: r.type,
-      }));
+      }))
       ws.send(
         JSON.stringify({
           records: recordsArray.length > 0 ? recordsArray : undefined,
           user_thoughts: userThoughts.trim() || undefined,
-        }),
-      );
-    };
+        })
+      )
+    }
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+    ws.onmessage = event => {
+      const data = JSON.parse(event.data)
 
       switch (data.type) {
-        case "status":
-          setGenerationStatus(data.message);
+        case 'status':
+          setGenerationStatus(data.message)
           // Check if this is the "complete" stage from backend
-          if (data.stage === "complete") {
-            setIsGenerating(false);
+          if (data.stage === 'complete') {
+            setIsGenerating(false)
           }
           // Update progress from status data if available
           if (data.data?.index && data.data?.total) {
-            setProgress({ current: data.data.index, total: data.data.total });
+            setProgress({ current: data.data.index, total: data.data.total })
           }
-          break;
-        case "progress":
+          break
+        case 'progress':
           if (data.data?.index && data.data?.total) {
-            setProgress({ current: data.data.index, total: data.data.total });
+            setProgress({ current: data.data.index, total: data.data.total })
           }
-          break;
-        case "idea":
-          setGeneratedIdeas((prev) => [
-            ...prev,
-            { ...data.data, selected: false },
-          ]);
-          break;
-        case "complete":
-          setGenerationStatus("Completed!");
-          setIsGenerating(false);
-          break;
-        case "error":
-          setGenerationStatus(
-            `Error: ${data.message || data.content || "Unknown error"}`,
-          );
-          setIsGenerating(false);
-          break;
+          break
+        case 'idea':
+          setGeneratedIdeas(prev => [...prev, { ...data.data, selected: false }])
+          break
+        case 'complete':
+          setGenerationStatus('Completed!')
+          setIsGenerating(false)
+          break
+        case 'error':
+          setGenerationStatus(`Error: ${data.message || data.content || 'Unknown error'}`)
+          setIsGenerating(false)
+          break
       }
-    };
+    }
 
     ws.onerror = () => {
-      setGenerationStatus("Connection Error");
-      setIsGenerating(false);
-    };
+      setGenerationStatus('Connection Error')
+      setIsGenerating(false)
+    }
 
     ws.onclose = () => {
-      wsRef.current = null;
-    };
-  };
+      wsRef.current = null
+    }
+  }
 
   const toggleIdeaExpanded = (ideaId: string) => {
-    setGeneratedIdeas((prev) =>
-      prev.map((idea) =>
-        idea.id === ideaId ? { ...idea, expanded: !idea.expanded } : idea,
-      ),
-    );
-  };
+    setGeneratedIdeas(prev =>
+      prev.map(idea => (idea.id === ideaId ? { ...idea, expanded: !idea.expanded } : idea))
+    )
+  }
 
   const toggleIdeaSelected = (ideaId: string) => {
-    setGeneratedIdeas((prev) =>
-      prev.map((idea) =>
-        idea.id === ideaId ? { ...idea, selected: !idea.selected } : idea,
-      ),
-    );
-  };
+    setGeneratedIdeas(prev =>
+      prev.map(idea => (idea.id === ideaId ? { ...idea, selected: !idea.selected } : idea))
+    )
+  }
 
   const selectAllIdeas = () => {
-    setGeneratedIdeas((prev) =>
-      prev.map((idea) => ({ ...idea, selected: true })),
-    );
-  };
+    setGeneratedIdeas(prev => prev.map(idea => ({ ...idea, selected: true })))
+  }
 
   const saveIdea = (idea: ResearchIdea) => {
-    setIdeaToSave(idea);
-    setShowSaveModal(true);
-  };
+    setIdeaToSave(idea)
+    setShowSaveModal(true)
+  }
 
   const saveSelectedIdeas = () => {
-    const selected = generatedIdeas.filter((i) => i.selected);
+    const selected = generatedIdeas.filter(i => i.selected)
     if (selected.length > 0) {
       // Merge all selected ideas
       const combinedIdea: ResearchIdea = {
-        id: "combined",
-        knowledge_point: "Collection of Research Ideas",
+        id: 'combined',
+        knowledge_point: 'Collection of Research Ideas',
         description: `Research ideas containing ${selected.length} knowledge points`,
-        research_ideas: selected.flatMap((i) => i.research_ideas),
-        statement: selected.map((i) => i.statement).join("\n\n---\n\n"),
+        research_ideas: selected.flatMap(i => i.research_ideas),
+        statement: selected.map(i => i.statement).join('\n\n---\n\n'),
         expanded: false,
         selected: false,
-      };
-      setIdeaToSave(combinedIdea);
-      setShowSaveModal(true);
+      }
+      setIdeaToSave(combinedIdea)
+      setShowSaveModal(true)
     }
-  };
+  }
 
   const getTypeColor = (type: string) => {
     switch (type) {
-      case "solve":
-        return "bg-blue-100 text-blue-700 border-blue-200";
-      case "question":
-        return "bg-purple-100 text-purple-700 border-purple-200";
-      case "research":
-        return "bg-emerald-100 text-emerald-700 border-emerald-200";
-      case "co_writer":
-        return "bg-amber-100 text-amber-700 border-amber-200";
+      case 'solve':
+        return 'bg-blue-100 text-blue-700 border-blue-200'
+      case 'question':
+        return 'bg-purple-100 text-purple-700 border-purple-200'
+      case 'research':
+        return 'bg-emerald-100 text-emerald-700 border-emerald-200'
+      case 'co_writer':
+        return 'bg-amber-100 text-amber-700 border-amber-200'
       default:
-        return "bg-slate-100 text-slate-700 border-slate-200";
+        return 'bg-slate-100 text-slate-700 border-slate-200'
     }
-  };
+  }
 
   return (
     <div className="h-screen flex gap-4 p-4 animate-fade-in">
@@ -384,13 +361,11 @@ export default function IdeaGenPage() {
               </div>
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-700">
-                {notebooks.map((notebook) => {
-                  const isExpanded = expandedNotebooks.has(notebook.id);
-                  const records = notebookRecordsMap.get(notebook.id) || [];
-                  const isLoading = loadingRecordsFor.has(notebook.id);
-                  const selectedFromThis = records.filter((r) =>
-                    selectedRecords.has(r.id),
-                  ).length;
+                {notebooks.map(notebook => {
+                  const isExpanded = expandedNotebooks.has(notebook.id)
+                  const records = notebookRecordsMap.get(notebook.id) || []
+                  const isLoading = loadingRecordsFor.has(notebook.id)
+                  const selectedFromThis = records.filter(r => selectedRecords.has(r.id)).length
 
                   return (
                     <div key={notebook.id}>
@@ -407,7 +382,7 @@ export default function IdeaGenPage() {
                         <div
                           className="w-3 h-3 rounded-full"
                           style={{
-                            backgroundColor: notebook.color || "#94a3b8",
+                            backgroundColor: notebook.color || '#94a3b8',
                           }}
                         />
                         <span className="flex-1 text-sm font-medium text-slate-700 dark:text-slate-200 truncate">
@@ -438,21 +413,18 @@ export default function IdeaGenPage() {
                             <>
                               <div className="flex gap-2 mb-2">
                                 <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    selectAllFromNotebook(
-                                      notebook.id,
-                                      notebook.name,
-                                    );
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    selectAllFromNotebook(notebook.id, notebook.name)
                                   }}
                                   className="text-xs text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
                                 >
                                   全选
                                 </button>
                                 <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    deselectAllFromNotebook(notebook.id);
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    deselectAllFromNotebook(notebook.id)
                                   }}
                                   className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
                                 >
@@ -460,29 +432,25 @@ export default function IdeaGenPage() {
                                 </button>
                               </div>
                               <div className="space-y-1">
-                                {records.map((record) => (
+                                {records.map(record => (
                                   <div
                                     key={record.id}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      toggleRecordSelection(
-                                        record,
-                                        notebook.id,
-                                        notebook.name,
-                                      );
+                                    onClick={e => {
+                                      e.stopPropagation()
+                                      toggleRecordSelection(record, notebook.id, notebook.name)
                                     }}
                                     className={`p-2 rounded-lg cursor-pointer transition-all border ${
                                       selectedRecords.has(record.id)
-                                        ? "bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-700"
-                                        : "hover:bg-white dark:hover:bg-slate-700 border-transparent hover:border-slate-200 dark:hover:border-slate-600"
+                                        ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-700'
+                                        : 'hover:bg-white dark:hover:bg-slate-700 border-transparent hover:border-slate-200 dark:hover:border-slate-600'
                                     }`}
                                   >
                                     <div className="flex items-center gap-2">
                                       <div
                                         className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
                                           selectedRecords.has(record.id)
-                                            ? "bg-amber-500 border-amber-500 text-white"
-                                            : "border-slate-300 dark:border-slate-500"
+                                            ? 'bg-amber-500 border-amber-500 text-white'
+                                            : 'border-slate-300 dark:border-slate-500'
                                         }`}
                                       >
                                         {selectedRecords.has(record.id) && (
@@ -508,7 +476,7 @@ export default function IdeaGenPage() {
                         </div>
                       )}
                     </div>
-                  );
+                  )
                 })}
               </div>
             )}
@@ -517,16 +485,15 @@ export default function IdeaGenPage() {
           {/* User Thoughts Input */}
           <div className="p-3 border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
             <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block mb-2">
-              你的想法{" "}
-              {selectedRecords.size > 0 ? "（可选）" : "（必填）"}
+              你的想法 {selectedRecords.size > 0 ? '（可选）' : '（必填）'}
             </label>
             <textarea
               value={userThoughts}
-              onChange={(e) => setUserThoughts(e.target.value)}
+              onChange={e => setUserThoughts(e.target.value)}
               placeholder={
                 selectedRecords.size > 0
-                  ? "基于这些材料描述你的想法或研究方向..."
-                  : "描述你的研究主题或想法（无需选择笔记本）..."
+                  ? '基于这些材料描述你的想法或研究方向...'
+                  : '描述你的研究主题或想法（无需选择笔记本）...'
               }
               className="w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 resize-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
               rows={3}
@@ -555,7 +522,7 @@ export default function IdeaGenPage() {
                   <Sparkles className="w-4 h-4" />
                   {selectedRecords.size > 0
                     ? `生成想法（已选 ${selectedRecords.size} 条）`
-                    : "生成想法（仅文本）"}
+                    : '生成想法（仅文本）'}
                 </>
               )}
             </button>
@@ -572,12 +539,8 @@ export default function IdeaGenPage() {
               <Lightbulb className="w-5 h-5 text-amber-600 dark:text-amber-400" />
             </div>
             <div>
-              <h1 className="font-bold text-slate-900 dark:text-slate-100">
-                IdeaGen
-              </h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                从你的笔记中发现研究灵感
-              </p>
+              <h1 className="font-bold text-slate-900 dark:text-slate-100">IdeaGen</h1>
+              <p className="text-xs text-slate-500 dark:text-slate-400">从你的笔记中发现研究灵感</p>
             </div>
           </div>
 
@@ -591,7 +554,7 @@ export default function IdeaGenPage() {
               </button>
               <button
                 onClick={saveSelectedIdeas}
-                disabled={!generatedIdeas.some((i) => i.selected)}
+                disabled={!generatedIdeas.some(i => i.selected)}
                 className="px-3 py-1.5 text-xs bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 flex items-center gap-1"
               >
                 <Save className="w-3 h-3" />
@@ -608,9 +571,7 @@ export default function IdeaGenPage() {
               {isGenerating && (
                 <Loader2 className="w-4 h-4 animate-spin text-amber-600 dark:text-amber-400" />
               )}
-              <span className="text-sm text-amber-700 dark:text-amber-300">
-                {generationStatus}
-              </span>
+              <span className="text-sm text-amber-700 dark:text-amber-300">{generationStatus}</span>
             </div>
             {progress && (
               <span className="text-xs text-amber-600 dark:text-amber-400">
@@ -635,13 +596,13 @@ export default function IdeaGenPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {generatedIdeas.map((idea) => (
+              {generatedIdeas.map(idea => (
                 <div
                   key={idea.id}
                   className={`rounded-2xl border transition-all ${
                     idea.selected
-                      ? "bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-700 shadow-md shadow-amber-100 dark:shadow-amber-900/20"
-                      : "bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 hover:border-slate-300 dark:hover:border-slate-500"
+                      ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-700 shadow-md shadow-amber-100 dark:shadow-amber-900/20'
+                      : 'bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 hover:border-slate-300 dark:hover:border-slate-500'
                   }`}
                 >
                   {/* Idea Header */}
@@ -651,8 +612,8 @@ export default function IdeaGenPage() {
                       onClick={() => toggleIdeaSelected(idea.id)}
                       className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
                         idea.selected
-                          ? "bg-amber-500 border-amber-500 text-white"
-                          : "border-slate-300 dark:border-slate-500 hover:border-amber-400 dark:hover:border-amber-500"
+                          ? 'bg-amber-500 border-amber-500 text-white'
+                          : 'border-slate-300 dark:border-slate-500 hover:border-amber-400 dark:hover:border-amber-500'
                       }`}
                     >
                       {idea.selected && <Check className="w-4 h-4" />}
@@ -739,8 +700,8 @@ export default function IdeaGenPage() {
         <AddToNotebookModal
           isOpen={showSaveModal}
           onClose={() => {
-            setShowSaveModal(false);
-            setIdeaToSave(null);
+            setShowSaveModal(false)
+            setIdeaToSave(null)
           }}
           recordType="research"
           title={`Research Idea: ${ideaToSave.knowledge_point}`}
@@ -748,10 +709,10 @@ export default function IdeaGenPage() {
           output={ideaToSave.statement}
           metadata={{
             ideas_count: ideaToSave.research_ideas.length,
-            source: "ideagen",
+            source: 'ideagen',
           }}
         />
       )}
     </div>
-  );
+  )
 }

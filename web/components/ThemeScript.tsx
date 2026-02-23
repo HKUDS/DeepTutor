@@ -1,4 +1,4 @@
-"use client";
+'use client'
 
 /**
  * ThemeScript - Initializes theme from localStorage before React hydration
@@ -27,12 +27,7 @@ export default function ThemeScript() {
         // Silently fail - localStorage may be disabled
       }
     })();
-  `;
+  `
 
-  return (
-    <script
-      dangerouslySetInnerHTML={{ __html: themeScript }}
-      suppressHydrationWarning
-    />
-  );
+  return <script dangerouslySetInnerHTML={{ __html: themeScript }} suppressHydrationWarning />
 }

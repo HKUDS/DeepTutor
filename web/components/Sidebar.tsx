@@ -1,9 +1,9 @@
-"use client";
+'use client'
 
-import { useState } from "react";
-import Link from "next/link";
-import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { useState } from 'react'
+import Link from 'next/link'
+import Image from 'next/image'
+import { usePathname } from 'next/navigation'
 import {
   History,
   BookOpen,
@@ -14,48 +14,46 @@ import {
   ChevronsRight,
   MessageSquare,
   Calculator,
-} from "lucide-react";
-import { useGlobal } from "@/context/GlobalContext";
-import { getTranslation } from "@/lib/i18n";
+} from 'lucide-react'
+import { useGlobal } from '@/context/GlobalContext'
+import { getTranslation } from '@/lib/i18n'
 
-const SIDEBAR_EXPANDED_WIDTH = 256;
-const SIDEBAR_COLLAPSED_WIDTH = 64;
-const BRAND_NAME = "Hi-NoteBook";
-const BRAND_LOGO_SRC = "/logo.png";
-const BRAND_LOGO_SIZE_COLLAPSED = 40;
-const BRAND_LOGO_HEIGHT_EXPANDED = 36;
+const SIDEBAR_EXPANDED_WIDTH = 256
+const SIDEBAR_COLLAPSED_WIDTH = 64
+const BRAND_NAME = 'Hi-NoteBook'
+const BRAND_LOGO_SRC = '/logo.png'
+const BRAND_LOGO_SIZE_COLLAPSED = 40
+const BRAND_LOGO_HEIGHT_EXPANDED = 36
 
 export default function Sidebar() {
-  const pathname = usePathname();
-  const { uiSettings, sidebarCollapsed, toggleSidebar } = useGlobal();
-  const lang = uiSettings.language;
+  const pathname = usePathname()
+  const { uiSettings, sidebarCollapsed, toggleSidebar } = useGlobal()
+  const lang = uiSettings.language
 
-  const t = (key: string) => getTranslation(lang, key);
+  const t = (key: string) => getTranslation(lang, key)
 
-  const [showTooltip, setShowTooltip] = useState<string | null>(null);
+  const [showTooltip, setShowTooltip] = useState<string | null>(null)
 
   const navGroups = [
     {
-      name: "",
+      name: '',
       items: [
-        { name: t("Notebooks"), href: "/notebooks", icon: Book },
-        { name: t("Knowledge Bases"), href: "/knowledge", icon: BookOpen },
-        { name: t("History"), href: "/history", icon: History },
+        { name: t('Notebooks'), href: '/notebooks', icon: Book },
+        { name: t('Knowledge Bases'), href: '/knowledge', icon: BookOpen },
+        { name: t('History'), href: '/history', icon: History },
       ],
     },
     {
-      name: t("Tools"),
+      name: t('Tools'),
       items: [
-        { name: t("Chat"), href: "/chat", icon: MessageSquare },
-        { name: t("Co-Writer"), href: "/co_writer", icon: Edit3 },
-        { name: t("Smart Solver"), href: "/solver", icon: Calculator },
+        { name: t('Chat'), href: '/chat', icon: MessageSquare },
+        { name: t('Co-Writer'), href: '/co_writer', icon: Edit3 },
+        { name: t('Smart Solver'), href: '/solver', icon: Calculator },
       ],
     },
-  ];
+  ]
 
-  const currentWidth = sidebarCollapsed
-    ? SIDEBAR_COLLAPSED_WIDTH
-    : SIDEBAR_EXPANDED_WIDTH;
+  const currentWidth = sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH
 
   // Collapsed sidebar
   if (sidebarCollapsed) {
@@ -83,24 +81,26 @@ export default function Sidebar() {
         <nav className="flex-1 overflow-y-auto py-2 space-y-1">
           {navGroups.map((group, idx) => (
             <div key={idx} className="space-y-0.5 px-2">
-              {group.items.map((item) => {
-                const isActive = pathname === item.href;
+              {group.items.map(item => {
+                const isActive = pathname === item.href
                 return (
                   <div key={item.href} className="relative">
                     <Link
                       href={item.href}
-                      className={`group flex items-center justify-center p-2 rounded-lg border ${isActive
-                        ? "bg-secondary text-primary shadow-sm border-border-light"
-                        : "text-secondary-foreground hover:bg-secondary hover:text-primary hover:shadow-sm border-transparent hover:border-border-light"
-                        }`}
+                      className={`group flex items-center justify-center p-2 rounded-lg border ${
+                        isActive
+                          ? 'bg-secondary text-primary shadow-sm border-border-light'
+                          : 'text-secondary-foreground hover:bg-secondary hover:text-primary hover:shadow-sm border-transparent hover:border-border-light'
+                      }`}
                       onMouseEnter={() => setShowTooltip(item.href)}
                       onMouseLeave={() => setShowTooltip(null)}
                     >
                       <item.icon
-                        className={`w-5 h-5 flex-shrink-0 ${isActive
-                          ? "text-primary"
-                          : "text-muted-foreground group-hover:text-primary"
-                          }`}
+                        className={`w-5 h-5 flex-shrink-0 ${
+                          isActive
+                            ? 'text-primary'
+                            : 'text-muted-foreground group-hover:text-primary'
+                        }`}
                       />
                     </Link>
                     {showTooltip === item.href && (
@@ -110,11 +110,9 @@ export default function Sidebar() {
                       </div>
                     )}
                   </div>
-                );
+                )
               })}
-              {idx < navGroups.length - 1 && (
-                <div className="h-px bg-border-light my-2" />
-              )}
+              {idx < navGroups.length - 1 && <div className="h-px bg-border-light my-2" />}
             </div>
           ))}
         </nav>
@@ -124,23 +122,23 @@ export default function Sidebar() {
           <div className="relative">
             <Link
               href="/settings"
-              className={`flex items-center justify-center p-2 rounded-lg ${pathname === "/settings"
-                ? "bg-secondary text-primary shadow-sm border border-border-light"
-                : "text-secondary-foreground hover:bg-secondary hover:text-foreground"
-                }`}
-              onMouseEnter={() => setShowTooltip("/settings")}
+              className={`flex items-center justify-center p-2 rounded-lg ${
+                pathname === '/settings'
+                  ? 'bg-secondary text-primary shadow-sm border border-border-light'
+                  : 'text-secondary-foreground hover:bg-secondary hover:text-foreground'
+              }`}
+              onMouseEnter={() => setShowTooltip('/settings')}
               onMouseLeave={() => setShowTooltip(null)}
             >
               <Settings
-                className={`w-5 h-5 flex-shrink-0 ${pathname === "/settings"
-                  ? "text-primary"
-                  : "text-muted-foreground"
-                  }`}
+                className={`w-5 h-5 flex-shrink-0 ${
+                  pathname === '/settings' ? 'text-primary' : 'text-muted-foreground'
+                }`}
               />
             </Link>
-            {showTooltip === "/settings" && (
+            {showTooltip === '/settings' && (
               <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 px-2.5 py-1.5 bg-foreground text-background text-xs rounded-lg shadow-lg whitespace-nowrap pointer-events-none">
-                {t("Settings")}
+                {t('Settings')}
                 <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-foreground" />
               </div>
             )}
@@ -150,13 +148,13 @@ export default function Sidebar() {
           <button
             onClick={toggleSidebar}
             className="w-full mt-2 flex items-center justify-center p-2 rounded-lg text-muted-foreground hover:bg-secondary hover:text-primary hover:shadow-sm border border-transparent hover:border-border-light"
-            title={t("Expand sidebar")}
+            title={t('Expand sidebar')}
           >
             <ChevronsRight className="w-4 h-4" />
           </button>
         </div>
       </div>
-    );
+    )
   }
 
   // Expanded sidebar
@@ -193,28 +191,26 @@ export default function Sidebar() {
               </div>
             )}
             <div className="space-y-1">
-              {group.items.map((item) => {
-                const isActive = pathname === item.href;
+              {group.items.map(item => {
+                const isActive = pathname === item.href
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`group flex items-center gap-3 px-3 py-2 rounded-lg transition-colors border ${isActive
-                      ? "bg-secondary text-primary shadow-sm border-border-light"
-                      : "text-secondary-foreground hover:bg-secondary hover:text-primary border-transparent"
-                      }`}
+                    className={`group flex items-center gap-3 px-3 py-2 rounded-lg transition-colors border ${
+                      isActive
+                        ? 'bg-secondary text-primary shadow-sm border-border-light'
+                        : 'text-secondary-foreground hover:bg-secondary hover:text-primary border-transparent'
+                    }`}
                   >
                     <item.icon
-                      className={`w-4 h-4 flex-shrink-0 ${isActive
-                        ? "text-primary"
-                        : "text-muted-foreground group-hover:text-primary"
-                        }`}
+                      className={`w-4 h-4 flex-shrink-0 ${
+                        isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'
+                      }`}
                     />
-                    <span className="font-medium text-sm truncate">
-                      {item.name}
-                    </span>
+                    <span className="font-medium text-sm truncate">{item.name}</span>
                   </Link>
-                );
+                )
               })}
             </div>
           </div>
@@ -225,29 +221,29 @@ export default function Sidebar() {
       <div className="px-4 py-3 border-t border-border bg-muted flex items-center justify-between gap-2 shrink-0">
         <Link
           href="/settings"
-          className={`flex-1 flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors border ${pathname === "/settings"
-            ? "bg-secondary text-primary shadow-sm border-border-light"
-            : "text-secondary-foreground hover:bg-secondary hover:text-foreground border-transparent hover:border-border-light"
-            }`}
+          className={`flex-1 flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors border ${
+            pathname === '/settings'
+              ? 'bg-secondary text-primary shadow-sm border-border-light'
+              : 'text-secondary-foreground hover:bg-secondary hover:text-foreground border-transparent hover:border-border-light'
+          }`}
         >
           <Settings
-            className={`w-4 h-4 flex-shrink-0 ${pathname === "/settings"
-              ? "text-primary"
-              : "text-muted-foreground"
-              }`}
+            className={`w-4 h-4 flex-shrink-0 ${
+              pathname === '/settings' ? 'text-primary' : 'text-muted-foreground'
+            }`}
           />
-          <span className="font-medium">{t("Settings")}</span>
+          <span className="font-medium">{t('Settings')}</span>
         </Link>
 
         {/* Collapse button moved to footer */}
         <button
           onClick={toggleSidebar}
           className="p-2 text-muted-foreground hover:bg-secondary hover:text-primary rounded-lg border border-transparent hover:border-border-light transition-colors"
-          title={t("Collapse sidebar")}
+          title={t('Collapse sidebar')}
         >
           <ChevronsLeft className="w-5 h-5 flex-shrink-0" />
         </button>
       </div>
     </div>
-  );
+  )
 }

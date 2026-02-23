@@ -14,27 +14,27 @@
  * @returns Content with $...$ and $$...$$ delimiters
  */
 export function convertLatexDelimiters(content: string): string {
-  if (!content) return content;
+  if (!content) return content
 
-  let result = content;
+  let result = content
 
   // Convert \[...\] to $$...$$ (block math)
   // Use a regex that handles multiline content
   // Note: In JSON strings, \[ becomes \\[ which in JS becomes \[
-  result = result.replace(/\\\[([\s\S]*?)\\\]/g, "\n$$\n$1\n$$\n");
+  result = result.replace(/\\\[([\s\S]*?)\\\]/g, '\n$$\n$1\n$$\n')
 
   // Convert \(...\) to $...$ (inline math)
   // Be careful not to match escaped parentheses in other contexts
-  result = result.replace(/\\\(([\s\S]*?)\\\)/g, " $$$1$$ ");
+  result = result.replace(/\\\(([\s\S]*?)\\\)/g, ' $$$1$$ ')
 
   // Also handle cases where LaTeX is directly in the text without proper delimiters
   // e.g., standalone \lim, \frac, etc. that should be wrapped
   // This is a common issue with LLM outputs
 
   // Clean up multiple consecutive newlines
-  result = result.replace(/\n{3,}/g, "\n\n");
+  result = result.replace(/\n{3,}/g, '\n\n')
 
-  return result;
+  return result
 }
 
 /**
@@ -45,11 +45,11 @@ export function convertLatexDelimiters(content: string): string {
  * @returns Processed content ready for ReactMarkdown with remark-math
  */
 export function processLatexContent(content: string): string {
-  if (!content) return "";
+  if (!content) return ''
 
   // Convert to string if not already
-  const str = String(content);
+  const str = String(content)
 
   // Apply delimiter conversion
-  return convertLatexDelimiters(str);
+  return convertLatexDelimiters(str)
 }

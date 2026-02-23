@@ -1,4 +1,4 @@
-"use client"
+'use client'
 
 import React from 'react'
 import { X } from 'lucide-react'
@@ -73,14 +73,10 @@ export default function PptPreviewModal({
                     className="w-3 h-3 rounded"
                     style={{ backgroundColor: outline.accentColor }}
                   />
-                  <span className="text-xs text-slate-400 uppercase tracking-wider">
-                    Theme
-                  </span>
+                  <span className="text-xs text-slate-400 uppercase tracking-wider">Theme</span>
                 </div>
                 <h3 className="text-xl font-bold text-slate-900">{outline.title}</h3>
-                {outline.subtitle && (
-                  <p className="text-sm text-slate-500">{outline.subtitle}</p>
-                )}
+                {outline.subtitle && <p className="text-sm text-slate-500">{outline.subtitle}</p>}
               </div>
 
               {imageProgress && imageProgress.total > 0 && (

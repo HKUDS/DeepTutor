@@ -1,4 +1,4 @@
-"use client"
+'use client'
 
 import React from 'react'
 
@@ -43,16 +43,18 @@ const SlidePreview: React.FC<SlidePreviewProps> = ({
     dark?: boolean
   }) => (
     <div
-      className={`p-5 overflow-y-auto flex flex-col ${centered ? 'items-center justify-center text-center' : ''
-        } ${className}`}
+      className={`p-5 overflow-y-auto flex flex-col ${
+        centered ? 'items-center justify-center text-center' : ''
+      } ${className}`}
     >
       <div className="mb-3 w-full">
         <input
           type="text"
           value={slide.title}
           onChange={handleTitleChange}
-          className={`w-full bg-transparent border-none font-bold text-sm outline-none focus:ring-1 focus:ring-blue-100 rounded ${centered ? 'text-center' : ''
-            }`}
+          className={`w-full bg-transparent border-none font-bold text-sm outline-none focus:ring-1 focus:ring-blue-100 rounded ${
+            centered ? 'text-center' : ''
+          }`}
           style={{ color: dark ? '#FFFFFF' : themeColor }}
           placeholder="Slide Title"
         />
@@ -61,8 +63,9 @@ const SlidePreview: React.FC<SlidePreviewProps> = ({
         {slide.points.map((point, i) => (
           <div
             key={`${index}-${i}`}
-            className={`flex items-start text-[11px] group/point ${centered ? 'justify-center' : ''
-              }`}
+            className={`flex items-start text-[11px] group/point ${
+              centered ? 'justify-center' : ''
+            }`}
           >
             {!centered && (
               <span
@@ -75,11 +78,12 @@ const SlidePreview: React.FC<SlidePreviewProps> = ({
             <textarea
               rows={1}
               value={point}
-              onChange={(e) => handlePointChange(i, e.target.value)}
-              className={`w-full bg-transparent border-none resize-none focus:ring-1 focus:ring-blue-50 rounded px-1 py-0.5 leading-tight outline-none ${centered ? 'text-center italic' : ''
-                }`}
+              onChange={e => handlePointChange(i, e.target.value)}
+              className={`w-full bg-transparent border-none resize-none focus:ring-1 focus:ring-blue-50 rounded px-1 py-0.5 leading-tight outline-none ${
+                centered ? 'text-center italic' : ''
+              }`}
               style={{ color: dark ? '#FFFFFF' : '#4b5563' }}
-              onInput={(e) => {
+              onInput={e => {
                 const target = e.target as HTMLTextAreaElement
                 target.style.height = 'auto'
                 target.style.height = `${target.scrollHeight}px`
@@ -99,11 +103,7 @@ const SlidePreview: React.FC<SlidePreviewProps> = ({
           <span className="text-[9px] text-gray-400 font-medium">Painting...</span>
         </div>
       ) : slide.generatedImageUrl ? (
-        <img
-          src={slide.generatedImageUrl}
-          alt=""
-          className="w-full h-full object-cover"
-        />
+        <img src={slide.generatedImageUrl} alt="" className="w-full h-full object-cover" />
       ) : (
         <div className="w-full h-full flex items-center justify-center text-gray-300">
           <svg
@@ -183,7 +183,7 @@ const SlidePreview: React.FC<SlidePreviewProps> = ({
                 <textarea
                   rows={2}
                   value={point}
-                  onChange={(e) => handlePointChange(i, e.target.value)}
+                  onChange={e => handlePointChange(i, e.target.value)}
                   className="w-full bg-transparent border-none resize-none outline-none text-gray-600"
                 />
               </div>
