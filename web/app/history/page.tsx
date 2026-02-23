@@ -187,7 +187,7 @@ export default function HistoryPage() {
   const groupedEntries = groupEntriesByDate(filteredEntries);
 
   return (
-    <div className="h-screen flex flex-col animate-fade-in p-6">
+    <div className="h-screen flex flex-col animate-fade-in p-8">
       {/* Header - Fixed */}
       <div className="shrink-0 pb-4">
         <div className="flex items-center justify-between">
@@ -196,7 +196,7 @@ export default function HistoryPage() {
               <History className="w-8 h-8 text-blue-600 dark:text-blue-400" />
               {t("History")}
             </h1>
-            <p className="text-slate-500 dark:text-slate-400 mt-2">
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
               {t("All Activities")}
             </p>
           </div>
@@ -239,8 +239,8 @@ export default function HistoryPage() {
                   key={option.value}
                   onClick={() => setFilterType(option.value)}
                   className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${filterType === option.value
-                      ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm"
-                      : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                     }`}
                 >
                   {option.label}

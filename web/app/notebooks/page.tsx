@@ -6,6 +6,7 @@ import {
     Plus,
     Search,
     BookOpen,
+    Book,
     Clock,
     FileText,
     Trash2,
@@ -178,13 +179,14 @@ export default function NotebooksPage() {
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-8">
             {/* Header */}
-            <div className="max-w-7xl mx-auto mb-8">
+            <div className="mb-8">
                 <div className="flex items-center justify-between mb-6">
                     <div>
-                        <h1 className="text-3xl font-bold text-slate-900 mb-2">
+                        <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3 mb-2">
+                            <Book className="w-8 h-8 text-blue-600" />
                             我的笔记本
                         </h1>
-                        <p className="text-slate-500">
+                        <p className="text-sm text-slate-500 mt-2">
                             创建和管理你的研究笔记本
                         </p>
                     </div>
@@ -204,7 +206,7 @@ export default function NotebooksPage() {
             </div>
 
             {/* Notebook Grid */}
-            <div className="max-w-7xl mx-auto">
+            <div>
                 {loading ? (
                     <div className="flex items-center justify-center h-64">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>

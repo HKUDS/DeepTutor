@@ -555,7 +555,7 @@ export default function KnowledgePage() {
   }, []);
 
   return (
-    <div className="animate-fade-in h-screen overflow-y-auto p-6">
+    <div className="animate-fade-in h-screen overflow-y-auto p-8">
       {/* Header */}
       <div className="flex justify-between items-end mb-8">
         <div>
@@ -563,8 +563,8 @@ export default function KnowledgePage() {
             <BookOpen className="w-8 h-8 text-blue-600 dark:text-blue-400" />
             知识库
           </h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-2">
-            管理并浏览你的知识内容仓库。
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+            管理并浏览你的知识内容仓库
           </p>
         </div>
         <div className="flex gap-3">
@@ -872,11 +872,10 @@ export default function KnowledgePage() {
                   上传文档
                 </label>
                 <div
-                  className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
-                    dragActive
+                  className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${dragActive
                       ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30"
                       : "border-slate-200 dark:border-slate-600 hover:border-blue-400 dark:hover:border-blue-500 bg-slate-50 dark:bg-slate-700/50"
-                  }`}
+                    }`}
                   onDragEnter={handleDrag}
                   onDragLeave={handleDrag}
                   onDragOver={handleDrag}
