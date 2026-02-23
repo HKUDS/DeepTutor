@@ -36,8 +36,28 @@ log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {
 logger = get_logger("CoWriter", level="INFO", log_dir=log_dir)
 
 agent = EditAgent()
-AUDIO_PENDING_TTL_SECONDS = 15 * 60
-_AUDIO_TIMEOUT_ERROR = "Audio generation timed out. Please retry."
+_DEFAULT_AUDIO_PENDING_TTL_SECONDS = 60 * 60
+_AUDIO_TIMEOUT_ERROR = "Audio generation appears stalled. Please retry."
+
+
+def _load_audio_pending_ttl_seconds() -> int:
+    """Load stale-task timeout in seconds (0 disables timeout guard)."""
+    raw_value = config.get("co_writer", {}).get(
+        "audio_pending_ttl_seconds",
+        _DEFAULT_AUDIO_PENDING_TTL_SECONDS,
+    )
+    try:
+        ttl_seconds = int(raw_value)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid co_writer.audio_pending_ttl_seconds="
+            f"{raw_value}, fallback to {_DEFAULT_AUDIO_PENDING_TTL_SECONDS}"
+        )
+        ttl_seconds = _DEFAULT_AUDIO_PENDING_TTL_SECONDS
+    return max(0, ttl_seconds)
+
+
+AUDIO_PENDING_TTL_SECONDS = _load_audio_pending_ttl_seconds()
 
 
 def _normalize_tts_retry_state(retry_state: dict | None) -> dict:
@@ -89,6 +109,25 @@ def _history_age_seconds(history_item: dict) -> float | None:
         return None
 
     return max(0.0, time.time() - created_at)
+
+
+def _mark_audio_status_failed_timeout(
+    audio_id: str,
+    history_item: dict,
+    *,
+    age_seconds: float | None = None,
+) -> None:
+    """Mark stale audio tasks as failed and persist."""
+    history_item["status"] = "failed"
+    history_item["error"] = _AUDIO_TIMEOUT_ERROR
+    update_history_item(audio_id, history_item)
+    if age_seconds is None:
+        logger.warning(f"Mark audio task {audio_id} as timed out")
+    else:
+        logger.warning(
+            f"Mark audio task {audio_id} as timed out after {age_seconds:.1f}s "
+            f"(ttl={AUDIO_PENDING_TTL_SECONDS}s)"
+        )
 
 
 class EditRequest(BaseModel):
@@ -402,15 +441,6 @@ async def get_audio_status(audio_id: str):
     # Check in-memory pending stream
     pending = get_pending_stream(audio_id)
     if pending:
-        history_item = get_history_item(audio_id)
-        if history_item:
-            age = _history_age_seconds(history_item)
-            if age is not None and age > AUDIO_PENDING_TTL_SECONDS:
-                history_item["status"] = "failed"
-                history_item["error"] = _AUDIO_TIMEOUT_ERROR
-                update_history_item(audio_id, history_item)
-                remove_pending_stream(audio_id)
-                return {"status": "failed", "error": _AUDIO_TIMEOUT_ERROR}
         return {"status": "generating"}
 
     # Check DB history
@@ -420,12 +450,16 @@ async def get_audio_status(audio_id: str):
         if status == "failed":
             return {"status": "failed", "error": history_item.get("error", "生成失败")}
         if status in ("pending_stream", "generating"):
-            age = _history_age_seconds(history_item)
-            if age is not None and age > AUDIO_PENDING_TTL_SECONDS:
-                history_item["status"] = "failed"
-                history_item["error"] = _AUDIO_TIMEOUT_ERROR
-                update_history_item(audio_id, history_item)
-                return {"status": "failed", "error": _AUDIO_TIMEOUT_ERROR}
+            if AUDIO_PENDING_TTL_SECONDS > 0:
+                age = _history_age_seconds(history_item)
+                if age is not None and age > AUDIO_PENDING_TTL_SECONDS:
+                    _mark_audio_status_failed_timeout(
+                        audio_id,
+                        history_item,
+                        age_seconds=age,
+                    )
+                    remove_pending_stream(audio_id)
+                    return {"status": "failed", "error": _AUDIO_TIMEOUT_ERROR}
             return {"status": "generating"}
         if status == "completed":
             return {"status": "ready"}

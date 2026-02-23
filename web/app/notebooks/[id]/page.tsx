@@ -215,6 +215,7 @@ export default function NotebookDetailPage() {
   const researchReportRef = useRef("");
   const studioStateRef = useRef<StudioState | null>(null);
   const studioHydrationRef = useRef(false);
+  const isMountedRef = useRef(true);
 
   // Knowledge bases
   const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
@@ -276,6 +277,12 @@ export default function NotebookDetailPage() {
   useEffect(() => {
     sourcesRef.current = sources;
   }, [sources]);
+  useEffect(
+    () => () => {
+      isMountedRef.current = false;
+    },
+    [],
+  );
 
   // Deep Research config (from original research page)
   const [planMode, setPlanMode] = useState<
@@ -2467,18 +2474,44 @@ export default function NotebookDetailPage() {
     return apiUrl(`/api/v1/co_writer/stream_audio/${audioId}`);
   };
 
+  const waitWithAbort = (
+    ms: number,
+    signal?: AbortSignal,
+  ): Promise<void> =>
+    new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new DOMException("Operation aborted", "AbortError"));
+        return;
+      }
+      const onAbort = () => {
+        window.clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        reject(new DOMException("Operation aborted", "AbortError"));
+      };
+      const timer = window.setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, ms);
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+
   const waitForAudioReady = useCallback(
     async (
       audioId: string,
       streamUrl: string,
       maxPolls = 100,
+      signal?: AbortSignal,
     ): Promise<{ audioUrl: string; blobUrl: string }> => {
       for (let i = 0; i < maxPolls; i++) {
-        await new Promise((r) => setTimeout(r, 3000));
+        await waitWithAbort(3000, signal);
 
         try {
+          if (signal?.aborted) {
+            throw new DOMException("Operation aborted", "AbortError");
+          }
           const statusRes = await fetch(
             apiUrl(`/api/v1/co_writer/audio_status/${audioId}`),
+            { signal },
           );
           if (!statusRes.ok) {
             throw new Error(`音频状态查询失败: HTTP ${statusRes.status}`);
@@ -2486,7 +2519,7 @@ export default function NotebookDetailPage() {
 
           const statusData = await statusRes.json();
           if (statusData.status === "ready") {
-            const audioRes = await fetch(streamUrl);
+            const audioRes = await fetch(streamUrl, { signal });
             if (!audioRes.ok) {
               const fetchErr: any = new Error(
                 `音频获取失败: HTTP ${audioRes.status}`,
@@ -2513,6 +2546,9 @@ export default function NotebookDetailPage() {
             throw missingErr;
           }
         } catch (statusErr: any) {
+          if (statusErr?.name === "AbortError") {
+            throw statusErr;
+          }
           if (statusErr?.fatal) {
             throw statusErr;
           }
@@ -2906,6 +2942,7 @@ export default function NotebookDetailPage() {
     if (recoveringAudioIdRef.current === audioId) return;
 
     let cancelled = false;
+    const abortController = new AbortController();
     recoveringAudioIdRef.current = audioId;
 
     const resumeAudioPolling = async () => {
@@ -2917,6 +2954,7 @@ export default function NotebookDetailPage() {
           audioId,
           streamUrl,
           300,
+          abortController.signal,
         );
         if (cancelled) {
           URL.revokeObjectURL(blobUrl);
@@ -2930,11 +2968,14 @@ export default function NotebookDetailPage() {
         setHasSessionActivity(true);
         scheduleSessionSave(true);
       } catch (err: any) {
-        if (!cancelled) {
+        if (err?.name === "AbortError") {
+          return;
+        }
+        if (!cancelled && isMountedRef.current) {
           setAudioError(err?.message || "播客生成失败，请稍后重试");
         }
       } finally {
-        if (!cancelled) {
+        if (isMountedRef.current) {
           setIsGeneratingAudio(false);
         }
       }
@@ -2943,6 +2984,7 @@ export default function NotebookDetailPage() {
     void resumeAudioPolling();
     return () => {
       cancelled = true;
+      abortController.abort();
     };
   }, [
     studioMode,
