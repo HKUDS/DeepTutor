@@ -411,10 +411,34 @@ class NotebookManager:
             project_root = Path(__file__).resolve().parents[3]
             kb_base_dir = project_root / "data" / "knowledge_bases"
             kb_manager = KnowledgeBaseManager(base_dir=str(kb_base_dir))
+            legacy_name = f"notebook_{notebook_id}_sources"
+            to_delete: set[str] = set()
 
-            sources_kb_name = f"notebook_{notebook_id}_sources"
-            if sources_kb_name in kb_manager.list_knowledge_bases():
-                kb_manager.delete_knowledge_base(sources_kb_name, confirm=True)
+            for kb_name in kb_manager.list_knowledge_bases():
+                if kb_name == legacy_name:
+                    to_delete.add(kb_name)
+                    continue
+
+                # Legacy fallback for historical naming variants.
+                if kb_name.startswith(f"notebook_{notebook_id}") and kb_name.endswith("_sources"):
+                    to_delete.add(kb_name)
+                    continue
+
+                try:
+                    metadata = kb_manager.get_metadata(kb_name)
+                except Exception:
+                    continue
+
+                owner = metadata.get("owner") if isinstance(metadata, dict) else None
+                if (
+                    isinstance(owner, dict)
+                    and owner.get("type") == "notebook_sources"
+                    and str(owner.get("notebook_id") or "").strip() == notebook_id
+                ):
+                    to_delete.add(kb_name)
+
+            for kb_name in sorted(to_delete):
+                kb_manager.delete_knowledge_base(kb_name, confirm=True)
         except Exception as e:
             # Log error but don't fail the deletion
             print(f"Warning: Failed to clean up sources KB for {notebook_id}: {e}")

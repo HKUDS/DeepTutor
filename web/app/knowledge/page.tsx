@@ -19,7 +19,14 @@ import { apiUrl, wsUrl } from "@/lib/api";
 
 interface KnowledgeBase {
   name: string;
+  display_name?: string;
   is_default: boolean;
+  system_managed?: boolean;
+  owner?: {
+    type?: string;
+    notebook_id?: string;
+    notebook_name?: string;
+  } | null;
   statistics: {
     raw_documents: number;
     images: number;
@@ -625,7 +632,7 @@ export default function KnowledgePage() {
                   </div>
                   <div>
                     <h3 className="font-bold text-slate-900 dark:text-slate-100">
-                      {kb.name}
+                      {kb.display_name || kb.name}
                     </h3>
                     {kb.is_default && (
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[10px] font-bold uppercase tracking-wide border border-blue-100 dark:border-blue-800 mt-1">

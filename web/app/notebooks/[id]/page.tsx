@@ -73,7 +73,14 @@ interface Notebook {
 
 interface KnowledgeBase {
     name: string;
+    display_name?: string;
     is_default?: boolean;
+    system_managed?: boolean;
+    owner?: {
+        type?: string;
+        notebook_id?: string;
+        notebook_name?: string;
+    } | null;
 }
 
 interface PptStyleTemplate {
@@ -1234,8 +1241,13 @@ export default function NotebookDetailPage() {
             const res = await fetch(apiUrl("/api/v1/knowledge/list"));
             const data = await res.json();
             const filtered = (data || []).filter(
-                (kb: KnowledgeBase) =>
-                    !(kb.name.startsWith("notebook_") && kb.name.endsWith("_sources"))
+                (kb: KnowledgeBase) => {
+                    const systemManagedNotebookSources =
+                        kb.system_managed && kb.owner?.type === "notebook_sources";
+                    const legacyNotebookSources =
+                        kb.name.startsWith("notebook_") && kb.name.endsWith("_sources");
+                    return !(systemManagedNotebookSources || legacyNotebookSources);
+                }
             );
             setKbs(filtered);
             if (filtered.length > 0) {
@@ -1338,7 +1350,7 @@ export default function NotebookDetailPage() {
     // Check if sources KB is ready for querying
     const checkSourcesKbStatus = async (): Promise<boolean> => {
         try {
-            const res = await fetch(apiUrl(`/api/v1/notebooks/${notebookId}/sources_kb_status`));
+            const res = await fetch(apiUrl(`/api/v1/notebook/${notebookId}/sources_kb_status`));
             if (!res.ok) return true; // Assume ready if check fails
             const data = await res.json();
             return data.ready === true;
@@ -3189,7 +3201,7 @@ export default function NotebookDetailPage() {
                                 <option value="">不使用知识库</option>
                                 {kbs.map((kb) => (
                                     <option key={kb.name} value={kb.name}>
-                                        {kb.name}
+                                        {kb.display_name || kb.name}
                                     </option>
                                 ))}
                             </select>
@@ -4018,10 +4030,16 @@ export default function NotebookDetailPage() {
                                             onChange={(e) => {
                                                 setSelectedKb(e.target.value);
                                                 if (e.target.value) {
+                                                    const selectedKbInfo = kbs.find(
+                                                        (kb) => kb.name === e.target.value
+                                                    );
                                                     const newSource: Source = {
                                                         id: `kb-${Date.now()}`,
                                                         type: "kb",
-                                                        title: e.target.value,
+                                                        title:
+                                                            selectedKbInfo?.display_name ||
+                                                            selectedKbInfo?.name ||
+                                                            e.target.value,
                                                         selected: true,
                                                     };
                                                     setHasSessionActivity(true);
@@ -4033,7 +4051,7 @@ export default function NotebookDetailPage() {
                                             <option value="">选择知识库...</option>
                                             {kbs.map((kb) => (
                                                 <option key={kb.name} value={kb.name}>
-                                                    {kb.name}
+                                                    {kb.display_name || kb.name}
                                                 </option>
                                             ))}
                                         </select>

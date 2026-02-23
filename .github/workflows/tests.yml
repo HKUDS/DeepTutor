@@ -49,7 +49,7 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          pytest tests/ -v --tb=short --cov=src --cov-report=xml --cov-report=term-missing
+          pytest tests -q --tb=short --cov=src --cov-report=xml --cov-report=term-missing
         env:
           PYTHONPATH: ${{ github.workspace }}
 

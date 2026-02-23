@@ -166,6 +166,9 @@ async def test_embeddings_connection():
 
     try:
         embedding_config = get_embedding_config()
+        
+        from src.services.embedding import reset_embedding_client
+        reset_embedding_client()
         embedding_client = get_embedding_client()
 
         model = embedding_config.model

@@ -201,7 +201,7 @@ RAGAnything 处理 PDF → Chunking → Embedding → 存储
 
 ```bash
 cd /Users/bytedance/DeepTutor-1-source-ingest
-python3 test_source_ingest.py
+python manual_tests/source_ingest_check.py
 ```
 
 测试内容：

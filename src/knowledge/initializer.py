@@ -152,9 +152,11 @@ class KnowledgeBaseInitializer:
         # Create metadata file
         metadata = {
             "name": self.kb_name,
+            "display_name": self.kb_name,
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "description": f"Knowledge base: {self.kb_name}",
             "version": "1.0",
+            "system_managed": False,
         }
 
         metadata_file = self.kb_dir / "metadata.json"

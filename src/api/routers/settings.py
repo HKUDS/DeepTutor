@@ -801,12 +801,13 @@ async def test_single_service(service: Literal["llm", "embedding", "tts"]):
 
     elif service == "embedding":
         try:
-            from src.services.embedding import get_embedding_client
+            from src.services.embedding import get_embedding_client, reset_embedding_client
 
             embedding_config = get_embedding_config()
             result["model"] = embedding_config.model
 
             # Actually test embedding with a simple text
+            reset_embedding_client()
             embedding_client = get_embedding_client()
             embeddings = await embedding_client.embed(["Test embedding"])
             if embeddings and len(embeddings) > 0:

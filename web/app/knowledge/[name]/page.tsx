@@ -21,6 +21,7 @@ import Modal from "@/components/ui/Modal";
 
 interface KnowledgeBaseInfo {
     name: string;
+    display_name?: string;
     is_default: boolean;
     statistics: {
         raw_documents: number;
@@ -32,9 +33,11 @@ interface KnowledgeBaseInfo {
 
 interface KbFile {
     name: string;
+    display_name?: string;
     size: number;
     modified_at: string;
-    status: "indexed" | "pending";
+    status: "indexed" | "processing" | "failed" | "pending";
+    error?: string;
 }
 
 export default function KnowledgeBaseDetailPage() {
@@ -164,7 +167,8 @@ export default function KnowledgeBaseDetailPage() {
     };
 
     const filteredFiles = files.filter((f) =>
-        f.name.toLowerCase().includes(searchTerm.toLowerCase())
+        f.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (f.display_name || "").toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     const formatSize = (bytes: number) => {
@@ -214,7 +218,7 @@ export default function KnowledgeBaseDetailPage() {
                     </button>
                     <div>
                         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-                            {kbInfo.name}
+                            {kbInfo.display_name || kbInfo.name}
                             {kbInfo.is_default && (
                                 <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-xs font-bold border border-indigo-100">
                                     默认
@@ -315,7 +319,7 @@ export default function KnowledgeBaseDetailPage() {
                                                         <FileText className="w-4 h-4" />
                                                     </div>
                                                     <div className="font-medium text-slate-900 group-hover:text-indigo-600 transition-colors truncate max-w-sm">
-                                                        {file.name}
+                                                        {file.display_name || file.name}
                                                     </div>
                                                 </div>
                                             </td>
@@ -331,10 +335,23 @@ export default function KnowledgeBaseDetailPage() {
                                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                                                         已索引
                                                     </span>
+                                                ) : file.status === "processing" ? (
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                                                        处理中
+                                                    </span>
+                                                ) : file.status === "failed" ? (
+                                                    <span
+                                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-100 cursor-help"
+                                                        title={file.error || "处理失败"}
+                                                    >
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                                                        失败
+                                                    </span>
                                                 ) : (
                                                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-100">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                                                        处理中
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                                        待处理
                                                     </span>
                                                 )}
                                             </td>

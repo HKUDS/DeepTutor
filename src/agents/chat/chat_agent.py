@@ -11,6 +11,7 @@ This agent provides:
 Uses the unified LLM factory from BaseAgent for both cloud and local LLM support.
 """
 
+import asyncio
 from pathlib import Path
 import sys
 from typing import Any, AsyncGenerator
@@ -214,7 +215,7 @@ class ChatAgent(BaseAgent):
         sources_kb_name: str | None = None,
         enable_rag: bool = False,
         enable_web_search: bool = False,
-    ) -> tuple[str, dict[str, Any]]:
+    ) -> tuple[str, dict[str, Any], list[str]]:
         """
         Retrieve context from RAG and/or Web Search.
 
@@ -236,10 +237,13 @@ class ChatAgent(BaseAgent):
         if enable_rag and kb_name:
             try:
                 self.logger.info(f"RAG search: {message[:50]}...")
-                rag_result = await rag_search(
-                    query=message,
-                    kb_name=kb_name,
-                    mode="hybrid",
+                rag_result = await asyncio.wait_for(
+                    rag_search(
+                        query=message,
+                        kb_name=kb_name,
+                        mode="hybrid",
+                    ),
+                    timeout=120,
                 )
                 rag_answer = rag_result.get("answer", "")
                 if rag_answer:
@@ -253,6 +257,9 @@ class ChatAgent(BaseAgent):
                         }
                     )
                     self.logger.info(f"RAG retrieved {len(rag_answer)} chars")
+            except asyncio.TimeoutError:
+                self.logger.warning("RAG search timed out after 120s, skipping")
+                exceptions.append("知识库检索超时: 120s")
             except Exception as e:
                 self.logger.warning(f"RAG search failed: {e}")
                 exceptions.append(f"知识库检索异常: {str(e)}")
@@ -261,10 +268,13 @@ class ChatAgent(BaseAgent):
         if sources_kb_name and sources_kb_name != kb_name:
             try:
                 self.logger.info(f"Sources KB search: {message[:50]}...")
-                sources_result = await rag_search(
-                    query=message,
-                    kb_name=sources_kb_name,
-                    mode="hybrid",
+                sources_result = await asyncio.wait_for(
+                    rag_search(
+                        query=message,
+                        kb_name=sources_kb_name,
+                        mode="hybrid",
+                    ),
+                    timeout=120,
                 )
                 sources_answer = sources_result.get("answer", "")
                 if sources_answer:
@@ -278,6 +288,9 @@ class ChatAgent(BaseAgent):
                         }
                     )
                     self.logger.info(f"Sources KB retrieved {len(sources_answer)} chars")
+            except asyncio.TimeoutError:
+                self.logger.warning("Sources KB search timed out after 120s, skipping")
+                exceptions.append("来源检索超时: 120s")
             except Exception as e:
                 self.logger.warning(f"Sources KB search failed: {e}")
                 exceptions.append(f"来源检索异常: {str(e)}")

@@ -14,7 +14,7 @@
 - `python scripts/start_web.py`: start backend + frontend together.
 - `python src/api/run_server.py`: start backend only.
 - `npm run dev --prefix web`: start frontend dev server.
-- `pytest`: run Python tests.
+- `pytest tests -q`: run Python tests (tests folder only).
 - `docker compose up --build -d`: build and run with Docker.
 
 ## Coding Style & Naming Conventions
