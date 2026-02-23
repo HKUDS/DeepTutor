@@ -1,13 +1,13 @@
-'use client'
+"use client";
 
-import CoWriterEditor from '@/components/CoWriterEditor'
-import { Edit3 } from 'lucide-react'
-import { useGlobal } from '@/context/GlobalContext'
-import { getTranslation } from '@/lib/i18n'
+import CoWriterEditor from "@/components/CoWriterEditor";
+import { Edit3 } from "lucide-react";
+import { useGlobal } from "@/context/GlobalContext";
+import { getTranslation } from "@/lib/i18n";
 
 export default function CoWriterPage() {
-  const { uiSettings } = useGlobal()
-  const t = (key: string) => getTranslation(uiSettings.language, key)
+  const { uiSettings } = useGlobal();
+  const t = (key: string) => getTranslation(uiSettings.language, key);
 
   return (
     <div className="h-screen animate-fade-in flex flex-col p-8">
@@ -27,5 +27,5 @@ export default function CoWriterPage() {
         <CoWriterEditor />
       </div>
     </div>
-  )
+  );
 }

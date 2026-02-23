@@ -1,7 +1,7 @@
-'use client'
+"use client";
 
-import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   Plus,
   Search,
@@ -13,165 +13,170 @@ import {
   Edit3,
   X,
   MoreVertical,
-} from 'lucide-react'
-import { apiUrl } from '@/lib/api'
+} from "lucide-react";
+import { apiUrl } from "@/lib/api";
 
 interface NotebookSummary {
-  id: string
-  name: string
-  description: string
-  created_at: number
-  updated_at: number
-  record_count: number
-  color: string
-  icon: string
+  id: string;
+  name: string;
+  description: string;
+  created_at: number;
+  updated_at: number;
+  record_count: number;
+  color: string;
+  icon: string;
 }
 
 const COLORS = [
-  '#3B82F6', // blue
-  '#8B5CF6', // purple
-  '#EC4899', // pink
-  '#EF4444', // red
-  '#F97316', // orange
-  '#EAB308', // yellow
-  '#22C55E', // green
-  '#14B8A6', // teal
-  '#06B6D4', // cyan
-  '#6366F1', // indigo
-]
+  "#3B82F6", // blue
+  "#8B5CF6", // purple
+  "#EC4899", // pink
+  "#EF4444", // red
+  "#F97316", // orange
+  "#EAB308", // yellow
+  "#22C55E", // green
+  "#14B8A6", // teal
+  "#06B6D4", // cyan
+  "#6366F1", // indigo
+];
 
 export default function NotebooksPage() {
-  const router = useRouter()
-  const [notebooks, setNotebooks] = useState<NotebookSummary[]>([])
-  const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
+  const router = useRouter();
+  const [notebooks, setNotebooks] = useState<NotebookSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Modal states
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [showEditModal, setShowEditModal] = useState(false)
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(
+    null,
+  );
 
   // Form states
   const [newNotebook, setNewNotebook] = useState({
-    name: '',
-    description: '',
-    color: '#3B82F6',
-  })
+    name: "",
+    description: "",
+    color: "#3B82F6",
+  });
   const [editingNotebook, setEditingNotebook] = useState<{
-    id: string
-    name: string
-    description: string
-    color: string
-  } | null>(null)
+    id: string;
+    name: string;
+    description: string;
+    color: string;
+  } | null>(null);
 
   // Context menu
   const [contextMenu, setContextMenu] = useState<{
-    id: string
-    x: number
-    y: number
-  } | null>(null)
-  const contextMenuRef = useRef<HTMLDivElement | null>(null)
+    id: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Fetch notebooks
   useEffect(() => {
-    fetchNotebooks()
-  }, [])
+    fetchNotebooks();
+  }, []);
 
   // Close context menu when clicking outside
   useEffect(() => {
-    if (!contextMenu) return
+    if (!contextMenu) return;
     const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node | null
-      if (!target) return
-      if (contextMenuRef.current?.contains(target)) return
-      setContextMenu(null)
-    }
-    document.addEventListener('pointerdown', handlePointerDown)
-    return () => document.removeEventListener('pointerdown', handlePointerDown)
-  }, [contextMenu])
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (contextMenuRef.current?.contains(target)) return;
+      setContextMenu(null);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [contextMenu]);
 
   const fetchNotebooks = async () => {
     try {
-      const res = await fetch(apiUrl('/api/v1/notebook/list'))
-      const data = await res.json()
-      setNotebooks(data.notebooks || [])
+      const res = await fetch(apiUrl("/api/v1/notebook/list"));
+      const data = await res.json();
+      setNotebooks(data.notebooks || []);
     } catch (err) {
-      console.error('Failed to fetch notebooks:', err)
+      console.error("Failed to fetch notebooks:", err);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleCreateNotebook = async () => {
-    if (!newNotebook.name.trim()) return
+    if (!newNotebook.name.trim()) return;
 
     try {
-      const res = await fetch(apiUrl('/api/v1/notebook/create'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch(apiUrl("/api/v1/notebook/create"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newNotebook),
-      })
-      const data = await res.json()
+      });
+      const data = await res.json();
       if (data.success) {
-        fetchNotebooks()
-        setShowCreateModal(false)
-        setNewNotebook({ name: '', description: '', color: '#3B82F6' })
+        fetchNotebooks();
+        setShowCreateModal(false);
+        setNewNotebook({ name: "", description: "", color: "#3B82F6" });
       }
     } catch (err) {
-      console.error('Failed to create notebook:', err)
+      console.error("Failed to create notebook:", err);
     }
-  }
+  };
 
   const handleUpdateNotebook = async () => {
-    if (!editingNotebook || !editingNotebook.name.trim()) return
+    if (!editingNotebook || !editingNotebook.name.trim()) return;
 
     try {
-      const res = await fetch(apiUrl(`/api/v1/notebook/${editingNotebook.id}`), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: editingNotebook.name,
-          description: editingNotebook.description,
-          color: editingNotebook.color,
-        }),
-      })
-      const data = await res.json()
+      const res = await fetch(
+        apiUrl(`/api/v1/notebook/${editingNotebook.id}`),
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: editingNotebook.name,
+            description: editingNotebook.description,
+            color: editingNotebook.color,
+          }),
+        },
+      );
+      const data = await res.json();
       if (data.success) {
-        fetchNotebooks()
-        setShowEditModal(false)
-        setEditingNotebook(null)
+        fetchNotebooks();
+        setShowEditModal(false);
+        setEditingNotebook(null);
       }
     } catch (err) {
-      console.error('Failed to update notebook:', err)
+      console.error("Failed to update notebook:", err);
     }
-  }
+  };
 
   const handleDeleteNotebook = async (notebookId: string) => {
     try {
       const res = await fetch(apiUrl(`/api/v1/notebook/${notebookId}`), {
-        method: 'DELETE',
-      })
-      const data = await res.json()
+        method: "DELETE",
+      });
+      const data = await res.json();
       if (data.success) {
-        fetchNotebooks()
-        setShowDeleteConfirm(null)
+        fetchNotebooks();
+        setShowDeleteConfirm(null);
       }
     } catch (err) {
-      console.error('Failed to delete notebook:', err)
+      console.error("Failed to delete notebook:", err);
     }
-  }
+  };
 
   const handleContextMenu = (e: React.MouseEvent, notebookId: string) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setContextMenu({ id: notebookId, x: e.clientX, y: e.clientY })
-  }
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ id: notebookId, x: e.clientX, y: e.clientY });
+  };
 
   const filteredNotebooks = notebooks.filter(
-    nb =>
+    (nb) =>
       nb.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      nb.description.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+      nb.description.toLowerCase().includes(searchTerm.toLowerCase()),
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-8">
@@ -183,7 +188,9 @@ export default function NotebooksPage() {
               <Book className="w-8 h-8 text-blue-600" />
               我的笔记本
             </h1>
-            <p className="text-sm text-slate-500 mt-2">创建和管理你的研究笔记本</p>
+            <p className="text-sm text-slate-500 mt-2">
+              创建和管理你的研究笔记本
+            </p>
           </div>
         </div>
 
@@ -194,7 +201,7 @@ export default function NotebooksPage() {
             type="text"
             placeholder="搜索笔记本..."
             value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none shadow-sm"
           />
         </div>
@@ -222,11 +229,11 @@ export default function NotebooksPage() {
             </button>
 
             {/* Notebook Cards */}
-            {filteredNotebooks.map(nb => (
+            {filteredNotebooks.map((nb) => (
               <div
                 key={nb.id}
                 onClick={() => router.push(`/notebooks/${nb.id}`)}
-                onContextMenu={e => handleContextMenu(e, nb.id)}
+                onContextMenu={(e) => handleContextMenu(e, nb.id)}
                 className="group relative h-48 rounded-2xl bg-white border border-slate-200 hover:border-slate-300 hover:shadow-lg transition-all cursor-pointer overflow-hidden"
               >
                 {/* Color Bar */}
@@ -249,9 +256,13 @@ export default function NotebooksPage() {
                       <BookOpen className="w-5 h-5" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-slate-900 truncate">{nb.name}</h3>
+                      <h3 className="font-semibold text-slate-900 truncate">
+                        {nb.name}
+                      </h3>
                       {nb.description && (
-                        <p className="text-sm text-slate-500 truncate mt-0.5">{nb.description}</p>
+                        <p className="text-sm text-slate-500 truncate mt-0.5">
+                          {nb.description}
+                        </p>
                       )}
                     </div>
                   </div>
@@ -275,11 +286,15 @@ export default function NotebooksPage() {
                 {/* Hover Actions */}
                 <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                   <button
-                    onClick={e => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      const rect = e.currentTarget.getBoundingClientRect()
-                      setContextMenu({ id: nb.id, x: rect.left, y: rect.bottom + 4 })
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      setContextMenu({
+                        id: nb.id,
+                        x: rect.left,
+                        y: rect.bottom + 4,
+                      });
                     }}
                     className="p-1.5 rounded-lg bg-white/80 hover:bg-white border border-slate-200 shadow-sm"
                   >
@@ -306,21 +321,21 @@ export default function NotebooksPage() {
           ref={contextMenuRef}
           className="fixed z-50 bg-white rounded-xl shadow-lg border border-slate-200 py-2 min-w-[140px]"
           style={{ top: contextMenu.y, left: contextMenu.x }}
-          onClick={e => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
           <button
             onClick={() => {
-              const nb = notebooks.find(n => n.id === contextMenu.id)
+              const nb = notebooks.find((n) => n.id === contextMenu.id);
               if (nb) {
                 setEditingNotebook({
                   id: nb.id,
                   name: nb.name,
                   description: nb.description,
                   color: nb.color,
-                })
-                setShowEditModal(true)
+                });
+                setShowEditModal(true);
               }
-              setContextMenu(null)
+              setContextMenu(null);
             }}
             className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
           >
@@ -329,8 +344,8 @@ export default function NotebooksPage() {
           </button>
           <button
             onClick={() => {
-              setShowDeleteConfirm(contextMenu.id)
-              setContextMenu(null)
+              setShowDeleteConfirm(contextMenu.id);
+              setContextMenu(null);
             }}
             className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
           >
@@ -356,11 +371,15 @@ export default function NotebooksPage() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">名称</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  名称
+                </label>
                 <input
                   type="text"
                   value={newNotebook.name}
-                  onChange={e => setNewNotebook({ ...newNotebook, name: e.target.value })}
+                  onChange={(e) =>
+                    setNewNotebook({ ...newNotebook, name: e.target.value })
+                  }
                   placeholder="输入笔记本名称"
                   className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                   autoFocus
@@ -373,7 +392,7 @@ export default function NotebooksPage() {
                 </label>
                 <textarea
                   value={newNotebook.description}
-                  onChange={e =>
+                  onChange={(e) =>
                     setNewNotebook({
                       ...newNotebook,
                       description: e.target.value,
@@ -386,16 +405,18 @@ export default function NotebooksPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">颜色</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  颜色
+                </label>
                 <div className="flex gap-2 flex-wrap">
-                  {COLORS.map(color => (
+                  {COLORS.map((color) => (
                     <button
                       key={color}
                       onClick={() => setNewNotebook({ ...newNotebook, color })}
                       className={`w-8 h-8 rounded-full transition-all ${
                         newNotebook.color === color
-                          ? 'ring-2 ring-offset-2 ring-slate-400 scale-110'
-                          : 'hover:scale-110'
+                          ? "ring-2 ring-offset-2 ring-slate-400 scale-110"
+                          : "hover:scale-110"
                       }`}
                       style={{ backgroundColor: color }}
                     />
@@ -431,8 +452,8 @@ export default function NotebooksPage() {
               <h2 className="text-xl font-bold text-slate-900">编辑笔记本</h2>
               <button
                 onClick={() => {
-                  setShowEditModal(false)
-                  setEditingNotebook(null)
+                  setShowEditModal(false);
+                  setEditingNotebook(null);
                 }}
                 className="p-2 hover:bg-slate-100 rounded-lg"
               >
@@ -442,11 +463,13 @@ export default function NotebooksPage() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">名称</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  名称
+                </label>
                 <input
                   type="text"
                   value={editingNotebook.name}
-                  onChange={e =>
+                  onChange={(e) =>
                     setEditingNotebook({
                       ...editingNotebook,
                       name: e.target.value,
@@ -457,10 +480,12 @@ export default function NotebooksPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">描述</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  描述
+                </label>
                 <textarea
                   value={editingNotebook.description}
-                  onChange={e =>
+                  onChange={(e) =>
                     setEditingNotebook({
                       ...editingNotebook,
                       description: e.target.value,
@@ -472,16 +497,20 @@ export default function NotebooksPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">颜色</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  颜色
+                </label>
                 <div className="flex gap-2 flex-wrap">
-                  {COLORS.map(color => (
+                  {COLORS.map((color) => (
                     <button
                       key={color}
-                      onClick={() => setEditingNotebook({ ...editingNotebook, color })}
+                      onClick={() =>
+                        setEditingNotebook({ ...editingNotebook, color })
+                      }
                       className={`w-8 h-8 rounded-full transition-all ${
                         editingNotebook.color === color
-                          ? 'ring-2 ring-offset-2 ring-slate-400 scale-110'
-                          : 'hover:scale-110'
+                          ? "ring-2 ring-offset-2 ring-slate-400 scale-110"
+                          : "hover:scale-110"
                       }`}
                       style={{ backgroundColor: color }}
                     />
@@ -493,8 +522,8 @@ export default function NotebooksPage() {
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => {
-                  setShowEditModal(false)
-                  setEditingNotebook(null)
+                  setShowEditModal(false);
+                  setEditingNotebook(null);
                 }}
                 className="flex-1 px-4 py-3 border border-slate-200 rounded-xl text-slate-700 font-medium hover:bg-slate-50 transition-colors"
               >
@@ -520,7 +549,9 @@ export default function NotebooksPage() {
               <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
                 <Trash2 className="w-6 h-6 text-red-600" />
               </div>
-              <h3 className="text-lg font-bold text-slate-900 mb-2">确认删除？</h3>
+              <h3 className="text-lg font-bold text-slate-900 mb-2">
+                确认删除？
+              </h3>
               <p className="text-slate-500 text-sm mb-6">
                 删除后无法恢复，笔记本中的所有记录都将被删除。
               </p>
@@ -544,5 +575,5 @@ export default function NotebooksPage() {
         </div>
       )}
     </div>
-  )
+  );
 }

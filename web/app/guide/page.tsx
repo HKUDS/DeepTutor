@@ -1,6 +1,6 @@
-'use client'
+"use client";
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from "react";
 import {
   BookOpen,
   MessageSquare,
@@ -17,169 +17,175 @@ import {
   ChevronLeft,
   X,
   Check,
-} from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
-import 'katex/dist/katex.min.css'
-import { apiUrl } from '@/lib/api'
-import { processLatexContent } from '@/lib/latex'
+} from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
+import { apiUrl } from "@/lib/api";
+import { processLatexContent } from "@/lib/latex";
 
 interface Notebook {
-  id: string
-  name: string
-  description: string
-  record_count: number
-  color: string
+  id: string;
+  name: string;
+  description: string;
+  record_count: number;
+  color: string;
 }
 
 interface NotebookRecord {
-  id: string
-  title: string
-  user_query: string
-  output: string
-  type: string
+  id: string;
+  title: string;
+  user_query: string;
+  output: string;
+  type: string;
 }
 
 interface SelectedRecord extends NotebookRecord {
-  notebookId: string
-  notebookName: string
+  notebookId: string;
+  notebookName: string;
 }
 
 interface KnowledgePoint {
-  knowledge_title: string
-  knowledge_summary: string
-  user_difficulty: string
+  knowledge_title: string;
+  knowledge_summary: string;
+  user_difficulty: string;
 }
 
 interface ChatMessage {
-  id: string
-  role: 'user' | 'assistant' | 'system'
-  content: string
-  timestamp?: number
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  timestamp?: number;
 }
 
 interface SessionState {
-  session_id: string | null
-  notebook_id: string | null
-  notebook_name: string
-  knowledge_points: KnowledgePoint[]
-  current_index: number
-  current_html: string
-  status: 'idle' | 'initialized' | 'learning' | 'completed'
-  progress: number
-  summary: string
+  session_id: string | null;
+  notebook_id: string | null;
+  notebook_name: string;
+  knowledge_points: KnowledgePoint[];
+  current_index: number;
+  current_html: string;
+  status: "idle" | "initialized" | "learning" | "completed";
+  progress: number;
+  summary: string;
 }
 
 export default function GuidePage() {
   // Multi-notebook selection (same as ideagen)
-  const [notebooks, setNotebooks] = useState<Notebook[]>([])
-  const [expandedNotebooks, setExpandedNotebooks] = useState<Set<string>>(new Set())
-  const [notebookRecordsMap, setNotebookRecordsMap] = useState<Map<string, NotebookRecord[]>>(
-    new Map()
-  )
-  const [selectedRecords, setSelectedRecords] = useState<Map<string, SelectedRecord>>(new Map()) // recordId -> record with notebook info
-  const [loadingNotebooks, setLoadingNotebooks] = useState(true)
-  const [loadingRecordsFor, setLoadingRecordsFor] = useState<Set<string>>(new Set())
+  const [notebooks, setNotebooks] = useState<Notebook[]>([]);
+  const [expandedNotebooks, setExpandedNotebooks] = useState<Set<string>>(
+    new Set(),
+  );
+  const [notebookRecordsMap, setNotebookRecordsMap] = useState<
+    Map<string, NotebookRecord[]>
+  >(new Map());
+  const [selectedRecords, setSelectedRecords] = useState<
+    Map<string, SelectedRecord>
+  >(new Map()); // recordId -> record with notebook info
+  const [loadingNotebooks, setLoadingNotebooks] = useState(true);
+  const [loadingRecordsFor, setLoadingRecordsFor] = useState<Set<string>>(
+    new Set(),
+  );
 
   // Session state
   const [sessionState, setSessionState] = useState<SessionState>({
     session_id: null,
     notebook_id: null,
-    notebook_name: '',
+    notebook_name: "",
     knowledge_points: [],
     current_index: -1,
-    current_html: '',
-    status: 'idle',
+    current_html: "",
+    status: "idle",
     progress: 0,
-    summary: '',
-  })
+    summary: "",
+  });
 
   // Chat state
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
-  const [inputMessage, setInputMessage] = useState('')
-  const [sendingMessage, setSendingMessage] = useState(false)
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [inputMessage, setInputMessage] = useState("");
+  const [sendingMessage, setSendingMessage] = useState(false);
 
   // UI state
-  const [showDebugModal, setShowDebugModal] = useState(false)
-  const [debugDescription, setDebugDescription] = useState('')
-  const [fixingHtml, setFixingHtml] = useState(false)
+  const [showDebugModal, setShowDebugModal] = useState(false);
+  const [debugDescription, setDebugDescription] = useState("");
+  const [fixingHtml, setFixingHtml] = useState(false);
 
   // Sidebar state
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [sidebarWide, setSidebarWide] = useState(false) // false: 1:3, true: 3:1
-  const [isLoading, setIsLoading] = useState(false)
-  const [loadingMessage, setLoadingMessage] = useState('')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarWide, setSidebarWide] = useState(false); // false: 1:3, true: 3:1
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState("");
 
-  const chatContainerRef = useRef<HTMLDivElement>(null)
-  const htmlFrameRef = useRef<HTMLIFrameElement>(null)
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const htmlFrameRef = useRef<HTMLIFrameElement>(null);
 
   // Load notebooks
   useEffect(() => {
-    fetchNotebooks()
-  }, [])
+    fetchNotebooks();
+  }, []);
 
   // Auto-scroll chat
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTo({
         top: chatContainerRef.current.scrollHeight,
-        behavior: 'smooth',
-      })
+        behavior: "smooth",
+      });
     }
-  }, [chatMessages])
+  }, [chatMessages]);
 
   // Helper function to inject KaTeX into HTML if needed
   const injectKaTeX = (html: string): string => {
     // Check if KaTeX is already included (case-insensitive)
-    const htmlLower = html.toLowerCase()
+    const htmlLower = html.toLowerCase();
     const hasKaTeX =
-      htmlLower.includes('katex.min.css') ||
-      htmlLower.includes('katex.min.js') ||
-      htmlLower.includes('katex@') ||
-      htmlLower.includes('cdn.jsdelivr.net/npm/katex') ||
-      htmlLower.includes('unpkg.com/katex')
+      htmlLower.includes("katex.min.css") ||
+      htmlLower.includes("katex.min.js") ||
+      htmlLower.includes("katex@") ||
+      htmlLower.includes("cdn.jsdelivr.net/npm/katex") ||
+      htmlLower.includes("unpkg.com/katex");
 
     if (hasKaTeX) {
-      console.log('KaTeX already included in HTML, skipping injection')
-      return html
+      console.log("KaTeX already included in HTML, skipping injection");
+      return html;
     }
 
     // KaTeX CDN links (using version 0.16.9 for compatibility)
     const katexCSS =
-      '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">'
+      '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">';
     const katexJS =
-      '<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>'
+      '<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>';
     const katexAutoRender =
-      '<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgURycqtZ117n7w6ODWgRrA7TlVzRsFtwW3ZxUo8h4w20Z5J3d3xjfcw" crossorigin="anonymous" onload="renderMathInElement(document.body);"></script>'
+      '<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgURycqtZ117n7w6ODWgRrA7TlVzRsFtwW3ZxUo8h4w20Z5J3d3xjfcw" crossorigin="anonymous" onload="renderMathInElement(document.body);"></script>';
 
-    const katexInjection = `  ${katexCSS}\n  ${katexJS}\n  ${katexAutoRender}`
+    const katexInjection = `  ${katexCSS}\n  ${katexJS}\n  ${katexAutoRender}`;
 
     // Try to inject into </head> section (most common case)
-    if (html.includes('</head>')) {
-      console.log('Injecting KaTeX before </head> tag')
-      return html.replace('</head>', `${katexInjection}\n</head>`)
+    if (html.includes("</head>")) {
+      console.log("Injecting KaTeX before </head> tag");
+      return html.replace("</head>", `${katexInjection}\n</head>`);
     }
 
     // If no </head> tag, try to inject after <head> tag
-    if (html.includes('<head>')) {
-      console.log('Injecting KaTeX after <head> tag')
+    if (html.includes("<head>")) {
+      console.log("Injecting KaTeX after <head> tag");
       // Use regex to handle <head> with attributes
-      return html.replace(/<head([^>]*)>/i, `<head$1>\n${katexInjection}`)
+      return html.replace(/<head([^>]*)>/i, `<head$1>\n${katexInjection}`);
     }
 
     // If HTML structure exists but no <head>, add it
-    if (html.includes('<html')) {
-      console.log('Adding <head> section with KaTeX')
+    if (html.includes("<html")) {
+      console.log("Adding <head> section with KaTeX");
       return html.replace(
         /(<html[^>]*>)/i,
-        `$1\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n${katexInjection}\n</head>`
-      )
+        `$1\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n${katexInjection}\n</head>`,
+      );
     }
 
     // If no HTML structure, wrap it with full HTML document
-    console.log('Wrapping content with full HTML document including KaTeX')
+    console.log("Wrapping content with full HTML document including KaTeX");
     return `<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -190,584 +196,609 @@ ${katexInjection}
 <body>
 ${html}
 </body>
-</html>`
-  }
+</html>`;
+  };
 
   // Update HTML iframe
   useEffect(() => {
     if (!sessionState.current_html) {
-      return
+      return;
     }
 
     // Use setTimeout to ensure DOM is updated
     const timer = setTimeout(() => {
       if (htmlFrameRef.current) {
-        const iframe = htmlFrameRef.current
-        console.log('Updating iframe with HTML, length:', sessionState.current_html.length)
+        const iframe = htmlFrameRef.current;
+        console.log(
+          "Updating iframe with HTML, length:",
+          sessionState.current_html.length,
+        );
 
         // Inject KaTeX support if needed
-        const htmlWithKaTeX = injectKaTeX(sessionState.current_html)
+        const htmlWithKaTeX = injectKaTeX(sessionState.current_html);
 
         // Use srcdoc attribute (most reliable method)
         try {
-          iframe.srcdoc = htmlWithKaTeX
-          console.log('Iframe srcdoc set successfully with KaTeX support')
+          iframe.srcdoc = htmlWithKaTeX;
+          console.log("Iframe srcdoc set successfully with KaTeX support");
         } catch (e) {
-          console.warn('srcdoc not supported, using contentDocument:', e)
+          console.warn("srcdoc not supported, using contentDocument:", e);
           // Fallback to contentDocument if srcdoc not supported
           const handleLoad = () => {
             try {
-              const doc = iframe.contentDocument || iframe.contentWindow?.document
+              const doc =
+                iframe.contentDocument || iframe.contentWindow?.document;
               if (doc) {
-                doc.open()
-                doc.write(htmlWithKaTeX)
-                doc.close()
-                console.log('Iframe content written via contentDocument with KaTeX support')
+                doc.open();
+                doc.write(htmlWithKaTeX);
+                doc.close();
+                console.log(
+                  "Iframe content written via contentDocument with KaTeX support",
+                );
               }
             } catch (err) {
-              console.error('Failed to write to iframe:', err)
+              console.error("Failed to write to iframe:", err);
             }
-          }
+          };
 
-          if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
-            handleLoad()
+          if (
+            iframe.contentDocument &&
+            iframe.contentDocument.readyState === "complete"
+          ) {
+            handleLoad();
           } else {
-            iframe.onload = handleLoad
+            iframe.onload = handleLoad;
           }
         }
       } else {
-        console.warn('htmlFrameRef.current is null')
+        console.warn("htmlFrameRef.current is null");
       }
-    }, 100)
+    }, 100);
 
-    return () => clearTimeout(timer)
-  }, [sessionState.current_html, sessionState.current_index])
+    return () => clearTimeout(timer);
+  }, [sessionState.current_html, sessionState.current_index]);
 
   const addLoadingMessage = (message: string) => {
     const loadingMsg: ChatMessage = {
       id: `loading-${Date.now()}`,
-      role: 'system',
+      role: "system",
       content: `⏳ ${message}`,
       timestamp: Date.now(),
-    }
-    setChatMessages(prev => [...prev, loadingMsg])
-    return loadingMsg.id
-  }
+    };
+    setChatMessages((prev) => [...prev, loadingMsg]);
+    return loadingMsg.id;
+  };
 
   const removeLoadingMessage = (id: string) => {
-    setChatMessages(prev => prev.filter(msg => msg.id !== id))
-  }
+    setChatMessages((prev) => prev.filter((msg) => msg.id !== id));
+  };
 
   const fetchNotebooks = async () => {
     try {
-      const res = await fetch(apiUrl('/api/v1/notebook/list'))
-      const data = await res.json()
+      const res = await fetch(apiUrl("/api/v1/notebook/list"));
+      const data = await res.json();
       const notebooksWithRecords = (data.notebooks || []).filter(
-        (nb: Notebook) => nb.record_count > 0
-      )
-      setNotebooks(notebooksWithRecords)
-      setLoadingNotebooks(false)
+        (nb: Notebook) => nb.record_count > 0,
+      );
+      setNotebooks(notebooksWithRecords);
+      setLoadingNotebooks(false);
     } catch (err) {
-      console.error('Failed to fetch notebooks:', err)
-      setLoadingNotebooks(false)
+      console.error("Failed to fetch notebooks:", err);
+      setLoadingNotebooks(false);
     }
-  }
+  };
 
   const fetchNotebookRecords = async (notebookId: string) => {
-    if (notebookRecordsMap.has(notebookId)) return // Already fetched
+    if (notebookRecordsMap.has(notebookId)) return; // Already fetched
 
-    setLoadingRecordsFor(prev => {
-      const newSet = new Set(prev)
-      newSet.add(notebookId)
-      return newSet
-    })
+    setLoadingRecordsFor((prev) => {
+      const newSet = new Set(prev);
+      newSet.add(notebookId);
+      return newSet;
+    });
     try {
-      const res = await fetch(apiUrl(`/api/v1/notebook/${notebookId}`))
-      const data = await res.json()
-      setNotebookRecordsMap(prev => new Map(prev).set(notebookId, data.records || []))
+      const res = await fetch(apiUrl(`/api/v1/notebook/${notebookId}`));
+      const data = await res.json();
+      setNotebookRecordsMap((prev) =>
+        new Map(prev).set(notebookId, data.records || []),
+      );
     } catch (err) {
-      console.error('Failed to fetch notebook records:', err)
+      console.error("Failed to fetch notebook records:", err);
     } finally {
-      setLoadingRecordsFor(prev => {
-        const newSet = new Set(prev)
-        newSet.delete(notebookId)
-        return newSet
-      })
+      setLoadingRecordsFor((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(notebookId);
+        return newSet;
+      });
     }
-  }
+  };
 
   const toggleNotebookExpanded = (notebookId: string) => {
-    const notebook = notebooks.find(nb => nb.id === notebookId)
-    if (!notebook) return
+    const notebook = notebooks.find((nb) => nb.id === notebookId);
+    if (!notebook) return;
 
-    setExpandedNotebooks(prev => {
-      const newSet = new Set(prev)
+    setExpandedNotebooks((prev) => {
+      const newSet = new Set(prev);
       if (newSet.has(notebookId)) {
-        newSet.delete(notebookId)
+        newSet.delete(notebookId);
       } else {
-        newSet.add(notebookId)
+        newSet.add(notebookId);
         // Fetch records when expanding
-        fetchNotebookRecords(notebookId)
+        fetchNotebookRecords(notebookId);
       }
-      return newSet
-    })
-  }
+      return newSet;
+    });
+  };
 
   const toggleRecordSelection = (
     record: NotebookRecord,
     notebookId: string,
-    notebookName: string
+    notebookName: string,
   ) => {
-    setSelectedRecords(prev => {
-      const newMap = new Map(prev)
+    setSelectedRecords((prev) => {
+      const newMap = new Map(prev);
       if (newMap.has(record.id)) {
-        newMap.delete(record.id)
+        newMap.delete(record.id);
       } else {
-        newMap.set(record.id, { ...record, notebookId, notebookName })
+        newMap.set(record.id, { ...record, notebookId, notebookName });
       }
-      return newMap
-    })
-  }
+      return newMap;
+    });
+  };
 
   const selectAllFromNotebook = (notebookId: string, notebookName: string) => {
-    const records = notebookRecordsMap.get(notebookId) || []
-    setSelectedRecords(prev => {
-      const newMap = new Map(prev)
-      records.forEach(r => newMap.set(r.id, { ...r, notebookId, notebookName }))
-      return newMap
-    })
-  }
+    const records = notebookRecordsMap.get(notebookId) || [];
+    setSelectedRecords((prev) => {
+      const newMap = new Map(prev);
+      records.forEach((r) =>
+        newMap.set(r.id, { ...r, notebookId, notebookName }),
+      );
+      return newMap;
+    });
+  };
 
   const deselectAllFromNotebook = (notebookId: string) => {
-    const records = notebookRecordsMap.get(notebookId) || []
-    const recordIds = new Set(records.map(r => r.id))
-    setSelectedRecords(prev => {
-      const newMap = new Map(prev)
-      recordIds.forEach(id => newMap.delete(id))
-      return newMap
-    })
-  }
+    const records = notebookRecordsMap.get(notebookId) || [];
+    const recordIds = new Set(records.map((r) => r.id));
+    setSelectedRecords((prev) => {
+      const newMap = new Map(prev);
+      recordIds.forEach((id) => newMap.delete(id));
+      return newMap;
+    });
+  };
 
   const clearAllSelections = () => {
-    setSelectedRecords(new Map())
-  }
+    setSelectedRecords(new Map());
+  };
 
   const getTypeColor = (type: string) => {
     switch (type) {
-      case 'solve':
-        return 'bg-blue-100 text-blue-700 border-blue-200'
-      case 'question':
-        return 'bg-purple-100 text-purple-700 border-purple-200'
-      case 'research':
-        return 'bg-emerald-100 text-emerald-700 border-emerald-200'
-      case 'co_writer':
-        return 'bg-amber-100 text-amber-700 border-amber-200'
+      case "solve":
+        return "bg-blue-100 text-blue-700 border-blue-200";
+      case "question":
+        return "bg-purple-100 text-purple-700 border-purple-200";
+      case "research":
+        return "bg-emerald-100 text-emerald-700 border-emerald-200";
+      case "co_writer":
+        return "bg-amber-100 text-amber-700 border-amber-200";
       default:
-        return 'bg-slate-100 text-slate-700 border-slate-200'
+        return "bg-slate-100 text-slate-700 border-slate-200";
     }
-  }
+  };
 
   const handleCreateSession = async () => {
-    if (selectedRecords.size === 0) return
+    if (selectedRecords.size === 0) return;
 
-    setIsLoading(true)
-    setLoadingMessage('Analyzing notes and generating learning plan...')
-    const loadingId = addLoadingMessage('Analyzing notes and generating learning plan...')
+    setIsLoading(true);
+    setLoadingMessage("Analyzing notes and generating learning plan...");
+    const loadingId = addLoadingMessage(
+      "Analyzing notes and generating learning plan...",
+    );
 
     try {
       // Send records directly for cross-notebook support
-      const recordsArray = Array.from(selectedRecords.values()).map(r => ({
+      const recordsArray = Array.from(selectedRecords.values()).map((r) => ({
         id: r.id,
         title: r.title,
         user_query: r.user_query,
         output: r.output,
         type: r.type,
-      }))
+      }));
 
-      const res = await fetch(apiUrl('/api/v1/guide/create_session'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch(apiUrl("/api/v1/guide/create_session"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ records: recordsArray }),
-      })
-      const data = await res.json()
+      });
+      const data = await res.json();
 
-      removeLoadingMessage(loadingId)
-      setIsLoading(false)
-      setLoadingMessage('')
+      removeLoadingMessage(loadingId);
+      setIsLoading(false);
+      setLoadingMessage("");
 
       if (data.success) {
         // Get notebook names from selected records
         const notebookNames = Array.from(
-          new Set(Array.from(selectedRecords.values()).map(r => r.notebookName))
-        )
+          new Set(
+            Array.from(selectedRecords.values()).map((r) => r.notebookName),
+          ),
+        );
         const notebookName =
           notebookNames.length === 1
             ? notebookNames[0]
-            : `跨笔记本（${notebookNames.length} 个笔记本，${selectedRecords.size} 条记录）`
+            : `跨笔记本（${notebookNames.length} 个笔记本，${selectedRecords.size} 条记录）`;
 
         setSessionState({
           session_id: data.session_id,
-          notebook_id: 'cross_notebook',
+          notebook_id: "cross_notebook",
           notebook_name: notebookName,
           knowledge_points: data.knowledge_points || [],
           current_index: -1,
-          current_html: '',
-          status: 'initialized',
+          current_html: "",
+          status: "initialized",
           progress: 0,
-          summary: '',
-        })
+          summary: "",
+        });
 
         // Add system message: show learning plan
-        const planMessage = `📚 Learning plan generated with **${data.total_points}** knowledge points:\n\n${data.knowledge_points.map((kp: KnowledgePoint, idx: number) => `${idx + 1}. ${kp.knowledge_title}`).join('\n')}\n\nClick "Start Learning" button above to begin!`
+        const planMessage = `📚 Learning plan generated with **${data.total_points}** knowledge points:\n\n${data.knowledge_points.map((kp: KnowledgePoint, idx: number) => `${idx + 1}. ${kp.knowledge_title}`).join("\n")}\n\nClick "Start Learning" button above to begin!`;
         setChatMessages([
           {
-            id: 'plan',
-            role: 'system',
+            id: "plan",
+            role: "system",
             content: planMessage,
             timestamp: Date.now(),
           },
-        ])
+        ]);
       } else {
-        setChatMessages(prev => [
+        setChatMessages((prev) => [
           ...prev,
           {
             id: `error-${Date.now()}`,
-            role: 'system',
+            role: "system",
             content: `❌ Failed to create session: ${data.error}`,
             timestamp: Date.now(),
           },
-        ])
+        ]);
       }
     } catch (err) {
-      removeLoadingMessage(loadingId)
-      setIsLoading(false)
-      setLoadingMessage('')
-      console.error('Failed to create session:', err)
-      setChatMessages(prev => [
+      removeLoadingMessage(loadingId);
+      setIsLoading(false);
+      setLoadingMessage("");
+      console.error("Failed to create session:", err);
+      setChatMessages((prev) => [
         ...prev,
         {
           id: `error-${Date.now()}`,
-          role: 'system',
-          content: '❌ Failed to create session, please try again later',
+          role: "system",
+          content: "❌ Failed to create session, please try again later",
           timestamp: Date.now(),
         },
-      ])
+      ]);
     }
-  }
+  };
 
   const handleStartLearning = async () => {
-    if (!sessionState.session_id) return
+    if (!sessionState.session_id) return;
 
-    setIsLoading(true)
-    setLoadingMessage('Generating interactive learning page...')
-    const loadingId = addLoadingMessage('Generating interactive learning page...')
+    setIsLoading(true);
+    setLoadingMessage("Generating interactive learning page...");
+    const loadingId = addLoadingMessage(
+      "Generating interactive learning page...",
+    );
 
     try {
-      const res = await fetch(apiUrl('/api/v1/guide/start'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch(apiUrl("/api/v1/guide/start"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sessionState.session_id }),
-      })
-      const data = await res.json()
+      });
+      const data = await res.json();
 
-      removeLoadingMessage(loadingId)
-      setIsLoading(false)
-      setLoadingMessage('')
+      removeLoadingMessage(loadingId);
+      setIsLoading(false);
+      setLoadingMessage("");
 
       if (data.success) {
         // Ensure HTML exists
-        const htmlContent = data.html || ''
-        console.log('Start learning - HTML length:', htmlContent.length)
+        const htmlContent = data.html || "";
+        console.log("Start learning - HTML length:", htmlContent.length);
 
-        setSessionState(prev => ({
+        setSessionState((prev) => ({
           ...prev,
           current_index: data.current_index,
           current_html: htmlContent,
-          status: 'learning',
+          status: "learning",
           progress: data.progress || 0,
-        }))
+        }));
 
         // Add system message
-        setChatMessages(prev => [
+        setChatMessages((prev) => [
           ...prev,
           {
             id: `start-${Date.now()}`,
-            role: 'system',
-            content: data.message || 'Starting the first knowledge point',
+            role: "system",
+            content: data.message || "Starting the first knowledge point",
             timestamp: Date.now(),
           },
-        ])
+        ]);
       } else {
-        setChatMessages(prev => [
+        setChatMessages((prev) => [
           ...prev,
           {
             id: `error-${Date.now()}`,
-            role: 'system',
-            content: `❌ Failed to start learning: ${data.error || 'Unknown error'}`,
+            role: "system",
+            content: `❌ Failed to start learning: ${data.error || "Unknown error"}`,
             timestamp: Date.now(),
           },
-        ])
+        ]);
       }
     } catch (err) {
-      removeLoadingMessage(loadingId)
-      setIsLoading(false)
-      setLoadingMessage('')
-      console.error('Failed to start learning:', err)
-      setChatMessages(prev => [
+      removeLoadingMessage(loadingId);
+      setIsLoading(false);
+      setLoadingMessage("");
+      console.error("Failed to start learning:", err);
+      setChatMessages((prev) => [
         ...prev,
         {
           id: `error-${Date.now()}`,
-          role: 'system',
-          content: '❌ Failed to start learning, please try again later',
+          role: "system",
+          content: "❌ Failed to start learning, please try again later",
           timestamp: Date.now(),
         },
-      ])
+      ]);
     }
-  }
+  };
 
   const handleNextKnowledge = async () => {
-    if (!sessionState.session_id) return
+    if (!sessionState.session_id) return;
 
-    setIsLoading(true)
-    setLoadingMessage('正在生成下一个知识点...')
-    const loadingId = addLoadingMessage('正在生成下一个知识点...')
+    setIsLoading(true);
+    setLoadingMessage("正在生成下一个知识点...");
+    const loadingId = addLoadingMessage("正在生成下一个知识点...");
 
     try {
-      const res = await fetch(apiUrl('/api/v1/guide/next'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch(apiUrl("/api/v1/guide/next"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sessionState.session_id }),
-      })
-      const data = await res.json()
+      });
+      const data = await res.json();
 
-      removeLoadingMessage(loadingId)
-      setIsLoading(false)
-      setLoadingMessage('')
+      removeLoadingMessage(loadingId);
+      setIsLoading(false);
+      setLoadingMessage("");
 
       if (data.success) {
-        if (data.status === 'completed') {
+        if (data.status === "completed") {
           // Learning completed
-          setSessionState(prev => ({
+          setSessionState((prev) => ({
             ...prev,
-            status: 'completed',
-            summary: data.summary || '',
+            status: "completed",
+            summary: data.summary || "",
             progress: 100,
-          }))
+          }));
 
-          setChatMessages(prev => [
+          setChatMessages((prev) => [
             ...prev,
             {
               id: `complete-${Date.now()}`,
-              role: 'system',
-              content: data.message || '🎉 恭喜你完成了全部知识点！',
+              role: "system",
+              content: data.message || "🎉 恭喜你完成了全部知识点！",
               timestamp: Date.now(),
             },
-          ])
+          ]);
         } else {
           // Move to next knowledge point
-          setSessionState(prev => ({
+          setSessionState((prev) => ({
             ...prev,
             current_index: data.current_index,
-            current_html: data.html || '',
+            current_html: data.html || "",
             progress: data.progress || 0,
-          }))
+          }));
 
-          setChatMessages(prev => [
+          setChatMessages((prev) => [
             ...prev,
             {
               id: `next-${Date.now()}`,
-              role: 'system',
-              content: data.message || 'Moving to next knowledge point',
+              role: "system",
+              content: data.message || "Moving to next knowledge point",
               timestamp: Date.now(),
             },
-          ])
+          ]);
         }
       } else {
-        setChatMessages(prev => [
+        setChatMessages((prev) => [
           ...prev,
           {
             id: `error-${Date.now()}`,
-            role: 'system',
-            content: `❌ Failed to move to next: ${data.error || 'Unknown error'}`,
+            role: "system",
+            content: `❌ Failed to move to next: ${data.error || "Unknown error"}`,
             timestamp: Date.now(),
           },
-        ])
+        ]);
       }
     } catch (err) {
-      removeLoadingMessage(loadingId)
-      setIsLoading(false)
-      setLoadingMessage('')
-      console.error('Failed to move to next:', err)
-      setChatMessages(prev => [
+      removeLoadingMessage(loadingId);
+      setIsLoading(false);
+      setLoadingMessage("");
+      console.error("Failed to move to next:", err);
+      setChatMessages((prev) => [
         ...prev,
         {
           id: `error-${Date.now()}`,
-          role: 'system',
-          content: '❌ Failed to move to next, please try again later',
+          role: "system",
+          content: "❌ Failed to move to next, please try again later",
           timestamp: Date.now(),
         },
-      ])
+      ]);
     }
-  }
+  };
 
   const handleSendMessage = async () => {
-    if (!inputMessage.trim() || !sessionState.session_id || sendingMessage) return
+    if (!inputMessage.trim() || !sessionState.session_id || sendingMessage)
+      return;
 
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
-      role: 'user',
+      role: "user",
       content: inputMessage,
       timestamp: Date.now(),
-    }
+    };
 
-    setChatMessages(prev => [...prev, userMsg])
-    const userInput = inputMessage
-    setInputMessage('')
-    setSendingMessage(true)
+    setChatMessages((prev) => [...prev, userMsg]);
+    const userInput = inputMessage;
+    setInputMessage("");
+    setSendingMessage(true);
 
     // Add thinking indicator
-    const thinkingId = addLoadingMessage('Thinking...')
+    const thinkingId = addLoadingMessage("Thinking...");
 
     try {
-      const res = await fetch(apiUrl('/api/v1/guide/chat'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch(apiUrl("/api/v1/guide/chat"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           session_id: sessionState.session_id,
           message: userInput,
         }),
-      })
-      const data = await res.json()
+      });
+      const data = await res.json();
 
-      removeLoadingMessage(thinkingId)
+      removeLoadingMessage(thinkingId);
 
       if (data.success) {
-        setChatMessages(prev => [
+        setChatMessages((prev) => [
           ...prev,
           {
             id: `assistant-${Date.now()}`,
-            role: 'assistant',
-            content: data.answer || '',
+            role: "assistant",
+            content: data.answer || "",
             timestamp: Date.now(),
           },
-        ])
+        ]);
       } else {
-        setChatMessages(prev => [
+        setChatMessages((prev) => [
           ...prev,
           {
             id: `error-${Date.now()}`,
-            role: 'assistant',
-            content: `❌ Error: ${data.error || 'Failed to respond'}`,
+            role: "assistant",
+            content: `❌ Error: ${data.error || "Failed to respond"}`,
             timestamp: Date.now(),
           },
-        ])
+        ]);
       }
     } catch (err) {
-      removeLoadingMessage(thinkingId)
-      console.error('Failed to send message:', err)
-      setChatMessages(prev => [
+      removeLoadingMessage(thinkingId);
+      console.error("Failed to send message:", err);
+      setChatMessages((prev) => [
         ...prev,
         {
           id: `error-${Date.now()}`,
-          role: 'assistant',
-          content: '❌ Failed to send message, please try again later',
+          role: "assistant",
+          content: "❌ Failed to send message, please try again later",
           timestamp: Date.now(),
         },
-      ])
+      ]);
     } finally {
-      setSendingMessage(false)
+      setSendingMessage(false);
     }
-  }
+  };
 
   const handleFixHtml = async () => {
-    if (!sessionState.session_id || !debugDescription.trim() || fixingHtml) return
+    if (!sessionState.session_id || !debugDescription.trim() || fixingHtml)
+      return;
 
-    setFixingHtml(true)
-    const loadingId = addLoadingMessage('正在修复 HTML 页面...')
+    setFixingHtml(true);
+    const loadingId = addLoadingMessage("正在修复 HTML 页面...");
 
     try {
-      const res = await fetch(apiUrl('/api/v1/guide/fix_html'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch(apiUrl("/api/v1/guide/fix_html"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           session_id: sessionState.session_id,
           bug_description: debugDescription,
         }),
-      })
-      const data = await res.json()
+      });
+      const data = await res.json();
 
-      removeLoadingMessage(loadingId)
+      removeLoadingMessage(loadingId);
 
       if (data.success) {
-        setSessionState(prev => ({
+        setSessionState((prev) => ({
           ...prev,
           current_html: data.html || prev.current_html,
-        }))
-        setShowDebugModal(false)
-        setDebugDescription('')
-        setChatMessages(prev => [
+        }));
+        setShowDebugModal(false);
+        setDebugDescription("");
+        setChatMessages((prev) => [
           ...prev,
           {
             id: `fix-${Date.now()}`,
-            role: 'system',
-            content: '✅ HTML page has been fixed!',
+            role: "system",
+            content: "✅ HTML page has been fixed!",
             timestamp: Date.now(),
           },
-        ])
+        ]);
       } else {
-        setChatMessages(prev => [
+        setChatMessages((prev) => [
           ...prev,
           {
             id: `error-${Date.now()}`,
-            role: 'system',
-            content: `❌ 修复失败：${data.error || '未知错误'}`,
+            role: "system",
+            content: `❌ 修复失败：${data.error || "未知错误"}`,
             timestamp: Date.now(),
           },
-        ])
+        ]);
       }
     } catch (err) {
-      removeLoadingMessage(loadingId)
-      console.error('Failed to fix HTML:', err)
-      setChatMessages(prev => [
+      removeLoadingMessage(loadingId);
+      console.error("Failed to fix HTML:", err);
+      setChatMessages((prev) => [
         ...prev,
         {
           id: `error-${Date.now()}`,
-          role: 'system',
-          content: '❌ 修复失败，请稍后重试',
+          role: "system",
+          content: "❌ 修复失败，请稍后重试",
           timestamp: Date.now(),
         },
-      ])
+      ]);
     } finally {
-      setFixingHtml(false)
+      setFixingHtml(false);
     }
-  }
+  };
 
-  const canStart = sessionState.status === 'initialized' && sessionState.knowledge_points.length > 0
+  const canStart =
+    sessionState.status === "initialized" &&
+    sessionState.knowledge_points.length > 0;
   const canNext =
-    sessionState.status === 'learning' &&
-    sessionState.current_index < sessionState.knowledge_points.length - 1
-  const isCompleted = sessionState.status === 'completed'
+    sessionState.status === "learning" &&
+    sessionState.current_index < sessionState.knowledge_points.length - 1;
+  const isCompleted = sessionState.status === "completed";
   const isLastKnowledge =
-    sessionState.status === 'learning' &&
-    sessionState.current_index === sessionState.knowledge_points.length - 1
+    sessionState.status === "learning" &&
+    sessionState.current_index === sessionState.knowledge_points.length - 1;
 
   // Calculate widths based on ratio
-  const leftWidthPercent = sidebarCollapsed ? 0 : sidebarWide ? 75 : 25 // 3:1 or 1:3
-  const rightWidthPercent = sidebarCollapsed ? 100 : sidebarWide ? 25 : 75
+  const leftWidthPercent = sidebarCollapsed ? 0 : sidebarWide ? 75 : 25; // 3:1 or 1:3
+  const rightWidthPercent = sidebarCollapsed ? 100 : sidebarWide ? 25 : 75;
 
   return (
     <div className="h-screen flex gap-0 p-4 animate-fade-in relative">
       {/* LEFT PANEL: Chat & Control */}
       <div
-        className={`flex flex-col gap-4 h-full transition-all duration-300 flex-shrink-0 mr-4 ${sidebarCollapsed ? 'overflow-hidden' : ''}`}
+        className={`flex flex-col gap-4 h-full transition-all duration-300 flex-shrink-0 mr-4 ${sidebarCollapsed ? "overflow-hidden" : ""}`}
         style={{
           width: sidebarCollapsed ? 0 : `${leftWidthPercent}%`,
-          minWidth: sidebarCollapsed ? 0 : `${Math.max(leftWidthPercent * 0.01 * 1200, 300)}px`,
+          minWidth: sidebarCollapsed
+            ? 0
+            : `${Math.max(leftWidthPercent * 0.01 * 1200, 300)}px`,
           maxWidth: sidebarCollapsed ? 0 : `${leftWidthPercent}%`,
         }}
       >
         {/* Multi-Notebook Selection (same as ideagen) */}
-        {sessionState.status === 'idle' && (
+        {sessionState.status === "idle" && (
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden">
             <div className="p-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 flex justify-between items-center">
               <h2 className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
@@ -795,11 +826,13 @@ ${html}
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-700">
-                  {notebooks.map(notebook => {
-                    const isExpanded = expandedNotebooks.has(notebook.id)
-                    const records = notebookRecordsMap.get(notebook.id) || []
-                    const isLoading = loadingRecordsFor.has(notebook.id)
-                    const selectedFromThis = records.filter(r => selectedRecords.has(r.id)).length
+                  {notebooks.map((notebook) => {
+                    const isExpanded = expandedNotebooks.has(notebook.id);
+                    const records = notebookRecordsMap.get(notebook.id) || [];
+                    const isLoading = loadingRecordsFor.has(notebook.id);
+                    const selectedFromThis = records.filter((r) =>
+                      selectedRecords.has(r.id),
+                    ).length;
 
                     return (
                       <div key={notebook.id}>
@@ -816,7 +849,7 @@ ${html}
                           <div
                             className="w-3 h-3 rounded-full"
                             style={{
-                              backgroundColor: notebook.color || '#94a3b8',
+                              backgroundColor: notebook.color || "#94a3b8",
                             }}
                           />
                           <span className="flex-1 text-sm font-medium text-slate-700 dark:text-slate-200 truncate">
@@ -847,18 +880,21 @@ ${html}
                               <>
                                 <div className="flex gap-2 mb-2">
                                   <button
-                                    onClick={e => {
-                                      e.stopPropagation()
-                                      selectAllFromNotebook(notebook.id, notebook.name)
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      selectAllFromNotebook(
+                                        notebook.id,
+                                        notebook.name,
+                                      );
                                     }}
                                     className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300"
                                   >
                                     Select All
                                   </button>
                                   <button
-                                    onClick={e => {
-                                      e.stopPropagation()
-                                      deselectAllFromNotebook(notebook.id)
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      deselectAllFromNotebook(notebook.id);
                                     }}
                                     className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
                                   >
@@ -866,25 +902,29 @@ ${html}
                                   </button>
                                 </div>
                                 <div className="space-y-1">
-                                  {records.map(record => (
+                                  {records.map((record) => (
                                     <div
                                       key={record.id}
-                                      onClick={e => {
-                                        e.stopPropagation()
-                                        toggleRecordSelection(record, notebook.id, notebook.name)
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleRecordSelection(
+                                          record,
+                                          notebook.id,
+                                          notebook.name,
+                                        );
                                       }}
                                       className={`p-2 rounded-lg cursor-pointer transition-all border ${
                                         selectedRecords.has(record.id)
-                                          ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-700'
-                                          : 'hover:bg-white dark:hover:bg-slate-700 border-transparent hover:border-slate-200 dark:hover:border-slate-600'
+                                          ? "bg-indigo-50 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-700"
+                                          : "hover:bg-white dark:hover:bg-slate-700 border-transparent hover:border-slate-200 dark:hover:border-slate-600"
                                       }`}
                                     >
                                       <div className="flex items-center gap-2">
                                         <div
                                           className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
                                             selectedRecords.has(record.id)
-                                              ? 'bg-indigo-500 border-indigo-500 text-white'
-                                              : 'border-slate-300 dark:border-slate-500'
+                                              ? "bg-indigo-500 border-indigo-500 text-white"
+                                              : "border-slate-300 dark:border-slate-500"
                                           }`}
                                         >
                                           {selectedRecords.has(record.id) && (
@@ -910,7 +950,7 @@ ${html}
                           </div>
                         )}
                       </div>
-                    )
+                    );
                   })}
                 </div>
               )}
@@ -940,7 +980,7 @@ ${html}
         )}
 
         {/* Progress Bar with Action Buttons */}
-        {sessionState.status !== 'idle' && (
+        {sessionState.status !== "idle" && (
           <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
@@ -958,7 +998,7 @@ ${html}
             </div>
             {sessionState.knowledge_points.length > 0 && (
               <p className="text-xs text-slate-400 dark:text-slate-500 mb-4">
-                Knowledge Point {sessionState.current_index + 1} /{' '}
+                Knowledge Point {sessionState.current_index + 1} /{" "}
                 {sessionState.knowledge_points.length}
               </p>
             )}
@@ -1039,23 +1079,23 @@ ${html}
             ref={chatContainerRef}
             className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/30 dark:bg-slate-800/30"
           >
-            {chatMessages.map(msg => (
+            {chatMessages.map((msg) => (
               <div
                 key={msg.id}
-                className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
+                className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
               >
                 <div
                   className={`max-w-[90%] rounded-2xl px-4 py-3 text-sm ${
-                    msg.role === 'user'
-                      ? 'bg-indigo-600 text-white rounded-tr-none shadow-md shadow-indigo-500/20'
-                      : msg.role === 'system' && msg.content.includes('⏳')
-                        ? 'bg-amber-50 border border-amber-200 text-amber-900 rounded-tl-none'
-                        : msg.role === 'system'
-                          ? 'bg-blue-50 border border-blue-200 text-blue-900 rounded-tl-none'
-                          : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none shadow-sm'
+                    msg.role === "user"
+                      ? "bg-indigo-600 text-white rounded-tr-none shadow-md shadow-indigo-500/20"
+                      : msg.role === "system" && msg.content.includes("⏳")
+                        ? "bg-amber-50 border border-amber-200 text-amber-900 rounded-tl-none"
+                        : msg.role === "system"
+                          ? "bg-blue-50 border border-blue-200 text-blue-900 rounded-tl-none"
+                          : "bg-white border border-slate-200 text-slate-700 rounded-tl-none shadow-sm"
                   }`}
                 >
-                  {msg.role === 'system' ? (
+                  {msg.role === "system" ? (
                     <div className="prose prose-sm max-w-none">
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm, remarkMath]}
@@ -1069,7 +1109,9 @@ ${html}
                               />
                             </div>
                           ),
-                          thead: ({ ...props }) => <thead className="bg-slate-50" {...props} />,
+                          thead: ({ ...props }) => (
+                            <thead className="bg-slate-50" {...props} />
+                          ),
                           th: ({ ...props }) => (
                             <th
                               className="px-3 py-2 text-left font-semibold text-slate-700 whitespace-nowrap border-b border-slate-200"
@@ -1077,7 +1119,10 @@ ${html}
                             />
                           ),
                           tbody: ({ ...props }) => (
-                            <tbody className="divide-y divide-slate-100 bg-white" {...props} />
+                            <tbody
+                              className="divide-y divide-slate-100 bg-white"
+                              {...props}
+                            />
                           ),
                           td: ({ ...props }) => (
                             <td
@@ -1086,14 +1131,17 @@ ${html}
                             />
                           ),
                           tr: ({ ...props }) => (
-                            <tr className="hover:bg-slate-50/50 transition-colors" {...props} />
+                            <tr
+                              className="hover:bg-slate-50/50 transition-colors"
+                              {...props}
+                            />
                           ),
                         }}
                       >
                         {processLatexContent(msg.content)}
                       </ReactMarkdown>
                     </div>
-                  ) : msg.role === 'assistant' ? (
+                  ) : msg.role === "assistant" ? (
                     <div className="prose prose-sm max-w-none prose-slate">
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm, remarkMath]}
@@ -1107,7 +1155,9 @@ ${html}
                               />
                             </div>
                           ),
-                          thead: ({ ...props }) => <thead className="bg-slate-50" {...props} />,
+                          thead: ({ ...props }) => (
+                            <thead className="bg-slate-50" {...props} />
+                          ),
                           th: ({ ...props }) => (
                             <th
                               className="px-3 py-2 text-left font-semibold text-slate-700 whitespace-nowrap border-b border-slate-200"
@@ -1115,7 +1165,10 @@ ${html}
                             />
                           ),
                           tbody: ({ ...props }) => (
-                            <tbody className="divide-y divide-slate-100 bg-white" {...props} />
+                            <tbody
+                              className="divide-y divide-slate-100 bg-white"
+                              {...props}
+                            />
                           ),
                           td: ({ ...props }) => (
                             <td
@@ -1124,7 +1177,10 @@ ${html}
                             />
                           ),
                           tr: ({ ...props }) => (
-                            <tr className="hover:bg-slate-50/50 transition-colors" {...props} />
+                            <tr
+                              className="hover:bg-slate-50/50 transition-colors"
+                              {...props}
+                            />
                           ),
                         }}
                       >
@@ -1140,14 +1196,16 @@ ${html}
           </div>
 
           {/* Input Area */}
-          {sessionState.status === 'learning' && (
+          {sessionState.status === "learning" && (
             <div className="p-3 bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700">
               <div className="relative flex items-center gap-2">
                 <input
                   type="text"
                   value={inputMessage}
-                  onChange={e => setInputMessage(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && !e.shiftKey && handleSendMessage()
+                  }
                   placeholder="有问题吗？随时可以提问..."
                   disabled={sendingMessage}
                   className="flex-1 pl-4 pr-10 py-2.5 bg-slate-100 dark:bg-slate-700 border-transparent focus:bg-white dark:focus:bg-slate-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 rounded-xl text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 transition-all outline-none disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1179,7 +1237,7 @@ ${html}
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
             className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all"
-            title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+            title={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
           >
             {sidebarCollapsed ? (
               <ChevronRight className="w-4 h-4 text-slate-600 dark:text-slate-300" />
@@ -1191,15 +1249,17 @@ ${html}
             <button
               onClick={() => setSidebarWide(!sidebarWide)}
               className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all"
-              title={sidebarWide ? '切换为窄侧边栏（1:3）' : '切换为宽侧边栏（3:1）'}
+              title={
+                sidebarWide ? "切换为窄侧边栏（1:3）" : "切换为宽侧边栏（3:1）"
+              }
             >
               <ArrowRight
-                className={`w-4 h-4 text-slate-600 dark:text-slate-300 transition-transform ${sidebarWide ? 'rotate-180' : ''}`}
+                className={`w-4 h-4 text-slate-600 dark:text-slate-300 transition-transform ${sidebarWide ? "rotate-180" : ""}`}
               />
             </button>
           )}
         </div>
-        {sessionState.status === 'idle' ? (
+        {sessionState.status === "idle" ? (
           <div className="flex-1 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center text-slate-300 dark:text-slate-600 p-8">
             <GraduationCap className="w-24 h-24 text-slate-200 dark:text-slate-600 mb-6" />
             <h3 className="text-lg font-medium text-slate-600 dark:text-slate-300 mb-2">
@@ -1234,7 +1294,9 @@ ${html}
                         />
                       </div>
                     ),
-                    thead: ({ ...props }) => <thead className="bg-slate-50" {...props} />,
+                    thead: ({ ...props }) => (
+                      <thead className="bg-slate-50" {...props} />
+                    ),
                     th: ({ ...props }) => (
                       <th
                         className="px-4 py-3 text-left font-semibold text-slate-700 whitespace-nowrap border-b border-slate-200"
@@ -1242,7 +1304,10 @@ ${html}
                       />
                     ),
                     tbody: ({ ...props }) => (
-                      <tbody className="divide-y divide-slate-100 bg-white" {...props} />
+                      <tbody
+                        className="divide-y divide-slate-100 bg-white"
+                        {...props}
+                      />
                     ),
                     td: ({ ...props }) => (
                       <td
@@ -1251,16 +1316,19 @@ ${html}
                       />
                     ),
                     tr: ({ ...props }) => (
-                      <tr className="hover:bg-slate-50/50 transition-colors" {...props} />
+                      <tr
+                        className="hover:bg-slate-50/50 transition-colors"
+                        {...props}
+                      />
                     ),
                   }}
                 >
-                  {processLatexContent(sessionState.summary || '')}
+                  {processLatexContent(sessionState.summary || "")}
                 </ReactMarkdown>
               </div>
             </div>
           </div>
-        ) : sessionState.status === 'learning' ? (
+        ) : sessionState.status === "learning" ? (
           <div className="flex-1 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden relative">
             {/* Debug Button */}
             <button
@@ -1284,7 +1352,7 @@ ${html}
               <div className="flex-1 flex items-center justify-center">
                 <Loader2 className="w-12 h-12 text-indigo-400 dark:text-indigo-500 animate-spin mb-4" />
                 <p className="text-slate-500 dark:text-slate-400">
-                  {loadingMessage || '正在加载学习内容...'}
+                  {loadingMessage || "正在加载学习内容..."}
                 </p>
               </div>
             )}
@@ -1293,7 +1361,7 @@ ${html}
           <div className="flex-1 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center text-slate-300 dark:text-slate-600 p-8">
             <Loader2 className="w-12 h-12 text-indigo-400 dark:text-indigo-500 animate-spin mb-4" />
             <p className="text-slate-500 dark:text-slate-400">
-              {loadingMessage || '正在加载学习内容...'}
+              {loadingMessage || "正在加载学习内容..."}
             </p>
           </div>
         )}
@@ -1310,8 +1378,8 @@ ${html}
               </h3>
               <button
                 onClick={() => {
-                  setShowDebugModal(false)
-                  setDebugDescription('')
+                  setShowDebugModal(false);
+                  setDebugDescription("");
                 }}
                 className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
               >
@@ -1325,7 +1393,7 @@ ${html}
                 </label>
                 <textarea
                   value={debugDescription}
-                  onChange={e => setDebugDescription(e.target.value)}
+                  onChange={(e) => setDebugDescription(e.target.value)}
                   placeholder="描述 HTML 问题，例如：按钮无法点击、样式显示异常、交互不生效..."
                   rows={6}
                   className="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none resize-none"
@@ -1335,8 +1403,8 @@ ${html}
             <div className="p-4 border-t border-slate-100 dark:border-slate-700 flex justify-end gap-2">
               <button
                 onClick={() => {
-                  setShowDebugModal(false)
-                  setDebugDescription('')
+                  setShowDebugModal(false);
+                  setDebugDescription("");
                 }}
                 className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
               >
@@ -1364,5 +1432,5 @@ ${html}
         </div>
       )}
     </div>
-  )
+  );
 }

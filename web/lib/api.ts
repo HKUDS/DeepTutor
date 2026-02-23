@@ -6,20 +6,20 @@
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE ||
   (() => {
-    if (typeof window !== 'undefined') {
-      console.error('NEXT_PUBLIC_API_BASE is not set.')
+    if (typeof window !== "undefined") {
+      console.error("NEXT_PUBLIC_API_BASE is not set.");
       console.error(
-        'Please configure server ports in config/main.yaml and restart the application using: python scripts/start_web.py'
-      )
+        "Please configure server ports in config/main.yaml and restart the application using: python scripts/start_web.py",
+      );
       console.error(
-        'The .env.local file will be automatically generated with the correct backend port.'
-      )
+        "The .env.local file will be automatically generated with the correct backend port.",
+      );
     }
     // No fallback - port must be configured in config/main.yaml
     throw new Error(
-      'NEXT_PUBLIC_API_BASE is not configured. Please set server ports in config/main.yaml and restart.'
-    )
-  })()
+      "NEXT_PUBLIC_API_BASE is not configured. Please set server ports in config/main.yaml and restart.",
+    );
+  })();
 
 /**
  * Construct a full API URL from a path
@@ -28,12 +28,14 @@ export const API_BASE_URL =
  */
 export function apiUrl(path: string): string {
   // Remove leading slash if present to avoid double slashes
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
 
   // Remove trailing slash from base URL if present
-  const base = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL
+  const base = API_BASE_URL.endsWith("/")
+    ? API_BASE_URL.slice(0, -1)
+    : API_BASE_URL;
 
-  return `${base}${normalizedPath}`
+  return `${base}${normalizedPath}`;
 }
 
 /**
@@ -45,13 +47,13 @@ export function apiUrl(path: string): string {
 export function wsUrl(path: string): string {
   // Security Hardening: Convert http to ws and https to wss.
   // In production environments (where API_BASE_URL starts with https), this ensures secure websockets.
-  const base = API_BASE_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
+  const base = API_BASE_URL.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
 
   // Remove leading slash if present to avoid double slashes
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
 
   // Remove trailing slash from base URL if present
-  const normalizedBase = base.endsWith('/') ? base.slice(0, -1) : base
+  const normalizedBase = base.endsWith("/") ? base.slice(0, -1) : base;
 
-  return `${normalizedBase}${normalizedPath}`
+  return `${normalizedBase}${normalizedPath}`;
 }
