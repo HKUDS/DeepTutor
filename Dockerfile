@@ -128,6 +128,7 @@ COPY --from=frontend-builder /app/web/public ./web/public
 COPY --from=frontend-builder /app/web/package.json ./web/package.json
 COPY --from=frontend-builder /app/web/next.config.js ./web/next.config.js
 COPY --from=frontend-builder /app/web/node_modules ./web/node_modules
+COPY --from=frontend-builder /app/web/app ./web/app
 
 # Copy application source code
 COPY src/ ./src/

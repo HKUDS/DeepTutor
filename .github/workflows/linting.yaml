@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -42,7 +44,18 @@ jobs:
 
       - name: Run pre-commit
         id: pre-commit
-        run: pre-commit run --all-files --show-diff-on-failure
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF="origin/${{ github.base_ref }}"
+            mapfile -t changed_files < <(git diff --name-only "${BASE_REF}...HEAD")
+            if [ ${#changed_files[@]} -eq 0 ]; then
+              echo "No changed files in PR; skipping pre-commit."
+              exit 0
+            fi
+            pre-commit run --files "${changed_files[@]}" --show-diff-on-failure
+          else
+            pre-commit run --all-files --show-diff-on-failure
+          fi
         continue-on-error: true
 
       - name: Provide fix instructions on failure

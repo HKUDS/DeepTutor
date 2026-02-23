@@ -35,6 +35,10 @@ class KnowledgeBaseManager:
         with open(self.config_file, "w", encoding="utf-8") as f:
             json.dump(self.config, f, indent=2, ensure_ascii=False)
 
+    def _metadata_path(self, name: str) -> Path:
+        kb_dir = self.get_knowledge_base_path(name)
+        return kb_dir / "metadata.json"
+
     def list_knowledge_bases(self) -> list[str]:
         """List all available knowledge bases from kb_config.json"""
         kb_list = []
@@ -70,7 +74,7 @@ class KnowledgeBaseManager:
         kb_dir = self.base_dir / name
         if kb_dir.exists():
             # If it exists, just register it
-             pass 
+            pass
         else:
             kb_dir.mkdir(parents=True, exist_ok=True)
             # Create subdirectories
@@ -82,9 +86,11 @@ class KnowledgeBaseManager:
             # Create metadata file
             metadata = {
                 "name": name,
+                "display_name": name,
                 "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "description": description,
                 "version": "1.0",
+                "system_managed": False,
             }
             with open(kb_dir / "metadata.json", "w", encoding="utf-8") as f:
                 json.dump(metadata, f, indent=2, ensure_ascii=False)
@@ -167,6 +173,28 @@ class KnowledgeBaseManager:
 
         return {}
 
+    def update_metadata_fields(self, name: str, updates: dict) -> dict:
+        """Update metadata.json fields for a knowledge base."""
+        if not isinstance(updates, dict):
+            raise ValueError("updates must be a dict")
+
+        metadata = self.get_metadata(name)
+        metadata.update(updates)
+        metadata.setdefault("name", name)
+
+        metadata_path = self._metadata_path(name)
+        with open(metadata_path, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2, ensure_ascii=False)
+
+        return metadata
+
+    def update_display_name(self, name: str, display_name: str) -> dict:
+        """Update only the display name of a knowledge base."""
+        cleaned = (display_name or "").strip()
+        if not cleaned:
+            raise ValueError("display_name cannot be empty")
+        return self.update_metadata_fields(name, {"display_name": cleaned})
+
     def get_info(self, name: str | None = None) -> dict:
         """Get detailed information about a knowledge base.
 
@@ -209,6 +237,12 @@ class KnowledgeBaseManager:
         else:
             # metadata.json doesn't exist, use empty dict
             info["metadata"] = {}
+
+        metadata = info["metadata"] if isinstance(info["metadata"], dict) else {}
+        owner = metadata.get("owner") if isinstance(metadata.get("owner"), dict) else None
+        info["display_name"] = metadata.get("display_name") or kb_name
+        info["system_managed"] = bool(metadata.get("system_managed", False))
+        info["owner"] = owner
 
         # Count files - handle errors gracefully
         raw_dir = kb_dir / "raw"

@@ -7,7 +7,9 @@ Handles knowledge base CRUD operations, file uploads, and initialization.
 
 import asyncio
 from datetime import datetime
+import json
 from pathlib import Path
+import re
 import shutil
 import sys
 import traceback
@@ -24,6 +26,7 @@ from fastapi import (
 )
 from pydantic import BaseModel
 
+from src.api.utils.notebook_manager import notebook_manager
 from src.api.utils.progress_broadcaster import ProgressBroadcaster
 from src.api.utils.task_id_manager import TaskIDManager
 from src.knowledge.add_documents import DocumentAdder
@@ -61,8 +64,139 @@ def get_kb_manager():
 
 class KnowledgeBaseInfo(BaseModel):
     name: str
+    display_name: str
     is_default: bool
     statistics: dict
+    system_managed: bool = False
+    owner: dict | None = None
+
+
+class UpdateDisplayNameRequest(BaseModel):
+    display_name: str
+
+
+_NOTEBOOK_SOURCES_KB_RE = re.compile(r"^notebook_(?P<notebook_id>[^/]+)_sources$")
+
+
+def _extract_notebook_id_from_sources_kb_name(kb_name: str) -> str:
+    match = _NOTEBOOK_SOURCES_KB_RE.match((kb_name or "").strip())
+    return match.group("notebook_id") if match else ""
+
+
+def _normalize_notebook_name(name: str) -> str:
+    cleaned = " ".join((name or "").split()).strip()
+    return cleaned or "未命名笔记本"
+
+
+def _safe_upload_filename(filename: str) -> str:
+    normalized = (filename or "").replace("\\", "/").strip()
+    if not normalized:
+        raise ValueError("filename is empty")
+
+    parts = [part for part in normalized.split("/") if part not in ("", ".")]
+    if not parts or any(part == ".." for part in parts):
+        raise ValueError("invalid filename")
+
+    safe_name = parts[-1].strip()
+    if not safe_name or safe_name in {".", ".."} or "\x00" in safe_name:
+        raise ValueError("invalid filename")
+
+    return safe_name
+
+
+def _notebook_sources_display_name(notebook_name: str) -> str:
+    return f"{_normalize_notebook_name(notebook_name)} · 来源库"
+
+
+def _sync_notebook_sources_kb_metadata(manager: KnowledgeBaseManager, kb_name: str) -> None:
+    """
+    Backfill/refresh metadata for notebook temporary source KBs.
+    This keeps older KBs readable without renaming the real kb_name.
+    """
+    try:
+        metadata = manager.get_metadata(kb_name)
+    except Exception:
+        return
+
+    owner = metadata.get("owner") if isinstance(metadata.get("owner"), dict) else {}
+    notebook_id = str(owner.get("notebook_id") or "").strip()
+    if not notebook_id:
+        notebook_id = _extract_notebook_id_from_sources_kb_name(kb_name)
+    if not notebook_id:
+        return
+
+    notebook = notebook_manager.get_notebook(notebook_id) or {}
+    notebook_name = _normalize_notebook_name(
+        notebook.get("name") or owner.get("notebook_name") or f"笔记本 {notebook_id}"
+    )
+    target_display_name = _notebook_sources_display_name(notebook_name)
+    target_owner = {
+        "type": "notebook_sources",
+        "notebook_id": notebook_id,
+        "notebook_name": notebook_name,
+    }
+
+    updates = {}
+    if metadata.get("display_name") != target_display_name:
+        updates["display_name"] = target_display_name
+    if metadata.get("system_managed") is not True:
+        updates["system_managed"] = True
+    if metadata.get("description") != "Notebook selected sources":
+        updates["description"] = "Notebook selected sources"
+    if metadata.get("owner") != target_owner:
+        updates["owner"] = target_owner
+
+    if updates:
+        manager.update_metadata_fields(kb_name, updates)
+
+
+def _load_source_display_name_map(kb_path: Path) -> dict[str, str]:
+    manifest_path = kb_path / "sources_manifest.json"
+    if not manifest_path.exists():
+        return {}
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            manifest = json.load(f)
+    except Exception:
+        return {}
+    if not isinstance(manifest, dict):
+        return {}
+
+    mapping: dict[str, str] = {}
+    sources = manifest.get("sources", [])
+    if not isinstance(sources, list):
+        return mapping
+
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        raw_filename = source.get("raw_filename") or Path(source.get("file_path") or "").name or ""
+        if not raw_filename:
+            continue
+        display_name = (
+            source.get("source_display_name")
+            or source.get("title")
+            or source.get("url")
+            or raw_filename
+        )
+        mapping[raw_filename] = display_name
+
+    return mapping
+
+
+def _extract_markdown_h1(file_path: Path) -> str:
+    try:
+        with open(file_path, encoding="utf-8") as f:
+            for _ in range(80):
+                line = f.readline()
+                if not line:
+                    break
+                stripped = line.strip()
+                if stripped.startswith("# "):
+                    return stripped[2:].strip()
+    except Exception:
+        return ""
+    return ""
 
 
 async def run_initialization_task(initializer: KnowledgeBaseInitializer):
@@ -201,13 +335,17 @@ async def list_knowledge_bases():
 
         for name in kb_names:
             try:
+                _sync_notebook_sources_kb_metadata(manager, name)
                 info = manager.get_info(name)
                 logger.debug(f"Successfully got info for KB '{name}': {info.get('statistics', {})}")
                 result.append(
                     KnowledgeBaseInfo(
                         name=info["name"],
+                        display_name=info.get("display_name") or info["name"],
                         is_default=info["is_default"],
                         statistics=info.get("statistics", {}),
+                        system_managed=bool(info.get("system_managed", False)),
+                        owner=info.get("owner"),
                     )
                 )
             except Exception as e:
@@ -221,6 +359,7 @@ async def list_knowledge_bases():
                         result.append(
                             KnowledgeBaseInfo(
                                 name=name,
+                                display_name=name,
                                 is_default=name == manager.get_default(),
                                 statistics={
                                     "raw_documents": 0,
@@ -228,6 +367,8 @@ async def list_knowledge_bases():
                                     "content_lists": 0,
                                     "rag_initialized": False,
                                 },
+                                system_managed=False,
+                                owner=None,
                             )
                         )
                 except Exception as fallback_err:
@@ -258,9 +399,43 @@ async def get_knowledge_base_details(kb_name: str):
     """Get detailed info for a specific KB."""
     try:
         manager = get_kb_manager()
+        _sync_notebook_sources_kb_metadata(manager, kb_name)
         return manager.get_info(kb_name)
     except ValueError:
         raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/{kb_name}/display_name")
+async def update_knowledge_base_display_name(kb_name: str, request: UpdateDisplayNameRequest):
+    """Update display name without changing real kb_name."""
+    try:
+        manager = get_kb_manager()
+        display_name = (request.display_name or "").strip()
+        if not display_name:
+            raise HTTPException(status_code=400, detail="display_name cannot be empty")
+
+        _sync_notebook_sources_kb_metadata(manager, kb_name)
+        info = manager.get_info(kb_name)
+        if info.get("system_managed"):
+            raise HTTPException(
+                status_code=400,
+                detail="System-managed knowledge bases cannot be renamed directly",
+            )
+
+        metadata = manager.update_display_name(kb_name, display_name)
+        return {
+            "success": True,
+            "name": kb_name,
+            "display_name": metadata.get("display_name") or kb_name,
+        }
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -277,6 +452,8 @@ async def delete_knowledge_base(kb_name: str):
         return {"message": f"Knowledge base '{kb_name}' deleted successfully"}
     except ValueError:
         raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -302,10 +479,15 @@ async def upload_files(
         uploaded_files = []
         uploaded_file_paths = []
         for file in files:
-            file_path = raw_dir / file.filename
+            try:
+                safe_filename = _safe_upload_filename(file.filename or "")
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid filename: {file.filename}")
+
+            file_path = raw_dir / safe_filename
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
-            uploaded_files.append(file.filename)
+            uploaded_files.append(safe_filename)
             uploaded_file_paths.append(str(file_path))
 
         logger.info(f"Uploading {len(uploaded_files)} files to KB '{kb_name}'")
@@ -325,6 +507,8 @@ async def upload_files(
         }
     except ValueError:
         raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -371,10 +555,15 @@ async def create_knowledge_base(
 
         uploaded_files = []
         for file in files:
-            file_path = initializer.raw_dir / file.filename
+            try:
+                safe_filename = _safe_upload_filename(file.filename or "")
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid filename: {file.filename}")
+
+            file_path = initializer.raw_dir / safe_filename
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
-            uploaded_files.append(file.filename)
+            uploaded_files.append(safe_filename)
 
         progress_tracker.update(
             ProgressStage.PROCESSING_DOCUMENTS,
@@ -416,62 +605,95 @@ async def get_progress(kb_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _load_doc_status(kb_path: Path) -> dict:
+    """Load per-document status from kv_store_doc_status.json in rag_storage."""
+    status_file = kb_path / "rag_storage" / "kv_store_doc_status.json"
+    if not status_file.exists():
+        return {}
+    try:
+        with open(status_file, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logger.warning(f"Failed to read kv_store_doc_status.json: {e}")
+        return {}
+
+
+def _match_doc_status(filename: str, doc_status_map: dict) -> dict | None:
+    """Match a filename to its entry in kv_store_doc_status.json by basename."""
+    for _doc_id, entry in doc_status_map.items():
+        entry_path = entry.get("file_path", "")
+        if Path(entry_path).name == filename:
+            return entry
+    return None
+
+
+def _normalize_status(entry: dict | None) -> tuple[str, str | None]:
+    """Return (status, error_message) for a file.
+
+    Possible statuses: 'indexed', 'processing', 'failed', 'pending'.
+    """
+    if entry is None:
+        return ("pending", None)
+
+    raw_status = entry.get("status", "")
+    error_msg = entry.get("error_msg") or None
+
+    if raw_status == "processed":
+        return ("indexed", None)
+    elif raw_status == "processing":
+        return ("processing", None)
+    elif raw_status == "failed":
+        return ("failed", error_msg)
+    else:
+        return ("pending", None)
+
+
 @router.get("/{kb_name}/files")
 async def list_files(kb_name: str):
-    """List all files in a knowledge base with their status."""
+    """List all files in a knowledge base with their real per-file status."""
     try:
         manager = get_kb_manager()
+        _sync_notebook_sources_kb_metadata(manager, kb_name)
         kb_path = manager.get_knowledge_base_path(kb_name)
         raw_dir = kb_path / "raw"
-        content_list_dir = kb_path / "content_list"
 
         if not raw_dir.exists():
             return []
+
+        kb_info = manager.get_info(kb_name)
+        kb_display_name = kb_info.get("display_name") or kb_name
+        source_display_name_map = _load_source_display_name_map(kb_path)
+        doc_status_map = _load_doc_status(kb_path)
 
         files = []
         for file_path in raw_dir.iterdir():
             if not file_path.is_file() or file_path.name.startswith("."):
                 continue
 
-            # Check status based on content list existence
-            # Content list content is usually saved as {filename}.json
-            # But the original filename might have extension, so we need to be careful how it's saved.
-            # Looking at add_documents.py might clarify, but usually it's just a mapping.
-            # For now, let's assume if there's a file in content_list that 'contains' this filename or matches.
-            # Simpler approach: check if corresponding json exists.
-            # The system usually cleans filenames. Let's start with simple check.
-            
-            # Helper to get file stats
             stat = file_path.stat()
-            
-            # Simple status check (can be improved)
-            # If the KB is initialized (rag_storage exists), we assume older files are indexed.
-            # For accurate per-file status, we'd need to query the vector DB or a tracking file.
-            # Here we'll use a heuristic: if we can find a content list file that seems related, it's processed.
-            
-            is_indexed = False
-            if content_list_dir.exists():
-                # This is a naive check. A better one would be needed if filenames are transformed.
-                # Assuming 1:1 mapping isn't always true for complex pipelines.
-                # But for this system, let's just mark as "indexed" if the KB is ready, 
-                # or "pending" if it's currently processing.
-                pass
-            
-            # Let's use the KB's overall RAG status as a baseline
-            rag_storage = kb_path / "rag_storage"
-            kb_ready = rag_storage.exists()
-            
-            files.append({
+            entry = _match_doc_status(file_path.name, doc_status_map)
+            status, error_msg = _normalize_status(entry)
+
+            file_info = {
                 "name": file_path.name,
                 "size": stat.st_size,
                 "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                "status": "indexed" if kb_ready else "pending" # Simplified status
-            })
+                "status": status,
+            }
+            display_name = source_display_name_map.get(file_path.name)
+            if not display_name and file_path.suffix.lower() in {".md", ".markdown"}:
+                title = _extract_markdown_h1(file_path)
+                if title:
+                    display_name = f"{kb_display_name} · {title}"
+            file_info["display_name"] = display_name or file_path.name
+            if error_msg:
+                file_info["error"] = error_msg
 
-        # Sort by modification time (newest first)
+            files.append(file_info)
+
         files.sort(key=lambda x: x["modified_at"], reverse=True)
         return files
-        
+
     except ValueError:
         raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
     except Exception as e:
@@ -483,6 +705,7 @@ async def list_files(kb_name: str):
 async def get_file(kb_name: str, filename: str):
     """Get a specific file from the knowledge base."""
     from fastapi.responses import FileResponse
+
     try:
         manager = get_kb_manager()
         raw_path = manager.get_raw_path(kb_name)
@@ -492,9 +715,7 @@ async def get_file(kb_name: str, filename: str):
             raise HTTPException(status_code=404, detail="File not found")
 
         return FileResponse(
-            path=file_path,
-            filename=filename,
-            media_type="application/octet-stream"
+            path=file_path, filename=filename, media_type="application/octet-stream"
         )
     except ValueError:
         raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")

@@ -166,6 +166,10 @@ async def test_embeddings_connection():
 
     try:
         embedding_config = get_embedding_config()
+
+        from src.services.embedding import reset_embedding_client
+
+        reset_embedding_client()
         embedding_client = get_embedding_client()
 
         model = embedding_config.model
@@ -221,11 +225,11 @@ async def test_tts_connection():
     try:
         tts_config = get_tts_config()
         provider = tts_config.get("provider", "openai")
-        
+
         if provider == "doubao":
             app_id = tts_config.get("app_id")
             access_token = tts_config.get("access_token")
-            
+
             if not app_id or not access_token:
                 return TestResponse(
                     success=False,
@@ -233,8 +237,8 @@ async def test_tts_connection():
                     model="doubao-podcast",
                     error="Missing Doubao AppID or Access Token",
                 )
-             
-            model = "doubao-podcast" 
+
+            model = "doubao-podcast"
 
         else:
             model = tts_config.get("model")

@@ -152,9 +152,11 @@ class KnowledgeBaseInitializer:
         # Create metadata file
         metadata = {
             "name": self.kb_name,
+            "display_name": self.kb_name,
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "description": f"Knowledge base: {self.kb_name}",
             "version": "1.0",
+            "system_managed": False,
         }
 
         metadata_file = self.kb_dir / "metadata.json"
@@ -407,9 +409,7 @@ class KnowledgeBaseInitializer:
                             rag, doc_file, fallback_text
                         )
                         if fallback_used:
-                            logger.info(
-                                f"  ✓ Fallback text ingestion complete: {doc_file.name}"
-                            )
+                            logger.info(f"  ✓ Fallback text ingestion complete: {doc_file.name}")
                 if fallback_used:
                     continue
                 error_msg = "Processing timeout (>10 minutes)"
@@ -435,9 +435,7 @@ class KnowledgeBaseInitializer:
                             rag, doc_file, fallback_text
                         )
                         if fallback_used:
-                            logger.info(
-                                f"  ✓ Fallback text ingestion complete: {doc_file.name}"
-                            )
+                            logger.info(f"  ✓ Fallback text ingestion complete: {doc_file.name}")
                 if not fallback_used:
                     error_msg = str(e)
                     logger.error(f"  ✗ Error processing {doc_file.name}: {error_msg}")
