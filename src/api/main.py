@@ -157,17 +157,24 @@ async def lifespan(app: FastAPI):
     # Set PERSONALIZATION_EXTERNAL=true to run personalization in a separate process
     # via: python scripts/start_personalization.py
     import os
-    personalization_external = os.environ.get("PERSONALIZATION_EXTERNAL", "").lower() in ("true", "1", "yes")
-    
+
+    personalization_external = os.environ.get("PERSONALIZATION_EXTERNAL", "").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+
     if personalization_external:
         # External mode: Enable file queue for cross-process communication
         # Personalization service will be started separately via start_personalization.py
         try:
             from src.core.event_bus import enable_file_queue
-            
+
             enable_file_queue()
             logger.info("Personalization running in external mode - file queue enabled")
-            logger.info("Start personalization service with: python scripts/start_personalization.py")
+            logger.info(
+                "Start personalization service with: python scripts/start_personalization.py"
+            )
         except Exception as e:
             logger.warning(f"Failed to enable file queue for external personalization: {e}")
     else:
@@ -200,7 +207,7 @@ async def lifespan(app: FastAPI):
         # In external mode, just disable file queue
         try:
             from src.core.event_bus import disable_file_queue
-            
+
             disable_file_queue()
             logger.info("File queue disabled")
         except Exception as e:
@@ -216,6 +223,36 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to stop EventBus: {e}")
 
+
+# ---------------------------------------------------------------------------
+# Starlette multipart upload size limit
+#
+# By default Starlette's ``MultiPartParser`` caps each individual file part at
+# 1 MB (the class-level ``max_file_size`` / ``max_part_size`` attribute).
+# Files that exceed this limit are rejected at the framework layer *before*
+# the route handler runs, resulting in an HTTP 413 "Request Entity Too Large"
+# response — even when the file is well within DocumentValidator.MAX_FILE_SIZE
+# (100 MB).
+#
+# We raise the Starlette limit here to match the application-level cap so that
+# the framework streams larger uploads through to the route handler, which then
+# applies the real per-file size check via DocumentValidator.
+#
+# References:
+#   https://github.com/HKUDS/DeepTutor/issues/170
+#   https://github.com/encode/starlette/blob/master/starlette/formparsers.py
+# ---------------------------------------------------------------------------
+try:
+    from starlette.formparsers import MultiPartParser as _MultiPartParser
+
+    _UPLOAD_LIMIT_BYTES = 100 * 1024 * 1024  # 100 MB — matches DocumentValidator.MAX_FILE_SIZE
+    # Starlette ≥ 0.31 exposes ``max_file_size`` as a class attribute used as
+    # the default value for ``max_part_size`` in MultiPartParser.__init__().
+    _MultiPartParser.max_file_size = _UPLOAD_LIMIT_BYTES
+except (ImportError, AttributeError):
+    # Older Starlette versions do not enforce a part-level size limit;
+    # no patching is required.
+    pass
 
 app = FastAPI(
     title="DeepTutor API",
