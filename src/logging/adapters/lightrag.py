@@ -123,7 +123,7 @@ def LightRAGLogContext(logger_name: Optional[str] = None, scene: Optional[str] =
         debug_logger.debug(
             f"Setting up LightRAG log forwarding (scene={scene}, logger_name={logger_name})"
         )
-    except:
+    except Exception:
         pass  # Ignore if logger setup fails
 
     # Determine logger name
@@ -174,7 +174,7 @@ def LightRAGLogContext(logger_name: Optional[str] = None, scene: Optional[str] =
     try:
         test_msg = "LightRAG log forwarding enabled"
         lightrag_logger.info(test_msg)
-    except:
+    except Exception:
         pass  # Ignore test log errors
 
     try:

@@ -60,7 +60,7 @@ def list_knowledge_bases():
                 print(
                     f"    - RAG: {'Initialized' if stats.get('rag_initialized') else 'Not initialized'}"
                 )
-            except:
+            except Exception:
                 pass
 
     print("=" * 60 + "\n")

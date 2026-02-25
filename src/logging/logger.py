@@ -458,7 +458,7 @@ class Logger:
                     else str(tool_input)
                 )
                 self.debug(f"Tool Input: {input_str[:500]}...")
-            except:
+            except Exception:
                 pass
         if tool_output is not None:
             try:
@@ -468,7 +468,7 @@ class Logger:
                     else str(tool_output)
                 )
                 self.debug(f"Tool Output: {output_str[:500]}...")
-            except:
+            except Exception:
                 pass
 
     def log_llm_input(

@@ -467,7 +467,7 @@ if __name__ == "__main__":
                 if result == 0:
                     print_flush(f"✅ Backend is running on port {backend_port}!")
                     break
-            except:
+            except Exception:
                 pass
 
         if backend.poll() is not None:

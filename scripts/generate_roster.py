@@ -84,7 +84,7 @@ def fetch_github_api(url: str, token: str = None, count_only: bool = False) -> t
                                 total_count += len(more_data)
                                 if len(more_data) < per_page:
                                     break
-                        except:
+                        except Exception:
                             break
                     break
         except Exception as e:

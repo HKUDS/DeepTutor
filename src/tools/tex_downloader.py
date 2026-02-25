@@ -141,7 +141,7 @@ class TexDownloader:
         try:
             with tarfile.open(file_path, "r:*") as tar:
                 return True
-        except:
+        except Exception:
             return False
 
     def _is_zip_file(self, file_path: Path) -> bool:
@@ -149,7 +149,7 @@ class TexDownloader:
         try:
             with zipfile.ZipFile(file_path, "r") as zip_file:
                 return True
-        except:
+        except Exception:
             return False
 
     def _extract_tar(self, tar_path: Path, extract_dir: Path):
@@ -204,7 +204,7 @@ class TexDownloader:
                 content = tex_file.read_text(encoding="utf-8", errors="ignore")
                 if r"\documentclass" in content:
                     return tex_file
-            except:
+            except Exception:
                 continue
 
         # 3. Return largest tex file

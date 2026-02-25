@@ -573,7 +573,7 @@ class ReportingAgent(BaseAgent):
                 parts_list = cit_id.replace("CIT-", "").split("-")
                 if len(parts_list) == 2:
                     return (1, int(parts_list[0]), int(parts_list[1]))
-            except:
+            except Exception:
                 pass
             return (999, 999, 999)
 
@@ -947,7 +947,7 @@ class ReportingAgent(BaseAgent):
                 parts_list = cit_id.replace("CIT-", "").split("-")
                 if len(parts_list) == 2:
                     return (1, int(parts_list[0]), int(parts_list[1]))
-            except:
+            except Exception:
                 pass
             return (999, 999, 999)
 
