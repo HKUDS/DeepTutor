@@ -74,6 +74,7 @@ SOURCES_KB_DESCRIPTION = "Notebook selected sources"
 SOURCES_SIGNATURE_VERSION = "3"
 MIN_FETCHED_CONTENT_CHARS = 200
 MIN_INDEXABLE_WEB_CONTENT_CHARS = 300
+RETRYABLE_FETCH_RESYNC_COOLDOWN_SECONDS = 600
 _SOURCES_OWNER_TYPE = "notebook_sources"
 _LEGACY_SOURCES_KB_RE = re.compile(r"^notebook_(?P<notebook_id>[^/]+)_sources$")
 _SUCCESS_FETCH_STATUS_PREFIX = "success_"
@@ -429,6 +430,13 @@ def _sources_signature(sources: list[dict]) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def _selected_sources_signature(selected_sources: list[dict]) -> str | None:
+    if not selected_sources:
+        return None
+    normalized_for_signature = [_normalize_source_payload(source) for source in selected_sources]
+    return _sources_signature(normalized_for_signature)
+
+
 def _load_sources_manifest(kb_dir: Path) -> dict:
     manifest_path = kb_dir / "sources_manifest.json"
     if not manifest_path.exists():
@@ -455,6 +463,48 @@ def _manifest_has_retryable_fetch_failures(manifest: dict) -> bool:
             return True
 
     return False
+
+
+def _retryable_failure_cooldown_remaining(manifest: dict) -> float:
+    if not _manifest_has_retryable_fetch_failures(manifest):
+        return 0.0
+    try:
+        updated_at = float(manifest.get("updated_at") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+    if updated_at <= 0:
+        return 0.0
+    elapsed = time.time() - updated_at
+    return max(0.0, RETRYABLE_FETCH_RESYNC_COOLDOWN_SECONDS - elapsed)
+
+
+def _should_sync_sources_kb(notebook_id: str, signature: str | None) -> bool:
+    if not signature:
+        return False
+
+    kb_manager = KnowledgeBaseManager(base_dir=str(_kb_base_dir))
+    kb_names = kb_manager.list_knowledge_bases()
+    matched_kb_names = _find_notebook_sources_kb_names(kb_manager, notebook_id)
+    kb_name = (
+        matched_kb_names[0] if matched_kb_names else _get_notebook_sources_kb_name(notebook_id)
+    )
+
+    if kb_name not in kb_names:
+        return True
+
+    try:
+        kb_dir = kb_manager.get_knowledge_base_path(kb_name)
+    except Exception:
+        return True
+
+    manifest = _load_sources_manifest(kb_dir)
+    if manifest.get("signature") != signature:
+        return True
+
+    if not _manifest_has_retryable_fetch_failures(manifest):
+        return False
+
+    return _retryable_failure_cooldown_remaining(manifest) <= 0
 
 
 def _write_sources_manifest(
@@ -751,9 +801,10 @@ async def _sync_sources_kb(notebook_id: str, background_tasks: BackgroundTasks) 
         return None
 
     # Calculate signature before enrichment (for consistency)
-    # Note: We need to normalize for signature calculation, but keep raw sources for enrichment
-    normalized_for_signature = [_normalize_source_payload(s) for s in selected_sources]
-    signature = _sources_signature(normalized_for_signature)
+    # Note: We normalize for signature calculation, but keep raw sources for enrichment.
+    signature = _selected_sources_signature(selected_sources)
+    if not signature:
+        return None
 
     kb_manager = KnowledgeBaseManager(base_dir=str(_kb_base_dir))
     matched_kb_names = _find_notebook_sources_kb_names(kb_manager, notebook_id)
@@ -775,6 +826,13 @@ async def _sync_sources_kb(notebook_id: str, background_tasks: BackgroundTasks) 
         manifest = _load_sources_manifest(kb_dir)
         if manifest.get("signature") == signature:
             if not _manifest_has_retryable_fetch_failures(manifest):
+                return kb_name
+            cooldown_remaining = _retryable_failure_cooldown_remaining(manifest)
+            if cooldown_remaining > 0:
+                logger.info(
+                    "Sources signature unchanged and retryable fetch failures still cooling down for "
+                    f"{cooldown_remaining:.0f}s, skipping sync for '{kb_name}'"
+                )
                 return kb_name
             logger.info(
                 "Sources signature unchanged but previous fetch failures detected, "
@@ -900,6 +958,8 @@ class SessionMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
     isStreaming: bool | None = None
+    sources: dict | None = None
+    source_catalog: list[dict] | None = None
 
 
 class SessionSource(BaseModel):
@@ -909,6 +969,8 @@ class SessionSource(BaseModel):
     url: str | None = None
     selected: bool = True
     content: str | None = None
+    source_key: str | None = None
+    ref_number: int | None = None
 
 
 class SessionSnapshot(BaseModel):
@@ -1186,7 +1248,11 @@ async def upsert_session(
     payload = request.dict(exclude_none=True)
     session = notebook_manager.upsert_session(notebook_id, payload)
     try:
-        await _sync_sources_kb(notebook_id, background_tasks)
+        sessions = notebook_manager.list_sessions(notebook_id)
+        selected_sources = _collect_selected_sources_raw(sessions)
+        signature = _selected_sources_signature(selected_sources)
+        if _should_sync_sources_kb(notebook_id, signature):
+            await _sync_sources_kb(notebook_id, background_tasks)
     except Exception as e:
         print(f"Failed to sync session sources to KB: {e}")
     return {"session": session}

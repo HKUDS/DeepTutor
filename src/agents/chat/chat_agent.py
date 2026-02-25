@@ -208,6 +208,49 @@ class ChatAgent(BaseAgent):
 
         return "\n\n".join(lines)
 
+    def _format_source_catalog_context(self, source_catalog: list[dict[str, Any]] | None) -> str:
+        """
+        Build a numbered reference index for strict notebook citations.
+
+        Args:
+            source_catalog: List of source entries with ref_number/title/url
+
+        Returns:
+            Formatted reference index block
+        """
+        if not source_catalog:
+            return ""
+
+        lines = [
+            "[Reference Index]",
+            "The following numbered references are available for citation:",
+        ]
+
+        count = 0
+        for item in source_catalog:
+            if not isinstance(item, dict):
+                continue
+            ref = item.get("ref_number")
+            title = (item.get("title") or "").strip()
+            url = (item.get("url") or "").strip()
+            if not isinstance(ref, int) or ref <= 0:
+                continue
+            if not title:
+                title = f"Reference {ref}"
+            if url:
+                lines.append(f"[{ref}] {title} - {url}")
+            else:
+                lines.append(f"[{ref}] {title}")
+            count += 1
+            if count >= 80:
+                break
+
+        if count == 0:
+            return ""
+
+        lines.append("When you cite, ONLY use bracket numbers from this index, e.g. [1], [2].")
+        return "\n".join(lines)
+
     async def retrieve_context(
         self,
         message: str,
@@ -387,6 +430,9 @@ class ChatAgent(BaseAgent):
                 instructions.append(
                     "If the answer is not found in the Reference Information, explicitly state that you cannot find the answer in the provided sources."
                 )
+                instructions.append("When citing, use plain [N] format only.")
+                instructions.append("Do NOT output links like [N](#ref-N).")
+                instructions.append('Do NOT output HTML anchors such as <a id="ref-N"></a>.')
             else:
                 # Chat mode: use context as supplementary reference, not as strict constraint
                 instructions.append(
@@ -537,6 +583,7 @@ class ChatAgent(BaseAgent):
         enable_rag: bool = False,
         enable_web_search: bool = False,
         require_sources: bool = False,
+        source_catalog: list[dict[str, Any]] | None = None,
         stream: bool = False,
     ) -> dict[str, Any] | AsyncGenerator[dict[str, Any], None]:
         """
@@ -550,6 +597,7 @@ class ChatAgent(BaseAgent):
             enable_rag: Whether to enable RAG retrieval
             enable_web_search: Whether to enable web search
             require_sources: Whether to require sources before answering
+            source_catalog: Optional source index with stable ref_number mapping
             stream: Whether to stream the response
 
         Returns:
@@ -569,6 +617,14 @@ class ChatAgent(BaseAgent):
             enable_rag=enable_rag,
             enable_web_search=enable_web_search,
         )
+
+        # Add source catalog as an explicit numbered reference index for stable [N] citations.
+        catalog_context = self._format_source_catalog_context(source_catalog)
+        if catalog_context:
+            if context:
+                context = f"{context}\n\n{catalog_context}"
+            else:
+                context = catalog_context
 
         # Extract research reports from conversation history if available
         history_context = self._extract_research_reports_from_history(truncated_history)
@@ -598,6 +654,7 @@ class ChatAgent(BaseAgent):
                             "type": "complete",
                             "response": fallback,
                             "sources": sources,
+                            "source_catalog": source_catalog or [],
                             "truncated_history": truncated_history,
                         }
 
@@ -605,6 +662,7 @@ class ChatAgent(BaseAgent):
                 return {
                     "response": fallback,
                     "sources": sources,
+                    "source_catalog": source_catalog or [],
                     "truncated_history": truncated_history,
                 }
 
@@ -621,6 +679,7 @@ class ChatAgent(BaseAgent):
                             "type": "complete",
                             "response": fallback,
                             "sources": sources,
+                            "source_catalog": source_catalog or [],
                             "truncated_history": truncated_history,
                         }
 
@@ -628,6 +687,7 @@ class ChatAgent(BaseAgent):
                 return {
                     "response": fallback,
                     "sources": sources,
+                    "source_catalog": source_catalog or [],
                     "truncated_history": truncated_history,
                 }
 
@@ -654,6 +714,7 @@ class ChatAgent(BaseAgent):
                     "type": "complete",
                     "response": full_response,
                     "sources": sources,
+                    "source_catalog": source_catalog or [],
                     "truncated_history": truncated_history,
                 }
 
@@ -665,6 +726,7 @@ class ChatAgent(BaseAgent):
             return {
                 "response": response,
                 "sources": sources,
+                "source_catalog": source_catalog or [],
                 "truncated_history": truncated_history,
             }
 

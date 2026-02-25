@@ -76,11 +76,235 @@ class ReportingAgent(BaseAgent):
 
         # Citation configuration: read from config, default off
         self.enable_citation_list = self.reporting_config.get("enable_citation_list", True)
-        self.enable_inline_citations = True # Force enable inline citations for Deep Research
+        self.enable_inline_citations = True  # Force enable inline citations for Deep Research
 
     def set_citation_manager(self, citation_manager):
         """Set citation manager"""
         self.citation_manager = citation_manager
+
+    @staticmethod
+    def _normalize_source_url(raw: str) -> str:
+        value = (raw or "").strip()
+        if not value:
+            return ""
+        return re.sub(r"/+$", "", value)
+
+    def _build_source_key(
+        self,
+        source_type: str,
+        title: str,
+        url: str = "",
+        source: str = "",
+        page: str = "",
+        chunk_id: str = "",
+        fallback: str = "",
+    ) -> str:
+        normalized_url = self._normalize_source_url(url)
+        if normalized_url:
+            return f"{source_type}-{normalized_url}"
+
+        locator_parts = [
+            (source or "").strip(),
+            (page or "").strip(),
+            (chunk_id or "").strip(),
+        ]
+        locator = "|".join(part for part in locator_parts if part)
+        if locator:
+            return f"{source_type}-{locator}"
+
+        basis = (title or fallback or "").strip()
+        return f"{source_type}-{basis}" if basis else ""
+
+    def _build_structured_sources_and_catalog(
+        self,
+    ) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]]]:
+        """
+        Build source lists and a stable source_catalog with ref numbers.
+
+        The catalog is source-level (not citation-level), so every unique source
+        has its own [N], which keeps the report References and left-source list aligned.
+        """
+        structured_sources: dict[str, list[dict[str, Any]]] = {"web": [], "rag": []}
+        source_catalog: list[dict[str, Any]] = []
+
+        if not self.citation_manager:
+            return structured_sources, source_catalog
+
+        all_citations = self.citation_manager.get_all_citations()
+        ref_map = self.citation_manager.get_ref_number_map()
+        if not all_citations:
+            return structured_sources, source_catalog
+
+        sorted_citation_ids = sorted(
+            all_citations.keys(), key=self.citation_manager._extract_citation_sort_key
+        )
+
+        by_key: dict[str, dict[str, Any]] = {}
+        ref_owner: dict[int, str] = {}
+        max_ref = 0
+
+        def allocate_ref(source_key: str, preferred_ref: int = 0) -> int:
+            nonlocal max_ref
+            existing = by_key.get(source_key)
+            if existing and existing.get("ref_number"):
+                ref_num = int(existing["ref_number"])
+                ref_owner[ref_num] = source_key
+                max_ref = max(max_ref, ref_num)
+                return ref_num
+
+            preferred = int(preferred_ref) if isinstance(preferred_ref, int | float) else 0
+            if preferred > 0 and ref_owner.get(preferred, source_key) == source_key:
+                ref_owner[preferred] = source_key
+                max_ref = max(max_ref, preferred)
+                return preferred
+
+            candidate = max_ref + 1
+            while candidate in ref_owner:
+                candidate += 1
+            ref_owner[candidate] = source_key
+            max_ref = max(max_ref, candidate)
+            return candidate
+
+        def upsert_source(
+            source_type: str,
+            title: str,
+            url: str = "",
+            content: str = "",
+            source: str = "",
+            page: str = "",
+            chunk_id: str = "",
+            kb_name: str = "",
+            citation_id: str = "",
+            preferred_ref: int = 0,
+        ) -> None:
+            source_title = (title or url or "Untitled").strip()
+            source_url = (url or "").strip()
+            source_key = self._build_source_key(
+                source_type=source_type,
+                title=source_title,
+                url=source_url,
+                source=source,
+                page=page,
+                chunk_id=chunk_id,
+                fallback=citation_id,
+            )
+            if not source_key:
+                return
+
+            ref_number = allocate_ref(source_key, preferred_ref)
+            source_entry = {
+                "title": source_title,
+                "url": source_url,
+                "content": (content or "").strip(),
+                "source": source,
+                "page": str(page or "").strip(),
+                "chunk_id": str(chunk_id or "").strip(),
+                "kb_name": (kb_name or "").strip(),
+                "source_key": source_key,
+                "ref_number": ref_number,
+            }
+
+            existing = by_key.get(source_key)
+            if existing:
+                for key, value in source_entry.items():
+                    if value and not existing.get(key):
+                        existing[key] = value
+                return
+            by_key[source_key] = source_entry
+
+        for citation_id in sorted_citation_ids:
+            citation = all_citations.get(citation_id) or {}
+            tool_type = (citation.get("tool_type") or "").lower()
+            citation_ref = ref_map.get(citation_id, 0)
+            used_preferred = False
+
+            if tool_type == "web_search":
+                web_items = citation.get("web_sources", []) or citation.get("citations", [])
+                if not web_items and citation.get("url"):
+                    web_items = [citation]
+
+                for item in web_items:
+                    if not isinstance(item, dict):
+                        continue
+                    preferred = citation_ref if citation_ref > 0 and not used_preferred else 0
+                    upsert_source(
+                        source_type="web",
+                        title=item.get("title", ""),
+                        url=item.get("url", ""),
+                        content=item.get("snippet", "")
+                        or item.get("content", "")
+                        or citation.get("summary", ""),
+                        citation_id=citation_id,
+                        preferred_ref=preferred,
+                    )
+                    if preferred > 0:
+                        used_preferred = True
+
+            elif tool_type in ("rag_naive", "rag_hybrid", "query_item"):
+                rag_items = citation.get("sources", [])
+                for item in rag_items:
+                    if not isinstance(item, dict):
+                        continue
+                    preferred = citation_ref if citation_ref > 0 and not used_preferred else 0
+                    upsert_source(
+                        source_type="kb",
+                        title=item.get("title", "")
+                        or item.get("source_file", "")
+                        or item.get("source", ""),
+                        url=item.get("url", ""),
+                        content=item.get("content_preview", ""),
+                        source=item.get("source_file", "") or item.get("source", ""),
+                        page=str(item.get("page", "")).strip(),
+                        chunk_id=str(item.get("chunk_id", "")).strip(),
+                        kb_name=citation.get("kb_name", ""),
+                        citation_id=citation_id,
+                        preferred_ref=preferred,
+                    )
+                    if preferred > 0:
+                        used_preferred = True
+
+            elif tool_type == "paper_search":
+                papers = citation.get("papers", [])
+                for idx, paper in enumerate(papers):
+                    if not isinstance(paper, dict):
+                        continue
+                    paper_ref_key = f"{citation_id}-{idx + 1}"
+                    preferred = ref_map.get(paper_ref_key, 0) or (
+                        citation_ref if citation_ref > 0 and not used_preferred else 0
+                    )
+                    doi = (paper.get("doi") or "").strip()
+                    url = (paper.get("url") or "").strip()
+                    if doi and not url:
+                        url = f"https://doi.org/{doi}"
+                    upsert_source(
+                        source_type="web",
+                        title=paper.get("title", ""),
+                        url=url,
+                        content=paper.get("abstract", ""),
+                        citation_id=paper_ref_key,
+                        preferred_ref=preferred,
+                    )
+                    if preferred > 0:
+                        used_preferred = True
+
+        for item in by_key.values():
+            catalog_item = {
+                "ref_number": item["ref_number"],
+                "source_key": item["source_key"],
+                "title": item["title"],
+                "url": item.get("url", ""),
+                "type": "kb" if item.get("source") else "web",
+            }
+            source_catalog.append(catalog_item)
+            if catalog_item["type"] == "kb":
+                structured_sources["rag"].append(item)
+            else:
+                structured_sources["web"].append(item)
+
+        source_catalog.sort(key=lambda x: int(x.get("ref_number", 0)))
+        structured_sources["web"].sort(key=lambda x: int(x.get("ref_number", 0)))
+        structured_sources["rag"].sort(key=lambda x: int(x.get("ref_number", 0)))
+        return structured_sources, source_catalog
 
     async def process(
         self,
@@ -118,6 +342,9 @@ class ReportingAgent(BaseAgent):
         self._notify_progress(
             progress_callback, "deduplicate_completed", kept_blocks=len(cleaned_blocks)
         )
+
+        structured_sources, source_catalog = self._build_structured_sources_and_catalog()
+        self._current_source_catalog = source_catalog
 
         if self.reporting_config.get("report_type") == "summary":
             # Summary mode: Fast generation without outline
@@ -159,19 +386,39 @@ class ReportingAgent(BaseAgent):
             citations=citations,
         )
 
-        # Prepare structured sources for frontend
-        structured_sources = self._get_structured_sources()
+        # Prepare structured sources/source-catalog for frontend
         if not structured_sources.get("web"):
             fallback_urls = self._extract_urls(report_markdown)
             for url in fallback_urls:
-                structured_sources["web"].append(
+                source_key = self._build_source_key("web", title=url, url=url)
+                if not source_key:
+                    continue
+                if any(item.get("source_key") == source_key for item in structured_sources["web"]):
+                    continue
+                next_ref = (
+                    max((int(item.get("ref_number", 0)) for item in source_catalog), default=0) + 1
+                )
+                source_item = {
+                    "title": url,
+                    "url": url,
+                    "content": "",
+                    "source_key": source_key,
+                    "ref_number": next_ref,
+                }
+                structured_sources["web"].append(source_item)
+                source_catalog.append(
                     {
+                        "ref_number": next_ref,
+                        "source_key": source_key,
                         "title": url,
                         "url": url,
-                        "content": "",
-                        "id": "",
+                        "type": "web",
                     }
                 )
+
+        source_catalog.sort(key=lambda x: int(x.get("ref_number", 0)))
+        structured_sources["web"].sort(key=lambda x: int(x.get("ref_number", 0)))
+        structured_sources["rag"].sort(key=lambda x: int(x.get("ref_number", 0)))
 
         result = {
             "report": report_markdown,
@@ -179,27 +426,30 @@ class ReportingAgent(BaseAgent):
             "sections": sections,
             "citations": citations,
             "sources": structured_sources,  # Add structured sources
+            "source_catalog": source_catalog,
         }
 
         # If outline has been generated, add it to result
         if hasattr(self, "_current_outline"):
             result["outline"] = self._current_outline
             delattr(self, "_current_outline")
+        if hasattr(self, "_current_source_catalog"):
+            delattr(self, "_current_source_catalog")
 
         return result
 
     def _get_structured_sources(self) -> dict[str, list[dict]]:
         """Extract structured sources for frontend display"""
         sources = {"web": [], "rag": []}
-        
+
         if not self.citation_manager:
             return sources
-            
+
         all_citations = self.citation_manager.get_all_citations()
-        
+
         for citation in all_citations.values():
             tool_type = citation.get("tool_type", "").lower()
-            
+
             if tool_type == "web_search":
                 # Extract web links
                 web_items = citation.get("web_sources", []) or citation.get("citations", [])
@@ -208,28 +458,36 @@ class ReportingAgent(BaseAgent):
                     web_items = [citation]
 
                 for item in web_items:
-                    sources["web"].append({
-                        "title": item.get("title", "Untitled"),
-                        "url": item.get("url", ""),
-                        "content": item.get("snippet", "") or item.get("content", "") or citation.get("summary", ""),
-                        "id": str(item.get("id", "")) or citation.get("citation_id", ""),
-                    })
+                    sources["web"].append(
+                        {
+                            "title": item.get("title", "Untitled"),
+                            "url": item.get("url", ""),
+                            "content": item.get("snippet", "")
+                            or item.get("content", "")
+                            or citation.get("summary", ""),
+                            "id": str(item.get("id", "")) or citation.get("citation_id", ""),
+                        }
+                    )
             elif tool_type in ("rag_naive", "rag_hybrid", "query_item"):
                 # Extract RAG documents
                 rag_items = citation.get("sources", [])
                 for item in rag_items:
-                    source_title = item.get("title", "") or item.get("source_file", "") or item.get(
-                        "source", ""
+                    source_title = (
+                        item.get("title", "")
+                        or item.get("source_file", "")
+                        or item.get("source", "")
                     )
-                    sources["rag"].append({
-                        "title": source_title,
-                        "source": item.get("source_file", "") or item.get("source", ""),
-                        "content": item.get("content_preview", ""),
-                        "page": item.get("page", ""),
-                        "chunk_id": item.get("chunk_id", ""),
-                        "kb_name": citation.get("kb_name", ""),
-                    })
-                    
+                    sources["rag"].append(
+                        {
+                            "title": source_title,
+                            "source": item.get("source_file", "") or item.get("source", ""),
+                            "content": item.get("content_preview", ""),
+                            "page": item.get("page", ""),
+                            "chunk_id": item.get("chunk_id", ""),
+                            "kb_name": citation.get("kb_name", ""),
+                        }
+                    )
+
         return sources
 
     @staticmethod
@@ -493,14 +751,16 @@ class ReportingAgent(BaseAgent):
             ensure_keys(obj, ["introduction"])
             intro = obj.get("introduction", "")
             if isinstance(intro, str) and intro.strip():
-                 return intro
+                return intro
         except Exception:
-             # Fallback: if JSON parsing fails, check if the response itself looks like content
-             # Only accept if it's substantial enough
-             if len(resp) > 50:
-                 self.logger.warning("Introduction JSON parsing failed, using raw response as fallback")
-                 return resp.strip()
-        
+            # Fallback: if JSON parsing fails, check if the response itself looks like content
+            # Only accept if it's substantial enough
+            if len(resp) > 50:
+                self.logger.warning(
+                    "Introduction JSON parsing failed, using raw response as fallback"
+                )
+                return resp.strip()
+
         raise ValueError("LLM returned empty or invalid introduction field")
 
     async def _write_section_body(
@@ -562,9 +822,11 @@ class ReportingAgent(BaseAgent):
         except Exception:
             # Fallback: if JSON parsing fails, assume the LLM returned raw markdown
             if len(resp) > 100:
-                self.logger.warning(f"Section {section_outline.get('title')} JSON parsing failed, using raw response as fallback")
+                self.logger.warning(
+                    f"Section {section_outline.get('title')} JSON parsing failed, using raw response as fallback"
+                )
                 return resp.strip()
-        
+
         raise ValueError("LLM returned empty or invalid section_content field")
 
     async def _write_conclusion(
@@ -620,11 +882,13 @@ class ReportingAgent(BaseAgent):
             if isinstance(conclusion, str) and conclusion.strip():
                 return conclusion
         except Exception:
-             # Fallback
-             if len(resp) > 50:
-                 self.logger.warning("Conclusion JSON parsing failed, using raw response as fallback")
-                 return resp.strip()
-                 
+            # Fallback
+            if len(resp) > 50:
+                self.logger.warning(
+                    "Conclusion JSON parsing failed, using raw response as fallback"
+                )
+                return resp.strip()
+
         raise ValueError("LLM returned empty or invalid conclusion field")
 
     def _build_citation_number_map(self, blocks: list[TopicBlock]) -> dict[str, int]:
@@ -672,7 +936,22 @@ class ReportingAgent(BaseAgent):
 
     def _generate_references(self, blocks: list[TopicBlock]) -> str:
         """Generate References section"""
-        parts = ["## References\n"]
+        catalog = getattr(self, "_current_source_catalog", None)
+        if isinstance(catalog, list) and catalog:
+            parts = ["## References\n\n"]
+            for item in sorted(catalog, key=lambda x: int(x.get("ref_number", 0))):
+                ref_number = int(item.get("ref_number", 0))
+                if ref_number <= 0:
+                    continue
+                title = (item.get("title") or f"Reference {ref_number}").strip()
+                url = (item.get("url") or "").strip()
+                if url and url.startswith(("http://", "https://")):
+                    parts.append(f"[{ref_number}] [{title}]({url})\n\n")
+                else:
+                    parts.append(f"[{ref_number}] {title}\n\n")
+            return (
+                "".join(parts) if len(parts) > 1 else "## References\n\n*No citations available.*\n"
+            )
 
         # If using CitationManager, generate from JSON file
         if self.citation_manager:
@@ -766,142 +1045,116 @@ class ReportingAgent(BaseAgent):
                         ref_to_citations[ref_num] = []
                     ref_to_citations[ref_num].append((citation_id, citation, None))
 
-        # Generate references in order of ref_number
+        # Generate references in order of ref_number.
+        # Keep one entry per line to avoid mixed/nested reference blocks.
         for ref_num in sorted(ref_to_citations.keys()):
             entries = ref_to_citations[ref_num]
             if not entries:
                 continue
 
             # Use the first entry for this ref_number (others are duplicates)
-            citation_id, citation, paper = entries[0]
+            _, citation, paper = entries[0]
             tool_type = citation.get("tool_type", "").lower()
-
-            anchor = f"ref-{ref_num}"
-            parts.append(f'<a id="{anchor}"></a>**[{ref_num}]** ')
+            line = ""
 
             if tool_type == "paper_search":
                 if paper:
-                    formatted = self._format_single_paper_apa(paper)
+                    line = self._format_single_paper_apa(paper)
                 else:
-                    formatted = self._format_paper_citation_apa(citation)
-                parts.append(formatted)
+                    line = self._format_paper_citation_apa(citation)
             elif tool_type == "web_search":
-                formatted = self._format_web_search_citation(citation)
-                parts.append(formatted)
+                line = self._format_web_search_citation(citation)
             elif tool_type in ("rag_naive", "rag_hybrid", "query_item"):
-                formatted = self._format_rag_citation(citation)
-                parts.append(formatted)
+                line = self._format_rag_citation(citation)
             elif tool_type == "run_code":
-                formatted = self._format_code_citation(citation)
-                parts.append(formatted)
+                query = citation.get("query", "")
+                summary = citation.get("summary", "")
+                if summary:
+                    line = f"Code Execution: {summary[:260]}"
+                elif query:
+                    line = f"Code Execution: {query[:260]}"
+                else:
+                    line = "Code Execution"
             else:
                 # Generic format
                 query = citation.get("query", "")
                 summary = citation.get("summary", "")
-                parts.append(f"**{tool_type}**\n\n")
-                parts.append(f"- **Query**: {query}\n")
-                if summary:
-                    clean_summary = self._strip_markdown(summary)
-                    parts.append(
-                        f"- **Summary**: {clean_summary[:300]}{'...' if len(clean_summary) > 300 else ''}\n"
-                    )
+                clean_summary = self._strip_markdown(summary)
+                if clean_summary:
+                    line = f"{tool_type}: {clean_summary[:260]}"
+                elif query:
+                    line = f"{tool_type}: {query[:260]}"
+                else:
+                    line = tool_type
 
-            parts.append("\n\n")
+            line = " ".join((line or "").split())
+            if line:
+                parts.append(f"[{ref_num}] {line}\n")
 
         return "".join(parts)
 
     def _format_single_paper_apa(self, paper: dict) -> str:
-        """Format a single paper in APA style
-
-        Format: Authors (Year). *Title*. Venue. arXiv:ID. URL
-        """
-        authors = paper.get("authors", "Unknown Author")
-        year = paper.get("year", "n.d.")
-        title = paper.get("title", "Untitled")
+        """Format a single paper reference as a compact line."""
+        title = (paper.get("title") or "Untitled").strip()
         url = paper.get("url", "")
-        arxiv_id = paper.get("arxiv_id", "")
-        venue = paper.get("venue", "")
         doi = paper.get("doi", "")
-
-        # APA format
-        result = f"{authors} ({year}). *{title}*."
-        if venue:
-            result += f" {venue}."
-        if arxiv_id:
-            result += f" arXiv:{arxiv_id}."
         if doi:
-            result += f" https://doi.org/{doi}"
-        elif url:
-            result += f" {url}"
-
-        return result
+            return f"[{title}](https://doi.org/{doi})"
+        if url:
+            return f"[{title}]({url})"
+        return title
 
     def _format_paper_citation_apa(self, citation: dict) -> str:
-        """Format paper citation in APA style (fallback for citations without papers array)
-
-        Format: Authors (Year). *Title*. Venue. arXiv:ID. URL
-        """
-        # Use top-level fields (backward compatibility)
-        authors = citation.get("authors", "Unknown Author")
-        year = citation.get("year", "n.d.")
-        title = citation.get("title", "Untitled")
+        """Format paper reference (fallback for citations without papers array)."""
+        title = (citation.get("title") or "Untitled").strip()
         url = citation.get("url", "")
-        arxiv_id = citation.get("arxiv_id", "")
-        venue = citation.get("venue", "")
         doi = citation.get("doi", "")
-
-        result = f"{authors} ({year}). *{title}*."
-        if venue:
-            result += f" {venue}."
-        if arxiv_id:
-            result += f" arXiv:{arxiv_id}."
         if doi:
-            result += f" https://doi.org/{doi}"
-        elif url:
-            result += f" {url}"
-        return result
+            return f"[{title}](https://doi.org/{doi})"
+        if url:
+            return f"[{title}]({url})"
+        return title
 
     def _format_web_search_citation(self, citation: dict) -> str:
-        """Format web search citation - Links Only"""
+        """Format web search citation as a single-line markdown reference."""
         web_sources = citation.get("web_sources", []) or citation.get("citations", [])
 
         if not web_sources:
-             # Fallback if no specific links but query exists
-             return f"**Web Search**: {citation.get('query', '')} (No links provided)\n\n"
+            query = (citation.get("query", "") or "").strip()
+            return query or "Web Source"
 
-        result = ""
-        # Just list the links as requested, no query/summary noise
-        for i, source in enumerate(web_sources, 1):
-            title = source.get("title", "Untitled")
-            url = source.get("url", "")
-            if url:
-                result += f"[{i}] [{title}]({url})\n"
-        
-        result += "\n"
-        return result
+        best = None
+        for source in web_sources:
+            if not isinstance(source, dict):
+                continue
+            if source.get("url") or source.get("title"):
+                best = source
+                break
+        best = best or {}
+        title = (best.get("title") or best.get("url") or "Web Source").strip()
+        url = (best.get("url") or "").strip()
+        if url:
+            return f"[{title}]({url})"
+        return title
 
     def _format_rag_citation(self, citation: dict) -> str:
-        """Format RAG/Query citation - Documents Only"""
+        """Format RAG/Query citation as a single-line markdown reference."""
         sources = citation.get("sources", [])
-        kb_name = citation.get("kb_name", "")
-
         if not sources:
-            # Fallback
-            return f"**RAG Retrieval** (KB: {kb_name}) - No specific documents cited.\n\n"
+            query = (citation.get("query", "") or "").strip()
+            return query or "RAG Source"
 
-        result = ""
-        # Just list the documents as requested
-        for i, source in enumerate(sources, 1):
-            title = source.get("title", "") or source.get("source_file", f"Document {i}")
-            page = source.get("page", "")
-            
-            result += f"[{i}] {title}"
-            if page:
-                result += f" (Page {page})"
-            result += "\n"
-
-        result += "\n"
-        return result
+        best = sources[0] if isinstance(sources[0], dict) else {}
+        title = (
+            best.get("title") or best.get("source_file") or best.get("source") or "Document"
+        ).strip()
+        page = (best.get("page") or "").strip()
+        url = (best.get("url") or "").strip()
+        if page:
+            title = f"{title} (Page {page})"
+        if url and url.startswith(("http://", "https://")):
+            return f"[{title}]({url})"
+        return title
 
     def _strip_markdown(self, text: str) -> str:
         """Strip markdown formatting from text to get plain text"""
@@ -957,7 +1210,7 @@ class ReportingAgent(BaseAgent):
         return result
 
     def _generate_references_from_blocks(self, blocks: list[TopicBlock]) -> str:
-        """Generate References section from blocks (backward compatible, academic paper style)"""
+        """Generate References section from blocks (fallback mode, one line per item)."""
         parts = ["## References\n\n"]
 
         # Collect all citations
@@ -992,17 +1245,11 @@ class ReportingAgent(BaseAgent):
 
         all_citations.sort(key=lambda x: extract_citation_number(x["citation_id"]))
 
-        # Generate numbered references in academic paper style
-        # Using simple ref-N anchor format for clickable inline citations
+        # Generate compact numbered references (one line per reference).
         for idx, cit in enumerate(all_citations, 1):
             trace = cit["trace"]
-            citation_id = cit["citation_id"]
-
-            # Use simple ref-N anchor format (consistent with _generate_references_from_manager)
-            anchor = f"ref-{idx}"
             tool_type = trace.tool_type.lower() if trace.tool_type else ""
 
-            # Tool name display
             tool_display = {
                 "rag_naive": "RAG Retrieval",
                 "rag_hybrid": "Hybrid RAG Retrieval",
@@ -1012,61 +1259,39 @@ class ReportingAgent(BaseAgent):
                 "run_code": "Code Execution",
             }.get(tool_type, tool_type)
 
-            parts.append(f'<a id="{anchor}"></a>**[{idx}]** **{tool_display}**\n\n')
-            parts.append(f"- **Query**: {trace.query}\n")
+            line = trace.query or trace.summary or ""
             if trace.summary:
-                summary_text = trace.summary[:500] + ("..." if len(trace.summary) > 500 else "")
-                parts.append(f"- **Summary**: {summary_text}\n")
-            parts.append("\n")
+                line = trace.summary
+            line = " ".join((line or "").split())
+            if len(line) > 280:
+                line = line[:280] + "..."
+            if line:
+                parts.append(f"[{idx}] {tool_display}: {line}\n")
+            else:
+                parts.append(f"[{idx}] {tool_display}\n")
 
         return "".join(parts)
 
     def _convert_citation_format(self, text: str) -> str:
         """
-        Convert various citation formats to clickable [[N]](#ref-N) format.
+        Normalize citation markers to plain [N] format.
 
         Handles:
-        - [N] format (simple number in brackets)
-        - [ref=N] format (from citation table)
+        - [ref=N] -> [N]
+        - [[N]](#ref-N) -> [N]
+        - [N](#ref-N) -> [N]
 
         Args:
             text: Text with citations in various formats
 
         Returns:
-            Text with [[N]](#ref-N) clickable citations
+            Text with plain [N] citations
         """
         import re
 
-        # Get valid ref_numbers from the citation map
-        valid_refs = set()
-        if hasattr(self, "_citation_map") and self._citation_map:
-            valid_refs = set(self._citation_map.values())
-
-        def replace_citation(match):
-            # Get the number from the match
-            ref_num = match.group(1)
-
-            # Only convert if it's a valid ref_number
-            try:
-                num = int(ref_num)
-                if num in valid_refs:
-                    return f"[[{ref_num}]](#ref-{ref_num})"
-            except ValueError:
-                pass
-
-            # Return unchanged if not a valid reference
-            return match.group(0)
-
-        # First, convert [ref=N] format to clickable format
-        # Pattern: [ref=N] where N is a number
-        ref_pattern = r"\[ref=(\d+)\]"
-        text = re.sub(ref_pattern, replace_citation, text)
-
-        # Then, convert simple [N] format (but NOT already converted [[N]])
-        # Pattern to match [N] where N is a number, but NOT already in [[N]] format
-        # Use negative lookbehind and lookahead to avoid matching [[N]] or [N](#ref-N)
-        simple_pattern = r"(?<!\[)\[(\d+)\](?!\(#ref-)"
-        text = re.sub(simple_pattern, replace_citation, text)
+        text = re.sub(r"\[ref=(\d+)\]", r"[\1]", text)
+        text = re.sub(r"\[\[(\d+)\]\]\(#ref-\d+\)", r"[\1]", text)
+        text = re.sub(r"\[(\d+)\]\(#ref-\d+\)", r"[\1]", text)
 
         return text
 
@@ -1087,8 +1312,8 @@ class ReportingAgent(BaseAgent):
         if hasattr(self, "_citation_map") and self._citation_map:
             valid_refs = set(self._citation_map.values())
 
-        # Find all citations in [[N]](#ref-N) format
-        pattern = r"\[\[(\d+)\]\]\(#ref-\d+\)"
+        # Find all citations in plain [N] format
+        pattern = r"\[(\d+)\]"
         found_citations = re.findall(pattern, text)
 
         valid = []
@@ -1103,21 +1328,6 @@ class ReportingAgent(BaseAgent):
                     invalid.append(num)
             except ValueError:
                 invalid.append(ref)
-
-        # Remove invalid citations
-        if invalid:
-
-            def remove_invalid(match):
-                ref_num = match.group(1)
-                try:
-                    num = int(ref_num)
-                    if num not in valid_refs:
-                        return ""  # Remove invalid citation
-                except ValueError:
-                    return ""
-                return match.group(0)
-
-            text = re.sub(pattern, remove_invalid, text)
 
         validation_result = {
             "valid_citations": valid,
@@ -1353,9 +1563,11 @@ class ReportingAgent(BaseAgent):
         except Exception as e:
             # Fallback: if JSON parsing fails, assume the LLM returned raw markdown
             if len(resp) > 100:
-                self.logger.warning(f"Section {section.get('title')} JSON parsing failed, using raw response as fallback: {e}")
+                self.logger.warning(
+                    f"Section {section.get('title')} JSON parsing failed, using raw response as fallback: {e}"
+                )
                 return resp.strip()
-            
+
             raise ValueError(
                 f"Unable to parse LLM returned section content: {e!s}. Report generation failed."
             )
@@ -1372,7 +1584,6 @@ class ReportingAgent(BaseAgent):
         except Exception:
             pass
 
-
     async def _write_summary_report(self, topic: str, blocks: list[TopicBlock]) -> str:
         """Write a comprehensive summary report from blocks (for Fast Research)"""
         # Collect all context
@@ -1380,19 +1591,23 @@ class ReportingAgent(BaseAgent):
         for b in blocks:
             for t in b.tool_traces:
                 if t.tool_type == "web_search":
-                     # For web search, include query and snippet/summary
-                     context_parts.append(f"Source: Web Search\nQuery: {t.query}\nContent: {t.summary}")
+                    # For web search, include query and snippet/summary
+                    context_parts.append(
+                        f"Source: Web Search\nQuery: {t.query}\nContent: {t.summary}"
+                    )
                 elif t.tool_type in ("rag_naive", "rag_hybrid", "query_item"):
-                     context_parts.append(f"Source: Knowledge Base\nQuery: {t.query}\nContent: {t.summary}")
-        
+                    context_parts.append(
+                        f"Source: Knowledge Base\nQuery: {t.query}\nContent: {t.summary}"
+                    )
+
         full_context = "\n\n".join(context_parts)
-        
+
         system_prompt = self.get_prompt(
             "system",
             "role",
-            "You are a helpful AI assistant capable of synthesizing information from multiple sources."
+            "You are a helpful AI assistant capable of synthesizing information from multiple sources.",
         )
-        
+
         # Simple prompt for summary
         user_prompt = (
             f"Please provide a comprehensive answer to the topic: {topic}\n\n"
@@ -1403,13 +1618,16 @@ class ReportingAgent(BaseAgent):
             f"- Provide a clear and readable response.\n"
             f"- If the research results are insufficient/irrelevant, state that clearly."
         )
-        
+
         # Reuse call_llm
-        resp = await self.call_llm(user_prompt, system_prompt, stage="write_summary_report", verbose=False)
-        
+        resp = await self.call_llm(
+            user_prompt, system_prompt, stage="write_summary_report", verbose=False
+        )
+
         # Clean up response (if it's JSON wrapped, though typically call_llm returns string processing result if configured, but base_agent usually returns string)
         # BaseAgent.call_llm returns string.
-        
+
         return resp
+
 
 __all__ = ["ReportingAgent"]

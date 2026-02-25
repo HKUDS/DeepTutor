@@ -2,12 +2,12 @@ import asyncio
 from datetime import datetime
 import hashlib
 import json
-import logging
 from pathlib import Path
 import sys
 import time
 import traceback
 from typing import Any, Literal
+import uuid
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, WebSocket
 from fastapi.responses import StreamingResponse
@@ -35,6 +35,8 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
 
 router = APIRouter()
+_ACTIVE_RESEARCH_RUNS: dict[str, dict[str, str]] = {}
+_ACTIVE_RESEARCH_RUNS_LOCK = asyncio.Lock()
 
 
 # Helper to load config (with main.yaml merge)
@@ -70,6 +72,18 @@ def _get_latest_event(progress: dict | None) -> dict | None:
     return events[-1]
 
 
+def _build_research_run_key(
+    notebook_id: str | None, session_id: str | None, kb_name: str, topic: str
+) -> str:
+    normalized_topic = " ".join((topic or "").lower().split())
+    topic_hash = hashlib.sha1(normalized_topic.encode("utf-8")).hexdigest()[:16]
+    if notebook_id and session_id:
+        return f"nb:{notebook_id}:session:{session_id}"
+    if notebook_id:
+        return f"nb:{notebook_id}:topic:{topic_hash}"
+    return f"kb:{kb_name}:topic:{topic_hash}"
+
+
 def _persist_research_session(
     notebook_id: str | None,
     session_id: str | None,
@@ -91,7 +105,9 @@ def _persist_research_session(
         sources = list(updated.get("sources", []) or [])
 
         def source_key(item: dict) -> str:
-            return f"{item.get('type')}-{item.get('url') or item.get('title') or item.get('id') or ''}"
+            return (
+                f"{item.get('type')}-{item.get('url') or item.get('title') or item.get('id') or ''}"
+            )
 
         existing_keys = {source_key(s) for s in sources}
 
@@ -127,6 +143,8 @@ def _persist_research_session(
                         "url": source.get("url") or "",
                         "content": source.get("content") or source.get("snippet") or "",
                         "selected": True,
+                        "source_key": source.get("source_key"),
+                        "ref_number": source.get("ref_number"),
                     }
                 )
 
@@ -144,6 +162,8 @@ def _persist_research_session(
                         "url": source.get("url") or "",
                         "content": source.get("content") or source.get("content_preview") or "",
                         "selected": True,
+                        "source_key": source.get("source_key"),
+                        "ref_number": source.get("ref_number"),
                     }
                 )
 
@@ -157,6 +177,8 @@ def _persist_research_session(
                         "url": source.get("url") or "",
                         "content": source.get("content") or source.get("snippet") or "",
                         "selected": True,
+                        "source_key": source.get("source_key"),
+                        "ref_number": source.get("ref_number"),
                     }
                 )
 
@@ -231,10 +253,10 @@ async def export_pptx(request: ExportPptxRequest):
     project_root = Path(__file__).parent.parent.parent.parent
     export_dir = project_root / "data" / "user" / "research" / "exports"
     template_dir = project_root / "data" / "user" / "notebook" / "ppt_templates"
-    
+
     # Initialize Generator
     generator = PPTGenerator(export_dir=export_dir)
-    
+
     try:
         template_path = None
         if request.template_name:
@@ -386,7 +408,11 @@ async def ppt_style_preview(request: PptStylePreviewRequest):
                 spec = await generator._generate_ppt_spec(
                     sample_markdown, request.style_prompt, max_slides=5
                 )
-                theme = generator._parse_theme(spec.get("theme", {})) if spec else generator._parse_theme({})
+                theme = (
+                    generator._parse_theme(spec.get("theme", {}))
+                    if spec
+                    else generator._parse_theme({})
+                )
             except Exception:
                 theme = generator._parse_theme({})
         else:
@@ -536,7 +562,11 @@ async def research_status(research_id: str):
     metadata_file = reports_dir / f"{research_id}_metadata.json"
     has_report = report_file.exists()
 
-    if not any([planning, researching, reporting, queue]) and not has_report and not metadata_file.exists():
+    if (
+        not any([planning, researching, reporting, queue])
+        and not has_report
+        and not metadata_file.exists()
+    ):
         raise HTTPException(status_code=404, detail="Research not found")
 
     report_url = None
@@ -655,6 +685,10 @@ async def websocket_research_run(websocket: WebSocket):
     heartbeat_task = None
     ws_connected = True  # Track WebSocket connection state
     original_stdout = sys.stdout  # Save original stdout at the start
+    config = None
+    task_id = None
+    run_key = None
+    run_token = None
 
     # Safe send helper - checks connection before sending
     async def safe_send(data: dict) -> bool:
@@ -665,7 +699,7 @@ async def websocket_research_run(websocket: WebSocket):
             await websocket.send_json(data)
             return True
         except Exception as e:
-            logger.warning(f"WebSocket send failed: {e}")
+            logger.warning(f"WebSocket send failed ({type(e).__name__}): {e!r}")
             ws_connected = False
             return False
 
@@ -688,15 +722,48 @@ async def websocket_research_run(websocket: WebSocket):
         research_mode = data.get("research_mode")
 
         if not topic:
-            await websocket.send_json({"type": "error", "content": "Topic is required"})
+            await safe_send({"type": "error", "content": "Topic is required"})
+            return
+
+        run_key = _build_research_run_key(notebook_id, session_id, kb_name, topic)
+        run_token = uuid.uuid4().hex
+        async with _ACTIVE_RESEARCH_RUNS_LOCK:
+            existing_run = _ACTIVE_RESEARCH_RUNS.get(run_key)
+            if existing_run:
+                duplicate_running = True
+                existing_task_id = existing_run.get("task_id")
+                existing_research_id = existing_run.get("research_id")
+            else:
+                duplicate_running = False
+                _ACTIVE_RESEARCH_RUNS[run_key] = {
+                    "token": run_token,
+                    "task_id": "",
+                    "research_id": "",
+                }
+                existing_task_id = ""
+                existing_research_id = ""
+        if duplicate_running:
+            if existing_task_id:
+                await safe_send({"type": "task_id", "task_id": existing_task_id})
+            await safe_send(
+                {
+                    "type": "status",
+                    "content": "already_running",
+                    "research_id": existing_research_id or None,
+                }
+            )
             return
 
         # Generate task ID
         task_key = f"research_{kb_name}_{hash(str(topic))}"
         task_id = task_manager.generate_task_id("research", task_key)
+        async with _ACTIVE_RESEARCH_RUNS_LOCK:
+            run_state = _ACTIVE_RESEARCH_RUNS.get(run_key)
+            if run_state and run_state.get("token") == run_token:
+                run_state["task_id"] = task_id
 
         # Send task ID to frontend
-        await websocket.send_json({"type": "task_id", "task_id": task_id})
+        await safe_send({"type": "task_id", "task_id": task_id})
 
         # Use unified logger
         config = load_config()
@@ -715,19 +782,6 @@ async def websocket_research_run(websocket: WebSocket):
         # This ensures all research module configs are properly inherited from main.yaml
         research_config = config.get("research", {})
 
-        # ... (config initialization code omitted for brevity as it remains same) ...
-        # NOTE: Skipping large block of config init code, assuming standard execution flow continues here
-        # We need to focus on where pipeline.run is called.
-
-        # ... (omitted config setup) ...
-
-        # To keep this tool call focused, let's target the later part where pipeline is created and run.
-        # But wait, replace_file_content requires me to match content exactly within a range.
-        # Since I cannot see the middle lines about config setup in lines 380-450 easily without viewing, 
-        # I should use multi_replace or ensure I view the file or just replace the END of the function.
-        
-        # Let's adjust the strategy. I will modify the END of websocket_research_run function 
-        # where the pipeline is initialized and run.
         # Initialize planning config from research.planning
         if "planning" not in config:
             config["planning"] = research_config.get("planning", {}).copy()
@@ -877,6 +931,10 @@ async def websocket_research_run(websocket: WebSocket):
             kb_name=kb_name,
             progress_callback=progress_callback,
         )
+        async with _ACTIVE_RESEARCH_RUNS_LOCK:
+            run_state = _ACTIVE_RESEARCH_RUNS.get(run_key)
+            if run_state and run_state.get("token") == run_token:
+                run_state["research_id"] = pipeline.research_id
 
         # 4. Background log pusher
         async def log_pusher():
@@ -947,7 +1005,7 @@ async def websocket_research_run(websocket: WebSocket):
             await safe_send(
                 {"type": "status", "content": "started", "research_id": pipeline.research_id}
             )
-            
+
             # 8. Execute Research directly
             # Note: We removed the concurrent WebSocket listener pattern because
             # cancelling a pending websocket.receive_json() corrupts the connection,
@@ -965,11 +1023,11 @@ async def websocket_research_run(websocket: WebSocket):
                             report_content = report_path.read_text(encoding="utf-8")
                     except Exception as exc:
                         logger.warning(f"Failed to read report from {final_report_path}: {exc}")
-                
+
                 # Send completion message
                 # For backward compatibility with simpler client
                 await safe_send({"type": "report_path", "path": str(final_report_path)})
-                
+
                 # Save to history
                 history_manager.add_entry(
                     activity_type=ActivityType.RESEARCH,
@@ -1014,19 +1072,26 @@ async def websocket_research_run(websocket: WebSocket):
 
     except Exception as e:
         await safe_send({"type": "error", "content": str(e)})
-        logging.error(f"Research error: {e}", exc_info=True)
+        logger.error(f"Research error: {e}", exc_info=True)
 
         # Update task status to error
         try:
-            log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {}).get(
-                "log_dir"
-            )
-            research_logger = get_logger("Research", log_dir=log_dir)
-            research_logger.error(f"[{task_id}] Research flow failed: {e}")
-            task_manager.update_task_status(task_id, "error", error=str(e))
+            if config is not None:
+                log_dir = config.get("paths", {}).get("user_log_dir") or config.get(
+                    "logging", {}
+                ).get("log_dir")
+                research_logger = get_logger("Research", log_dir=log_dir)
+                research_logger.error(f"[{task_id}] Research flow failed: {e}")
+            if task_id is not None:
+                task_manager.update_task_status(task_id, "error", error=str(e))
         except Exception as log_err:
             logger.warning(f"Failed to log error: {log_err}")
     finally:
+        if run_key and run_token:
+            async with _ACTIVE_RESEARCH_RUNS_LOCK:
+                run_state = _ACTIVE_RESEARCH_RUNS.get(run_key)
+                if run_state and run_state.get("token") == run_token:
+                    _ACTIVE_RESEARCH_RUNS.pop(run_key, None)
         if pusher_task:
             pusher_task.cancel()
         if progress_pusher_task:
@@ -1037,6 +1102,7 @@ async def websocket_research_run(websocket: WebSocket):
 
 class ExportMindmapRequest(BaseModel):
     """Request model for mindmap export"""
+
     markdown: str
     use_llm: bool = False
 
@@ -1045,11 +1111,11 @@ class ExportMindmapRequest(BaseModel):
 async def export_mindmap(request: ExportMindmapRequest):
     """
     Generate Mermaid mindmap code from research report
-    
+
     Args:
         markdown: Markdown content of the report
         use_llm: If True, use LLM for better structure extraction
-        
+
     Returns:
         {"mindmap": "mermaid mindmap code"}
     """
@@ -1057,7 +1123,7 @@ async def export_mindmap(request: ExportMindmapRequest):
         from src.services.export.mindmap_generator import (
             generate_mindmap_code,
         )
-        
+
         if request.use_llm:
             # Get LLM config for enhanced generation
             try:
@@ -1069,9 +1135,9 @@ async def export_mindmap(request: ExportMindmapRequest):
                 mindmap_code = generate_mindmap_code(request.markdown)
         else:
             mindmap_code = generate_mindmap_code(request.markdown)
-        
+
         return {"mindmap": mindmap_code}
-        
+
     except Exception as e:
         logger.error(f"Mindmap export failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))

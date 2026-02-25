@@ -446,6 +446,7 @@ class ResearchPipeline:
                 "report_word_count": report_result["word_count"],
                 "web_sources": sources.get("web", []),  # Flatten for frontend
                 "rag_sources": sources.get("rag", []),  # Flatten for frontend
+                "source_catalog": report_result.get("source_catalog", []),
                 "completed_at": datetime.now().isoformat(),
             }
 
