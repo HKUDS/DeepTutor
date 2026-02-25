@@ -485,7 +485,9 @@ def _should_sync_sources_kb(notebook_id: str, signature: str | None) -> bool:
     kb_manager = KnowledgeBaseManager(base_dir=str(_kb_base_dir))
     kb_names = kb_manager.list_knowledge_bases()
     matched_kb_names = _find_notebook_sources_kb_names(kb_manager, notebook_id)
-    kb_name = matched_kb_names[0] if matched_kb_names else _get_notebook_sources_kb_name(notebook_id)
+    kb_name = (
+        matched_kb_names[0] if matched_kb_names else _get_notebook_sources_kb_name(notebook_id)
+    )
 
     if kb_name not in kb_names:
         return True

@@ -248,9 +248,7 @@ class ChatAgent(BaseAgent):
         if count == 0:
             return ""
 
-        lines.append(
-            "When you cite, ONLY use bracket numbers from this index, e.g. [1], [2]."
-        )
+        lines.append("When you cite, ONLY use bracket numbers from this index, e.g. [1], [2].")
         return "\n".join(lines)
 
     async def retrieve_context(
@@ -434,7 +432,7 @@ class ChatAgent(BaseAgent):
                 )
                 instructions.append("When citing, use plain [N] format only.")
                 instructions.append("Do NOT output links like [N](#ref-N).")
-                instructions.append("Do NOT output HTML anchors such as <a id=\"ref-N\"></a>.")
+                instructions.append('Do NOT output HTML anchors such as <a id="ref-N"></a>.')
             else:
                 # Chat mode: use context as supplementary reference, not as strict constraint
                 instructions.append(

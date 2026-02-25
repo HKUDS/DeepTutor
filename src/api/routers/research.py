@@ -105,7 +105,9 @@ def _persist_research_session(
         sources = list(updated.get("sources", []) or [])
 
         def source_key(item: dict) -> str:
-            return f"{item.get('type')}-{item.get('url') or item.get('title') or item.get('id') or ''}"
+            return (
+                f"{item.get('type')}-{item.get('url') or item.get('title') or item.get('id') or ''}"
+            )
 
         existing_keys = {source_key(s) for s in sources}
 
@@ -251,10 +253,10 @@ async def export_pptx(request: ExportPptxRequest):
     project_root = Path(__file__).parent.parent.parent.parent
     export_dir = project_root / "data" / "user" / "research" / "exports"
     template_dir = project_root / "data" / "user" / "notebook" / "ppt_templates"
-    
+
     # Initialize Generator
     generator = PPTGenerator(export_dir=export_dir)
-    
+
     try:
         template_path = None
         if request.template_name:
@@ -406,7 +408,11 @@ async def ppt_style_preview(request: PptStylePreviewRequest):
                 spec = await generator._generate_ppt_spec(
                     sample_markdown, request.style_prompt, max_slides=5
                 )
-                theme = generator._parse_theme(spec.get("theme", {})) if spec else generator._parse_theme({})
+                theme = (
+                    generator._parse_theme(spec.get("theme", {}))
+                    if spec
+                    else generator._parse_theme({})
+                )
             except Exception:
                 theme = generator._parse_theme({})
         else:
@@ -556,7 +562,11 @@ async def research_status(research_id: str):
     metadata_file = reports_dir / f"{research_id}_metadata.json"
     has_report = report_file.exists()
 
-    if not any([planning, researching, reporting, queue]) and not has_report and not metadata_file.exists():
+    if (
+        not any([planning, researching, reporting, queue])
+        and not has_report
+        and not metadata_file.exists()
+    ):
         raise HTTPException(status_code=404, detail="Research not found")
 
     report_url = None
@@ -995,7 +1005,7 @@ async def websocket_research_run(websocket: WebSocket):
             await safe_send(
                 {"type": "status", "content": "started", "research_id": pipeline.research_id}
             )
-            
+
             # 8. Execute Research directly
             # Note: We removed the concurrent WebSocket listener pattern because
             # cancelling a pending websocket.receive_json() corrupts the connection,
@@ -1013,11 +1023,11 @@ async def websocket_research_run(websocket: WebSocket):
                             report_content = report_path.read_text(encoding="utf-8")
                     except Exception as exc:
                         logger.warning(f"Failed to read report from {final_report_path}: {exc}")
-                
+
                 # Send completion message
                 # For backward compatibility with simpler client
                 await safe_send({"type": "report_path", "path": str(final_report_path)})
-                
+
                 # Save to history
                 history_manager.add_entry(
                     activity_type=ActivityType.RESEARCH,
@@ -1067,9 +1077,9 @@ async def websocket_research_run(websocket: WebSocket):
         # Update task status to error
         try:
             if config is not None:
-                log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {}).get(
-                    "log_dir"
-                )
+                log_dir = config.get("paths", {}).get("user_log_dir") or config.get(
+                    "logging", {}
+                ).get("log_dir")
                 research_logger = get_logger("Research", log_dir=log_dir)
                 research_logger.error(f"[{task_id}] Research flow failed: {e}")
             if task_id is not None:
@@ -1092,6 +1102,7 @@ async def websocket_research_run(websocket: WebSocket):
 
 class ExportMindmapRequest(BaseModel):
     """Request model for mindmap export"""
+
     markdown: str
     use_llm: bool = False
 
@@ -1100,11 +1111,11 @@ class ExportMindmapRequest(BaseModel):
 async def export_mindmap(request: ExportMindmapRequest):
     """
     Generate Mermaid mindmap code from research report
-    
+
     Args:
         markdown: Markdown content of the report
         use_llm: If True, use LLM for better structure extraction
-        
+
     Returns:
         {"mindmap": "mermaid mindmap code"}
     """
@@ -1112,7 +1123,7 @@ async def export_mindmap(request: ExportMindmapRequest):
         from src.services.export.mindmap_generator import (
             generate_mindmap_code,
         )
-        
+
         if request.use_llm:
             # Get LLM config for enhanced generation
             try:
@@ -1124,9 +1135,9 @@ async def export_mindmap(request: ExportMindmapRequest):
                 mindmap_code = generate_mindmap_code(request.markdown)
         else:
             mindmap_code = generate_mindmap_code(request.markdown)
-        
+
         return {"mindmap": mindmap_code}
-        
+
     except Exception as e:
         logger.error(f"Mindmap export failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
