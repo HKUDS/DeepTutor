@@ -797,18 +797,42 @@ export default function NotebookDetailPage() {
 
     if (reportContent) {
       setChatMessages((prev) => {
+        const banner = "**📚 深度研究完成**";
+        const reportMsg = `${banner}\n\n${reportContent}`;
+        const catalogValue =
+          sourceCatalog.length > 0 ? sourceCatalog : undefined;
+
+        // Guard: if a report message already exists, update it in-place
+        const hasExistingReport = prev.some(
+          (msg) =>
+            msg.role === "assistant" &&
+            msg.content &&
+            msg.content.includes(banner),
+        );
+        if (hasExistingReport) {
+          return prev.map((msg) =>
+            msg.role === "assistant" &&
+            msg.content &&
+            msg.content.includes(banner)
+              ? {
+                  ...msg,
+                  content: reportMsg,
+                  isStreaming: false,
+                  source_catalog: catalogValue ?? msg.source_catalog,
+                }
+              : msg,
+          );
+        }
+
         const hasStreaming = prev.some((msg) => msg.isStreaming);
         if (hasStreaming) {
           return prev.map((msg) =>
             msg.isStreaming
               ? {
                   ...msg,
-                  content: `**📚 深度研究完成**\n\n${reportContent}`,
+                  content: reportMsg,
                   isStreaming: false,
-                  source_catalog:
-                    sourceCatalog.length > 0
-                      ? sourceCatalog
-                      : msg.source_catalog,
+                  source_catalog: catalogValue ?? msg.source_catalog,
                 }
               : msg,
           );
@@ -818,9 +842,8 @@ export default function NotebookDetailPage() {
           {
             id: `result-${Date.now()}`,
             role: "assistant" as const,
-            content: `**📚 深度研究完成**\n\n${reportContent}`,
-            source_catalog:
-              sourceCatalog.length > 0 ? sourceCatalog : undefined,
+            content: reportMsg,
+            source_catalog: catalogValue,
           },
         ];
       });
