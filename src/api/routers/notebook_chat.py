@@ -49,13 +49,15 @@ async def websocket_notebook_chat(websocket: WebSocket):
         "sources_kb_name": str,      # KB for notebook selected sources
         "enable_rag": bool,          # Enable RAG retrieval
         "enable_web_search": bool,   # Enable Web Search
-        "require_sources": bool      # Require sources before answering (grounded QA)
+        "require_sources": bool,     # Require sources before answering (grounded QA)
+        "selected_sources": list     # Optional source catalog with ref_number mapping
     }
 
     Response format:
     - {"type": "status", "stage": str, "message": str} # Status updates
     - {"type": "stream", "content": str}               # Streaming response chunks
-    - {"type": "sources", "rag": list, "web": list}    # Source citations
+    - {"type": "sources", "rag": list, "web": list, "source_catalog": list}
+      # Source citations + reference catalog
     - {"type": "result", "content": str}               # Final complete response
     - {"type": "error", "message": str}                # Error message
     """
@@ -75,6 +77,9 @@ async def websocket_notebook_chat(websocket: WebSocket):
             enable_rag = data.get("enable_rag", False)
             enable_web_search = data.get("enable_web_search", False)
             require_sources = data.get("require_sources", False)
+            source_catalog = data.get("selected_sources") or []
+            if not isinstance(source_catalog, list):
+                source_catalog = []
 
             if not message:
                 await websocket.send_json({"type": "error", "message": "Message is required"})
@@ -83,7 +88,8 @@ async def websocket_notebook_chat(websocket: WebSocket):
             logger.info(
                 f"Notebook chat: message={message[:50]}..., "
                 f"rag={enable_rag}, web={enable_web_search}, "
-                f"sources_kb={sources_kb_name or 'none'}"
+                f"sources_kb={sources_kb_name or 'none'}, "
+                f"catalog={len(source_catalog)}"
             )
 
             try:
@@ -129,6 +135,7 @@ async def websocket_notebook_chat(websocket: WebSocket):
                 # Process with streaming
                 full_response = ""
                 sources = {"rag": [], "web": []}
+                resolved_catalog = source_catalog
 
                 stream_generator = await agent.process(
                     message=message,
@@ -138,6 +145,7 @@ async def websocket_notebook_chat(websocket: WebSocket):
                     enable_rag=enable_rag,
                     enable_web_search=enable_web_search,
                     require_sources=require_sources,
+                    source_catalog=source_catalog,
                     stream=True,
                 )
 
@@ -153,10 +161,17 @@ async def websocket_notebook_chat(websocket: WebSocket):
                     elif chunk_data["type"] == "complete":
                         full_response = chunk_data["response"]
                         sources = chunk_data.get("sources", {"rag": [], "web": []})
+                        resolved_catalog = chunk_data.get("source_catalog", source_catalog)
 
-                # Send sources if any
-                if sources.get("rag") or sources.get("web"):
-                    await websocket.send_json({"type": "sources", **sources})
+                # Send sources/catalog if any
+                if sources.get("rag") or sources.get("web") or resolved_catalog:
+                    await websocket.send_json(
+                        {
+                            "type": "sources",
+                            **sources,
+                            "source_catalog": resolved_catalog,
+                        }
+                    )
 
                 # Send final result
                 await websocket.send_json(

@@ -2,7 +2,15 @@
 
 /* eslint-disable react-hooks/exhaustive-deps */
 
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+  type ChangeEvent,
+  type MouseEvent,
+} from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -102,6 +110,11 @@ interface ChatMessage {
   content: string;
   isStreaming?: boolean;
   isSeparator?: boolean;
+  sources?: {
+    rag?: any[];
+    web?: any[];
+  };
+  source_catalog?: CitationCatalogItem[];
 }
 
 // Source types for the left panel
@@ -112,6 +125,16 @@ interface Source {
   url?: string;
   selected: boolean;
   content?: string;
+  source_key?: string;
+  ref_number?: number;
+}
+
+interface CitationCatalogItem {
+  ref_number: number;
+  source_key?: string;
+  title: string;
+  url?: string;
+  type?: Source["type"];
 }
 
 interface ResearchState {
@@ -180,11 +203,106 @@ interface SessionSnapshot {
   updated_at: number;
 }
 
+const normalizeSourceUrl = (raw?: string) => {
+  const value = (raw || "").trim();
+  if (!value) return "";
+  try {
+    const parsed = new URL(value);
+    parsed.hash = "";
+    let normalized = parsed.toString();
+    if (normalized.endsWith("/")) {
+      normalized = normalized.slice(0, -1);
+    }
+    return normalized;
+  } catch {
+    return value.replace(/\/+$/, "");
+  }
+};
+
+const buildSourceKey = (source: Partial<Source> & { source_key?: string }) => {
+  if (source.source_key) return source.source_key;
+  const normalizedUrl = normalizeSourceUrl(source.url);
+  const key = normalizedUrl || source.url || source.id || source.title || "";
+  const sourceType = source.type || "web";
+  return key ? `${sourceType}-${key}` : "";
+};
+
+const withSourceIdentity = (source: Source): Source => {
+  const sourceKey = buildSourceKey(source);
+  return {
+    ...source,
+    source_key: sourceKey || source.source_key,
+  };
+};
+
 const normalizeSources = (list: Source[] = []) =>
   list.map((source) => ({
-    ...source,
+    ...withSourceIdentity(source),
     selected: source.selected !== false,
   }));
+
+const stripLegacyCitationAnchors = (content: string) =>
+  content
+    .replace(/<a\s+id=(['"])ref-\d+\1\s*><\/a>/gi, "")
+    .replace(/<a\s+id=ref-\d+\s*><\/a>/gi, "");
+
+const normalizeLegacyCitationMarkup = (content: string) =>
+  stripLegacyCitationAnchors(content).replace(
+    /\[\[(\d+)\]\]\(#ref-(\d+)\)/g,
+    "[$1](#ref-$2)",
+  );
+
+const extractCatalogFromMessageContent = (content: string): CitationCatalogItem[] => {
+  const text = normalizeLegacyCitationMarkup(content || "");
+  const lines = text.split("\n");
+  const items: CitationCatalogItem[] = [];
+
+  lines.forEach((line) => {
+    const refMatch = line.match(/^\s*\**\[(\d+)\]\**\s+(.+)$/);
+    if (!refMatch) return;
+    const refNumber = parseInt(refMatch[1], 10);
+    if (!Number.isFinite(refNumber) || refNumber <= 0) return;
+    const rest = refMatch[2].trim();
+    if (!rest) return;
+
+    const linkMatch = rest.match(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/i);
+    if (linkMatch) {
+      const title = linkMatch[1].trim() || `引用 ${refNumber}`;
+      const url = linkMatch[2].trim();
+      items.push({
+        ref_number: refNumber,
+        title,
+        url,
+        type: "web",
+        source_key: buildSourceKey({ type: "web", title, url }),
+      });
+      return;
+    }
+
+    const urlMatch = rest.match(/(https?:\/\/[^\s)]+)/i);
+    if (urlMatch) {
+      const url = urlMatch[1].trim();
+      const title = rest.replace(urlMatch[1], "").trim() || url;
+      items.push({
+        ref_number: refNumber,
+        title,
+        url,
+        type: "web",
+        source_key: buildSourceKey({ type: "web", title, url }),
+      });
+      return;
+    }
+
+    items.push({
+      ref_number: refNumber,
+      title: rest,
+      type: "web",
+      source_key: buildSourceKey({ type: "web", title: rest }),
+    });
+  });
+
+  return items;
+};
 
 export default function NotebookDetailPage() {
   const params = useParams();
@@ -208,6 +326,12 @@ export default function NotebookDetailPage() {
   const [chatInput, setChatInput] = useState("");
   const [isChatting, setIsChatting] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const sourceRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const citationRegistryRef = useRef<Map<string, number>>(new Map());
+  const citationNumberOwnerRef = useRef<Map<number, string>>(new Map());
+  const citationPinnedRefRef = useRef<Map<string, number>>(new Map());
+  const [citationRegistryVersion, setCitationRegistryVersion] = useState(0);
+  const [highlightedSourceKey, setHighlightedSourceKey] = useState("");
 
   // Refs to always have the latest values for session saves (avoids React stale closure bugs)
   const chatMessagesRef = useRef<ChatMessage[]>([]);
@@ -635,19 +759,22 @@ export default function NotebookDetailPage() {
     researchId?: string,
   ) => {
     const reportContent = report || "";
+    const sourceCatalog = normalizeSourceCatalog(
+      metadata?.source_catalog || metadata?.citation_catalog || [],
+    );
     if (researchId) {
       setActiveResearchId(researchId);
     }
     setResearchReport(reportContent);
     if (reportContent) {
       const reportTitle = topic ? `深度研究报告 - ${topic}` : "深度研究报告";
-      const reportSource: Source = {
+      const reportSource: Source = withSourceIdentity({
         id: `report-${researchId || Date.now()}`,
         type: "report",
         title: reportTitle,
         selected: true,
         content: reportContent,
-      };
+      });
       setSources((prev) => {
         const withoutReports = prev.filter(
           (source) => source.type !== "report",
@@ -673,10 +800,14 @@ export default function NotebookDetailPage() {
           return prev.map((msg) =>
             msg.isStreaming
               ? {
-                  ...msg,
-                  content: `**📚 深度研究完成**\n\n${reportContent}`,
-                  isStreaming: false,
-                }
+                ...msg,
+                content: `**📚 深度研究完成**\n\n${reportContent}`,
+                isStreaming: false,
+                source_catalog:
+                  sourceCatalog.length > 0
+                    ? sourceCatalog
+                    : msg.source_catalog,
+              }
               : msg,
           );
         }
@@ -686,6 +817,7 @@ export default function NotebookDetailPage() {
             id: `result-${Date.now()}`,
             role: "assistant" as const,
             content: `**📚 深度研究完成**\n\n${reportContent}`,
+            source_catalog: sourceCatalog.length > 0 ? sourceCatalog : undefined,
           },
         ];
       });
@@ -703,6 +835,9 @@ export default function NotebookDetailPage() {
             url: s.url,
             content: s.content || s.snippet || "",
             selected: true,
+            source_key: s.source_key,
+            ref_number:
+              typeof s.ref_number === "number" ? s.ref_number : undefined,
           });
         });
       }
@@ -726,6 +861,9 @@ export default function NotebookDetailPage() {
             url: ragDetail || "",
             content: s.content || s.content_preview || "",
             selected: true,
+            source_key: s.source_key,
+            ref_number:
+              typeof s.ref_number === "number" ? s.ref_number : undefined,
           });
         });
       }
@@ -739,12 +877,18 @@ export default function NotebookDetailPage() {
             url: s.url || "",
             content: s.content || s.snippet || "",
             selected: true,
+            source_key: s.source_key,
+            ref_number:
+              typeof s.ref_number === "number" ? s.ref_number : undefined,
           });
         });
       }
 
-      if (newSources.length > 0) {
-        setSources((prev) => [...prev, ...newSources]);
+      if (newSources.length > 0 || sourceCatalog.length > 0) {
+        setSources((prev) =>
+          mergeSourcesWithCatalog(prev, newSources, sourceCatalog),
+        );
+        setCitationRegistryVersion((prev) => prev + 1);
       }
     }
 
@@ -817,18 +961,36 @@ export default function NotebookDetailPage() {
     }
   };
 
+  const markResearchAsUnrecoverable = (reason: string) => {
+    setPendingResearchRecovery(false);
+    setResearchRunning(false);
+    setResearchPhase("idle");
+    setIsChatting(false);
+    setChatMessages((prev) =>
+      prev.map((msg) =>
+        msg.isStreaming
+          ? {
+              ...msg,
+              content: "❌ 研究连接已中断，未检测到可恢复任务，请重新发起深度研究。",
+              isStreaming: false,
+            }
+          : msg,
+      ),
+    );
+    scheduleSessionSave(true, currentSessionIdRef.current || undefined);
+    console.warn(`Stopped stale research recovery (${reason})`);
+  };
+
   const recoverResearchIfNeeded = async (reason: string) => {
     if (!pendingRecoveryRef.current) return;
-    if (researchReport) {
+    if (researchReportRef.current) {
       setPendingResearchRecovery(false);
       return;
     }
     const researchId = activeResearchIdRef.current;
     if (researchId) {
       try {
-        const res = await fetch(
-          apiUrl(`/api/v1/research/status/${researchId}`),
-        );
+        const res = await fetch(apiUrl(`/api/v1/research/status/${researchId}`));
         if (res.ok) {
           const data = await res.json();
           if (data?.report_url) {
@@ -849,6 +1011,17 @@ export default function NotebookDetailPage() {
       }
     }
     await syncSessionsFromServer(reason);
+    if (researchReportRef.current) {
+      setPendingResearchRecovery(false);
+      return;
+    }
+    const hasResearchHandle = Boolean(activeResearchIdRef.current);
+    const startedAt = researchStartTime || 0;
+    const staleWithoutHandle =
+      !hasResearchHandle && (!startedAt || Date.now() - startedAt > 120000);
+    if (staleWithoutHandle) {
+      markResearchAsUnrecoverable(reason);
+    }
   };
 
   const buildSessionSnapshot = (
@@ -1063,6 +1236,218 @@ export default function NotebookDetailPage() {
     [aggregatedSources],
   );
 
+  const registerCitationKey = useCallback(
+    (sourceKey: string, preferredRef?: number) => {
+      if (!sourceKey) return 0;
+      const registry = citationRegistryRef.current;
+      const owners = citationNumberOwnerRef.current;
+      const pinned = citationPinnedRefRef.current;
+
+      const normalizeRef = (value?: number) =>
+        typeof value === "number" && value > 0
+          ? Math.floor(value)
+          : 0;
+      const requested = normalizeRef(preferredRef);
+      const existing = registry.get(sourceKey) || 0;
+
+      const findNextAvailable = (skipSourceKey = "") => {
+        let next = 1;
+        while (true) {
+          const owner = owners.get(next);
+          if (!owner || owner === skipSourceKey) {
+            return next;
+          }
+          next += 1;
+        }
+      };
+
+      const assign = (key: string, refNumber: number, lockToRef = false) => {
+        const before = registry.get(key);
+        if (before && before !== refNumber && owners.get(before) === key) {
+          owners.delete(before);
+        }
+        registry.set(key, refNumber);
+        owners.set(refNumber, key);
+        if (lockToRef) {
+          pinned.set(key, refNumber);
+        } else {
+          pinned.delete(key);
+        }
+        return refNumber;
+      };
+
+      if (requested > 0) {
+        const currentOwner = owners.get(requested);
+
+        if (!currentOwner || currentOwner === sourceKey) {
+          return assign(sourceKey, requested, true);
+        }
+
+        const ownerIsPinned = pinned.get(currentOwner) === requested;
+        if (!ownerIsPinned) {
+          const replacement = findNextAvailable(currentOwner);
+          assign(currentOwner, replacement, false);
+          return assign(sourceKey, requested, true);
+        }
+
+        if (existing > 0) {
+          return existing;
+        }
+
+        const fallback = findNextAvailable();
+        return assign(sourceKey, fallback, false);
+      }
+
+      if (existing > 0) {
+        return existing;
+      }
+
+      const next = findNextAvailable();
+      return assign(sourceKey, next, false);
+    },
+    [],
+  );
+
+  const allMessagesForCitation = useMemo(() => {
+    const merged: ChatMessage[] = [];
+    const seen = new Set<string>();
+    sessions.forEach((session) => {
+      seen.add(session.session_id);
+      if (session.session_id === currentSessionId) {
+        merged.push(...chatMessages);
+      } else {
+        merged.push(...(session.messages || []));
+      }
+    });
+    if (currentSessionId && !seen.has(currentSessionId)) {
+      merged.push(...chatMessages);
+    }
+    return merged;
+  }, [sessions, currentSessionId, chatMessages]);
+
+  const sourceByKey = useMemo(() => {
+    const map = new Map<string, Source>();
+    aggregatedSources.forEach((source) => {
+      const key = buildSourceKey(source);
+      if (!key) return;
+      const existing = map.get(key);
+      if (!existing || source.selected) {
+        map.set(key, source);
+      }
+    });
+    return map;
+  }, [aggregatedSources]);
+
+  useEffect(() => {
+    let changed = false;
+
+    aggregatedSources.forEach((source) => {
+      const sourceKey = buildSourceKey(source);
+      if (!sourceKey) return;
+      const before = citationRegistryRef.current.get(sourceKey);
+      const assigned = registerCitationKey(sourceKey, source.ref_number);
+      if (before !== assigned) changed = true;
+    });
+
+    allMessagesForCitation.forEach((msg) => {
+      if (msg.role !== "assistant") return;
+      const inlineCatalog = [
+        ...(msg.source_catalog || []),
+        ...extractCatalogFromMessageContent(msg.content || ""),
+      ];
+      inlineCatalog.forEach((item) => {
+        if (!item || typeof item.ref_number !== "number" || item.ref_number <= 0) {
+          return;
+        }
+        const sourceKey =
+          item.source_key ||
+          buildSourceKey({
+            type: item.type || "web",
+            title: item.title,
+            url: item.url,
+          });
+        if (!sourceKey) return;
+        const before = citationRegistryRef.current.get(sourceKey);
+        const assigned = registerCitationKey(sourceKey, item.ref_number);
+        if (before !== assigned) changed = true;
+      });
+    });
+
+    if (changed) {
+      setCitationRegistryVersion((prev) => prev + 1);
+    }
+  }, [
+    aggregatedSources,
+    allMessagesForCitation,
+    registerCitationKey,
+    currentSessionId,
+  ]);
+
+  const citationCatalogByNumber = useMemo(() => {
+    const byNumber = new Map<number, CitationCatalogItem>();
+
+    allMessagesForCitation.forEach((msg) => {
+      if (msg.role !== "assistant") return;
+      const inlineCatalog = [
+        ...(msg.source_catalog || []),
+        ...extractCatalogFromMessageContent(msg.content || ""),
+      ];
+      inlineCatalog.forEach((item) => {
+        if (!item || typeof item.ref_number !== "number" || item.ref_number <= 0) {
+          return;
+        }
+        byNumber.set(item.ref_number, {
+          ref_number: item.ref_number,
+          source_key: item.source_key,
+          title: item.title,
+          url: item.url,
+          type: item.type,
+        });
+      });
+    });
+
+    citationRegistryRef.current.forEach((refNumber, sourceKey) => {
+      if (byNumber.has(refNumber)) return;
+      const source = sourceByKey.get(sourceKey);
+      if (!source) return;
+      byNumber.set(refNumber, {
+        ref_number: refNumber,
+        source_key: sourceKey,
+        title: source.title,
+        url: source.url,
+        type: source.type,
+      });
+    });
+
+    return byNumber;
+  }, [allMessagesForCitation, sourceByKey, citationRegistryVersion]);
+
+  const getSourceRefNumber = useCallback((source: Source) => {
+    const sourceKey = buildSourceKey(source);
+    if (!sourceKey) return undefined;
+    return citationRegistryRef.current.get(sourceKey);
+  }, []);
+
+  const linkifyKnownCitationTokens = useCallback(
+    (content: string) => {
+      let normalized = normalizeLegacyCitationMarkup(content || "");
+      if (citationCatalogByNumber.size === 0) return normalized;
+      const refs = Array.from(citationCatalogByNumber.keys()).sort((a, b) => b - a);
+      refs.forEach((ref) => {
+        const pattern = new RegExp(`\\[${ref}\\](?!\\()`, "g");
+        normalized = normalized.replace(pattern, (match, offset, input) => {
+          const previousChar = offset > 0 ? input[offset - 1] : "";
+          if (previousChar === "[") {
+            return match;
+          }
+          return `[${ref}](#ref-${ref})`;
+        });
+      });
+      return normalized;
+    },
+    [citationCatalogByNumber],
+  );
+
   useEffect(() => {
     pendingRecoveryRef.current = pendingResearchRecovery;
   }, [pendingResearchRecovery]);
@@ -1201,6 +1586,101 @@ export default function NotebookDetailPage() {
       .filter((group) => group.sources.length > 0);
   }, [sortedSessions, currentSessionId, sources]);
 
+  const sourceSessionByKey = useMemo(() => {
+    const map = new Map<string, string>();
+    groupedSources.forEach((group) => {
+      group.sources.forEach((source) => {
+        const sourceKey = buildSourceKey(source);
+        if (!sourceKey) return;
+        map.set(sourceKey, group.session_id);
+      });
+    });
+    return map;
+  }, [groupedSources]);
+
+  const focusSourceByKey = useCallback(
+    (sourceKey: string) => {
+      if (!sourceKey) return;
+      const sessionId = sourceSessionByKey.get(sourceKey);
+      if (sessionId) {
+        setCollapsedSessionIds((prev) => ({
+          ...prev,
+          [sessionId]: false,
+        }));
+      }
+      if (leftCollapsed) {
+        setLeftCollapsed(false);
+      }
+      setHighlightedSourceKey(sourceKey);
+      const row = sourceRowRefs.current[sourceKey];
+      if (row) {
+        row.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    },
+    [sourceSessionByKey, leftCollapsed],
+  );
+
+  const resolveReferenceTarget = useCallback(
+    (refNumber: number) => {
+      const catalog = citationCatalogByNumber.get(refNumber);
+      if (catalog) {
+        return catalog;
+      }
+      for (const [sourceKey, assignedRef] of citationRegistryRef.current.entries()) {
+        if (assignedRef !== refNumber) continue;
+        const source = sourceByKey.get(sourceKey);
+        if (!source) {
+          return {
+            ref_number: refNumber,
+            source_key: sourceKey,
+            title: `引用 ${refNumber}`,
+          };
+        }
+        return {
+          ref_number: refNumber,
+          source_key: sourceKey,
+          title: source.title,
+          url: source.url,
+          type: source.type,
+        };
+      }
+      return null;
+    },
+    [citationCatalogByNumber, sourceByKey],
+  );
+
+  const handleCitationAnchorClick = useCallback(
+    (href: string | undefined, event: MouseEvent<HTMLAnchorElement>) => {
+      if (!href) return;
+      const match = href.match(/^#ref-(\d+)$/i);
+      if (!match) return;
+      event.preventDefault();
+      const refNumber = parseInt(match[1], 10);
+      const target = resolveReferenceTarget(refNumber);
+      if (!target) return;
+
+      const url = (target.url || "").trim();
+      if (url) {
+        const hasScheme = /^https?:\/\//i.test(url);
+        const link = hasScheme ? url : /^www\./i.test(url) ? `https://${url}` : "";
+        if (link) {
+          window.open(link, "_blank", "noopener,noreferrer");
+          return;
+        }
+      }
+      if (target.source_key) {
+        focusSourceByKey(target.source_key);
+      }
+    },
+    [focusSourceByKey, resolveReferenceTarget],
+  );
+
+  useEffect(() => {
+    if (!highlightedSourceKey) return;
+    const timer = setTimeout(() => setHighlightedSourceKey(""), 2200);
+    return () => clearTimeout(timer);
+  }, [highlightedSourceKey]);
+
   // Fetch notebook
   useEffect(() => {
     fetchNotebook();
@@ -1311,6 +1791,17 @@ export default function NotebookDetailPage() {
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [notebookId]);
+
+  useEffect(() => {
+    if (!pendingResearchRecovery) return;
+    void recoverResearchIfNeeded("pending-state");
+    const timer = setInterval(() => {
+      void recoverResearchIfNeeded("pending-poll");
+    }, 15000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [pendingResearchRecovery, notebookId]);
 
   useEffect(() => {
     fetchPptStyleTemplates();
@@ -1516,9 +2007,7 @@ export default function NotebookDetailPage() {
     }
   };
 
-  const handleUploadPptTemplate = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
+  const handleUploadPptTemplate = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -1570,6 +2059,137 @@ export default function NotebookDetailPage() {
     }
     return false; // Timeout
   };
+
+  const buildSelectedSourceCatalog = useCallback((): CitationCatalogItem[] => {
+    const byKey = new Map<string, CitationCatalogItem>();
+    selectedSourcesList.forEach((source) => {
+      const sourceKey = buildSourceKey(source);
+      if (!sourceKey) return;
+      const assignedRef =
+        source.ref_number ||
+        citationRegistryRef.current.get(sourceKey) ||
+        registerCitationKey(sourceKey);
+      if (!assignedRef) return;
+      byKey.set(sourceKey, {
+        ref_number: assignedRef,
+        source_key: sourceKey,
+        title: source.title,
+        url: source.url,
+        type: source.type,
+      });
+    });
+    return Array.from(byKey.values()).sort((a, b) => a.ref_number - b.ref_number);
+  }, [selectedSourcesList, registerCitationKey]);
+
+  const normalizeSourceCatalog = useCallback((catalog: any[]): CitationCatalogItem[] => {
+    if (!Array.isArray(catalog)) return [];
+    const normalized: CitationCatalogItem[] = [];
+    catalog.forEach((item) => {
+      const refNumber = Number(item?.ref_number);
+      if (!Number.isFinite(refNumber) || refNumber <= 0) return;
+      const normalizedItem: CitationCatalogItem = {
+        ref_number: Math.floor(refNumber),
+        source_key:
+          item?.source_key ||
+          buildSourceKey({
+            type: item?.type || "web",
+            title: item?.title || "",
+            url: item?.url || "",
+          }),
+        title: item?.title || `引用 ${Math.floor(refNumber)}`,
+        url: item?.url || "",
+        type:
+          item?.type === "web" ||
+            item?.type === "file" ||
+            item?.type === "kb" ||
+            item?.type === "report"
+            ? item.type
+            : "web",
+      };
+      normalized.push(normalizedItem);
+    });
+    return normalized.sort((a, b) => a.ref_number - b.ref_number);
+  }, []);
+
+  const mergeSourcesWithCatalog = useCallback(
+    (prev: Source[], incoming: Source[], catalog: CitationCatalogItem[]) => {
+      const byKey = new Map<string, Source>();
+      const catalogByKey = new Map<string, CitationCatalogItem>();
+      const catalogByUrl = new Map<string, CitationCatalogItem>();
+
+      catalog.forEach((item) => {
+        const key =
+          item.source_key ||
+          buildSourceKey({
+            type: item.type || "web",
+            title: item.title,
+            url: item.url,
+          });
+        if (!key) return;
+        catalogByKey.set(key, item);
+        const normalizedUrl = normalizeSourceUrl(item.url);
+        if (normalizedUrl) {
+          catalogByUrl.set(normalizedUrl, item);
+        }
+        registerCitationKey(key, item.ref_number);
+      });
+
+      const addOne = (raw: Source) => {
+        const normalized = withSourceIdentity(raw);
+        const sourceKey = normalized.source_key || buildSourceKey(normalized);
+        if (!sourceKey) return;
+        const normalizedUrl = normalizeSourceUrl(normalized.url);
+        const catalogMatch =
+          catalogByKey.get(sourceKey) ||
+          (normalizedUrl ? catalogByUrl.get(normalizedUrl) : undefined);
+        const preferredRef = catalogMatch?.ref_number || normalized.ref_number;
+        const refNumber = registerCitationKey(sourceKey, preferredRef);
+        const existing = byKey.get(sourceKey);
+        const next: Source = {
+          ...(existing || normalized),
+          ...normalized,
+          source_key: sourceKey,
+          ref_number: refNumber || existing?.ref_number || normalized.ref_number,
+          selected: normalized.selected !== false,
+        };
+        if (catalogMatch?.title && next.title !== catalogMatch.title) {
+          next.title = next.title || catalogMatch.title;
+        }
+        if (!next.url && catalogMatch?.url) {
+          next.url = catalogMatch.url;
+        }
+        byKey.set(sourceKey, next);
+      };
+
+      prev.forEach((source) => addOne(source));
+      incoming.forEach((source) => addOne(source));
+
+      catalog.forEach((item) => {
+        const sourceKey =
+          item.source_key ||
+          buildSourceKey({
+            type: item.type || "web",
+            title: item.title,
+            url: item.url,
+          });
+        if (!sourceKey || byKey.has(sourceKey)) return;
+        const refNumber = registerCitationKey(sourceKey, item.ref_number);
+        byKey.set(sourceKey, {
+          id: `catalog-${sourceKey}`,
+          type: item.type || "web",
+          title: item.title,
+          url: item.url,
+          selected: true,
+          content: "",
+          source_key: sourceKey,
+          ref_number: refNumber || item.ref_number,
+        });
+      });
+
+      return Array.from(byKey.values());
+    },
+    [registerCitationKey],
+  );
 
   // Chat function using WebSocket
   const handleSendChat = async () => {
@@ -1633,6 +2253,7 @@ export default function NotebookDetailPage() {
         role: msg.role,
         content: msg.content,
       }));
+      const selectedSourceCatalog = buildSelectedSourceCatalog();
 
       ws.send(
         JSON.stringify({
@@ -1643,6 +2264,7 @@ export default function NotebookDetailPage() {
           enable_rag: enableRag && !!selectedKb,
           enable_web_search: false, // 笔记本内禁用联网，使用来源 + 知识库问答
           require_sources: true,
+          selected_sources: selectedSourceCatalog,
         }),
       );
 
@@ -1663,6 +2285,65 @@ export default function NotebookDetailPage() {
               msg.id === assistantId ? { ...msg, content: fullContent } : msg,
             ),
           );
+        } else if (data.type === "sources") {
+          const sourceCatalog = normalizeSourceCatalog(data.source_catalog || []);
+          const incomingSources: Source[] = [];
+
+          if (Array.isArray(data.web)) {
+            data.web.forEach((item: any, idx: number) => {
+              incomingSources.push(
+                withSourceIdentity({
+                  id: `chat-web-${Date.now()}-${idx}`,
+                  type: "web",
+                  title: item?.title || item?.url || `网络来源 ${idx + 1}`,
+                  url: item?.url || "",
+                  content: item?.content || item?.snippet || "",
+                  selected: true,
+                }),
+              );
+            });
+          }
+
+          if (Array.isArray(data.rag)) {
+            data.rag.forEach((item: any, idx: number) => {
+              incomingSources.push(
+                withSourceIdentity({
+                  id: `chat-rag-${Date.now()}-${idx}`,
+                  type: "kb",
+                  title:
+                    item?.title ||
+                    item?.source ||
+                    item?.kb_name ||
+                    `知识库来源 ${idx + 1}`,
+                  url: item?.url || "",
+                  content: item?.content || item?.snippet || "",
+                  selected: true,
+                }),
+              );
+            });
+          }
+
+          setChatMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantId
+                ? {
+                  ...msg,
+                  sources: {
+                    rag: Array.isArray(data.rag) ? data.rag : [],
+                    web: Array.isArray(data.web) ? data.web : [],
+                  },
+                  source_catalog: sourceCatalog,
+                }
+                : msg,
+            ),
+          );
+
+          if (incomingSources.length > 0 || sourceCatalog.length > 0) {
+            setSources((prev) =>
+              mergeSourcesWithCatalog(prev, incomingSources, sourceCatalog),
+            );
+            setCitationRegistryVersion((prev) => prev + 1);
+          }
         } else if (data.type === "result") {
           setChatMessages((prev) =>
             prev.map((msg) =>
@@ -1679,10 +2360,10 @@ export default function NotebookDetailPage() {
             prev.map((msg) =>
               msg.id === assistantId
                 ? {
-                    ...msg,
-                    content: "抱歉，发生了错误，请重试。",
-                    isStreaming: false,
-                  }
+                  ...msg,
+                  content: "抱歉，发生了错误，请重试。",
+                  isStreaming: false,
+                }
                 : msg,
             ),
           );
@@ -1700,10 +2381,10 @@ export default function NotebookDetailPage() {
         prev.map((msg) =>
           msg.id === assistantId && msg.isStreaming
             ? {
-                ...msg,
-                content: "抱歉，由于网络或服务异常，连接已中断。请重试。",
-                isStreaming: false,
-              }
+              ...msg,
+              content: "抱歉，由于网络或服务异常，连接已中断。请重试。",
+              isStreaming: false,
+            }
             : msg,
         ),
       );
@@ -1716,10 +2397,10 @@ export default function NotebookDetailPage() {
         prev.map((msg) =>
           msg.id === assistantId && msg.isStreaming
             ? {
-                ...msg,
-                content: "连接被异常中断。如有网络波动，请检查后重试。",
-                isStreaming: false,
-              }
+              ...msg,
+              content: "连接被异常中断。如有网络波动，请检查后重试。",
+              isStreaming: false,
+            }
             : msg,
         ),
       );
@@ -1784,6 +2465,7 @@ export default function NotebookDetailPage() {
         } else if (data.type === "sources") {
           // Handle structured sources from backend
           const newSources: Source[] = [];
+          const sourceCatalog = normalizeSourceCatalog(data.source_catalog || []);
 
           // Handle web sources
           if (data.web && Array.isArray(data.web)) {
@@ -1795,6 +2477,9 @@ export default function NotebookDetailPage() {
                 url: s.url,
                 content: s.content || s.snippet || "",
                 selected: true,
+                source_key: s.source_key,
+                ref_number:
+                  typeof s.ref_number === "number" ? s.ref_number : undefined,
               });
             });
           }
@@ -1809,22 +2494,18 @@ export default function NotebookDetailPage() {
                 url: s.url || "",
                 content: s.content || "",
                 selected: true,
+                source_key: s.source_key,
+                ref_number:
+                  typeof s.ref_number === "number" ? s.ref_number : undefined,
               });
             });
           }
 
-          if (newSources.length > 0) {
-            setSources((prev) => {
-              // Avoid duplicates by URL/Content
-              const existingUrls = new Set(prev.map((s) => s.url));
-              const uniqueNewAndOld = [...prev];
-              newSources.forEach((s) => {
-                if (!s.url || !existingUrls.has(s.url)) {
-                  uniqueNewAndOld.push(s);
-                }
-              });
-              return uniqueNewAndOld;
-            });
+          if (newSources.length > 0 || sourceCatalog.length > 0) {
+            setSources((prev) =>
+              mergeSourcesWithCatalog(prev, newSources, sourceCatalog),
+            );
+            setCitationRegistryVersion((prev) => prev + 1);
           }
         } else if (data.type === "result") {
           // Use final result content if available
@@ -2026,9 +2707,9 @@ export default function NotebookDetailPage() {
         const normalizedFirst =
           lines.length > 0
             ? lines[0]
-                .replace(/^[#>*\s]+/, "")
-                .replace(/\*\*/g, "")
-                .trim()
+              .replace(/^[#>*\s]+/, "")
+              .replace(/\*\*/g, "")
+              .trim()
             : "";
         const startIndex = normalizedFirst.includes("深度研究完成") ? 1 : 0;
         const tail = lines.slice(startIndex);
@@ -2065,9 +2746,9 @@ export default function NotebookDetailPage() {
         const normalizedFirst =
           lines.length > 0
             ? lines[0]
-                .replace(/^[#>*\s]+/, "")
-                .replace(/\*\*/g, "")
-                .trim()
+              .replace(/^[#>*\s]+/, "")
+              .replace(/\*\*/g, "")
+              .trim()
             : "";
         const startIndex = normalizedFirst.includes("深度研究完成") ? 1 : 0;
         const tail = lines.slice(startIndex);
@@ -2131,15 +2812,15 @@ export default function NotebookDetailPage() {
   const handleAddSourceUrl = () => {
     if (!sourceUrl.trim()) return;
 
-    const newSource: Source = {
+    const newSource: Source = withSourceIdentity({
       id: `url-${Date.now()}`,
       type: "web",
       title: sourceUrl,
       url: sourceUrl,
       selected: true,
-    };
+    });
     setHasSessionActivity(true);
-    setSources((prev) => [...prev, newSource]);
+    setSources((prev) => mergeSourcesWithCatalog(prev, [newSource], []));
     scheduleSessionSave(true);
     setSourceUrl("");
     setShowAddSourceModal(false);
@@ -2149,7 +2830,13 @@ export default function NotebookDetailPage() {
   // Can be called with optional topic parameter (for Deep Research from chat)
   const startResearchWithTopic = (topic?: string) => {
     const researchTopicToUse = topic || researchTopic;
-    if (!researchTopicToUse.trim() || researchRunning) return;
+    if (
+      !researchTopicToUse.trim() ||
+      researchRunning ||
+      pendingResearchRecovery
+    ) {
+      return;
+    }
     const activeSessionId = ensureActiveSession();
     setHasSessionActivity(true);
     setResearchTopic(researchTopicToUse);
@@ -2201,6 +2888,7 @@ export default function NotebookDetailPage() {
 
     const ws = new WebSocket(url);
     wsRef.current = ws;
+    let duplicateRunDetected = false;
 
     // Connection timeout (15 seconds)
     const connectionTimeout = setTimeout(() => {
@@ -2290,10 +2978,10 @@ export default function NotebookDetailPage() {
             prev.map((msg) =>
               msg.isStreaming
                 ? {
-                    ...msg,
-                    content: `❌ 研究失败: ${data.content || data.message}`,
-                    isStreaming: false,
-                  }
+                  ...msg,
+                  content: `❌ 研究失败: ${data.content || data.message}`,
+                  isStreaming: false,
+                }
                 : msg,
             ),
           );
@@ -2369,6 +3057,10 @@ export default function NotebookDetailPage() {
           if (data.content === "started") {
             setResearchPhase("planning");
             updateStreamingMessage("🚀 深度研究已启动...");
+          } else if (data.content === "already_running") {
+            duplicateRunDetected = true;
+            updateStreamingMessage("🔄 检测到已有深度研究任务，正在恢复状态...");
+            void recoverResearchIfNeeded("already-running");
           }
         }
         // Silently ignore "log" and "ping" types
@@ -2414,12 +3106,13 @@ export default function NotebookDetailPage() {
           return prev.map((msg) =>
             msg.isStreaming
               ? {
-                  ...msg,
-                  content:
-                    msg.content +
-                    "\n\n[连接断开，未收到完整报告。请尝试刷新页面。]",
-                  isStreaming: false,
-                }
+                ...msg,
+                content: duplicateRunDetected
+                  ? "🔄 已检测到同会话进行中的深度研究，正在尝试恢复结果..."
+                  : msg.content +
+                  "\n\n[连接断开，未收到完整报告。请尝试刷新页面。]",
+                isStreaming: false,
+              }
               : msg,
           );
         }
@@ -2994,24 +3687,22 @@ export default function NotebookDetailPage() {
   const renderExportSourceToggle = () => (
     <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
       <span>内容来源</span>
-      <div className="flex rounded-lg bg-slate-100 p-1">
+      <div className="flex rounded-lg bg-slate-100 dark:bg-slate-800 p-1">
         <button
           onClick={() => setExportContentSource("research")}
-          className={`px-2 py-1 rounded-md transition-colors ${
-            exportContentSource === "research"
-              ? "bg-white text-slate-700 shadow-sm"
-              : "text-slate-400 hover:text-slate-600"
-          }`}
+          className={`px-2 py-1 rounded-md transition-colors ${exportContentSource === "research"
+            ? "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-sm border border-slate-200 dark:border-slate-700"
+            : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+            }`}
         >
           深度研究
         </button>
         <button
           onClick={() => setExportContentSource("sources")}
-          className={`px-2 py-1 rounded-md transition-colors ${
-            exportContentSource === "sources"
-              ? "bg-white text-slate-700 shadow-sm"
-              : "text-slate-400 hover:text-slate-600"
-          }`}
+          className={`px-2 py-1 rounded-md transition-colors ${exportContentSource === "sources"
+            ? "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-sm border border-slate-200 dark:border-slate-700"
+            : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+            }`}
         >
           已选来源
         </button>
@@ -3020,7 +3711,7 @@ export default function NotebookDetailPage() {
   );
 
   const renderPptStylePanel = () => (
-    <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 text-left">
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-900/60 p-4 text-left">
       <div className="flex items-center justify-between mb-3">
         <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
           PPT 风格
@@ -3028,7 +3719,7 @@ export default function NotebookDetailPage() {
       </div>
       <div className="flex items-center gap-2 mb-3 text-xs text-slate-500">
         <span>风格来源</span>
-        <div className="flex rounded-lg bg-white p-1 shadow-sm">
+        <div className="flex rounded-lg bg-white dark:bg-slate-800 p-1 shadow-sm border border-slate-200 dark:border-slate-700">
           {[
             { id: "default", label: "默认" },
             { id: "preset", label: "预设" },
@@ -3038,11 +3729,10 @@ export default function NotebookDetailPage() {
             <button
               key={item.id}
               onClick={() => setPptStyleMode(item.id as typeof pptStyleMode)}
-              className={`px-2.5 py-1 rounded-md transition-colors ${
-                pptStyleMode === item.id
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
+              className={`px-2.5 py-1 rounded-md transition-colors ${pptStyleMode === item.id
+                ? "bg-slate-900 text-white"
+                : "text-slate-500 hover:text-slate-700"
+                }`}
             >
               {item.label}
             </button>
@@ -3059,7 +3749,7 @@ export default function NotebookDetailPage() {
           <select
             value={selectedPptStyleId}
             onChange={(e) => setSelectedPptStyleId(e.target.value)}
-            className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+            className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
           >
             {pptStyleTemplates.length === 0 && (
               <option value="">暂无预设</option>
@@ -3083,7 +3773,7 @@ export default function NotebookDetailPage() {
             <button
               onClick={() => pptTemplateInputRef.current?.click()}
               disabled={pptTemplateUploading}
-              className="px-3 py-2 text-xs rounded-lg bg-white border border-slate-200 hover:border-orange-300 hover:bg-orange-50 transition-colors disabled:opacity-50"
+              className="px-3 py-2 text-xs rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-orange-300 dark:hover:border-orange-500 hover:bg-orange-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
             >
               {pptTemplateUploading ? "上传中..." : "上传模板"}
             </button>
@@ -3099,7 +3789,7 @@ export default function NotebookDetailPage() {
           <select
             value={selectedPptTemplate}
             onChange={(e) => setSelectedPptTemplate(e.target.value)}
-            className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+            className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
           >
             {pptTemplates.length === 0 && <option value="">暂无模板</option>}
             {pptTemplates.map((tmpl) => (
@@ -3120,7 +3810,7 @@ export default function NotebookDetailPage() {
           {pptTemplateUseLlm && (
             <div className="flex items-center gap-2 text-xs text-slate-500">
               <span>结构来源</span>
-              <div className="flex rounded-lg bg-white p-1 shadow-sm">
+              <div className="flex rounded-lg bg-white dark:bg-slate-800 p-1 shadow-sm border border-slate-200 dark:border-slate-700">
                 {[
                   { id: "preset", label: "预设" },
                   { id: "sources", label: "来源" },
@@ -3132,11 +3822,10 @@ export default function NotebookDetailPage() {
                         item.id as "preset" | "sources",
                       )
                     }
-                    className={`px-2 py-1 rounded-md transition-colors ${
-                      pptTemplatePromptSource === item.id
-                        ? "bg-slate-900 text-white"
-                        : "text-slate-500 hover:text-slate-700"
-                    }`}
+                    className={`px-2 py-1 rounded-md transition-colors ${pptTemplatePromptSource === item.id
+                      ? "bg-slate-900 text-white"
+                      : "text-slate-500 hover:text-slate-700"
+                      }`}
                   >
                     {item.label}
                   </button>
@@ -3163,7 +3852,7 @@ export default function NotebookDetailPage() {
           <button
             onClick={handlePreviewPptStyle}
             disabled={pptStylePreviewLoading}
-            className="px-3 py-2 text-xs rounded-lg bg-white border border-slate-200 hover:border-orange-300 hover:bg-orange-50 transition-colors disabled:opacity-50"
+            className="px-3 py-2 text-xs rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-orange-300 dark:hover:border-orange-500 hover:bg-orange-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
           >
             {pptStylePreviewLoading ? "生成预览..." : "预览风格"}
           </button>
@@ -3174,7 +3863,7 @@ export default function NotebookDetailPage() {
           )}
           {pptStylePreviewSvg && (
             <div
-              className="mt-3 rounded-lg border border-slate-200 overflow-hidden bg-white"
+              className="mt-3 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-800"
               dangerouslySetInnerHTML={{ __html: pptStylePreviewSvg }}
             />
           )}
@@ -3184,7 +3873,7 @@ export default function NotebookDetailPage() {
   );
 
   const renderPodcastConfigPanel = () => (
-    <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 text-left">
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-900/60 p-4 text-left">
       <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
         播客配置
       </div>
@@ -3195,7 +3884,7 @@ export default function NotebookDetailPage() {
           <select
             value={podcastSpeakerA}
             onChange={(e) => setPodcastSpeakerA(e.target.value)}
-            className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
           >
             {podcastSpeakers.map((s) => (
               <option key={s.id} value={s.id}>
@@ -3210,7 +3899,7 @@ export default function NotebookDetailPage() {
           <select
             value={podcastSpeakerB}
             onChange={(e) => setPodcastSpeakerB(e.target.value)}
-            className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
           >
             {podcastSpeakers.map((s) => (
               <option key={s.id} value={s.id}>
@@ -3273,9 +3962,8 @@ export default function NotebookDetailPage() {
     <div className="h-screen flex bg-slate-50">
       {/* Left Panel - Sources */}
       <div
-        className={`flex flex-col bg-white border-r border-slate-200 transition-all duration-300 ${
-          leftCollapsed ? "w-0 overflow-hidden" : "w-72"
-        }`}
+        className={`min-h-0 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-all duration-300 ${leftCollapsed ? "w-0 overflow-hidden" : "w-72"
+          }`}
       >
         {/* Header */}
         <div
@@ -3285,7 +3973,7 @@ export default function NotebookDetailPage() {
           <div className="flex items-center gap-3 mb-3">
             <button
               onClick={() => router.push("/notebooks")}
-              className="p-1.5 hover:bg-slate-100 rounded-lg"
+              className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
             >
               <ArrowLeft className="w-4 h-4 text-slate-500" />
             </button>
@@ -3308,7 +3996,7 @@ export default function NotebookDetailPage() {
           {/* Add Source Button */}
           <button
             onClick={() => setShowAddSourceModal(true)}
-            className="w-full py-2 px-3 border border-dashed border-slate-300 rounded-lg text-sm text-slate-500 hover:border-slate-400 hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+            className="w-full py-2 px-3 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg text-sm text-slate-500 dark:text-slate-400 hover:border-slate-400 dark:hover:border-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
           >
             <Plus className="w-4 h-4" />
             添加来源
@@ -3329,33 +4017,31 @@ export default function NotebookDetailPage() {
                 onChange={(e) => setEnableRag(e.target.checked)}
                 className="sr-only peer"
               />
-              <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+              <div className="w-9 h-5 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
             </label>
           </div>
         </div>
 
         {/* Research Hub */}
-        <div className="p-3 border-b border-slate-200 bg-slate-50/50">
+        <div className="p-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
           {/* Mode Switch */}
-          <div className="flex bg-slate-100 p-1 rounded-lg mb-3">
+          <div className="flex bg-slate-100 dark:bg-slate-800/50 p-1 rounded-lg mb-3">
             <button
               onClick={() => setResearchMode("fast")}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-xs font-medium transition-all ${
-                researchMode === "fast"
-                  ? "bg-white text-emerald-700 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-xs font-medium transition-all ${researchMode === "fast"
+                ? "bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-400 shadow-sm border border-slate-200 dark:border-slate-700"
+                : "text-slate-500 hover:text-slate-700"
+                }`}
             >
               <Zap className="w-3.5 h-3.5" />
               Fast Research
             </button>
             <button
               onClick={() => setResearchMode("deep")}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-xs font-medium transition-all ${
-                researchMode === "deep"
-                  ? "bg-white text-purple-700 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-xs font-medium transition-all ${researchMode === "deep"
+                ? "bg-white dark:bg-slate-800 text-purple-700 dark:text-purple-400 shadow-sm border border-slate-200 dark:border-slate-700"
+                : "text-slate-500 hover:text-slate-700"
+                }`}
             >
               <Microscope className="w-3.5 h-3.5" />
               Deep Research
@@ -3364,7 +4050,7 @@ export default function NotebookDetailPage() {
 
           {/* Input Area */}
           <div className="space-y-3">
-            <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-sm focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500">
+            <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 shadow-sm focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500">
               {researchMode === "fast" ? (
                 <Globe className="w-4 h-4 text-emerald-500 shrink-0" />
               ) : (
@@ -3401,11 +4087,10 @@ export default function NotebookDetailPage() {
                         <button
                           key={mode}
                           onClick={() => setPlanMode(mode)}
-                          className={`px-1 py-1 rounded text-center transition-colors ${
-                            planMode === mode
-                              ? "bg-purple-100 text-purple-700 font-medium"
-                              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                          }`}
+                          className={`px-1 py-1 rounded text-center transition-colors ${planMode === mode
+                            ? "bg-purple-100 text-purple-700 font-medium"
+                            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                            }`}
                         >
                           {mode === "quick"
                             ? "快速"
@@ -3443,17 +4128,25 @@ export default function NotebookDetailPage() {
                 if (researchMode === "fast") handleFastResearch();
                 else startResearchWithTopic(searchQuery);
               }}
-              disabled={isSearching || researchRunning || !searchQuery.trim()}
-              className={`w-full py-2 px-4 rounded-lg text-sm font-medium text-white transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${
-                researchMode === "fast"
-                  ? "bg-emerald-600 hover:bg-emerald-700"
-                  : "bg-purple-600 hover:bg-purple-700"
-              }`}
+              disabled={
+                isSearching ||
+                researchRunning ||
+                pendingResearchRecovery ||
+                !searchQuery.trim()
+              }
+              className={`w-full py-2 px-4 rounded-lg text-sm font-medium text-white transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${researchMode === "fast"
+                ? "bg-emerald-600 hover:bg-emerald-700"
+                : "bg-purple-600 hover:bg-purple-700"
+                }`}
             >
-              {isSearching || researchRunning ? (
+              {isSearching || researchRunning || pendingResearchRecovery ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  {researchMode === "fast" ? "搜索中..." : "研究中..."}
+                  {researchMode === "fast"
+                    ? "搜索中..."
+                    : pendingResearchRecovery
+                      ? "恢复中..."
+                      : "研究中..."}
                 </>
               ) : (
                 <>
@@ -3473,15 +4166,14 @@ export default function NotebookDetailPage() {
                 {/* Phase Indicator */}
                 <div className="flex items-center gap-2">
                   <div
-                    className={`w-2 h-2 rounded-full animate-pulse ${
-                      researchPhase === "planning"
-                        ? "bg-blue-500"
-                        : researchPhase === "researching"
-                          ? "bg-purple-500"
-                          : researchPhase === "reporting"
-                            ? "bg-emerald-500"
-                            : "bg-slate-400"
-                    }`}
+                    className={`w-2 h-2 rounded-full animate-pulse ${researchPhase === "planning"
+                      ? "bg-blue-500"
+                      : researchPhase === "researching"
+                        ? "bg-purple-500"
+                        : researchPhase === "reporting"
+                          ? "bg-emerald-500"
+                          : "bg-slate-400"
+                      }`}
                   />
                   <span className="text-xs font-medium text-slate-700">
                     {researchPhase === "planning"
@@ -3501,7 +4193,7 @@ export default function NotebookDetailPage() {
                       <div className="flex justify-between text-[10px] text-slate-500">
                         <span>子主题进度</span>
                         <div className="flex items-center gap-2">
-                          <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="flex-1 h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
                             <div
                               className="h-full bg-blue-500 rounded-full transition-all duration-300"
                               style={{ width: `${researchProgress.current}%` }}
@@ -3603,46 +4295,64 @@ export default function NotebookDetailPage() {
                     </div>
                     {!isCollapsed && (
                       <div className="space-y-1">
-                        {group.sources.map((source) => (
-                          <div
-                            key={source.id}
-                            className={`flex items-center gap-2 p-2 rounded-lg ${group.isCurrent ? "hover:bg-slate-50" : "hover:bg-slate-50/70"} group`}
-                          >
-                            <button
-                              onClick={() =>
-                                toggleSourceSelection(
-                                  group.session_id,
-                                  source.id,
-                                )
-                              }
-                              className="shrink-0"
+                        {group.sources.map((source) => {
+                          const sourceKey = source.source_key || buildSourceKey(source);
+                          const refNumber = getSourceRefNumber(source);
+                          const isHighlighted =
+                            !!sourceKey && sourceKey === highlightedSourceKey;
+                          return (
+                            <div
+                              key={sourceKey || source.id}
+                              ref={(node) => {
+                                if (sourceKey) {
+                                  sourceRowRefs.current[sourceKey] = node;
+                                }
+                              }}
+                              data-source-key={sourceKey || ""}
+                              className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${isHighlighted
+                                ? "bg-amber-50 ring-1 ring-amber-300"
+                                : group.isCurrent
+                                  ? "hover:bg-slate-50 dark:hover:bg-slate-800"
+                                  : "hover:bg-slate-50/70 dark:hover:bg-slate-800/70"
+                                } group`}
                             >
-                              {source.selected ? (
-                                <CheckSquare className="w-4 h-4 text-blue-600" />
-                              ) : (
-                                <Square className="w-4 h-4 text-slate-300" />
-                              )}
-                            </button>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm text-slate-700 truncate">
-                                {source.title}
-                              </p>
-                              {source.url && (
-                                <p className="text-xs text-slate-400 truncate">
-                                  {source.url}
+                              <button
+                                onClick={() =>
+                                  toggleSourceSelection(
+                                    group.session_id,
+                                    source.id,
+                                  )
+                                }
+                                className="shrink-0"
+                              >
+                                {source.selected ? (
+                                  <CheckSquare className="w-4 h-4 text-blue-600" />
+                                ) : (
+                                  <Square className="w-4 h-4 text-slate-300" />
+                                )}
+                              </button>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm text-slate-700 truncate">
+                                  {refNumber ? `[${refNumber}] ` : ""}
+                                  {source.title}
                                 </p>
+                                {source.url && (
+                                  <p className="text-xs text-slate-400 truncate">
+                                    {source.url}
+                                  </p>
+                                )}
+                              </div>
+                              {group.isCurrent && (
+                                <button
+                                  onClick={() => removeSource(source.id)}
+                                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-50 rounded"
+                                >
+                                  <X className="w-3 h-3 text-red-500" />
+                                </button>
                               )}
                             </div>
-                            {group.isCurrent && (
-                              <button
-                                onClick={() => removeSource(source.id)}
-                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-50 rounded"
-                              >
-                                <X className="w-3 h-3 text-red-500" />
-                              </button>
-                            )}
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -3660,7 +4370,7 @@ export default function NotebookDetailPage() {
               <select
                 value={selectedKb}
                 onChange={(e) => setSelectedKb(e.target.value)}
-                className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none"
+                className="w-full text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 outline-none dark:text-slate-200"
               >
                 <option value="">不使用知识库</option>
                 {kbs.map((kb) => (
@@ -3676,7 +4386,7 @@ export default function NotebookDetailPage() {
         {/* Collapse Button */}
         <button
           onClick={() => setLeftCollapsed(true)}
-          className="p-2 border-t border-slate-200 text-slate-400 hover:bg-slate-50 flex items-center justify-center"
+          className="p-2 border-t border-slate-200 dark:border-slate-800 text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center"
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
@@ -3686,21 +4396,21 @@ export default function NotebookDetailPage() {
       {leftCollapsed && (
         <button
           onClick={() => setLeftCollapsed(false)}
-          className="w-8 bg-white border-r border-slate-200 flex items-center justify-center text-slate-400 hover:bg-slate-50"
+          className="w-8 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
         >
           <ChevronRight className="w-4 h-4" />
         </button>
       )}
 
       {/* Middle Panel - Chat */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 min-h-0 flex flex-col min-w-0">
         {/* Chat Header */}
-        <div className="p-4 border-b border-slate-200 bg-white">
+        <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <h3 className="font-semibold text-slate-900">对话</h3>
               {selectedSourcesList.length > 0 && (
-                <span className="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full font-medium">
+                <span className="text-xs px-2 py-0.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full font-medium">
                   引用 {selectedSourcesList.length} 个来源
                 </span>
               )}
@@ -3709,10 +4419,7 @@ export default function NotebookDetailPage() {
         </div>
 
         {/* Chat Messages */}
-        <div
-          ref={chatContainerRef}
-          className="flex-1 overflow-y-auto p-4 space-y-4"
-        >
+        <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
           {displayMessages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center">
               <Bot className="w-12 h-12 text-slate-200 mb-3" />
@@ -3741,11 +4448,10 @@ export default function NotebookDetailPage() {
                     </div>
                   )}
                   <div
-                    className={`max-w-[70%] rounded-2xl px-4 py-3 ${
-                      msg.role === "user"
-                        ? "bg-blue-600 text-white rounded-br-none"
-                        : "bg-white border border-slate-200 text-slate-700 rounded-bl-none"
-                    }`}
+                    className={`max-w-[70%] rounded-2xl px-4 py-3 ${msg.role === "user"
+                      ? "bg-blue-600 text-white rounded-br-none"
+                      : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-bl-none"
+                      }`}
                   >
                     {msg.role === "assistant" ? (
                       <>
@@ -3753,8 +4459,34 @@ export default function NotebookDetailPage() {
                           <ReactMarkdown
                             remarkPlugins={[remarkMath]}
                             rehypePlugins={[rehypeKatex]}
+                            components={{
+                              a: ({ href, ...props }) => {
+                                const isInternalRef = /^#ref-\d+$/i.test(
+                                  href || "",
+                                );
+                                return (
+                                  <a
+                                    href={href}
+                                    onClick={(event) =>
+                                      handleCitationAnchorClick(href, event)
+                                    }
+                                    target={
+                                      isInternalRef ? undefined : "_blank"
+                                    }
+                                    rel={
+                                      isInternalRef
+                                        ? undefined
+                                        : "noopener noreferrer"
+                                    }
+                                    {...props}
+                                  />
+                                );
+                              },
+                            }}
                           >
-                            {processLatexContent(msg.content)}
+                            {processLatexContent(
+                              linkifyKnownCitationTokens(msg.content || ""),
+                            )}
                           </ReactMarkdown>
                         </div>
                         {!msg.isStreaming && (
@@ -3800,7 +4532,7 @@ export default function NotebookDetailPage() {
         )}
 
         {/* Chat Input */}
-        <div className="p-4 border-t border-slate-200 bg-white">
+        <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
           <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
             <span className="truncate">当前会话：{currentSessionTitle}</span>
             <button
@@ -3821,7 +4553,7 @@ export default function NotebookDetailPage() {
               }
               placeholder={sourcesKbIndexing ? "等待中..." : "输入你的问题..."}
               disabled={isChatting || sourcesKbIndexing}
-              className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none disabled:opacity-50"
+              className="flex-1 px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none disabled:opacity-50"
             />
             <button
               onClick={handleSendChat}
@@ -3841,9 +4573,8 @@ export default function NotebookDetailPage() {
 
       {/* Right Panel - Studio */}
       <div
-        className={`flex flex-col bg-white border-l border-slate-200 transition-all duration-300 ${
-          rightCollapsed ? "w-0 overflow-hidden" : "w-80"
-        }`}
+        className={`min-h-0 flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 transition-all duration-300 ${rightCollapsed ? "w-0 overflow-hidden" : "w-80"
+          }`}
       >
         {/* Studio Header */}
         <div className="p-4 border-b border-slate-200">
@@ -4006,7 +4737,7 @@ export default function NotebookDetailPage() {
                       .map((record) => (
                         <div
                           key={record.id}
-                          className="p-3 bg-white border border-slate-200 rounded-xl hover:border-blue-300 transition-all group"
+                          className="p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-blue-300 transition-all group"
                         >
                           <div className="flex items-start justify-between mb-1">
                             <div
@@ -4046,13 +4777,12 @@ export default function NotebookDetailPage() {
                           </p>
                           <div className="flex items-center gap-2 mt-2 text-[10px] text-slate-400">
                             <span
-                              className={`px-1.5 py-0.5 rounded ${
-                                record.type === "note"
-                                  ? "bg-blue-50 text-blue-600"
-                                  : record.type === "solve"
-                                    ? "bg-purple-50 text-purple-600"
-                                    : "bg-slate-50 text-slate-600"
-                              }`}
+                              className={`px-1.5 py-0.5 rounded ${record.type === "note"
+                                ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                                : record.type === "solve"
+                                  ? "bg-purple-50 text-purple-600"
+                                  : "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                                }`}
                             >
                               {record.type === "note"
                                 ? "笔记"
@@ -4096,19 +4826,23 @@ export default function NotebookDetailPage() {
                   onChange={(e) => setResearchTopic(e.target.value)}
                   placeholder="输入你想研究的主题..."
                   rows={3}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-none"
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-none"
                 />
               </div>
 
               <button
                 onClick={() => startResearchWithTopic()}
-                disabled={!researchTopic.trim() || researchRunning}
+                disabled={
+                  !researchTopic.trim() ||
+                  researchRunning ||
+                  pendingResearchRecovery
+                }
                 className="w-full py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                {researchRunning ? (
+                {researchRunning || pendingResearchRecovery ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    研究中...
+                    {pendingResearchRecovery ? "恢复中..." : "研究中..."}
                   </>
                 ) : (
                   <>
@@ -4137,7 +4871,7 @@ export default function NotebookDetailPage() {
               )}
 
               {researchReport && (
-                <div className="mt-4 p-4 bg-slate-50 rounded-xl">
+                <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-xl">
                   <div className="text-xs font-semibold text-slate-500 mb-2">
                     研究结果预览
                   </div>
@@ -4188,7 +4922,7 @@ export default function NotebookDetailPage() {
                   </div>
                 ) : audioResult?.audioUrl ? (
                   <div className="space-y-4">
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
                       <audio
                         controls
                         src={audioBlobUrl || audioResult.audioUrl}
@@ -4208,7 +4942,7 @@ export default function NotebookDetailPage() {
                       </a>
                       <button
                         onClick={() => handleGeneratePodcast()}
-                        className="px-4 py-2 border border-slate-200 text-slate-600 bg-white rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors flex items-center gap-2"
+                        className="px-4 py-2 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 bg-white dark:bg-slate-800 rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2"
                       >
                         <Zap className="w-4 h-4" />
                         重新生成
@@ -4367,7 +5101,7 @@ export default function NotebookDetailPage() {
                   )}
                 </div>
               ) : (
-                <div className="bg-white border border-slate-200 rounded-xl p-4">
+                <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4">
                   <Mermaid chart={mindmapCode} />
                 </div>
               )}
@@ -4462,7 +5196,7 @@ export default function NotebookDetailPage() {
         {/* Collapse Button */}
         <button
           onClick={() => setRightCollapsed(true)}
-          className="p-2 border-t border-slate-200 text-slate-400 hover:bg-slate-50 flex items-center justify-center"
+          className="p-2 border-t border-slate-200 dark:border-slate-800 text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-center"
         >
           <ChevronRight className="w-4 h-4" />
         </button>
@@ -4472,7 +5206,7 @@ export default function NotebookDetailPage() {
       {rightCollapsed && (
         <button
           onClick={() => setRightCollapsed(false)}
-          className="w-8 bg-white border-l border-slate-200 flex items-center justify-center text-slate-400 hover:bg-slate-50"
+          className="w-8 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
@@ -4481,7 +5215,7 @@ export default function NotebookDetailPage() {
       {/* Add Source Modal */}
       {showAddSourceModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-xl">
             <h3 className="text-lg font-semibold text-slate-900 mb-4">
               添加来源
             </h3>
@@ -4515,7 +5249,7 @@ export default function NotebookDetailPage() {
                         const selectedKbInfo = kbs.find(
                           (kb) => kb.name === e.target.value,
                         );
-                        const newSource: Source = {
+                        const newSource: Source = withSourceIdentity({
                           id: `kb-${Date.now()}`,
                           type: "kb",
                           title:
@@ -4523,9 +5257,11 @@ export default function NotebookDetailPage() {
                             selectedKbInfo?.name ||
                             e.target.value,
                           selected: true,
-                        };
+                        });
                         setHasSessionActivity(true);
-                        setSources((prev) => [...prev, newSource]);
+                        setSources((prev) =>
+                          mergeSourcesWithCatalog(prev, [newSource], []),
+                        );
                       }
                     }}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
@@ -4547,7 +5283,7 @@ export default function NotebookDetailPage() {
                   setShowAddSourceModal(false);
                   setSourceUrl("");
                 }}
-                className="flex-1 px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50"
+                className="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
               >
                 取消
               </button>
@@ -4566,7 +5302,7 @@ export default function NotebookDetailPage() {
       {/* Add Note Modal */}
       {showAddNoteModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-xl">
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 w-full max-w-lg shadow-xl">
             <h3 className="text-lg font-semibold text-slate-900 mb-4">
               添加笔记
             </h3>
@@ -4606,7 +5342,7 @@ export default function NotebookDetailPage() {
                   setNoteTitle("");
                   setNoteContent("");
                 }}
-                className="flex-1 px-4 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50"
+                className="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
               >
                 取消
               </button>
@@ -4640,7 +5376,7 @@ export default function NotebookDetailPage() {
           onClick={() => setSelectedRecord(null)}
         >
           <div
-            className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl animate-in zoom-in-95"
+            className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl animate-in zoom-in-95"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-2xl">
@@ -4649,7 +5385,7 @@ export default function NotebookDetailPage() {
               </h3>
               <button
                 onClick={() => setSelectedRecord(null)}
-                className="p-1.5 hover:bg-white/50 rounded-lg transition-colors ml-2"
+                className="p-1.5 hover:bg-white/50 dark:hover:bg-slate-700/50 rounded-lg transition-colors ml-2"
               >
                 <X className="w-5 h-5 text-slate-500" />
               </button>
@@ -4658,16 +5394,36 @@ export default function NotebookDetailPage() {
               <ReactMarkdown
                 remarkPlugins={[remarkMath]}
                 rehypePlugins={[rehypeKatex]}
+                components={{
+                  a: ({ href, ...props }) => {
+                    const isInternalRef = /^#ref-\d+$/i.test(href || "");
+                    return (
+                      <a
+                        href={href}
+                        onClick={(event) =>
+                          handleCitationAnchorClick(href, event)
+                        }
+                        target={isInternalRef ? undefined : "_blank"}
+                        rel={
+                          isInternalRef ? undefined : "noopener noreferrer"
+                        }
+                        {...props}
+                      />
+                    );
+                  },
+                }}
               >
                 {processLatexContent(
-                  selectedRecord.output || selectedRecord.user_query,
+                  linkifyKnownCitationTokens(
+                    selectedRecord.output || selectedRecord.user_query,
+                  ),
                 )}
               </ReactMarkdown>
             </div>
-            <div className="p-4 border-t border-slate-100 bg-slate-50 rounded-b-2xl flex justify-end gap-2">
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 rounded-b-2xl flex justify-end gap-2">
               <button
                 onClick={() => handleDownloadRecord(selectedRecord)}
-                className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 flex items-center gap-2 text-sm"
+                className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2 text-sm"
               >
                 <FileDown className="w-4 h-4" />
                 下载

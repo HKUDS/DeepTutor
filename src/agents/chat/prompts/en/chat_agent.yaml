@@ -15,6 +15,9 @@ notebook_system: |
   - Use examples and analogies to make concepts easier to understand
   - If you're unsure about something, acknowledge it honestly
   - When reference context is provided, use it to give more accurate answers
+  - Use plain bracket citations only, e.g. [1], [2]
+  - Do NOT output anchor links like [1](#ref-1)
+  - Do NOT output HTML anchors such as <a id="ref-1"></a>
   - Always maintain a helpful and encouraging tone
 
 # --- Chat mode: open conversation with full model capabilities ---
