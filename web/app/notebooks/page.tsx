@@ -179,7 +179,7 @@ export default function NotebooksPage() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-8">
+    <div className="min-h-screen bg-slate-50 dark:bg-background bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-8">
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-6">
@@ -202,7 +202,7 @@ export default function NotebooksPage() {
             placeholder="搜索笔记本..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none shadow-sm"
+            className="w-full pl-12 pr-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none shadow-sm"
           />
         </div>
       </div>
@@ -218,7 +218,7 @@ export default function NotebooksPage() {
             {/* Create New Notebook Card */}
             <button
               onClick={() => setShowCreateModal(true)}
-              className="group h-48 rounded-2xl border-2 border-dashed border-slate-300 bg-white/50 hover:border-blue-400 hover:bg-blue-50/50 transition-all flex flex-col items-center justify-center gap-3"
+              className="group h-48 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white/50 dark:bg-slate-800/50 hover:border-blue-400 dark:hover:border-slate-500 hover:bg-blue-50/50 dark:hover:bg-slate-700 transition-all flex flex-col items-center justify-center gap-3"
             >
               <div className="w-14 h-14 rounded-full bg-slate-100 group-hover:bg-blue-100 flex items-center justify-center transition-colors">
                 <Plus className="w-7 h-7 text-slate-400 group-hover:text-blue-600" />
@@ -234,7 +234,7 @@ export default function NotebooksPage() {
                 key={nb.id}
                 onClick={() => router.push(`/notebooks/${nb.id}`)}
                 onContextMenu={(e) => handleContextMenu(e, nb.id)}
-                className="group relative h-48 rounded-2xl bg-white border border-slate-200 hover:border-slate-300 hover:shadow-lg transition-all cursor-pointer overflow-hidden"
+                className="group relative h-48 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:shadow-lg transition-all cursor-pointer overflow-hidden"
               >
                 {/* Color Bar */}
                 <div
@@ -296,7 +296,7 @@ export default function NotebooksPage() {
                         y: rect.bottom + 4,
                       });
                     }}
-                    className="p-1.5 rounded-lg bg-white/80 hover:bg-white border border-slate-200 shadow-sm"
+                    className="p-1.5 rounded-lg bg-white/80 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 shadow-sm"
                   >
                     <MoreVertical className="w-4 h-4 text-slate-500" />
                   </button>
@@ -319,7 +319,7 @@ export default function NotebooksPage() {
       {contextMenu && (
         <div
           ref={contextMenuRef}
-          className="fixed z-50 bg-white rounded-xl shadow-lg border border-slate-200 py-2 min-w-[140px]"
+          className="fixed z-50 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 py-2 min-w-[140px]"
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -337,7 +337,7 @@ export default function NotebooksPage() {
               }
               setContextMenu(null);
             }}
-            className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+            className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"
           >
             <Edit3 className="w-4 h-4" />
             编辑
@@ -358,7 +358,7 @@ export default function NotebooksPage() {
       {/* Create Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 border dark:border-slate-700">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold text-slate-900">新建笔记本</h2>
               <button
@@ -428,7 +428,7 @@ export default function NotebooksPage() {
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => setShowCreateModal(false)}
-                className="flex-1 px-4 py-3 border border-slate-200 rounded-xl text-slate-700 font-medium hover:bg-slate-50 transition-colors"
+                className="flex-1 px-4 py-3 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-200 font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
               >
                 取消
               </button>
@@ -447,7 +447,7 @@ export default function NotebooksPage() {
       {/* Edit Modal */}
       {showEditModal && editingNotebook && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 border dark:border-slate-700">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold text-slate-900">编辑笔记本</h2>
               <button
@@ -525,7 +525,7 @@ export default function NotebooksPage() {
                   setShowEditModal(false);
                   setEditingNotebook(null);
                 }}
-                className="flex-1 px-4 py-3 border border-slate-200 rounded-xl text-slate-700 font-medium hover:bg-slate-50 transition-colors"
+                className="flex-1 px-4 py-3 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-200 font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
               >
                 取消
               </button>
@@ -544,7 +544,7 @@ export default function NotebooksPage() {
       {/* Delete Confirmation */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 border dark:border-slate-700">
             <div className="text-center">
               <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
                 <Trash2 className="w-6 h-6 text-red-600" />
@@ -560,7 +560,7 @@ export default function NotebooksPage() {
             <div className="flex gap-3">
               <button
                 onClick={() => setShowDeleteConfirm(null)}
-                className="flex-1 px-4 py-3 border border-slate-200 rounded-xl text-slate-700 font-medium hover:bg-slate-50 transition-colors"
+                className="flex-1 px-4 py-3 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-200 font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
               >
                 取消
               </button>

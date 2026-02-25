@@ -36,33 +36,37 @@
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    /* Background (#0c0d0e) */
+    --background: 210 7.7% 5.1%;
+    --foreground: 0 0% 100%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 210 3.4% 11.4%;
+    --card-foreground: 0 0% 100%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 210 3.4% 11.4%;
+    --popover-foreground: 0 0% 100%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    /* AI-Primary-6 (Dark Variant #0D5EFF - secondary option or #C069FF. We will use the blue one #0D5EFF to match the primary tone) -> 219.9 100.0% 52.5% */
+    --primary: 219.9 100% 52.5%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    /* AI-Primary-8 (Dark Variant #0D43C0) -> hex to hsl approximation for secondary */
+    --secondary: 222 87% 40%;
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 217.2 32.6% 17.5%;
+    --muted: 210 3.4% 11.4%;
     --muted-foreground: 215 20.2% 65.1%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 210 3.4% 11.4%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --border: 210 3.4% 11.4%;
+    --input: 210 3.4% 11.4%;
+    /* AI-Primary-5 (Hover Dark #508AFF) -> 220.1 100.0% 65.7% */
+    --ring: 220.1 100% 65.7%;
   }
 }
 
@@ -157,6 +161,10 @@
 }
 
 /* KaTeX Styles for Dark Mode */
+.katex {
+  position: relative;
+}
+
 .dark .katex {
   color: #e2e8f0;
 }

@@ -55,8 +55,11 @@ export default function KnowledgePage() {
   const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [uploadModalOpen, setUploadModalOpen] = useState(false);
-  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [showUploadModal, setUploadModalOpen] = useState(false);
+  const [showCreateModal, setCreateModalOpen] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(
+    null,
+  );
   const [targetKb, setTargetKb] = useState<string>("");
   const [uploading, setUploading] = useState(false);
   const [files, setFiles] = useState<FileList | null>(null);
@@ -381,13 +384,6 @@ export default function KnowledgePage() {
   }, []);
 
   const handleDelete = async (name: string) => {
-    if (
-      !confirm(
-        `Are you sure you want to delete knowledge base "${name}"? This cannot be undone.`,
-      )
-    )
-      return;
-
     try {
       const res = await fetch(apiUrl(`/api/v1/knowledge/${name}`), {
         method: "DELETE",
@@ -397,6 +393,7 @@ export default function KnowledgePage() {
       // Also clear progress state for this KB
       clearProgress(name);
 
+      setShowDeleteConfirm(null);
       fetchKnowledgeBases();
     } catch (err) {
       console.error(err);
@@ -585,7 +582,7 @@ export default function KnowledgePage() {
               setNewKbName("");
               setCreateModalOpen(true);
             }}
-            className="bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors flex items-center gap-2 shadow-lg shadow-slate-900/20"
+            className="bg-blue-600 dark:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 dark:hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm shadow-blue-600/20"
           >
             <Plus className="w-4 h-4" />
             新建知识库
@@ -657,7 +654,7 @@ export default function KnowledgePage() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDelete(kb.name);
+                      setShowDeleteConfirm(kb.name);
                     }}
                     className="p-2 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                     title="删除知识库"
@@ -837,8 +834,8 @@ export default function KnowledgePage() {
       )}
 
       {/* Create KB Modal */}
-      {createModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 ">
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
@@ -913,7 +910,7 @@ export default function KnowledgePage() {
                 <button
                   type="button"
                   onClick={() => setCreateModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700"
+                  className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
                 >
                   取消
                 </button>
@@ -922,7 +919,7 @@ export default function KnowledgePage() {
                   disabled={
                     !newKbName || !files || files.length === 0 || uploading
                   }
-                  className="flex-1 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-medium hover:bg-slate-800 dark:hover:bg-slate-200 disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                 >
                   {uploading ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -937,7 +934,7 @@ export default function KnowledgePage() {
       )}
 
       {/* Upload Modal (Existing) */}
-      {uploadModalOpen && (
+      {showUploadModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in zoom-in-95">
             <div className="flex justify-between items-center mb-4">
@@ -1003,6 +1000,39 @@ export default function KnowledgePage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Delete Confirmation Modal (Added for alignment) */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 animate-in zoom-in-95">
+            <div className="text-center">
+              <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center mx-auto mb-4">
+                <Trash2 className="w-6 h-6 text-red-600 dark:text-red-400" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-2">
+                确认删除？
+              </h3>
+              <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">
+                删除后无法恢复，确定要删除知识库 "{showDeleteConfirm}" 吗？
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(null)}
+                className="flex-1 px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => handleDelete(showDeleteConfirm)}
+                className="flex-1 px-4 py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors"
+              >
+                删除
+              </button>
+            </div>
           </div>
         </div>
       )}
