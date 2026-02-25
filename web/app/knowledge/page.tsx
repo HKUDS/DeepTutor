@@ -57,7 +57,9 @@ export default function KnowledgePage() {
   const [error, setError] = useState<string | null>(null);
   const [showUploadModal, setUploadModalOpen] = useState(false);
   const [showCreateModal, setCreateModalOpen] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(
+    null,
+  );
   const [targetKb, setTargetKb] = useState<string>("");
   const [uploading, setUploading] = useState(false);
   const [files, setFiles] = useState<FileList | null>(null);
@@ -867,10 +869,11 @@ export default function KnowledgePage() {
                   上传文档
                 </label>
                 <div
-                  className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${dragActive
-                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30"
-                    : "border-slate-200 dark:border-slate-600 hover:border-blue-400 dark:hover:border-blue-500 bg-slate-50 dark:bg-slate-700/50"
-                    }`}
+                  className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
+                    dragActive
+                      ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30"
+                      : "border-slate-200 dark:border-slate-600 hover:border-blue-400 dark:hover:border-blue-500 bg-slate-50 dark:bg-slate-700/50"
+                  }`}
                   onDragEnter={handleDrag}
                   onDragLeave={handleDrag}
                   onDragOver={handleDrag}

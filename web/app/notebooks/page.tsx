@@ -413,10 +413,11 @@ export default function NotebooksPage() {
                     <button
                       key={color}
                       onClick={() => setNewNotebook({ ...newNotebook, color })}
-                      className={`w-8 h-8 rounded-full transition-all ${newNotebook.color === color
-                        ? "ring-2 ring-offset-2 ring-slate-400 scale-110"
-                        : "hover:scale-110"
-                        }`}
+                      className={`w-8 h-8 rounded-full transition-all ${
+                        newNotebook.color === color
+                          ? "ring-2 ring-offset-2 ring-slate-400 scale-110"
+                          : "hover:scale-110"
+                      }`}
                       style={{ backgroundColor: color }}
                     />
                   ))}
@@ -506,10 +507,11 @@ export default function NotebooksPage() {
                       onClick={() =>
                         setEditingNotebook({ ...editingNotebook, color })
                       }
-                      className={`w-8 h-8 rounded-full transition-all ${editingNotebook.color === color
-                        ? "ring-2 ring-offset-2 ring-slate-400 scale-110"
-                        : "hover:scale-110"
-                        }`}
+                      className={`w-8 h-8 rounded-full transition-all ${
+                        editingNotebook.color === color
+                          ? "ring-2 ring-offset-2 ring-slate-400 scale-110"
+                          : "hover:scale-110"
+                      }`}
                       style={{ backgroundColor: color }}
                     />
                   ))}

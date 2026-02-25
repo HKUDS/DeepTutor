@@ -409,9 +409,9 @@ export default function SolverPage() {
                               (m, i) =>
                                 m.role === "user" &&
                                 solverState.messages[i + 1]?.role ===
-                                "assistant" &&
+                                  "assistant" &&
                                 solverState.messages[i + 1]?.content ===
-                                msg.content,
+                                  msg.content,
                             );
                             const userQuery =
                               userMsgIndex >= 0
@@ -618,12 +618,13 @@ export default function SolverPage() {
             <div className="px-4 py-3 bg-indigo-50 border-b border-indigo-100 shrink-0">
               <div className="flex items-center gap-2 mb-2">
                 <div
-                  className={`p-1.5 rounded-lg ${solverState.progress.stage === "investigate"
-                    ? "bg-blue-100 text-blue-600"
-                    : solverState.progress.stage === "solve"
-                      ? "bg-amber-100 text-amber-600"
-                      : "bg-emerald-100 text-emerald-600"
-                    }`}
+                  className={`p-1.5 rounded-lg ${
+                    solverState.progress.stage === "investigate"
+                      ? "bg-blue-100 text-blue-600"
+                      : solverState.progress.stage === "solve"
+                        ? "bg-amber-100 text-amber-600"
+                        : "bg-emerald-100 text-emerald-600"
+                  }`}
                 >
                   {solverState.progress.stage === "investigate" && (
                     <Search className="w-3.5 h-3.5" />
@@ -852,10 +853,12 @@ export default function SolverPage() {
                       className +=
                         " bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-l-2 border-slate-200 dark:border-slate-700";
                     } else {
-                      className += " bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300";
+                      className +=
+                        " bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300";
                     }
                   } else if (isSeparator) {
-                    className += " text-slate-300 dark:text-slate-600 text-center";
+                    className +=
+                      " text-slate-300 dark:text-slate-600 text-center";
                   } else if (isError) {
                     className +=
                       " bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-l-2 border-red-300 dark:border-red-500/50";
@@ -863,7 +866,8 @@ export default function SolverPage() {
                     className +=
                       " bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-l-2 border-amber-300 dark:border-amber-500/50";
                   } else if (isStepHeader) {
-                    className += " bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-semibold mt-2";
+                    className +=
+                      " bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-semibold mt-2";
                   } else if (isSectionHeader) {
                     className +=
                       " bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-medium mt-2";
@@ -871,13 +875,17 @@ export default function SolverPage() {
                     className +=
                       " bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-l-2 border-emerald-200 dark:border-emerald-500/50";
                   } else if (isActionLine) {
-                    className += " bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 pl-4";
+                    className +=
+                      " bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 pl-4";
                   } else if (isComplete) {
-                    className += " bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400";
+                    className +=
+                      " bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400";
                   } else if (isRunning) {
-                    className += " bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400";
+                    className +=
+                      " bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400";
                   } else if (isSkip) {
-                    className += " bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500";
+                    className +=
+                      " bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500";
                   } else {
                     className +=
                       " bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700";

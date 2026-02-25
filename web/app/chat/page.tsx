@@ -337,10 +337,10 @@ function ChatPageContent() {
             prev.map((msg) =>
               msg.id === assistantId
                 ? {
-                  ...msg,
-                  content: `❌ 错误: ${data.message}`,
-                  isStreaming: false,
-                }
+                    ...msg,
+                    content: `❌ 错误: ${data.message}`,
+                    isStreaming: false,
+                  }
                 : msg,
             ),
           );
@@ -478,10 +478,11 @@ function ChatPageContent() {
                   <div
                     key={session.session_id}
                     onClick={() => handleLoadSession(session.session_id)}
-                    className={`group p-2 rounded-lg cursor-pointer flex items-center justify-between ${sessionId === session.session_id
-                      ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
-                      : "hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
-                      }`}
+                    className={`group p-2 rounded-lg cursor-pointer flex items-center justify-between ${
+                      sessionId === session.session_id
+                        ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
+                        : "hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                    }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <MessageSquare className="w-4 h-4 shrink-0" />
@@ -532,7 +533,9 @@ function ChatPageContent() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <Database className="w-3.5 h-3.5 text-blue-500" />
-                  <span className="text-xs text-slate-600 dark:text-slate-300">知识库检索</span>
+                  <span className="text-xs text-slate-600 dark:text-slate-300">
+                    知识库检索
+                  </span>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
@@ -548,7 +551,9 @@ function ChatPageContent() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <Globe className="w-3.5 h-3.5 text-emerald-500" />
-                  <span className="text-xs text-slate-600 dark:text-slate-300">联网搜索</span>
+                  <span className="text-xs text-slate-600 dark:text-slate-300">
+                    联网搜索
+                  </span>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
@@ -585,7 +590,9 @@ function ChatPageContent() {
               <ChevronLeft className="w-5 h-5" />
             </button>
           )}
-          <h1 className="font-semibold text-slate-900 dark:text-slate-100">智能对话</h1>
+          <h1 className="font-semibold text-slate-900 dark:text-slate-100">
+            智能对话
+          </h1>
           <div className="ml-auto flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
             {enableRag && selectedKb && (
               <span className="px-2 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full text-xs flex items-center gap-1">
@@ -618,10 +625,11 @@ function ChatPageContent() {
                 </div>
               )}
               <div
-                className={`max-w-[70%] rounded-2xl px-4 py-3 ${msg.role === "user"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
-                  }`}
+                className={`max-w-[70%] rounded-2xl px-4 py-3 ${
+                  msg.role === "user"
+                    ? "bg-blue-600 text-white"
+                    : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+                }`}
               >
                 {msg.isStreaming && !msg.content ? (
                   <div className="flex items-center gap-2">
