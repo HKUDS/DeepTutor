@@ -14,6 +14,7 @@ import {
   ChevronsRight,
   MessageSquare,
   Calculator,
+  Lightbulb,
 } from "lucide-react";
 import { useGlobal } from "@/context/GlobalContext";
 import { getTranslation } from "@/lib/i18n";
@@ -49,6 +50,7 @@ export default function Sidebar() {
         { name: t("Chat"), href: "/chat", icon: MessageSquare },
         { name: t("Co-Writer"), href: "/co_writer", icon: Edit3 },
         { name: t("Smart Solver"), href: "/solver", icon: Calculator },
+        { name: t("IdeaGen"), href: "/ideagen", icon: Lightbulb },
       ],
     },
   ];

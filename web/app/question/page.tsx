@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   PenTool,
   CheckCircle2,
@@ -31,7 +32,22 @@ import AddToNotebookModal from "@/components/AddToNotebookModal";
 import { QuestionDashboard } from "@/components/question";
 import { useQuestionReducer } from "@/hooks/useQuestionReducer";
 
-export default function QuestionPage() {
+interface KnowledgeBase {
+  name: string;
+  display_name?: string;
+  is_default?: boolean;
+  owner?: {
+    type?: string;
+    notebook_id?: string;
+    notebook_name?: string;
+  } | null;
+}
+
+function QuestionPageContent() {
+  const searchParams = useSearchParams();
+  const entryNotebookId = (searchParams.get("notebook_id") || "").trim();
+  const entryNotebookName = (searchParams.get("notebook_name") || "").trim();
+
   const {
     questionState,
     setQuestionState,
@@ -50,7 +66,7 @@ export default function QuestionPage() {
   );
 
   // Local interaction state
-  const [kbs, setKbs] = useState<string[]>([]);
+  const [kbs, setKbs] = useState<KnowledgeBase[]>([]);
 
   // Answering state
   const [activeIdx, setActiveIdx] = useState(0);
@@ -71,15 +87,42 @@ export default function QuestionPage() {
     fetch(apiUrl("/api/v1/knowledge/list"))
       .then((res) => res.json())
       .then((data) => {
-        const names = data.map((kb: any) => kb.name);
-        setKbs(names);
-        if (!questionState.selectedKb && names.length > 0) {
-          setQuestionState((prev) => ({ ...prev, selectedKb: names[0] }));
+        const kbList: KnowledgeBase[] = Array.isArray(data) ? data : [];
+        setKbs(kbList);
+
+        if (kbList.length === 0) {
+          setQuestionState((prev) => ({ ...prev, selectedKb: "" }));
+          return;
         }
+
+        const notebookSourceKb =
+          (entryNotebookId &&
+            (kbList.find(
+              (kb) =>
+                kb.owner?.type === "notebook_sources" &&
+                kb.owner?.notebook_id === entryNotebookId,
+            )?.name ||
+              kbList.find(
+                (kb) => kb.name === `notebook_${entryNotebookId}_sources`,
+              )?.name)) ||
+          "";
+        const defaultKb =
+          kbList.find((kb) => kb.is_default)?.name || kbList[0]?.name || "";
+
+        setQuestionState((prev) => {
+          if (notebookSourceKb) {
+            if (prev.selectedKb === notebookSourceKb) return prev;
+            return { ...prev, selectedKb: notebookSourceKb };
+          }
+          if (kbList.some((kb) => kb.name === prev.selectedKb)) {
+            return prev;
+          }
+          return { ...prev, selectedKb: defaultKb };
+        });
       })
       .catch((err) => console.error("Failed to fetch KBs:", err));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [entryNotebookId]);
 
   const handleStart = () => {
     if (questionState.mode === "knowledge") {
@@ -257,11 +300,18 @@ export default function QuestionPage() {
                 disabled={isGenerating}
                 className={`text-sm bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-1.5 outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-500/20 dark:text-slate-200 ${isGenerating ? "opacity-50 cursor-not-allowed" : ""}`}
               >
-                {kbs.map((kb) => (
-                  <option key={kb} value={kb}>
-                    {kb}
-                  </option>
-                ))}
+                {kbs.map((kb) => {
+                  const label =
+                    kb.display_name ||
+                    (kb.owner?.type === "notebook_sources"
+                      ? `${kb.owner?.notebook_name || "笔记本"} · 来源库`
+                      : kb.name);
+                  return (
+                    <option key={kb.name} value={kb.name}>
+                      {label}
+                    </option>
+                  );
+                })}
               </select>
             </div>
 
@@ -375,7 +425,7 @@ export default function QuestionPage() {
                             topic: e.target.value,
                           }))
                         }
-                        placeholder="例如：梯度下降优化"
+                        placeholder={entryNotebookName || "例如：梯度下降优化"}
                         className="w-full p-4 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/10 transition-all text-lg dark:text-slate-200 dark:placeholder:text-slate-500"
                       />
                     </div>
@@ -520,7 +570,7 @@ export default function QuestionPage() {
                             uploadedFile: null,
                           }))
                         }
-                        placeholder="例如：2211asm1"
+                        placeholder={entryNotebookName || "例如：2211asm1"}
                         className="w-full p-3 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/10 transition-all dark:text-slate-200 dark:placeholder:text-slate-500"
                       />
                       <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -1088,5 +1138,19 @@ export default function QuestionPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function QuestionPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="h-screen flex items-center justify-center">
+          加载中...
+        </div>
+      }
+    >
+      <QuestionPageContent />
+    </Suspense>
   );
 }
