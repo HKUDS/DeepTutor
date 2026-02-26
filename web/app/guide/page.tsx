@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { Suspense, useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   BookOpen,
   MessageSquare,
@@ -72,7 +73,11 @@ interface SessionState {
   summary: string;
 }
 
-export default function GuidePage() {
+function GuidePageContent() {
+  const searchParams = useSearchParams();
+  const entryNotebookId = (searchParams.get("notebook_id") || "").trim();
+  const entryNotebookName = (searchParams.get("notebook_name") || "").trim();
+
   // Multi-notebook selection (same as ideagen)
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [expandedNotebooks, setExpandedNotebooks] = useState<Set<string>>(
@@ -120,6 +125,7 @@ export default function GuidePage() {
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const htmlFrameRef = useRef<HTMLIFrameElement>(null);
+  const autoSelectionAppliedRef = useRef(false);
 
   // Load notebooks
   useEffect(() => {
@@ -289,7 +295,8 @@ ${html}
   };
 
   const fetchNotebookRecords = async (notebookId: string) => {
-    if (notebookRecordsMap.has(notebookId)) return; // Already fetched
+    const cached = notebookRecordsMap.get(notebookId);
+    if (cached) return cached;
 
     setLoadingRecordsFor((prev) => {
       const newSet = new Set(prev);
@@ -299,11 +306,12 @@ ${html}
     try {
       const res = await fetch(apiUrl(`/api/v1/notebook/${notebookId}`));
       const data = await res.json();
-      setNotebookRecordsMap((prev) =>
-        new Map(prev).set(notebookId, data.records || []),
-      );
+      const records = data.records || [];
+      setNotebookRecordsMap((prev) => new Map(prev).set(notebookId, records));
+      return records as NotebookRecord[];
     } catch (err) {
       console.error("Failed to fetch notebook records:", err);
+      return [];
     } finally {
       setLoadingRecordsFor((prev) => {
         const newSet = new Set(prev);
@@ -312,6 +320,51 @@ ${html}
       });
     }
   };
+
+  useEffect(() => {
+    if (
+      autoSelectionAppliedRef.current ||
+      !entryNotebookId ||
+      loadingNotebooks
+    ) {
+      return;
+    }
+
+    const targetNotebook = notebooks.find((nb) => nb.id === entryNotebookId);
+    autoSelectionAppliedRef.current = true;
+    if (!targetNotebook) return;
+
+    setExpandedNotebooks((prev) => {
+      const next = new Set(prev);
+      next.add(targetNotebook.id);
+      return next;
+    });
+
+    const preselectNotebookRecords = async () => {
+      const records = await fetchNotebookRecords(targetNotebook.id);
+      if (records.length === 0) return;
+      const notebookName = entryNotebookName || targetNotebook.name;
+      setSelectedRecords((prev) => {
+        const next = new Map(prev);
+        records.forEach((record) =>
+          next.set(record.id, {
+            ...record,
+            notebookId: targetNotebook.id,
+            notebookName,
+          }),
+        );
+        return next;
+      });
+    };
+
+    void preselectNotebookRecords();
+  }, [
+    entryNotebookId,
+    entryNotebookName,
+    loadingNotebooks,
+    notebooks,
+    notebookRecordsMap,
+  ]);
 
   const toggleNotebookExpanded = (notebookId: string) => {
     const notebook = notebooks.find((nb) => nb.id === notebookId);
@@ -1432,5 +1485,19 @@ ${html}
         </div>
       )}
     </div>
+  );
+}
+
+export default function GuidePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="h-screen flex items-center justify-center">
+          加载中...
+        </div>
+      }
+    >
+      <GuidePageContent />
+    </Suspense>
   );
 }
