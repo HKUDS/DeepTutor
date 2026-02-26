@@ -1,8 +1,9 @@
 "use client";
 
 import { Suspense, useState, useEffect, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
+  ArrowLeft,
   BookOpen,
   MessageSquare,
   Send,
@@ -74,6 +75,7 @@ interface SessionState {
 }
 
 function GuidePageContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const entryNotebookId = (searchParams.get("notebook_id") || "").trim();
   const entryNotebookName = (searchParams.get("notebook_name") || "").trim();
@@ -836,6 +838,11 @@ ${html}
   // Calculate widths based on ratio
   const leftWidthPercent = sidebarCollapsed ? 0 : sidebarWide ? 75 : 25; // 3:1 or 1:3
   const rightWidthPercent = sidebarCollapsed ? 100 : sidebarWide ? 25 : 75;
+  const hasEntryNotebook = entryNotebookId.length > 0;
+  const handleBackToNotebook = () => {
+    if (!hasEntryNotebook) return;
+    router.push(`/notebooks/${encodeURIComponent(entryNotebookId)}`);
+  };
 
   return (
     <div className="h-screen flex gap-0 p-4 animate-fade-in relative">
@@ -1287,6 +1294,19 @@ ${html}
       >
         {/* Collapse/Expand and Width Toggle Button - positioned relative to right panel */}
         <div className="absolute top-4 left-4 z-20 flex gap-2">
+          {hasEntryNotebook && (
+            <button
+              onClick={handleBackToNotebook}
+              className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all text-slate-500 dark:text-slate-300"
+              title={
+                entryNotebookName
+                  ? `返回笔记本：${entryNotebookName}`
+                  : "返回来源笔记本"
+              }
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+          )}
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
             className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all"
