@@ -34,7 +34,6 @@ import {
   PenTool,
   Calculator,
   GraduationCap,
-  Lightbulb,
   FilePlus,
   Sparkles,
   Globe,
@@ -152,10 +151,7 @@ interface ResearchState {
 type StudioMode =
   | "idle"
   | "research"
-  | "question"
   | "solver"
-  | "guide"
-  | "ideagen"
   | "pdf"
   | "ppt"
   | "mindmap"
@@ -4006,6 +4002,15 @@ export default function NotebookDetailPage() {
     </div>
   );
 
+  const openStudioTool = (path: "/question" | "/guide") => {
+    const query = new URLSearchParams({ notebook_id: notebookId });
+    if (notebook?.name) {
+      query.set("notebook_name", notebook.name);
+    }
+    const url = `${path}?${query.toString()}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-slate-50">
@@ -4667,7 +4672,7 @@ export default function NotebookDetailPage() {
                 <div className="space-y-2">
                   {/* Question Generator */}
                   <button
-                    onClick={() => setStudioMode("question")}
+                    onClick={() => openStudioTool("/question")}
                     disabled={notebook.records.length === 0 && !researchReport}
                     className="w-full p-3 rounded-xl border border-slate-200 hover:border-purple-300 hover:bg-purple-50/50 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -4690,7 +4695,7 @@ export default function NotebookDetailPage() {
 
                   {/* Guided Learning */}
                   <button
-                    onClick={() => setStudioMode("guide")}
+                    onClick={() => openStudioTool("/guide")}
                     disabled={notebook.records.length === 0}
                     className="w-full p-3 rounded-xl border border-slate-200 hover:border-amber-300 hover:bg-amber-50/50 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -4705,29 +4710,6 @@ export default function NotebookDetailPage() {
                         <p className="text-xs text-slate-400">
                           {notebook.records.length > 0
                             ? "知识点学习"
-                            : "需要笔记记录"}
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-
-                  {/* IdeaGen */}
-                  <button
-                    onClick={() => setStudioMode("ideagen")}
-                    disabled={notebook.records.length === 0}
-                    className="w-full p-3 rounded-xl border border-slate-200 hover:border-yellow-300 hover:bg-yellow-50/50 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg bg-yellow-100 flex items-center justify-center">
-                        <Lightbulb className="w-4 h-4 text-yellow-600" />
-                      </div>
-                      <div>
-                        <h4 className="font-medium text-slate-900 text-sm">
-                          创意生成
-                        </h4>
-                        <p className="text-xs text-slate-400">
-                          {notebook.records.length > 0
-                            ? "发现研究灵感"
                             : "需要笔记记录"}
                         </p>
                       </div>
@@ -5179,90 +5161,6 @@ export default function NotebookDetailPage() {
                   <Mermaid chart={mindmapCode} />
                 </div>
               )}
-            </div>
-          )}
-
-          {/* Question Generator Mode */}
-          {studioMode === "question" && (
-            <div className="space-y-4">
-              <button
-                onClick={() => setStudioMode("idle")}
-                className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                返回
-              </button>
-
-              <div className="text-center py-8">
-                <PenTool className="w-12 h-12 text-purple-300 mx-auto mb-4" />
-                <p className="text-slate-700 font-medium mb-2">题目生成</p>
-                <p className="text-sm text-slate-400 mb-4">
-                  基于笔记内容生成练习题
-                </p>
-                <a
-                  href="/question"
-                  target="_blank"
-                  className="inline-block px-6 py-3 bg-purple-600 text-white rounded-xl font-medium hover:bg-purple-700 transition-colors"
-                >
-                  打开题目生成器
-                </a>
-              </div>
-            </div>
-          )}
-
-          {/* Guided Learning Mode */}
-          {studioMode === "guide" && (
-            <div className="space-y-4">
-              <button
-                onClick={() => setStudioMode("idle")}
-                className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                返回
-              </button>
-
-              <div className="text-center py-8">
-                <GraduationCap className="w-12 h-12 text-amber-300 mx-auto mb-4" />
-                <p className="text-slate-700 font-medium mb-2">引导学习</p>
-                <p className="text-sm text-slate-400 mb-4">
-                  基于笔记记录进行知识点学习
-                </p>
-                <a
-                  href="/guide"
-                  target="_blank"
-                  className="inline-block px-6 py-3 bg-amber-600 text-white rounded-xl font-medium hover:bg-amber-700 transition-colors"
-                >
-                  打开引导学习
-                </a>
-              </div>
-            </div>
-          )}
-
-          {/* IdeaGen Mode */}
-          {studioMode === "ideagen" && (
-            <div className="space-y-4">
-              <button
-                onClick={() => setStudioMode("idle")}
-                className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                返回
-              </button>
-
-              <div className="text-center py-8">
-                <Lightbulb className="w-12 h-12 text-yellow-300 mx-auto mb-4" />
-                <p className="text-slate-700 font-medium mb-2">创意生成</p>
-                <p className="text-sm text-slate-400 mb-4">
-                  从笔记中发现研究灵感
-                </p>
-                <a
-                  href="/ideagen"
-                  target="_blank"
-                  className="inline-block px-6 py-3 bg-yellow-600 text-white rounded-xl font-medium hover:bg-yellow-700 transition-colors"
-                >
-                  打开创意生成器
-                </a>
-              </div>
             </div>
           )}
         </div>
