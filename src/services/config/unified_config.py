@@ -44,6 +44,7 @@ PROVIDER_OPTIONS = {
         "anthropic",
         "azure_openai",
         "deepseek",
+        "minimax",
         "ollama",
         "lm_studio",
         "vllm",
@@ -564,7 +565,7 @@ class UnifiedConfigManager:
             base_url = config.get("base_url", "")
 
             # Only set env vars for OpenAI-compatible providers
-            if provider in ("openai", "azure_openai", "gemini", "deepseek"):
+            if provider in ("openai", "azure_openai", "gemini", "deepseek", "minimax"):
                 if api_key:
                     os.environ["OPENAI_API_KEY"] = api_key
                     logger.debug("Updated OPENAI_API_KEY env var for LightRAG compatibility")

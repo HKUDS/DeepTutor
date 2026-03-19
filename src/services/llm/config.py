@@ -43,7 +43,7 @@ def _setup_openai_env_vars_early():
     base_url = os.getenv("LLM_HOST")
 
     # Only set env vars for OpenAI-compatible bindings
-    if binding in ("openai", "azure_openai", "gemini"):
+    if binding in ("openai", "azure_openai", "gemini", "minimax"):
         if api_key and not os.getenv("OPENAI_API_KEY"):
             os.environ["OPENAI_API_KEY"] = api_key
             logger.debug("Set OPENAI_API_KEY env var for LightRAG compatibility (early init)")

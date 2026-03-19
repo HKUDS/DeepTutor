@@ -26,6 +26,7 @@ CLOUD_DOMAINS = [
     ".fireworks.ai",
     ".groq.com",
     ".perplexity.ai",
+    ".minimax.io",
 ]
 
 # Common local server ports

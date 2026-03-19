@@ -16,6 +16,7 @@ export const PROVIDER_OPTIONS: Record<ConfigType, string[]> = {
     "anthropic",
     "azure_openai",
     "deepseek",
+    "minimax",
     "openrouter",
     // Local providers
     "ollama",

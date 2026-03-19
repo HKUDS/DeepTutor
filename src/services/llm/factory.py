@@ -408,6 +408,12 @@ API_PROVIDER_PRESETS = {
         "requires_key": True,
         "models": [],  # Dynamic
     },
+    "minimax": {
+        "name": "MiniMax",
+        "base_url": "https://api.minimax.io/v1",
+        "requires_key": True,
+        "models": ["MiniMax-M2.7", "MiniMax-M2.5", "MiniMax-M2.5-highspeed"],
+    },
 }
 
 # Local Provider Presets

@@ -62,6 +62,13 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, Any]] = {
         "system_in_messages": True,
         "has_thinking_tags": True,  # DeepSeek reasoner has thinking tags
     },
+    # MiniMax (OpenAI-compatible)
+    "minimax": {
+        "supports_response_format": True,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "system_in_messages": True,
+    },
     # OpenRouter (aggregator, generally OpenAI-compatible)
     "openrouter": {
         "supports_response_format": True,  # Depends on underlying model
