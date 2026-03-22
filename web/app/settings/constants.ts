@@ -17,6 +17,7 @@ export const PROVIDER_OPTIONS: Record<ConfigType, string[]> = {
     "azure_openai",
     "deepseek",
     "openrouter",
+    "novita",
     // Local providers
     "ollama",
     "lm_studio",
@@ -31,6 +32,7 @@ export const PROVIDER_OPTIONS: Record<ConfigType, string[]> = {
     "cohere",
     "huggingface",
     "google",
+    "novita",
     // Local providers
     "ollama",
     "lm_studio",

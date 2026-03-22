@@ -408,6 +408,16 @@ API_PROVIDER_PRESETS = {
         "requires_key": True,
         "models": [],  # Dynamic
     },
+    "novita": {
+        "name": "Novita AI",
+        "base_url": "https://api.novita.ai/openai",
+        "requires_key": True,
+        "models": [
+            "moonshotai/kimi-k2.5",
+            "zai-org/glm-5",
+            "minimax/minimax-m2.5",
+        ],
+    },
 }
 
 # Local Provider Presets

@@ -44,11 +44,12 @@ PROVIDER_OPTIONS = {
         "anthropic",
         "azure_openai",
         "deepseek",
+        "novita",
         "ollama",
         "lm_studio",
         "vllm",
     ],
-    ConfigType.EMBEDDING: ["openai", "azure_openai", "ollama", "jina", "cohere", "huggingface"],
+    ConfigType.EMBEDDING: ["openai", "azure_openai", "ollama", "jina", "cohere", "huggingface", "novita"],
     ConfigType.TTS: ["openai", "azure_openai"],
     ConfigType.SEARCH: ["perplexity", "tavily", "exa", "jina", "serper", "baidu"],
 }
