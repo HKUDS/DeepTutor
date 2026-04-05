@@ -10,6 +10,18 @@ from fastapi.staticfiles import StaticFiles
 from deeptutor.logging import get_logger
 from deeptutor.services.path_service import get_path_service
 
+# Patch Starlette's multipart file size limit to match application-level cap.
+# Starlette >= 0.31 caps individual file parts at 1 MB by default, which causes
+# HTTP 413 errors for files > 1 MB even when DocumentValidator.MAX_FILE_SIZE
+# allows larger uploads. This patch raises the framework limit to 100 MB.
+# See: https://github.com/HKUDS/DeepTutor/issues/170
+try:
+    from starlette.formparsers import MultiPartParser
+
+    MultiPartParser.max_file_size = 100 * 1024 * 1024  # 100 MB
+except (ImportError, AttributeError):
+    pass  # Older Starlette versions don't have this attribute
+
 # Note: Don't set service_prefix here - start_web.py already adds [Backend] prefix
 logger = get_logger("API")
 
