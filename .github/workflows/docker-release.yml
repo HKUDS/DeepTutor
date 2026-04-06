@@ -47,7 +47,7 @@ jobs:
       #   type=raw adds a 'latest' tag on every published release
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/hkuds/deeptutor
           tags: |
