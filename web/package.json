@@ -23,7 +23,7 @@
     "cytoscape": "^3.33.1",
     "framer-motion": "^12.24.0",
     "html2canvas": "^1.4.1",
-    "i18next": "^25.8.0",
+    "i18next": "^26.0.3",
     "jspdf": "^4.0.0",
     "lucide-react": "^0.562.0",
     "mermaid": "^11.12.2",
