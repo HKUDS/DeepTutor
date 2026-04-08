@@ -176,8 +176,22 @@ class KnowledgeBaseInitializer:
         )
         file_paths = [str(doc_file) for doc_file in doc_files]
 
+        total_docs = len(doc_files)
+
+        def _on_progress(batch_num, total_batches):
+            self.progress_tracker.update(
+                ProgressStage.PROCESSING_DOCUMENTS,
+                f"Embedding batches: {batch_num}/{total_batches} complete",
+                current=batch_num,
+                total=total_batches,
+            )
+
         try:
-            success = await rag_service.initialize(kb_name=self.kb_name, file_paths=file_paths)
+            success = await rag_service.initialize(
+                kb_name=self.kb_name,
+                file_paths=file_paths,
+                progress_callback=_on_progress,
+            )
             if not success:
                 self.progress_tracker.update(
                     ProgressStage.ERROR,

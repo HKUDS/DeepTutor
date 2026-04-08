@@ -21,8 +21,8 @@ class EmbeddingConfig:
     api_version: str | None = None
     extra_headers: dict[str, str] | None = None
     dim: int = 3072
-    request_timeout: int = 60
-    batch_size: int = 10
+    request_timeout: int = 120
+    batch_size: int = 3
 
 
 def get_embedding_config() -> EmbeddingConfig:

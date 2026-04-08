@@ -42,11 +42,18 @@ class CustomEmbedding(BaseEmbedding):
 
     _client: Any = PrivateAttr()
     _logger: Any = PrivateAttr()
+    _progress_callback: Any = PrivateAttr(default=None)
 
     def __init__(self, **kwargs):
+        progress_cb = kwargs.pop("progress_callback", None)
         super().__init__(**kwargs)
         self._client = get_embedding_client()
         self._logger = get_logger("CustomEmbedding")
+        self._progress_callback = progress_cb
+
+    def set_progress_callback(self, callback):
+        """Set progress callback fn(batch_num, total_batches)."""
+        self._progress_callback = callback
 
     @classmethod
     def class_name(cls) -> str:
@@ -76,7 +83,9 @@ class CustomEmbedding(BaseEmbedding):
 
     async def _aget_text_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Get embeddings for multiple texts."""
-        return await self._client.embed(texts)
+        return await self._client.embed(
+            texts, progress_callback=self._progress_callback
+        )
 
     def _get_query_embedding(self, query: str) -> List[float]:
         """Sync version - called by LlamaIndex sync API."""
@@ -88,9 +97,9 @@ class CustomEmbedding(BaseEmbedding):
 
     def _get_text_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Sync batch version - called by LlamaIndex for bulk embedding."""
-        self._logger.info(f"Embedding batch of {len(texts)} texts...")
+        self._logger.info(f"Embedding {len(texts)} text chunks...")
         result = self._run_in_new_loop(self._aget_text_embeddings(texts))
-        self._logger.info(f"Batch embedding complete: {len(result)} vectors")
+        self._logger.info(f"Embedding complete: {len(result)} vectors")
         return result
 
 
@@ -153,11 +162,13 @@ class LlamaIndexPipeline:
         Args:
             kb_name: Knowledge base name
             file_paths: List of file paths to process
-            **kwargs: Additional arguments
+            **kwargs: Additional arguments (accepts progress_callback)
 
         Returns:
             True if successful
         """
+        progress_callback = kwargs.get("progress_callback")
+
         self.logger.info(
             f"Initializing KB '{kb_name}' with {len(file_paths)} files using LlamaIndex"
         )
@@ -221,6 +232,11 @@ class LlamaIndexPipeline:
                 f"Creating VectorStoreIndex with {len(documents)} documents "
                 f"(chunking + embedding)..."
             )
+
+            # Wire progress callback into embedding model
+            if progress_callback:
+                embed_model = CustomEmbedding(progress_callback=progress_callback)
+                Settings.embed_model = embed_model
 
             loop = asyncio.get_event_loop()
             index = await loop.run_in_executor(
