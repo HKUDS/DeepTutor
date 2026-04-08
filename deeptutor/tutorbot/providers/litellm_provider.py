@@ -9,6 +9,7 @@ from typing import Any
 import json_repair
 import litellm
 from litellm import acompletion
+from litellm.types.utils import ModelResponse, Choices, Message, Usage
 from loguru import logger
 
 from deeptutor.tutorbot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
@@ -274,9 +275,16 @@ class LiteLLMProvider(LLMProvider):
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = tool_choice or "auto"
+            # Work around Alibaba Bailian Coding Plan endpoint's strict JSON
+            # validation on non-streaming tool-calling requests (#265).
+            # Streaming lets the SDK assemble tokens incrementally, avoiding
+            # the InvalidParameter error from format checking.
+            kwargs["stream"] = True
 
         try:
             response = await acompletion(**kwargs)
+            if kwargs.get("stream"):
+                response = await self._collect_stream(response)
             return self._parse_response(response)
         except Exception as e:
             # Return error as content for graceful handling
@@ -284,6 +292,27 @@ class LiteLLMProvider(LLMProvider):
                 content=f"Error calling LLM: {str(e)}",
                 finish_reason="error",
             )
+
+    @staticmethod
+    async def _collect_stream(stream: Any) -> ModelResponse:
+        """Collect a streaming response into a single ModelResponse.
+
+        This reassembles streamed chunks into the same format that a
+        non-streaming ``acompletion`` call would return, so downstream
+        code (e.g. ``_parse_response``) can handle both paths uniformly.
+        """
+        chunks: list[Any] = []
+        async for chunk in stream:
+            chunks.append(chunk)
+
+        if not chunks:
+            # Defensive: return an empty-ish response so callers don't crash.
+            return ModelResponse(
+                choices=[Choices(index=0, message=Message(role="assistant", content=""), finish_reason="stop")],
+                usage=Usage(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+            )
+
+        return litellm.stream_chunk_builder(chunks)
 
     def _parse_response(self, response: Any) -> LLMResponse:
         """Parse LiteLLM response into our standard format."""
