@@ -11,6 +11,7 @@ from typing import Any, Optional
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.agents.research.data_structures import ToolTrace
 from deeptutor.core.trace import build_trace_metadata, new_call_id
+from deeptutor.utils.json_parser import parse_json_response
 
 from ..utils.json_utils import extract_json_from_text
 
@@ -158,9 +159,8 @@ class NoteAgent(BaseAgent):
 
     def _extract_summary_by_rule(self, tool_type: str, raw_answer: str) -> str:
         """Extract a concise summary from structured tool output without LLM."""
-        try:
-            data = json.loads(raw_answer)
-        except Exception:
+        data = parse_json_response(raw_answer, fallback=None)
+        if data is None:
             return ""
 
         tool_type = (tool_type or "").lower()

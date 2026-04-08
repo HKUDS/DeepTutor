@@ -9,6 +9,7 @@ import json
 from typing import Any
 
 from deeptutor.agents.base_agent import BaseAgent
+from deeptutor.utils.json_parser import parse_json_response
 from deeptutor.agents.question.models import QuestionTemplate
 from deeptutor.core.trace import build_trace_metadata, new_call_id
 from deeptutor.tools.rag_tool import rag_search
@@ -227,7 +228,7 @@ class IdeaAgent(BaseAgent):
             ):
                 _chunks.append(_c)
             response = "".join(_chunks)
-            payload = json.loads(response)
+            payload = parse_json_response(response, logger_instance=self.logger)
             ideas_raw = payload.get("ideas", [])
             if not isinstance(ideas_raw, list):
                 ideas_raw = []

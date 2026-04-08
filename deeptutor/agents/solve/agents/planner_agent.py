@@ -15,6 +15,7 @@ from typing import Any
 
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.trace import build_trace_metadata, derive_trace_metadata, new_call_id
+from deeptutor.utils.json_parser import parse_json_response
 
 from ..memory.scratchpad import Plan, PlanStep, Scratchpad
 from ..tool_runtime import SolveToolRuntime
@@ -214,7 +215,7 @@ class PlannerAgent(BaseAgent):
             ):
                 parts.append(chunk)
             response = "".join(parts)
-            payload = json.loads(response)
+            payload = parse_json_response(response, logger_instance=logger)
             queries = payload.get("queries", [])
             if not isinstance(queries, list):
                 queries = []
