@@ -84,6 +84,9 @@ cd DeepTutor
 conda create -n deeptutor python=3.11 && conda activate deeptutor
 # Or: python -m venv .venv && source .venv/bin/activate
 
+# Install dependencies
+pip install -r requirements.txt
+
 # Launch the guided tour
 python scripts/start_tour.py
 ```
