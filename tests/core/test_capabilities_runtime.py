@@ -20,7 +20,7 @@ from deeptutor.core.stream_bus import StreamBus
 
 
 def _install_module(monkeypatch: pytest.MonkeyPatch, fullname: str, **attrs: Any) -> types.ModuleType:
-    __import__("src")
+    __import__("deeptutor")
     parts = fullname.split(".")
     for idx in range(1, len(parts)):
         pkg_name = ".".join(parts[:idx])
@@ -432,9 +432,13 @@ async def test_deep_research_capability_requires_explicit_config_and_streams_tra
     class FakeResearchPipeline:
         def __init__(self, **kwargs: Any) -> None:
             captured["pipeline_init"] = kwargs
+            self.queue = SimpleNamespace(blocks=[SimpleNamespace(sub_topic="Fake subtopic", overview="Fake overview")])
+
+        async def _phase1_planning(self, topic: str) -> str:
+            return topic
 
         async def run(self, topic: str) -> dict[str, Any]:
-            await captured["pipeline_init"]["progress_callback"](
+            captured["pipeline_init"]["progress_callback"](
                 {"status": "gathering evidence", "stage": "researching", "block_id": "block_1"}
             )
             await captured["pipeline_init"]["trace_callback"](
@@ -495,6 +499,7 @@ async def test_deep_research_capability_requires_explicit_config_and_streams_tra
             "mode": "report",
             "depth": "standard",
             "sources": ["kb", "web", "papers"],
+            "confirmed_outline": [{"title": "Fake topic", "overview": "Fake overview"}],
         },
         language="en",
     )

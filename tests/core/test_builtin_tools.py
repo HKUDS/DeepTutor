@@ -24,7 +24,7 @@ from deeptutor.tools.builtin import (
 
 def _install_module(monkeypatch: pytest.MonkeyPatch, fullname: str, **attrs: Any) -> types.ModuleType:
     """Install a fake module (and missing parent packages) into sys.modules."""
-    __import__("src")
+    __import__("deeptutor")
     parts = fullname.split(".")
     for idx in range(1, len(parts)):
         pkg_name = ".".join(parts[:idx])
@@ -81,14 +81,12 @@ async def test_rag_tool_forwards_query_and_extra_kwargs(monkeypatch: pytest.Monk
     result = await RAGTool().execute(
         query="what is a tensor",
         kb_name="demo-kb",
-        mode="hybrid",
         only_need_context=True,
     )
 
     assert result.content == "grounded answer"
     assert captured["query"] == "what is a tensor"
     assert captured["kb_name"] == "demo-kb"
-    assert captured["mode"] == "hybrid"
     assert captured["only_need_context"] is True
 
 
@@ -300,6 +298,5 @@ async def test_tool_registry_resolves_aliases_and_argument_mapping() -> None:
     code_result = await registry.execute("run_code", query="compute this")
 
     assert rag_result.content == "rag"
-    assert rag.calls[0]["mode"] == "hybrid"
     assert rag.calls[0]["query"] == "find this"
     assert code.calls[0]["intent"] == "compute this"
