@@ -23,7 +23,6 @@ class TestOpenRouterProvider(unittest.TestCase):
     def test_search_success_root_citations(self):
         """Test search with citations in root response (standard OpenRouter Perplexity)"""
         provider = OpenRouterProvider(api_key=self.api_key)
-
         # Mock response
         mock_completion = MagicMock()
         mock_completion.choices = [MagicMock()]
@@ -71,4 +70,4 @@ class TestOpenRouterProvider(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unitest.main()
