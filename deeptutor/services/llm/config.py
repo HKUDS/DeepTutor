@@ -262,7 +262,7 @@ def uses_max_completion_tokens(model: str) -> bool:
     """
     Check if the model uses max_completion_tokens instead of max_tokens.
 
-    Newer OpenAI models (o1, o3, gpt-4o, gpt-5.x, etc.) require max_completion_tokens
+    Newer OpenAI models (o1, o3, o4, gpt-4o, gpt-5.x, etc.) require max_completion_tokens
     while older models use max_tokens.
 
     Args:
@@ -274,11 +274,12 @@ def uses_max_completion_tokens(model: str) -> bool:
     model_lower = model.lower()
 
     # Models that require max_completion_tokens:
-    # - o1, o3 series (reasoning models)
+    # - o1, o3, o4 series (reasoning models)
     # - gpt-4o series
     # - gpt-5.x and later
     patterns = [
-        r"^o[13]",  # o1, o3 models
+        # Catch o1, o3, o4, o4-mini, and any future single-digit o-series models (e.g. o5)
+        r"^o\d",
         r"^gpt-4o",  # gpt-4o models
         r"^gpt-[5-9]",  # gpt-5.x and later
         r"^gpt-\d{2,}",  # gpt-10+ (future proofing)

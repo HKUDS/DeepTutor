@@ -51,6 +51,10 @@ class StreamBus:
         try:
             for event in self._history:
                 yield event
+            if self._closed:
+                # If bus was already closed before we fully subscribed, 
+                # we return early so we don't hang waiting on the queue.
+                return
             while True:
                 event = await q.get()
                 if event is None:
