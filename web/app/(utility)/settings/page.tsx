@@ -24,8 +24,9 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { writeStoredLanguage } from "@/context/AppShellContext";
-import { apiUrl } from "@/lib/api";
+import { API_BASE_URL, apiUrl } from "@/lib/api";
 import { setTheme as applyThemePreference } from "@/lib/theme";
+import { CodexSection } from "@/components/CodexSection";
 
 type ServiceName = "llm" | "embedding" | "search";
 
@@ -378,6 +379,7 @@ function SettingsPageContent() {
   const [applying, setApplying] = useState(false);
   const [toast, setToast] = useState<string>("");
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [providers, setProviders] = useState<Record<ServiceName, ProviderOption[]>>({ llm: [], embedding: [], search: [] });
   const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -393,19 +395,42 @@ function SettingsPageContent() {
 
   useEffect(() => {
     const load = async () => {
-      const settingsResponse = await fetch(apiUrl("/api/v1/settings"));
-      const settingsPayload = (await settingsResponse.json()) as SettingsPayload;
-      setCatalog(settingsPayload.catalog);
-      setDraft(cloneCatalog(settingsPayload.catalog));
-      setTheme(settingsPayload.ui.theme);
-      setLanguage(settingsPayload.ui.language);
-      if (settingsPayload.providers) setProviders(settingsPayload.providers);
+      try {
+        setLoadError(null);
 
-      const statusResponse = await fetch(apiUrl("/api/v1/system/status"));
-      const statusPayload = (await statusResponse.json()) as SystemStatus;
-      setStatus(statusPayload);
+        const settingsResponse = await fetch(apiUrl("/api/v1/settings"));
+        if (!settingsResponse.ok) {
+          throw new Error(`Settings request failed with ${settingsResponse.status}`);
+        }
+        const settingsPayload = (await settingsResponse.json()) as SettingsPayload;
+        setCatalog(settingsPayload.catalog);
+        setDraft(cloneCatalog(settingsPayload.catalog));
+        setTheme(settingsPayload.ui.theme);
+        setLanguage(settingsPayload.ui.language);
+        if (settingsPayload.providers) setProviders(settingsPayload.providers);
+
+        const statusResponse = await fetch(apiUrl("/api/v1/system/status"));
+        if (!statusResponse.ok) {
+          throw new Error(`Status request failed with ${statusResponse.status}`);
+        }
+        const statusPayload = (await statusResponse.json()) as SystemStatus;
+        setStatus(statusPayload);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : `Could not reach backend at ${API_BASE_URL}`;
+        setLoadError(message);
+        setToast(`Backend unavailable. Start the API server on ${API_BASE_URL}.`);
+        setStatus({
+          backend: { status: "offline", timestamp: new Date().toISOString() },
+          llm: { status: "unknown", error: message },
+          embeddings: { status: "unknown", error: message },
+          search: { status: "unknown", error: message },
+        });
+      }
     };
-    load();
+    void load();
     return () => {
       if (eventSourceRef.current) eventSourceRef.current.close();
     };
@@ -775,6 +800,12 @@ function SettingsPageContent() {
   return (
     <div className="h-full overflow-y-auto [scrollbar-gutter:stable]">
       <div className="mx-auto max-w-[960px] px-6 py-8">
+        {loadError ? (
+          <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/8 px-4 py-3 text-[13px] text-red-500">
+            Could not reach the backend at <code className="rounded bg-black/10 px-1 py-0.5">{API_BASE_URL}</code>.
+            Start <code className="rounded bg-black/10 px-1 py-0.5">python -m deeptutor.api.run_server</code> and refresh.
+          </div>
+        ) : null}
 
         {/* ── Tour Banner ── */}
         {isTourMode && !tourCompleted && (
@@ -1223,6 +1254,9 @@ function SettingsPageContent() {
             </div>
           )}
         </div>
+
+        {/* ── Codex Session ── */}
+        <CodexSection />
 
         {/* ── Footer ── */}
         <div className="flex items-center justify-between border-t border-[var(--border)]/30 pt-4 pb-2">

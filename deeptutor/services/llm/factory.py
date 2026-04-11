@@ -258,9 +258,16 @@ async def complete(
     ) -> str:
         try:
             if provider_mode == "oauth" and provider_name == "openai_codex":
-                raise LLMConfigError(
-                    "openai_codex requires OAuth login in CLI. "
-                    "Run `deeptutor provider login openai-codex` first."
+                from . import codex_provider
+
+                return await codex_provider.complete(
+                    prompt=prompt_value,
+                    system_prompt=system_prompt_value,
+                    model=model_value,
+                    api_key=api_key_value,
+                    messages=messages_value,
+                    reasoning_effort=reasoning_effort,
+                    **extra_kwargs,
                 )
             if provider_mode == "oauth":
                 raise LLMConfigError(
@@ -387,10 +394,20 @@ async def stream(
     for attempt in range(total_attempts):
         try:
             if provider_mode == "oauth" and provider_name == "openai_codex":
-                raise LLMConfigError(
-                    "openai_codex requires OAuth login in CLI. "
-                    "Run `deeptutor provider login openai-codex` first."
-                )
+                from . import codex_provider
+
+                async for chunk in codex_provider.stream(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    model=model,
+                    api_key=api_key,
+                    messages=messages,
+                    reasoning_effort=reasoning_effort,
+                    **extra_kwargs,
+                ):
+                    has_yielded = True
+                    yield chunk
+                return
             if provider_mode == "oauth":
                 raise LLMConfigError(
                     f"{provider_name} requires OAuth session. "

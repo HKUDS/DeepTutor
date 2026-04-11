@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Brain, Eraser, Loader2, RefreshCw, Save, BookOpen, User } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAppShell } from "@/context/AppShellContext";
-import { apiUrl } from "@/lib/api";
+import { API_BASE_URL, apiUrl } from "@/lib/api";
 
 const MarkdownRenderer = dynamic(() => import("@/components/common/MarkdownRenderer"), {
   ssr: false,
@@ -63,6 +63,7 @@ export default function MemoryPage() {
   const [activeView, setActiveView] = useState<"edit" | "preview">("edit");
   const [editors, setEditors] = useState<Record<MemoryFile, string>>({ summary: "", profile: "" });
   const [toast, setToast] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const tab = TABS.find((t) => t.key === activeTab)!;
@@ -79,10 +80,21 @@ export default function MemoryPage() {
   const loadMemory = useCallback(async () => {
     setLoading(true);
     try {
+      setLoadError(null);
       const res = await fetch(apiUrl("/api/v1/memory"));
+      if (!res.ok) {
+        throw new Error(`Memory request failed with ${res.status}`);
+      }
       const d: MemoryData = await res.json();
       setData(d);
       setEditors({ summary: d.summary || "", profile: d.profile || "" });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : `Could not reach backend at ${API_BASE_URL}`;
+      setLoadError(message);
+      setToast(`Backend unavailable. Start the API server on ${API_BASE_URL}.`);
     } finally {
       setLoading(false);
     }
@@ -155,6 +167,12 @@ export default function MemoryPage() {
   return (
     <div className="h-full overflow-y-auto [scrollbar-gutter:stable]">
       <div className="mx-auto max-w-[960px] px-6 py-8">
+        {loadError ? (
+          <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/8 px-4 py-3 text-[13px] text-red-500">
+            Could not reach the backend at <code className="rounded bg-black/10 px-1 py-0.5">{API_BASE_URL}</code>.
+            Start <code className="rounded bg-black/10 px-1 py-0.5">python -m deeptutor.api.run_server</code> and refresh.
+          </div>
+        ) : null}
 
         {/* Header */}
         <div className="mb-6 flex items-start justify-between">

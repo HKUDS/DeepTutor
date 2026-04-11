@@ -20,16 +20,22 @@ export function convertLatexDelimiters(content: string): string {
 
   // editor.md examples sometimes wrap \( ... \) inside $$ ... $$.
   // In that case the inner delimiters should be stripped rather than rewrapped.
-  result = result.replace(/\$\$\s*\\\(([\s\S]*?)\\\)\s*\$\$/g, "\n$$\n$1\n$$\n");
+  result = result.replace(/\$\$\s*\\\(([\s\S]*?)\\\)\s*\$\$/g, (_match, expr: string) => {
+    return `\n$$\n${expr}\n$$\n`;
+  });
 
   // Convert \[...\] to $$...$$ (block math)
   // Use a regex that handles multiline content
   // Note: In JSON strings, \[ becomes \\[ which in JS becomes \[
-  result = result.replace(/\\\[([\s\S]*?)\\\]/g, "\n$$\n$1\n$$\n");
+  result = result.replace(/\\\[([\s\S]*?)\\\]/g, (_match, expr: string) => {
+    return `\n$$\n${expr}\n$$\n`;
+  });
 
   // Convert \(...\) to $...$ (inline math)
   // Be careful not to match escaped parentheses in other contexts
-  result = result.replace(/\\\(([\s\S]*?)\\\)/g, " $$$1$$ ");
+  result = result.replace(/\\\(([\s\S]*?)\\\)/g, (_match, expr: string) => {
+    return ` $${expr}$ `;
+  });
 
   // Also handle cases where LaTeX is directly in the text without proper delimiters
   // e.g., standalone \lim, \frac, etc. that should be wrapped
@@ -42,7 +48,7 @@ export function convertLatexDelimiters(content: string): string {
 }
 
 function normalizeEditorMdHeadings(content: string): string {
-  return content.replace(/^(#{1,6})(\S)/gm, "$1 $2");
+  return content.replace(/^(#{1,6})([^#\s])/gm, "$1 $2");
 }
 
 function normalizeEditorMdInlineMath(content: string): string {
@@ -68,6 +74,55 @@ function normalizeEditorMdInlineMath(content: string): string {
       });
     })
     .join("\n");
+}
+
+function normalizeLooseBlockMath(content: string): string {
+  const lines = content.split("\n");
+  const normalized: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const current = lines[index]?.trim();
+    if (current !== "$") {
+      normalized.push(lines[index]);
+      continue;
+    }
+
+    const blockLines: string[] = [];
+    let cursor = index + 1;
+    let foundClosingFence = false;
+
+    while (cursor < lines.length) {
+      const candidate = lines[cursor];
+      if (candidate.trim() === "$") {
+        foundClosingFence = true;
+        break;
+      }
+      blockLines.push(candidate);
+      cursor += 1;
+    }
+
+    if (!foundClosingFence) {
+      normalized.push(lines[index]);
+      continue;
+    }
+
+    const inner = blockLines.join("\n").trim();
+    const looksLikeMath =
+      /\\[A-Za-z]+/.test(inner) ||
+      /[=^_{}]/.test(inner) ||
+      /(?:\bint\b|sqrt|frac|sum|prod|lim)/.test(inner);
+
+    if (!inner || !looksLikeMath) {
+      normalized.push(lines[index], ...blockLines, lines[cursor]);
+      index = cursor;
+      continue;
+    }
+
+    normalized.push("$$", inner, "$$");
+    index = cursor;
+  }
+
+  return normalized.join("\n");
 }
 
 type HeadingEntry = {
@@ -312,6 +367,7 @@ export function processMarkdownContent(content: string): string {
 
   let result = String(content);
   result = normalizeEditorMdHeadings(result);
+  result = normalizeLooseBlockMath(result);
   result = normalizeEditorMdInlineMath(result);
   result = convertEditorMdFences(result);
   result = injectEditorMdTableOfContents(result);
