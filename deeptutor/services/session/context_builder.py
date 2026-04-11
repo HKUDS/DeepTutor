@@ -112,13 +112,14 @@ class ContextBuilder:
         cleaned_summary = summary.strip()
         if cleaned_summary:
             history.append({"role": "system", "content": cleaned_summary})
+        # Filter out system messages from DB since summary is already added as system
         history.extend(
             {
                 "role": item.get("role", "user"),
                 "content": str(item.get("content", "") or ""),
             }
             for item in messages
-            if item.get("role") in {"user", "assistant", "system"}
+            if item.get("role") in {"user", "assistant"}  # Removed "system" to avoid duplicate system messages
             and str(item.get("content", "") or "").strip()
         )
         return history
