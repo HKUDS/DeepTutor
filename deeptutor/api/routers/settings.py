@@ -47,7 +47,7 @@ class SidebarNavOrder(BaseModel):
 
 class UISettings(BaseModel):
     theme: Literal["light", "dark"] = "light"
-    language: Literal["zh", "en"] = "en"
+    language: Literal["zh", "en", "ko"] = "en"
     sidebar_description: Optional[str] = None
     sidebar_nav_order: Optional[SidebarNavOrder] = None
 
@@ -57,7 +57,7 @@ class ThemeUpdate(BaseModel):
 
 
 class LanguageUpdate(BaseModel):
-    language: Literal["zh", "en"]
+    language: Literal["zh", "en", "ko"]
 
 
 class SidebarDescriptionUpdate(BaseModel):
