@@ -12,8 +12,10 @@ export default function ThemeScript() {
 
         if (stored === 'dark') {
           document.documentElement.classList.add('dark');
+        } else if (stored === 'glass') {
+          document.documentElement.classList.add('dark', 'theme-glass');
         } else if (stored === 'light') {
-          document.documentElement.classList.remove('dark');
+          document.documentElement.classList.remove('dark', 'theme-glass');
         } else {
           // Use system preference if not set
           if (window.matchMedia('(prefers-color-scheme: dark)').matches) {

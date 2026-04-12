@@ -14,6 +14,7 @@ json-repair>=0.57.0,<1.0.0
 tiktoken>=0.12.0,<1.0.0
 chardet>=3.0.2,<6.0.0
 mcp>=1.26.0,<2.0.0
+lightrag-hku>=1.0.0
 
 # --- Web tools ---
 readability-lxml>=0.8.4,<1.0.0

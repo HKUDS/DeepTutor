@@ -12,7 +12,8 @@ def test_list_available_providers_only_llamaindex() -> None:
     from deeptutor.tools.rag_tool import get_available_providers
 
     providers = get_available_providers()
-    assert [p["id"] for p in providers] == ["llamaindex"]
+    assert "llamaindex" in [p["id"] for p in providers]
+    assert "lightrag" in [p["id"] for p in providers]
 
 
 def test_factory_has_pipeline_only_llamaindex() -> None:
@@ -20,7 +21,7 @@ def test_factory_has_pipeline_only_llamaindex() -> None:
     from deeptutor.services.rag.factory import has_pipeline
 
     assert has_pipeline("llamaindex") is True
-    assert has_pipeline("lightrag") is False
+    assert has_pipeline("lightrag") is True
     assert has_pipeline("raganything") is False
     assert has_pipeline("nonexistent") is False
 
@@ -30,7 +31,7 @@ def test_normalize_legacy_provider_aliases() -> None:
     from deeptutor.services.rag.factory import normalize_provider_name
 
     assert normalize_provider_name("llamaindex") == "llamaindex"
-    assert normalize_provider_name("lightrag") == "llamaindex"
+    assert normalize_provider_name("lightrag") == "lightrag"
     assert normalize_provider_name("raganything") == "llamaindex"
     assert normalize_provider_name("raganything_docling") == "llamaindex"
 
@@ -40,7 +41,7 @@ def test_get_current_provider_normalizes_env(monkeypatch: pytest.MonkeyPatch) ->
     from deeptutor.tools.rag_tool import get_current_provider
 
     monkeypatch.setenv("RAG_PROVIDER", "lightrag")
-    assert get_current_provider() == "llamaindex"
+    assert get_current_provider() == "lightrag"
 
     monkeypatch.setenv("RAG_PROVIDER", "llamaindex")
     assert get_current_provider() == "llamaindex"

@@ -12,7 +12,6 @@ import warnings
 
 DEFAULT_PROVIDER = "llamaindex"
 LEGACY_PROVIDER_ALIASES = {
-    "lightrag": DEFAULT_PROVIDER,
     "raganything": DEFAULT_PROVIDER,
     "raganything_docling": DEFAULT_PROVIDER,
 }
@@ -43,9 +42,15 @@ def _init_pipelines() -> None:
 
         return LlamaIndexPipeline(**kwargs)
 
+    def _build_lightrag(**kwargs):
+        from .pipelines.lightrag import LightRAGPipeline
+
+        return LightRAGPipeline(**kwargs)
+
     _PIPELINES.update(
         {
             DEFAULT_PROVIDER: _build_llamaindex,
+            "lightrag": _build_lightrag,
         }
     )
     _PIPELINES_INITIALIZED = True
@@ -93,7 +98,12 @@ def list_pipelines() -> List[Dict[str, str]]:
             "id": DEFAULT_PROVIDER,
             "name": "LlamaIndex",
             "description": "Pure vector retrieval, fastest processing speed.",
-        }
+        },
+        {
+            "id": "lightrag",
+            "name": "LightRAG",
+            "description": "Dual-layer knowledge graphs with vector retrieval. Better for complex relationships.",
+        },
     ]
 
 

@@ -498,6 +498,80 @@ class GeoGebraAnalysisTool(_PromptHintsMixin, BaseTool):
         )
 
 
+class DiagramTool(_PromptHintsMixin, BaseTool):
+    """Generate Mermaid diagrams from text descriptions."""
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="diagram",
+            description=(
+                "Generate a Mermaid diagram (flowchat, sequence, gantt, etc.) from a description. "
+                "Returns the raw Mermaid code which will be rendered in the chat."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="description",
+                    type="string",
+                    description="What the diagram should represent (e.g., 'a flowchart of the water cycle').",
+                ),
+                ToolParameter(
+                    name="diagram_type",
+                    type="string",
+                    description="The type of Mermaid diagram: 'flowchart', 'sequenceDiagram', 'gantt', 'classDiagram', 'stateDiagram', 'erDiagram', 'pie'.",
+                    required=False,
+                    default="flowchart",
+                ),
+            ],
+        )
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        from deeptutor.services.llm import complete
+        from deeptutor.services.llm.config import get_llm_config
+
+        description = kwargs.get("description", "")
+        diagram_type = kwargs.get("diagram_type", "flowchart")
+
+        system_prompt = (
+            "You are an expert Mermaid.js diagram generator.\n"
+            "Generate ONLY the raw Mermaid code block.\n"
+            "Rules:\n"
+            "1. Start directly with the diagram type (e.g., 'flowchart TD', 'sequenceDiagram').\n"
+            "2. Do NOT use markdown fences (```mermaid). Just the raw code.\n"
+            "3. Use double quotes for all node labels and text elements to avoid syntax errors with special characters (e.g., A[\"Phase 1 (Setup)\"]).\n"
+            "4. For flowcharts, prefer 'flowchart TD' or 'flowchart LR'.\n"
+            "5. Ensure the syntax is valid according to Mermaid v10+ standards.\n"
+        )
+        user_prompt = f"Description: {description}\nDiagram Type Hint: {diagram_type}"
+
+        llm_config = get_llm_config()
+        response = await complete(
+            prompt=user_prompt,
+            system_prompt=system_prompt,
+            model=llm_config.model,
+            api_key=llm_config.api_key,
+            base_url=llm_config.base_url,
+            binding=getattr(llm_config, "binding", None),
+        )
+
+        code = response.strip()
+        # Ensure it doesn't have fences if LLM ignored instructions
+        if code.startswith("```"):
+            code = code.splitlines()
+            if code[0].startswith("```"):
+                code = code[1:]
+            if code and code[-1].startswith("```"):
+                code = code[:-1]
+            code = "\n".join(code).strip()
+
+        # Wrap in mermaid fence for the renderer
+        markdown_output = f"```mermaid\n{code}\n```"
+
+        return ToolResult(
+            content=markdown_output,
+            metadata={"description": description, "diagram_type": diagram_type, "raw_code": code},
+        )
+
+
 BUILTIN_TOOL_TYPES: tuple[type[BaseTool], ...] = (
     BrainstormTool,
     RAGTool,
@@ -506,6 +580,7 @@ BUILTIN_TOOL_TYPES: tuple[type[BaseTool], ...] = (
     ReasonTool,
     PaperSearchToolWrapper,
     GeoGebraAnalysisTool,
+    DiagramTool,
 )
 
 BUILTIN_TOOL_NAMES: tuple[str, ...] = tuple(tool_type().name for tool_type in BUILTIN_TOOL_TYPES)
@@ -525,6 +600,7 @@ __all__ = [
     "BrainstormTool",
     "CodeExecutionTool",
     "GeoGebraAnalysisTool",
+    "DiagramTool",
     "PaperSearchToolWrapper",
     "RAGTool",
     "ReasonTool",
