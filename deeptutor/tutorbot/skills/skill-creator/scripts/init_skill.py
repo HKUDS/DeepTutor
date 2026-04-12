@@ -59,9 +59,9 @@ Patterns can be mixed and matched as needed. Most skills combine patterns (e.g.,
 
 Delete this entire "Structuring This Skill" section when done - it's just guidance.]
 
-## [TODO: Replace with the first main section based on chosen structure]
+## [Placeholder: Replace with the first main section based on chosen structure]
 
-[TODO: Add content here. See examples in existing skills:
+[Placeholder: Add content here. See examples in existing skills:
 - Code samples for technical skills
 - Decision trees for complex workflows
 - Concrete examples with realistic user requests
@@ -121,7 +121,7 @@ Example real scripts from other skills:
 
 def main():
     print("This is an example script for {skill_name}")
-    # TODO: Add actual script logic here
+    # Placeholder: Add actual script logic here
     # This could be data processing, file conversion, API calls, etc.
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ Features:
 
 Author: DeepTutor Team
 Version: v1.0
-Based on: TODO.md specification
+Based on: DeepTutor internal specification
 """
 
 import os

@@ -1609,29 +1609,39 @@ class ReportingAgent(BaseAgent):
             self._get_mode_contract("section"),
         )
 
-        # TODO Implement retry logic for LLM calls when JSON parsing or post-processing fails (e.g., malformed output, schema violations).
-        _chunks: list[str] = []
-        async for _c in self.stream_llm(
-            filled,
-            system_prompt,
-            stage="write_section_with_subsections",
-            trace_meta=self._build_trace_meta("Write section"),
-        ):
-            _chunks.append(_c)
-        resp = "".join(_chunks)
-        data = extract_json_from_text(resp)
+        max_retries = 3
+        last_error = None
+        for attempt in range(max_retries):
+            _chunks: list[str] = []
+            async for _c in self.stream_llm(
+                filled,
+                system_prompt,
+                stage="write_section_with_subsections",
+                trace_meta=self._build_trace_meta(f"Write section (Attempt {attempt+1})"),
+            ):
+                _chunks.append(_c)
+            resp = "".join(_chunks)
+            data = extract_json_from_text(resp)
 
-        try:
-            obj = ensure_json_dict(data)
-            ensure_keys(obj, ["section_content"])
-            content = obj.get("section_content", "")
-            if isinstance(content, str) and content.strip():
-                return content
-            raise ValueError("LLM returned empty or invalid section_content field")
-        except Exception as e:
-            raise ValueError(
-                f"Unable to parse LLM returned section content: {e!s}. Report generation failed."
-            )
+            try:
+                obj = ensure_json_dict(data)
+                ensure_keys(obj, ["section_content"])
+                content = obj.get("section_content", "")
+                if isinstance(content, str) and content.strip():
+                    return content
+                raise ValueError("LLM returned empty or invalid section_content field")
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    # Append error feedback to prompt for retry
+                    feedback = f"\n\nERROR IN PREVIOUS ATTEMPT: Your output failed validation: {e!s}. Please provide strict valid JSON with 'section_content'."
+                    if feedback not in filled:
+                        filled += feedback
+                    continue
+
+        raise ValueError(
+            f"Unable to parse LLM returned section content after {max_retries} attempts: {last_error!s}. Report generation failed."
+        )
 
     def _notify_progress(
         self, callback: Callable[[dict[str, Any]], None] | None, status: str, **payload: Any

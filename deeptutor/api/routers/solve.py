@@ -22,10 +22,19 @@ from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
 from deeptutor.services.llm import get_llm_config
 from deeptutor.services.settings.interface_settings import get_ui_language
 
-# Initialize logger with config
-config = load_config_with_main("main.yaml", PROJECT_ROOT)
-log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {}).get("log_dir")
-logger = get_logger("SolveAPI", level="INFO", log_dir=log_dir)
+# Initialize logger lazily to avoid import-time config errors
+_router_logger = None
+
+def get_router_logger():
+    global _router_logger
+    if _router_logger is None:
+        try:
+            config = load_config_with_main("main.yaml", PROJECT_ROOT)
+            log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {}).get("log_dir")
+        except Exception:
+            log_dir = None
+        _router_logger = get_logger("SolveAPI", level="INFO", log_dir=log_dir)
+    return _router_logger
 
 router = APIRouter()
 
@@ -107,11 +116,11 @@ async def websocket_solve(websocket: WebSocket):
             await websocket.send_json(data)
             return True
         except (WebSocketDisconnect, RuntimeError, ConnectionError) as e:
-            logger.debug(f"WebSocket connection closed: {e}")
+            get_router_logger().debug(f"WebSocket connection closed: {e}")
             connection_closed.set()
             return False
         except Exception as e:
-            logger.debug(f"Error sending WebSocket message: {e}")
+            get_router_logger().debug(f"Error sending WebSocket message: {e}")
             return False
 
     async def log_pusher():
@@ -123,19 +132,19 @@ async def websocket_solve(websocket: WebSocket):
                     await websocket.send_json(entry)
                 except (WebSocketDisconnect, RuntimeError, ConnectionError) as e:
                     # Connection closed, stop pushing
-                    logger.debug(f"WebSocket connection closed in log_pusher: {e}")
+                    get_router_logger().debug(f"WebSocket connection closed in log_pusher: {e}")
                     connection_closed.set()
                     log_queue.task_done()
                     break
                 except Exception as e:
-                    logger.debug(f"Error sending log entry: {e}")
+                    get_router_logger().debug(f"Error sending log entry: {e}")
                     # Continue to next entry
                 log_queue.task_done()
             except asyncio.TimeoutError:
                 # Timeout, check if connection is still open
                 continue
             except Exception as e:
-                logger.debug(f"Error in log_pusher: {e}")
+                get_router_logger().debug(f"Error in log_pusher: {e}")
                 break
 
     session_id = None  # Track session for this connection
@@ -202,11 +211,15 @@ async def websocket_solve(websocket: WebSocket):
             base_url = llm_config.base_url
             api_version = getattr(llm_config, "api_version", None)
         except Exception as e:
-            logger.error(f"Failed to get LLM config: {e}", exc_info=True)
+            get_router_logger().error(f"Failed to get LLM config: {e}", exc_info=True)
             await websocket.send_json({"type": "error", "content": f"LLM configuration error: {e}"})
             return
 
-        ui_language = get_ui_language(default=config.get("system", {}).get("language", "en"))
+        try:
+            _solve_config = load_config_with_main("main.yaml", PROJECT_ROOT)
+        except Exception:
+            _solve_config = {}
+        ui_language = get_ui_language(default=_solve_config.get("system", {}).get("language", "en"))
         solver = MainSolver(
             kb_name=kb_name,
             output_base_dir=str(output_base),
@@ -221,7 +234,7 @@ async def websocket_solve(websocket: WebSocket):
         # Complete async initialization
         await solver.ainit()
 
-        logger.info(f"[{task_id}] Solving: {question[:50]}...")
+        get_router_logger().info(f"[{task_id}] Solving: {question[:50]}...")
 
         target_logger = solver.logger.logger
 
@@ -260,12 +273,12 @@ async def websocket_solve(websocket: WebSocket):
                 original_update_stats(summary)
                 try:
                     stats_copy = display_manager.stats.copy()
-                    logger.debug(
+                    get_router_logger().debug(
                         f"Sending token_stats: model={stats_copy.get('model')}, calls={stats_copy.get('calls')}, cost={stats_copy.get('cost')}"
                     )
                     log_queue.put_nowait({"type": "token_stats", "stats": stats_copy})
                 except Exception as e:
-                    logger.debug(f"Failed to send token_stats: {e}")
+                    get_router_logger().debug(f"Failed to send token_stats: {e}")
 
             display_manager.update_token_stats = wrapped_update_stats
 
@@ -302,11 +315,11 @@ async def websocket_solve(websocket: WebSocket):
                 )
                 await safe_send_json({"type": "token_stats", "stats": display_manager.stats.copy()})
 
-            logger.progress(f"[{task_id}] Solving started")
+            get_router_logger().progress(f"[{task_id}] Solving started")
 
             result = await solver.solve(question, verbose=True, detailed=detailed_answer)
 
-            logger.success(f"[{task_id}] Solving completed")
+            get_router_logger().success(f"[{task_id}] Solving completed")
             task_manager.update_task_status(task_id, "completed")
 
             # Process Markdown content to fix image paths
@@ -332,7 +345,7 @@ async def websocket_solve(websocket: WebSocket):
                         replacement = rf"]({base_url}/artifacts/\1)"
                         final_answer = re.sub(pattern, replacement, final_answer)
                 except Exception as e:
-                    logger.debug(f"Error processing image paths: {e}")
+                    get_router_logger().debug(f"Error processing image paths: {e}")
 
             # Send final agent status update
             if display_manager:
@@ -382,7 +395,7 @@ async def websocket_solve(websocket: WebSocket):
         # Mark connection as closed before sending error (to prevent log_pusher from interfering)
         connection_closed.set()
         await safe_send_json({"type": "error", "content": str(e)})
-        logger.error(f"[{task_id if 'task_id' in locals() else 'unknown'}] Solving failed: {e}")
+        get_router_logger().error(f"[{task_id if 'task_id' in locals() else 'unknown'}] Solving failed: {e}")
         if "task_id" in locals():
             task_manager.update_task_status(task_id, "error", error=str(e))
     finally:
@@ -395,7 +408,7 @@ async def websocket_solve(websocket: WebSocket):
             except asyncio.CancelledError:
                 pass
             except Exception as e:
-                logger.debug(f"Error waiting for pusher task: {e}")
+                get_router_logger().debug(f"Error waiting for pusher task: {e}")
 
         # Close WebSocket connection
         try:
@@ -411,4 +424,5 @@ async def websocket_solve(websocket: WebSocket):
             # Connection already closed, ignore
             pass
         except Exception as e:
-            logger.debug(f"Error closing WebSocket: {e}")
+            get_router_logger().debug(f"Error closing WebSocket: {e}")
+

@@ -129,6 +129,7 @@ async def lifespan(app: FastAPI):
         from deeptutor.events.event_bus import get_event_bus
 
         event_bus = get_event_bus()
+        await event_bus.flush()
         await event_bus.stop()
         logger.info("EventBus stopped")
     except Exception as e:

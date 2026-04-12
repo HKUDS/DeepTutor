@@ -10,6 +10,14 @@ from deeptutor.agents.research.request_config import (
 from deeptutor.services.prompt import get_prompt_manager
 
 
+from unittest.mock import patch
+
+@pytest.fixture(autouse=True)
+def mock_env_and_llm():
+    with patch("deeptutor.services.prompt.get_prompt_manager"), \
+         patch("deeptutor.services.llm.get_llm_config"):
+        yield
+
 def test_validate_research_request_config_allows_empty_sources() -> None:
     request = validate_research_request_config(
         {
@@ -38,7 +46,7 @@ def test_build_research_execution_policy_maps_intent_to_internal_settings() -> N
     assert policy["planning"]["rephrase"]["enabled"] is True
     assert policy["planning"]["decompose"]["mode"] == "manual"
     assert policy["researching"]["execution_mode"] == "parallel"
-    assert policy["researching"]["enable_rag_hybrid"] is True
+    assert policy["researching"]["enable_rag"] is True
     assert policy["researching"]["enable_web_search"] is False
     assert policy["researching"]["enable_paper_search"] is True
     assert policy["researching"]["enable_run_code"] is True
@@ -60,8 +68,7 @@ def test_build_research_execution_policy_supports_llm_only_mode() -> None:
         enabled_tools=set(),
     )
 
-    assert policy["researching"]["enable_rag_hybrid"] is False
-    assert policy["researching"]["enable_rag_naive"] is False
+    assert policy["researching"]["enable_rag"] is False
     assert policy["researching"]["enable_web_search"] is False
     assert policy["researching"]["enable_paper_search"] is False
     assert policy["researching"]["enable_run_code"] is False
@@ -101,7 +108,7 @@ def test_build_research_runtime_config_uses_intent_and_sources() -> None:
     assert runtime["researching"]["max_iterations"] == 3
     assert runtime["researching"]["execution_mode"] == "series"
     assert runtime["researching"]["enable_web_search"] is True
-    assert runtime["researching"]["enable_rag_hybrid"] is False
+    assert runtime["researching"]["enable_rag"] is False
     assert runtime["reporting"]["style"] == "learning_path"
     assert "outline_contract" not in runtime["reporting"]
     assert runtime["queue"]["max_length"] == 5
@@ -110,6 +117,9 @@ def test_build_research_runtime_config_uses_intent_and_sources() -> None:
         "mode": "learning_path",
         "depth": "standard",
         "sources": ["web"],
+        "manual_subtopics": None,
+        "manual_max_iterations": None,
+        "confirmed_outline": None,
     }
 
 
