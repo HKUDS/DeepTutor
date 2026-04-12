@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { apiUrl } from "@/lib/api";
-import { invalidateNotebookCaches, listNotebooks } from "@/lib/notebook-api";
+import { listCategories } from "@/lib/notebook-api";
 
 type RecordType =
   | "solve"
@@ -83,7 +83,8 @@ export default function SaveToNotebookModal({
     setSelectedIds([]);
     void (async () => {
       try {
-        setNotebooks(await listNotebooks());
+        const cats = await listCategories();
+        setNotebooks(cats.map((c) => ({ id: String(c.id), name: c.name })));
       } catch {
         setNotebooks([]);
       }
@@ -162,7 +163,6 @@ export default function SaveToNotebookModal({
           } else if (type === "result") {
             const summary = String(event.payload.summary || finalSummary);
             setSummaryPreview(summary);
-            invalidateNotebookCaches();
             onSaved?.({ summary });
             setIsLoading(false);
             onClose();

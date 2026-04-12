@@ -161,7 +161,7 @@ const CAPABILITIES: CapabilityDef[] = [
   {
     value: "visualize",
     label: "Visualize",
-    description: "Generate SVG or Chart.js visualizations",
+    description: "Generate SVG, Chart.js, or Mermaid visualizations",
     icon: BarChart3,
     allowedTools: [],
     defaultTools: [],

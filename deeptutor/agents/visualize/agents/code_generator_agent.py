@@ -64,5 +64,10 @@ class CodeGeneratorAgent(BaseAgent):
             chunks.append(chunk)
         response = "".join(chunks)
 
-        lang_hint = "svg" if analysis.render_type == "svg" else "javascript"
+        if analysis.render_type == "svg":
+            lang_hint = "svg"
+        elif analysis.render_type == "mermaid":
+            lang_hint = "mermaid"
+        else:
+            lang_hint = "javascript"
         return extract_code_block(response, lang_hint) or extract_code_block(response)

@@ -315,6 +315,7 @@ export function ChatMessageList({
     <>
       {messageRows.map(({ msg, pairedUserMessage }, i) => {
         if (msg.role === "user") {
+          if (msg.content.startsWith("[Quiz Performance]")) return null;
           const showInlineControls =
             i === activeUserIndex &&
             (!msg.capability || msg.capability === "chat") &&

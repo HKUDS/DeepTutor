@@ -4,10 +4,14 @@ Unified session history API.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+import logging
+
+from pydantic import BaseModel, Field, field_validator
 from fastapi import APIRouter, HTTPException, Query
 
 from deeptutor.services.session import get_sqlite_session_store
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -19,9 +23,23 @@ class SessionRenameRequest(BaseModel):
 class QuizResultItem(BaseModel):
     question_id: str = ""
     question: str = Field(..., min_length=1)
+    question_type: str = ""
+    options: dict[str, str] | None = None
     user_answer: str = ""
     correct_answer: str = ""
+    explanation: str | None = ""
+    difficulty: str | None = ""
     is_correct: bool
+
+    @field_validator("options", mode="before")
+    @classmethod
+    def _coerce_options(cls, v):
+        return v if isinstance(v, dict) else {}
+
+    @field_validator("explanation", "difficulty", mode="before")
+    @classmethod
+    def _coerce_str(cls, v):
+        return v if isinstance(v, str) else ""
 
 
 class QuizResultsRequest(BaseModel):
@@ -99,9 +117,18 @@ async def record_quiz_results(session_id: str, payload: QuizResultsRequest):
         content=content,
         capability="deep_question",
     )
+    notebook_count = 0
+    try:
+        notebook_count = await store.upsert_notebook_entries(
+            session_id,
+            [item.model_dump() for item in payload.answers],
+        )
+    except Exception:
+        logger.warning("Failed to upsert notebook entries for session %s", session_id, exc_info=True)
     return {
         "recorded": True,
         "session_id": session_id,
         "answer_count": len(payload.answers),
+        "notebook_count": notebook_count,
         "content": content,
     }

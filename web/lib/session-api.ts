@@ -73,8 +73,12 @@ export interface SessionDetail {
 export interface QuizResultItem {
   question_id?: string;
   question: string;
+  question_type?: string;
+  options?: Record<string, string>;
   user_answer: string;
   correct_answer: string;
+  explanation?: string;
+  difficulty?: string;
   is_correct: boolean;
 }
 

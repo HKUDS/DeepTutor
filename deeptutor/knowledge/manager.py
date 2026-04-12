@@ -67,6 +67,54 @@ def file_lock_exclusive(file_handle):
             fcntl.flock(file_handle.fileno(), fcntl.LOCK_UN)
 
 
+def _get_embedding_fingerprint() -> tuple[str, int] | None:
+    """Return ``(model_name, dimension)`` of the active embedding config."""
+    try:
+        from deeptutor.services.embedding import get_embedding_config
+
+        cfg = get_embedding_config()
+        return (cfg.model, cfg.dim)
+    except Exception:
+        return None
+
+
+def _reconcile_embedding_flags(knowledge_bases: dict) -> bool:
+    """Flag KBs whose stored embedding fingerprint differs from the active config.
+
+    Compares both model name and dimension.  Auto-clears the flag when the
+    user reverts to the original model.  Returns *True* when any entry changed.
+    """
+    fp = _get_embedding_fingerprint()
+    if not fp:
+        return False
+
+    current_model, current_dim = fp
+    changed = False
+
+    for kb_entry in knowledge_bases.values():
+        if not isinstance(kb_entry, dict):
+            continue
+        stored_model = kb_entry.get("embedding_model")
+        if not stored_model:
+            continue
+
+        stored_dim = kb_entry.get("embedding_dim")
+        mismatch = stored_model != current_model or (
+            stored_dim is not None and stored_dim != current_dim
+        )
+
+        if mismatch and not kb_entry.get("embedding_mismatch"):
+            kb_entry["embedding_mismatch"] = True
+            if not kb_entry.get("needs_reindex"):
+                kb_entry["needs_reindex"] = True
+            changed = True
+        elif not mismatch and kb_entry.get("embedding_mismatch"):
+            del kb_entry["embedding_mismatch"]
+            changed = True
+
+    return changed
+
+
 class KnowledgeBaseManager:
     """Manager for knowledge bases"""
 
@@ -131,6 +179,9 @@ class KnowledgeBaseManager:
                         if not kb_entry.get("needs_reindex", False):
                             kb_entry["needs_reindex"] = True
                             config_changed = True
+
+                if _reconcile_embedding_flags(knowledge_bases):
+                    config_changed = True
 
                 if config_changed:
                     try:
@@ -204,6 +255,11 @@ class KnowledgeBaseManager:
                 "message": "Ready",
                 "percent": 100,
             }
+
+        if status == "ready":
+            fp = _get_embedding_fingerprint()
+            if fp:
+                kb_config["embedding_model"], kb_config["embedding_dim"] = fp
 
         self._save_config()
 
@@ -415,6 +471,18 @@ class KnowledgeBaseManager:
 
         return None
 
+    @staticmethod
+    def _embedding_fields(kb_config: dict) -> dict:
+        """Extract embedding fingerprint fields from a KB config entry."""
+        fields = {}
+        for key in ("embedding_model", "embedding_dim"):
+            val = kb_config.get(key)
+            if val is not None:
+                fields[key] = val
+        if kb_config.get("embedding_mismatch"):
+            fields["embedding_mismatch"] = True
+        return fields
+
     def get_metadata(self, name: str | None = None) -> dict:
         """Get knowledge base metadata.
         
@@ -441,6 +509,7 @@ class KnowledgeBaseManager:
                 "created_at": kb_config.get("created_at"),
                 "last_updated": kb_config.get("updated_at"),
             }
+            metadata.update(self._embedding_fields(kb_config))
             # Remove None values
             metadata = {k: v for k, v in metadata.items() if v is not None}
             return metadata
@@ -506,7 +575,9 @@ class KnowledgeBaseManager:
             metadata["created_at"] = created_at
         if updated_at:
             metadata["last_updated"] = updated_at
-        
+
+        metadata.update(self._embedding_fields(kb_config))
+
         # Remove None values
         metadata = {k: v for k, v in metadata.items() if v is not None}
 

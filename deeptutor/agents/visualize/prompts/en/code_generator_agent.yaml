@@ -11,9 +11,14 @@ system: |
     can be passed as the configuration to `new Chart(ctx, config)`.
     The config must include `type`, `data`, and `options` fields.
     Use modern color palettes and ensure labels are readable.
+  - If render_type is "mermaid", output valid Mermaid.js diagram code.
+    The code must start with a valid diagram type keyword (graph, flowchart,
+    sequenceDiagram, classDiagram, stateDiagram-v2, erDiagram, gantt, mindmap, etc.).
+    Use clear node labels and readable edge descriptions. Do NOT use spaces in
+    node IDs — use camelCase or underscores. Avoid reserved keywords as node IDs.
   - Do NOT include any explanation outside the code fence.
   - Wrap the code in a fenced code block with the appropriate language tag
-    (```svg or ```javascript).
+    (```svg, ```javascript, or ```mermaid).
 
 user_template: |
   User request:
@@ -30,3 +35,4 @@ user_template: |
   Generate the visualization code now. Wrap it in a fenced code block:
   - For SVG: ```svg ... ```
   - For Chart.js: ```javascript ... ```
+  - For Mermaid: ```mermaid ... ```

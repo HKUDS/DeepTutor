@@ -118,7 +118,7 @@ class ContextBuilder:
                 "content": str(item.get("content", "") or ""),
             }
             for item in messages
-            if item.get("role") in {"user", "assistant", "system"}
+            if item.get("role") in {"user", "assistant"}
             and str(item.get("content", "") or "").strip()
         )
         return history

@@ -44,7 +44,7 @@ class DeepQuestionRequestConfig(BaseModel):
 class VisualizeRequestConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    render_mode: Literal["auto", "svg", "chartjs"] = "auto"
+    render_mode: Literal["auto", "svg", "chartjs", "mermaid"] = "auto"
 
 
 def _clean_public_config(raw_config: dict[str, Any] | None) -> dict[str, Any]:

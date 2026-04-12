@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { getNotebookDetail, listNotebooks } from "@/lib/notebook-api";
+import { listCategories, listNotebookEntries } from "@/lib/notebook-api";
 import { Notebook, NotebookRecord, SelectedRecord } from "../types";
 
 /**
@@ -23,16 +23,16 @@ export function useNotebookSelection() {
 
   const fetchNotebooks = useCallback(async () => {
     try {
-      const data = await listNotebooks();
-      const notebooksWithRecords = data
-        .filter((nb) => (nb.record_count ?? 0) > 0)
+      const categories = await listCategories();
+      const notebooksWithRecords = categories
+        .filter((cat) => (cat.entry_count ?? 0) > 0)
         .map(
-          (nb): Notebook => ({
-            id: nb.id,
-            name: nb.name,
-            description: nb.description ?? "",
-            record_count: nb.record_count ?? 0,
-            color: nb.color ?? "",
+          (cat): Notebook => ({
+            id: String(cat.id),
+            name: cat.name,
+            description: "",
+            record_count: cat.entry_count ?? 0,
+            color: "",
           }),
         );
       setNotebooks(notebooksWithRecords);
@@ -53,15 +53,15 @@ export function useNotebookSelection() {
         return newSet;
       });
       try {
-        const data = await getNotebookDetail(notebookId);
-        const records = (data.records || []).map(
-          (record): NotebookRecord => ({
-            id: record.id,
-            title: record.title,
-            summary: record.summary,
-            user_query: record.user_query ?? "",
-            output: record.output,
-            type: record.type,
+        const data = await listNotebookEntries({ category_id: Number(notebookId) });
+        const records = (data.items || []).map(
+          (entry): NotebookRecord => ({
+            id: String(entry.id),
+            title: entry.question,
+            summary: entry.explanation,
+            user_query: entry.question,
+            output: entry.correct_answer,
+            type: entry.question_type,
           }),
         );
         setNotebookRecordsMap((prev) =>

@@ -1,5 +1,5 @@
-export type VisualizeRenderType = "svg" | "chartjs";
-export type VisualizeRenderMode = "auto" | "svg" | "chartjs";
+export type VisualizeRenderType = "svg" | "chartjs" | "mermaid";
+export type VisualizeRenderMode = "auto" | "svg" | "chartjs" | "mermaid";
 
 export interface VisualizeFormConfig {
   render_mode: VisualizeRenderMode;
@@ -43,7 +43,7 @@ export function extractVisualizeResult(
   if (!resultMetadata) return null;
 
   const renderType = resultMetadata.render_type;
-  if (renderType !== "svg" && renderType !== "chartjs") return null;
+  if (renderType !== "svg" && renderType !== "chartjs" && renderType !== "mermaid") return null;
 
   const codeRaw =
     resultMetadata.code && typeof resultMetadata.code === "object"

@@ -28,6 +28,7 @@ export default function VisualizeConfigPanel({
           <option value="auto">{t("Auto")}</option>
           <option value="chartjs">{t("Chart.js")}</option>
           <option value="svg">{t("SVG")}</option>
+          <option value="mermaid">{t("Mermaid")}</option>
         </select>
       </Field>
     </div>

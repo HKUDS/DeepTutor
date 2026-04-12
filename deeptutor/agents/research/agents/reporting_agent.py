@@ -518,6 +518,45 @@ class ReportingAgent(BaseAgent):
 
         return "\n".join(lines)
 
+    async def _call_llm_json(
+        self,
+        prompt: str,
+        system_prompt: str,
+        stage: str,
+        trace_label: str,
+        required_keys: list[str],
+        max_retries: int = 1,
+    ) -> dict[str, Any]:
+        """Call LLM and extract JSON with retry logic."""
+        last_error = None
+        for attempt in range(max_retries + 1):
+            if attempt > 0:
+                self.logger.info(f"Retrying {stage} (attempt {attempt}/{max_retries})...")
+
+            _chunks: list[str] = []
+            async for _c in self.stream_llm(
+                prompt,
+                system_prompt,
+                stage=stage,
+                trace_meta=self._build_trace_meta(trace_label),
+            ):
+                _chunks.append(_c)
+            resp = "".join(_chunks)
+            data = extract_json_from_text(resp)
+
+            try:
+                obj = ensure_json_dict(data)
+                ensure_keys(obj, required_keys)
+                return obj
+            except (ValueError, KeyError) as e:
+                last_error = e
+                self.logger.warning(f"JSON parsing failed for {stage} (attempt {attempt}): {e}")
+
+        raise ValueError(
+            f"Failed to get valid JSON from LLM after {max_retries} retries for {stage}. "
+            f"Required keys: {required_keys}. Last error: {last_error}"
+        )
+
     async def _write_introduction(
         self, topic: str, blocks: list[TopicBlock], outline: dict[str, Any]
     ) -> str:
@@ -562,28 +601,14 @@ class ReportingAgent(BaseAgent):
             self._get_mode_contract("introduction"),
         )
 
-        _chunks: list[str] = []
-        async for _c in self.stream_llm(
-            filled,
-            system_prompt,
+        data = await self._call_llm_json(
+            prompt=filled,
+            system_prompt=system_prompt,
             stage="write_introduction",
-            trace_meta=self._build_trace_meta("Write introduction"),
-        ):
-            _chunks.append(_c)
-        resp = "".join(_chunks)
-        data = extract_json_from_text(resp)
-
-        try:
-            obj = ensure_json_dict(data)
-            ensure_keys(obj, ["introduction"])
-            intro = obj.get("introduction", "")
-            if isinstance(intro, str) and intro.strip():
-                return intro
-            raise ValueError("LLM returned empty or invalid introduction field")
-        except Exception as e:
-            raise ValueError(
-                f"Unable to parse LLM returned introduction content: {e!s}. Report generation failed."
-            )
+            trace_label="Write introduction",
+            required_keys=["introduction"],
+        )
+        return data["introduction"]
 
     async def _write_section_body(
         self, topic: str, block: TopicBlock, section_outline: dict[str, Any]
@@ -638,28 +663,14 @@ class ReportingAgent(BaseAgent):
             self._get_mode_contract("section"),
         )
 
-        _chunks: list[str] = []
-        async for _c in self.stream_llm(
-            filled,
-            system_prompt,
+        data = await self._call_llm_json(
+            prompt=filled,
+            system_prompt=system_prompt,
             stage="write_section_body",
-            trace_meta=self._build_trace_meta("Write section"),
-        ):
-            _chunks.append(_c)
-        resp = "".join(_chunks)
-        data = extract_json_from_text(resp)
-
-        try:
-            obj = ensure_json_dict(data)
-            ensure_keys(obj, ["section_content"])
-            content = obj.get("section_content", "")
-            if isinstance(content, str) and content.strip():
-                return content
-            raise ValueError("LLM returned empty or invalid section_content field")
-        except Exception as e:
-            raise ValueError(
-                f"Unable to parse LLM returned section content: {e!s}. Report generation failed."
-            )
+            trace_label="Write section",
+            required_keys=["section_content"],
+        )
+        return data["section_content"]
 
     async def _write_conclusion(
         self, topic: str, blocks: list[TopicBlock], outline: dict[str, Any]
@@ -710,28 +721,14 @@ class ReportingAgent(BaseAgent):
             self._get_mode_contract("conclusion"),
         )
 
-        _chunks: list[str] = []
-        async for _c in self.stream_llm(
-            filled,
-            system_prompt,
+        data = await self._call_llm_json(
+            prompt=filled,
+            system_prompt=system_prompt,
             stage="write_conclusion",
-            trace_meta=self._build_trace_meta("Write conclusion"),
-        ):
-            _chunks.append(_c)
-        resp = "".join(_chunks)
-        data = extract_json_from_text(resp)
-
-        try:
-            obj = ensure_json_dict(data)
-            ensure_keys(obj, ["conclusion"])
-            conclusion = obj.get("conclusion", "")
-            if isinstance(conclusion, str) and conclusion.strip():
-                return conclusion
-            raise ValueError("LLM returned empty or invalid conclusion field")
-        except Exception as e:
-            raise ValueError(
-                f"Unable to parse LLM returned conclusion content: {e!s}. Report generation failed."
-            )
+            trace_label="Write conclusion",
+            required_keys=["conclusion"],
+        )
+        return data["conclusion"]
 
     def _build_citation_number_map(self, blocks: list[TopicBlock]) -> dict[str, int]:
         """Build citation_id to reference number mapping with deduplication

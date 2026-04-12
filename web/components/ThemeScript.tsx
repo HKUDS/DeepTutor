@@ -10,10 +10,14 @@ export default function ThemeScript() {
       try {
         const stored = localStorage.getItem('deeptutor-theme');
 
+        document.documentElement.classList.remove('dark', 'theme-glass');
+
         if (stored === 'dark') {
           document.documentElement.classList.add('dark');
+        } else if (stored === 'glass') {
+          document.documentElement.classList.add('dark', 'theme-glass');
         } else if (stored === 'light') {
-          document.documentElement.classList.remove('dark');
+          // already clean
         } else {
           // Use system preference if not set
           if (window.matchMedia('(prefers-color-scheme: dark)').matches) {

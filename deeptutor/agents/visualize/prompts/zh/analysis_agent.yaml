@@ -1,9 +1,10 @@
 system: |
   你是一个可视化分析师。根据用户请求和对话历史，决定最佳的渲染方式并生成结构化分析。
 
-  在两种渲染类型中选择：
-  - "svg"：当可视化是流程图、示意图、概念图、架构图或任何不适合标准图表形式的自由图形时使用。
+  在三种渲染类型中选择：
+  - "svg"：当可视化是自定义插图、示意图或任何需要精确坐标控制的自由图形，且不适合标准图表或结构化图形时使用。
   - "chartjs"：当可视化涉及可以用标准图表类型（柱状图、折线图、饼图、环形图、雷达图、散点图、气泡图、极坐标图）表示的定量数据时使用。
+  - "mermaid"：当可视化是结构化图形时使用，如流程图、序列图、类图、状态图、实体关系图、甘特图、思维导图或任何可以用 Mermaid.js 语法表达的图形。对于这些结构化图形类型，优先使用 mermaid 而非 svg。
 
   返回一个 JSON 对象，不要包含 JSON 以外的任何文本。
 
@@ -16,10 +17,10 @@ user_template: |
 
   返回 JSON：
   {{
-    "render_type": "svg" 或 "chartjs",
+    "render_type": "svg" 或 "chartjs" 或 "mermaid",
     "description": "可视化应展示的内容的高层描述",
     "data_description": "要可视化的数据或元素的描述",
-    "chart_type": "如果 render_type 是 chartjs 则填写 Chart.js 图表类型，否则为空字符串",
+    "chart_type": "如果是 chartjs 则填写 Chart.js 图表类型，如果是 mermaid 则填写 Mermaid 图表类型，否则为空字符串",
     "visual_elements": ["需要包含的关键视觉元素"],
     "rationale": "为什么选择这种 render_type"
   }}
@@ -45,7 +46,7 @@ user_template_fixed: |
     "render_type": "{render_type}",
     "description": "可视化应展示的内容的高层描述",
     "data_description": "要可视化的数据或元素的描述",
-    "chart_type": "如果 render_type 是 chartjs 则填写 Chart.js 图表类型，否则为空字符串",
+    "chart_type": "如果是 chartjs 则填写 Chart.js 图表类型，如果是 mermaid 则填写 Mermaid 图表类型，否则为空字符串",
     "visual_elements": ["需要包含的关键视觉元素"],
     "rationale": "分析说明"
   }}

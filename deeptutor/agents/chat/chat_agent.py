@@ -245,15 +245,11 @@ class ChatAgent(BaseAgent):
         """
         messages = []
 
-        # System prompt
-        system_prompt = self.get_prompt("system", "You are a helpful AI assistant.")
-        messages.append({"role": "system", "content": system_prompt})
-
-        # Add context if available
+        system_parts = [self.get_prompt("system", "You are a helpful AI assistant.")]
         if context:
             context_template = self.get_prompt("context_template", "Reference context:\n{context}")
-            context_msg = context_template.format(context=context)
-            messages.append({"role": "system", "content": context_msg})
+            system_parts.append(context_template.format(context=context))
+        messages.append({"role": "system", "content": "\n\n".join(system_parts)})
 
         # Add conversation history
         for msg in history:

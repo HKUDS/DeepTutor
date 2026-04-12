@@ -1,13 +1,33 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Eye, RotateCcw } from "lucide-react";
+import {
+  Bookmark,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  FolderPlus,
+  Loader2,
+  Plus,
+  RotateCcw,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import QuestionFollowupPanel, {
   type FollowupThreadState,
 } from "@/components/quiz/QuestionFollowupPanel";
 import { buildQuizFollowupConfig, type QuizQuestion } from "@/lib/quiz-types";
+import {
+  addEntryToCategory,
+  createCategory,
+  listCategories,
+  lookupNotebookEntry,
+  updateNotebookEntry,
+  upsertNotebookEntry,
+  type NotebookCategory,
+} from "@/lib/notebook-api";
 import { recordQuizResults } from "@/lib/session-api";
 import { shouldAppendEventContent } from "@/lib/stream";
 import { type StartTurnMessage, type StreamEvent, UnifiedWSClient } from "@/lib/unified-ws";
@@ -86,6 +106,13 @@ export default function QuizViewer({
     Map<string, { questionKey: string; client: UnifiedWSClient }>
   >(new Map());
 
+  const [entryIds, setEntryIds] = useState<Record<string, number>>({});
+  const [bookmarked, setBookmarked] = useState<Record<string, boolean>>({});
+  const [categories, setCategories] = useState<NotebookCategory[]>([]);
+  const [categoryDropdownKey, setCategoryDropdownKey] = useState<string | null>(null);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [categoryBusy, setCategoryBusy] = useState(false);
+
   const q = questions[idx];
   const ans = answers[idx] ?? EMPTY_ANSWER;
   const total = questions.length;
@@ -130,6 +157,108 @@ export default function QuizViewer({
     [],
   );
 
+  // ── Notebook integration ──────────────────────────────────────
+
+  const refreshEntryId = useCallback(
+    async (qKey: string, sId: string, questionIndex?: number) => {
+      try {
+        const entry = await lookupNotebookEntry(sId, qKey);
+        if (entry) {
+          setEntryIds((prev) => ({ ...prev, [qKey]: entry.id }));
+          setBookmarked((prev) => ({ ...prev, [qKey]: entry.bookmarked }));
+          if (questionIndex !== undefined && entry.user_answer) {
+            setAnswers((prev) => {
+              if (prev[questionIndex]?.submitted) return prev;
+              return {
+                ...prev,
+                [questionIndex]: {
+                  selected: entry.user_answer || null,
+                  typed: entry.user_answer || "",
+                  submitted: true,
+                },
+              };
+            });
+          }
+        }
+      } catch {
+        /* entry may not exist yet */
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!sessionId) return;
+    questions.forEach((question, i) => {
+      const key = getQuestionKey(question, i);
+      void refreshEntryId(key, sessionId, i);
+    });
+  }, [sessionId, questions, refreshEntryId]);
+
+  const handleToggleBookmark = useCallback(async () => {
+    if (!q || !sessionId) return;
+    const key = getQuestionKey(q, idx);
+    const eId = entryIds[key];
+    if (!eId) return;
+    const next = !bookmarked[key];
+    setBookmarked((prev) => ({ ...prev, [key]: next }));
+    try {
+      await updateNotebookEntry(eId, { bookmarked: next });
+    } catch {
+      setBookmarked((prev) => ({ ...prev, [key]: !next }));
+    }
+  }, [bookmarked, entryIds, idx, q, sessionId]);
+
+  const loadCategories = useCallback(async () => {
+    try {
+      setCategories(await listCategories());
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleOpenCategoryDropdown = useCallback(() => {
+    if (!q) return;
+    const key = getQuestionKey(q, idx);
+    if (categoryDropdownKey === key) {
+      setCategoryDropdownKey(null);
+      return;
+    }
+    setCategoryDropdownKey(key);
+    void loadCategories();
+  }, [categoryDropdownKey, idx, loadCategories, q]);
+
+  const handleAddToCategory = useCallback(
+    async (catId: number) => {
+      if (!q) return;
+      const key = getQuestionKey(q, idx);
+      const eId = entryIds[key];
+      if (!eId) return;
+      setCategoryBusy(true);
+      try {
+        await addEntryToCategory(eId, catId);
+        setCategoryDropdownKey(null);
+      } catch { /* ignore */ }
+      setCategoryBusy(false);
+    },
+    [entryIds, idx, q],
+  );
+
+  const handleCreateAndAdd = useCallback(async () => {
+    if (!q || !newCategoryName.trim()) return;
+    const key = getQuestionKey(q, idx);
+    const eId = entryIds[key];
+    if (!eId) return;
+    setCategoryBusy(true);
+    try {
+      const cat = await createCategory(newCategoryName.trim());
+      await addEntryToCategory(eId, cat.id);
+      setNewCategoryName("");
+      setCategoryDropdownKey(null);
+    } catch { /* ignore */ }
+    setCategoryBusy(false);
+  }, [entryIds, idx, newCategoryName, q]);
+
+  // ── Follow-up thread event handling ───────────────────────────
+
   const handleThreadEvent = useCallback(
     (key: string, event: StreamEvent) => {
       if (event.type === "session") {
@@ -147,6 +276,10 @@ export default function QuizViewer({
         }));
         const runner = threadRunnersRef.current.get(key);
         if (runner) runner.questionKey = nextSessionId;
+        const eId = entryIds[key];
+        if (eId) {
+          void updateNotebookEntry(eId, { followup_session_id: nextSessionId }).catch(() => {});
+        }
         return;
       }
 
@@ -201,7 +334,7 @@ export default function QuizViewer({
         return next;
       });
     },
-    [updateThread],
+    [entryIds, updateThread],
   );
 
   const ensureThreadRunner = useCallback(
@@ -282,8 +415,12 @@ export default function QuizViewer({
           {
             question_id: question.question_id,
             question: question.question,
+            question_type: question.question_type,
+            options: question.options ?? {},
             user_answer: getUserAnswer(question, answer),
             correct_answer: question.correct_answer,
+            explanation: question.explanation ?? "",
+            difficulty: question.difficulty ?? "",
             is_correct: isAnswerCorrect(question, answer),
           },
         ];
@@ -296,17 +433,51 @@ export default function QuizViewer({
     const signature = JSON.stringify(submittedResults);
     if (!signature || signature === lastReportedSignatureRef.current) return;
     lastReportedSignatureRef.current = signature;
-    void recordQuizResults(sessionId, submittedResults).catch((error) => {
-      console.error("Failed to record quiz results:", error);
-      if (lastReportedSignatureRef.current === signature) {
-        lastReportedSignatureRef.current = "";
+    void recordQuizResults(sessionId, submittedResults)
+      .then(() => {
+        questions.forEach((question, i) => {
+          void refreshEntryId(getQuestionKey(question, i), sessionId);
+        });
+      })
+      .catch((error) => {
+        console.error("Failed to record quiz results:", error);
+        if (lastReportedSignatureRef.current === signature) {
+          lastReportedSignatureRef.current = "";
+        }
+      });
+  }, [completedCount, questions, refreshEntryId, sessionId, submittedResults, total]);
+
+  const upsertSingleQuestion = useCallback(
+    async (question: QuizQuestion, answer: AnswerState) => {
+      if (!sessionId) return;
+      const key = getQuestionKey(question, questions.indexOf(question));
+      try {
+        const entry = await upsertNotebookEntry({
+          session_id: sessionId,
+          question_id: question.question_id,
+          question: question.question,
+          question_type: question.question_type,
+          options: question.options ?? {},
+          correct_answer: question.correct_answer,
+          explanation: question.explanation ?? "",
+          difficulty: question.difficulty ?? "",
+          user_answer: getUserAnswer(question, answer),
+          is_correct: isAnswerCorrect(question, answer),
+        });
+        setEntryIds((prev) => ({ ...prev, [key]: entry.id }));
+        setBookmarked((prev) => ({ ...prev, [key]: entry.bookmarked }));
+      } catch {
+        /* best-effort */
       }
-    });
-  }, [completedCount, sessionId, submittedResults, total]);
+    },
+    [questions, sessionId],
+  );
 
   const handleSubmit = () => {
-    if (ans.submitted) return;
+    if (ans.submitted || !q) return;
+    const newAnswer = { ...(answers[idx] ?? EMPTY_ANSWER), submitted: true };
     updateAnswer({ submitted: true });
+    void upsertSingleQuestion(q, newAnswer);
   };
 
   const handleReset = () => {
@@ -367,6 +538,10 @@ export default function QuizViewer({
 
   if (!q) return null;
 
+  const currentEntryId = entryIds[questionKey];
+  const currentBookmarked = bookmarked[questionKey] ?? false;
+  const showCategoryDropdown = categoryDropdownKey === questionKey;
+
   return (
     <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]">
       <div className="flex items-center gap-1 border-b border-[var(--border)] px-3 py-2">
@@ -416,26 +591,90 @@ export default function QuizViewer({
       </div>
 
       <div className="px-4 py-3">
-        <div className="mb-2 flex flex-wrap items-center gap-1.5">
-          <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium uppercase text-[var(--muted-foreground)]">
-            Q{idx + 1}
-          </span>
-          {q.difficulty && (
-            <span
-              className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium uppercase ${
-                q.difficulty === "hard"
-                  ? "bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400"
-                  : q.difficulty === "medium"
-                    ? "bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400"
-                    : "bg-green-50 text-green-600 dark:bg-green-950/30 dark:text-green-400"
-              }`}
-            >
-              {q.difficulty}
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium uppercase text-[var(--muted-foreground)]">
+              Q{idx + 1}
             </span>
+            {q.difficulty && (
+              <span
+                className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium uppercase ${
+                  q.difficulty === "hard"
+                    ? "bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400"
+                    : q.difficulty === "medium"
+                      ? "bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400"
+                      : "bg-green-50 text-green-600 dark:bg-green-950/30 dark:text-green-400"
+                }`}
+              >
+                {q.difficulty}
+              </span>
+            )}
+            <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
+              {q.question_type}
+            </span>
+          </div>
+
+          {ans.submitted && (
+            <div className="relative flex items-center gap-1">
+              <button
+                onClick={handleToggleBookmark}
+                disabled={!currentEntryId}
+                title={currentBookmarked ? t("Remove Bookmark") : t("Bookmark")}
+                className={`rounded-lg p-1.5 transition-all disabled:opacity-30 ${
+                  currentBookmarked
+                    ? "scale-110 text-amber-500 dark:text-amber-400"
+                    : "text-[var(--muted-foreground)] hover:text-amber-500 dark:hover:text-amber-400"
+                }`}
+              >
+                <Bookmark size={18} strokeWidth={currentBookmarked ? 2.5 : 1.8} fill={currentBookmarked ? "currentColor" : "none"} />
+              </button>
+              <button
+                onClick={handleOpenCategoryDropdown}
+                disabled={!currentEntryId}
+                title={t("Add to Category")}
+                className="rounded-lg p-1.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-30"
+              >
+                <FolderPlus size={16} />
+              </button>
+
+              {showCategoryDropdown && (
+                <div className="absolute right-0 top-8 z-20 w-48 rounded-lg border border-[var(--border)] bg-[var(--card)] py-1 shadow-lg">
+                  {categories.length > 0 && (
+                    <div className="max-h-[160px] overflow-y-auto">
+                      {categories.map((cat) => (
+                        <button
+                          key={cat.id}
+                          disabled={categoryBusy}
+                          onClick={() => void handleAddToCategory(cat.id)}
+                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:opacity-40"
+                        >
+                          {cat.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="border-t border-[var(--border)] px-2 py-1.5">
+                    <div className="flex items-center gap-1">
+                      <input
+                        value={newCategoryName}
+                        onChange={(e) => setNewCategoryName(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && void handleCreateAndAdd()}
+                        placeholder={t("New category...")}
+                        className="flex-1 rounded border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-[11px] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
+                      />
+                      <button
+                        disabled={!newCategoryName.trim() || categoryBusy}
+                        onClick={() => void handleCreateAndAdd()}
+                        className="rounded p-1 text-[var(--primary)] disabled:opacity-30"
+                      >
+                        {categoryBusy ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
-          <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
-            {q.question_type}
-          </span>
         </div>
 
         <div className="mb-3 text-[14px] leading-relaxed">
@@ -554,7 +793,14 @@ export default function QuizViewer({
                   {t("Reference Answer")}
                 </div>
                 <div className="text-[13px] leading-relaxed text-[var(--foreground)]">
-                  <MarkdownRenderer content={q.correct_answer} variant="prose" />
+                  <MarkdownRenderer
+                    content={
+                      q.question_type === "coding" && !q.correct_answer.trimStart().startsWith("```")
+                        ? `\`\`\`python\n${q.correct_answer}\n\`\`\``
+                        : q.correct_answer
+                    }
+                    variant="prose"
+                  />
                 </div>
               </div>
             )}

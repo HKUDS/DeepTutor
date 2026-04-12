@@ -3,7 +3,7 @@
  * Handles light/dark theme with localStorage fallback and system preference detection
  */
 
-export type Theme = "light" | "dark";
+export type Theme = "light" | "dark" | "glass";
 
 export const THEME_STORAGE_KEY = "deeptutor-theme";
 
@@ -35,7 +35,7 @@ export function getStoredTheme(): Theme | null {
 
   try {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    if (stored === "light" || stored === "dark") {
+    if (stored === "light" || stored === "dark" || stored === "glass") {
       return stored;
     }
   } catch (e) {
@@ -78,10 +78,13 @@ export function applyThemeToDocument(theme: Theme): void {
   if (typeof document === "undefined") return;
 
   const html = document.documentElement;
+
+  html.classList.remove("dark", "theme-glass");
+
   if (theme === "dark") {
     html.classList.add("dark");
-  } else {
-    html.classList.remove("dark");
+  } else if (theme === "glass") {
+    html.classList.add("dark", "theme-glass");
   }
 }
 

@@ -20,7 +20,7 @@ from deeptutor.core.trace import merge_trace_metadata
 class VisualizeCapability(BaseCapability):
     manifest = CapabilityManifest(
         name="visualize",
-        description="Generate SVG or Chart.js visualizations.",
+        description="Generate SVG, Chart.js, or Mermaid visualizations.",
         stages=["analyzing", "generating", "reviewing"],
         tools_used=[],
         cli_aliases=["visualize", "viz"],
@@ -110,7 +110,12 @@ class VisualizeCapability(BaseCapability):
                 )
 
         # Emit final content as a fenced code block for the chat area
-        lang_tag = "svg" if analysis.render_type == "svg" else "javascript"
+        if analysis.render_type == "svg":
+            lang_tag = "svg"
+        elif analysis.render_type == "mermaid":
+            lang_tag = "mermaid"
+        else:
+            lang_tag = "javascript"
         content_md = f"```{lang_tag}\n{final_code}\n```"
         await stream.content(content_md, source=self.name, stage="reviewing")
 

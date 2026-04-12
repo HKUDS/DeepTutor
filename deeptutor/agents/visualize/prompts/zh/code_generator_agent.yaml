@@ -10,8 +10,13 @@ system: |
     可以作为配置传递给 `new Chart(ctx, config)`。
     配置必须包含 `type`、`data` 和 `options` 字段。
     使用现代配色方案并确保标签可读。
+  - 如果 render_type 是 "mermaid"，输出有效的 Mermaid.js 图表代码。
+    代码必须以有效的图表类型关键词开头（graph、flowchart、sequenceDiagram、
+    classDiagram、stateDiagram-v2、erDiagram、gantt、mindmap 等）。
+    使用清晰的节点标签和可读的边描述。节点 ID 不要使用空格——使用
+    camelCase 或下划线。避免使用保留关键词作为节点 ID。
   - 不要在代码块之外包含任何解释。
-  - 用带有适当语言标签的代码块包裹代码（```svg 或 ```javascript）。
+  - 用带有适当语言标签的代码块包裹代码（```svg、```javascript 或 ```mermaid）。
 
 user_template: |
   用户请求：
@@ -28,3 +33,4 @@ user_template: |
   现在生成可视化代码。用代码块包裹：
   - SVG 使用：```svg ... ```
   - Chart.js 使用：```javascript ... ```
+  - Mermaid 使用：```mermaid ... ```

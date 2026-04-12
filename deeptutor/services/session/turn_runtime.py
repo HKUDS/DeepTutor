@@ -458,6 +458,23 @@ class TurnRuntimeManager:
                         records=history_records,
                         emit=lambda event: self._persist_and_publish(execution, event),
                     )
+                    if not history_context.strip():
+                        MAX_FALLBACK_CHARS = 8000
+                        parts: list[str] = []
+                        total = 0
+                        for record in history_records:
+                            output = record.get("output")
+                            if not output:
+                                continue
+                            part = f"## Session: {record.get('title', 'Untitled')}\n{output}"
+                            if total + len(part) > MAX_FALLBACK_CHARS:
+                                remaining = MAX_FALLBACK_CHARS - total
+                                if remaining > 100:
+                                    parts.append(part[:remaining] + "\n...(truncated)")
+                                break
+                            parts.append(part)
+                            total += len(part)
+                        history_context = "\n\n".join(parts)
 
             effective_user_message = raw_user_content
             context_parts: list[str] = []

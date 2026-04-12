@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Code2, Copy, Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Mermaid } from "@/components/Mermaid";
 import type { VisualizeResult } from "@/lib/visualize-types";
 
 function ChartJsRenderer({ config }: { config: string }) {
@@ -127,6 +128,8 @@ export default function VisualizationViewer({
       <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] p-4">
         {result.render_type === "svg" ? (
           <SvgRenderer svg={result.code.content} />
+        ) : result.render_type === "mermaid" ? (
+          <Mermaid chart={result.code.content} />
         ) : (
           <ChartJsRenderer config={result.code.content} />
         )}
@@ -153,7 +156,11 @@ export default function VisualizationViewer({
         </button>
 
         <span className="ml-auto text-[10px] uppercase tracking-wider text-[var(--muted-foreground)]/50">
-          {result.render_type === "svg" ? "SVG" : `Chart.js · ${result.analysis.chart_type || "chart"}`}
+          {result.render_type === "svg"
+            ? "SVG"
+            : result.render_type === "mermaid"
+              ? `Mermaid · ${result.analysis.chart_type || "diagram"}`
+              : `Chart.js · ${result.analysis.chart_type || "chart"}`}
         </span>
       </div>
 

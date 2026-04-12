@@ -16,6 +16,14 @@ system: |
   - Color accessibility and readability
   - Responsive configuration
 
+  For Mermaid code, check:
+  - Valid Mermaid.js syntax with correct diagram type keyword
+  - No spaces in node IDs (use camelCase or underscores)
+  - No reserved keywords (end, subgraph, graph) as bare node IDs
+  - Clear and readable node labels and edge descriptions
+  - Proper subgraph structure and nesting if used
+  - No syntax errors that would cause rendering failure
+
   If the code is already good, return it unchanged with changed=false.
   If you make improvements, return the optimized code with changed=true.
 

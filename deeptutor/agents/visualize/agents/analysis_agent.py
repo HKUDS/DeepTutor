@@ -33,7 +33,7 @@ class AnalysisAgent(BaseAgent):
         history_context: str,
         render_mode: str = "auto",
     ) -> VisualizationAnalysis:
-        if render_mode in ("svg", "chartjs"):
+        if render_mode in ("svg", "chartjs", "mermaid"):
             system_prompt = self.get_prompt("system_fixed")
             user_template = self.get_prompt("user_template_fixed")
         else:
@@ -46,7 +46,7 @@ class AnalysisAgent(BaseAgent):
             "user_input": user_input.strip(),
             "history_context": history_context.strip() or "(none)",
         }
-        if render_mode in ("svg", "chartjs"):
+        if render_mode in ("svg", "chartjs", "mermaid"):
             format_kwargs["render_type"] = render_mode
 
         user_prompt = user_template.format(**format_kwargs)
@@ -69,6 +69,6 @@ class AnalysisAgent(BaseAgent):
             chunks.append(chunk)
         response = "".join(chunks)
         result = VisualizationAnalysis.model_validate(extract_json_object(response))
-        if render_mode in ("svg", "chartjs"):
+        if render_mode in ("svg", "chartjs", "mermaid"):
             result.render_type = render_mode  # type: ignore[assignment]
         return result

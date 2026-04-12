@@ -310,6 +310,25 @@ class LlamaIndexPipeline:
                 "provider": "llamaindex",
             }
 
+        embedding_mismatch_warning = ""
+        try:
+            import json as _json
+
+            cfg_path = Path(self.kb_base_dir) / "kb_config.json"
+            if cfg_path.exists():
+                with open(cfg_path, encoding="utf-8") as _f:
+                    kb_entry = _json.load(_f).get("knowledge_bases", {}).get(kb_name, {})
+                if kb_entry.get("embedding_mismatch"):
+                    stored = kb_entry.get("embedding_model", "unknown")
+                    current = get_embedding_config().model
+                    embedding_mismatch_warning = (
+                        f"Warning: KB '{kb_name}' was indexed with '{stored}' "
+                        f"but current model is '{current}'. Re-index recommended."
+                    )
+                    self.logger.warning(embedding_mismatch_warning)
+        except Exception:
+            pass
+
         try:
             # Load index from storage (run in thread pool)
             loop = asyncio.get_event_loop()
@@ -343,13 +362,16 @@ class LlamaIndexPipeline:
 
             content = "\n\n".join(context_parts) if context_parts else ""
 
-            return {
+            result: Dict[str, Any] = {
                 "query": query,
                 "answer": content,
                 "content": content,
                 "sources": sources,
                 "provider": "llamaindex",
             }
+            if embedding_mismatch_warning:
+                result["warning"] = embedding_mismatch_warning
+            return result
 
         except Exception as e:
             self.logger.error(f"Search failed: {e}")

@@ -145,6 +145,43 @@ class SQLiteSessionStore:
 
                 CREATE INDEX IF NOT EXISTS idx_turn_events_turn_seq
                     ON turn_events(turn_id, seq);
+
+                CREATE TABLE IF NOT EXISTS notebook_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                    question_id TEXT NOT NULL,
+                    question TEXT NOT NULL,
+                    question_type TEXT DEFAULT '',
+                    options_json TEXT DEFAULT '{}',
+                    correct_answer TEXT DEFAULT '',
+                    explanation TEXT DEFAULT '',
+                    difficulty TEXT DEFAULT '',
+                    user_answer TEXT DEFAULT '',
+                    is_correct INTEGER DEFAULT 0,
+                    bookmarked INTEGER DEFAULT 0,
+                    followup_session_id TEXT DEFAULT '',
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL,
+                    UNIQUE(session_id, question_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_notebook_entries_session
+                    ON notebook_entries(session_id, created_at DESC);
+
+                CREATE INDEX IF NOT EXISTS idx_notebook_entries_bookmarked
+                    ON notebook_entries(bookmarked, created_at DESC);
+
+                CREATE TABLE IF NOT EXISTS notebook_categories (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    created_at REAL NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS notebook_entry_categories (
+                    entry_id INTEGER NOT NULL REFERENCES notebook_entries(id) ON DELETE CASCADE,
+                    category_id INTEGER NOT NULL REFERENCES notebook_categories(id) ON DELETE CASCADE,
+                    PRIMARY KEY (entry_id, category_id)
+                );
                 """
             )
             columns = {row[1] for row in conn.execute("PRAGMA table_info(sessions)").fetchall()}
@@ -730,6 +767,321 @@ class SQLiteSessionStore:
         session["messages"] = await self.get_messages(session_id)
         session["active_turns"] = await self.list_active_turns(session_id)
         return session
+
+    # ── Notebook entries ──────────────────────────────────────────────
+
+    def _upsert_notebook_entries_sync(
+        self, session_id: str, items: list[dict[str, Any]]
+    ) -> int:
+        if not items:
+            return 0
+        now = time.time()
+        with self._connect() as conn:
+            if conn.execute("SELECT id FROM sessions WHERE id = ?", (session_id,)).fetchone() is None:
+                raise ValueError(f"Session not found: {session_id}")
+            upserted = 0
+            for item in items:
+                question = (item.get("question") or "").strip()
+                question_id = (item.get("question_id") or "").strip()
+                if not question or not question_id:
+                    continue
+                conn.execute(
+                    """
+                    INSERT INTO notebook_entries (
+                        session_id, question_id, question, question_type,
+                        options_json, correct_answer, explanation, difficulty,
+                        user_answer, is_correct, bookmarked, followup_session_id,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)
+                    ON CONFLICT(session_id, question_id) DO UPDATE SET
+                        user_answer = excluded.user_answer,
+                        is_correct = excluded.is_correct,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        session_id,
+                        question_id,
+                        question,
+                        item.get("question_type") or "",
+                        _json_dumps(item.get("options") or {}),
+                        item.get("correct_answer") or "",
+                        item.get("explanation") or "",
+                        item.get("difficulty") or "",
+                        item.get("user_answer") or "",
+                        1 if item.get("is_correct") else 0,
+                        now,
+                        now,
+                    ),
+                )
+                upserted += 1
+            conn.commit()
+        return upserted
+
+    async def upsert_notebook_entries(
+        self, session_id: str, items: list[dict[str, Any]]
+    ) -> int:
+        return await self._run(self._upsert_notebook_entries_sync, session_id, items)
+
+    @staticmethod
+    def _serialize_notebook_entry(row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "id": int(row["id"]),
+            "session_id": row["session_id"],
+            "session_title": row["session_title"] or "" if "session_title" in row.keys() else "",
+            "question_id": row["question_id"] or "",
+            "question": row["question"],
+            "question_type": row["question_type"] or "",
+            "options": _json_loads(row["options_json"], {}),
+            "correct_answer": row["correct_answer"] or "",
+            "explanation": row["explanation"] or "",
+            "difficulty": row["difficulty"] or "",
+            "user_answer": row["user_answer"] or "",
+            "is_correct": bool(row["is_correct"]),
+            "bookmarked": bool(row["bookmarked"]),
+            "followup_session_id": row["followup_session_id"] or "",
+            "created_at": float(row["created_at"]),
+            "updated_at": float(row["updated_at"]),
+        }
+
+    def _list_notebook_entries_sync(
+        self,
+        category_id: int | None,
+        bookmarked: bool | None,
+        is_correct: bool | None,
+        limit: int,
+        offset: int,
+    ) -> dict[str, Any]:
+        base = """
+            SELECT
+                n.id, n.session_id, COALESCE(s.title, '') AS session_title,
+                n.question_id, n.question, n.question_type, n.options_json,
+                n.correct_answer, n.explanation, n.difficulty,
+                n.user_answer, n.is_correct, n.bookmarked,
+                n.followup_session_id, n.created_at, n.updated_at
+            FROM notebook_entries n
+            LEFT JOIN sessions s ON s.id = n.session_id
+        """
+        count_base = "SELECT COUNT(*) AS cnt FROM notebook_entries n"
+        conditions: list[str] = []
+        params: list[Any] = []
+        if category_id is not None:
+            join = " INNER JOIN notebook_entry_categories ec ON ec.entry_id = n.id"
+            base += join
+            count_base += join
+            conditions.append("ec.category_id = ?")
+            params.append(category_id)
+        if bookmarked is not None:
+            conditions.append("n.bookmarked = ?")
+            params.append(1 if bookmarked else 0)
+        if is_correct is not None:
+            conditions.append("n.is_correct = ?")
+            params.append(1 if is_correct else 0)
+        where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+        with self._connect() as conn:
+            total_row = conn.execute(count_base + where, tuple(params)).fetchone()
+            total = int(total_row["cnt"]) if total_row else 0
+            rows = conn.execute(
+                base + where + " ORDER BY n.created_at DESC LIMIT ? OFFSET ?",
+                tuple(params) + (limit, offset),
+            ).fetchall()
+        items = [self._serialize_notebook_entry(r) for r in rows]
+        return {"items": items, "total": total}
+
+    async def list_notebook_entries(
+        self,
+        category_id: int | None = None,
+        bookmarked: bool | None = None,
+        is_correct: bool | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        return await self._run(
+            self._list_notebook_entries_sync,
+            category_id, bookmarked, is_correct, limit, offset,
+        )
+
+    def _get_notebook_entry_sync(self, entry_id: int) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    n.*, COALESCE(s.title, '') AS session_title
+                FROM notebook_entries n
+                LEFT JOIN sessions s ON s.id = n.session_id
+                WHERE n.id = ?
+                """,
+                (entry_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            entry = self._serialize_notebook_entry(row)
+            cats = conn.execute(
+                """
+                SELECT c.id, c.name
+                FROM notebook_categories c
+                INNER JOIN notebook_entry_categories ec ON ec.category_id = c.id
+                WHERE ec.entry_id = ?
+                ORDER BY c.name
+                """,
+                (entry_id,),
+            ).fetchall()
+            entry["categories"] = [{"id": c["id"], "name": c["name"]} for c in cats]
+        return entry
+
+    async def get_notebook_entry(self, entry_id: int) -> dict[str, Any] | None:
+        return await self._run(self._get_notebook_entry_sync, entry_id)
+
+    def _find_notebook_entry_sync(self, session_id: str, question_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT n.*, COALESCE(s.title, '') AS session_title
+                FROM notebook_entries n
+                LEFT JOIN sessions s ON s.id = n.session_id
+                WHERE n.session_id = ? AND n.question_id = ?
+                """,
+                (session_id, question_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._serialize_notebook_entry(row)
+
+    async def find_notebook_entry(self, session_id: str, question_id: str) -> dict[str, Any] | None:
+        return await self._run(self._find_notebook_entry_sync, session_id, question_id)
+
+    def _update_notebook_entry_sync(
+        self, entry_id: int, updates: dict[str, Any]
+    ) -> bool:
+        allowed = {"bookmarked", "followup_session_id", "user_answer", "is_correct"}
+        fields = {k: v for k, v in updates.items() if k in allowed}
+        if not fields:
+            return False
+        fields["updated_at"] = time.time()
+        if "bookmarked" in fields:
+            fields["bookmarked"] = 1 if fields["bookmarked"] else 0
+        if "is_correct" in fields:
+            fields["is_correct"] = 1 if fields["is_correct"] else 0
+        set_clause = ", ".join(f"{k} = ?" for k in fields)
+        values = list(fields.values()) + [entry_id]
+        with self._connect() as conn:
+            cur = conn.execute(
+                f"UPDATE notebook_entries SET {set_clause} WHERE id = ?",
+                tuple(values),
+            )
+            conn.commit()
+        return cur.rowcount > 0
+
+    async def update_notebook_entry(self, entry_id: int, updates: dict[str, Any]) -> bool:
+        return await self._run(self._update_notebook_entry_sync, entry_id, updates)
+
+    def _delete_notebook_entry_sync(self, entry_id: int) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute("DELETE FROM notebook_entries WHERE id = ?", (entry_id,))
+            conn.commit()
+        return cur.rowcount > 0
+
+    async def delete_notebook_entry(self, entry_id: int) -> bool:
+        return await self._run(self._delete_notebook_entry_sync, entry_id)
+
+    # ── Notebook categories ────────────────────────────────────────
+
+    def _create_category_sync(self, name: str) -> dict[str, Any]:
+        now = time.time()
+        with self._connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO notebook_categories (name, created_at) VALUES (?, ?)",
+                (name.strip(), now),
+            )
+            conn.commit()
+        return {"id": int(cur.lastrowid), "name": name.strip(), "created_at": now}
+
+    async def create_category(self, name: str) -> dict[str, Any]:
+        return await self._run(self._create_category_sync, name)
+
+    def _list_categories_sync(self) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT c.id, c.name, c.created_at,
+                       COUNT(ec.entry_id) AS entry_count
+                FROM notebook_categories c
+                LEFT JOIN notebook_entry_categories ec ON ec.category_id = c.id
+                GROUP BY c.id
+                ORDER BY c.name
+                """,
+            ).fetchall()
+        return [
+            {"id": r["id"], "name": r["name"], "created_at": float(r["created_at"]),
+             "entry_count": int(r["entry_count"])}
+            for r in rows
+        ]
+
+    async def list_categories(self) -> list[dict[str, Any]]:
+        return await self._run(self._list_categories_sync)
+
+    def _rename_category_sync(self, category_id: int, name: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE notebook_categories SET name = ? WHERE id = ?",
+                (name.strip(), category_id),
+            )
+            conn.commit()
+        return cur.rowcount > 0
+
+    async def rename_category(self, category_id: int, name: str) -> bool:
+        return await self._run(self._rename_category_sync, category_id, name)
+
+    def _delete_category_sync(self, category_id: int) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute("DELETE FROM notebook_categories WHERE id = ?", (category_id,))
+            conn.commit()
+        return cur.rowcount > 0
+
+    async def delete_category(self, category_id: int) -> bool:
+        return await self._run(self._delete_category_sync, category_id)
+
+    def _add_entry_to_category_sync(self, entry_id: int, category_id: int) -> bool:
+        with self._connect() as conn:
+            try:
+                conn.execute(
+                    "INSERT OR IGNORE INTO notebook_entry_categories (entry_id, category_id) VALUES (?, ?)",
+                    (entry_id, category_id),
+                )
+                conn.commit()
+            except sqlite3.IntegrityError:
+                return False
+        return True
+
+    async def add_entry_to_category(self, entry_id: int, category_id: int) -> bool:
+        return await self._run(self._add_entry_to_category_sync, entry_id, category_id)
+
+    def _remove_entry_from_category_sync(self, entry_id: int, category_id: int) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM notebook_entry_categories WHERE entry_id = ? AND category_id = ?",
+                (entry_id, category_id),
+            )
+            conn.commit()
+        return cur.rowcount > 0
+
+    async def remove_entry_from_category(self, entry_id: int, category_id: int) -> bool:
+        return await self._run(self._remove_entry_from_category_sync, entry_id, category_id)
+
+    def _get_entry_categories_sync(self, entry_id: int) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT c.id, c.name FROM notebook_categories c
+                INNER JOIN notebook_entry_categories ec ON ec.category_id = c.id
+                WHERE ec.entry_id = ?
+                ORDER BY c.name
+                """,
+                (entry_id,),
+            ).fetchall()
+        return [{"id": r["id"], "name": r["name"]} for r in rows]
+
+    async def get_entry_categories(self, entry_id: int) -> list[dict[str, Any]]:
+        return await self._run(self._get_entry_categories_sync, entry_id)
 
 
 _instance: SQLiteSessionStore | None = None

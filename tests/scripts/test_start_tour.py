@@ -3,8 +3,10 @@ from __future__ import annotations
 import importlib.util
 import locale
 from pathlib import Path
+import shutil
 import sys
 import types
+from unittest import mock
 
 
 def _load_start_tour_module():
@@ -71,3 +73,70 @@ def test_stream_text_kwargs_use_best_effort_decoding() -> None:
     assert kwargs["text"] is True
     assert kwargs["errors"] == "replace"
     assert kwargs["encoding"] == locale.getpreferredencoding(False)
+
+
+# ---------------------------------------------------------------------------
+# _resolve_python tests (issue #289 — Python 3.14+ compatibility)
+# ---------------------------------------------------------------------------
+
+def _get_resolve_python():
+    """Import _resolve_python without triggering full module load."""
+    start_tour = _load_start_tour_module()
+    return start_tour._resolve_python
+
+
+class TestResolvePython:
+    """Verify _resolve_python handles broken sys.executable gracefully."""
+
+    def test_returns_resolved_path_when_executable_exists(self) -> None:
+        resolve = _get_resolve_python()
+        real_python = sys.executable
+        with mock.patch("sys.executable", real_python):
+            result = resolve()
+        assert Path(result).exists()
+
+    def test_falls_back_to_shutil_which_when_executable_missing(self) -> None:
+        """Simulates Python 3.14+ on Windows where sys.executable is bogus."""
+        resolve = _get_resolve_python()
+        fake_path = "/nonexistent/python3.14"
+        expected = shutil.which("python3") or shutil.which("python") or "python3"
+        with mock.patch("sys.executable", fake_path):
+            result = resolve()
+        assert result == expected
+
+    def test_falls_back_when_executable_is_empty(self) -> None:
+        """sys.executable can be '' in embedded or frozen environments."""
+        resolve = _get_resolve_python()
+        expected = shutil.which("python3") or shutil.which("python") or "python3"
+        with mock.patch("sys.executable", ""):
+            result = resolve()
+        assert result == expected
+
+    def test_ultimate_fallback_when_nothing_found(self) -> None:
+        """If sys.executable is empty and PATH has no python, return 'python3'."""
+        resolve = _get_resolve_python()
+        with (
+            mock.patch("sys.executable", ""),
+            mock.patch("shutil.which", return_value=None),
+        ):
+            result = resolve()
+        assert result == "python3"
+
+    def test_preserves_valid_sys_executable(self) -> None:
+        """Normal case: sys.executable points to a real file."""
+        resolve = _get_resolve_python()
+        result = resolve()
+        assert Path(result).exists()
+        assert "python" in Path(result).name.lower()
+
+    def test_install_commands_use_resolved_python(self) -> None:
+        """_install_commands should embed _PYTHON, not raw sys.executable."""
+        start_tour = _load_start_tour_module()
+        python_used = start_tour._PYTHON
+        catalog: dict = {"services": {}}
+        cmds = start_tour._install_commands("cli-core", catalog)
+        for cmd, _cwd in cmds:
+            if cmd[0] != "npm":
+                assert cmd[0] == python_used, (
+                    f"Expected resolved python {python_used!r}, got {cmd[0]!r}"
+                )

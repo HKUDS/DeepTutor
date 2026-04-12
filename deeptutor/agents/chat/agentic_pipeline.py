@@ -851,13 +851,17 @@ class AgenticChatPipeline:
         system_prompt: str,
         user_content: str,
     ) -> list[dict[str, Any]]:
-        messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+        system_parts = [system_prompt]
         if context.memory_context:
-            messages.append({"role": "system", "content": context.memory_context})
+            system_parts.append(context.memory_context)
+
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": "\n\n".join(system_parts)}
+        ]
         for item in context.conversation_history:
             role = item.get("role")
             content = item.get("content")
-            if role in {"user", "assistant", "system"} and isinstance(content, (str, list)):
+            if role in {"user", "assistant"} and isinstance(content, (str, list)):
                 messages.append({"role": role, "content": content})
         messages.append({"role": "user", "content": user_content})
         return messages

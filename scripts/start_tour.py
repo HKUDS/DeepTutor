@@ -18,6 +18,30 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+
+def _resolve_python() -> str:
+    """Return a validated path to the current Python interpreter.
+
+    ``sys.executable`` can be empty or point to a non-existent path on
+    some platforms (notably Windows with Python 3.14+).  This helper
+    resolves the real path first, then falls back to ``shutil.which``.
+    """
+    exe = sys.executable
+    if exe:
+        resolved = str(Path(exe).resolve())
+        if Path(resolved).exists():
+            return resolved
+        if Path(exe).exists():
+            return exe
+    for name in ("python3", "python"):
+        found = shutil.which(name)
+        if found:
+            return found
+    return exe or "python3"
+
+
+_PYTHON: str = _resolve_python()
+
 # ---------------------------------------------------------------------------
 # Bootstrap: ensure minimum packages required to import project modules
 # ---------------------------------------------------------------------------
@@ -33,7 +57,7 @@ def _bootstrap() -> None:
         return
     print(f"  Installing bootstrap dependencies: {', '.join(missing)} ...")
     subprocess.check_call(
-        [sys.executable, "-m", "pip", "install", *missing, "-q"],
+        [_PYTHON, "-m", "pip", "install", *missing, "-q"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -350,10 +374,10 @@ def _install_commands(
 
     cmds: list[tuple[list[str], Path]] = []
     for req in PROFILE_COMMANDS[profile]:
-        cmds.append(([sys.executable, "-m", "pip", "install", "-r", req], PROJECT_ROOT))
+        cmds.append(([_PYTHON, "-m", "pip", "install", "-r", req], PROJECT_ROOT))
     if include_math_animator:
-        cmds.append(([sys.executable, "-m", "pip", "install", "-r", MATH_ANIMATOR_REQUIREMENTS], PROJECT_ROOT))
-    cmds.append(([sys.executable, "-m", "pip", "install", "-e", ".", "--no-deps"], PROJECT_ROOT))
+        cmds.append(([_PYTHON, "-m", "pip", "install", "-r", MATH_ANIMATOR_REQUIREMENTS], PROJECT_ROOT))
+    cmds.append(([_PYTHON, "-m", "pip", "install", "-e", ".", "--no-deps"], PROJECT_ROOT))
     if profile.startswith("web"):
         cmds.append((["npm", "install"], PROJECT_ROOT / "web"))
     # Provider SDKs are now bundled in cli.txt, no separate install needed.
@@ -653,7 +677,7 @@ def _run_web_tour() -> None:
     frontend_env = os.environ.copy()
     frontend_env["NEXT_PUBLIC_API_BASE"] = f"http://localhost:{ports['backend']}"
 
-    backend_cmd = [sys.executable, "-m", "deeptutor.api.run_server"]
+    backend_cmd = [_PYTHON, "-m", "deeptutor.api.run_server"]
     frontend_cmd = [npm, "run", "dev", "--", "--port", str(ports["frontend"])]
 
     log_info("Starting temporary server ...")
@@ -714,7 +738,7 @@ def _run_web_tour() -> None:
     countdown(remaining, "Launching in")
     print()
 
-    sys.exit(subprocess.call([sys.executable, str(PROJECT_ROOT / "scripts" / "start_web.py")]))
+    sys.exit(subprocess.call([_PYTHON, str(PROJECT_ROOT / "scripts" / "start_web.py")]))
 
 # ===================================================================
 # CLI path — full interactive configuration in the terminal

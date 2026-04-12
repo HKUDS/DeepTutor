@@ -38,6 +38,7 @@ EMBEDDING_PROVIDER_ALIASES = {
     "gemini": "openai",
     "huggingface": "custom",
     "lm_studio": "vllm",
+    "llama_cpp": "vllm",
     "openai_compatible": "custom",
 }
 

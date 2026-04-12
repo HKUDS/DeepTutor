@@ -10,8 +10,8 @@ from pydantic import BaseModel, Field
 class VisualizationAnalysis(BaseModel):
     """Output of the analysis stage."""
 
-    render_type: Literal["svg", "chartjs"] = Field(
-        description="Whether to render as raw SVG or as a Chart.js configuration.",
+    render_type: Literal["svg", "chartjs", "mermaid"] = Field(
+        description="Whether to render as raw SVG, a Chart.js configuration, or Mermaid diagram code.",
     )
     description: str = Field(
         default="",
@@ -23,7 +23,11 @@ class VisualizationAnalysis(BaseModel):
     )
     chart_type: str = Field(
         default="",
-        description="Chart.js chart type (bar, line, pie, doughnut, radar, etc.) when render_type is chartjs.",
+        description=(
+            "Chart.js chart type (bar, line, pie, doughnut, radar, etc.) when render_type is chartjs, "
+            "or Mermaid diagram type (flowchart, sequenceDiagram, mindmap, classDiagram, stateDiagram, etc.) "
+            "when render_type is mermaid."
+        ),
     )
     visual_elements: list[str] = Field(
         default_factory=list,
