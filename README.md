@@ -26,6 +26,8 @@
 
 ### 📦 Releases
 
+> **[2026.4.12]** [v1.0.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.3) — LightRAG dual-level retrieval integration, Mermaid.js diagram generation tool, "Liquid Glass" premium design system, and robust LLM reporting with retry logic.
+
 > **[2026.4.11]** [v1.0.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.2) — Search consolidation simplification with SearXNG fallback, provider switch fix, explicit runtime config in test runner, and frontend resource leak fixes.
 
 > **[2026.4.10]** [v1.0.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.1) — New Visualize capability with Chart.js/SVG rendering pipeline, quiz duplicate prevention with generation history, o4-mini model support, and server logging improvements.
@@ -74,7 +76,9 @@
 - **Guided Learning** — Turn your materials into structured, visual learning journeys. DeepTutor designs multi-step plans, generates interactive pages for each knowledge point, and lets you discuss alongside each step.
 - **Knowledge Hub** — Upload PDFs, Markdown, and text files to build RAG-ready knowledge bases. Organize insights across sessions in color-coded notebooks. Your documents don't just sit there — they actively power every conversation.
 - **Persistent Memory** — DeepTutor builds a living profile of you: what you've studied, how you learn, and where you're heading. Shared across all features and TutorBots, it gets sharper with every interaction.
+- **Visual Diagrams (Mermaid)** — Generate interactive flowcharts, sequence diagrams, and mindmaps directly in the chat using the new `DiagramTool`. Perfect for visualizing complex processes or student workflows.
 - **Agent-Native CLI** — Every capability, knowledge base, session, and TutorBot is one command away. Rich terminal output for humans, structured JSON for AI agents and pipelines. Hand DeepTutor a [`SKILL.md`](SKILL.md) and your agents can operate it autonomously.
+- **Modern "Liquid Glass" Design** — A premium glassmorphism theme with backdrop blurs, radial gradients, and subtle animations for a state-of-the-art learning experience.
 
 ---
 
@@ -389,6 +393,7 @@ Five distinct modes coexist in a single workspace, bound by a **unified context 
 | **Quiz Generation** | Generate assessments grounded in your knowledge base, with built-in validation. |
 | **Deep Research** | Decompose a topic into subtopics, dispatch parallel research agents across RAG, web, and academic papers, and produce a fully cited report. |
 | **Math Animator** | Turn mathematical concepts into visual animations and storyboards powered by Manim. |
+| **Visualize (Diagrams)** | Generate Mermaid.js flowcharts, mindmaps, and sequence diagrams to visualize logic and structures. |
 
 Tools are **decoupled from workflows** — in every mode, you decide which tools to enable, how many to use, or whether to use any at all. The workflow orchestrates the reasoning; the tools are yours to compose.
 
@@ -600,8 +605,8 @@ deeptutor session open <id>                         # Resume in REPL
 | Status | Milestone |
 |:---:|:---|
 | 🔜 | **Authentication & Login** — Optional login page for public deployments with multi-user support |
-| 🔜 | **Themes & Appearance** — Diverse theme options and customizable UI appearance |
-| 🔜 | **LightRAG Integration** — Integrate [LightRAG](https://github.com/HKUDS/LightRAG) as an advanced knowledge base engine |
+| ✅ | **Themes & Appearance** — Diverse theme options including the new premium **Liquid Glass** mode |
+| ✅ | **LightRAG Integration** — Integrated [LightRAG](https://github.com/HKUDS/LightRAG) as a dual-level knowledge graph retrieval engine |
 | 🔜 | **Documentation Site** — Comprehensive docs page with guides, API reference, and tutorials |
 
 > If you find DeepTutor useful, [give us a star](https://github.com/HKUDS/DeepTutor/stargazers) — it helps us keep going!
