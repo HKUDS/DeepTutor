@@ -714,8 +714,7 @@ def _run_web_tour() -> None:
     countdown(remaining, "Launching in")
     print()
 
-    os.execvp(sys.executable, [sys.executable, str(PROJECT_ROOT / "scripts" / "start_web.py")])
-
+    sys.exit(subprocess.call([sys.executable, str(PROJECT_ROOT / "scripts" / "start_web.py")]))
 
 # ===================================================================
 # CLI path — full interactive configuration in the terminal
