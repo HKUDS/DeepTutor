@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BrainCircuit,
   ChevronDown,
@@ -292,7 +292,6 @@ function ToolExecutor({ tool, knowledgeBases }: { tool: ToolInfo; knowledgeBases
   const [result, setResult] = useState<ExecResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [processLogs, setProcessLogs] = useState<string[]>([]);
-  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     setValues({});
@@ -301,17 +300,12 @@ function ToolExecutor({ tool, knowledgeBases }: { tool: ToolInfo; knowledgeBases
     setProcessLogs([]);
   }, [tool.name]);
 
-  useEffect(() => () => { abortRef.current?.abort(); }, []);
-
   const setParam = (name: string, val: string) => setValues((p) => ({ ...p, [name]: val }));
 
   const queryParam = params.find((p) => QUERY_PARAM_NAMES.has(p.name));
   const otherParams = params.filter((p) => !QUERY_PARAM_NAMES.has(p.name));
 
   const execute = async () => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
     setExecuting(true);
     setResult(null);
     setError(null);
@@ -331,7 +325,6 @@ function ToolExecutor({ tool, knowledgeBases }: { tool: ToolInfo; knowledgeBases
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ params: coerced }),
-        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -379,10 +372,9 @@ function ToolExecutor({ tool, knowledgeBases }: { tool: ToolInfo; knowledgeBases
         }
       }
     } catch (err: unknown) {
-      if (controller.signal.aborted) return;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      if (!controller.signal.aborted) setExecuting(false);
+      setExecuting(false);
     }
   };
 
@@ -623,9 +615,6 @@ function DeepQuestionTester({
   const [messages, setMessages] = useState<TesterMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [uploadedPdf, setUploadedPdf] = useState<File | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-
-  useEffect(() => () => { abortRef.current?.abort(); }, []);
 
   const updateLastAssistant = (updater: (msg: TesterMessage) => TesterMessage) => {
     setMessages((prev) => {
@@ -661,10 +650,6 @@ function DeepQuestionTester({
 
   const run = async () => {
     if (!canRun || streaming) return;
-
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
 
     const userContent =
       config.mode === "custom"
@@ -713,7 +698,6 @@ function DeepQuestionTester({
             config: requestConfig,
             attachments,
           }),
-          signal: controller.signal,
         },
       );
 
@@ -791,13 +775,12 @@ function DeepQuestionTester({
         }
       }
     } catch (err: unknown) {
-      if (controller.signal.aborted) return;
       updateLastAssistant((last) => ({
         ...last,
         error: err instanceof Error ? err.message : String(err),
       }));
     } finally {
-      if (!controller.signal.aborted) setStreaming(false);
+      setStreaming(false);
     }
   };
 
@@ -1020,9 +1003,6 @@ function DeepResearchTester({
   const [messages, setMessages] = useState<TesterMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
   const validation = useMemo(() => validateResearchConfig(config), [config]);
-  const abortRef = useRef<AbortController | null>(null);
-
-  useEffect(() => () => { abortRef.current?.abort(); }, []);
 
   const updateLastAssistant = (updater: (msg: TesterMessage) => TesterMessage) => {
     setMessages((prev) => {
@@ -1037,11 +1017,6 @@ function DeepResearchTester({
   const run = async () => {
     const content = input.trim();
     if (!content || streaming || !validation.valid) return;
-
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
     setMessages((prev) => [
       ...prev,
       { role: "user", content },
@@ -1062,7 +1037,6 @@ function DeepResearchTester({
             language: i18n.language,
             config: buildResearchWSConfig(config),
           }),
-          signal: controller.signal,
         },
       );
 
@@ -1140,13 +1114,12 @@ function DeepResearchTester({
         }
       }
     } catch (err: unknown) {
-      if (controller.signal.aborted) return;
       updateLastAssistant((last) => ({
         ...last,
         error: err instanceof Error ? err.message : String(err),
       }));
     } finally {
-      if (!controller.signal.aborted) setStreaming(false);
+      setStreaming(false);
     }
   };
 
@@ -1268,9 +1241,6 @@ function CapabilityTester({
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<TesterMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
-
-  useEffect(() => () => { abortRef.current?.abort(); }, []);
 
   const updateLastAssistant = (updater: (msg: TesterMessage) => TesterMessage) => {
     setMessages((prev) => {
@@ -1285,11 +1255,6 @@ function CapabilityTester({
   const send = async () => {
     const content = input.trim();
     if (!content || streaming) return;
-
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
     setMessages((prev) => [
       ...prev,
       { role: "user", content },
@@ -1310,7 +1275,6 @@ function CapabilityTester({
             knowledge_bases: enabledTools.includes("rag") && knowledgeBase ? [knowledgeBase] : [],
             language: i18n.language,
           }),
-          signal: controller.signal,
         },
       );
 
@@ -1388,13 +1352,12 @@ function CapabilityTester({
         }
       }
     } catch (err: unknown) {
-      if (controller.signal.aborted) return;
       updateLastAssistant((last) => ({
         ...last,
         error: err instanceof Error ? err.message : String(err),
       }));
     } finally {
-      if (!controller.signal.aborted) setStreaming(false);
+      setStreaming(false);
     }
   };
 

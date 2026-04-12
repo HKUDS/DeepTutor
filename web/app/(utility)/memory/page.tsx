@@ -23,17 +23,17 @@ interface MemoryData {
 const TABS: { key: MemoryFile; label: string; icon: typeof Brain; hint: string; placeholder: string }[] = [
   {
     key: "summary",
-    label: "Summary",
+    label: "Memory Summary",
     icon: BookOpen,
     hint: "Running summary of the learning journey. Auto-updated after conversations.",
-    placeholder: "## Current Focus\n- ...\n\n## Accomplishments\n- ...\n\n## Open Questions\n- ...",
+    placeholder: "## Current Focus\n- ...\n\n## Completed Items\n- ...\n\n## Open Questions\n- ...",
   },
   {
     key: "profile",
-    label: "Profile",
+    label: "Memory Profile",
     icon: User,
     hint: "User identity, preferences, and knowledge levels. Auto-updated after conversations.",
-    placeholder: "## Identity\n- ...\n\n## Learning Style\n- ...\n\n## Knowledge Level\n- ...\n\n## Preferences\n- ...",
+    placeholder: "## User Identity\n- ...\n\n## Learning Style\n- ...\n\n## Knowledge Level\n- ...\n\n## Preferences\n- ...",
   },
 ];
 
@@ -44,10 +44,10 @@ const EMPTY: MemoryData = {
   profile_updated_at: null,
 };
 
-function formatUpdatedAt(value: string | null): string {
-  if (!value) return "Not updated yet";
+function formatUpdatedAt(value: string | null, t: (key: string) => string): string {
+  if (!value) return t("Not updated yet");
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unknown";
+  if (Number.isNaN(date.getTime())) return t("Unknown");
   return date.toLocaleString();
 }
 
@@ -66,6 +66,7 @@ export default function MemoryPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const tab = TABS.find((t) => t.key === activeTab)!;
+  const tabLabel = t(tab.label);
   const editorValue = editors[activeTab];
   const hasChanges = editorValue !== data[activeTab];
   const updatedAt = data[`${activeTab}_updated_at` as keyof MemoryData] as string | null;
@@ -101,11 +102,11 @@ export default function MemoryPage() {
       const d: MemoryData = await res.json();
       setData(d);
       setEditors((prev) => ({ ...prev, [activeTab]: d[activeTab] || "" }));
-      setToast(`${tab.label} saved`);
+      setToast(t("{{name}} saved", { name: tabLabel }));
     } finally {
       setSaving(false);
     }
-  }, [activeTab, editorValue, tab.label]);
+  }, [activeTab, editorValue, tabLabel, t]);
 
   const refreshMemory = useCallback(async () => {
     setRefreshing(true);
@@ -118,14 +119,14 @@ export default function MemoryPage() {
       const d: MemoryData = await res.json();
       setData(d);
       setEditors({ summary: d.summary || "", profile: d.profile || "" });
-      setToast("Memory refreshed from session");
+      setToast(t("Memory refreshed from session"));
     } finally {
       setRefreshing(false);
     }
   }, [activeSessionId, language]);
 
   const clearMemory = useCallback(async () => {
-    if (!window.confirm(`Clear ${tab.label}?`)) return;
+    if (!window.confirm(t("Clear {{name}}?", { name: tabLabel }))) return;
     setClearing(true);
     try {
       const res = await fetch(apiUrl("/api/v1/memory/clear"), {
@@ -136,11 +137,11 @@ export default function MemoryPage() {
       const d: MemoryData = await res.json();
       setData(d);
       setEditors((prev) => ({ ...prev, [activeTab]: d[activeTab] || "" }));
-      setToast(`${tab.label} cleared`);
+      setToast(t("{{name}} cleared", { name: tabLabel }));
     } finally {
       setClearing(false);
     }
-  }, [activeTab, tab.label]);
+  }, [activeTab, tabLabel, t]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -166,7 +167,7 @@ export default function MemoryPage() {
               <p className="mt-1 text-[13px] text-[var(--primary)] animate-fade-in">{toast}</p>
             ) : (
               <p className="mt-1 text-[13px] text-[var(--muted-foreground)]">
-                {hasChanges ? "Unsaved changes" : "All changes saved"}
+                {hasChanges ? t("Unsaved changes") : t("All changes saved")}
               </p>
             )}
           </div>
@@ -177,7 +178,7 @@ export default function MemoryPage() {
               className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)]/50 px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-40"
             >
               {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              Save
+              {t("Save")}
             </button>
             <button
               onClick={refreshMemory}
@@ -185,7 +186,7 @@ export default function MemoryPage() {
               className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)]/50 px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-40"
             >
               {refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-              Refresh
+              {t("Refresh")}
             </button>
             <button
               onClick={clearMemory}
@@ -193,20 +194,20 @@ export default function MemoryPage() {
               className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)]/50 px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-40"
             >
               {clearing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Eraser className="h-3 w-3" />}
-              Clear
+              {t("Clear")}
             </button>
           </div>
         </div>
 
         {/* Tab selector */}
         <div className="mb-4 flex items-center gap-1 border-b border-[var(--border)]/50 pb-3">
-          {TABS.map((t) => {
-            const Icon = t.icon;
-            const active = activeTab === t.key;
+          {TABS.map((item) => {
+            const Icon = item.icon;
+            const active = activeTab === item.key;
             return (
               <button
-                key={t.key}
-                onClick={() => setActiveTab(t.key)}
+                key={item.key}
+                onClick={() => setActiveTab(item.key)}
                 className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
                   active
                     ? "bg-[var(--muted)] font-medium text-[var(--foreground)]"
@@ -214,7 +215,7 @@ export default function MemoryPage() {
                 }`}
               >
                 <Icon className="h-3.5 w-3.5" />
-                {t.label}
+                {t(item.label)}
               </button>
             );
           })}
@@ -222,7 +223,7 @@ export default function MemoryPage() {
 
         {/* Meta & View toggle */}
         <div className="mb-6 flex items-center justify-between">
-          <p className="max-w-lg text-[12px] text-[var(--muted-foreground)]">{tab.hint}</p>
+          <p className="max-w-lg text-[12px] text-[var(--muted-foreground)]">{t(tab.hint)}</p>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1">
               {(["edit", "preview"] as const).map((v) => (
@@ -235,12 +236,12 @@ export default function MemoryPage() {
                       : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
                   }`}
                 >
-                  {v === "edit" ? "Edit" : "Preview"}
+                  {v === "edit" ? t("Edit") : t("Preview")}
                 </button>
               ))}
             </div>
             <span className="text-[12px] text-[var(--muted-foreground)]">
-              Updated: {formatUpdatedAt(updatedAt)}
+              {t("Updated")}: {formatUpdatedAt(updatedAt, t)}
             </span>
           </div>
         </div>
@@ -274,7 +275,9 @@ export default function MemoryPage() {
             <div className="mb-3 rounded-xl bg-[var(--muted)] p-2.5 text-[var(--muted-foreground)]">
               <Brain size={18} />
             </div>
-            <p className="text-[14px] font-medium text-[var(--foreground)]">No {tab.label.toLowerCase()} yet</p>
+            <p className="text-[14px] font-medium text-[var(--foreground)]">
+              {t("No {{name}} yet", { name: t(tab.label).toLowerCase() })}
+            </p>
             <p className="mt-1.5 max-w-xs text-[13px] text-[var(--muted-foreground)]">
               {t("Refresh from a session or write directly in the editor.")}
             </p>

@@ -278,6 +278,12 @@ class PathService:
     def get_logs_dir(self) -> Path:
         return self.get_user_root() / "logs"
 
+    def get_goal_root_dir(self) -> Path:
+        return self.get_user_root() / "goal"
+
+    def get_goal_session_dir(self, session_id: str) -> Path:
+        return self.get_goal_root_dir() / session_id
+
     def ensure_agent_dir(self, module: AgentModule) -> Path:
         path = self.get_agent_dir(module)
         path.mkdir(parents=True, exist_ok=True)
@@ -308,11 +314,17 @@ class PathService:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
+    def ensure_goal_root_dir(self) -> Path:
+        path = self.get_goal_root_dir()
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
     def ensure_all_directories(self) -> None:
         self.ensure_settings_dir()
         self.ensure_workspace_dir()
         self.ensure_memory_dir()
         self.ensure_notebook_dir()
+        self.ensure_goal_root_dir()
         self.get_logs_dir().mkdir(parents=True, exist_ok=True)
         for feature in ("co-writer", "guide"):
             self.get_workspace_feature_dir(feature).mkdir(parents=True, exist_ok=True)

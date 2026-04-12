@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { X } from "lucide-react";
-import { useTranslation } from "react-i18next";
 import NotebookSelector from "@/app/(workspace)/guide/components/NotebookSelector";
 import { useNotebookSelection } from "@/app/(workspace)/guide/hooks/useNotebookSelection";
 import type { SelectedRecord } from "@/app/(workspace)/guide/types";
@@ -18,9 +17,8 @@ export default function NotebookRecordPicker({
   open,
   onClose,
   onApply,
-  actionLabel = "Use Selected Records ({n})",
+  actionLabel = "Use selected records ({n})",
 }: NotebookRecordPickerProps) {
-  const { t } = useTranslation();
   const {
     notebooks,
     expandedNotebooks,
@@ -49,10 +47,10 @@ export default function NotebookRecordPicker({
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-700">
           <div>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-              {t("Select Notebook Records")}
+              Select Notebook Records
             </h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              {t("Choose records across one or more notebooks to ground the next request.")}
+              Select records from one or more notebooks to provide context for the next request.
             </p>
           </div>
           <button

@@ -19,12 +19,6 @@ generate: |
   Tools enabled by the user:
   {available_tools}
 
-  Conversation context:
-  {history_context}
-
-  Previously generated questions in this session (your new question MUST be different from all of these):
-  {previous_questions}
-
   Requirements:
   - Keep strict alignment with template.concentration and template.difficulty.
   - Respect template.question_type exactly. Do not silently change it.
@@ -39,7 +33,6 @@ generate: |
   - Provide a clear explanation.
   - Use the knowledge context when it helps ground the question.
   - Treat the enabled tools list as capability guidance only; do not mention tool names in the final output.
-  - Do NOT generate a question that is identical or nearly identical to any of the previously generated questions listed above.
 
   Return JSON only:
   {{

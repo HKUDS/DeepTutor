@@ -4,24 +4,18 @@ import React, { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useTranslation } from "react-i18next";
 import "katex/dist/katex.min.css";
 import { processMarkdownContent } from "@/lib/latex";
 import { normalizeMarkdownForDisplay } from "@/lib/markdown-display";
 import type { MarkdownRendererProps } from "./MarkdownRenderer";
 
-function MermaidLoading() {
-  const { t } = useTranslation();
-  return (
-    <div className="my-4 rounded-xl border border-[var(--border)] bg-[var(--muted)]/50 px-4 py-3 text-sm text-[var(--muted-foreground)]">
-      {t("Rendering diagram...")}
-    </div>
-  );
-}
-
 const LazyMermaid = dynamic(() => import("@/components/Mermaid"), {
   ssr: false,
-  loading: () => <MermaidLoading />,
+  loading: () => (
+    <div className="my-4 rounded-xl border border-[var(--border)] bg-[var(--muted)]/50 px-4 py-3 text-sm text-[var(--muted-foreground)]">
+      Rendering diagram...
+    </div>
+  ),
 });
 
 const LazyCodeBlock = dynamic(() => import("./RichCodeBlock"), {

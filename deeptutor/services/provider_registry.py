@@ -1,11 +1,4 @@
-"""Provider registry for DeepTutor LLM routing.
-
-Single source of truth for provider metadata. Adding a new provider:
-  1. Add a ProviderSpec to PROVIDERS below.
-  Done. Env vars, config matching, status display all derive from here.
-
-Order matters — it controls match priority and fallback. Gateways first.
-"""
+"""Nanobot-style provider registry for DeepTutor LLM routing."""
 
 from __future__ import annotations
 
@@ -15,22 +8,14 @@ from typing import Any
 
 @dataclass(frozen=True)
 class ProviderSpec:
-    """Single provider metadata entry.
-
-    Placeholders in env_extras values:
-      {api_key}  — the user's API key
-      {api_base} — api_base from config, or this spec's default_api_base
-    """
+    """Single provider metadata entry."""
 
     name: str
     keywords: tuple[str, ...]
     env_key: str
     display_name: str = ""
-
-    # Which provider implementation to use:
-    # "openai_compat" | "anthropic" | "azure_openai" | "openai_codex" | "github_copilot"
-    backend: str = "openai_compat"
-
+    litellm_prefix: str = ""
+    skip_prefixes: tuple[str, ...] = ()
     env_extras: tuple[tuple[str, str], ...] = ()
     is_gateway: bool = False
     is_local: bool = False
@@ -38,8 +23,6 @@ class ProviderSpec:
     detect_by_base_keyword: str = ""
     default_api_base: str = ""
     strip_model_prefix: bool = False
-    supports_max_completion_tokens: bool = False
-    supports_prompt_caching: bool = False
     model_overrides: tuple[tuple[str, dict[str, Any]], ...] = ()
     is_oauth: bool = False
     is_direct: bool = False
@@ -90,18 +73,12 @@ def canonical_provider_name(name: str | None) -> str | None:
     return PROVIDER_ALIASES.get(key, key)
 
 
-# ---------------------------------------------------------------------------
-# PROVIDERS — the registry.  Order = priority.
-# ---------------------------------------------------------------------------
-
 PROVIDERS: tuple[ProviderSpec, ...] = (
-    # === Direct (user supplies everything, no auto-detection) ===============
     ProviderSpec(
         name="custom",
         keywords=(),
         env_key="",
         display_name="Custom",
-        backend="openai_compat",
         is_direct=True,
     ),
     ProviderSpec(
@@ -109,28 +86,25 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         keywords=("azure", "azure_openai"),
         env_key="",
         display_name="Azure OpenAI",
-        backend="azure_openai",
         is_direct=True,
     ),
-    # === Gateways (detected by api_key / api_base, route any model) ========
     ProviderSpec(
         name="openrouter",
         keywords=("openrouter",),
         env_key="OPENROUTER_API_KEY",
         display_name="OpenRouter",
-        backend="openai_compat",
+        litellm_prefix="openrouter",
         is_gateway=True,
         detect_by_key_prefix="sk-or-",
         detect_by_base_keyword="openrouter",
         default_api_base="https://openrouter.ai/api/v1",
-        supports_prompt_caching=True,
     ),
     ProviderSpec(
         name="aihubmix",
         keywords=("aihubmix",),
         env_key="OPENAI_API_KEY",
         display_name="AiHubMix",
-        backend="openai_compat",
+        litellm_prefix="openai",
         is_gateway=True,
         detect_by_base_keyword="aihubmix",
         default_api_base="https://aihubmix.com/v1",
@@ -141,7 +115,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         keywords=("siliconflow",),
         env_key="OPENAI_API_KEY",
         display_name="SiliconFlow",
-        backend="openai_compat",
+        litellm_prefix="openai",
         is_gateway=True,
         detect_by_base_keyword="siliconflow",
         default_api_base="https://api.siliconflow.cn/v1",
@@ -151,7 +125,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         keywords=("volcengine", "volces", "ark"),
         env_key="OPENAI_API_KEY",
         display_name="VolcEngine",
-        backend="openai_compat",
+        litellm_prefix="volcengine",
         is_gateway=True,
         detect_by_base_keyword="volces",
         default_api_base="https://ark.cn-beijing.volces.com/api/v3",
@@ -161,7 +135,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         keywords=("volcengine-plan",),
         env_key="OPENAI_API_KEY",
         display_name="VolcEngine Coding Plan",
-        backend="openai_compat",
+        litellm_prefix="volcengine",
         is_gateway=True,
         default_api_base="https://ark.cn-beijing.volces.com/api/coding/v3",
         strip_model_prefix=True,
@@ -171,7 +145,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         keywords=("byteplus",),
         env_key="OPENAI_API_KEY",
         display_name="BytePlus",
-        backend="openai_compat",
+        litellm_prefix="volcengine",
         is_gateway=True,
         detect_by_base_keyword="bytepluses",
         default_api_base="https://ark.ap-southeast.bytepluses.com/api/v3",
@@ -182,36 +156,30 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         keywords=("byteplus-plan",),
         env_key="OPENAI_API_KEY",
         display_name="BytePlus Coding Plan",
-        backend="openai_compat",
+        litellm_prefix="volcengine",
         is_gateway=True,
         default_api_base="https://ark.ap-southeast.bytepluses.com/api/coding/v3",
         strip_model_prefix=True,
     ),
-    # === Standard providers (matched by model-name keywords) ===============
     ProviderSpec(
         name="anthropic",
         keywords=("anthropic", "claude"),
         env_key="ANTHROPIC_API_KEY",
         display_name="Anthropic",
-        backend="anthropic",
         default_api_base="https://api.anthropic.com/v1",
-        supports_prompt_caching=True,
     ),
     ProviderSpec(
         name="openai",
         keywords=("openai", "gpt"),
         env_key="OPENAI_API_KEY",
         display_name="OpenAI",
-        backend="openai_compat",
         default_api_base="https://api.openai.com/v1",
-        supports_max_completion_tokens=True,
     ),
     ProviderSpec(
         name="openai_codex",
         keywords=("openai_codex", "codex"),
         env_key="",
         display_name="OpenAI Codex",
-        backend="openai_codex",
         is_oauth=True,
         default_api_base="https://chatgpt.com/backend-api",
     ),
@@ -220,42 +188,43 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         keywords=("github_copilot", "copilot"),
         env_key="",
         display_name="GitHub Copilot",
-        backend="github_copilot",
+        litellm_prefix="github_copilot",
+        skip_prefixes=("github_copilot/",),
         is_oauth=True,
-        default_api_base="https://api.githubcopilot.com",
-        strip_model_prefix=True,
     ),
     ProviderSpec(
         name="deepseek",
         keywords=("deepseek",),
         env_key="DEEPSEEK_API_KEY",
         display_name="DeepSeek",
-        backend="openai_compat",
-        default_api_base="https://api.deepseek.com",
+        litellm_prefix="deepseek",
+        skip_prefixes=("deepseek/",),
+        default_api_base="https://api.deepseek.com/v1",
     ),
     ProviderSpec(
         name="gemini",
         keywords=("gemini",),
         env_key="GEMINI_API_KEY",
         display_name="Gemini",
-        backend="openai_compat",
-        default_api_base="https://generativelanguage.googleapis.com/v1beta/openai/",
+        litellm_prefix="gemini",
+        skip_prefixes=("gemini/",),
     ),
     ProviderSpec(
         name="zhipu",
         keywords=("zhipu", "glm", "zai"),
         env_key="ZAI_API_KEY",
         display_name="Zhipu AI",
-        backend="openai_compat",
+        litellm_prefix="zai",
+        skip_prefixes=("zhipu/", "zai/", "openrouter/", "hosted_vllm/"),
         env_extras=(("ZHIPUAI_API_KEY", "{api_key}"),),
-        default_api_base="https://open.bigmodel.cn/api/paas/v4",
     ),
     ProviderSpec(
         name="dashscope",
         keywords=("qwen", "dashscope"),
         env_key="DASHSCOPE_API_KEY",
         display_name="DashScope",
-        backend="openai_compat",
+        litellm_prefix="dashscope",
+        skip_prefixes=("dashscope/", "openrouter/"),
         default_api_base="https://dashscope.aliyuncs.com/compatible-mode/v1",
     ),
     ProviderSpec(
@@ -263,7 +232,9 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         keywords=("moonshot", "kimi"),
         env_key="MOONSHOT_API_KEY",
         display_name="Moonshot",
-        backend="openai_compat",
+        litellm_prefix="moonshot",
+        skip_prefixes=("moonshot/", "openrouter/"),
+        env_extras=(("MOONSHOT_API_BASE", "{api_base}"),),
         default_api_base="https://api.moonshot.ai/v1",
         model_overrides=(("kimi-k2.5", {"temperature": 1.0}),),
     ),
@@ -272,40 +243,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         keywords=("minimax",),
         env_key="MINIMAX_API_KEY",
         display_name="MiniMax",
-        backend="openai_compat",
+        litellm_prefix="minimax",
+        skip_prefixes=("minimax/", "openrouter/"),
         default_api_base="https://api.minimax.io/v1",
     ),
-    ProviderSpec(
-        name="mistral",
-        keywords=("mistral",),
-        env_key="MISTRAL_API_KEY",
-        display_name="Mistral",
-        backend="openai_compat",
-        default_api_base="https://api.mistral.ai/v1",
-    ),
-    ProviderSpec(
-        name="stepfun",
-        keywords=("stepfun", "step"),
-        env_key="STEPFUN_API_KEY",
-        display_name="Step Fun",
-        backend="openai_compat",
-        default_api_base="https://api.stepfun.com/v1",
-    ),
-    ProviderSpec(
-        name="xiaomi_mimo",
-        keywords=("xiaomi_mimo", "mimo"),
-        env_key="XIAOMIMIMO_API_KEY",
-        display_name="Xiaomi MIMO",
-        backend="openai_compat",
-        default_api_base="https://api.xiaomimimo.com/v1",
-    ),
-    # === Local deployment ==================================================
     ProviderSpec(
         name="vllm",
         keywords=("vllm",),
         env_key="HOSTED_VLLM_API_KEY",
         display_name="vLLM",
-        backend="openai_compat",
+        litellm_prefix="hosted_vllm",
         is_local=True,
         default_api_base="http://localhost:8000/v1",
     ),
@@ -314,37 +261,20 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         keywords=("ollama", "nemotron"),
         env_key="OLLAMA_API_KEY",
         display_name="Ollama",
-        backend="openai_compat",
+        litellm_prefix="ollama_chat",
+        skip_prefixes=("ollama/", "ollama_chat/"),
         is_local=True,
         detect_by_base_keyword="11434",
         default_api_base="http://localhost:11434/v1",
     ),
     ProviderSpec(
-        name="ovms",
-        keywords=("openvino", "ovms"),
-        env_key="",
-        display_name="OpenVINO Model Server",
-        backend="openai_compat",
-        is_direct=True,
-        is_local=True,
-        default_api_base="http://localhost:8000/v3",
-    ),
-    # === Auxiliary ==========================================================
-    ProviderSpec(
         name="groq",
         keywords=("groq",),
         env_key="GROQ_API_KEY",
         display_name="Groq",
-        backend="openai_compat",
+        litellm_prefix="groq",
+        skip_prefixes=("groq/",),
         default_api_base="https://api.groq.com/openai/v1",
-    ),
-    ProviderSpec(
-        name="qianfan",
-        keywords=("qianfan", "ernie"),
-        env_key="QIANFAN_API_KEY",
-        display_name="Qianfan",
-        backend="openai_compat",
-        default_api_base="https://qianfan.baidubce.com/v2",
     ),
 )
 
@@ -399,13 +329,17 @@ def find_gateway(
     return None
 
 
-def strip_provider_prefix(model: str, spec: ProviderSpec | None) -> str:
-    """Strip the provider/ prefix from a model name if applicable."""
+def normalize_model_for_litellm(model: str, spec: ProviderSpec | None) -> str:
+    """Apply Nanobot-style model prefixing rules for LiteLLM."""
     if not model or not spec:
         return model
-    if spec.strip_model_prefix and "/" in model:
-        return model.split("/", 1)[1]
-    return model
+    resolved = model
+    if spec.strip_model_prefix and "/" in resolved:
+        resolved = resolved.split("/", 1)[1]
+    if spec.litellm_prefix and not any(resolved.startswith(prefix) for prefix in spec.skip_prefixes):
+        if not resolved.startswith(f"{spec.litellm_prefix}/"):
+            resolved = f"{spec.litellm_prefix}/{resolved}"
+    return resolved
 
 
 __all__ = [
@@ -417,5 +351,5 @@ __all__ = [
     "find_by_name",
     "find_by_model",
     "find_gateway",
-    "strip_provider_prefix",
+    "normalize_model_for_litellm",
 ]

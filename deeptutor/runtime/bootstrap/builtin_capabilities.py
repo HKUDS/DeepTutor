@@ -6,5 +6,4 @@ BUILTIN_CAPABILITY_CLASSES: dict[str, str] = {
     "deep_question": "deeptutor.capabilities.deep_question:DeepQuestionCapability",
     "deep_research": "deeptutor.capabilities.deep_research:DeepResearchCapability",
     "math_animator": "deeptutor.capabilities.math_animator:MathAnimatorCapability",
-    "visualize": "deeptutor.capabilities.visualize:VisualizeCapability",
 }

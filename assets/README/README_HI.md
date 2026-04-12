@@ -2,21 +2,19 @@
 
 <img src="../../assets/logo-ver2.png" alt="DeepTutor" width="140" style="border-radius: 15px;">
 
-# DeepTutor: एजेंट-नेटिव व्यक्तिगत शिक्षण
-
-<a href="https://trendshift.io/repositories/17099" target="_blank"><img src="https://trendshift.io/api/badge/repositories/17099" alt="HKUDS%2FDeepTutor | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+# DeepTutor: एजेंटिक व्यक्तिगत शिक्षण की ओर
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
-[![arXiv](https://img.shields.io/badge/arXiv-Coming_Soon-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](#)
+[![GitHub last commit](https://img.shields.io/github/last-commit/HKUDS/DeepTutor?style=flat-square)](https://github.com/HKUDS/DeepTutor/commits)
 
 [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t)
 [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md)
 [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
 
-[मुख्य विशेषताएँ](#key-features) · [शुरू करें](#get-started) · [अन्वेषण](#explore-deeptutor) · [TutorBot](#tutorbot) · [CLI](#deeptutor-cli-guide) · [रोडमैप](#roadmap) · [समुदाय](#community)
+[मुख्य विशेषताएँ](#key-features) · [शुरू करें](#get-started) · [अन्वेषण](#explore-deeptutor) · [TutorBot](#tutorbot) · [CLI](#deeptutor-cli-guide) · [समुदाय](#community)
 
 [🇬🇧 English](../../README.md) · [🇨🇳 中文](README_CN.md) · [🇯🇵 日本語](README_JA.md) · [🇪🇸 Español](README_ES.md) · [🇫🇷 Français](README_FR.md) · [🇸🇦 العربية](README_AR.md) · [🇷🇺 Русский](README_RU.md) · [🇵🇹 Português](README_PT.md)
 
@@ -25,7 +23,7 @@
 ---
 ### 📰 समाचार
 
-> **[2026.4.4]** बहुत दिन बाद! ✨ DeepTutor v1.0.0 आ गया — Apache-2.0 के तहत एजेंट-नेटिव विकास: ज़मीन से आर्किटेक्चर रिराइट, TutorBot, लचीले मोड। नया अध्याय शुरू!
+> **[2026.3.24]** DeepTutor v1.0.0 ✨ — Apache-2.0 के तहत एजेंट-नेटिव विकास: हल्का रिफैक्टर, TutorBot, लचीले मोड।
 
 > **[2026.2.6]** 🚀 39 दिनों में 10k सितारे — समुदाय का धन्यवाद!
 
@@ -35,9 +33,7 @@
 
 ### 📦 रिलीज़
 
-> **[2026.4.7]** [v1.0.0-beta.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0-beta.2) — गर्म सेटिंग रीलोड के लिए रनटाइम कैश इनवैलिडेशन, MinerU नेस्टेड आउटपुट, mimic WebSocket फिक्स, न्यूनतम Python 3.11+, CI सुधार।
-
-> **[2026.4.4]** [v1.0.0-beta.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0-beta.1) — एजेंट-नेटिव आर्किटेक्चर रिराइट (DeepTutor 2.0): दो-स्तरीय प्लगइन मॉडल (Tools + Capabilities), CLI व SDK प्रवेश, मल्टी-चैनल TutorBot, Co-Writer, Guided Learning, स्थायी मेमोरी।
+> **[2026.3.24]** [v1.0.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0) — एजेंट-नेटिव रिफैक्टर, लचीला टूल इंटीग्रेशन, CLI व SDK प्रवेश, nanobot पर TutorBot, Co-Writer, Guided Learning, स्थायी मेमोरी।
 
 <details>
 <summary><b>पिछले रिलीज़</b></summary>
@@ -120,71 +116,6 @@ EMBEDDING_API_KEY=sk-xxx
 EMBEDDING_HOST=https://api.openai.com/v1
 EMBEDDING_DIMENSION=3072
 ```
-
-<details>
-<summary><b>समर्थित LLM प्रदाता</b></summary>
-
-| प्रदाता | Binding | डिफ़ॉल्ट Base URL |
-|:--|:--|:--|
-| AiHubMix | `aihubmix` | `https://aihubmix.com/v1` |
-| Anthropic | `anthropic` | `https://api.anthropic.com/v1` |
-| Azure OpenAI | `azure_openai` | — |
-| BytePlus | `byteplus` | `https://ark.ap-southeast.bytepluses.com/api/v3` |
-| BytePlus Coding Plan | `byteplus_coding_plan` | `https://ark.ap-southeast.bytepluses.com/api/coding/v3` |
-| Custom (OpenAI-compat) | `custom` | — |
-| DashScope (Qwen) | `dashscope` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
-| DeepSeek | `deepseek` | `https://api.deepseek.com` |
-| Gemini | `gemini` | `https://generativelanguage.googleapis.com/v1beta/openai/` |
-| GitHub Copilot | `github_copilot` | `https://api.githubcopilot.com` |
-| Groq | `groq` | `https://api.groq.com/openai/v1` |
-| MiniMax | `minimax` | `https://api.minimax.io/v1` |
-| Mistral | `mistral` | `https://api.mistral.ai/v1` |
-| Moonshot (Kimi) | `moonshot` | `https://api.moonshot.ai/v1` |
-| Ollama | `ollama` | `http://localhost:11434/v1` |
-| OpenAI | `openai` | `https://api.openai.com/v1` |
-| OpenAI Codex | `openai_codex` | `https://chatgpt.com/backend-api` |
-| OpenRouter | `openrouter` | `https://openrouter.ai/api/v1` |
-| OpenVINO Model Server | `ovms` | `http://localhost:8000/v3` |
-| Qianfan (Ernie) | `qianfan` | `https://qianfan.baidubce.com/v2` |
-| SiliconFlow | `siliconflow` | `https://api.siliconflow.cn/v1` |
-| Step Fun | `stepfun` | `https://api.stepfun.com/v1` |
-| vLLM | `vllm` | `http://localhost:8000/v1` |
-| VolcEngine | `volcengine` | `https://ark.cn-beijing.volces.com/api/v3` |
-| VolcEngine Coding Plan | `volcengine_coding_plan` | `https://ark.cn-beijing.volces.com/api/coding/v3` |
-| Xiaomi MIMO | `xiaomi_mimo` | `https://api.xiaomimimo.com/v1` |
-| Zhipu AI (GLM) | `zhipu` | `https://open.bigmodel.cn/api/paas/v4` |
-
-</details>
-
-<details>
-<summary><b>समर्थित एम्बेडिंग प्रदाता</b></summary>
-
-एम्बेडिंग के लिए LLM जैसी ही सूची। सामान्य उदाहरण:
-
-| प्रदाता | Binding | मॉडल उदाहरण |
-|:--|:--|:--|
-| OpenAI | `openai` | `text-embedding-3-large` |
-| DashScope | `dashscope` | `text-embedding-v3` |
-| Ollama | `ollama` | `nomic-embed-text` |
-| SiliconFlow | `siliconflow` | `BAAI/bge-m3` |
-| vLLM | `vllm` | कोई भी एम्बेडिंग मॉडल |
-| OpenAI-संगत | `custom` | — |
-
-</details>
-
-<details>
-<summary><b>समर्थित वेब खोज प्रदाता</b></summary>
-
-| प्रदाता | एन्व कुंजी | नोट |
-|:--|:--|:--|
-| Brave | `BRAVE_API_KEY` | अनुशंसित, मुफ़्त स्तर |
-| Tavily | `TAVILY_API_KEY` | |
-| Jina | `JINA_API_KEY` | |
-| SearXNG | — | सेल्फ-होस्ट, API कुंजी नहीं |
-| DuckDuckGo | — | API कुंजी नहीं |
-| Perplexity | `PERPLEXITY_API_KEY` | API कुंजी आवश्यक |
-
-</details>
 
 ```bash
 python -m deeptutor.api.run_server
@@ -407,7 +338,6 @@ deeptutor run deep_research "Attention mechanisms in transformers"
 
 ```bash
 deeptutor chat --capability deep_solve --kb my-kb
-# REPL में: /cap, /tool, /kb, /history, /notebook, /config से तुरंत बदलाव
 ```
 
 ```bash
@@ -430,87 +360,15 @@ deeptutor session open <id>
 <details>
 <summary><b>पूर्ण CLI संदर्भ</b></summary>
 
-**शीर्ष स्तर**
-
 | कमांड | विवरण |
 |:---|:---|
-| `deeptutor run <capability> <message>` | एक बार में क्षमता चलाएँ (`chat`, `deep_solve`, `deep_question`, `deep_research`, `math_animator`) |
-| `deeptutor chat` | इंटरैक्टिव REPL (`--capability`, `--tool`, `--kb`, `--language` आदि) |
-| `deeptutor serve` | DeepTutor API सर्वर शुरू करें |
+| `deeptutor run <capability> <message>` | एक पास |
+| `deeptutor chat` | REPL |
+| `deeptutor serve` | API सर्वर |
 
-**`deeptutor bot`**
-
-| कमांड | विवरण |
-|:---|:---|
-| `deeptutor bot list` | सभी TutorBot इंस्टेंस |
-| `deeptutor bot create <id>` | नया बॉट बनाएँ और चलाएँ (`--name`, `--persona`, `--model`) |
-| `deeptutor bot start <id>` | बॉट शुरू |
-| `deeptutor bot stop <id>` | बॉट रोकें |
-
-**`deeptutor kb`**
-
-| कमांड | विवरण |
-|:---|:---|
-| `deeptutor kb list` | नॉलेज बेस सूची |
-| `deeptutor kb info <name>` | विवरण |
-| `deeptutor kb create <name>` | दस्तावेज़ों से बनाएँ (`--doc`, `--docs-dir`) |
-| `deeptutor kb add <name>` | दस्तावेज़ जोड़ें |
-| `deeptutor kb search <name> <query>` | खोज |
-| `deeptutor kb set-default <name>` | डिफ़ॉल्ट KB |
-| `deeptutor kb delete <name>` | हटाएँ (`--force`) |
-
-**`deeptutor memory`**
-
-| कमांड | विवरण |
-|:---|:---|
-| `deeptutor memory show [file]` | देखें (`summary`, `profile`, `all`) |
-| `deeptutor memory clear [file]` | साफ़ करें (`--force`) |
-
-**`deeptutor session`**
-
-| कमांड | विवरण |
-|:---|:---|
-| `deeptutor session list` | सत्र सूची (`--limit`) |
-| `deeptutor session show <id>` | संदेश |
-| `deeptutor session open <id>` | REPL में जारी रखें |
-| `deeptutor session rename <id>` | नाम बदलें (`--title`) |
-| `deeptutor session delete <id>` | हटाएँ |
-
-**`deeptutor notebook`**
-
-| कमांड | विवरण |
-|:---|:---|
-| `deeptutor notebook list` | नोटबुक सूची |
-| `deeptutor notebook create <name>` | बनाएँ (`--description`) |
-| `deeptutor notebook show <id>` | रिकॉर्ड |
-| `deeptutor notebook add-md <id> <path>` | Markdown आयात |
-| `deeptutor notebook replace-md <id> <rec> <path>` | रिकॉर्ड बदलें |
-| `deeptutor notebook remove-record <id> <rec>` | रिकॉर्ड हटाएँ |
-
-**`deeptutor config` / `plugin` / `provider`**
-
-| कमांड | विवरण |
-|:---|:---|
-| `deeptutor config show` | कॉन्फ़िग सारांश |
-| `deeptutor plugin list` | पंजीकृत टूल और क्षमताएँ |
-| `deeptutor plugin info <name>` | टूल या क्षमता विवरण |
-| `deeptutor provider login <provider>` | OAuth (`openai-codex`, `github-copilot`) |
+**bot**, **kb**, **memory**, **session**, **notebook**, **config / plugin / provider** — अंग्रेज़ी README जैसा।
 
 </details>
-
-<a id="roadmap"></a>
-## 🗺️ रोडमैप
-
-| स्थिति | माइलस्टोन |
-|:---:|:---|
-| 🔜 | **प्रमाणीकरण व लॉगिन** — सार्वजनिक डिप्लॉय के लिए वैकल्पिक लॉगिन व बहु-उपयोगकर्ता |
-| 🔜 | **थीम व रूप** — विविध थीम व अनुकूलित UI |
-| 🔜 | **LightRAG एकीकरण** — [LightRAG](https://github.com/HKUDS/LightRAG) को उन्नत नॉलेज बेस इंजन के रूप में |
-| 🔜 | **दस्तावेज़ साइट** — गाइड, API संदर्भ व ट्यूटोरियल सहित पूर्ण दस्तावेज़ीकरण |
-
-> यदि DeepTutor उपयोगी लगे तो [स्टार दें](https://github.com/HKUDS/DeepTutor/stargazers) — हमें प्रोत्साहन मिलता है!
-
----
 
 <a id="community"></a>
 ## 🌐 समुदाय व पारिस्थितिकी तंत्र
@@ -528,9 +386,6 @@ deeptutor session open <id>
 ## 🤝 योगदान
 
 <div align="center">
-
-हम चाहते हैं कि DeepTutor समुदाय के लिए उपहार बने। 🎁
-
 <a href="https://github.com/HKUDS/DeepTutor/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=HKUDS/DeepTutor&max=999" alt="Contributors" />
 </a>

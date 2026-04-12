@@ -19,12 +19,6 @@ generate: |
   用户当前启用的工具：
   {available_tools}
 
-  对话上下文：
-  {history_context}
-
-  本次会话中已生成的题目（你的新题目必须与以下所有题目不同）：
-  {previous_questions}
-
   要求：
   - 严格对齐 template.concentration 与 template.difficulty。
   - 必须严格遵循 template.question_type，不要私自改题型。
@@ -38,7 +32,6 @@ generate: |
   - 给出清晰解释。
   - 在有帮助时使用知识上下文增强题目质量。
   - 可将启用工具列表视为能力提示，但不要在最终题目中直接提及工具名称。
-  - 不要生成与上面已生成题目相同或高度相似的题目。
 
   仅返回 JSON：
   {{

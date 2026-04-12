@@ -43,10 +43,10 @@ type ResearchStageCard = {
 };
 
 const RESEARCH_STAGE_SPECS: Array<Pick<ResearchStageCard, "id" | "title" | "hint">> = [
-  { id: "understand", title: "理解问题", hint: "先澄清主题与研究目标。" },
-  { id: "decompose", title: "拆解主题", hint: "把问题拆成可检索、可学习的子主题。" },
-  { id: "evidence", title: "检索证据", hint: "结合所选 sources 收集和整理证据。" },
-  { id: "result", title: "形成结果", hint: "把证据整理成最终输出。" },
+  { id: "understand", title: "Understand the Problem", hint: "Clarify topic and research goals first." },
+  { id: "decompose", title: "Decompose Topic", hint: "Break the topic into searchable and learnable subtopics." },
+  { id: "evidence", title: "Gather Evidence", hint: "Collect and organize evidence from selected sources." },
+  { id: "result", title: "Produce Result", hint: "Synthesize evidence into the final output." },
 ];
 
 type TraceItem = { callId: string; events: StreamEvent[] };
@@ -141,7 +141,7 @@ function isTracePending(events: StreamEvent[]) {
   return hasRunning && !hasTerminal;
 }
 
-function getTraceHeader(events: StreamEvent[], nowSeconds?: number, nested?: boolean, t: (key: string) => string = (k) => k) {
+function getTraceHeader(events: StreamEvent[], nowSeconds?: number, nested?: boolean) {
   const label = getTraceLabel(events);
   const role = getTraceRole(events);
   const group = getTraceGroup(events);
@@ -165,9 +165,9 @@ function getTraceHeader(events: StreamEvent[], nowSeconds?: number, nested?: boo
   ) {
     title = label;
   } else if (role === "retrieve") {
-    title = t("Retrieve");
+    title = "Retrieve";
   } else if (kind === "tool_planning") {
-    title = t("Tool call");
+    title = "Tool call";
   } else if (group === "react_round") {
     if (nested) {
       title = meta.round ? `Round ${meta.round}` : label;
@@ -177,13 +177,13 @@ function getTraceHeader(events: StreamEvent[], nowSeconds?: number, nested?: boo
       title = [step, round].filter(Boolean).join(" · ");
     }
   } else if (role === "plan" && kind === "llm_planning") {
-    title = t("Plan");
+    title = "Plan";
   } else if (role === "observe" || kind === "llm_observation") {
-    title = t("Observe");
+    title = "Observe";
   } else if (role === "response" || kind === "llm_final_response") {
-    title = t("Response");
+    title = "Response";
   } else if (role === "thought" || kind === "llm_reasoning") {
-    title = t("Thought");
+    title = "Thought";
   } else if (kind === "llm_generation") {
     if (/^generate\s+/i.test(label)) title = label.replace(/^generate\s+/i, "Generating ");
     else if (/^write\s+/i.test(label)) title = label.replace(/^write\s+/i, "Writing ");
@@ -634,7 +634,7 @@ export function CallTracePanel({
     const role = getTraceRole(callEvents);
     const group = getTraceGroup(callEvents);
     const kind = getTraceCallKind(callEvents);
-    const header = getTraceHeader(callEvents, nowSeconds, nested, t);
+    const header = getTraceHeader(callEvents, nowSeconds, nested);
     const active = Boolean(isStreaming) && isGloballyLast && isTracePending(callEvents);
     const isFinalResponse = kind === "llm_final_response";
 
@@ -797,7 +797,7 @@ export function CallTracePanel({
                     }
 
                     /* Non-round trace (retrieve, tool, etc.) — inline within the step */
-                    const inlineHeader = getTraceHeader(trace.events, nowSeconds, true, t);
+                    const inlineHeader = getTraceHeader(trace.events, nowSeconds, true);
                     const progressEvts = trace.events.filter(
                       (e) =>
                         e.type === "progress" &&

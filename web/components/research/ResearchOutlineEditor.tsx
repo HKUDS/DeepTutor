@@ -2,7 +2,6 @@
 
 import { useCallback, useState } from "react";
 import { Plus, Play, Trash2, Loader2, CheckCircle2 } from "lucide-react";
-import { useTranslation } from "react-i18next";
 import type { OutlineItem } from "@/lib/research-types";
 
 type OutlineStatus = "editing" | "researching" | "done";
@@ -20,7 +19,6 @@ export default function ResearchOutlineEditor({
   onConfirm,
   status: externalStatus,
 }: ResearchOutlineEditorProps) {
-  const { t } = useTranslation();
   const [items, setItems] = useState<OutlineItem[]>(initialOutline);
   const [localConfirmed, setLocalConfirmed] = useState(false);
 
@@ -60,7 +58,7 @@ export default function ResearchOutlineEditor({
       <div className="border-b border-[var(--border)]/20 px-4 py-2.5">
         <div className="flex items-center justify-between">
           <h3 className="text-[13px] font-semibold text-[var(--foreground)]">
-            {t("Research Outline")}
+            Research Outline
           </h3>
           {statusLabel && (
             <span className="flex items-center gap-1.5 text-[11px] text-[var(--muted-foreground)]/60">
@@ -107,13 +105,13 @@ export default function ResearchOutlineEditor({
                     type="text"
                     value={item.title ?? ""}
                     onChange={(e) => updateItem(index, "title", e.target.value)}
-                    placeholder={t("Sub-topic title...")}
+                    placeholder="Sub-topic title..."
                     className="w-full bg-transparent text-[12px] font-medium text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]/30"
                   />
                   <textarea
                     value={item.overview ?? ""}
                     onChange={(e) => updateItem(index, "overview", e.target.value)}
-                    placeholder={t("Research direction and focus...")}
+                    placeholder="Research direction and focus..."
                     rows={2}
                     className="w-full resize-none bg-transparent text-[11px] leading-relaxed text-[var(--muted-foreground)]/70 outline-none placeholder:text-[var(--muted-foreground)]/25"
                   />
@@ -141,7 +139,7 @@ export default function ResearchOutlineEditor({
             className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-[var(--muted-foreground)]/50 transition-colors hover:bg-[var(--muted-foreground)]/5 hover:text-[var(--muted-foreground)]/70"
           >
             <Plus size={12} />
-            {t("Add sub-topic")}
+            Add sub-topic
           </button>
           <button
             type="button"
@@ -150,7 +148,7 @@ export default function ResearchOutlineEditor({
             className="flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-[11px] font-medium text-[var(--primary-foreground)] transition-all hover:opacity-90 disabled:opacity-40"
           >
             <Play size={11} />
-            {t("Start Research")}
+            Start Research
           </button>
         </div>
       )}

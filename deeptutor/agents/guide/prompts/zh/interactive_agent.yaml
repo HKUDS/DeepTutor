@@ -25,4 +25,10 @@ user_template: |
   学习者可能遇到的困难：
   {user_difficulty}
 
+  课件生成硬性要求（必须满足）：
+  {generation_requirements}
+
+  结构化内容蓝图（优先按此展开）：
+  {content_blueprint}
+
   请基于以上内容生成一个可交互的 HTML 学习页面。

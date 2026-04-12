@@ -12,13 +12,6 @@ interface HTMLViewerProps {
   onOpenDebugModal: () => void;
 }
 
-/**
- * Regex that matches common LaTeX patterns NOT already wrapped in $..$ or $$..$$.
- * Used to detect bare LaTeX commands in text nodes.
- */
-const BARE_LATEX_RE =
-  /(?<![\\$])(?:\\(?:underbrace|mathbb|frac|text|sqrt|subseteq|supseteq|notsubset|mid|pmod|leq|geq|Rightarrow|Leftarrow|Rightarrow|neq|approx|infty|partial|nabla|forall|exists|emptyset|varnothing|in|notin|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega|vec|hat|bar|dot|tilde|overline|overbrace|boldsymbol|mathrm|mathit|mathbf|mathcal|mathfrak|mathscr|mathsf|mathtt|quad|qquad|ldots|cdots|vdots|ddots|prime|limits|sum|int|prod|oint|bigcup|bigcap|bigvee|bigwedge|bigoplus|bigotimes|binom|choose)[\s{])|\{[^}]*\\(?:underbrace|mathbb|frac|text|sqrt)/;
-
 export default function HTMLViewer({
   html,
   currentIndex,
@@ -60,100 +53,12 @@ export default function HTMLViewer({
     const timer = setTimeout(() => {
       if (htmlFrameRef.current) {
         const iframe = htmlFrameRef.current;
-        // Set srcdoc
         iframe.srcdoc = htmlWithKaTeX;
         lastWrittenRef.current = htmlWithKaTeX;
-
-        /**
-         * Fallback rendering strategy:
-         * 1. Wait for CDN scripts to load
-         * 2. Find text nodes with bare LaTeX (no $ wrapping)
-         * 3. Wrap them in $...$ delimiters
-         * 4. Call renderMathInElement to render everything
-         */
-        const fallbackDelays = [1500, 3000];
-        const fallbackTimers = fallbackDelays.map((delay) =>
-          setTimeout(() => {
-            try {
-              const doc = iframe.contentDocument;
-              if (!doc || !doc.body) return;
-              const win = doc.defaultView as Window & {
-                renderMathInElement?: (el: HTMLElement, opts: Record<string, unknown>) => void;
-              };
-              if (typeof win?.renderMathInElement !== "function") return;
-
-              let wrappedCount = 0;
-
-              // Step 1: Find text nodes with bare LaTeX and fix them
-              const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
-              const nodesToProcess: Text[] = [];
-              let node: Text | null;
-              while ((node = walker.nextNode() as Text | null)) {
-                // Skip if inside a .katex element (already rendered)
-                const parent = node.parentElement;
-                if (parent && parent.closest(".katex")) continue;
-
-                const text = node.textContent || "";
-                // Check for bare LaTeX patterns not already delimited
-                if (BARE_LATEX_RE.test(text) && !/^\$.*\$$/.test(text.trim())) {
-                  nodesToProcess.push(node);
-                }
-              }
-
-              // Process each bare LaTeX text node
-              for (const textNode of nodesToProcess) {
-                const originalText = textNode.textContent || "";
-                const trimmed = originalText.trim();
-                // Skip already-delimited content
-                if (
-                  trimmed.startsWith("$") ||
-                  trimmed.endsWith("$") ||
-                  trimmed.startsWith("\\(") ||
-                  trimmed.startsWith("\\[")
-                )
-                  continue;
-
-                // Wrap the entire text node content in $...$
-                // KaTeX handles non-math parts gracefully (renders them as \text{})
-                const span = doc.createElement("span");
-                span.textContent = `$${originalText}$`;
-                textNode.parentNode?.replaceChild(span, textNode);
-                wrappedCount++;
-              }
-
-              // Step 2: Render all math (including newly wrapped)
-              win.renderMathInElement(doc.body, {
-                delimiters: [
-                  { left: "$$", right: "$$", display: true },
-                  { left: "$", right: "$", display: false },
-                  { left: "\\(", right: "\\)", display: false },
-                  { left: "\\[", right: "\\]", display: true },
-                ],
-                throwOnError: false,
-              });
-
-              if (wrappedCount > 0) {
-                console.log(`[KaTeX] Auto-wrapped ${wrappedCount} bare LaTeX nodes`);
-              }
-            } catch (_e) {
-              // Silently ignore fallback errors
-            }
-          }, delay),
-        );
-
-        // Store cleanup refs
-        (iframe as unknown as Record<string, unknown>).__fallbackTimers = fallbackTimers;
       }
     }, 100);
 
-    return () => {
-      clearTimeout(timer);
-      // Clear any pending fallback timers from previous render
-      const prev = htmlFrameRef.current as unknown as Record<string, unknown> | null;
-      if (prev?.__fallbackTimers) {
-        (prev.__fallbackTimers as ReturnType<typeof setTimeout>[]).forEach(clearTimeout);
-      }
-    };
+    return () => clearTimeout(timer);
   }, [html, currentIndex, injectKaTeX]);
 
   if (!html) {

@@ -2,30 +2,28 @@
 
 <img src="../../assets/logo-ver2.png" alt="DeepTutor" width="140" style="border-radius: 15px;">
 
-# DeepTutor: tutoria personalizada nativa para agentes
-
-<a href="https://trendshift.io/repositories/17099" target="_blank"><img src="https://trendshift.io/api/badge/repositories/17099" alt="HKUDS%2FDeepTutor | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+# DeepTutor: Rumo a um tutorado personalizado baseado em agentes
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
-[![arXiv](https://img.shields.io/badge/arXiv-Coming_Soon-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](#)
+[![GitHub last commit](https://img.shields.io/github/last-commit/HKUDS/DeepTutor?style=flat-square)](https://github.com/HKUDS/DeepTutor/commits)
 
 [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t)
 [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md)
 [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
 
-[Recursos](#key-features) · [Começar](#get-started) · [Explorar](#explore-deeptutor) · [TutorBot](#tutorbot) · [CLI](#deeptutor-cli-guide) · [Roteiro](#roadmap) · [Comunidade](#community)
+[Recursos](#key-features) · [Começar](#get-started) · [Explorar](#explore-deeptutor) · [TutorBot](#tutorbot) · [CLI](#deeptutor-cli-guide) · [Comunidade](#community)
 
-[🇬🇧 English](../../README.md) · [🇨🇳 中文](README_CN.md) · [🇯🇵 日本語](README_JA.md) · [🇪🇸 Español](README_ES.md) · [🇫🇷 Français](README_FR.md) · [🇸🇦 العربية](README_AR.md) · [🇷🇺 Русский](README_RU.md) · [🇮🇳 हिन्दी](README_HI.md) · [🇵🇹 Português](README_PT.md)
+[🇬🇧 English](../../README.md) · [🇨🇳 中文](README_CN.md) · [🇯🇵 日本語](README_JA.md) · [🇪🇸 Español](README_ES.md) · [🇫🇷 Français](README_FR.md) · [🇸🇦 العربية](README_AR.md) · [🇷🇺 Русский](README_RU.md) · [🇮🇳 हिन्दी](README_HI.md)
 
 </div>
 
 ---
 ### 📰 Notícias
 
-> **[2026.4.4]** Há quanto tempo! ✨ DeepTutor v1.0.0 chegou — evolução nativa de agentes com reescrita da arquitetura do zero, TutorBot e modos flexíveis sob Apache-2.0. Um novo capítulo começa!
+> **[2026.3.24]** DeepTutor v1.0.0 chegou ✨ — evolução nativa de agentes: refactor leve, TutorBot e modos flexíveis sob Apache-2.0.
 
 > **[2026.2.6]** 🚀 10k estrelas em 39 dias — obrigado à comunidade!
 
@@ -35,9 +33,7 @@
 
 ### 📦 Lançamentos
 
-> **[2026.4.7]** [v1.0.0-beta.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0-beta.2) — Invalidação de cache em tempo de execução para recarregar ajustes a quente, saída aninhada MinerU, correção do WebSocket mimic, mínimo Python 3.11+ e melhorias de CI.
-
-> **[2026.4.4]** [v1.0.0-beta.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0-beta.1) — Reescrita nativa de agentes (DeepTutor 2.0): modelo de plugins em duas camadas (Tools + Capabilities), entradas CLI e SDK, TutorBot multicanal, Co-Writer, aprendizado guiado e memória persistente.
+> **[2026.3.24]** [v1.0.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0) — Refatoração nativa de agentes, integração flexível de ferramentas, entradas CLI e SDK, TutorBot com nanobot, Co-Writer, aprendizado guiado e memória persistente.
 
 <details>
 <summary><b>Lançamentos anteriores</b></summary>
@@ -120,71 +116,6 @@ EMBEDDING_API_KEY=sk-xxx
 EMBEDDING_HOST=https://api.openai.com/v1
 EMBEDDING_DIMENSION=3072
 ```
-
-<details>
-<summary><b>Provedores LLM suportados</b></summary>
-
-| Provedor | Binding | URL base padrão |
-|:--|:--|:--|
-| AiHubMix | `aihubmix` | `https://aihubmix.com/v1` |
-| Anthropic | `anthropic` | `https://api.anthropic.com/v1` |
-| Azure OpenAI | `azure_openai` | — |
-| BytePlus | `byteplus` | `https://ark.ap-southeast.bytepluses.com/api/v3` |
-| BytePlus Coding Plan | `byteplus_coding_plan` | `https://ark.ap-southeast.bytepluses.com/api/coding/v3` |
-| Custom (OpenAI-compat) | `custom` | — |
-| DashScope (Qwen) | `dashscope` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
-| DeepSeek | `deepseek` | `https://api.deepseek.com` |
-| Gemini | `gemini` | `https://generativelanguage.googleapis.com/v1beta/openai/` |
-| GitHub Copilot | `github_copilot` | `https://api.githubcopilot.com` |
-| Groq | `groq` | `https://api.groq.com/openai/v1` |
-| MiniMax | `minimax` | `https://api.minimax.io/v1` |
-| Mistral | `mistral` | `https://api.mistral.ai/v1` |
-| Moonshot (Kimi) | `moonshot` | `https://api.moonshot.ai/v1` |
-| Ollama | `ollama` | `http://localhost:11434/v1` |
-| OpenAI | `openai` | `https://api.openai.com/v1` |
-| OpenAI Codex | `openai_codex` | `https://chatgpt.com/backend-api` |
-| OpenRouter | `openrouter` | `https://openrouter.ai/api/v1` |
-| OpenVINO Model Server | `ovms` | `http://localhost:8000/v3` |
-| Qianfan (Ernie) | `qianfan` | `https://qianfan.baidubce.com/v2` |
-| SiliconFlow | `siliconflow` | `https://api.siliconflow.cn/v1` |
-| Step Fun | `stepfun` | `https://api.stepfun.com/v1` |
-| vLLM | `vllm` | `http://localhost:8000/v1` |
-| VolcEngine | `volcengine` | `https://ark.cn-beijing.volces.com/api/v3` |
-| VolcEngine Coding Plan | `volcengine_coding_plan` | `https://ark.cn-beijing.volces.com/api/coding/v3` |
-| Xiaomi MIMO | `xiaomi_mimo` | `https://api.xiaomimimo.com/v1` |
-| Zhipu AI (GLM) | `zhipu` | `https://open.bigmodel.cn/api/paas/v4` |
-
-</details>
-
-<details>
-<summary><b>Provedores de embedding suportados</b></summary>
-
-Os embeddings usam a mesma lista dos LLM. Exemplos comuns:
-
-| Provedor | Binding | Exemplo de modelo |
-|:--|:--|:--|
-| OpenAI | `openai` | `text-embedding-3-large` |
-| DashScope | `dashscope` | `text-embedding-v3` |
-| Ollama | `ollama` | `nomic-embed-text` |
-| SiliconFlow | `siliconflow` | `BAAI/bge-m3` |
-| vLLM | `vllm` | Qualquer modelo de embedding |
-| Compatível OpenAI | `custom` | — |
-
-</details>
-
-<details>
-<summary><b>Provedores de busca web suportados</b></summary>
-
-| Provedor | Variável de ambiente | Notas |
-|:--|:--|:--|
-| Brave | `BRAVE_API_KEY` | Recomendado, há nível gratuito |
-| Tavily | `TAVILY_API_KEY` | |
-| Jina | `JINA_API_KEY` | |
-| SearXNG | — | Auto-hospedado, sem chave API |
-| DuckDuckGo | — | Sem chave API |
-| Perplexity | `PERPLEXITY_API_KEY` | Requer chave API |
-
-</details>
 
 ```bash
 python -m deeptutor.api.run_server
@@ -407,7 +338,6 @@ deeptutor run deep_research "Attention mechanisms in transformers"
 
 ```bash
 deeptutor chat --capability deep_solve --kb my-kb
-# No REPL: /cap, /tool, /kb, /history, /notebook, /config para alternar em tempo real
 ```
 
 ```bash
@@ -430,87 +360,15 @@ deeptutor session open <id>
 <details>
 <summary><b>Referência completa da CLI</b></summary>
 
-**Nível superior**
-
 | Comando | Descrição |
 |:---|:---|
-| `deeptutor run <capability> <message>` | Executa uma capacidade em um turno (`chat`, `deep_solve`, `deep_question`, `deep_research`, `math_animator`) |
-| `deeptutor chat` | REPL interativo com `--capability`, `--tool`, `--kb`, `--language`, etc. |
-| `deeptutor serve` | Inicia o servidor API do DeepTutor |
+| `deeptutor run <capability> <message>` | Uma passagem |
+| `deeptutor chat` | REPL |
+| `deeptutor serve` | Servidor API |
 
-**`deeptutor bot`**
-
-| Comando | Descrição |
-|:---|:---|
-| `deeptutor bot list` | Lista instâncias do TutorBot |
-| `deeptutor bot create <id>` | Cria e inicia um bot (`--name`, `--persona`, `--model`) |
-| `deeptutor bot start <id>` | Inicia um bot |
-| `deeptutor bot stop <id>` | Para um bot |
-
-**`deeptutor kb`**
-
-| Comando | Descrição |
-|:---|:---|
-| `deeptutor kb list` | Lista bases de conhecimento |
-| `deeptutor kb info <name>` | Detalhes da base |
-| `deeptutor kb create <name>` | Cria a partir de documentos (`--doc`, `--docs-dir`) |
-| `deeptutor kb add <name>` | Adiciona documentos |
-| `deeptutor kb search <name> <query>` | Busca na base |
-| `deeptutor kb set-default <name>` | Define KB padrão |
-| `deeptutor kb delete <name>` | Remove (`--force`) |
-
-**`deeptutor memory`**
-
-| Comando | Descrição |
-|:---|:---|
-| `deeptutor memory show [file]` | Ver (`summary`, `profile`, `all`) |
-| `deeptutor memory clear [file]` | Limpar (`--force`) |
-
-**`deeptutor session`**
-
-| Comando | Descrição |
-|:---|:---|
-| `deeptutor session list` | Lista sessões (`--limit`) |
-| `deeptutor session show <id>` | Mensagens da sessão |
-| `deeptutor session open <id>` | Retomar no REPL |
-| `deeptutor session rename <id>` | Renomear (`--title`) |
-| `deeptutor session delete <id>` | Excluir |
-
-**`deeptutor notebook`**
-
-| Comando | Descrição |
-|:---|:---|
-| `deeptutor notebook list` | Lista cadernos |
-| `deeptutor notebook create <name>` | Criar (`--description`) |
-| `deeptutor notebook show <id>` | Registros |
-| `deeptutor notebook add-md <id> <path>` | Importar Markdown |
-| `deeptutor notebook replace-md <id> <rec> <path>` | Substituir registro |
-| `deeptutor notebook remove-record <id> <rec>` | Remover registro |
-
-**`deeptutor config` / `plugin` / `provider`**
-
-| Comando | Descrição |
-|:---|:---|
-| `deeptutor config show` | Resumo da configuração |
-| `deeptutor plugin list` | Ferramentas e capacidades registradas |
-| `deeptutor plugin info <name>` | Detalhe de ferramenta ou capacidade |
-| `deeptutor provider login <provider>` | OAuth (`openai-codex`, `github-copilot`) |
+**bot**, **kb**, **memory**, **session**, **notebook**, **config / plugin / provider** — como no README em inglês.
 
 </details>
-
-<a id="roadmap"></a>
-## 🗺️ Roteiro
-
-| Status | Marco |
-|:---:|:---|
-| 🔜 | **Autenticação e login** — Página de login opcional para implantações públicas com multiusuário |
-| 🔜 | **Temas e aparência** — Mais temas e personalização da interface |
-| 🔜 | **Integração LightRAG** — Integrar [LightRAG](https://github.com/HKUDS/LightRAG) como motor avançado de bases de conhecimento |
-| 🔜 | **Site de documentação** — Documentação completa com guias, referência de API e tutoriais |
-
-> Se o DeepTutor for útil para você, [dê uma estrela](https://github.com/HKUDS/DeepTutor/stargazers) — isso nos ajuda a continuar!
-
----
 
 <a id="community"></a>
 ## 🌐 Comunidade e ecossistema
@@ -528,9 +386,6 @@ deeptutor session open <id>
 ## 🤝 Contribuir
 
 <div align="center">
-
-Esperamos que o DeepTutor seja um presente para a comunidade. 🎁
-
 <a href="https://github.com/HKUDS/DeepTutor/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=HKUDS/DeepTutor&max=999" alt="Contributors" />
 </a>

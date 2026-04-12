@@ -20,7 +20,7 @@ class ChatState:
     capability: str = "chat"
     tools: list[str] = field(default_factory=list)
     knowledge_bases: list[str] = field(default_factory=list)
-    language: str = "en"
+    language: str = "zh"
     notebook_references: list[dict[str, Any]] = field(default_factory=list)
     history_references: list[str] = field(default_factory=list)
     config: dict[str, Any] = field(default_factory=dict)
@@ -30,15 +30,15 @@ def register(app: typer.Typer) -> None:
     @app.callback(invoke_without_command=True)
     def chat(
         ctx: typer.Context,
-        session: str | None = typer.Option(None, "--session", help="Resume an existing session."),
-        tool: list[str] = typer.Option([], "--tool", "-t", help="Pre-enable tool(s)."),
-        capability: str = typer.Option("chat", "--capability", "-c", help="Initial capability."),
-        kb: list[str] = typer.Option([], "--kb", help="Pre-attach knowledge base(s)."),
-        notebook_ref: list[str] = typer.Option([], "--notebook-ref", help="Notebook references."),
-        history_ref: list[str] = typer.Option([], "--history-ref", help="Referenced session ids."),
-        language: str = typer.Option("en", "--language", "-l", help="Response language."),
+        session: str | None = typer.Option(None, "--session", help="继续已有会话。"),
+        tool: list[str] = typer.Option([], "--tool", "-t", help="预先启用工具。"),
+        capability: str = typer.Option("chat", "--capability", "-c", help="初始能力。"),
+        kb: list[str] = typer.Option([], "--kb", help="预关联知识库。"),
+        notebook_ref: list[str] = typer.Option([], "--notebook-ref", help="笔记本引用。"),
+        history_ref: list[str] = typer.Option([], "--history-ref", help="引用的会话 ID。"),
+        language: str = typer.Option("zh", "--language", "-l", help="响应语言。"),
     ) -> None:
-        """Enter interactive chat REPL. Use `deeptutor run` for single-turn execution."""
+        """进入交互式聊天 REPL。单轮执行请使用 `deeptutor run`。"""
         if ctx.invoked_subcommand is not None:
             return
 
@@ -59,7 +59,7 @@ async def _chat_repl(state: ChatState) -> None:
     if state.session_id:
         existing = await client.get_session(state.session_id)
         if existing is None:
-            console.print(f"[red]Session not found:[/] {state.session_id}")
+            console.print(f"[red]未找到会话：[/] {state.session_id}")
             raise typer.Exit(code=1)
         preferences = existing.get("preferences", {}) or {}
         state.capability = str(preferences.get("capability") or state.capability or "chat")
@@ -76,7 +76,7 @@ async def _chat_repl(state: ChatState) -> None:
     console.print(
         Panel(
             "[bold]DeepTutor CLI[/]\n"
-            "Type a message to chat. Commands:\n"
+            "输入消息开始聊天。命令：\n"
             "  /quit  /session  /new\n"
             "  /tool on|off <name>\n"
             "  /cap <name>\n"
@@ -84,14 +84,14 @@ async def _chat_repl(state: ChatState) -> None:
             "  /history add <id> | /history clear\n"
             "  /notebook add <ref> | /notebook clear\n"
             "  /refs  /config show|set|clear",
-            title="deeptutor chat",
+            title="deeptutor 聊天",
         )
     )
     _print_state(state)
 
     while True:
         try:
-            user_input = console.input("[bold green]You>[/] ").strip()
+            user_input = console.input("[bold green]你>[/] ").strip()
         except (EOFError, KeyboardInterrupt):
             console.print()
             break
@@ -125,11 +125,11 @@ def _apply_command(raw: str, state: ChatState) -> bool:
     if command == "/quit":
         return False
     if command == "/session":
-        console.print(f"session={state.session_id or '(new)'}")
+        console.print(f"session={state.session_id or '(新建)'}")
         return True
     if command == "/new":
         state.session_id = None
-        console.print("[dim]Started a new chat context.[/]")
+        console.print("[dim]已开始新的聊天上下文。[/]")
         return True
     if command == "/refs":
         _print_state(state)
@@ -178,14 +178,14 @@ def _apply_command(raw: str, state: ChatState) -> bool:
         _print_state(state)
         return True
 
-    console.print("[dim]Unknown command.[/]")
+    console.print("[dim]未知命令。[/]")
     return True
 
 
 def _print_state(state: ChatState) -> None:
     console.print(
         "[dim]"
-        f"session={state.session_id or '(new)'} "
+        f"session={state.session_id or '(新建)'} "
         f"capability={state.capability} "
         f"tools={state.tools or '[]'} "
         f"kb={state.knowledge_bases or '[]'} "

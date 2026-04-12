@@ -2,13 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  CalendarRange,
   BookOpen,
+  Flag,
+  LineChart,
   ChevronRight,
   ChevronLeft,
   ArrowRight,
   Loader2,
   Sparkles,
+  Target,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import "katex/dist/katex.min.css";
 
 import type { SelectedRecord } from "./types";
@@ -34,6 +39,7 @@ export default function GuidePage() {
     chatMessages,
     isLoading,
     loadingMessage,
+    sessionError,
     canStart,
     isCompleted,
     readyCount,
@@ -69,6 +75,13 @@ export default function GuidePage() {
   const leftWidthPercent = sidebarCollapsed ? 0 : sidebarWide ? 75 : 25;
   const rightWidthPercent = sidebarCollapsed ? 100 : sidebarWide ? 25 : 75;
   const isIdle = sessionState.status === "idle";
+  const totalPoints = sessionState.knowledge_points.length;
+  const statusLabelMap: Record<string, string> = {
+    idle: t("Idle"),
+    initialized: t("Initialized"),
+    learning: t("Learning"),
+    completed: t("Completed"),
+  };
   const currentSessionKey = sessionState.session_id || "__guide__";
   const showingSummary =
     sessionState.status === "completed" &&
@@ -108,7 +121,7 @@ export default function GuidePage() {
     if (sessionState.status === "idle" || !sessionState.session_id) return null;
     return {
       recordType: "guided_learning" as const,
-      title: sessionState.topic || "Guided Learning Session",
+      title: sessionState.topic || t("Guided Learning"),
       userQuery: sessionState.topic || "",
       output: JSON.stringify(
         {
@@ -129,7 +142,7 @@ export default function GuidePage() {
         session_id: sessionState.session_id,
       },
     };
-  }, [sessionState]);
+  }, [sessionState, t]);
 
   const handleCreateSession = () => {
     createSession(topicInput, notebookReferencesPayload);
@@ -158,10 +171,36 @@ export default function GuidePage() {
   }, [loadSession]);
 
   return (
-    <div className="h-screen flex gap-0 p-4 animate-fade-in relative">
+    <div className="h-screen overflow-y-auto bg-[radial-gradient(circle_at_top_left,_rgba(195,90,44,0.14),_transparent_28%),linear-gradient(180deg,_rgba(255,255,255,0.3),_transparent_40%)] px-6 py-8 animate-fade-in">
+      <div className="mx-auto flex max-w-7xl flex-col gap-5">
+      <section className="surface-card overflow-hidden border-0 bg-[linear-gradient(135deg,#fff7f0_0%,#f8f1e6_52%,#f4efe8_100%)]">
+        <div className="grid gap-6 px-6 py-7 md:grid-cols-[1.3fr_0.9fr] md:px-8">
+          <div className="space-y-4">
+            <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-[var(--primary)] shadow-sm">
+              <Sparkles className="h-3.5 w-3.5" />
+              {t("Guided Learning")}
+            </div>
+            <h1 className="max-w-3xl text-3xl font-semibold tracking-tight text-[var(--foreground)] md:text-4xl">
+              {t("从概念到理解闭环，逐步构建可迁移的知识结构。")}
+            </h1>
+            <p className="max-w-2xl text-sm leading-7 text-[var(--muted-foreground)] md:text-base">
+              {t("引导式学习强调概念拆解、原理解释与交互式课件学习，适合从0到1建立系统理解，再衔接备考式学习做提分训练。")}
+            </p>
+          </div>
+
+          <div className="grid gap-3 rounded-[28px] border border-white/70 bg-white/80 p-5 shadow-[0_18px_60px_rgba(195,90,44,0.08)] backdrop-blur">
+            <Metric icon={Target} label={t("知识点数量")} value={String(totalPoints)} />
+            <Metric icon={CalendarRange} label={t("已就绪页面")} value={`${readyCount}/${Math.max(totalPoints, 1)}`} />
+            <Metric icon={LineChart} label={t("学习状态")} value={statusLabelMap[sessionState.status] || sessionState.status} />
+            <Metric icon={Flag} label={t("当前会话")} value={sessionState.session_id || t("尚未创建")} />
+          </div>
+        </div>
+      </section>
+
+      <div className="flex gap-4">
       {/* LEFT PANEL */}
       <div
-        className={`flex flex-col gap-3 h-full transition-all duration-300 flex-shrink-0 mr-4 ${sidebarCollapsed ? "overflow-hidden" : ""}`}
+        className={`flex flex-col gap-3 h-[calc(100vh-4rem)] transition-all duration-300 flex-shrink-0 ${sidebarCollapsed ? "overflow-hidden" : ""}`}
         style={{
           width: sidebarCollapsed ? 0 : `${leftWidthPercent}%`,
           minWidth: sidebarCollapsed
@@ -171,13 +210,13 @@ export default function GuidePage() {
         }}
       >
         {isIdle ? (
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden">
-            <div className="p-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
-              <h2 className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          <div className="surface-card overflow-hidden border-0 bg-[linear-gradient(135deg,#fff7f0_0%,#f8f1e6_52%,#f4efe8_100%)]">
+            <div className="border-b border-white/70 bg-white/55 p-4">
+              <h2 className="flex items-center gap-2 text-base font-semibold text-[var(--foreground)]">
+                <Sparkles className="h-5 w-5 text-[var(--primary)]" />
                 {t("Describe what you want to learn")}
               </h2>
-              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              <p className="mt-2 text-sm text-[var(--muted-foreground)]">
                 {t(
                   "Write a short learning request, and the system will design a progressive guided learning plan for you.",
                 )}
@@ -192,22 +231,22 @@ export default function GuidePage() {
                   "For example: Teach me linear algebra from the basics, with intuition, key formulas, and common mistakes.",
                 )}
                 rows={8}
-                className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-indigo-900/40"
+                className="w-full resize-none rounded-xl border bg-[var(--card)] px-4 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/10"
               />
 
-              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-700 dark:bg-slate-900/50">
+              <div className="rounded-xl border bg-white/80 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                    <div className="text-sm font-medium text-[var(--foreground)]">
                       {t("Notebook Context")}
                     </div>
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    <p className="mt-1 text-xs text-[var(--muted-foreground)]">
                       {t("Optionally ground the learning plan with saved notebook records.")}
                     </p>
                   </div>
                   <button
                     onClick={() => setShowNotebookPicker(true)}
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
+                    className="inline-flex items-center gap-2 rounded-lg border bg-[var(--card)] px-3 py-2 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--secondary)]"
                   >
                     <BookOpen className="h-4 w-4" />
                     {t("Select Records")}
@@ -218,7 +257,7 @@ export default function GuidePage() {
                     {notebookReferenceGroups.map((group) => (
                       <span
                         key={group.notebookId}
-                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                        className="inline-flex items-center gap-2 rounded-full border bg-[var(--card)] px-3 py-1 text-[11px] text-[var(--foreground)]"
                       >
                         {group.notebookName} ({group.count})
                       </span>
@@ -230,7 +269,7 @@ export default function GuidePage() {
               <button
                 onClick={handleCreateSession}
                 disabled={isLoading || !topicInput.trim()}
-                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isLoading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -239,6 +278,11 @@ export default function GuidePage() {
                 )}
                 {t("Generate learning plan")}
               </button>
+              {sessionError ? (
+                <div className="rounded-xl border border-[var(--destructive)]/20 bg-[var(--destructive)]/5 px-3 py-2 text-xs text-[var(--destructive)]">
+                  {sessionError}
+                </div>
+              ) : null}
             </div>
           </div>
         ) : (
@@ -246,7 +290,7 @@ export default function GuidePage() {
             <div className="flex items-center justify-end">
               <button
                 onClick={() => setShowSaveModal(true)}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                className="inline-flex items-center gap-2 rounded-xl border bg-[var(--card)] px-3 py-2 text-sm font-medium text-[var(--foreground)] transition hover:bg-[var(--secondary)]"
               >
                 <BookOpen className="h-4 w-4" />
                 {t("Add to Notebook")}
@@ -282,7 +326,7 @@ export default function GuidePage() {
 
       {/* RIGHT PANEL */}
       <div
-        className="flex flex-col h-full overflow-hidden transition-all duration-300 flex-1 relative"
+        className="relative flex h-[calc(100vh-4rem)] flex-1 flex-col overflow-hidden transition-all duration-300"
         style={{ width: `${rightWidthPercent}%` }}
       >
         {/* Collapse/Expand buttons */}
@@ -290,21 +334,21 @@ export default function GuidePage() {
           <div className="absolute top-4 left-4 z-20 flex gap-2">
             <button
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all"
+              className="rounded-lg border bg-white/90 p-2 shadow-sm transition-all hover:bg-[var(--secondary)]"
               title={
                 sidebarCollapsed ? t("Expand sidebar") : t("Collapse sidebar")
               }
             >
               {sidebarCollapsed ? (
-                <ChevronRight className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                <ChevronRight className="h-4 w-4 text-[var(--muted-foreground)]" />
               ) : (
-                <ChevronLeft className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                <ChevronLeft className="h-4 w-4 text-[var(--muted-foreground)]" />
               )}
             </button>
             {!sidebarCollapsed && (
               <button
                 onClick={() => setSidebarWide(!sidebarWide)}
-                className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-all"
+                className="rounded-lg border bg-white/90 p-2 shadow-sm transition-all hover:bg-[var(--secondary)]"
                 title={
                   sidebarWide
                     ? t("Switch to narrow sidebar (1:3)")
@@ -312,7 +356,7 @@ export default function GuidePage() {
                 }
               >
                 <ArrowRight
-                  className={`w-4 h-4 text-slate-600 dark:text-slate-300 transition-transform ${sidebarWide ? "rotate-180" : ""}`}
+                  className={`h-4 w-4 text-[var(--muted-foreground)] transition-transform ${sidebarWide ? "rotate-180" : ""}`}
                 />
               </button>
             )}
@@ -320,7 +364,7 @@ export default function GuidePage() {
         )}
 
         {isIdle ? (
-          <div className="flex-1 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden">
+          <div className="surface-card flex flex-1 flex-col overflow-hidden">
             <SessionHistoryList
               sessions={sessions}
               loading={historyLoading}
@@ -387,10 +431,20 @@ export default function GuidePage() {
                   }
                   onOpenDebugModal={() => setShowDebugModal(true)}
                 />
+              ) : sessionState.status === "initialized" ? (
+                <div className="flex h-full flex-col items-center justify-center rounded-b-2xl border border-t-0 bg-white/90 p-8 text-center">
+                  <Sparkles className="mb-4 h-10 w-10 text-[var(--primary)]" />
+                  <p className="text-base font-medium text-[var(--foreground)]">
+                    {t("Plan created successfully.")}
+                  </p>
+                  <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+                    {t("Click Start to generate interactive pages.")}
+                  </p>
+                </div>
               ) : (
-                <div className="h-full bg-white dark:bg-slate-800 rounded-b-2xl border border-t-0 border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center text-slate-300 dark:text-slate-600 p-8">
-                  <Loader2 className="w-12 h-12 text-indigo-400 dark:text-indigo-500 animate-spin mb-4" />
-                  <p className="text-slate-500 dark:text-slate-400">
+                <div className="flex h-full flex-col items-center justify-center rounded-b-2xl border border-t-0 bg-white/90 p-8 text-[var(--muted-foreground)]">
+                  <Loader2 className="mb-4 h-12 w-12 animate-spin text-[var(--primary)]/70" />
+                  <p className="text-[var(--muted-foreground)]">
                     {loadingMessage || t("Loading learning content...")}
                   </p>
                 </div>
@@ -415,6 +469,30 @@ export default function GuidePage() {
         payload={guideSavePayload}
         onClose={() => setShowSaveModal(false)}
       />
+      </div>
+      </div>
+    </div>
+  );
+}
+
+function Metric({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-[var(--border)]/80 bg-[var(--card)]/90 px-4 py-3">
+      <div className="rounded-full bg-[var(--secondary)] p-2 text-[var(--primary)]">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0">
+        <div className="text-xs text-[var(--muted-foreground)]">{label}</div>
+        <div className="truncate text-2xl font-semibold leading-none text-[var(--foreground)] mt-1">{value}</div>
+      </div>
     </div>
   );
 }

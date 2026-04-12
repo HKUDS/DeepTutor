@@ -14,12 +14,14 @@ from deeptutor.agents.guide.guide_manager import GuideManager
 from deeptutor.api.utils.task_id_manager import TaskIDManager
 from deeptutor.logging import get_logger
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
+from deeptutor.services.config import parse_language
 from deeptutor.services.llm import get_llm_config
 from deeptutor.services.notebook import notebook_manager
 from deeptutor.services.settings.interface_settings import get_ui_language
 
 router = APIRouter()
 _guide_manager: GuideManager | None = None
+_guide_manager_language: str | None = None
 
 # Initialize logger with config
 config = load_config_with_main("main.yaml", PROJECT_ROOT)
@@ -37,6 +39,7 @@ class CreateSessionRequest(BaseModel):
     notebook_id: str | None = None  # Optional, single notebook mode
     records: list[dict] | None = None  # Optional, cross-notebook mode with direct records
     notebook_references: list[dict] | None = None
+    language: str | None = None
 
 
 class ChatRequest(BaseModel):
@@ -77,10 +80,15 @@ class RetryPageRequest(BaseModel):
 # === Helper Functions ===
 
 
-def get_guide_manager():
+def get_guide_manager(language: str | None = None):
     """Get GuideManager instance"""
-    global _guide_manager
-    if _guide_manager is not None:
+    global _guide_manager, _guide_manager_language
+    requested_language = parse_language(language) if language else None
+
+    if (
+        _guide_manager is not None
+        and (requested_language is None or requested_language == _guide_manager_language)
+    ):
         return _guide_manager
 
     try:
@@ -92,7 +100,10 @@ def get_guide_manager():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM config error: {e!s}")
 
-    ui_language = get_ui_language(default=config.get("system", {}).get("language", "en"))
+    ui_language = requested_language or get_ui_language(
+        default=config.get("system", {}).get("language", "zh")
+    )
+    ui_language = parse_language(ui_language)
     _guide_manager = GuideManager(
         api_key=api_key,
         base_url=base_url,
@@ -100,6 +111,7 @@ def get_guide_manager():
         language=ui_language,
         binding=binding,
     )  # Read from config file
+    _guide_manager_language = ui_language
     return _guide_manager
 
 
@@ -149,10 +161,13 @@ async def create_session(request: CreateSessionRequest):
 
         raw_user_input = user_input
         notebook_context = ""
+        requested_language = parse_language(request.language) if request.language else None
         if request.notebook_references:
             selected_records = notebook_manager.get_records_by_references(request.notebook_references)
             if selected_records:
-                analysis_agent = NotebookAnalysisAgent(language=get_ui_language(default="en"))
+                analysis_agent = NotebookAnalysisAgent(
+                    language=requested_language or get_ui_language(default="zh")
+                )
                 notebook_context = await analysis_agent.analyze(
                     user_question=raw_user_input,
                     records=selected_records,
@@ -165,7 +180,7 @@ async def create_session(request: CreateSessionRequest):
         # Reset LLM stats for new session
         BaseAgent.reset_stats("guide")
 
-        manager = get_guide_manager()
+        manager = get_guide_manager(requested_language)
         result = await manager.create_session(
             user_input=user_input,
             display_title=raw_user_input,

@@ -4,20 +4,22 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import {
   BookOpen,
   Bot,
   Brain,
   GraduationCap,
+  ListTodo,
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
   PenLine,
   Plus,
+  Search,
   Settings,
   type LucideIcon,
 } from "lucide-react";
-import { useTranslation } from "react-i18next";
 import SessionList from "@/components/SessionList";
 import { TutorBotRecent } from "@/components/sidebar/TutorBotRecent";
 import type { SessionSummary } from "@/lib/session-api";
@@ -33,6 +35,8 @@ const PRIMARY_NAV: NavEntry[] = [
   { href: "/agents", label: "TutorBot", icon: Bot },
   { href: "/co-writer", label: "Co-Writer", icon: PenLine },
   { href: "/guide", label: "Guided Learning", icon: GraduationCap },
+  { href: "/goal", label: "Goal Mode", icon: ListTodo },
+  { href: "/exam-radar", label: "Exam Radar", icon: Search },
   { href: "/knowledge", label: "Knowledge", icon: BookOpen },
   { href: "/memory", label: "Memory", icon: Brain },
 ];
@@ -65,9 +69,9 @@ export function SidebarShell({
   onDeleteSession,
   footerSlot,
 }: SidebarShellProps) {
+  const { t } = useTranslation();
   const pathname = usePathname();
   const router = useRouter();
-  const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(false);
 
   const handleNewChat = () => {
@@ -93,7 +97,7 @@ export function SidebarShell({
         <button
           onClick={handleNewChat}
           className="mb-3 rounded-lg p-2 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)]/60 hover:text-[var(--foreground)]"
-          aria-label={t("New Chat")}
+          aria-label={t("New chat")}
         >
           <Plus size={16} strokeWidth={2} />
         </button>
@@ -150,9 +154,9 @@ export function SidebarShell({
       {/* Header: logo + collapse toggle */}
       <div className="flex h-12 items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2">
-          <Image src="/logo-ver2.png" alt="DeepTutor" width={20} height={20} />
+          <Image src="/logo-ver2.png" alt={t("DeepTutor")} width={20} height={20} />
           <span className="text-[15px] font-semibold tracking-tight text-[var(--foreground)]">
-            DeepTutor
+            {t("DeepTutor")}
           </span>
         </Link>
         <button
@@ -173,7 +177,7 @@ export function SidebarShell({
             className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)]/60 hover:text-[var(--foreground)]"
           >
             <Plus size={16} strokeWidth={2} />
-            <span>{t("New Chat")}</span>
+            <span>{t("New chat")}</span>
           </button>
 
           {PRIMARY_NAV.map((item) => {

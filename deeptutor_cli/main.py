@@ -21,20 +21,20 @@ set_mode(RunMode.CLI)
 
 app = typer.Typer(
     name="deeptutor",
-    help="DeepTutor CLI – agent-first interface for capabilities, tools, and knowledge.",
+    help="DeepTutor CLI - 面向智能体的能力、工具与知识统一入口。",
     no_args_is_help=True,
     add_completion=False,
 )
 
-bot_app = typer.Typer(help="Manage TutorBot instances.")
-chat_app = typer.Typer(help="Interactive chat REPL.")
-kb_app = typer.Typer(help="Manage knowledge bases.")
-memory_app = typer.Typer(help="View and manage lightweight memory.")
-plugin_app = typer.Typer(help="List plugins.")
-config_app = typer.Typer(help="Inspect configuration.")
-session_app = typer.Typer(help="Manage shared sessions.")
-notebook_app = typer.Typer(help="Manage notebooks and imported markdown records.")
-provider_app = typer.Typer(help="Manage provider OAuth login.")
+bot_app = typer.Typer(help="管理 TutorBot 实例。")
+chat_app = typer.Typer(help="交互式聊天 REPL。")
+kb_app = typer.Typer(help="管理知识库。")
+memory_app = typer.Typer(help="查看和管理轻量记忆。")
+plugin_app = typer.Typer(help="查看插件。")
+config_app = typer.Typer(help="查看配置。")
+session_app = typer.Typer(help="管理共享会话。")
+notebook_app = typer.Typer(help="管理笔记本与导入的 Markdown 记录。")
+provider_app = typer.Typer(help="管理 Provider OAuth 登录。")
 
 app.add_typer(bot_app, name="bot")
 app.add_typer(chat_app, name="chat")
@@ -59,19 +59,19 @@ register_provider(provider_app)
 
 @app.command("run")
 def run_capability(
-    capability: str = typer.Argument(..., help="Capability name (e.g. chat, deep_solve, deep_question, deep_research, math_animator)."),
-    message: str = typer.Argument(..., help="Message to send."),
-    session: str | None = typer.Option(None, "--session", help="Existing session id."),
-    tool: list[str] = typer.Option([], "--tool", "-t", help="Enabled tool(s)."),
-    kb: list[str] = typer.Option([], "--kb", help="Knowledge base name."),
-    notebook_ref: list[str] = typer.Option([], "--notebook-ref", help="Notebook references."),
-    history_ref: list[str] = typer.Option([], "--history-ref", help="Referenced session ids."),
-    language: str = typer.Option("en", "--language", "-l", help="Response language."),
-    config: list[str] = typer.Option([], "--config", help="Capability config key=value."),
-    config_json: str | None = typer.Option(None, "--config-json", help="Capability config as JSON."),
-    fmt: str = typer.Option("rich", "--format", "-f", help="Output format: rich | json."),
+    capability: str = typer.Argument(..., help="能力名称（如 chat、deep_solve、deep_question、deep_research、math_animator）。"),
+    message: str = typer.Argument(..., help="要发送的消息。"),
+    session: str | None = typer.Option(None, "--session", help="已有会话 ID。"),
+    tool: list[str] = typer.Option([], "--tool", "-t", help="启用的工具。"),
+    kb: list[str] = typer.Option([], "--kb", help="知识库名称。"),
+    notebook_ref: list[str] = typer.Option([], "--notebook-ref", help="笔记本引用。"),
+    history_ref: list[str] = typer.Option([], "--history-ref", help="引用的会话 ID。"),
+    language: str = typer.Option("zh", "--language", "-l", help="响应语言。"),
+    config: list[str] = typer.Option([], "--config", help="能力配置 key=value。"),
+    config_json: str | None = typer.Option(None, "--config-json", help="JSON 格式能力配置。"),
+    fmt: str = typer.Option("rich", "--format", "-f", help="输出格式：rich | json。"),
 ) -> None:
-    """Run any capability in a single turn (agent-first entry point)."""
+    """单轮执行任意能力（智能体优先入口）。"""
     from deeptutor.app import DeepTutorApp
     from .common import run_turn_and_render
 
@@ -92,28 +92,18 @@ def run_capability(
 
 @app.command()
 def serve(
-    host: str = typer.Option("0.0.0.0", help="Bind address."),
-    port: int = typer.Option(get_backend_port(), help="Port number."),
-    reload: bool = typer.Option(False, help="Enable auto-reload for development."),
+    host: str = typer.Option("0.0.0.0", help="绑定地址。"),
+    port: int = typer.Option(get_backend_port(), help="端口号。"),
+    reload: bool = typer.Option(False, help="开发模式启用自动重载。"),
 ) -> None:
-    """Start the DeepTutor API server."""
-    import asyncio
-    import sys
-
+    """启动 DeepTutor API 服务。"""
     set_mode(RunMode.SERVER)
-
-    # Windows: uvicorn defaults to SelectorEventLoop which does not support
-    # asyncio.create_subprocess_exec.  Switch to ProactorEventLoop so that
-    # child-process APIs (used by Math Animator renderer, etc.) work correctly.
-    if sys.platform == "win32":
-        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-
     try:
         import uvicorn
     except ImportError:
         console.print(
             "[bold red]Error:[/] API server dependencies not installed.\n"
-            "Run: pip install -r requirements/server.txt"
+            "请运行：pip install -r requirements/server.txt"
         )
         raise typer.Exit(code=1)
 

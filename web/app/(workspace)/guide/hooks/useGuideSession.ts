@@ -29,6 +29,46 @@ type PagePayload = {
   status?: SessionState["status"];
 };
 
+function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return true;
+  }
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    return msg.includes("abort") || msg.includes("aborted");
+  }
+  return false;
+}
+
+async function fetchJsonWithTimeout(
+  input: string,
+  init: RequestInit,
+  timeoutMs = 45000,
+): Promise<{ response: Response; data: unknown }> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(
+    () => controller.abort("guide_request_timeout"),
+    timeoutMs,
+  );
+  try {
+    const response = await fetch(input, { ...init, signal: controller.signal });
+    let data: unknown = null;
+    try {
+      data = await response.json();
+    } catch {
+      data = null;
+    }
+    return { response, data };
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error("GUIDE_REQUEST_TIMEOUT");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 export function useGuideSession() {
   const isHydrated = useRef(false);
   const pollingRef = useRef<number | null>(null);
@@ -39,6 +79,7 @@ export function useGuideSession() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
+  const [sessionError, setSessionError] = useState("");
   const hasUnresolvedPages = Object.values(sessionState.page_statuses).some(
     (status) => status === "pending" || status === "generating",
   );
@@ -62,6 +103,7 @@ export function useGuideSession() {
       setSessionState(INITIAL_SESSION_STATE);
       setIsLoading(false);
       setLoadingMessage("");
+      setSessionError("");
       setChatMessages(
         message
           ? [
@@ -165,9 +207,7 @@ export function useGuideSession() {
       };
 
       let currentIndex = prev.current_index;
-      // Only accept current_index from server/payload if user hasn't navigated yet.
-      // This prevents polling from overwriting the user's tab selection.
-      if (typeof payload.current_index === "number" && prev.current_index < 0) {
+      if (typeof payload.current_index === "number") {
         currentIndex = payload.current_index;
       }
 
@@ -382,39 +422,63 @@ export function useGuideSession() {
       stopPolling();
       setIsLoading(true);
       setLoadingMessage("Designing your guided learning plan...");
+      setSessionError("");
       const loadingId = addLoadingMessage(
         "Designing your guided learning plan...",
       );
 
       try {
-        const res = await fetch(apiUrl("/api/v1/guide/create_session"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            user_input: trimmedInput,
-            ...(notebookReferences?.length
-              ? { notebook_references: notebookReferences }
-              : {}),
-          }),
-        });
-        const data = await res.json();
+        const browserLanguage =
+          typeof navigator !== "undefined" && navigator.language
+            ? navigator.language
+            : "zh";
+        const requestedLanguage = browserLanguage.toLowerCase().startsWith("zh")
+          ? "zh"
+          : "en";
+
+        const { response, data } = await fetchJsonWithTimeout(
+          apiUrl("/api/v1/guide/create_session"),
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_input: trimmedInput,
+              language: requestedLanguage,
+              ...(notebookReferences?.length
+                ? { notebook_references: notebookReferences }
+                : {}),
+            }),
+          },
+          45000,
+        );
 
         removeLoadingMessage(loadingId);
         setIsLoading(false);
         setLoadingMessage("");
 
-        if (data.success) {
+        const payload = data as Record<string, unknown> | null;
+        if (!response.ok) {
+          const message =
+            (payload?.detail as string) ||
+            (payload?.error as string) ||
+            `Request failed (${response.status})`;
+          setSessionError(message);
+          addChatMessage("system", `❌ Failed to create session: ${message}`, `error-${Date.now()}`);
+          return;
+        }
+
+        if (payload?.success) {
           const initialStatuses: Record<number, PageStatus> = {};
-          (data.knowledge_points || []).forEach(
+          ((payload.knowledge_points as KnowledgePoint[]) || []).forEach(
             (_kp: KnowledgePoint, idx: number) => {
               initialStatuses[idx] = "pending";
             },
           );
 
           setSessionState({
-            session_id: data.session_id,
+            session_id: String(payload.session_id || ""),
             topic: trimmedInput,
-            knowledge_points: data.knowledge_points || [],
+            knowledge_points: (payload.knowledge_points as KnowledgePoint[]) || [],
             current_index: -1,
             html_pages: {},
             page_statuses: initialStatuses,
@@ -424,7 +488,8 @@ export function useGuideSession() {
             summary: "",
           });
 
-          const planMessage = `📚 Learning plan generated with **${data.total_points}** knowledge points:\n\n${data.knowledge_points.map((kp: KnowledgePoint, idx: number) => `${idx + 1}. ${kp.knowledge_title}`).join("\n")}\n\nClick "Start Learning" to generate all interactive pages in parallel.`;
+          const points = (payload.knowledge_points as KnowledgePoint[]) || [];
+          const planMessage = `📚 Learning plan generated with **${payload.total_points || points.length}** knowledge points:\n\n${points.map((kp: KnowledgePoint, idx: number) => `${idx + 1}. ${kp.knowledge_title}`).join("\n")}\n\nClick "Start Learning" to generate all interactive pages in parallel.`;
           setChatMessages([
             {
               id: "plan",
@@ -433,10 +498,13 @@ export function useGuideSession() {
               timestamp: Date.now(),
             },
           ]);
+          setSessionError("");
         } else {
+          const message = String(payload?.error || "Unknown error");
+          setSessionError(message);
           addChatMessage(
             "system",
-            `❌ Failed to create session: ${data.error}`,
+            `❌ Failed to create session: ${message}`,
             `error-${Date.now()}`,
           );
         }
@@ -444,10 +512,17 @@ export function useGuideSession() {
         removeLoadingMessage(loadingId);
         setIsLoading(false);
         setLoadingMessage("");
-        console.error("Failed to create session:", err);
+        const isTimeout = err instanceof Error && err.message === "GUIDE_REQUEST_TIMEOUT";
+        if (!isTimeout) {
+          console.error("Failed to create session:", err);
+        }
+        const message = isTimeout || isAbortError(err)
+          ? "❌ Request timed out. Please check model configuration and retry."
+          : "❌ Failed to create session, please try again later";
+        setSessionError(message.replace(/^❌\s*/, ""));
         addChatMessage(
           "system",
-          "❌ Failed to create session, please try again later",
+          message,
           `error-${Date.now()}`,
         );
       }
@@ -1002,6 +1077,7 @@ export function useGuideSession() {
     chatMessages,
     isLoading,
     loadingMessage,
+    sessionError,
     canStart,
     isCompleted,
     readyCount,

@@ -165,9 +165,6 @@ MODEL_OVERRIDES: dict[str, dict[str, object]] = {
     "qwq": {
         "has_thinking_tags": True,
     },
-    "minimax": {
-        "supports_response_format": False,
-    },
     # NOTE: supports_response_format and system_in_messages are binding-level
     # capabilities, NOT model-level. When using OpenRouter or other OpenAI-compatible
     # proxies (binding="openai"), they handle response_format translation and expect

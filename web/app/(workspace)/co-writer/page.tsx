@@ -69,6 +69,16 @@ interface KnowledgeBase {
 
 const STORAGE_KEY = "deeptutor.co_writer.draft";
 const HISTORY_KEY = "deeptutor.co_writer.history";
+const LEGACY_STORAGE_KEY = "deeptutor.co_writer.draft";
+const LEGACY_HISTORY_KEY = "deeptutor.co_writer.history";
+
+function shouldReplaceLegacyTemplate(content: string): boolean {
+  const text = content.trim();
+  return (
+    text.startsWith("# DeepTutor Co-Writer") ||
+    text.includes("DeepTutor's built-in writing canvas for notes, reports, tutorials, and AI-assisted drafts.")
+  );
+}
 
 const ACTION_LABELS: Record<EditAction, string> = {
   rewrite: "Rewrite",
@@ -192,7 +202,29 @@ export default function CoWriterPage() {
 
   useEffect(() => {
     const saved = window.localStorage.getItem(STORAGE_KEY);
-    setMarkdown(saved === null ? CO_WRITER_SAMPLE_TEMPLATE : saved);
+    const legacySaved = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+    const loaded = saved ?? legacySaved;
+
+    if (loaded === null) {
+      setMarkdown(CO_WRITER_SAMPLE_TEMPLATE);
+      setHasLoadedDraft(true);
+      return;
+    }
+
+    // One-time migration from legacy DeepTutor default template to DeepTutor Chinese template.
+    if (saved === null && shouldReplaceLegacyTemplate(loaded)) {
+      setMarkdown(CO_WRITER_SAMPLE_TEMPLATE);
+      window.localStorage.setItem(STORAGE_KEY, CO_WRITER_SAMPLE_TEMPLATE);
+      window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+      window.localStorage.removeItem(LEGACY_HISTORY_KEY);
+      setHasLoadedDraft(true);
+      return;
+    }
+
+    setMarkdown(loaded);
+    if (saved === null) {
+      window.localStorage.setItem(STORAGE_KEY, loaded);
+    }
     setHasLoadedDraft(true);
   }, []);
 

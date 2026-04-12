@@ -40,22 +40,18 @@ class Generator(BaseAgent):
         self.tool_flags = tool_flags or {}
         self._tool_registry = get_tool_registry()
 
-    MAX_PREVIOUS_QUESTIONS = 20
-
     async def process(
         self,
         template: QuestionTemplate,
         user_topic: str = "",
         preference: str = "",
         history_context: str = "",
-        previous_questions: list[str] | None = None,
     ) -> QAPair:
         """
         Generate one Q-A pair from a template in a single call.
         """
         available_tools = self._build_available_tools_text()
         knowledge_context = str(template.metadata.get("knowledge_context", "")).strip()
-        prev_q_text = self._format_previous_questions(previous_questions)
         payload = await self._generate_payload(
             template=template,
             user_topic=user_topic,
@@ -63,7 +59,6 @@ class Generator(BaseAgent):
             history_context=history_context,
             knowledge_context=knowledge_context,
             available_tools=available_tools,
-            previous_questions=prev_q_text,
         )
         payload, validation = await self._validate_and_repair_payload(
             template=template,
@@ -73,7 +68,6 @@ class Generator(BaseAgent):
             history_context=history_context,
             knowledge_context=knowledge_context,
             available_tools=available_tools,
-            previous_questions=prev_q_text,
         )
 
         return QAPair(
@@ -118,7 +112,6 @@ class Generator(BaseAgent):
         history_context: str,
         knowledge_context: str,
         available_tools: str,
-        previous_questions: str = "",
     ) -> dict[str, Any]:
         system_prompt = self.get_prompt("system", "")
         user_prompt_template = self.get_prompt("generate", "")
@@ -128,20 +121,16 @@ class Generator(BaseAgent):
                 "User topic: {user_topic}\n"
                 "Preference: {preference}\n"
                 "Conversation context: {history_context}\n"
-                "Previously generated questions (do not repeat):\n{previous_questions}\n"
                 "Knowledge context: {knowledge_context}\n"
                 "Enabled tools: {available_tools}\n\n"
                 'Return JSON {{"question_type":"","question":"","options":{{}},"correct_answer":"","explanation":""}}'
             )
 
-        template_dict = self._strip_template_knowledge_context(template)
-
         user_prompt = user_prompt_template.format(
-            template=json.dumps(template_dict, ensure_ascii=False, indent=2),
+            template=json.dumps(template.__dict__, ensure_ascii=False, indent=2),
             user_topic=user_topic,
             preference=preference or "(none)",
             history_context=history_context or "(none)",
-            previous_questions=previous_questions or "(none)",
             knowledge_context=knowledge_context or "(none)",
             available_tools=available_tools,
         )
@@ -188,7 +177,6 @@ class Generator(BaseAgent):
         history_context: str,
         knowledge_context: str,
         available_tools: str,
-        previous_questions: str = "",
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         expected_type = self._normalize_question_type(template.question_type)
         normalized = self._normalize_payload_shape(expected_type, payload)
@@ -205,7 +193,6 @@ class Generator(BaseAgent):
                 history_context=history_context,
                 knowledge_context=knowledge_context,
                 available_tools=available_tools,
-                previous_questions=previous_questions,
             )
             if repaired_payload:
                 candidate = self._normalize_payload_shape(expected_type, repaired_payload)
@@ -233,17 +220,14 @@ class Generator(BaseAgent):
         history_context: str,
         knowledge_context: str,
         available_tools: str,
-        previous_questions: str = "",
     ) -> dict[str, Any]:
         expected_type = self._normalize_question_type(template.question_type)
-        template_dict = self._strip_template_knowledge_context(template)
         repair_prompt = (
             "You are repairing an invalid quiz question JSON.\n\n"
-            f"QuestionTemplate:\n{json.dumps(template_dict, ensure_ascii=False, indent=2)}\n\n"
+            f"QuestionTemplate:\n{json.dumps(template.__dict__, ensure_ascii=False, indent=2)}\n\n"
             f"User topic:\n{user_topic or '(none)'}\n\n"
             f"User preference:\n{preference or '(none)'}\n\n"
             f"Conversation context:\n{history_context or '(none)'}\n\n"
-            f"Previously generated questions:\n{previous_questions or '(none)'}\n\n"
             f"Knowledge context:\n{knowledge_context or '(none)'}\n\n"
             f"Enabled tools:\n{available_tools}\n\n"
             f"Invalid payload:\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n\n"
@@ -398,25 +382,6 @@ class Generator(BaseAgent):
         if self._is_tool_enabled("code_execution"):
             enabled_tools.append("code_execution")
         return enabled_tools
-
-    @staticmethod
-    def _strip_template_knowledge_context(template: QuestionTemplate) -> dict[str, Any]:
-        """Strip knowledge_context from template metadata to avoid prompt duplication."""
-        template_dict = template.__dict__.copy()
-        if isinstance(template_dict.get("metadata"), dict):
-            template_dict["metadata"] = {
-                k: v
-                for k, v in template_dict["metadata"].items()
-                if k != "knowledge_context"
-            }
-        return template_dict
-
-    @classmethod
-    def _format_previous_questions(cls, questions: list[str] | None) -> str:
-        if not questions:
-            return ""
-        capped = questions[-cls.MAX_PREVIOUS_QUESTIONS :]
-        return "\n".join(f"{i}. {q}" for i, q in enumerate(capped, 1))
 
     @staticmethod
     def _parse_json_like(content: str) -> dict[str, Any]:

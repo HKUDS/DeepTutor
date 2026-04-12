@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 from deeptutor.services.path_service import get_path_service
-from deeptutor.utils.json_parser import parse_json_response
 
 
 class CitationManager:
@@ -294,7 +293,7 @@ class CitationManager:
 
         try:
             # Parse raw_answer to extract source information
-            answer_data = parse_json_response(raw_answer)
+            answer_data = json.loads(raw_answer)
 
             # Extract source documents if available
             # Common fields in RAG responses: chunks, documents, sources, context
@@ -350,7 +349,7 @@ class CitationManager:
 
         try:
             # Parse raw_answer to extract web source information
-            answer_data = parse_json_response(raw_answer)
+            answer_data = json.loads(raw_answer)
 
             web_sources = []
 
@@ -397,7 +396,7 @@ class CitationManager:
 
         try:
             # Parse raw_answer JSON
-            answer_data = parse_json_response(raw_answer)
+            answer_data = json.loads(raw_answer)
             papers = answer_data.get("papers", [])
 
             if not papers:

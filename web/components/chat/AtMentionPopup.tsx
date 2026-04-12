@@ -1,7 +1,5 @@
 "use client";
 
-import { useTranslation } from "react-i18next";
-
 interface AtMentionPopupProps {
   open: boolean;
   onSelectNotebook: () => void;
@@ -13,8 +11,6 @@ export default function AtMentionPopup({
   onSelectNotebook,
   onSelectHistory,
 }: AtMentionPopupProps) {
-  const { t } = useTranslation();
-
   if (!open) return null;
 
   return (
@@ -23,13 +19,13 @@ export default function AtMentionPopup({
         onClick={onSelectNotebook}
         className="w-full rounded-xl px-3 py-2.5 text-left text-[14px] font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]/70"
       >
-        {t("Notebook")}
+        Notebook
       </button>
       <button
         onClick={onSelectHistory}
         className="w-full rounded-xl px-3 py-2.5 text-left text-[14px] font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]/70"
       >
-        {t("Chat History")}
+        Chat History
       </button>
     </div>
   );

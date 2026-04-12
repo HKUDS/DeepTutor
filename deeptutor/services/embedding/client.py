@@ -60,21 +60,15 @@ class EmbeddingClient:
             f"(model: {self.config.model}, dimensions: {self.config.dim})"
         )
 
-    async def embed(
-        self, texts: List[str], progress_callback=None
-    ) -> List[List[float]]:
+    async def embed(self, texts: List[str]) -> List[List[float]]:
         if not texts:
             return []
 
-        import asyncio
-
         batch_size = max(1, self.config.batch_size)
         all_embeddings: List[List[float]] = []
-        batch_delay = self.config.batch_delay
 
         try:
-            total_batches = (len(texts) + batch_size - 1) // batch_size
-            for i, start in enumerate(range(0, len(texts), batch_size)):
+            for start in range(0, len(texts), batch_size):
                 batch = texts[start : start + batch_size]
                 request = EmbeddingRequest(
                     texts=batch,
@@ -83,18 +77,6 @@ class EmbeddingClient:
                 )
                 response = await self.adapter.embed(request)
                 all_embeddings.extend(response.embeddings)
-
-                # Report progress after each batch
-                if progress_callback:
-                    try:
-                        progress_callback(i + 1, total_batches)
-                    except Exception:
-                        pass
-
-                # Delay between batches to avoid rate limiting
-                if i < total_batches - 1 and batch_delay > 0:
-                    await asyncio.sleep(batch_delay)
-
             self.logger.debug(
                 f"Generated {len(all_embeddings)} embeddings using "
                 f"{self.config.binding} (batch_size={batch_size})"

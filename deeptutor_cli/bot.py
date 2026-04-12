@@ -22,30 +22,30 @@ def register(app: typer.Typer) -> None:
 
         bots = get_tutorbot_manager().list_bots()
         if not bots:
-            console.print("[dim]No TutorBots configured.[/]")
+            console.print("[dim]未配置 TutorBot。[/]")
             return
 
-        table = Table(title="TutorBots")
+        table = Table(title="TutorBot 列表")
         table.add_column("ID", style="cyan")
-        table.add_column("Name")
-        table.add_column("Status")
-        table.add_column("Model", style="dim")
-        table.add_column("Channels", style="dim")
+        table.add_column("名称")
+        table.add_column("状态")
+        table.add_column("模型", style="dim")
+        table.add_column("渠道", style="dim")
 
         for b in bots:
-            status = "[green]running[/]" if b.get("running") else "[dim]stopped[/]"
+            status = "[green]运行中[/]" if b.get("running") else "[dim]已停止[/]"
             table.add_row(
                 b["bot_id"],
                 b.get("name", ""),
                 status,
-                b.get("model") or "(default)",
-                ", ".join(b.get("channels", [])) or "-",
+                b.get("model") or "(默认)",
+                ", ".join(b.get("channels", [])) or "无",
             )
         console.print(table)
 
     @app.command("start")
     def bot_start(
-        name: str = typer.Argument(..., help="Bot ID to start."),
+        name: str = typer.Argument(..., help="要启动的 Bot ID。"),
     ) -> None:
         """Start a TutorBot instance."""
         from deeptutor.services.tutorbot import get_tutorbot_manager
@@ -53,14 +53,14 @@ def register(app: typer.Typer) -> None:
         mgr = get_tutorbot_manager()
         try:
             instance = asyncio.get_event_loop().run_until_complete(mgr.start_bot(name))
-            console.print(f"[green]Started TutorBot '{instance.config.name}' ({name})[/]")
+            console.print(f"[green]已启动 TutorBot '{instance.config.name}' ({name})[/]")
         except RuntimeError as e:
-            console.print(f"[red]Failed to start: {e}[/]")
+            console.print(f"[red]启动失败：{e}[/]")
             raise typer.Exit(1)
 
     @app.command("stop")
     def bot_stop(
-        name: str = typer.Argument(..., help="Bot ID to stop."),
+        name: str = typer.Argument(..., help="要停止的 Bot ID。"),
     ) -> None:
         """Stop a running TutorBot instance."""
         from deeptutor.services.tutorbot import get_tutorbot_manager
@@ -68,16 +68,16 @@ def register(app: typer.Typer) -> None:
         mgr = get_tutorbot_manager()
         stopped = asyncio.get_event_loop().run_until_complete(mgr.stop_bot(name))
         if stopped:
-            console.print(f"[green]Stopped TutorBot '{name}'[/]")
+            console.print(f"[green]已停止 TutorBot '{name}'[/]")
         else:
-            console.print(f"[yellow]Bot '{name}' not found or not running.[/]")
+            console.print(f"[yellow]未找到 Bot '{name}' 或其未运行。[/]")
 
     @app.command("create")
     def bot_create(
-        name: str = typer.Argument(..., help="Bot ID."),
-        display_name: str = typer.Option("", "--name", "-n", help="Display name."),
-        persona: str = typer.Option("", "--persona", "-p", help="Persona description."),
-        model: str = typer.Option("", "--model", "-m", help="Model override."),
+        name: str = typer.Argument(..., help="Bot ID。"),
+        display_name: str = typer.Option("", "--name", "-n", help="显示名称。"),
+        persona: str = typer.Option("", "--persona", "-p", help="人设描述。"),
+        model: str = typer.Option("", "--model", "-m", help="覆盖模型。"),
     ) -> None:
         """Create a new TutorBot configuration and start it."""
         from deeptutor.services.tutorbot import get_tutorbot_manager
@@ -93,7 +93,7 @@ def register(app: typer.Typer) -> None:
             instance = asyncio.get_event_loop().run_until_complete(
                 mgr.start_bot(name, config)
             )
-            console.print(f"[green]Created and started TutorBot '{instance.config.name}' ({name})[/]")
+            console.print(f"[green]已创建并启动 TutorBot '{instance.config.name}' ({name})[/]")
         except RuntimeError as e:
-            console.print(f"[red]Failed: {e}[/]")
+            console.print(f"[red]失败：{e}[/]")
             raise typer.Exit(1)

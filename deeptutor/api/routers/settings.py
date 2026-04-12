@@ -96,32 +96,9 @@ def save_ui_settings(settings: dict[str, Any]) -> None:
         json.dump(settings, handle, ensure_ascii=False, indent=2)
 
 
-def _provider_choices() -> dict[str, list[dict[str, str]]]:
-    """Build dropdown options for provider selection, keyed by service type."""
-    from deeptutor.services.provider_registry import PROVIDERS
-
-    llm = sorted(
-        [{"value": s.name, "label": s.label, "base_url": s.default_api_base} for s in PROVIDERS],
-        key=lambda p: p["label"].lower(),
-    )
-    search = [
-        {"value": "brave", "label": "Brave", "base_url": ""},
-        {"value": "tavily", "label": "Tavily", "base_url": ""},
-        {"value": "jina", "label": "Jina", "base_url": ""},
-        {"value": "searxng", "label": "SearXNG", "base_url": ""},
-        {"value": "duckduckgo", "label": "DuckDuckGo", "base_url": ""},
-        {"value": "perplexity", "label": "Perplexity", "base_url": ""},
-    ]
-    return {"llm": llm, "embedding": llm, "search": search}
-
-
 @router.get("")
 async def get_settings():
-    return {
-        "ui": load_ui_settings(),
-        "catalog": get_model_catalog_service().load(),
-        "providers": _provider_choices(),
-    }
+    return {"ui": load_ui_settings(), "catalog": get_model_catalog_service().load()}
 
 
 @router.get("/catalog")

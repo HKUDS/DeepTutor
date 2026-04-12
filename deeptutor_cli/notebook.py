@@ -20,8 +20,8 @@ def register(app: typer.Typer) -> None:
 
     @app.command("create")
     def create_notebook(
-        name: str = typer.Argument(..., help="Notebook name."),
-        description: str = typer.Option("", "--description", help="Notebook description."),
+        name: str = typer.Argument(..., help="笔记本名称。"),
+        description: str = typer.Option("", "--description", help="笔记本描述。"),
     ) -> None:
         """Create a notebook."""
         client = DeepTutorApp()
@@ -30,14 +30,14 @@ def register(app: typer.Typer) -> None:
 
     @app.command("show")
     def show_notebook(
-        notebook_id: str = typer.Argument(..., help="Notebook id."),
-        fmt: str = typer.Option("rich", "--format", help="Output format: rich | json."),
+        notebook_id: str = typer.Argument(..., help="笔记本 ID。"),
+        fmt: str = typer.Option("rich", "--format", help="输出格式：rich | json。"),
     ) -> None:
         """Show a notebook and its records."""
         client = DeepTutorApp()
         notebook = client.get_notebook(notebook_id)
         if notebook is None:
-            console.print(f"[red]Notebook not found:[/] {notebook_id}")
+            console.print(f"[red]未找到笔记本：[/] {notebook_id}")
             raise typer.Exit(code=1)
         if fmt == "json":
             console.print(json.dumps(notebook, ensure_ascii=False, indent=2, default=str))
@@ -53,8 +53,8 @@ def register(app: typer.Typer) -> None:
 
     @app.command("add-md")
     def add_md(
-        notebook_id: str = typer.Argument(..., help="Notebook id."),
-        path: str = typer.Argument(..., help="Path to markdown file."),
+        notebook_id: str = typer.Argument(..., help="笔记本 ID。"),
+        path: str = typer.Argument(..., help="Markdown 文件路径。"),
     ) -> None:
         """Import a markdown file as a co-writer notebook record."""
         client = DeepTutorApp()
@@ -63,9 +63,9 @@ def register(app: typer.Typer) -> None:
 
     @app.command("replace-md")
     def replace_md(
-        notebook_id: str = typer.Argument(..., help="Notebook id."),
-        record_id: str = typer.Argument(..., help="Existing record id."),
-        path: str = typer.Argument(..., help="Path to markdown file."),
+        notebook_id: str = typer.Argument(..., help="笔记本 ID。"),
+        record_id: str = typer.Argument(..., help="已有记录 ID。"),
+        path: str = typer.Argument(..., help="Markdown 文件路径。"),
     ) -> None:
         """Replace an existing co-writer notebook record in-place."""
         client = DeepTutorApp()
@@ -74,13 +74,13 @@ def register(app: typer.Typer) -> None:
 
     @app.command("remove-record")
     def remove_record(
-        notebook_id: str = typer.Argument(..., help="Notebook id."),
-        record_id: str = typer.Argument(..., help="Record id."),
+        notebook_id: str = typer.Argument(..., help="笔记本 ID。"),
+        record_id: str = typer.Argument(..., help="记录 ID。"),
     ) -> None:
         """Delete a notebook record."""
         client = DeepTutorApp()
         success = client.remove_record(notebook_id, record_id)
         if not success:
-            console.print(f"[red]Record not found:[/] {record_id}")
+            console.print(f"[red]未找到记录：[/] {record_id}")
             raise typer.Exit(code=1)
-        console.print(f"Removed record {record_id} from notebook {notebook_id}")
+        console.print(f"已从笔记本 {notebook_id} 删除记录 {record_id}")

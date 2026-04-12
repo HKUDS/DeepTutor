@@ -1,4 +1,4 @@
-"""CLI commands for provider auth and access validation."""
+"""CLI commands for provider auth (OAuth-first providers)."""
 
 from __future__ import annotations
 
@@ -12,10 +12,10 @@ def register(app: typer.Typer) -> None:
     def provider_login(
         provider: str = typer.Argument(
             ...,
-            help="Provider: openai-codex (OAuth login) | github-copilot (validate existing Copilot auth)",
+            help="OAuth 提供商：openai-codex | github-copilot",
         ),
     ) -> None:
-        """Authenticate or validate provider access."""
+        """Authenticate an OAuth-backed provider."""
         key = provider.strip().lower().replace("-", "_")
         if key == "openai_codex":
             _login_openai_codex()
@@ -24,7 +24,7 @@ def register(app: typer.Typer) -> None:
             maybe_run(_login_github_copilot())
             return
         raise typer.BadParameter(
-            f"Unknown provider `{provider}`. Supported: openai-codex, github-copilot"
+            f"未知提供商 `{provider}`。支持：openai-codex、github-copilot"
         )
 
 
@@ -33,7 +33,7 @@ def _login_openai_codex() -> None:
         from oauth_cli_kit import get_token, login_oauth_interactive
     except ImportError:
         typer.echo(
-            "oauth_cli_kit is not installed. Install CLI deps: "
+            "未安装 oauth_cli_kit。请安装 CLI 依赖："
             "pip install -r requirements/cli.txt"
         )
         raise typer.Exit(code=1)
@@ -49,30 +49,24 @@ def _login_openai_codex() -> None:
             prompt_fn=typer.prompt,
         )
     if not (token and getattr(token, "access", None)):
-        typer.echo("OpenAI Codex OAuth authentication failed.")
+        typer.echo("OpenAI Codex OAuth 认证失败。")
         raise typer.Exit(code=1)
-    typer.echo("OpenAI Codex OAuth authentication succeeded.")
+    typer.echo("OpenAI Codex OAuth 认证成功。")
 
 
 async def _login_github_copilot() -> None:
-    """Validate an existing GitHub Copilot auth session via a lightweight request."""
     try:
-        from openai import AsyncOpenAI
+        from litellm import acompletion
     except ImportError:
-        typer.echo("openai is not installed. Install CLI deps: pip install -r requirements/cli.txt")
+        typer.echo("未安装 litellm。请安装 CLI 依赖：pip install -r requirements/cli.txt")
         raise typer.Exit(code=1)
     try:
-        client = AsyncOpenAI(
-            api_key="copilot",
-            base_url="https://api.githubcopilot.com",
-            max_retries=0,
-        )
-        await client.chat.completions.create(
-            model="gpt-4o",
+        await acompletion(
+            model="github_copilot/gpt-4o",
             messages=[{"role": "user", "content": "ping"}],
             max_tokens=1,
         )
     except Exception as exc:
-        typer.echo(f"GitHub Copilot auth validation failed: {exc}")
+        typer.echo(f"GitHub Copilot OAuth 认证失败：{exc}")
         raise typer.Exit(code=1) from exc
-    typer.echo("GitHub Copilot auth validation succeeded.")
+    typer.echo("GitHub Copilot OAuth 认证成功。")

@@ -3,20 +3,7 @@ generate_system: |
   你要生成可运行的 Python Manim 代码。
   要求：
   - video 模式：返回一个完整的 Manim 脚本，至少包含一个可渲染的 Scene 子类。
-  - image 模式：必须严格输出若干个 YON_IMAGE 锚点代码块，每个代码块内都必须是独立可渲染的 Manim 脚本。格式如下：
-    ### YON_IMAGE_1_START ###
-    from manim import *
-    class Scene1(Scene):
-        def construct(self):
-            ...
-    ### YON_IMAGE_1_END ###
-    ### YON_IMAGE_2_START ###
-    from manim import *
-    class Scene2(Scene):
-        def construct(self):
-            ...
-    ### YON_IMAGE_2_END ###
-    锚点编号从 1 开始递增。code 字段中除了 YON_IMAGE 锚点块外不能有其他代码。
+  - image 模式：必须严格输出若干个 YON_IMAGE 锚点代码块，每个代码块内都必须是独立可渲染的 Manim 脚本。
   - 不要输出解释性文字。
   - Manim 中所有几何点、路径点、顶点坐标都必须是 3D 形式；不要传 `[x, y]`，要传 `[x, y, 0]`。
   - 如果坐标来自坐标轴或数轴映射，优先使用 `axes.c2p(...)`、`plane.c2p(...)` 等返回 3D 点的方法。
@@ -32,10 +19,8 @@ generate_system: |
   - 最后一个关键结论出现后，默认再保留约 1.5-3 秒稳定停留，避免观众还没看清动画就结束。
   - 如果最终代码的体感时长可能低于约 10 秒，除非用户明确要求短视频，否则必须继续补充步骤、停顿或收尾。
   - 如果用户明确给出了目标时长（例如 10 秒），这条约束优先级最高：请在代码中显式安排足够的 `run_time` 与 `self.wait(...)`，让总时长尽量贴近目标（建议不低于目标的 90%）。
-  - 当前运行环境可能没有本地 LaTeX。默认禁止使用 `Tex`、`MathTex`、`SingleStringMathTex`、`MarkupText` 与任何 LaTeX 依赖渲染链。
+  - 当前运行环境可能没有本地 LaTeX。默认禁止使用 `Tex`、`MathTex`、`SingleStringMathTex` 与任何 LaTeX 依赖渲染链。
   - 数学表达优先用 `Text`、`DecimalNumber`、`MathTable`（非 LaTeX 方案）或直接几何可视化来表达；不要依赖 `latex` 可执行程序。
-  - 禁止使用 `stroke_dash_pattern` 参数（Manim v0.20.1 不支持），如需虚线效果请改用其他方式实现。
-  - 禁止使用 `self.save_state()` 方法（MovingCameraScene 不支持），改用其他状态管理方式。
   - 相机移动规则：只有在类继承 `MovingCameraScene` 时，才允许使用 `self.camera.frame`。若类是普通 `Scene`，严禁出现 `self.camera.frame`。
   - 若不确定相机能力，默认不要写相机缩放/平移代码，优先保证可渲染稳定性。
 
@@ -67,13 +52,10 @@ retry_system: |
   修复时不要为了“快点能跑”而把动画压缩得更短；尽量保留完整讲解节奏和必要停顿。
   若原代码明显过短，也允许在修复时顺手补足必要的等待、展开步骤和结尾停留。
   若用户给了明确时长，修复后也必须保持接近该时长，不要因为修错而把视频缩短。
-  默认禁止引入 `Tex` / `MathTex` / `MarkupText`，除非用户明确要求 LaTeX 且环境已具备 LaTeX。
-  若报错包含 `stroke_dash_pattern`，立即移除该参数。
-  若报错包含 `save_state`，立即删除该方法调用。
+  默认也禁止引入 `Tex` / `MathTex`，除非用户明确要求 LaTeX 且环境已具备 LaTeX。
   若报错与 `self.camera.frame` 相关，必须二选一修复：
   1) 把场景类改为 `MovingCameraScene`；或
   2) 删除相机动画语句并保留原教学逻辑。
-  若报错包含 `YON_IMAGE`，说明 image 模式下代码缺少锚点标记。必须把代码重新包裹在 `### YON_IMAGE_n_START ###` / `### YON_IMAGE_n_END ###` 中，且 code 字段中除锚点块外不能有其他内容。
 
 retry_user_template: |
   用户需求：

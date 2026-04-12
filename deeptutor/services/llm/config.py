@@ -278,7 +278,7 @@ def uses_max_completion_tokens(model: str) -> bool:
     # - gpt-4o series
     # - gpt-5.x and later
     patterns = [
-        r"^o\d",  # o1, o3, o4-mini, o4, and future o-series models
+        r"^o[13]",  # o1, o3 models
         r"^gpt-4o",  # gpt-4o models
         r"^gpt-[5-9]",  # gpt-5.x and later
         r"^gpt-\d{2,}",  # gpt-10+ (future proofing)

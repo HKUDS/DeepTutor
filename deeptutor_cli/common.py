@@ -21,7 +21,7 @@ def parse_config_items(items: list[str]) -> dict[str, Any]:
     for item in items:
         key, sep, raw_value = item.partition("=")
         if not sep or not key.strip():
-            raise ValueError(f"Invalid --config item `{item}`. Expected KEY=VALUE.")
+            raise ValueError(f"无效 --config 参数 `{item}`，期望格式 KEY=VALUE。")
         config[key.strip()] = _parse_scalar_value(raw_value.strip())
     return config
 
@@ -32,9 +32,9 @@ def parse_json_object(raw: str | None) -> dict[str, Any]:
     try:
         value = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON config: {exc.msg}") from exc
+        raise ValueError(f"无效 JSON 配置：{exc.msg}") from exc
     if not isinstance(value, dict):
-        raise ValueError("JSON config must be an object.")
+        raise ValueError("JSON 配置必须是对象。")
     return value
 
 
@@ -44,7 +44,7 @@ def parse_notebook_references(items: list[str]) -> list[dict[str, Any]]:
         notebook_id, _, record_part = item.partition(":")
         resolved_notebook_id = notebook_id.strip()
         if not resolved_notebook_id:
-            raise ValueError(f"Invalid notebook reference `{item}`.")
+            raise ValueError(f"无效笔记本引用 `{item}`。")
         record_ids = [
             record_id.strip()
             for record_id in record_part.split(",")
@@ -85,7 +85,7 @@ async def render_turn_stream(*, app: DeepTutorApp, turn_id: str) -> None:
                 console.print(Markdown(content_buf))
                 content_buf = ""
             current_stage = str(item.get("stage", "") or "")
-            console.print(f"\n[bold cyan]▶ {current_stage or 'working'}[/]", highlight=False)
+            console.print(f"\n[bold cyan]▶ {current_stage or '处理中'}[/]", highlight=False)
         elif event_type == "stage_end":
             if content_buf:
                 console.print(Markdown(content_buf))
@@ -106,7 +106,7 @@ async def render_turn_stream(*, app: DeepTutorApp, turn_id: str) -> None:
         elif event_type == "tool_result":
             console.print(f"  [green]result[/] {item.get('content', '')}", highlight=False)
         elif event_type == "error":
-            console.print(f"[bold red]Error:[/] {item.get('content', '')}")
+            console.print(f"[bold red]错误：[/] {item.get('content', '')}")
         elif event_type == "done":
             if content_buf:
                 console.print(Markdown(content_buf))
@@ -146,12 +146,12 @@ def maybe_run(coro):  # noqa: ANN001
 
 
 def print_session_table(sessions: list[dict[str, Any]]) -> None:
-    table = Table(title="Sessions")
+    table = Table(title="会话")
     table.add_column("ID")
-    table.add_column("Title")
-    table.add_column("Capability")
-    table.add_column("Status")
-    table.add_column("Messages", justify="right")
+    table.add_column("标题")
+    table.add_column("能力")
+    table.add_column("状态")
+    table.add_column("消息数", justify="right")
     for session in sessions:
         table.add_row(
             str(session.get("id", "")),
@@ -164,11 +164,11 @@ def print_session_table(sessions: list[dict[str, Any]]) -> None:
 
 
 def print_notebook_table(notebooks: list[dict[str, Any]]) -> None:
-    table = Table(title="Notebooks")
+    table = Table(title="笔记本")
     table.add_column("ID")
-    table.add_column("Name")
-    table.add_column("Records", justify="right")
-    table.add_column("Description")
+    table.add_column("名称")
+    table.add_column("记录数", justify="right")
+    table.add_column("描述")
     for notebook in notebooks:
         table.add_row(
             str(notebook.get("id", "")),

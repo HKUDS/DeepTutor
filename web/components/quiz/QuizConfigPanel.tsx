@@ -2,7 +2,6 @@
 
 import { useRef, useState } from "react";
 import { FileText, Upload, X } from "lucide-react";
-import { useTranslation } from "react-i18next";
 import type { DeepQuestionFormConfig, DeepQuestionMode } from "@/lib/quiz-types";
 import { Field, INPUT_CLS } from "@/components/chat/home/composer-field";
 
@@ -19,7 +18,6 @@ export default function QuizConfigPanel({
   uploadedPdf,
   onUploadPdf,
 }: QuizConfigPanelProps) {
-  const { t } = useTranslation();
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -44,7 +42,7 @@ export default function QuizConfigPanel({
                 : "text-[var(--muted-foreground)]/50 hover:text-[var(--muted-foreground)]"
             }`}
           >
-            {m === "custom" ? t("Custom") : t("Mimic Paper")}
+            {m === "custom" ? "Custom" : "Mimic Paper"}
           </button>
         ))}
       </div>
@@ -70,10 +68,10 @@ export default function QuizConfigPanel({
               onChange={(e) => update("difficulty", e.target.value)}
               className={`${INPUT_CLS} w-full`}
             >
-              <option value="auto">{t("Auto")}</option>
-              <option value="easy">{t("Easy")}</option>
-              <option value="medium">{t("Medium")}</option>
-              <option value="hard">{t("Hard")}</option>
+              <option value="auto">Auto</option>
+              <option value="easy">Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
             </select>
           </Field>
 
@@ -83,10 +81,10 @@ export default function QuizConfigPanel({
               onChange={(e) => update("question_type", e.target.value)}
               className={`${INPUT_CLS} w-full`}
             >
-              <option value="auto">{t("Auto")}</option>
-              <option value="choice">{t("Multiple Choice")}</option>
-              <option value="written">{t("Written")}</option>
-              <option value="coding">{t("Coding")}</option>
+              <option value="auto">Auto</option>
+              <option value="choice">Multiple Choice</option>
+              <option value="written">Written</option>
+              <option value="coding">Coding</option>
             </select>
           </Field>
 
@@ -95,7 +93,7 @@ export default function QuizConfigPanel({
               type="text"
               value={value.preference}
               onChange={(e) => update("preference", e.target.value)}
-              placeholder={t("Extra constraints...")}
+              placeholder="Extra constraints..."
               className={`${INPUT_CLS} w-full`}
             />
           </Field>
@@ -111,7 +109,7 @@ export default function QuizConfigPanel({
                   type="button"
                   onClick={() => onUploadPdf(null)}
                   className="ml-auto shrink-0 text-[var(--muted-foreground)]/40 transition-colors hover:text-[var(--foreground)]"
-                  aria-label={t("Remove PDF")}
+                  aria-label="Remove PDF"
                 >
                   <X size={11} />
                 </button>
@@ -139,7 +137,7 @@ export default function QuizConfigPanel({
                 }}
               >
                 <Upload size={11} />
-                <span>{t("Upload PDF")}</span>
+                <span>Upload PDF</span>
                 <input
                   ref={fileRef}
                   type="file"
@@ -166,7 +164,7 @@ export default function QuizConfigPanel({
                 onUploadPdf(null);
                 update("paper_path", e.target.value);
               }}
-              placeholder={t("e.g. 2211asm1")}
+              placeholder="e.g. 2211asm1"
               className={`${INPUT_CLS} w-full`}
             />
           </Field>
@@ -188,4 +186,3 @@ export default function QuizConfigPanel({
     </div>
   );
 }
-

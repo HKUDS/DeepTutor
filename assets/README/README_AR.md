@@ -2,21 +2,19 @@
 
 <img src="../../assets/logo-ver2.png" alt="DeepTutor" width="140" style="border-radius: 15px;">
 
-# DeepTutor: تعليم شخصي أصلي قائم على الوكلاء
-
-<a href="https://trendshift.io/repositories/17099" target="_blank"><img src="https://trendshift.io/api/badge/repositories/17099" alt="HKUDS%2FDeepTutor | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+# DeepTutor: نحو تعليم شخصي قائم على الوكلاء
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
-[![arXiv](https://img.shields.io/badge/arXiv-Coming_Soon-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](#)
+[![GitHub last commit](https://img.shields.io/github/last-commit/HKUDS/DeepTutor?style=flat-square)](https://github.com/HKUDS/DeepTutor/commits)
 
 [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t)
 [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md)
 [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
 
-[الميزات](#key-features) · [البدء](#get-started) · [استكشاف](#explore-deeptutor) · [TutorBot](#tutorbot) · [CLI](#deeptutor-cli-guide) · [خارطة الطريق](#roadmap) · [المجتمع](#community)
+[الميزات](#key-features) · [البدء](#get-started) · [استكشاف](#explore-deeptutor) · [TutorBot](#tutorbot) · [CLI](#deeptutor-cli-guide) · [المجتمع](#community)
 
 [🇬🇧 English](../../README.md) · [🇨🇳 中文](README_CN.md) · [🇯🇵 日本語](README_JA.md) · [🇪🇸 Español](README_ES.md) · [🇫🇷 Français](README_FR.md) · [🇷🇺 Русский](README_RU.md) · [🇮🇳 हिन्दी](README_HI.md) · [🇵🇹 Português](README_PT.md)
 
@@ -25,7 +23,7 @@
 ---
 ### 📰 الأخبار
 
-> **[2026.4.4]** منذ زمن غائبين! ✨ DeepTutor v1.0.0 وصل أخيرًا — تطور أصلي للوكلاء مع إعادة بناء المعمار من الصفر وTutorBot وأوضاع مرنة بموجب Apache-2.0. فصل جديد يبدأ!
+> **[2026.3.24]** DeepTutor v1.0.0 ✨ — تطور أصلي للوكلاء: إعادة هيكلة خفيفة، TutorBot، أوضاع مرنة بموجب Apache-2.0.
 
 > **[2026.2.6]** 🚀 10k نجوم في 39 يومًا — شكرًا للمجتمع!
 
@@ -35,9 +33,7 @@
 
 ### 📦 الإصدارات
 
-> **[2026.4.7]** [v1.0.0-beta.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0-beta.2) — إبطال ذاكرة التخزين المؤقت أثناء التشغيل لإعادة تحميل الإعدادات الساخنة، دعم مخرجات MinerU المتداخلة، إصلاح mimic WebSocket، الحد الأدنى Python 3.11+، وتحسينات CI.
-
-> **[2026.4.4]** [v1.0.0-beta.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0-beta.1) — إعادة كتابة أصلية للمعمار (DeepTutor 2.0): نموذج إضافات بطبقتين (Tools + Capabilities)، مداخل CLI وSDK، TutorBot متعدد القنوات، Co-Writer، تعليم موجّه، وذاكرة دائمة.
+> **[2026.3.24]** [v1.0.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0) — إعادة هيكلة أصلية للوكلاء، تكامل مرن للأدوات، مداخل CLI وSDK، TutorBot بمحرك nanobot، Co-Writer، تعليم موجّه، ذاكرة دائمة.
 
 <details>
 <summary><b>إصدارات سابقة</b></summary>
@@ -120,71 +116,6 @@ EMBEDDING_API_KEY=sk-xxx
 EMBEDDING_HOST=https://api.openai.com/v1
 EMBEDDING_DIMENSION=3072
 ```
-
-<details>
-<summary><b>مزوّدو LLM المدعومون</b></summary>
-
-| المزوّد | Binding | عنوان Base الافتراضي |
-|:--|:--|:--|
-| AiHubMix | `aihubmix` | `https://aihubmix.com/v1` |
-| Anthropic | `anthropic` | `https://api.anthropic.com/v1` |
-| Azure OpenAI | `azure_openai` | — |
-| BytePlus | `byteplus` | `https://ark.ap-southeast.bytepluses.com/api/v3` |
-| BytePlus Coding Plan | `byteplus_coding_plan` | `https://ark.ap-southeast.bytepluses.com/api/coding/v3` |
-| Custom (OpenAI-compat) | `custom` | — |
-| DashScope (Qwen) | `dashscope` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
-| DeepSeek | `deepseek` | `https://api.deepseek.com` |
-| Gemini | `gemini` | `https://generativelanguage.googleapis.com/v1beta/openai/` |
-| GitHub Copilot | `github_copilot` | `https://api.githubcopilot.com` |
-| Groq | `groq` | `https://api.groq.com/openai/v1` |
-| MiniMax | `minimax` | `https://api.minimax.io/v1` |
-| Mistral | `mistral` | `https://api.mistral.ai/v1` |
-| Moonshot (Kimi) | `moonshot` | `https://api.moonshot.ai/v1` |
-| Ollama | `ollama` | `http://localhost:11434/v1` |
-| OpenAI | `openai` | `https://api.openai.com/v1` |
-| OpenAI Codex | `openai_codex` | `https://chatgpt.com/backend-api` |
-| OpenRouter | `openrouter` | `https://openrouter.ai/api/v1` |
-| OpenVINO Model Server | `ovms` | `http://localhost:8000/v3` |
-| Qianfan (Ernie) | `qianfan` | `https://qianfan.baidubce.com/v2` |
-| SiliconFlow | `siliconflow` | `https://api.siliconflow.cn/v1` |
-| Step Fun | `stepfun` | `https://api.stepfun.com/v1` |
-| vLLM | `vllm` | `http://localhost:8000/v1` |
-| VolcEngine | `volcengine` | `https://ark.cn-beijing.volces.com/api/v3` |
-| VolcEngine Coding Plan | `volcengine_coding_plan` | `https://ark.cn-beijing.volces.com/api/coding/v3` |
-| Xiaomi MIMO | `xiaomi_mimo` | `https://api.xiaomimimo.com/v1` |
-| Zhipu AI (GLM) | `zhipu` | `https://open.bigmodel.cn/api/paas/v4` |
-
-</details>
-
-<details>
-<summary><b>مزوّدو التضمين المدعومون</b></summary>
-
-التضمين يستخدم نفس قائمة LLM. أمثلة شائعة:
-
-| المزوّد | Binding | مثال نموذج |
-|:--|:--|:--|
-| OpenAI | `openai` | `text-embedding-3-large` |
-| DashScope | `dashscope` | `text-embedding-v3` |
-| Ollama | `ollama` | `nomic-embed-text` |
-| SiliconFlow | `siliconflow` | `BAAI/bge-m3` |
-| vLLM | `vllm` | أي نموذج تضمين |
-| متوافق OpenAI | `custom` | — |
-
-</details>
-
-<details>
-<summary><b>مزوّدو البحث على الويب المدعومون</b></summary>
-
-| المزوّد | مفتاح البيئة | ملاحظات |
-|:--|:--|:--|
-| Brave | `BRAVE_API_KEY` | موصى به، يوجد مستوى مجاني |
-| Tavily | `TAVILY_API_KEY` | |
-| Jina | `JINA_API_KEY` | |
-| SearXNG | — | مستضاف ذاتيًا، بلا مفتاح API |
-| DuckDuckGo | — | بلا مفتاح API |
-| Perplexity | `PERPLEXITY_API_KEY` | يتطلب مفتاح API |
-
-</details>
 
 ```bash
 python -m deeptutor.api.run_server
@@ -407,7 +338,6 @@ deeptutor run deep_research "Attention mechanisms in transformers"
 
 ```bash
 deeptutor chat --capability deep_solve --kb my-kb
-# داخل REPL: /cap و /tool و /kb و /history و /notebook و /config للتبديل فورًا
 ```
 
 ```bash
@@ -430,87 +360,15 @@ deeptutor session open <id>
 <details>
 <summary><b>مرجع أوامر CLI الكامل</b></summary>
 
-**المستوى الأعلى**
-
 | الأمر | الوصف |
 |:---|:---|
-| `deeptutor run <capability> <message>` | تشغيل قدرة في دور واحد (`chat`، `deep_solve`، `deep_question`، `deep_research`، `math_animator`) |
-| `deeptutor chat` | REPL تفاعلي مع `--capability` و`--tool` و`--kb` و`--language` وغيرها |
-| `deeptutor serve` | تشغيل خادم API الخاص بـ DeepTutor |
+| `deeptutor run <capability> <message>` | جولة واحدة |
+| `deeptutor chat` | REPL |
+| `deeptutor serve` | خادم API |
 
-**`deeptutor bot`**
-
-| الأمر | الوصف |
-|:---|:---|
-| `deeptutor bot list` | عرض جميع مثيلات TutorBot |
-| `deeptutor bot create <id>` | إنشاء وتشغيل بوت (`--name`، `--persona`، `--model`) |
-| `deeptutor bot start <id>` | تشغيل بوت |
-| `deeptutor bot stop <id>` | إيقاف بوت |
-
-**`deeptutor kb`**
-
-| الأمر | الوصف |
-|:---|:---|
-| `deeptutor kb list` | قائمة قواعد المعرفة |
-| `deeptutor kb info <name>` | تفاصيل قاعدة |
-| `deeptutor kb create <name>` | إنشاء من مستندات (`--doc`، `--docs-dir`) |
-| `deeptutor kb add <name>` | إضافة مستندات |
-| `deeptutor kb search <name> <query>` | بحث في القاعدة |
-| `deeptutor kb set-default <name>` | تعيين KB افتراضية |
-| `deeptutor kb delete <name>` | حذف (`--force`) |
-
-**`deeptutor memory`**
-
-| الأمر | الوصف |
-|:---|:---|
-| `deeptutor memory show [file]` | عرض (`summary`، `profile`، `all`) |
-| `deeptutor memory clear [file]` | مسح (`--force`) |
-
-**`deeptutor session`**
-
-| الأمر | الوصف |
-|:---|:---|
-| `deeptutor session list` | قائمة الجلسات (`--limit`) |
-| `deeptutor session show <id>` | رسائل الجلسة |
-| `deeptutor session open <id>` | استئناف في REPL |
-| `deeptutor session rename <id>` | إعادة تسمية (`--title`) |
-| `deeptutor session delete <id>` | حذف |
-
-**`deeptutor notebook`**
-
-| الأمر | الوصف |
-|:---|:---|
-| `deeptutor notebook list` | قائمة الدفاتر |
-| `deeptutor notebook create <name>` | إنشاء (`--description`) |
-| `deeptutor notebook show <id>` | عرض السجلات |
-| `deeptutor notebook add-md <id> <path>` | استيراد Markdown |
-| `deeptutor notebook replace-md <id> <rec> <path>` | استبدال سجل |
-| `deeptutor notebook remove-record <id> <rec>` | إزالة سجل |
-
-**`deeptutor config` / `plugin` / `provider`**
-
-| الأمر | الوصف |
-|:---|:---|
-| `deeptutor config show` | ملخص الإعدادات |
-| `deeptutor plugin list` | الأدوات والقدرات المسجّلة |
-| `deeptutor plugin info <name>` | تفاصيل أداة أو قدرة |
-| `deeptutor provider login <provider>` | تسجيل OAuth (`openai-codex`، `github-copilot`) |
+**bot**، **kb**، **memory**، **session**، **notebook**، **config / plugin / provider** — كما في README الإنجليزي.
 
 </details>
-
-<a id="roadmap"></a>
-## 🗺️ خارطة الطريق
-
-| الحالة | مرحلة |
-|:---:|:---|
-| 🔜 | **المصادقة وتسجيل الدخول** — صفحة دخول اختيارية للنشر العام مع دعم متعدد المستخدمين |
-| 🔜 | **السمات والمظهر** — سمات متنوعة وتخصيص واجهة المستخدم |
-| 🔜 | **دمج LightRAG** — دمج [LightRAG](https://github.com/HKUDS/LightRAG) كمحرك متقدم لقواعد المعرفة |
-| 🔜 | **موقع التوثيق** — توثيق كامل مع أدلة ومرجع API ودروس |
-
-> إذا كان DeepTutor مفيدًا لك، [امنحنا نجمة](https://github.com/HKUDS/DeepTutor/stargazers) — يدعمنا ذلك للاستمرار!
-
----
 
 <a id="community"></a>
 ## 🌐 المجتمع والنظام البيئي
@@ -528,9 +386,6 @@ deeptutor session open <id>
 ## 🤝 المساهمة
 
 <div align="center">
-
-نأمل أن يكون DeepTutor هدية للمجتمع. 🎁
-
 <a href="https://github.com/HKUDS/DeepTutor/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=HKUDS/DeepTutor&max=999" alt="Contributors" />
 </a>

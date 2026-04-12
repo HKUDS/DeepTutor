@@ -97,15 +97,11 @@ export function AppShellProvider({
   const [theme, setThemeState] = useState<Theme>(() => {
     return getStoredTheme() ?? getSystemTheme();
   });
-  // Always start with "en" to match SSR; hydrate from localStorage after mount
+  // Keep first paint deterministic between SSR and client hydration.
   const [language, setLanguageState] = useState<AppLanguage>("en");
   const [activeSessionId, setActiveSessionIdState] = useState<string | null>(() =>
     readStoredActiveSessionId(),
   );
-
-  useEffect(() => {
-    setLanguageState(readStoredLanguage());
-  }, []);
 
   useEffect(() => {
     return subscribeToThemeChanges((nextTheme) => {

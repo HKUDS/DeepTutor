@@ -8,12 +8,24 @@ interface MermaidProps {
   className?: string;
 }
 
-let mermaidLoader: Promise<typeof import("mermaid")["default"]> | null = null;
+type MermaidApi = {
+  initialize: (config: Record<string, unknown>) => void;
+  render: (id: string, chart: string) => Promise<{ svg: string }>;
+};
+
+let mermaidLoader: Promise<MermaidApi> | null = null;
 
 async function loadMermaid() {
   if (!mermaidLoader) {
-    mermaidLoader = import("mermaid").then((module) => {
-      const mermaid = module.default;
+    // Work around broken mermaid package entrypoints in some offline installs:
+    // load the bundled browser build directly and read its global export.
+    mermaidLoader = import("mermaid/dist/mermaid.min.js").then((module) => {
+      const candidate = (module as unknown as { default?: MermaidApi }).default
+        ?? (globalThis as { mermaid?: MermaidApi }).mermaid;
+      if (!candidate) {
+        throw new Error("Mermaid runtime not available");
+      }
+      const mermaid = candidate;
       mermaid.initialize({
         startOnLoad: false,
         theme: "neutral",
@@ -126,7 +138,7 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, className = "" }) => {
   if (!stable && !svg) {
     return (
       <div className={`my-4 rounded-xl border border-[var(--border)] bg-[var(--muted)]/50 px-4 py-3 text-sm text-[var(--muted-foreground)] ${className}`}>
-        {t("Rendering diagram...")}
+        Rendering diagram...
       </div>
     );
   }

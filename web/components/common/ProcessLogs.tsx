@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Loader2, Terminal } from "lucide-react";
-import { useTranslation } from "react-i18next";
 
 interface ProcessLogsProps {
   logs: string[];
@@ -14,11 +13,9 @@ interface ProcessLogsProps {
 export default function ProcessLogs({
   logs,
   executing,
-  title,
+  title = "Process Logs",
   emptyMessage = "Waiting for output...",
 }: ProcessLogsProps) {
-  const { t } = useTranslation();
-  const resolvedTitle = title ?? t("Process Logs");
   const [open, setOpen] = useState(true);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
@@ -47,7 +44,7 @@ export default function ProcessLogs({
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-[13px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/50">
         <span className="inline-flex items-center gap-1.5">
           <Terminal size={13} strokeWidth={1.7} />
-          {resolvedTitle}
+          {title}
           {logs.length > 0 && (
             <span className="rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--muted-foreground)]">
               {logs.length}

@@ -2,7 +2,6 @@
 
 import { Check, Pencil, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
 import { type SessionSummary } from "@/lib/session-api";
 
 type SessionRuntimeStatus =
@@ -93,7 +92,7 @@ function groupLabel(timestamp: number): string {
 
 function relativeTime(timestamp: number): string {
   const diffSeconds = Math.round(timestamp - Date.now() / 1000);
-  const formatter = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+  const formatter = new Intl.RelativeTimeFormat("en-US", { numeric: "auto" });
   const abs = Math.abs(diffSeconds);
   if (abs < 60) return formatter.format(diffSeconds, "second");
   if (abs < 3600) return formatter.format(Math.round(diffSeconds / 60), "minute");
@@ -110,7 +109,6 @@ export default function SessionList({
   onRename,
   onDelete,
 }: SessionListProps) {
-  const { t } = useTranslation();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
 
@@ -166,7 +164,7 @@ export default function SessionList({
     if (compact) return null;
     return (
       <div className="px-3 py-4 text-center text-[11px] text-[var(--muted-foreground)]/70">
-        {t("No conversations yet")}
+        No sessions yet
       </div>
     );
   }
@@ -225,7 +223,7 @@ export default function SessionList({
                     />
                   ) : (
                     <span className={`min-w-0 flex-1 truncate text-[13px] ${active ? "font-medium" : ""}`}>
-                      {session.title || "Untitled chat"}
+                      {session.title || "Untitled session"}
                     </span>
                   )}
                   <div className="flex shrink-0 items-center gap-px opacity-0 transition-opacity group-hover:opacity-100">
@@ -233,7 +231,7 @@ export default function SessionList({
                       <button
                         onClick={(event) => { event.stopPropagation(); void commitEdit(); }}
                         className="rounded p-0.5 text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                        aria-label={t("Save title")}
+                        aria-label="Save title"
                       >
                         <Check size={10} />
                       </button>
@@ -241,7 +239,7 @@ export default function SessionList({
                       <button
                         onClick={(event) => { event.stopPropagation(); startEdit(session); }}
                         className="rounded p-0.5 text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                        aria-label={t("Rename chat")}
+                        aria-label="Rename session"
                       >
                         <Pencil size={10} />
                       </button>
@@ -249,7 +247,7 @@ export default function SessionList({
                     <button
                       onClick={(event) => { event.stopPropagation(); void onDelete(session.session_id); }}
                       className="rounded p-0.5 text-[var(--muted-foreground)] hover:text-[var(--destructive)]"
-                      aria-label={t("Delete chat")}
+                      aria-label="Delete session"
                     >
                       <Trash2 size={10} />
                     </button>
@@ -321,7 +319,7 @@ export default function SessionList({
                               active ? "font-medium" : "font-normal"
                             }`}
                           >
-                            {session.title || "Untitled chat"}
+                            {session.title || "Untitled session"}
                           </span>
                           <StatusIndicator status={session.status} />
                         </div>
@@ -340,7 +338,7 @@ export default function SessionList({
                             void commitEdit();
                           }}
                           className="rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--background)] hover:text-[var(--foreground)]"
-                          aria-label={t("Save title")}
+                          aria-label="Save title"
                         >
                           <Check size={12} />
                         </button>
@@ -351,7 +349,7 @@ export default function SessionList({
                             startEdit(session);
                           }}
                           className="rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--background)] hover:text-[var(--foreground)]"
-                          aria-label={t("Rename chat")}
+                          aria-label="Rename session"
                         >
                           <Pencil size={11} />
                         </button>
@@ -362,7 +360,7 @@ export default function SessionList({
                           void onDelete(session.session_id);
                         }}
                         className="rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--background)] hover:text-[var(--destructive)]"
-                        aria-label={t("Delete chat")}
+                        aria-label="Delete session"
                       >
                         <Trash2 size={11} />
                       </button>

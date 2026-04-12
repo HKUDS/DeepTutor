@@ -4,7 +4,6 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import {
-  BarChart3,
   BrainCircuit,
   Clapperboard,
   Code2,
@@ -44,11 +43,6 @@ import {
   buildMathAnimatorWSConfig,
   type MathAnimatorFormConfig,
 } from "@/lib/math-animator-types";
-import {
-  DEFAULT_VISUALIZE_CONFIG,
-  buildVisualizeWSConfig,
-  type VisualizeFormConfig,
-} from "@/lib/visualize-types";
 import {
   buildResearchWSConfig,
   createEmptyResearchConfig,
@@ -158,14 +152,6 @@ const CAPABILITIES: CapabilityDef[] = [
     allowedTools: [],
     defaultTools: [],
   },
-  {
-    value: "visualize",
-    label: "Visualize",
-    description: "Generate SVG or Chart.js visualizations",
-    icon: BarChart3,
-    allowedTools: [],
-    defaultTools: [],
-  },
 ];
 
 interface KnowledgeBase {
@@ -193,10 +179,6 @@ function stripTrailingAtMention(value: string): string {
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
 
-function getCapability(value: string | null): CapabilityDef {
-  return CAPABILITIES.find((c) => c.value === (value || "")) ?? CAPABILITIES[0];
-}
-
 /* ------------------------------------------------------------------ */
 /*  Main page                                                         */
 /* ------------------------------------------------------------------ */
@@ -213,6 +195,31 @@ export default function HomePage() {
     newSession,
     loadSession,
   } = useUnifiedChat();
+  const allTools = useMemo<ToolDef[]>(
+    () =>
+      ALL_TOOLS.map((tool) => ({
+        ...tool,
+        label: t(tool.label),
+      })),
+    [t],
+  );
+  const researchSources = useMemo<ResearchSourceDef[]>(
+    () =>
+      RESEARCH_SOURCES.map((source) => ({
+        ...source,
+        label: t(source.label),
+      })),
+    [t],
+  );
+  const capabilities = useMemo<CapabilityDef[]>(
+    () =>
+      CAPABILITIES.map((capability) => ({
+        ...capability,
+        label: t(capability.label),
+        description: t(capability.description),
+      })),
+    [t],
+  );
   const [input, setInput] = useState("");
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [capabilityConfigs, setCapabilityConfigs] = useState<CapabilityPlaygroundConfigMap>({});
@@ -224,9 +231,6 @@ export default function HomePage() {
   const [mathAnimatorConfig, setMathAnimatorConfig] = useState<MathAnimatorFormConfig>({
     ...DEFAULT_MATH_ANIMATOR_CONFIG,
   });
-  const [visualizeConfig, setVisualizeConfig] = useState<VisualizeFormConfig>({
-    ...DEFAULT_VISUALIZE_CONFIG,
-  });
   const [researchConfig, setResearchConfig] = useState<DeepResearchFormConfig>(createEmptyResearchConfig());
   const [researchPanelCollapsed, setResearchPanelCollapsed] = useState(true);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -234,7 +238,6 @@ export default function HomePage() {
   const [showHistoryPicker, setShowHistoryPicker] = useState(false);
   const [showAtPopup, setShowAtPopup] = useState(false);
   const [toolMenuOpen, setToolMenuOpen] = useState(false);
-  const [refMenuOpen, setRefMenuOpen] = useState(false);
   const [selectedNotebookRecords, setSelectedNotebookRecords] = useState<SelectedRecord[]>([]);
   const [selectedHistorySessions, setSelectedHistorySessions] = useState<SelectedHistorySession[]>([]);
   const dragCounter = useRef(0);
@@ -243,13 +246,13 @@ export default function HomePage() {
   const capBtnRef = useRef<HTMLButtonElement>(null);
   const toolMenuRef = useRef<HTMLDivElement>(null);
   const toolBtnRef = useRef<HTMLButtonElement>(null);
-  const refMenuRef = useRef<HTMLDivElement>(null);
-  const refBtnRef = useRef<HTMLButtonElement>(null);
 
-  const activeCap = useMemo(() => getCapability(state.activeCapability), [state.activeCapability]);
+  const activeCap = useMemo(
+    () => capabilities.find((item) => item.value === (state.activeCapability || "")) ?? capabilities[0],
+    [capabilities, state.activeCapability],
+  );
   const isQuizMode = activeCap.value === "deep_question";
   const isMathAnimatorMode = activeCap.value === "math_animator";
-  const isVisualizeMode = activeCap.value === "visualize";
   const isResearchMode = activeCap.value === "deep_research";
   const selectedTools = useMemo(() => new Set(state.enabledTools), [state.enabledTools]);
   const ragActive = isResearchMode ? researchConfig.sources.includes("kb") : selectedTools.has("rag");
@@ -258,8 +261,8 @@ export default function HomePage() {
   const { ref: composerRef, height: composerHeight } = useMeasuredHeight<HTMLDivElement>();
   const visibleTools = useMemo(
     () =>
-      ALL_TOOLS.filter((t) => activeCap.allowedTools.includes(t.name)),
-    [activeCap.allowedTools],
+      allTools.filter((tool) => activeCap.allowedTools.includes(tool.name)),
+    [activeCap.allowedTools, allTools],
   );
   const researchValidation = useMemo(
     () => validateResearchConfig(researchConfig),
@@ -450,14 +453,14 @@ export default function HomePage() {
     const session = p.get("session");
     if (qc !== null) handleSelectCapability(qc || "");
     else if (qt.length) {
-      const valid = qt.filter((t): t is ToolName => ALL_TOOLS.some((d) => d.name === t));
+      const valid = qt.filter((t): t is ToolName => allTools.some((d) => d.name === t));
       if (valid.length) setTools(Array.from(new Set(valid)));
     }
     if (session) {
       void loadSession(session).catch(() => undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [allTools, setTools]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -473,12 +476,6 @@ export default function HomePage() {
         toolBtnRef.current && !toolBtnRef.current.contains(t)
       ) {
         setToolMenuOpen(false);
-      }
-      if (
-        refMenuRef.current && !refMenuRef.current.contains(t) &&
-        refBtnRef.current && !refBtnRef.current.contains(t)
-      ) {
-        setRefMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", handler);
@@ -658,9 +655,6 @@ export default function HomePage() {
     if (isMathAnimatorMode) {
       config = buildMathAnimatorWSConfig(mathAnimatorConfig);
     }
-    if (isVisualizeMode) {
-      config = buildVisualizeWSConfig(visualizeConfig);
-    }
     if (isResearchMode) {
       config = buildResearchWSConfig(researchConfig);
     }
@@ -739,7 +733,7 @@ export default function HomePage() {
             style={hasMessages ? { paddingBottom: `${Math.max(composerHeight + 24, 120)}px` } : undefined}
           >
             <div className="flex items-center justify-between pb-2">
-              <span className="text-[13px] font-medium text-[var(--muted-foreground)]">{t(activeCap.label)}</span>
+              <span className="text-[13px] font-medium text-[var(--muted-foreground)]">{activeCap.label}</span>
               <div className="flex items-center gap-2">
                 {chatSavePayload && (
                   <button
@@ -783,13 +777,10 @@ export default function HomePage() {
           capBtnRef={capBtnRef}
           toolMenuRef={toolMenuRef}
           toolBtnRef={toolBtnRef}
-          refMenuRef={refMenuRef}
-          refBtnRef={refBtnRef}
           dragCounter={dragCounter}
           dragging={dragging}
           capMenuOpen={capMenuOpen}
           toolMenuOpen={toolMenuOpen}
-          refMenuOpen={refMenuOpen}
           showAtPopup={showAtPopup}
           hasMessages={hasMessages}
           input={input}
@@ -807,19 +798,16 @@ export default function HomePage() {
           isResearchMode={isResearchMode}
           isQuizMode={isQuizMode}
           isMathAnimatorMode={isMathAnimatorMode}
-          isVisualizeMode={isVisualizeMode}
           quizConfig={quizConfig}
           quizPdf={quizPdf}
           mathAnimatorConfig={mathAnimatorConfig}
-          visualizeConfig={visualizeConfig}
           researchConfig={researchConfig}
           researchValidationErrors={researchValidation.errors}
           researchPanelCollapsed={researchPanelCollapsed}
-          capabilities={CAPABILITIES}
-          researchSources={RESEARCH_SOURCES}
+          capabilities={capabilities}
+          researchSources={researchSources}
           onSetCapMenuOpen={setCapMenuOpen}
           onSetToolMenuOpen={setToolMenuOpen}
-          onSetRefMenuOpen={setRefMenuOpen}
           onSetShowAtPopup={setShowAtPopup}
           onInputChange={(nextValue, cursorPos) => {
             setInput(nextValue);
@@ -865,7 +853,6 @@ export default function HomePage() {
           onChangeQuizConfig={setQuizConfig}
           onUploadQuizPdf={setQuizPdf}
           onChangeMathAnimatorConfig={setMathAnimatorConfig}
-          onChangeVisualizeConfig={setVisualizeConfig}
           onChangeResearchConfig={setResearchConfig}
           onToggleResearchCollapsed={() => setResearchPanelCollapsed((prev) => !prev)}
         />

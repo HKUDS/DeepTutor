@@ -27,21 +27,21 @@ def register(app: typer.Typer) -> None:
         tr = get_tool_registry()
         cr = get_capability_registry()
 
-        table = Table(title="Registered Plugins")
-        table.add_column("Name", style="bold")
-        table.add_column("Type")
-        table.add_column("Description")
+        table = Table(title="已注册插件")
+        table.add_column("名称", style="bold")
+        table.add_column("类型")
+        table.add_column("描述")
 
         for defn in tr.get_definitions():
-            table.add_row(defn.name, "tool", defn.description[:80])
+            table.add_row(defn.name, "工具", defn.description[:80])
 
         for m in cr.get_manifests():
-            table.add_row(m["name"], "capability", m["description"][:80])
+            table.add_row(m["name"], "能力", m["description"][:80])
 
         console.print(table)
 
     @app.command("info")
-    def plugin_info(name: str = typer.Argument(..., help="Tool or capability name.")) -> None:
+    def plugin_info(name: str = typer.Argument(..., help="工具或能力名称。")) -> None:
         """Show details of a tool or capability."""
         import json
 
@@ -68,5 +68,5 @@ def register(app: typer.Typer) -> None:
             }, indent=2))
             return
 
-        console.print(f"[red]'{name}' not found.[/]")
+        console.print(f"[red]未找到 '{name}'。[/]")
         raise typer.Exit(code=1)

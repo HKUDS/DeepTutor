@@ -181,11 +181,11 @@ deeptutor plugin info <name>                     # 查看详情
 deeptutor config show
 ```
 
-### `provider` — 提供方认证 / 校验
+### `provider` — OAuth 登录
 
 ```bash
-deeptutor provider login openai-codex      # 执行 OpenAI Codex OAuth 登录
-deeptutor provider login github-copilot    # 校验现有 GitHub Copilot 认证是否可用
+deeptutor provider login openai-codex
+deeptutor provider login github-copilot
 ```
 
 ---

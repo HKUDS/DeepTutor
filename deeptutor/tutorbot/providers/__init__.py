@@ -2,18 +2,11 @@
 
 from deeptutor.tutorbot.providers.base import LLMProvider, LLMResponse
 
-__all__ = ["LLMProvider", "LLMResponse", "OpenAICompatProvider", "AnthropicProvider"]
+__all__ = ["LLMProvider", "LLMResponse", "LiteLLMProvider"]
 
 
 def __getattr__(name: str):
-    if name == "OpenAICompatProvider":
-        from deeptutor.tutorbot.providers.openai_compat_provider import OpenAICompatProvider
-        return OpenAICompatProvider
-    if name == "AnthropicProvider":
-        from deeptutor.tutorbot.providers.anthropic_provider import AnthropicProvider
-        return AnthropicProvider
-    # Legacy alias
     if name == "LiteLLMProvider":
-        from deeptutor.tutorbot.providers.openai_compat_provider import OpenAICompatProvider
-        return OpenAICompatProvider
+        from deeptutor.tutorbot.providers.litellm_provider import LiteLLMProvider
+        return LiteLLMProvider
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

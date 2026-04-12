@@ -144,20 +144,6 @@ class LLMProvider(ABC):
         return result
 
     @staticmethod
-    def _tool_cache_marker_indices(tools: list[dict[str, Any]]) -> list[int]:
-        """Return indices of tool definitions that should get cache_control markers.
-
-        Heuristic: mark the last tool, and every 5th tool counting backwards,
-        to balance cache granularity vs. overhead.
-        """
-        n = len(tools)
-        if n == 0:
-            return []
-        if n <= 5:
-            return [n - 1]
-        return [i for i in range(n - 1, -1, -5)]
-
-    @staticmethod
     def _sanitize_request_messages(
         messages: list[dict[str, Any]],
         allowed_keys: frozenset[str],

@@ -1,66 +1,117 @@
 /**
- * Hook for injecting KaTeX resources + render script into HTML content.
- *
- * Strategy: inject CDN resources into <head> + a small inline init script
- * that polls for renderMathInElement availability. HTMLViewer also has
- * a parent-window fallback in case the inline script gets corrupted by
- * page content containing "</script>" strings.
+ * Hook for injecting KaTeX support into HTML content
  */
 export function useKaTeXInjection() {
+  /**
+   * Inject KaTeX CSS and JS into HTML if not already present
+   */
   const injectKaTeX = (html: string): string => {
-    const htmlLower = html.toLowerCase();
-    const hasKaTeX =
-      htmlLower.includes("katex.min.css") ||
-      htmlLower.includes("katex.min.js") ||
-      htmlLower.includes("katex@") ||
-      htmlLower.includes("cdn.jsdelivr.net/npm/katex") ||
-      htmlLower.includes("unpkg.com/katex");
+    const katexInjection = `  <link data-katex-host="1" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link data-katex-host="1" rel="stylesheet" href="https://unpkg.com/katex@0.16.9/dist/katex.min.css">
+  <script>
+    (function () {
+      function renderMath() {
+        if (typeof window.renderMathInElement !== "function") return false;
+        try {
+          window.renderMathInElement(document.body, {
+            delimiters: [
+              { left: "$$", right: "$$", display: true },
+              { left: "\\\\[", right: "\\\\]", display: true },
+              { left: "$", right: "$", display: false },
+              { left: "\\\\(", right: "\\\\)", display: false }
+            ],
+            throwOnError: false,
+            strict: "ignore"
+          });
+          return true;
+        } catch (_error) {
+          return false;
+        }
+      }
 
-    if (hasKaTeX) {
-      console.log("[KaTeX] Already included, skipping injection");
-      return html;
-    }
+      function loadScript(src, done) {
+        var script = document.createElement("script");
+        script.src = src;
+        script.defer = true;
+        script.onload = done;
+        script.onerror = done;
+        document.head.appendChild(script);
+      }
 
-    // CDN resources (no SRI hash to avoid mismatch)
-    const katexResources = [
-      '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">',
-      '<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin="anonymous"><' + "/script>",
-      '<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" crossorigin="anonymous"><' + "/script>",
-    ].join("\n  ");
+      function ensureKaTeX() {
+        if (renderMath()) return;
 
-    // Inline render script — placed in <head> with DOMContentLoaded listener.
-    // Uses data-katex-init attr so sanitizer preserves it (contains "katex").
-    // Polls every 100ms up to 5s for auto-render to load via defer.
-    // eslint-disable-next-line no-template-curly-in-string
-    const katexInit =
-      '<script data-katex-init>' +
-      'document.addEventListener("DOMContentLoaded",function(){var t=0,i=setInterval(function(){if(typeof renderMathInElement==="function"){clearInterval(i);try{renderMathInElement(document.body,{delimiters:[{left:"$$",right:"$$",display:true},{left:"$",right:"$",display:false},{left:"\\\\(",right:"\\\\)",display:false},{left:"\\\\[",right:"\\\\]",display:true}],throwOnError:false});console.log("[KaTeX] Rendered "+document.querySelectorAll(".katex").length+" formulas")}catch(e){console.error("[KaTeX] Error:",e)}}else if(++t>50){clearInterval(i);console.warn("[KaTeX] Timeout")}},100)});' +
-      "<" + "/script>";
+        var ensureAutoRender = function () {
+          if (typeof window.renderMathInElement === "function") {
+            renderMath();
+            return;
+          }
+          loadScript("https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js", function () {
+            if (typeof window.renderMathInElement !== "function") {
+              loadScript("https://unpkg.com/katex@0.16.9/dist/contrib/auto-render.min.js", function () {
+                renderMath();
+              });
+              return;
+            }
+            renderMath();
+          });
+        };
 
-    const headContent = katexResources + "\n  " + katexInit;
+        if (typeof window.katex === "undefined") {
+          loadScript("https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js", function () {
+            if (typeof window.katex === "undefined") {
+              loadScript("https://unpkg.com/katex@0.16.9/dist/katex.min.js", function () {
+                ensureAutoRender();
+              });
+              return;
+            }
+            ensureAutoRender();
+          });
+          return;
+        }
+        ensureAutoRender();
+      }
 
-    // Inject into <head>
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", ensureKaTeX);
+      } else {
+        ensureKaTeX();
+      }
+      window.setTimeout(ensureKaTeX, 400);
+      window.setTimeout(ensureKaTeX, 1500);
+    })();
+  </script>`;
+
+    // Try to inject into </head> section (most common case)
     if (html.includes("</head>")) {
-      return html.replace("</head>", headContent + "\n</head>");
+      return html.replace("</head>", `${katexInjection}\n</head>`);
     }
+
+    // If no </head> tag, try to inject after <head> tag
     if (html.includes("<head>")) {
-      return html.replace(/<head([^>]*)>/i, "<head$1>\n" + headContent);
+      return html.replace(/<head([^>]*)>/i, `<head$1>\n${katexInjection}`);
     }
+
+    // If HTML structure exists but no <head>, add it
     if (html.includes("<html")) {
       return html.replace(
         /(<html[^>]*>)/i,
-        "$1\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" + headContent + "\n</head>",
+        `$1\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n${katexInjection}\n</head>`,
       );
     }
 
-    // Wrap bare content
-    return (
-      "<!DOCTYPE html>\n<html lang=\"zh\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-      headContent +
-      "\n</head>\n<body>\n" +
-      html +
-      "\n</body>\n</html>"
-    );
+    // If no HTML structure, wrap it with full HTML document
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+${katexInjection}
+</head>
+<body>
+${html}
+</body>
+</html>`;
   };
 
   return { injectKaTeX };

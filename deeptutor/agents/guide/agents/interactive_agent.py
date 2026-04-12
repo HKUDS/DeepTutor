@@ -193,18 +193,27 @@ class InteractiveAgent(BaseAgent):
             )
 
         if retry_with_bug:
+            formatted_knowledge = user_template.format(
+                knowledge_title=knowledge.get("knowledge_title", ""),
+                knowledge_summary=knowledge.get("knowledge_summary", ""),
+                user_difficulty=knowledge.get("user_difficulty", ""),
+                generation_requirements=knowledge.get("generation_requirements", ""),
+                content_blueprint=knowledge.get("content_blueprint", ""),
+            )
             user_prompt = f"""The previously generated HTML page has the following issues:
 {retry_with_bug}
 
 Please fix these issues and regenerate the HTML page.
 
 Original knowledge point information:
-{user_template.format(**knowledge)}"""
+{formatted_knowledge}"""
         else:
             user_prompt = user_template.format(
                 knowledge_title=knowledge.get("knowledge_title", ""),
                 knowledge_summary=knowledge.get("knowledge_summary", ""),
                 user_difficulty=knowledge.get("user_difficulty", ""),
+                generation_requirements=knowledge.get("generation_requirements", ""),
+                content_blueprint=knowledge.get("content_blueprint", ""),
             )
 
         try:

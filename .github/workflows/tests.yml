@@ -98,16 +98,6 @@ jobs:
           pip install -r requirements/server.txt
           pip install pytest pytest-asyncio
 
-      - name: Create minimal runtime config
-        run: |
-          mkdir -p data/user/settings
-          cat > data/user/settings/main.yaml <<'YAML'
-          system:
-            language: en
-          logging:
-            level: WARNING
-          YAML
-
       - name: Run smoke tests
         run: |
           echo "🧪 Running smoke test subset"

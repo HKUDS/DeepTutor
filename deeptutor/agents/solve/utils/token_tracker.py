@@ -18,7 +18,15 @@ except ImportError:
     TIKTOKEN_AVAILABLE = False
     tiktoken = None
 
-LITELLM_AVAILABLE = False
+# Try importing litellm (optional advanced library)
+try:
+    import litellm
+    from litellm import token_counter
+
+    LITELLM_AVAILABLE = True
+except ImportError:
+    LITELLM_AVAILABLE = False
+    litellm = None
 
 
 # Model pricing table (price per 1K tokens, unit: USD)
@@ -95,20 +103,56 @@ def count_tokens_with_tiktoken(text: str, model_name: str) -> int:
 
 
 def count_tokens_with_litellm(messages: list[dict], model_name: str) -> dict[str, int]:
-    """Count tokens from messages using tiktoken (litellm removed)."""
-    if not TIKTOKEN_AVAILABLE:
+    """
+    Calculate token count using litellm (if available)
+
+    Args:
+        messages: Message list
+        model_name: Model name
+
+    Returns:
+        {'prompt_tokens': int, 'completion_tokens': int, 'total_tokens': int}
+    """
+    if not LITELLM_AVAILABLE:
         return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
     try:
-        text = "\n".join(str(m.get("content", "")) for m in messages)
-        count = count_tokens_with_tiktoken(text, model_name)
-        return {"prompt_tokens": count, "completion_tokens": 0, "total_tokens": count}
+        # Use litellm's token_counter
+        token_count = token_counter(model=model_name, messages=messages)
+        return {
+            "prompt_tokens": token_count,
+            "completion_tokens": 0,  # litellm only counts prompt tokens
+            "total_tokens": token_count,
+        }
     except Exception:
         return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
 
 def calculate_cost_with_litellm(model: str, prompt_tokens: int, completion_tokens: int) -> float:
-    """Calculate cost using built-in pricing table."""
-    return calculate_cost(model, prompt_tokens, completion_tokens)
+    """
+    Calculate cost using litellm (more accurate if available)
+
+    Args:
+        model: Model name
+        prompt_tokens: Input tokens
+        completion_tokens: Output tokens
+
+    Returns:
+        Cost (USD)
+    """
+    if not LITELLM_AVAILABLE:
+        # Fall back to manual calculation
+        return calculate_cost(model, prompt_tokens, completion_tokens)
+
+    try:
+        # Use litellm's completion_cost function
+        cost = litellm.completion_cost(
+            model=model, prompt_tokens=prompt_tokens, completion_tokens=completion_tokens
+        )
+        return cost
+    except Exception:
+        # If failed, fall back to manual calculation
+        return calculate_cost(model, prompt_tokens, completion_tokens)
 
 
 def get_model_pricing(model_name: str) -> dict[str, float]:
@@ -131,6 +175,20 @@ def get_model_pricing(model_name: str) -> dict[str, float]:
         if key.lower() in model_lower or model_lower in key.lower():
             return pricing
 
+    # If using litellm, try to get price from litellm
+    if LITELLM_AVAILABLE:
+        try:
+            # litellm has built-in pricing table
+            model_info = litellm.get_model_info(model=model_name)
+            if model_info and "input_cost_per_token" in model_info:
+                return {
+                    "input": model_info.get("input_cost_per_token", 0) * 1000,
+                    "output": model_info.get("output_cost_per_token", 0) * 1000,
+                }
+        except Exception:
+            pass
+
+    # Default price (use gpt-4o-mini as conservative estimate)
     return MODEL_PRICING.get("gpt-4o-mini", {"input": 0.00015, "output": 0.0006})
 
 

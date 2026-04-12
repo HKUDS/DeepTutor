@@ -25,4 +25,10 @@ user_template: |
   Learner's likely difficulties:
   {user_difficulty}
 
+  Hard output requirements (must satisfy):
+  {generation_requirements}
+
+  Structured content blueprint (prioritize this):
+  {content_blueprint}
+
   Generate an interactive HTML learning page for this knowledge point.

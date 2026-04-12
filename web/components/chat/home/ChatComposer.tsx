@@ -5,7 +5,6 @@ import type { RefObject } from "react";
 import Image from "next/image";
 import {
   ArrowUp,
-  AtSign,
   BookOpen,
   ChevronDown,
   FilePlus2,
@@ -22,7 +21,6 @@ import AtMentionPopup from "@/components/chat/AtMentionPopup";
 import type { SelectedRecord } from "@/app/(workspace)/guide/types";
 import type { DeepQuestionFormConfig } from "@/lib/quiz-types";
 import type { MathAnimatorFormConfig } from "@/lib/math-animator-types";
-import type { VisualizeFormConfig } from "@/lib/visualize-types";
 import type { DeepResearchFormConfig, ResearchSource } from "@/lib/research-types";
 import { ReferenceChips } from "./ChatMessages";
 
@@ -35,10 +33,6 @@ const MathAnimatorConfigPanel = dynamic(
 );
 const ResearchConfigPanel = dynamic(
   () => import("@/components/research/ResearchConfigPanel"),
-  { ssr: false },
-);
-const VisualizeConfigPanel = dynamic(
-  () => import("@/components/visualize/VisualizeConfigPanel"),
   { ssr: false },
 );
 
@@ -80,13 +74,10 @@ export default function ChatComposer({
   capBtnRef,
   toolMenuRef,
   toolBtnRef,
-  refMenuRef,
-  refBtnRef,
   dragCounter,
   dragging,
   capMenuOpen,
   toolMenuOpen,
-  refMenuOpen,
   showAtPopup,
   hasMessages,
   input,
@@ -104,11 +95,9 @@ export default function ChatComposer({
   isResearchMode,
   isQuizMode,
   isMathAnimatorMode,
-  isVisualizeMode,
   quizConfig,
   quizPdf,
   mathAnimatorConfig,
-  visualizeConfig,
   researchConfig,
   researchValidationErrors,
   researchPanelCollapsed,
@@ -116,7 +105,6 @@ export default function ChatComposer({
   researchSources,
   onSetCapMenuOpen,
   onSetToolMenuOpen,
-  onSetRefMenuOpen,
   onSetShowAtPopup,
   onInputChange,
   onSetKB,
@@ -139,7 +127,6 @@ export default function ChatComposer({
   onChangeQuizConfig,
   onUploadQuizPdf,
   onChangeMathAnimatorConfig,
-  onChangeVisualizeConfig,
   onChangeResearchConfig,
   onToggleResearchCollapsed,
 }: {
@@ -149,13 +136,10 @@ export default function ChatComposer({
   capBtnRef: RefObject<HTMLButtonElement | null>;
   toolMenuRef: RefObject<HTMLDivElement | null>;
   toolBtnRef: RefObject<HTMLButtonElement | null>;
-  refMenuRef: RefObject<HTMLDivElement | null>;
-  refBtnRef: RefObject<HTMLButtonElement | null>;
   dragCounter: RefObject<number>;
   dragging: boolean;
   capMenuOpen: boolean;
   toolMenuOpen: boolean;
-  refMenuOpen: boolean;
   showAtPopup: boolean;
   hasMessages: boolean;
   input: string;
@@ -173,11 +157,9 @@ export default function ChatComposer({
   isResearchMode: boolean;
   isQuizMode: boolean;
   isMathAnimatorMode: boolean;
-  isVisualizeMode: boolean;
   quizConfig: DeepQuestionFormConfig;
   quizPdf: File | null;
   mathAnimatorConfig: MathAnimatorFormConfig;
-  visualizeConfig: VisualizeFormConfig;
   researchConfig: DeepResearchFormConfig;
   researchValidationErrors: Record<string, string>;
   researchPanelCollapsed: boolean;
@@ -185,7 +167,6 @@ export default function ChatComposer({
   researchSources: ResearchSourceDef[];
   onSetCapMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
   onSetToolMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
-  onSetRefMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
   onSetShowAtPopup: (open: boolean) => void;
   onInputChange: (value: string, cursorPos: number) => void;
   onSetKB: (kb: string) => void;
@@ -208,7 +189,6 @@ export default function ChatComposer({
   onChangeQuizConfig: (next: DeepQuestionFormConfig) => void;
   onUploadQuizPdf: (file: File | null) => void;
   onChangeMathAnimatorConfig: (next: MathAnimatorFormConfig) => void;
-  onChangeVisualizeConfig: (next: VisualizeFormConfig) => void;
   onChangeResearchConfig: (next: DeepResearchFormConfig) => void;
   onToggleResearchCollapsed: () => void;
 }) {
@@ -248,8 +228,8 @@ export default function ChatComposer({
                       className={`shrink-0 ${selected ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"}`}
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-medium text-[var(--foreground)]">{t(cap.label)}</div>
-                      <div className="truncate text-[11px] text-[var(--muted-foreground)]">{t(cap.description)}</div>
+                      <div className="text-[13px] font-medium text-[var(--foreground)]">{cap.label}</div>
+                      <div className="truncate text-[11px] text-[var(--muted-foreground)]">{cap.description}</div>
                     </div>
                     {selected && <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--primary)]" />}
                   </button>
@@ -309,13 +289,10 @@ export default function ChatComposer({
               onClick={onTextareaClick}
               onPaste={onPaste}
               rows={1}
-              suppressHydrationWarning
               placeholder={
                 isMathAnimatorMode
                   ? t("Describe the math animation or storyboard you want...")
-                  : isVisualizeMode
-                    ? t("Describe the chart or diagram you want to visualize...")
-                    : t("How can I help you today?")
+                  : t("How can I help you today?")
               }
               className="w-full resize-none overflow-hidden bg-transparent text-[15px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
               style={{ transition: "height 0.15s ease-out", minHeight: 28 }}
@@ -367,7 +344,7 @@ export default function ChatComposer({
                 }`}
               >
                 <CapIcon size={14} strokeWidth={1.6} />
-                <span className="font-medium">{t(activeCap.label)}</span>
+                <span className="font-medium">{activeCap.label}</span>
                 <ChevronDown size={11} className={`transition-transform ${capMenuOpen ? "rotate-180" : ""}`} />
               </button>
 
@@ -389,7 +366,7 @@ export default function ChatComposer({
                         }`}
                       >
                         <Icon size={11} strokeWidth={1.7} />
-                        {t(source.label)}
+                        {source.label}
                       </button>
                     );
                   })
@@ -409,7 +386,7 @@ export default function ChatComposer({
                         {visibleTools.filter((vt) => selectedTools.has(vt.name)).map((vt, i) => (
                           <span key={vt.name} className="shrink-0 text-[10px] text-[var(--muted-foreground)]/35">
                             {i > 0 && <span className="text-[12px] leading-none">·</span>}
-                            {t(vt.label)}
+                            {vt.label}
                           </span>
                         ))}
                       </div>
@@ -433,7 +410,7 @@ export default function ChatComposer({
                               } hover:bg-[var(--muted)]/40`}
                             >
                               <Icon size={13} strokeWidth={1.7} />
-                              <span className="flex-1 font-medium">{t(tool.label)}</span>
+                              <span className="flex-1 font-medium">{tool.label}</span>
                               {active && <div className="h-1.5 w-1.5 rounded-full bg-[var(--primary)]" />}
                             </button>
                           );
@@ -442,56 +419,6 @@ export default function ChatComposer({
                     )}
                   </div>
                 ) : null}
-
-                <div className="relative flex items-center gap-0.5">
-                  <button
-                    ref={refBtnRef}
-                    onClick={() => onSetRefMenuOpen((v) => !v)}
-                    className="inline-flex shrink-0 items-center gap-1 py-1 px-1.5 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-                  >
-                    <AtSign size={12} strokeWidth={1.7} />
-                    {t("Reference")}
-                    <ChevronDown size={10} className={`transition-transform ${refMenuOpen ? "rotate-180" : ""}`} />
-                  </button>
-                  {(selectedNotebookRecords.length > 0 || selectedHistorySessions.length > 0) && (
-                    <span className="shrink-0 rounded-full bg-[var(--primary)]/10 px-1.5 py-px text-[9px] font-semibold text-[var(--primary)]">
-                      {selectedNotebookRecords.length + selectedHistorySessions.length}
-                    </span>
-                  )}
-                  {refMenuOpen && (
-                    <div
-                      ref={refMenuRef}
-                      className="absolute bottom-full left-0 z-50 mb-1.5 min-w-[180px] rounded-lg border border-[var(--border)] bg-[var(--card)] py-1 shadow-lg"
-                    >
-                      <button
-                        onClick={() => {
-                          onSetRefMenuOpen(false);
-                          onSelectNotebookPicker();
-                        }}
-                        className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] hover:bg-[var(--muted)]/40"
-                      >
-                        <BookOpen size={13} strokeWidth={1.7} />
-                        <span className="flex-1 font-medium">{t("Notebook")}</span>
-                        {selectedNotebookRecords.length > 0 && (
-                          <span className="text-[10px] text-[var(--primary)]">{selectedNotebookRecords.length}</span>
-                        )}
-                      </button>
-                      <button
-                        onClick={() => {
-                          onSetRefMenuOpen(false);
-                          onSelectHistoryPicker();
-                        }}
-                        className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] hover:bg-[var(--muted)]/40"
-                      >
-                        <MessageSquare size={13} strokeWidth={1.7} />
-                        <span className="flex-1 font-medium">{t("Chat History")}</span>
-                        {selectedHistorySessions.length > 0 && (
-                          <span className="text-[10px] text-[var(--primary)]">{selectedHistorySessions.length}</span>
-                        )}
-                      </button>
-                    </div>
-                  )}
-                </div>
               </div>
 
               <div className="ml-auto flex shrink-0 items-center gap-1.5">
@@ -499,7 +426,7 @@ export default function ChatComposer({
                   value={stateKnowledgeBase}
                   onChange={(e) => onSetKB(e.target.value)}
                   disabled={!ragActive}
-                  title={ragActive ? t("Select Knowledge Base") : t("Enable Knowledge Base source first")}
+                  title={ragActive ? "Select knowledge base" : "Enable Knowledge Base source first"}
                   className={`h-[28px] appearance-none rounded-full border bg-transparent py-0 pl-2.5 pr-5 text-[11px] outline-none transition-colors ${
                     ragActive
                       ? "cursor-pointer border-[var(--border)]/40 text-[var(--muted-foreground)] hover:border-[var(--border)] hover:text-[var(--foreground)]"
@@ -507,7 +434,7 @@ export default function ChatComposer({
                   }`}
                   style={{ backgroundImage: ragActive ? "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")" : "none", backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" }}
                 >
-                  <option value="">{ragActive ? t("No KB") : "—"}</option>
+                  <option value="">{ragActive ? "No KB" : "—"}</option>
                   {knowledgeBases.map((kb) => (
                     <option key={kb.name} value={kb.name}>{kb.name}</option>
                   ))}
@@ -536,7 +463,7 @@ export default function ChatComposer({
             </div>
           </div>
 
-          {(isQuizMode || isMathAnimatorMode || isVisualizeMode || isResearchMode) && (
+          {(isQuizMode || isMathAnimatorMode || isResearchMode) && (
             <div className="border-t border-[var(--border)]/15">
               {isQuizMode ? (
                 <QuizConfigPanel
@@ -549,11 +476,6 @@ export default function ChatComposer({
                 <MathAnimatorConfigPanel
                   value={mathAnimatorConfig}
                   onChange={onChangeMathAnimatorConfig}
-                />
-              ) : isVisualizeMode ? (
-                <VisualizeConfigPanel
-                  value={visualizeConfig}
-                  onChange={onChangeVisualizeConfig}
                 />
               ) : (
                 <ResearchConfigPanel

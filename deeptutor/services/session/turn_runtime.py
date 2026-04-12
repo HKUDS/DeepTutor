@@ -102,45 +102,6 @@ def _format_followup_question_context(context: dict[str, Any], language: str = "
         else "unknown"
     )
 
-    if str(language or "en").lower().startswith("zh"):
-        lines = [
-            "你正在处理一道测验题的后续追问。",
-            "下面是本题上下文，请在后续回答中优先围绕这道题进行解释、纠错、延展和追问。",
-            "如果用户提出超出本题的内容，也可以正常回答，但要保持和本题的连续性。",
-            "",
-            "[Question Follow-up Context]",
-            f"Question ID: {context.get('question_id') or '(none)'}",
-            f"Parent quiz session: {context.get('parent_quiz_session_id') or '(none)'}",
-            f"Question type: {context.get('question_type') or '(none)'}",
-            f"Difficulty: {context.get('difficulty') or '(none)'}",
-            f"Concentration: {context.get('concentration') or '(none)'}",
-            "",
-            "Question:",
-            context.get("question") or "(none)",
-        ]
-        if option_lines:
-            lines.extend(["", "Options:", *option_lines])
-        lines.extend(
-            [
-                "",
-                f"User answer: {context.get('user_answer') or '(not provided)'}",
-                f"User result: {correctness_text}",
-                f"Reference answer: {context.get('correct_answer') or '(none)'}",
-                "",
-                "Explanation:",
-                context.get("explanation") or "(none)",
-            ]
-        )
-        if context.get("knowledge_context"):
-            lines.extend(
-                [
-                    "",
-                    "Knowledge context:",
-                    context["knowledge_context"],
-                ]
-            )
-        return "\n".join(lines).strip()
-
     lines = [
         "You are handling follow-up questions about a single quiz item.",
         "Use the question context below as the primary grounding for future turns in this session.",
@@ -458,13 +419,6 @@ class TurnRuntimeManager:
                         records=history_records,
                         emit=lambda event: self._persist_and_publish(execution, event),
                     )
-                    # Fallback: if analysis returns empty, use raw record content
-                    if not history_context.strip():
-                        history_context = "\n\n".join(
-                            f"## Session: {record.get('title', 'Untitled')}\n{record.get('output', '')}"
-                            for record in history_records
-                            if record.get("output")
-                        )
 
             effective_user_message = raw_user_content
             context_parts: list[str] = []

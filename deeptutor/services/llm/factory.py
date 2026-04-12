@@ -55,8 +55,9 @@ from .exceptions import (
     LLMTimeoutError,
 )
 from .executors import (
-    sdk_complete,
-    sdk_stream,
+    litellm_available,
+    litellm_complete,
+    litellm_stream,
 )
 from .utils import is_local_llm_server
 
@@ -262,13 +263,13 @@ async def complete(
                     "openai_codex requires OAuth login in CLI. "
                     "Run `deeptutor provider login openai-codex` first."
                 )
-            if provider_mode == "oauth":
+            if provider_mode == "oauth" and not litellm_available():
                 raise LLMConfigError(
-                    f"{provider_name} requires OAuth session. "
-                    "Run `deeptutor provider login ...` first."
+                    f"{provider_name} requires litellm + OAuth session. "
+                    "Install provider deps and run `deeptutor provider login ...`."
                 )
-            if provider_mode != "direct":
-                return await sdk_complete(
+            if provider_mode != "direct" and litellm_available():
+                return await litellm_complete(
                     prompt=prompt_value,
                     system_prompt=system_prompt_value,
                     provider_name=provider_name,
@@ -391,14 +392,14 @@ async def stream(
                     "openai_codex requires OAuth login in CLI. "
                     "Run `deeptutor provider login openai-codex` first."
                 )
-            if provider_mode == "oauth":
+            if provider_mode == "oauth" and not litellm_available():
                 raise LLMConfigError(
-                    f"{provider_name} requires OAuth session. "
-                    "Run `deeptutor provider login ...` first."
+                    f"{provider_name} requires litellm + OAuth session. "
+                    "Install provider deps and run `deeptutor provider login ...`."
                 )
 
-            if provider_mode != "direct":
-                async for chunk in sdk_stream(
+            if provider_mode != "direct" and litellm_available():
+                async for chunk in litellm_stream(
                     prompt=prompt,
                     system_prompt=system_prompt,
                     provider_name=provider_name,

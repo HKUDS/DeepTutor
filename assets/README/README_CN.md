@@ -2,21 +2,19 @@
 
 <img src="../../assets/logo-ver2.png" alt="DeepTutor" width="140" style="border-radius: 15px;">
 
-# DeepTutor：智能体原生的个性化辅导
-
-<a href="https://trendshift.io/repositories/17099" target="_blank"><img src="https://trendshift.io/api/badge/repositories/17099" alt="HKUDS%2FDeepTutor | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+# DeepTutor：迈向智能体驱动的个性化辅导
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
-[![arXiv](https://img.shields.io/badge/arXiv-Coming_Soon-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](#)
+[![GitHub last commit](https://img.shields.io/github/last-commit/HKUDS/DeepTutor?style=flat-square)](https://github.com/HKUDS/DeepTutor/commits)
 
 [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t)
 [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md)
 [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
 
-[核心亮点](#key-features) · [快速开始](#get-started) · [探索 DeepTutor](#explore-deeptutor) · [TutorBot](#tutorbot) · [CLI](#deeptutor-cli-guide) · [路线图](#roadmap) · [社区](#community)
+[核心亮点](#key-features) · [快速开始](#get-started) · [探索 DeepTutor](#explore-deeptutor) · [TutorBot](#tutorbot) · [CLI](#deeptutor-cli-guide) · [社区](#community)
 
 [🇬🇧 English](../../README.md) · [🇯🇵 日本語](README_JA.md) · [🇪🇸 Español](README_ES.md) · [🇫🇷 Français](README_FR.md) · [🇸🇦 العربية](README_AR.md) · [🇷🇺 Русский](README_RU.md) · [🇮🇳 हिन्दी](README_HI.md) · [🇵🇹 Português](README_PT.md)
 
@@ -25,7 +23,7 @@
 ---
 ### 📰 动态
 
-> **[2026.4.4]** 好久不见！✨ DeepTutor v1.0.0 终于到来 —— 在 Apache-2.0 许可下的智能体原生演进：自底向上架构重写、TutorBot、灵活模式切换。新篇章开启，故事继续！
+> **[2026.3.24]** 久等了！✨ DeepTutor v1.0.0 正式发布 —— 在 Apache-2.0 许可下的智能体原生演进：轻量重构、TutorBot、灵活模式切换。新篇章开启，故事继续！
 
 > **[2026.2.6]** 🚀 仅用 39 天即突破 10k star！感谢社区的大力支持！
 
@@ -35,9 +33,7 @@
 
 ### 📦 版本发布
 
-> **[2026.4.7]** [v1.0.0-beta.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0-beta.2) — 运行时缓存失效以支持热更新设置、MinerU 嵌套输出、mimic WebSocket 修复、最低 Python 3.11+，以及 CI 改进。
-
-> **[2026.4.4]** [v1.0.0-beta.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0-beta.1) — 智能体原生架构重写（DeepTutor 2.0）：双层插件模型（Tools + Capabilities）、CLI 与 SDK 入口、TutorBot 多渠道机器人、Co-Writer、引导式学习与持久记忆。
+> **[2026.3.24]** [v1.0.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0) — 智能体原生重构、灵活工具集成、CLI 与 SDK 入口、基于 nanobot 的 TutorBot、Co-Writer、引导式学习与持久记忆。更轻、更快、更好用！
 
 <details>
 <summary><b>历史版本</b></summary>
@@ -135,71 +131,6 @@ EMBEDDING_API_KEY=sk-xxx
 EMBEDDING_HOST=https://api.openai.com/v1
 EMBEDDING_DIMENSION=3072
 ```
-
-<details>
-<summary><b>支持的 LLM 提供商</b></summary>
-
-| 提供商 | Binding | 默认 Base URL |
-|:--|:--|:--|
-| AiHubMix | `aihubmix` | `https://aihubmix.com/v1` |
-| Anthropic | `anthropic` | `https://api.anthropic.com/v1` |
-| Azure OpenAI | `azure_openai` | — |
-| BytePlus | `byteplus` | `https://ark.ap-southeast.bytepluses.com/api/v3` |
-| BytePlus Coding Plan | `byteplus_coding_plan` | `https://ark.ap-southeast.bytepluses.com/api/coding/v3` |
-| Custom (OpenAI-compat) | `custom` | — |
-| DashScope (Qwen) | `dashscope` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
-| DeepSeek | `deepseek` | `https://api.deepseek.com` |
-| Gemini | `gemini` | `https://generativelanguage.googleapis.com/v1beta/openai/` |
-| GitHub Copilot | `github_copilot` | `https://api.githubcopilot.com` |
-| Groq | `groq` | `https://api.groq.com/openai/v1` |
-| MiniMax | `minimax` | `https://api.minimax.io/v1` |
-| Mistral | `mistral` | `https://api.mistral.ai/v1` |
-| Moonshot (Kimi) | `moonshot` | `https://api.moonshot.ai/v1` |
-| Ollama | `ollama` | `http://localhost:11434/v1` |
-| OpenAI | `openai` | `https://api.openai.com/v1` |
-| OpenAI Codex | `openai_codex` | `https://chatgpt.com/backend-api` |
-| OpenRouter | `openrouter` | `https://openrouter.ai/api/v1` |
-| OpenVINO Model Server | `ovms` | `http://localhost:8000/v3` |
-| Qianfan (Ernie) | `qianfan` | `https://qianfan.baidubce.com/v2` |
-| SiliconFlow | `siliconflow` | `https://api.siliconflow.cn/v1` |
-| Step Fun | `stepfun` | `https://api.stepfun.com/v1` |
-| vLLM | `vllm` | `http://localhost:8000/v1` |
-| VolcEngine | `volcengine` | `https://ark.cn-beijing.volces.com/api/v3` |
-| VolcEngine Coding Plan | `volcengine_coding_plan` | `https://ark.cn-beijing.volces.com/api/coding/v3` |
-| Xiaomi MIMO | `xiaomi_mimo` | `https://api.xiaomimimo.com/v1` |
-| Zhipu AI (GLM) | `zhipu` | `https://open.bigmodel.cn/api/paas/v4` |
-
-</details>
-
-<details>
-<summary><b>支持的嵌入（Embedding）提供商</b></summary>
-
-嵌入使用与 LLM 相同的提供商列表。常见选择：
-
-| 提供商 | Binding | 模型示例 |
-|:--|:--|:--|
-| OpenAI | `openai` | `text-embedding-3-large` |
-| DashScope | `dashscope` | `text-embedding-v3` |
-| Ollama | `ollama` | `nomic-embed-text` |
-| SiliconFlow | `siliconflow` | `BAAI/bge-m3` |
-| vLLM | `vllm` | 任意嵌入模型 |
-| 任意 OpenAI 兼容 | `custom` | — |
-
-</details>
-
-<details>
-<summary><b>支持的联网搜索提供商</b></summary>
-
-| 提供商 | 环境变量键 | 说明 |
-|:--|:--|:--|
-| Brave | `BRAVE_API_KEY` | 推荐，有免费额度 |
-| Tavily | `TAVILY_API_KEY` | |
-| Jina | `JINA_API_KEY` | |
-| SearXNG | — | 自托管，无需 API Key |
-| DuckDuckGo | — | 无需 API Key |
-| Perplexity | `PERPLEXITY_API_KEY` | 需要 API Key |
-
-</details>
 
 **3. 启动服务**
 
@@ -493,7 +424,7 @@ deeptutor run deep_research "Attention mechanisms in transformers"
 
 ```bash
 deeptutor chat --capability deep_solve --kb my-kb
-# 在 REPL 内：/cap、/tool、/kb、/history、/notebook、/config 可随时切换
+# REPL 内：/cap、/tool、/kb、/history、/notebook、/config 等即时切换
 ```
 
 **知识库闭环** — 终端完成建库、追加与检索：
@@ -589,20 +520,6 @@ deeptutor session open <id>
 | `deeptutor provider login <provider>` | OAuth（`openai-codex`、`github-copilot`） |
 
 </details>
-
-<a id="roadmap"></a>
-## 🗺️ 路线图
-
-| 状态 | 里程碑 |
-|:---:|:---|
-| 🔜 | **身份认证与登录** — 面向公网部署的可选登录页与多用户支持 |
-| 🔜 | **主题与外观** — 多种主题与可定制界面 |
-| 🔜 | **LightRAG 集成** — 将 [LightRAG](https://github.com/HKUDS/LightRAG) 作为高阶知识库引擎接入 |
-| 🔜 | **文档站点** — 含指南、API 参考与教程的完整文档站 |
-
-> 若 DeepTutor 对你有帮助，欢迎 [点亮 Star](https://github.com/HKUDS/DeepTutor/stargazers)，这对我们是很大的鼓励！
-
----
 
 <a id="community"></a>
 ## 🌐 社区与生态

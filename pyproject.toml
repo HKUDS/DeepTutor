@@ -21,6 +21,7 @@ dependencies = [
     "aiohttp>=3.9.4",
     "httpx>=0.27.0",
     "requests>=2.32.2",
+    "litellm>=1.79.0",
     "ddgs>=9.9.1",
     "nest_asyncio>=1.5.8",
     "tenacity>=8.0.0",

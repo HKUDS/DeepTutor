@@ -305,7 +305,7 @@ class MemoryService:
                 "你负责维护一份用户画像文档。只保留稳定的用户身份、偏好、知识水平。"
                 f"如果无需修改，请只返回 {_NO_CHANGE}。",
                 "如果需要更新，请重写用户画像，可使用以下标题：\n"
-                "## Identity\n## Learning Style\n## Knowledge Level\n## Preferences\n\n"
+                "## 用户身份\n## 学习风格\n## 知识水平\n## 偏好设置\n\n"
                 "规则：保持简短，删除过时内容，不要记录临时对话。\n\n"
                 f"[当前画像]\n{current or '(empty)'}\n\n"
                 f"[新增材料]\n{source}"
@@ -328,7 +328,7 @@ class MemoryService:
                 "你负责维护一份学习旅程摘要。记录用户正在学什么、完成了什么、有哪些待解决的问题。"
                 f"如果无需修改，请只返回 {_NO_CHANGE}。",
                 "如果需要更新，请重写学习旅程摘要，可使用以下标题：\n"
-                "## Current Focus\n## Accomplishments\n## Open Questions\n\n"
+                "## 当前重点\n## 已完成事项\n## 待解决问题\n\n"
                 "规则：保持简短，删除已完成或过时的条目。\n\n"
                 f"[当前摘要]\n{current or '(empty)'}\n\n"
                 f"[新增材料]\n{source}"

@@ -2,21 +2,19 @@
 
 <img src="../../assets/logo-ver2.png" alt="DeepTutor" width="140" style="border-radius: 15px;">
 
-# DeepTutor: エージェントネイティブなパーソナライズドチュータリング
-
-<a href="https://trendshift.io/repositories/17099" target="_blank"><img src="https://trendshift.io/api/badge/repositories/17099" alt="HKUDS%2FDeepTutor | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+# DeepTutor: エージェント型パーソナライズドチュータリングへ
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
-[![arXiv](https://img.shields.io/badge/arXiv-Coming_Soon-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](#)
+[![GitHub last commit](https://img.shields.io/github/last-commit/HKUDS/DeepTutor?style=flat-square)](https://github.com/HKUDS/DeepTutor/commits)
 
 [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t)
 [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md)
 [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
 
-[主な機能](#key-features) · [はじめる](#get-started) · [DeepTutor を探る](#explore-deeptutor) · [TutorBot](#tutorbot) · [CLI](#deeptutor-cli-guide) · [ロードマップ](#roadmap) · [コミュニティ](#community)
+[主な機能](#key-features) · [はじめる](#get-started) · [DeepTutor を探る](#explore-deeptutor) · [TutorBot](#tutorbot) · [CLI](#deeptutor-cli-guide) · [コミュニティ](#community)
 
 [🇬🇧 English](../../README.md) · [🇨🇳 中文](README_CN.md) · [🇪🇸 Español](README_ES.md) · [🇫🇷 Français](README_FR.md) · [🇸🇦 العربية](README_AR.md) · [🇷🇺 Русский](README_RU.md) · [🇮🇳 हिन्दी](README_HI.md) · [🇵🇹 Português](README_PT.md)
 
@@ -25,7 +23,7 @@
 ---
 ### 📰 ニュース
 
-> **[2026.4.4]** お久しぶりです！✨ DeepTutor v1.0.0 がついに登場 — Apache-2.0 のもと、ゼロからの架構書き直し、TutorBot、柔軟なモード切替を備えたエージェントネイティブな進化です。新章の始まりです！
+> **[2026.3.24]** お待たせしました！✨ DeepTutor v1.0.0 を Apache-2.0 で公開 — 軽量リファクタ、TutorBot、柔軟なモード切替を備えたエージェントネイティブな進化です。
 
 > **[2026.2.6]** 🚀 わずか 39 日で 10k スターに到達。コミュニティに感謝します！
 
@@ -35,9 +33,7 @@
 
 ### 📦 リリース
 
-> **[2026.4.7]** [v1.0.0-beta.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0-beta.2) — 実行時キャッシュ無効化によるホットリロード設定、MinerU ネスト出力対応、mimic WebSocket 修正、最低 Python 3.11+、CI 改善。
-
-> **[2026.4.4]** [v1.0.0-beta.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0-beta.1) — エージェントネイティブ架構の書き直し（DeepTutor 2.0）：二層プラグインモデル（Tools + Capabilities）、CLI と SDK の入口、マルチチャネル TutorBot、Co-Writer、ガイド付き学習、永続メモリ。
+> **[2026.3.24]** [v1.0.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0) — エージェントネイティブな再設計、柔軟なツール統合、CLI と SDK の入口、nanobot 駆動の TutorBot、Co-Writer、ガイド付き学習、永続メモリ。より軽く、速く、使いやすく。
 
 <details>
 <summary><b>過去のリリース</b></summary>
@@ -126,71 +122,6 @@ EMBEDDING_API_KEY=sk-xxx
 EMBEDDING_HOST=https://api.openai.com/v1
 EMBEDDING_DIMENSION=3072
 ```
-
-<details>
-<summary><b>対応 LLM プロバイダ</b></summary>
-
-| プロバイダ | Binding | 既定 Base URL |
-|:--|:--|:--|
-| AiHubMix | `aihubmix` | `https://aihubmix.com/v1` |
-| Anthropic | `anthropic` | `https://api.anthropic.com/v1` |
-| Azure OpenAI | `azure_openai` | — |
-| BytePlus | `byteplus` | `https://ark.ap-southeast.bytepluses.com/api/v3` |
-| BytePlus Coding Plan | `byteplus_coding_plan` | `https://ark.ap-southeast.bytepluses.com/api/coding/v3` |
-| Custom (OpenAI-compat) | `custom` | — |
-| DashScope (Qwen) | `dashscope` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
-| DeepSeek | `deepseek` | `https://api.deepseek.com` |
-| Gemini | `gemini` | `https://generativelanguage.googleapis.com/v1beta/openai/` |
-| GitHub Copilot | `github_copilot` | `https://api.githubcopilot.com` |
-| Groq | `groq` | `https://api.groq.com/openai/v1` |
-| MiniMax | `minimax` | `https://api.minimax.io/v1` |
-| Mistral | `mistral` | `https://api.mistral.ai/v1` |
-| Moonshot (Kimi) | `moonshot` | `https://api.moonshot.ai/v1` |
-| Ollama | `ollama` | `http://localhost:11434/v1` |
-| OpenAI | `openai` | `https://api.openai.com/v1` |
-| OpenAI Codex | `openai_codex` | `https://chatgpt.com/backend-api` |
-| OpenRouter | `openrouter` | `https://openrouter.ai/api/v1` |
-| OpenVINO Model Server | `ovms` | `http://localhost:8000/v3` |
-| Qianfan (Ernie) | `qianfan` | `https://qianfan.baidubce.com/v2` |
-| SiliconFlow | `siliconflow` | `https://api.siliconflow.cn/v1` |
-| Step Fun | `stepfun` | `https://api.stepfun.com/v1` |
-| vLLM | `vllm` | `http://localhost:8000/v1` |
-| VolcEngine | `volcengine` | `https://ark.cn-beijing.volces.com/api/v3` |
-| VolcEngine Coding Plan | `volcengine_coding_plan` | `https://ark.cn-beijing.volces.com/api/coding/v3` |
-| Xiaomi MIMO | `xiaomi_mimo` | `https://api.xiaomimimo.com/v1` |
-| Zhipu AI (GLM) | `zhipu` | `https://open.bigmodel.cn/api/paas/v4` |
-
-</details>
-
-<details>
-<summary><b>対応 Embedding プロバイダ</b></summary>
-
-埋め込みは LLM と同じプロバイダ一覧を使用します。よく使う例：
-
-| プロバイダ | Binding | モデル例 |
-|:--|:--|:--|
-| OpenAI | `openai` | `text-embedding-3-large` |
-| DashScope | `dashscope` | `text-embedding-v3` |
-| Ollama | `ollama` | `nomic-embed-text` |
-| SiliconFlow | `siliconflow` | `BAAI/bge-m3` |
-| vLLM | `vllm` | 任意の埋め込みモデル |
-| OpenAI 互換 | `custom` | — |
-
-</details>
-
-<details>
-<summary><b>対応 Web 検索プロバイダ</b></summary>
-
-| プロバイダ | 環境変数 | メモ |
-|:--|:--|:--|
-| Brave | `BRAVE_API_KEY` | 推奨、無料枠あり |
-| Tavily | `TAVILY_API_KEY` | |
-| Jina | `JINA_API_KEY` | |
-| SearXNG | — | 自ホスト、API キー不要 |
-| DuckDuckGo | — | API キー不要 |
-| Perplexity | `PERPLEXITY_API_KEY` | API キー必須 |
-
-</details>
 
 **3. 起動**
 
@@ -419,7 +350,6 @@ deeptutor run deep_research "Attention mechanisms in transformers"
 
 ```bash
 deeptutor chat --capability deep_solve --kb my-kb
-# REPL 内: /cap、/tool、/kb、/history、/notebook、/config などで切替
 ```
 
 ```bash
@@ -440,89 +370,27 @@ deeptutor session open <id>
 ```
 
 <details>
-<summary><b>CLI コマンドリファレンス（全コマンド）</b></summary>
-
-**トップレベル**
+<summary><b>CLI コマンド一覧</b></summary>
 
 | コマンド | 説明 |
 |:---|:---|
-| `deeptutor run <capability> <message>` | 単発で能力を実行（`chat`、`deep_solve`、`deep_question`、`deep_research`、`math_animator`） |
-| `deeptutor chat` | 対話 REPL（`--capability`、`--tool`、`--kb`、`--language` など） |
-| `deeptutor serve` | DeepTutor API サーバを起動 |
+| `deeptutor run <capability> <message>` | 1 ターン実行 |
+| `deeptutor chat` | REPL |
+| `deeptutor serve` | API サーバ |
 
-**`deeptutor bot`**
+**`deeptutor bot`** — `list` / `create` / `start` / `stop`
 
-| コマンド | 説明 |
-|:---|:---|
-| `deeptutor bot list` | TutorBot 一覧 |
-| `deeptutor bot create <id>` | 新規作成・起動（`--name`、`--persona`、`--model`） |
-| `deeptutor bot start <id>` | 起動 |
-| `deeptutor bot stop <id>` | 停止 |
+**`deeptutor kb`** — `list` / `info` / `create` / `add` / `search` / `set-default` / `delete`
 
-**`deeptutor kb`**
+**`deeptutor memory`** — `show` / `clear`
 
-| コマンド | 説明 |
-|:---|:---|
-| `deeptutor kb list` | ナレッジベース一覧 |
-| `deeptutor kb info <name>` | 詳細 |
-| `deeptutor kb create <name>` | ドキュメントから作成（`--doc`、`--docs-dir`） |
-| `deeptutor kb add <name>` | ドキュメントを追加 |
-| `deeptutor kb search <name> <query>` | 検索 |
-| `deeptutor kb set-default <name>` | デフォルト KB に設定 |
-| `deeptutor kb delete <name>` | 削除（`--force`） |
+**`deeptutor session`** — `list` / `show` / `open` / `rename` / `delete`
 
-**`deeptutor memory`**
+**`deeptutor notebook`** — `list` / `create` / `show` / `add-md` / `replace-md` / `remove-record`
 
-| コマンド | 説明 |
-|:---|:---|
-| `deeptutor memory show [file]` | 表示（`summary`、`profile`、`all`） |
-| `deeptutor memory clear [file]` | クリア（`--force`） |
-
-**`deeptutor session`**
-
-| コマンド | 説明 |
-|:---|:---|
-| `deeptutor session list` | 一覧（`--limit`） |
-| `deeptutor session show <id>` | メッセージ表示 |
-| `deeptutor session open <id>` | REPL で再開 |
-| `deeptutor session rename <id>` | 名前変更（`--title`） |
-| `deeptutor session delete <id>` | 削除 |
-
-**`deeptutor notebook`**
-
-| コマンド | 説明 |
-|:---|:---|
-| `deeptutor notebook list` | 一覧 |
-| `deeptutor notebook create <name>` | 作成（`--description`） |
-| `deeptutor notebook show <id>` | レコード表示 |
-| `deeptutor notebook add-md <id> <path>` | Markdown をインポート |
-| `deeptutor notebook replace-md <id> <rec> <path>` | レコードを置換 |
-| `deeptutor notebook remove-record <id> <rec>` | レコード削除 |
-
-**`deeptutor config` / `plugin` / `provider`**
-
-| コマンド | 説明 |
-|:---|:---|
-| `deeptutor config show` | 設定サマリを表示 |
-| `deeptutor plugin list` | 登録済みツールと能力 |
-| `deeptutor plugin info <name>` | ツールまたは能力の詳細 |
-| `deeptutor provider login <provider>` | OAuth ログイン（`openai-codex`、`github-copilot`） |
+**`config` / `plugin` / `provider`** — `config show`、`plugin list/info`、`provider login`
 
 </details>
-
-<a id="roadmap"></a>
-## 🗺️ ロードマップ
-
-| 状態 | マイルストーン |
-|:---:|:---|
-| 🔜 | **認証とログイン** — 公開向けデプロイ用の任意ログインとマルチユーザー |
-| 🔜 | **テーマと外観** — 多彩なテーマと UI のカスタマイズ |
-| 🔜 | **LightRAG 統合** — [LightRAG](https://github.com/HKUDS/LightRAG) を高度な KB エンジンとして統合 |
-| 🔜 | **ドキュメントサイト** — ガイド、API リファレンス、チュートリアルを含む公式ドキュメント |
-
-> DeepTutor が役に立ったら [Star を付ける](https://github.com/HKUDS/DeepTutor/stargazers) と開発の励みになります！
-
----
 
 <a id="community"></a>
 ## 🌐 コミュニティとエコシステム
@@ -540,8 +408,6 @@ deeptutor session open <id>
 ## 🤝 コントリビューション
 
 <div align="center">
-
-DeepTutor がコミュニティへの贈り物になれば幸いです。🎁
 
 <a href="https://github.com/HKUDS/DeepTutor/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=HKUDS/DeepTutor&max=999" alt="Contributors" />

@@ -1,105 +1,67 @@
 const FENCE = "```";
 
-export const CO_WRITER_SAMPLE_TEMPLATE = `# DeepTutor Co-Writer
+export const CO_WRITER_SAMPLE_TEMPLATE = `# DeepTutor Co-Writer Sample
 
-> DeepTutor's built-in writing canvas for notes, reports, tutorials, and AI-assisted drafts.
+> DeepTutor includes a writing canvas for notes, reports, and AI-assisted rewriting.
 
-### Features
+## Quick Start
 
-- Support Standard Markdown / CommonMark / GFM for everyday writing
-- Real-time preview for headings, tables, code, math, flowchart, and sequence diagrams
-- AI editing workflows for rewrite, shorten, and expand
-- HTML tag decoding for tags like <sub>, <sup>, <abbr>, and <mark>
-- A practical starter draft for DeepTutor product docs and learning content
+1. Draft or paste text in the editor on the left.
+2. Review formatting in the live preview on the right.
+3. Select any passage and use AI actions like Rewrite, Expand, or Shorten.
+4. Save the final content to Notebook for future review.
 
-## Table of Contents
+## Core Capabilities
+
+- Supports Standard Markdown / CommonMark / GFM
+- Live preview for headings, tables, code blocks, formulas, and diagrams
+- Supports inline HTML tags like <sub>, <sup>, <abbr>, and <mark>
+- Great for assignments, study summaries, and project documentation
+
+## TOC Demo
 
 [TOCM]
 
 [TOC]
 
-#DeepTutor Mission
-##DeepTutor Product Surface
-###DeepTutor Learning Experience
-####DeepTutor Co-Writer
-#####DeepTutor Knowledge Layer
-######DeepTutor Agent Runtime
+# DeepTutor Learning Assistant
+## DeepTutor Capability Matrix
+### Guided Learning
+#### Exam Prep
+##### AI Co-Writing
 
-#DeepTutor Docs [Project Overview](#deeptutor-mission "Jump to project overview")
-##DeepTutor Authoring [Co-Writer Section](#deeptutor-co-writer "Jump to co-writer section")
-###DeepTutor Research [Learning Note](#deeptutor-learning-note "Jump to learning note")
+## Heading & Emphasis
 
-## Headers (Underline)
+DeepTutor Weekly Study Notes
+===========================
 
-DeepTutor Learning Note
-=============
+Draft for Weekly Course Report
+-----------------------------
 
-DeepTutor Study Outline
--------------
+~~Old wording~~ <s>Deprecated sentence</s>  
+*italic* **bold** ***bold italic***
 
-### Characters
+Sub/Sup example: X<sub>2</sub>, O<sup>2</sup>
 
-----
+Abbreviation example: <abbr title="Large Language Model">LLM</abbr> and <abbr title="Retrieval Augmented Generation">RAG</abbr>
 
-~~Deprecated behavior~~ <s>Legacy formatting path</s>
-*Italic* _Italic_
-**Emphasis** __Emphasis__
-***Emphasis Italic*** ___Emphasis Italic___
+## Quotes & Links
 
-Superscript: X<sub>2</sub>, Subscript: O<sup>2</sup>
+> DeepTutor helps transform vague ideas into structured writing.
+> Think clearly, then write clearly.
 
-**Abbreviation(link HTML abbr tag)**
+[DeepTutor Home](#deeptutor-learning-assistant)
 
-The <abbr title="Large Language Model">LLM</abbr> layer powers DeepTutor while the <abbr title="Retrieval Augmented Generation">RAG</abbr> layer provides grounded knowledge support.
+## Code Example
 
-### Blockquotes
-
-> DeepTutor helps students turn questions into structured understanding.
->
-> "Learn deeply, write clearly.", [DeepTutor](#deeptutor-co-writer)
-
-### Links
-
-[DeepTutor Overview](#deeptutor-mission)
-
-[DeepTutor Co-Writer](#deeptutor-co-writer "co-writer section")
-
-[DeepTutor Runtime](#deeptutor-agent-runtime)
-
-[Reference link][deeptutor-doc]
-
-[deeptutor-doc]: #deeptutor-learning-note
-
-### Code Blocks
-
-#### Inline code
-
-\`deeptutor chat --once "Summarize this section"\`
-
-#### Code Blocks (Indented style)
-
-    from deeptutor.runtime.orchestrator import ChatOrchestrator
-    orchestrator = ChatOrchestrator()
-    print("DeepTutor is ready.")
-
-#### Python
+Inline code: \`deeptutor chat --once "Summarize the key points of this section"\`
 
 ${FENCE}python
 from deeptutor.runtime.orchestrator import ChatOrchestrator
-from deeptutor.core.context import UnifiedContext
 
-
-async def run_demo() -> str:
-    orchestrator = ChatOrchestrator()
-    context = UnifiedContext(
-        user_query="Explain Newton's second law",
-        capability="chat",
-    )
-    result = await orchestrator.run(context)
-    return result.get("response", "")
+orchestrator = ChatOrchestrator()
+print("DeepTutor is ready.")
 ${FENCE}
-
-#### JSON config
 
 ${FENCE}json
 {
@@ -113,89 +75,49 @@ ${FENCE}json
 }
 ${FENCE}
 
-#### HTML code
+## Table Example
 
-${FENCE}html
-<section class="deeptutor-card">
-  <h1>DeepTutor</h1>
-  <p>Write, revise, and organize learning content with AI.</p>
-</section>
-${FENCE}
+Module | Purpose
+--- | ---
+Guided Learning | Concept breakdown and interactive courseware
+Exam Prep | Score-oriented planning with time constraints
+Co-Writer | Structured writing and AI polishing
 
-### Images
+## Task List Example
 
-![](/logo-ver2.png)
+- [x] Complete the course outline
+- [x] Organize references
+- [ ] Final polish
+  - [ ] Verify heading hierarchy
+  - [ ] Check terminology consistency
 
-> DeepTutor brand mark used inside the co-writer template.
+## Formula Example
 
-### Lists
+$$ E = mc^2 $$
 
-- DeepTutor Chat
-- DeepTutor Co-Writer
-- DeepTutor Research
+Inline formula: $$a^2 + b^2 = c^2$$
 
-1. Draft a concept note
-2. Ask AI to refine it
-3. Save it to a notebook
-
-### Tables
-
-Feature       | Description
-------------- | -------------
-Co-Writer     | Draft and refine Markdown content
-Notebook      | Save and organize outputs
-Research      | Build structured multi-step reports
-
-| Capability    | Primary Use Case                     |
-| ------------- | ------------------------------------ |
-| \`chat\`       | General tutoring and guidance        |
-| \`deep_solve\` | Structured problem solving           |
-| \`deep_question\` | Question generation and validation |
-
-### Markdown extras
-
-- [x] Draft a DeepTutor product note
-- [x] Add references and structure
-- [ ] Polish the final explanation
-  - [ ] Check headings
-  - [ ] Check citations
-
-### TeX (LaTeX)
-
-$$ E=mc^2 $$
-
-Inline $$E=mc^2$$ appears in physics notes, and Inline $$a^2+b^2=c^2$$ appears in geometry notes.
-
-$$\(\sqrt{3x-1}+(1+x)^2\)$$
-
-$$ \sin(\alpha)^{\theta}=\sum_{i=0}^{n}(x^i + \cos(f))$$
-
-### FlowChart
+## Flowchart Example
 
 ${FENCE}flow
-st=>start: Student asks a question
-op=>operation: DeepTutor analyzes intent
-cond=>condition: Need deep workflow?
-chat=>operation: Answer with chat capability
-solve=>operation: Route to deep solve
-e=>end: Return structured response
+st=>start: Student enters writing goal
+op1=>operation: DeepTutor analyzes task structure
+op2=>operation: Generate first draft and rewrite suggestions
+cond=>condition: Need more polishing?
+op3=>operation: Improve tone and logic
+e=>end: Export to Notebook
 
-st->op->cond
-cond(no)->chat
-cond(yes)->solve
-chat->e
-solve->e
+st->op1->op2->cond
+cond(no)->e
+cond(yes)->op3->e
 ${FENCE}
 
-### Sequence Diagram
+## Sequence Diagram Example
 
 ${FENCE}seq
-Student->DeepTutor: Ask for help
-DeepTutor->Notebook: Load context
-Note right of DeepTutor: Collect memory\nand relevant knowledge
-DeepTutor-->Student: Return guided response
-Student->>DeepTutor: Request rewrite in co-writer
+Student->DeepTutor: Submit draft
+DeepTutor->Notebook: Load related notes
+Note right of DeepTutor: Merge context and refine text
+DeepTutor-->Student: Return improved version
 ${FENCE}
-
-### End
 `;

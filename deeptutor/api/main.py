@@ -14,17 +14,23 @@ from deeptutor.services.path_service import get_path_service
 logger = get_logger("API")
 
 
-class _SuppressWsNoise(logging.Filter):
-    """Suppress noisy uvicorn logs for WebSocket connection churn."""
+class _ProgressWsAccessFilter(logging.Filter):
+    """Suppress noisy uvicorn access logs for progress WebSocket endpoints.
 
-    _SUPPRESSED = ("connection open", "connection closed")
+    These endpoints are polled every few seconds by the frontend for every KB,
+    generating hundreds of ``connection open`` / ``connection closed`` lines
+    that drown out useful output.
+    """
+
+    _SUPPRESSED_FRAGMENTS = ("progress/ws", "connection open", "connection closed")
 
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage()
-        return not any(f in msg for f in self._SUPPRESSED)
+        return not any(f in msg for f in self._SUPPRESSED_FRAGMENTS)
 
 
-logging.getLogger("uvicorn.error").addFilter(_SuppressWsNoise())
+for _uv_name in ("uvicorn.access", "uvicorn.error"):
+    logging.getLogger(_uv_name).addFilter(_ProgressWsAccessFilter())
 
 CONFIG_DRIFT_ERROR_TEMPLATE = (
     "Configuration Drift Detected: Capability tool references {drift} are not "
@@ -142,27 +148,9 @@ app = FastAPI(
     # Disable automatic trailing slash redirects to prevent protocol downgrade issues
     # when deployed behind HTTPS reverse proxies (e.g., nginx).
     # Without this, FastAPI's 307 redirects may change HTTPS to HTTP.
-    # See: https://github.com/HKUDS/DeepTutor/issues/112
+    # See: https://github.com/HKUDS/TYUT-X/issues/112
     redirect_slashes=False,
 )
-
-# Log only non-200 requests (uvicorn access_log is disabled in run_server.py)
-_access_logger = logging.getLogger("uvicorn.access")
-
-
-@app.middleware("http")
-async def selective_access_log(request, call_next):
-    response = await call_next(request)
-    if response.status_code != 200:
-        _access_logger.info(
-            '%s - "%s %s" %d',
-            request.client.host if request.client else "-",
-            request.method,
-            request.url.path,
-            response.status_code,
-        )
-    return response
-
 
 # Configure CORS
 app.add_middleware(
@@ -201,6 +189,7 @@ from deeptutor.api.routers import (
     chat,
     co_writer,
     dashboard,
+    goal,
     guide,
     knowledge,
     memory,
@@ -222,6 +211,7 @@ app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
 app.include_router(question.router, prefix="/api/v1/question", tags=["question"])
 app.include_router(knowledge.router, prefix="/api/v1/knowledge", tags=["knowledge"])
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"])
+app.include_router(goal.router, prefix="/api/v1/goal", tags=["goal"])
 app.include_router(co_writer.router, prefix="/api/v1/co_writer", tags=["co_writer"])
 app.include_router(notebook.router, prefix="/api/v1/notebook", tags=["notebook"])
 app.include_router(guide.router, prefix="/api/v1/guide", tags=["guide"])

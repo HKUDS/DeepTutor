@@ -23,7 +23,6 @@ class EmbeddingConfig:
     dim: int = 3072
     request_timeout: int = 60
     batch_size: int = 10
-    batch_delay: float = 0.0
 
 
 def get_embedding_config() -> EmbeddingConfig:
@@ -56,6 +55,5 @@ def get_embedding_config() -> EmbeddingConfig:
         dim=resolved.dimension,
         request_timeout=max(1, resolved.request_timeout),
         batch_size=max(1, resolved.batch_size),
-        batch_delay=max(0.0, resolved.batch_delay),
     )
 

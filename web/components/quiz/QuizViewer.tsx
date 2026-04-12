@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, Eye, RotateCcw } from "lucide-react";
-import { useTranslation } from "react-i18next";
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import QuestionFollowupPanel, {
   type FollowupThreadState,
@@ -74,9 +73,8 @@ function isAnswerCorrect(question: QuizQuestion, answer: AnswerState): boolean {
 export default function QuizViewer({
   questions,
   sessionId,
-  language = "en",
+  language = "zh",
 }: QuizViewerProps) {
-  const { t } = useTranslation();
   const [idx, setIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<number, AnswerState>>({});
   const [threads, setThreads] = useState<Record<string, FollowupThreadState>>({});
@@ -501,7 +499,7 @@ export default function QuizViewer({
               disabled={ans.submitted}
               rows={3}
               placeholder={
-                q.question_type === "coding" ? t("Write your code here...") : t("Type your answer...")
+                q.question_type === "coding" ? "Write your code here..." : "Type your answer..."
               }
               className={`w-full resize-none rounded-lg border px-3 py-2 text-[13px] outline-none transition-colors placeholder:text-[var(--muted-foreground)] ${
                 ans.submitted
@@ -520,7 +518,7 @@ export default function QuizViewer({
               className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-white transition-opacity disabled:opacity-30"
             >
               <Eye size={13} />
-              {t("Check Answer")}
+              Check Answer
             </button>
           ) : (
             <>
@@ -532,7 +530,7 @@ export default function QuizViewer({
                       : "bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400"
                   }`}
                 >
-                  {isCorrect ? t("Correct") : t("Incorrect")}
+                  {isCorrect ? "Correct" : "Incorrect"}
                 </span>
               )}
               <button
@@ -540,7 +538,7 @@ export default function QuizViewer({
                 className="inline-flex items-center gap-1 rounded-lg bg-[var(--muted)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
               >
                 <RotateCcw size={11} />
-                {t("Retry")}
+                Retry
               </button>
             </>
           )}
@@ -551,7 +549,7 @@ export default function QuizViewer({
             {!isChoice && q.correct_answer && (
               <div>
                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-                  {t("Reference Answer")}
+                  Reference Answer
                 </div>
                 <div className="text-[13px] leading-relaxed text-[var(--foreground)]">
                   <MarkdownRenderer content={q.correct_answer} variant="prose" />
@@ -561,7 +559,7 @@ export default function QuizViewer({
             {q.explanation && (
               <div>
                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-                  {t("Explanation")}
+                  Explanation
                 </div>
                 <div className="text-[13px] leading-relaxed text-[var(--muted-foreground)]">
                   <MarkdownRenderer content={q.explanation} variant="prose" />
@@ -579,7 +577,7 @@ export default function QuizViewer({
           className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-30"
         >
           <ChevronLeft size={13} />
-          {t("Previous")}
+          Previous
         </button>
 
         <div className="mx-3 h-1 flex-1 overflow-hidden rounded-full bg-[var(--muted)]">
@@ -594,7 +592,7 @@ export default function QuizViewer({
           disabled={idx === total - 1}
           className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-30"
         >
-          {t("Next")}
+          Next
           <ChevronRight size={13} />
         </button>
       </div>

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useTranslation } from "react-i18next";
 import { SidebarShell } from "@/components/sidebar/SidebarShell";
 import { useAppShell } from "@/context/AppShellContext";
 import {
@@ -13,7 +12,6 @@ import {
 } from "@/lib/session-api";
 
 export default function UtilitySidebar() {
-  const { t } = useTranslation();
   const router = useRouter();
   const { activeSessionId, setActiveSessionId } = useAppShell();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -64,7 +62,7 @@ export default function UtilitySidebar() {
 
   const handleDeleteSession = useCallback(
     async (sessionId: string) => {
-      if (!window.confirm(t("Delete this chat history?"))) return;
+      if (!window.confirm("Delete this chat session?")) return;
       await deleteSession(sessionId);
       setSessions((prev) => prev.filter((session) => session.session_id !== sessionId));
       if (activeSessionId === sessionId) {

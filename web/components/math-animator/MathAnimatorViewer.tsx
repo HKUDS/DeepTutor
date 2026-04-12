@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Code2, Expand, Image as ImageIcon, Timer, Video } from "lucide-react";
-import { useTranslation } from "react-i18next";
 import { apiUrl } from "@/lib/api";
 import type { MathAnimatorResult } from "@/lib/math-animator-types";
 
@@ -11,7 +10,6 @@ export default function MathAnimatorViewer({
 }: {
   result: MathAnimatorResult;
 }) {
-  const { t } = useTranslation();
   const [fullscreenUrl, setFullscreenUrl] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const images = useMemo(
@@ -79,7 +77,7 @@ export default function MathAnimatorViewer({
     <div ref={rootRef} className="mb-3 space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--card)]/70 p-3">
       {videos.length > 0 ? (
         <section className="space-y-2">
-          <Header icon={Video} title={t("Video Output")} />
+          <Header icon={Video} title="Video Output" />
           {videos.map((item) => (
             <div key={item.url}>
               <video
@@ -96,7 +94,7 @@ export default function MathAnimatorViewer({
 
       {images.length > 0 ? (
         <section className="space-y-2">
-          <Header icon={ImageIcon} title={t("Image Output")} />
+          <Header icon={ImageIcon} title="Image Output" />
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {images.map((item) => (
               <button
@@ -112,7 +110,7 @@ export default function MathAnimatorViewer({
                 />
                 <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-md bg-black/55 px-2 py-1 text-[11px] text-white opacity-0 transition-opacity group-hover:opacity-100">
                   <Expand size={12} />
-                  {t("Fullscreen")}
+                  Fullscreen
                 </span>
               </button>
             ))}
@@ -124,7 +122,7 @@ export default function MathAnimatorViewer({
         <details className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)]">
           <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-[12px] font-medium text-[var(--foreground)]">
             <Code2 size={14} />
-            {t("View Manim Code")}
+            View Manim Code
           </summary>
           <pre className="max-h-[360px] overflow-auto border-t border-[var(--border)] px-3 py-3 font-mono text-[11px] leading-[1.6] text-[var(--foreground)]">
             {result.code.content}
@@ -149,12 +147,12 @@ export default function MathAnimatorViewer({
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--muted-foreground)]">
           {result.render.quality ? (
             <span className="rounded-full border border-[var(--border)] px-2 py-0.5">
-              quality: {result.render.quality}
+              Quality: {result.render.quality}
             </span>
           ) : null}
           {typeof result.render.retry_attempts === "number" ? (
             <span className="rounded-full border border-[var(--border)] px-2 py-0.5">
-              retries: {result.render.retry_attempts}
+              Retries: {result.render.retry_attempts}
             </span>
           ) : null}
           {Object.keys(result.timings).length > 0 ? (
@@ -175,7 +173,7 @@ export default function MathAnimatorViewer({
         >
           <img
             src={fullscreenUrl}
-            alt={t("Fullscreen math animation output")}
+            alt="Fullscreen math animation output"
             className="max-h-full max-w-full object-contain"
           />
         </div>

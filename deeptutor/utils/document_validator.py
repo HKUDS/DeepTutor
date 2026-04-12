@@ -106,7 +106,7 @@ class DocumentValidator:
             )
 
         # Additional MIME type validation for security
-        guessed_mime, _ = mimetypes.guess_type(filename.lower())
+        guessed_mime, _ = mimetypes.guess_type(filename)
         if guessed_mime and guessed_mime not in DocumentValidator.ALLOWED_MIME_TYPES:
             raise ValueError(
                 f"MIME type validation failed: {guessed_mime}. File may be malicious or corrupted."

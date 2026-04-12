@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-import subprocess
 import sys
-import threading
 from pathlib import Path
 from typing import Awaitable, Callable
 
@@ -147,51 +145,43 @@ class ManimRenderService:
         else:
             command.extend(["--format", "mp4"])
 
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
         await self._emit_progress(
             f"Started Manim process for `{scene_name}` with command: {' '.join(command)}",
             raw=True,
         )
-
-        # Use subprocess.Popen instead of asyncio.create_subprocess_exec
-        # for Windows compatibility (SelectorEventLoop doesn't support
-        # asyncio subprocesses). Reader threads + asyncio.Queue preserve
-        # real-time streaming output.
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-
-        _SENTINEL = None
-        queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
-        loop = asyncio.get_running_loop()
-
-        def _reader(stream, prefix: str) -> None:
-            assert stream is not None
-            for raw_line in stream:
-                line = raw_line.decode(errors="ignore").strip()
-                if line:
-                    loop.call_soon_threadsafe(queue.put_nowait, (prefix, line))
-            loop.call_soon_threadsafe(queue.put_nowait, _SENTINEL)
-
-        threading.Thread(target=_reader, args=(process.stdout, "stdout"), daemon=True).start()
-        threading.Thread(target=_reader, args=(process.stderr, "stderr"), daemon=True).start()
-
         stdout_lines: list[str] = []
         stderr_lines: list[str] = []
-        streams_open = 2
-        while streams_open > 0:
-            item = await queue.get()
-            if item is _SENTINEL:
-                streams_open -= 1
-                continue
-            prefix, line = item
-            (stdout_lines if prefix == "stdout" else stderr_lines).append(line)
-            await self._emit_progress(f"[{prefix}] {line}", raw=True)
 
-        return_code = process.wait()
-        await self._emit_progress(f"Manim process finished with exit code {return_code}.", raw=True)
-        if return_code != 0:
+        async def _drain_stream(
+            stream: asyncio.StreamReader | None,
+            sink: list[str],
+            *,
+            prefix: str,
+        ) -> None:
+            if stream is None:
+                return
+            while True:
+                raw_line = await stream.readline()
+                if not raw_line:
+                    break
+                line = raw_line.decode(errors="ignore").strip()
+                if not line:
+                    continue
+                sink.append(line)
+                await self._emit_progress(f"[{prefix}] {line}", raw=True)
+
+        await asyncio.gather(
+            _drain_stream(process.stdout, stdout_lines, prefix="stdout"),
+            _drain_stream(process.stderr, stderr_lines, prefix="stderr"),
+        )
+        await process.wait()
+        await self._emit_progress(f"Manim process finished with exit code {process.returncode}.", raw=True)
+        if process.returncode != 0:
             raise ManimRenderError(
                 trim_error_message(
                     "\n".join(part for part in ["\n".join(stdout_lines), "\n".join(stderr_lines)] if part)

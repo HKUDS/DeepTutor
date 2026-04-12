@@ -112,14 +112,13 @@ class ContextBuilder:
         cleaned_summary = summary.strip()
         if cleaned_summary:
             history.append({"role": "system", "content": cleaned_summary})
-        # Filter out system messages from DB since summary is already added as system
         history.extend(
             {
                 "role": item.get("role", "user"),
                 "content": str(item.get("content", "") or ""),
             }
             for item in messages
-            if item.get("role") in {"user", "assistant"}  # Removed "system" to avoid duplicate system messages
+            if item.get("role") in {"user", "assistant", "system"}
             and str(item.get("content", "") or "").strip()
         )
         return history
@@ -257,21 +256,10 @@ class ContextBuilder:
             "user goals, constraints, decisions, unresolved questions, and any capability "
             "switches. Keep the summary concise and faithful. Use bullet points only if useful."
         )
-        if language.startswith("zh"):
-            system_prompt = (
-                "你负责把对话历史压缩成后续轮次可直接使用的上下文。保留用户目标、约束、已做决定、"
-                "未解决问题，以及能力切换带来的关键信息。总结要忠实、紧凑，不要虚构。"
-            )
         user_prompt = (
             f"Compress the following conversation history into <= {summary_budget} tokens.\n\n"
             f"{source_text}"
         )
-        if language.startswith("zh"):
-            user_prompt = (
-                f"请把下面的对话历史压缩到不超过 {summary_budget} tokens 的长度，"
-                "供后续对话直接继承上下文。\n\n"
-                f"{source_text}"
-            )
         try:
             _chunks: list[str] = []
             async for _c in agent.stream_llm(

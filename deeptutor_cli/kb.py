@@ -42,7 +42,7 @@ def _collect_documents(docs: list[str], docs_dir: Optional[str]) -> list[str]:
     if docs_dir:
         base = Path(docs_dir).expanduser().resolve()
         if not base.exists() or not base.is_dir():
-            raise typer.BadParameter(f"docs directory does not exist: {base}")
+            raise typer.BadParameter(f"文档目录不存在：{base}")
         for pattern in FileTypeRouter.get_glob_patterns_for_provider(DEFAULT_PROVIDER):
             candidates.extend(path for path in base.rglob(pattern) if path.is_file())
 
@@ -61,7 +61,7 @@ def _collect_documents(docs: list[str], docs_dir: Optional[str]) -> list[str]:
 def register(app: typer.Typer) -> None:
     @app.command("list")
     def kb_list(
-        fmt: str = typer.Option("rich", "--format", "-f", help="Output format: rich | json."),
+        fmt: str = typer.Option("rich", "--format", "-f", help="输出格式：rich | json。"),
     ) -> None:
         """List all knowledge bases."""
         mgr = _get_kb_manager()
@@ -70,7 +70,7 @@ def register(app: typer.Typer) -> None:
             if fmt == "json":
                 console.print_json("[]")
             else:
-                console.print("[dim]No knowledge bases found.[/]")
+                console.print("[dim]未找到知识库。[/]")
             return
 
         if fmt == "json":
@@ -89,12 +89,12 @@ def register(app: typer.Typer) -> None:
             console.print_json(json.dumps(items, ensure_ascii=False, default=str))
             return
 
-        table = Table(title="Knowledge Bases")
-        table.add_column("Name", style="bold")
-        table.add_column("Status")
-        table.add_column("Documents", justify="right")
-        table.add_column("RAG Provider")
-        table.add_column("Default")
+        table = Table(title="知识库")
+        table.add_column("名称", style="bold")
+        table.add_column("状态")
+        table.add_column("文档数", justify="right")
+        table.add_column("RAG 提供商")
+        table.add_column("默认")
 
         for name in kb_names:
             info = mgr.get_info(name)
@@ -105,43 +105,43 @@ def register(app: typer.Typer) -> None:
                 str(info.get("status", "unknown")),
                 str(stats.get("raw_documents", 0)),
                 str(metadata.get("rag_provider", stats.get("rag_provider", DEFAULT_PROVIDER))),
-                "yes" if info.get("is_default") else "",
+                "是" if info.get("is_default") else "",
             )
 
         console.print(table)
 
     @app.command("info")
-    def kb_info(name: str = typer.Argument(..., help="Knowledge base name.")) -> None:
+    def kb_info(name: str = typer.Argument(..., help="知识库名称。")) -> None:
         """Show details of a knowledge base."""
         mgr = _get_kb_manager()
         try:
             info = mgr.get_info(name)
         except Exception as exc:
-            console.print(f"[red]Knowledge base '{name}' not found: {exc}[/]")
+            console.print(f"[red]未找到知识库 '{name}'：{exc}[/]")
             raise typer.Exit(code=1) from exc
         console.print_json(json.dumps(info, indent=2, ensure_ascii=False, default=str))
 
     @app.command("set-default")
-    def kb_set_default(name: str = typer.Argument(..., help="Knowledge base name.")) -> None:
+    def kb_set_default(name: str = typer.Argument(..., help="知识库名称。")) -> None:
         """Set the default knowledge base."""
         mgr = _get_kb_manager()
         try:
             mgr.set_default(name)
         except Exception as exc:
-            console.print(f"[red]Failed to set default KB '{name}': {exc}[/]")
+            console.print(f"[red]设置默认知识库 '{name}' 失败：{exc}[/]")
             raise typer.Exit(code=1) from exc
-        console.print(f"[green]Set '{name}' as default knowledge base.[/]")
+        console.print(f"[green]已将 '{name}' 设为默认知识库。[/]")
 
     @app.command("create")
     def kb_create(
-        name: str = typer.Argument(..., help="New KB name."),
-        docs: list[str] = typer.Option([], "--doc", "-d", help="Document paths."),
-        docs_dir: Optional[str] = typer.Option(None, "--docs-dir", help="Directory of documents."),
+        name: str = typer.Argument(..., help="新知识库名称。"),
+        docs: list[str] = typer.Option([], "--doc", "-d", help="文档路径。"),
+        docs_dir: Optional[str] = typer.Option(None, "--docs-dir", help="文档目录。"),
     ) -> None:
         """Initialize a new knowledge base from documents."""
         mgr = _get_kb_manager()
         if name in mgr.list_knowledge_bases():
-            console.print(f"[red]Knowledge base '{name}' already exists.[/]")
+            console.print(f"[red]知识库 '{name}' 已存在。[/]")
             raise typer.Exit(code=1)
 
         try:
@@ -151,11 +151,11 @@ def register(app: typer.Typer) -> None:
             raise typer.Exit(code=1) from exc
 
         if not doc_paths:
-            console.print("[red]Provide at least one supported document (--doc or --docs-dir).[/]")
+            console.print("[red]请至少提供一个支持的文档（--doc 或 --docs-dir）。[/]")
             raise typer.Exit(code=1)
 
         console.print(
-            f"Creating KB [bold]{name}[/] with {len(doc_paths)} document(s) via [bold]LlamaIndex[/]..."
+            f"正在通过 [bold]LlamaIndex[/] 创建知识库 [bold]{name}[/]，共 {len(doc_paths)} 个文档..."
         )
         from deeptutor.knowledge.initializer import initialize_knowledge_base
 
@@ -169,20 +169,20 @@ def register(app: typer.Typer) -> None:
                 )
             )
         except Exception as exc:
-            console.print(f"[red]KB creation failed: {exc}[/]")
+            console.print(f"[red]知识库创建失败：{exc}[/]")
             raise typer.Exit(code=1) from exc
-        console.print("[green]Knowledge base created successfully.[/]")
+        console.print("[green]知识库创建成功。[/]")
 
     @app.command("add")
     def kb_add(
-        name: str = typer.Argument(..., help="KB name."),
-        docs: list[str] = typer.Option([], "--doc", "-d", help="Document paths to add."),
-        docs_dir: Optional[str] = typer.Option(None, "--docs-dir", help="Directory of documents."),
+        name: str = typer.Argument(..., help="知识库名称。"),
+        docs: list[str] = typer.Option([], "--doc", "-d", help="要添加的文档路径。"),
+        docs_dir: Optional[str] = typer.Option(None, "--docs-dir", help="文档目录。"),
     ) -> None:
         """Add documents to an existing knowledge base."""
         mgr = _get_kb_manager()
         if name not in mgr.list_knowledge_bases():
-            console.print(f"[red]Knowledge base '{name}' not found.[/]")
+            console.print(f"[red]未找到知识库 '{name}'。[/]")
             raise typer.Exit(code=1)
 
         try:
@@ -192,10 +192,10 @@ def register(app: typer.Typer) -> None:
             raise typer.Exit(code=1) from exc
 
         if not doc_paths:
-            console.print("[red]Provide at least one supported document.[/]")
+            console.print("[red]请至少提供一个支持的文档。[/]")
             raise typer.Exit(code=1)
 
-        console.print(f"Adding {len(doc_paths)} document(s) to [bold]{name}[/]...")
+        console.print(f"正在向 [bold]{name}[/] 添加 {len(doc_paths)} 个文档...")
         from deeptutor.knowledge.add_documents import add_documents
 
         try:
@@ -208,22 +208,22 @@ def register(app: typer.Typer) -> None:
                 )
             )
         except Exception as exc:
-            console.print(f"[red]Document upload failed: {exc}[/]")
+            console.print(f"[red]文档上传失败：{exc}[/]")
             raise typer.Exit(code=1) from exc
 
         if processed_count:
-            console.print(f"[green]Done. Indexed {processed_count} document(s).[/]")
+            console.print(f"[green]完成，已索引 {processed_count} 个文档。[/]")
         else:
-            console.print("[yellow]No new unique documents were indexed.[/]")
+            console.print("[yellow]没有新的唯一文档被索引。[/]")
 
     @app.command("delete")
     def kb_delete(
-        name: str = typer.Argument(..., help="KB name."),
-        force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation."),
+        name: str = typer.Argument(..., help="知识库名称。"),
+        force: bool = typer.Option(False, "--force", "-f", help="跳过确认。"),
     ) -> None:
         """Delete a knowledge base."""
         if not force:
-            confirm = typer.confirm(f"Delete knowledge base '{name}'?")
+            confirm = typer.confirm(f"确认删除知识库 '{name}' 吗？")
             if not confirm:
                 raise typer.Abort()
 
@@ -231,27 +231,27 @@ def register(app: typer.Typer) -> None:
         try:
             deleted = mgr.delete_knowledge_base(name, confirm=True)
         except Exception as exc:
-            console.print(f"[red]Failed to delete '{name}': {exc}[/]")
+            console.print(f"[red]删除 '{name}' 失败：{exc}[/]")
             raise typer.Exit(code=1) from exc
 
         if deleted:
-            console.print(f"[green]Deleted '{name}'.[/]")
+            console.print(f"[green]已删除 '{name}'。[/]")
         else:
-            console.print(f"[yellow]Knowledge base '{name}' was not deleted.[/]")
+            console.print(f"[yellow]知识库 '{name}' 未被删除。[/]")
 
     @app.command("search")
     def kb_search(
-        name: str = typer.Argument(..., help="KB name."),
-        query: str = typer.Argument(..., help="Search query."),
-        mode: str = typer.Option("hybrid", help="Search mode."),
-        fmt: str = typer.Option("rich", "--format", "-f", help="Output format: rich | json."),
+        name: str = typer.Argument(..., help="知识库名称。"),
+        query: str = typer.Argument(..., help="搜索查询。"),
+        mode: str = typer.Option("hybrid", help="搜索模式。"),
+        fmt: str = typer.Option("rich", "--format", "-f", help="输出格式：rich | json。"),
     ) -> None:
         """Search a knowledge base."""
         from deeptutor.tools.rag_tool import rag_search
 
         mgr = _get_kb_manager()
         if name not in mgr.list_knowledge_bases():
-            console.print(f"[red]Knowledge base '{name}' not found.[/]")
+            console.print(f"[red]未找到知识库 '{name}'。[/]")
             raise typer.Exit(code=1)
 
         try:
@@ -264,7 +264,7 @@ def register(app: typer.Typer) -> None:
                 )
             )
         except Exception as exc:
-            console.print(f"[red]Search failed: {exc}[/]")
+            console.print(f"[red]搜索失败：{exc}[/]")
             raise typer.Exit(code=1) from exc
 
         if fmt == "json":
@@ -273,5 +273,5 @@ def register(app: typer.Typer) -> None:
 
         answer = result.get("answer") or result.get("content", "")
         provider = result.get("provider", DEFAULT_PROVIDER)
-        console.print(f"[bold]Provider:[/] {provider}")
-        console.print(f"[bold]Answer:[/]\n{answer}")
+        console.print(f"[bold]提供商：[/] {provider}")
+        console.print(f"[bold]答案：[/]\n{answer}")

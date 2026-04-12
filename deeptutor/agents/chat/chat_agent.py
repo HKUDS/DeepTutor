@@ -245,13 +245,15 @@ class ChatAgent(BaseAgent):
         """
         messages = []
 
-        # Merge system prompt and context into single system message to comply with Qwen vLLM requirements
-        system_parts = [self.get_prompt("system", "You are a helpful AI assistant.")]
+        # System prompt
+        system_prompt = self.get_prompt("system", "You are a helpful AI assistant.")
+        messages.append({"role": "system", "content": system_prompt})
+
+        # Add context if available
         if context:
             context_template = self.get_prompt("context_template", "Reference context:\n{context}")
-            system_parts.append(context_template.format(context=context))
-        system_content = "\n\n".join(system_parts)
-        messages.append({"role": "system", "content": system_content})
+            context_msg = context_template.format(context=context)
+            messages.append({"role": "system", "content": context_msg})
 
         # Add conversation history
         for msg in history:
