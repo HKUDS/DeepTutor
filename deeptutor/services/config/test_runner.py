@@ -165,6 +165,7 @@ class ConfigTestRunner:
             api_key=llm_config.api_key or "sk-no-key-required",
             base_url=llm_config.base_url or "",
             temperature=0.1,
+            extra_headers=llm_config.extra_headers,
             **token_kwargs,
         )
         snippet = (response or "").strip()
