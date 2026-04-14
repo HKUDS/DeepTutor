@@ -18,6 +18,20 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
         "text-embedding-ada-002": 1536,
     }
 
+    def __init__(self, config: Dict[str, Any]):
+        super().__init__(config)
+        # Tri-state memoization of the "drop `dimensions` on HTTP 400"
+        # experiment against this endpoint. Reset implicitly when the
+        # adapter is rebuilt on Settings → Apply.
+        #   None  — never tried; on the first 400 with `dimensions`,
+        #           drop the field and retry.
+        #   True  — retry without `dimensions` succeeded; skip the field
+        #           on every subsequent call (saves a round-trip).
+        #   False — retry without `dimensions` also returned 400, i.e.
+        #           the failure was unrelated to that field; don't do
+        #           the drop-and-retry dance again (another saved call).
+        self._dimensions_fallback: bool | None = None
+
     @staticmethod
     def _extract_embeddings_from_response(data: Any) -> list[list[float]]:
         """
@@ -117,7 +131,7 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
             "encoding_format": request.encoding_format or "float",
         }
 
-        if request.dimensions or self.dimensions:
+        if (request.dimensions or self.dimensions) and self._dimensions_fallback is not True:
             payload["dimensions"] = request.dimensions or self.dimensions
 
         base = self.base_url.rstrip('/')
@@ -140,6 +154,7 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
             pool=10.0,
         )
         last_exc: Exception | None = None
+        dropped_dimensions = False
         for attempt in range(1 + self._MAX_RETRIES):
             try:
                 async with httpx.AsyncClient(timeout=timeout) as client:
@@ -157,11 +172,46 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
                         last_exc = Exception(f"HTTP 429 Too Many Requests")
                         continue
 
+                    # OpenAI's text-embedding-3-* accept a `dimensions` param
+                    # (matryoshka), but many OpenAI-compatible endpoints
+                    # (e.g. Qodo-Embed-1-7B) reject it with HTTP 400. If
+                    # we haven't yet learned that dropping the field is
+                    # useless, drop it and retry; the outcome is latched
+                    # after the loop (on success → True, see below) or
+                    # right before raising (on another 400 → False).
+                    if (
+                        response.status_code == 400
+                        and "dimensions" in payload
+                        and self._dimensions_fallback is not False
+                    ):
+                        logger.warning(
+                            "Embedding endpoint returned HTTP 400 with "
+                            "`dimensions` in payload; dropping the field "
+                            "and retrying once. Body: %s",
+                            response.text[:200],
+                        )
+                        payload.pop("dimensions", None)
+                        dropped_dimensions = True
+                        last_exc = Exception(
+                            "HTTP 400 with `dimensions`; retrying without it"
+                        )
+                        continue
+
                     if response.status_code >= 400:
                         logger.error(f"HTTP {response.status_code} response body: {response.text}")
+                        # We already tried dropping `dimensions` on the
+                        # previous attempt and still got a 400 — the
+                        # fallback is not helpful for this endpoint.
+                        if response.status_code == 400 and dropped_dimensions:
+                            self._dimensions_fallback = False
 
                     response.raise_for_status()
                     data = response.json()
+                # Success. If this attempt was the retry that followed a
+                # 400-with-`dimensions`, we've now confirmed the endpoint
+                # works without the field — latch so future calls skip it.
+                if dropped_dimensions:
+                    self._dimensions_fallback = True
                 break
             except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
                 last_exc = exc
