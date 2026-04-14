@@ -11,3 +11,4 @@ fastapi>=0.100.0
 uvicorn[standard]>=0.24.0
 websockets>=12.0
 python-multipart>=0.0.6
+WeasyPrint>=62.0

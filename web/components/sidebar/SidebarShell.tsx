@@ -1,13 +1,14 @@
-"use client";
+'use client'
 
-import Image from "next/image";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import Image from 'next/image'
+import Link from 'next/link'
+import { usePathname, useRouter } from 'next/navigation'
+import { useState, type ReactNode } from 'react'
 import {
   BookOpen,
   Bot,
   Brain,
+  FileStack,
   GraduationCap,
   MessageSquare,
   PanelLeftClose,
@@ -16,41 +17,42 @@ import {
   Plus,
   Settings,
   type LucideIcon,
-} from "lucide-react";
-import { useTranslation } from "react-i18next";
-import SessionList from "@/components/SessionList";
-import { TutorBotRecent } from "@/components/sidebar/TutorBotRecent";
-import type { SessionSummary } from "@/lib/session-api";
+} from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import SessionList from '@/components/SessionList'
+import { TutorBotRecent } from '@/components/sidebar/TutorBotRecent'
+import type { SessionSummary } from '@/lib/session-api'
 
 interface NavEntry {
-  href: string;
-  label: string;
-  icon: LucideIcon;
+  href: string
+  label: string
+  icon: LucideIcon
 }
 
 const PRIMARY_NAV: NavEntry[] = [
-  { href: "/", label: "Chat", icon: MessageSquare },
-  { href: "/agents", label: "TutorBot", icon: Bot },
-  { href: "/co-writer", label: "Co-Writer", icon: PenLine },
-  { href: "/guide", label: "Guided Learning", icon: GraduationCap },
-  { href: "/knowledge", label: "Knowledge", icon: BookOpen },
-  { href: "/memory", label: "Memory", icon: Brain },
-];
+  { href: '/', label: 'Chat', icon: MessageSquare },
+  { href: '/agents', label: 'TutorBot', icon: Bot },
+  { href: '/co-writer', label: 'Co-Writer', icon: PenLine },
+  { href: '/guide', label: 'Guided Learning', icon: GraduationCap },
+  { href: '/structure-note', label: 'Structure Note', icon: FileStack },
+  { href: '/knowledge', label: 'Knowledge', icon: BookOpen },
+  { href: '/memory', label: 'Memory', icon: Brain },
+]
 
-const SECONDARY_NAV: NavEntry[] = [{ href: "/settings", label: "Settings", icon: Settings }];
-const DEFAULT_SESSION_VIEWPORT_CLASS_NAME = "max-h-[112px]";
+const SECONDARY_NAV: NavEntry[] = [{ href: '/settings', label: 'Settings', icon: Settings }]
+const DEFAULT_SESSION_VIEWPORT_CLASS_NAME = 'max-h-[112px]'
 
 interface SidebarShellProps {
-  sessions?: SessionSummary[];
-  activeSessionId?: string | null;
-  loadingSessions?: boolean;
-  showSessions?: boolean;
-  sessionViewportClassName?: string;
-  onNewChat?: () => void;
-  onSelectSession?: (sessionId: string) => void | Promise<void>;
-  onRenameSession?: (sessionId: string, title: string) => void | Promise<void>;
-  onDeleteSession?: (sessionId: string) => void | Promise<void>;
-  footerSlot?: ReactNode;
+  sessions?: SessionSummary[]
+  activeSessionId?: string | null
+  loadingSessions?: boolean
+  showSessions?: boolean
+  sessionViewportClassName?: string
+  onNewChat?: () => void
+  onSelectSession?: (sessionId: string) => void | Promise<void>
+  onRenameSession?: (sessionId: string, title: string) => void | Promise<void>
+  onDeleteSession?: (sessionId: string) => void | Promise<void>
+  footerSlot?: ReactNode
 }
 
 export function SidebarShell({
@@ -65,18 +67,18 @@ export function SidebarShell({
   onDeleteSession,
   footerSlot,
 }: SidebarShellProps) {
-  const pathname = usePathname();
-  const router = useRouter();
-  const { t } = useTranslation();
-  const [collapsed, setCollapsed] = useState(false);
+  const pathname = usePathname()
+  const router = useRouter()
+  const { t } = useTranslation()
+  const [collapsed, setCollapsed] = useState(false)
 
   const handleNewChat = () => {
     if (onNewChat) {
-      onNewChat();
-      return;
+      onNewChat()
+      return
     }
-    router.push("/");
-  };
+    router.push('/')
+  }
 
   /* ---- Collapsed state ---- */
   if (collapsed) {
@@ -85,7 +87,7 @@ export function SidebarShell({
         <button
           onClick={() => setCollapsed(false)}
           className="mb-4 rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-          aria-label={t("Expand sidebar")}
+          aria-label={t('Expand sidebar')}
         >
           <PanelLeftOpen size={15} />
         </button>
@@ -93,55 +95,55 @@ export function SidebarShell({
         <button
           onClick={handleNewChat}
           className="mb-3 rounded-lg p-2 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)]/60 hover:text-[var(--foreground)]"
-          aria-label={t("New Chat")}
+          aria-label={t('New Chat')}
         >
           <Plus size={16} strokeWidth={2} />
         </button>
 
         <nav className="flex flex-col items-center gap-px pt-1">
-          {PRIMARY_NAV.map((item) => {
-            const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+          {PRIMARY_NAV.map(item => {
+            const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
             return (
               <div key={item.href} className="flex flex-col items-center">
                 <Link
                   href={item.href}
                   className={`rounded-lg p-2 transition-colors ${
                     active
-                      ? "bg-[var(--background)]/70 text-[var(--foreground)]"
-                      : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+                      ? 'bg-[var(--background)]/70 text-[var(--foreground)]'
+                      : 'text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]'
                   }`}
                 >
                   <item.icon size={16} strokeWidth={active ? 1.9 : 1.5} />
                 </Link>
-                {item.href === "/agents" && <TutorBotRecent collapsed />}
+                {item.href === '/agents' && <TutorBotRecent collapsed />}
               </div>
-            );
+            )
           })}
         </nav>
 
         <div className="flex-1" />
 
         <div className="flex flex-col items-center gap-px pb-1">
-          {SECONDARY_NAV.map((item) => {
-            const active = pathname.startsWith(item.href);
+          {SECONDARY_NAV.map(item => {
+            const active = pathname.startsWith(item.href)
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={`rounded-lg p-2 transition-colors ${
                   active
-                    ? "bg-[var(--background)]/70 text-[var(--foreground)]"
-                    : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+                    ? 'bg-[var(--background)]/70 text-[var(--foreground)]'
+                    : 'text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]'
                 }`}
               >
                 <item.icon size={16} strokeWidth={active ? 1.9 : 1.5} />
               </Link>
-            );
+            )
           })}
           {footerSlot}
         </div>
       </aside>
-    );
+    )
   }
 
   /* ---- Expanded state ---- */
@@ -150,15 +152,15 @@ export function SidebarShell({
       {/* Header: logo + collapse toggle */}
       <div className="flex h-12 items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2">
-          <Image src="/logo-ver2.png" alt="DeepTutor" width={20} height={20} />
+          <Image src="/logo-ver2.png" alt={t('DeepTutor')} width={20} height={20} />
           <span className="text-[15px] font-semibold tracking-tight text-[var(--foreground)]">
-            DeepTutor
+            {t('DeepTutor')}
           </span>
         </Link>
         <button
           onClick={() => setCollapsed(true)}
           className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-          aria-label={t("Collapse sidebar")}
+          aria-label={t('Collapse sidebar')}
         >
           <PanelLeftClose size={15} />
         </button>
@@ -173,21 +175,26 @@ export function SidebarShell({
             className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)]/60 hover:text-[var(--foreground)]"
           >
             <Plus size={16} strokeWidth={2} />
-            <span>{t("New Chat")}</span>
+            <span>{t('New Chat')}</span>
           </button>
 
-          {PRIMARY_NAV.map((item) => {
-            const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-            const hasSessionsBelow = item.href === "/" && showSessions && onSelectSession && onRenameSession && onDeleteSession;
-            const hasBots = item.href === "/agents";
+          {PRIMARY_NAV.map(item => {
+            const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
+            const hasSessionsBelow =
+              item.href === '/' &&
+              showSessions &&
+              onSelectSession &&
+              onRenameSession &&
+              onDeleteSession
+            const hasBots = item.href === '/agents'
             return (
               <div key={item.href}>
                 <Link
                   href={item.href}
                   className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
                     active
-                      ? "bg-[var(--background)]/70 font-medium text-[var(--foreground)]"
-                      : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+                      ? 'bg-[var(--background)]/70 font-medium text-[var(--foreground)]'
+                      : 'text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]'
                   }`}
                 >
                   <item.icon size={16} strokeWidth={active ? 1.9 : 1.5} />
@@ -208,7 +215,7 @@ export function SidebarShell({
                 )}
                 {hasBots && <TutorBotRecent />}
               </div>
-            );
+            )
           })}
         </div>
       </nav>
@@ -218,25 +225,25 @@ export function SidebarShell({
 
       {/* Secondary nav + footer */}
       <div className="border-t border-[var(--border)]/40 px-2 py-2">
-        {SECONDARY_NAV.map((item) => {
-          const active = pathname.startsWith(item.href);
+        {SECONDARY_NAV.map(item => {
+          const active = pathname.startsWith(item.href)
           return (
             <Link
               key={item.href}
               href={item.href}
               className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
                 active
-                  ? "bg-[var(--background)]/70 font-medium text-[var(--foreground)]"
-                  : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+                  ? 'bg-[var(--background)]/70 font-medium text-[var(--foreground)]'
+                  : 'text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]'
               }`}
             >
               <item.icon size={16} strokeWidth={active ? 1.9 : 1.5} />
               <span>{t(item.label)}</span>
             </Link>
-          );
+          )
         })}
         {footerSlot}
       </div>
     </aside>
-  );
+  )
 }

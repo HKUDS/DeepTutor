@@ -13,6 +13,7 @@ data/user/
     ├── notebook/
     ├── co-writer/
     ├── guide/
+    ├── structure_note/
     └── chat/
         ├── chat/
         ├── deep_solve/
@@ -32,6 +33,7 @@ AgentModule = Literal[
     "research",
     "co-writer",
     "guide",
+    "structure_note",
     "run_code_workspace",
     "logs",
     "math_animator",
@@ -51,6 +53,7 @@ WorkspaceFeature = Literal[
     "notebook",
     "co-writer",
     "guide",
+    "structure_note",
     "chat",
 ]
 
@@ -68,6 +71,7 @@ class PathService:
         "math_animator": ("chat", "math_animator"),
         "co-writer": ("co-writer", None),
         "guide": ("guide", None),
+        "structure_note": ("structure_note", None),
         "run_code_workspace": ("chat", "_detached_code_execution"),
     }
     _PRIVATE_SUFFIXES = {".json", ".sqlite", ".db", ".md", ".yaml", ".yml", ".py", ".log"}
@@ -128,17 +132,32 @@ class PathService:
 
         if not candidate.is_file():
             return False
-        if candidate.suffix.lower() in self._PRIVATE_SUFFIXES:
+        parts = relative.parts
+        suffix = candidate.suffix.lower()
+        if len(parts) >= 5 and parts[:2] == ("workspace", "structure_note"):
+            if parts[3] == "final" and suffix in {".pdf", ".md"}:
+                return True
+            if parts[3] == "images" and suffix in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
+                return True
+
+        if suffix in self._PRIVATE_SUFFIXES:
             return False
 
-        parts = relative.parts
         if parts[:3] == ("workspace", "co-writer", "audio"):
             return True
 
-        if len(parts) >= 5 and parts[:3] == ("workspace", "chat", "deep_solve") and "artifacts" in parts[4:]:
+        if (
+            len(parts) >= 5
+            and parts[:3] == ("workspace", "chat", "deep_solve")
+            and "artifacts" in parts[4:]
+        ):
             return True
 
-        if len(parts) >= 5 and parts[:3] == ("workspace", "chat", "math_animator") and "artifacts" in parts[4:]:
+        if (
+            len(parts) >= 5
+            and parts[:3] == ("workspace", "chat", "math_animator")
+            and "artifacts" in parts[4:]
+        ):
             return True
 
         if len(parts) >= 5 and parts[:2] == ("workspace", "chat") and "code_runs" in parts[3:]:
@@ -183,9 +202,16 @@ class PathService:
         return session_root / session_id
 
     def _resolve_feature_root(self, feature: str) -> Path:
-        if feature in {"chat", "deep_solve", "deep_question", "deep_research", "math_animator", "_detached_code_execution"}:
+        if feature in {
+            "chat",
+            "deep_solve",
+            "deep_question",
+            "deep_research",
+            "math_animator",
+            "_detached_code_execution",
+        }:
             return self.get_chat_feature_dir(feature)  # type: ignore[arg-type]
-        if feature in {"memory", "notebook", "co-writer", "guide"}:
+        if feature in {"memory", "notebook", "co-writer", "guide", "structure_note"}:
             return self.get_workspace_feature_dir(feature)  # type: ignore[arg-type]
         raise ValueError(f"Unknown workspace feature: {feature}")
 
@@ -224,6 +250,7 @@ class PathService:
                     target = new_dir / f.name
                     if not target.exists():
                         import shutil
+
                         shutil.copy2(f, target)
         return new_dir
 
@@ -272,6 +299,12 @@ class PathService:
     def get_guide_session_file(self, session_id: str) -> Path:
         return self.get_guide_dir() / f"session_{session_id}.json"
 
+    def get_structure_note_dir(self) -> Path:
+        return self.get_workspace_feature_dir("structure_note")
+
+    def get_structure_note_job_dir(self, job_id: str) -> Path:
+        return self.get_structure_note_dir() / job_id
+
     def get_run_code_workspace_dir(self) -> Path:
         return self.get_chat_feature_dir("_detached_code_execution")
 
@@ -314,7 +347,7 @@ class PathService:
         self.ensure_memory_dir()
         self.ensure_notebook_dir()
         self.get_logs_dir().mkdir(parents=True, exist_ok=True)
-        for feature in ("co-writer", "guide"):
+        for feature in ("co-writer", "guide", "structure_note"):
             self.get_workspace_feature_dir(feature).mkdir(parents=True, exist_ok=True)
         for feature in (
             "chat",
