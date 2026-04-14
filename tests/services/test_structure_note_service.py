@@ -28,6 +28,7 @@ from deeptutor.services.structure_note.models import (
     StructureNoteArtifact,
 )
 from deeptutor.services.structure_note.normalizer import NormalizationError, normalize_to_pdf
+from deeptutor.services.structure_note.page_index import sections_from_pageindex_structure
 from deeptutor.services.structure_note.planner import build_document_plan
 from deeptutor.services.structure_note.tree_builder import build_section_tree
 
@@ -42,6 +43,33 @@ def _page(page_number: int, *, text: str = "", image_candidates=None) -> PageInd
         title_candidates=[],
         image_candidates=image_candidates or [],
     )
+
+
+def test_vectify_pageindex_structure_maps_to_section_tree() -> None:
+    structure = [
+        {
+            "title": "Chapter 1",
+            "start_index": 1,
+            "end_index": 4,
+            "summary": "Core ideas.",
+            "nodes": [
+                {
+                    "title": "Topic 1.1",
+                    "start_index": 2,
+                    "end_index": 4,
+                    "summary": "Details.",
+                }
+            ],
+        },
+        {"title": "Chapter 2", "start_index": 5, "end_index": 9},
+    ]
+
+    tree = sections_from_pageindex_structure(structure, total_pages=6)
+
+    assert [node.title for node in tree] == ["Chapter 1", "Topic 1.1", "Chapter 2"]
+    assert tree[0].child_ids == ["section-002"]
+    assert tree[1].parent_id == "section-001"
+    assert tree[2].page_end == 6
 
 
 def test_normalizer_requires_soffice_for_ppt(monkeypatch, tmp_path: Path) -> None:

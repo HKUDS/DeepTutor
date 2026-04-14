@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -30,11 +31,15 @@ from .models import (
     StructureNoteProject,
 )
 from .normalizer import normalize_to_pdf
-from .page_index import build_page_index
+from .page_index import (
+    VECTIFY_PAGEINDEX_RAW_FILENAME,
+    build_page_index_bundle,
+    pages_from_pageindex_raw,
+    sections_from_pageindex_raw,
+)
 from .planner import build_document_plan
 from .renderer import render_pdf
 from .storage import StructureNoteStorage
-from .tree_builder import build_section_tree
 
 
 class StructureNoteManager:
@@ -260,18 +265,54 @@ class StructureNoteManager:
                 self.storage.write_artifact(artifact)
 
             page_index_path = job_dirs["index"] / "page_index.json"
+            page_index_raw_path = job_dirs["index"] / VECTIFY_PAGEINDEX_RAW_FILENAME
+            page_index_bundle = None
+            raw_page_index: Any | None = (
+                self.storage.read_json(page_index_raw_path)
+                if page_index_raw_path.exists()
+                else None
+            )
+            pageindex_tree_refreshed = False
             artifact = self.update_status(
                 artifact, JobStatus.INDEXING, retry_state=JobStatus.INDEXING.value
             )
-            if artifact.page_index_path and Path(artifact.page_index_path).exists():
-                emit_log(task_id, "Reusing existing page index.")
+            if (
+                artifact.page_index_path
+                and Path(artifact.page_index_path).exists()
+                and raw_page_index is not None
+            ):
+                emit_log(task_id, "Reusing VectifyAI PageIndex page evidence.")
                 page_index = [
                     PageIndexPage.model_validate(item)
                     for item in self.storage.read_json(Path(artifact.page_index_path))
                 ]
+            elif raw_page_index is not None:
+                emit_log(task_id, "Rebuilding page evidence from VectifyAI PageIndex output.")
+                page_index = pages_from_pageindex_raw(normalized_pdf_path, raw_page_index)
+                artifact.page_index_path = str(
+                    self.storage.write_json(
+                        page_index_path,
+                        [page.model_dump(mode="json") for page in page_index],
+                    )
+                )
+                self.storage.write_artifact(artifact)
             else:
-                emit_log(task_id, "Building page-level index.")
-                page_index = build_page_index(normalized_pdf_path)
+                if artifact.page_index_path and Path(artifact.page_index_path).exists():
+                    emit_log(
+                        task_id,
+                        "Existing page index is legacy; rebuilding with VectifyAI PageIndex.",
+                    )
+                else:
+                    emit_log(task_id, "Building VectifyAI PageIndex tree and page evidence.")
+                page_index_bundle = await asyncio.to_thread(
+                    build_page_index_bundle,
+                    normalized_pdf_path,
+                    work_dir=job_dirs["index"],
+                )
+                raw_page_index = page_index_bundle.raw
+                pageindex_tree_refreshed = True
+                self.storage.write_json(page_index_raw_path, raw_page_index)
+                page_index = page_index_bundle.pages
                 artifact.page_index_path = str(
                     self.storage.write_json(
                         page_index_path,
@@ -284,17 +325,29 @@ class StructureNoteManager:
             artifact = self.update_status(
                 artifact, JobStatus.PLANNING, retry_state=JobStatus.PLANNING.value
             )
-            if artifact.section_tree_path and Path(artifact.section_tree_path).exists():
+            section_tree_refreshed = False
+            if (
+                artifact.section_tree_path
+                and Path(artifact.section_tree_path).exists()
+                and not pageindex_tree_refreshed
+            ):
                 emit_log(task_id, "Reusing section tree.")
                 section_tree = [
                     SectionTreeNode.model_validate(item)
                     for item in self.storage.read_json(Path(artifact.section_tree_path))
                 ]
             else:
-                emit_log(task_id, "Deriving section tree.")
-                section_tree = await build_section_tree(
-                    page_index, preset.page_window, language=language
-                )
+                emit_log(task_id, "Using VectifyAI PageIndex section tree.")
+                if page_index_bundle is not None:
+                    section_tree = page_index_bundle.section_tree
+                else:
+                    if raw_page_index is None:
+                        raw_page_index = self.storage.read_json(page_index_raw_path)
+                    section_tree = sections_from_pageindex_raw(
+                        raw_page_index,
+                        total_pages=len(page_index),
+                    )
+                section_tree_refreshed = True
                 artifact.section_tree_path = str(
                     self.storage.write_json(
                         section_tree_path,
@@ -304,7 +357,12 @@ class StructureNoteManager:
                 self.storage.write_artifact(artifact)
 
             document_plan_path = job_dirs["index"] / "document_plan.json"
-            if artifact.document_plan_path and Path(artifact.document_plan_path).exists():
+            document_plan_refreshed = False
+            if (
+                artifact.document_plan_path
+                and Path(artifact.document_plan_path).exists()
+                and not section_tree_refreshed
+            ):
                 emit_log(task_id, "Reusing document-level plan.")
                 document_plan = DocumentPlan.model_validate(
                     self.storage.read_json(Path(artifact.document_plan_path))
@@ -317,6 +375,7 @@ class StructureNoteManager:
                     document_title=artifact.file_name,
                     language=language,
                 )
+                document_plan_refreshed = True
                 artifact.document_plan_path = str(
                     self.storage.write_json(
                         document_plan_path,
@@ -329,7 +388,12 @@ class StructureNoteManager:
             artifact = self.update_status(
                 artifact, JobStatus.GENERATING, retry_state=JobStatus.GENERATING.value
             )
-            if artifact.generation_chunks_path and Path(artifact.generation_chunks_path).exists():
+            generation_chunks_refreshed = False
+            if (
+                artifact.generation_chunks_path
+                and Path(artifact.generation_chunks_path).exists()
+                and not document_plan_refreshed
+            ):
                 emit_log(task_id, "Reusing generated chunks.")
                 chunks = [
                     GenerationChunk.model_validate(item)
@@ -353,6 +417,7 @@ class StructureNoteManager:
                         document_plan=document_plan,
                     )
                 chunks = inject_image_placeholders(chunks, page_index, preset.placeholder_purpose)
+                generation_chunks_refreshed = True
                 artifact.generation_chunks_path = str(
                     self.storage.write_json(
                         chunks_path,
@@ -367,7 +432,11 @@ class StructureNoteManager:
                 JobStatus.PROCESSING_IMAGES,
                 retry_state=JobStatus.PROCESSING_IMAGES.value,
             )
-            if artifact.rendered_markdown_path and Path(artifact.rendered_markdown_path).exists():
+            if (
+                artifact.rendered_markdown_path
+                and Path(artifact.rendered_markdown_path).exists()
+                and not generation_chunks_refreshed
+            ):
                 emit_log(task_id, "Reusing rendered markdown after image processing.")
                 rendered_path = Path(artifact.rendered_markdown_path)
                 markdown_text = normalize_structure_note_markdown(
