@@ -29,7 +29,14 @@ SETTINGS_FILE = _path_service.get_settings_file("interface")
 
 DEFAULT_SIDEBAR_NAV_ORDER = {
     "start": ["/", "/history", "/knowledge", "/notebook"],
-    "learnResearch": ["/question", "/solver", "/guide", "/research", "/co_writer"],
+    "learnResearch": [
+        "/question",
+        "/solver",
+        "/guide",
+        "/structure-note",
+        "/research",
+        "/co_writer",
+    ],
 }
 
 DEFAULT_UI_SETTINGS = {

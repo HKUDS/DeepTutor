@@ -8,6 +8,7 @@ This module provides a unified BaseAgent class and module-specific agents:
 - co_writer: Co-writing agents (EditAgent, NarratorAgent)
 - question: Question generation agents (ReAct architecture, separate base)
 - chat: Lightweight conversational agent with session management
+- structure_note: Structure Note generation workflow and artifact management
 
 Usage:
     from deeptutor.agents.base_agent import BaseAgent

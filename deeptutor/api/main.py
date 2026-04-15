@@ -1,9 +1,7 @@
-import logging
 from contextlib import asynccontextmanager
-from pathlib import Path
+import logging
 
-from fastapi import FastAPI
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -107,6 +105,7 @@ async def lifespan(app: FastAPI):
 
     try:
         from deeptutor.services.tutorbot import get_tutorbot_manager
+
         await get_tutorbot_manager().auto_start_bots()
     except Exception as e:
         logger.warning(f"Failed to auto-start TutorBots: {e}")
@@ -119,6 +118,7 @@ async def lifespan(app: FastAPI):
     # Stop TutorBots
     try:
         from deeptutor.services.tutorbot import get_tutorbot_manager
+
         await get_tutorbot_manager().stop_all()
         logger.info("TutorBots stopped")
     except Exception as e:
@@ -207,14 +207,15 @@ from deeptutor.api.routers import (
     notebook,
     plugins_api,
     question,
+    question_notebook,
     sessions,
     settings,
     solve,
+    structure_note,
     system,
     tutorbot,
     unified_ws,
     vision_solver,
-    question_notebook,
 )
 
 # Include routers
@@ -226,9 +227,12 @@ app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboar
 app.include_router(co_writer.router, prefix="/api/v1/co_writer", tags=["co_writer"])
 app.include_router(notebook.router, prefix="/api/v1/notebook", tags=["notebook"])
 app.include_router(guide.router, prefix="/api/v1/guide", tags=["guide"])
+app.include_router(structure_note.router, prefix="/api/v1/structure-note", tags=["structure-note"])
 app.include_router(memory.router, prefix="/api/v1/memory", tags=["memory"])
 app.include_router(sessions.router, prefix="/api/v1/sessions", tags=["sessions"])
-app.include_router(question_notebook.router, prefix="/api/v1/question-notebook", tags=["question-notebook"])
+app.include_router(
+    question_notebook.router, prefix="/api/v1/question-notebook", tags=["question-notebook"]
+)
 app.include_router(settings.router, prefix="/api/v1/settings", tags=["settings"])
 app.include_router(system.router, prefix="/api/v1/system", tags=["system"])
 app.include_router(plugins_api.router, prefix="/api/v1/plugins", tags=["plugins"])

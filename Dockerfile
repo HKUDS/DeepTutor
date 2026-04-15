@@ -67,7 +67,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Install system dependencies
-# Note: libgl1 and libglib2.0-0 are required for OpenCV (used by mineru)
+# Note: libgl1 and libglib2.0-0 are required for OpenCV (used by mineru).
+# Pango/Cairo/GDK-PixBuf libraries are required by WeasyPrint PDF export.
 # Rust is required for building tiktoken and other packages without pre-built wheels
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
@@ -78,7 +79,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsm6 \
     libxext6 \
     libxrender1 \
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    libharfbuzz0b \
+    libharfbuzz-subset0 \
+    shared-mime-info \
     pkg-config \
+    libffi-dev \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/* \
     && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -114,7 +123,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Install system dependencies
-# Note: libgl1 and libglib2.0-0 are required for OpenCV (used by mineru)
+# Note: libgl1 and libglib2.0-0 are required for OpenCV (used by mineru).
+# Pango/Cairo/GDK-PixBuf libraries are required by WeasyPrint PDF export.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
@@ -125,6 +135,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsm6 \
     libxext6 \
     libxrender1 \
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    libharfbuzz0b \
+    libharfbuzz-subset0 \
+    shared-mime-info \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Node.js from node-runtime stage (platform-matched binary)

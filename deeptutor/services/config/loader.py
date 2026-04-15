@@ -23,11 +23,18 @@ from deeptutor.services.path_service import get_path_service
 # .parent.parent.parent.parent = DeepTutor/ (project root)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
+_DEFAULT_MAIN_CONFIG: dict[str, Any] = {
+    "system": {"language": "en"},
+    "logging": {"level": "WARNING", "save_to_file": True, "console_output": True},
+    "tools": {"run_code": {}},
+}
+
 
 def get_runtime_settings_dir(project_root: Path | None = None) -> Path:
     """Return the canonical runtime settings directory under ``data/user/settings``."""
     root = project_root or PROJECT_ROOT
     return root / "data" / "user" / "settings"
+
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """
@@ -74,6 +81,7 @@ def _inject_runtime_paths(config: dict[str, Any]) -> dict[str, Any]:
         "user_log_dir": str(path_service.get_logs_dir()),
         "performance_log_dir": str(path_service.get_logs_dir() / "performance"),
         "guide_output_dir": str(path_service.get_guide_dir()),
+        "structure_note_output_dir": str(path_service.get_structure_note_dir()),
         "question_output_dir": str(path_service.get_chat_feature_dir("deep_question")),
         "research_output_dir": str(path_service.get_research_dir()),
         "research_reports_dir": str(path_service.get_research_reports_dir()),
@@ -85,6 +93,14 @@ def _inject_runtime_paths(config: dict[str, Any]) -> dict[str, Any]:
 async def _load_yaml_file_async(file_path: Path) -> dict[str, Any]:
     """Async version of _load_yaml_file."""
     return await asyncio.to_thread(_load_yaml_file, file_path)
+
+
+def _load_main_config(project_root: Path) -> dict[str, Any]:
+    settings_dir = get_runtime_settings_dir(project_root)
+    main_path = settings_dir / "main.yaml"
+    if main_path.exists():
+        return _load_yaml_file(main_path)
+    return _DEFAULT_MAIN_CONFIG.copy()
 
 
 def resolve_config_path(
@@ -108,8 +124,7 @@ def resolve_config_path(
     if config_path.exists():
         return config_path, False
     raise FileNotFoundError(
-        f"Configuration file not found: {config_file} "
-        f"(expected under {settings_dir})"
+        f"Configuration file not found: {config_file} (expected under {settings_dir})"
     )
 
 
@@ -127,8 +142,12 @@ def load_config_with_main(config_file: str, project_root: Path | None = None) ->
     if project_root is None:
         project_root = PROJECT_ROOT
 
+    base_config = _load_main_config(project_root)
+    if config_file == "main.yaml":
+        return _inject_runtime_paths(base_config)
+
     config_path, _ = resolve_config_path(config_file, project_root)
-    return _inject_runtime_paths(_load_yaml_file(config_path))
+    return _inject_runtime_paths(_deep_merge(base_config, _load_yaml_file(config_path)))
 
 
 async def load_config_with_main_async(
@@ -149,8 +168,13 @@ async def load_config_with_main_async(
     if project_root is None:
         project_root = PROJECT_ROOT
 
+    base_config = _load_main_config(project_root)
+    if config_file == "main.yaml":
+        return _inject_runtime_paths(base_config)
+
     config_path, _ = resolve_config_path(config_file, project_root)
-    return _inject_runtime_paths(await _load_yaml_file_async(config_path))
+    module_config = await _load_yaml_file_async(config_path)
+    return _inject_runtime_paths(_deep_merge(base_config, module_config))
 
 
 def get_path_from_config(config: dict[str, Any], path_key: str, default: str = None) -> str:

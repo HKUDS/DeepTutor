@@ -52,6 +52,18 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-${{ matrix.python-version }}-
 
+      - name: Install WeasyPrint system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libcairo2 \
+            libpango-1.0-0 \
+            libpangoft2-1.0-0 \
+            libgdk-pixbuf-2.0-0 \
+            libharfbuzz0b \
+            libharfbuzz-subset0 \
+            shared-mime-info
+
       - name: Install minimal dependencies for import check
         run: |
           python -m pip install --upgrade pip
@@ -91,6 +103,18 @@ jobs:
           key: ${{ runner.os }}-pip-3.11-${{ hashFiles('requirements/server.txt', 'requirements/cli.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-3.11-
+
+      - name: Install WeasyPrint system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libcairo2 \
+            libpango-1.0-0 \
+            libpangoft2-1.0-0 \
+            libgdk-pixbuf-2.0-0 \
+            libharfbuzz0b \
+            libharfbuzz-subset0 \
+            shared-mime-info
 
       - name: Install smoke test dependencies
         run: |

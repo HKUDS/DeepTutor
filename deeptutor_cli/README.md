@@ -132,7 +132,7 @@ deeptutor serve [--host 0.0.0.0] [--port 8001] [--reload]
 deeptutor kb list                                # 列出所有知识库
 deeptutor kb info <name>                         # 查看详情
 deeptutor kb create <name> --doc file.pdf        # 创建并导入文档
-deeptutor kb create <name> --docs-dir ./docs/    # 从目录批量导入
+deeptutor kb create <name> --docs-dir ./materials/    # 从目录批量导入
 deeptutor kb add <name> --doc extra.pdf          # 追加文档
 deeptutor kb set-default <name>                  # 设为默认
 deeptutor kb search <name> "查询内容"             # 搜索
