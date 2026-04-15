@@ -30,6 +30,11 @@ from deeptutor.agents.structure_note.models import (
 from deeptutor.agents.structure_note.normalizer import NormalizationError, normalize_to_pdf
 from deeptutor.agents.structure_note.page_index import sections_from_pageindex_structure
 from deeptutor.agents.structure_note.planner import build_document_plan
+from deeptutor.agents.structure_note.renderer import (
+    RenderError,
+    _build_safe_url_fetcher,
+    _escape_raw_html,
+)
 from deeptutor.agents.structure_note.tree_builder import build_section_tree
 
 
@@ -280,6 +285,46 @@ def test_export_output_stem_uses_source_title_with_structure_note_suffix() -> No
     )
 
     assert StructureNoteManager()._export_output_stem(artifact) == "Week3-structure-note"
+
+
+def test_pdf_renderer_escapes_raw_html_but_preserves_section_anchors() -> None:
+    markdown = (
+        '<a id="section-001"></a>\n\n'
+        '<img src="https://169.254.169.254/latest/meta-data"> '
+        "<script>alert('x')</script>"
+    )
+
+    escaped = _escape_raw_html(markdown)
+
+    assert '<a id="section-001"></a>' in escaped
+    assert "&lt;img src=" in escaped
+    assert "&lt;script&gt;" in escaped
+    assert "<script>" not in escaped
+    assert "<img" not in escaped
+
+
+def test_pdf_renderer_url_fetcher_allows_only_job_workspace_files(tmp_path: Path) -> None:
+    job_dir = tmp_path / "job"
+    image_path = job_dir / "images" / "figure.png"
+    image_path.parent.mkdir(parents=True)
+    image_path.write_bytes(b"png")
+    outside_path = tmp_path / "outside.png"
+    outside_path.write_bytes(b"png")
+    fetched_urls: list[str] = []
+
+    def _fake_fetcher(url: str):
+        fetched_urls.append(url)
+        return {"string": b""}
+
+    fetcher = _build_safe_url_fetcher(job_dir, _fake_fetcher)
+
+    fetcher(image_path.as_uri())
+
+    assert fetched_urls == [image_path.as_uri()]
+    with pytest.raises(RenderError):
+        fetcher("https://example.com/figure.png")
+    with pytest.raises(RenderError):
+        fetcher(outside_path.as_uri())
 
 
 @pytest.mark.asyncio

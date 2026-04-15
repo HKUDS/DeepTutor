@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from html import escape
 import json
 from pathlib import Path
 import re
+from typing import Any
+from urllib.parse import unquote, urlparse
 
 from .markdown_postprocessor import (
     normalize_structure_note_markdown,
@@ -94,6 +97,10 @@ class RenderError(RuntimeError):
 _MATH_BLOCK_RE = re.compile(r"(?<!\$)\$\$\s*([\s\S]*?)\s*\$\$(?!\$)")
 _MATH_INLINE_RE = re.compile(r"(?<!\\)(?<!\$)\$(?!\$|\s)([^$\n]+?)(?<!\s)(?<!\\)\$(?!\$)")
 _FENCE_RE = re.compile(r"(```[\s\S]*?```|~~~[\s\S]*?~~~)")
+_SAFE_ANCHOR_RE = re.compile(r'<a\s+id="([A-Za-z0-9_.:-]+)"\s*></a>')
+
+
+UrlFetcher = Callable[[str], dict[str, Any]]
 
 
 def _render_math_for_pdf(markdown_text: str) -> str:
@@ -107,6 +114,21 @@ def _render_math_for_pdf(markdown_text: str) -> str:
     if last < len(markdown_text):
         parts.append(_render_math_in_non_fenced_text(markdown_text[last:]))
     return "".join(parts)
+
+
+def _escape_raw_html(markdown_text: str) -> str:
+    anchors: dict[str, str] = {}
+
+    def preserve_anchor(match: re.Match[str]) -> str:
+        token = f"@@STRUCTURE_NOTE_ANCHOR_{len(anchors)}@@"
+        anchors[token] = match.group(0)
+        return token
+
+    protected = _SAFE_ANCHOR_RE.sub(preserve_anchor, markdown_text)
+    escaped = protected.replace("<", "&lt;").replace(">", "&gt;")
+    for token, anchor in anchors.items():
+        escaped = escaped.replace(token, anchor)
+    return escaped
 
 
 def _render_math_in_non_fenced_text(markdown_text: str) -> str:
@@ -126,6 +148,35 @@ def _render_math_in_non_fenced_text(markdown_text: str) -> str:
     return _MATH_INLINE_RE.sub(replace_inline, rendered)
 
 
+def _build_safe_url_fetcher(job_dir: Path, delegate: UrlFetcher) -> UrlFetcher:
+    root = job_dir.resolve()
+
+    def fetch(url: str) -> dict[str, Any]:
+        parsed = urlparse(url)
+        scheme = parsed.scheme.lower()
+        if scheme not in {"", "file"}:
+            raise RenderError("Blocked remote resource while rendering Structure Note PDF.")
+        if parsed.netloc and parsed.netloc != "localhost":
+            raise RenderError("Blocked non-local file resource while rendering Structure Note PDF.")
+
+        if scheme == "file":
+            candidate = Path(unquote(parsed.path)).resolve()
+        else:
+            candidate = (root / unquote(url)).resolve()
+
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            raise RenderError(
+                "Blocked file resource outside the Structure Note workspace during PDF render."
+            )
+        if not candidate.is_file():
+            raise RenderError(f"Structure Note render resource not found: {candidate}")
+        return delegate(candidate.as_uri())
+
+    return fetch
+
+
 def render_pdf(
     markdown_text: str,
     title: str,
@@ -142,7 +193,7 @@ def render_pdf(
         ) from exc
 
     try:
-        from weasyprint import HTML
+        from weasyprint import HTML, default_url_fetcher
     except ImportError as exc:
         raise RenderError(
             "WeasyPrint is required for Structure Note PDF export. Install `weasyprint` and retry."
@@ -155,7 +206,7 @@ def render_pdf(
         raise RenderError(f"Structure Note Markdown contains unsupported math syntax: {detail}")
 
     final_dir.mkdir(parents=True, exist_ok=True)
-    html_ready_markdown = _render_math_for_pdf(markdown_text)
+    html_ready_markdown = _render_math_for_pdf(_escape_raw_html(markdown_text))
     html_body = markdown(html_ready_markdown, extensions=["extra", "fenced_code", "tables", "toc"])
     html = (
         "<!doctype html><html><head><meta charset='utf-8'>"
@@ -166,7 +217,11 @@ def render_pdf(
 
     pdf_stem = output_stem.strip() or "final"
     pdf_path = final_dir / f"{pdf_stem}.pdf"
-    HTML(string=html, base_url=str(job_dir)).write_pdf(str(pdf_path))
+    HTML(
+        string=html,
+        base_url=str(job_dir),
+        url_fetcher=_build_safe_url_fetcher(job_dir, default_url_fetcher),
+    ).write_pdf(str(pdf_path))
 
     citation_path = final_dir / "citation_manifest.json"
     with open(citation_path, "w", encoding="utf-8") as handle:

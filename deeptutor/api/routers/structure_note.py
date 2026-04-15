@@ -16,10 +16,6 @@ from uuid import uuid4
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
-from deeptutor.api.utils.task_id_manager import TaskIDManager
-from deeptutor.api.utils.task_log_stream import get_task_stream_manager
-from deeptutor.logging import get_logger
-from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
 from deeptutor.agents.structure_note import (
     DifficultyLevel,
     ExplanationStyleLevel,
@@ -27,6 +23,10 @@ from deeptutor.agents.structure_note import (
     NoteLanguage,
     StructureNoteManager,
 )
+from deeptutor.api.utils.task_id_manager import TaskIDManager
+from deeptutor.api.utils.task_log_stream import get_task_stream_manager
+from deeptutor.logging import get_logger
+from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
 from deeptutor.utils.document_validator import DocumentValidator
 
 router = APIRouter()
@@ -62,7 +62,7 @@ def _emit_log(task_id: str, message: str) -> None:
     logger.info(f"[{task_id}] {message}")
 
 
-def _save_upload(file: UploadFile, target_dir: Path) -> tuple[Path, str, int]:
+async def _save_upload(file: UploadFile, target_dir: Path) -> tuple[Path, str, int]:
     safe_name = DocumentValidator.validate_upload_safety(
         file.filename or "upload",
         None,
@@ -72,7 +72,10 @@ def _save_upload(file: UploadFile, target_dir: Path) -> tuple[Path, str, int]:
     target_path = target_dir / safe_name
     written_bytes = 0
     with open(target_path, "wb") as handle:
-        for chunk in iter(lambda: file.file.read(8192), b""):
+        while True:
+            chunk = await file.read(8192)
+            if not chunk:
+                break
             written_bytes += len(chunk)
             if written_bytes > DocumentValidator.MAX_FILE_SIZE:
                 raise HTTPException(status_code=400, detail="Uploaded file exceeds the size limit.")
@@ -231,7 +234,7 @@ async def create_job(
 
     job_id = f"structure_note_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:8]}"
     job_dirs = manager.storage.ensure_job_dirs(job_id)
-    source_path, safe_name, _ = _save_upload(file, job_dirs["source"])
+    source_path, safe_name, _ = await _save_upload(file, job_dirs["source"])
 
     target_project_name = (
         project_name.strip() if project_name and project_name.strip() else "Local Uploads"
