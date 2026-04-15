@@ -177,6 +177,7 @@ async def complete(
     provider_name = binding or "openai"
     provider_mode = "standard"
     extra_headers: dict[str, str] = {}
+    caller_extra_headers = kwargs.pop("extra_headers", None) or {}
     reasoning_effort = kwargs.pop("reasoning_effort", None)
 
     if not model or not base_url or api_key is None or not binding:
@@ -198,6 +199,9 @@ async def complete(
         spec = find_by_name(provider_name)
         if spec is not None:
             provider_mode = spec.mode
+
+    if caller_extra_headers:
+        extra_headers.update(caller_extra_headers)
 
     use_local_fallback = _should_use_local(base_url)
 
@@ -320,6 +324,7 @@ async def complete(
 
     extra_kwargs: CallKwargs = dict(kwargs)
     extra_kwargs.pop("messages", None)
+    extra_kwargs.pop("extra_headers", None)
 
     return await _do_complete(
         prompt_value=prompt,
@@ -352,6 +357,7 @@ async def stream(
     provider_name = binding or "openai"
     provider_mode = "standard"
     extra_headers: dict[str, str] = {}
+    caller_extra_headers = kwargs.pop("extra_headers", None) or {}
     reasoning_effort = kwargs.pop("reasoning_effort", None)
 
     if not model or not base_url or api_key is None or not binding:
@@ -374,9 +380,13 @@ async def stream(
         if spec is not None:
             provider_mode = spec.mode
 
+    if caller_extra_headers:
+        extra_headers.update(caller_extra_headers)
+
     use_local_fallback = _should_use_local(base_url)
     extra_kwargs: CallKwargs = dict(kwargs)
     extra_kwargs.pop("messages", None)
+    extra_kwargs.pop("extra_headers", None)
 
     total_attempts = max_retries + 1
     last_exception: Exception | None = None

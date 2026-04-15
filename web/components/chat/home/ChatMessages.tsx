@@ -191,7 +191,116 @@ function RoughActionButton({
   );
 }
 
-export function ReferenceChips({
+const UserMessage = memo(function UserMessage({
+  msg,
+  index,
+  showInlineControls,
+  onCancelStreaming,
+  onAnswerNow,
+  activeAssistantMessage,
+}: {
+  msg: ChatMessageItem;
+  index: number;
+  showInlineControls: boolean;
+  onCancelStreaming: () => void;
+  onAnswerNow: (
+    snapshot?: MessageRequestSnapshot,
+    assistantMsg?: { content: string; events?: StreamEvent[] },
+  ) => void;
+  activeAssistantMessage: ChatMessageItem | null;
+}) {
+  const { t } = useTranslation();
+  if (msg.content.startsWith("[Quiz Performance]")) return null;
+
+  return (
+    <div key={`${msg.role}-${index}`} className="flex justify-end">
+      <div className="max-w-[75%] space-y-1.5">
+        <div className="flex justify-end pr-1">
+          <span className="text-[10px] tracking-wide text-[var(--muted-foreground)]">
+            {getModeBadgeLabel(msg.capability)}
+          </span>
+        </div>
+        {msg.attachments?.some((a) => a.type === "image") && (
+          <div className="flex flex-wrap justify-end gap-2">
+            {msg.attachments
+              .filter((a) => a.type === "image" && a.base64)
+              .map((a, ai) => (
+                <div key={`img-${ai}`} className="overflow-hidden rounded-2xl border border-[var(--border)]">
+                  <Image
+                    src={`data:image/png;base64,${a.base64}`}
+                    alt={a.filename || t("image")}
+                    width={280}
+                    height={192}
+                    unoptimized
+                    className="max-h-48 max-w-[280px] rounded-2xl object-contain"
+                  />
+                </div>
+              ))}
+          </div>
+        )}
+        <div className="rounded-2xl bg-[var(--secondary)] px-4 py-2.5 text-[14px] leading-relaxed text-[var(--foreground)] shadow-sm">
+          {(() => {
+            const snap = msg.requestSnapshot;
+            const hasNotebook = Boolean(snap?.notebookReferences?.length);
+            const hasHistory = Boolean(snap?.historyReferences?.length);
+            if (!hasNotebook && !hasHistory) return null;
+            return (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {snap?.notebookReferences?.map((ref) => (
+                  <span
+                    key={ref.notebook_id}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--background)]/60 px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)]"
+                  >
+                    <BookOpen size={11} strokeWidth={1.8} />
+                    {t("Notebook")} · {ref.record_ids.length} {t("records")}
+                  </span>
+                ))}
+                {snap?.historyReferences?.map((sid) => (
+                  <span
+                    key={sid}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--background)]/60 px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)]"
+                  >
+                    <MessageSquare size={11} strokeWidth={1.8} />
+                    {t("Chat History")}
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
+          <div>{msg.content}</div>
+        </div>
+        {showInlineControls ? (
+          <div className="flex justify-end gap-2">
+            <RoughActionButton
+              icon={Square}
+              label="Stop"
+              onClick={onCancelStreaming}
+            />
+            <RoughActionButton
+              icon={Zap}
+              label="Answer now"
+              onClick={() =>
+                onAnswerNow(
+                  msg.requestSnapshot,
+                  activeAssistantMessage?.role === "assistant"
+                    ? {
+                        content: activeAssistantMessage.content,
+                        events: activeAssistantMessage.events,
+                      }
+                    : undefined,
+                )
+              }
+            />
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+});
+
+UserMessage.displayName = "UserMessage";
+
+export const ReferenceChips = memo(function ReferenceChips({
   historySessions,
   notebookGroups,
   onRemoveHistory,
@@ -243,9 +352,11 @@ export function ReferenceChips({
       ))}
     </div>
   );
-}
+});
 
-export function ChatMessageList({
+ReferenceChips.displayName = "ReferenceChips";
+
+export const ChatMessageList = memo(function ChatMessageList({
   messages,
   isStreaming,
   activeUserIndex,
@@ -315,95 +426,21 @@ export function ChatMessageList({
     <>
       {messageRows.map(({ msg, pairedUserMessage }, i) => {
         if (msg.role === "user") {
-          if (msg.content.startsWith("[Quiz Performance]")) return null;
           const showInlineControls =
             i === activeUserIndex &&
             (!msg.capability || msg.capability === "chat") &&
             Boolean(msg.requestSnapshot) &&
             activeAssistantMessage?.role === "assistant";
           return (
-            <div key={`${msg.role}-${i}`} className="flex justify-end">
-              <div className="max-w-[75%] space-y-1.5">
-                <div className="flex justify-end pr-1">
-                  <span className="text-[10px] tracking-wide text-[var(--muted-foreground)]">
-                    {getModeBadgeLabel(msg.capability)}
-                  </span>
-                </div>
-                {msg.attachments?.some((a) => a.type === "image") && (
-                  <div className="flex flex-wrap justify-end gap-2">
-                    {msg.attachments
-                      .filter((a) => a.type === "image" && a.base64)
-                      .map((a, ai) => (
-                        <div key={`img-${ai}`} className="overflow-hidden rounded-2xl border border-[var(--border)]">
-                          <Image
-                            src={`data:image/png;base64,${a.base64}`}
-                            alt={a.filename || t("image")}
-                            width={280}
-                            height={192}
-                            unoptimized
-                            className="max-h-48 max-w-[280px] rounded-2xl object-contain"
-                          />
-                        </div>
-                      ))}
-                  </div>
-                )}
-                <div className="rounded-2xl bg-[var(--secondary)] px-4 py-2.5 text-[14px] leading-relaxed text-[var(--foreground)] shadow-sm">
-                  {(() => {
-                    const snap = msg.requestSnapshot;
-                    const hasNotebook = Boolean(snap?.notebookReferences?.length);
-                    const hasHistory = Boolean(snap?.historyReferences?.length);
-                    if (!hasNotebook && !hasHistory) return null;
-                    return (
-                      <div className="mb-2 flex flex-wrap gap-1.5">
-                        {snap?.notebookReferences?.map((ref) => (
-                          <span
-                            key={ref.notebook_id}
-                            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--background)]/60 px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)]"
-                          >
-                            <BookOpen size={11} strokeWidth={1.8} />
-                            {t("Notebook")} · {ref.record_ids.length} {t("records")}
-                          </span>
-                        ))}
-                        {snap?.historyReferences?.map((sid) => (
-                          <span
-                            key={sid}
-                            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--background)]/60 px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)]"
-                          >
-                            <MessageSquare size={11} strokeWidth={1.8} />
-                            {t("Chat History")}
-                          </span>
-                        ))}
-                      </div>
-                    );
-                  })()}
-                  <div>{msg.content}</div>
-                </div>
-                {showInlineControls ? (
-                  <div className="flex justify-end gap-2">
-                    <RoughActionButton
-                      icon={Square}
-                      label="Stop"
-                      onClick={onCancelStreaming}
-                    />
-                    <RoughActionButton
-                      icon={Zap}
-                      label="Answer now"
-                      onClick={() =>
-                        onAnswerNow(
-                          msg.requestSnapshot,
-                          activeAssistantMessage?.role === "assistant"
-                            ? {
-                                content: activeAssistantMessage.content,
-                                events: activeAssistantMessage.events,
-                              }
-                            : undefined,
-                        )
-                      }
-                    />
-                  </div>
-                ) : null}
-              </div>
-            </div>
+            <UserMessage
+              key={`${msg.role}-${i}`}
+              msg={msg}
+              index={i}
+              showInlineControls={showInlineControls}
+              onCancelStreaming={onCancelStreaming}
+              onAnswerNow={onAnswerNow}
+              activeAssistantMessage={activeAssistantMessage}
+            />
           );
         }
 
@@ -465,4 +502,6 @@ export function ChatMessageList({
       })}
     </>
   );
-}
+});
+
+ChatMessageList.displayName = "ChatMessageList";

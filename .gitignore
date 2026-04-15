@@ -75,6 +75,9 @@ web/.next/
 out/
 web/out/
 
+# Auto-generated env.local (created by start_web.py / start_tour.py)
+web/.env.local
+
 # Frontend build artifacts
 dist/
 web/dist/

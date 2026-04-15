@@ -66,11 +66,11 @@ type Catalog = {
 };
 
 type UiSettings = {
-  theme: "light" | "dark" | "glass";
+  theme: "light" | "dark" | "glass" | "snow";
   language: "en" | "zh";
 };
 
-type ProviderOption = { value: string; label: string; base_url?: string };
+type ProviderOption = { value: string; label: string; base_url?: string; default_dim?: string };
 
 type SettingsPayload = {
   ui: UiSettings;
@@ -367,7 +367,7 @@ function SettingsPageContent() {
   const isTourMode = searchParams.get("tour") === "true";
 
   const [status, setStatus] = useState<SystemStatus | null>(null);
-  const [theme, setTheme] = useState<"light" | "dark" | "glass">("light");
+  const [theme, setTheme] = useState<"light" | "dark" | "glass" | "snow">("light");
   const [language, setLanguage] = useState<"en" | "zh">("en");
   const [catalog, setCatalog] = useState<Catalog>(defaultCatalog());
   const [draft, setDraft] = useState<Catalog>(defaultCatalog());
@@ -460,7 +460,7 @@ function SettingsPageContent() {
 
   // -- UI preference helpers ----------------------------------------------
 
-  const persistUi = async (nextTheme: "light" | "dark" | "glass", nextLanguage: "en" | "zh") => {
+  const persistUi = async (nextTheme: "light" | "dark" | "glass" | "snow", nextLanguage: "en" | "zh") => {
     await fetch(apiUrl("/api/v1/settings/ui"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -468,7 +468,7 @@ function SettingsPageContent() {
     });
   };
 
-  const updateTheme = async (nextTheme: "light" | "dark" | "glass") => {
+  const updateTheme = async (nextTheme: "light" | "dark" | "glass" | "snow") => {
     setTheme(nextTheme);
     applyThemePreference(nextTheme);
     await persistUi(nextTheme, language);
@@ -488,6 +488,11 @@ function SettingsPageContent() {
       mutator(next);
       return next;
     });
+  };
+
+  const embeddingDefaultDim = (binding?: string) => {
+    const match = (providers.embedding || []).find((p) => p.value === (binding || "openai"));
+    return match?.default_dim || "3072";
   };
 
   const addProfile = () => {
@@ -512,7 +517,7 @@ function SettingsPageContent() {
           id: modelId,
           name: "New Model",
           model: "",
-          ...(activeService === "embedding" ? { dimension: "3072" } : {}),
+          ...(activeService === "embedding" ? { dimension: embeddingDefaultDim() } : {}),
         });
         service.active_model_id = modelId;
       }
@@ -543,7 +548,7 @@ function SettingsPageContent() {
         id: modelId,
         name: "New Model",
         model: "",
-        ...(activeService === "embedding" ? { dimension: "3072" } : {}),
+        ...(activeService === "embedding" ? { dimension: embeddingDefaultDim(profile.binding) } : {}),
       });
       service.active_model_id = modelId;
     });
@@ -861,7 +866,7 @@ function SettingsPageContent() {
           <div className="flex items-center gap-2">
             <span className="text-[12px] text-[var(--muted-foreground)]">{t("Theme")}</span>
             <div className="flex gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
-              {(["light", "dark", "glass"] as const).map((v) => (
+              {(["snow", "light", "dark", "glass"] as const).map((v) => (
                 <button
                   key={v}
                   onClick={() => updateTheme(v)}
@@ -871,7 +876,7 @@ function SettingsPageContent() {
                       : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
                   }`}
                 >
-                  {v === "light" ? t("Light") : v === "dark" ? t("Dark") : t("Glass")}
+                  {v === "snow" ? t("Snow") : v === "light" ? t("Light") : v === "dark" ? t("Dark") : t("Glass")}
                 </button>
               ))}
             </div>
@@ -1033,6 +1038,9 @@ function SettingsPageContent() {
                             if (match?.base_url) {
                               updateProfileField("base_url", match.base_url);
                             }
+                            if (activeService === "embedding" && match?.default_dim) {
+                              updateModelField("dimension", match.default_dim);
+                            }
                           }}
                         >
                           <option value="">{t("Select provider...")}</option>
@@ -1162,7 +1170,7 @@ function SettingsPageContent() {
                         {activeService === "embedding" && (
                           <div>
                             <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">{t("Dimension")}</div>
-                            <input className={inputClass} value={activeModel.dimension || "3072"} onChange={(e) => updateModelField("dimension", e.target.value)} />
+                            <input className={inputClass} value={activeModel.dimension || embeddingDefaultDim(activeProfile?.binding)} onChange={(e) => updateModelField("dimension", e.target.value)} />
                           </div>
                         )}
                       </div>

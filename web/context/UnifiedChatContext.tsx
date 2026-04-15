@@ -10,7 +10,6 @@ import React, {
   useRef,
 } from "react";
 import {
-  readStoredActiveSessionId,
   readStoredLanguage,
   writeStoredActiveSessionId,
 } from "@/context/AppShellContext";
@@ -401,7 +400,6 @@ const ChatCtx = createContext<ChatContextValue | null>(null);
 
 export function UnifiedChatProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const restoredRef = useRef(false);
   const stateRef = useRef(initialState);
   const runnersRef = useRef<
     Map<
@@ -520,6 +518,10 @@ export function UnifiedChatProvider({ children }: { children: React.ReactNode })
     (key: string) => {
       const existing = runnersRef.current.get(key);
       if (existing) {
+        const session = stateRef.current.sessions[key];
+        if (session) {
+          existing.client.setResumeState(session.activeTurnId, session.lastSeq);
+        }
         if (!existing.client.connected) existing.client.connect();
         return existing;
       }
@@ -599,19 +601,51 @@ export function UnifiedChatProvider({ children }: { children: React.ReactNode })
     writeStoredActiveSessionId(current?.sessionId ?? null);
   }, [state.selectedKey, state.sessions]);
 
+  // URL is now the source of truth for session loading.
+  // Chat pages load sessions based on URL params; no sessionStorage restore needed.
+  // Initialize a draft session so the provider always has a selected key.
   useEffect(() => {
-    if (restoredRef.current || typeof window === "undefined") return;
-    restoredRef.current = true;
-    const savedSessionId = readStoredActiveSessionId();
-    if (savedSessionId) {
-      void loadSession(savedSessionId).catch(() => {
-        writeStoredActiveSessionId(null);
-        dispatch({ type: "NEW_SESSION", key: makeDraftKey() });
-      });
-      return;
+    if (typeof window === "undefined") return;
+    if (!state.selectedKey) {
+      dispatch({ type: "NEW_SESSION", key: makeDraftKey() });
     }
-    dispatch({ type: "NEW_SESSION", key: makeDraftKey() });
-  }, [loadSession, makeDraftKey]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Idle timeout: if a streaming session receives no events for 60s, auto-fail it.
+  useEffect(() => {
+    const IDLE_TIMEOUT_MS = 60_000;
+    const CHECK_INTERVAL_MS = 10_000;
+
+    const timer = setInterval(() => {
+      const current = stateRef.current;
+      for (const [key, session] of Object.entries(current.sessions)) {
+        if (!session.isStreaming) continue;
+        if (Date.now() - session.updatedAt <= IDLE_TIMEOUT_MS) continue;
+
+        dispatch({
+          type: "STREAM_EVENT",
+          key,
+          event: {
+            type: "error",
+            source: "client",
+            stage: "",
+            content: "Connection timed out — no response received for 60 seconds.",
+            metadata: { turn_terminal: true, status: "failed" },
+            timestamp: Date.now() / 1000,
+          },
+        });
+        dispatch({ type: "STREAM_END", key, status: "failed" });
+
+        const runner = runnersRef.current.get(key);
+        if (runner) {
+          runner.client.disconnect();
+          runnersRef.current.delete(key);
+        }
+      }
+    }, CHECK_INTERVAL_MS);
+
+    return () => clearInterval(timer);
+  }, []);
 
   const sendMessage = useCallback(
     (

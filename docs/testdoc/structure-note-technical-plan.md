@@ -208,7 +208,7 @@
 
 #### `POST /api/v1/structure-note/jobs`
 
-用途：创建任务  
+用途：创建任务
 请求：`multipart/form-data`
 
 - `file`: 上传文件
@@ -224,7 +224,7 @@
 
 #### `GET /api/v1/structure-note/jobs`
 
-用途：获取工作区历史列表  
+用途：获取工作区历史列表
 返回最少字段：
 
 - `job_id`
@@ -236,7 +236,7 @@
 
 #### `GET /api/v1/structure-note/jobs/{job_id}`
 
-用途：获取任务详情  
+用途：获取任务详情
 返回最少字段：
 
 - `job_id`
@@ -249,7 +249,7 @@
 
 #### `POST /api/v1/structure-note/jobs/{job_id}/retry`
 
-用途：失败任务续跑  
+用途：失败任务续跑
 行为：
 
 - 读取 `artifact.json`
@@ -258,7 +258,7 @@
 
 #### `GET /api/v1/structure-note/tasks/{task_id}/stream`
 
-用途：SSE 任务流  
+用途：SSE 任务流
 复用 `knowledge` 的日志和状态推送模式
 
 ### 4.2 内部 artifact 结构

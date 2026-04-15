@@ -1606,29 +1606,39 @@ class ReportingAgent(BaseAgent):
             self._get_mode_contract("section"),
         )
 
-        # TODO Implement retry logic for LLM calls when JSON parsing or post-processing fails (e.g., malformed output, schema violations).
-        _chunks: list[str] = []
-        async for _c in self.stream_llm(
-            filled,
-            system_prompt,
-            stage="write_section_with_subsections",
-            trace_meta=self._build_trace_meta("Write section"),
-        ):
-            _chunks.append(_c)
-        resp = "".join(_chunks)
-        data = extract_json_from_text(resp)
-
         try:
-            obj = ensure_json_dict(data)
-            ensure_keys(obj, ["section_content"])
-            content = obj.get("section_content", "")
+            data = await self._call_llm_json(
+                prompt=filled,
+                system_prompt=system_prompt,
+                stage="write_section_with_subsections",
+                trace_label="Write section",
+                required_keys=["section_content"],
+            )
+            content = data["section_content"]
             if isinstance(content, str) and content.strip():
                 return content
             raise ValueError("LLM returned empty or invalid section_content field")
-        except Exception as e:
-            raise ValueError(
-                f"Unable to parse LLM returned section content: {e!s}. Report generation failed."
+        except ValueError:
+            self.logger.warning(
+                "JSON parsing failed for section '%s', falling back to raw LLM output",
+                section.get("title", "unknown"),
             )
+            # Fallback: call LLM again without strict JSON requirement and use raw text
+            _chunks: list[str] = []
+            async for _c in self.stream_llm(
+                filled,
+                system_prompt,
+                stage="write_section_with_subsections_fallback",
+                trace_meta=self._build_trace_meta("Write section (fallback)"),
+            ):
+                _chunks.append(_c)
+            resp = "".join(_chunks).strip()
+            if not resp:
+                raise ValueError(
+                    f"Unable to generate section content for '{section.get('title', 'unknown')}'. "
+                    "Report generation failed."
+                )
+            return self._strip_json_wrapper(resp)
 
     def _notify_progress(
         self, callback: Callable[[dict[str, Any]], None] | None, status: str, **payload: Any

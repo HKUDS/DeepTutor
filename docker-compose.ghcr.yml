@@ -14,6 +14,10 @@
 #   1. Copy .env.example to .env and fill in your API keys
 #   2. Read the API URL note below before starting
 #
+# Local LLM (LM Studio / Ollama / vLLM):
+#   Use "host.docker.internal" instead of "localhost" for LLM_HOST / EMBEDDING_HOST.
+#   See .env.example for details.
+#
 # ============================================
 # IMPORTANT: Frontend-to-Backend API URL
 # ============================================

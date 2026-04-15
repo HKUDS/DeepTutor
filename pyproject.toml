@@ -43,7 +43,7 @@ deeptutor = "deeptutor_cli.main:main"
 anthropic = ["anthropic>=0.30.0"]
 dashscope = ["dashscope>=1.14.0"]
 search = ["perplexityai>=0.1.0"]
-oauth = ["oauth-cli-kit>=0.2.0; python_version >= '3.11'"]
+oauth = ["oauth-cli-kit>=0.1.1; python_version >= '3.11'"]
 server = [
     "fastapi>=0.100.0",
     "uvicorn[standard]>=0.24.0",
@@ -56,7 +56,7 @@ all = [
     "anthropic>=0.30.0",
     "dashscope>=1.14.0",
     "perplexityai>=0.1.0",
-    "oauth-cli-kit>=0.2.0; python_version >= '3.11'",
+    "oauth-cli-kit>=0.1.1; python_version >= '3.11'",
     "fastapi>=0.100.0",
     "uvicorn[standard]>=0.24.0",
     "websockets>=12.0",

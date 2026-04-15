@@ -252,23 +252,31 @@ export default function SimpleMarkdownRenderer({
     tr: ({ node, ...props }: any) => (
       <tr className="transition-colors hover:bg-[var(--muted)]/60" {...props} />
     ),
-    pre: ({ children }: any) => (
-      <div
-        className={`md-code-block ${gap} overflow-hidden rounded-xl border border-[var(--border)] bg-[#292524]`}
-      >
-        <pre className="overflow-x-auto p-4 text-sm leading-relaxed text-[#D6D3D1]">
+    pre: ({ children }: any) => <>{children}</>,
+    code: ({ node, children, ...props }: any) => {
+      const raw = String(children).replace(/\n$/, "");
+
+      if (raw.includes("\n")) {
+        return (
+          <div
+            className={`md-code-block ${gap} overflow-hidden rounded-xl border border-[var(--border)] bg-[#292524]`}
+          >
+            <pre className="overflow-x-auto p-4 text-sm leading-relaxed text-[#D6D3D1]">
+              <code {...props}>{raw}</code>
+            </pre>
+          </div>
+        );
+      }
+
+      return (
+        <code
+          className="md-inline-code rounded bg-[var(--muted)] px-1.5 py-0.5 font-mono text-[0.875em] text-[var(--foreground)]"
+          {...props}
+        >
           {children}
-        </pre>
-      </div>
-    ),
-    code: ({ node, children, ...props }: any) => (
-      <code
-        className="rounded bg-[var(--muted)] px-1.5 py-0.5 font-mono text-[0.875em] text-[var(--foreground)]"
-        {...props}
-      >
-        {children}
-      </code>
-    ),
+        </code>
+      );
+    },
     a: ({ node, href, children, title, ...props }: any) => {
       const isCitation = title === "citation";
       const isHashLink = href?.startsWith("#");

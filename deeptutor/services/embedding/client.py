@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import List, Optional
 
 from deeptutor.logging import get_logger
+from deeptutor.services.config.provider_runtime import EMBEDDING_PROVIDERS
 
 from .adapters.base import BaseEmbeddingAdapter, EmbeddingRequest
 from .adapters.cohere import CohereEmbeddingAdapter
@@ -13,28 +14,26 @@ from .adapters.ollama import OllamaEmbeddingAdapter
 from .adapters.openai_compatible import OpenAICompatibleEmbeddingAdapter
 from .config import EmbeddingConfig, get_embedding_config
 
-_OPENAI_COMPAT_PROVIDERS = {"custom", "openai", "azure_openai", "vllm"}
-_COHERE_PROVIDERS = {"cohere"}
-_JINA_PROVIDERS = {"jina"}
-_OLLAMA_PROVIDERS = {"ollama"}
+_ADAPTER_MAP: dict[str, type[BaseEmbeddingAdapter]] = {
+    "openai_compat": OpenAICompatibleEmbeddingAdapter,
+    "cohere": CohereEmbeddingAdapter,
+    "jina": JinaEmbeddingAdapter,
+    "ollama": OllamaEmbeddingAdapter,
+}
 
 
 def _resolve_adapter_class(binding: str) -> type[BaseEmbeddingAdapter]:
     provider = (binding or "").strip().lower()
-    if provider in _OPENAI_COMPAT_PROVIDERS:
-        return OpenAICompatibleEmbeddingAdapter
-    if provider in _COHERE_PROVIDERS:
-        return CohereEmbeddingAdapter
-    if provider in _JINA_PROVIDERS:
-        return JinaEmbeddingAdapter
-    if provider in _OLLAMA_PROVIDERS:
-        return OllamaEmbeddingAdapter
-    supported = sorted(
-        _OPENAI_COMPAT_PROVIDERS | _COHERE_PROVIDERS | _JINA_PROVIDERS | _OLLAMA_PROVIDERS
-    )
-    raise ValueError(
-        f"Unknown embedding binding: '{binding}'. Supported providers: {', '.join(supported)}"
-    )
+    spec = EMBEDDING_PROVIDERS.get(provider)
+    if spec is None:
+        supported = sorted(EMBEDDING_PROVIDERS.keys())
+        raise ValueError(
+            f"Unknown embedding binding: '{binding}'. Supported: {', '.join(supported)}"
+        )
+    cls = _ADAPTER_MAP.get(spec.adapter)
+    if cls is None:
+        raise ValueError(f"No adapter registered for backend '{spec.adapter}' (binding='{binding}')")
+    return cls
 
 
 class EmbeddingClient:

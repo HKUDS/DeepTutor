@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import type { RefObject } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import Image from "next/image";
 import {
   ArrowUp,
@@ -73,9 +73,17 @@ interface ResearchSourceDef {
   icon: LucideIcon;
 }
 
-export default function ChatComposer({
+function shouldOpenAtPopup(value: string, cursorPos: number): boolean {
+  const prefix = value.slice(0, cursorPos);
+  return /(^|\s)@[^\s]*$/.test(prefix);
+}
+
+function stripTrailingAtMention(value: string): string {
+  return value.replace(/(^|\s)@[^\s]*$/, "$1").replace(/\s+$/, "");
+}
+
+export default memo(function ChatComposer({
   composerRef,
-  textareaRef,
   capMenuRef,
   capBtnRef,
   toolMenuRef,
@@ -87,9 +95,7 @@ export default function ChatComposer({
   capMenuOpen,
   toolMenuOpen,
   refMenuOpen,
-  showAtPopup,
   hasMessages,
-  input,
   attachments,
   activeCap,
   visibleTools,
@@ -117,8 +123,6 @@ export default function ChatComposer({
   onSetCapMenuOpen,
   onSetToolMenuOpen,
   onSetRefMenuOpen,
-  onSetShowAtPopup,
-  onInputChange,
   onSetKB,
   onSelectNotebookPicker,
   onSelectHistoryPicker,
@@ -133,8 +137,6 @@ export default function ChatComposer({
   onDragOver,
   onDrop,
   onPaste,
-  onTextareaClick,
-  onTextareaKeyDown,
   onSelectCapability,
   onChangeQuizConfig,
   onUploadQuizPdf,
@@ -144,7 +146,6 @@ export default function ChatComposer({
   onToggleResearchCollapsed,
 }: {
   composerRef: RefObject<HTMLDivElement | null>;
-  textareaRef: RefObject<HTMLTextAreaElement | null>;
   capMenuRef: RefObject<HTMLDivElement | null>;
   capBtnRef: RefObject<HTMLButtonElement | null>;
   toolMenuRef: RefObject<HTMLDivElement | null>;
@@ -156,9 +157,7 @@ export default function ChatComposer({
   capMenuOpen: boolean;
   toolMenuOpen: boolean;
   refMenuOpen: boolean;
-  showAtPopup: boolean;
   hasMessages: boolean;
-  input: string;
   attachments: PendingAttachment[];
   activeCap: CapabilityDef;
   visibleTools: ToolDef[];
@@ -186,14 +185,12 @@ export default function ChatComposer({
   onSetCapMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
   onSetToolMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
   onSetRefMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
-  onSetShowAtPopup: (open: boolean) => void;
-  onInputChange: (value: string, cursorPos: number) => void;
   onSetKB: (kb: string) => void;
   onSelectNotebookPicker: () => void;
   onSelectHistoryPicker: () => void;
   onToggleTool: (tool: ToolDef["name"]) => void;
   onToggleResearchSource: (source: ResearchSource) => void;
-  onSend: () => void;
+  onSend: (content: string) => void;
   onRemoveAttachment: (index: number) => void;
   onRemoveHistory: (sessionId: string) => void;
   onRemoveNotebook: (notebookId: string) => void;
@@ -202,8 +199,6 @@ export default function ChatComposer({
   onDragOver: (event: React.DragEvent) => void;
   onDrop: (event: React.DragEvent) => void;
   onPaste: (event: React.ClipboardEvent) => void;
-  onTextareaClick: (event: React.MouseEvent<HTMLTextAreaElement>) => void;
-  onTextareaKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   onSelectCapability: (value: string) => void;
   onChangeQuizConfig: (next: DeepQuestionFormConfig) => void;
   onUploadQuizPdf: (file: File | null) => void;
@@ -214,6 +209,71 @@ export default function ChatComposer({
 }) {
   const { t } = useTranslation();
   const CapIcon = activeCap.icon;
+
+  const [input, setInput] = useState("");
+  const [showAtPopup, setShowAtPopup] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const activeCapabilityKey = activeCap.value || "chat";
+
+  useEffect(() => {
+    if (!hasMessages) textareaRef.current?.focus();
+  }, [hasMessages]);
+
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "28px";
+    const next = Math.max(el.scrollHeight, 28);
+    const bounded = Math.min(next, 200);
+    el.style.height = `${bounded}px`;
+    el.style.overflowY = next > 200 ? "auto" : "hidden";
+  }, [input, activeCapabilityKey]);
+
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    const cursorPos = e.target.selectionStart ?? value.length;
+    setInput(value);
+    setShowAtPopup(shouldOpenAtPopup(value, cursorPos));
+  }, []);
+
+  const handleTextareaClick = useCallback((e: React.MouseEvent<HTMLTextAreaElement>) => {
+    const target = e.currentTarget;
+    setShowAtPopup(shouldOpenAtPopup(target.value, target.selectionStart ?? target.value.length));
+  }, []);
+
+  const doSend = useCallback(() => {
+    const content = input.trim();
+    onSend(content);
+    setInput("");
+    setShowAtPopup(false);
+  }, [input, onSend]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      doSend();
+    } else if (e.key === "Escape") {
+      setShowAtPopup(false);
+    }
+  }, [doSend]);
+
+  const handleSelectNotebook = useCallback(() => {
+    setInput((prev) => stripTrailingAtMention(prev));
+    setShowAtPopup(false);
+    onSelectNotebookPicker();
+  }, [onSelectNotebookPicker]);
+
+  const handleSelectHistory = useCallback(() => {
+    setInput((prev) => stripTrailingAtMention(prev));
+    setShowAtPopup(false);
+    onSelectHistoryPicker();
+  }, [onSelectHistoryPicker]);
+
+  const canSend =
+    (!!input.trim() || !!attachments.length || !!selectedNotebookRecords.length || !!selectedHistorySessions.length) &&
+    !isStreaming &&
+    !(isResearchMode && Object.keys(researchValidationErrors).length > 0);
 
   return (
     <div
@@ -263,14 +323,8 @@ export default function ChatComposer({
       <div className="relative">
         <AtMentionPopup
           open={showAtPopup}
-          onSelectNotebook={() => {
-            onSetShowAtPopup(false);
-            onSelectNotebookPicker();
-          }}
-          onSelectHistory={() => {
-            onSetShowAtPopup(false);
-            onSelectHistoryPicker();
-          }}
+          onSelectNotebook={handleSelectNotebook}
+          onSelectHistory={handleSelectHistory}
         />
 
         <div
@@ -304,9 +358,9 @@ export default function ChatComposer({
             <textarea
               ref={textareaRef}
               value={input}
-              onChange={(e) => onInputChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
-              onKeyDown={onTextareaKeyDown}
-              onClick={onTextareaClick}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              onClick={handleTextareaClick}
               onPaste={onPaste}
               rows={1}
               suppressHydrationWarning
@@ -514,15 +568,8 @@ export default function ChatComposer({
                 </select>
 
                 <button
-                  onClick={onSend}
-                  disabled={
-                    (!input.trim() &&
-                      !attachments.length &&
-                      !selectedNotebookRecords.length &&
-                      !selectedHistorySessions.length) ||
-                    isStreaming ||
-                    (isResearchMode && Object.keys(researchValidationErrors).length > 0)
-                  }
+                  onClick={doSend}
+                  disabled={!canSend}
                   className="rounded-full bg-[var(--primary)] p-[7px] text-white shadow-[0_4px_12px_rgba(195,90,44,0.15)] transition-[transform,opacity,box-shadow] hover:shadow-[0_6px_16px_rgba(195,90,44,0.22)] disabled:opacity-25 disabled:shadow-none"
                   aria-label={t("Send")}
                 >
@@ -570,4 +617,4 @@ export default function ChatComposer({
       </div>
     </div>
   );
-}
+});

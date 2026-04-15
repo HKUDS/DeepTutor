@@ -72,3 +72,12 @@ def test_resolve_adapter_class_rejects_unknown_provider() -> None:
     with pytest.raises(ValueError, match="Unknown embedding binding"):
         _resolve_adapter_class("huggingface")
 
+
+def test_every_registered_provider_has_adapter() -> None:
+    """All EMBEDDING_PROVIDERS entries must resolve to a valid adapter class."""
+    from deeptutor.services.config.provider_runtime import EMBEDDING_PROVIDERS
+
+    for name in EMBEDDING_PROVIDERS:
+        cls = _resolve_adapter_class(name)
+        assert cls is not None, f"Provider '{name}' has no adapter"
+

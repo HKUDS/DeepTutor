@@ -26,6 +26,7 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
         Supported shapes include:
         - {"data": [{"embedding": [...]}, ...]}
         - {"embeddings": [[...], ...]}
+        - {"embedding": [...]}  (Ollama /api/embeddings)
         - {"result": {"data": [{"embedding": [...]}, ...]}}
         - {"output": {"embeddings": [[...], ...]}}
         """
@@ -57,6 +58,13 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
         # Common proxy schema
         if isinstance(data.get("embeddings"), list):
             candidates.append(data["embeddings"])
+        # Ollama /api/embeddings returns singular "embedding" as a flat vector
+        if isinstance(data.get("embedding"), list):
+            emb = data["embedding"]
+            if emb and isinstance(emb[0], (int, float)):
+                candidates.append([emb])
+            else:
+                candidates.append(emb)
         # Nested result/output variants
         result = data.get("result")
         if isinstance(result, dict):
@@ -85,7 +93,7 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
         keys = sorted(list(data.keys()))
         raise ValueError(
             "Cannot parse embeddings from response JSON. "
-            f"Top-level keys={keys}, expected one of: data/embeddings/result/output."
+            f"Top-level keys={keys}, expected one of: data/embedding/embeddings/result/output."
         )
 
     _MAX_RETRIES = 5

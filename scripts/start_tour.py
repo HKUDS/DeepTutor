@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 """DeepTutor Setup Tour — minimal terminal-first guided installer."""
+
 from __future__ import annotations
 
 import json
@@ -28,11 +29,14 @@ def _resolve_python() -> str:
     """
     exe = sys.executable
     if exe:
+        # Prefer the unresolved path first — resolving symlinks can escape
+        # a virtual-env and point at the system Python, which on modern
+        # Homebrew / PEP 668 installs will refuse ``pip install``.
+        if Path(exe).exists():
+            return exe
         resolved = str(Path(exe).resolve())
         if Path(resolved).exists():
             return resolved
-        if Path(exe).exists():
-            return exe
     for name in ("python3", "python"):
         found = shutil.which(name)
         if found:
@@ -163,6 +167,7 @@ MATH_ANIMATOR_REQUIREMENTS = "requirements/math-animator.txt"
 # Cache helpers
 # ---------------------------------------------------------------------------
 
+
 def _save_cache(data: dict[str, Any]) -> None:
     data["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -186,6 +191,7 @@ def _cleanup_cache() -> None:
 # ---------------------------------------------------------------------------
 # Environment detection
 # ---------------------------------------------------------------------------
+
 
 def _python_strategy() -> str:
     if os.environ.get("CONDA_DEFAULT_ENV"):
@@ -278,9 +284,9 @@ def _math_animator_install_cmd(dep: str) -> list[str] | None:
             "cairo": ["sudo", "yum", "install", "-y", "cairo-devel"],
         },
         "winget": {
-            "latex": ["winget", "install", "--id", "MiKTeX.MiKTeX", "-e"],
-            "cmake": ["winget", "install", "--id", "Kitware.CMake", "-e"],
-            "ffmpeg": ["winget", "install", "--id", "Gyan.FFmpeg", "-e"],
+            "latex": ["winget", "install", "MiKTeX.MiKTeX"],
+            "cmake": ["winget", "install", "Kitware.CMake"],
+            "ffmpeg": ["winget", "install", "Gyan.FFmpeg"],
         },
         "choco": {
             "latex": ["choco", "install", "miktex", "-y"],
@@ -331,10 +337,7 @@ def _ensure_math_animator_system_deps() -> None:
         for dep in still_missing:
             cmd = _math_animator_install_cmd(dep)
             commands.append(" ".join(cmd) if cmd else f"install {dep} manually")
-        log_warn(
-            "Math animator may fail until these are installed: "
-            + " | ".join(commands)
-        )
+        log_warn("Math animator may fail until these are installed: " + " | ".join(commands))
 
 
 # ---------------------------------------------------------------------------
@@ -342,7 +345,17 @@ def _ensure_math_animator_system_deps() -> None:
 # ---------------------------------------------------------------------------
 
 _NATIVE_BINDINGS = frozenset(
-    {"anthropic", "azure_openai", "dashscope", "perplexity", "exa", "tavily", "serper", "jina", "baidu"}
+    {
+        "anthropic",
+        "azure_openai",
+        "dashscope",
+        "perplexity",
+        "exa",
+        "tavily",
+        "serper",
+        "jina",
+        "baidu",
+    }
 )
 
 
@@ -362,6 +375,22 @@ def _needs_providers(catalog: dict[str, Any]) -> bool:
 # Dependency installation
 # ---------------------------------------------------------------------------
 
+
+def _get_npm_command() -> str:
+    """Return the correct npm command for the current platform.
+
+    With shell=True on Windows, we can just use "npm" and let the shell resolve it.
+    """
+    if platform.system().lower() == "windows":
+        return "npm.cmd"
+    else:
+        # On Unix-like systems, npm should be found directly
+        npm = shutil.which("npm")
+        if npm:
+            return npm
+        return "npm"
+
+
 def _install_commands(
     profile: str,
     catalog: dict[str, Any],
@@ -376,26 +405,38 @@ def _install_commands(
     for req in PROFILE_COMMANDS[profile]:
         cmds.append(([_PYTHON, "-m", "pip", "install", "-r", req], PROJECT_ROOT))
     if include_math_animator:
-        cmds.append(([_PYTHON, "-m", "pip", "install", "-r", MATH_ANIMATOR_REQUIREMENTS], PROJECT_ROOT))
+        cmds.append(
+            ([_PYTHON, "-m", "pip", "install", "-r", MATH_ANIMATOR_REQUIREMENTS], PROJECT_ROOT)
+        )
     cmds.append(([_PYTHON, "-m", "pip", "install", "-e", ".", "--no-deps"], PROJECT_ROOT))
     if profile.startswith("web"):
-        cmds.append((["npm", "install"], PROJECT_ROOT / "web"))
+        npm_cmd = _get_npm_command()
+        cmds.append(([npm_cmd, "install"], PROJECT_ROOT / "web"))
     # Provider SDKs are now bundled in cli.txt, no separate install needed.
     return cmds
 
 
 def _run_cmd(cmd: list[str], cwd: Path) -> None:
     log_info(f"{dim(str(cwd))}  {' '.join(cmd)}")
-    result = subprocess.run(cmd, cwd=str(cwd), check=False)
+    # On Windows, use shell=True to handle .cmd files properly
+    use_shell = platform.system().lower() == "windows"
+    result = subprocess.run(cmd, cwd=str(cwd), check=False, shell=use_shell)
     if result.returncode != 0:
-        raise RuntimeError(f"Command failed (exit {result.returncode}): {' '.join(cmd)}")
+        # winget may return non-zero even on success (e.g., pending reboot)
+        if "winget" in cmd[0]:
+            log_warn(f"winget command may have issues (exit {result.returncode}): {' '.join(cmd)}")
+        else:
+            raise RuntimeError(f"Command failed (exit {result.returncode}): {' '.join(cmd)}")
 
 
 # ---------------------------------------------------------------------------
 # Model catalog helpers
 # ---------------------------------------------------------------------------
 
-def _ensure_service(catalog: dict[str, Any], svc: str) -> tuple[dict[str, Any], dict[str, Any] | None]:
+
+def _ensure_service(
+    catalog: dict[str, Any], svc: str
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
     services = catalog.setdefault("services", {})
     service = services.setdefault(svc, {"active_profile_id": None, "profiles": []})
     profiles = service.setdefault("profiles", [])
@@ -451,6 +492,7 @@ def _ensure_service(catalog: dict[str, Any], svc: str) -> tuple[dict[str, Any], 
 # Configure a single service interactively (CLI path only)
 # ---------------------------------------------------------------------------
 
+
 def _configure_service(catalog: dict[str, Any], svc: str) -> None:
     profile, model = _ensure_service(catalog, svc)
 
@@ -479,6 +521,7 @@ def _configure_service(catalog: dict[str, Any], svc: str) -> None:
 # Live connectivity test (CLI path only)
 # ---------------------------------------------------------------------------
 
+
 def _stream_test(svc: str, catalog: dict[str, Any]) -> bool:
     run = get_config_test_runner().start(svc, catalog)
     seen = 0
@@ -494,7 +537,9 @@ def _stream_test(svc: str, catalog: dict[str, Any]) -> bool:
                     log_info(dim(msg))
                 elif kind == "config":
                     p = ev.get("profile", {})
-                    log_info(dim(f"{p.get('name', '')}  {p.get('binding', '')}  {p.get('base_url', '')}"))
+                    log_info(
+                        dim(f"{p.get('name', '')}  {p.get('binding', '')}  {p.get('base_url', '')}")
+                    )
                 elif kind == "response":
                     snippet = ev.get("snippet", "")
                     d_actual = ev.get("actual_dimension")
@@ -519,6 +564,7 @@ def _stream_test(svc: str, catalog: dict[str, Any]) -> bool:
 # Build final .env dict
 # ---------------------------------------------------------------------------
 
+
 def _build_env(ports: dict[str, int], catalog: dict[str, Any]) -> dict[str, str]:
     rendered = get_env_store().render_from_catalog(catalog)
     rendered["BACKEND_PORT"] = str(ports["backend"])
@@ -529,6 +575,7 @@ def _build_env(ports: dict[str, int], catalog: dict[str, Any]) -> dict[str, str]
 # ---------------------------------------------------------------------------
 # Tour banner
 # ---------------------------------------------------------------------------
+
 
 def _tour_banner() -> None:
     banner(
@@ -543,6 +590,7 @@ def _tour_banner() -> None:
 # ===================================================================
 # Web path — install deps, start temp server, wait for browser config
 # ===================================================================
+
 
 def _stream_text_kwargs() -> dict[str, object]:
     """Best-effort text decoding for background process output."""
@@ -561,7 +609,11 @@ def _stream_text_kwargs() -> dict[str, object]:
 
 
 def _spawn_process(
-    cmd: list[str], *, cwd: Path, env: dict[str, str], name: str,
+    cmd: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    name: str,
 ) -> subprocess.Popen[str]:
     import threading
 
@@ -661,21 +713,38 @@ def _run_web_tour() -> None:
     get_env_store().write(_build_env(ports, catalog))
 
     # Mark cache as waiting (the backend reads this)
-    _save_cache({
-        "step": 4, "mode": "web", "profile": profile,
-        "ports": ports, "status": "waiting",
-    })
+    _save_cache(
+        {
+            "step": 4,
+            "mode": "web",
+            "profile": profile,
+            "ports": ports,
+            "status": "waiting",
+        }
+    )
 
-    npm = shutil.which("npm")
-    if not npm:
+    npm = _get_npm_command()
+    # Verify npm is actually available and works
+    try:
+        subprocess.run([npm, "--version"], capture_output=True, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
         log_error("npm not found. Cannot start frontend.")
         raise SystemExit(1)
+
+    api_base = f"http://localhost:{ports['backend']}"
+
+    # Write web/.env.local so the frontend picks up the correct backend port
+    env_local_path = PROJECT_ROOT / "web" / ".env.local"
+    env_local_path.write_text(
+        f"# Auto-generated by start_tour.py — do not edit manually\n"
+        f"NEXT_PUBLIC_API_BASE={api_base}\n"
+    )
 
     backend_env = os.environ.copy()
     backend_env["PYTHONUNBUFFERED"] = "1"
 
     frontend_env = os.environ.copy()
-    frontend_env["NEXT_PUBLIC_API_BASE"] = f"http://localhost:{ports['backend']}"
+    frontend_env["NEXT_PUBLIC_API_BASE"] = api_base
 
     backend_cmd = [_PYTHON, "-m", "deeptutor.api.run_server"]
     frontend_cmd = [npm, "run", "dev", "--", "--port", str(ports["frontend"])]
@@ -683,7 +752,9 @@ def _run_web_tour() -> None:
     log_info("Starting temporary server ...")
     backend = _spawn_process(backend_cmd, cwd=PROJECT_ROOT, env=backend_env, name="backend")
     time.sleep(2)
-    frontend = _spawn_process(frontend_cmd, cwd=PROJECT_ROOT / "web", env=frontend_env, name="frontend")
+    frontend = _spawn_process(
+        frontend_cmd, cwd=PROJECT_ROOT / "web", env=frontend_env, name="frontend"
+    )
     time.sleep(3)
 
     settings_url = f"http://localhost:{ports['frontend']}/settings?tour=true"
@@ -744,6 +815,7 @@ def _run_web_tour() -> None:
 # ===================================================================
 # CLI path — full interactive configuration in the terminal
 # ===================================================================
+
 
 def _run_cli_tour() -> None:
     total = 6
@@ -821,8 +893,12 @@ def _run_cli_tour() -> None:
 
     log_info(f"Profile   {bold(profile)}")
     log_info(f"Backend   {bold(str(ports['backend']))}")
-    log_info(f"LLM       {bold((llm_p or {}).get('name', '?'))}  {dim((llm_m or {}).get('model', '?'))}")
-    log_info(f"Embedding {bold((emb_p or {}).get('name', '?'))}  {dim((emb_m or {}).get('model', '?'))}")
+    log_info(
+        f"LLM       {bold((llm_p or {}).get('name', '?'))}  {dim((llm_m or {}).get('model', '?'))}"
+    )
+    log_info(
+        f"Embedding {bold((emb_p or {}).get('name', '?'))}  {dim((emb_m or {}).get('model', '?'))}"
+    )
     if search_enabled:
         log_info(f"Search    {bold((search_p or {}).get('name', '?'))}")
     else:
@@ -852,6 +928,7 @@ def _run_cli_tour() -> None:
 # ===================================================================
 # Entry
 # ===================================================================
+
 
 def run_tour() -> None:
     _tour_banner()

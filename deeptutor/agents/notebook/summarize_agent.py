@@ -26,6 +26,7 @@ class NotebookSummarizeAgent:
         self.base_url = getattr(self.llm_config, "base_url", None)
         self.api_version = getattr(self.llm_config, "api_version", None)
         self.binding = getattr(self.llm_config, "binding", None) or "openai"
+        self.extra_headers = getattr(self.llm_config, "extra_headers", None) or {}
 
     async def summarize(
         self,
@@ -67,6 +68,9 @@ class NotebookSummarizeAgent:
         kwargs = {"temperature": 0.2}
         if self.model:
             kwargs.update(get_token_limit_kwargs(self.model, 300))
+
+        if self.extra_headers:
+            kwargs["extra_headers"] = self.extra_headers
 
         async for chunk in llm_stream(
             prompt=prompt,

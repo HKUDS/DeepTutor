@@ -72,7 +72,7 @@ def _assert_provider_supported(provider_name: str) -> None:
     if provider_name in _DEPRECATED_UNSUPPORTED:
         raise ValueError(
             f"Search provider `{provider_name}` is deprecated/unsupported. "
-            "Please switch to brave, tavily, jina, searxng, duckduckgo, or perplexity."
+            "Please switch to brave, tavily, jina, searxng, duckduckgo, perplexity, or serper."
         )
     if provider_name not in SUPPORTED_SEARCH_PROVIDERS:
         allowed = ", ".join(sorted(SUPPORTED_SEARCH_PROVIDERS))
@@ -117,10 +117,11 @@ def web_search(
             provider_name = "duckduckgo"
         else:
             provider_kwargs.setdefault("api_key", api_key)
-    elif provider_name == "perplexity":
+    elif provider_name in {"perplexity", "serper"}:
         api_key = _resolve_provider_key(provider_name, resolved.api_key)
         if not api_key:
-            raise ValueError("perplexity requires api_key (profile.api_key or PERPLEXITY_API_KEY).")
+            env_hint = "PERPLEXITY_API_KEY" if provider_name == "perplexity" else "SERPER_API_KEY"
+            raise ValueError(f"{provider_name} requires api_key (profile.api_key or {env_hint}).")
         provider_kwargs.setdefault("api_key", api_key)
     elif provider_name == "searxng":
         base_url = provider_kwargs.get("base_url") or resolved.base_url

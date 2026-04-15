@@ -30,7 +30,7 @@ bash scripts/setup_conda_env.sh
 
 ## 3. 在 Cursor 里使用该环境
 
-- 已通过 **`.vscode/settings.json`** 指定解释器为：  
+- 已通过 **`.vscode/settings.json`** 指定解释器为：
   `~/miniconda3/envs/deeptutor/bin/python`
 - 若你用的是 **Anaconda**，请把该文件中的 `miniconda3` 改为 `anaconda3`。
 - 打开 Python 文件时，Cursor 会使用上述解释器；终端里可执行：

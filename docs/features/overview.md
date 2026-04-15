@@ -3,24 +3,24 @@
 <img src="/full-pipe.png" alt="DeepTutor Full-Stack Workflow" width="100%">
 
 ## 💬 User Interface Layer
-• **Intuitive Interaction**: Simple bidirectional query-response flow for intuitive interaction.  
-• **Structured Output**: Structured response generation that organizes complex information into actionable outputs.  
-• **Dark/Light Mode**: System-wide theme support with automatic system preference detection.  
+• **Intuitive Interaction**: Simple bidirectional query-response flow for intuitive interaction.
+• **Structured Output**: Structured response generation that organizes complex information into actionable outputs.
+• **Dark/Light Mode**: System-wide theme support with automatic system preference detection.
 • **Collapsible Sidebar**: Compact navigation with icon-only mode for focused learning.
 
 ## 🤖 Intelligent Agent Modules
-• **Problem Solving & Assessment**: Step-by-step problem solving and custom assessment generation.  
-• **Research & Learning**: Deep Research for topic exploration and Guided Learning with visualization.  
+• **Problem Solving & Assessment**: Step-by-step problem solving and custom assessment generation.
+• **Research & Learning**: Deep Research for topic exploration and Guided Learning with visualization.
 • **Idea Generation**: Automated and interactive concept development with multi-source insights.
 
 ## 🔧 Tool Integration Layer
-• **Information Retrieval**: RAG hybrid retrieval, real-time web search, and academic paper databases.  
-• **Processing & Analysis**: Python code execution, query item lookup, and PDF parsing for document analysis.  
+• **Information Retrieval**: RAG hybrid retrieval, real-time web search, and academic paper databases.
+• **Processing & Analysis**: Python code execution, query item lookup, and PDF parsing for document analysis.
 • **Multi-Provider Support**: Flexible LLM providers (OpenAI, Anthropic, Ollama, etc.) and embedding adapters (OpenAI, Jina, Cohere, Ollama, etc.).
 
 ## 🧠 Knowledge & Memory Foundation
-• **Knowledge Graph**: Entity-relation mapping for semantic connections and knowledge discovery.  
-• **Vector Store**: Embedding-based semantic search for intelligent content retrieval.  
+• **Knowledge Graph**: Entity-relation mapping for semantic connections and knowledge discovery.
+• **Vector Store**: Embedding-based semantic search for intelligent content retrieval.
 • **Memory System**: Session state management and citation tracking for contextual continuity.
 
 ---
@@ -88,7 +88,7 @@ Interactive AI Learning with Knowledge Visual Explanations
 
 <img src="/question-1.gif" alt="Custom question generation demo" width="100%">
 
-**Custom Questions**  
+**Custom Questions**
 Auto-Validated Practice Questions with Instant Feedback
 
 </td>
@@ -96,7 +96,7 @@ Auto-Validated Practice Questions with Instant Feedback
 
 <img src="/question-2.gif" alt="Mimic exam style questions demo" width="100%">
 
-**Mimic Questions**  
+**Mimic Questions**
 Clone Exam Style for Authentic Practice
 
 </td>
@@ -113,7 +113,7 @@ Clone Exam Style for Authentic Practice
 
 <img src="/deepresearch.gif" alt="Deep research with web and paper search demo" width="100%">
 
-**Deep Research**  
+**Deep Research**
 Web and Paper Search with Literature Review
 
 </td>
@@ -121,7 +121,7 @@ Web and Paper Search with Literature Review
 
 <img src="/ideagen.gif" alt="Automated idea generation demo" width="100%">
 
-**Automated IdeaGen**  
+**Automated IdeaGen**
 Systematic Brainstorming and Concept Synthesis
 
 </td>
@@ -129,7 +129,7 @@ Systematic Brainstorming and Concept Synthesis
 
 <img src="/co-writer.gif" alt="Interactive idea generation demo" width="100%">
 
-**Interactive IdeaGen**  
+**Interactive IdeaGen**
 RAG-powered Idea Generation with Multi-Source Insights
 
 </td>
@@ -146,7 +146,7 @@ RAG-powered Idea Generation with Multi-Source Insights
 
 <img src="/knowledge_bases.png" alt="Personal knowledge base demo" width="100%">
 
-**Personal Knowledge Base**  
+**Personal Knowledge Base**
 Build and Organize Your Own Knowledge Repository
 
 </td>
@@ -154,7 +154,7 @@ Build and Organize Your Own Knowledge Repository
 
 <img src="/notebooks.png" alt="Personal notebook demo" width="100%">
 
-**Personal Notebook**  
+**Personal Notebook**
 Your Contextual Memory for Learning Sessions
 
 </td>

@@ -21,14 +21,15 @@ from .env_store import EnvStore, get_env_store
 from .loader import load_config_with_main
 from .model_catalog import ModelCatalogService, get_model_catalog_service
 
-SUPPORTED_SEARCH_PROVIDERS = {"brave", "tavily", "jina", "searxng", "duckduckgo", "perplexity"}
-DEPRECATED_SEARCH_PROVIDERS = {"exa", "serper", "baidu", "openrouter"}
+SUPPORTED_SEARCH_PROVIDERS = {"brave", "tavily", "jina", "searxng", "duckduckgo", "perplexity", "serper"}
+DEPRECATED_SEARCH_PROVIDERS = {"exa", "baidu", "openrouter"}
 
 SEARCH_ENV_FALLBACK = {
     "brave": ("BRAVE_API_KEY",),
     "tavily": ("TAVILY_API_KEY",),
     "jina": ("JINA_API_KEY",),
     "perplexity": ("PERPLEXITY_API_KEY",),
+    "serper": ("SERPER_API_KEY",),
 }
 
 LLM_LOCALHOST_PROVIDERS = ("ollama", "vllm")
@@ -42,56 +43,67 @@ EMBEDDING_PROVIDER_ALIASES = {
     "openai_compatible": "custom",
 }
 
-EMBEDDING_PROVIDER_DEFAULTS: dict[str, dict[str, Any]] = {
-    "custom": {
-        "mode": "direct",
-        "default_api_base": "",
-        "keywords": (),
-        "is_local": False,
-        "api_key_envs": ("OPENAI_API_KEY",),
-    },
-    "openai": {
-        "mode": "standard",
-        "default_api_base": "https://api.openai.com/v1",
-        "keywords": ("openai", "text-embedding", "ada-002", "embedding-3"),
-        "is_local": False,
-        "api_key_envs": ("OPENAI_API_KEY",),
-    },
-    "azure_openai": {
-        "mode": "direct",
-        "default_api_base": "",
-        "keywords": ("azure", "aoai"),
-        "is_local": False,
-        "api_key_envs": ("AZURE_OPENAI_API_KEY", "AZURE_API_KEY"),
-    },
-    "cohere": {
-        "mode": "standard",
-        "default_api_base": "https://api.cohere.ai",
-        "keywords": ("cohere", "embed-v4", "embed-english", "embed-multilingual"),
-        "is_local": False,
-        "api_key_envs": ("COHERE_API_KEY",),
-    },
-    "jina": {
-        "mode": "standard",
-        "default_api_base": "https://api.jina.ai/v1",
-        "keywords": ("jina", "jina-embeddings"),
-        "is_local": False,
-        "api_key_envs": ("JINA_API_KEY",),
-    },
-    "ollama": {
-        "mode": "local",
-        "default_api_base": "http://localhost:11434",
-        "keywords": ("ollama", "nomic-embed", "mxbai", "snowflake-arctic", "all-minilm"),
-        "is_local": True,
-        "api_key_envs": (),
-    },
-    "vllm": {
-        "mode": "local",
-        "default_api_base": "http://localhost:8000/v1",
-        "keywords": ("vllm", "lmstudio"),
-        "is_local": True,
-        "api_key_envs": ("HOSTED_VLLM_API_KEY",),
-    },
+@dataclass(frozen=True)
+class EmbeddingProviderSpec:
+    """Single embedding-provider metadata entry."""
+
+    label: str
+    default_api_base: str
+    keywords: tuple[str, ...]
+    is_local: bool
+    api_key_envs: tuple[str, ...]
+    adapter: str = "openai_compat"
+    mode: str = "standard"
+    default_model: str = ""
+    default_dim: int = 0
+
+EMBEDDING_PROVIDERS: dict[str, EmbeddingProviderSpec] = {
+    "openai": EmbeddingProviderSpec(
+        label="OpenAI",
+        default_api_base="https://api.openai.com/v1",
+        keywords=("openai", "text-embedding", "ada-002", "embedding-3"),
+        is_local=False, api_key_envs=("OPENAI_API_KEY",),
+        default_model="text-embedding-3-large", default_dim=3072,
+    ),
+    "azure_openai": EmbeddingProviderSpec(
+        label="Azure OpenAI", mode="direct",
+        default_api_base="",
+        keywords=("azure", "aoai"),
+        is_local=False, api_key_envs=("AZURE_OPENAI_API_KEY", "AZURE_API_KEY"),
+    ),
+    "cohere": EmbeddingProviderSpec(
+        label="Cohere", adapter="cohere",
+        default_api_base="https://api.cohere.ai",
+        keywords=("cohere", "embed-v4", "embed-english", "embed-multilingual"),
+        is_local=False, api_key_envs=("COHERE_API_KEY",),
+        default_model="embed-v4.0", default_dim=1024,
+    ),
+    "jina": EmbeddingProviderSpec(
+        label="Jina", adapter="jina",
+        default_api_base="https://api.jina.ai/v1",
+        keywords=("jina", "jina-embeddings"),
+        is_local=False, api_key_envs=("JINA_API_KEY",),
+        default_model="jina-embeddings-v3", default_dim=1024,
+    ),
+    "ollama": EmbeddingProviderSpec(
+        label="Ollama", adapter="ollama", mode="local",
+        default_api_base="http://localhost:11434",
+        keywords=("ollama", "nomic-embed", "mxbai", "snowflake-arctic", "all-minilm"),
+        is_local=True, api_key_envs=(),
+        default_model="nomic-embed-text", default_dim=768,
+    ),
+    "vllm": EmbeddingProviderSpec(
+        label="vLLM / LM Studio", mode="local",
+        default_api_base="http://localhost:8000/v1",
+        keywords=("vllm", "lmstudio"),
+        is_local=True, api_key_envs=("HOSTED_VLLM_API_KEY",),
+    ),
+    "custom": EmbeddingProviderSpec(
+        label="OpenAI Compatible", mode="direct",
+        default_api_base="",
+        keywords=(),
+        is_local=False, api_key_envs=("OPENAI_API_KEY",),
+    ),
 }
 
 
@@ -357,7 +369,7 @@ def _canonical_embedding_provider_name(name: str | None) -> str | None:
     key = EMBEDDING_PROVIDER_ALIASES.get(key, key)
     key = canonical_provider_name(key) or key
     key = EMBEDDING_PROVIDER_ALIASES.get(key, key)
-    if key in EMBEDDING_PROVIDER_DEFAULTS:
+    if key in EMBEDDING_PROVIDERS:
         return key
     return None
 
@@ -394,17 +406,16 @@ def _resolve_embedding_provider(
     api_base: str | None,
     provider_pool: dict[str, NormalizedProviderConfig],
 ) -> str:
-    if hint and hint in EMBEDDING_PROVIDER_DEFAULTS:
+    if hint and hint in EMBEDDING_PROVIDERS:
         return hint
 
     model_lower = (model or "").lower()
     model_prefix = model_lower.split("/", 1)[0].replace("-", "_") if "/" in model_lower else ""
-    if model_prefix in EMBEDDING_PROVIDER_DEFAULTS:
+    if model_prefix in EMBEDDING_PROVIDERS:
         return model_prefix
 
-    for provider_name, spec in EMBEDDING_PROVIDER_DEFAULTS.items():
-        keywords = spec.get("keywords", ())
-        if any(keyword in model_lower for keyword in keywords):
+    for provider_name, spec in EMBEDDING_PROVIDERS.items():
+        if any(keyword in model_lower for keyword in spec.keywords):
             return provider_name
 
     if _is_local_base_url(api_base):
@@ -412,11 +423,11 @@ def _resolve_embedding_provider(
             return "ollama"
         return "vllm"
 
-    for provider_name, spec in EMBEDDING_PROVIDER_DEFAULTS.items():
+    for provider_name, spec in EMBEDDING_PROVIDERS.items():
         configured = provider_pool.get(provider_name)
         if not configured:
             continue
-        if spec.get("is_local") and configured.api_base:
+        if spec.is_local and configured.api_base:
             return provider_name
         if configured.api_key:
             return provider_name
@@ -425,8 +436,10 @@ def _resolve_embedding_provider(
 
 
 def _embedding_provider_env_key(provider: str, env: EnvStore) -> str:
-    spec = EMBEDDING_PROVIDER_DEFAULTS.get(provider, {})
-    for key in spec.get("api_key_envs", ()):
+    spec = EMBEDDING_PROVIDERS.get(provider)
+    if not spec:
+        return ""
+    for key in spec.api_key_envs:
         value = env.get(key, "").strip()
         if value:
             return value
@@ -473,7 +486,7 @@ def resolve_embedding_runtime_config(
         api_base=active_api_base or None,
         provider_pool=provider_pool,
     )
-    spec = EMBEDDING_PROVIDER_DEFAULTS[provider_name]
+    spec = EMBEDDING_PROVIDERS[provider_name]
     mapped = provider_pool.get(provider_name)
 
     api_key = active_api_key or (mapped.api_key if mapped else "")
@@ -481,18 +494,18 @@ def resolve_embedding_runtime_config(
         api_key = _embedding_provider_env_key(provider_name, env)
 
     api_base = active_api_base or ((mapped.api_base or "") if mapped else "")
-    if not api_base and spec.get("default_api_base"):
-        api_base = str(spec["default_api_base"])
+    if not api_base and spec.default_api_base:
+        api_base = spec.default_api_base
     api_version = active_api_version or ((mapped.api_version or "") if mapped else "")
     extra_headers = active_extra_headers or ((mapped.extra_headers or {}) if mapped else {})
 
-    if spec.get("is_local") and not api_key:
+    if spec.is_local and not api_key:
         api_key = "sk-no-key-required"
 
     return ResolvedEmbeddingConfig(
         model=resolved_model,
         provider_name=provider_name,
-        provider_mode=str(spec.get("mode") or "standard"),
+        provider_mode=spec.mode,
         binding_hint=binding_hint,
         binding=provider_name,
         api_key=api_key,
@@ -586,7 +599,7 @@ def resolve_search_runtime_config(
     if provider in SEARCH_ENV_FALLBACK and not api_key:
         api_key = _provider_env_key(provider, env)
 
-    if provider == "perplexity" and not api_key:
+    if provider in {"perplexity", "serper"} and not api_key:
         missing_credentials = True
 
     if unsupported:
@@ -639,7 +652,8 @@ __all__ = [
     "SUPPORTED_SEARCH_PROVIDERS",
     "DEPRECATED_SEARCH_PROVIDERS",
     "NANOBOT_LLM_PROVIDERS",
-    "EMBEDDING_PROVIDER_DEFAULTS",
+    "EmbeddingProviderSpec",
+    "EMBEDDING_PROVIDERS",
     "EMBEDDING_PROVIDER_ALIASES",
     "NormalizedProviderConfig",
     "ResolvedLLMConfig",

@@ -53,14 +53,14 @@ class SidebarNavOrder(BaseModel):
 
 
 class UISettings(BaseModel):
-    theme: Literal["light", "dark"] = "light"
+    theme: Literal["light", "dark", "glass", "snow"] = "light"
     language: Literal["zh", "en"] = "en"
     sidebar_description: Optional[str] = None
     sidebar_nav_order: Optional[SidebarNavOrder] = None
 
 
 class ThemeUpdate(BaseModel):
-    theme: Literal["light", "dark"]
+    theme: Literal["light", "dark", "glass", "snow"]
 
 
 class LanguageUpdate(BaseModel):
@@ -105,10 +105,23 @@ def save_ui_settings(settings: dict[str, Any]) -> None:
 
 def _provider_choices() -> dict[str, list[dict[str, str]]]:
     """Build dropdown options for provider selection, keyed by service type."""
+    from deeptutor.services.config.provider_runtime import EMBEDDING_PROVIDERS
     from deeptutor.services.provider_registry import PROVIDERS
 
     llm = sorted(
         [{"value": s.name, "label": s.label, "base_url": s.default_api_base} for s in PROVIDERS],
+        key=lambda p: p["label"].lower(),
+    )
+    embedding = sorted(
+        [
+            {
+                "value": name,
+                "label": spec.label,
+                "base_url": spec.default_api_base,
+                "default_dim": str(spec.default_dim) if spec.default_dim else "",
+            }
+            for name, spec in EMBEDDING_PROVIDERS.items()
+        ],
         key=lambda p: p["label"].lower(),
     )
     search = [
@@ -119,7 +132,7 @@ def _provider_choices() -> dict[str, list[dict[str, str]]]:
         {"value": "duckduckgo", "label": "DuckDuckGo", "base_url": ""},
         {"value": "perplexity", "label": "Perplexity", "base_url": ""},
     ]
-    return {"llm": llm, "embedding": llm, "search": search}
+    return {"llm": llm, "embedding": embedding, "search": search}
 
 
 @router.get("")
@@ -189,8 +202,10 @@ async def reset_settings():
 async def get_themes():
     return {
         "themes": [
+            {"id": "snow", "name": "Snow"},
             {"id": "light", "name": "Light"},
             {"id": "dark", "name": "Dark"},
+            {"id": "glass", "name": "Glass"},
         ]
     }
 

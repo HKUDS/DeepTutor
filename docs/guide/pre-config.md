@@ -109,7 +109,7 @@ solve:
   temperature: 0.3
   max_tokens: 8192
 
-# Research Module - Deep research agents  
+# Research Module - Deep research agents
 research:
   temperature: 0.5
   max_tokens: 12000

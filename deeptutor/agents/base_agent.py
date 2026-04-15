@@ -540,6 +540,7 @@ class BaseAgent(ABC):
         model = model or self.get_model()
         temperature = temperature if temperature is not None else self.get_temperature()
         max_tokens = max_tokens if max_tokens is not None else self.get_max_tokens()
+        max_retries = self.get_max_retries()
 
         # Build kwargs
         kwargs = {
@@ -608,6 +609,7 @@ class BaseAgent(ABC):
                 api_version=self.api_version,
                 binding=self.binding,
                 messages=messages,
+                max_retries=max_retries,
                 **kwargs,
             ):
                 full_response += chunk

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { apiUrl } from "@/lib/api";
-import { listCategories } from "@/lib/notebook-api";
 
 type RecordType =
   | "solve"
@@ -83,8 +82,12 @@ export default function SaveToNotebookModal({
     setSelectedIds([]);
     void (async () => {
       try {
-        const cats = await listCategories();
-        setNotebooks(cats.map((c) => ({ id: String(c.id), name: c.name })));
+        const res = await fetch(apiUrl("/api/v1/notebook/list"), { cache: "no-store" });
+        if (!res.ok) throw new Error("Failed to fetch notebooks");
+        const data = (await res.json()) as {
+          notebooks: Array<{ id: string; name: string; color?: string; description?: string }>;
+        };
+        setNotebooks(data.notebooks.map((nb) => ({ id: nb.id, name: nb.name, color: nb.color, description: nb.description })));
       } catch {
         setNotebooks([]);
       }

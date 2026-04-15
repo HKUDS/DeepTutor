@@ -20,14 +20,18 @@ export function convertLatexDelimiters(content: string): string {
 
   // editor.md examples sometimes wrap \( ... \) inside $$ ... $$.
   // In that case the inner delimiters should be stripped rather than rewrapped.
-  result = result.replace(/\$\$\s*\\\(([\s\S]*?)\\\)\s*\$\$/g, '\n$$\n$1\n$$\n')
+  result = result.replace(/\$\$\s*\\\(([\s\S]*?)\\\)\s*\$\$/g, (_match, expr) => {
+    return `\n$$\n${expr}\n$$\n`
+  })
 
-  // Convert \[...\] to $$...$$ (block math)
+  // Convert \[...\] to $$...$$ (block math).
   // Use a regex that handles multiline content
   // Note: In JSON strings, \[ becomes \\[ which in JS becomes \[
-  result = result.replace(/\\\[([\s\S]*?)\\\]/g, '\n$$\n$1\n$$\n')
+  result = result.replace(/\\\[([\s\S]*?)\\\]/g, (_match, expr) => {
+    return `\n$$\n${expr}\n$$\n`
+  })
 
-  // Convert \(...\) to $...$ (inline math)
+  // Convert \(...\) to $...$ (inline math).
   // Be careful not to match escaped parentheses in other contexts
   result = result.replace(/\\\(([\s\S]*?)\\\)/g, (_match, expr: string) => {
     return ` $${expr.trim()}$ `
@@ -44,29 +48,64 @@ export function convertLatexDelimiters(content: string): string {
 }
 
 function normalizeEditorMdHeadings(content: string): string {
-  return content.replace(/^(#{1,6})(\S)/gm, '$1 $2')
+  return content.replace(/^(#{1,6})([^#\s])/gm, '$1 $2')
+}
+
+const LIKELY_LATEX_BLOCK_RE = /\\[A-Za-z]+|\\\\|[_^&]/
+
+function looksLikeLatexBlock(lines: string[]): boolean {
+  const block = lines
+    .map(line => line.trim())
+    .filter(Boolean)
+    .join('\n')
+
+  return block.length > 0 && LIKELY_LATEX_BLOCK_RE.test(block)
 }
 
 function normalizeEditorMdInlineMath(content: string): string {
-  return content
-    .split('\n')
-    .map(line => {
-      const trimmed = line.trim()
+  const lines = content.split('\n')
+  const result: string[] = []
 
-      // Preserve block math on its own line, but normalize one-line block math.
-      if (/^\$\$[\s\S]+\$\$$/.test(trimmed) && (trimmed.match(/\$\$/g)?.length ?? 0) === 2) {
-        if (line.trim() === trimmed) {
-          const inner = trimmed.slice(2, -2).trim()
-          return `$$\n${inner}\n$$`
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const trimmed = line.trim()
+
+    if (trimmed === '$' && i + 1 < lines.length) {
+      let endIdx = -1
+      for (let j = i + 1; j < lines.length; j++) {
+        if (lines[j].trim() === '$') {
+          endIdx = j
+          break
         }
       }
 
-      // editor.md commonly uses $$...$$ for inline math.
-      return line.replace(/\$\$([^$\n]+?)\$\$/g, (_match, expr: string) => {
-        return `$${expr.trim()}$`
-      })
-    })
-    .join('\n')
+      if (endIdx > i + 1 && looksLikeLatexBlock(lines.slice(i + 1, endIdx))) {
+        result.push('$$')
+        for (let j = i + 1; j < endIdx; j++) {
+          result.push(lines[j])
+        }
+        result.push('$$')
+        i = endIdx
+        continue
+      }
+    }
+
+    if (
+      /^\$\$[\s\S]+\$\$$/.test(trimmed) &&
+      (trimmed.match(/\$\$/g)?.length ?? 0) === 2
+    ) {
+      const inner = trimmed.slice(2, -2).trim()
+      result.push(`$$\n${inner}\n$$`)
+      continue
+    }
+
+    // editor.md commonly uses $$...$$ for inline math.
+    result.push(line.replace(/\$\$([^$\n]+?)\$\$/g, (_match, expr: string) => {
+      return `$${expr.trim()}$`
+    }))
+  }
+
+  return result.join('\n')
 }
 
 type HeadingEntry = {

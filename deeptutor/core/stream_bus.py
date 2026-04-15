@@ -51,6 +51,8 @@ class StreamBus:
         try:
             for event in self._history:
                 yield event
+            if self._closed and q.empty():
+                return
             while True:
                 event = await q.get()
                 if event is None:

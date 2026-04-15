@@ -109,7 +109,7 @@ solve:
   temperature: 0.3
   max_tokens: 8192
 
-# 研究模块 - 深度研究 agents  
+# 研究模块 - 深度研究 agents
 research:
   temperature: 0.5
   max_tokens: 12000

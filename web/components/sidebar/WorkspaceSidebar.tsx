@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { SidebarShell } from "@/components/sidebar/SidebarShell";
 import { useUnifiedChat } from "@/context/UnifiedChatContext";
@@ -14,9 +14,8 @@ import {
 
 export default function WorkspaceSidebar() {
   const { t } = useTranslation();
-  const pathname = usePathname();
   const router = useRouter();
-  const { newSession, loadSession, selectedSessionId, sessionStatuses, sidebarRefreshToken } =
+  const { newSession, selectedSessionId, sessionStatuses, sidebarRefreshToken } =
     useUnifiedChat();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
@@ -64,15 +63,14 @@ export default function WorkspaceSidebar() {
 
   const handleNewChat = () => {
     newSession();
-    if (pathname !== "/") router.push("/");
+    router.push("/chat");
   };
 
   const handleSelectSession = useCallback(
     async (sessionId: string) => {
-      await loadSession(sessionId);
-      if (pathname !== "/") router.push("/");
+      router.push(`/chat/${sessionId}`);
     },
-    [loadSession, pathname, router],
+    [router],
   );
 
   const handleRenameSession = useCallback(async (sessionId: string, title: string) => {
@@ -93,10 +91,10 @@ export default function WorkspaceSidebar() {
       setSessions((prev) => prev.filter((session) => session.session_id !== sessionId));
       if (selectedSessionId === sessionId) {
         newSession();
-        if (pathname !== "/") router.push("/");
+        router.push("/chat");
       }
     },
-    [newSession, pathname, router, selectedSessionId],
+    [newSession, router, selectedSessionId, t],
   );
 
   return (

@@ -77,6 +77,7 @@ def _empty_env(tmp_path: Path) -> EnvStore:
                 "JINA_API_KEY=",
                 "SEARXNG_BASE_URL=",
                 "PERPLEXITY_API_KEY=",
+                "SERPER_API_KEY=",
             ]
         )
         + "\n",
@@ -214,6 +215,25 @@ def test_search_perplexity_missing_credentials(tmp_path: Path) -> None:
     )
     resolved = resolve_search_runtime_config(catalog=catalog, env_store=_empty_env(tmp_path))
     assert resolved.provider == "perplexity"
+    assert resolved.unsupported_provider is False
+    assert resolved.deprecated_provider is False
+    assert resolved.missing_credentials is True
+
+
+def test_search_serper_missing_credentials(tmp_path: Path) -> None:
+    catalog = _build_catalog(
+        search_profile={
+            "id": "search-p",
+            "name": "Search",
+            "provider": "serper",
+            "base_url": "",
+            "api_key": "",
+            "proxy": "",
+            "models": [],
+        }
+    )
+    resolved = resolve_search_runtime_config(catalog=catalog, env_store=_empty_env(tmp_path))
+    assert resolved.provider == "serper"
     assert resolved.unsupported_provider is False
     assert resolved.deprecated_provider is False
     assert resolved.missing_credentials is True
