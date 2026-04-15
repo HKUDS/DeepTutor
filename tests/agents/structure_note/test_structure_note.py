@@ -4,20 +4,20 @@ from pathlib import Path
 
 import pytest
 
-from deeptutor.services.structure_note import generator as generator_module
-from deeptutor.services.structure_note.difficulty import get_difficulty_preset
-from deeptutor.services.structure_note.generator import (
+from deeptutor.agents.structure_note import generator as generator_module
+from deeptutor.agents.structure_note.difficulty import get_difficulty_preset
+from deeptutor.agents.structure_note.generator import (
     _combination_instruction,
     build_generation_chunks,
     generate_transition_markdown,
 )
-from deeptutor.services.structure_note.image_pipeline import process_images
-from deeptutor.services.structure_note.manager import StructureNoteManager
-from deeptutor.services.structure_note.markdown_postprocessor import (
+from deeptutor.agents.structure_note.image_pipeline import process_images
+from deeptutor.agents.structure_note.manager import StructureNoteManager
+from deeptutor.agents.structure_note.markdown_postprocessor import (
     normalize_structure_note_markdown,
     validate_renderer_compatible_markdown,
 )
-from deeptutor.services.structure_note.models import (
+from deeptutor.agents.structure_note.models import (
     DifficultyLevel,
     ExplanationStyleLevel,
     GenerationChunk,
@@ -27,10 +27,10 @@ from deeptutor.services.structure_note.models import (
     SectionTreeNode,
     StructureNoteArtifact,
 )
-from deeptutor.services.structure_note.normalizer import NormalizationError, normalize_to_pdf
-from deeptutor.services.structure_note.page_index import sections_from_pageindex_structure
-from deeptutor.services.structure_note.planner import build_document_plan
-from deeptutor.services.structure_note.tree_builder import build_section_tree
+from deeptutor.agents.structure_note.normalizer import NormalizationError, normalize_to_pdf
+from deeptutor.agents.structure_note.page_index import sections_from_pageindex_structure
+from deeptutor.agents.structure_note.planner import build_document_plan
+from deeptutor.agents.structure_note.tree_builder import build_section_tree
 
 
 def _page(page_number: int, *, text: str = "", image_candidates=None) -> PageIndexPage:
@@ -262,6 +262,24 @@ def test_compose_markdown_inserts_generated_transition_between_major_sections() 
     assert "核心变量" in markdown
     assert "基础概念" in markdown
     assert "理论展开" in markdown
+
+
+def test_export_output_stem_uses_source_title_with_structure_note_suffix() -> None:
+    artifact = StructureNoteArtifact(
+        job_id="job_1",
+        file_name="Week3.pptx",
+        source_format="pptx",
+        difficulty_level=DifficultyLevel.MEDIUM,
+        note_language=NoteLanguage.EN,
+        style_level=ExplanationStyleLevel.MEDIUM,
+        note_title="Week3",
+        status=JobStatus.RENDERING,
+        source_path="/tmp/Week3.pptx",
+        created_at="2026-01-01T00:00:00",
+        updated_at="2026-01-01T00:00:00",
+    )
+
+    assert StructureNoteManager()._export_output_stem(artifact) == "Week3-structure-note"
 
 
 @pytest.mark.asyncio

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 from pathlib import Path
+import re
 from typing import Any, Literal
 import uuid
 
@@ -57,6 +58,17 @@ class StructureNoteManager:
 
     def _artifact_project_name(self, artifact: StructureNoteArtifact) -> str:
         return artifact.project_name or artifact.source_ref.get("kb_name") or "Local Uploads"
+
+    def _export_output_stem(self, artifact: StructureNoteArtifact) -> str:
+        title = (artifact.note_title or Path(artifact.file_name).stem or "structure-note").strip()
+        title = title.replace("/", "-").replace("\\", "-")
+        title = re.sub(r"\s+", " ", title).strip(" .")
+        if not title:
+            title = "structure-note"
+        suffix = "-structure-note"
+        if title.lower().endswith(suffix):
+            return title
+        return f"{title}{suffix}"
 
     def list_projects(self) -> list[StructureNoteProject]:
         projects_by_name: dict[str, StructureNoteProject] = {
@@ -432,6 +444,8 @@ class StructureNoteManager:
                 JobStatus.PROCESSING_IMAGES,
                 retry_state=JobStatus.PROCESSING_IMAGES.value,
             )
+            output_stem = self._export_output_stem(artifact)
+            rendered_markdown_path = job_dirs["final"] / f"{output_stem}.md"
             if (
                 artifact.rendered_markdown_path
                 and Path(artifact.rendered_markdown_path).exists()
@@ -442,7 +456,9 @@ class StructureNoteManager:
                 markdown_text = normalize_structure_note_markdown(
                     rendered_path.read_text(encoding="utf-8")
                 )
-                rendered_path.write_text(markdown_text, encoding="utf-8")
+                rendered_markdown_path.write_text(markdown_text, encoding="utf-8")
+                artifact.rendered_markdown_path = str(rendered_markdown_path)
+                self.storage.write_artifact(artifact)
                 image_citations = self._load_image_citations(artifact.image_fill_state_path)
             else:
                 emit_log(task_id, "Resolving figure placeholders.")
@@ -484,7 +500,7 @@ class StructureNoteManager:
                     )
                 )
                 artifact.rendered_markdown_path = str(
-                    self.storage.write_text(job_dirs["final"] / "rendered.md", markdown_text)
+                    self.storage.write_text(rendered_markdown_path, markdown_text)
                 )
                 self.storage.write_artifact(artifact)
 
@@ -500,6 +516,7 @@ class StructureNoteManager:
                 citation_entries=citations,
                 job_dir=job_dirs["job"],
                 final_dir=job_dirs["final"],
+                output_stem=self._export_output_stem(artifact),
             )
             artifact.final_pdf_path = str(final_pdf_path)
             artifact.citation_manifest_path = str(citation_path)

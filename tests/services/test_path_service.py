@@ -124,11 +124,11 @@ def test_public_output_filter_allows_structure_note_markdown_pdf_and_images(tmp_
             / "structure_note"
             / "job_1"
             / "final"
-            / "final.pdf"
+            / "Week3-structure-note.pdf"
         )
         allowed.parent.mkdir(parents=True, exist_ok=True)
         allowed.write_text("pdf", encoding="utf-8")
-        allowed_md = allowed.with_name("rendered.md")
+        allowed_md = allowed.with_name("Week3-structure-note.md")
         allowed_md.write_text("# Note", encoding="utf-8")
         allowed_image = (
             service._user_data_dir
@@ -153,10 +153,15 @@ def test_public_output_filter_allows_structure_note_markdown_pdf_and_images(tmp_
         denied.write_text("{}", encoding="utf-8")
 
         assert (
-            service.is_public_output_path("workspace/structure_note/job_1/final/final.pdf") is True
+            service.is_public_output_path(
+                "workspace/structure_note/job_1/final/Week3-structure-note.pdf"
+            )
+            is True
         )
         assert (
-            service.is_public_output_path("workspace/structure_note/job_1/final/rendered.md")
+            service.is_public_output_path(
+                "workspace/structure_note/job_1/final/Week3-structure-note.md"
+            )
             is True
         )
         assert (

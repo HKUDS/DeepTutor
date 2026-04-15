@@ -132,6 +132,7 @@ def render_pdf(
     citation_entries: list[CitationEntry],
     job_dir: Path,
     final_dir: Path,
+    output_stem: str = "final",
 ) -> tuple[Path, Path]:
     try:
         from markdown import markdown
@@ -163,7 +164,8 @@ def render_pdf(
         f"{html_body}</body></html>"
     )
 
-    pdf_path = final_dir / "final.pdf"
+    pdf_stem = output_stem.strip() or "final"
+    pdf_path = final_dir / f"{pdf_stem}.pdf"
     HTML(string=html, base_url=str(job_dir)).write_pdf(str(pdf_path))
 
     citation_path = final_dir / "citation_manifest.json"

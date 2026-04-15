@@ -50,7 +50,6 @@ __all__ = [
     "rag",
     "prompt",
     "search",
-    "structure_note",
     "setup",
     "session",
     "config",
@@ -72,8 +71,6 @@ def __getattr__(name: str):
         return importlib.import_module(f"{__name__}.search")
     if name == "setup":
         return importlib.import_module(f"{__name__}.setup")
-    if name == "structure_note":
-        return importlib.import_module(f"{__name__}.structure_note")
     if name == "session":
         return importlib.import_module(f"{__name__}.session")
     if name == "config":

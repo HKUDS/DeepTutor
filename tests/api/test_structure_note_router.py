@@ -18,7 +18,7 @@ pytestmark = pytest.mark.skipif(
 
 if FastAPI is not None and TestClient is not None:
     from deeptutor.api.routers import structure_note as structure_note_router_module
-    from deeptutor.services.structure_note import (
+    from deeptutor.agents.structure_note import (
         DifficultyLevel,
         ExplanationStyleLevel,
         JobStatus,

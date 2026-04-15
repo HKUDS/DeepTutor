@@ -20,7 +20,7 @@ from deeptutor.api.utils.task_id_manager import TaskIDManager
 from deeptutor.api.utils.task_log_stream import get_task_stream_manager
 from deeptutor.logging import get_logger
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
-from deeptutor.services.structure_note import (
+from deeptutor.agents.structure_note import (
     DifficultyLevel,
     ExplanationStyleLevel,
     JobStatus,
