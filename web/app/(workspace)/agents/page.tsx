@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bot,
+  Eye,
+  EyeOff,
   FileText,
   Heart,
   Loader2,
@@ -11,6 +13,7 @@ import {
   Play,
   Plus,
   Save,
+  Settings2,
   Square,
   Trash2,
   X,
@@ -31,7 +34,8 @@ interface BotInfo {
   name: string;
   description: string;
   persona: string;
-  channels: string[];
+  /** Compact list from `GET /tutorbot`; full dict from `GET /tutorbot/{id}` */
+  channels: string[] | Record<string, unknown>;
   model: string | null;
   running: boolean;
   started_at: string | null;
@@ -43,7 +47,7 @@ interface SoulTemplate {
   content: string;
 }
 
-type Tab = "bots" | "profiles" | "souls";
+type Tab = "bots" | "profiles" | "channels" | "souls";
 
 const BOT_FILES = ["SOUL.md", "USER.md", "TOOLS.md", "AGENTS.md", "HEARTBEAT.md"] as const;
 type BotFile = (typeof BOT_FILES)[number];
@@ -106,6 +110,7 @@ export default function AgentsPage() {
           {([
             { key: "bots" as Tab, label: t("Bots"), icon: Bot },
             { key: "profiles" as Tab, label: t("Profiles"), icon: FileText },
+            { key: "channels" as Tab, label: t("Channels"), icon: Settings2 },
             { key: "souls" as Tab, label: t("Souls"), icon: Heart },
           ]).map((tab) => {
             const Icon = tab.icon;
@@ -138,10 +143,284 @@ export default function AgentsPage() {
           />
         ) : activeTab === "profiles" ? (
           <ProfilesTab bots={bots} loading={loading} onToast={setToast} />
+        ) : activeTab === "channels" ? (
+          <ChannelsTab bots={bots} loading={loading} onToast={setToast} onReload={loadBots} />
         ) : (
           <SoulsTab souls={souls} onReload={loadSouls} onToast={setToast} />
         )}
       </div>
+    </div>
+  );
+}
+
+/* ── Channels tab (Telegram + globals) ─────────────────── */
+
+const DEFAULT_TELEGRAM = {
+  enabled: false,
+  token: "",
+  allow_from: [] as string[],
+  proxy: "" as string,
+  reply_to_message: false,
+  group_policy: "mention" as "open" | "mention",
+};
+
+function normalizeChannelsDict(raw: Record<string, unknown> | undefined): Record<string, unknown> {
+  const r = { ...(raw ?? {}) };
+  const tg = (r.telegram as Record<string, unknown> | undefined) ?? {};
+  const allowRaw = tg.allow_from;
+  const allow_from = Array.isArray(allowRaw) ? allowRaw.map(String) : [];
+  return {
+    ...r,
+    send_progress: r.send_progress !== false,
+    send_tool_hints: !!r.send_tool_hints,
+    telegram: {
+      ...DEFAULT_TELEGRAM,
+      ...tg,
+      allow_from,
+      group_policy: tg.group_policy === "open" ? "open" : "mention",
+    },
+  };
+}
+
+function ChannelsTab({
+  bots,
+  loading,
+  onToast,
+  onReload,
+}: {
+  bots: BotInfo[];
+  loading: boolean;
+  onToast: (msg: string) => void;
+  onReload: () => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [selectedBot, setSelectedBot] = useState("");
+  const [channels, setChannels] = useState<Record<string, unknown>>({});
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [showToken, setShowToken] = useState(false);
+
+  useEffect(() => {
+    if (bots.length > 0 && !selectedBot) setSelectedBot(bots[0].bot_id);
+  }, [bots, selectedBot]);
+
+  useEffect(() => {
+    setShowToken(false);
+  }, [selectedBot]);
+
+  const loadDetail = useCallback(async (bid: string) => {
+    if (!bid) return;
+    setLoadingDetail(true);
+    try {
+      const res = await fetch(apiUrl(`/api/v1/tutorbot/${bid}`));
+      if (!res.ok) return;
+      const data = await res.json();
+      setChannels(normalizeChannelsDict(data.channels as Record<string, unknown> | undefined));
+    } finally {
+      setLoadingDetail(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedBot) void loadDetail(selectedBot);
+  }, [selectedBot, loadDetail]);
+
+  const tg = (channels.telegram as typeof DEFAULT_TELEGRAM) ?? DEFAULT_TELEGRAM;
+
+  const setTg = (patch: Partial<typeof DEFAULT_TELEGRAM>) => {
+    setChannels((prev) => ({
+      ...prev,
+      telegram: { ...DEFAULT_TELEGRAM, ...(prev.telegram as object), ...patch },
+    }));
+  };
+
+  const buildPayload = (): Record<string, unknown> => {
+    const allow_from = Array.isArray(tg.allow_from)
+      ? tg.allow_from.map(String)
+      : [];
+    const proxyVal = typeof tg.proxy === "string" && tg.proxy.trim() ? tg.proxy.trim() : null;
+    const next: Record<string, unknown> = { ...channels };
+    next.send_progress = !!channels.send_progress;
+    next.send_tool_hints = !!channels.send_tool_hints;
+    next.telegram = {
+      enabled: !!tg.enabled,
+      token: String(tg.token ?? ""),
+      allow_from,
+      proxy: proxyVal,
+      reply_to_message: !!tg.reply_to_message,
+      group_policy: tg.group_policy === "open" ? "open" : "mention",
+    };
+    return next;
+  };
+
+  const save = async () => {
+    if (!selectedBot) return;
+    setSaving(true);
+    try {
+      const res = await fetch(apiUrl(`/api/v1/tutorbot/${selectedBot}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channels: buildPayload() }),
+      });
+      if (res.ok) {
+        onToast(t("Channels saved"));
+        await onReload();
+        await loadDetail(selectedBot);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        onToast((err as { detail?: string }).detail ?? t("Save failed"));
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[320px] items-center justify-center">
+        <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
+      </div>
+    );
+  }
+
+  if (bots.length === 0) {
+    return (
+      <div className="flex min-h-[320px] flex-col items-center justify-center rounded-xl border border-dashed border-[var(--border)] text-center">
+        <p className="text-[14px] font-medium text-[var(--foreground)]">{t("No bots to configure")}</p>
+        <p className="mt-1.5 max-w-xs text-[13px] text-[var(--muted-foreground)]">
+          {t("Create a bot first in the Bots tab.")}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="text-[12px] font-medium text-[var(--muted-foreground)] shrink-0">{t("Bot")}</label>
+        <select
+          value={selectedBot}
+          onChange={(e) => setSelectedBot(e.target.value)}
+          className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-1.5 text-[13px] text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
+        >
+          {bots.map((b) => (
+            <option key={b.bot_id} value={b.bot_id}>
+              {b.name} ({b.bot_id})
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={saving || loadingDetail}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--primary-foreground)] disabled:opacity-40"
+        >
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          {t("Save")}
+        </button>
+      </div>
+
+      {loadingDetail ? (
+        <div className="flex justify-center py-8">
+          <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
+        </div>
+      ) : (
+        <>
+          <div className="rounded-xl border border-[var(--border)] p-4 space-y-3">
+            <h3 className="text-[13px] font-medium text-[var(--foreground)]">{t("Delivery")}</h3>
+            <label className="flex items-center gap-2 text-[13px]">
+              <input
+                type="checkbox"
+                checked={!!channels.send_progress}
+                onChange={(e) => setChannels((c) => ({ ...c, send_progress: e.target.checked }))}
+              />
+              {t("Stream progress text to channels")}
+            </label>
+            <label className="flex items-center gap-2 text-[13px]">
+              <input
+                type="checkbox"
+                checked={!!channels.send_tool_hints}
+                onChange={(e) => setChannels((c) => ({ ...c, send_tool_hints: e.target.checked }))}
+              />
+              {t("Stream tool hints to channels")}
+            </label>
+          </div>
+
+          <div className="rounded-xl border border-[var(--border)] p-4 space-y-3">
+            <h3 className="text-[13px] font-medium text-[var(--foreground)]">{t("Telegram")}</h3>
+            <label className="flex items-center gap-2 text-[13px]">
+              <input
+                type="checkbox"
+                checked={!!tg.enabled}
+                onChange={(e) => setTg({ enabled: e.target.checked })}
+              />
+              {t("Enabled")}
+            </label>
+            <div>
+              <label className="mb-1 block text-[12px] font-medium text-[var(--muted-foreground)]">{t("Bot token")}</label>
+              <div className="relative">
+                <input
+                  type={showToken ? "text" : "password"}
+                  autoComplete="off"
+                  value={tg.token}
+                  onChange={(e) => setTg({ token: e.target.value })}
+                  className="w-full rounded-lg border border-[var(--border)] bg-transparent py-2 pl-3 pr-10 font-mono text-[13px] outline-none focus:border-[var(--ring)]"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowToken((v) => !v)}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                  aria-label={showToken ? t("Hide token") : t("Show token")}
+                  title={showToken ? t("Hide token") : t("Show token")}
+                >
+                  {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-[12px] font-medium text-[var(--muted-foreground)]">{t("Allowed user IDs (one per line)")}</label>
+              <textarea
+                value={tg.allow_from.join("\n")}
+                onChange={(e) =>
+                  setTg({
+                    allow_from: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean),
+                  })
+                }
+                rows={4}
+                className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 font-mono text-[13px] outline-none focus:border-[var(--ring)]"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[12px] font-medium text-[var(--muted-foreground)]">{t("Proxy URL")} <span className="font-normal opacity-60">{t("(optional)")}</span></label>
+              <input
+                value={tg.proxy ?? ""}
+                onChange={(e) => setTg({ proxy: e.target.value })}
+                placeholder="http://127.0.0.1:7890"
+                className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-[13px] outline-none focus:border-[var(--ring)]"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-[13px]">
+              <input
+                type="checkbox"
+                checked={!!tg.reply_to_message}
+                onChange={(e) => setTg({ reply_to_message: e.target.checked })}
+              />
+              {t("Reply to the user message (vs new message)")}
+            </label>
+            <div>
+              <label className="mb-1 block text-[12px] font-medium text-[var(--muted-foreground)]">{t("Group policy")}</label>
+              <select
+                value={tg.group_policy}
+                onChange={(e) => setTg({ group_policy: e.target.value as "open" | "mention" })}
+                className="rounded-lg border border-[var(--border)] bg-transparent px-3 py-1.5 text-[13px] outline-none focus:border-[var(--ring)]"
+              >
+                <option value="mention">{t("Mention only")}</option>
+                <option value="open">{t("Open (all messages)")}</option>
+              </select>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

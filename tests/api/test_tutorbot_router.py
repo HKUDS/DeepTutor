@@ -70,7 +70,7 @@ def _make_fake_manager(existing: dict | None = None):
             instance.to_dict.return_value = {
                 "bot_id": bot_id,
                 "name": config.name,
-                "channels": list(config.channels.keys()),
+                "channels": config.channels,
                 "running": True,
             }
             return instance
@@ -251,3 +251,113 @@ class TestCreateBotExplicitClearSemantics:
 
         assert resp.status_code == 200
         assert saved["config"].description == "Disk Desc"
+
+
+class TestGetBotStoppedReturnsFullChannels:
+    """GET /{bot_id} must return nested channel config when the bot is not running."""
+
+    def test_get_stopped_bot_includes_telegram_config(self, monkeypatch):
+        from deeptutor.services.tutorbot.manager import BotConfig
+
+        channels = {"telegram": {"enabled": True, "token": "x:y", "allow_from": ["1"]}}
+
+        class FakeMgr:
+            def get_bot(self, bot_id: str):
+                return None
+
+            def load_bot_config(self, bot_id: str) -> BotConfig | None:
+                return BotConfig(name="b", channels=channels)
+
+        tutorbot_router_mod = importlib.import_module("deeptutor.api.routers.tutorbot")
+        monkeypatch.setattr(tutorbot_router_mod, "get_tutorbot_manager", lambda: FakeMgr())
+
+        app = FastAPI()
+        app.include_router(tutorbot_router_mod.router, prefix="/api/v1/tutorbot")
+        client = TestClient(app)
+
+        resp = client.get("/api/v1/tutorbot/b")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["channels"] == channels
+        assert body["running"] is False
+
+
+class TestPatchBotStoppedAndRunning:
+    """PATCH must work when the bot is stopped; running + channels triggers reload."""
+
+    def test_patch_stopped_saves_and_returns_channels(self, monkeypatch):
+        from deeptutor.services.tutorbot.manager import BotConfig
+
+        saved_cfg: list[BotConfig | None] = []
+
+        class FakeMgr:
+            def get_bot(self, bot_id: str):
+                return None
+
+            def load_bot_config(self, bot_id: str) -> BotConfig | None:
+                return BotConfig(
+                    name="b",
+                    channels={"telegram": {"enabled": False, "token": ""}},
+                )
+
+            def save_bot_config(self, bot_id: str, config: BotConfig, *, auto_start: bool = True) -> None:
+                saved_cfg.append(config)
+
+        tutorbot_router_mod = importlib.import_module("deeptutor.api.routers.tutorbot")
+        monkeypatch.setattr(tutorbot_router_mod, "get_tutorbot_manager", lambda: FakeMgr())
+
+        app = FastAPI()
+        app.include_router(tutorbot_router_mod.router, prefix="/api/v1/tutorbot")
+        client = TestClient(app)
+
+        new_ch = {"telegram": {"enabled": True, "token": "1:2"}}
+        resp = client.patch("/api/v1/tutorbot/b", json={"channels": new_ch})
+        assert resp.status_code == 200
+        assert resp.json()["channels"] == new_ch
+        assert len(saved_cfg) == 1
+        assert saved_cfg[0].channels == new_ch
+
+    def test_patch_running_channels_calls_reload(self, monkeypatch):
+        from deeptutor.services.tutorbot.manager import BotConfig
+
+        reloaded: list[bool] = []
+
+        class FakeInst:
+            def __init__(self):
+                self.config = BotConfig(name="b", channels={"telegram": {"enabled": True}})
+                self._running = True
+
+            @property
+            def running(self) -> bool:
+                return self._running
+
+            def to_dict(self):
+                return {
+                    "bot_id": "b",
+                    "name": self.config.name,
+                    "channels": self.config.channels,
+                    "running": True,
+                }
+
+        inst = FakeInst()
+
+        class FakeMgr:
+            def get_bot(self, bot_id: str):
+                return inst if bot_id == "b" else None
+
+            def save_bot_config(self, bot_id: str, config: BotConfig, *, auto_start: bool = True) -> None:
+                pass
+
+            async def reload_channels(self, bot_id: str) -> None:
+                reloaded.append(True)
+
+        tutorbot_router_mod = importlib.import_module("deeptutor.api.routers.tutorbot")
+        monkeypatch.setattr(tutorbot_router_mod, "get_tutorbot_manager", lambda: FakeMgr())
+
+        app = FastAPI()
+        app.include_router(tutorbot_router_mod.router, prefix="/api/v1/tutorbot")
+        client = TestClient(app)
+
+        resp = client.patch("/api/v1/tutorbot/b", json={"channels": {"telegram": {"enabled": False}}})
+        assert resp.status_code == 200
+        assert reloaded == [True]

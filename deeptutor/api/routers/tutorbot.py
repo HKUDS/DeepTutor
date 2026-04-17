@@ -124,9 +124,14 @@ async def get_bot(bot_id: str):
     cfg = mgr.load_bot_config(bot_id)
     if cfg:
         return {
-            "bot_id": bot_id, "name": cfg.name, "description": cfg.description,
-            "persona": cfg.persona, "channels": list(cfg.channels.keys()),
-            "model": cfg.model, "running": False, "started_at": None,
+            "bot_id": bot_id,
+            "name": cfg.name,
+            "description": cfg.description,
+            "persona": cfg.persona,
+            "channels": cfg.channels,
+            "model": cfg.model,
+            "running": False,
+            "started_at": None,
         }
     raise HTTPException(status_code=404, detail="Bot not found")
 
@@ -147,26 +152,64 @@ async def destroy_bot(bot_id: str):
     return {"bot_id": bot_id, "destroyed": True}
 
 
+def _stopped_bot_dict(bot_id: str, cfg: BotConfig) -> dict:
+    return {
+        "bot_id": bot_id,
+        "name": cfg.name,
+        "description": cfg.description,
+        "persona": cfg.persona,
+        "channels": cfg.channels,
+        "model": cfg.model,
+        "running": False,
+        "started_at": None,
+    }
+
+
 @router.patch("/{bot_id}")
 async def update_bot(bot_id: str, payload: UpdateBotRequest):
     mgr = get_tutorbot_manager()
     instance = mgr.get_bot(bot_id)
-    if not instance:
+    if instance:
+        if payload.name is not None:
+            instance.config.name = payload.name
+        if payload.description is not None:
+            instance.config.description = payload.description
+        if payload.persona is not None:
+            instance.config.persona = payload.persona
+        if payload.channels is not None:
+            instance.config.channels = payload.channels
+        if payload.model is not None:
+            instance.config.model = payload.model
+
+        mgr.save_bot_config(bot_id, instance.config)
+        if payload.channels is not None:
+            try:
+                await mgr.reload_channels(bot_id)
+            except Exception:
+                logger.exception("reload_channels failed for bot '%s'", bot_id)
+                raise HTTPException(
+                    status_code=500,
+                    detail="Channels saved but failed to restart listeners; try stopping and starting the bot.",
+                ) from None
+        return instance.to_dict()
+
+    cfg = mgr.load_bot_config(bot_id)
+    if not cfg:
         raise HTTPException(status_code=404, detail="Bot not found")
 
     if payload.name is not None:
-        instance.config.name = payload.name
+        cfg.name = payload.name
     if payload.description is not None:
-        instance.config.description = payload.description
+        cfg.description = payload.description
     if payload.persona is not None:
-        instance.config.persona = payload.persona
+        cfg.persona = payload.persona
     if payload.channels is not None:
-        instance.config.channels = payload.channels
+        cfg.channels = payload.channels
     if payload.model is not None:
-        instance.config.model = payload.model
+        cfg.model = payload.model
 
-    mgr.save_bot_config(bot_id, instance.config)
-    return instance.to_dict()
+    mgr.save_bot_config(bot_id, cfg)
+    return _stopped_bot_dict(bot_id, cfg)
 
 
 # ── Workspace file endpoints ──────────────────────────────────

@@ -67,7 +67,7 @@ class TutorBotInstance:
             "name": self.config.name,
             "description": self.config.description,
             "persona": self.config.persona,
-            "channels": list(self.config.channels.keys()),
+            "channels": self.config.channels,
             "model": self.config.model,
             "running": self.running,
             "started_at": self.started_at.isoformat(),
@@ -453,6 +453,64 @@ class TutorBotManager:
         logger.info("TutorBot '%s' stopped", bot_id)
         return True
 
+    async def reload_channels(self, bot_id: str) -> None:
+        """Restart channel listeners from ``instance.config.channels`` (same MessageBus).
+
+        Cancels only ``tutorbot:{bot_id}:ch:*`` tasks; agent loop and outbound router keep running.
+        """
+        instance = self._bots.get(bot_id)
+        if not instance or not instance.running:
+            return
+
+        ch_prefix = f"tutorbot:{bot_id}:ch:"
+        to_remove = [t for t in instance.tasks if (t.get_name() or "").startswith(ch_prefix)]
+        for t in to_remove:
+            if not t.done():
+                t.cancel()
+        for t in to_remove:
+            try:
+                await asyncio.wait_for(asyncio.shield(t), timeout=5.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+        instance.tasks = [t for t in instance.tasks if t not in to_remove]
+
+        if instance.channel_manager:
+            try:
+                await instance.channel_manager.stop_all()
+            except Exception:
+                logger.exception("Error stopping channels before reload for bot '%s'", bot_id)
+
+        instance.channel_manager = None
+        instance.channel_bindings.clear()
+
+        bus = instance.agent_loop.bus
+        config = instance.config
+        channel_manager = None
+        if config.channels:
+            try:
+                from deeptutor.tutorbot.channels.manager import ChannelManager
+                from deeptutor.tutorbot.config.schema import ChannelsConfig
+
+                channels_config = ChannelsConfig(**config.channels)
+                channel_manager = ChannelManager(channels_config, bus)
+                if not channel_manager.channels:
+                    channel_manager = None
+            except Exception:
+                logger.exception("Failed to reload channels for bot '%s'", bot_id)
+                raise
+
+        instance.channel_manager = channel_manager
+        if channel_manager:
+            for ch_name, ch in channel_manager.channels.items():
+                ch_task = asyncio.create_task(
+                    ch.start(), name=f"tutorbot:{bot_id}:ch:{ch_name}",
+                )
+                instance.tasks.append(ch_task)
+            logger.info(
+                "Reloaded channels for bot '%s': %s",
+                bot_id, list(channel_manager.channels.keys()),
+            )
+
     # ── Listing & discovery ───────────────────────────────────────
 
     def _discover_bot_ids(self) -> set[str]:
@@ -473,7 +531,9 @@ class TutorBotManager:
         result: dict[str, dict[str, Any]] = {}
 
         for inst in self._bots.values():
-            result[inst.bot_id] = inst.to_dict()
+            row = inst.to_dict()
+            row["channels"] = list(inst.config.channels.keys())
+            result[inst.bot_id] = row
 
         for bid in self._discover_bot_ids():
             if bid in result:
