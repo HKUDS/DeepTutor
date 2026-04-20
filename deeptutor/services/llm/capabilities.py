@@ -192,7 +192,7 @@ MODEL_OVERRIDES: dict[str, dict[str, object]] = {
     "claude-3": {"supports_vision": True},
     "claude-4": {"supports_vision": True},
     "gemini": {"supports_vision": True},
-    "gemma": {"supports_vision": False},
+    "gemma": {"supports_vision": False, "supports_response_format": False},
     "llava": {"supports_vision": True},
     "bakllava": {"supports_vision": True},
     "moondream": {"supports_vision": True},

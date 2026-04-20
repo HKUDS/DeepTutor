@@ -14,6 +14,20 @@ def test_model_override_capability() -> None:
     assert has_thinking_tags("openai", "deepseek-reasoner") is True
 
 
+def test_gemma_response_format_disabled() -> None:
+    """Gemma models do not support json_object response_format (only json_schema/text).
+
+    LM Studio with gemma-4 and similar models returns a 400 error when
+    response_format={"type": "json_object"} is used.  See issue #344.
+    """
+    assert supports_response_format("lm_studio", "gemma-4-e2b") is False
+    assert supports_response_format("lm_studio", "gemma-3-4b") is False
+    assert supports_response_format("lm_studio", "gemma-2-9b") is False
+    # Other non-gemma local models should still support response_format
+    assert supports_response_format("lm_studio", "mistral-7b") is True
+    assert supports_response_format("lm_studio", "llama-3") is True
+
+
 def test_capability_fallback_default() -> None:
     """Unknown provider should fall back to defaults and explicit values."""
     assert get_capability("unknown", "supports_streaming") is True
