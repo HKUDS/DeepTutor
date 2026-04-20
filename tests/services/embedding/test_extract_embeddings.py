@@ -159,3 +159,18 @@ class TestErrorHandling:
     def test_empty_embedding_singular_falls_through(self) -> None:
         with pytest.raises(ValueError, match="Cannot parse embeddings"):
             _extract({"embedding": []})
+
+    def test_none_embedding_value_replaced_with_empty_list(self) -> None:
+        """When a provider returns {"embedding": null}, use [] instead of None.
+
+        Prevents TypeError in LlamaIndex similarity computation (issue #346).
+        """
+        data = {
+            "data": [
+                {"embedding": [0.1, 0.2]},
+                {"embedding": None},
+                {"embedding": [0.3, 0.4]},
+            ]
+        }
+        result = _extract(data)
+        assert result == [[0.1, 0.2], [], [0.3, 0.4]]

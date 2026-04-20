@@ -99,6 +99,18 @@ class CustomEmbedding(BaseEmbedding):
         """Sync batch version - called by LlamaIndex for bulk embedding."""
         self._logger.info(f"Embedding {len(texts)} text chunks...")
         result = self._run_in_new_loop(self._aget_text_embeddings(texts))
+        # Guard against None embeddings that would crash similarity computation
+        none_indices = [i for i, vec in enumerate(result) if vec is None]
+        if none_indices:
+            self._logger.error(
+                f"Embedding returned None for {len(none_indices)} chunk(s) "
+                f"at indices {none_indices}. These will be replaced with "
+                f"zero vectors to prevent storage corruption."
+            )
+            # Determine dimension from the first valid embedding
+            dim = next((len(v) for v in result if v is not None), 0)
+            for i in none_indices:
+                result[i] = [0.0] * dim
         self._logger.info(f"Embedding complete: {len(result)} vectors")
         return result
 

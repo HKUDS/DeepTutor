@@ -85,7 +85,10 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
             first = c[0]
             # list of {"embedding":[...]}
             if isinstance(first, dict) and "embedding" in first:
-                return [item.get("embedding", []) for item in c if isinstance(item, dict)]
+                return [
+                    item.get("embedding") or []
+                    for item in c if isinstance(item, dict)
+                ]
             # list of vectors [[...], ...]
             if isinstance(first, list):
                 return [item for item in c if isinstance(item, list)]
