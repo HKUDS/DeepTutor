@@ -166,7 +166,7 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
                     response.raise_for_status()
                     data = response.json()
                 break
-            except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
+            except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.PoolTimeout, httpx.ConnectError) as exc:
                 last_exc = exc
                 if attempt < self._MAX_RETRIES:
                     wait = self._RETRY_BACKOFF * (2 ** attempt)
