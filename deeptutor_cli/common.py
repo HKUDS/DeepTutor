@@ -27,10 +27,11 @@ def parse_config_items(items: list[str]) -> dict[str, Any]:
 
 
 def parse_json_object(raw: str | None) -> dict[str, Any]:
-    if not raw:
+    normalized = (raw or "").strip()
+    if not normalized:
         return {}
     try:
-        value = json.loads(raw)
+        value = json.loads(normalized)
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid JSON config: {exc.msg}") from exc
     if not isinstance(value, dict):

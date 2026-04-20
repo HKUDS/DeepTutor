@@ -329,22 +329,45 @@ async def get_bot_history(bot_id: str, limit: int = 100):
 async def bot_chat_ws(ws: WebSocket, bot_id: str):
     import asyncio
 
+    async def _safe_send(payload: dict) -> bool:
+        try:
+            await ws.send_json(payload)
+            return True
+        except (WebSocketDisconnect, RuntimeError):
+            return False
+
     mgr = get_tutorbot_manager()
     instance = mgr.get_bot(bot_id)
-    if not instance or not instance.running:
-        await ws.close(code=4004, reason="Bot not found or not running")
-        return
 
     await ws.accept()
+
+    if not instance or not instance.running:
+        config = mgr.load_bot_config(bot_id)
+        if config is None:
+            await ws.send_json({"type": "error", "content": "Bot not found"})
+            await ws.close(code=4004, reason="Bot not found")
+            return
+        try:
+            instance = await mgr.start_bot(bot_id, config)
+        except Exception:
+            logger.exception("Failed to auto-start bot '%s' for websocket", bot_id)
+            await ws.send_json({"type": "error", "content": "Failed to start bot"})
+            await ws.close(code=1011, reason="Failed to start bot")
+            return
+
     logger.info("WebSocket connected for bot '%s'", bot_id)
 
     async def _handle_user_messages():
         while True:
-            raw = await ws.receive_text()
+            try:
+                raw = await ws.receive_text()
+            except WebSocketDisconnect:
+                break
             try:
                 data = json.loads(raw)
             except json.JSONDecodeError:
-                await ws.send_json({"type": "error", "content": "Invalid JSON"})
+                if not await _safe_send({"type": "error", "content": "Invalid JSON"}):
+                    break
                 continue
 
             content = data.get("content", "").strip()
@@ -352,20 +375,27 @@ async def bot_chat_ws(ws: WebSocket, bot_id: str):
                 continue
 
             async def on_progress(text: str) -> None:
-                await ws.send_json({"type": "thinking", "content": text})
+                if not await _safe_send({"type": "thinking", "content": text}):
+                    raise WebSocketDisconnect()
 
             try:
                 response = await mgr.send_message(
                     bot_id, content, chat_id=data.get("chat_id", "web"),
                     on_progress=on_progress,
                 )
-                await ws.send_json({"type": "content", "content": response})
-                await ws.send_json({"type": "done"})
+                if not await _safe_send({"type": "content", "content": response}):
+                    break
+                if not await _safe_send({"type": "done"}):
+                    break
             except RuntimeError as exc:
-                await ws.send_json({"type": "error", "content": str(exc)})
+                if not await _safe_send({"type": "error", "content": str(exc)}):
+                    break
+            except WebSocketDisconnect:
+                break
             except Exception:
                 logger.exception("Error processing message for bot '%s'", bot_id)
-                await ws.send_json({"type": "error", "content": "Internal error"})
+                if not await _safe_send({"type": "error", "content": "Internal error"}):
+                    break
 
     async def _handle_notifications():
         while True:

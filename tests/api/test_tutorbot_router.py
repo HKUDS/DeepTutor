@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 from typing import Any
 from unittest.mock import MagicMock
@@ -461,3 +462,63 @@ class TestPatchBotStoppedAndRunning:
         detail = resp.json()["detail"]
         assert "RuntimeError" in detail
         assert "stopping and starting" in detail.lower()
+
+
+class TestBotChatWebSocketStartup:
+    """WebSocket endpoint should auto-start stopped configured bots."""
+
+    def test_ws_autostarts_stopped_bot(self, monkeypatch):
+        from deeptutor.services.tutorbot.manager import BotConfig
+
+        class FakeInstance:
+            running = True
+
+            def __init__(self):
+                self.notify_queue = asyncio.Queue()
+
+        class FakeMgr:
+            def __init__(self):
+                self.started: list[str] = []
+
+            def get_bot(self, bot_id: str):
+                return None
+
+            def load_bot_config(self, bot_id: str):
+                return BotConfig(name=bot_id)
+
+            async def start_bot(self, bot_id: str, config: BotConfig):
+                self.started.append(bot_id)
+                return FakeInstance()
+
+        mgr = FakeMgr()
+        tutorbot_router_mod = importlib.import_module("deeptutor.api.routers.tutorbot")
+        monkeypatch.setattr(tutorbot_router_mod, "get_tutorbot_manager", lambda: mgr)
+
+        app = FastAPI()
+        app.include_router(tutorbot_router_mod.router, prefix="/api/v1/tutorbot")
+        client = TestClient(app)
+
+        with client.websocket_connect("/api/v1/tutorbot/ielts-tutor/ws") as ws:
+            ws.close()
+
+        assert mgr.started == ["ielts-tutor"]
+
+    def test_ws_unknown_bot_returns_error_payload(self, monkeypatch):
+        class FakeMgr:
+            def get_bot(self, bot_id: str):
+                return None
+
+            def load_bot_config(self, bot_id: str):
+                return None
+
+        tutorbot_router_mod = importlib.import_module("deeptutor.api.routers.tutorbot")
+        monkeypatch.setattr(tutorbot_router_mod, "get_tutorbot_manager", lambda: FakeMgr())
+
+        app = FastAPI()
+        app.include_router(tutorbot_router_mod.router, prefix="/api/v1/tutorbot")
+        client = TestClient(app)
+
+        with client.websocket_connect("/api/v1/tutorbot/missing/ws") as ws:
+            payload = ws.receive_json()
+            assert payload["type"] == "error"
+            assert "not found" in payload["content"].lower()
