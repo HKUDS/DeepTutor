@@ -120,7 +120,11 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
             "encoding_format": request.encoding_format or "float",
         }
 
-        if request.dimensions or self.dimensions:
+        # Only OpenAI's text-embedding-3* family officially supports the `dimensions`
+        # request param. Other providers (e.g. Qwen text-embedding-v4 via litellm gateway)
+        # return 400 if we send it — they always use the model's native dim.
+        _model_name = request.model or self.model or ""
+        if (request.dimensions or self.dimensions) and _model_name.startswith("text-embedding-3"):
             payload["dimensions"] = request.dimensions or self.dimensions
 
         base = self.base_url.rstrip('/')
