@@ -10,6 +10,8 @@ from deeptutor.app import DeepTutorApp
 
 from .common import console, print_notebook_table
 
+from pathlib import Path
+
 
 def register(app: typer.Typer) -> None:
     @app.command("list")
@@ -63,3 +65,58 @@ def register(app: typer.Typer) -> None:
             console.print(f"[red]Record not found:[/] {record_id}")
             raise typer.Exit(code=1)
         console.print(f"Removed record {record_id} from notebook {notebook_id}")
+
+    @app.command("add-md")
+    def add_md(
+        notebook_id: str = typer.Argument(..., help="Notebook id."),
+        file_path: str = typer.Argument(..., help="Path to the markdown file."),
+        title: str = typer.Option("", "--title", help="Record title (defaults to filename)."),
+        record_type: str = typer.Option(
+            "chat",
+            "--type",
+            help="Record type: chat, question, research, solve.",
+        ),
+    ) -> None:
+        """Add a markdown file as a record to a notebook."""
+        path = Path(file_path)
+        if not path.exists():
+            console.print(f"[red]File not found:[/] {file_path}")
+            raise typer.Exit(code=1)
+
+        content = path.read_text(encoding="utf-8")
+        record_title = title or path.stem
+
+        client = DeepTutorApp()
+        result = client.add_record(
+            notebook_ids=[notebook_id],
+            record_type=record_type,
+            title=record_title,
+            user_query="",
+            output=content,
+        )
+        record = result.get("record", {})
+        console.print(
+            f"[green]Added record[/] {record.get('id', '')} "
+            f"to notebook {notebook_id}: {record_title}"
+        )
+
+    @app.command("replace-md")
+    def replace_md(
+        notebook_id: str = typer.Argument(..., help="Notebook id."),
+        record_id: str = typer.Argument(..., help="Record id."),
+        file_path: str = typer.Argument(..., help="Path to the markdown file."),
+    ) -> None:
+        """Replace a notebook record's output with content from a markdown file."""
+        path = Path(file_path)
+        if not path.exists():
+            console.print(f"[red]File not found:[/] {file_path}")
+            raise typer.Exit(code=1)
+
+        content = path.read_text(encoding="utf-8")
+
+        client = DeepTutorApp()
+        updated = client.update_record(notebook_id, record_id, output=content)
+        if updated is None:
+            console.print(f"[red]Record not found:[/] {record_id}")
+            raise typer.Exit(code=1)
+        console.print(f"[green]Updated record[/] {record_id} in notebook {notebook_id}")
