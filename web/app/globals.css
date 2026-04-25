@@ -26,6 +26,7 @@
   }
 
   .dark {
+    color-scheme: dark;
     --background: #1a1918;
     --foreground: #e8e4de;
     --card: #242220;
@@ -70,6 +71,7 @@
   }
 
   .theme-glass {
+    color-scheme: dark;
     --background: #111111;
     --foreground: #ffffff;
     --card: rgba(255, 255, 255, 0.05);

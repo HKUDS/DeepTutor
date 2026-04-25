@@ -115,7 +115,7 @@ function HtmlRenderer({ html }: { html: string }) {
         ref={iframeRef}
         title="HTML visualization"
         sandbox="allow-scripts"
-        className="w-full rounded-lg border border-[var(--border)] bg-white"
+        className="w-full rounded-lg border border-[var(--border)] bg-[var(--card)]"
         style={{ minHeight: 480, height: 560 }}
       />
     </div>
@@ -316,7 +316,7 @@ export default function VisualizationViewer({
             </button>
           </div>
           <div
-            className="flex flex-1 items-center justify-center overflow-auto rounded-xl bg-white p-6 shadow-2xl"
+            className="flex flex-1 items-center justify-center overflow-auto rounded-xl bg-[var(--card)] p-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-full max-w-[1600px]">
