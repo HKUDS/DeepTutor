@@ -202,6 +202,28 @@ async def test_complete_strips_unsupported_response_format(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_complete_normalizes_azure_max_completion_tokens(monkeypatch) -> None:
+    cfg = _make_cfg(
+        model="gpt-5.4",
+        binding="azure_openai",
+        provider_name="azure_openai",
+    )
+    provider = _FakeProvider()
+
+    monkeypatch.setattr("deeptutor.services.llm.factory.get_llm_config", lambda: cfg)
+    monkeypatch.setattr(
+        "deeptutor.services.llm.factory.get_runtime_provider",
+        lambda _config: provider,
+    )
+
+    result = await complete("hello", max_completion_tokens=200)
+
+    assert result == "ok"
+    assert provider.complete_kwargs["max_tokens"] == 200
+    assert "max_completion_tokens" not in provider.complete_kwargs
+
+
+@pytest.mark.asyncio
 async def test_complete_passes_retry_delays(monkeypatch) -> None:
     cfg = _make_cfg()
     provider = _FakeProvider()

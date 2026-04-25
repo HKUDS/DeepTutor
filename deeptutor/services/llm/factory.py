@@ -272,6 +272,8 @@ def _sanitize_call_kwargs(
 
     if not supports_response_format(binding, model):
         extra_kwargs.pop("response_format", None)
+    if binding == "azure_openai" and "max_completion_tokens" in extra_kwargs:
+        extra_kwargs["max_tokens"] = extra_kwargs.pop("max_completion_tokens")
     return extra_kwargs
 
 
