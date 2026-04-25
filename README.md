@@ -18,7 +18,7 @@
 
 [Features](#-key-features) · [Get Started](#-get-started) · [Explore](#-explore-deeptutor) · [TutorBot](#-tutorbot--persistent-autonomous-ai-tutors) · [CLI](#%EF%B8%8F-deeptutor-cli--agent-native-interface) · [Roadmap](#%EF%B8%8F-roadmap) · [Community](#-community--ecosystem)
 
-[🇨🇳 中文](assets/README/README_CN.md) · [🇯🇵 日本語](assets/README/README_JA.md) · [🇪🇸 Español](assets/README/README_ES.md) · [🇫🇷 Français](assets/README/README_FR.md) · [🇸🇦 العربية](assets/README/README_AR.md) · [🇷🇺 Русский](assets/README/README_RU.md) · [🇮🇳 हिन्दी](assets/README/README_HI.md) · [🇵🇹 Português](assets/README/README_PT.md) · [🇹🇭 ภาษาไทย](assets/README/README_TH.md)
+[🇨🇳 中文](assets/README/README_CN.md) · [🇯🇵 日本語](assets/README/README_JA.md) · [🇪🇸 Español](assets/README/README_ES.md) · [🇫🇷 Français](assets/README/README_FR.md) · [🇸🇦 العربية](assets/README/README_AR.md) · [🇷🇺 Русский](assets/README/README_RU.md) · [🇮🇳 हिन्दी](assets/README/README_HI.md) · [🇵🇹 Português](assets/README/README_PT.md) · [🇹🇭 ภาษาไทย](assets/README/README_TH.md) · 🇵🇱 [Polski](assets/README/README_PL.md)
 
 </div>
 
@@ -87,7 +87,6 @@
 
 > **[2025.12.29]** DeepTutor is officially released!
 
-
 ## ✨ Key Features
 
 - **Unified Chat Workspace** — Six modes, one thread. Chat, Deep Solve, Quiz Generation, Deep Research, Math Animator, and Visualize share the same context — start a conversation, escalate to multi-agent problem solving, generate quizzes, visualize concepts, then deep-dive into research, all without losing a single message.
@@ -106,12 +105,12 @@
 
 Before you begin, make sure the following are installed on your system:
 
-| Requirement | Version | Check | Notes |
-|:---|:---|:---|:---|
-| [Git](https://git-scm.com/) | Any | `git --version` | For cloning the repository |
-| [Python](https://www.python.org/downloads/) | 3.11+ | `python --version` | Backend runtime |
-| [Node.js](https://nodejs.org/) | 18+ | `node --version` | Frontend build (not needed for CLI-only or Docker) |
-| [npm](https://www.npmjs.com/) | 9+ | `npm --version` | Bundled with Node.js |
+| Requirement                                 | Version | Check              | Notes                                              |
+| :------------------------------------------ | :------ | :----------------- | :------------------------------------------------- |
+| [Git](https://git-scm.com/)                 | Any     | `git --version`    | For cloning the repository                         |
+| [Python](https://www.python.org/downloads/) | 3.11+   | `python --version` | Backend runtime                                    |
+| [Node.js](https://nodejs.org/)              | 18+     | `node --version`   | Frontend build (not needed for CLI-only or Docker) |
+| [npm](https://www.npmjs.com/)               | 9+      | `npm --version`    | Bundled with Node.js                               |
 
 You'll also need an **API key** from at least one LLM provider (e.g. [OpenAI](https://platform.openai.com/api-keys), [DeepSeek](https://platform.deepseek.com/), [Anthropic](https://console.anthropic.com/)). The Setup Tour will walk you through entering it.
 
@@ -186,54 +185,54 @@ EMBEDDING_DIMENSION=3072
 <details>
 <summary><b>Supported LLM Providers</b></summary>
 
-| Provider | Binding | Default Base URL |
-|:--|:--|:--|
-| AiHubMix | `aihubmix` | `https://aihubmix.com/v1` |
-| Anthropic | `anthropic` | `https://api.anthropic.com/v1` |
-| Azure OpenAI | `azure_openai` | — |
-| BytePlus | `byteplus` | `https://ark.ap-southeast.bytepluses.com/api/v3` |
-| BytePlus Coding Plan | `byteplus_coding_plan` | `https://ark.ap-southeast.bytepluses.com/api/coding/v3` |
-| Custom | `custom` | — |
-| Custom (Anthropic API) | `custom_anthropic` | — |
-| DashScope | `dashscope` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
-| DeepSeek | `deepseek` | `https://api.deepseek.com` |
-| Gemini | `gemini` | `https://generativelanguage.googleapis.com/v1beta/openai/` |
-| GitHub Copilot | `github_copilot` | `https://api.githubcopilot.com` |
-| Groq | `groq` | `https://api.groq.com/openai/v1` |
-| llama.cpp | `llama_cpp` | `http://localhost:8080/v1` |
-| LM Studio | `lm_studio` | `http://localhost:1234/v1` |
-| MiniMax | `minimax` | `https://api.minimaxi.com/v1` |
-| MiniMax (Anthropic) | `minimax_anthropic` | `https://api.minimaxi.com/anthropic` |
-| Mistral | `mistral` | `https://api.mistral.ai/v1` |
-| Moonshot | `moonshot` | `https://api.moonshot.cn/v1` |
-| Ollama | `ollama` | `http://localhost:11434/v1` |
-| OpenAI | `openai` | `https://api.openai.com/v1` |
-| OpenAI Codex | `openai_codex` | `https://chatgpt.com/backend-api` |
-| OpenRouter | `openrouter` | `https://openrouter.ai/api/v1` |
-| OpenVINO Model Server | `ovms` | `http://localhost:8000/v3` |
-| Qianfan | `qianfan` | `https://qianfan.baidubce.com/v2` |
-| SiliconFlow | `siliconflow` | `https://api.siliconflow.cn/v1` |
-| Step Fun | `stepfun` | `https://api.stepfun.com/v1` |
-| vLLM/Local | `vllm` | — |
-| VolcEngine | `volcengine` | `https://ark.cn-beijing.volces.com/api/v3` |
-| VolcEngine Coding Plan | `volcengine_coding_plan` | `https://ark.cn-beijing.volces.com/api/coding/v3` |
-| Xiaomi MIMO | `xiaomi_mimo` | `https://api.xiaomimimo.com/v1` |
-| Zhipu AI | `zhipu` | `https://open.bigmodel.cn/api/paas/v4` |
+| Provider               | Binding                  | Default Base URL                                           |
+| :--------------------- | :----------------------- | :--------------------------------------------------------- |
+| AiHubMix               | `aihubmix`               | `https://aihubmix.com/v1`                                  |
+| Anthropic              | `anthropic`              | `https://api.anthropic.com/v1`                             |
+| Azure OpenAI           | `azure_openai`           | —                                                          |
+| BytePlus               | `byteplus`               | `https://ark.ap-southeast.bytepluses.com/api/v3`           |
+| BytePlus Coding Plan   | `byteplus_coding_plan`   | `https://ark.ap-southeast.bytepluses.com/api/coding/v3`    |
+| Custom                 | `custom`                 | —                                                          |
+| Custom (Anthropic API) | `custom_anthropic`       | —                                                          |
+| DashScope              | `dashscope`              | `https://dashscope.aliyuncs.com/compatible-mode/v1`        |
+| DeepSeek               | `deepseek`               | `https://api.deepseek.com`                                 |
+| Gemini                 | `gemini`                 | `https://generativelanguage.googleapis.com/v1beta/openai/` |
+| GitHub Copilot         | `github_copilot`         | `https://api.githubcopilot.com`                            |
+| Groq                   | `groq`                   | `https://api.groq.com/openai/v1`                           |
+| llama.cpp              | `llama_cpp`              | `http://localhost:8080/v1`                                 |
+| LM Studio              | `lm_studio`              | `http://localhost:1234/v1`                                 |
+| MiniMax                | `minimax`                | `https://api.minimaxi.com/v1`                              |
+| MiniMax (Anthropic)    | `minimax_anthropic`      | `https://api.minimaxi.com/anthropic`                       |
+| Mistral                | `mistral`                | `https://api.mistral.ai/v1`                                |
+| Moonshot               | `moonshot`               | `https://api.moonshot.cn/v1`                               |
+| Ollama                 | `ollama`                 | `http://localhost:11434/v1`                                |
+| OpenAI                 | `openai`                 | `https://api.openai.com/v1`                                |
+| OpenAI Codex           | `openai_codex`           | `https://chatgpt.com/backend-api`                          |
+| OpenRouter             | `openrouter`             | `https://openrouter.ai/api/v1`                             |
+| OpenVINO Model Server  | `ovms`                   | `http://localhost:8000/v3`                                 |
+| Qianfan                | `qianfan`                | `https://qianfan.baidubce.com/v2`                          |
+| SiliconFlow            | `siliconflow`            | `https://api.siliconflow.cn/v1`                            |
+| Step Fun               | `stepfun`                | `https://api.stepfun.com/v1`                               |
+| vLLM/Local             | `vllm`                   | —                                                          |
+| VolcEngine             | `volcengine`             | `https://ark.cn-beijing.volces.com/api/v3`                 |
+| VolcEngine Coding Plan | `volcengine_coding_plan` | `https://ark.cn-beijing.volces.com/api/coding/v3`          |
+| Xiaomi MIMO            | `xiaomi_mimo`            | `https://api.xiaomimimo.com/v1`                            |
+| Zhipu AI               | `zhipu`                  | `https://open.bigmodel.cn/api/paas/v4`                     |
 
 </details>
 
 <details>
 <summary><b>Supported Embedding Providers</b></summary>
 
-| Provider | Binding | Model Example | Default Dim |
-|:--|:--|:--|:--|
-| OpenAI | `openai` | `text-embedding-3-large` | 3072 |
-| Azure OpenAI | `azure_openai` | deployment name | — |
-| Cohere | `cohere` | `embed-v4.0` | 1024 |
-| Jina | `jina` | `jina-embeddings-v3` | 1024 |
-| Ollama | `ollama` | `nomic-embed-text` | 768 |
-| vLLM / LM Studio | `vllm` | Any embedding model | — |
-| Any OpenAI-compatible | `custom` | — | — |
+| Provider              | Binding        | Model Example            | Default Dim |
+| :-------------------- | :------------- | :----------------------- | :---------- |
+| OpenAI                | `openai`       | `text-embedding-3-large` | 3072        |
+| Azure OpenAI          | `azure_openai` | deployment name          | —           |
+| Cohere                | `cohere`       | `embed-v4.0`             | 1024        |
+| Jina                  | `jina`         | `jina-embeddings-v3`     | 1024        |
+| Ollama                | `ollama`       | `nomic-embed-text`       | 768         |
+| vLLM / LM Studio      | `vllm`         | Any embedding model      | —           |
+| Any OpenAI-compatible | `custom`       | —                        | —           |
 
 OpenAI-compatible providers (DashScope, SiliconFlow, etc.) work via the `custom` or `openai` binding.
 
@@ -242,15 +241,15 @@ OpenAI-compatible providers (DashScope, SiliconFlow, etc.) work via the `custom`
 <details>
 <summary><b>Supported Web Search Providers</b></summary>
 
-| Provider | Env Key | Notes |
-|:--|:--|:--|
-| Brave | `BRAVE_API_KEY` | Recommended, free tier available |
-| Tavily | `TAVILY_API_KEY` | |
-| Serper | `SERPER_API_KEY` | Google Search results via Serper |
-| Jina | `JINA_API_KEY` | |
-| SearXNG | — | Self-hosted, no API key needed |
-| DuckDuckGo | — | No API key needed |
-| Perplexity | `PERPLEXITY_API_KEY` | Requires API key |
+| Provider   | Env Key              | Notes                            |
+| :--------- | :------------------- | :------------------------------- |
+| Brave      | `BRAVE_API_KEY`      | Recommended, free tier available |
+| Tavily     | `TAVILY_API_KEY`     |                                  |
+| Serper     | `SERPER_API_KEY`     | Google Search results via Serper |
+| Jina       | `JINA_API_KEY`       |                                  |
+| SearXNG    | —                    | Self-hosted, no API key needed   |
+| DuckDuckGo | —                    | No API key needed                |
+| Perplexity | `PERPLEXITY_API_KEY` | Requires API key                 |
 
 </details>
 
@@ -274,10 +273,10 @@ python -m deeptutor.api.run_server
 cd web && npm run dev -- -p 3782
 ```
 
-| Service | Default Port |
-|:---:|:---:|
-| Backend | `8001` |
-| Frontend | `3782` |
+| Service  | Default Port |
+| :------: | :----------: |
+| Backend  |    `8001`    |
+| Frontend |    `3782`    |
 
 Open [http://localhost:3782](http://localhost:3782) and you're ready to go.
 
@@ -306,7 +305,7 @@ docker compose -f docker-compose.ghcr.yml up -d
 To pin a specific version, edit the image tag in `docker-compose.ghcr.yml`:
 
 ```yaml
-image: ghcr.io/hkuds/deeptutor:1.0.0  # or :latest
+image: ghcr.io/hkuds/deeptutor:1.0.0 # or :latest
 ```
 
 **2b. Build from source**
@@ -376,10 +375,10 @@ docker compose up -d     # or docker compose -f docker-compose.ghcr.yml up -d
 
 User data and knowledge bases are persisted via Docker volumes mapped to local directories:
 
-| Container path | Host path | Content |
-|:---|:---|:---|
-| `/app/data/user` | `./data/user` | Settings, memory, workspace, sessions, logs |
-| `/app/data/knowledge_bases` | `./data/knowledge_bases` | Uploaded documents & vector indices |
+| Container path              | Host path                | Content                                     |
+| :-------------------------- | :----------------------- | :------------------------------------------ |
+| `/app/data/user`            | `./data/user`            | Settings, memory, workspace, sessions, logs |
+| `/app/data/knowledge_bases` | `./data/knowledge_bases` | Uploaded documents & vector indices         |
 
 These directories survive `docker compose down` and are reused on the next `docker compose up`.
 
@@ -388,23 +387,23 @@ These directories survive `docker compose down` and are reused on the next `dock
 <details>
 <summary><b>Environment variables reference</b></summary>
 
-| Variable | Required | Description |
-|:---|:---:|:---|
-| `LLM_BINDING` | **Yes** | LLM provider (`openai`, `anthropic`, etc.) |
-| `LLM_MODEL` | **Yes** | Model name (e.g. `gpt-4o`) |
-| `LLM_API_KEY` | **Yes** | Your LLM API key |
-| `LLM_HOST` | **Yes** | API endpoint URL |
-| `EMBEDDING_BINDING` | **Yes** | Embedding provider |
-| `EMBEDDING_MODEL` | **Yes** | Embedding model name |
-| `EMBEDDING_API_KEY` | **Yes** | Embedding API key |
-| `EMBEDDING_HOST` | **Yes** | Embedding endpoint |
-| `EMBEDDING_DIMENSION` | **Yes** | Vector dimension |
-| `SEARCH_PROVIDER` | No | Search provider (`tavily`, `jina`, `serper`, `perplexity`, etc.) |
-| `SEARCH_API_KEY` | No | Search API key |
-| `BACKEND_PORT` | No | Backend port (default `8001`) |
-| `FRONTEND_PORT` | No | Frontend port (default `3782`) |
-| `NEXT_PUBLIC_API_BASE_EXTERNAL` | No | Public backend URL for cloud deployment |
-| `DISABLE_SSL_VERIFY` | No | Disable SSL verification (default `false`) |
+| Variable                        | Required | Description                                                      |
+| :------------------------------ | :------: | :--------------------------------------------------------------- |
+| `LLM_BINDING`                   | **Yes**  | LLM provider (`openai`, `anthropic`, etc.)                       |
+| `LLM_MODEL`                     | **Yes**  | Model name (e.g. `gpt-4o`)                                       |
+| `LLM_API_KEY`                   | **Yes**  | Your LLM API key                                                 |
+| `LLM_HOST`                      | **Yes**  | API endpoint URL                                                 |
+| `EMBEDDING_BINDING`             | **Yes**  | Embedding provider                                               |
+| `EMBEDDING_MODEL`               | **Yes**  | Embedding model name                                             |
+| `EMBEDDING_API_KEY`             | **Yes**  | Embedding API key                                                |
+| `EMBEDDING_HOST`                | **Yes**  | Embedding endpoint                                               |
+| `EMBEDDING_DIMENSION`           | **Yes**  | Vector dimension                                                 |
+| `SEARCH_PROVIDER`               |    No    | Search provider (`tavily`, `jina`, `serper`, `perplexity`, etc.) |
+| `SEARCH_API_KEY`                |    No    | Search API key                                                   |
+| `BACKEND_PORT`                  |    No    | Backend port (default `8001`)                                    |
+| `FRONTEND_PORT`                 |    No    | Frontend port (default `3782`)                                   |
+| `NEXT_PUBLIC_API_BASE_EXTERNAL` |    No    | Public backend URL for cloud deployment                          |
+| `DISABLE_SSL_VERIFY`            |    No    | Disable SSL verification (default `false`)                       |
 
 </details>
 
@@ -449,14 +448,14 @@ deeptutor kb create my-kb --doc textbook.pdf     # Build a knowledge base
 
 Six distinct modes coexist in a single workspace, bound by a **unified context management system**. Conversation history, knowledge bases, and references persist across modes — switch between them freely within the same topic, whenever the moment calls for it.
 
-| Mode | What It Does |
-|:---|:---|
-| **Chat** | Fluid, tool-augmented conversation. Choose from RAG retrieval, web search, code execution, deep reasoning, brainstorming, and paper search — mix and match as needed. |
-| **Deep Solve** | Multi-agent problem solving: plan, investigate, solve, and verify — with precise source citations at every step. |
-| **Quiz Generation** | Generate assessments grounded in your knowledge base, with built-in validation. |
-| **Deep Research** | Decompose a topic into subtopics, dispatch parallel research agents across RAG, web, and academic papers, and produce a fully cited report. |
-| **Math Animator** | Turn mathematical concepts into visual animations and storyboards powered by Manim. |
-| **Visualize** | Generate interactive SVG diagrams, Chart.js charts, Mermaid graphs, or self-contained HTML pages from natural language descriptions. |
+| Mode                | What It Does                                                                                                                                                          |
+| :------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Chat**            | Fluid, tool-augmented conversation. Choose from RAG retrieval, web search, code execution, deep reasoning, brainstorming, and paper search — mix and match as needed. |
+| **Deep Solve**      | Multi-agent problem solving: plan, investigate, solve, and verify — with precise source citations at every step.                                                      |
+| **Quiz Generation** | Generate assessments grounded in your knowledge base, with built-in validation.                                                                                       |
+| **Deep Research**   | Decompose a topic into subtopics, dispatch parallel research agents across RAG, web, and academic papers, and produce a fully cited report.                           |
+| **Math Animator**   | Turn mathematical concepts into visual animations and storyboards powered by Manim.                                                                                   |
+| **Visualize**       | Generate interactive SVG diagrams, Chart.js charts, Mermaid graphs, or self-contained HTML pages from natural language descriptions.                                  |
 
 Tools are **decoupled from workflows** — in every mode, you decide which tools to enable, how many to use, or whether to use any at all. The workflow orchestrates the reasoning; the tools are yours to compose.
 
@@ -597,90 +596,90 @@ deeptutor session open <id>                         # Resume in REPL
 
 **Top-level**
 
-| Command | Description |
-|:---|:---|
+| Command                                | Description                                                                                                                |
+| :------------------------------------- | :------------------------------------------------------------------------------------------------------------------------- |
 | `deeptutor run <capability> <message>` | Run any capability in a single turn (`chat`, `deep_solve`, `deep_question`, `deep_research`, `math_animator`, `visualize`) |
-| `deeptutor chat` | Interactive REPL with optional `--capability`, `--tool`, `--kb`, `--language` |
-| `deeptutor serve` | Start the DeepTutor API server |
+| `deeptutor chat`                       | Interactive REPL with optional `--capability`, `--tool`, `--kb`, `--language`                                              |
+| `deeptutor serve`                      | Start the DeepTutor API server                                                                                             |
 
 **`deeptutor bot`**
 
-| Command | Description |
-|:---|:---|
-| `deeptutor bot list` | List all TutorBot instances |
+| Command                     | Description                                                   |
+| :-------------------------- | :------------------------------------------------------------ |
+| `deeptutor bot list`        | List all TutorBot instances                                   |
 | `deeptutor bot create <id>` | Create and start a new bot (`--name`, `--persona`, `--model`) |
-| `deeptutor bot start <id>` | Start a bot |
-| `deeptutor bot stop <id>` | Stop a bot |
+| `deeptutor bot start <id>`  | Start a bot                                                   |
+| `deeptutor bot stop <id>`   | Stop a bot                                                    |
 
 **`deeptutor kb`**
 
-| Command | Description |
-|:---|:---|
-| `deeptutor kb list` | List all knowledge bases |
-| `deeptutor kb info <name>` | Show knowledge base details |
-| `deeptutor kb create <name>` | Create from documents (`--doc`, `--docs-dir`) |
-| `deeptutor kb add <name>` | Add documents incrementally |
-| `deeptutor kb search <name> <query>` | Search a knowledge base |
-| `deeptutor kb set-default <name>` | Set as default KB |
-| `deeptutor kb delete <name>` | Delete a knowledge base (`--force`) |
+| Command                              | Description                                   |
+| :----------------------------------- | :-------------------------------------------- |
+| `deeptutor kb list`                  | List all knowledge bases                      |
+| `deeptutor kb info <name>`           | Show knowledge base details                   |
+| `deeptutor kb create <name>`         | Create from documents (`--doc`, `--docs-dir`) |
+| `deeptutor kb add <name>`            | Add documents incrementally                   |
+| `deeptutor kb search <name> <query>` | Search a knowledge base                       |
+| `deeptutor kb set-default <name>`    | Set as default KB                             |
+| `deeptutor kb delete <name>`         | Delete a knowledge base (`--force`)           |
 
 **`deeptutor memory`**
 
-| Command | Description |
-|:---|:---|
-| `deeptutor memory show [file]` | View memory (`summary`, `profile`, or `all`) |
-| `deeptutor memory clear [file]` | Clear memory (`--force`) |
+| Command                         | Description                                  |
+| :------------------------------ | :------------------------------------------- |
+| `deeptutor memory show [file]`  | View memory (`summary`, `profile`, or `all`) |
+| `deeptutor memory clear [file]` | Clear memory (`--force`)                     |
 
 **`deeptutor session`**
 
-| Command | Description |
-|:---|:---|
-| `deeptutor session list` | List sessions (`--limit`) |
-| `deeptutor session show <id>` | View session messages |
-| `deeptutor session open <id>` | Resume session in REPL |
+| Command                         | Description                  |
+| :------------------------------ | :--------------------------- |
+| `deeptutor session list`        | List sessions (`--limit`)    |
+| `deeptutor session show <id>`   | View session messages        |
+| `deeptutor session open <id>`   | Resume session in REPL       |
 | `deeptutor session rename <id>` | Rename a session (`--title`) |
-| `deeptutor session delete <id>` | Delete a session |
+| `deeptutor session delete <id>` | Delete a session             |
 
 **`deeptutor notebook`**
 
-| Command | Description |
-|:---|:---|
-| `deeptutor notebook list` | List notebooks |
-| `deeptutor notebook create <name>` | Create a notebook (`--description`) |
-| `deeptutor notebook show <id>` | View notebook records |
-| `deeptutor notebook add-md <id> <path>` | Import markdown as record |
-| `deeptutor notebook replace-md <id> <rec> <path>` | Replace a markdown record |
-| `deeptutor notebook remove-record <id> <rec>` | Remove a record |
+| Command                                           | Description                         |
+| :------------------------------------------------ | :---------------------------------- |
+| `deeptutor notebook list`                         | List notebooks                      |
+| `deeptutor notebook create <name>`                | Create a notebook (`--description`) |
+| `deeptutor notebook show <id>`                    | View notebook records               |
+| `deeptutor notebook add-md <id> <path>`           | Import markdown as record           |
+| `deeptutor notebook replace-md <id> <rec> <path>` | Replace a markdown record           |
+| `deeptutor notebook remove-record <id> <rec>`     | Remove a record                     |
 
 **`deeptutor book`**
 
-| Command | Description |
-|:---|:---|
-| `deeptutor book list` | List all books in the workspace |
-| `deeptutor book health <book_id>` | Check KB drift and book health |
+| Command                                         | Description                                   |
+| :---------------------------------------------- | :-------------------------------------------- |
+| `deeptutor book list`                           | List all books in the workspace               |
+| `deeptutor book health <book_id>`               | Check KB drift and book health                |
 | `deeptutor book refresh-fingerprints <book_id>` | Refresh KB fingerprints and clear stale pages |
 
 **`deeptutor config` / `plugin` / `provider`**
 
-| Command | Description |
-|:---|:---|
-| `deeptutor config show` | Print current configuration summary |
-| `deeptutor plugin list` | List registered tools and capabilities |
-| `deeptutor plugin info <name>` | Show tool or capability details |
+| Command                               | Description                                                                                             |
+| :------------------------------------ | :------------------------------------------------------------------------------------------------------ |
+| `deeptutor config show`               | Print current configuration summary                                                                     |
+| `deeptutor plugin list`               | List registered tools and capabilities                                                                  |
+| `deeptutor plugin info <name>`        | Show tool or capability details                                                                         |
 | `deeptutor provider login <provider>` | Provider auth (`openai-codex` OAuth login; `github-copilot` validates an existing Copilot auth session) |
 
 </details>
 
 ## 🗺️ Roadmap
 
-| Status | Milestone |
-|:---:|:---|
-| 🎯 | **Authentication & Login** — Optional login page for public deployments with multi-user support |
-| 🎯 | **Themes & Appearance** — Diverse theme options and customizable UI appearance |
-| 🎯 | **Interaction Improvement** — optimize icon design and interaction details |
-| 🔜 | **Better Memories** — integrating better memory management |
-| 🔜 | **LightRAG Integration** — Integrate [LightRAG](https://github.com/HKUDS/LightRAG) as an advanced knowledge base engine |
-| 🔜 | **Documentation Site** — Comprehensive docs page with guides, API reference, and tutorials |
+| Status | Milestone                                                                                                               |
+| :----: | :---------------------------------------------------------------------------------------------------------------------- |
+|   🎯   | **Authentication & Login** — Optional login page for public deployments with multi-user support                         |
+|   🎯   | **Themes & Appearance** — Diverse theme options and customizable UI appearance                                          |
+|   🎯   | **Interaction Improvement** — optimize icon design and interaction details                                              |
+|   🔜   | **Better Memories** — integrating better memory management                                                              |
+|   🔜   | **LightRAG Integration** — Integrate [LightRAG](https://github.com/HKUDS/LightRAG) as an advanced knowledge base engine |
+|   🔜   | **Documentation Site** — Comprehensive docs page with guides, API reference, and tutorials                              |
 
 > If you find DeepTutor useful, [give us a star](https://github.com/HKUDS/DeepTutor/stargazers) — it helps us keep going!
 
@@ -690,18 +689,17 @@ deeptutor session open <id>                         # Resume in REPL
 
 DeepTutor stands on the shoulders of outstanding open-source projects:
 
-| Project | Role in DeepTutor |
-|:---|:---|
-| [**nanobot**](https://github.com/HKUDS/nanobot) | Ultra-lightweight agent engine powering TutorBot |
-| [**LlamaIndex**](https://github.com/run-llama/llama_index) | RAG pipeline and document indexing backbone |
-| [**ManimCat**](https://github.com/Wing900/ManimCat) | AI-driven math animation generation for Math Animator |
+| Project                                                    | Role in DeepTutor                                     |
+| :--------------------------------------------------------- | :---------------------------------------------------- |
+| [**nanobot**](https://github.com/HKUDS/nanobot)            | Ultra-lightweight agent engine powering TutorBot      |
+| [**LlamaIndex**](https://github.com/run-llama/llama_index) | RAG pipeline and document indexing backbone           |
+| [**ManimCat**](https://github.com/Wing900/ManimCat)        | AI-driven math animation generation for Math Animator |
 
 **From the HKUDS ecosystem:**
 
 | [⚡ LightRAG](https://github.com/HKUDS/LightRAG) | [🤖 AutoAgent](https://github.com/HKUDS/AutoAgent) | [🔬 AI-Researcher](https://github.com/HKUDS/AI-Researcher) | [🧬 nanobot](https://github.com/HKUDS/nanobot) |
-|:---:|:---:|:---:|:---:|
-| Simple & Fast RAG | Zero-Code Agent Framework | Automated Research | Ultra-Lightweight AI Agent |
-
+| :----------------------------------------------: | :------------------------------------------------: | :--------------------------------------------------------: | :--------------------------------------------: |
+|                Simple & Fast RAG                 |             Zero-Code Agent Framework              |                     Automated Research                     |           Ultra-Lightweight AI Agent           |
 
 ## 🤝 Contributing
 
