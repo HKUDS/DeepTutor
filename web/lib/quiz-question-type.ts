@@ -48,7 +48,12 @@ export function resolveChoiceAnswerKey(
 
   const normalizedAnswer = correct.toLowerCase();
   for (const [key, label] of Object.entries(options)) {
-    if (normalizedAnswer === String(label || "").trim().toLowerCase()) {
+    if (
+      normalizedAnswer ===
+      String(label || "")
+        .trim()
+        .toLowerCase()
+    ) {
       return key.toUpperCase();
     }
   }

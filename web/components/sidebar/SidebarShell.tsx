@@ -157,7 +157,7 @@ export function SidebarShell({
             </button>
           </div>
 
-        {/* New chat — visually distinct circular button */}
+          {/* New chat — visually distinct circular button */}
           <button
             onClick={handleNewChat}
             title={t("New Chat") as string}
@@ -167,69 +167,69 @@ export function SidebarShell({
             <Plus size={16} strokeWidth={2.2} />
           </button>
 
-        {/* Subtle divider */}
+          {/* Subtle divider */}
           <div className="my-1.5 h-px w-7 bg-[var(--border)]/40" />
 
-        {/* Primary nav */}
+          {/* Primary nav */}
           <nav className="flex w-full flex-col items-center gap-1 px-1.5">
-          {PRIMARY_NAV.map((item) => {
-            const active = pathname.startsWith(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                title={t(item.label) as string}
-                className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150 ${
-                  active
-                    ? "bg-[var(--background)]/80 text-[var(--foreground)] shadow-sm"
-                    : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
-                }`}
-              >
-                {active && (
-                  <span className="absolute -left-1.5 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-[var(--foreground)]/80" />
-                )}
-                <item.icon size={18} strokeWidth={active ? 2 : 1.6} />
-              </Link>
-            );
-          })}
+            {PRIMARY_NAV.map((item) => {
+              const active = pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  title={t(item.label) as string}
+                  className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150 ${
+                    active
+                      ? "bg-[var(--background)]/80 text-[var(--foreground)] shadow-sm"
+                      : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  {active && (
+                    <span className="absolute -left-1.5 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-[var(--foreground)]/80" />
+                  )}
+                  <item.icon size={18} strokeWidth={active ? 2 : 1.6} />
+                </Link>
+              );
+            })}
           </nav>
 
           <div className="flex-1" />
 
-        {/* Secondary nav + footer */}
+          {/* Secondary nav + footer */}
           <div className="flex w-full flex-col items-center gap-1 px-1.5">
-          <div className="my-1 h-px w-7 bg-[var(--border)]/40" />
-          {SECONDARY_NAV.map((item) => {
-            const active = pathname.startsWith(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                title={t(item.label) as string}
-                className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150 ${
-                  active
-                    ? "bg-[var(--background)]/80 text-[var(--foreground)] shadow-sm"
-                    : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
-                }`}
-              >
-                {active && (
-                  <span className="absolute -left-1.5 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-[var(--foreground)]/80" />
-                )}
-                <item.icon size={18} strokeWidth={active ? 2 : 1.6} />
-              </Link>
-            );
-          })}
-          {footerSlot}
-          <a
-            href={GITHUB_REPO_URL}
-            target="_blank"
-            rel="noreferrer noopener"
-            title="GitHub"
-            aria-label="GitHub"
-            className="mt-1 flex h-9 w-9 items-center justify-center rounded-xl text-[var(--muted-foreground)]/70 transition-colors hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
-          >
-            <Github size={15} strokeWidth={1.6} />
-          </a>
+            <div className="my-1 h-px w-7 bg-[var(--border)]/40" />
+            {SECONDARY_NAV.map((item) => {
+              const active = pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  title={t(item.label) as string}
+                  className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150 ${
+                    active
+                      ? "bg-[var(--background)]/80 text-[var(--foreground)] shadow-sm"
+                      : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  {active && (
+                    <span className="absolute -left-1.5 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-[var(--foreground)]/80" />
+                  )}
+                  <item.icon size={18} strokeWidth={active ? 2 : 1.6} />
+                </Link>
+              );
+            })}
+            {footerSlot}
+            <a
+              href={GITHUB_REPO_URL}
+              target="_blank"
+              rel="noreferrer noopener"
+              title="GitHub"
+              aria-label="GitHub"
+              className="mt-1 flex h-9 w-9 items-center justify-center rounded-xl text-[var(--muted-foreground)]/70 transition-colors hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+            >
+              <Github size={15} strokeWidth={1.6} />
+            </a>
             <VersionBadge collapsed />
           </div>
         </aside>
@@ -268,102 +268,102 @@ export function SidebarShell({
           </button>
         </div>
 
-      {/* Primary nav */}
+        {/* Primary nav */}
         <nav className="px-2 pt-1">
-        <div className="space-y-px">
-          {/* New chat */}
-          <button
-            onClick={handleNewChat}
-            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)]/60 hover:text-[var(--foreground)]"
-          >
-            <Plus size={16} strokeWidth={2} />
-            <span>{t("New Chat")}</span>
-          </button>
+          <div className="space-y-px">
+            {/* New chat */}
+            <button
+              onClick={handleNewChat}
+              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)]/60 hover:text-[var(--foreground)]"
+            >
+              <Plus size={16} strokeWidth={2} />
+              <span>{t("New Chat")}</span>
+            </button>
 
-          {PRIMARY_NAV.map((item) => {
-            const active = pathname.startsWith(item.href);
-            const hasSessionsBelow =
-              item.href === "/chat" &&
-              showSessions &&
-              onSelectSession &&
-              onRenameSession &&
-              onDeleteSession;
-            const hasBots = item.href === "/agents";
-            const hasBooks = item.href === "/book";
-            const hasCoWriterDocs = item.href === "/co-writer";
-            return (
-              <div key={item.href}>
-                <Link
-                  href={item.href}
-                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
-                    active
-                      ? "bg-[var(--background)]/70 font-medium text-[var(--foreground)]"
-                      : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
-                  }`}
-                >
-                  <item.icon size={16} strokeWidth={active ? 1.9 : 1.5} />
-                  <span>{t(item.label)}</span>
-                </Link>
-                {hasSessionsBelow && (
-                  <div
-                    className={`${sessionViewportClassName} overflow-y-auto`}
+            {PRIMARY_NAV.map((item) => {
+              const active = pathname.startsWith(item.href);
+              const hasSessionsBelow =
+                item.href === "/chat" &&
+                showSessions &&
+                onSelectSession &&
+                onRenameSession &&
+                onDeleteSession;
+              const hasBots = item.href === "/agents";
+              const hasBooks = item.href === "/book";
+              const hasCoWriterDocs = item.href === "/co-writer";
+              return (
+                <div key={item.href}>
+                  <Link
+                    href={item.href}
+                    className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
+                      active
+                        ? "bg-[var(--background)]/70 font-medium text-[var(--foreground)]"
+                        : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+                    }`}
                   >
-                    <SessionList
-                      sessions={sessions}
-                      activeSessionId={activeSessionId}
-                      loading={loadingSessions}
-                      onSelect={onSelectSession}
-                      onRename={onRenameSession}
-                      onDelete={onDeleteSession}
-                      compact
-                    />
-                  </div>
-                )}
-                {hasBots && <TutorBotRecent />}
-                {hasCoWriterDocs && <CoWriterRecent />}
-                {hasBooks && <BookRecent />}
-              </div>
-            );
-          })}
-        </div>
+                    <item.icon size={16} strokeWidth={active ? 1.9 : 1.5} />
+                    <span>{t(item.label)}</span>
+                  </Link>
+                  {hasSessionsBelow && (
+                    <div
+                      className={`${sessionViewportClassName} overflow-y-auto`}
+                    >
+                      <SessionList
+                        sessions={sessions}
+                        activeSessionId={activeSessionId}
+                        loading={loadingSessions}
+                        onSelect={onSelectSession}
+                        onRename={onRenameSession}
+                        onDelete={onDeleteSession}
+                        compact
+                      />
+                    </div>
+                  )}
+                  {hasBots && <TutorBotRecent />}
+                  {hasCoWriterDocs && <CoWriterRecent />}
+                  {hasBooks && <BookRecent />}
+                </div>
+              );
+            })}
+          </div>
         </nav>
 
-      {/* Spacer */}
+        {/* Spacer */}
         <div className="flex-1" />
 
-      {/* Secondary nav + footer */}
+        {/* Secondary nav + footer */}
         <div className="border-t border-[var(--border)]/40 px-2 py-2">
-        {SECONDARY_NAV.map((item) => {
-          const active = pathname.startsWith(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
-                active
-                  ? "bg-[var(--background)]/70 font-medium text-[var(--foreground)]"
-                  : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
-              }`}
+          {SECONDARY_NAV.map((item) => {
+            const active = pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
+                  active
+                    ? "bg-[var(--background)]/70 font-medium text-[var(--foreground)]"
+                    : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+                }`}
+              >
+                <item.icon size={16} strokeWidth={active ? 1.9 : 1.5} />
+                <span>{t(item.label)}</span>
+              </Link>
+            );
+          })}
+          {footerSlot}
+          <div className="mt-0.5 flex items-center gap-0.5">
+            <VersionBadge />
+            <a
+              href={GITHUB_REPO_URL}
+              target="_blank"
+              rel="noreferrer noopener"
+              title="GitHub"
+              aria-label="GitHub"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)]/55 transition-colors hover:bg-[var(--background)]/50 hover:text-[var(--muted-foreground)]"
             >
-              <item.icon size={16} strokeWidth={active ? 1.9 : 1.5} />
-              <span>{t(item.label)}</span>
-            </Link>
-          );
-        })}
-        {footerSlot}
-        <div className="mt-0.5 flex items-center gap-0.5">
-          <VersionBadge />
-          <a
-            href={GITHUB_REPO_URL}
-            target="_blank"
-            rel="noreferrer noopener"
-            title="GitHub"
-            aria-label="GitHub"
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)]/55 transition-colors hover:bg-[var(--background)]/50 hover:text-[var(--muted-foreground)]"
-          >
-            <Github size={13} strokeWidth={1.7} />
-          </a>
-        </div>
+              <Github size={13} strokeWidth={1.7} />
+            </a>
+          </div>
         </div>
       </aside>
       {mobileNav}

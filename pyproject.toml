@@ -263,13 +263,10 @@ ignore_errors = true  # Some tools may have dynamic imports
 # ============================================
 [tool.bandit]
 exclude_dirs = ["tests", "scripts"]
-# B101=assert, B311=random, B403/B404=pickle/subprocess imports
+# B101=assert
 # B110=try_except_pass (intentional for non-critical error handling)
-# B104=hardcoded_bind_all_interfaces (required for server binding)
 # B112=try_except_continue (intentional for iteration)
-# B105=hardcoded_password_string (false positive on empty string initialization)
-# B301=pickle (used for internal embedding cache, not untrusted data)
 # B501=request_with_no_cert_validation (opt-in via env var for dev/testing)
 # B603=subprocess_without_shell_equals_true (controlled execution)
 # B202=tarfile_unsafe_members (already using safe_members filter)
-skips = ["B101", "B311", "B403", "B404", "B110", "B104", "B112", "B105", "B301", "B501", "B603", "B202"]
+skips = ["B101", "B110", "B112", "B202", "B501", "B603"]

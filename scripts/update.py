@@ -237,7 +237,9 @@ def analyze_gap(git: Git, target: BranchTarget) -> BranchGap:
 
     diff_stat = ""
     if behind:
-        diff_stat = git.run(["diff", "--stat", "--compact-summary", f"HEAD..{target.remote_ref}"]).stdout
+        diff_stat = git.run(
+            ["diff", "--stat", "--compact-summary", f"HEAD..{target.remote_ref}"]
+        ).stdout
 
     return BranchGap(
         local_sha=local_sha,
@@ -329,11 +331,10 @@ def ensure_safe_to_update(gap: BranchGap) -> None:
 
 def dependency_hints(changed_files: list[str]) -> list[str]:
     hints: list[str] = []
-    if any(
-        path == "pyproject.toml" or path.startswith("requirements/")
-        for path in changed_files
-    ):
-        hints.append('Backend dependencies changed: consider running python -m pip install -e ".[server]"')
+    if any(path == "pyproject.toml" or path.startswith("requirements/") for path in changed_files):
+        hints.append(
+            'Backend dependencies changed: consider running python -m pip install -e ".[server]"'
+        )
     if any(
         path in {"web/package.json", "web/package-lock.json", "web/pnpm-lock.yaml"}
         or path == "web/yarn.lock"

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import time
 from collections.abc import Awaitable, Callable
+import time
 from typing import Any
 
 import httpx
@@ -66,7 +66,9 @@ class GitHubCopilotProvider(OpenAICompatProvider):
             )
 
         timeout = httpx.Timeout(20.0, connect=20.0)
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, trust_env=True) as client:
+        async with httpx.AsyncClient(
+            timeout=timeout, follow_redirects=True, trust_env=True
+        ) as client:
             response = await client.get(
                 DEFAULT_COPILOT_TOKEN_URL,
                 headers={

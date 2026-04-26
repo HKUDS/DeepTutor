@@ -165,9 +165,7 @@ def test_create_coerces_legacy_provider_to_llamaindex(monkeypatch, tmp_path: Pat
     assert manager.config["knowledge_bases"]["kb-legacy"]["rag_provider"] == "llamaindex"
 
 
-def test_create_rejects_invalid_files_before_registering_kb(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_create_rejects_invalid_files_before_registering_kb(monkeypatch, tmp_path: Path) -> None:
     manager = _FakeKBManager(tmp_path / "knowledge_bases")
     monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
     monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", tmp_path / "knowledge_bases")

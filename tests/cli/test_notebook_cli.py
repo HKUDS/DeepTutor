@@ -18,7 +18,8 @@ class FakeNotebookManager:
         self.notebooks: dict[str, dict] = {}
 
     def create_notebook(self, name: str, description: str = "") -> dict:
-        import time, uuid
+        import time
+        import uuid
 
         nb = {
             "id": str(uuid.uuid4())[:8],
@@ -45,7 +46,8 @@ class FakeNotebookManager:
         metadata: dict | None = None,
         kb_name: str | None = None,
     ) -> dict:
-        import time, uuid
+        import time
+        import uuid
 
         record = {
             "id": str(uuid.uuid4())[:8],
@@ -153,10 +155,14 @@ def test_notebook_add_md_custom_title_and_type(monkeypatch, tmp_path: Path) -> N
     result = runner.invoke(
         app,
         [
-            "notebook", "add-md",
-            notebook["id"], str(md_file),
-            "--title", "My Custom Title",
-            "--type", "research",
+            "notebook",
+            "add-md",
+            notebook["id"],
+            str(md_file),
+            "--title",
+            "My Custom Title",
+            "--type",
+            "research",
         ],
     )
 

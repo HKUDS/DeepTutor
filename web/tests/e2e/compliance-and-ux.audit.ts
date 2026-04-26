@@ -84,9 +84,10 @@ test.describe("Compliance :: Accessibility & Semantics", () => {
     const hasHorizontalOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth > window.innerWidth,
     );
-    expect(hasHorizontalOverflow, "Mobile viewport should not overflow on X").toBe(
-      false,
-    );
+    expect(
+      hasHorizontalOverflow,
+      "Mobile viewport should not overflow on X",
+    ).toBe(false);
   });
 
   test("knowledge page keeps its mobile tabs inside the viewport", async ({
@@ -98,7 +99,12 @@ test.describe("Compliance :: Accessibility & Semantics", () => {
     const heading = page.getByRole("heading", { name: "Knowledge" });
     await expect(heading).toBeVisible();
 
-    const tabLabels = ["Knowledge Bases", "Notebooks", "Question Bank", "Skills"];
+    const tabLabels = [
+      "Knowledge Bases",
+      "Notebooks",
+      "Question Bank",
+      "Skills",
+    ];
     const tabBoxes = [];
     for (const label of tabLabels) {
       const tab = page.getByRole("button", { name: label });
@@ -109,12 +115,16 @@ test.describe("Compliance :: Accessibility & Semantics", () => {
     }
 
     const headingBox = await heading.boundingBox();
-    expect(headingBox, "Knowledge heading should have a layout box").not.toBeNull();
+    expect(
+      headingBox,
+      "Knowledge heading should have a layout box",
+    ).not.toBeNull();
 
     for (const { label, box } of tabBoxes) {
-      expect(box.x, `${label} tab should not start off-screen`).toBeGreaterThanOrEqual(
-        0,
-      );
+      expect(
+        box.x,
+        `${label} tab should not start off-screen`,
+      ).toBeGreaterThanOrEqual(0);
       expect(
         box.x + box.width,
         `${label} tab should not extend past the mobile viewport`,
@@ -128,9 +138,10 @@ test.describe("Compliance :: Accessibility & Semantics", () => {
     const hasHorizontalOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth > window.innerWidth,
     );
-    expect(hasHorizontalOverflow, "Knowledge mobile page should not overflow on X").toBe(
-      false,
-    );
+    expect(
+      hasHorizontalOverflow,
+      "Knowledge mobile page should not overflow on X",
+    ).toBe(false);
   });
 });
 

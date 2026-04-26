@@ -177,7 +177,9 @@ def _extract_pdf(data: bytes, filename: str) -> str:
                     raise CorruptDocumentError(
                         f"{filename} is encrypted and cannot be read", filename=filename
                     )
-                pages = [f"--- Page {i} ---\n{page.get_text() or ''}" for i, page in enumerate(doc, 1)]
+                pages = [
+                    f"--- Page {i} ---\n{page.get_text() or ''}" for i, page in enumerate(doc, 1)
+                ]
             return "\n\n".join(pages)
         except CorruptDocumentError:
             raise
@@ -195,7 +197,10 @@ def _extract_pdf(data: bytes, filename: str) -> str:
             raise CorruptDocumentError(
                 f"{filename} is encrypted and cannot be read", filename=filename
             )
-        pages = [f"--- Page {i} ---\n{page.extract_text() or ''}" for i, page in enumerate(reader.pages, 1)]
+        pages = [
+            f"--- Page {i} ---\n{page.extract_text() or ''}"
+            for i, page in enumerate(reader.pages, 1)
+        ]
         return "\n\n".join(pages)
     except CorruptDocumentError:
         raise
@@ -204,14 +209,14 @@ def _extract_pdf(data: bytes, filename: str) -> str:
             f"{filename} is encrypted and cannot be read", filename=filename
         ) from exc
     except Exception as exc:
-        raise CorruptDocumentError(f"{filename}: failed to read PDF ({exc})", filename=filename) from exc
+        raise CorruptDocumentError(
+            f"{filename}: failed to read PDF ({exc})", filename=filename
+        ) from exc
 
 
 def _extract_docx(data: bytes, filename: str) -> str:
     if DocxDocument is None:
-        raise CorruptDocumentError(
-            f"{filename}: python-docx not installed", filename=filename
-        )
+        raise CorruptDocumentError(f"{filename}: python-docx not installed", filename=filename)
     try:
         doc = DocxDocument(io.BytesIO(data))
     except Exception as exc:
@@ -224,9 +229,7 @@ def _extract_docx(data: bytes, filename: str) -> str:
 
 def _extract_xlsx(data: bytes, filename: str) -> str:
     if load_workbook is None:
-        raise CorruptDocumentError(
-            f"{filename}: openpyxl not installed", filename=filename
-        )
+        raise CorruptDocumentError(f"{filename}: openpyxl not installed", filename=filename)
     try:
         wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     except Exception as exc:
@@ -251,9 +254,7 @@ def _extract_xlsx(data: bytes, filename: str) -> str:
 
 def _extract_pptx(data: bytes, filename: str) -> str:
     if PptxPresentation is None:
-        raise CorruptDocumentError(
-            f"{filename}: python-pptx not installed", filename=filename
-        )
+        raise CorruptDocumentError(f"{filename}: python-pptx not installed", filename=filename)
     try:
         prs = PptxPresentation(io.BytesIO(data))
     except Exception as exc:
@@ -348,9 +349,7 @@ def extract_documents_from_records(
             continue
 
         if over_quota:
-            doc_texts.append(
-                f"[File: {filename} — skipped: total attachment quota exceeded]"
-            )
+            doc_texts.append(f"[File: {filename} — skipped: total attachment quota exceeded]")
             record["base64"] = ""
             record["extracted_chars"] = 0
             updated.append(record)
@@ -367,9 +366,7 @@ def extract_documents_from_records(
 
         if total_bytes + len(data) > MAX_TOTAL_DOC_BYTES:
             over_quota = True
-            doc_texts.append(
-                f"[File: {filename} — skipped: total attachment quota exceeded]"
-            )
+            doc_texts.append(f"[File: {filename} — skipped: total attachment quota exceeded]")
             record["base64"] = ""
             record["extracted_chars"] = 0
             updated.append(record)
@@ -389,9 +386,7 @@ def extract_documents_from_records(
 
         remaining_budget = MAX_EXTRACTED_CHARS_TOTAL - total_chars
         if remaining_budget <= 0:
-            doc_texts.append(
-                f"[File: {filename} — skipped: total extracted-text quota exceeded]"
-            )
+            doc_texts.append(f"[File: {filename} — skipped: total extracted-text quota exceeded]")
             record["base64"] = ""
             record["extracted_chars"] = 0
             updated.append(record)

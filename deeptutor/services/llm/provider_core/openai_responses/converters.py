@@ -74,9 +74,7 @@ def convert_user_message(content: Any) -> dict[str, Any]:
             elif item.get("type") == "image_url":
                 url = (item.get("image_url") or {}).get("url")
                 if url:
-                    converted.append(
-                        {"type": "input_image", "image_url": url, "detail": "auto"}
-                    )
+                    converted.append({"type": "input_image", "image_url": url, "detail": "auto"})
         if converted:
             return {"role": "user", "content": converted}
     return {"role": "user", "content": [{"type": "input_text", "text": ""}]}

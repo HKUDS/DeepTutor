@@ -52,9 +52,7 @@ def test_detect_context_window_uses_runtime_default_when_metadata_missing(
         "deeptutor.services.config.context_window_detection._detect_from_models_endpoint",
         _metadata_none,
     )
-    result = asyncio.run(
-        detect_context_window(_config(model="unknown-model", max_tokens=5000))
-    )
+    result = asyncio.run(detect_context_window(_config(model="unknown-model", max_tokens=5000)))
 
     assert result.context_window == 20000
     assert result.source == "default"

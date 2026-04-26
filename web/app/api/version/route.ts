@@ -60,22 +60,24 @@ const FALLBACK_LATEST: LatestVersionPayload = {
   source: "fallback",
 };
 
-let latestCache:
-  | {
-      repo: string;
-      expiresAt: number;
-      payload: LatestVersionPayload;
-    }
-  | null = null;
+let latestCache: {
+  repo: string;
+  expiresAt: number;
+  payload: LatestVersionPayload;
+} | null = null;
 
 function readGitDescribe(): string | null {
   try {
-    return execFileSync("git", ["describe", "--tags", "--always", "--dirty=-dev"], {
-      cwd: process.cwd(),
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 2000,
-    }).trim();
+    return execFileSync(
+      "git",
+      ["describe", "--tags", "--always", "--dirty=-dev"],
+      {
+        cwd: process.cwd(),
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 2000,
+      },
+    ).trim();
   } catch {
     return null;
   }
@@ -84,7 +86,8 @@ function readGitDescribe(): string | null {
 function detectCurrentVersion(): CurrentVersionPayload {
   const detectedAt = new Date().toISOString();
   const gitRaw = readGitDescribe();
-  const envRaw = process.env.APP_VERSION || process.env.NEXT_PUBLIC_APP_VERSION || "";
+  const envRaw =
+    process.env.APP_VERSION || process.env.NEXT_PUBLIC_APP_VERSION || "";
   const raw = gitRaw || envRaw;
   const parsed = parseBuild(raw) ?? unknownBuild(raw);
 

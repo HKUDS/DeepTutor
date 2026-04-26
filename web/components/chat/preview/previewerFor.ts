@@ -68,7 +68,10 @@ const RASTER_IMAGE_EXTS = new Set([
 /** Heuristic: does *source* refer to an image we can render via <img>? */
 function isImage(source: FilePreviewSource, ext: string): boolean {
   if (RASTER_IMAGE_EXTS.has(ext)) return true;
-  if (source.mimeType?.startsWith("image/") && source.mimeType !== "image/svg+xml")
+  if (
+    source.mimeType?.startsWith("image/") &&
+    source.mimeType !== "image/svg+xml"
+  )
     return true;
   if (source.type === "image") return true;
   return false;

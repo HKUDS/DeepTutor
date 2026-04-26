@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 import hashlib
 import json
-from collections.abc import Awaitable, Callable
 from typing import Any
 
 import httpx
 from loguru import logger
 
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, ToolCallRequest
-from deeptutor.services.llm.provider_core.openai_responses import consume_sse, convert_messages, convert_tools
+from deeptutor.services.llm.provider_core.openai_responses import (
+    consume_sse,
+    convert_messages,
+    convert_tools,
+)
 
 DEFAULT_CODEX_URL = "https://chatgpt.com/backend-api/codex/responses"
 DEFAULT_ORIGINATOR = "DeepTutor"
@@ -138,7 +142,9 @@ def _strip_model_prefix(model: str) -> str:
 
 def _build_headers(account_id: Any, token: Any) -> dict[str, str]:
     if not token:
-        raise RuntimeError("OpenAI Codex is not logged in. Run `deeptutor provider login openai-codex`.")
+        raise RuntimeError(
+            "OpenAI Codex is not logged in. Run `deeptutor provider login openai-codex`."
+        )
     headers = {
         "Authorization": f"Bearer {token}",
         "OpenAI-Beta": "responses=experimental",
@@ -163,7 +169,9 @@ async def _request_codex(
         async with client.stream("POST", url, headers=headers, json=body) as response:
             if response.status_code != 200:
                 text = await response.aread()
-                raise RuntimeError(_friendly_error(response.status_code, text.decode("utf-8", "ignore")))
+                raise RuntimeError(
+                    _friendly_error(response.status_code, text.decode("utf-8", "ignore"))
+                )
             return await consume_sse(response, on_content_delta)
 
 

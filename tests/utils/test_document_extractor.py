@@ -12,17 +12,16 @@ from pptx.util import Inches
 import pytest
 
 from deeptutor.utils.document_extractor import (
+    MAX_DOC_BYTES,
+    MAX_EXTRACTED_CHARS_PER_DOC,
     CorruptDocumentError,
     DocumentTooLargeError,
     EmptyDocumentError,
-    MAX_DOC_BYTES,
-    MAX_EXTRACTED_CHARS_PER_DOC,
     UnsupportedDocumentError,
     extract_documents_from_records,
     extract_text_from_bytes,
     is_document_extension,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures — generate office docs on the fly
@@ -175,7 +174,7 @@ class TestExtractTextLike:
             b'<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">'
             b'<circle cx="50" cy="50" r="40" fill="red"/>'
             b'<text x="50" y="55">Hello</text>'
-            b'</svg>'
+            b"</svg>"
         )
         text = extract_text_from_bytes("logo.svg", svg)
         assert "<svg" in text
@@ -267,8 +266,20 @@ class TestExtractDocumentsFromRecords:
         image_b64 = base64.b64encode(b"\x89PNG\r\n\x1a\n").decode()
 
         records = [
-            {"type": "image", "filename": "pic.png", "base64": image_b64, "mime_type": "image/png", "url": ""},
-            {"type": "file", "filename": "note.docx", "base64": docx_b64, "mime_type": "", "url": ""},
+            {
+                "type": "image",
+                "filename": "pic.png",
+                "base64": image_b64,
+                "mime_type": "image/png",
+                "url": "",
+            },
+            {
+                "type": "file",
+                "filename": "note.docx",
+                "base64": docx_b64,
+                "mime_type": "",
+                "url": "",
+            },
         ]
 
         doc_texts, updated = extract_documents_from_records(records)
@@ -284,13 +295,23 @@ class TestExtractDocumentsFromRecords:
         assert updated[1]["extracted_chars"] > 0
 
     def test_unsupported_record_is_passthrough(self) -> None:
-        records = [{"type": "file", "filename": "foo.zip", "base64": "AAAA", "mime_type": "", "url": ""}]
+        records = [
+            {"type": "file", "filename": "foo.zip", "base64": "AAAA", "mime_type": "", "url": ""}
+        ]
         doc_texts, updated = extract_documents_from_records(records)
         assert doc_texts == []
         assert updated[0]["base64"] == "AAAA"  # untouched — not a doc extension
 
     def test_failed_extraction_emits_error_marker(self) -> None:
-        records = [{"type": "file", "filename": "bad.pdf", "base64": base64.b64encode(b"not a pdf").decode(), "mime_type": "", "url": ""}]
+        records = [
+            {
+                "type": "file",
+                "filename": "bad.pdf",
+                "base64": base64.b64encode(b"not a pdf").decode(),
+                "mime_type": "",
+                "url": "",
+            }
+        ]
         doc_texts, updated = extract_documents_from_records(records)
         assert len(doc_texts) == 1
         assert "bad.pdf" in doc_texts[0]
@@ -298,7 +319,15 @@ class TestExtractDocumentsFromRecords:
         assert updated[0]["base64"] == ""  # stripped even on failure
 
     def test_invalid_base64_emits_error_marker(self) -> None:
-        records = [{"type": "file", "filename": "bad.docx", "base64": "!!!not base64!!!", "mime_type": "", "url": ""}]
+        records = [
+            {
+                "type": "file",
+                "filename": "bad.docx",
+                "base64": "!!!not base64!!!",
+                "mime_type": "",
+                "url": "",
+            }
+        ]
         doc_texts, updated = extract_documents_from_records(records)
         # invalid base64 with validate=False may silently decode or emit error — both
         # paths end up as an error marker since resulting bytes won't pass magic check

@@ -57,9 +57,8 @@ export default function FilePreviewDrawer({
 
   // Latch the most recently shown source so the body keeps rendering during
   // the slide-out transition.
-  const [renderedSource, setRenderedSource] = useState<FilePreviewSource | null>(
-    null,
-  );
+  const [renderedSource, setRenderedSource] =
+    useState<FilePreviewSource | null>(null);
   // The HEAVY preview body (markdown / syntax-highlight) is gated on this
   // flag and only mounts AFTER the slide-in finishes. The chat-page's
   // padding-right transition lives on the main thread, and so does
@@ -148,7 +147,9 @@ export default function FilePreviewDrawer({
   const filename = renderedSource?.filename || t("Attachment");
   const spec = docIconFor(filename);
   const HeaderIcon = spec.Icon;
-  const sizeLabel = renderedSource?.size ? formatBytes(renderedSource.size) : "";
+  const sizeLabel = renderedSource?.size
+    ? formatBytes(renderedSource.size)
+    : "";
 
   return (
     <div

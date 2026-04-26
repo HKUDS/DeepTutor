@@ -74,7 +74,6 @@ def _can_import(name: str) -> bool:
         return False
 
 
-
 def _bootstrap() -> None:
     missing = [pip for imp, pip in _BOOTSTRAP_PACKAGES if not _can_import(imp)]
     if not missing:
@@ -98,7 +97,6 @@ def _bootstrap() -> None:
 
 
 _bootstrap()
-
 
 
 def _load_runtime_deps():
@@ -457,7 +455,6 @@ def _node_strategy() -> str:
     return "manual"
 
 
-
 def _get_npm_command() -> str:
     if platform.system().lower() == "windows":
         return "npm.cmd"
@@ -465,7 +462,6 @@ def _get_npm_command() -> str:
     if npm:
         return npm
     return "npm"
-
 
 
 def _install_commands(
@@ -489,13 +485,10 @@ def _install_commands(
                 PROJECT_ROOT,
             )
         )
-    cmds.append(
-        ([*_PIP_CMD, "install", "-e", ".", "--no-deps", *_PIP_PYTHON_ARGS], PROJECT_ROOT)
-    )
+    cmds.append(([*_PIP_CMD, "install", "-e", ".", "--no-deps", *_PIP_PYTHON_ARGS], PROJECT_ROOT))
     if profile.startswith("web"):
         cmds.append(([_get_npm_command(), "install"], PROJECT_ROOT / "web"))
     return cmds
-
 
 
 def _run_cmd(cmd: list[str], cwd: Path) -> None:
@@ -504,7 +497,6 @@ def _run_cmd(cmd: list[str], cwd: Path) -> None:
     result = subprocess.run(cmd, cwd=str(cwd), check=False, shell=use_shell)
     if result.returncode != 0:
         raise RuntimeError(f"Command failed (exit {result.returncode}): {' '.join(cmd)}")
-
 
 
 def _stream_text_kwargs() -> dict[str, object]:
@@ -530,11 +522,9 @@ def _set_language(language: str) -> None:
     _LANG = "zh" if str(language).strip().lower().startswith("zh") else "en"
 
 
-
 def _t(key: str, **kwargs: Any) -> str:
     template = MESSAGES[_LANG].get(key, MESSAGES["en"].get(key, key))
     return template.format(**kwargs)
-
 
 
 def _secret_mask(value: str) -> str:
@@ -543,7 +533,6 @@ def _secret_mask(value: str) -> str:
     if len(value) <= 8:
         return "****"
     return f"{value[:4]}...{value[-4:]}"
-
 
 
 def _save_ui_language(language: str, path: Path = INTERFACE_SETTINGS_PATH) -> None:
@@ -558,7 +547,6 @@ def _save_ui_language(language: str, path: Path = INTERFACE_SETTINGS_PATH) -> No
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-
 def _ensure_env_file(env_path: Path = ENV_PATH, template_path: Path = ENV_EXAMPLE_PATH) -> bool:
     if env_path.exists():
         return False
@@ -570,13 +558,11 @@ def _ensure_env_file(env_path: Path = ENV_PATH, template_path: Path = ENV_EXAMPL
     return True
 
 
-
 def _cleanup_legacy_tour_cache(path: Path = LEGACY_TOUR_CACHE_PATH) -> bool:
     if not path.exists():
         return False
     path.unlink(missing_ok=True)
     return True
-
 
 
 def _prompt_int(prompt: str, default: int) -> int:
@@ -588,15 +574,15 @@ def _prompt_int(prompt: str, default: int) -> int:
             log_warn(f"{prompt}: {value!r} is not a valid integer.")
 
 
-
 def _prompt_secret(prompt: str, default: str) -> str:
     if default:
         log_info(dim(_t("keep_secret")))
     return text_input(prompt, default, secret=True)
 
 
-
-def _enum_options(options: list[tuple[str, str, str]], current: str | None = None) -> list[tuple[str, str, str]]:
+def _enum_options(
+    options: list[tuple[str, str, str]], current: str | None = None
+) -> list[tuple[str, str, str]]:
     normalized_current = str(current or "").strip()
     if not normalized_current:
         return options
@@ -608,13 +594,11 @@ def _enum_options(options: list[tuple[str, str, str]], current: str | None = Non
     return [(normalized_current, current_label, current_desc)] + options
 
 
-
 def _load_provider_metadata():
     from deeptutor.services.config.provider_runtime import EMBEDDING_PROVIDERS
     from deeptutor.services.provider_registry import PROVIDERS, find_by_name
 
     return EMBEDDING_PROVIDERS, find_by_name, PROVIDERS
-
 
 
 # Order in which provider modes are listed in the wizard.
@@ -678,7 +662,6 @@ def _llm_provider_options(current: str | None) -> list[tuple[str, str, str]]:
     return _enum_options(options, current)
 
 
-
 def _embedding_provider_options(current: str | None) -> list[tuple[str, str, str]]:
     embedding_providers, _, _ = _load_provider_metadata()
     common = ["openai", "jina", "cohere", "ollama", "vllm", "azure_openai", "custom"]
@@ -696,7 +679,6 @@ def _embedding_provider_options(current: str | None) -> list[tuple[str, str, str
     return _enum_options(options, current)
 
 
-
 def _search_provider_options(current: str | None) -> list[tuple[str, str, str]]:
     options = [
         (value, label, _t("search_none_desc") if value == "none" else desc)
@@ -705,8 +687,9 @@ def _search_provider_options(current: str | None) -> list[tuple[str, str, str]]:
     return _enum_options(options, current)
 
 
-
-def _default_base_url(binding: str, current_binding: str, current_value: str, fallback: str = "") -> str:
+def _default_base_url(
+    binding: str, current_binding: str, current_value: str, fallback: str = ""
+) -> str:
     if current_value and binding == current_binding:
         return current_value
     embedding_providers, find_by_name, _ = _load_provider_metadata()
@@ -718,12 +701,10 @@ def _default_base_url(binding: str, current_binding: str, current_value: str, fa
     return fallback
 
 
-
 def _default_llm_model(binding: str, current_binding: str, current_model: str) -> str:
     if current_model and binding == current_binding:
         return current_model
     return LLM_MODEL_SUGGESTIONS.get(binding, current_model)
-
 
 
 def _default_embedding_model(binding: str, current_binding: str, current_model: str) -> str:
@@ -736,7 +717,6 @@ def _default_embedding_model(binding: str, current_binding: str, current_model: 
     return EMBEDDING_MODEL_SUGGESTIONS.get(binding, current_model)
 
 
-
 def _default_embedding_dimension(binding: str, current_binding: str, current_value: str) -> str:
     if current_value and binding == current_binding:
         return current_value
@@ -747,7 +727,6 @@ def _default_embedding_dimension(binding: str, current_binding: str, current_val
     return current_value or "3072"
 
 
-
 def _send_dimensions_choice(current_value: str) -> str:
     normalized = str(current_value or "").strip().lower()
     if normalized in {"true", "1", "yes", "on"}:
@@ -756,14 +735,17 @@ def _send_dimensions_choice(current_value: str) -> str:
         default = "false"
     else:
         default = "auto"
-    return select(
-        _t("send_dimensions"),
-        [
-            ("auto", _t("send_dimensions_auto"), ""),
-            ("true", _t("send_dimensions_yes"), ""),
-            ("false", _t("send_dimensions_no"), ""),
-        ],
-    ) or default
+    return (
+        select(
+            _t("send_dimensions"),
+            [
+                ("auto", _t("send_dimensions_auto"), ""),
+                ("true", _t("send_dimensions_yes"), ""),
+                ("false", _t("send_dimensions_no"), ""),
+            ],
+        )
+        or default
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1017,7 +999,6 @@ def _choose_language() -> str:
     return language
 
 
-
 def _configure_ports() -> dict[str, str]:
     step(3, _TOTAL_STEPS, _t("ports_step"))
     summary = get_env_store().as_summary()
@@ -1028,7 +1009,6 @@ def _configure_ports() -> dict[str, str]:
         "BACKEND_PORT": str(backend_port),
         "FRONTEND_PORT": str(frontend_port),
     }
-
 
 
 def _configure_llm() -> dict[str, str]:
@@ -1059,7 +1039,6 @@ def _configure_llm() -> dict[str, str]:
         "LLM_MODEL": model_id,
         "LLM_API_VERSION": api_version,
     }
-
 
 
 def _configure_embedding() -> dict[str, str]:
@@ -1097,7 +1076,6 @@ def _configure_embedding() -> dict[str, str]:
         "EMBEDDING_SEND_DIMENSIONS": "" if send_dimensions == "auto" else send_dimensions,
         "EMBEDDING_API_VERSION": api_version,
     }
-
 
 
 def _configure_search() -> dict[str, str]:
@@ -1143,7 +1121,6 @@ def _configure_search() -> dict[str, str]:
     }
 
 
-
 def _print_review(values: dict[str, str]) -> None:
     step(7, _TOTAL_STEPS, _t("review_step"))
     log_info(
@@ -1174,10 +1151,8 @@ def _print_review(values: dict[str, str]) -> None:
     print()
 
 
-
 def _write_env(values: dict[str, str]) -> None:
     get_env_store().write(values)
-
 
 
 def _tour_banner() -> None:
@@ -1188,7 +1163,6 @@ def _tour_banner() -> None:
             "命令行配置向导。",
         ],
     )
-
 
 
 def run_tour() -> None:
@@ -1232,7 +1206,6 @@ def run_tour() -> None:
     print()
     print(f"  {dim('$')} {_t('next_command')}")
     print()
-
 
 
 def main() -> None:

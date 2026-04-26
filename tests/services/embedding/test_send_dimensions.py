@@ -26,7 +26,6 @@ from deeptutor.services.embedding.adapters.openai_compatible import (
     OpenAICompatibleEmbeddingAdapter,
 )
 
-
 # ---------------------------------------------------------------------------
 # _should_send_dimensions — pure tri-state logic
 # ---------------------------------------------------------------------------

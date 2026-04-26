@@ -145,7 +145,9 @@ async def _detect_from_models_endpoint(
             async with session.get(url, headers=headers) as response:
                 if response.status != 200:
                     if on_log is not None:
-                        on_log(f"`GET {url}` returned HTTP {response.status}; skipping metadata detection.")
+                        on_log(
+                            f"`GET {url}` returned HTTP {response.status}; skipping metadata detection."
+                        )
                     return None
                 payload = await response.json()
     except Exception as exc:

@@ -168,7 +168,9 @@ export const CODE_EXTS: ReadonlySet<string> = new Set(
 export function langForFilename(filename: string): string | null {
   if (!filename) return null;
   const lastSlash = filename.lastIndexOf("/");
-  const base = (lastSlash >= 0 ? filename.slice(lastSlash + 1) : filename).toLowerCase();
+  const base = (
+    lastSlash >= 0 ? filename.slice(lastSlash + 1) : filename
+  ).toLowerCase();
   if (NAMED_FILES[base]) return NAMED_FILES[base];
 
   const dotIdx = base.lastIndexOf(".");

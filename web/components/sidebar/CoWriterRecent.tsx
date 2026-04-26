@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   listCoWriterDocuments,
   type CoWriterDocumentSummary,
@@ -32,20 +32,21 @@ export function CoWriterRecent({
 }: CoWriterRecentProps) {
   const [docs, setDocs] = useState<CoWriterDocumentSummary[]>([]);
   const pathname = usePathname();
-  const limitRef = useRef(limit);
-  limitRef.current = limit;
 
   const refresh = useCallback(async () => {
     try {
       const items = await listCoWriterDocuments();
-      setDocs(items.slice(0, limitRef.current));
+      setDocs(items.slice(0, limit));
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [limit]);
 
   useEffect(() => {
-    void refresh();
+    const timer = window.setTimeout(() => {
+      void refresh();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [refresh, pathname]);
 
   useEffect(() => {

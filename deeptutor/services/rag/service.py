@@ -223,7 +223,9 @@ class RAGService:
             )
             raw = await complete(prompt, system_prompt="You are a search query generator.")
             lines = [
-                l.strip().lstrip("0123456789.-) ") for l in raw.strip().split("\n") if l.strip()
+                line.strip().lstrip("0123456789.-) ")
+                for line in raw.strip().split("\n")
+                if line.strip()
             ]
             return lines[:n] if lines else [context[:200]]
         except Exception:

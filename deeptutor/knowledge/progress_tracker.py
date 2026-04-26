@@ -134,7 +134,9 @@ class ProgressTracker:
                 f.flush()
             temp_progress_file.replace(self.progress_file)
         except Exception as e:
-            _get_logger().warning("Failed to persist progress snapshot for '%s': %s", self.kb_name, e)
+            _get_logger().warning(
+                "Failed to persist progress snapshot for '%s': %s", self.kb_name, e
+            )
 
     def update(
         self,

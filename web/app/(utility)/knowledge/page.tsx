@@ -213,7 +213,8 @@ const DEFAULT_UPLOAD_POLICY: KnowledgeUploadPolicy = {
 };
 
 const formatFileSize = (bytes: number): string => {
-  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  if (bytes >= 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${bytes} B`;
@@ -289,8 +290,9 @@ function KnowledgePageContent() {
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [notebooks, setNotebooks] = useState<NotebookInfo[]>([]);
   const [providers, setProviders] = useState<RAGProvider[]>([]);
-  const [uploadPolicy, setUploadPolicy] =
-    useState<KnowledgeUploadPolicy>(DEFAULT_UPLOAD_POLICY);
+  const [uploadPolicy, setUploadPolicy] = useState<KnowledgeUploadPolicy>(
+    DEFAULT_UPLOAD_POLICY,
+  );
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -325,10 +327,12 @@ function KnowledgePageContent() {
   const uploadFileRef = useRef<HTMLInputElement>(null);
   const createDropDepthRef = useRef(0);
   const uploadDropDepthRef = useRef(0);
-  const [createDropZone, setCreateDropZone] =
-    useState<DropZoneState>(EMPTY_DROP_ZONE_STATE);
-  const [uploadDropZone, setUploadDropZone] =
-    useState<DropZoneState>(EMPTY_DROP_ZONE_STATE);
+  const [createDropZone, setCreateDropZone] = useState<DropZoneState>(
+    EMPTY_DROP_ZONE_STATE,
+  );
+  const [uploadDropZone, setUploadDropZone] = useState<DropZoneState>(
+    EMPTY_DROP_ZONE_STATE,
+  );
 
   const validateFileSelection = useCallback(
     (files: File[]): ValidatedFileSelection => {
@@ -426,7 +430,8 @@ function KnowledgePageContent() {
 
       const depthRef =
         kind === "create" ? createDropDepthRef : uploadDropDepthRef;
-      const setDropZone = kind === "create" ? setCreateDropZone : setUploadDropZone;
+      const setDropZone =
+        kind === "create" ? setCreateDropZone : setUploadDropZone;
 
       depthRef.current += 1;
       const previewFiles = Array.from(event.dataTransfer.items)
@@ -852,7 +857,9 @@ function KnowledgePageContent() {
     source.addEventListener("progress", (event) => {
       if (!kbName) return;
       try {
-        const payload = JSON.parse((event as MessageEvent).data) as ProgressInfo;
+        const payload = JSON.parse(
+          (event as MessageEvent).data,
+        ) as ProgressInfo;
         setProgressMap((prev) => ({ ...prev, [kbName]: payload }));
       } catch {
         // Ignore malformed progress events.
@@ -904,7 +911,10 @@ function KnowledgePageContent() {
     };
   };
 
-  const loadAll = async (options?: { force?: boolean; showSpinner?: boolean }) => {
+  const loadAll = async (options?: {
+    force?: boolean;
+    showSpinner?: boolean;
+  }) => {
     const showSpinner = options?.showSpinner ?? true;
     if (showSpinner) setLoading(true);
     setPageError(null);
@@ -1154,7 +1164,12 @@ function KnowledgePageContent() {
       const data = (await res.json()) as KnowledgeTaskResponse;
       invalidateKnowledgeCaches();
       if (data.task_id) {
-        openTaskLogStream("upload", data.task_id, `Upload to ${targetKb}`, targetKb);
+        openTaskLogStream(
+          "upload",
+          data.task_id,
+          `Upload to ${targetKb}`,
+          targetKb,
+        );
         subscribeProgress(targetKb, data.task_id);
         setProgressMap((prev) => ({
           ...prev,
@@ -1598,8 +1613,12 @@ function KnowledgePageContent() {
                   <button
                     type="button"
                     onClick={() => createFileRef.current?.click()}
-                    onDragEnter={(event) => handleDropZoneEnter("create", event)}
-                    onDragLeave={(event) => handleDropZoneLeave("create", event)}
+                    onDragEnter={(event) =>
+                      handleDropZoneEnter("create", event)
+                    }
+                    onDragLeave={(event) =>
+                      handleDropZoneLeave("create", event)
+                    }
                     onDragOver={(event) => handleDropZoneOver("create", event)}
                     onDrop={(event) => handleDropZoneDrop("create", event)}
                     className={`group flex w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed px-5 py-7 text-center transition-colors ${
@@ -1618,14 +1637,14 @@ function KnowledgePageContent() {
                             ? t("Some dragged files are not supported")
                             : t("Drop files to add them")
                           : newKbFiles.length
-                          ? newKbSelection.invalidFiles.length > 0
-                            ? t("{{count}} invalid files", {
-                                count: newKbSelection.invalidFiles.length,
-                              })
-                            : t("{{count}} files ready", {
-                                count: newKbSelection.validFiles.length,
-                              })
-                          : t("Choose files...")}
+                            ? newKbSelection.invalidFiles.length > 0
+                              ? t("{{count}} invalid files", {
+                                  count: newKbSelection.invalidFiles.length,
+                                })
+                              : t("{{count}} files ready", {
+                                  count: newKbSelection.validFiles.length,
+                                })
+                            : t("Choose files...")}
                       </div>
                       <p className="text-[11px] text-[var(--muted-foreground)]">
                         {createDropZone.active
@@ -1635,8 +1654,8 @@ function KnowledgePageContent() {
                               })
                             : t("Release to attach the files")
                           : newKbFiles.length
-                          ? formatFileSize(newKbSelection.totalBytes)
-                          : t("Click to browse supported documents")}
+                            ? formatFileSize(newKbSelection.totalBytes)
+                            : t("Click to browse supported documents")}
                       </p>
                     </div>
                   </button>
@@ -1662,10 +1681,15 @@ function KnowledgePageContent() {
                     }}
                   />
 
-                  {renderSelectionSummary(newKbSelection, removeNewKbFile, () => {
-                    setNewKbFiles([]);
-                    if (createFileRef.current) createFileRef.current.value = "";
-                  })}
+                  {renderSelectionSummary(
+                    newKbSelection,
+                    removeNewKbFile,
+                    () => {
+                      setNewKbFiles([]);
+                      if (createFileRef.current)
+                        createFileRef.current.value = "";
+                    },
+                  )}
 
                   <button
                     onClick={createKnowledgeBase}
@@ -1768,8 +1792,12 @@ function KnowledgePageContent() {
                   <button
                     type="button"
                     onClick={() => uploadFileRef.current?.click()}
-                    onDragEnter={(event) => handleDropZoneEnter("upload", event)}
-                    onDragLeave={(event) => handleDropZoneLeave("upload", event)}
+                    onDragEnter={(event) =>
+                      handleDropZoneEnter("upload", event)
+                    }
+                    onDragLeave={(event) =>
+                      handleDropZoneLeave("upload", event)
+                    }
                     onDragOver={(event) => handleDropZoneOver("upload", event)}
                     onDrop={(event) => handleDropZoneDrop("upload", event)}
                     className={`group flex w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed px-5 py-7 text-center transition-colors ${
@@ -1788,14 +1816,14 @@ function KnowledgePageContent() {
                             ? t("Some dragged files are not supported")
                             : t("Drop files to add them")
                           : uploadFiles.length
-                          ? uploadSelection.invalidFiles.length > 0
-                            ? t("{{count}} invalid files", {
-                                count: uploadSelection.invalidFiles.length,
-                              })
-                            : t("{{count}} files ready", {
-                                count: uploadSelection.validFiles.length,
-                              })
-                          : t("Choose files...")}
+                            ? uploadSelection.invalidFiles.length > 0
+                              ? t("{{count}} invalid files", {
+                                  count: uploadSelection.invalidFiles.length,
+                                })
+                              : t("{{count}} files ready", {
+                                  count: uploadSelection.validFiles.length,
+                                })
+                            : t("Choose files...")}
                       </div>
                       <p className="text-[11px] text-[var(--muted-foreground)]">
                         {uploadDropZone.active
@@ -1805,8 +1833,8 @@ function KnowledgePageContent() {
                               })
                             : t("Release to attach the files")
                           : uploadFiles.length
-                          ? formatFileSize(uploadSelection.totalBytes)
-                          : t("Click to browse supported documents")}
+                            ? formatFileSize(uploadSelection.totalBytes)
+                            : t("Click to browse supported documents")}
                       </p>
                     </div>
                   </button>
@@ -1828,14 +1856,21 @@ function KnowledgePageContent() {
                     onChange={(event) => {
                       const picked = Array.from(event.target.files || []);
                       event.target.value = "";
-                      setUploadFiles((prev) => mergeSelectedFiles(prev, picked));
+                      setUploadFiles((prev) =>
+                        mergeSelectedFiles(prev, picked),
+                      );
                     }}
                   />
 
-                  {renderSelectionSummary(uploadSelection, removeUploadFile, () => {
-                    setUploadFiles([]);
-                    if (uploadFileRef.current) uploadFileRef.current.value = "";
-                  })}
+                  {renderSelectionSummary(
+                    uploadSelection,
+                    removeUploadFile,
+                    () => {
+                      setUploadFiles([]);
+                      if (uploadFileRef.current)
+                        uploadFileRef.current.value = "";
+                    },
+                  )}
 
                   <button
                     onClick={uploadToKnowledgeBase}
@@ -1977,12 +2012,15 @@ function KnowledgePageContent() {
                               {kb.statistics?.rag_provider || "llamaindex"}
                               {" · "}
                               {embeddingLabel}
-                              {!!progress?.current && !!progress?.total && isLive && (
-                                <>
-                                  {" · "}
-                                  {t("Progress")}: {progress.current}/{progress.total}
-                                </>
-                              )}
+                              {!!progress?.current &&
+                                !!progress?.total &&
+                                isLive && (
+                                  <>
+                                    {" · "}
+                                    {t("Progress")}: {progress.current}/
+                                    {progress.total}
+                                  </>
+                                )}
                             </div>
                           </div>
                         </div>
@@ -2010,15 +2048,23 @@ function KnowledgePageContent() {
                           <span className="font-medium text-[var(--foreground)]">
                             {documentsCount}
                           </span>{" "}
-                          {documentsCount === 1 ? t("document") : t("documents")}
+                          {documentsCount === 1
+                            ? t("document")
+                            : t("documents")}
                         </span>
-                        <span className="h-3 w-px bg-[var(--border)]" aria-hidden />
+                        <span
+                          className="h-3 w-px bg-[var(--border)]"
+                          aria-hidden
+                        />
                         <span>
                           {kb.statistics?.rag_initialized
                             ? t("Vector index ready")
                             : t("Index not ready")}
                         </span>
-                        <span className="h-3 w-px bg-[var(--border)]" aria-hidden />
+                        <span
+                          className="h-3 w-px bg-[var(--border)]"
+                          aria-hidden
+                        />
                         <span>
                           {t("Updated")} {updatedLabel}
                         </span>
@@ -2029,56 +2075,57 @@ function KnowledgePageContent() {
                         </div>
                       )}
 
-                      {(isLive || isError || needsReindex) && activityMessage && (
-                        <div
-                          className={`mt-4 rounded-2xl border p-4 ${
-                            isError
-                              ? "border-red-200 bg-red-50/70 dark:border-red-900/60 dark:bg-red-950/20"
-                              : needsReindex
-                                ? "border-amber-200 bg-amber-50/80 dark:border-amber-900/60 dark:bg-amber-950/20"
-                                : "border-sky-200 bg-sky-50/70 dark:border-sky-900/60 dark:bg-sky-950/20"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
-                              {isError
-                                ? t("Latest activity")
-                                : isLive
-                                  ? t("Live pipeline")
-                                  : t("Action required")}
+                      {(isLive || isError || needsReindex) &&
+                        activityMessage && (
+                          <div
+                            className={`mt-4 rounded-2xl border p-4 ${
+                              isError
+                                ? "border-red-200 bg-red-50/70 dark:border-red-900/60 dark:bg-red-950/20"
+                                : needsReindex
+                                  ? "border-amber-200 bg-amber-50/80 dark:border-amber-900/60 dark:bg-amber-950/20"
+                                  : "border-sky-200 bg-sky-50/70 dark:border-sky-900/60 dark:bg-sky-950/20"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
+                                {isError
+                                  ? t("Latest activity")
+                                  : isLive
+                                    ? t("Live pipeline")
+                                    : t("Action required")}
+                              </div>
+                              {isLive && percent > 0 && (
+                                <div className="text-[12px] font-medium text-[var(--foreground)]">
+                                  {percent}%
+                                </div>
+                              )}
                             </div>
-                            {isLive && percent > 0 && (
-                              <div className="text-[12px] font-medium text-[var(--foreground)]">
-                                {percent}%
+                            <div className="mt-2 text-[13px] text-[var(--foreground)]">
+                              {activityMessage}
+                            </div>
+                            {isLive && (
+                              <div className="mt-3">
+                                <div className="h-1.5 overflow-hidden rounded-full bg-[var(--border)]/70">
+                                  <div
+                                    className="h-full rounded-full bg-[var(--primary)] transition-all duration-300"
+                                    style={{ width: `${percent}%` }}
+                                  />
+                                </div>
                               </div>
                             )}
+                            {isLive &&
+                              progress?.current !== undefined &&
+                              progress?.total !== undefined &&
+                              progress.total > 0 && (
+                                <div className="mt-2 text-[11px] text-[var(--muted-foreground)]">
+                                  {t("Step {{current}} of {{total}}", {
+                                    current: progress.current,
+                                    total: progress.total,
+                                  })}
+                                </div>
+                              )}
                           </div>
-                          <div className="mt-2 text-[13px] text-[var(--foreground)]">
-                            {activityMessage}
-                          </div>
-                          {isLive && (
-                            <div className="mt-3">
-                              <div className="h-1.5 overflow-hidden rounded-full bg-[var(--border)]/70">
-                                <div
-                                  className="h-full rounded-full bg-[var(--primary)] transition-all duration-300"
-                                  style={{ width: `${percent}%` }}
-                                />
-                              </div>
-                            </div>
-                          )}
-                          {isLive &&
-                            progress?.current !== undefined &&
-                            progress?.total !== undefined &&
-                            progress.total > 0 && (
-                              <div className="mt-2 text-[11px] text-[var(--muted-foreground)]">
-                                {t("Step {{current}} of {{total}}", {
-                                  current: progress.current,
-                                  total: progress.total,
-                                })}
-                              </div>
-                            )}
-                        </div>
-                      )}
+                        )}
                     </div>
                   );
                 })}

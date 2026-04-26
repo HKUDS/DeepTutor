@@ -64,7 +64,9 @@ async def test_complete_merges_config_and_caller_extra_headers(monkeypatch) -> N
         captured_config["config"] = config
         return provider
 
-    monkeypatch.setattr("deeptutor.services.llm.factory.get_runtime_provider", _fake_get_runtime_provider)
+    monkeypatch.setattr(
+        "deeptutor.services.llm.factory.get_runtime_provider", _fake_get_runtime_provider
+    )
 
     result = await complete("hello", extra_headers={"X-Caller": "from-caller"})
 
@@ -85,7 +87,9 @@ async def test_stream_merges_config_and_caller_extra_headers(monkeypatch) -> Non
         captured_config["config"] = config
         return provider
 
-    monkeypatch.setattr("deeptutor.services.llm.factory.get_runtime_provider", _fake_get_runtime_provider)
+    monkeypatch.setattr(
+        "deeptutor.services.llm.factory.get_runtime_provider", _fake_get_runtime_provider
+    )
 
     chunks = []
     async for chunk in stream("hello", extra_headers={"X-Caller": "clr"}):

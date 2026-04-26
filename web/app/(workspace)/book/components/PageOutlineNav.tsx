@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   AlignLeft,
@@ -129,11 +129,18 @@ export default function PageOutlineNav({
   const collapseTip = isZh ? COLLAPSE_TIP_ZH : COLLAPSE_TIP_EN;
   const expandTip = isZh ? EXPAND_TIP_ZH : EXPAND_TIP_EN;
 
-  // Default: expanded. Reset whenever the page changes.
-  const [collapsed, setCollapsed] = useState(false);
-  useEffect(() => {
-    setCollapsed(false);
-  }, [resetKey]);
+  const [collapsedState, setCollapsedState] = useState({
+    resetKey,
+    collapsed: false,
+  });
+  const collapsed =
+    collapsedState.resetKey === resetKey ? collapsedState.collapsed : false;
+  const setCollapsed = useCallback(
+    (nextCollapsed: boolean) => {
+      setCollapsedState({ resetKey, collapsed: nextCollapsed });
+    },
+    [resetKey],
+  );
 
   // Track which block is currently in view for active highlight.
   const [activeId, setActiveId] = useState<string | null>(null);

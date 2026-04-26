@@ -600,9 +600,7 @@ class TurnRuntimeManager:
 
             from deeptutor.utils.document_extractor import extract_documents_from_records
 
-            document_texts, attachment_records = extract_documents_from_records(
-                attachment_records
-            )
+            document_texts, attachment_records = extract_documents_from_records(attachment_records)
             attachments = [
                 Attachment(
                     type=r.get("type", "file"),

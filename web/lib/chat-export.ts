@@ -1,4 +1,7 @@
-import type { MessageItem, MessageAttachment } from "@/context/UnifiedChatContext";
+import type {
+  MessageItem,
+  MessageAttachment,
+} from "@/context/UnifiedChatContext";
 
 function roleHeading(role: MessageItem["role"]): string {
   if (role === "user") return "User";

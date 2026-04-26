@@ -46,9 +46,7 @@ def _content_disposition(filename: str, *, disposition: str = "inline") -> str:
     # Quotes / backslashes break the simple-quoted-string form; collapse them.
     ascii_fallback = ascii_fallback.replace('"', "_").replace("\\", "_")
     encoded = quote(filename, safe="")
-    return (
-        f'{disposition}; filename="{ascii_fallback}"; filename*=UTF-8\'\'{encoded}'
-    )
+    return f"{disposition}; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded}"
 
 
 @router.get("/{session_id}/{attachment_id}/{filename:path}")

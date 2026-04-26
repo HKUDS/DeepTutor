@@ -168,9 +168,7 @@ def _save_uploaded_files(
                     except OSError:
                         pass
 
-                error_message = (
-                    f"Validation failed for file '{original_filename}': {format_exception_message(e)}"
-                )
+                error_message = f"Validation failed for file '{original_filename}': {format_exception_message(e)}"
                 logger.error(error_message, exc_info=True)
                 raise HTTPException(status_code=400, detail=error_message) from e
     except Exception:

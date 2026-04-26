@@ -253,7 +253,9 @@ class KnowledgeBaseManager:
             # permanently carrying a "completed" progress banner.
             kb_config.pop("progress", None)
             if progress is not None:
-                kb_config["last_completed_at"] = progress.get("timestamp") or datetime.now().isoformat()
+                kb_config["last_completed_at"] = (
+                    progress.get("timestamp") or datetime.now().isoformat()
+                )
         elif progress is not None:
             kb_config["progress"] = progress
 

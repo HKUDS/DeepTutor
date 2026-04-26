@@ -31,9 +31,7 @@ class _FakeAdapter:
         )()
 
 
-def _build_config(
-    binding: str, *, send_dimensions: bool | None = None
-) -> EmbeddingConfig:
+def _build_config(binding: str, *, send_dimensions: bool | None = None) -> EmbeddingConfig:
     return EmbeddingConfig(
         model="text-embedding-3-small",
         api_key="sk-test",

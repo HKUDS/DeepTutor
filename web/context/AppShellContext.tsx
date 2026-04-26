@@ -58,8 +58,11 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(false);
 
   useEffect(() => {
-    setLanguageState(readStoredLanguage());
-    setSidebarCollapsedState(readStoredSidebarCollapsed());
+    const timer = window.setTimeout(() => {
+      setLanguageState(readStoredLanguage());
+      setSidebarCollapsedState(readStoredSidebarCollapsed());
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {

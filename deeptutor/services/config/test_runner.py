@@ -215,10 +215,7 @@ class ConfigTestRunner:
         )
         run.emit(
             "context_window",
-            (
-                f"Context window set to {detection.context_window} tokens "
-                f"({detection.source})."
-            ),
+            (f"Context window set to {detection.context_window} tokens ({detection.source})."),
             context_window=detection.context_window,
             source=detection.source,
             detail=detection.detail,

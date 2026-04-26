@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import typer
 
 from deeptutor.app import DeepTutorApp
 
 from .common import console, print_notebook_table
-
-from pathlib import Path
 
 
 def register(app: typer.Typer) -> None:

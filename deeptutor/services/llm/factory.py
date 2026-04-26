@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 from collections.abc import AsyncGenerator, Mapping
+import contextlib
 from types import SimpleNamespace
 from typing import Any, TypedDict
 
@@ -184,12 +184,16 @@ def _resolve_call_config(
 
 
 def _capability_binding(config: LLMConfig, provider_spec: Any) -> str:
-    backend = getattr(provider_spec, "backend", "openai_compat") if provider_spec else "openai_compat"
+    backend = (
+        getattr(provider_spec, "backend", "openai_compat") if provider_spec else "openai_compat"
+    )
     if backend == "anthropic":
         return "anthropic"
     if backend == "azure_openai":
         return "azure_openai"
-    return getattr(provider_spec, "name", None) or config.provider_name or config.binding or "openai"
+    return (
+        getattr(provider_spec, "name", None) or config.provider_name or config.binding or "openai"
+    )
 
 
 def _build_messages(
@@ -312,7 +316,9 @@ async def complete(
         image_data=image_data,
     )
     retry_delays = _build_retry_delays(max_retries, retry_delay, exponential_backoff)
-    extra_kwargs = _sanitize_call_kwargs(binding=capability_binding, model=config.model, kwargs=kwargs)
+    extra_kwargs = _sanitize_call_kwargs(
+        binding=capability_binding, model=config.model, kwargs=kwargs
+    )
 
     try:
         response = await provider.chat_with_retry(
@@ -325,7 +331,9 @@ async def complete(
         raise map_error(exc, provider=config.provider_name) from exc
 
     if response.finish_reason == "error":
-        raise map_error(RuntimeError(response.content or "LLM request failed"), provider=config.provider_name)
+        raise map_error(
+            RuntimeError(response.content or "LLM request failed"), provider=config.provider_name
+        )
     return response.content or ""
 
 
@@ -366,7 +374,9 @@ async def stream(
         image_data=image_data,
     )
     retry_delays = _build_retry_delays(max_retries, retry_delay, exponential_backoff)
-    extra_kwargs = _sanitize_call_kwargs(binding=capability_binding, model=config.model, kwargs=kwargs)
+    extra_kwargs = _sanitize_call_kwargs(
+        binding=capability_binding, model=config.model, kwargs=kwargs
+    )
 
     queue: asyncio.Queue[str | BaseException | None] = asyncio.Queue()
     saw_output = False

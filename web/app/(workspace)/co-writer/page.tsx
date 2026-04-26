@@ -154,7 +154,7 @@ export default function CoWriterHomePage() {
             className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:opacity-60"
           >
             <FileText size={13} />
-              <span className="hidden sm:inline">{t("From template")}</span>
+            <span className="hidden sm:inline">{t("From template")}</span>
           </button>
           <button
             type="button"

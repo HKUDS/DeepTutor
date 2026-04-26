@@ -160,7 +160,9 @@ class AzureOpenAIProvider(LLMProvider):
                 stream_iter = stream.__aiter__()
                 while True:
                     try:
-                        yield await asyncio.wait_for(stream_iter.__anext__(), timeout=idle_timeout_s)
+                        yield await asyncio.wait_for(
+                            stream_iter.__anext__(), timeout=idle_timeout_s
+                        )
                     except StopAsyncIteration:
                         break
 

@@ -23,7 +23,12 @@ test("classifyFile: image via MIME", () => {
 
 test("classifyFile: doc via MIME", () => {
   assert.equal(
-    classifyFile(makeFile("a.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")),
+    classifyFile(
+      makeFile(
+        "a.docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ),
+    ),
     "doc",
   );
   assert.equal(classifyFile(makeFile("b.pdf", "application/pdf")), "doc");
@@ -65,7 +70,10 @@ test("docIconFor: SVG gets its own label", () => {
 
 test("classifyFile: rejects unsupported", () => {
   assert.equal(classifyFile(makeFile("a.zip", "application/zip")), null);
-  assert.equal(classifyFile(makeFile("a.exe", "application/x-msdownload")), null);
+  assert.equal(
+    classifyFile(makeFile("a.exe", "application/x-msdownload")),
+    null,
+  );
   assert.equal(classifyFile(makeFile("noext")), null);
 });
 

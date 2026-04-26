@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { CheckCircle2, Eye, EyeOff, XCircle } from "lucide-react";
 
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
@@ -81,23 +81,27 @@ function QuizQuestionCard({
   const correct = String(question.correct_answer || "").trim();
   const correctChoiceKey = resolveChoiceAnswerKey(correct, options);
 
-  useEffect(() => {
-    if (revealed && selected && !reported && onAttempt) {
+  const reportAttempt = (answer: string) => {
+    if (!reported && onAttempt) {
       onAttempt({
         questionId: question.question_id,
-        userAnswer: selected,
-        isCorrect: selected.toUpperCase() === correctChoiceKey,
+        userAnswer: answer,
+        isCorrect: answer.toUpperCase() === correctChoiceKey,
       });
       setReported(true);
     }
-  }, [
-    revealed,
-    selected,
-    reported,
-    onAttempt,
-    question.question_id,
-    correctChoiceKey,
-  ]);
+  };
+
+  const handleSelect = (answer: string) => {
+    setSelected(answer);
+    if (revealed) reportAttempt(answer);
+  };
+
+  const handleRevealToggle = () => {
+    const nextRevealed = !revealed;
+    setRevealed(nextRevealed);
+    if (nextRevealed && selected) reportAttempt(selected);
+  };
 
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-3">
@@ -132,7 +136,7 @@ function QuizQuestionCard({
             return (
               <button
                 key={key}
-                onClick={() => setSelected(upperKey)}
+                onClick={() => handleSelect(upperKey)}
                 className={`flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
                   isCorrect
                     ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-100"
@@ -165,7 +169,7 @@ function QuizQuestionCard({
 
       <div className="mt-3 flex items-center justify-between gap-2">
         <button
-          onClick={() => setRevealed((v) => !v)}
+          onClick={handleRevealToggle}
           className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] px-2.5 py-1 text-xs font-medium text-[var(--muted-foreground)] hover:border-[var(--primary)]/40 hover:text-[var(--primary)]"
         >
           {revealed ? (

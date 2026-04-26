@@ -88,9 +88,7 @@ class AttachmentStore(Protocol):
     async def delete_session(self, session_id: str) -> None:
         """Best-effort cleanup of all attachments for *session_id*."""
 
-    def resolve_path(
-        self, *, session_id: str, attachment_id: str, filename: str
-    ) -> Path | None:
+    def resolve_path(self, *, session_id: str, attachment_id: str, filename: str) -> Path | None:
         """Return the absolute path on disk for an attachment, or ``None``
         if it does not exist or escapes the storage root.
 
@@ -113,9 +111,7 @@ class LocalDiskAttachmentStore:
             if override:
                 root = Path(override).expanduser().resolve()
             else:
-                root = (
-                    get_path_service().get_user_root().joinpath(*_DEFAULT_SUBPATH)
-                ).resolve()
+                root = (get_path_service().get_user_root().joinpath(*_DEFAULT_SUBPATH)).resolve()
         self._root = root
 
     @property
@@ -156,9 +152,7 @@ class LocalDiskAttachmentStore:
         stored = self._stored_filename(attachment_id, filename)
         target = self._safe_join(session_id, stored)
         if target is None:
-            raise ValueError(
-                f"refusing to write attachment outside storage root: {stored!r}"
-            )
+            raise ValueError(f"refusing to write attachment outside storage root: {stored!r}")
 
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._write_sync, target, data)
@@ -205,9 +199,7 @@ class LocalDiskAttachmentStore:
         except OSError as exc:
             logger.warning("failed to clean up attachment dir %s: %s", path, exc)
 
-    def resolve_path(
-        self, *, session_id: str, attachment_id: str, filename: str
-    ) -> Path | None:
+    def resolve_path(self, *, session_id: str, attachment_id: str, filename: str) -> Path | None:
         stored = self._stored_filename(attachment_id, filename)
         target = self._safe_join(session_id, stored)
         if target is None or not target.is_file():

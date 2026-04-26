@@ -4,7 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, BookOpen, Bot, Download, Loader2, Send } from "lucide-react";
+import {
+  ArrowLeft,
+  BookOpen,
+  Bot,
+  Download,
+  Loader2,
+  Send,
+} from "lucide-react";
 import { apiUrl, wsUrl } from "@/lib/api";
 import { firstParam } from "@/lib/route-params";
 import AssistantResponse from "@/components/common/AssistantResponse";
@@ -102,17 +109,14 @@ export default function BotChatPage() {
 
   const handleCloseSaveModal = useCallback(() => setShowSaveModal(false), []);
 
-  const scrollToBottom = useCallback(
-    (behavior: ScrollBehavior = "smooth") => {
-      requestAnimationFrame(() => {
-        scrollRef.current?.scrollTo({
-          top: scrollRef.current.scrollHeight,
-          behavior,
-        });
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior,
       });
-    },
-    [],
-  );
+    });
+  }, []);
 
   useEffect(() => {
     if (!botId) {

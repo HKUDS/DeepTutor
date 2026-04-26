@@ -1312,124 +1312,132 @@ function ProfilesTab({
     [applySoulSelection, hasChanges],
   );
 
-  const saveFile = useCallback(async (
-    mode: "file_only" | "update_template" | "new_template",
-    createTemplateName?: string,
-  ) => {
-    if (!selectedBot) return false;
-    setSaving(true);
-    try {
-      if (activeFile === "SOUL.md") {
-        const content = editor.trim();
-        if (!content) {
-          onToast(t("SOUL.md is empty"));
-          return false;
-        }
-        if (mode === "update_template") {
-          if (!sourceSoulTemplate) {
-            onToast(t("No template selected to update"));
+  const saveFile = useCallback(
+    async (
+      mode: "file_only" | "update_template" | "new_template",
+      createTemplateName?: string,
+    ) => {
+      if (!selectedBot) return false;
+      setSaving(true);
+      try {
+        if (activeFile === "SOUL.md") {
+          const content = editor.trim();
+          if (!content) {
+            onToast(t("SOUL.md is empty"));
             return false;
           }
-          const tplRes = await fetch(
-            apiUrl(`/api/v1/tutorbot/souls/${sourceSoulTemplate.id}`),
-            {
-              method: "PUT",
+          if (mode === "update_template") {
+            if (!sourceSoulTemplate) {
+              onToast(t("No template selected to update"));
+              return false;
+            }
+            const tplRes = await fetch(
+              apiUrl(`/api/v1/tutorbot/souls/${sourceSoulTemplate.id}`),
+              {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  name: sourceSoulTemplate.name,
+                  content: editor,
+                }),
+              },
+            );
+            if (!tplRes.ok) {
+              onToast(t("Failed to update soul template"));
+              return false;
+            }
+            await onReloadSouls();
+            setSelectedSoulId(sourceSoulTemplate.id);
+            setSourceSoulId(sourceSoulTemplate.id);
+          } else if (mode === "new_template") {
+            const rawName = (createTemplateName ?? "").trim();
+            if (!rawName) {
+              onToast(t("Template name is required"));
+              return false;
+            }
+            const baseId = rawName
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/^-|-$/g, "");
+            if (!baseId) {
+              onToast(t("Please choose a name with letters or numbers"));
+              return false;
+            }
+            const existing = new Set(souls.map((s) => s.id));
+            let soulId = baseId;
+            let n = 2;
+            while (existing.has(soulId)) {
+              soulId = `${baseId}-${n}`;
+              n += 1;
+            }
+            const tplRes = await fetch(apiUrl("/api/v1/tutorbot/souls"), {
+              method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                name: sourceSoulTemplate.name,
+                id: soulId,
+                name: rawName,
                 content: editor,
               }),
-            },
-          );
-          if (!tplRes.ok) {
-            onToast(t("Failed to update soul template"));
-            return false;
+            });
+            if (tplRes.status === 409) {
+              onToast(
+                t("A soul with this id already exists, try another name"),
+              );
+              return false;
+            }
+            if (!tplRes.ok) {
+              onToast(t("Failed to save soul template"));
+              return false;
+            }
+            await onReloadSouls();
+            setSelectedSoulId(soulId);
+            setSourceSoulId(soulId);
           }
-          await onReloadSouls();
-          setSelectedSoulId(sourceSoulTemplate.id);
-          setSourceSoulId(sourceSoulTemplate.id);
-        } else if (mode === "new_template") {
-          const rawName = (createTemplateName ?? "").trim();
-          if (!rawName) {
-            onToast(t("Template name is required"));
-            return false;
-          }
-          const baseId = rawName
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-")
-            .replace(/^-|-$/g, "");
-          if (!baseId) {
-            onToast(t("Please choose a name with letters or numbers"));
-            return false;
-          }
-          const existing = new Set(souls.map((s) => s.id));
-          let soulId = baseId;
-          let n = 2;
-          while (existing.has(soulId)) {
-            soulId = `${baseId}-${n}`;
-            n += 1;
-          }
-          const tplRes = await fetch(apiUrl("/api/v1/tutorbot/souls"), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              id: soulId,
-              name: rawName,
-              content: editor,
-            }),
-          });
-          if (tplRes.status === 409) {
-            onToast(t("A soul with this id already exists, try another name"));
-            return false;
-          }
-          if (!tplRes.ok) {
-            onToast(t("Failed to save soul template"));
-            return false;
-          }
-          await onReloadSouls();
-          setSelectedSoulId(soulId);
-          setSourceSoulId(soulId);
         }
-      }
 
-      const res = await fetch(
-        apiUrl(`/api/v1/tutorbot/${selectedBot}/files/${activeFile}`),
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: editor }),
-        },
-      );
-      if (res.ok) {
-        setFiles((prev) => ({ ...prev, [activeFile]: editor }));
-        if (activeFile === "SOUL.md") {
-          const personaRes = await fetch(apiUrl(`/api/v1/tutorbot/${selectedBot}`), {
-            method: "PATCH",
+        const res = await fetch(
+          apiUrl(`/api/v1/tutorbot/${selectedBot}/files/${activeFile}`),
+          {
+            method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ persona: editor }),
-          });
-          if (!personaRes.ok) {
-            onToast(t("SOUL.md saved, but persona sync failed"));
-            return false;
+            body: JSON.stringify({ content: editor }),
+          },
+        );
+        if (res.ok) {
+          setFiles((prev) => ({ ...prev, [activeFile]: editor }));
+          if (activeFile === "SOUL.md") {
+            const personaRes = await fetch(
+              apiUrl(`/api/v1/tutorbot/${selectedBot}`),
+              {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ persona: editor }),
+              },
+            );
+            if (!personaRes.ok) {
+              onToast(t("SOUL.md saved, but persona sync failed"));
+              return false;
+            }
           }
+          onToast(`${activeFile} saved`);
+          return true;
         }
-        onToast(`${activeFile} saved`);
-        return true;
+        return false;
+      } finally {
+        setSaving(false);
       }
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  }, [
-    selectedBot,
-    activeFile,
-    editor,
-    onToast,
-    onReloadSouls,
-    sourceSoulTemplate,
-    souls,
-    t,
-  ]);
+    },
+    [
+      selectedBot,
+      activeFile,
+      editor,
+      onToast,
+      onReloadSouls,
+      sourceSoulTemplate,
+      souls,
+      t,
+    ],
+  );
 
   const handleSaveClick = useCallback(() => {
     if (activeFile !== "SOUL.md") {
@@ -1550,7 +1558,9 @@ function ProfilesTab({
               {activeSoulTemplate && (
                 <span className="text-[11px] text-[var(--muted-foreground)]/70">
                   {hasChanges
-                    ? t('Editing template "{{name}}"', { name: activeSoulTemplate.name })
+                    ? t('Editing template "{{name}}"', {
+                        name: activeSoulTemplate.name,
+                      })
                     : t('Using "{{name}}"', { name: activeSoulTemplate.name })}
                 </span>
               )}

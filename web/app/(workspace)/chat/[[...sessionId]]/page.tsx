@@ -267,7 +267,9 @@ export default function ChatPage() {
   const [previewSource, setPreviewSource] = useState<FilePreviewSource | null>(
     null,
   );
-  const attachmentErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const attachmentErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const [capMenuOpen, setCapMenuOpen] = useState(false);
   const [quizConfig, setQuizConfig] = useState<DeepQuestionFormConfig>({
     ...DEFAULT_QUIZ_CONFIG,
@@ -776,20 +778,17 @@ export default function ChatPage() {
     [attachments],
   );
 
-  const handlePreviewMessageAttachment = useCallback(
-    (a: MessageAttachment) => {
-      setPreviewSource({
-        filename: a.filename || "",
-        mimeType: a.mime_type,
-        type: a.type,
-        url: a.url,
-        base64: a.base64,
-        extractedText: a.extracted_text,
-        id: a.id,
-      });
-    },
-    [],
-  );
+  const handlePreviewMessageAttachment = useCallback((a: MessageAttachment) => {
+    setPreviewSource({
+      filename: a.filename || "",
+      mimeType: a.mime_type,
+      type: a.type,
+      url: a.url,
+      base64: a.base64,
+      extractedText: a.extracted_text,
+      id: a.id,
+    });
+  }, []);
 
   const handleClosePreview = useCallback(() => {
     setPreviewSource(null);

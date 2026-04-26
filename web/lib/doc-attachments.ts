@@ -34,50 +34,128 @@ export const OFFICE_EXTS = [".pdf", ".docx", ".xlsx", ".pptx"] as const;
  */
 export const TEXT_LIKE_EXTS = [
   // Plain text & markup
-  ".txt", ".text", ".log",
-  ".md", ".markdown", ".rst", ".asciidoc",
-  ".html", ".htm", ".xml",
+  ".txt",
+  ".text",
+  ".log",
+  ".md",
+  ".markdown",
+  ".rst",
+  ".asciidoc",
+  ".html",
+  ".htm",
+  ".xml",
   ".svg", // vector image, treated as XML source; rendered via <img> client-side
   // Data & config
-  ".json", ".jsonc", ".json5",
-  ".yaml", ".yml", ".toml", ".csv", ".tsv",
-  ".ini", ".cfg", ".conf", ".env", ".properties",
+  ".json",
+  ".jsonc",
+  ".json5",
+  ".yaml",
+  ".yml",
+  ".toml",
+  ".csv",
+  ".tsv",
+  ".ini",
+  ".cfg",
+  ".conf",
+  ".env",
+  ".properties",
   // Typesetting
-  ".tex", ".latex", ".bib",
+  ".tex",
+  ".latex",
+  ".bib",
   // Stylesheets
-  ".css", ".scss", ".sass", ".less",
+  ".css",
+  ".scss",
+  ".sass",
+  ".less",
   // JavaScript / TypeScript family
-  ".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".jsx", ".tsx",
+  ".js",
+  ".mjs",
+  ".cjs",
+  ".ts",
+  ".mts",
+  ".cts",
+  ".jsx",
+  ".tsx",
   // Web frameworks
-  ".vue", ".svelte",
+  ".vue",
+  ".svelte",
   // Python
   ".py",
   // JVM languages
-  ".java", ".kt", ".kts", ".scala", ".groovy", ".gradle",
+  ".java",
+  ".kt",
+  ".kts",
+  ".scala",
+  ".groovy",
+  ".gradle",
   // Systems
-  ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx",
-  ".cs", ".go", ".rs", ".zig", ".nim",
+  ".c",
+  ".h",
+  ".cpp",
+  ".cc",
+  ".cxx",
+  ".hpp",
+  ".hh",
+  ".hxx",
+  ".cs",
+  ".go",
+  ".rs",
+  ".zig",
+  ".nim",
   // Apple platforms
-  ".swift", ".m", ".mm",
+  ".swift",
+  ".m",
+  ".mm",
   // Scripting
-  ".rb", ".php", ".pl", ".pm", ".lua", ".r", ".jl", ".dart",
+  ".rb",
+  ".php",
+  ".pl",
+  ".pm",
+  ".lua",
+  ".r",
+  ".jl",
+  ".dart",
   // Functional
-  ".hs", ".clj", ".cljs", ".cljc", ".ex", ".exs", ".erl",
-  ".ml", ".mli", ".fs", ".fsx", ".lisp", ".lsp", ".scm", ".rkt",
+  ".hs",
+  ".clj",
+  ".cljs",
+  ".cljc",
+  ".ex",
+  ".exs",
+  ".erl",
+  ".ml",
+  ".mli",
+  ".fs",
+  ".fsx",
+  ".lisp",
+  ".lsp",
+  ".scm",
+  ".rkt",
   // Smart contracts
   ".sol",
   // Shells / editors
-  ".sh", ".bash", ".zsh", ".fish", ".ps1", ".vim",
+  ".sh",
+  ".bash",
+  ".zsh",
+  ".fish",
+  ".ps1",
+  ".vim",
   // Query / IDL
-  ".sql", ".graphql", ".gql", ".proto",
+  ".sql",
+  ".graphql",
+  ".gql",
+  ".proto",
   // Build / infra
-  ".cmake", ".mk", ".tf", ".hcl", ".nginxconf", ".dockerfile",
+  ".cmake",
+  ".mk",
+  ".tf",
+  ".hcl",
+  ".nginxconf",
+  ".dockerfile",
 ] as const;
 
-export const SUPPORTED_DOC_EXTS = [
-  ...OFFICE_EXTS,
-  ...TEXT_LIKE_EXTS,
-] as const;
+export const SUPPORTED_DOC_EXTS = [...OFFICE_EXTS, ...TEXT_LIKE_EXTS] as const;
 
 export const SUPPORTED_DOC_MIMES = new Set<string>([
   // Office
@@ -154,7 +232,8 @@ export function classifyFile(file: File): FileKind | null {
   if (ext === ".svg" || file.type === "image/svg+xml") return "doc";
   if (file.type && file.type.startsWith("image/")) return "image";
   if (file.type && SUPPORTED_DOC_MIMES.has(file.type)) return "doc";
-  if (ext && (SUPPORTED_DOC_EXTS as readonly string[]).includes(ext)) return "doc";
+  if (ext && (SUPPORTED_DOC_EXTS as readonly string[]).includes(ext))
+    return "doc";
   return null;
 }
 
@@ -183,38 +262,111 @@ export interface DocIconSpec {
 // without carrying 50 distinct icons.
 const CODE_EXTS = new Set([
   // JS/TS
-  ".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".jsx", ".tsx",
-  ".vue", ".svelte",
+  ".js",
+  ".mjs",
+  ".cjs",
+  ".ts",
+  ".mts",
+  ".cts",
+  ".jsx",
+  ".tsx",
+  ".vue",
+  ".svelte",
   // Python
   ".py",
   // JVM
-  ".java", ".kt", ".kts", ".scala", ".groovy", ".gradle",
+  ".java",
+  ".kt",
+  ".kts",
+  ".scala",
+  ".groovy",
+  ".gradle",
   // Systems
-  ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx",
-  ".cs", ".go", ".rs", ".zig", ".nim",
+  ".c",
+  ".h",
+  ".cpp",
+  ".cc",
+  ".cxx",
+  ".hpp",
+  ".hh",
+  ".hxx",
+  ".cs",
+  ".go",
+  ".rs",
+  ".zig",
+  ".nim",
   // Apple
-  ".swift", ".m", ".mm",
+  ".swift",
+  ".m",
+  ".mm",
   // Scripting
-  ".rb", ".php", ".pl", ".pm", ".lua", ".r", ".jl", ".dart",
+  ".rb",
+  ".php",
+  ".pl",
+  ".pm",
+  ".lua",
+  ".r",
+  ".jl",
+  ".dart",
   // Functional
-  ".hs", ".clj", ".cljs", ".cljc", ".ex", ".exs", ".erl",
-  ".ml", ".mli", ".fs", ".fsx", ".lisp", ".lsp", ".scm", ".rkt",
+  ".hs",
+  ".clj",
+  ".cljs",
+  ".cljc",
+  ".ex",
+  ".exs",
+  ".erl",
+  ".ml",
+  ".mli",
+  ".fs",
+  ".fsx",
+  ".lisp",
+  ".lsp",
+  ".scm",
+  ".rkt",
   // Smart contracts
   ".sol",
 ]);
 const SHELL_EXTS = new Set([
-  ".sh", ".bash", ".zsh", ".fish", ".ps1", ".vim", ".sql",
+  ".sh",
+  ".bash",
+  ".zsh",
+  ".fish",
+  ".ps1",
+  ".vim",
+  ".sql",
 ]);
 const CONFIG_EXTS = new Set([
-  ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".env", ".properties",
-  ".tf", ".hcl", ".nginxconf", ".cmake", ".mk", ".dockerfile",
+  ".yaml",
+  ".yml",
+  ".toml",
+  ".ini",
+  ".cfg",
+  ".conf",
+  ".env",
+  ".properties",
+  ".tf",
+  ".hcl",
+  ".nginxconf",
+  ".cmake",
+  ".mk",
+  ".dockerfile",
 ]);
 const JSON_EXTS = new Set([".json", ".jsonc", ".json5"]);
 const MARKUP_EXTS = new Set([
-  ".md", ".markdown", ".rst", ".asciidoc",
-  ".html", ".htm", ".xml",
-  ".tex", ".latex", ".bib",
-  ".graphql", ".gql", ".proto",
+  ".md",
+  ".markdown",
+  ".rst",
+  ".asciidoc",
+  ".html",
+  ".htm",
+  ".xml",
+  ".tex",
+  ".latex",
+  ".bib",
+  ".graphql",
+  ".gql",
+  ".proto",
 ]);
 const DATA_EXTS = new Set([".csv", ".tsv"]);
 const STYLE_EXTS = new Set([".css", ".scss", ".sass", ".less"]);
@@ -229,7 +381,11 @@ export function docIconFor(filename: string): DocIconSpec {
     case ".docx":
       return { Icon: FileText, tint: "text-blue-500/80", label: "DOCX" };
     case ".xlsx":
-      return { Icon: FileSpreadsheet, tint: "text-emerald-500/80", label: "XLSX" };
+      return {
+        Icon: FileSpreadsheet,
+        tint: "text-emerald-500/80",
+        label: "XLSX",
+      };
     case ".pptx":
       return { Icon: Presentation, tint: "text-orange-500/80", label: "PPTX" };
     case ".svg":

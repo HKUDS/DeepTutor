@@ -25,6 +25,23 @@ export default function BookChatPanel({
   open,
   onClose,
 }: BookChatPanelProps) {
+  return (
+    <BookChatPanelSession
+      key={book?.id ?? "no-book"}
+      book={book}
+      page={page}
+      open={open}
+      onClose={onClose}
+    />
+  );
+}
+
+function BookChatPanelSession({
+  book,
+  page,
+  open,
+  onClose,
+}: BookChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -38,11 +55,6 @@ export default function BookChatPanel({
       socketRef.current = null;
     };
   }, []);
-
-  useEffect(() => {
-    sessionIdRef.current = null;
-    setMessages([]);
-  }, [book?.id]);
 
   useEffect(() => {
     if (scrollerRef.current) {

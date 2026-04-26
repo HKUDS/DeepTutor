@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import asyncio
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 import json
 from typing import Any
-from collections.abc import Awaitable, Callable, Sequence
 
 from loguru import logger
 

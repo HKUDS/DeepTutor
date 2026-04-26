@@ -40,7 +40,10 @@ test("parseBuild preserves dirty worktree state", () => {
 
 test("parseBuild supports prerelease tags", () => {
   assert.equal(parseBuild("v1.0.0-beta.4")?.tag, "v1.0.0-beta.4");
-  assert.equal(parseBuild("v1.0.0-beta.4-2-gabc1234")?.display, "v1.0.0-beta.4+2");
+  assert.equal(
+    parseBuild("v1.0.0-beta.4-2-gabc1234")?.display,
+    "v1.0.0-beta.4+2",
+  );
 });
 
 test("normalizeVersionTag only returns exact version tags", () => {

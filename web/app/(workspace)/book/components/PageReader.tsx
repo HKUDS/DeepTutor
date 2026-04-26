@@ -131,7 +131,9 @@ export default function PageReader({
             <h1
               className={[
                 "font-semibold leading-tight tracking-tight text-[var(--foreground)] transition-all duration-200",
-                headerCollapsed ? "truncate text-[15px]" : "text-[22px] sm:text-[26px]",
+                headerCollapsed
+                  ? "truncate text-[15px]"
+                  : "text-[22px] sm:text-[26px]",
               ].join(" ")}
               title={page.title || "Untitled chapter"}
             >

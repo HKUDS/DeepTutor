@@ -6,6 +6,7 @@ WebSocket endpoint for real-time problem solving with streaming logs.
 """
 
 import asyncio
+from pathlib import Path
 import re
 from typing import Any
 
