@@ -44,9 +44,9 @@ export default function NotebookRecordPicker({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[85] flex items-center justify-center bg-[var(--background)]/65 p-4 backdrop-blur-md">
-      <div className="surface-card w-full max-w-4xl overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] text-[var(--card-foreground)] shadow-[0_22px_70px_rgba(0,0,0,0.18)]">
-        <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-5 py-4">
+    <div className="fixed inset-0 z-[85] flex items-end justify-center bg-[var(--background)]/65 p-0 backdrop-blur-md sm:items-center sm:p-4">
+      <div className="surface-card flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-2xl border border-[var(--border)] bg-[var(--card)] text-[var(--card-foreground)] shadow-[0_22px_70px_rgba(0,0,0,0.18)] sm:rounded-2xl">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border)] px-4 py-4 sm:px-5">
           <div className="min-w-0">
             <div className="mb-1 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--primary)]">
               <Layers className="h-3 w-3" />
@@ -69,7 +69,7 @@ export default function NotebookRecordPicker({
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="bg-[var(--background)]/40 p-5">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--background)]/40 p-4 sm:p-5">
           <NotebookSelector
             notebooks={notebooks}
             expandedNotebooks={expandedNotebooks}

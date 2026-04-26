@@ -28,7 +28,7 @@ export default function BookSidebar({
   onSelectPage,
 }: BookSidebarProps) {
   return (
-    <aside className="flex h-full w-[232px] flex-col gap-3 border-r border-[var(--border)] bg-[var(--card)]/40 px-3 py-4">
+    <aside className="flex max-h-[42dvh] w-full shrink-0 flex-col gap-3 border-b border-[var(--border)] bg-[var(--card)]/40 px-3 py-3 md:h-full md:max-h-none md:w-[232px] md:border-b-0 md:border-r md:py-4">
       <button
         onClick={onBackToLibrary}
         className="inline-flex items-center gap-1.5 self-start rounded-md px-2 py-1 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
@@ -50,7 +50,7 @@ export default function BookSidebar({
         </div>
       )}
 
-      <section className="flex-1 overflow-y-auto">
+      <section className="min-h-0 flex-1 overflow-y-auto md:overflow-y-auto">
         {pages.length === 0 ? (
           <div className="rounded-md border border-dashed border-[var(--border)] px-2 py-3 text-xs text-[var(--muted-foreground)]">
             Pages will appear here once the spine is confirmed.
@@ -60,12 +60,12 @@ export default function BookSidebar({
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--muted-foreground)]">
               Chapters
             </div>
-            <ul className="space-y-1">
+            <ul className="flex gap-1 overflow-x-auto pb-1 hide-scrollbar md:block md:space-y-1 md:overflow-x-visible md:pb-0">
               {pages.map((page) => {
                 const active = page.id === selectedPageId;
                 const isOverview = page.content_type === "overview";
                 return (
-                  <li key={page.id}>
+                  <li key={page.id} className="min-w-[180px] md:min-w-0">
                     <button
                       onClick={() => onSelectPage?.(page.id)}
                       className={`flex w-full items-start justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs ${

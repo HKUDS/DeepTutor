@@ -295,7 +295,7 @@ const UserMessage = memo(function UserMessage({
 
   return (
     <div key={`${msg.role}-${index}`} className="flex justify-end">
-      <div className="max-w-[75%] space-y-1.5">
+      <div className="max-w-[90%] space-y-1.5 sm:max-w-[75%]">
         <div className="flex justify-end pr-1">
           <span className="text-[10px] tracking-wide text-[var(--muted-foreground)]">
             {t(getModeBadgeLabel(msg.capability))}
@@ -323,7 +323,7 @@ const UserMessage = memo(function UserMessage({
                       width={280}
                       height={192}
                       unoptimized
-                      className="max-h-48 max-w-[280px] rounded-2xl object-contain"
+                      className="max-h-48 max-w-full rounded-2xl object-contain sm:max-w-[280px]"
                     />
                   </button>
                 );
@@ -339,7 +339,7 @@ const UserMessage = memo(function UserMessage({
                 const spec = docIconFor(filename);
                 const Icon = spec.Icon;
                 const cardClass =
-                  "flex h-14 w-[220px] items-center gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--card)] px-2.5 text-left shadow-sm transition-colors hover:border-[var(--primary)]/40 hover:bg-[var(--muted)]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40";
+                  "flex h-14 w-[220px] max-w-full items-center gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--card)] px-2.5 text-left shadow-sm transition-colors hover:border-[var(--primary)]/40 hover:bg-[var(--muted)]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40";
                 return (
                   <button
                     key={`doc-${ai}`}
@@ -368,7 +368,7 @@ const UserMessage = memo(function UserMessage({
               })}
           </div>
         )}
-        <div className="rounded-2xl bg-[var(--secondary)] px-4 py-2.5 text-[14px] leading-relaxed text-[var(--foreground)] shadow-sm">
+        <div className="break-words rounded-2xl bg-[var(--secondary)] px-4 py-2.5 text-[14px] leading-relaxed text-[var(--foreground)] shadow-sm">
           {(() => {
             const snap = msg.requestSnapshot;
             const hasNotebook = Boolean(snap?.notebookReferences?.length);
@@ -654,7 +654,7 @@ export const ChatMessageList = memo(function ChatMessageList({
               onAnswerNow={handleTraceAnswerNow}
             />
             {(showActions || costSummary) && (
-              <div className="mt-2 flex items-center">
+              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
                 {showActions && (
                   <div className="flex gap-2">
                     <RoughActionButton
@@ -672,7 +672,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                   </div>
                 )}
                 {costSummary && (
-                  <div className="ml-auto">
+                  <div className="ml-auto min-w-0">
                     <CostFooter
                       cost={costSummary.total_cost_usd ?? 0}
                       tokens={costSummary.total_tokens ?? 0}

@@ -1509,7 +1509,7 @@ function KnowledgePageContent() {
 
   return (
     <div className="h-full overflow-y-auto bg-[var(--background)] [scrollbar-gutter:stable]">
-      <div className="mx-auto max-w-5xl px-6 py-8 pb-10">
+      <div className="mx-auto max-w-5xl px-4 py-5 pb-10 sm:px-6 sm:py-8">
         {/* Header */}
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>

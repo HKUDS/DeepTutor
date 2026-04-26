@@ -164,7 +164,7 @@ export default function BookChatPanel({
   if (!open) return null;
 
   return (
-    <aside className="flex h-full w-[360px] shrink-0 flex-col border-l border-[var(--border)] bg-[var(--card)]/40 backdrop-blur">
+    <aside className="fixed inset-x-0 top-0 z-[75] flex h-[calc(100dvh_-_72px_-_env(safe-area-inset-bottom))] w-full flex-col border-l border-[var(--border)] bg-[var(--card)]/95 shadow-2xl backdrop-blur md:static md:h-full md:w-[360px] md:shrink-0 md:bg-[var(--card)]/40 md:shadow-none">
       <header className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
           <MessageSquare className="h-4 w-4 text-[var(--primary)]" />
@@ -225,7 +225,7 @@ export default function BookChatPanel({
                 send();
               }
             }}
-            className="flex-1 resize-none rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-sm text-[var(--foreground)] focus:border-[var(--primary)] focus:outline-none"
+            className="flex-1 resize-none rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[16px] text-[var(--foreground)] focus:border-[var(--primary)] focus:outline-none sm:text-sm"
           />
           <button
             type="submit"

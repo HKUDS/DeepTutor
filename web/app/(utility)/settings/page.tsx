@@ -714,7 +714,7 @@ function SettingsPageContent() {
 
   return (
     <div className="h-full overflow-y-auto [scrollbar-gutter:stable]">
-      <div className="mx-auto max-w-[960px] px-6 py-8">
+      <div className="mx-auto max-w-[960px] px-4 py-5 sm:px-6 sm:py-8">
         {/* ── Header ── */}
         <div className="mb-6 flex items-start justify-between">
           <div>
@@ -820,7 +820,7 @@ function SettingsPageContent() {
             </div>
           </div>
 
-          <div className="ml-auto flex items-center gap-4 text-[12px] text-[var(--muted-foreground)]">
+          <div className="ml-0 mt-3 flex w-full flex-wrap items-center gap-x-4 gap-y-2 text-[12px] text-[var(--muted-foreground)] sm:ml-auto sm:mt-0 sm:w-auto">
             <span className="flex items-center gap-1.5">
               <span
                 className={`inline-block h-1.5 w-1.5 rounded-full ${statusDotClass(status?.backend.status === "online", false)}`}
@@ -855,14 +855,14 @@ function SettingsPageContent() {
 
         {/* ── Service Configuration ── */}
         <div className="mb-8">
-          <div className="mb-5 flex items-center justify-between">
-            <div className="flex items-center gap-1">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex max-w-full items-center gap-1 overflow-x-auto hide-scrollbar">
               {(["llm", "embedding", "search"] as const).map((service) => (
                 <button
                   key={service}
                   data-tour={`tour-${service}`}
                   onClick={() => setActiveService(service)}
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
                     activeService === service
                       ? "bg-[var(--muted)] font-medium text-[var(--foreground)]"
                       : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
@@ -876,7 +876,7 @@ function SettingsPageContent() {
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               <button
                 onClick={addProfile}
                 className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)]/50 px-2.5 py-1 text-[12px] text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
@@ -897,7 +897,7 @@ function SettingsPageContent() {
           </div>
 
           {activeProfile ? (
-            <div className="grid grid-cols-[200px_1fr] gap-5">
+            <div className="grid gap-5 lg:grid-cols-[200px_1fr]">
               {/* ── Profile list ── */}
               <div className="space-y-1">
                 {draft.services[activeService].profiles.map((profile) => (

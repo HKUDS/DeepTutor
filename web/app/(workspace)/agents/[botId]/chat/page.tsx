@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Bot, Loader2, Send } from "lucide-react";
+import { ArrowLeft, BookOpen, Bot, Download, Loader2, Send } from "lucide-react";
 import { apiUrl, wsUrl } from "@/lib/api";
 import { firstParam } from "@/lib/route-params";
 import AssistantResponse from "@/components/common/AssistantResponse";
@@ -230,7 +230,7 @@ export default function BotChatPage() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-[var(--border)] px-5 py-3">
+      <div className="flex items-center gap-2 border-b border-[var(--border)] px-4 py-3 sm:gap-3 sm:px-5">
         <button
           onClick={() => router.push("/agents")}
           className="rounded-lg p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
@@ -238,27 +238,32 @@ export default function BotChatPage() {
           <ArrowLeft className="h-4 w-4" />
         </button>
         <Bot className="h-4 w-4 text-[var(--muted-foreground)]" />
-        <span className="text-[14px] font-medium text-[var(--foreground)]">
+        <span className="min-w-0 truncate text-[14px] font-medium text-[var(--foreground)]">
           {bot?.name ?? botId}
         </span>
         {bot?.running && (
           <span className="h-2 w-2 rounded-full bg-emerald-500" />
         )}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
           <button
             onClick={() => setShowSaveModal(true)}
             disabled={!notebookSavePayload}
-            className="rounded-lg border border-[var(--border)]/50 px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[var(--border)]/50 disabled:hover:text-[var(--muted-foreground)]"
+            title={t("Save to Notebook")}
+            aria-label={t("Save to Notebook")}
+            className="inline-flex h-9 w-9 items-center justify-center gap-1.5 rounded-lg border border-[var(--border)]/50 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[var(--border)]/50 disabled:hover:text-[var(--muted-foreground)] sm:h-auto sm:w-auto sm:px-3 sm:py-1.5"
           >
-            {t("Save to Notebook")}
+            <BookOpen className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t("Save to Notebook")}</span>
           </button>
           <button
             onClick={handleDownloadMarkdown}
             disabled={!messages.length}
             title={t("Download chat history as Markdown")}
-            className="rounded-lg border border-[var(--border)]/50 px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[var(--border)]/50 disabled:hover:text-[var(--muted-foreground)]"
+            aria-label={t("Download Markdown")}
+            className="inline-flex h-9 w-9 items-center justify-center gap-1.5 rounded-lg border border-[var(--border)]/50 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[var(--border)]/50 disabled:hover:text-[var(--muted-foreground)] sm:h-auto sm:w-auto sm:px-3 sm:py-1.5"
           >
-            {t("Download Markdown")}
+            <Download className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t("Download Markdown")}</span>
           </button>
         </div>
       </div>
@@ -266,7 +271,7 @@ export default function BotChatPage() {
       {/* Messages */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-5 py-6 [scrollbar-gutter:stable]"
+        className="flex-1 overflow-y-auto px-4 py-5 [scrollbar-gutter:stable] sm:px-5 sm:py-6"
       >
         <div className="mx-auto max-w-[720px] space-y-5">
           {messages.length === 0 && !streaming && (
@@ -289,7 +294,7 @@ export default function BotChatPage() {
               className={msg.role === "user" ? "flex justify-end" : ""}
             >
               {msg.role === "user" ? (
-                <div className="max-w-[80%] rounded-2xl rounded-br-md bg-[var(--primary)] px-4 py-2.5 text-[14px] text-[var(--primary-foreground)]">
+                <div className="max-w-[90%] break-words rounded-2xl rounded-br-md bg-[var(--primary)] px-4 py-2.5 text-[14px] text-[var(--primary-foreground)] sm:max-w-[80%]">
                   {msg.content}
                 </div>
               ) : (
@@ -346,7 +351,7 @@ export default function BotChatPage() {
       </div>
 
       {/* Input */}
-      <div className="border-t border-[var(--border)] px-5 py-3">
+      <div className="border-t border-[var(--border)] px-4 py-3 sm:px-5">
         <div className="mx-auto flex max-w-[720px] items-end gap-2">
           <SimpleComposerInput
             textareaRef={inputRef}

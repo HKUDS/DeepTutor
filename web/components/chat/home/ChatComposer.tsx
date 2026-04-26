@@ -324,7 +324,7 @@ export default memo(function ChatComposer({
   return (
     <div
       ref={composerRef}
-      className={`relative z-20 mx-auto w-full shrink-0 pb-5 ${hasMessages ? "pt-1" : ""}`}
+      className={`relative z-20 mx-auto w-full shrink-0 pb-3 sm:pb-5 ${hasMessages ? "pt-1" : ""}`}
     >
       {hasMessages && (
         <div className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-transparent to-[var(--background)]/72" />
@@ -336,7 +336,7 @@ export default memo(function ChatComposer({
           className="absolute bottom-full left-0 right-0 z-50 mb-1"
         >
           <div className="mx-auto">
-            <div className="w-[280px] rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1.5 shadow-lg backdrop-blur-md">
+            <div className="w-full max-w-[calc(100vw-2rem)] rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1.5 shadow-lg backdrop-blur-md sm:w-[280px]">
               {capabilities.map((cap) => {
                 const Icon = cap.icon;
                 const selected = activeCap.value === cap.value;
@@ -413,7 +413,7 @@ export default memo(function ChatComposer({
           />
 
           {hasReferences && (
-            <div className="px-4 pt-3.5 [&>div]:mb-0">
+            <div className="px-3 pt-3 sm:px-4 sm:pt-3.5 [&>div]:mb-0">
               <ReferenceChips
                 historySessions={selectedHistorySessions}
                 notebookGroups={notebookReferenceGroups}
@@ -440,7 +440,7 @@ export default memo(function ChatComposer({
           />
 
           {!!attachments.length && (
-            <div className="flex flex-wrap gap-2 px-4 pb-2">
+            <div className="flex flex-wrap gap-2 px-3 pb-2 sm:px-4">
               {attachments.map((a, i) => {
                 const previewLabel = t("Preview");
                 const removeLabel = t("Remove attachment");
@@ -529,7 +529,7 @@ export default memo(function ChatComposer({
                       type="button"
                       onClick={() => onPreviewAttachment?.(i)}
                       aria-label={previewLabel}
-                      className="flex h-16 w-[160px] items-center gap-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2.5 text-left transition-colors hover:border-[var(--primary)]/40 hover:bg-[var(--muted)]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
+                      className="flex h-16 w-[160px] max-w-full items-center gap-2.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2.5 text-left transition-colors hover:border-[var(--primary)]/40 hover:bg-[var(--muted)]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
                     >
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[var(--muted)]/60">
                         <Icon
@@ -570,28 +570,30 @@ export default memo(function ChatComposer({
             </div>
           )}
 
-          <div className="border-t border-[var(--border)]/35 px-3 py-2">
-            <div className="flex items-center gap-2">
+          <div className="border-t border-[var(--border)]/35 px-2.5 py-2 sm:px-3">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <button
                 ref={capBtnRef}
                 onClick={() => onSetCapMenuOpen((v) => !v)}
-                className={`inline-flex shrink-0 items-center gap-1.5 py-1.5 px-1 text-[12px] transition-colors ${
+                className={`inline-flex max-w-full shrink-0 items-center gap-1.5 py-1.5 px-1 text-[12px] transition-colors ${
                   capMenuOpen
                     ? "text-[var(--foreground)]"
                     : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
                 }`}
               >
                 <CapIcon size={14} strokeWidth={1.6} />
-                <span className="font-medium">{t(activeCap.label)}</span>
+                <span className="max-w-[9rem] truncate font-medium sm:max-w-none">
+                  {t(activeCap.label)}
+                </span>
                 <ChevronDown
                   size={11}
                   className={`transition-transform ${capMenuOpen ? "rotate-180" : ""}`}
                 />
               </button>
 
-              <div className="h-3.5 w-px bg-[var(--border)]/30" />
+              <div className="hidden h-3.5 w-px bg-[var(--border)]/30 sm:block" />
 
-              <div className="flex min-w-0 flex-1 items-center gap-1">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1 gap-y-1">
                 {isResearchMode ? (
                   <div className="relative flex items-center gap-0.5">
                     <button
@@ -600,14 +602,14 @@ export default memo(function ChatComposer({
                       className="inline-flex shrink-0 items-center gap-1 py-1 px-1.5 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
                     >
                       <Layers size={12} strokeWidth={1.7} />
-                      {t("Sources")}
+                      <span className="hidden sm:inline">{t("Sources")}</span>
                       <ChevronDown
                         size={10}
                         className={`transition-transform ${toolMenuOpen ? "rotate-180" : ""}`}
                       />
                     </button>
                     {researchConfig.sources.length > 0 && (
-                      <div className="flex items-center gap-[3px] overflow-hidden">
+                      <div className="hidden items-center gap-[3px] overflow-hidden sm:flex">
                         {researchSources
                           .filter((rs) =>
                             researchConfig.sources.includes(rs.name),
@@ -630,7 +632,7 @@ export default memo(function ChatComposer({
                     {toolMenuOpen && (
                       <div
                         ref={toolMenuRef}
-                        className="absolute bottom-full left-0 z-50 mb-1.5 min-w-[180px] rounded-lg border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
+                        className="absolute bottom-full left-0 z-50 mb-1.5 min-w-[180px] max-w-[calc(100vw-2rem)] rounded-lg border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
                       >
                         {researchSources.map((source) => {
                           const active = researchConfig.sources.includes(
@@ -670,14 +672,14 @@ export default memo(function ChatComposer({
                       className="inline-flex shrink-0 items-center gap-1 py-1 px-1.5 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
                     >
                       <Sparkles size={12} strokeWidth={1.7} />
-                      {t("Tools")}
+                      <span className="hidden sm:inline">{t("Tools")}</span>
                       <ChevronDown
                         size={10}
                         className={`transition-transform ${toolMenuOpen ? "rotate-180" : ""}`}
                       />
                     </button>
                     {selectedTools.size > 0 && (
-                      <div className="flex items-center gap-[3px] overflow-hidden">
+                      <div className="hidden items-center gap-[3px] overflow-hidden sm:flex">
                         {visibleTools
                           .filter((vt) => selectedTools.has(vt.name))
                           .map((vt, i) => (
@@ -698,7 +700,7 @@ export default memo(function ChatComposer({
                     {toolMenuOpen && (
                       <div
                         ref={toolMenuRef}
-                        className="absolute bottom-full left-0 z-50 mb-1.5 min-w-[180px] rounded-lg border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
+                        className="absolute bottom-full left-0 z-50 mb-1.5 min-w-[180px] max-w-[calc(100vw-2rem)] rounded-lg border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
                       >
                         {visibleTools.map((tool) => {
                           const active = selectedTools.has(tool.name);
@@ -736,7 +738,7 @@ export default memo(function ChatComposer({
                   className="inline-flex shrink-0 items-center gap-1 py-1 px-1.5 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
                 >
                   <Paperclip size={12} strokeWidth={1.7} />
-                  {t("Attach")}
+                  <span className="hidden sm:inline">{t("Attach")}</span>
                 </button>
 
                 <div className="relative flex items-center gap-0.5">
@@ -746,7 +748,7 @@ export default memo(function ChatComposer({
                     className="inline-flex shrink-0 items-center gap-1 py-1 px-1.5 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
                   >
                     <AtSign size={12} strokeWidth={1.7} />
-                    {t("Reference")}
+                    <span className="hidden sm:inline">{t("Reference")}</span>
                     <ChevronDown
                       size={10}
                       className={`transition-transform ${refMenuOpen ? "rotate-180" : ""}`}
@@ -764,7 +766,7 @@ export default memo(function ChatComposer({
                   {refMenuOpen && (
                     <div
                       ref={refMenuRef}
-                      className="absolute bottom-full left-0 z-50 mb-1.5 min-w-[180px] rounded-lg border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
+                      className="absolute bottom-full left-0 z-50 mb-1.5 min-w-[180px] max-w-[calc(100vw-2rem)] rounded-lg border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
                     >
                       <button
                         onClick={() => {
@@ -829,14 +831,14 @@ export default memo(function ChatComposer({
                       className="inline-flex shrink-0 items-center gap-1 py-1 px-1.5 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
                     >
                       <Wand2 size={12} strokeWidth={1.7} />
-                      {t("Skills")}
+                      <span className="hidden sm:inline">{t("Skills")}</span>
                       <ChevronDown
                         size={10}
                         className={`transition-transform ${skillMenuOpen ? "rotate-180" : ""}`}
                       />
                     </button>
                     {(skillsAutoMode || selectedSkills.length > 0) && (
-                      <div className="flex items-center gap-[3px] overflow-hidden">
+                      <div className="hidden items-center gap-[3px] overflow-hidden sm:flex">
                         {skillsAutoMode ? (
                           <span className="shrink-0 text-[10px] text-[var(--muted-foreground)]/35">
                             {t("Auto")}
@@ -861,7 +863,7 @@ export default memo(function ChatComposer({
                     {skillMenuOpen && (
                       <div
                         ref={skillMenuRef}
-                        className="absolute bottom-full left-0 z-50 mb-1.5 max-h-[280px] min-w-[220px] overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
+                        className="absolute bottom-full left-0 z-50 mb-1.5 max-h-[280px] min-w-[220px] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
                       >
                         <button
                           onClick={() => onSetSkillsAuto(!skillsAutoMode)}
@@ -926,10 +928,10 @@ export default memo(function ChatComposer({
                       ? t("Select Knowledge Base")
                       : t("Enable Knowledge Base source first")
                   }
-                  className={`h-[28px] appearance-none rounded-full border bg-transparent py-0 pl-2.5 pr-5 text-[11px] outline-none transition-colors ${
+                  className={`h-[28px] max-w-[140px] appearance-none rounded-full border bg-transparent py-0 pl-2.5 pr-5 text-[11px] outline-none transition-colors ${
                     ragActive
                       ? "cursor-pointer border-[var(--border)]/40 text-[var(--muted-foreground)] hover:border-[var(--border)] hover:text-[var(--foreground)]"
-                      : "cursor-not-allowed border-transparent text-[var(--border)]"
+                      : "hidden cursor-not-allowed border-transparent text-[var(--border)] sm:block"
                   }`}
                   style={{
                     backgroundImage: ragActive

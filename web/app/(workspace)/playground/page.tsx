@@ -1851,7 +1851,7 @@ export default function PlaygroundPage() {
 
   return (
     <div className="min-h-screen bg-[var(--background)]">
-      <div className="mx-auto max-w-5xl px-6 py-8">
+      <div className="mx-auto max-w-5xl px-4 py-5 sm:px-6 sm:py-8">
         <div className="mb-6">
           <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)]">
             {t("Playground")}
@@ -1870,13 +1870,13 @@ export default function PlaygroundPage() {
         ) : (
           <div className="space-y-5">
             {/* Tab bar */}
-            <div className="inline-flex rounded-lg border border-[var(--border)] bg-[var(--muted)] p-0.5">
+            <div className="inline-flex max-w-full overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--muted)] p-0.5 hide-scrollbar">
               <button
                 onClick={() => {
                   setActiveKind("tool");
                   if (tools.length) setActiveName(tools[0].name);
                 }}
-                className={`rounded-md px-3.5 py-1.5 text-[13px] font-medium transition-all ${activeKind === "tool" ? "bg-[var(--card)] text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
+                className={`shrink-0 rounded-md px-3.5 py-1.5 text-[13px] font-medium transition-all ${activeKind === "tool" ? "bg-[var(--card)] text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
               >
                 {t("Tools")}
               </button>
@@ -1886,7 +1886,7 @@ export default function PlaygroundPage() {
                   if (capabilityCatalog.length)
                     setActiveName(capabilityCatalog[0].name);
                 }}
-                className={`rounded-md px-3.5 py-1.5 text-[13px] font-medium transition-all ${activeKind === "capability" ? "bg-[var(--card)] text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
+                className={`shrink-0 rounded-md px-3.5 py-1.5 text-[13px] font-medium transition-all ${activeKind === "capability" ? "bg-[var(--card)] text-[var(--foreground)] shadow-sm" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
               >
                 {t("Capabilities")}
               </button>

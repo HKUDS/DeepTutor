@@ -111,7 +111,7 @@ export default function AgentsPage() {
 
   return (
     <div className="h-full overflow-y-auto [scrollbar-gutter:stable]">
-      <div className="mx-auto max-w-[960px] px-6 py-8">
+      <div className="mx-auto max-w-[960px] px-4 py-5 sm:px-6 sm:py-8">
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-[24px] font-semibold tracking-tight text-[var(--foreground)]">
@@ -129,7 +129,7 @@ export default function AgentsPage() {
         </div>
 
         {/* Tabs */}
-        <div className="mb-6 flex items-center gap-1 border-b border-[var(--border)]/50 pb-3">
+        <div className="mb-6 flex items-center gap-1 overflow-x-auto border-b border-[var(--border)]/50 pb-3 hide-scrollbar">
           {[
             { key: "bots" as Tab, label: t("Bots"), icon: Bot },
             { key: "profiles" as Tab, label: t("Profiles"), icon: FileText },
@@ -142,7 +142,7 @@ export default function AgentsPage() {
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
                   active
                     ? "bg-[var(--muted)] font-medium text-[var(--foreground)]"
                     : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"

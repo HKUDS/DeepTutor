@@ -192,7 +192,7 @@ export default function NotebookPage() {
 
   return (
     <div className="h-full overflow-y-auto [scrollbar-gutter:stable]">
-      <div className="mx-auto max-w-[960px] px-6 py-8">
+      <div className="mx-auto max-w-[960px] px-4 py-5 sm:px-6 sm:py-8">
         {/* Header */}
         <div className="mb-6 flex items-start justify-between">
           <div>

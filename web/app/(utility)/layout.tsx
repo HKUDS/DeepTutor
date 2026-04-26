@@ -6,9 +6,9 @@ export default function UtilityLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-[100dvh] overflow-hidden">
       <UtilitySidebar />
-      <main className="flex-1 overflow-hidden bg-[var(--background)]">
+      <main className="min-w-0 flex-1 overflow-hidden bg-[var(--background)] pb-[calc(72px+env(safe-area-inset-bottom))] md:pb-0">
         {children}
       </main>
     </div>

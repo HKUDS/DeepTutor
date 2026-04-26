@@ -61,7 +61,7 @@ export const SimpleComposerInput = memo(function SimpleComposerInput({
       placeholder={t("Type a message...")}
       rows={1}
       disabled={disabled}
-      className="flex-1 resize-none rounded-xl border border-[var(--border)] bg-transparent px-4 py-2.5 text-[14px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--ring)] disabled:opacity-50 placeholder:text-[var(--muted-foreground)]/40"
+      className="flex-1 resize-none rounded-xl border border-[var(--border)] bg-transparent px-4 py-2.5 text-[16px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--ring)] disabled:opacity-50 placeholder:text-[var(--muted-foreground)]/40 sm:text-[14px]"
       style={{ minHeight: 42 }}
     />
   );

@@ -132,7 +132,7 @@ export default function CoWriterHomePage() {
 
   return (
     <div className="flex h-full min-h-full flex-col overflow-hidden bg-[var(--background)]">
-      <header className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-6 py-3">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3">
           <PenLine size={18} className="text-[var(--muted-foreground)]" />
           <div>
@@ -144,20 +144,24 @@ export default function CoWriterHomePage() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
             onClick={() => handleCreate(true)}
             disabled={creating}
+            title={t("From template")}
+            aria-label={t("From template")}
             className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:opacity-60"
           >
             <FileText size={13} />
-            {t("From template")}
+              <span className="hidden sm:inline">{t("From template")}</span>
           </button>
           <button
             type="button"
             onClick={() => handleCreate(false)}
             disabled={creating}
+            title={t("New draft")}
+            aria-label={t("New draft")}
             className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
           >
             {creating ? (
@@ -165,12 +169,12 @@ export default function CoWriterHomePage() {
             ) : (
               <Plus size={13} />
             )}
-            {t("New draft")}
+            <span className="hidden sm:inline">{t("New draft")}</span>
           </button>
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-6 py-6">
+      <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
         {error ? (
           <div className="mb-4 rounded-md border border-rose-300/30 bg-rose-50/40 px-3 py-2 text-xs text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">
             {error}

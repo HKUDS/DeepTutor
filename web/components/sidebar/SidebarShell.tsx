@@ -87,49 +87,91 @@ export function SidebarShell({
     router.push("/chat");
   };
 
+  const mobileNav = (
+    <nav
+      data-mobile-nav="true"
+      aria-label={t("Primary navigation")}
+      className="fixed inset-x-0 bottom-0 z-[70] border-t border-[var(--border)]/70 bg-[var(--card)]/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-10px_30px_rgba(0,0,0,0.08)] backdrop-blur md:hidden"
+    >
+      <div className="mx-auto flex max-w-3xl items-center gap-1 overflow-x-auto px-2 py-1.5 hide-scrollbar">
+        <button
+          type="button"
+          onClick={handleNewChat}
+          className="flex min-w-[62px] flex-col items-center justify-center gap-0.5 rounded-xl px-2 py-1.5 text-[10px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+          aria-label={t("New Chat")}
+        >
+          <Plus size={17} strokeWidth={2} />
+          <span>{t("New")}</span>
+        </button>
+        {[...PRIMARY_NAV, ...SECONDARY_NAV].map((item) => {
+          const active = pathname.startsWith(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex min-w-[62px] flex-col items-center justify-center gap-0.5 rounded-xl px-2 py-1.5 text-[10px] font-medium transition-colors ${
+                active
+                  ? "bg-[var(--primary)]/10 text-[var(--primary)]"
+                  : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+              }`}
+              aria-current={active ? "page" : undefined}
+            >
+              <item.icon size={17} strokeWidth={active ? 2 : 1.7} />
+              <span className="max-w-full truncate">{t(item.label)}</span>
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
+
   /* ---- Collapsed state ---- */
   if (collapsed) {
     return (
-      <aside className="group/sb relative flex h-screen w-[60px] shrink-0 flex-col items-center bg-[var(--secondary)] py-3 transition-all duration-200">
-        {/* Header: logo + collapse toggle (toggle replaces logo on hover) */}
-        <div className="relative mb-2 flex h-9 w-9 items-center justify-center">
-          <Link
-            href="/"
-            aria-label="DeepTutor"
-            className="flex items-center justify-center transition-opacity duration-150 group-hover/sb:opacity-0"
-          >
-            <Image
-              src="/logo-ver2.png"
-              alt="DeepTutor"
-              width={22}
-              height={22}
-              className="h-[22px] w-[22px] rounded-md"
-            />
-          </Link>
-          <button
-            onClick={() => setCollapsed(false)}
-            className="absolute inset-0 flex items-center justify-center rounded-lg text-[var(--muted-foreground)] opacity-0 transition-all duration-150 hover:bg-[var(--background)]/60 hover:text-[var(--foreground)] group-hover/sb:opacity-100"
-            aria-label={t("Expand sidebar")}
-          >
-            <PanelLeftOpen size={16} />
-          </button>
-        </div>
+      <>
+        <aside
+          data-sidebar-shell="true"
+          className="group/sb relative hidden h-[100dvh] w-[60px] shrink-0 flex-col items-center bg-[var(--secondary)] py-3 transition-all duration-200 md:flex"
+        >
+          {/* Header: logo + collapse toggle (toggle replaces logo on hover) */}
+          <div className="relative mb-2 flex h-9 w-9 items-center justify-center">
+            <Link
+              href="/"
+              aria-label="DeepTutor"
+              className="flex items-center justify-center transition-opacity duration-150 group-hover/sb:opacity-0"
+            >
+              <Image
+                src="/logo-ver2.png"
+                alt="DeepTutor"
+                width={22}
+                height={22}
+                className="h-[22px] w-[22px] rounded-md"
+              />
+            </Link>
+            <button
+              onClick={() => setCollapsed(false)}
+              className="absolute inset-0 flex items-center justify-center rounded-lg text-[var(--muted-foreground)] opacity-0 transition-all duration-150 hover:bg-[var(--background)]/60 hover:text-[var(--foreground)] group-hover/sb:opacity-100"
+              aria-label={t("Expand sidebar")}
+            >
+              <PanelLeftOpen size={16} />
+            </button>
+          </div>
 
         {/* New chat — visually distinct circular button */}
-        <button
-          onClick={handleNewChat}
-          title={t("New Chat") as string}
-          className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border)]/50 bg-[var(--background)]/40 text-[var(--foreground)] shadow-sm transition-all duration-150 hover:border-[var(--border)] hover:bg-[var(--background)]/80"
-          aria-label={t("New Chat")}
-        >
-          <Plus size={16} strokeWidth={2.2} />
-        </button>
+          <button
+            onClick={handleNewChat}
+            title={t("New Chat") as string}
+            className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border)]/50 bg-[var(--background)]/40 text-[var(--foreground)] shadow-sm transition-all duration-150 hover:border-[var(--border)] hover:bg-[var(--background)]/80"
+            aria-label={t("New Chat")}
+          >
+            <Plus size={16} strokeWidth={2.2} />
+          </button>
 
         {/* Subtle divider */}
-        <div className="my-1.5 h-px w-7 bg-[var(--border)]/40" />
+          <div className="my-1.5 h-px w-7 bg-[var(--border)]/40" />
 
         {/* Primary nav */}
-        <nav className="flex w-full flex-col items-center gap-1 px-1.5">
+          <nav className="flex w-full flex-col items-center gap-1 px-1.5">
           {PRIMARY_NAV.map((item) => {
             const active = pathname.startsWith(item.href);
             return (
@@ -150,12 +192,12 @@ export function SidebarShell({
               </Link>
             );
           })}
-        </nav>
+          </nav>
 
-        <div className="flex-1" />
+          <div className="flex-1" />
 
         {/* Secondary nav + footer */}
-        <div className="flex w-full flex-col items-center gap-1 px-1.5">
+          <div className="flex w-full flex-col items-center gap-1 px-1.5">
           <div className="my-1 h-px w-7 bg-[var(--border)]/40" />
           {SECONDARY_NAV.map((item) => {
             const active = pathname.startsWith(item.href);
@@ -188,40 +230,46 @@ export function SidebarShell({
           >
             <Github size={15} strokeWidth={1.6} />
           </a>
-          <VersionBadge collapsed />
-        </div>
-      </aside>
+            <VersionBadge collapsed />
+          </div>
+        </aside>
+        {mobileNav}
+      </>
     );
   }
 
   /* ---- Expanded state ---- */
   return (
-    <aside className="flex w-[220px] h-screen shrink-0 flex-col bg-[var(--secondary)] transition-all duration-200">
-      {/* Header: logo + collapse toggle */}
-      <div className="flex h-14 items-center justify-between px-4">
-        <Link href="/" className="group flex items-center gap-2">
-          <Image
-            src="/logo-ver2.png"
-            alt="DeepTutor"
-            width={22}
-            height={22}
-            className="h-[22px] w-[22px] transition-transform duration-200 group-hover:scale-105"
-          />
-          <span className="text-[16px] font-semibold leading-none tracking-[-0.02em] text-[var(--foreground)]">
-            DeepTutor
-          </span>
-        </Link>
-        <button
-          onClick={() => setCollapsed(true)}
-          className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-          aria-label={t("Collapse sidebar")}
-        >
-          <PanelLeftClose size={15} />
-        </button>
-      </div>
+    <>
+      <aside
+        data-sidebar-shell="true"
+        className="hidden h-[100dvh] w-[220px] shrink-0 flex-col bg-[var(--secondary)] transition-all duration-200 md:flex"
+      >
+        {/* Header: logo + collapse toggle */}
+        <div className="flex h-14 items-center justify-between px-4">
+          <Link href="/" className="group flex items-center gap-2">
+            <Image
+              src="/logo-ver2.png"
+              alt="DeepTutor"
+              width={22}
+              height={22}
+              className="h-[22px] w-[22px] transition-transform duration-200 group-hover:scale-105"
+            />
+            <span className="text-[16px] font-semibold leading-none tracking-[-0.02em] text-[var(--foreground)]">
+              DeepTutor
+            </span>
+          </Link>
+          <button
+            onClick={() => setCollapsed(true)}
+            className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+            aria-label={t("Collapse sidebar")}
+          >
+            <PanelLeftClose size={15} />
+          </button>
+        </div>
 
       {/* Primary nav */}
-      <nav className="px-2 pt-1">
+        <nav className="px-2 pt-1">
         <div className="space-y-px">
           {/* New chat */}
           <button
@@ -278,13 +326,13 @@ export function SidebarShell({
             );
           })}
         </div>
-      </nav>
+        </nav>
 
       {/* Spacer */}
-      <div className="flex-1" />
+        <div className="flex-1" />
 
       {/* Secondary nav + footer */}
-      <div className="border-t border-[var(--border)]/40 px-2 py-2">
+        <div className="border-t border-[var(--border)]/40 px-2 py-2">
         {SECONDARY_NAV.map((item) => {
           const active = pathname.startsWith(item.href);
           return (
@@ -316,7 +364,9 @@ export function SidebarShell({
             <Github size={13} strokeWidth={1.7} />
           </a>
         </div>
-      </div>
-    </aside>
+        </div>
+      </aside>
+      {mobileNav}
+    </>
   );
 }

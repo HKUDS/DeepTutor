@@ -155,7 +155,7 @@ export default function FilePreviewDrawer({
       role="dialog"
       aria-hidden={!visible}
       aria-label={t("File preview: {{name}}", { name: filename })}
-      className={`fixed right-0 top-0 z-[90] flex h-full w-[min(560px,92vw)] flex-col border-l border-[var(--border)] bg-[var(--card)] shadow-2xl transition-transform ease-out ${
+      className={`fixed right-0 top-0 z-[90] flex h-[100dvh] w-full flex-col border-l border-[var(--border)] bg-[var(--card)] shadow-2xl transition-transform ease-out sm:w-[min(560px,92vw)] ${
         visible ? "translate-x-0" : "translate-x-full"
       }`}
       style={{

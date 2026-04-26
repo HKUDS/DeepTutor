@@ -6,16 +6,19 @@ import { useParams, useRouter } from "next/navigation";
 
 import {
   BarChart3,
+  BookOpen,
   BrainCircuit,
   Clapperboard,
   Code2,
   Database,
+  Download,
   FileSearch,
   Globe,
   Lightbulb,
   MessageSquare,
   Microscope,
   PenLine,
+  Plus,
   Sparkles,
   type LucideIcon,
 } from "lucide-react";
@@ -1069,42 +1072,50 @@ export default function ChatPage() {
       data-preview-open={previewSource ? "true" : "false"}
       className="chat-preview-shell flex h-full flex-col overflow-hidden bg-[var(--background)]"
     >
-      <div className="mx-auto flex w-full max-w-[960px] items-center justify-between px-6 pt-3 pb-0">
-        <span className="text-[15px] font-semibold tracking-[-0.01em] text-[var(--foreground)]">
+      <div className="mx-auto flex w-full max-w-[960px] items-center justify-between gap-3 px-4 pt-2 pb-0 sm:px-6 sm:pt-3">
+        <span className="min-w-0 truncate text-[15px] font-semibold tracking-[-0.01em] text-[var(--foreground)]">
           {t(activeCap.label)}
         </span>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <button
             onClick={() => setShowSaveModal(true)}
             disabled={!chatSavePayload}
-            className="rounded-lg border border-[var(--border)]/50 px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[var(--border)]/50 disabled:hover:text-[var(--muted-foreground)]"
+            title={t("Save to Notebook")}
+            aria-label={t("Save to Notebook")}
+            className="inline-flex h-9 w-9 items-center justify-center gap-1.5 rounded-lg border border-[var(--border)]/50 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[var(--border)]/50 disabled:hover:text-[var(--muted-foreground)] sm:h-auto sm:w-auto sm:px-3 sm:py-1.5"
           >
-            {t("Save to Notebook")}
+            <BookOpen className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t("Save to Notebook")}</span>
           </button>
           <button
             onClick={handleDownloadMarkdown}
             disabled={!state.messages.length}
             title={t("Download chat history as Markdown")}
-            className="rounded-lg border border-[var(--border)]/50 px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[var(--border)]/50 disabled:hover:text-[var(--muted-foreground)]"
+            aria-label={t("Download Markdown")}
+            className="inline-flex h-9 w-9 items-center justify-center gap-1.5 rounded-lg border border-[var(--border)]/50 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[var(--border)]/50 disabled:hover:text-[var(--muted-foreground)] sm:h-auto sm:w-auto sm:px-3 sm:py-1.5"
           >
-            {t("Download Markdown")}
+            <Download className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t("Download Markdown")}</span>
           </button>
           <button
             onClick={handleNewChat}
-            className="rounded-lg border border-[var(--border)]/50 px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
+            title={t("New chat")}
+            aria-label={t("New chat")}
+            className="inline-flex h-9 w-9 items-center justify-center gap-1.5 rounded-lg border border-[var(--border)]/50 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] sm:h-auto sm:w-auto sm:px-3 sm:py-1.5"
           >
-            {t("New chat")}
+            <Plus className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t("New chat")}</span>
           </button>
         </div>
       </div>
-      <div className="mx-auto flex w-full max-w-[960px] flex-1 min-h-0 flex-col overflow-hidden px-6">
+      <div className="mx-auto flex w-full max-w-[960px] flex-1 min-h-0 flex-col overflow-hidden px-4 sm:px-6">
         {!hasMessages ? (
           <div className="flex flex-1 min-h-0 flex-col items-center justify-center animate-fade-in">
             <div className="text-center">
-              <h1 className="font-serif text-[36px] font-medium tracking-[-0.01em] text-[var(--foreground)]">
+              <h1 className="font-serif text-[28px] font-medium tracking-[-0.01em] text-[var(--foreground)] sm:text-[36px]">
                 {t("What would you like to learn?")}
               </h1>
-              <p className="mt-4 text-[15px] text-[var(--muted-foreground)]">
+              <p className="mt-3 text-[14px] text-[var(--muted-foreground)] sm:mt-4 sm:text-[15px]">
                 {t("Ask anything — I'm here to help you understand.")}
               </p>
             </div>
@@ -1114,7 +1125,7 @@ export default function ChatPage() {
             ref={messagesContainerRef}
             data-chat-scroll-root="true"
             onScroll={handleMessagesScroll}
-            className={`mx-auto w-full flex-1 min-h-0 space-y-7 overflow-y-auto pr-4 [scrollbar-gutter:stable] ${hasMessages ? "pt-0" : "pt-2 pb-6"}`}
+            className={`mx-auto w-full flex-1 min-h-0 space-y-6 overflow-y-auto pr-2 [scrollbar-gutter:stable] sm:space-y-7 sm:pr-4 ${hasMessages ? "pt-0" : "pt-2 pb-6"}`}
             style={
               hasMessages
                 ? (() => {

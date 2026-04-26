@@ -172,7 +172,7 @@ export const ComposerInput = memo(
     }, [setInputBoth, onInputChange, onSelectQuestionBankPicker]);
 
     return (
-      <div className="px-4 pt-3.5 pb-2">
+      <div className="px-3 pt-3 pb-2 sm:px-4 sm:pt-3.5">
         <AtMentionPopup
           open={showAtPopup}
           onSelectNotebook={handleSelectNotebook}
@@ -195,7 +195,7 @@ export const ComposerInput = memo(
                 ? t("Describe the chart or diagram you want to visualize...")
                 : t("How can I help you today?")
           }
-          className="w-full resize-none overflow-hidden bg-transparent text-[15px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
+          className="w-full resize-none overflow-hidden bg-transparent text-[16px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] sm:text-[15px]"
           style={{ transition: "height 0.15s ease-out", minHeight: 28 }}
         />
       </div>

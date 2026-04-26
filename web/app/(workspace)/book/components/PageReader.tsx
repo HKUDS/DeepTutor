@@ -123,7 +123,7 @@ export default function PageReader({
       <header
         className={[
           "border-b border-[var(--border)] bg-[var(--card)]/60 backdrop-blur transition-all duration-200 ease-out",
-          headerCollapsed ? "px-8 py-2" : "px-8 py-5",
+          headerCollapsed ? "px-4 py-2 sm:px-8" : "px-4 py-4 sm:px-8 sm:py-5",
         ].join(" ")}
       >
         <div className="mx-auto flex w-full max-w-[78ch] items-start justify-between gap-3">
@@ -131,7 +131,7 @@ export default function PageReader({
             <h1
               className={[
                 "font-semibold leading-tight tracking-tight text-[var(--foreground)] transition-all duration-200",
-                headerCollapsed ? "truncate text-[15px]" : "text-[26px]",
+                headerCollapsed ? "truncate text-[15px]" : "text-[22px] sm:text-[26px]",
               ].join(" ")}
               title={page.title || "Untitled chapter"}
             >
@@ -154,7 +154,7 @@ export default function PageReader({
             {!headerCollapsed && onRecompile && (
               <button
                 onClick={onRecompile}
-                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] px-2.5 py-1 text-xs font-medium text-[var(--muted-foreground)] hover:border-[var(--primary)]/40 hover:text-[var(--primary)]"
+                className="hidden items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] px-2.5 py-1 text-xs font-medium text-[var(--muted-foreground)] hover:border-[var(--primary)]/40 hover:text-[var(--primary)] sm:inline-flex"
               >
                 <RefreshCcw className="h-3.5 w-3.5" /> Recompile
               </button>
@@ -181,7 +181,7 @@ export default function PageReader({
 
       <div
         ref={setScrollContainer}
-        className="flex-1 overflow-y-auto px-8 py-8"
+        className="flex-1 overflow-y-auto px-4 py-5 sm:px-8 sm:py-8"
       >
         {loading && page.blocks.length === 0 ? (
           <div className="mx-auto flex w-full max-w-[78ch] items-center gap-2 text-sm text-[var(--muted-foreground)]">
@@ -232,7 +232,7 @@ export default function PageReader({
                   Insert block
                 </button>
                 {showInsertMenu && (
-                  <div className="absolute top-full mt-1 z-10 grid w-72 grid-cols-2 gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2 shadow-lg">
+                  <div className="absolute top-full z-10 mt-1 grid w-[min(18rem,calc(100vw-2rem))] grid-cols-2 gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2 shadow-lg">
                     {INSERTABLE_TYPES.map((t) => (
                       <button
                         key={t}

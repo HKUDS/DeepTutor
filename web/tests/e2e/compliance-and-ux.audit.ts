@@ -71,6 +71,23 @@ test.describe("Compliance :: Accessibility & Semantics", () => {
     const hasViewport = await page.$('meta[name="viewport"]');
     expect(!!hasViewport, "Missing viewport meta tag").toBe(true);
   });
+
+  test("workspace shell exposes mobile navigation without horizontal overflow", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${BASE_URL}/chat`);
+
+    await expect(page.locator('[data-mobile-nav="true"]')).toBeVisible();
+    await expect(page.locator('aside[data-sidebar-shell="true"]')).toBeHidden();
+
+    const hasHorizontalOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > window.innerWidth,
+    );
+    expect(hasHorizontalOverflow, "Mobile viewport should not overflow on X").toBe(
+      false,
+    );
+  });
 });
 
 test.describe("Compliance :: Error Handling & UX Signals", () => {

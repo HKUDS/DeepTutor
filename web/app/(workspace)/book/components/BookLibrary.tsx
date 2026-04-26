@@ -171,7 +171,7 @@ export default function BookLibrary({
   return (
     <div className="flex h-full min-h-full flex-col overflow-hidden bg-[var(--background)]">
       {/* Header bar */}
-      <header className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-6 py-3">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3">
           <Library size={18} className="text-[var(--muted-foreground)]" />
           <div>
@@ -199,15 +199,28 @@ export default function BookLibrary({
           <button
             type="button"
             onClick={onNewBook}
+            aria-label="New book"
             className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
           >
             <Plus size={13} />
-            New book
+            <span className="hidden sm:inline">New book</span>
           </button>
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-6 py-6">
+      <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
+        <div className="relative mb-4 flex items-center sm:hidden">
+          <Search
+            size={13}
+            className="pointer-events-none absolute left-2.5 text-[var(--muted-foreground)]/70"
+          />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search books"
+            className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--secondary)]/30 pl-7 pr-2.5 text-[16px] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)]/60 focus:border-[var(--primary)]/40 focus:outline-none sm:text-xs"
+          />
+        </div>
         {/* Stats row */}
         <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatCard

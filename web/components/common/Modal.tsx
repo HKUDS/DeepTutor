@@ -17,10 +17,10 @@ interface ModalProps {
 }
 
 const widthClasses = {
-  sm: "w-[400px]",
-  md: "w-[500px]",
-  lg: "w-[600px]",
-  xl: "w-[800px]",
+  sm: "w-full max-w-[400px]",
+  md: "w-full max-w-[500px]",
+  lg: "w-full max-w-[600px]",
+  xl: "w-full max-w-[800px]",
 };
 
 /**
@@ -70,11 +70,11 @@ export default function Modal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 backdrop-blur-sm animate-in fade-in sm:items-center sm:p-4"
       onClick={handleBackdropClick}
     >
       <div
-        className={`bg-[var(--card)] border border-[var(--border)] rounded-2xl shadow-2xl ${widthClasses[width]} max-h-[90vh] flex flex-col animate-in zoom-in-95`}
+        className={`flex max-h-[92dvh] flex-col rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-2xl ${widthClasses[width]} animate-in zoom-in-95`}
       >
         {/* Header */}
         {(title || titleIcon || showCloseButton) && (

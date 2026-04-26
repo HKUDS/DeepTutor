@@ -47,7 +47,7 @@ export default function BookPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex h-screen w-full items-center justify-center text-[var(--muted-foreground)]">
+        <div className="flex h-[100dvh] w-full items-center justify-center text-[var(--muted-foreground)]">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
         </div>
       }
@@ -388,7 +388,7 @@ function BookPageInner() {
   // ── Render ─────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-screen w-full">
+    <div className="flex h-full w-full flex-col md:flex-row">
       {view !== "list" && (
         <BookSidebar
           book={detail?.book || pendingBook || null}
@@ -399,7 +399,7 @@ function BookPageInner() {
         />
       )}
 
-      <main className="relative flex flex-1 overflow-hidden bg-[var(--background)]">
+      <main className="relative flex min-h-0 flex-1 overflow-hidden bg-[var(--background)]">
         {/* Persistent mini progress chip — floats top-right of the workspace
             across creator/spine/reader views as long as generation activity
             exists and isn't fully complete. */}
