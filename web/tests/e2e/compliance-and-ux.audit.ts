@@ -88,6 +88,50 @@ test.describe("Compliance :: Accessibility & Semantics", () => {
       false,
     );
   });
+
+  test("knowledge page keeps its mobile tabs inside the viewport", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${BASE_URL}/knowledge`);
+
+    const heading = page.getByRole("heading", { name: "Knowledge" });
+    await expect(heading).toBeVisible();
+
+    const tabLabels = ["Knowledge Bases", "Notebooks", "Question Bank", "Skills"];
+    const tabBoxes = [];
+    for (const label of tabLabels) {
+      const tab = page.getByRole("button", { name: label });
+      await expect(tab).toBeVisible();
+      const box = await tab.boundingBox();
+      expect(box, `${label} tab should have a layout box`).not.toBeNull();
+      tabBoxes.push({ label, box: box! });
+    }
+
+    const headingBox = await heading.boundingBox();
+    expect(headingBox, "Knowledge heading should have a layout box").not.toBeNull();
+
+    for (const { label, box } of tabBoxes) {
+      expect(box.x, `${label} tab should not start off-screen`).toBeGreaterThanOrEqual(
+        0,
+      );
+      expect(
+        box.x + box.width,
+        `${label} tab should not extend past the mobile viewport`,
+      ).toBeLessThanOrEqual(390);
+      expect(
+        box.y,
+        `${label} tab group should sit below the mobile heading`,
+      ).toBeGreaterThan(headingBox!.y + headingBox!.height);
+    }
+
+    const hasHorizontalOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > window.innerWidth,
+    );
+    expect(hasHorizontalOverflow, "Knowledge mobile page should not overflow on X").toBe(
+      false,
+    );
+  });
 });
 
 test.describe("Compliance :: Error Handling & UX Signals", () => {

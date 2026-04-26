@@ -1511,8 +1511,8 @@ function KnowledgePageContent() {
     <div className="h-full overflow-y-auto bg-[var(--background)] [scrollbar-gutter:stable]">
       <div className="mx-auto max-w-5xl px-4 py-5 pb-10 sm:px-6 sm:py-8">
         {/* Header */}
-        <div className="mb-6 flex items-start justify-between gap-4">
-          <div>
+        <div className="mb-5 flex flex-col gap-4 sm:mb-6 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)]">
               {t("Knowledge")}
             </h1>
@@ -1521,7 +1521,7 @@ function KnowledgePageContent() {
             </p>
           </div>
 
-          <div className="inline-flex shrink-0 rounded-lg border border-[var(--border)] bg-[var(--muted)] p-0.5">
+          <div className="grid w-full grid-cols-2 gap-1 rounded-xl border border-[var(--border)] bg-[var(--muted)] p-1 sm:inline-flex sm:w-auto sm:shrink-0 sm:rounded-lg sm:p-0.5">
             {[
               { key: "knowledge", label: t("Knowledge Bases"), icon: Database },
               { key: "notebooks", label: t("Notebooks"), icon: NotebookPen },
@@ -1533,16 +1533,18 @@ function KnowledgePageContent() {
               { key: "skills", label: t("Skills"), icon: Wand2 },
             ].map((item) => (
               <button
+                type="button"
                 key={item.key}
+                aria-pressed={tab === item.key}
                 onClick={() => setTab(item.key as TabKey)}
-                className={`inline-flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-[13px] font-medium transition-all ${
+                className={`inline-flex min-w-0 items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-[12px] font-medium transition-all sm:rounded-md sm:px-3.5 sm:py-1.5 sm:text-[13px] ${
                   tab === item.key
                     ? "bg-[var(--card)] text-[var(--foreground)] shadow-sm"
                     : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
                 }`}
               >
-                <item.icon size={14} />
-                {item.label}
+                <item.icon className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{item.label}</span>
               </button>
             ))}
           </div>
