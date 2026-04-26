@@ -14,8 +14,10 @@ import sys
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+SCRIPTS_ROOT = PROJECT_ROOT / "scripts"
+for p in (str(SCRIPTS_ROOT), str(PROJECT_ROOT)):
+    if p not in sys.path:
+        sys.path.insert(0, p)
 
 ENV_PATH = PROJECT_ROOT / ".env"
 ENV_EXAMPLE_PATH = PROJECT_ROOT / ".env.example"

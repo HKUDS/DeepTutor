@@ -25,6 +25,7 @@ def _load_start_tour_module():
         "log_success",
         "log_warn",
         "select",
+        "spinner",
         "step",
         "text_input",
     ):
