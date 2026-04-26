@@ -34,6 +34,13 @@ def _install_module(
                 setattr(parent, parts[idx - 1], pkg)
 
     module = types.ModuleType(fullname)
+    # Preserve existing attributes (e.g. submodules) on the real module so we
+    # don't break other tests that import from it.
+    if fullname in sys.modules:
+        real = sys.modules[fullname]
+        for key in dir(real):
+            if not key.startswith("__"):
+                setattr(module, key, getattr(real, key))
     for key, value in attrs.items():
         setattr(module, key, value)
     monkeypatch.setitem(sys.modules, fullname, module)

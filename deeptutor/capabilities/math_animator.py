@@ -50,7 +50,15 @@ class MathAnimatorCapability(BaseCapability):
         from deeptutor.services.llm.config import get_llm_config
 
         llm_config = get_llm_config()
-        request_config = validate_math_animator_request_config(context.config_overrides)
+
+        answer_now_payload = extract_answer_now_context(context)
+
+        # Strip answer_now_context before validating — it is a transport wrapper,
+        # not a MathAnimatorRequestConfig field.
+        config_for_validation = {
+            k: v for k, v in context.config_overrides.items() if k != "answer_now_context"
+        }
+        request_config = validate_math_animator_request_config(config_for_validation)
         pipeline = MathAnimatorPipeline(
             api_key=llm_config.api_key,
             base_url=llm_config.base_url,
@@ -58,8 +66,6 @@ class MathAnimatorCapability(BaseCapability):
             language=context.language,
             trace_callback=self._build_trace_bridge(stream),
         )
-
-        answer_now_payload = extract_answer_now_context(context)
         if answer_now_payload is not None:
             await self._run_answer_now(
                 context=context,
