@@ -211,6 +211,8 @@ htmlcov/
 nosetests.xml
 coverage.xml
 develop/
+web/playwright-report/
+web/test-results/
 
 # ============================================
 # Jupyter Notebook
