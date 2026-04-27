@@ -1625,8 +1625,7 @@ class ReportingAgent(BaseAgent):
             raise ValueError("LLM returned empty or invalid section_content field")
         except ValueError:
             self.logger.warning(
-                "JSON parsing failed for section '%s', falling back to raw LLM output",
-                section.get("title", "unknown"),
+                f"JSON parsing failed for section '{section.get('title', 'unknown')}', falling back to raw LLM output"
             )
             # Fallback: call LLM again without strict JSON requirement and use raw text
             _chunks: list[str] = []
