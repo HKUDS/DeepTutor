@@ -29,6 +29,8 @@ import uuid
 
 from deeptutor.services.path_service import get_path_service
 
+from .store import register_session_store_backend
+
 logger = logging.getLogger(__name__)
 
 _VALID_ID = re.compile(r"^[a-zA-Z0-9_-]+$")
@@ -680,3 +682,6 @@ class PocketBaseSessionStore:
         except Exception as exc:
             logger.warning(f"get_turn_events failed: {exc}")
             return []
+
+
+register_session_store_backend("pocketbase", PocketBaseSessionStore)

@@ -1,4 +1,4 @@
-"""Dashboard API backed by the unified SQLite session store."""
+"""Dashboard API backed by the unified session store."""
 
 from typing import Any
 
