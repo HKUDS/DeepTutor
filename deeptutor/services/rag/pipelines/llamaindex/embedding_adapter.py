@@ -10,7 +10,11 @@ from llama_index.core.base.embeddings.base import BaseEmbedding
 from llama_index.core.bridge.pydantic import PrivateAttr
 
 from deeptutor.logging import get_logger
-from deeptutor.services.embedding import get_embedding_client, get_embedding_config
+from deeptutor.services.embedding import (
+    get_embedding_client,
+    get_embedding_config,
+    reset_embedding_client,
+)
 from deeptutor.services.embedding.validation import validate_embedding_batch
 
 
@@ -93,6 +97,7 @@ class CustomEmbedding(BaseEmbedding):
 
 def configure_llamaindex_settings(logger=None) -> None:
     """Configure LlamaIndex globals for DeepTutor's current embedding config."""
+    reset_embedding_client()
     embedding_cfg = get_embedding_config()
 
     Settings.embed_model = CustomEmbedding()

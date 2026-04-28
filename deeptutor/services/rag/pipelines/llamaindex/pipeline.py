@@ -87,6 +87,7 @@ class LlamaIndexPipeline:
         storage_dir = resolve_storage_dir_for_write(kb_dir, signature)
 
         try:
+            self._configure_settings()
             await self._verify_embedding_connectivity()
             documents = await self.document_loader.load(file_paths)
             if not documents:
