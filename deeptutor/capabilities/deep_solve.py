@@ -265,30 +265,58 @@ class DeepSolveCapability(BaseCapability):
 
         setattr(solver, "_content_callback", _content_sink)
 
-        result = await solver.solve(
-            question=context.user_message,
-            attachments=_image_attachments(context.attachments),
-            verbose=False,
-            detailed=detailed,
-            conversation_context=str(
-                context.metadata.get("conversation_context_text", "") or ""
-            ).strip(),
-        )
+        try:
+            result = await solver.solve(
+                question=context.user_message,
+                attachments=_image_attachments(context.attachments),
+                verbose=False,
+                detailed=detailed,
+                conversation_context=str(
+                    context.metadata.get("conversation_context_text", "") or ""
+                ).strip(),
+            )
 
-        final_answer = result.get("final_answer", "")
+            final_answer = result.get("final_answer", "")
 
-        if final_answer and not content_streamed:
-            async with stream.stage("writing", source=self.name):
-                await stream.content(final_answer, source=self.name, stage="writing")
+            if final_answer and not content_streamed:
+                async with stream.stage("writing", source=self.name):
+                    await stream.content(final_answer, source=self.name, stage="writing")
 
-        await stream.result(
-            {
-                "response": final_answer,
-                "output_dir": result.get("output_dir", ""),
-                "metadata": result.get("metadata", {}),
-            },
-            source=self.name,
-        )
+            await stream.result(
+                {
+                    "response": final_answer,
+                    "output_dir": result.get("output_dir", ""),
+                    "metadata": result.get("metadata", {}),
+                },
+                source=self.name,
+            )
+        except Exception as exc:
+            # Check if it's a clarification-needed exception from our pipeline
+            exc_name = type(exc).__name__
+            if exc_name == "QuestionNeedsClarification":
+                clarification_msg = str(exc)
+                await stream.error(
+                    clarification_msg,
+                    source=self.name,
+                    stage="planning",
+                    metadata={
+                        "needs_clarification": True,
+                        "question_issues": getattr(exc, "question_issues", []),
+                        "trace_kind": "clarification_required",
+                    },
+                )
+                # Return a special result so the orchestrator doesn't treat it as a failure
+                await stream.result(
+                    {
+                        "response": "",
+                        "clarification_required": True,
+                        "clarification_message": clarification_msg,
+                        "question_issues": getattr(exc, "question_issues", []),
+                    },
+                    source=self.name,
+                )
+                return
+            raise
 
     async def _run_answer_now(
         self,

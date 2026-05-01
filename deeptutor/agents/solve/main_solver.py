@@ -334,6 +334,28 @@ class MainSolver:
         self.logger.info(f"Output: {output_dir}")
 
         try:
+            # Pre-plan question quality gate
+            quality = await self._check_question_quality(
+                question=question,
+                image_url=image_url,
+                attachments=attachments,
+            )
+            if quality["needs_clarification"]:
+                from deeptutor.agents.solve.pipeline_errors import (
+                    QuestionNeedsClarification,
+                )
+
+                issues = (
+                    "; ".join(quality["question_issues"])
+                    if quality["question_issues"]
+                    else "请补充完整信息后重试"
+                )
+                clarification = quality["clarification_prompt"] or issues
+                raise QuestionNeedsClarification(
+                    message=clarification,
+                    question_issues=quality["question_issues"],
+                )
+
             result = await self._run_pipeline(
                 question,
                 output_dir,
@@ -370,6 +392,91 @@ class MainSolver:
             self.logger.error(traceback.format_exc())
             self._remove_task_log_handler()
             raise
+
+    # ------------------------------------------------------------------
+    # Question quality gate
+    # ------------------------------------------------------------------
+
+    async def _check_question_quality(
+        self,
+        question: str,
+        image_url: str | None = None,
+        attachments: list[Any] | None = None,
+    ) -> dict[str, Any]:
+        """Lightweight pre-plan check whether the question needs clarification.
+
+        Returns {
+            "needs_clarification": bool,
+            "clarification_prompt": str,  # presented to the user if needs_clarification=True
+            "question_issues": list[str],  # specific deficiencies found
+        }
+        """
+        from deeptutor.core.context import Attachment
+
+        system_prompt = (
+            "You are a question quality assessor. Evaluate whether a user question "
+            "is sufficiently complete and clear to be solved without clarification.\n\n"
+            "IMPORTANT: If the user has attached an image (math problem, diagram, chart), "
+            "the image CONTENT is the question — evaluate whether that image content is "
+            "sufficiently clear and complete, not just the text surrounding it.\n\n"
+            "A question needs clarification when:\n"
+            "  - Key information is missing (e.g., undefined variables, unspecified constraints)\n"
+            "  - The problem goal is ambiguous or has multiple interpretations\n"
+            "  - Critical context is absent (e.g., referenced prior steps, prior conversation)\n"
+            "  - The scope is unclear (e.g., 'solve this' without specifying what to solve)\n"
+            "  - An image is present but the problem in the image is incomplete or ambiguous\n\n"
+            "Output JSON only (no extra text):\n"
+            '  {"needs_clarification": true/false, "clarification_prompt": "...", "question_issues": ["issue1", ...]}'
+        )
+
+        user_prompt = f"## Question to evaluate\n{question}"
+        if image_url or (attachments and any(getattr(a, "type", "") == "image" for a in attachments)):
+            user_prompt += "\n\n[Image is present — evaluate whether the image content is sufficiently clear and complete]"
+
+        trace_meta = derive_trace_metadata(
+            call_id=new_call_id("question-check"),
+            phase="planning",
+            label="QuestionQualityCheck",
+            call_kind="single_turn",
+            trace_id="question-check",
+            trace_role="reasoning",
+            trace_group="question_check",
+        )
+
+        llm_kwargs: dict[str, object] = {
+            "user_prompt": user_prompt,
+            "system_prompt": system_prompt,
+            "response_format": {"type": "json_object"},
+            "stage": "question_quality_check",
+            "trace_meta": trace_meta,
+        }
+
+        if attachments:
+            image_atts = [a for a in attachments if getattr(a, "type", "") == "image"]
+            if image_atts:
+                llm_kwargs["attachments"] = image_atts
+
+        chunks: list[str] = []
+        async for chunk in self.planner_agent.stream_llm(**llm_kwargs):
+            chunks.append(chunk)
+        response = "".join(chunks)
+
+        try:
+            import json
+
+            data = json.loads(response)
+            return {
+                "needs_clarification": bool(data.get("needs_clarification", False)),
+                "clarification_prompt": str(data.get("clarification_prompt", "")),
+                "question_issues": list(data.get("question_issues", [])),
+            }
+        except Exception:
+            # If parsing fails, be permissive — let the pipeline proceed
+            return {
+                "needs_clarification": False,
+                "clarification_prompt": "",
+                "question_issues": [],
+            }
 
     # ------------------------------------------------------------------
     # Pipeline

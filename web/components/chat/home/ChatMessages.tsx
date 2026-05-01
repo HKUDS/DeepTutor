@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { memo, useCallback, useMemo, useState } from "react";
 import {
+  AlertTriangle,
   BookOpen,
   Brain,
   ClipboardList,
@@ -188,6 +189,11 @@ const AssistantMessage = memo(function AssistantMessage({
           questions={quizQuestions}
           sessionId={sessionId}
           language={language}
+        />
+      ) : resultEvent?.metadata?.clarification_required ? (
+        <ClarificationBanner
+          message={String(resultEvent.metadata?.clarification_message ?? "")}
+          issues={(resultEvent.metadata?.question_issues as string[]) ?? []}
         />
       ) : (
         <AssistantResponse content={msg.content} />
@@ -843,3 +849,38 @@ export const ChatMessageList = memo(function ChatMessageList({
 });
 
 ChatMessageList.displayName = "ChatMessageList";
+
+// ------------------------------------------------------------------
+// ClarificationBanner — shown when question quality gate detected
+// that the question needs clarification.
+// ------------------------------------------------------------------
+function ClarificationBanner({
+  message,
+  issues,
+}: {
+  message: string;
+  issues: string[];
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm">
+      <div className="mb-2 flex items-center gap-2 font-semibold text-amber-700">
+        <AlertTriangle size={15} className="shrink-0" />
+        {t("Question needs clarification")}
+      </div>
+      {message && (
+        <p className="mb-2 text-amber-800">{message}</p>
+      )}
+      {issues.length > 0 && (
+        <ul className="ml-4 list-inside list-disc space-y-1 text-xs text-amber-700">
+          {issues.map((issue, i) => (
+            <li key={i}>{issue}</li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-2 text-xs text-amber-600">
+        {t("Please provide more details and try again.")}
+      </p>
+    </div>
+  );
+}
