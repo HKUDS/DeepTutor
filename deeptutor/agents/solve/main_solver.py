@@ -23,7 +23,7 @@ from deeptutor.core.trace import derive_trace_metadata, new_call_id
 
 from ...services.config import parse_language
 from ...services.path_service import get_path_service
-from .agents import PlannerAgent, SolverAgent, WriterAgent
+from .agents import CriticAgent, PlannerAgent, SolverAgent, WriterAgent
 from .memory import Scratchpad, Source
 from .tool_runtime import SolveToolRuntime
 from .utils.display_manager import get_display_manager
@@ -246,8 +246,12 @@ class MainSolver:
 
         lang = parse_language(self.config.get("system", {}).get("language", "en"))
         self._core_tool_registry = get_tool_registry()
+        # Always include visit_url so CriticAgent can validate reference URLs
+        enabled = list(self._enabled_tools or []) if self._enabled_tools else []
+        if "visit_url" not in enabled:
+            enabled.append("visit_url")
         self.tool_runtime = SolveToolRuntime(
-            enabled_tools=self._enabled_tools,
+            enabled_tools=enabled,
             language=lang,
             core_registry=self._core_tool_registry,
         )
@@ -266,13 +270,14 @@ class MainSolver:
             enable_pre_retrieve=not self.disable_planner_retrieve,
         )
         self.solver_agent = SolverAgent(**common, tool_runtime=self.tool_runtime)
+        self.critic_agent = CriticAgent(**common, tool_runtime=self.tool_runtime)
         self.writer_agent = WriterAgent(**common)
         if self._trace_callback is not None:
             self.set_trace_callback(self._trace_callback)
 
         # Apply per-run overrides from benchmark config (pipeline.max_tokens / pipeline.temperature)
         if self._max_tokens_override is not None or self._temperature_override is not None:
-            for agent in (self.planner_agent, self.solver_agent, self.writer_agent):
+            for agent in (self.planner_agent, self.solver_agent, self.critic_agent, self.writer_agent):
                 if self._max_tokens_override is not None:
                     agent._agent_params["max_tokens"] = self._max_tokens_override
                 if self._temperature_override is not None:
@@ -620,6 +625,30 @@ class MainSolver:
         self._update_token_stats(self.token_tracker.get_summary())
 
         # ============================================================
+        # Phase 2.5: CRITIC AUDIT
+        # ============================================================
+        self.logger.stage("Phase 2.5", "start", "Auditing evidence and references")
+        if self.logger.display_manager:
+            self.logger.display_manager.set_agent_status("CriticAgent", "running")
+
+        step_memory_context = "" if self.disable_memory else await self._get_planner_memory_context(question)
+        scratchpad, verification_report = await self.critic_agent.process(
+            question=question,
+            scratchpad=scratchpad,
+            memory_context=step_memory_context,
+            kb_name=self.kb_name,
+        )
+        self.logger.info(
+            f"  Critic audit done: {verification_report.get('rounds', 0)} rounds, "
+            f"summary={verification_report.get('summary', 'N/A')}"
+        )
+        self.logger.update_token_stats(self.token_tracker.get_summary())
+        if self.logger.display_manager:
+            self.logger.display_manager.set_agent_status("CriticAgent", "done")
+
+        scratchpad.save(output_dir)
+
+        # ============================================================
         # Phase 3: WRITE
         # ============================================================
         detailed = getattr(self, "_detailed", False)
@@ -674,7 +703,7 @@ class MainSolver:
             "output_md": str(answer_file),
             "output_json": str(Path(output_dir) / "scratchpad.json"),
             "formatted_solution": final_answer,
-            "citations": [s["id"] for s in scratchpad.get_all_sources()],
+            "citations": [s["id"] for s in scratchpad.get_valid_sources()],
             "pipeline": "plan_react_write",
             "total_steps": total,
             "completed_steps": len(completed),

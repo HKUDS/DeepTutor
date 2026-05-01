@@ -23,6 +23,11 @@ _CONTROL_ACTIONS = {
             "when_to_use": "Use when the current plan is no longer appropriate and the planner should revise it.",
             "input_format": "A short reason describing why replanning is needed.",
         },
+        {
+            "name": "audit",
+            "when_to_use": "Use when you need to verify evidence or retrieve additional sources to fill gaps in the citation record.",
+            "input_format": "A description of what to verify or search for.",
+        },
     ],
     "zh": [
         {
@@ -34,6 +39,11 @@ _CONTROL_ACTIONS = {
             "name": "replan",
             "when_to_use": "当现有计划已不合适，需要重新规划时使用。",
             "input_format": "简要说明为何需要重规划。",
+        },
+        {
+            "name": "audit",
+            "when_to_use": "当需要验证证据或检索额外来源以填补引用记录中的空白时使用。",
+            "input_format": "要验证或搜索的内容描述。",
         },
     ],
 }
@@ -53,7 +63,7 @@ class SolveToolRuntime:
         self.language = language
         self._core_registry = core_registry or get_tool_registry()
         self._tool_names: list[str] = []
-        self._valid_actions: set[str] = {"done", "replan"}
+        self._valid_actions: set[str] = {"done", "replan", "audit"}
 
         for name in enabled_tools or []:
             tool = self._core_registry.get(name)
@@ -170,6 +180,10 @@ class SolveToolRuntime:
         for candidate in _ACTION_INPUT_PARAM_CANDIDATES:
             for param in definition.parameters:
                 if param.name == candidate:
+                    # Batch URL support: visit_url accepts newline-separated URLs as a list
+                    if tool_name == "visit_url" and "\n" in action_input:
+                        urls = [u.strip() for u in action_input.split("\n") if u.strip()]
+                        return {candidate: urls} if urls else {candidate: action_input}
                     return {candidate: action_input}
         return {}
 

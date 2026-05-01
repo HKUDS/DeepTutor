@@ -131,6 +131,7 @@ class Scratchpad:
             "total_tokens": 0,
             "start_time": datetime.now().isoformat(),
             "plan_revisions": 0,
+            "invalid_source_ids": [],
         }
 
     # ------------------------------------------------------------------
@@ -368,9 +369,17 @@ class Scratchpad:
         For RAG sources this means different queries produce separate citations
         even when they target the same knowledge base.
         """
+        return self._build_sources_list(include_invalid=True)
+
+    def get_valid_sources(self) -> list[dict[str, Any]]:
+        """Return deduplicated list of sources, excluding those marked invalid by CriticAgent."""
+        return self._build_sources_list(include_invalid=False)
+
+    def _build_sources_list(self, include_invalid: bool = True) -> list[dict[str, Any]]:
         seen: set[str] = set()
         result: list[dict[str, Any]] = []
         counter: dict[str, int] = {}
+        invalid_ids = set(self.metadata.get("invalid_source_ids", []))
         for entry in self.entries:
             for src in entry.sources:
                 key = f"{src.type}|{src.file or ''}|{src.url or ''}|{src.chunk_id or ''}"
@@ -381,12 +390,27 @@ class Scratchpad:
                     source_id = f"{prefix}-{counter[prefix]}"
                     d = src.to_dict()
                     d["id"] = source_id
+                    if source_id in invalid_ids:
+                        d["invalid"] = True
+                        if not include_invalid:
+                            continue
                     result.append(d)
         return result
 
+    def mark_source_invalid(self, source_id: str) -> None:
+        """Mark a source as invalid (broken, hallucinated, or unreliable).
+
+        Invalid sources are excluded from get_valid_sources() and
+        from the formatted references in the final answer.
+        """
+        invalid_ids = self.metadata.get("invalid_source_ids", [])
+        if source_id not in invalid_ids:
+            invalid_ids.append(source_id)
+            self.metadata["invalid_source_ids"] = invalid_ids
+
     def format_sources_markdown(self) -> str:
         """Format sources as a Markdown references section with clickable URLs."""
-        sources = self.get_all_sources()
+        sources = self.get_valid_sources()
         if not sources:
             return ""
         lines = ["## References\n"]
@@ -411,6 +435,18 @@ class Scratchpad:
             kb = s.get("file")
             return f"{query_text} ({kb})" if kb else query_text
         return s.get("file") or s.get("url") or s.get("chunk_id") or "unknown"
+
+    def find_source_id_by_url(self, url: str) -> str | None:
+        """Find the assigned source ID for a given URL.
+
+        Used by CriticAgent to map a visit_url result back to its source ID
+        so invalid URLs can be marked and excluded from the final answer.
+        """
+        sources = self.get_all_sources()
+        for s in sources:
+            if s.get("url") == url:
+                return s["id"]
+        return None
 
     # ------------------------------------------------------------------
     # Persistence
