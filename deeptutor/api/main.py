@@ -208,6 +208,7 @@ from deeptutor.api.routers import (
     memory,
     notebook,
     plugins_api,
+    plugins_sage,
     question,
     question_notebook,
     sessions,
@@ -238,6 +239,7 @@ app.include_router(settings.router, prefix="/api/v1/settings", tags=["settings"]
 app.include_router(skills.router, prefix="/api/v1/skills", tags=["skills"])
 app.include_router(system.router, prefix="/api/v1/system", tags=["system"])
 app.include_router(plugins_api.router, prefix="/api/v1/plugins", tags=["plugins"])
+app.include_router(plugins_sage.router, prefix="/api/v1/plugins", tags=["plugins-sage"])
 app.include_router(agent_config.router, prefix="/api/v1/agent-config", tags=["agent-config"])
 app.include_router(vision_solver.router, prefix="/api/v1", tags=["vision-solver"])
 app.include_router(tutorbot.router, prefix="/api/v1/tutorbot", tags=["tutorbot"])
