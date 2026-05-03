@@ -208,7 +208,7 @@ class CriticAgent(BaseAgent):
 
             key = f"{src.get('type', '')}|{src.get('file', '') or ''}|{url}|{src.get('chunk_id', '') or ''}"
             entry = source_key_to_entry.get(key)
-            claim = entry.observation if entry else ""
+            claim = entry.action_input if entry else ""
 
             try:
                 from deeptutor.core.tool_protocol import ToolResult
