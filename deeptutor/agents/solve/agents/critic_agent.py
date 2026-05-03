@@ -18,6 +18,7 @@ from deeptutor.core.context import Attachment
 from deeptutor.core.trace import build_trace_metadata, new_call_id
 from deeptutor.logging import get_logger
 
+from deeptutor.core.content_filter import ContentFilter
 from ..memory.scratchpad import Entry, Scratchpad, Source
 from ..tool_runtime import SolveToolRuntime
 from ..utils.json_utils import extract_json_from_text
@@ -39,6 +40,7 @@ class CriticAgent(BaseAgent):
         language: str = "en",
         tool_runtime: SolveToolRuntime | None = None,
         max_audit_rounds: int = 3,
+        content_filter: ContentFilter | None = None,
     ) -> None:
         super().__init__(
             module_name="solve",
@@ -55,6 +57,7 @@ class CriticAgent(BaseAgent):
             ["visit_url"], language=language
         )
         self._max_audit_rounds = max_audit_rounds
+        self._content_filter = content_filter or ContentFilter()
 
     async def process(
         self,
@@ -216,12 +219,23 @@ class CriticAgent(BaseAgent):
 
                 tool = VisitUrlTool()
                 result: ToolResult = await tool.execute(url=url, claim=claim)
+                raw_content = result.content or ""
+
+                # Run content safety check
+                safety = self._content_filter.check(raw_content, url=url)
+
                 return src, {
                     "alive": result.metadata.get("alive", False),
-                    "content": result.content,
+                    "content": raw_content,
                     "sources": result.sources,
                     "status_code": result.metadata.get("status_code"),
                     "claim_verified": result.metadata.get("claim_verified"),
+                    "is_safe": safety.is_safe,
+                    "safety_category": safety.category.value if safety.category else None,
+                    "safety_confidence": safety.confidence,
+                    "safety_filter_used": safety.filter_used,
+                    "matched_patterns": safety.matched_patterns,
+                    "llm_reason": safety.llm_reason,
                 }
             except Exception as exc:
                 logger.warning(f"visit_url failed for {url}: {exc}")
@@ -250,6 +264,17 @@ class CriticAgent(BaseAgent):
                 observations.append(f"✗ {url}: claim NOT verified")
             elif alive:
                 observations.append(f"✓ {url}: alive (status {status_code})")
+
+            # Handle content safety
+            is_safe = result.get("is_safe", True)
+            safety_category = result.get("safety_category")
+            if not is_safe:
+                logger.warning(f"Unsafe content detected url={url} category={safety_category}")
+                if src_id:
+                    scratchpad.mark_source_invalid(src_id)
+                observations.append(f"✗ {url}: blocked ({safety_category})")
+            elif safety_category and result.get("safety_filter_used") == "llm":
+                observations.append(f"⚠ {url}: flagged by LLM classifier ({safety_category}) — content allowed pending review")
 
             if result.get("error"):
                 observations.append(f"✗ {url}: {result['error']}")
