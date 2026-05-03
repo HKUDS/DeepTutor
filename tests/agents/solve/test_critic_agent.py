@@ -1,4 +1,4 @@
-"""Tests for CriticAgent — parsing, invalid_sources handling, and audit loop."""
+"""Tests for CriticAgent — source validation, parallel visit_url, and audit loop."""
 
 from __future__ import annotations
 
@@ -47,6 +47,208 @@ def scratchpad() -> Scratchpad:
 def agent() -> CriticAgent:
     return CriticAgent(config={}, language="en", max_audit_rounds=2)
 
+
+@pytest.fixture
+def agent_no_loop() -> CriticAgent:
+    """CriticAgent with single-round behavior (new implementation)."""
+    return CriticAgent(config={}, language="en", max_audit_rounds=3)
+
+
+# ---------------------------------------------------------------------------
+# _validate_all_sources tests
+# ---------------------------------------------------------------------------
+
+class TestValidateAllSources:
+    @pytest.mark.asyncio
+    async def test_no_urls_returns_empty_observation(self, agent: CriticAgent) -> None:
+        pad = Scratchpad(question="Simple?")
+        pad.plan = Plan(analysis="", steps=[PlanStep(id="S1", goal="x", status="completed")])
+        pad.entries.append(
+            Entry(
+                step_id="S1", round=1, thought="x", action="done",
+                action_input="", observation="done", self_note="",
+                sources=[
+                    Source(type="rag", file="some-kb", chunk_id="123", url=None),
+                ],
+            )
+        )
+        obs, new_sources = await agent._validate_all_sources(
+            scratchpad=pad, kb_name=None, question="Simple?"
+        )
+        assert obs == "No URLs to validate."
+        assert new_sources == []
+
+    @pytest.mark.asyncio
+    async def test_all_sources_valid_alive(self, agent: CriticAgent, scratchpad: Scratchpad) -> None:
+        mock_result = MagicMock()
+        mock_result.metadata = {"alive": True, "status_code": 200}
+        mock_result.content = "Page title"
+        mock_result.sources = []
+
+        with patch("deeptutor.tools.builtin.VisitUrlTool") as MockTool:
+            MockTool.return_value.execute = AsyncMock(return_value=mock_result)
+            obs, new_sources = await agent._validate_all_sources(
+                scratchpad=scratchpad, kb_name=None, question="What is deep learning?"
+            )
+
+        assert "✓ https://example.com/dl" in obs
+        assert len(new_sources) == 0  # no new sources from a successful visit
+
+    @pytest.mark.asyncio
+    async def test_dead_url_marks_source_invalid(self, agent: CriticAgent, scratchpad: Scratchpad) -> None:
+        mock_result = MagicMock()
+        mock_result.metadata = {"alive": False, "status_code": 403}
+        mock_result.content = "Forbidden"
+        mock_result.sources = []
+
+        with patch("deeptutor.tools.builtin.VisitUrlTool") as MockTool:
+            MockTool.return_value.execute = AsyncMock(return_value=mock_result)
+            await agent._validate_all_sources(
+                scratchpad=scratchpad, kb_name=None, question="What is deep learning?"
+            )
+
+        # Source should be marked invalid
+        invalid_ids = scratchpad.metadata.get("invalid_source_ids", [])
+        assert len(invalid_ids) >= 1
+
+    @pytest.mark.asyncio
+    async def test_exception_during_visit_url_handled_gracefully(
+        self, agent: CriticAgent, scratchpad: Scratchpad
+    ) -> None:
+        pad = Scratchpad(question="Test")
+        pad.plan = Plan(analysis="", steps=[PlanStep(id="S1", goal="x", status="completed")])
+        pad.entries.append(
+            Entry(
+                step_id="S1", round=1, thought="x", action="web_search",
+                action_input="x", observation="x", self_note="",
+                sources=[
+                    Source(type="web", url="https://example.com/dl", chunk_id=None),
+                ],
+            )
+        )
+        with patch("deeptutor.tools.builtin.VisitUrlTool") as MockTool:
+            MockTool.return_value.execute = AsyncMock(side_effect=RuntimeError("network error"))
+            obs, new_sources = await agent._validate_all_sources(
+                scratchpad=pad, kb_name=None, question="What is deep learning?"
+            )
+
+        # Should not raise — error is caught and logged
+        assert "Error" in obs or "https://example.com" in obs
+        assert isinstance(new_sources, list)
+
+    @pytest.mark.asyncio
+    async def test_claim_verified_logs_success(self, agent: CriticAgent, scratchpad: Scratchpad) -> None:
+        mock_result = MagicMock()
+        mock_result.metadata = {"alive": True, "status_code": 200, "claim_verified": True}
+        mock_result.content = "Title found"
+        mock_result.sources = []
+
+        with patch("deeptutor.tools.builtin.VisitUrlTool") as MockTool:
+            MockTool.return_value.execute = AsyncMock(return_value=mock_result)
+            obs, new_sources = await agent._validate_all_sources(
+                scratchpad=scratchpad, kb_name=None, question="What is deep learning?"
+            )
+
+        assert "claim verified" in obs
+
+    @pytest.mark.asyncio
+    async def test_claim_not_verified_logs_warning(self, agent: CriticAgent, scratchpad: Scratchpad) -> None:
+        mock_result = MagicMock()
+        mock_result.metadata = {"alive": True, "status_code": 200, "claim_verified": False}
+        mock_result.content = "Title found"
+        mock_result.sources = []
+
+        with patch("deeptutor.tools.builtin.VisitUrlTool") as MockTool:
+            MockTool.return_value.execute = AsyncMock(return_value=mock_result)
+            obs, new_sources = await agent._validate_all_sources(
+                scratchpad=scratchpad, kb_name=None, question="What is deep learning?"
+            )
+
+        assert "NOT verified" in obs
+
+
+# ---------------------------------------------------------------------------
+# process() tests — new single-phase flow
+# ---------------------------------------------------------------------------
+
+class TestProcessNewFlow:
+    @pytest.mark.asyncio
+    async def test_process_validates_sources_and_gets_summary(
+        self, agent_no_loop: CriticAgent, scratchpad: Scratchpad
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.metadata = {"alive": True, "status_code": 200}
+        mock_result.content = "OK"
+        mock_result.sources = []
+
+        with patch("deeptutor.tools.builtin.VisitUrlTool") as MockTool:
+            MockTool.return_value.execute = AsyncMock(return_value=mock_result)
+            agent_no_loop._run_audit_round = AsyncMock(return_value={
+                "verification_report": "All sources verified.",
+            })
+
+            revised_pad, report = await agent_no_loop.process(
+                question="What is deep learning?",
+                scratchpad=scratchpad,
+            )
+
+        assert report["rounds"] == 1
+        assert report["summary"] == "All sources verified."
+        agent_no_loop._run_audit_round.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_process_records_audit_entry(
+        self, agent_no_loop: CriticAgent, scratchpad: Scratchpad
+    ) -> None:
+        mock_result = MagicMock()
+        mock_result.metadata = {"alive": True, "status_code": 200}
+        mock_result.content = "OK"
+        mock_result.sources = []
+
+        with patch("deeptutor.tools.builtin.VisitUrlTool") as MockTool:
+            MockTool.return_value.execute = AsyncMock(return_value=mock_result)
+            agent_no_loop._run_audit_round = AsyncMock(return_value={
+                "verification_report": "All good.",
+            })
+
+            revised_pad, report = await agent_no_loop.process(
+                question="What is deep learning?",
+                scratchpad=scratchpad,
+            )
+
+        # Should have a critic entry in scratchpad
+        critic_entries = [e for e in revised_pad.entries if e.step_id == "critic"]
+        assert len(critic_entries) >= 1
+
+    @pytest.mark.asyncio
+    async def test_process_handles_no_sources(
+        self, agent_no_loop: CriticAgent
+    ) -> None:
+        pad = Scratchpad(question="Simple question")
+        pad.plan = Plan(analysis="", steps=[PlanStep(id="S1", goal="x", status="completed")])
+        pad.entries.append(
+            Entry(
+                step_id="S1", round=1, thought="x", action="done",
+                action_input="", observation="done", self_note="",
+                sources=[],
+            )
+        )
+
+        agent_no_loop._run_audit_round = AsyncMock(return_value={
+            "verification_report": "No sources to verify.",
+        })
+
+        revised_pad, report = await agent_no_loop.process(
+            question="Simple question?",
+            scratchpad=pad,
+        )
+
+        assert report["rounds"] == 1
+
+
+# ---------------------------------------------------------------------------
+# existing tests — kept for backwards compatibility
+# ---------------------------------------------------------------------------
 
 class TestParseAuditDecision:
     def test_parses_valid_json_response(self, agent: CriticAgent) -> None:
@@ -124,134 +326,20 @@ class TestAuditLoop:
             "updated_notes": {},
         })
 
-        revised_pad, report = await agent.process(
-            question="What is deep learning?",
-            scratchpad=scratchpad,
-        )
+        mock_result = MagicMock()
+        mock_result.metadata = {"alive": True, "status_code": 200}
+        mock_result.content = "OK"
+        mock_result.sources = []
 
-        assert report["rounds"] == 1
-        assert report["summary"] == "All sources verified."
-        # Done action means no tool execution
-        agent._run_audit_round.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_max_rounds_respected(self, agent: CriticAgent, scratchpad: Scratchpad) -> None:
-        call_count = 0
-
-        async def mock_round(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            return {
-                "thought": "More verification needed",
-                "action": "visit_url",
-                "action_input": "https://example.com",
-                "self_note": "Checking...",
-                "verification_report": "",
-                "updated_notes": {},
-            }
-
-        with patch.object(agent, "_execute_audit_tool", new=AsyncMock(return_value=("alive", []))):
-            agent._run_audit_round = mock_round
-            _, report = await agent.process(
+        with patch.object(agent._tool_runtime, "execute", new=AsyncMock(return_value=mock_result)):
+            revised_pad, report = await agent.process(
                 question="What is deep learning?",
                 scratchpad=scratchpad,
             )
 
-        assert call_count == agent._max_audit_rounds
-
-    @pytest.mark.asyncio
-    async def test_invalid_sources_are_marked_on_scratchpad(
-        self, agent: CriticAgent, scratchpad: Scratchpad
-    ) -> None:
-        round_results = []
-
-        async def mock_round(*args, **kwargs):
-            result = {
-                "thought": "Found a bad URL",
-                "action": "done",
-                "action_input": "",
-                "self_note": "Done auditing.",
-                "verification_report": "One source invalid.",
-                "updated_notes": {},
-                "invalid_sources": [{"source_id": "web-1"}],
-            }
-            round_results.append(result)
-            return result
-
-        agent._run_audit_round = mock_round
-        revised_pad, report = await agent.process(
-            question="What is deep learning?",
-            scratchpad=scratchpad,
-        )
-
-        assert "web-1" in revised_pad.metadata["invalid_source_ids"]
-
-    @pytest.mark.asyncio
-    async def test_visit_url_result_updates_sources(
-        self, agent: CriticAgent, scratchpad: Scratchpad
-    ) -> None:
-        call_count = 0
-
-        async def mock_round(*args, **kwargs):
-            return {
-                "thought": "Visiting URL",
-                "action": "visit_url",
-                "action_input": "https://example.com",
-                "self_note": "Checking...",
-                "verification_report": "",
-                "updated_notes": {},
-            }
-
-        async def mock_tool(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            return ("alive", [Source(type="web", url="https://example.com")])
-
-        agent._run_audit_round = mock_round
-        agent._execute_audit_tool = mock_tool
-        agent._max_audit_rounds = 1  # ensure exactly one round
-
-        revised_pad, report = await agent.process(
-            question="What is deep learning?",
-            scratchpad=scratchpad,
-        )
-
-        assert call_count == 1, "visit_url tool should have been called once"
-
-
-class TestInvalidSourcesProcessing:
-    def test_string_source_id_in_invalid_sources_list(self, agent: CriticAgent, scratchpad: Scratchpad) -> None:
-        decision = {
-            "thought": "bad url",
-            "action": "done",
-            "action_input": "",
-            "self_note": "",
-            "verification_report": "",
-            "updated_notes": {},
-            "invalid_sources": ["web-1", "rag-2"],
-        }
-
-        for item in decision["invalid_sources"]:
-            src_id = item if isinstance(item, str) else item.get("source_id")
-            url = item.get("url") if isinstance(item, dict) else None
-            if src_id:
-                scratchpad.mark_source_invalid(src_id)
-            elif url:
-                src_id = scratchpad.find_source_id_by_url(url)
-                if src_id:
-                    scratchpad.mark_source_invalid(src_id)
-
-        assert "web-1" in scratchpad.metadata["invalid_source_ids"]
-        assert "rag-2" in scratchpad.metadata["invalid_source_ids"]
-
-    def test_dict_source_id_in_invalid_sources_list(self, agent: CriticAgent, scratchpad: Scratchpad) -> None:
-        decision = {
-            "invalid_sources": [{"source_id": "web-1", "url": "https://fake.example"}],
-        }
-
-        item = decision["invalid_sources"][0]
-        src_id = item if isinstance(item, str) else item.get("source_id")
-        assert src_id == "web-1"
+        assert report["rounds"] == 1
+        assert report["summary"] == "All sources verified."
+        agent._run_audit_round.assert_called_once()
 
 
 class TestBuildReasonContext:

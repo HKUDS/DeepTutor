@@ -16,10 +16,13 @@ from typing import Any
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.context import Attachment
 from deeptutor.core.trace import build_trace_metadata, new_call_id
+from deeptutor.logging import get_logger
 
 from ..memory.scratchpad import Entry, Scratchpad, Source
 from ..tool_runtime import SolveToolRuntime
 from ..utils.json_utils import extract_json_from_text
+
+logger = get_logger("solve.critic_agent")
 
 
 class CriticAgent(BaseAgent):
@@ -82,68 +85,46 @@ class CriticAgent(BaseAgent):
             "rounds": 0,
         }
 
-        for round_num in range(self._max_audit_rounds):
-            audit_decision = await self._run_audit_round(
-                question=question,
-                scratchpad=scratchpad,
-                memory_context=memory_context,
-                image_url=image_url,
-                round_index=round_num + 1,
-            )
+        verification_report["rounds"] = 1
 
-            action = audit_decision.get("action", "done")
-            action_input = audit_decision.get("action_input", "")
-            self_note = audit_decision.get("self_note", "")
-            verification_report["rounds"] = round_num + 1
+        # Validate all sources in parallel
+        validation_observation, new_sources = await self._validate_all_sources(
+            scratchpad=scratchpad,
+            kb_name=kb_name,
+            question=question,
+        )
 
-            # Always process invalid_sources and updated_notes — even on "done"
-            invalid_sources = audit_decision.get("invalid_sources", [])
-            for item in invalid_sources:
-                src_id = item if isinstance(item, str) else item.get("source_id")
-                url = item.get("url") if isinstance(item, dict) else None
-                if src_id:
-                    scratchpad.mark_source_invalid(src_id)
-                elif url:
-                    src_id = scratchpad.find_source_id_by_url(url)
-                    if src_id:
-                        scratchpad.mark_source_invalid(src_id)
+        # Merge new sources
+        for src in new_sources:
+            self._add_source_to_scratchpad(scratchpad, src)
 
-            updated_notes = audit_decision.get("updated_notes", {})
-            for step_id, note in updated_notes.items():
-                self._update_entry_note(scratchpad, step_id, note)
+        # Mark invalid sources based on validation results (already handled inside _validate_all_sources)
+        for src in scratchpad.get_all_sources():
+            src_id = src.get("id", "")
+            # Sources not in new_sources are already marked invalid inside _validate_all_sources
+            pass
 
-            if action == "done":
-                if audit_decision.get("verification_report"):
-                    verification_report["summary"] = audit_decision["verification_report"]
-                break
+        # Record audit entry
+        scratchpad.add_entry(
+            step_id="critic",
+            round_num=1,
+            thought="Validated all cited sources for aliveness and content claims.",
+            action="visit_url",
+            action_input="(all sources)",
+            observation=validation_observation,
+            self_note="",
+            sources=new_sources,
+        )
 
-            # audit action — tool execution to fill evidence gaps
-            observation, sources = await self._execute_audit_tool(
-                action=action,
-                action_input=action_input,
-                kb_name=kb_name,
-                question=question,
-                scratchpad=scratchpad,
-            )
-
-            # Merge new sources into scratchpad
-            for src in sources:
-                self._add_source_to_scratchpad(scratchpad, src)
-
-            # Record the audit round entry
-            scratchpad.add_entry(
-                step_id="critic",
-                round_num=round_num + 1,
-                thought=audit_decision.get("thought", ""),
-                action=action,
-                action_input=action_input,
-                observation=observation,
-                self_note=self_note,
-                sources=sources,
-            )
-
-            if audit_decision.get("verification_report"):
-                verification_report["summary"] = audit_decision["verification_report"]
+        # Get LLM's summary assessment of verified/uncertain claims
+        audit_decision = await self._run_audit_round(
+            question=question,
+            scratchpad=scratchpad,
+            memory_context=memory_context,
+            image_url=image_url,
+            round_index=1,
+        )
+        verification_report["summary"] = audit_decision.get("verification_report", "")
 
         return scratchpad, verification_report
 
@@ -196,6 +177,90 @@ class CriticAgent(BaseAgent):
 
         return self._parse_audit_decision(response)
 
+    async def _validate_all_sources(
+        self,
+        scratchpad: Scratchpad,
+        kb_name: str | None,
+        question: str,
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """Validate all cited URLs in parallel, returning (observation, new_sources)."""
+        import asyncio
+
+        all_sources = scratchpad.get_all_sources()
+        url_sources = [src for src in all_sources if src.get("url")]
+
+        if not url_sources:
+            return "No URLs to validate.", []
+
+        logger.info(f"Validating {len(url_sources)} URLs in parallel")
+
+        # Build lookup from source key → entry that cited it (last one wins)
+        source_key_to_entry: dict[str, Any] = {}
+        for entry in scratchpad.entries:
+            for src in entry.sources:
+                key = f"{src.type}|{src.file or ''}|{src.url or ''}|{src.chunk_id or ''}"
+                source_key_to_entry[key] = entry
+
+        async def validate_one(src: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+            url = src.get("url", "").strip()
+            if not url:
+                return src, {"alive": False, "content": "No URL"}
+
+            key = f"{src.get('type', '')}|{src.get('file', '') or ''}|{url}|{src.get('chunk_id', '') or ''}"
+            entry = source_key_to_entry.get(key)
+            claim = entry.observation if entry else ""
+
+            try:
+                from deeptutor.core.tool_protocol import ToolResult
+                from deeptutor.tools.builtin import VisitUrlTool
+
+                tool = VisitUrlTool()
+                result: ToolResult = await tool.execute(url=url, claim=claim)
+                return src, {
+                    "alive": result.metadata.get("alive", False),
+                    "content": result.content,
+                    "sources": result.sources,
+                    "status_code": result.metadata.get("status_code"),
+                    "claim_verified": result.metadata.get("claim_verified"),
+                }
+            except Exception as exc:
+                logger.warning(f"visit_url failed for {url}: {exc}")
+                return src, {"alive": False, "content": f"Error: {exc}", "sources": [], "error": str(exc)}
+
+        results = await asyncio.gather(*[validate_one(src) for src in url_sources])
+
+        observations: list[str] = []
+        all_new_sources: list[Source] = []
+
+        for src, result in results:
+            url = src.get("url", "") if isinstance(src, dict) else src.url
+            src_id = src.get("id", "") if isinstance(src, dict) else getattr(src, "id", "")
+            alive = result.get("alive", False)
+            status_code = result.get("status_code")
+            claim_verified = result.get("claim_verified")
+
+            if not alive:
+                logger.warning(f"URL dead or unreachable url={url} status={status_code}")
+                if src_id:
+                    scratchpad.mark_source_invalid(src_id)
+            elif claim_verified is True:
+                observations.append(f"✓ {url}: claim verified")
+            elif claim_verified is False:
+                logger.warning(f"Claim not supported by page url={url}")
+                observations.append(f"✗ {url}: claim NOT verified")
+            elif alive:
+                observations.append(f"✓ {url}: alive (status {status_code})")
+
+            if result.get("error"):
+                observations.append(f"✗ {url}: {result['error']}")
+
+            if result.get("sources"):
+                converted = self._convert_sources(result["sources"])
+                all_new_sources.extend(converted)
+
+        obs_text = "\n".join(observations) if observations else "No sources to validate."
+        return obs_text, all_new_sources
+
     async def _execute_audit_tool(
         self,
         action: str,
@@ -205,6 +270,8 @@ class CriticAgent(BaseAgent):
         scratchpad: Scratchpad,
     ) -> tuple[str, list[Source]]:
         """Execute a tool for the audit loop, returning (observation, sources)."""
+        if action == "audit":
+            return "audit is a control action — skipping tool execution", []
         if action not in self._tool_runtime.valid_actions:
             return f"Unknown audit action: {action}", []
 
@@ -218,8 +285,11 @@ class CriticAgent(BaseAgent):
                 reason_context=self._build_reason_context(question, scratchpad),
             )
             sources = self._convert_sources(result.sources)
+            if not result.success:
+                logger.warning(f"Audit tool failed action={action} input={action_input}")
             return result.content, sources
         except Exception as e:
+            logger.warning(f"Audit tool exception action={action} input={action_input} error={e}")
             return f"Tool execution error: {e}", []
 
     def _build_reason_context(self, question: str, scratchpad: Scratchpad) -> str:
