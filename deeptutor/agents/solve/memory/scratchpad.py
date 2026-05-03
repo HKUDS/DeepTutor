@@ -379,6 +379,9 @@ class Scratchpad:
     def _normalize_paper_key(url: str) -> str:
         """Normalize a paper URL to its paper identity key for deduplication.
 
+        Pattern-based approach — no domain allowlist required. Extracts identifiers
+        wherever they appear in the URL (path, query, path segments).
+
         Groups all URL variants of the same paper (e.g. arxiv abs/html/pdf,
         openreview, semanticscholar) under one deduplication key.
         """
@@ -389,35 +392,35 @@ class Scratchpad:
         host = parsed.netloc.lower().removeprefix("www.")
         path = parsed.path.rstrip("/")
 
-        # arxiv: /abs/2311.12424v2, /html/2311.12424v3, /pdf/2311.12424 → arxiv:2311.12424
-        if host in ("arxiv.org", "alpha.arxiv.org", "ar5iv.org"):
-            parts = [p for p in path.split("/") if p]
-            for p in reversed(parts):
-                m = re.match(r"(\d{4}\.\d{4,})(v\d+)?$", p)
-                if m:
-                    return f"arxiv:{m.group(1)}"
-            return f"arxiv:{parts[-1]}" if parts else f"arxiv:{path}"
+        # --- arxiv: match 4-digit.4+digit[vN] pattern anywhere in path ---
+        # Handles: /abs/2311.12424v2, /html/2311.12424v3, /pdf/2311.12424
+        # The v suffix may or may not be preceded by a dot
+        for p in path.split("/"):
+            m = re.match(r"(\d{4}\.\d{4,})(?:v\d+)?$", p)
+            if m:
+                return f"arxiv:{m.group(1)}"
 
-        # openreview.net: extract id from query param (stable across /pdf and /forum)
+        # --- openreview.net: id from query param (stable across /pdf and /forum) ---
         if host == "openreview.net":
             m = re.search(r"id=([^&\s]+)", parsed.query)
             if m:
                 return f"openreview:{m.group(1)}"
-            # /forum/... paths without id — use full path
             return f"openreview:{path}"
 
-        # semanticscholar CorpusID: /CorpusID:265308959
+        # --- semanticscholar: CorpusID:123456789 ---
         if "corpusid" in host.lower() or "semanticscholar" in host.lower():
             if "CorpusID" in path:
                 return f"ss:{path.split(':')[-1]}"
 
-        # ICLR proceedings: hash-based path (same paper = same hash)
-        if host == "proceedings.iclr.cc":
+        # --- ICLR / NeurIPS proceedings: hash/abcdef123 ---
+        if host in ("proceedings.iclr.cc", "proceedings.neurips.cc"):
             m = re.search(r"hash/([a-f0-9]+)", path)
             if m:
                 return f"iclr:{m.group(1)}"
 
-        # emergentmind, deeplearn.org, etc. — each is already unique per paper
+        # --- Catch-all: use host+path as the key ---
+        # This handles emergentmind, deeplearn.org, researchgate, etc. where
+        # each paper gets its own path but we don't extract a formal ID
         return f"{host}{path}"
 
     @staticmethod
@@ -451,30 +454,38 @@ class Scratchpad:
     def _build_sources_list(self, include_invalid: bool = True) -> list[dict[str, Any]]:
         """Build deduplicated list of all sources with IDs.
 
-        For web sources, groups by (type, file/title, paper_key) so all URL
-        variants of the same paper collapse to one entry. Alternate URLs are
-        preserved in `alternate_urls` for reference display.
+        Uses RapidFuzz token_set_ratio on source titles for fuzzy deduplication
+        of web sources, so that URL variants of the same paper (different hosts,
+        different URL formats) are correctly collapsed into one entry.
         """
-        seen: dict[str, dict] = {}  # key → {"primary": src_dict, "alts": set of alt urls}
+        from rapidfuzz import fuzz
+
+        seen: list[dict[str, Any]] = []  # list of {"primary": src_dict, "alts": set}
         result: list[dict[str, Any]] = []
         counter: dict[str, int] = {}
         invalid_ids = set(self.metadata.get("invalid_source_ids", []))
         for entry in self.entries:
             for src in entry.sources:
                 src_dict = src.to_dict()
-                if src.type == "web" and src.url:
-                    paper_key = self._normalize_paper_key(src.url)
-                    key = f"{src.type}|{paper_key}"
-                    if key not in seen:
-                        seen[key] = {"primary": src_dict, "alts": set()}
-                    else:
-                        seen[key]["alts"].add(src_dict["url"])
-                else:
-                    key = f"{src.type}|{src.file or ''}|{src.url or ''}|{src.chunk_id or ''}"
-                    if key not in seen:
-                        seen[key] = {"primary": src_dict, "alts": set()}
+                # Fuzzy title dedup: check if this source's title matches any existing
+                matched = False
+                for existing in seen:
+                    primary = existing["primary"]
+                    if primary["type"] != src.type:
+                        continue
+                    # Same type — check title similarity
+                    if src.file and primary.get("file"):
+                        ratio = fuzz.token_set_ratio(src.file, primary["file"])
+                        if ratio >= 80:
+                            # Duplicate — add URL to alts
+                            if src_dict.get("url"):
+                                existing["alts"].add(src_dict["url"])
+                            matched = True
+                            break
+                if not matched:
+                    seen.append({"primary": src_dict, "alts": set()})
 
-        for key, data in seen.items():
+        for data in seen:
             src_dict = data["primary"]
             prefix = src_dict["type"] if src_dict["type"] in ("rag", "web", "code") else "src"
             counter[prefix] = counter.get(prefix, 0) + 1

@@ -258,6 +258,7 @@ class CriticAgent(BaseAgent):
                 if src_id:
                     scratchpad.mark_source_invalid(src_id)
             elif claim_verified is True:
+                logger.info(f"Claim supported by page url={url}")
                 observations.append(f"✓ {url}: claim verified")
             elif claim_verified is False:
                 logger.warning(f"Claim not supported by page url={url}")
@@ -348,13 +349,25 @@ class CriticAgent(BaseAgent):
         return converted
 
     def _add_source_to_scratchpad(self, scratchpad: Scratchpad, source: Source) -> None:
-        """Append a new source to the most recent critic entry, skipping duplicates."""
+        """Append a new source to the most recent critic entry, skipping duplicates.
+
+        Uses RapidFuzz token-set ratio for fuzzy title matching, which handles
+        URL-encoded titles, different ordering, and partial matches better than
+        the old longest-common-substring approach.
+        """
+        from rapidfuzz import fuzz
+
         if not scratchpad.entries:
             return
-        # Find the last critic entry and append source (skip if already present)
         for entry in reversed(scratchpad.entries):
             if entry.step_id == "critic":
-                if self._is_duplicate(entry.sources, source):
+                if source.type == "web" and source.url:
+                    # Exact URL match
+                    for existing in entry.sources:
+                        if existing.url and existing.url == source.url:
+                            return
+                # Fuzzy title match via RapidFuzz
+                if self._is_duplicate(entry.sources, source, fuzz):
                     return
                 entry.sources.append(source)
                 return
@@ -379,22 +392,29 @@ class CriticAgent(BaseAgent):
         return a[end_i - max_len:end_i]
 
     @staticmethod
-    def _is_duplicate(existing: list[Source], new: Source) -> bool:
-        """Check if `new` is a duplicate of any source in `existing`."""
+    def _is_duplicate(existing: list[Source], new: Source, fuzz_module=None) -> bool:
+        """Check if `new` is a duplicate of any source in `existing`.
+
+        Uses RapidFuzz token_set_ratio when fuzz_module is provided, otherwise
+        falls back to exact URL match then simple LCS-based title match.
+        """
         for s in existing:
             if s.type != new.type:
                 continue
-            # Exact URL match
             if s.url and new.url and s.url == new.url:
                 return True
-            # Fuzzy title match: common substring >= 50% of shorter title
             if s.file and new.file:
-                shorter = min(len(s.file), len(new.file))
-                if shorter == 0:
-                    continue
-                common = CriticAgent._longest_common_substring(s.file, new.file)
-                if len(common) / shorter >= 0.5:
-                    return True
+                if fuzz_module is not None:
+                    ratio = fuzz_module.token_set_ratio(s.file, new.file)
+                    if ratio >= 80:
+                        return True
+                else:
+                    shorter = min(len(s.file), len(new.file))
+                    if shorter == 0:
+                        continue
+                    common = CriticAgent._longest_common_substring(s.file, new.file)
+                    if len(common) / shorter >= 0.5:
+                        return True
         return False
 
     def _update_entry_note(self, scratchpad: Scratchpad, step_id: str, note: str) -> None:
