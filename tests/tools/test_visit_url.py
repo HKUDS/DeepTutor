@@ -144,3 +144,99 @@ class TestBatchUrlExecution:
             assert "alive_count" in result.metadata
             assert "dead_count" in result.metadata
             assert result.metadata["url_count"] == 2
+
+
+class Test429RetryWithBackoff:
+    """Tests for HTTP 429 rate-limit retry with exponential backoff."""
+
+    @pytest.mark.asyncio
+    async def test_retries_on_429_and_succeeds(self, tool: VisitUrlTool) -> None:
+        """When first request gets 429 and second succeeds, return the successful result."""
+        import asyncio
+        import httpx
+
+        call_count = 0
+
+        async def mock_get(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # First attempt: rate limited
+                resp = httpx.Response(429, text="Rate limited")
+                resp._headers = {"content-type": "text/html"}
+                return resp
+            # Second attempt: success
+            resp = httpx.Response(200, text="<html><title>Success</title></html>")
+            resp._headers = {"content-type": "text/html"}
+            return resp
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.get = mock_get
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            result = await tool.execute(url="https://example.com")
+
+        assert result.metadata.get("alive") is True
+        assert result.metadata.get("status_code") == 200
+        assert call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_gives_up_after_max_retries(self, tool: VisitUrlTool) -> None:
+        """When all attempts return 429, mark URL as dead and return 429 status."""
+        import httpx
+
+        async def mock_get(*args, **kwargs):
+            resp = httpx.Response(429, text="Rate limited")
+            resp._headers = {"content-type": "text/html"}
+            return resp
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.get = mock_get
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            result = await tool.execute(url="https://example.com")
+
+        assert result.metadata.get("alive") is False
+        assert result.metadata.get("status_code") == 429
+
+    @pytest.mark.asyncio
+    async def test_sleeps_with_exponential_backoff(self, tool: VisitUrlTool) -> None:
+        """Verify that backoff intervals double after each 429 response."""
+        import asyncio
+        import httpx
+
+        call_count = 0
+        sleep_intervals: list[float] = []
+
+        original_sleep = asyncio.sleep
+
+        async def tracking_sleep(delay: float):
+            sleep_intervals.append(delay)
+            await original_sleep(0)  # no real sleep during tests
+
+        async def mock_get(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            resp = httpx.Response(429, text="Rate limited")
+            resp._headers = {"content-type": "text/html"}
+            return resp
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.get = mock_get
+
+        with patch("httpx.AsyncClient", return_value=mock_client), \
+             patch("asyncio.sleep", tracking_sleep):
+            await tool.execute(url="https://example.com")
+
+        # Should have slept twice (between attempt 1→2 and 2→3), with backoff doubling
+        assert len(sleep_intervals) == 2
+        assert sleep_intervals[1] > sleep_intervals[0]
+        # First backoff ~1.0s, second ~2.0s
+        assert sleep_intervals[0] == 1.0
+        assert sleep_intervals[1] == 2.0
