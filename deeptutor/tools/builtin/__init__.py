@@ -8,9 +8,10 @@ import logging
 from typing import Any
 
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolParameter, ToolResult
+from deeptutor.logging import get_logger
 from deeptutor.tools.prompting import load_prompt_hints
 
-logger = logging.getLogger(__name__)
+logger = get_logger("builtin.tools")
 
 
 class _PromptHintsMixin:
@@ -449,7 +450,6 @@ class VisitUrlTool(_PromptHintsMixin, BaseTool):
                     success=False,
                     metadata={"alive": False, "status_code": None},
                 )
-
         import asyncio
         import textwrap
 
@@ -493,13 +493,29 @@ class VisitUrlTool(_PromptHintsMixin, BaseTool):
                 return (len(missing) / len(claim_tokens)) <= 0.2
 
         async def _fetch_one(target_url: str) -> dict[str, Any]:
-            """Fetch a single URL and return structured result."""
+            """Fetch a single URL and return structured result with retry on 429."""
             headers = {
                 "User-Agent": "Mozilla/5.0 (compatible; DeepTutorBot/1.0; +https://example.com/bot)"
             }
+            claim_verified: bool | None = None
+            max_retries = 3
+            backoff = 1.0
+
+            async def _do_fetch(client: httpx.AsyncClient) -> httpx.Response:
+                nonlocal backoff
+                for attempt in range(max_retries):
+                    response = await client.get(target_url, headers=headers)
+                    if response.status_code != 429:
+                        return response
+                    if attempt < max_retries - 1:
+                        logger.info(f"Rate limited (429), retrying {target_url} in {backoff:.1f}s")
+                        await asyncio.sleep(backoff)
+                        backoff *= 2
+                return response
+
             try:
                 async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-                    response = await client.get(target_url, headers=headers)
+                    response = await _do_fetch(client)
                     status = response.status_code
                     raw_text = response.text
                     title = ""
@@ -521,6 +537,7 @@ class VisitUrlTool(_PromptHintsMixin, BaseTool):
                     page_text = clean_text[:8000]
 
                     if not alive:
+                        logger.warning(f"URL unreachable status={status} url={target_url}")
                         result_content = f"URL is not reachable (status {status}). The source may be broken or the page no longer exists."
                         claim_verified = None
                     else:
@@ -532,6 +549,7 @@ class VisitUrlTool(_PromptHintsMixin, BaseTool):
                             if claim_verified is True:
                                 lines.append("Claim SUPPORTED: semantically aligned with page content.")
                             elif claim_verified is False:
+                                logger.warning(f"Claim not verified url={target_url} claim={claim}")
                                 lines.append("Claim NOT VERIFIED: the cited content was not found in the page. The claim may be inaccurate or the URL may point to a different version of the content.")
                             else:
                                 # None means both methods failed — be conservative
@@ -550,6 +568,7 @@ class VisitUrlTool(_PromptHintsMixin, BaseTool):
                         "claim_verified": claim_verified,
                     }
             except httpx.UnsupportedProtocol:
+                logger.warning(f"Invalid URL protocol url={target_url}")
                 return {
                     "url": target_url,
                     "content": f"Invalid URL format: missing http:// or https:// protocol.",
@@ -559,6 +578,7 @@ class VisitUrlTool(_PromptHintsMixin, BaseTool):
                     "claim_verified": None,
                 }
             except Exception as exc:
+                logger.warning(f"Failed to fetch URL url={target_url} error={exc}")
                 return {
                     "url": target_url,
                     "content": f"Failed to fetch URL: {exc}",
@@ -574,6 +594,7 @@ class VisitUrlTool(_PromptHintsMixin, BaseTool):
                 timeout=20.0,
             )
         except asyncio.TimeoutError:
+            logger.warning(f"URL fetch timed out url={url_list[0]}")
             return ToolResult(
                 content=f"URL fetch timed out after 20 seconds: {url_list[0]}" + (" and others" if len(url_list) > 1 else ""),
                 success=False,
