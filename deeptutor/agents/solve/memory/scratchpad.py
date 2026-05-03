@@ -375,26 +375,117 @@ class Scratchpad:
         """Return deduplicated list of sources, excluding those marked invalid by CriticAgent."""
         return self._build_sources_list(include_invalid=False)
 
+    @staticmethod
+    def _normalize_paper_key(url: str) -> str:
+        """Normalize a paper URL to its paper identity key for deduplication.
+
+        Groups all URL variants of the same paper (e.g. arxiv abs/html/pdf,
+        openreview, semanticscholar) under one deduplication key.
+        """
+        from urllib.parse import urlparse
+        import re
+
+        parsed = urlparse(url)
+        host = parsed.netloc.lower().removeprefix("www.")
+        path = parsed.path.rstrip("/")
+
+        # arxiv: /abs/2311.12424v2, /html/2311.12424v3, /pdf/2311.12424 → arxiv:2311.12424
+        if host in ("arxiv.org", "alpha.arxiv.org", "ar5iv.org"):
+            parts = [p for p in path.split("/") if p]
+            for p in reversed(parts):
+                m = re.match(r"(\d{4}\.\d{4,})(v\d+)?$", p)
+                if m:
+                    return f"arxiv:{m.group(1)}"
+            return f"arxiv:{parts[-1]}" if parts else f"arxiv:{path}"
+
+        # openreview.net: extract id from query param (stable across /pdf and /forum)
+        if host == "openreview.net":
+            m = re.search(r"id=([^&\s]+)", parsed.query)
+            if m:
+                return f"openreview:{m.group(1)}"
+            # /forum/... paths without id — use full path
+            return f"openreview:{path}"
+
+        # semanticscholar CorpusID: /CorpusID:265308959
+        if "corpusid" in host.lower() or "semanticscholar" in host.lower():
+            if "CorpusID" in path:
+                return f"ss:{path.split(':')[-1]}"
+
+        # ICLR proceedings: hash-based path (same paper = same hash)
+        if host == "proceedings.iclr.cc":
+            m = re.search(r"hash/([a-f0-9]+)", path)
+            if m:
+                return f"iclr:{m.group(1)}"
+
+        # emergentmind, deeplearn.org, etc. — each is already unique per paper
+        return f"{host}{path}"
+
+    @staticmethod
+    def _best_url(urls: list[str]) -> str:
+        """Return the most informative canonical URL from a list of variants."""
+        from urllib.parse import urlparse
+        _URL_PRIORITY = {
+            host: n
+            for n, host in enumerate([
+                "arxiv.org",
+                "ar5iv.org",
+                "alpha.arxiv.org",
+                "openreview.net",
+                "proceedings.iclr.cc",
+                "proceedings.neurips.cc",
+                "huggingface.co",
+                "api.semanticscholar.org",
+                "deeplearn.org",
+                "mlanthology.org",
+                "www.emergentmind.com",
+                "www.alphaxiv.org",
+            ])
+        }
+        return min(
+            urls,
+            key=lambda u: _URL_PRIORITY.get(
+                urlparse(u).netloc.lower().removeprefix("www."), 99
+            ),
+        )
+
     def _build_sources_list(self, include_invalid: bool = True) -> list[dict[str, Any]]:
-        seen: set[str] = set()
+        """Build deduplicated list of all sources with IDs.
+
+        For web sources, groups by (type, file/title, paper_key) so all URL
+        variants of the same paper collapse to one entry. Alternate URLs are
+        preserved in `alternate_urls` for reference display.
+        """
+        seen: dict[str, dict] = {}  # key → {"primary": src_dict, "alts": set of alt urls}
         result: list[dict[str, Any]] = []
         counter: dict[str, int] = {}
         invalid_ids = set(self.metadata.get("invalid_source_ids", []))
         for entry in self.entries:
             for src in entry.sources:
-                key = f"{src.type}|{src.file or ''}|{src.url or ''}|{src.chunk_id or ''}"
-                if key not in seen:
-                    seen.add(key)
-                    prefix = src.type if src.type in ("rag", "web", "code") else "src"
-                    counter[prefix] = counter.get(prefix, 0) + 1
-                    source_id = f"{prefix}-{counter[prefix]}"
-                    d = src.to_dict()
-                    d["id"] = source_id
-                    if source_id in invalid_ids:
-                        d["invalid"] = True
-                        if not include_invalid:
-                            continue
-                    result.append(d)
+                src_dict = src.to_dict()
+                if src.type == "web" and src.url:
+                    paper_key = self._normalize_paper_key(src.url)
+                    key = f"{src.type}|{paper_key}"
+                    if key not in seen:
+                        seen[key] = {"primary": src_dict, "alts": set()}
+                    else:
+                        seen[key]["alts"].add(src_dict["url"])
+                else:
+                    key = f"{src.type}|{src.file or ''}|{src.url or ''}|{src.chunk_id or ''}"
+                    if key not in seen:
+                        seen[key] = {"primary": src_dict, "alts": set()}
+
+        for key, data in seen.items():
+            src_dict = data["primary"]
+            prefix = src_dict["type"] if src_dict["type"] in ("rag", "web", "code") else "src"
+            counter[prefix] = counter.get(prefix, 0) + 1
+            src_dict["id"] = f"{prefix}-{counter[prefix]}"
+            if data["alts"]:
+                src_dict["alternate_urls"] = sorted(data["alts"])
+            if src_dict["id"] in invalid_ids:
+                src_dict["invalid"] = True
+                if not include_invalid:
+                    continue
+            result.append(src_dict)
         return result
 
     def mark_source_invalid(self, source_id: str) -> None:
@@ -409,14 +500,20 @@ class Scratchpad:
             self.metadata["invalid_source_ids"] = invalid_ids
 
     def format_sources_markdown(self) -> str:
-        """Format sources as a Markdown references section with clickable URLs."""
+        """Format sources as a Markdown references section with clickable URLs.
+
+        For web sources with multiple URL variants, picks the canonical URL
+        via _best_url so the reader sees the most informative link.
+        """
         sources = self.get_valid_sources()
         if not sources:
             return ""
         lines = ["## References\n"]
         for s in sources:
             label = self._source_label(s)
-            url = s.get("url", "")
+            all_urls = [s["url"]] if s.get("url") else []
+            all_urls.extend(s.get("alternate_urls", []))
+            url = self._best_url(all_urls) if all_urls else ""
             if url:
                 lines.append(f"- **[{s['id']}]** [{label}]({url})")
             else:
