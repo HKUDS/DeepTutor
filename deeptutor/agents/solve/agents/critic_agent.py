@@ -348,14 +348,54 @@ class CriticAgent(BaseAgent):
         return converted
 
     def _add_source_to_scratchpad(self, scratchpad: Scratchpad, source: Source) -> None:
-        """Append a new source to the most recent critic entry."""
+        """Append a new source to the most recent critic entry, skipping duplicates."""
         if not scratchpad.entries:
             return
-        # Find the last critic entry and append source
+        # Find the last critic entry and append source (skip if already present)
         for entry in reversed(scratchpad.entries):
             if entry.step_id == "critic":
+                if self._is_duplicate(entry.sources, source):
+                    return
                 entry.sources.append(source)
                 return
+
+    @staticmethod
+    def _longest_common_substring(a: str, b: str) -> str:
+        """Return the longest common substring of a and b. O(n²) time."""
+        if not a or not b:
+            return ""
+        n, m = len(a), len(b)
+        # dp[i][j] = length of LCS ending at a[i-1], b[j-1]
+        dp: list[list[int]] = [[0] * (m + 1) for _ in range(n + 1)]
+        max_len = 0
+        end_i = 0
+        for i in range(1, n + 1):
+            for j in range(1, m + 1):
+                if a[i - 1] == b[j - 1]:
+                    dp[i][j] = dp[i - 1][j - 1] + 1
+                    if dp[i][j] > max_len:
+                        max_len = dp[i][j]
+                        end_i = i
+        return a[end_i - max_len:end_i]
+
+    @staticmethod
+    def _is_duplicate(existing: list[Source], new: Source) -> bool:
+        """Check if `new` is a duplicate of any source in `existing`."""
+        for s in existing:
+            if s.type != new.type:
+                continue
+            # Exact URL match
+            if s.url and new.url and s.url == new.url:
+                return True
+            # Fuzzy title match: common substring >= 50% of shorter title
+            if s.file and new.file:
+                shorter = min(len(s.file), len(new.file))
+                if shorter == 0:
+                    continue
+                common = CriticAgent._longest_common_substring(s.file, new.file)
+                if len(common) / shorter >= 0.5:
+                    return True
+        return False
 
     def _update_entry_note(self, scratchpad: Scratchpad, step_id: str, note: str) -> None:
         """Update the self_note on the most recent entry for a given step."""
