@@ -28,6 +28,7 @@ import AssistantResponse from "@/components/common/AssistantResponse";
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import ProcessLogs from "@/components/common/ProcessLogs";
 import ResearchConfigPanel from "@/components/research/ResearchConfigPanel";
+import SagePluginTile from "@/components/plugins/SagePluginTile";
 import {
   extractBase64FromDataUrl,
   readFileAsDataUrl,
@@ -1861,6 +1862,10 @@ export default function PlaygroundPage() {
               "Explore the building blocks of DeepTutor: reusable tools and higher-level capabilities.",
             )}
           </p>
+        </div>
+
+        <div className="mb-5">
+          <SagePluginTile />
         </div>
 
         {loading ? (

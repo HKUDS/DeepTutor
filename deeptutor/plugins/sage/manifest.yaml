@@ -1,0 +1,28 @@
+name: sage
+version: 0.1.0
+type: companion
+description: >-
+  External long-term memory companion + cross-tutor knowledge sharing +
+  consensus-validated audit trail, backed by a SAGE node.
+  Recalls cross-session pedagogy/subject-domain memories into deep_solve and
+  deep_research prompts, and stores observations after every capability run.
+  Strictly additive: the per-learner SUMMARY.md / PROFILE.md memory layer is
+  untouched. Opt-in via ``SAGE_ENABLED=true`` — when disabled or unreachable,
+  the plugin is a no-op and DeepTutor behaves exactly as before.
+author: SAGE contributors <https://github.com/l33tdawg/sage>
+entry: capability.py:SageMemoryCompanion
+stages:
+  - recall
+  - remember
+hooks:
+  pre_capability_run:
+    - deep_solve
+    - deep_research
+  post_capability_run:
+    event: CAPABILITY_COMPLETE
+config:
+  enabled_env: SAGE_ENABLED
+  url_env: SAGE_URL
+  identity_env: SAGE_AGENT_KEY
+  default_url: http://localhost:8080
+  domain_prefix: deeptutor
