@@ -107,7 +107,7 @@ class TestExecute:
 
         assert result.success is False
         assert result.metadata.get("alive") is False
-        assert "timeout" in result.content.lower()
+        assert "timeout" in result.content.lower() or "timed out" in result.content.lower()
 
 
 class TestBatchUrlExecution:

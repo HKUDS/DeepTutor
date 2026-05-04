@@ -48,7 +48,7 @@ _CONTROL_ACTIONS = {
     ],
 }
 
-_ACTION_INPUT_PARAM_CANDIDATES = ("query", "intent", "task", "prompt", "input", "code")
+_ACTION_INPUT_PARAM_CANDIDATES = ("query", "intent", "task", "prompt", "input", "code", "url")
 
 
 class SolveToolRuntime:

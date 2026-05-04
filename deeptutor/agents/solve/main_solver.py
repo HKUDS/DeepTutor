@@ -246,10 +246,7 @@ class MainSolver:
 
         lang = parse_language(self.config.get("system", {}).get("language", "en"))
         self._core_tool_registry = get_tool_registry()
-        # Always include visit_url so CriticAgent can validate reference URLs
         enabled = list(self._enabled_tools or []) if self._enabled_tools else []
-        if "visit_url" not in enabled:
-            enabled.append("visit_url")
         self.tool_runtime = SolveToolRuntime(
             enabled_tools=enabled,
             language=lang,

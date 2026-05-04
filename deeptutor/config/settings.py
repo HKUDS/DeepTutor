@@ -22,6 +22,10 @@ class LLMRetryConfig(BaseModel):
     exponential_backoff: bool = Field(
         default=True, description="Whether to use exponential backoff"
     )
+    idle_timeout: int = Field(
+        default=300,
+        description="Stream idle timeout in seconds. Decrease to fail fast on stalled streams.",
+    )
 
 
 class Settings(BaseSettings):

@@ -72,11 +72,11 @@ class TestValidateAllSources:
                 ],
             )
         )
-        obs, new_sources = await agent._validate_all_sources(
+        obs, per_url_results = await agent._validate_all_sources(
             scratchpad=pad, kb_name=None, question="Simple?"
         )
         assert obs == "No URLs to validate."
-        assert new_sources == []
+        assert per_url_results == []
 
     @pytest.mark.asyncio
     async def test_all_sources_valid_alive(self, agent: CriticAgent, scratchpad: Scratchpad) -> None:
@@ -87,12 +87,12 @@ class TestValidateAllSources:
 
         with patch("deeptutor.tools.builtin.VisitUrlTool") as MockTool:
             MockTool.return_value.execute = AsyncMock(return_value=mock_result)
-            obs, new_sources = await agent._validate_all_sources(
+            obs, per_url_results = await agent._validate_all_sources(
                 scratchpad=scratchpad, kb_name=None, question="What is deep learning?"
             )
 
         assert "✓ https://example.com/dl" in obs
-        assert len(new_sources) == 0  # no new sources from a successful visit
+        assert len(per_url_results) == 1
 
     @pytest.mark.asyncio
     async def test_dead_url_marks_source_invalid(self, agent: CriticAgent, scratchpad: Scratchpad) -> None:
@@ -128,13 +128,13 @@ class TestValidateAllSources:
         )
         with patch("deeptutor.tools.builtin.VisitUrlTool") as MockTool:
             MockTool.return_value.execute = AsyncMock(side_effect=RuntimeError("network error"))
-            obs, new_sources = await agent._validate_all_sources(
+            obs, per_url_results = await agent._validate_all_sources(
                 scratchpad=pad, kb_name=None, question="What is deep learning?"
             )
 
         # Should not raise — error is caught and logged
         assert "Error" in obs or "https://example.com" in obs
-        assert isinstance(new_sources, list)
+        assert isinstance(per_url_results, list)
 
     @pytest.mark.asyncio
     async def test_claim_verified_logs_success(self, agent: CriticAgent, scratchpad: Scratchpad) -> None:
@@ -145,7 +145,7 @@ class TestValidateAllSources:
 
         with patch("deeptutor.tools.builtin.VisitUrlTool") as MockTool:
             MockTool.return_value.execute = AsyncMock(return_value=mock_result)
-            obs, new_sources = await agent._validate_all_sources(
+            obs, per_url_results = await agent._validate_all_sources(
                 scratchpad=scratchpad, kb_name=None, question="What is deep learning?"
             )
 
@@ -160,7 +160,7 @@ class TestValidateAllSources:
 
         with patch("deeptutor.tools.builtin.VisitUrlTool") as MockTool:
             MockTool.return_value.execute = AsyncMock(return_value=mock_result)
-            obs, new_sources = await agent._validate_all_sources(
+            obs, per_url_results = await agent._validate_all_sources(
                 scratchpad=scratchpad, kb_name=None, question="What is deep learning?"
             )
 

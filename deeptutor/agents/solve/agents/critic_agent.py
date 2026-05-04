@@ -90,33 +90,74 @@ class CriticAgent(BaseAgent):
 
         verification_report["rounds"] = 1
 
-        # Validate all sources in parallel
-        validation_observation, new_sources = await self._validate_all_sources(
+        # Validate all sources in parallel — marks invalid sources in scratchpad.metadata
+        validation_observation, _per_url_results = await self._validate_all_sources(
             scratchpad=scratchpad,
             kb_name=kb_name,
             question=question,
         )
 
-        # Merge new sources
-        for src in new_sources:
-            self._add_source_to_scratchpad(scratchpad, src)
+        # Build sources list from validation results for the critic entry
+        validated_sources: list[Source] = []
+        alive_count = 0
+        dead_count = 0
+        unsafe_count = 0
 
-        # Mark invalid sources based on validation results (already handled inside _validate_all_sources)
-        for src in scratchpad.get_all_sources():
-            src_id = src.get("id", "")
-            # Sources not in new_sources are already marked invalid inside _validate_all_sources
-            pass
+        for src, result in _per_url_results:
+            # Hoist type check — avoids 5× isinstance() per iteration
+            if isinstance(src, dict):
+                url = src.get("url")
+                src_id = src.get("id")
+                src_type = src.get("type", "web")
+                src_file = src.get("file")
+                src_chunk = src.get("chunk_id")
+            else:
+                url = getattr(src, "url", None)
+                src_id = getattr(src, "id", None)
+                src_type = getattr(src, "type", "web")
+                src_file = getattr(src, "file", None)
+                src_chunk = getattr(src, "chunk_id", None)
 
-        # Record audit entry
+            is_alive = result.get("alive", False)
+            is_safe = result.get("is_safe", True)
+            if is_alive and is_safe:
+                alive_count += 1
+            elif not is_alive:
+                dead_count += 1
+            elif not is_safe:
+                unsafe_count += 1
+
+            # Build Source with validation status embedded in chunk_id as tag if needed
+            source = Source(
+                type=src_type or "web",
+                file=src_file,
+                url=url,
+                chunk_id=src_chunk,
+            )
+            validated_sources.append(source)
+
+        # Build concise summary observation
+        total = len(_per_url_results)
+        summary_parts = [f"Validated {total} sources:"]
+        if alive_count:
+            summary_parts.append(f"{alive_count} alive")
+        if dead_count:
+            summary_parts.append(f"{dead_count} dead/unreachable")
+        if unsafe_count:
+            summary_parts.append(f"{unsafe_count} unsafe")
+        summary_parts.append(f"{len(validated_sources)} recorded.")
+        summary_observation = " ".join(summary_parts)
+
+        # Record audit entry with validated sources
         scratchpad.add_entry(
             step_id="critic",
             round_num=1,
             thought="Validated all cited sources for aliveness and content claims.",
             action="visit_url",
             action_input="(all sources)",
-            observation=validation_observation,
+            observation=summary_observation,
             self_note="",
-            sources=new_sources,
+            sources=validated_sources,
         )
 
         # Get LLM's summary assessment of verified/uncertain claims
@@ -185,8 +226,12 @@ class CriticAgent(BaseAgent):
         scratchpad: Scratchpad,
         kb_name: str | None,
         question: str,
-    ) -> tuple[str, list[dict[str, Any]]]:
-        """Validate all cited URLs in parallel, returning (observation, new_sources)."""
+    ) -> tuple[str, list[tuple[dict[str, Any], dict[str, Any]]]]:
+        """Validate all cited URLs in parallel, returning (observation, per_url_results).
+
+        per_url_results: list of (src, result) tuples with raw per-URL data including
+        is_safe, safety_category, safety_filter_used, matched_patterns, etc.
+        """
         import asyncio
 
         all_sources = scratchpad.get_all_sources()
@@ -210,15 +255,13 @@ class CriticAgent(BaseAgent):
                 return src, {"alive": False, "content": "No URL"}
 
             key = f"{src.get('type', '')}|{src.get('file', '') or ''}|{url}|{src.get('chunk_id', '') or ''}"
-            entry = source_key_to_entry.get(key)
-            claim = entry.action_input if entry else ""
 
             try:
                 from deeptutor.core.tool_protocol import ToolResult
                 from deeptutor.tools.builtin import VisitUrlTool
 
                 tool = VisitUrlTool()
-                result: ToolResult = await tool.execute(url=url, claim=claim)
+                result: ToolResult = await tool.execute(url=url, claim="")
                 raw_content = result.content or ""
 
                 # Run content safety check
@@ -244,7 +287,6 @@ class CriticAgent(BaseAgent):
         results = await asyncio.gather(*[validate_one(src) for src in url_sources])
 
         observations: list[str] = []
-        all_new_sources: list[Source] = []
 
         for src, result in results:
             url = src.get("url", "") if isinstance(src, dict) else src.url
@@ -280,12 +322,8 @@ class CriticAgent(BaseAgent):
             if result.get("error"):
                 observations.append(f"✗ {url}: {result['error']}")
 
-            if result.get("sources"):
-                converted = self._convert_sources(result["sources"])
-                all_new_sources.extend(converted)
-
         obs_text = "\n".join(observations) if observations else "No sources to validate."
-        return obs_text, all_new_sources
+        return obs_text, list(results)
 
     async def _execute_audit_tool(
         self,

@@ -105,22 +105,13 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "supports_vision": True,
         "system_in_messages": True,
     },
-    # Moonshot / Kimi — vision is per-model (see MODEL_OVERRIDES below).
-    "moonshot": {
+    # MiniMax — vision is per-model (see MODEL_OVERRIDES below).
+    "minimax": {
         "supports_response_format": True,
         "supports_streaming": True,
         "supports_tools": True,
         "supports_vision": False,
         "vision_url_supported": False,
-        "system_in_messages": True,
-    },
-    # MiniMax — vision is per-model (see MODEL_OVERRIDES below).
-    "minimax": {
-        "supports_response_format": False,
-        "supports_streaming": True,
-        "supports_tools": False,
-        "supports_vision": False,
-        "vision_url_supported": True,
         "system_in_messages": True,
     },
     # Moonshot / Kimi — vision is per-model (see MODEL_OVERRIDES below).
@@ -199,9 +190,7 @@ MODEL_OVERRIDES: dict[str, dict[str, object]] = {
         "has_thinking_tags": True,
     },
     "minimax": {
-        "supports_response_format": False,
-        "supports_vision": True,
-        "vision_url_supported": True,
+        "supports_response_format": True,
     },
     # NOTE: supports_response_format and system_in_messages are binding-level
     # capabilities, NOT model-level. When using OpenRouter or other OpenAI-compatible

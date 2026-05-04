@@ -153,7 +153,7 @@ class AzureOpenAIProvider(LLMProvider):
         )
         body.update(adapt_chat_kwargs_to_responses(extra_kwargs))
         body["stream"] = True
-        idle_timeout_s = 90
+        idle_timeout_s = self.generation.idle_timeout
 
         try:
             stream = await self._client.responses.create(**body)

@@ -390,25 +390,21 @@ class PaperSearchToolWrapper(_PromptHintsMixin, BaseTool):
 
 
 class VisitUrlTool(_PromptHintsMixin, BaseTool):
-    """Fetch one or more URLs in parallel and verify whether each is alive and contains the expected content."""
+    """Fetch a URL and verify it is alive and contains the expected content."""
 
     def get_definition(self) -> ToolDefinition:
         return ToolDefinition(
             name="visit_url",
             description=(
-                "Fetch one or more URLs in parallel, verify each is reachable (HTTP 2xx), and extract readable text. "
-                "Pass multiple URLs as newline-separated strings. "
-                "Use this to validate that cited source URLs actually exist and contain the claimed content. "
-                "Returns per-URL results with title, alive flag, and claim verification."
+                "Fetch a URL, verify it is reachable (HTTP 2xx), and extract readable text. "
+                "Use this to validate that a cited source URL actually exists and contains the claimed content. "
+                "Returns the page title, alive flag, and claim verification result."
             ),
             parameters=[
                 ToolParameter(
                     name="url",
                     type="string",
-                    description=(
-                        "A single URL or multiple newline-separated URLs to visit and verify. "
-                        "Example: 'https://example.com' or 'https://a.com\\nhttps://b.com'"
-                    ),
+                    description="The URL to visit and verify.",
                 ),
                 ToolParameter(
                     name="claim",
@@ -421,35 +417,14 @@ class VisitUrlTool(_PromptHintsMixin, BaseTool):
 
     async def execute(self, **kwargs: Any) -> ToolResult:
         raw_url = kwargs.get("url", "")
+        if not raw_url or not (url := str(raw_url).strip()):
+            return ToolResult(
+                content="No URL provided.",
+                success=False,
+                metadata={"alive": False, "status_code": None},
+            )
         claim = str(kwargs.get("claim", "")).strip()
 
-        # Normalize to list: handle string (single or newline-separated), list, or list-like
-        if isinstance(raw_url, str):
-            url_str = raw_url.strip()
-            if not url_str:
-                return ToolResult(
-                    content="No URL provided.",
-                    success=False,
-                    metadata={"alive": False, "status_code": None},
-                )
-            # Split newline-separated URLs
-            url_list = [u.strip() for u in url_str.split("\n") if u.strip()]
-        elif isinstance(raw_url, (list, tuple)):
-            url_list = [str(u).strip() for u in raw_url if str(u).strip()]
-            if not url_list:
-                return ToolResult(
-                    content="No URL provided.",
-                    success=False,
-                    metadata={"alive": False, "status_code": None},
-                )
-        else:
-            url_list = [str(raw_url).strip()]
-            if not url_list[0]:
-                return ToolResult(
-                    content="No URL provided.",
-                    success=False,
-                    metadata={"alive": False, "status_code": None},
-                )
         import asyncio
         import textwrap
 
@@ -492,172 +467,99 @@ class VisitUrlTool(_PromptHintsMixin, BaseTool):
                 missing = [t for t in claim_tokens if t not in page_lower]
                 return (len(missing) / len(claim_tokens)) <= 0.2
 
-        async def _fetch_one(target_url: str) -> dict[str, Any]:
-            """Fetch a single URL and return structured result with retry on 429."""
-            headers = {
-                "User-Agent": "Mozilla/5.0 (compatible; DeepTutorBot/1.0; +https://example.com/bot)"
-            }
-            claim_verified: bool | None = None
-            max_retries = 3
+        async def _do_fetch(client: httpx.AsyncClient) -> httpx.Response:
             backoff = 1.0
-
-            async def _do_fetch(client: httpx.AsyncClient) -> httpx.Response:
-                nonlocal backoff
-                for attempt in range(max_retries):
-                    response = await client.get(target_url, headers=headers)
-                    if response.status_code != 429:
-                        return response
-                    if attempt < max_retries - 1:
-                        logger.info(f"Rate limited (429), retrying {target_url} in {backoff:.1f}s")
-                        await asyncio.sleep(backoff)
-                        backoff *= 2
-                return response
-
-            try:
-                async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-                    response = await _do_fetch(client)
-                    status = response.status_code
-                    raw_text = response.text
-                    title = ""
-                    if "text/html" in response.headers.get("content-type", ""):
-                        import re
-                        m = re.search(r"<title[^>]*>([^<]+)</title>", raw_text, re.IGNORECASE)
-                        if m:
-                            title = m.group(1).strip()
-                        try:
-                            from lxml import html
-                            tree = html.fromstring(raw_text)
-                            clean_text = tree.text_content() or ""
-                        except Exception:
-                            clean_text = raw_text
-                    else:
-                        clean_text = raw_text
-
-                    alive = 200 <= status < 400
-                    page_text = clean_text[:8000]
-
-                    if not alive:
-                        logger.warning(f"URL unreachable status={status} url={target_url}")
-                        result_content = f"URL is not reachable (status {status}). The source may be broken or the page no longer exists."
-                        claim_verified = None
-                    else:
-                        lines = [f"Title: {title}"] if title else []
-                        lines.append(f"Status: {status} OK")
-                        if claim:
-                            # Primary: embedding-based semantic similarity check
-                            claim_verified = _verify_claim_via_embedding(claim, page_text)
-                            if claim_verified is True:
-                                lines.append("Claim SUPPORTED: semantically aligned with page content.")
-                            elif claim_verified is False:
-                                logger.warning(f"Claim not verified url={target_url} claim={claim}")
-                                lines.append("Claim NOT VERIFIED: the cited content was not found in the page. The claim may be inaccurate or the URL may point to a different version of the content.")
-                            else:
-                                # None means both methods failed — be conservative
-                                lines.append("Claim VERIFICATION INCONCLUSIVE: could not verify claim.")
-                            lines.append("")
-                        lines.append("Page content snippet:")
-                        lines.append(textwrap.fill(page_text[:2000], width=120))
-                        result_content = "\n".join(lines)
-
-                    return {
-                        "url": target_url,
-                        "content": result_content,
-                        "alive": alive,
-                        "status_code": status,
-                        "title": title,
-                        "claim_verified": claim_verified,
-                    }
-            except httpx.UnsupportedProtocol:
-                logger.warning(f"Invalid URL protocol url={target_url}")
-                return {
-                    "url": target_url,
-                    "content": f"Invalid URL format: missing http:// or https:// protocol.",
-                    "alive": False,
-                    "status_code": None,
-                    "title": "",
-                    "claim_verified": None,
-                }
-            except Exception as exc:
-                logger.warning(f"Failed to fetch URL url={target_url} error={exc}")
-                return {
-                    "url": target_url,
-                    "content": f"Failed to fetch URL: {exc}",
-                    "alive": False,
-                    "status_code": None,
-                    "title": "",
-                    "claim_verified": None,
-                }
+            for attempt in range(3):
+                response = await client.get(url, headers={
+                    "User-Agent": "Mozilla/5.0 (compatible; DeepTutorBot/1.0; +https://example.com/bot)"
+                })
+                if response.status_code != 429:
+                    return response
+                if attempt < 2:
+                    logger.info(f"Rate limited (429), retrying {url} in {backoff:.1f}s")
+                    await asyncio.sleep(backoff)
+                    backoff *= 2
+            return response
 
         try:
-            results: list[dict[str, Any]] = await asyncio.wait_for(
-                asyncio.gather(*[_fetch_one(u) for u in url_list]),
-                timeout=20.0,
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                response = await _do_fetch(client)
+                status = response.status_code
+                raw_text = response.text
+                title = ""
+                if "text/html" in response.headers.get("content-type", ""):
+                    import re
+                    m = re.search(r"<title[^>]*>([^<]+)</title>", raw_text, re.IGNORECASE)
+                    if m:
+                        title = m.group(1).strip()
+                    try:
+                        from lxml import html
+                        tree = html.fromstring(raw_text)
+                        clean_text = tree.text_content() or ""
+                    except Exception:
+                        clean_text = raw_text
+                else:
+                    clean_text = raw_text
+
+                alive = 200 <= status < 400
+                page_text = clean_text[:8000]
+                sources = [{"type": "web", "url": url, "title": title}]
+                claim_verified: bool | None = None
+
+                if not alive:
+                    logger.warning(f"URL unreachable status={status} url={url}")
+                    result_content = f"URL is not reachable (status {status}). The source may be broken or the page no longer exists."
+                    claim_verified = None
+                else:
+                    lines = [f"Title: {title}"] if title else []
+                    lines.append(f"Status: {status} OK")
+                    if claim:
+                        claim_verified = _verify_claim_via_embedding(claim, page_text)
+                        if claim_verified is True:
+                            lines.append("Claim SUPPORTED: semantically aligned with page content.")
+                        elif claim_verified is False:
+                            logger.warning(f"Claim not verified url={url} claim={claim}")
+                            lines.append("Claim NOT VERIFIED: the cited content was not found in the page. The claim may be inaccurate or the URL may point to a different version of the content.")
+                        else:
+                            lines.append("Claim VERIFICATION INCONCLUSIVE: could not verify claim.")
+                        lines.append("")
+                    lines.append("Page content snippet:")
+                    lines.append(textwrap.fill(page_text[:2000], width=120))
+                    result_content = "\n".join(lines)
+
+                return ToolResult(
+                    content=result_content,
+                    success=alive,
+                    sources=sources,
+                    metadata={
+                        "alive": alive,
+                        "status_code": status,
+                        "url": url,
+                        "title": title,
+                        "claim_verified": claim_verified,
+                    },
+                )
+        except httpx.UnsupportedProtocol:
+            logger.warning(f"Invalid URL protocol url={url}")
+            return ToolResult(
+                content=f"Invalid URL format: missing http:// or https:// protocol.",
+                success=False,
+                metadata={"alive": False, "status_code": None},
             )
         except asyncio.TimeoutError:
-            logger.warning(f"URL fetch timed out url={url_list[0]}")
+            logger.warning(f"URL fetch timed out url={url}")
             return ToolResult(
-                content=f"URL fetch timed out after 20 seconds: {url_list[0]}" + (" and others" if len(url_list) > 1 else ""),
+                content=f"URL fetch timed out after 20 seconds: {url}",
                 success=False,
                 metadata={"alive": False, "error": "timeout"},
             )
-
-        # Aggregate results
-        all_alive = all(r["alive"] for r in results)
-        all_sources = [{"type": "web", "url": r["url"], "title": r["title"]} for r in results]
-
-        if len(results) == 1:
-            r = results[0]
+        except Exception as exc:
+            logger.warning(f"Failed to fetch URL url={url} error={exc}")
             return ToolResult(
-                content=r["content"],
-                success=r["alive"],
-                sources=all_sources,
-                metadata={
-                    "alive": r["alive"],
-                    "status_code": r["status_code"],
-                    "url": r["url"],
-                    "title": r["title"],
-                    "claim_verified": r["claim_verified"],
-                },
+                content=f"Failed to fetch URL: {exc}",
+                success=False,
+                metadata={"alive": False, "status_code": None},
             )
-
-        # Multiple URLs — format as batch report
-        lines = [f"## Batch URL Verification ({len(results)} URLs)\n"]
-        for r in results:
-            lines.append(f"### {r['url']}")
-            status_str = f"DEAD ({r['status_code']})" if not r["alive"] else "ALIVE"
-            lines.append(f"Status: {status_str}")
-            if r["title"]:
-                lines.append(f"Title: {r['title']}")
-            if claim:
-                lines.append(f"Claim: {claim}")
-                lines.append(f"Claim verified: {'YES' if r['claim_verified'] else 'NO'}")
-            lines.append(f"Content:\n{r['content']}")
-            lines.append("")
-        content = "\n".join(lines).strip()
-
-        return ToolResult(
-            content=content,
-            success=all_alive,
-            sources=all_sources,
-            metadata={
-                "alive": all_alive,
-                "url_count": len(results),
-                "alive_count": sum(1 for r in results if r["alive"]),
-                "dead_count": sum(1 for r in results if not r["alive"]),
-                "results": [
-                    {
-                        "url": r["url"],
-                        "alive": r["alive"],
-                        "status_code": r["status_code"],
-                        "title": r["title"],
-                        "claim_verified": r["claim_verified"],
-                    }
-                    for r in results
-                ],
-            },
-        )
-
-    execute._uses_batch = True  # type: ignore[attr-defined]
 
 
 class GeoGebraAnalysisTool(_PromptHintsMixin, BaseTool):

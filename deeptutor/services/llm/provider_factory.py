@@ -55,5 +55,6 @@ def get_runtime_provider(config: LLMConfig | None = None) -> LLMProvider:
         temperature=llm_config.temperature,
         max_tokens=llm_config.max_tokens,
         reasoning_effort=llm_config.reasoning_effort,
+        idle_timeout=llm_config.idle_timeout or 90,
     )
     return provider
