@@ -1,5 +1,4 @@
 import { Tray, Menu, nativeImage, app, BrowserWindow } from 'electron'
-import { join } from 'path'
 import log from 'electron-log'
 
 let tray: Tray | null = null
