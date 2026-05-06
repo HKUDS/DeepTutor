@@ -95,6 +95,9 @@ class ChatOrchestrator:
             try:
                 await capability.run(context, bus)
             except Exception as exc:
+                # Re-raise QuestionNeedsClarification so callers can handle it explicitly
+                if type(exc).__name__ == "QuestionNeedsClarification":
+                    raise
                 logger.error("Capability %s failed: %s", cap_name, exc, exc_info=True)
                 await bus.error(str(exc), source=cap_name)
             finally:

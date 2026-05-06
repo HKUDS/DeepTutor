@@ -90,65 +90,14 @@ class CriticAgent(BaseAgent):
 
         verification_report["rounds"] = 1
 
-        # Validate all sources in parallel — marks invalid sources in scratchpad.metadata
-        validation_observation, _per_url_results = await self._validate_all_sources(
+        # Validate all sources in parallel — removes dead/unsafe from entries in-place
+        summary_observation, _per_group_results = await self._validate_all_sources(
             scratchpad=scratchpad,
             kb_name=kb_name,
             question=question,
         )
 
-        # Build sources list from validation results for the critic entry
-        validated_sources: list[Source] = []
-        alive_count = 0
-        dead_count = 0
-        unsafe_count = 0
-
-        for src, result in _per_url_results:
-            # Hoist type check — avoids 5× isinstance() per iteration
-            if isinstance(src, dict):
-                url = src.get("url")
-                src_id = src.get("id")
-                src_type = src.get("type", "web")
-                src_file = src.get("file")
-                src_chunk = src.get("chunk_id")
-            else:
-                url = getattr(src, "url", None)
-                src_id = getattr(src, "id", None)
-                src_type = getattr(src, "type", "web")
-                src_file = getattr(src, "file", None)
-                src_chunk = getattr(src, "chunk_id", None)
-
-            is_alive = result.get("alive", False)
-            is_safe = result.get("is_safe", True)
-            if is_alive and is_safe:
-                alive_count += 1
-            elif not is_alive:
-                dead_count += 1
-            elif not is_safe:
-                unsafe_count += 1
-
-            # Build Source with validation status embedded in chunk_id as tag if needed
-            source = Source(
-                type=src_type or "web",
-                file=src_file,
-                url=url,
-                chunk_id=src_chunk,
-            )
-            validated_sources.append(source)
-
-        # Build concise summary observation
-        total = len(_per_url_results)
-        summary_parts = [f"Validated {total} sources:"]
-        if alive_count:
-            summary_parts.append(f"{alive_count} alive")
-        if dead_count:
-            summary_parts.append(f"{dead_count} dead/unreachable")
-        if unsafe_count:
-            summary_parts.append(f"{unsafe_count} unsafe")
-        summary_parts.append(f"{len(validated_sources)} recorded.")
-        summary_observation = " ".join(summary_parts)
-
-        # Record audit entry with validated sources
+        # Record audit entry — sources removed in-place, no redundant source list
         scratchpad.add_entry(
             step_id="critic",
             round_num=1,
@@ -157,7 +106,7 @@ class CriticAgent(BaseAgent):
             action_input="(all sources)",
             observation=summary_observation,
             self_note="",
-            sources=validated_sources,
+            sources=[],
         )
 
         # Get LLM's summary assessment of verified/uncertain claims
@@ -203,7 +152,7 @@ class CriticAgent(BaseAgent):
             round=round_index,
         )
 
-        llm_kwargs: dict[str, object] = {
+        llm_kwargs: dict[str, Any] = {
             "user_prompt": user_prompt,
             "system_prompt": system_prompt,
             "response_format": {"type": "json_object"},
@@ -226,11 +175,17 @@ class CriticAgent(BaseAgent):
         scratchpad: Scratchpad,
         kb_name: str | None,
         question: str,
-    ) -> tuple[str, list[tuple[dict[str, Any], dict[str, Any]]]]:
-        """Validate all cited URLs in parallel, returning (observation, per_url_results).
+    ) -> tuple[str, list[tuple[dict[str, Any], dict[str, Any], bool]]]:
+        """Validate all cited URLs with duplicate-aware fallback, returning (summary, per_group_results).
 
-        per_url_results: list of (src, result) tuples with raw per-URL data including
-        is_safe, safety_category, safety_filter_used, matched_patterns, etc.
+        summary: concise human-readable summary string such as
+            "Validated 3 source groups: 1 had duplicates 2 alive 1 dead/unreachable"
+
+        per_group_results: list of (src, result, used_alternate) tuples.
+            result: raw per-URL data including is_safe, safety_category, etc.
+            used_alternate: True if primary URL failed and an alternate succeeded.
+                On used_alternate=True, the result reflects the successful alternate URL
+                and src.url reflects that alternate URL (not the original).
         """
         import asyncio
 
@@ -242,32 +197,66 @@ class CriticAgent(BaseAgent):
 
         logger.info(f"Validating {len(url_sources)} URLs in parallel")
 
-        # Build lookup from source key → entry that cited it (last one wins)
-        source_key_to_entry: dict[str, Any] = {}
-        for entry in scratchpad.entries:
-            for src in entry.sources:
-                key = f"{src.type}|{src.file or ''}|{src.url or ''}|{src.chunk_id or ''}"
-                source_key_to_entry[key] = entry
+        # Group sources by fuzzy URL/title similarity (80% token_set_ratio threshold).
+        # Each group is validated as a unit: primary URL first, then alternates on failure.
+        from rapidfuzz import fuzz
 
-        async def validate_one(src: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-            url = src.get("url", "").strip()
-            if not url:
-                return src, {"alive": False, "content": "No URL"}
+        group_reps: list[tuple[str, str]] = []  # (primary_url, primary_file) per group
+        groups: list[list[dict[str, Any]]] = []
+        group_alts: list[list[str]] = []  # deduped alternate URLs per group
+        for src in url_sources:
+            placed = False
+            src_url = src.get("url", "")
+            src_file = src.get("file", "")
+            for gi, rep_src in enumerate(group_reps):
+                rep_url, rep_file = rep_src
+                # Exact URL match → same group
+                if src_url and rep_url and src_url == rep_url:
+                    groups[gi].append(src)
+                    placed = True
+                    break
+                # Fuzzy URL match → same group
+                if src_url and rep_url:
+                    ratio = fuzz.token_set_ratio(src_url, rep_url)
+                    if ratio >= 80:
+                        groups[gi].append(src)
+                        placed = True
+                        break
+                # Fuzzy title/file match → same group
+                if src_file and rep_file:
+                    ratio = fuzz.token_set_ratio(src_file, rep_file)
+                    if ratio >= 80:
+                        groups[gi].append(src)
+                        placed = True
+                        break
+            if not placed:
+                group_reps.append((src_url, src_file))
+                groups.append([src])
+                group_alts.append([])
 
-            key = f"{src.get('type', '')}|{src.get('file', '') or ''}|{url}|{src.get('chunk_id', '') or ''}"
+        # Pre-compute deduped alternate URLs per group (before asyncio.gather)
+        for gi, group in enumerate(groups):
+            primary_url = group[0].get("url", "")
+            seen: set[str] = {primary_url} if primary_url else set()
+            alts: list[str] = []
+            for src in group[1:]:
+                alt = src.get("url", "")
+                if alt and alt not in seen:
+                    alts.append(alt)
+                    seen.add(alt)
+            group_alts[gi] = alts
 
+        async def _fetch_one(target_url: str) -> dict[str, Any]:
+            """Fetch a single URL and return structured result."""
             try:
                 from deeptutor.core.tool_protocol import ToolResult
                 from deeptutor.tools.builtin import VisitUrlTool
 
                 tool = VisitUrlTool()
-                result: ToolResult = await tool.execute(url=url, claim="")
+                result: ToolResult = await tool.execute(url=target_url, claim="")
                 raw_content = result.content or ""
-
-                # Run content safety check
-                safety = self._content_filter.check(raw_content, url=url)
-
-                return src, {
+                safety = self._content_filter.check(raw_content, url=target_url)
+                return {
                     "alive": result.metadata.get("alive", False),
                     "content": raw_content,
                     "sources": result.sources,
@@ -279,51 +268,105 @@ class CriticAgent(BaseAgent):
                     "safety_filter_used": safety.filter_used,
                     "matched_patterns": safety.matched_patterns,
                     "llm_reason": safety.llm_reason,
+                    "url": target_url,
                 }
             except Exception as exc:
-                logger.warning(f"visit_url failed for {url}: {exc}")
-                return src, {"alive": False, "content": f"Error: {exc}", "sources": [], "error": str(exc)}
+                logger.warning(f"visit_url failed for {target_url}: {exc}")
+                return {
+                    "alive": False,
+                    "content": f"Error: {exc}",
+                    "sources": [],
+                    "error": str(exc),
+                    "url": target_url,
+                }
 
-        results = await asyncio.gather(*[validate_one(src) for src in url_sources])
+        async def validate_group(
+            group: list[dict[str, Any]],
+            alts: list[str],
+        ) -> tuple[dict[str, Any], dict[str, Any], bool]:
+            """Validate a group: try primary URL first, then alternates on failure."""
+            primary_src = group[0]
+            primary_url = primary_src.get("url", "")
 
-        observations: list[str] = []
+            # Try primary
+            result = await _fetch_one(primary_url)
+            if result.get("alive") and result.get("is_safe", True):
+                return primary_src, result, False
 
-        for src, result in results:
-            url = src.get("url", "") if isinstance(src, dict) else src.url
-            src_id = src.get("id", "") if isinstance(src, dict) else getattr(src, "id", "")
+            # Primary failed — try alternates
+            for alt_url in alts:
+                alt_result = await _fetch_one(alt_url)
+                if alt_result.get("alive") and alt_result.get("is_safe", True):
+                    src = dict(primary_src)
+                    src["url"] = alt_url
+                    return src, alt_result, True
+
+            # All failed — return primary result
+            return primary_src, result, False
+
+        results: list[tuple[dict[str, Any], dict[str, Any], bool]] = await asyncio.gather(
+            *[validate_group(g, a) for g, a in zip(groups, group_alts)]
+        )
+
+        total_groups = len(groups)
+        dup_groups = sum(1 for g in groups if len(g) > 1)
+        alive_count = 0
+        dead_count = 0
+        unsafe_count = 0
+        alternate_used_count = 0
+
+        dead_or_unsafe_urls: list[str] = []
+
+        for src, result, used_alternate in results:
+            if used_alternate:
+                alternate_used_count += 1
+            url = result.get("url", "")
             alive = result.get("alive", False)
             status_code = result.get("status_code")
             claim_verified = result.get("claim_verified")
+            is_safe = result.get("is_safe", True)
+            safety_category = result.get("safety_category")
 
             if not alive:
                 logger.warning(f"URL dead or unreachable url={url} status={status_code}")
-                if src_id:
-                    scratchpad.mark_source_invalid(src_id)
-            elif claim_verified is True:
-                logger.info(f"Claim supported by page url={url}")
-                observations.append(f"✓ {url}: claim verified")
-            elif claim_verified is False:
-                logger.warning(f"Claim not supported by page url={url}")
-                observations.append(f"✗ {url}: claim NOT verified")
-            elif alive:
-                observations.append(f"✓ {url}: alive (status {status_code})")
-
-            # Handle content safety
-            is_safe = result.get("is_safe", True)
-            safety_category = result.get("safety_category")
-            if not is_safe:
+                if url:
+                    dead_or_unsafe_urls.append(url)
+                dead_count += 1
+            elif not is_safe:
                 logger.warning(f"Unsafe content detected url={url} category={safety_category}")
-                if src_id:
-                    scratchpad.mark_source_invalid(src_id)
-                observations.append(f"✗ {url}: blocked ({safety_category})")
-            elif safety_category and result.get("safety_filter_used") == "llm":
-                observations.append(f"⚠ {url}: flagged by LLM classifier ({safety_category}) — content allowed pending review")
+                if url:
+                    dead_or_unsafe_urls.append(url)
+                unsafe_count += 1
+            else:
+                if claim_verified is True:
+                    logger.info(f"Claim supported by page url={url}")
+                elif claim_verified is False:
+                    logger.warning(f"Claim not supported by page url={url}")
+                alive_count += 1
 
             if result.get("error"):
-                observations.append(f"✗ {url}: {result['error']}")
+                logger.warning(f"URL error url={url} error={result['error']}")
 
-        obs_text = "\n".join(observations) if observations else "No sources to validate."
-        return obs_text, list(results)
+            if used_alternate:
+                logger.info(f"Primary URL failed, switched to alternate: {url}")
+
+        if dead_or_unsafe_urls:
+            removed = scratchpad.remove_sources_by_url(dead_or_unsafe_urls)
+            logger.info(f"Removed {removed} dead/unsafe sources from scratchpad entries")
+
+        parts = [f"Validated {total_groups} source groups:"]
+        if dup_groups:
+            parts.append(f"{dup_groups} had duplicates")
+        if alive_count:
+            parts.append(f"{alive_count} alive")
+        if dead_count:
+            parts.append(f"{dead_count} dead/unreachable")
+        if unsafe_count:
+            parts.append(f"{unsafe_count} unsafe")
+        if alternate_used_count:
+            parts.append(f"{alternate_used_count} via alternate")
+        summary = " ".join(parts)
+        return summary, list(results)
 
     async def _execute_audit_tool(
         self,
@@ -386,83 +429,6 @@ class CriticAgent(BaseAgent):
             converted.append(src)
         return converted
 
-    def _add_source_to_scratchpad(self, scratchpad: Scratchpad, source: Source) -> None:
-        """Append a new source to the most recent critic entry, skipping duplicates.
-
-        Uses RapidFuzz token-set ratio for fuzzy title matching, which handles
-        URL-encoded titles, different ordering, and partial matches better than
-        the old longest-common-substring approach.
-        """
-        from rapidfuzz import fuzz
-
-        if not scratchpad.entries:
-            return
-        for entry in reversed(scratchpad.entries):
-            if entry.step_id == "critic":
-                if source.type == "web" and source.url:
-                    # Exact URL match
-                    for existing in entry.sources:
-                        if existing.url and existing.url == source.url:
-                            return
-                # Fuzzy title match via RapidFuzz
-                if self._is_duplicate(entry.sources, source, fuzz):
-                    return
-                entry.sources.append(source)
-                return
-
-    @staticmethod
-    def _longest_common_substring(a: str, b: str) -> str:
-        """Return the longest common substring of a and b. O(n²) time."""
-        if not a or not b:
-            return ""
-        n, m = len(a), len(b)
-        # dp[i][j] = length of LCS ending at a[i-1], b[j-1]
-        dp: list[list[int]] = [[0] * (m + 1) for _ in range(n + 1)]
-        max_len = 0
-        end_i = 0
-        for i in range(1, n + 1):
-            for j in range(1, m + 1):
-                if a[i - 1] == b[j - 1]:
-                    dp[i][j] = dp[i - 1][j - 1] + 1
-                    if dp[i][j] > max_len:
-                        max_len = dp[i][j]
-                        end_i = i
-        return a[end_i - max_len:end_i]
-
-    @staticmethod
-    def _is_duplicate(existing: list[Source], new: Source, fuzz_module=None) -> bool:
-        """Check if `new` is a duplicate of any source in `existing`.
-
-        Uses RapidFuzz token_set_ratio when fuzz_module is provided, otherwise
-        falls back to exact URL match then simple LCS-based title match.
-        """
-        for s in existing:
-            if s.type != new.type:
-                continue
-            if s.url and new.url and s.url == new.url:
-                return True
-            if s.file and new.file:
-                if fuzz_module is not None:
-                    ratio = fuzz_module.token_set_ratio(s.file, new.file)
-                    if ratio >= 80:
-                        return True
-                else:
-                    shorter = min(len(s.file), len(new.file))
-                    if shorter == 0:
-                        continue
-                    common = CriticAgent._longest_common_substring(s.file, new.file)
-                    if len(common) / shorter >= 0.5:
-                        return True
-        return False
-
-    def _update_entry_note(self, scratchpad: Scratchpad, step_id: str, note: str) -> None:
-        """Update the self_note on the most recent entry for a given step."""
-        entries = scratchpad.get_entries_for_step(step_id)
-        if not entries:
-            return
-        # Update the latest entry for this step
-        entries[-1].self_note = note
-
     # ------------------------------------------------------------------
     # Prompt construction
     # ------------------------------------------------------------------
@@ -476,85 +442,96 @@ class CriticAgent(BaseAgent):
                 return prompt.format(tools_description=tools_desc)
             except KeyError:
                 return prompt
-
-        # Fallback
         return (
-            "You are an expert fact-checker. Verify evidence and citations. "
-            "Output strict JSON with keys: thought, action, action_input, self_note, "
-            "verification_report, updated_notes.\n\n"
-            f"Available actions:\n{tools_desc}"
+            f"You are a fact-checking auditor for educational content.\n"
+            f"You have access to these tools:\n{tools_desc}\n"
+            "Your job is to verify that cited sources actually support the claims made in the answer. "
+            "Focus on: aliveness of URLs, content safety, and whether the cited source actually supports the claim."
         )
 
     def _build_user_prompt(
         self,
         question: str,
         scratchpad: Scratchpad,
-        memory_context: str = "",
+        memory_context: str,
     ) -> str:
-        template = self.get_prompt("user_template") if self.has_prompts() else None
+        all_sources = scratchpad.format_sources_markdown()
+        plan = scratchpad._format_plan() if scratchpad.plan else "(no plan)"
 
-        scratchpad_content = scratchpad.build_writer_context(max_tokens=12000)
-        sources_list = self._format_sources(scratchpad.get_all_sources())
-        plan_text = scratchpad._format_plan() if scratchpad.plan else "(no plan)"
+        # Format entries as a readable log
+        if scratchpad.entries:
+            entry_lines = []
+            for e in scratchpad.entries:
+                note = f"  Note: {e.self_note}" if e.self_note else ""
+                entry_lines.append(
+                    f"[{e.step_id}] Round {e.round}: {e.thought}\n"
+                    f"  Action: {e.action} | Input: {e.action_input}\n"
+                    f"  Observation: {e.observation[:200]}{'...' if len(e.observation) > 200 else ''}\n"
+                    f"  Sources: {', '.join(s.url or s.file or s.chunk_id or '?' for s in e.sources) or 'none'}"
+                    + (f"\n  Note: {e.self_note}" if e.self_note else "")
+                )
+            entries_str = "\n\n".join(entry_lines)
+        else:
+            entries_str = "(no entries)"
 
-        if template:
-            return template.format(
-                question=question,
-                plan=plan_text,
-                scratchpad_content=scratchpad_content,
-                sources=sources_list,
-                memory_context=memory_context or "(no historical memory)",
-            )
+        prompt = self.get_prompt("user") if self.has_prompts() else None
+        if prompt:
+            try:
+                return prompt.format(
+                    question=question,
+                    plan=plan,
+                    entries=entries_str,
+                    sources=all_sources,
+                    memory_context=memory_context,
+                )
+            except KeyError:
+                pass
 
-        # Fallback
         return (
-            f"## Original Question\n{question}\n\n"
-            f"## Plan\n{plan_text}\n\n"
-            f"## Gathered Evidence\n{scratchpad_content}\n\n"
-            f"## Available Sources\n{sources_list}\n\n"
-            f"## Historical Knowledge\n{memory_context or '(none)'}"
+            f"## Question\n{question}\n\n"
+            f"## Plan\n{plan}\n\n"
+            f"## Memory Context\n{memory_context or '(none)'}\n\n"
+            f"## Sources\n{all_sources}\n\n"
+            f"## Entries\n{entries_str}\n\n"
+            "## Your Task\n"
+            "Review the entries above and assess:\n"
+            "1. Are all cited sources alive and accessible?\n"
+            "2. Do the sources actually support the claims made?\n"
+            "3. Are there any unsafe or unreliable sources?\n"
+            "Respond with a JSON object."
         )
 
     def _format_sources(self, sources: list[dict[str, Any]]) -> str:
-        """Format sources as a numbered list for the prompt."""
         if not sources:
             return "(no sources)"
         lines = []
-        for s in sources:
-            label = s.get("file") or s.get("url") or s.get("chunk_id") or "unknown"
-            src_type = s.get("type", "unknown")
-            lines.append(f"- [{s['id']}] ({src_type}) {label}")
+        for src in sources:
+            label = src.get("file") or src.get("url") or src.get("chunk_id") or "?"
+            src_id = src.get("id", "")
+            src_type = src.get("type", "?")
+            lines.append(f"- [{src_type}] {label} (id={src_id})")
         return "\n".join(lines)
 
-    # ------------------------------------------------------------------
-    # Response parsing
-    # ------------------------------------------------------------------
-
     def _parse_audit_decision(self, response: str) -> dict[str, Any]:
-        """Parse the LLM JSON response into an audit decision dict."""
+        """Parse LLM JSON response into an audit decision dict."""
         data = extract_json_from_text(response)
-
-        if not data or not isinstance(data, dict):
+        if not isinstance(data, dict):
             return {
-                "thought": "Failed to parse audit response; ending audit.",
                 "action": "done",
                 "action_input": "",
-                "self_note": "Parse error — ending audit.",
-                "verification_report": "Parse error",
+                "thought": "",
+                "self_note": f"parse error: expected dict, got {type(data).__name__}",
+                "verification_report": "",
                 "updated_notes": {},
                 "invalid_sources": [],
             }
 
-        action = str(data.get("action", "done")).strip().lower()
-        if action not in self._tool_runtime.valid_actions:
-            action = "done"
-
         return {
-            "thought": str(data.get("thought", "")),
-            "action": action,
-            "action_input": str(data.get("action_input", "")),
-            "self_note": str(data.get("self_note", "")),
-            "verification_report": str(data.get("verification_report", "")),
+            "action": data.get("action", "done"),
+            "action_input": data.get("action_input", ""),
+            "thought": data.get("thought", ""),
+            "self_note": data.get("self_note", ""),
+            "verification_report": data.get("verification_report", ""),
             "updated_notes": data.get("updated_notes", {}),
             "invalid_sources": data.get("invalid_sources", []),
         }

@@ -317,15 +317,21 @@ class WriterAgent(BaseAgent):
 
     @staticmethod
     def _ensure_references(answer: str, scratchpad: Scratchpad) -> str:
-        """Append a References section if the LLM omitted one."""
+        """Replace any LLM-generated References section with verified scratchpad sources."""
         if not answer:
-            return answer
-        has_refs = "## References" in answer or "## 参考文献" in answer
-        if has_refs:
             return answer
         refs = scratchpad.format_sources_markdown()
         if not refs:
             return answer
+
+        import re
+
+        # Remove existing numbered/bulleted reference blocks (## References and everything after)
+        # Matches ## References, ## 参考文献, ## References (any case), etc.
+        pattern = r"\n*---\n*\n*##\s*References.*?(?=\n#|\Z)"
+        answer = re.sub(pattern, "", answer, flags=re.IGNORECASE | re.DOTALL)
+        # Also strip any remaining bare numbered list items (1. ..., 2. ...)
+        answer = re.sub(r"\n\d+\.\s+\[.+?\]\(.+?\)", "", answer)
         return f"{answer}\n\n---\n\n{refs}"
 
     # ------------------------------------------------------------------

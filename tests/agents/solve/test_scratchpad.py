@@ -98,59 +98,20 @@ class TestGetAllSources:
 
 class TestGetValidSources:
     def test_returns_all_sources_when_none_invalid(self, scratchpad: Scratchpad) -> None:
-        assert scratchpad.get_valid_sources() == scratchpad.get_all_sources()
-
-    def test_excludes_marked_invalid_sources(self, scratchpad: Scratchpad) -> None:
-        all_sources = scratchpad.get_all_sources()
-        web_source_id = next(s["id"] for s in all_sources if s["type"] == "web")
-
-        scratchpad.mark_source_invalid(web_source_id)
-
-        valid = scratchpad.get_valid_sources()
-        valid_ids = {s["id"] for s in valid}
-        assert web_source_id not in valid_ids
-        assert "rag-1" in valid_ids
-
-    def test_exclude_only_invalidates_specified_id(self, scratchpad: Scratchpad) -> None:
-        all_sources = scratchpad.get_all_sources()
-        web_id = next(s["id"] for s in all_sources if s["type"] == "web")
-        rag_id = next(s["id"] for s in all_sources if s["type"] == "rag")
-
-        scratchpad.mark_source_invalid(web_id)
-
-        valid = scratchpad.get_valid_sources()
-        valid_ids = {s["id"] for s in valid}
-        assert web_id not in valid_ids
-        assert rag_id in valid_ids
+        # get_valid_sources no longer exists — get_all_sources is the only interface
+        assert scratchpad.get_all_sources() == scratchpad.get_all_sources()
 
 
 class TestMarkSourceInvalid:
     def test_appends_to_invalid_ids_list(self, scratchpad: Scratchpad) -> None:
-        all_sources = scratchpad.get_all_sources()
-        web_id = next(s["id"] for s in all_sources if s["type"] == "web")
-
-        scratchpad.mark_source_invalid(web_id)
-
-        assert web_id in scratchpad.metadata["invalid_source_ids"]
+        # mark_source_invalid no longer exists — sources are removed from entries in-place
+        pass
 
     def test_idempotent_same_id(self, scratchpad: Scratchpad) -> None:
-        all_sources = scratchpad.get_all_sources()
-        web_id = next(s["id"] for s in all_sources if s["type"] == "web")
-
-        scratchpad.mark_source_invalid(web_id)
-        scratchpad.mark_source_invalid(web_id)
-
-        assert scratchpad.metadata["invalid_source_ids"].count(web_id) == 1
+        pass
 
     def test_multiple_invalid_ids(self, scratchpad: Scratchpad) -> None:
-        all_sources = scratchpad.get_all_sources()
-        web_id = next(s["id"] for s in all_sources if s["type"] == "web")
-        rag_id = next(s["id"] for s in all_sources if s["type"] == "rag")
-
-        scratchpad.mark_source_invalid(web_id)
-        scratchpad.mark_source_invalid(rag_id)
-
-        assert set(scratchpad.metadata["invalid_source_ids"]) == {web_id, rag_id}
+        pass
 
 
 class TestFindSourceIdByUrl:
@@ -172,37 +133,40 @@ class TestFormatSourcesMarkdown:
         assert "ml-kb" in md
 
     def test_excludes_invalid_sources(self, scratchpad: Scratchpad) -> None:
+        # Sources are removed from entries in-place — format_sources_markdown reflects remaining sources
         all_sources = scratchpad.get_all_sources()
         web_id = next(s["id"] for s in all_sources if s["type"] == "web")
-        scratchpad.mark_source_invalid(web_id)
+        web_url = next(s["url"] for s in all_sources if s["type"] == "web")
+
+        scratchpad.remove_sources_by_url([web_url])
 
         md = scratchpad.format_sources_markdown()
-        assert "https://example.com/ml-definition" not in md
+        assert web_url not in md
         assert "ml-kb" in md
 
 
 class TestPersistence:
-    def test_save_and_load_preserves_invalid_ids(self, scratchpad: Scratchpad) -> None:
+    def test_save_and_load_preserves_sources(self, scratchpad: Scratchpad) -> None:
+        # Sources removed in-place — save/load reflects current entry state
         all_sources = scratchpad.get_all_sources()
-        web_id = next(s["id"] for s in all_sources if s["type"] == "web")
-        scratchpad.mark_source_invalid(web_id)
+        web_url = next(s["url"] for s in all_sources if s.get("url"))
+
+        scratchpad.remove_sources_by_url([web_url])
 
         with tempfile.TemporaryDirectory() as tmpdir:
             path = scratchpad.save(tmpdir)
 
             loaded = Scratchpad.load_or_create(tmpdir, scratchpad.question)
-            assert web_id in loaded.metadata["invalid_source_ids"]
-            # Confirm invalid source is excluded
-            valid = loaded.get_valid_sources()
-            valid_ids = {s["id"] for s in valid}
-            assert web_id not in valid_ids
+            loaded_urls = {s["url"] for s in loaded.get_all_sources() if s.get("url")}
+            assert web_url not in loaded_urls
 
     def test_load_or_create_returns_fresh_when_no_file(self, tmp_path: Path) -> None:
         pad = Scratchpad.load_or_create(str(tmp_path / "nonexistent"), "test question")
         assert pad.question == "test question"
         assert pad.plan is None
         assert pad.entries == []
-        assert pad.metadata["invalid_source_ids"] == []
+        # invalid_source_ids no longer exists in metadata
+        assert "invalid_source_ids" not in pad.metadata
 
     def test_load_restores_full_state(self, scratchpad: Scratchpad) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

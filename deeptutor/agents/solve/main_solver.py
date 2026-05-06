@@ -807,7 +807,7 @@ class MainSolver:
             "output_md": str(answer_file),
             "output_json": str(Path(output_dir) / "scratchpad.json"),
             "formatted_solution": final_answer,
-            "citations": [s["id"] for s in scratchpad.get_valid_sources()],
+            "citations": [s["id"] for s in scratchpad.get_all_sources()],
             "pipeline": "plan_react_write",
             "total_steps": total,
             "completed_steps": len(completed),

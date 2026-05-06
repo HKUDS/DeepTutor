@@ -116,6 +116,41 @@ class Entry:
 # ---------------------------------------------------------------------------
 
 
+def _normalize_url_for_dedup(url: str) -> str:
+    """Normalize a URL to its paper identity for deduplication.
+
+    Strips version suffixes (v1, v2, v3), file extensions (abs/html/pdf),
+    and www/www2 host prefixes so all variants of the same paper collapse.
+    """
+    import re
+    from urllib.parse import urlparse, parse_qs
+
+    if not url:
+        return ""
+    try:
+        # Extract arXiv paper ID if present anywhere in the URL
+        # This handles arxiv.org, alphaxiv.org, emergentmind, huggingface, etc.
+        paper_id_match = re.search(r"(\d{4}\.\d{4,})", url)
+        if paper_id_match:
+            return f"arxiv:{paper_id_match.group(1)}"
+
+        parsed = urlparse(url)
+        host = parsed.netloc.lower().removeprefix("www.").removeprefix("www2.")
+        path = parsed.path.strip("/")
+
+        # openreview.net: stable ID from query param
+        if "openreview.net" in host:
+            qs = parse_qs(parsed.query)
+            fid = qs.get("id", [""])[0]
+            return f"openreview:{fid}"
+
+        # Generic: host + last path segment
+        seg = path.split("/")[-1] if path else ""
+        return f"{host}:{seg}"
+    except Exception:
+        return url
+
+
 class Scratchpad:
     """Unified memory: plan + ReAct entries + metadata."""
 
@@ -131,7 +166,6 @@ class Scratchpad:
             "total_tokens": 0,
             "start_time": datetime.now().isoformat(),
             "plan_revisions": 0,
-            "invalid_source_ids": [],
         }
 
     # ------------------------------------------------------------------
@@ -268,6 +302,7 @@ class Scratchpad:
 
         # Previous knowledge from completed steps (compressed)
         previous_parts: list[str] = []
+        completed_ids = []
         if self.plan:
             completed_ids = [s.id for s in self.plan.steps if s.status == "completed"]
             for sid in completed_ids:
@@ -369,11 +404,7 @@ class Scratchpad:
         For RAG sources this means different queries produce separate citations
         even when they target the same knowledge base.
         """
-        return self._build_sources_list(include_invalid=True)
-
-    def get_valid_sources(self) -> list[dict[str, Any]]:
-        """Return deduplicated list of sources, excluding those marked invalid by CriticAgent."""
-        return self._build_sources_list(include_invalid=False)
+        return self._build_sources_list()
 
     @staticmethod
     def _normalize_paper_key(url: str) -> str:
@@ -423,35 +454,7 @@ class Scratchpad:
         # each paper gets its own path but we don't extract a formal ID
         return f"{host}{path}"
 
-    @staticmethod
-    def _best_url(urls: list[str]) -> str:
-        """Return the most informative canonical URL from a list of variants."""
-        from urllib.parse import urlparse
-        _URL_PRIORITY = {
-            host: n
-            for n, host in enumerate([
-                "arxiv.org",
-                "ar5iv.org",
-                "alpha.arxiv.org",
-                "openreview.net",
-                "proceedings.iclr.cc",
-                "proceedings.neurips.cc",
-                "huggingface.co",
-                "api.semanticscholar.org",
-                "deeplearn.org",
-                "mlanthology.org",
-                "www.emergentmind.com",
-                "www.alphaxiv.org",
-            ])
-        }
-        return min(
-            urls,
-            key=lambda u: _URL_PRIORITY.get(
-                urlparse(u).netloc.lower().removeprefix("www."), 99
-            ),
-        )
-
-    def _build_sources_list(self, include_invalid: bool = True) -> list[dict[str, Any]]:
+    def _build_sources_list(self) -> list[dict[str, Any]]:
         """Build deduplicated list of all sources with IDs.
 
         Uses RapidFuzz token_set_ratio on source titles for fuzzy deduplication
@@ -463,23 +466,29 @@ class Scratchpad:
         seen: list[dict[str, Any]] = []  # list of {"primary": src_dict, "alts": set}
         result: list[dict[str, Any]] = []
         counter: dict[str, int] = {}
-        invalid_ids = set(self.metadata.get("invalid_source_ids", []))
         for entry in self.entries:
             for src in entry.sources:
                 src_dict = src.to_dict()
-                # Fuzzy title dedup: check if this source's title matches any existing
+                src_url = src_dict.get("url") or ""
+                norm_url = _normalize_url_for_dedup(src_url)
                 matched = False
                 for existing in seen:
                     primary = existing["primary"]
                     if primary["type"] != src.type:
                         continue
-                    # Same type — check title similarity
+                    # Exact normalized URL match → same paper regardless of version/host
+                    primary_norm = _normalize_url_for_dedup(primary.get("url") or "")
+                    if norm_url and primary_norm == norm_url:
+                        if src_url:
+                            existing["alts"].add(src_url)
+                        matched = True
+                        break
+                    # Same type — check title similarity (catches same paper, different hosts)
                     if src.file and primary.get("file"):
                         ratio = fuzz.token_set_ratio(src.file, primary["file"])
                         if ratio >= 80:
-                            # Duplicate — add URL to alts
-                            if src_dict.get("url"):
-                                existing["alts"].add(src_dict["url"])
+                            if src_url:
+                                existing["alts"].add(src_url)
                             matched = True
                             break
                 if not matched:
@@ -492,39 +501,31 @@ class Scratchpad:
             src_dict["id"] = f"{prefix}-{counter[prefix]}"
             if data["alts"]:
                 src_dict["alternate_urls"] = sorted(data["alts"])
-            if src_dict["id"] in invalid_ids:
-                src_dict["invalid"] = True
-                if not include_invalid:
-                    continue
             result.append(src_dict)
         return result
 
-    def mark_source_invalid(self, source_id: str) -> None:
-        """Mark a source as invalid (broken, hallucinated, or unreliable).
+    def remove_sources_by_url(self, urls: list[str]) -> int:
+        """Remove Source objects from all entries matching any of the given URLs.
 
-        Invalid sources are excluded from get_valid_sources() and
-        from the formatted references in the final answer.
+        Returns the number of Source objects removed.
         """
-        invalid_ids = self.metadata.get("invalid_source_ids", [])
-        if source_id not in invalid_ids:
-            invalid_ids.append(source_id)
-            self.metadata["invalid_source_ids"] = invalid_ids
+        url_set = set(urls)
+        removed = 0
+        for entry in self.entries:
+            before = len(entry.sources)
+            entry.sources = [s for s in entry.sources if s.url not in url_set]
+            removed += before - len(entry.sources)
+        return removed
 
     def format_sources_markdown(self) -> str:
-        """Format sources as a Markdown references section with clickable URLs.
-
-        For web sources with multiple URL variants, picks the canonical URL
-        via _best_url so the reader sees the most informative link.
-        """
-        sources = self.get_valid_sources()
+        """Format sources as a Markdown references section with clickable URLs."""
+        sources = self.get_all_sources()
         if not sources:
             return ""
         lines = ["## References\n"]
         for s in sources:
             label = self._source_label(s)
-            all_urls = [s["url"]] if s.get("url") else []
-            all_urls.extend(s.get("alternate_urls", []))
-            url = self._best_url(all_urls) if all_urls else ""
+            url = s.get("url") or ""
             if url:
                 lines.append(f"- **[{s['id']}]** [{label}]({url})")
             else:
