@@ -50,9 +50,7 @@ class MathAnimatorCapability(BaseCapability):
         from deeptutor.services.llm.config import get_llm_config
 
         llm_config = get_llm_config()
-        # Filter out answer_now_context before passing to request config validation
-        clean_overrides = {k: v for k, v in context.config_overrides.items() if k != "answer_now_context"}
-        request_config = validate_math_animator_request_config(clean_overrides)
+        request_config = validate_math_animator_request_config(context.config_overrides)
         pipeline = MathAnimatorPipeline(
             api_key=llm_config.api_key,
             base_url=llm_config.base_url,
