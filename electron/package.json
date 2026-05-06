@@ -9,7 +9,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "postinstall": "electron-builder install-app-deps",
+    "postinstall": "electron-builder install-app-deps && node scripts/rebuild-native.mjs",
     "dist": "npm run build && electron-builder --win --mac --linux",
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:win": "npm run build && electron-builder --win",
