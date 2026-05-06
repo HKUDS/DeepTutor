@@ -491,7 +491,7 @@ class AnthropicProvider(LLMProvider):
         for key in ("response_format", "seed", "logit_bias", "stream", "stream_options"):
             extra_kwargs.pop(key, None)
         kwargs.update({k: v for k, v in extra_kwargs.items() if v is not None})
-        idle_timeout_s = self.generation.idle_timeout
+        idle_timeout_s = 90
         try:
             async with self._client.messages.stream(**kwargs) as stream:
                 if on_content_delta:

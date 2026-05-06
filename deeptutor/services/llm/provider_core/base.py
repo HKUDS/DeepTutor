@@ -65,7 +65,6 @@ class GenerationSettings:
     temperature: float = 0.7
     max_tokens: int = 4096
     reasoning_effort: str | None = None
-    idle_timeout: int = 90
 
 
 class LLMProvider(ABC):
@@ -85,7 +84,6 @@ class LLMProvider(ABC):
         "connection",
         "server error",
         "temporarily unavailable",
-        "stalled",
     )
     _IMAGE_BLOCK_TYPES = frozenset({"image_url", "image"})
     _SENTINEL = object()

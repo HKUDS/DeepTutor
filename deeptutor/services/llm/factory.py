@@ -5,8 +5,6 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator, Mapping
 import contextlib
-import logging
-import os
 from types import SimpleNamespace
 from typing import Any, TypedDict
 
@@ -30,7 +28,6 @@ DEFAULT_MAX_RETRIES = settings.retry.max_retries
 DEFAULT_RETRY_DELAY = settings.retry.base_delay
 DEFAULT_EXPONENTIAL_BACKOFF = settings.retry.exponential_backoff
 
-logger = logging.getLogger(__name__)
 CallKwargs = dict[str, Any]
 
 
@@ -202,7 +199,6 @@ def _resolve_call_config(
             api_version=api_version,
             extra_headers=merged_headers,
             reasoning_effort=resolved_reasoning_effort,
-            idle_timeout=settings.retry.idle_timeout,
         )
         return config, provider_spec
 
@@ -242,7 +238,6 @@ def _resolve_call_config(
             "reasoning_effort": (
                 reasoning_effort if reasoning_effort is not None else current.reasoning_effort
             ),
-            "idle_timeout": int(os.environ.get("LLM_RETRY__IDLE_TIMEOUT") or settings.retry.idle_timeout),
         }
     )
     return config, provider_spec
@@ -393,13 +388,6 @@ async def complete(
             retry_delays=retry_delays,
             **extra_kwargs,
         )
-        logger.debug(
-            "chat_with_retry returned: finish_reason=%s content_len=%s provider=%s model=%s",
-            response.finish_reason,
-            len(response.content or ""),
-            config.provider_name,
-            config.model,
-        )
     except Exception as exc:
         raise map_error(exc, provider=config.provider_name) from exc
 
@@ -488,13 +476,6 @@ async def stream(
                 on_reasoning_delta=_on_reasoning_delta,
                 retry_delays=retry_delays,
                 **extra_kwargs,
-            )
-            logger.debug(
-                "chat_stream_with_retry returned: finish_reason=%s content_len=%s provider=%s model=%s",
-                response.finish_reason,
-                len(response.content or ""),
-                config.provider_name,
-                config.model,
             )
             if in_think_block:
                 in_think_block = False

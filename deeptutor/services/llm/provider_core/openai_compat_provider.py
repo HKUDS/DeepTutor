@@ -766,7 +766,7 @@ class OpenAICompatProvider(LLMProvider):
             tool_choice,
         )
         request_kwargs.update({k: v for k, v in extra_kwargs.items() if v is not None})
-        idle_timeout_s = self.generation.idle_timeout
+        idle_timeout_s = 90
         try:
             if self._should_use_responses_api(model, reasoning_effort):
                 try:

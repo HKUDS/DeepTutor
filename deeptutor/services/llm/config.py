@@ -15,7 +15,6 @@ import os
 import re
 from typing import TYPE_CHECKING, TypedDict
 
-from deeptutor.config.settings import settings
 from deeptutor.services.config import get_env_store, resolve_llm_runtime_config
 from deeptutor.services.provider_registry import canonical_provider_name, find_by_name
 
@@ -113,8 +112,6 @@ class LLMConfig:
     max_concurrency: int = 20
     requests_per_minute: int = 600
     traffic_controller: TrafficController | None = None
-    idle_timeout: int | None = None
-
     def __post_init__(self) -> None:
         if self.effective_url is None:
             self.effective_url = self.base_url
@@ -201,7 +198,6 @@ def _get_llm_config_from_env() -> LLMConfig:
         base_url=base_url,
         api_version=api_version,
         reasoning_effort=reasoning_effort or None,
-        idle_timeout=settings.retry.idle_timeout,
     )
 
 
@@ -228,7 +224,6 @@ def _get_llm_config_from_resolver() -> LLMConfig:
         extra_headers=resolved.extra_headers,
         reasoning_effort=resolved.reasoning_effort,
         context_window=resolved.context_window,
-        idle_timeout=settings.retry.idle_timeout,
     )
 
 
