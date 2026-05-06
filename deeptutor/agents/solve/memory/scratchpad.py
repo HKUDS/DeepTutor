@@ -117,10 +117,18 @@ class Entry:
 
 
 def _normalize_url_for_dedup(url: str) -> str:
-    """Normalize a URL to its paper identity for deduplication.
+    """Fast-path URL normalization for same-host duplicate detection.
 
-    Strips version suffixes (v1, v2, v3), file extensions (abs/html/pdf),
-    and www/www2 host prefixes so all variants of the same paper collapse.
+    This is NOT a general paper deduplication mechanism. It only collapses
+    obvious duplicates within the same hosting platform (e.g., arxiv PDF vs HTML
+    vs a platform-specific mirror). Cross-host deduplication of the same paper
+    relies on the fuzzy title match in _build_sources_list.
+
+    Supported platforms:
+    - arXiv: extracts numeric ID (e.g. 2301.00001) regardless of URL variant
+    - OpenReview: extracts the stable 'id' query param
+
+    Generic URLs: returns host:last_path_segment for same-host grouping only.
     """
     import re
     from urllib.parse import urlparse, parse_qs
@@ -128,8 +136,8 @@ def _normalize_url_for_dedup(url: str) -> str:
     if not url:
         return ""
     try:
-        # Extract arXiv paper ID if present anywhere in the URL
-        # This handles arxiv.org, alphaxiv.org, emergentmind, huggingface, etc.
+        # arXiv: extract the paper ID from any arXiv-related URL
+        # (arxiv.org/abs, arxiv.org/pdf, huggingface.co/papers, emergentmind, etc.)
         paper_id_match = re.search(r"(\d{4}\.\d{4,})", url)
         if paper_id_match:
             return f"arxiv:{paper_id_match.group(1)}"
@@ -144,7 +152,7 @@ def _normalize_url_for_dedup(url: str) -> str:
             fid = qs.get("id", [""])[0]
             return f"openreview:{fid}"
 
-        # Generic: host + last path segment
+        # Generic: host + last path segment (same-host grouping only)
         seg = path.split("/")[-1] if path else ""
         return f"{host}:{seg}"
     except Exception:
@@ -406,60 +414,20 @@ class Scratchpad:
         """
         return self._build_sources_list()
 
-    @staticmethod
-    def _normalize_paper_key(url: str) -> str:
-        """Normalize a paper URL to its paper identity key for deduplication.
-
-        Pattern-based approach — no domain allowlist required. Extracts identifiers
-        wherever they appear in the URL (path, query, path segments).
-
-        Groups all URL variants of the same paper (e.g. arxiv abs/html/pdf,
-        openreview, semanticscholar) under one deduplication key.
-        """
-        from urllib.parse import urlparse
-        import re
-
-        parsed = urlparse(url)
-        host = parsed.netloc.lower().removeprefix("www.")
-        path = parsed.path.rstrip("/")
-
-        # --- arxiv: match 4-digit.4+digit[vN] pattern anywhere in path ---
-        # Handles: /abs/2311.12424v2, /html/2311.12424v3, /pdf/2311.12424
-        # The v suffix may or may not be preceded by a dot
-        for p in path.split("/"):
-            m = re.match(r"(\d{4}\.\d{4,})(?:v\d+)?$", p)
-            if m:
-                return f"arxiv:{m.group(1)}"
-
-        # --- openreview.net: id from query param (stable across /pdf and /forum) ---
-        if host == "openreview.net":
-            m = re.search(r"id=([^&\s]+)", parsed.query)
-            if m:
-                return f"openreview:{m.group(1)}"
-            return f"openreview:{path}"
-
-        # --- semanticscholar: CorpusID:123456789 ---
-        if "corpusid" in host.lower() or "semanticscholar" in host.lower():
-            if "CorpusID" in path:
-                return f"ss:{path.split(':')[-1]}"
-
-        # --- ICLR / NeurIPS proceedings: hash/abcdef123 ---
-        if host in ("proceedings.iclr.cc", "proceedings.neurips.cc"):
-            m = re.search(r"hash/([a-f0-9]+)", path)
-            if m:
-                return f"iclr:{m.group(1)}"
-
-        # --- Catch-all: use host+path as the key ---
-        # This handles emergentmind, deeplearn.org, researchgate, etc. where
-        # each paper gets its own path but we don't extract a formal ID
-        return f"{host}{path}"
-
     def _build_sources_list(self) -> list[dict[str, Any]]:
         """Build deduplicated list of all sources with IDs.
 
-        Uses RapidFuzz token_set_ratio on source titles for fuzzy deduplication
-        of web sources, so that URL variants of the same paper (different hosts,
-        different URL formats) are correctly collapsed into one entry.
+        Deduplication uses a two-strategy approach:
+        1. URL normalization (fast path) — collapses obvious same-host duplicates
+           via arXiv ID extraction and OpenReview ID extraction. Only works for
+           URLs that are variants of the same paper on the same platform.
+        2. Fuzzy title match (cross-host fallback) — uses RapidFuzz token_set_ratio
+           at 80% threshold to detect when different hosts serve the same paper
+           (e.g., arXiv + OpenReview + HuggingFace all citing the same work).
+           This is the more reliable cross-host deduplication mechanism.
+
+        Sources without a title (file field) and without a matchable URL are
+        treated as unique and not deduplicated.
         """
         from rapidfuzz import fuzz
 
