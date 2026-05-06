@@ -539,6 +539,39 @@ deeptutor kb create my-kb --doc textbook.pdf     # Build a knowledge base
 
 > See [DeepTutor CLI](#%EF%B8%8F-deeptutor-cli--agent-native-interface) for the full feature guide and command reference.
 
+## Desktop Application
+
+DeepTutor is also available as a cross-platform desktop application.
+
+### Installation
+
+Download the latest release for your platform from the [Releases page](https://github.com/HKUDS/DeepTutor/releases).
+
+### Development
+
+```bash
+cd electron
+npm install
+npm run dev
+```
+
+### Building
+
+```bash
+npm run dist:mac   # macOS
+npm run dist:win   # Windows
+npm run dist:linux # Linux
+```
+
+### Features
+
+- Embedded Python backend (no separate installation required)
+- System tray support with quick access
+- Auto-update via GitHub releases
+- Secure API key storage (system keychain)
+- Offline-capable with local data storage
+- Native notifications
+
 ---
 
 ## 📖 Explore DeepTutor
