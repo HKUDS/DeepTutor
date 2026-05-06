@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from unittest import mock as unittest_mock
-
-import pytest
 
 from deeptutor.services.llm.config import LLMConfig
 from deeptutor.services.llm.exceptions import LLMRateLimitError
