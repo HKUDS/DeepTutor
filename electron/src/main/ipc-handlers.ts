@@ -15,17 +15,32 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
 
   // Settings
   ipcMain.handle('settings:get', (_event, key: string) => {
-    return store.get(key)
+    try {
+      return store.get(key)
+    } catch (error) {
+      log.error('settings:get error:', error)
+      return null
+    }
   })
 
   ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
-    store.set(key, value)
-    return true
+    try {
+      store.set(key, value)
+      return true
+    } catch (error) {
+      log.error('settings:set error:', error)
+      return false
+    }
   })
 
   ipcMain.handle('settings:delete', (_event, key: string) => {
-    store.delete(key)
-    return true
+    try {
+      store.delete(key)
+      return true
+    } catch (error) {
+      log.error('settings:delete error:', error)
+      return false
+    }
   })
 
   // Secure storage for API keys
@@ -43,7 +58,18 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
 
   // External links
   ipcMain.handle('shell:openExternal', (_event, url: string) => {
-    return shell.openExternal(url)
+    // Security: Only allow http/https protocols
+    try {
+      const parsedUrl = new URL(url)
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        log.warn(`Blocked dangerous URL protocol: ${parsedUrl.protocol}`)
+        return false
+      }
+      return shell.openExternal(url)
+    } catch (error) {
+      log.error('Invalid URL:', url)
+      return false
+    }
   })
 
   // Window controls
@@ -68,6 +94,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
   })
 
   // Backend status
+  // TODO: Get actual backend state instead of hardcoded values
   ipcMain.handle('backend:getStatus', () => {
     return { running: true, port: 8001 }
   })

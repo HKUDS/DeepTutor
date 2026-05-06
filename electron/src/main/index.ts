@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, Menu, Tray, nativeImage } from 'electron'
+import { app, shell, BrowserWindow, Tray } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import log from 'electron-log'
