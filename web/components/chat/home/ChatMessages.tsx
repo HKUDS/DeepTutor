@@ -26,7 +26,6 @@ import type {
 } from "@/context/UnifiedChatContext";
 import { apiUrl } from "@/lib/api";
 import { docIconFor } from "@/lib/doc-attachments";
-import { apiUrl } from "@/lib/api";
 import { extractMathAnimatorResult } from "@/lib/math-animator-types";
 import { extractQuizQuestions } from "@/lib/quiz-types";
 import { extractVisualizeResult } from "@/lib/visualize-types";
