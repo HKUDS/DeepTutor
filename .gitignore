@@ -85,6 +85,9 @@ web/dist/
 build/
 web/build/
 
+# Electron build assets (keep in version control)
+!electron/build/
+
 # TypeScript build info
 *.tsbuildinfo
 
