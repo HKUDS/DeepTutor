@@ -1,0 +1,52 @@
+appId: com.deeptutor.desktop
+productName: DeepTutor
+directories:
+  buildResources: build
+  output: dist
+files:
+  - "!**/.vscode/*"
+  - "!src/*"
+  - "!electron.vite.config.*"
+  - "!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}"
+  - "!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}"
+asarUnpack:
+  - resources/**
+  - "**/*.py"
+win:
+  executableName: DeepTutor
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  artifactName: "${name}-${version}-setup.${ext}"
+  shortcutName: "${productName}"
+  uninstallDisplayName: "${productName}"
+  createDesktopShortcut: always
+mac:
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    - NSCameraUsageDescription: DeepTutor needs camera access for video calls
+    - NSMicrophoneUsageDescription: DeepTutor needs microphone access for voice input
+  notarize: false
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+dmg:
+  artifactName: "${name}-${version}.${ext}"
+linux:
+  target:
+    - AppImage
+    - snap
+    - deb
+  maintainer: HKUDS
+  category: Education
+appImage:
+  artifactName: "${name}-${version}.${ext}"
+npmRebuild: true
+publish:
+  provider: github
+  owner: HKUDS
+  repo: DeepTutor
