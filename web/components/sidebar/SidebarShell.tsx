@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { type ReactNode } from "react";
 import { useAppShell } from "@/context/AppShellContext";
 import {
   BookOpen,
@@ -49,6 +48,7 @@ const DEFAULT_SESSION_VIEWPORT_CLASS_NAME = "max-h-[112px]";
 const GITHUB_REPO_URL = "https://github.com/HKUDS/DeepTutor";
 
 interface SidebarShellProps {
+  children?: ReactNode;
   sessions?: SessionSummary[];
   activeSessionId?: string | null;
   loadingSessions?: boolean;
@@ -61,7 +61,6 @@ interface SidebarShellProps {
   footerSlot?: ReactNode;
 }
 
-// Window control types
 interface ElectronWindow {
   minimize: () => Promise<void>;
   maximize: () => Promise<void>;
@@ -85,6 +84,7 @@ declare global {
 }
 
 export function SidebarShell({
+  children,
   sessions = [],
   activeSessionId = null,
   loadingSessions = false,
@@ -102,7 +102,6 @@ export function SidebarShell({
   const { sidebarCollapsed: collapsed, setSidebarCollapsed: setCollapsed } =
     useAppShell();
 
-  // Detect if running in Electron desktop client
   const isDesktopClient = useMemo(
     () =>
       typeof navigator !== "undefined" &&
@@ -115,28 +114,21 @@ export function SidebarShell({
     return navigator.platform?.toLowerCase().includes("mac") ?? false;
   }, [isDesktopClient]);
 
-  // Desktop-specific sidebar state
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
   const effectiveCollapsed = isDesktopClient ? desktopSidebarCollapsed : collapsed;
   const setEffectiveCollapsed = isDesktopClient
     ? setDesktopSidebarCollapsed
     : setCollapsed;
 
-  // Window state for desktop
   const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
     if (!isDesktopClient || !window.electron?.window) return;
-
-    // Get initial maximized state
     window.electron.window.isMaximized().then(setIsMaximized);
-
-    // Listen for changes
     const unsubscribe = window.electron.window.onMaximizeChange(setIsMaximized);
     return unsubscribe;
   }, [isDesktopClient]);
 
-  // Window control handlers
   const handleMinimize = useCallback(() => {
     window.electron?.window?.minimize();
   }, []);
@@ -157,14 +149,12 @@ export function SidebarShell({
     router.push("/chat");
   };
 
-  // Sidebar resize state
   const SIDEBAR_MIN = 160;
   const SIDEBAR_MAX = 320;
   const SIDEBAR_DEFAULT = 220;
   const MAIN_MIN = 480;
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
   const isResizing = useRef(false);
-  const resizeRef = useRef<HTMLDivElement>(null);
 
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
@@ -201,19 +191,12 @@ export function SidebarShell({
     [sidebarWidth]
   );
 
-  // Nexu-style glass background color
   const glassBackground = isDesktopClient
     ? "rgba(255, 255, 255, 0.08)"
     : undefined;
 
-  // Main content area background (Nexu style: solid surface)
-  const mainBackground = isDesktopClient
-    ? "var(--background)"
-    : "var(--background)";
-
   return (
     <div className="flex h-full relative overflow-hidden">
-      {/* Sidebar */}
       <aside
         className={clsx(
           "flex h-full shrink-0 flex-col transition-all duration-200",
@@ -229,7 +212,6 @@ export function SidebarShell({
             : { width: effectiveCollapsed ? 60 : sidebarWidth }
         }
       >
-        {/* Traffic lights for macOS desktop */}
         {isMacDesktop && !effectiveCollapsed && (
           <div
             className="h-14 shrink-0 flex items-center px-4"
@@ -255,7 +237,6 @@ export function SidebarShell({
           </div>
         )}
 
-        {/* Header: traffic light clearance or toggle */}
         <div
           className={clsx(
             "shrink-0 flex items-center",
@@ -264,7 +245,6 @@ export function SidebarShell({
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
         >
           {effectiveCollapsed ? (
-            // Collapsed state: just show expand button
             <div className="w-full flex justify-center">
               <button
                 onClick={() => setEffectiveCollapsed(false)}
@@ -275,7 +255,6 @@ export function SidebarShell({
               </button>
             </div>
           ) : (
-            // Expanded state: logo + collapse toggle
             <div className="flex items-center justify-between w-full px-4">
               <Link href="/" className="group flex items-center gap-2">
                 <Image
@@ -300,13 +279,10 @@ export function SidebarShell({
           )}
         </div>
 
-        {/* Content area */}
         {!effectiveCollapsed && (
           <>
-            {/* Primary nav */}
             <nav className="flex-1 overflow-y-auto px-2 pt-1">
               <div className="space-y-px">
-                {/* New chat */}
                 <button
                   onClick={handleNewChat}
                   className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)]/20 hover:text-[var(--foreground)]"
@@ -339,12 +315,7 @@ export function SidebarShell({
                         <span>{t(item.label)}</span>
                       </Link>
                       {hasSessionsBelow && (
-                        <div
-                          className={clsx(
-                            sessionViewportClassName,
-                            "overflow-y-auto"
-                          )}
-                        >
+                        <div className={clsx(sessionViewportClassName, "overflow-y-auto")}>
                           <SessionList
                             sessions={sessions}
                             activeSessionId={activeSessionId}
@@ -363,10 +334,8 @@ export function SidebarShell({
               </div>
             </nav>
 
-            {/* Spacer */}
             <div className="flex-1" />
 
-            {/* Secondary nav + footer */}
             <div className="border-t border-[var(--border)]/40 px-2 py-2">
               {SECONDARY_NAV.map((item) => {
                 const active = pathname.startsWith(item.href);
@@ -404,87 +373,81 @@ export function SidebarShell({
           </>
         )}
 
-        {/* Collapsed state icons */}
         {effectiveCollapsed && (
-          <>
-            <div className="flex-1 flex flex-col items-center gap-1 px-1.5 py-2">
-              {/* New chat */}
-              <button
-                onClick={handleNewChat}
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border)]/50 bg-[var(--background)]/40 text-[var(--foreground)] shadow-sm transition-all hover:bg-[var(--background)]/80"
-                aria-label={t("New Chat")}
-              >
-                <Plus size={16} strokeWidth={2.2} />
-              </button>
+          <div className="flex-1 flex flex-col items-center gap-1 px-1.5 py-2">
+            <button
+              onClick={handleNewChat}
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border)]/50 bg-[var(--background)]/40 text-[var(--foreground)] shadow-sm transition-all hover:bg-[var(--background)]/80"
+              aria-label={t("New Chat")}
+            >
+              <Plus size={16} strokeWidth={2.2} />
+            </button>
 
-              <div className="my-1.5 h-px w-7 bg-[var(--border)]/40" />
+            <div className="my-1.5 h-px w-7 bg-[var(--border)]/40" />
 
-              {PRIMARY_NAV.map((item) => {
-                const active = pathname.startsWith(item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    title={t(item.label) as string}
-                    className={clsx(
-                      "relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150",
-                      active
-                        ? "bg-[var(--accent)]/20 text-[var(--foreground)]"
-                        : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]/10 hover:text-[var(--foreground)]"
-                    )}
-                  >
-                    {active && (
-                      <span className="absolute -left-1.5 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-[var(--foreground)]/80" />
-                    )}
-                    <item.icon size={18} strokeWidth={active ? 2 : 1.6} />
-                  </Link>
-                );
-              })}
+            {PRIMARY_NAV.map((item) => {
+              const active = pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  title={t(item.label) as string}
+                  className={clsx(
+                    "relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150",
+                    active
+                      ? "bg-[var(--accent)]/20 text-[var(--foreground)]"
+                      : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]/10 hover:text-[var(--foreground)]"
+                  )}
+                >
+                  {active && (
+                    <span className="absolute -left-1.5 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-[var(--foreground)]/80" />
+                  )}
+                  <item.icon size={18} strokeWidth={active ? 2 : 1.6} />
+                </Link>
+              );
+            })}
 
-              <div className="flex-1" />
+            <div className="flex-1" />
 
-              {SECONDARY_NAV.map((item) => {
-                const active = pathname.startsWith(item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    title={t(item.label) as string}
-                    className={clsx(
-                      "relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150",
-                      active
-                        ? "bg-[var(--accent)]/20 text-[var(--foreground)]"
-                        : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]/10 hover:text-[var(--foreground)]"
-                    )}
-                  >
-                    {active && (
-                      <span className="absolute -left-1.5 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-[var(--foreground)]/80" />
-                    )}
-                    <item.icon size={18} strokeWidth={active ? 2 : 1.6} />
-                  </Link>
-                );
-              })}
+            {SECONDARY_NAV.map((item) => {
+              const active = pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  title={t(item.label) as string}
+                  className={clsx(
+                    "relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150",
+                    active
+                      ? "bg-[var(--accent)]/20 text-[var(--foreground)]"
+                      : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]/10 hover:text-[var(--foreground)]"
+                  )}
+                >
+                  {active && (
+                    <span className="absolute -left-1.5 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-[var(--foreground)]/80" />
+                  )}
+                  <item.icon size={18} strokeWidth={active ? 2 : 1.6} />
+                </Link>
+              );
+            })}
 
-              <a
-                href={GITHUB_REPO_URL}
-                target="_blank"
-                rel="noreferrer noopener"
-                title="GitHub"
-                aria-label="GitHub"
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-[var(--muted-foreground)]/70 transition-colors hover:bg-[var(--accent)]/10 hover:text-[var(--foreground)]"
-              >
-                <Github size={15} strokeWidth={1.6} />
-              </a>
-              <VersionBadge collapsed />
-            </div>
-          </>
+            <a
+              href={GITHUB_REPO_URL}
+              target="_blank"
+              rel="noreferrer noopener"
+              title="GitHub"
+              aria-label="GitHub"
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-[var(--muted-foreground)]/70 transition-colors hover:bg-[var(--accent)]/10 hover:text-[var(--foreground)]"
+            >
+              <Github size={15} strokeWidth={1.6} />
+            </a>
+            <VersionBadge collapsed />
+          </div>
         )}
       </aside>
 
-      {/* Resize handle */}
       {!effectiveCollapsed && (
         <div
-          ref={resizeRef}
           onMouseDown={handleResizeStart}
           className="hidden md:block w-px shrink-0 cursor-col-resize group relative z-10"
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
@@ -493,10 +456,9 @@ export function SidebarShell({
         </div>
       )}
 
-      {/* Main content area */}
       <main
         className="relative flex h-full min-w-0 flex-1 overflow-hidden"
-        style={{ background: mainBackground }}
+        style={{ background: "var(--background)" }}
       >
         <div
           className={clsx(

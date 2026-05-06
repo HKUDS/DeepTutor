@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, Lora } from "next/font/google";
-import Script from "next/script";
 import "./globals.css";
 import { AppShellProvider } from "@/context/AppShellContext";
 import { I18nClientBridge } from "@/i18n/I18nClientBridge";
@@ -29,29 +28,22 @@ export const metadata: Metadata = {
   },
 };
 
-const themeScript = `(function(){try{var s=localStorage.getItem('deeptutor-theme');document.documentElement.classList.remove('dark','theme-glass','theme-snow');if(s==='dark'){document.documentElement.classList.add('dark');}else if(s==='glass'){document.documentElement.classList.add('dark','theme-glass');}else if(s==='snow'){document.documentElement.classList.add('theme-snow');}else if(s==='light'){}else{if(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches){document.documentElement.classList.add('dark');localStorage.setItem('deeptutor-theme','dark');}else{localStorage.setItem('deeptutor-theme','light');}}}catch(e){}})();`;
-
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      suppressHydrationWarning
-      data-scroll-behavior="smooth"
-      className={`${fontSans.variable} ${fontSerif.variable}`}
-    >
-      <head>
-        <Script id="theme-init" strategy="beforeInteractive">
-          {themeScript}
-        </Script>
-      </head>
+    <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth" className={`${fontSans.variable} ${fontSerif.variable}`}>
       <body className="font-sans bg-[var(--background)] text-[var(--foreground)]">
         <AppShellProvider>
           <I18nClientBridge>{children}</I18nClientBridge>
         </AppShellProvider>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var s=localStorage.getItem('deeptutor-theme');document.documentElement.classList.remove('dark','theme-glass','theme-snow');if(s==='dark'){document.documentElement.classList.add('dark');}else if(s==='glass'){document.documentElement.classList.add('dark','theme-glass');}else if(s==='snow'){document.documentElement.classList.add('theme-snow');}else if(s==='light'){}else{if(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches){document.documentElement.classList.add('dark');localStorage.setItem('deeptutor-theme','dark');}else{localStorage.setItem('deeptutor-theme','light');}}}catch(e){}})();`,
+          }}
+        />
       </body>
     </html>
   );
