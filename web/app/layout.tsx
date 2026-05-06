@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, Lora } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { AppShellProvider } from "@/context/AppShellContext";
 import { I18nClientBridge } from "@/i18n/I18nClientBridge";
@@ -43,7 +44,9 @@ export default function RootLayout({
       className={`${fontSans.variable} ${fontSerif.variable}`}
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} suppressHydrationWarning />
+        <Script id="theme-init" strategy="beforeInteractive">
+          {themeScript}
+        </Script>
       </head>
       <body className="font-sans bg-[var(--background)] text-[var(--foreground)]">
         <AppShellProvider>
