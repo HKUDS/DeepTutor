@@ -328,7 +328,7 @@ class WriterAgent(BaseAgent):
 
         # Remove existing numbered/bulleted reference blocks (## References and everything after)
         # Matches ## References, ## 参考文献, ## References (any case), etc.
-        pattern = r"\n*---\n*\n*##\s*References.*?(?=\n#|\Z)"
+        pattern = r"\n*---\n*\n*##\s*(References|参考文献).*?(?=\n#|\Z)"
         answer = re.sub(pattern, "", answer, flags=re.IGNORECASE | re.DOTALL)
         # Also strip any remaining bare numbered list items (1. ..., 2. ...)
         answer = re.sub(r"\n\d+\.\s+\[.+?\]\(.+?\)", "", answer)

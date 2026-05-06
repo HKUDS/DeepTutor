@@ -388,179 +388,6 @@ class PaperSearchToolWrapper(_PromptHintsMixin, BaseTool):
         )
 
 
-class VisitUrlTool(_PromptHintsMixin, BaseTool):
-    """Fetch a URL and verify it is alive and contains the expected content."""
-
-    def get_definition(self) -> ToolDefinition:
-        return ToolDefinition(
-            name="visit_url",
-            description=(
-                "Fetch a URL, verify it is reachable (HTTP 2xx), and extract readable text. "
-                "Use this to validate that a cited source URL actually exists and contains the claimed content. "
-                "Returns the page title, alive flag, and claim verification result."
-            ),
-            parameters=[
-                ToolParameter(
-                    name="url",
-                    type="string",
-                    description="The URL to visit and verify.",
-                ),
-                ToolParameter(
-                    name="claim",
-                    type="string",
-                    description="Optional claim or citation text to check against the page content. If provided, the tool will indicate whether the claim appears to be supported by the page.",
-                    required=False,
-                ),
-            ],
-        )
-
-    async def execute(self, **kwargs: Any) -> ToolResult:
-        raw_url = kwargs.get("url", "")
-        if not raw_url or not (url := str(raw_url).strip()):
-            return ToolResult(
-                content="No URL provided.",
-                success=False,
-                metadata={"alive": False, "status_code": None},
-            )
-        claim = str(kwargs.get("claim", "")).strip()
-
-        import asyncio
-        import textwrap
-
-        try:
-            import httpx
-        except ImportError:
-            return ToolResult(
-                content="httpx is not installed. Install it with: pip install httpx",
-                success=False,
-                metadata={"alive": False, "error": "httpx not available"},
-            )
-
-        def _verify_claim_via_embedding(claim_text: str, page_text: str) -> bool | None:
-            """Check claim against page using embedding similarity; falls back to token check."""
-            try:
-                from llama_index.core import Settings
-
-                embed_model = getattr(Settings, "embed_model", None)
-                if embed_model is None:
-                    raise RuntimeError("embed_model not configured")
-
-                import numpy as np
-
-                claim_emb = embed_model.get_text_embedding(claim_text)
-                page_emb = embed_model.get_text_embedding(page_text[:3000])
-
-                norm_claim = np.linalg.norm(claim_emb)
-                norm_page = np.linalg.norm(page_emb)
-                if norm_claim == 0 or norm_page == 0:
-                    return None
-
-                similarity = float(np.dot(claim_emb, page_emb) / (norm_claim * norm_page))
-                return similarity >= 0.75
-            except Exception:
-                # Fallback to token-based check
-                claim_tokens = [t.strip() for t in claim_text.lower().split() if len(t.strip()) >= 4]
-                if not claim_tokens:
-                    return None
-                page_lower = page_text.lower()
-                missing = [t for t in claim_tokens if t not in page_lower]
-                return (len(missing) / len(claim_tokens)) <= 0.2
-
-        async def _do_fetch(client: httpx.AsyncClient) -> httpx.Response:
-            backoff = 1.0
-            for attempt in range(3):
-                response = await client.get(url, headers={
-                    "User-Agent": "Mozilla/5.0 (compatible; DeepTutorBot/1.0; +https://example.com/bot)"
-                })
-                if response.status_code != 429:
-                    return response
-                if attempt < 2:
-                    logger.info(f"Rate limited (429), retrying {url} in {backoff:.1f}s")
-                    await asyncio.sleep(backoff)
-                    backoff *= 2
-            return response
-
-        try:
-            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-                response = await _do_fetch(client)
-                status = response.status_code
-                raw_text = response.text
-                title = ""
-                if "text/html" in response.headers.get("content-type", ""):
-                    import re
-                    m = re.search(r"<title[^>]*>([^<]+)</title>", raw_text, re.IGNORECASE)
-                    if m:
-                        title = m.group(1).strip()
-                    try:
-                        from lxml import html
-                        tree = html.fromstring(raw_text)
-                        clean_text = tree.text_content() or ""
-                    except Exception:
-                        clean_text = raw_text
-                else:
-                    clean_text = raw_text
-
-                alive = 200 <= status < 400
-                page_text = clean_text[:8000]
-                sources = [{"type": "web", "url": url, "title": title}]
-                claim_verified: bool | None = None
-
-                if not alive:
-                    logger.warning(f"URL unreachable status={status} url={url}")
-                    result_content = f"URL is not reachable (status {status}). The source may be broken or the page no longer exists."
-                    claim_verified = None
-                else:
-                    lines = [f"Title: {title}"] if title else []
-                    lines.append(f"Status: {status} OK")
-                    if claim:
-                        claim_verified = _verify_claim_via_embedding(claim, page_text)
-                        if claim_verified is True:
-                            lines.append("Claim SUPPORTED: semantically aligned with page content.")
-                        elif claim_verified is False:
-                            logger.warning(f"Claim not verified url={url} claim={claim}")
-                            lines.append("Claim NOT VERIFIED: the cited content was not found in the page. The claim may be inaccurate or the URL may point to a different version of the content.")
-                        else:
-                            lines.append("Claim VERIFICATION INCONCLUSIVE: could not verify claim.")
-                        lines.append("")
-                    lines.append("Page content snippet:")
-                    lines.append(textwrap.fill(page_text[:2000], width=120))
-                    result_content = "\n".join(lines)
-
-                return ToolResult(
-                    content=result_content,
-                    success=alive,
-                    sources=sources,
-                    metadata={
-                        "alive": alive,
-                        "status_code": status,
-                        "url": url,
-                        "title": title,
-                        "claim_verified": claim_verified,
-                    },
-                )
-        except httpx.UnsupportedProtocol:
-            logger.warning(f"Invalid URL protocol url={url}")
-            return ToolResult(
-                content=f"Invalid URL format: missing http:// or https:// protocol.",
-                success=False,
-                metadata={"alive": False, "status_code": None},
-            )
-        except asyncio.TimeoutError:
-            logger.warning(f"URL fetch timed out url={url}")
-            return ToolResult(
-                content=f"URL fetch timed out after 20 seconds: {url}",
-                success=False,
-                metadata={"alive": False, "error": "timeout"},
-            )
-        except Exception as exc:
-            logger.warning(f"Failed to fetch URL url={url} error={exc}")
-            return ToolResult(
-                content=f"Failed to fetch URL: {exc}",
-                success=False,
-                metadata={"alive": False, "status_code": None},
-            )
-
-
 class GeoGebraAnalysisTool(_PromptHintsMixin, BaseTool):
     """Analyze a math-problem image and generate GeoGebra visualization commands."""
 
@@ -677,7 +504,6 @@ BUILTIN_TOOL_TYPES: tuple[type[BaseTool], ...] = (
     BrainstormTool,
     RAGTool,
     WebSearchTool,
-    VisitUrlTool,
     CodeExecutionTool,
     ReasonTool,
     PaperSearchToolWrapper,
@@ -692,7 +518,6 @@ TOOL_ALIASES: dict[str, tuple[str, dict[str, Any]]] = {
     "rag_search": ("rag", {}),
     "code_execute": ("code_execution", {}),
     "run_code": ("code_execution", {}),
-    "visit_url": ("visit_url", {}),
 }
 
 __all__ = [
@@ -705,6 +530,5 @@ __all__ = [
     "PaperSearchToolWrapper",
     "RAGTool",
     "ReasonTool",
-    "VisitUrlTool",
     "WebSearchTool",
 ]

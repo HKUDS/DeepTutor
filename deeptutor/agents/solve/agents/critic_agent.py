@@ -170,6 +170,160 @@ class CriticAgent(BaseAgent):
 
         return self._parse_audit_decision(response)
 
+    async def _fetch_url(self, target_url: str, claim: str = "") -> dict[str, Any]:
+        """Fetch a single URL and verify it's alive with optional claim verification.
+
+        Returns a dict with keys: alive, content, sources, status_code,
+        claim_verified, is_safe, safety_category, safety_confidence,
+        safety_filter_used, matched_patterns, llm_reason, url, error.
+        """
+        import asyncio
+        import textwrap
+
+        try:
+            import httpx
+        except ImportError:
+            return {
+                "alive": False,
+                "content": "httpx is not installed.",
+                "sources": [],
+                "error": "httpx not available",
+                "url": target_url,
+            }
+
+        def _verify_claim_via_embedding(claim_text: str, page_text: str) -> bool | None:
+            """Check claim against page using embedding similarity; falls back to token check."""
+            try:
+                from llama_index.core import Settings
+
+                embed_model = getattr(Settings, "embed_model", None)
+                if embed_model is None:
+                    raise RuntimeError("embed_model not configured")
+
+                import numpy as np
+
+                claim_emb = embed_model.get_text_embedding(claim_text)
+                page_emb = embed_model.get_text_embedding(page_text[:3000])
+
+                norm_claim = np.linalg.norm(claim_emb)
+                norm_page = np.linalg.norm(page_emb)
+                if norm_claim == 0 or norm_page == 0:
+                    return None
+
+                similarity = float(np.dot(claim_emb, page_emb) / (norm_claim * norm_page))
+                return similarity >= 0.75
+            except Exception:
+                # Fallback to token-based check
+                claim_tokens = [t.strip() for t in claim_text.lower().split() if len(t.strip()) >= 4]
+                if not claim_tokens:
+                    return None
+                page_lower = page_text.lower()
+                missing = [t for t in claim_tokens if t not in page_lower]
+                return (len(missing) / len(claim_tokens)) <= 0.2
+
+        async def _do_fetch(client: httpx.AsyncClient) -> httpx.Response:
+            backoff = 1.0
+            for attempt in range(3):
+                response = await client.get(
+                    target_url,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (compatible; DeepTutorBot/1.0; +https://example.com/bot)"
+                    },
+                )
+                if response.status_code != 429:
+                    return response
+                if attempt < 2:
+                    logger.info(f"Rate limited (429), retrying {target_url} in {backoff:.1f}s")
+                    await asyncio.sleep(backoff)
+                    backoff *= 2
+            return response
+
+        try:
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                response = await _do_fetch(client)
+                status = response.status_code
+                raw_text = response.text
+                title = ""
+                if "text/html" in response.headers.get("content-type", ""):
+                    import re
+
+                    m = re.search(r"<title[^>]*>([^<]+)</title>", raw_text, re.IGNORECASE)
+                    if m:
+                        title = m.group(1).strip()
+                    try:
+                        from lxml import html
+
+                        tree = html.fromstring(raw_text)
+                        clean_text = tree.text_content() or ""
+                    except Exception:
+                        clean_text = raw_text
+                else:
+                    clean_text = raw_text
+
+                alive = 200 <= status < 400
+                page_text = clean_text[:8000]
+                sources = [{"type": "web", "url": target_url, "title": title}]
+                claim_verified: bool | None = None
+
+                if not alive:
+                    logger.warning(f"URL unreachable status={status} url={target_url}")
+                else:
+                    if claim:
+                        claim_verified = _verify_claim_via_embedding(claim, page_text)
+                        if claim_verified is True:
+                            logger.info(f"Claim supported url={target_url}")
+                        elif claim_verified is False:
+                            logger.warning(f"Claim not verified url={target_url} claim={claim}")
+
+                raw_content = (
+                    f"Title: {title}\nStatus: {'OK' if alive else f'HTTP {status}'}\n"
+                    + (f"Claim: {'SUPPORTED' if claim_verified else 'NOT VERIFIED' if claim_verified is False else 'INCONCLUSIVE'}\n" if claim else "")
+                    + f"Content:\n{textwrap.fill(page_text[:2000], width=120)}"
+                )
+
+                safety = self._content_filter.check(raw_content, url=target_url)
+                return {
+                    "alive": alive,
+                    "content": raw_content,
+                    "sources": sources,
+                    "status_code": status,
+                    "claim_verified": claim_verified,
+                    "is_safe": safety.is_safe,
+                    "safety_category": safety.category.value if safety.category else None,
+                    "safety_confidence": safety.confidence,
+                    "safety_filter_used": safety.filter_used,
+                    "matched_patterns": safety.matched_patterns,
+                    "llm_reason": safety.llm_reason,
+                    "url": target_url,
+                }
+        except httpx.UnsupportedProtocol:
+            logger.warning(f"Invalid URL protocol url={target_url}")
+            return {
+                "alive": False,
+                "content": f"Invalid URL format: missing http:// or https:// protocol.",
+                "sources": [],
+                "error": "unsupported_protocol",
+                "url": target_url,
+            }
+        except asyncio.TimeoutError:
+            logger.warning(f"URL fetch timed out url={target_url}")
+            return {
+                "alive": False,
+                "content": f"URL fetch timed out after 20 seconds: {target_url}",
+                "sources": [],
+                "error": "timeout",
+                "url": target_url,
+            }
+        except Exception as exc:
+            logger.warning(f"Failed to fetch URL url={target_url} error={exc}")
+            return {
+                "alive": False,
+                "content": f"Failed to fetch URL: {exc}",
+                "sources": [],
+                "error": str(exc),
+                "url": target_url,
+            }
+
     async def _validate_all_sources(
         self,
         scratchpad: Scratchpad,
@@ -249,27 +403,7 @@ class CriticAgent(BaseAgent):
         async def _fetch_one(target_url: str) -> dict[str, Any]:
             """Fetch a single URL and return structured result."""
             try:
-                from deeptutor.core.tool_protocol import ToolResult
-                from deeptutor.tools.builtin import VisitUrlTool
-
-                tool = VisitUrlTool()
-                result: ToolResult = await tool.execute(url=target_url, claim="")
-                raw_content = result.content or ""
-                safety = self._content_filter.check(raw_content, url=target_url)
-                return {
-                    "alive": result.metadata.get("alive", False),
-                    "content": raw_content,
-                    "sources": result.sources,
-                    "status_code": result.metadata.get("status_code"),
-                    "claim_verified": result.metadata.get("claim_verified"),
-                    "is_safe": safety.is_safe,
-                    "safety_category": safety.category.value if safety.category else None,
-                    "safety_confidence": safety.confidence,
-                    "safety_filter_used": safety.filter_used,
-                    "matched_patterns": safety.matched_patterns,
-                    "llm_reason": safety.llm_reason,
-                    "url": target_url,
-                }
+                return await self._fetch_url(target_url, claim="")
             except Exception as exc:
                 logger.warning(f"visit_url failed for {target_url}: {exc}")
                 return {

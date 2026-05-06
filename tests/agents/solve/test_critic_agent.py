@@ -80,13 +80,22 @@ class TestValidateAllSources:
 
     @pytest.mark.asyncio
     async def test_all_sources_valid_alive(self, agent: CriticAgent, scratchpad: Scratchpad) -> None:
-        mock_result = MagicMock()
-        mock_result.metadata = {"alive": True, "status_code": 200}
-        mock_result.content = "Page title"
-        mock_result.sources = []
+        mock_result = {
+            "alive": True,
+            "content": "Page title",
+            "sources": [],
+            "status_code": 200,
+            "claim_verified": None,
+            "is_safe": True,
+            "safety_category": None,
+            "safety_confidence": 0.0,
+            "safety_filter_used": False,
+            "matched_patterns": [],
+            "llm_reason": None,
+            "url": "https://example.com/dl",
+        }
 
-        with patch("deeptutor.tools.builtin.VisitUrlTool") as MockTool:
-            MockTool.return_value.execute = AsyncMock(return_value=mock_result)
+        with patch.object(agent, "_fetch_url", new=AsyncMock(return_value=mock_result)):
             obs, per_url_results = await agent._validate_all_sources(
                 scratchpad=scratchpad, kb_name=None, question="What is deep learning?"
             )
@@ -96,13 +105,22 @@ class TestValidateAllSources:
 
     @pytest.mark.asyncio
     async def test_dead_url_removes_source_from_entry(self, agent: CriticAgent, scratchpad: Scratchpad) -> None:
-        mock_result = MagicMock()
-        mock_result.metadata = {"alive": False, "status_code": 403}
-        mock_result.content = "Forbidden"
-        mock_result.sources = []
+        mock_result = {
+            "alive": False,
+            "content": "Forbidden",
+            "sources": [],
+            "status_code": 403,
+            "claim_verified": None,
+            "is_safe": True,
+            "safety_category": None,
+            "safety_confidence": 0.0,
+            "safety_filter_used": False,
+            "matched_patterns": [],
+            "llm_reason": None,
+            "url": "https://example.com/dl",
+        }
 
-        with patch("deeptutor.tools.builtin.VisitUrlTool") as MockTool:
-            MockTool.return_value.execute = AsyncMock(return_value=mock_result)
+        with patch.object(agent, "_fetch_url", new=AsyncMock(return_value=mock_result)):
             await agent._validate_all_sources(
                 scratchpad=scratchpad, kb_name=None, question="What is deep learning?"
             )
@@ -127,8 +145,7 @@ class TestValidateAllSources:
                 ],
             )
         )
-        with patch("deeptutor.tools.builtin.VisitUrlTool") as MockTool:
-            MockTool.return_value.execute = AsyncMock(side_effect=RuntimeError("network error"))
+        with patch.object(agent, "_fetch_url", new=AsyncMock(side_effect=RuntimeError("network error"))):
             obs, per_url_results = await agent._validate_all_sources(
                 scratchpad=pad, kb_name=None, question="What is deep learning?"
             )
@@ -139,13 +156,22 @@ class TestValidateAllSources:
 
     @pytest.mark.asyncio
     async def test_claim_verified_logs_success(self, agent: CriticAgent, scratchpad: Scratchpad) -> None:
-        mock_result = MagicMock()
-        mock_result.metadata = {"alive": True, "status_code": 200, "claim_verified": True}
-        mock_result.content = "Title found"
-        mock_result.sources = []
+        mock_result = {
+            "alive": True,
+            "content": "Title found",
+            "sources": [],
+            "status_code": 200,
+            "claim_verified": True,
+            "is_safe": True,
+            "safety_category": None,
+            "safety_confidence": 0.0,
+            "safety_filter_used": False,
+            "matched_patterns": [],
+            "llm_reason": None,
+            "url": "https://example.com/dl",
+        }
 
-        with patch("deeptutor.tools.builtin.VisitUrlTool") as MockTool:
-            MockTool.return_value.execute = AsyncMock(return_value=mock_result)
+        with patch.object(agent, "_fetch_url", new=AsyncMock(return_value=mock_result)):
             obs, per_url_results = await agent._validate_all_sources(
                 scratchpad=scratchpad, kb_name=None, question="What is deep learning?"
             )
@@ -155,13 +181,22 @@ class TestValidateAllSources:
 
     @pytest.mark.asyncio
     async def test_claim_not_verified_logs_warning(self, agent: CriticAgent, scratchpad: Scratchpad) -> None:
-        mock_result = MagicMock()
-        mock_result.metadata = {"alive": True, "status_code": 200, "claim_verified": False}
-        mock_result.content = "Title found"
-        mock_result.sources = []
+        mock_result = {
+            "alive": True,
+            "content": "Title found",
+            "sources": [],
+            "status_code": 200,
+            "claim_verified": False,
+            "is_safe": True,
+            "safety_category": None,
+            "safety_confidence": 0.0,
+            "safety_filter_used": False,
+            "matched_patterns": [],
+            "llm_reason": None,
+            "url": "https://example.com/dl",
+        }
 
-        with patch("deeptutor.tools.builtin.VisitUrlTool") as MockTool:
-            MockTool.return_value.execute = AsyncMock(return_value=mock_result)
+        with patch.object(agent, "_fetch_url", new=AsyncMock(return_value=mock_result)):
             obs, per_url_results = await agent._validate_all_sources(
                 scratchpad=scratchpad, kb_name=None, question="What is deep learning?"
             )
@@ -179,13 +214,22 @@ class TestProcessNewFlow:
     async def test_process_validates_sources_and_gets_summary(
         self, agent_no_loop: CriticAgent, scratchpad: Scratchpad
     ) -> None:
-        mock_result = MagicMock()
-        mock_result.metadata = {"alive": True, "status_code": 200}
-        mock_result.content = "OK"
-        mock_result.sources = []
+        mock_result = {
+            "alive": True,
+            "content": "OK",
+            "sources": [],
+            "status_code": 200,
+            "claim_verified": None,
+            "is_safe": True,
+            "safety_category": None,
+            "safety_confidence": 0.0,
+            "safety_filter_used": False,
+            "matched_patterns": [],
+            "llm_reason": None,
+            "url": "https://example.com/dl",
+        }
 
-        with patch("deeptutor.tools.builtin.VisitUrlTool") as MockTool:
-            MockTool.return_value.execute = AsyncMock(return_value=mock_result)
+        with patch.object(agent_no_loop, "_fetch_url", new=AsyncMock(return_value=mock_result)):
             agent_no_loop._run_audit_round = AsyncMock(return_value={
                 "verification_report": "All sources verified.",
             })
@@ -203,13 +247,22 @@ class TestProcessNewFlow:
     async def test_process_records_audit_entry(
         self, agent_no_loop: CriticAgent, scratchpad: Scratchpad
     ) -> None:
-        mock_result = MagicMock()
-        mock_result.metadata = {"alive": True, "status_code": 200}
-        mock_result.content = "OK"
-        mock_result.sources = []
+        mock_result = {
+            "alive": True,
+            "content": "OK",
+            "sources": [],
+            "status_code": 200,
+            "claim_verified": None,
+            "is_safe": True,
+            "safety_category": None,
+            "safety_confidence": 0.0,
+            "safety_filter_used": False,
+            "matched_patterns": [],
+            "llm_reason": None,
+            "url": "https://example.com/dl",
+        }
 
-        with patch("deeptutor.tools.builtin.VisitUrlTool") as MockTool:
-            MockTool.return_value.execute = AsyncMock(return_value=mock_result)
+        with patch.object(agent_no_loop, "_fetch_url", new=AsyncMock(return_value=mock_result)):
             agent_no_loop._run_audit_round = AsyncMock(return_value={
                 "verification_report": "All good.",
             })
