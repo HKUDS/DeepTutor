@@ -8,10 +8,9 @@ import logging
 from typing import Any
 
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolParameter, ToolResult
-from deeptutor.logging import get_logger
 from deeptutor.tools.prompting import load_prompt_hints
 
-logger = get_logger("builtin.tools")
+logger = logging.getLogger("builtin.tools")
 
 
 class _PromptHintsMixin:

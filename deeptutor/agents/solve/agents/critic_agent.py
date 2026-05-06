@@ -11,19 +11,19 @@ Uses an iterative audit loop (similar to SolverAgent's ReAct loop) to:
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.context import Attachment
 from deeptutor.core.trace import build_trace_metadata, new_call_id
-from deeptutor.logging import get_logger
 
 from deeptutor.core.content_filter import ContentFilter
 from ..memory.scratchpad import Entry, Scratchpad, Source
 from ..tool_runtime import SolveToolRuntime
 from ..utils.json_utils import extract_json_from_text
 
-logger = get_logger("solve.critic_agent")
+logger = logging.getLogger("solve.critic_agent")
 
 
 class CriticAgent(BaseAgent):

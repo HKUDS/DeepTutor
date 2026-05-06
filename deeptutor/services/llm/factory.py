@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator, Mapping
 import contextlib
+import logging
+import os
 from types import SimpleNamespace
 from typing import Any, TypedDict
-
-logger = logging.getLogger(__name__)
 
 from deeptutor.config.settings import settings
 from deeptutor.services.provider_registry import (
@@ -30,6 +30,7 @@ DEFAULT_MAX_RETRIES = settings.retry.max_retries
 DEFAULT_RETRY_DELAY = settings.retry.base_delay
 DEFAULT_EXPONENTIAL_BACKOFF = settings.retry.exponential_backoff
 
+logger = logging.getLogger(__name__)
 CallKwargs = dict[str, Any]
 
 

@@ -731,9 +731,9 @@ class MainSolver:
         # ============================================================
         # Phase 2.5: CRITIC AUDIT
         # ============================================================
-        self.logger.stage("Phase 2.5", "start", "Auditing evidence and references")
-        if self.logger.display_manager:
-            self.logger.display_manager.set_agent_status("CriticAgent", "running")
+        self._log_stage("Phase 2.5", "start", "Auditing evidence and references")
+        if self.display_manager:
+            self.display_manager.set_agent_status("CriticAgent", "running")
 
         step_memory_context = "" if self.disable_memory else await self._get_planner_memory_context(question)
         scratchpad, verification_report = await self.critic_agent.process(
@@ -746,9 +746,9 @@ class MainSolver:
             f"  Critic audit done: {verification_report.get('rounds', 0)} rounds, "
             f"summary={verification_report.get('summary', 'N/A')}"
         )
-        self.logger.update_token_stats(self.token_tracker.get_summary())
-        if self.logger.display_manager:
-            self.logger.display_manager.set_agent_status("CriticAgent", "done")
+        self._update_token_stats(self.token_tracker.get_summary())
+        if self.display_manager:
+            self.display_manager.set_agent_status("CriticAgent", "done")
 
         scratchpad.save(output_dir)
 
