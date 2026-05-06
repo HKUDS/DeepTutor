@@ -6,7 +6,8 @@
   "author": "HKUDS",
   "license": "Apache-2.0",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "node scripts/dev.mjs",
+    "dev:electron": "electron-vite dev",
     "prebuild": "cd ../web && npm run build",
     "build": "electron-vite build",
     "postbuild": "node scripts/copy-next-build.mjs",

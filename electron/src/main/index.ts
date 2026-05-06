@@ -41,8 +41,9 @@ function createWindow(): void {
   })
 
   // Load the app
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  if (is.dev) {
+    // In dev mode, load from Next.js dev server
+    mainWindow.loadURL('http://localhost:3000')
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
