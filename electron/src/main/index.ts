@@ -4,6 +4,8 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import log from 'electron-log'
 import { BackendManager } from './backend'
 import { setupIpcHandlers } from './ipc-handlers'
+import { createTray } from './tray'
+import { createMenu } from './menu'
 
 log.initialize()
 log.info('DeepTutor Desktop starting...')
@@ -45,6 +47,9 @@ function createWindow(): void {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
+  // Setup menu
+  createMenu(mainWindow)
+
   // Setup IPC
   setupIpcHandlers(mainWindow)
 }
@@ -67,6 +72,8 @@ app.whenReady().then(async () => {
   }
 
   createWindow()
+
+  tray = createTray(mainWindow)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
