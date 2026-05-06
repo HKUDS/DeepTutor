@@ -15,13 +15,18 @@ let tray: Tray | null = null
 const backend = new BackendManager()
 
 function createWindow(): void {
+  const isMac = process.platform === 'darwin'
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1024,
     minHeight: 700,
     show: false,
-    title: 'DeepTutor',
+    frame: false, // Use frameless window for custom title bar
+    titleBarStyle: 'hidden',
+    titleBarOverlay: false,
+    backgroundColor: '#0B1020',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,

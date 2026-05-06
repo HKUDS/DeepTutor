@@ -137,6 +137,15 @@ export function setupIpcHandlers(mainWindow: BrowserWindow): void {
     return mainWindow.isMaximized()
   })
 
+  // Notify renderer of maximize state changes
+  mainWindow.on('maximize', () => {
+    mainWindow.webContents.send('window:maximizeChanged', true)
+  })
+
+  mainWindow.on('unmaximize', () => {
+    mainWindow.webContents.send('window:maximizeChanged', false)
+  })
+
   // Backend status
   // TODO: Get actual backend state instead of hardcoded values
   ipcMain.handle('backend:getStatus', () => {

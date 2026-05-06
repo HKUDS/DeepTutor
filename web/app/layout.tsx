@@ -4,6 +4,7 @@ import "./globals.css";
 import ThemeScript from "@/components/ThemeScript";
 import { AppShellProvider } from "@/context/AppShellContext";
 import { I18nClientBridge } from "@/i18n/I18nClientBridge";
+import TitleBar from "@/components/TitleBar";
 
 const fontSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -45,6 +46,7 @@ export default function RootLayout({
         <ThemeScript />
       </head>
       <body className="font-sans bg-[var(--background)] text-[var(--foreground)]">
+        <TitleBar />
         <AppShellProvider>
           <I18nClientBridge>{children}</I18nClientBridge>
         </AppShellProvider>

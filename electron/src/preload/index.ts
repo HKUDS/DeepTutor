@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 export interface ElectronAPI {
   app: {
     getVersion: () => Promise<string>
-    getPlatform: () => Promise<NodeJS.Platform>
+    getPlatform: () => Promise<string>
   }
   settings: {
     get: (key: string) => Promise<unknown>

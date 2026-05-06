@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -24,6 +25,7 @@ import SessionList from "@/components/SessionList";
 import { TutorBotRecent } from "@/components/sidebar/TutorBotRecent";
 import { VersionBadge } from "@/components/sidebar/VersionBadge";
 import type { SessionSummary } from "@/lib/session-api";
+import clsx from "clsx";
 
 interface NavEntry {
   href: string;
@@ -77,6 +79,19 @@ export function SidebarShell({
   const { sidebarCollapsed: collapsed, setSidebarCollapsed: setCollapsed } =
     useAppShell();
 
+  // Detect if running in Electron desktop client
+  const isDesktopClient = useMemo(
+    () =>
+      typeof navigator !== "undefined" &&
+      navigator.userAgent.includes("Electron"),
+    []
+  );
+
+  // Desktop-specific state
+  const [desktopCollapsed, setDesktopCollapsed] = useState(false);
+  const effectiveCollapsed = isDesktopClient ? desktopCollapsed : collapsed;
+  const setEffectiveCollapsed = isDesktopClient ? setDesktopCollapsed : setCollapsed;
+
   const handleNewChat = () => {
     if (onNewChat) {
       onNewChat();
@@ -86,11 +101,23 @@ export function SidebarShell({
   };
 
   /* ---- Collapsed state ---- */
-  if (collapsed) {
+  if (effectiveCollapsed) {
+    const desktopTint = isDesktopClient ? "rgba(255, 255, 255, 0.08)" : undefined;
     return (
-      <aside className="group/sb relative flex h-screen w-[60px] shrink-0 flex-col items-center bg-[var(--secondary)] py-3 transition-all duration-200">
+      <aside
+        className={clsx(
+          "group/sb relative flex h-full w-[60px] shrink-0 flex-col items-center py-3 transition-all duration-200",
+          isDesktopClient ? "bg-transparent" : "bg-[var(--secondary)]"
+        )}
+        style={isDesktopClient ? { background: desktopTint, WebkitAppRegion: "drag" } as React.CSSProperties : undefined}
+      >
+        {/* Traffic light clearance for macOS desktop */}
+        {isDesktopClient && (
+          <div className="h-14 shrink-0" />
+        )}
+
         {/* Header: logo + collapse toggle (toggle replaces logo on hover) */}
-        <div className="relative mb-2 flex h-9 w-9 items-center justify-center">
+        <div className="relative mb-2 flex h-9 w-9 items-center justify-center" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
           <Link
             href="/"
             aria-label="DeepTutor"
@@ -105,7 +132,7 @@ export function SidebarShell({
             />
           </Link>
           <button
-            onClick={() => setCollapsed(false)}
+            onClick={() => setEffectiveCollapsed(false)}
             className="absolute inset-0 flex items-center justify-center rounded-lg text-[var(--muted-foreground)] opacity-0 transition-all duration-150 hover:bg-[var(--background)]/60 hover:text-[var(--foreground)] group-hover/sb:opacity-100"
             aria-label={t("Expand sidebar")}
           >
@@ -119,6 +146,7 @@ export function SidebarShell({
           title={t("New Chat") as string}
           className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border)]/50 bg-[var(--background)]/40 text-[var(--foreground)] shadow-sm transition-all duration-150 hover:border-[var(--border)] hover:bg-[var(--background)]/80"
           aria-label={t("New Chat")}
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
         >
           <Plus size={16} strokeWidth={2.2} />
         </button>
@@ -127,7 +155,7 @@ export function SidebarShell({
         <div className="my-1.5 h-px w-7 bg-[var(--border)]/40" />
 
         {/* Primary nav */}
-        <nav className="flex w-full flex-col items-center gap-1 px-1.5">
+        <nav className="flex w-full flex-col items-center gap-1 px-1.5" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
           {PRIMARY_NAV.map((item) => {
             const active = pathname.startsWith(item.href);
             return (
@@ -153,7 +181,7 @@ export function SidebarShell({
         <div className="flex-1" />
 
         {/* Secondary nav + footer */}
-        <div className="flex w-full flex-col items-center gap-1 px-1.5">
+        <div className="flex w-full flex-col items-center gap-1 px-1.5" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
           <div className="my-1 h-px w-7 bg-[var(--border)]/40" />
           {SECONDARY_NAV.map((item) => {
             const active = pathname.startsWith(item.href);
@@ -193,10 +221,32 @@ export function SidebarShell({
   }
 
   /* ---- Expanded state ---- */
+  const desktopTint = isDesktopClient ? "rgba(255, 255, 255, 0.08)" : undefined;
   return (
-    <aside className="flex w-[220px] h-screen shrink-0 flex-col bg-[var(--secondary)] transition-all duration-200">
+    <aside
+      className={clsx(
+        "flex h-full shrink-0 flex-col transition-all duration-200",
+        isDesktopClient ? "w-0" : "w-[220px]",
+        isDesktopClient ? "bg-transparent" : "bg-[var(--secondary)]"
+      )}
+      style={
+        isDesktopClient
+          ? ({
+              width: 220,
+              background: desktopTint,
+              WebkitAppRegion: "drag" as const,
+            } as React.CSSProperties)
+          : undefined
+      }
+    >
+      {/* Traffic light clearance for macOS desktop */}
+      {isDesktopClient && <div className="h-14 shrink-0" />}
+
       {/* Header: logo + collapse toggle */}
-      <div className="flex h-14 items-center justify-between px-4">
+      <div
+        className="flex h-14 items-center justify-between px-4"
+        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      >
         <Link href="/" className="group flex items-center gap-2">
           <Image
             src="/logo-ver2.png"
@@ -210,7 +260,7 @@ export function SidebarShell({
           </span>
         </Link>
         <button
-          onClick={() => setCollapsed(true)}
+          onClick={() => setEffectiveCollapsed(true)}
           className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
           aria-label={t("Collapse sidebar")}
         >
@@ -219,7 +269,7 @@ export function SidebarShell({
       </div>
 
       {/* Primary nav */}
-      <nav className="px-2 pt-1">
+      <nav className="flex-1 overflow-y-auto px-2 pt-1" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
         <div className="space-y-px">
           {/* New chat */}
           <button
@@ -278,7 +328,7 @@ export function SidebarShell({
       <div className="flex-1" />
 
       {/* Secondary nav + footer */}
-      <div className="border-t border-[var(--border)]/40 px-2 py-2">
+      <div className="border-t border-[var(--border)]/40 px-2 py-2" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
         {SECONDARY_NAV.map((item) => {
           const active = pathname.startsWith(item.href);
           return (
