@@ -96,10 +96,6 @@ class ToolResult:
     sources: list[dict[str, Any]] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
     success: bool = True
-    is_safe: bool = True
-    safety_category: str | None = None
-    safety_confidence: float | None = None
-    safety_filter_used: str | None = None
 
     def __str__(self) -> str:
         return self.content

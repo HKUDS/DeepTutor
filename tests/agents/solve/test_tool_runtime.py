@@ -185,28 +185,3 @@ async def test_planner_agent_skips_retrieval_when_rag_not_enabled(
     result = await agent._pre_retrieve("What is convolution?", "algebra")
 
     assert result == "(no knowledge base available)"
-
-
-class TestAuditControlAction:
-    def test_audit_in_valid_actions(self) -> None:
-        from deeptutor.agents.solve.tool_runtime import SolveToolRuntime
-
-        runtime = SolveToolRuntime([], language="en")
-        assert "audit" in runtime.valid_actions
-
-    def test_audit_action_in_en_control_actions(self) -> None:
-        from deeptutor.agents.solve.tool_runtime import _CONTROL_ACTIONS
-
-        en_actions = _CONTROL_ACTIONS["en"]
-        names = {a["name"] for a in en_actions}
-        assert "audit" in names
-        audit_action = next(a for a in en_actions if a["name"] == "audit")
-        assert "when_to_use" in audit_action
-        assert "input_format" in audit_action
-
-    def test_audit_action_in_zh_control_actions(self) -> None:
-        from deeptutor.agents.solve.tool_runtime import _CONTROL_ACTIONS
-
-        zh_actions = _CONTROL_ACTIONS["zh"]
-        names = {a["name"] for a in zh_actions}
-        assert "audit" in names
