@@ -23,16 +23,9 @@ export default defineConfig({
     }
   },
   renderer: {
-    root: resolve(__dirname, '../web'),
     build: {
-      outDir: resolve(__dirname, '../out/renderer'),
       rollupOptions: {
-        input: resolve(__dirname, '../web/index.html')
-      }
-    },
-    resolve: {
-      alias: {
-        '@': resolve(__dirname, '../web')
+        input: resolve(__dirname, 'src/renderer/index.html')
       }
     }
   }

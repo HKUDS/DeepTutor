@@ -7,7 +7,9 @@
   "license": "Apache-2.0",
   "scripts": {
     "dev": "electron-vite dev",
+    "prebuild": "cd ../web && npm run build",
     "build": "electron-vite build",
+    "postbuild": "node scripts/copy-next-build.mjs",
     "preview": "electron-vite preview",
     "postinstall": "electron-builder install-app-deps && node scripts/rebuild-native.mjs",
     "dist": "npm run build && electron-builder --win --mac --linux",
