@@ -246,9 +246,8 @@ class MainSolver:
 
         lang = parse_language(self.config.get("system", {}).get("language", "en"))
         self._core_tool_registry = get_tool_registry()
-        enabled = list(self._enabled_tools or []) if self._enabled_tools else []
         self.tool_runtime = SolveToolRuntime(
-            enabled_tools=enabled,
+            enabled_tools=self._enabled_tools,
             language=lang,
             core_registry=self._core_tool_registry,
         )

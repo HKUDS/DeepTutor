@@ -431,7 +431,9 @@ class BaseAgent(ABC):
             messages = mm_result.messages
             if mm_result.images_stripped:
                 self.logger.info(
-                    "Images stripped for %s/%s – model does not support vision" % (self.binding, model),
+                    "Images stripped for %s/%s – model does not support vision",
+                    self.binding,
+                    model,
                 )
         if messages:
             kwargs["messages"] = messages
@@ -592,7 +594,9 @@ class BaseAgent(ABC):
             messages = mm_result.messages
             if mm_result.images_stripped:
                 self.logger.info(
-                    "Images stripped for %s/%s – model does not support vision" % (self.binding, model),
+                    "Images stripped for %s/%s – model does not support vision",
+                    self.binding,
+                    model,
                 )
 
         # Log input
