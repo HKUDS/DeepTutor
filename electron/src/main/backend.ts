@@ -83,9 +83,11 @@ export class BackendManager {
 
   private findPython(): string {
     const candidates = [
+      '/Users/zongkelong/miniforge3/bin/python3',
+      '/Users/zongkelong/miniforge3/envs/deeptutor/bin/python3',
+      '/usr/local/bin/python3',
       'python3',
-      'python',
-      join(app.getPath('userData'), 'python/python3')
+      'python'
     ]
     for (const candidate of candidates) {
       if (existsSync(candidate)) {
