@@ -125,6 +125,7 @@ class BotConfig:
     channels: dict[str, Any] = field(default_factory=dict)
     model: str | None = None
     llm_selection: dict[str, str] | None = None
+    heartbeat_interval_s: int = 30 * 60
 
 
 @dataclass
@@ -493,7 +494,7 @@ class TutorBotManager:
             model=agent_loop.model,
             on_execute=_hb_execute,
             on_notify=_hb_notify,
-            interval_s=30 * 60,
+            interval_s=config.heartbeat_interval_s,
         )
         instance.heartbeat = heartbeat
         await heartbeat.start()
