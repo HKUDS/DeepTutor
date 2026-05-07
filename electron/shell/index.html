@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DeepTutor</title>
+  <style>
+    *,
+    *::before,
+    *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    html,
+    body {
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+      color: #f5f7fb;
+      font-family: "Inter", "SF Pro Display", -apple-system, "PingFang SC", "Noto Sans SC", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .shell {
+      display: flex;
+      width: 100%;
+      height: 100%;
+      background: #11161d;
+    }
+    .shell.is-immersive {
+      background: transparent;
+    }
+
+    /* Drag bar — fixed overlay covering the title bar area right of traffic lights */
+    .window-drag-bar {
+      position: fixed;
+      top: 0;
+      left: 240px;
+      right: 0;
+      height: 38px;
+      z-index: 9999;
+      -webkit-app-region: drag;
+    }
+    .shell.is-immersive .window-drag-bar {
+      left: 100px;
+    }
+
+    /* Sidebar */
+    .desktop-sidebar {
+      display: flex;
+      flex-direction: column;
+      width: 240px;
+      gap: 24px;
+      padding: 48px 12px 20px;
+      border-right: 1px solid rgba(255, 255, 255, 0.08);
+      background: #0c1016;
+      flex-shrink: 0;
+    }
+    .shell.is-immersive .desktop-sidebar {
+      display: none;
+    }
+
+    .sidebar-brand {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .sidebar-brand-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .sidebar-eyebrow {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #8ba7ff;
+    }
+    .sidebar-brand h1 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #f5f7fb;
+    }
+    .sidebar-brand p {
+      margin: 0;
+      color: rgba(255, 255, 255, 0.58);
+      font-size: 0.82rem;
+      line-height: 1.5;
+    }
+
+    .desktop-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .nav-tab {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+      width: 100%;
+      padding: 14px 16px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.03);
+      color: rgba(255, 255, 255, 0.82);
+      cursor: pointer;
+      transition: border-color 160ms ease, background 160ms ease;
+      text-align: left;
+      font: inherit;
+    }
+    .nav-tab:hover:not(.is-active) {
+      border-color: rgba(139, 167, 255, 0.34);
+    }
+    .nav-tab.is-active {
+      background: #f4efe2;
+      color: #171b22;
+      border-color: transparent;
+    }
+    .nav-tab.is-active small {
+      color: #5f584d;
+    }
+    .nav-tab span {
+      font-size: 0.92rem;
+      font-weight: 600;
+    }
+    .nav-tab small {
+      font-size: 0.72rem;
+      color: rgba(255, 255, 255, 0.56);
+    }
+
+    /* Main stage */
+    .desktop-stage {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+      background: radial-gradient(
+          circle at top left,
+          rgba(139, 167, 255, 0.12),
+          transparent 28%
+        ),
+        linear-gradient(180deg, #141b24 0%, #10161d 100%);
+    }
+    .shell.is-immersive .desktop-stage {
+      padding: 0;
+      background: none;
+    }
+
+    /* Surface frame — wraps the webview */
+    .surface-frame {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    /* Surface frame header is hidden in immersive mode */
+    .shell.is-immersive .surface-frame-header {
+      display: none;
+    }
+    .surface-frame-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(12, 16, 22, 0.78);
+    }
+    .surface-frame-header h2 {
+      margin: 4px 0;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    .surface-frame-header p {
+      margin: 0;
+      color: rgba(245, 247, 251, 0.62);
+      font-size: 0.82rem;
+    }
+
+    /* Webview */
+    webview {
+      flex: 1;
+      width: 100%;
+      border: 0;
+      background: transparent;
+    }
+    .shell:not(.is-immersive) webview {
+      border-radius: 22px;
+    }
+
+    /* Status badge */
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+    .status-dot.ok {
+      background: #22c55e;
+    }
+    .status-dot.error {
+      background: #ef4444;
+    }
+    .status-dot.loading {
+      background: #f59e0b;
+    }
+
+    /* Control page */
+    .control-page {
+      padding: 32px;
+      color: #f5f7fb;
+      overflow-y: auto;
+      height: 100%;
+    }
+    .control-page h2 {
+      font-size: 1.6rem;
+      margin-bottom: 16px;
+    }
+    .control-card {
+      padding: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      background: rgba(12, 16, 22, 0.78);
+      margin-bottom: 14px;
+    }
+    .control-card dt {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: rgba(255, 255, 255, 0.45);
+    }
+    .control-card dd {
+      margin: 6px 0 0;
+      font-size: 0.92rem;
+      color: rgba(255, 255, 255, 0.82);
+    }
+  </style>
+</head>
+<body>
+  <div class="shell" id="shell">
+    <!-- Drag bar — overlays the top of the window for dragging -->
+    <div class="window-drag-bar"></div>
+
+    <!-- Sidebar navigation -->
+    <aside class="desktop-sidebar">
+      <div class="sidebar-brand">
+        <span class="sidebar-eyebrow">DeepTutor Desktop</span>
+        <div class="sidebar-brand-top">
+          <h1>DeepTutor</h1>
+        </div>
+        <p>Local AI learning companion with Web UI</p>
+      </div>
+
+      <nav class="desktop-nav">
+        <button class="nav-tab is-active" data-tab="web" onclick="switchTab('web')">
+          <span>Web</span>
+          <small>DeepTutor workspace</small>
+        </button>
+        <button class="nav-tab" data-tab="control" onclick="switchTab('control')">
+          <span>Control</span>
+          <small>Runtime status &amp; diagnostics</small>
+        </button>
+      </nav>
+    </aside>
+
+    <!-- Main content area -->
+    <main class="desktop-stage">
+      <!-- Web tab: embedded webview -->
+      <div id="panel-web" style="width: 100%; height: 100%;">
+        <section class="surface-frame">
+          <webview id="webview" allowpopups></webview>
+        </section>
+      </div>
+
+      <!-- Control tab: runtime info -->
+      <div id="panel-control" style="display: none; height: 100%;">
+        <div class="control-page">
+          <span class="sidebar-eyebrow">Desktop Control Plane</span>
+          <h2>Runtime Status</h2>
+          <dl>
+            <div class="control-card">
+              <dt>Web UI</dt>
+              <dd><span class="status-dot ok"></span> Running on <code id="web-url"></code></dd>
+            </div>
+            <div class="control-card">
+              <dt>Backend API</dt>
+              <dd><span class="status-dot" id="backend-dot"></span> <span id="backend-status">Checking...</span></dd>
+            </div>
+            <div class="control-card">
+              <dt>Electron</dt>
+              <dd>Version <span id="electron-version"></span></dd>
+            </div>
+            <div class="control-card">
+              <dt>Platform</dt>
+              <dd id="platform-info"></dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // Determine web app URL
+    var isDev = window.location.protocol === 'file:' || window.location.hostname === 'localhost';
+    var webUrl = isDev
+      ? (window.__DEEPTUTOR_WEB_URL__ || 'http://localhost:3000')
+      : 'http://localhost:8001';
+
+    // Append desktop=1 so the web app knows it's running inside the desktop shell
+    // (user agent has Electron stripped, so UA-based detection won't work)
+    // Add cache-buster to prevent stale webview content
+    var separator = webUrl.includes('?') ? '&' : '?';
+    webUrl += separator + 'desktop=1&_t=' + Date.now();
+
+    document.getElementById('web-url').textContent = webUrl;
+    document.getElementById('electron-version').textContent =
+      navigator.userAgent.match(/Electron\/([\d.]+)/)?.[1] || 'unknown';
+    document.getElementById('platform-info').textContent =
+      navigator.platform || 'unknown';
+
+    // Strip "Electron/..." from the webview user agent so the embedded web app
+    // behaves as a regular browser — no custom traffic lights, no drag regions.
+    var cleanUserAgent = navigator.userAgent.replace(/\s*Electron\/[\d.]+\s*/, ' ');
+    var webview = document.getElementById('webview');
+    webview.setAttribute('useragent', cleanUserAgent);
+
+    // Clear webview cache to ensure fresh content
+    try { webview.clearCache(); } catch (e) { console.warn('[shell] clearCache failed:', e); }
+
+    webview.addEventListener('dom-ready', function () {
+      webview.executeJavaScript(`
+        (function() {
+          document.documentElement.style.setProperty('width', '100%', 'important');
+          document.documentElement.style.setProperty('min-width', '100%', 'important');
+          document.body.style.setProperty('width', '100%', 'important');
+          var s = document.createElement('style');
+          s.textContent = 'main.flex-1{width:100%!important;min-width:100%!important}body{width:100%!important}';
+          document.head.appendChild(s);
+        })();
+      `);
+    });
+
+    webview.addEventListener('did-finish-load', function () {
+      console.log('[shell] Webview loaded:', webview.getURL());
+    });
+    webview.addEventListener('did-fail-load', function (e) {
+      console.error('[shell] Webview failed to load:', e.errorDescription);
+    });
+    webview.setAttribute('src', webUrl);
+
+    // Tab switching
+    window.switchTab = function (tab) {
+      document.querySelectorAll('.nav-tab').forEach(function (btn) {
+        btn.classList.toggle('is-active', btn.dataset.tab === tab);
+      });
+      document.getElementById('panel-web').style.display = tab === 'web' ? 'flex' : 'none';
+      document.getElementById('panel-control').style.display = tab === 'control' ? 'block' : 'none';
+
+      var shell = document.getElementById('shell');
+      if (tab === 'web') {
+        shell.classList.add('is-immersive');
+      } else {
+        shell.classList.remove('is-immersive');
+      }
+    };
+
+    // Backend health check
+    function checkBackend() {
+      var apiUrl = 'http://localhost:8001/api/v1/health';
+      fetch(apiUrl)
+        .then(function (r) {
+          var dot = document.getElementById('backend-dot');
+          var status = document.getElementById('backend-status');
+          if (r.ok) {
+            dot.className = 'status-dot ok';
+            status.textContent = 'Connected';
+          } else {
+            dot.className = 'status-dot error';
+            status.textContent = 'Error (' + r.status + ')';
+          }
+        })
+        .catch(function () {
+          var dot = document.getElementById('backend-dot');
+          dot.className = 'status-dot error';
+          document.getElementById('backend-status').textContent = 'Not reachable';
+        });
+    }
+    checkBackend();
+    setInterval(checkBackend, 10000);
+
+    // Start in immersive mode (web tab fullscreen, no sidebar)
+    switchTab('web');
+  </script>
+</body>
+</html>

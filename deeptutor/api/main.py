@@ -247,6 +247,11 @@ app.include_router(attachments.router, prefix="/api/attachments", tags=["attachm
 app.include_router(unified_ws.router, prefix="/api/v1", tags=["unified-ws"])
 
 
+@app.get("/api/v1/health")
+async def health_check():
+    return {"status": "ok", "service": "deeptutor"}
+
+
 @app.get("/")
 async def root():
     return {"message": "Welcome to DeepTutor API"}

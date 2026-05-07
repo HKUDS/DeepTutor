@@ -14,11 +14,14 @@ const nextProcess = spawn('npm', ['run', 'dev'], {
   stdio: 'pipe'
 })
 
+let electronStarted = false
+
 nextProcess.stdout.on('data', (data) => {
   const output = data.toString()
   process.stdout.write(`[Next.js] ${output}`)
-  // Wait for Next.js to be ready
+  if (electronStarted) return
   if (output.includes('Ready in') || output.includes('Local:')) {
+    electronStarted = true
     console.log('Next.js ready, starting Electron...')
     setTimeout(() => {
       const electronProcess = spawn('npx', ['electron-vite', 'dev'], {

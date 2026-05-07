@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -49,6 +49,7 @@ const GITHUB_REPO_URL = "https://github.com/HKUDS/DeepTutor";
 
 interface SidebarShellProps {
   children?: ReactNode;
+  workspace?: boolean;
   sessions?: SessionSummary[];
   activeSessionId?: string | null;
   loadingSessions?: boolean;
@@ -85,6 +86,7 @@ declare global {
 
 export function SidebarShell({
   children,
+  workspace = false,
   sessions = [],
   activeSessionId = null,
   loadingSessions = false,
@@ -102,17 +104,18 @@ export function SidebarShell({
   const { sidebarCollapsed: collapsed, setSidebarCollapsed: setCollapsed } =
     useAppShell();
 
-  const isDesktopClient = useMemo(
-    () =>
-      typeof navigator !== "undefined" &&
-      navigator.userAgent.includes("Electron"),
-    []
-  );
+  const [isDesktopClient, setIsDesktopClient] = useState(false);
+  const [isMacDesktop, setIsMacDesktop] = useState(false);
 
-  const isMacDesktop = useMemo(() => {
-    if (!isDesktopClient) return false;
-    return navigator.platform?.toLowerCase().includes("mac") ?? false;
-  }, [isDesktopClient]);
+  useEffect(() => {
+    const isElectron =
+      typeof navigator !== "undefined" &&
+      navigator.userAgent.includes("Electron");
+    setIsDesktopClient(isElectron);
+    setIsMacDesktop(
+      isElectron ? (navigator.platform?.toLowerCase().includes("mac") ?? false) : false
+    );
+  }, []);
 
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
   const effectiveCollapsed = isDesktopClient ? desktopSidebarCollapsed : collapsed;
@@ -196,7 +199,7 @@ export function SidebarShell({
     : undefined;
 
   return (
-    <div className="flex h-full relative overflow-hidden">
+    <div className={`flex h-full relative overflow-hidden ${workspace ? 'w-full' : ''}`}>
       <aside
         className={clsx(
           "flex h-full shrink-0 flex-col transition-all duration-200",
@@ -256,16 +259,14 @@ export function SidebarShell({
             </div>
           ) : (
             <div className="flex items-center justify-between w-full px-4">
-              <Link href="/" className="group flex items-center gap-2">
-                <Image
-                  src="/logo-ver2.png"
-                  alt="DeepTutor"
-                  width={22}
-                  height={22}
-                  className="h-[22px] w-[22px] transition-transform duration-200 group-hover:scale-105"
+              <Link href="/" className="group flex items-center gap-[3px]">
+                <img
+                  src="/owl-logo.png"
+                  alt="HappyOwl"
+                  className="h-[32px] w-[32px] transition-transform duration-200 group-hover:scale-105"
                 />
                 <span className="text-[16px] font-semibold leading-none tracking-[-0.02em] text-[var(--foreground)]">
-                  DeepTutor
+                  HappyOwl
                 </span>
               </Link>
               <button
@@ -281,7 +282,7 @@ export function SidebarShell({
 
         {!effectiveCollapsed && (
           <>
-            <nav className="flex-1 overflow-y-auto px-2 pt-1">
+            <nav className="flex-1 min-h-0 overflow-y-auto px-2 pt-1">
               <div className="space-y-px">
                 <button
                   onClick={handleNewChat}
@@ -321,8 +322,8 @@ export function SidebarShell({
                             activeSessionId={activeSessionId}
                             loading={loadingSessions}
                             onSelect={onSelectSession}
-                            onRename={onRenameSession}
-                            onDelete={onDeleteSession}
+                            onRenameSession={onRenameSession}
+                            onDeleteSession={onDeleteSession}
                             compact
                           />
                         </div>
@@ -333,8 +334,6 @@ export function SidebarShell({
                 })}
               </div>
             </nav>
-
-            <div className="flex-1" />
 
             <div className="border-t border-[var(--border)]/40 px-2 py-2">
               {SECONDARY_NAV.map((item) => {
@@ -458,7 +457,7 @@ export function SidebarShell({
 
       <main
         className="relative flex h-full min-w-0 flex-1 overflow-hidden"
-        style={{ background: "var(--background)" }}
+        style={{ background: "var(--background)", width: "100%" }}
       >
         <div
           className={clsx(

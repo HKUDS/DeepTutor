@@ -12,7 +12,7 @@ import {
   type SessionSummary,
 } from "@/lib/session-api";
 
-export default function WorkspaceSidebar() {
+export default function WorkspaceSidebar({ children }: { children?: React.ReactNode }) {
   const { t } = useTranslation();
   const router = useRouter();
   const {
@@ -112,6 +112,7 @@ export default function WorkspaceSidebar() {
 
   return (
     <SidebarShell
+      workspace
       showSessions
       sessions={orderedSessions}
       activeSessionId={selectedSessionId}
@@ -120,6 +121,8 @@ export default function WorkspaceSidebar() {
       onSelectSession={handleSelectSession}
       onRenameSession={handleRenameSession}
       onDeleteSession={handleDeleteSession}
-    />
+    >
+      {children}
+    </SidebarShell>
   );
 }

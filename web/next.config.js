@@ -44,6 +44,24 @@ const nextConfig = {
       // Fix for mermaid's cytoscape dependency - use CJS version
       cytoscape: "cytoscape/dist/cytoscape.cjs.js",
     },
+    rules: {
+      // Proxy /api and /ws requests to Python backend when running in Electron webview
+      "api/**": {
+        loaders: [],
+      },
+    },
+  },
+
+  // Proxy API requests to Python backend for dev mode (Electron webview compatibility)
+  async rewrites() {
+    const backendUrl = process.env.NEXT_PUBLIC_API_BASE;
+    if (!backendUrl) return [];
+    return [
+      {
+        source: "/api/:path*",
+        destination: `${backendUrl}/api/:path*`,
+      },
+    ];
   },
 
   // Webpack configuration (used for production builds - next build)

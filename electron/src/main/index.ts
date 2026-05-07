@@ -15,7 +15,7 @@ let tray: Tray | null = null
 const backend = new BackendManager()
 
 function createWindow(): void {
-  const isMac = process.platform === 'darwin'
+  const isMacOS = process.platform === 'darwin'
 
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -23,17 +23,30 @@ function createWindow(): void {
     minWidth: 1024,
     minHeight: 700,
     show: false,
-    frame: false, // Use frameless window for custom title bar
-    titleBarStyle: 'hidden',
-    titleBarOverlay: false,
-    backgroundColor: '#0B1020',
+    title: 'DeepTutor',
+    titleBarStyle: isMacOS ? 'hiddenInset' : 'default',
+    trafficLightPosition: isMacOS ? { x: 18, y: 18 } : undefined,
+    backgroundColor: isMacOS ? '#00000000' : '#0B1020',
+    ...(isMacOS
+      ? {
+          transparent: true,
+          vibrancy: 'sidebar' as const,
+          visualEffectState: 'followWindow' as const,
+        }
+      : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      webviewTag: true,
     }
   })
+
+  if (isMacOS) {
+    mainWindow.setBackgroundColor('#00000000')
+    mainWindow.setVibrancy('sidebar')
+  }
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
@@ -45,12 +58,20 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  // Load the app
+  // Strip "Electron/..." from webview user agent so the embedded web app
+  // runs as a standard browser — no custom traffic lights, no drag regions.
+  // This matches nexu's architecture: the shell owns chrome, the webview is just content.
+  mainWindow.webContents.on('will-attach-webview', (_event, webPreferences, params) => {
+    const cleanUserAgent = params.useragent || mainWindow!.webContents.getUserAgent()
+    params.useragent = cleanUserAgent.replace(/\s*Electron\/[\d.]+\s*/, ' ')
+    webPreferences.sandbox = false
+  })
+
+  // Load the desktop shell, which embeds the web app in a webview
   if (is.dev) {
-    // In dev mode, load from Next.js dev server
-    mainWindow.loadURL('http://localhost:3000')
+    mainWindow.loadFile(join(__dirname, '../../shell/index.html'))
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    mainWindow.loadFile(join(__dirname, '../shell/index.html'))
   }
 
   // Setup menu
