@@ -13,6 +13,7 @@ asarUnpack:
   - resources/**
   - "**/*.py"
 win:
+  icon: build/icon.png
   executableName: DeepTutor
   target:
     - target: nsis
@@ -24,6 +25,7 @@ nsis:
   uninstallDisplayName: "${productName}"
   createDesktopShortcut: always
 mac:
+  icon: build/icon.png
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: DeepTutor needs camera access for video calls
@@ -37,6 +39,7 @@ mac:
 dmg:
   artifactName: "${name}-${version}.${ext}"
 linux:
+  icon: build/icon.png
   target:
     - AppImage
     - snap
