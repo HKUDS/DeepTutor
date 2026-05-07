@@ -37,19 +37,7 @@
                 background: transparent;
             }
 
-            /* Drag bar — fixed overlay covering the title bar area right of traffic lights */
-            .window-drag-bar {
-                position: fixed;
-                top: 0;
-                left: 240px;
-                right: 0;
-                height: 38px;
-                z-index: 9999;
-                -webkit-app-region: drag;
-            }
-            .shell.is-immersive .window-drag-bar {
-                left: 100px;
-            }
+            /* Drag bar removed — SidebarShell handles macOS drag region via WebkitAppRegion */
 
             /* Sidebar */
             .desktop-sidebar {
@@ -253,9 +241,6 @@
     </head>
     <body>
         <div class="shell" id="shell">
-            <!-- Drag bar — overlays the top of the window for dragging -->
-            <div class="window-drag-bar"></div>
-
             <!-- Sidebar navigation -->
             <aside class="desktop-sidebar">
                 <div class="sidebar-brand">
@@ -380,7 +365,8 @@
                 webview
                     .executeJavaScript(
                         "window.__DEEPTUTOR_DESKTOP__ = true;" +
-                            'window.__DEEPTUTOR_PLATFORM__ = navigator.platform.toLowerCase().includes("mac") ? "mac" : "win";',
+                            'window.__DEEPTUTOR_PLATFORM__ = navigator.platform.toLowerCase().includes("mac") ? "mac" : "win";' +
+                            "window.__DEEPTUTOR_MAXIMIZE__ = function() { console.log('__DT_ACTION__:maximize'); };",
                     )
                     .catch(function (e) {
                         console.warn(
@@ -388,6 +374,13 @@
                             e,
                         );
                     });
+            });
+
+            // Bridge: webview console.log → shell window control
+            webview.addEventListener("console-message", function (e) {
+                if (e.message === "__DT_ACTION__:maximize" && window.electron) {
+                    window.electron.window.maximize();
+                }
             });
 
             webview.addEventListener("did-finish-load", function () {

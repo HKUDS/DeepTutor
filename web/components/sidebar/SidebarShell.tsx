@@ -213,6 +213,10 @@ export function SidebarShell({
           <div
             className="h-[80px] shrink-0"
             style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+            onDoubleClick={() => {
+              const w = window as Window & { __DEEPTUTOR_MAXIMIZE__?: () => void }
+              w.__DEEPTUTOR_MAXIMIZE__?.()
+            }}
           />
         )}
 
