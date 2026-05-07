@@ -236,14 +236,16 @@ export function SidebarShell({
             </div>
           ) : (
             <div className="flex items-center justify-between w-full px-4">
-              <Link href="/" className="group flex items-center gap-[3px]">
-                <img
-                  src="/owl-logo.png"
-                  alt="HappyOwl"
-                  className="h-[32px] w-[32px] transition-transform duration-200 group-hover:scale-105"
+              <Link href="/" className="group flex items-center gap-2">
+                <Image
+                  src="/logo-ver2.png"
+                  alt="DeepTutor"
+                  width={22}
+                  height={22}
+                  className="h-[22px] w-[22px] transition-transform duration-200 group-hover:scale-105"
                 />
                 <span className="text-[16px] font-semibold leading-none tracking-[-0.02em] text-[var(--foreground)]">
-                  HappyOwl
+                  DeepTutor
                 </span>
               </Link>
               <button
