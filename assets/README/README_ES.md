@@ -16,7 +16,7 @@
 [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md)
 [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
 
-[Funciones](#key-features) · [Primeros pasos](#get-started) · [Explorar](#explore-deeptutor) · [TutorBot](#tutorbot) · [CLI](#deeptutor-cli-guide) · [Hoja de ruta](#roadmap) · [Comunidad](#community)
+[Funciones clave](#key-features) · [Primeros pasos](#get-started) · [Explorar DeepTutor](#explore-deeptutor) · [TutorBot](#tutorbot) · [CLI](#deeptutor-cli) · [Multiusuario](#multi-user) · [Hoja de ruta](#roadmap) · [Comunidad](#community)
 
 [🇬🇧 English](../../README.md) · [🇨🇳 中文](README_CN.md) · [🇯🇵 日本語](README_JA.md) · [🇫🇷 Français](README_FR.md) · [🇸🇦 العربية](README_AR.md) · [🇷🇺 Русский](README_RU.md) · [🇮🇳 हिन्दी](README_HI.md) · [🇵🇹 Português](README_PT.md) · [🇹🇭 ภาษาไทย](README_TH.md) · 🇵🇱 [Polski](README_PL.md)
 
@@ -24,430 +24,179 @@
 
 ---
 
-> 🤝 **¡Aceptamos todo tipo de contribuciones!** Consulta la [Guía de contribución](../../CONTRIBUTING.md) para la estrategia de ramas, estándares de código y primeros pasos.
+> 🤝 **¡Toda contribución es bienvenida!** Rama, estilo de código y primeros pasos en la [guía de contribución](../../CONTRIBUTING.md).
 
 ### 📦 Lanzamientos
 
-> **[2026.4.30]** [v1.3.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.3) — Soporte de embeddings NVIDIA NIM y Gemini, contexto unificado de Space para historial de chat / skills / memoria, instantáneas de sesión, resiliencia de reindexación RAG.
+> **[2026.5.4]** [v1.3.7](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.7) — Correcciones de modelo de razonamiento/proveedor, historial de índice de conocimiento visible, vaciado de Co-Writer y edición de plantillas más seguros.
 
-> **[2026.4.29]** [v1.3.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.2) — URLs de endpoint de embedding transparentes, resiliencia de reindexación RAG ante vectores persistidos inválidos, limpieza de memoria para salida de modelos de razonamiento, corrección de tiempo de ejecución de Deep Solve.
+> **[2026.5.3]** [v1.3.6](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.6) — Selección de modelos por catálogo en chat y TutorBot, reindexación RAG más segura, límites de tokens en OpenAI Responses, validación del editor de Skills.
 
-> **[2026.4.28]** [v1.3.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.1) — Estabilidad: enrutamiento RAG más seguro y validación de embeddings, persistencia Docker, entrada segura con IME, robustez Windows/GBK.
+> **[2026.5.2]** [v1.3.5](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.5) — Arranque local más fluido, consultas RAG más seguras, autenticación de embeddings local más clara, pulido del modo oscuro en Ajustes.
 
-> **[2026.4.27]** [v1.3.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.0) — Índices KB versionados con flujo de reindexación, espacio de trabajo de conocimiento reconstruido, autodetección de embeddings con nuevos adaptadores, hub de Space.
+> **[2026.5.1]** [v1.3.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.4) — Persistencia de chat en páginas de libro y flujos de reconstrucción, referencias de chat al libro, mejor manejo de idioma/razonamiento, endurecimiento de extracción RAG.
 
-> **[2026.4.25]** [v1.2.5](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.5) — Adjuntos de chat persistentes con cajón de vista previa, pipelines de capacidad conscientes de adjuntos, exportación Markdown de TutorBot.
+> **[2026.4.30]** [v1.3.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.3) — Embeddings NVIDIA NIM y Gemini, contexto unificado Space (historial/skills/memoria), instantáneas de sesión, resiliencia de reindexación RAG.
 
-> **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — Adjuntos de texto / código / SVG, recorrido de configuración en un comando, exportación de chat Markdown, UI compacta de gestión de KB.
+> **[2026.4.29]** [v1.3.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.2) — URLs de embedding visibles, reindexación RAG ante vectores inválidos, limpieza de memoria para salida de modelos de razonamiento, arreglo de Deep Solve.
 
-> **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — Adjuntos de documentos (PDF/DOCX/XLSX/PPTX), bloque de pensamiento del modelo de razonamiento, editor de plantillas Soul, guardar en cuaderno desde Co-Writer.
+> **[2026.4.28]** [v1.3.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.1) — Estabilidad: enrutamiento RAG y validación de embeddings, persistencia Docker, entrada compatible con IME, robustez Windows/GBK.
 
-> **[2026.4.22]** [v1.2.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.2) — Sistema de Skills creados por el usuario, renovación del rendimiento del input de chat, inicio automático de TutorBot, UI de la biblioteca de libros, visualización a pantalla completa.
+> **[2026.4.27]** [v1.3.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.0) — Índices KB versionados y flujo de reindexación, espacio de conocimiento rehecho, autodetección de embeddings, hub Space.
 
-> **[2026.4.21]** [v1.2.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.1) — Límites de tokens por etapa, regenerar respuesta en todos los puntos de entrada, correcciones de compatibilidad RAG y Gemma.
+> **[2026.4.25]** [v1.2.5](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.5) — Adjuntos persistentes y cajón de vista previa, pipelines conscientes de adjuntos, exportación Markdown de TutorBot.
 
-> **[2026.4.20]** [v1.2.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.0) — Compilador Book Engine de «libros vivos», Co-Writer multidocumento, visualizaciones HTML interactivas, menciones @ del banco de preguntas en el chat.
+> **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — Adjuntos texto/código/SVG, Setup Tour en un comando, exportación Markdown del chat, UI compacta de KB.
 
-> **[2026.4.18]** [v1.1.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.2) — Pestaña Channels basada en esquema, consolidación de RAG en un solo pipeline, prompts de chat externalizados.
+> **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — Adjuntos PDF/DOCX/XLSX/PPTX, bloques de razonamiento, editor de plantillas Soul, Co-Writer guarda en cuaderno.
 
-> **[2026.4.17]** [v1.1.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.1) — «Responder ya» universal, sincronización de desplazamiento en Co-Writer, panel de ajustes unificado, botón Stop en streaming.
+> **[2026.4.22]** [v1.2.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.2) — Skills de usuario, rendimiento del input de chat, autoarranque TutorBot, UI de biblioteca de libros, visualización a pantalla completa.
+
+> **[2026.4.21]** [v1.2.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.1) — Límites de tokens por etapa, regenerar respuesta en todos los puntos de entrada, compatibilidad RAG y Gemma.
+
+> **[2026.4.20]** [v1.2.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.0) — Compilador Book Engine «libro vivo», Co-Writer multi-documento, visualizaciones HTML, @ en banco de preguntas.
 
 <details>
-<summary><b>Lanzamientos anteriores (hace más de 2 semanas)</b></summary>
+<summary><b>Lanzamientos anteriores (más de 2 semanas)</b></summary>
 
-> **[2026.4.15]** [v1.1.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.0) — Renovación del análisis de matemáticas LaTeX en bloque; sonda de diagnóstico LLM vía `agents.yaml`; guía Docker + LLM local.
+> **[2026.4.18]** [v1.1.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.2) — Pestaña Channels por esquema, pipeline RAG único, prompts externos.
 
-> **[2026.4.14]** [v1.1.0-beta](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.0-beta) — Sesiones marcables por URL; tema Snow; latido WebSocket y reconexión automática; renovación del registro de proveedores de embeddings.
+> **[2026.4.17]** [v1.1.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.1) — «Responder ahora», sincronización de scroll Co-Writer, panel de ajustes unificado, botón Detener en streaming.
 
-> **[2026.4.13]** [v1.0.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.3) — Cuaderno de preguntas con marcadores y categorías; Mermaid en Visualize; detección de desajuste de embeddings; compatibilidad Qwen/vLLM; soporte LM Studio y llama.cpp; tema Glass.
+> **[2026.4.15]** [v1.1.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.0) — LaTeX en bloque, sonda de diagnóstico LLM, guía Docker y LLM local.
 
-> **[2026.4.11]** [v1.0.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.2) — Consolidación de búsqueda con respaldo SearXNG; corrección del cambio de proveedor; fugas de recursos en el frontend.
+> **[2026.4.14]** [v1.1.0-beta](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.0-beta) — Sesiones con URL, tema Snow, latido WebSocket y reconexión, registro de embeddings renovado.
 
-> **[2026.4.10]** [v1.0.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.1) — Capacidad Visualize (Chart.js/SVG); prevención de duplicados en cuestionarios; soporte del modelo o4-mini.
+> **[2026.4.13]** [v1.0.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.3) — Cuaderno de preguntas con marcadores, Mermaid en Visualize, detección de mismatch de embeddings, Qwen/vLLM, LM Studio y llama.cpp, tema Glass.
 
-> **[2026.4.10]** [v1.0.0-beta.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0-beta.4) — Seguimiento del progreso de embeddings con reintentos por límite de tasa; dependencias multiplataforma; validación MIME.
+> **[2026.4.11]** [v1.0.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.2) — Búsqueda unificada con SearXNG, arreglo de cambio de proveedor, fugas de recursos en frontend.
 
-> **[2026.4.8]** [v1.0.0-beta.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0-beta.3) — SDK nativo OpenAI/Anthropic (sin litellm); Math Animator en Windows; análisis JSON más robusto; i18n chino completo.
+> **[2026.4.10]** [v1.0.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.1) — Visualize (Chart.js/SVG), prevención de duplicados en cuestionarios, o4-mini.
 
-> **[2026.4.7]** [v1.0.0-beta.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0-beta.2) — Recarga en caliente de ajustes; salida anidada de MinerU; corrección WebSocket; mínimo Python 3.11+.
+> **[2026.4.10]** [v1.0.0-beta.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0-beta.4) — Progreso de embedding con reintento, dependencias multiplataforma, validación MIME.
 
-> **[2026.4.4]** [v1.0.0-beta.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0-beta.1) — Reescritura nativa de agentes (~200k líneas): modelo de plugins Tools + Capabilities, CLI y SDK, TutorBot, Co-Writer, aprendizaje guiado y memoria persistente.
+> **[2026.4.8]** [v1.0.0-beta.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0-beta.3) — SDK nativo OpenAI/Anthropic, Math Animator en Windows, JSON robusto, i18n chino completo.
 
-> **[2026.1.23]** [v0.6.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.6.0) — Persistencia de sesión, carga incremental, importación flexible de RAG, localización completa al chino.
+> **[2026.4.7]** [v1.0.0-beta.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0-beta.2) — Recarga de ajustes en caliente, salida anidada MinerU, arreglo WebSocket, mínimo Python 3.11+.
 
-> **[2026.1.18]** [v0.5.2](https://github.com/HKUDS/DeepTutor/releases/tag/v0.5.2) — Docling, logs y correcciones.
+> **[2026.4.4]** [v1.0.0-beta.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.0.0-beta.1) — Reescritura agente-nativa (~200k líneas): plugins Tools/Capabilities, CLI y SDK, TutorBot, Co-Writer, aprendizaje guiado y memoria persistente.
 
-> **[2026.1.15]** [v0.5.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.5.0) — Configuración unificada, RAG por KB, generación de preguntas, barra lateral.
+> **[2026.1.23]** [v0.6.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.6.0) — Persistencia de sesión, subida incremental de documentos, importación flexible de pipeline RAG, localización china completa.
 
-> **[2026.1.9]** [v0.4.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.4.0) — Multi-proveedor LLM/embeddings, nueva home, desacoplamiento RAG, variables de entorno.
+> **[2026.1.18]** [v0.5.2](https://github.com/HKUDS/DeepTutor/releases/tag/v0.5.2) — Docling para RAG-Anything, optimización de logs y correcciones.
 
-> **[2026.1.5]** [v0.3.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.3.0) — PromptManager, CI/CD, imágenes GHCR.
+> **[2026.1.15]** [v0.5.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.5.0) — Configuración unificada, pipeline RAG por KB, renovación de generación de preguntas, personalización de barra lateral.
 
-> **[2026.1.2]** [v0.2.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.2.0) — Docker, Next.js 16 y React 19, WebSocket, vulnerabilidades.
+> **[2026.1.9]** [v0.4.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.4.0) — LLM y embeddings multi-proveedor, nueva página de inicio, desacoplamiento RAG y refactor de variables de entorno.
+
+> **[2026.1.5]** [v0.3.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.3.0) — PromptManager unificado, CI/CD en GitHub Actions, imágenes Docker en GHCR.
+
+> **[2026.1.2]** [v0.2.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.2.0) — Despliegue Docker, Next.js 16 y React 19, endurecimiento WebSocket y parches de seguridad.
 
 </details>
 
 ### 📰 Noticias
 
-> **[2026.4.19]** 🎉 ¡Llegamos a 20k estrellas en 111 días! Gracias por el apoyo — seguiremos iterando hacia un tutorazgo realmente personalizado e inteligente.
+> **[2026.4.19]** 🎉 ¡20k estrellas en 111 días! Gracias por el apoyo.
 
-> **[2026.4.10]** 📄 ¡Nuestro artículo ya está en arXiv! Lee el [preprint](https://arxiv.org/abs/2604.26962) para conocer el diseño y las ideas detrás de DeepTutor.
+> **[2026.4.10]** 📄 Artículo en arXiv: [preprint](https://arxiv.org/abs/2604.26962).
 
-> **[2026.4.4]** ¡Cuánto tiempo! ✨ DeepTutor v1.0.0 ya está aquí: evolución nativa de agentes con reescritura de arquitectura desde cero, TutorBot y modos flexibles bajo Apache-2.0. ¡Un nuevo capítulo comienza!
+> **[2026.4.4]** DeepTutor v1.0.0 bajo Apache-2.0 — evolución agente-nativa.
 
-> **[2026.2.6]** 🚀 ¡10k estrellas en solo 39 días! Gracias a la comunidad.
+> **[2026.2.6]** 🚀 10k estrellas en 39 días.
 
-> **[2026.1.1]** Feliz año nuevo. Únete a [Discord](https://discord.gg/eRsjPgMU4t), [WeChat](https://github.com/HKUDS/DeepTutor/issues/78) o [Discussions](https://github.com/HKUDS/DeepTutor/discussions).
+> **[2026.1.1]** ¡Feliz año nuevo! [Discord](https://discord.gg/eRsjPgMU4t), [WeChat](https://github.com/HKUDS/DeepTutor/issues/78), [Discussions](https://github.com/HKUDS/DeepTutor/discussions).
 
-> **[2025.12.29]** DeepTutor se publica oficialmente.
+> **[2025.12.29]** ¡DeepTutor publicado oficialmente!
 
 <a id="key-features"></a>
-## ✨ Funciones principales
+## ✨ Funciones clave
 
-- **Espacio de chat unificado** — Seis modos, un hilo: Chat, Deep Solve, cuestionarios, Deep Research, Math Animator y Visualize comparten contexto.
-- **AI Co-Writer** — Espacio Markdown multidocumento con la IA como colaborador de primer nivel: reescribir, ampliar o acortar con KB y web.
-- **Book Engine** — Convierte tus materiales en «libros vivos» estructurados e interactivos. Un pipeline multiagente diseña el esquema, recupera fuentes y compila páginas con 14 tipos de bloques: cuestionarios, tarjetas, líneas de tiempo, grafos de conceptos y más.
-- **Centro de conocimiento** — PDF, Markdown y texto para bases RAG; cuadernos por color; banco de preguntas para repasar; Skills personalizados que moldean cómo enseña DeepTutor.
-- **Memoria persistente** — Resumen de progreso y perfil del aprendiz; compartido con TutorBots.
-- **TutorBots personales** — No son chatbots: tutores autónomos con espacio de trabajo, memoria, personalidad y habilidades. Impulsados por [nanobot](https://github.com/HKUDS/nanobot).
-- **CLI nativo para agentes** — Capacidades, KB, sesiones y TutorBot en un comando; Rich y JSON. Entrega [`SKILL.md`](../../SKILL.md) a tu agente.
+- **Espacio de chat unificado** — Seis modos, un hilo: Chat, Deep Solve, generación de cuestionarios, Deep Research, Math Animator y Visualize comparten contexto.
+- **AI Co-Writer** — Markdown multi-documento; reescritura, expansión o resumen con KB y web.
+- **Book Engine** — «Libros vivos» con **13** tipos de bloque (cuestionarios, tarjetas, líneas de tiempo, grafos de conceptos, demos interactivas…).
+- **Knowledge Hub** — PDF, Markdown, texto; cuadernos; banco de preguntas; Skills personalizados vía `SKILL.md`.
+- **Memoria persistente** — Perfil de aprendizaje compartido con todas las funciones y TutorBots.
+- **TutorBots personales** — Tutores autónomos con espacio y memoria propios; impulsados por [nanobot](https://github.com/HKUDS/nanobot).
+- **CLI agente-nativo** — Todo en un comando; Rich humanos, JSON agentes; [`SKILL.md`](../../SKILL.md).
+- **Autenticación opcional** — Desactivada por defecto en local; dos variables de entorno para exigir login en público. Multiusuario (bcrypt, JWT, registro, panel admin). **PocketBase** opcional como sidecar OAuth y mejor concurrencia, sin cambiar código.
 
 ---
 
 <a id="get-started"></a>
 ## 🚀 Primeros pasos
 
-### Requisitos previos
+### Requisitos
 
-Antes de empezar, asegúrate de tener instalado lo siguiente:
-
-| Requisito | Versión | Comprobar | Notas |
+| Requisito | Versión | Comprueba | Notas |
 |:---|:---|:---|:---|
-| [Git](https://git-scm.com/) | Cualquiera | `git --version` | Para clonar el repositorio |
+| [Git](https://git-scm.com/) | Cualquiera | `git --version` | Clonar |
 | [Python](https://www.python.org/downloads/) | 3.11+ | `python --version` | Backend |
-| [Node.js](https://nodejs.org/) | 18+ | `node --version` | Build del frontend (no necesario solo CLI o Docker) |
-| [npm](https://www.npmjs.com/) | 9+ | `npm --version` | Suele venir con Node.js |
+| [Node.js](https://nodejs.org/) | 20.9+ | `node --version` | Web local |
+| [npm](https://www.npmjs.com/) | Con Node | `npm --version` | |
 
-También necesitas una **clave API** de al menos un proveedor LLM (p. ej. [OpenAI](https://platform.openai.com/api-keys), [DeepSeek](https://platform.deepseek.com/), [Anthropic](https://console.anthropic.com/)). El tour de configuración te guía para introducirla.
+> **Solo Windows:** sin Visual Studio, instala [Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) con la carga **Desarrollo para escritorio con C++**.
 
-### Opción A — Tour de configuración (recomendado)
+Necesitas al menos una **API key** de un proveedor LLM. El Setup Tour ayuda a rellenarla.
 
-Un **único script CLI interactivo** te lleva del clon recién hecho a la app en marcha: sin `pip install` ni `npm install` manuales ni edición de `.env`. En un flujo guiado de 7 pasos se detecta, instala y configura todo.
+### Opción A — Setup Tour (recomendado)
 
-```bash
-git clone https://github.com/HKUDS/DeepTutor.git
-cd DeepTutor
+Asistente CLI para la primera instalación web local: entorno, dependencias Python/Node, `.env`, complementos TutorBot/Matrix/Math Animator.
 
-# Entorno virtual de Python (elige uno):
-conda create -n deeptutor python=3.11 && conda activate deeptutor   # Anaconda/Miniconda
-python -m venv .venv && source .venv/bin/activate                    # macOS/Linux
-python -m venv .venv && .venv\Scripts\activate                       # Windows
+**1.** `git clone … && cd DeepTutor`
 
-# Lanzar el tour
-python scripts/start_tour.py
-```
+**2.** Entorno Python (uno): macOS/Linux `venv`, Windows PowerShell o Conda — mismos comandos que el [README en inglés](../../README.md).
 
-Cuando termine el asistente:
+**3.** `python scripts/start_tour.py`
 
-```bash
-python scripts/start_web.py
-```
+Perfiles: Web app (recomendado), Web+TutorBot, Web+TutorBot+Matrix (requiere `libolm`), complemento Math Animator.
 
-> **Arranque diario** — El tour suele bastar una vez. Después usa `python scripts/start_web.py` para levantar backend y frontend a la vez (la URL del frontend se imprime en la terminal). Vuelve a `start_tour.py` solo si reconfiguras proveedores, cambias puertos o faltan extras. En la página **Ajustes** de la web también puedes pulsar **Run Tour** para repetir el recorrido con resaltado en la UI.
+Luego: `python scripts/start_web.py`
 
-<a id="option-b-manual"></a>
-### Opción B — Instalación local manual
+> Uso diario: solo `start_web.py`. Actualización: `python scripts/update.py`.
 
-Si prefieres control total, instala y configura todo tú mismo.
-
-**1. Instalar dependencias**
+<a id="option-b--manual-local-install"></a>
+### Opción B — Instalación manual local
 
 ```bash
-git clone https://github.com/HKUDS/DeepTutor.git
-cd DeepTutor
-
-# Crear y activar entorno virtual (igual que en la opción A)
-conda create -n deeptutor python=3.11 && conda activate deeptutor
-
-# DeepTutor con dependencias de backend + servidor web
-pip install -e ".[server]"
-
-# Frontend (requiere Node.js 18+)
+python -m pip install -e ".[server]"
 cd web && npm install && cd ..
-```
-
-**2. Configurar entorno**
-
-```bash
 cp .env.example .env
 ```
 
-Edita `.env` y rellena al menos los campos obligatorios:
+Opcionales: `.[tutorbot]`, `.[tutorbot,matrix]`, `.[math-animator]`, `.[all]`. Node **20.9+**.
+
+Ejemplo mínimo de `.env` (LLM obligatorio; embeddings para KB):
 
 ```dotenv
-# LLM (obligatorio)
 LLM_BINDING=openai
 LLM_MODEL=gpt-4o-mini
 LLM_API_KEY=sk-xxx
 LLM_HOST=https://api.openai.com/v1
-
-# Embeddings (obligatorio para la base de conocimiento)
 EMBEDDING_BINDING=openai
 EMBEDDING_MODEL=text-embedding-3-large
 EMBEDDING_API_KEY=sk-xxx
-EMBEDDING_HOST=https://api.openai.com/v1
-EMBEDDING_DIMENSION=3072
+EMBEDDING_HOST=https://api.openai.com/v1/embeddings
+EMBEDDING_DIMENSION=
 ```
 
-<details>
-<summary><b>Proveedores LLM admitidos</b></summary>
+Tablas completas de proveedores LLM, embeddings y búsqueda web: véase el [README en inglés](../../README.md) o [`.env.example`](../../.env.example).
 
-| Proveedor | Binding | URL base predeterminada |
-|:--|:--|:--|
-| AiHubMix | `aihubmix` | `https://aihubmix.com/v1` |
-| Anthropic | `anthropic` | `https://api.anthropic.com/v1` |
-| Azure OpenAI | `azure_openai` | — |
-| BytePlus | `byteplus` | `https://ark.ap-southeast.bytepluses.com/api/v3` |
-| BytePlus Coding Plan | `byteplus_coding_plan` | `https://ark.ap-southeast.bytepluses.com/api/coding/v3` |
-| Custom | `custom` | — |
-| Custom (Anthropic API) | `custom_anthropic` | — |
-| DashScope | `dashscope` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
-| DeepSeek | `deepseek` | `https://api.deepseek.com` |
-| Gemini | `gemini` | `https://generativelanguage.googleapis.com/v1beta/openai/` |
-| GitHub Copilot | `github_copilot` | `https://api.githubcopilot.com` |
-| Groq | `groq` | `https://api.groq.com/openai/v1` |
-| llama.cpp | `llama_cpp` | `http://localhost:8080/v1` |
-| LM Studio | `lm_studio` | `http://localhost:1234/v1` |
-| MiniMax | `minimax` | `https://api.minimaxi.com/v1` |
-| MiniMax (Anthropic) | `minimax_anthropic` | `https://api.minimaxi.com/anthropic` |
-| Mistral | `mistral` | `https://api.mistral.ai/v1` |
-| Moonshot | `moonshot` | `https://api.moonshot.cn/v1` |
-| Ollama | `ollama` | `http://localhost:11434/v1` |
-| OpenAI | `openai` | `https://api.openai.com/v1` |
-| OpenAI Codex | `openai_codex` | `https://chatgpt.com/backend-api` |
-| OpenRouter | `openrouter` | `https://openrouter.ai/api/v1` |
-| OpenVINO Model Server | `ovms` | `http://localhost:8000/v3` |
-| Qianfan | `qianfan` | `https://qianfan.baidubce.com/v2` |
-| SiliconFlow | `siliconflow` | `https://api.siliconflow.cn/v1` |
-| Step Fun | `stepfun` | `https://api.stepfun.com/v1` |
-| vLLM/Local | `vllm` | — |
-| VolcEngine | `volcengine` | `https://ark.cn-beijing.volces.com/api/v3` |
-| VolcEngine Coding Plan | `volcengine_coding_plan` | `https://ark.cn-beijing.volces.com/api/coding/v3` |
-| Xiaomi MIMO | `xiaomi_mimo` | `https://api.xiaomimimo.com/v1` |
-| Zhipu AI | `zhipu` | `https://open.bigmodel.cn/api/paas/v4` |
-
-</details>
-
-<details>
-<summary><b>Proveedores de embeddings admitidos</b></summary>
-
-| Proveedor | Binding | Ejemplo de modelo | Dim. predeterminada |
-|:--|:--|:--|:--|
-| OpenAI | `openai` | `text-embedding-3-large` | 3072 |
-| Azure OpenAI | `azure_openai` | nombre del despliegue | — |
-| Cohere | `cohere` | `embed-v4.0` | 1024 |
-| Jina | `jina` | `jina-embeddings-v3` | 1024 |
-| Ollama | `ollama` | `nomic-embed-text` | 768 |
-| vLLM / LM Studio | `vllm` | Cualquier modelo de embedding | — |
-| OpenAI-compatible | `custom` | — | — |
-
-Los proveedores compatibles con OpenAI (DashScope, SiliconFlow, etc.) funcionan con el binding `custom` u `openai`.
-
-</details>
-
-<details>
-<summary><b>Proveedores de búsqueda web admitidos</b></summary>
-
-| Proveedor | Variable de entorno | Notas |
-|:--|:--|:--|
-| Brave | `BRAVE_API_KEY` | Recomendado, hay nivel gratuito |
-| Tavily | `TAVILY_API_KEY` | |
-| Serper | `SERPER_API_KEY` | Resultados de Google vía Serper |
-| Jina | `JINA_API_KEY` | |
-| SearXNG | — | Autohospedado, sin clave API |
-| DuckDuckGo | — | Sin clave API |
-| Perplexity | `PERPLEXITY_API_KEY` | Requiere clave API |
-
-</details>
-
-**3. Iniciar servicios**
-
-La forma más rápida de levantar todo:
-
-```bash
-python scripts/start_web.py
-```
-
-Inicia backend y frontend y abre el navegador automáticamente.
-
-También puedes arrancar cada servicio manualmente en terminales separadas:
-
-```bash
-# Backend (FastAPI)
-python -m deeptutor.api.run_server
-
-# Frontend (Next.js) — en otra terminal
-cd web && npm run dev -- -p 3782
-```
-
-| Servicio | Puerto predeterminado |
-|:---:|:---:|
-| Backend | `8001` |
-| Frontend | `3782` |
-
-Abre [http://localhost:3782](http://localhost:3782).
+Arranque: `python scripts/start_web.py` o backend `python -m deeptutor.api.run_server` + frontend `cd web && npm run dev -- -p 3782`. Puertos por defecto **8001** / **3782**.
 
 ### Opción C — Docker
 
-Docker empaqueta backend y frontend en un solo contenedor; no necesitas Python ni Node.js en local. Solo hace falta [Docker Desktop](https://www.docker.com/products/docker-desktop/) (o Docker Engine + Compose en Linux).
+`cp .env.example .env`, rellena como la opción B. Imagen GHCR: `docker compose -f docker-compose.ghcr.yml up -d`. Build local: `docker compose up -d`.
 
-**1. Variables de entorno** (necesarias en ambas variantes siguientes)
-
-```bash
-git clone https://github.com/HKUDS/DeepTutor.git
-cd DeepTutor
-cp .env.example .env
-```
-
-Edita `.env` y rellena al menos los campos obligatorios (igual que en la [opción B](#option-b-manual)).
-
-**2a. Descargar imagen oficial (recomendado)**
-
-Las imágenes oficiales se publican en [GitHub Container Registry](https://github.com/HKUDS/DeepTutor/pkgs/container/deeptutor) en cada release, para `linux/amd64` y `linux/arm64`.
-
-```bash
-docker compose -f docker-compose.ghcr.yml up -d
-```
-
-Para fijar una versión, edita la etiqueta de imagen en `docker-compose.ghcr.yml`:
-
-```yaml
-image: ghcr.io/hkuds/deeptutor:1.0.0  # o :latest
-```
-
-**2b. Compilar desde el código fuente**
-
-```bash
-docker compose up -d
-```
-
-Construye la imagen localmente desde el `Dockerfile` y arranca el contenedor.
-
-**3. Verificar y administrar**
-
-Abre [http://localhost:3782](http://localhost:3782) cuando el contenedor esté healthy.
-
-```bash
-docker compose logs -f   # seguir logs
-docker compose down       # detener y eliminar el contenedor
-```
-
-<details>
-<summary><b>Despliegue en la nube / servidor remoto</b></summary>
-
-En un servidor remoto el navegador debe conocer la URL pública del API backend. Añade en `.env`:
-
-```dotenv
-# URL pública donde se alcanza el backend
-NEXT_PUBLIC_API_BASE_EXTERNAL=https://your-server.com:8001
-```
-
-El script de arranque del frontend aplica este valor en tiempo de ejecución; no hace falta reconstruir.
-
-</details>
-
-<details>
-<summary><b>Modo desarrollo (recarga en caliente)</b></summary>
-
-Superpone el override de desarrollo para montar el código y activar recarga en caliente en ambos servicios:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up
-```
-
-Los cambios en `deeptutor/`, `deeptutor_cli/`, `scripts/` y `web/` se reflejan al instante.
-
-</details>
-
-<details>
-<summary><b>Puertos personalizados</b></summary>
-
-Sobrescribe los puertos predeterminados en `.env`:
-
-```dotenv
-BACKEND_PORT=9001
-FRONTEND_PORT=4000
-```
-
-Luego reinicia:
-
-```bash
-docker compose up -d     # o docker compose -f docker-compose.ghcr.yml up -d
-```
-
-</details>
-
-<details>
-<summary><b>Persistencia de datos</b></summary>
-
-Los datos de usuario y las bases de conocimiento persisten mediante volúmenes Docker mapeados a carpetas locales:
-
-| Ruta en el contenedor | Ruta en el host | Contenido |
-|:---|:---|:---|
-| `/app/data/user` | `./data/user` | Ajustes, memoria, espacio de trabajo, sesiones, logs |
-| `/app/data/knowledge_bases` | `./data/knowledge_bases` | Documentos subidos e índices vectoriales |
-
-Estas carpetas sobreviven a `docker compose down` y se reutilizan en el próximo `docker compose up`.
-
-</details>
-
-<details>
-<summary><b>Referencia de variables de entorno</b></summary>
-
-| Variable | Obligatorio | Descripción |
-|:---|:---:|:---|
-| `LLM_BINDING` | **Sí** | Proveedor LLM (`openai`, `anthropic`, etc.) |
-| `LLM_MODEL` | **Sí** | Nombre del modelo (p. ej. `gpt-4o`) |
-| `LLM_API_KEY` | **Sí** | Clave API del LLM |
-| `LLM_HOST` | **Sí** | URL del endpoint |
-| `EMBEDDING_BINDING` | **Sí** | Proveedor de embeddings |
-| `EMBEDDING_MODEL` | **Sí** | Nombre del modelo de embedding |
-| `EMBEDDING_API_KEY` | **Sí** | Clave API de embeddings |
-| `EMBEDDING_HOST` | **Sí** | Endpoint de embeddings |
-| `EMBEDDING_DIMENSION` | **Sí** | Dimensión del vector |
-| `SEARCH_PROVIDER` | No | Proveedor de búsqueda (`tavily`, `jina`, `serper`, `perplexity`, etc.) |
-| `SEARCH_API_KEY` | No | Clave de búsqueda |
-| `BACKEND_PORT` | No | Puerto backend (predeterminado `8001`) |
-| `FRONTEND_PORT` | No | Puerto frontend (predeterminado `3782`) |
-| `NEXT_PUBLIC_API_BASE_EXTERNAL` | No | URL pública del backend para despliegue en la nube |
-| `DISABLE_SSL_VERIFY` | No | Desactivar verificación SSL (predeterminado `false`) |
-
-</details>
+Remoto: `NEXT_PUBLIC_API_BASE_EXTERNAL`. Autenticación y PocketBase: mismos `<details>` que en inglés; despliegues multiusuario: sección [Multiusuario](#multi-user).
 
 ### Opción D — Solo CLI
 
-Si solo quieres la CLI sin el frontend web:
-
 ```bash
-pip install -e ".[cli]"
+python -m pip install -e ".[cli]"
 ```
 
-Sigue siendo necesario configurar el proveedor LLM. Lo más rápido:
-
-```bash
-cp .env.example .env   # luego edita .env con tus claves API
-```
-
-Una vez configurado:
-
-```bash
-deeptutor chat
-deeptutor run chat "Explain Fourier transform"
-deeptutor run deep_solve "Solve x^2 = 4"
-deeptutor kb create my-kb --doc textbook.pdf
-```
-
-> Guía completa: [DeepTutor CLI](#deeptutor-cli-guide).
+Más ayuda: [CLI](#deeptutor-cli).
 
 ---
 
@@ -455,232 +204,99 @@ deeptutor kb create my-kb --doc textbook.pdf
 ## 📖 Explorar DeepTutor
 
 <div align="center">
-<img src="../../assets/figs/deeptutor-architecture.png" alt="Arquitectura DeepTutor" width="800">
+<img src="../../assets/figs/deeptutor-architecture.png" alt="Arquitectura" width="800">
 </div>
 
-### 💬 Chat — Espacio inteligente unificado
+### 💬 Chat
 
 <div align="center">
 <img src="../../assets/figs/dt-chat.png" alt="Chat" width="800">
 </div>
 
-Seis modos en un solo espacio con **gestión unificada del contexto**.
+Seis modos con **gestión de contexto unificada**. Las herramientas están desacopladas de los flujos: tú eliges cuáles activar.
 
-| Modo | Qué hace |
-|:---|:---|
-| **Chat** | RAG, búsqueda web, ejecución de código, razonamiento, lluvia de ideas, papers. |
-| **Deep Solve** | Resolución multiagente con citas. |
-| **Generación de cuestionarios** | Evaluaciones ancladas a la KB. |
-| **Deep Research** | Subtemas, agentes paralelos, informe citado. |
-| **Math Animator** | Animaciones con Manim. |
-| **Visualize** | Diagramas SVG, Chart.js, Mermaid o HTML autocontenido a partir de lenguaje natural. |
+### ✍️ Co-Writer / 📖 Book Engine / 📚 Conocimiento / 🧠 Memoria
 
-Las herramientas están **desacopladas de los flujos** — eliges qué activar.
-
-### ✍️ Co-Writer — Espacio de escritura multidocumento con IA
-
-<div align="center">
 <img src="../../assets/figs/dt-cowriter.png" alt="Co-Writer" width="800">
-</div>
 
-Crea y gestiona varios documentos, cada uno con su propio almacenamiento persistente — no un borrador único, sino un editor Markdown completo donde la IA es colaborador de primer nivel: **Reescribir**, **Ampliar**, **Acortar** con KB o web; deshacer/rehacer; guardar en cuadernos.
+<img src="../../assets/figs/dt-book-0.png" alt="Libros" width="270"><img src="../../assets/figs/dt-book-1.png" width="270"><img src="../../assets/figs/dt-book-2.png" width="270">
 
-### 📖 Book Engine — «Libros vivos» interactivos
-
-<div align="center">
-<img src="../../assets/figs/dt-book-0.png" alt="Biblioteca" width="270"><img src="../../assets/figs/dt-book-1.png" alt="Lector" width="270"><img src="../../assets/figs/dt-book-2.png" alt="Animación" width="270">
-</div>
-
-Indica un tema, apunta a tu base de conocimiento y obtienes un libro estructurado e interactivo — no una exportación estática, sino un documento vivo para leer, autoevaluarte y debatir en contexto.
-
-Detrás, un pipeline multiagente propone el esquema, recupera pasajes relevantes, fusiona el árbol de capítulos, planifica cada página y compila cada bloque. Tú sigues al mando: revisa la propuesta, reordena capítulos y chatea junto a cualquier página.
-
-14 tipos de bloques — texto, aviso, cuestionario, tarjetas, código, figura, profundización, animación, interactivo, línea temporal, grafo de conceptos, sección, nota de usuario y marcador de posición — cada uno con su componente interactivo. Una línea de tiempo de progreso en tiempo real muestra la compilación.
-
-### 📚 Gestión del conocimiento
-
-<div align="center">
 <img src="../../assets/figs/dt-knowledge.png" alt="Conocimiento" width="800">
-</div>
 
-Aquí organizas colecciones de documentos, notas y personas de enseñanza.
-
-- **Bases de conocimiento** — PDF, TXT, Markdown; añadir de forma incremental.  
-- **Cuadernos** — Registros de Chat, Co-Writer, Book o Deep Research, por colores.
-- **Banco de preguntas** — Revisa los cuestionarios generados; marca favoritos y @menciona en el chat para razonar sobre el rendimiento pasado.
-- **Skills** — Personas de enseñanza con `SKILL.md`: nombre, descripción, disparadores opcionales y cuerpo Markdown inyectado en el prompt del sistema cuando están activas.
-
-### 🧠 Memoria
-
-<div align="center">
 <img src="../../assets/figs/dt-memory.png" alt="Memoria" width="800">
-</div>
 
-- **Resumen** — Progreso de estudio.  
-- **Perfil** — Preferencias, nivel, objetivos, estilo. Compartido con TutorBots.
+Libros: **13** tipos de bloque. Conocimiento: bases PDF/Office/Markdown/código, cuadernos, banco de preguntas con @, Skills `SKILL.md`. Memoria: **Summary** y **Profile**, compartida con TutorBots.
 
 ---
 
 <a id="tutorbot"></a>
-### 🦞 TutorBot — Tutores de IA persistentes y autónomos
+### 🦞 TutorBot
 
 <div align="center">
-<img src="../../assets/figs/tutorbot-architecture.png" alt="Arquitectura TutorBot" width="800">
+<img src="../../assets/figs/tutorbot-architecture.png" alt="TutorBot" width="800">
+<img src="../../assets/figs/tb.png" alt="TutorBot UI" width="800">
 </div>
 
-No es un chatbot: es un **agente multiinstancia** persistente basado en [nanobot](https://github.com/HKUDS/nanobot). Cada instancia tiene su bucle, espacio de trabajo, memoria y personalidad.
-
-<div align="center">
-<img src="../../assets/figs/tb.png" alt="TutorBot" width="800">
-</div>
-
-- **Plantillas Soul** — Personalidad y filosofía docente.  
-- **Espacio independiente** — Memoria, sesiones, habilidades; acceso a la capa compartida de DeepTutor.  
-- **Heartbeat proactivo** — Recordatorios y tareas programadas.  
-- **Acceso completo a herramientas** — RAG, código, web, papers, razonamiento, lluvia de ideas.  
-- **Aprendizaje de habilidades** — Archivos de skill en el espacio de trabajo.  
-- **Multicanal** — Telegram, Discord, Slack, Feishu, WeCom, DingTalk, correo, etc.  
-- **Equipos y subagentes** — Tareas largas y complejas.
+Agente persistente multi-instancia sobre [nanobot](https://github.com/HKUDS/nanobot). Plantillas Soul, espacio independiente, Heartbeat, herramientas completas, aprendizaje de skills, multicanal, equipos y subagentes.
 
 ```bash
 deeptutor bot create math-tutor --persona "Socratic math teacher who uses probing questions"
-deeptutor bot create writing-coach --persona "Patient, detail-oriented writing mentor"
 deeptutor bot list
 ```
 
 ---
 
-<a id="deeptutor-cli-guide"></a>
-### ⌨️ DeepTutor CLI — Interfaz nativa para agentes
+<a id="deeptutor-cli"></a>
+### ⌨️ DeepTutor CLI
 
 <div align="center">
 <img src="../../assets/figs/cli-architecture.png" alt="CLI" width="800">
 </div>
 
-CLI completo: capacidades, KB, sesiones, memoria y TutorBot sin navegador. Salida Rich para humanos y JSON para agentes. [`SKILL.md`](../../SKILL.md) para agentes con herramientas.
+Capacidades, KB, sesiones, memoria y bots desde terminal; salida Rich o JSON. Referencia completa de subcomandos en el [README en inglés](../../README.md) (tabla en `<details>`).
+
+---
+
+<a id="multi-user"></a>
+### 👥 Multiusuario — despliegues compartidos y espacio por usuario
+
+<div align="center">
+<img src="../../assets/figs/dt-multi-user.png" alt="Multiusuario" width="800">
+</div>
+
+Al activar la autenticación, obtienes **espacios aislados por usuario** y **recursos curados por el administrador**. El primer registro es admin; el resto de cuentas es por invitación (`/admin/users`, API admin). Cada usuario solo ve LLM, KB y skills asignados.
 
 ```bash
-deeptutor run chat "Explain the Fourier transform" -t rag --kb textbook
-deeptutor run deep_solve "Prove that √2 is irrational" -t reason
-deeptutor run deep_question "Linear algebra" --config num_questions=5
-deeptutor run deep_research "Attention mechanisms in transformers"
-deeptutor run visualize "Draw the architecture of a transformer"
+echo 'AUTH_ENABLED=true' >> .env
+echo 'AUTH_SECRET=<64+ caracteres aleatorios>' >> .env
+python scripts/start_web.py
+# http://localhost:3782/register — solo el primer registro es público
+# /admin/users → Añadir usuario → icono deslizante → asignar modelos, KB, skills
 ```
 
-```bash
-deeptutor chat --capability deep_solve --kb my-kb
-# En el REPL: /cap, /tool, /kb, /history, /notebook, /config para cambiar al vuelo
-```
+**Admin:** `/settings` completo, `/admin/users`, editor de concesiones (solo IDs lógicos, las claves no cruzan el límite), auditoría en `multi-user/_system/audit/usage.jsonl`.
 
-```bash
-deeptutor kb create my-kb --doc textbook.pdf
-deeptutor kb add my-kb --docs-dir ./papers/
-deeptutor kb search my-kb "gradient descent"
-deeptutor kb set-default my-kb
-```
+**Usuario:** árbol bajo `multi-user/<uid>/`, KB/skills asignados en solo lectura con insignia, ajustes redactados (sin claves ni URLs de proveedor), turnos de chat solo con modelo concedido (sin fallback silencioso).
 
-```bash
-deeptutor run chat "Summarize chapter 3" -f rich
-deeptutor run chat "Summarize chapter 3" -f json
-```
+**Variables:** `AUTH_ENABLED`, `AUTH_SECRET`, `AUTH_TOKEN_EXPIRE_HOURS`, `NEXT_PUBLIC_AUTH_ENABLED` (reflejado por `start_web.py`), etc.
 
-```bash
-deeptutor session list
-deeptutor session open <id>
-```
+> ⚠️ **PocketBase (`POCKETBASE_URL`) solo monousuario** — sin campo `role`, consultas sin filtrar por `user_id`. Para multiusuario deja `POCKETBASE_URL` vacío.
 
-<details>
-<summary><b>Referencia completa de la CLI</b></summary>
-
-**Nivel superior**
-
-| Comando | Descripción |
-|:---|:---|
-| `deeptutor run <capability> <message>` | Ejecuta una capacidad en un solo turno (`chat`, `deep_solve`, `deep_question`, `deep_research`, `math_animator`, `visualize`) |
-| `deeptutor chat` | REPL interactivo con `--capability`, `--tool`, `--kb`, `--language`, etc. |
-| `deeptutor serve` | Inicia el servidor API de DeepTutor |
-
-**`deeptutor bot`**
-
-| Comando | Descripción |
-|:---|:---|
-| `deeptutor bot list` | Lista instancias de TutorBot |
-| `deeptutor bot create <id>` | Crea e inicia un bot (`--name`, `--persona`, `--model`) |
-| `deeptutor bot start <id>` | Inicia un bot |
-| `deeptutor bot stop <id>` | Detiene un bot |
-
-**`deeptutor kb`**
-
-| Comando | Descripción |
-|:---|:---|
-| `deeptutor kb list` | Lista bases de conocimiento |
-| `deeptutor kb info <name>` | Detalles de la base |
-| `deeptutor kb create <name>` | Crea desde documentos (`--doc`, `--docs-dir`) |
-| `deeptutor kb add <name>` | Añade documentos |
-| `deeptutor kb search <name> <query>` | Busca en la base |
-| `deeptutor kb set-default <name>` | Define la KB por defecto |
-| `deeptutor kb delete <name>` | Elimina (`--force`) |
-
-**`deeptutor memory`**
-
-| Comando | Descripción |
-|:---|:---|
-| `deeptutor memory show [file]` | Ver (`summary`, `profile`, `all`) |
-| `deeptutor memory clear [file]` | Borrar (`--force`) |
-
-**`deeptutor session`**
-
-| Comando | Descripción |
-|:---|:---|
-| `deeptutor session list` | Lista sesiones (`--limit`) |
-| `deeptutor session show <id>` | Mensajes de la sesión |
-| `deeptutor session open <id>` | Reanudar en el REPL |
-| `deeptutor session rename <id>` | Renombrar (`--title`) |
-| `deeptutor session delete <id>` | Eliminar |
-
-**`deeptutor notebook`**
-
-| Comando | Descripción |
-|:---|:---|
-| `deeptutor notebook list` | Lista cuadernos |
-| `deeptutor notebook create <name>` | Crear (`--description`) |
-| `deeptutor notebook show <id>` | Ver registros |
-| `deeptutor notebook add-md <id> <path>` | Importar Markdown |
-| `deeptutor notebook replace-md <id> <rec> <path>` | Sustituir registro |
-| `deeptutor notebook remove-record <id> <rec>` | Quitar registro |
-
-**`deeptutor book`**
-
-| Comando | Descripción |
-|:---|:---|
-| `deeptutor book list` | Lista todos los libros del espacio de trabajo |
-| `deeptutor book health <book_id>` | Comprueba deriva de la KB y salud del libro |
-| `deeptutor book refresh-fingerprints <book_id>` | Actualiza huellas de la KB y limpia páginas obsoletas |
-
-**`deeptutor config` / `plugin` / `provider`**
-
-| Comando | Descripción |
-|:---|:---|
-| `deeptutor config show` | Resumen de configuración |
-| `deeptutor plugin list` | Herramientas y capacidades registradas |
-| `deeptutor plugin info <name>` | Detalle de herramienta o capacidad |
-| `deeptutor provider login <provider>` | Autenticación del proveedor (OAuth con `openai-codex`; `github-copilot` valida una sesión de Copilot existente) |
-
-</details>
+> ⚠️ **Recomendado un solo proceso** para el primer admin; en varios workers crea el admin sin autenticación o usa almacén externo.
 
 <a id="roadmap"></a>
 ## 🗺️ Hoja de ruta
 
 | Estado | Hito |
 |:---:|:---|
-| 🎯 | **Autenticación e inicio de sesión** — Página de login opcional para despliegues públicos con multiusuario |
-| 🎯 | **Temas y apariencia** — Más temas y personalización de la interfaz |
-| 🎯 | **Mejora de la interacción** — Optimizar iconos y detalles de interacción |
-| 🔜 | **Mejores memorias** — Integrar una gestión de memoria más potente |
-| 🔜 | **Integración LightRAG** — Integrar [LightRAG](https://github.com/HKUDS/LightRAG) como motor avanzado de bases de conocimiento |
-| 🔜 | **Sitio de documentación** — Documentación completa con guías, referencia de API y tutoriales |
+| 🎯 | Autenticación e inicio de sesión multiusuario |
+| 🎯 | Temas y apariencia |
+| 🎯 | Mejora de interacción |
+| 🔜 | Mejores memorias |
+| 🔜 | Integración [LightRAG](https://github.com/HKUDS/LightRAG) |
+| 🔜 | Sitio de documentación |
 
-> Si DeepTutor te resulta útil, [danos una estrella](https://github.com/HKUDS/DeepTutor/stargazers): ¡nos ayuda a seguir!
+> Si te resulta útil, [danos una estrella](https://github.com/HKUDS/DeepTutor/stargazers).
 
 ---
 
@@ -689,13 +305,11 @@ deeptutor session open <id>
 
 | Proyecto | Papel |
 |:---|:---|
-| [**nanobot**](https://github.com/HKUDS/nanobot) | Motor ligero de TutorBot |
+| [**nanobot**](https://github.com/HKUDS/nanobot) | Motor de TutorBot |
 | [**LlamaIndex**](https://github.com/run-llama/llama_index) | RAG e indexación |
-| [**ManimCat**](https://github.com/Wing900/ManimCat) | Math Animator |
+| [**ManimCat**](https://github.com/Wing900/ManimCat) | Animaciones Math Animator |
 
-| [⚡ LightRAG](https://github.com/HKUDS/LightRAG) | [🤖 AutoAgent](https://github.com/HKUDS/AutoAgent) | [🔬 AI-Researcher](https://github.com/HKUDS/AI-Researcher) | [🧬 nanobot](https://github.com/HKUDS/nanobot) |
-|:---:|:---:|:---:|:---:|
-| RAG rápido | Agentes sin código | Investigación automática | Agente ultraligero |
+Ecosistema HKUDS: [LightRAG](https://github.com/HKUDS/LightRAG) · [AutoAgent](https://github.com/HKUDS/AutoAgent) · [AI-Researcher](https://github.com/HKUDS/AI-Researcher) · [nanobot](https://github.com/HKUDS/nanobot)
 
 ## 🤝 Contribuir
 
@@ -706,20 +320,23 @@ Esperamos que DeepTutor sea un regalo para la comunidad. 🎁
 <a href="https://github.com/HKUDS/DeepTutor/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=HKUDS/DeepTutor&max=999" alt="Contributors" />
 </a>
+
 </div>
 
-Consulta [CONTRIBUTING.md](../../CONTRIBUTING.md).
+[CONTRIBUTING.md](../../CONTRIBUTING.md)
 
 ## ⭐ Historial de estrellas
 
 <div align="center">
+
 <a href="https://www.star-history.com/#HKUDS/DeepTutor&type=timeline&legend=top-left">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=timeline&theme=dark&legend=top-left" />
     <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=timeline&legend=top-left" />
-    <img alt="Star History" src="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=timeline&legend=top-left" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=timeline&legend=top-left" />
   </picture>
 </a>
+
 </div>
 
 <p align="center">
@@ -740,7 +357,7 @@ Consulta [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ---
 
-[Licencia Apache 2.0](../../LICENSE)
+Licencia [Apache 2.0](../../LICENSE).
 
 <p>
   <img src="https://visitor-badge.laobi.icu/badge?page_id=HKUDS.DeepTutor&style=for-the-badge&color=00d4ff" alt="Views">

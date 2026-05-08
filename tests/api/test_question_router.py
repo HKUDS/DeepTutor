@@ -106,7 +106,12 @@ def test_mimic_websocket_accepts_config_and_returns_messages(
         return {"success": False, "error": "stub mimic failure"}
 
     monkeypatch.setattr(question_router_module, "mimic_exam_questions", _fake_mimic_exam_questions)
-    monkeypatch.setattr(question_router_module, "MIMIC_OUTPUT_DIR", tmp_path / "mimic_papers")
+    # ``MIMIC_OUTPUT_DIR`` was a module-level constant resolved at import time
+    # (which froze it to the admin path). It's now a per-call helper so the
+    # path follows whichever user is running. Patch the helper instead.
+    monkeypatch.setattr(
+        question_router_module, "_mimic_output_dir", lambda: tmp_path / "mimic_papers"
+    )
 
     with TestClient(_build_app(question_router_module)) as client:
         with client.websocket_connect("/api/v1/question/mimic") as websocket:

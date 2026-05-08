@@ -21,7 +21,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import dynamic from "next/dynamic";
-import { apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl } from "@/lib/api";
 import ModelSelector from "@/components/chat/home/ModelSelector";
 import {
   listLLMOptions,
@@ -102,8 +102,9 @@ export default function AgentsPage() {
   const loadBots = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(apiUrl("/api/v1/tutorbot"));
-      setBots(await res.json());
+      const res = await apiFetch(apiUrl("/api/v1/tutorbot"));
+      const data = await res.json();
+      setBots(Array.isArray(data) ? data : (data.bots ?? []));
     } finally {
       setLoading(false);
     }
@@ -111,7 +112,7 @@ export default function AgentsPage() {
 
   const loadSouls = useCallback(async () => {
     try {
-      const res = await fetch(apiUrl("/api/v1/tutorbot/souls"));
+      const res = await apiFetch(apiUrl("/api/v1/tutorbot/souls"));
       if (res.ok) setSouls(await res.json());
     } catch {
       /* ignore */
@@ -531,7 +532,7 @@ function ChannelsTab({
   useEffect(() => {
     void (async () => {
       try {
-        const res = await fetch(apiUrl("/api/v1/tutorbot/channels/schema"));
+        const res = await apiFetch(apiUrl("/api/v1/tutorbot/channels/schema"));
         if (res.ok) setSchemaCatalog(await res.json());
       } catch {
         /* leave catalog null → renders fallback message */
@@ -553,7 +554,7 @@ function ChannelsTab({
     setLoadingDetail(true);
     try {
       // Edit form needs raw secrets to populate fields. Default GET masks them.
-      const res = await fetch(
+      const res = await apiFetch(
         apiUrl(`/api/v1/tutorbot/${bid}?include_secrets=true`),
       );
       if (!res.ok) return;
@@ -618,7 +619,7 @@ function ChannelsTab({
     if (!selectedBot) return;
     setSaving(true);
     try {
-      const res = await fetch(apiUrl(`/api/v1/tutorbot/${selectedBot}`), {
+      const res = await apiFetch(apiUrl(`/api/v1/tutorbot/${selectedBot}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ channels }),
@@ -925,7 +926,7 @@ function BotsTab({
     if (!botId) return;
     setCreating(true);
     try {
-      const res = await fetch(apiUrl("/api/v1/tutorbot"), {
+      const res = await apiFetch(apiUrl("/api/v1/tutorbot"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -971,7 +972,7 @@ function BotsTab({
     async (bid: string, selection: LLMSelection | null) => {
       setUpdatingModelBot(bid);
       try {
-        const res = await fetch(apiUrl(`/api/v1/tutorbot/${bid}`), {
+        const res = await apiFetch(apiUrl(`/api/v1/tutorbot/${bid}`), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1014,7 +1015,7 @@ function BotsTab({
 
   const startBot = useCallback(
     async (bid: string) => {
-      const res = await fetch(apiUrl("/api/v1/tutorbot"), {
+      const res = await apiFetch(apiUrl("/api/v1/tutorbot"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bot_id: bid }),
@@ -1029,7 +1030,7 @@ function BotsTab({
 
   const stopBot = useCallback(
     async (bid: string) => {
-      const res = await fetch(apiUrl(`/api/v1/tutorbot/${bid}`), {
+      const res = await apiFetch(apiUrl(`/api/v1/tutorbot/${bid}`), {
         method: "DELETE",
       });
       if (res.ok) {
@@ -1051,7 +1052,7 @@ function BotsTab({
         )
       )
         return;
-      const res = await fetch(apiUrl(`/api/v1/tutorbot/${bid}/destroy`), {
+      const res = await apiFetch(apiUrl(`/api/v1/tutorbot/${bid}/destroy`), {
         method: "DELETE",
       });
       if (res.ok) {
@@ -1379,7 +1380,7 @@ function ProfilesTab({
       if (!bid) return;
       setLoadingFiles(true);
       try {
-        const res = await fetch(apiUrl(`/api/v1/tutorbot/${bid}/files`));
+        const res = await apiFetch(apiUrl(`/api/v1/tutorbot/${bid}/files`));
         const data: Record<string, string> = await res.json();
         setFiles(data);
         setEditor(data[activeFile] ?? "");
@@ -1454,7 +1455,7 @@ function ProfilesTab({
               onToast(t("No template selected to update"));
               return false;
             }
-            const tplRes = await fetch(
+            const tplRes = await apiFetch(
               apiUrl(`/api/v1/tutorbot/souls/${sourceSoulTemplate.id}`),
               {
                 method: "PUT",
@@ -1493,7 +1494,7 @@ function ProfilesTab({
               soulId = `${baseId}-${n}`;
               n += 1;
             }
-            const tplRes = await fetch(apiUrl("/api/v1/tutorbot/souls"), {
+            const tplRes = await apiFetch(apiUrl("/api/v1/tutorbot/souls"), {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -1503,9 +1504,7 @@ function ProfilesTab({
               }),
             });
             if (tplRes.status === 409) {
-              onToast(
-                t("A soul with this id already exists, try another name"),
-              );
+              onToast(t("A soul with this id already exists, try another name"));
               return false;
             }
             if (!tplRes.ok) {
@@ -1518,7 +1517,7 @@ function ProfilesTab({
           }
         }
 
-        const res = await fetch(
+        const res = await apiFetch(
           apiUrl(`/api/v1/tutorbot/${selectedBot}/files/${activeFile}`),
           {
             method: "PUT",
@@ -1529,7 +1528,7 @@ function ProfilesTab({
         if (res.ok) {
           setFiles((prev) => ({ ...prev, [activeFile]: editor }));
           if (activeFile === "SOUL.md") {
-            const personaRes = await fetch(
+            const personaRes = await apiFetch(
               apiUrl(`/api/v1/tutorbot/${selectedBot}`),
               {
                 method: "PATCH",
@@ -1929,7 +1928,7 @@ function SoulsTab({
     if (!editing) return;
     setSaving(true);
     try {
-      const res = await fetch(apiUrl(`/api/v1/tutorbot/souls/${editing}`), {
+      const res = await apiFetch(apiUrl(`/api/v1/tutorbot/souls/${editing}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: editName.trim(), content: editContent }),
@@ -1954,7 +1953,7 @@ function SoulsTab({
     if (!id) return;
     setSaving(true);
     try {
-      const res = await fetch(apiUrl("/api/v1/tutorbot/souls"), {
+      const res = await apiFetch(apiUrl("/api/v1/tutorbot/souls"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, name, content: newContent }),
@@ -1977,7 +1976,7 @@ function SoulsTab({
     async (soul: SoulTemplate) => {
       if (!window.confirm(t('Delete soul "{{name}}"?', { name: soul.name })))
         return;
-      const res = await fetch(apiUrl(`/api/v1/tutorbot/souls/${soul.id}`), {
+      const res = await apiFetch(apiUrl(`/api/v1/tutorbot/souls/${soul.id}`), {
         method: "DELETE",
       });
       if (res.ok) {

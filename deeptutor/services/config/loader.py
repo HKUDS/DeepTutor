@@ -71,7 +71,7 @@ def _inject_runtime_paths(config: dict[str, Any]) -> dict[str, Any]:
     normalized["tools"] = tools
     normalized["paths"] = {
         "user_data_dir": str(path_service.get_user_root()),
-        "knowledge_bases_dir": str(path_service.project_root / "data" / "knowledge_bases"),
+        "knowledge_bases_dir": str(path_service.get_knowledge_bases_root()),
         "user_log_dir": str(path_service.get_logs_dir()),
         "performance_log_dir": str(path_service.get_logs_dir() / "performance"),
         "question_output_dir": str(path_service.get_chat_feature_dir("deep_question")),

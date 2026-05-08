@@ -1,13 +1,28 @@
 from contextlib import asynccontextmanager
 import logging
+import os
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from deeptutor.logging import configure_logging
+from deeptutor.services.config import get_env_store
 from deeptutor.services.path_service import get_path_service
 
+_env_values = get_env_store().load()
+for _key in (
+    "AUTH_ENABLED",
+    "AUTH_SECRET",
+    "AUTH_TOKEN_EXPIRE_HOURS",
+    "AUTH_USERNAME",
+    "AUTH_PASSWORD_HASH",
+    "POCKETBASE_URL",
+    "POCKETBASE_ADMIN_EMAIL",
+    "POCKETBASE_ADMIN_PASSWORD",
+):
+    if _key in _env_values:
+        os.environ[_key] = _env_values[_key]
 configure_logging()
 logger = logging.getLogger(__name__)
 
@@ -110,6 +125,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to auto-start TutorBots: {e}")
 
+    # Ping PocketBase if configured — logs a warning (not an error) if unreachable
+    try:
+        from deeptutor.services.pocketbase_client import ping_pocketbase
+
+        await ping_pocketbase()
+    except Exception as e:
+        logger.warning(f"PocketBase startup check failed: {e}")
+
     yield
 
     # Execute on shutdown
@@ -165,10 +188,24 @@ async def selective_access_log(request, call_next):
     return response
 
 
-# Configure CORS
+# Configure CORS.
+# allow_origins=["*"] is incompatible with allow_credentials=True (browsers reject it).
+# We build an explicit list that covers both localhost and 127.0.0.1 variants so the
+# frontend works regardless of which loopback alias the browser resolves to.
+_frontend_port = os.getenv("FRONTEND_PORT", "3782")
+_extra_origin = os.getenv("CORS_ORIGIN", "")  # optional extra origin for deployments
+_cors_origins = [
+    f"http://localhost:{_frontend_port}",
+    f"http://127.0.0.1:{_frontend_port}",
+    "http://localhost:3000",  # common Next.js default
+    "http://127.0.0.1:3000",
+]
+if _extra_origin:
+    _cors_origins.append(_extra_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific frontend origin
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -200,6 +237,7 @@ app.mount(
 from deeptutor.api.routers import (
     agent_config,
     attachments,
+    auth,
     book,
     chat,
     co_writer,
@@ -219,31 +257,78 @@ from deeptutor.api.routers import (
     unified_ws,
     vision_solver,
 )
+from deeptutor.multi_user.router import router as multi_user_router  # noqa: E402
 
-# Include routers
-app.include_router(solve.router, prefix="/api/v1", tags=["solve"])
-app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
-app.include_router(question.router, prefix="/api/v1/question", tags=["question"])
-app.include_router(knowledge.router, prefix="/api/v1/knowledge", tags=["knowledge"])
-app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"])
-app.include_router(co_writer.router, prefix="/api/v1/co_writer", tags=["co_writer"])
-app.include_router(notebook.router, prefix="/api/v1/notebook", tags=["notebook"])
-app.include_router(book.router, prefix="/api/v1/book", tags=["book"])
-app.include_router(memory.router, prefix="/api/v1/memory", tags=["memory"])
-app.include_router(sessions.router, prefix="/api/v1/sessions", tags=["sessions"])
+# Auth router is public — login/logout/register/status require no token
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+
+# All other routers require a valid session when AUTH_ENABLED=true.
+# require_auth is a no-op when AUTH_ENABLED=false, so this is safe for local use.
+from deeptutor.api.routers.auth import require_auth  # noqa: E402
+
+_auth = [Depends(require_auth)]
+
 app.include_router(
-    question_notebook.router, prefix="/api/v1/question-notebook", tags=["question-notebook"]
+    multi_user_router,
+    prefix="/api/v1/multi-user",
+    tags=["multi-user"],
+    dependencies=_auth,
 )
-app.include_router(settings.router, prefix="/api/v1/settings", tags=["settings"])
-app.include_router(skills.router, prefix="/api/v1/skills", tags=["skills"])
-app.include_router(system.router, prefix="/api/v1/system", tags=["system"])
-app.include_router(plugins_api.router, prefix="/api/v1/plugins", tags=["plugins"])
-app.include_router(agent_config.router, prefix="/api/v1/agent-config", tags=["agent-config"])
-app.include_router(vision_solver.router, prefix="/api/v1", tags=["vision-solver"])
-app.include_router(tutorbot.router, prefix="/api/v1/tutorbot", tags=["tutorbot"])
-app.include_router(attachments.router, prefix="/api/attachments", tags=["attachments"])
 
-# Unified WebSocket endpoint
+app.include_router(solve.router, prefix="/api/v1", tags=["solve"], dependencies=_auth)
+app.include_router(chat.router, prefix="/api/v1", tags=["chat"], dependencies=_auth)
+app.include_router(
+    question.router, prefix="/api/v1/question", tags=["question"], dependencies=_auth
+)
+app.include_router(
+    knowledge.router, prefix="/api/v1/knowledge", tags=["knowledge"], dependencies=_auth
+)
+app.include_router(
+    dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"], dependencies=_auth
+)
+app.include_router(
+    co_writer.router, prefix="/api/v1/co_writer", tags=["co_writer"], dependencies=_auth
+)
+app.include_router(
+    notebook.router, prefix="/api/v1/notebook", tags=["notebook"], dependencies=_auth
+)
+app.include_router(book.router, prefix="/api/v1/book", tags=["book"], dependencies=_auth)
+app.include_router(memory.router, prefix="/api/v1/memory", tags=["memory"], dependencies=_auth)
+app.include_router(
+    sessions.router, prefix="/api/v1/sessions", tags=["sessions"], dependencies=_auth
+)
+app.include_router(
+    question_notebook.router,
+    prefix="/api/v1/question-notebook",
+    tags=["question-notebook"],
+    dependencies=_auth,
+)
+app.include_router(
+    settings.router, prefix="/api/v1/settings", tags=["settings"], dependencies=_auth
+)
+app.include_router(skills.router, prefix="/api/v1/skills", tags=["skills"], dependencies=_auth)
+app.include_router(system.router, prefix="/api/v1/system", tags=["system"], dependencies=_auth)
+app.include_router(
+    plugins_api.router, prefix="/api/v1/plugins", tags=["plugins"], dependencies=_auth
+)
+app.include_router(
+    agent_config.router, prefix="/api/v1/agent-config", tags=["agent-config"], dependencies=_auth
+)
+app.include_router(
+    vision_solver.router, prefix="/api/v1", tags=["vision-solver"], dependencies=_auth
+)
+app.include_router(
+    tutorbot.router, prefix="/api/v1/tutorbot", tags=["tutorbot"], dependencies=_auth
+)
+app.include_router(
+    attachments.router,
+    prefix="/api/attachments",
+    tags=["attachments"],
+    dependencies=_auth,
+)
+
+# Unified WebSocket endpoint — auth is checked inside the handler (WebSockets
+# cannot use FastAPI dependencies in the standard way)
 app.include_router(unified_ws.router, prefix="/api/v1", tags=["unified-ws"])
 
 

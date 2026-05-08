@@ -552,14 +552,15 @@ class SkillService:
         return f"---\n{header}\n---\n\n{body.lstrip()}".rstrip() + "\n"
 
 
-_singleton: SkillService | None = None
+_instances: dict[str, SkillService] = {}
 
 
 def get_skill_service() -> SkillService:
-    global _singleton
-    if _singleton is None:
-        _singleton = SkillService()
-    return _singleton
+    root = (get_path_service().get_workspace_dir() / "skills").resolve()
+    key = str(root)
+    if key not in _instances:
+        _instances[key] = SkillService(root=root)
+    return _instances[key]
 
 
 __all__ = [

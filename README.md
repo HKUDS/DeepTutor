@@ -16,7 +16,7 @@
 [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](./Communication.md)
 [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
 
-[Features](#-key-features) · [Get Started](#-get-started) · [Explore](#-explore-deeptutor) · [TutorBot](#-tutorbot--persistent-autonomous-ai-tutors) · [CLI](#%EF%B8%8F-deeptutor-cli--agent-native-interface) · [Roadmap](#%EF%B8%8F-roadmap) · [Community](#-community--ecosystem)
+[Features](#-key-features) · [Get Started](#-get-started) · [Explore](#-explore-deeptutor) · [TutorBot](#-tutorbot--persistent-autonomous-ai-tutors) · [CLI](#%EF%B8%8F-deeptutor-cli--agent-native-interface) · [Multi-User](#-multi-user--shared-deployments-with-per-user-workspaces) · [Roadmap](#%EF%B8%8F-roadmap) · [Community](#-community--ecosystem)
 
 [🇨🇳 中文](assets/README/README_CN.md) · [🇯🇵 日本語](assets/README/README_JA.md) · [🇪🇸 Español](assets/README/README_ES.md) · [🇫🇷 Français](assets/README/README_FR.md) · [🇸🇦 العربية](assets/README/README_AR.md) · [🇷🇺 Русский](assets/README/README_RU.md) · [🇮🇳 हिन्दी](assets/README/README_HI.md) · [🇵🇹 Português](assets/README/README_PT.md) · [🇹🇭 ภาษาไทย](assets/README/README_TH.md)  · 🇵🇱 [Polski](assets/README/README_PL.md)
 
@@ -27,6 +27,8 @@
 > 🤝 **We welcome any kinds of contributing!** See our [Contributing Guide](CONTRIBUTING.md) for branching strategy, coding standards, and how to get started.
 
 ### 📦 Releases
+
+> **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — Optional multi-user deployments with isolated user workspaces, admin grants, auth routes, and scoped runtime access.
 
 > **[2026.5.4]** [v1.3.7](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.7) — Thinking-model/provider fixes, visible Knowledge index history, and safer Co-Writer clear/template editing.
 
@@ -50,14 +52,14 @@
 
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — Document attachments (PDF/DOCX/XLSX/PPTX), reasoning thinking-block display, Soul template editor, Co-Writer save-to-notebook.
 
+<details>
+<summary><b>Past releases (more than 2 weeks ago)</b></summary>
+
 > **[2026.4.22]** [v1.2.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.2) — User-authored Skills system, chat input performance overhaul, TutorBot auto-start, Book Library UI, visualization fullscreen.
 
 > **[2026.4.21]** [v1.2.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.1) — Per-stage token limits, Regenerate response across all entry points, RAG & Gemma compatibility fixes.
 
 > **[2026.4.20]** [v1.2.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.0) — Book Engine "living book" compiler, multi-document Co-Writer, interactive HTML visualizations, Question Bank @-mention.
-
-<details>
-<summary><b>Past releases (more than 2 weeks ago)</b></summary>
 
 > **[2026.4.18]** [v1.1.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.2) — Schema-driven Channels tab, RAG single-pipeline consolidation, externalized chat prompts.
 
@@ -114,11 +116,12 @@
 
 - **Unified Chat Workspace** — Six modes, one thread. Chat, Deep Solve, Quiz Generation, Deep Research, Math Animator, and Visualize share the same context — start a conversation, escalate to multi-agent problem solving, generate quizzes, visualize concepts, then deep-dive into research, all without losing a single message.
 - **AI Co-Writer** — A multi-document Markdown workspace where AI is a first-class collaborator. Select text, rewrite, expand, or summarize — drawing from your knowledge base and the web. Every piece feeds back into your learning ecosystem.
-- **Book Engine** — Turn your materials into structured, interactive "living books". A multi-agent pipeline designs outlines, retrieves relevant sources, and compiles rich pages with 14 block types — quizzes, flash cards, timelines, concept graphs, interactive demos, and more.
+- **Book Engine** — Turn your materials into structured, interactive "living books". A multi-agent pipeline designs outlines, retrieves relevant sources, and compiles rich pages with 13 block types — quizzes, flash cards, timelines, concept graphs, interactive demos, and more.
 - **Knowledge Hub** — Upload PDFs, Markdown, and text files to build RAG-ready knowledge bases. Organize insights in color-coded notebooks, revisit quiz questions in the Question Bank, and create custom Skills that shape how DeepTutor teaches you. Your documents don't just sit there — they actively power every conversation.
 - **Persistent Memory** — DeepTutor builds a living profile of you: what you've studied, how you learn, and where you're heading. Shared across all features and TutorBots, it gets sharper with every interaction.
 - **Personal TutorBots** — Not chatbots — autonomous tutors. Each TutorBot lives in its own workspace with its own memory, personality, and skill set. They set reminders, learn new abilities, and evolve as you grow. Powered by [nanobot](https://github.com/HKUDS/nanobot).
 - **Agent-Native CLI** — Every capability, knowledge base, session, and TutorBot is one command away. Rich terminal output for humans, structured JSON for AI agents and pipelines. Hand DeepTutor a [`SKILL.md`](SKILL.md) and your agents can operate it autonomously.
+- **Optional Authentication** — Disabled by default for local use. Flip two env vars to require login when hosting publicly. Multi-user support with bcrypt-hashed passwords, JWT sessions, a self-service registration page, and a built-in admin dashboard for managing accounts and roles. Optionally back auth and storage with **PocketBase** for OAuth-ready authentication and improved multi-user concurrency — drops in as an optional sidecar with no code changes required.
 
 ---
 
@@ -444,6 +447,73 @@ The frontend startup script applies this value at runtime — no rebuild needed.
 </details>
 
 <details>
+<summary><b>Authentication (public deployments)</b></summary>
+
+Authentication is **disabled by default** — no login is required on localhost. For multi-tenant deployments (per-user workspaces, admin-curated models / KBs / skills, audit log), see the dedicated [Multi-User](#-multi-user--shared-deployments-with-per-user-workspaces) section below for the full setup, env-var reference, and operational caveats.
+
+**Headless single-user (no `/register` flow):** if you can't reach the browser to bootstrap the first admin (e.g. an unattended container), pre-seed the credential via env vars:
+
+```bash
+# Generate a bcrypt hash on any host with the project checked out:
+python -c "from deeptutor.services.auth import hash_password; print(hash_password('yourpassword'))"
+```
+
+```dotenv
+AUTH_ENABLED=true
+AUTH_USERNAME=admin
+AUTH_PASSWORD_HASH=<paste hash here>
+# Optional. Auto-generated under multi-user/_system/auth/auth_secret if blank.
+AUTH_SECRET=your-secret-here
+```
+
+This env-var path serves a single account and is treated as the admin. Once you run the browser registration flow, the on-disk store at `multi-user/_system/auth/users.json` takes priority and the env vars become a fallback.
+
+</details>
+
+<details>
+<summary><b>PocketBase sidecar (optional auth + storage)</b></summary>
+
+PocketBase is an optional lightweight backend that replaces the built-in SQLite/JSON auth and session storage. It adds OAuth-ready authentication, real-time subscriptions, and a visual admin panel — with zero changes required to switch back if you don't set `POCKETBASE_URL`.
+
+> ⚠️ **PocketBase mode is currently single-user only.** The default schema has no `role` field on `users` (every login resolves to `role=user`, so no admin can be created), and the session/message/turn queries are not filtered by `user_id`. Multi-user deployments should keep `POCKETBASE_URL` blank and use the default JSON/SQLite backend.
+
+**When to use it:** local single-user setups that want OAuth-ready auth and a visual admin panel without yet caring about per-user isolation.
+
+**Quick start (Docker Compose):**
+
+```bash
+# PocketBase starts automatically alongside DeepTutor when using docker compose
+docker compose up -d
+
+# 1. Open the admin panel and create your admin account
+open http://localhost:8090/_/
+
+# 2. Bootstrap collections (run once)
+pip install pocketbase
+python scripts/pb_setup.py
+
+# 3. Enable PocketBase in .env and restart
+```
+
+**Required `.env` additions:**
+
+```dotenv
+POCKETBASE_URL=http://localhost:8090          # or http://pocketbase:8090 inside Docker
+POCKETBASE_ADMIN_EMAIL=admin@example.com
+POCKETBASE_ADMIN_PASSWORD=your-admin-password
+```
+
+**devenv users:**
+
+```bash
+devenv up   # starts PocketBase on :8090 alongside backend and frontend
+```
+
+Leave `POCKETBASE_URL` unset (or remove it) to fall back to the built-in SQLite backend at any time — no data migration needed for new sessions.
+
+</details>
+
+<details>
 <summary><b>Development mode (hot-reload)</b></summary>
 
 Layer the dev override to mount source code and enable hot-reload for both services:
@@ -492,23 +562,44 @@ These directories survive `docker compose down` and are reused on the next `dock
 <details>
 <summary><b>Environment variables reference</b></summary>
 
+> See [`.env.example`](.env.example) for the canonical, fully-commented list. The table below covers the variables most users touch.
+
 | Variable | Required | Description |
 |:---|:---:|:---|
-| `LLM_BINDING` | **Yes** | LLM provider (`openai`, `anthropic`, etc.) |
+| `LLM_BINDING` | **Yes** | LLM provider (`openai`, `anthropic`, `deepseek`, etc.) |
 | `LLM_MODEL` | **Yes** | Model name (e.g. `gpt-4o`) |
 | `LLM_API_KEY` | **Yes** | Your LLM API key |
-| `LLM_HOST` | **Yes** | API endpoint URL |
+| `LLM_HOST` | **Yes** | Chat-completions base URL |
+| `LLM_API_VERSION` | No | Required for Azure OpenAI; blank otherwise |
+| `LLM_REASONING_EFFORT` | No | DeepSeek `high`/`max`/`minimal` or OpenAI o-series `low`/`medium`/`high` |
 | `EMBEDDING_BINDING` | Knowledge Base only | Embedding provider |
 | `EMBEDDING_MODEL` | Knowledge Base only | Embedding model name |
 | `EMBEDDING_API_KEY` | Knowledge Base only | Embedding API key |
-| `EMBEDDING_HOST` | Knowledge Base only | Full embedding endpoint URL |
+| `EMBEDDING_HOST` | Knowledge Base only | Full embedding endpoint URL (v1.3.0+ — called verbatim, no path appended) |
 | `EMBEDDING_DIMENSION` | No | Vector dimension; leave empty for auto-detection |
-| `SEARCH_PROVIDER` | No | Search provider (`tavily`, `jina`, `serper`, `perplexity`, etc.) |
+| `EMBEDDING_SEND_DIMENSIONS` | No | Tri-state — `true`/`false`/blank (auto) |
+| `SEARCH_PROVIDER` | No | `brave`, `tavily`, `serper`, `jina`, `perplexity`, `searxng`, `duckduckgo` |
 | `SEARCH_API_KEY` | No | Search API key |
+| `SEARCH_BASE_URL` | No | Required for self-hosted SearXNG |
+| `SEARCH_PROXY` | No | Optional HTTP/HTTPS proxy for outbound search traffic |
 | `BACKEND_PORT` | No | Backend port (default `8001`) |
 | `FRONTEND_PORT` | No | Frontend port (default `3782`) |
+| `POCKETBASE_PORT` | No | Docker port mapping for the optional PocketBase sidecar (default `8090`) |
 | `NEXT_PUBLIC_API_BASE_EXTERNAL` | No | Public backend URL for cloud deployment |
-| `DISABLE_SSL_VERIFY` | No | Disable SSL verification (default `false`) |
+| `NEXT_PUBLIC_API_BASE` | No | Direct backend URL override for the Next.js client |
+| `CORS_ORIGIN` | No | Extra origin appended to the FastAPI CORS allowlist |
+| `DISABLE_SSL_VERIFY` | No | Disable outbound TLS verification (default `false`) |
+| `AUTH_ENABLED` | No | Require login when `true` (default `false`) |
+| `NEXT_PUBLIC_AUTH_ENABLED` | No | Optional frontend override; blank derives from `AUTH_ENABLED` |
+| `AUTH_SECRET` | No | JWT signing secret; generated under `multi-user/_system/auth/auth_secret` if blank |
+| `AUTH_TOKEN_EXPIRE_HOURS` | No | Session duration in hours (default `24`) |
+| `AUTH_COOKIE_SECURE` | No | Mark the auth cookie `Secure` when serving over HTTPS (default `false`) |
+| `AUTH_USERNAME` | No | Single-user mode: admin username |
+| `AUTH_PASSWORD_HASH` | No | Single-user mode: bcrypt hash of admin password |
+| `POCKETBASE_URL` | No | Enable the PocketBase sidecar by setting it (single-user only — see warning above) |
+| `POCKETBASE_ADMIN_EMAIL` / `POCKETBASE_ADMIN_PASSWORD` | No | Admin credentials for the Python backend to manage PocketBase collections |
+| `POCKETBASE_EXTERNAL_URL` | No | Public PocketBase URL for OAuth redirects (remote deployments only) |
+| `CHAT_ATTACHMENT_DIR` | No | Override for the chat attachment storage root |
 
 </details>
 
@@ -621,7 +712,7 @@ Give DeepTutor a topic, point it at your knowledge base, and it produces a struc
 
 Behind the scenes, a multi-agent pipeline handles the heavy lifting: proposing an outline, retrieving relevant sources from your knowledge base, synthesizing a chapter tree, planning each page, and compiling every block. You stay in control — review the proposal, reorder chapters, and chat alongside any page.
 
-Pages are assembled from 14 block types — text, callout, quiz, flash cards, code, figure, deep dive, animation, interactive demo, timeline, concept graph, section, user note, and placeholder — each rendered with its own interactive component. A real-time progress timeline lets you watch compilation unfold as the book takes shape.
+Pages are assembled from 13 block types — text, callout, quiz, flash cards, code, figure, deep dive, animation, interactive demo, timeline, concept graph, section, and user note — each rendered with its own interactive component. A real-time progress timeline lets you watch compilation unfold as the book takes shape.
 
 ### 📚 Knowledge Management — Your Learning Infrastructure
 
@@ -631,7 +722,7 @@ Pages are assembled from 14 block types — text, callout, quiz, flash cards, co
 
 Knowledge is where you build and manage the document collections, notes, and teaching personas that power everything else in DeepTutor.
 
-- **Knowledge Bases** — Upload PDF, TXT, or Markdown files to create searchable, RAG-ready collections. Add documents incrementally as your library grows.
+- **Knowledge Bases** — Upload PDFs, Office files (DOCX/XLSX/PPTX), Markdown, and a wide range of text and code files to create searchable, RAG-ready collections. Add documents incrementally as your library grows.
 - **Notebooks** — Organize learning records across sessions. Save insights from Chat, Co-Writer, Book, or Deep Research into categorized, color-coded notebooks.
 - **Question Bank** — Browse and revisit all generated quiz questions. Bookmark entries and @-mention them directly in chat to reason over past performance.
 - **Skills** — Create custom teaching personas via `SKILL.md` files. Each skill defines a name, description, optional triggers, and a Markdown body that is injected into the chat system prompt when active — turning DeepTutor into a Socratic tutor, a peer study partner, a research assistant, or any role you design.
@@ -670,7 +761,7 @@ TutorBot is not a chatbot — it is a **persistent, multi-instance agent** built
 - **Proactive Heartbeat** — Bots don't just respond — they initiate. The built-in Heartbeat system enables recurring study check-ins, review reminders, and scheduled tasks. Your tutor shows up even when you don't.
 - **Full Tool Access** — Every bot reaches into DeepTutor's complete toolkit: RAG retrieval, code execution, web search, academic paper search, deep reasoning, and brainstorming.
 - **Skill Learning** — Teach your bot new abilities by adding skill files to its workspace. As your needs evolve, so does your tutor's capability.
-- **Multi-Channel Presence** — Connect bots to Telegram, Discord, Slack, Feishu, WeChat Work, DingTalk, Email, and more. Your tutor meets you wherever you are.
+- **Multi-Channel Presence** — Connect bots to Telegram, Discord, Slack, Feishu, WeChat Work, DingTalk, Matrix, QQ, WhatsApp, Email, and more. Your tutor meets you wherever you are.
 - **Team & Sub-Agents** — Spawn background sub-agents or orchestrate multi-agent teams within a single bot for complex, long-running tasks.
 
 ```bash
@@ -809,6 +900,83 @@ deeptutor session open <id>                         # Resume in REPL
 | `deeptutor provider login <provider>` | Provider auth (`openai-codex` OAuth login; `github-copilot` validates an existing Copilot auth session) |
 
 </details>
+
+---
+
+### 👥 Multi-User — Shared Deployments with Per-User Workspaces
+
+<div align="center">
+<img src="assets/figs/dt-multi-user.png" alt="Multi-User" width="800">
+</div>
+
+Flip on authentication and DeepTutor turns into a multi-tenant deployment with **per-user isolated workspaces** and **admin-curated resources**. The first person to register becomes the admin and configures models, API keys, and knowledge bases on behalf of everyone else. Subsequent accounts are created by the admin (invite-only), each gets their own scoped chat history / memory / notebooks / knowledge bases, and they only see the LLMs, KBs, and skills the admin assigned to them.
+
+**Quick start (5 steps):**
+
+```bash
+# 1. In the project root .env, enable auth.
+echo 'AUTH_ENABLED=true' >> .env
+# Optional — JWT signing secret. Auto-generated on first boot if blank.
+echo 'AUTH_SECRET=<paste 64+ random characters>' >> .env
+
+# 2. Restart the web stack — start_web.py mirrors AUTH_ENABLED to the frontend.
+python scripts/start_web.py
+
+# 3. Open http://localhost:3782/register and create the first account.
+#    The first registration is the only public one; that user becomes admin
+#    and the /register endpoint is closed automatically afterward.
+
+# 4. As admin, navigate to /admin/users → "Add user" to provision teammates.
+
+# 5. For each user, click the slider icon → assign LLM profiles, knowledge
+#    bases, and skills. Save. The user can now sign in and start working.
+```
+
+**What the admin sees:**
+
+- **Full Settings page** at `/settings` — manage LLM / embedding / search providers, API keys, model catalogs, and runtime "Apply".
+- **User management** at `/admin/users` — create, promote, demote, and delete accounts. The public `/register` endpoint is automatically closed once the first admin exists; further accounts go through `POST /api/v1/auth/users` (admin-only).
+- **Grant editor** — for each non-admin user, pick the model profiles, knowledge bases, and skills they may use. Grants carry **logical IDs only**; API keys never cross the grant boundary.
+- **Audit trail** — every grant change and assigned-resource access is appended to `multi-user/_system/audit/usage.jsonl`.
+
+**What ordinary users get:**
+
+- **Isolated workspace** under `multi-user/<uid>/` — their own chat history (`chat_history.db`), memory (`SUMMARY.md` / `PROFILE.md`), notebooks, and personal knowledge bases. Nothing is shared by default.
+- **Read-only access** to admin-assigned knowledge bases and skills, surfaced inline next to their own resources with an "Assigned by admin" badge.
+- **Redacted Settings page** — only theme, language, and a summary of granted models. API keys, base URLs, and provider endpoints are never returned for non-admin requests.
+- **Scoped LLM** — chat turns are routed through the admin-assigned model. If no LLM is granted, the turn is rejected up-front (no silent fallback to the admin's keys).
+
+**Workspace layout:**
+
+```
+multi-user/
+├── _system/
+│   ├── auth/users.json          # Hashed credentials, roles
+│   ├── auth/auth_secret         # JWT signing secret (auto-generated)
+│   ├── grants/<uid>.json        # Per-user resource grants (admin-managed)
+│   └── audit/usage.jsonl        # Audit trail
+└── <uid>/
+    ├── user/
+    │   ├── chat_history.db
+    │   ├── settings/interface.json
+    │   └── workspace/{chat,co-writer,book,...}
+    ├── memory/{SUMMARY.md,PROFILE.md}
+    └── knowledge_bases/...
+```
+
+**Configuration reference:**
+
+| Variable | Required | Description |
+|:---|:---|:---|
+| `AUTH_ENABLED` | Yes | Set to `true` to enable multi-user auth. Default `false` (single-user mode — admin paths everywhere). |
+| `AUTH_SECRET` | Recommended | JWT signing secret. Auto-generated under `multi-user/_system/auth/auth_secret` if blank. |
+| `AUTH_TOKEN_EXPIRE_HOURS` | No | JWT lifetime; defaults to `24`. |
+| `AUTH_USERNAME` / `AUTH_PASSWORD_HASH` | No | Single-user fallback credentials (legacy env-var path). Leave blank when using multi-user. |
+| `NEXT_PUBLIC_AUTH_ENABLED` | Auto | Mirrored from `AUTH_ENABLED` by `start_web.py` so the Next.js middleware redirects unauthenticated requests to `/login`. |
+
+> ⚠️ **PocketBase mode (`POCKETBASE_URL` set) is single-user only.** The default PocketBase schema has no `role` field on `users` (every login resolves to `role=user`, no admin can be created), and `sessions` / `messages` / `turns` queries are not filtered by `user_id`. Multi-user deployments must keep `POCKETBASE_URL` blank and use the default JSON/SQLite backend.
+
+> ⚠️ **Single-process recommendation.** The first-user-becomes-admin promotion is protected by an in-process `threading.Lock`. Multi-worker deployments should provision the first admin offline (start with `AUTH_ENABLED=false`, register the admin via `python scripts/start_tour.py` or the bootstrap flow, then flip the flag) or back the user store with an external system.
 
 ## 🗺️ Roadmap
 

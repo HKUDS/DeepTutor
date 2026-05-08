@@ -32,9 +32,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Output directory for mimic mode - use agent/question/mimic_papers
-_path_service = get_path_service()
-MIMIC_OUTPUT_DIR = _path_service.get_question_dir() / "mimic_papers"
+
+def _mimic_output_dir():
+    # Resolved per-call so a per-user PathService (set after auth) routes
+    # generated mimic papers under the caller's own workspace instead of
+    # admin's directory frozen at import time.
+    return get_path_service().get_question_dir() / "mimic_papers"
 
 
 @router.websocket("/mimic")
@@ -184,7 +187,7 @@ async def websocket_mimic_generate(websocket: WebSocket):
                 # Create batch directory for this mimic session
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 pdf_stem = Path(safe_name).stem
-                batch_dir = MIMIC_OUTPUT_DIR / f"mimic_{timestamp}_{pdf_stem}"
+                batch_dir = _mimic_output_dir() / f"mimic_{timestamp}_{pdf_stem}"
                 batch_dir.mkdir(parents=True, exist_ok=True)
 
                 # Save uploaded PDF in batch directory
@@ -231,7 +234,7 @@ async def websocket_mimic_generate(websocket: WebSocket):
 
                 # Create batch directory for parsed mode too
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                batch_dir = MIMIC_OUTPUT_DIR / f"mimic_{timestamp}_{Path(paper_path).name}"
+                batch_dir = _mimic_output_dir() / f"mimic_{timestamp}_{Path(paper_path).name}"
                 batch_dir.mkdir(parents=True, exist_ok=True)
                 output_dir = str(batch_dir)
 

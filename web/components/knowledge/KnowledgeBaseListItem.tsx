@@ -81,6 +81,11 @@ export default function KnowledgeBaseListItem({
             <span className="truncate text-[13px] font-medium text-[var(--foreground)]">
               {kb.name}
             </span>
+            {kb.assigned && (
+              <span className="shrink-0 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700 dark:text-emerald-300">
+                {t("Assigned")}
+              </span>
+            )}
           </div>
           <div className="mt-0.5 truncate text-[11px] text-[var(--muted-foreground)]">
             {subtitle}
@@ -92,7 +97,7 @@ export default function KnowledgeBaseListItem({
             selected ? "" : "opacity-0 group-hover:opacity-100"
           } transition-opacity`}
         >
-          {!kb.is_default && (
+          {!kb.is_default && !kb.read_only && (
             <button
               type="button"
               onClick={(event) => {
@@ -111,8 +116,9 @@ export default function KnowledgeBaseListItem({
               event.stopPropagation();
               onDelete();
             }}
-            title={t("Delete")}
-            className="rounded p-1 text-[var(--muted-foreground)] hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+            disabled={kb.read_only}
+            title={kb.read_only ? t("Assigned knowledge bases are read-only") : t("Delete")}
+            className="rounded p-1 text-[var(--muted-foreground)] hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-red-950/30"
           >
             <Trash2 className="h-3 w-3" />
           </button>

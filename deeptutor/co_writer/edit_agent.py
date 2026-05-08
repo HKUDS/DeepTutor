@@ -15,25 +15,34 @@ from deeptutor.services.path_service import get_path_service
 from deeptutor.tools.rag_tool import rag_search
 from deeptutor.tools.web_search import web_search
 
-# Use PathService for directory paths
-_path_service = get_path_service()
-USER_DIR = _path_service.get_co_writer_dir()
-HISTORY_FILE = _path_service.get_co_writer_history_file()
-TOOL_CALLS_DIR = _path_service.get_co_writer_tool_calls_dir()
+
+# Resolved per-call so a per-user PathService (set after auth) routes
+# co-writer history/tool-call files under the caller's own workspace.
+def _user_dir():
+    return get_path_service().get_co_writer_dir()
+
+
+def _history_file():
+    return get_path_service().get_co_writer_history_file()
+
+
+def tool_calls_dir():
+    return get_path_service().get_co_writer_tool_calls_dir()
 
 
 def ensure_dirs():
     """Ensure directories exist"""
-    USER_DIR.mkdir(parents=True, exist_ok=True)
-    TOOL_CALLS_DIR.mkdir(parents=True, exist_ok=True)
+    _user_dir().mkdir(parents=True, exist_ok=True)
+    tool_calls_dir().mkdir(parents=True, exist_ok=True)
 
 
 def load_history() -> list:
     """Load history"""
     ensure_dirs()
-    if HISTORY_FILE.exists():
+    history_file = _history_file()
+    if history_file.exists():
         try:
-            with open(HISTORY_FILE, encoding="utf-8") as f:
+            with open(history_file, encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             return []
@@ -43,7 +52,7 @@ def load_history() -> list:
 def save_history(history: list):
     """Save history"""
     ensure_dirs()
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+    with open(_history_file(), "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
 
 
@@ -51,7 +60,7 @@ def save_tool_call(call_id: str, tool_type: str, data: dict[str, Any]) -> str:
     """Save tool call result, return file path"""
     ensure_dirs()
     filename = f"{call_id}_{tool_type}.json"
-    filepath = TOOL_CALLS_DIR / filename
+    filepath = tool_calls_dir() / filename
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     return str(filepath)

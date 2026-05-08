@@ -38,6 +38,7 @@ export interface IndexVersion {
 }
 
 export interface KnowledgeBase {
+  id?: string;
   name: string;
   is_default?: boolean;
   status?: string;
@@ -68,6 +69,11 @@ export interface KnowledgeBase {
     active_signature?: string | null;
     active_match?: boolean;
   };
+  source?: "admin" | "user";
+  assigned?: boolean;
+  read_only?: boolean;
+  provenance_label?: string;
+  available?: boolean;
 }
 
 export interface ValidatedSelectionFile {

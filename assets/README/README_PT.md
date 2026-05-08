@@ -28,6 +28,14 @@
 
 ### 📦 Lançamentos
 
+> **[2026.5.4]** [v1.3.7](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.7) — Correções de modelos de raciocínio/provedores, histórico de índice de conhecimento visível e edição de templates e limpeza do Co-Writer mais seguros.
+
+> **[2026.5.3]** [v1.3.6](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.6) — Seleção de modelos por catálogo no chat e TutorBot, reindexação RAG mais segura, correções de limite de tokens do OpenAI Responses e validação do editor Skills.
+
+> **[2026.5.2]** [v1.3.5](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.5) — Configurações de lançamento local mais fluidas, consultas RAG mais seguras, autenticação de embedding local mais clara e polimento do modo escuro das Configurações.
+
+> **[2026.5.1]** [v1.3.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.4) — Persistência de chat em página de livro e fluxos de reconstrução, referências de chat para livro, melhor tratamento de idioma/raciocínio, endurecimento da extração de documentos RAG.
+
 > **[2026.4.30]** [v1.3.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.3) — Suporte a embeddings NVIDIA NIM e Gemini, contexto Space unificado para histórico do chat / skills / memória, instantâneos de sessão, resiliência de reindexação RAG.
 
 > **[2026.4.29]** [v1.3.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.2) — URLs de endpoint de embedding transparentes, resiliência de reindexação RAG para vetores persistidos inválidos, limpeza de memória para saída de modelos de raciocínio, correção de runtime do Deep Solve.
@@ -107,7 +115,7 @@
 
 - **Workspace de chat unificado** — Seis modos, um fio: Chat, Deep Solve, quiz, Deep Research, Math Animator e Visualize compartilham contexto.
 - **AI Co-Writer** — Espaço Markdown multidocumento com IA como colaborador: reescrever, expandir ou encurtar com KB e web.
-- **Book Engine** — Transforme materiais em «livros vivos» estruturados e interativos: pipeline multiagente, 14 tipos de blocos (quiz, flashcards, linhas do tempo, grafos de conceitos e mais).
+- **Book Engine** — Transforme materiais em «livros vivos» estruturados e interativos: pipeline multiagente, 13 tipos de blocos (quiz, flashcards, linhas do tempo, grafos de conceitos e mais).
 - **Hub de conhecimento** — Bases RAG, cadernos coloridos, banco de questões e Skills personalizados que moldam o ensino.
 - **Memória persistente** — Resumo de progresso e perfil do aprendiz; compartilhado com TutorBots.
 - **TutorBots pessoais** — Não são chatbots: tutores autônomos com espaço de trabalho, memória, personalidade e habilidades. [nanobot](https://github.com/HKUDS/nanobot).
@@ -126,8 +134,8 @@ Antes de começar, certifique-se de ter instalado:
 |:---|:---|:---|:---|
 | [Git](https://git-scm.com/) | Qualquer | `git --version` | Para clonar o repositório |
 | [Python](https://www.python.org/downloads/) | 3.11+ | `python --version` | Backend |
-| [Node.js](https://nodejs.org/) | 18+ | `node --version` | Build do frontend (não necessário só CLI ou Docker) |
-| [npm](https://www.npmjs.com/) | 9+ | `npm --version` | Geralmente vem com o Node.js |
+| [Node.js](https://nodejs.org/) | 20.9+ | `node --version` | Runtime do frontend para instalações web locais |
+| [npm](https://www.npmjs.com/) | Incluído com Node.js | `npm --version` | Instalado com o Node.js |
 
 Você também precisa de uma **chave API** de pelo menos um provedor LLM (por exemplo [OpenAI](https://platform.openai.com/api-keys), [DeepSeek](https://platform.deepseek.com/), [Anthropic](https://console.anthropic.com/)). O tour guiado orienta o preenchimento.
 
@@ -358,6 +366,48 @@ O script de inicialização do frontend aplica esse valor em tempo de execução
 </details>
 
 <details>
+<summary><b>Autenticação (implantações públicas)</b></summary>
+
+A autenticação está **desativada por padrão** — não é necessário login no localhost. Para implantações multi-tenant, consulte a seção [Multi-usuário](#multi-user) abaixo.
+
+**Usuário único sem interface (sem fluxo `/register`):** pré-configure as credenciais via env vars:
+
+```bash
+python -c "from deeptutor.services.auth import hash_password; print(hash_password('yourpassword'))"
+```
+
+```dotenv
+AUTH_ENABLED=true
+AUTH_USERNAME=admin
+AUTH_PASSWORD_HASH=<cole o hash aqui>
+AUTH_SECRET=your-secret-here
+```
+
+</details>
+
+<details>
+<summary><b>Sidecar PocketBase (autenticação + armazenamento opcionais)</b></summary>
+
+PocketBase é um backend leve opcional que substitui a autenticação SQLite/JSON embutida.
+
+> ⚠️ **Modo PocketBase é apenas para usuário único atualmente.** O esquema padrão não tem campo `role` em `users` e as queries não são filtradas por `user_id`. Implantações multi-usuário: deixe `POCKETBASE_URL` vazio.
+
+```bash
+docker compose up -d
+open http://localhost:8090/_/
+pip install pocketbase
+python scripts/pb_setup.py
+```
+
+```dotenv
+POCKETBASE_URL=http://localhost:8090
+POCKETBASE_ADMIN_EMAIL=admin@example.com
+POCKETBASE_ADMIN_PASSWORD=your-admin-password
+```
+
+</details>
+
+<details>
 <summary><b>Modo desenvolvimento (hot-reload)</b></summary>
 
 Sobreponha o override de desenvolvimento para montar o código-fonte e habilitar hot-reload em ambos os serviços:
@@ -395,7 +445,8 @@ Dados do usuário e bases de conhecimento persistem via volumes Docker mapeados 
 
 | Caminho no contêiner | Caminho no host | Conteúdo |
 |:---|:---|:---|
-| `/app/data/user` | `./data/user` | Configurações, memória, workspace, sessões, logs |
+| `/app/data/user` | `./data/user` | Configurações, workspace, sessões, logs |
+| `/app/data/memory` | `./data/memory` | Memória compartilhada de longo prazo (`SUMMARY.md`, `PROFILE.md`) |
 | `/app/data/knowledge_bases` | `./data/knowledge_bases` | Documentos enviados e índices vetoriais |
 
 Esses diretórios permanecem após `docker compose down` e são reutilizados no próximo `docker compose up`.
@@ -496,7 +547,7 @@ Dê um tema, aponte para a sua base de conhecimento: o DeepTutor produz um livro
 
 Por trás, um pipeline multiagente propõe o esquema, recupera fontes, funde a árvore de capítulos, planeja cada página e compila cada bloco. Você continua no controle: revisão da proposta, reordenação de capítulos e chat ao lado de cada página.
 
-14 tipos de blocos — texto, destaque, quiz, flashcards, código, figura, mergulho profundo, animação, interativo, linha do tempo, grafo de conceitos, seção, nota do usuário e marcador — cada um com componente interativo. Linha do tempo de progresso em tempo real.
+13 tipos de blocos — texto, destaque, quiz, flashcards, código, figura, mergulho profundo, animação, interativo, linha do tempo, grafo de conceitos, seção, nota do usuário — cada um com componente interativo. Linha do tempo de progresso em tempo real.
 
 ### 📚 Gestão do conhecimento
 
@@ -668,6 +719,83 @@ deeptutor session open <id>
 | `deeptutor provider login <provider>` | Autenticação do provedor (OAuth com `openai-codex`; `github-copilot` valida uma sessão Copilot existente) |
 
 </details>
+
+---
+
+<a id="multi-user"></a>
+### 👥 Multi-usuário — Implantações compartilhadas com espaços de trabalho por usuário
+
+<div align="center">
+<img src="../../assets/figs/dt-multi-user.png" alt="Multi-usuário" width="800">
+</div>
+
+Ative a autenticação e o DeepTutor se torna uma implantação multi-tenant com **espaços de trabalho isolados por usuário** e **recursos curados pelo administrador**. O primeiro a se registrar torna-se administrador e configura modelos, chaves de API e bases de conhecimento para todos. As contas seguintes são criadas pelo administrador (somente por convite), cada uma obtendo histórico de chat/memória/notebooks/bases de conhecimento com escopo.
+
+**Início rápido (5 passos):**
+
+```bash
+# 1. Ative a autenticação no .env da raiz do projeto
+echo 'AUTH_ENABLED=true' >> .env
+echo 'AUTH_SECRET=<cole 64+ caracteres aleatórios>' >> .env
+
+# 2. Reinicie o web stack
+python scripts/start_web.py
+
+# 3. Abra http://localhost:3782/register e crie a primeira conta
+#    O primeiro registro é o único público; esse usuário torna-se admin
+#    e o endpoint /register é fechado automaticamente
+
+# 4. Como admin, acesse /admin/users → "Adicionar usuário"
+
+# 5. Para cada usuário, clique no ícone deslizante → atribua perfis LLM,
+#    bases de conhecimento e skills → salve
+```
+
+**O que o administrador vê:**
+
+- **Página de Configurações completa** em `/settings` — provedores LLM/embedding/busca, chaves de API, catálogo de modelos.
+- **Gerenciamento de usuários** em `/admin/users` — criar, promover, rebaixar e excluir contas.
+- **Editor de concessões** — selecionar perfis de modelo, KBs e skills para usuários não-admin; as concessões contêm **apenas IDs lógicos**, as chaves de API nunca cruzam a fronteira.
+- **Trilha de auditoria** — toda alteração de concessão e acesso a recursos em `multi-user/_system/audit/usage.jsonl`.
+
+**O que os usuários comuns obtêm:**
+
+- **Espaço de trabalho isolado** em `multi-user/<uid>/` — `chat_history.db`, memória, notebooks e bases de conhecimento pessoais.
+- **Acesso somente leitura** às KBs e skills atribuídas pelo admin, exibidas com o badge "Atribuído pelo admin".
+- **Página de Configurações reduzida** — apenas tema, idioma e resumo dos modelos concedidos.
+- **LLM com escopo** — as conversas são roteadas pelo modelo atribuído pelo admin; se nenhum LLM foi concedido, a conversa é rejeitada antecipadamente.
+
+**Layout do espaço de trabalho:**
+
+```
+multi-user/
+├── _system/
+│   ├── auth/users.json
+│   ├── auth/auth_secret
+│   ├── grants/<uid>.json
+│   └── audit/usage.jsonl
+└── <uid>/
+    ├── user/
+    │   ├── chat_history.db
+    │   ├── settings/interface.json
+    │   └── workspace/{chat,co-writer,book,...}
+    ├── memory/{SUMMARY.md,PROFILE.md}
+    └── knowledge_bases/...
+```
+
+**Referência de configuração:**
+
+| Variável | Obrigatório | Descrição |
+|:---|:---|:---|
+| `AUTH_ENABLED` | Sim | `true` para habilitar autenticação multi-usuário. Padrão `false`. |
+| `AUTH_SECRET` | Recomendado | Segredo de assinatura JWT; vazio gera em `multi-user/_system/auth/auth_secret`. |
+| `AUTH_TOKEN_EXPIRE_HOURS` | Não | Duração do JWT; padrão 24 horas. |
+| `AUTH_USERNAME` / `AUTH_PASSWORD_HASH` | Não | Credenciais de fallback para usuário único. Deixe em branco no modo multi-usuário. |
+| `NEXT_PUBLIC_AUTH_ENABLED` | Auto | Espelhado de `AUTH_ENABLED` por `start_web.py`. |
+
+> ⚠️ **Modo PocketBase (`POCKETBASE_URL` definido) é apenas para usuário único** — sem campo `role`, sem filtragem por `user_id`. Multi-usuário: deixe `POCKETBASE_URL` vazio.
+
+> ⚠️ **Processo único recomendado.** A promoção do primeiro admin é protegida por `threading.Lock`. Multi-worker: provisione o primeiro admin offline.
 
 <a id="roadmap"></a>
 ## 🗺️ Roteiro

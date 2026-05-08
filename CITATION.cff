@@ -1,0 +1,38 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "DeepTutor: Towards Agentic Personalized Tutoring"
+authors:
+  - family-names: "Zhao"
+    given-names: "Bingxi"
+  - family-names: "Zhang"
+    given-names: "Jiahao"
+  - family-names: "Ren"
+    given-names: "Xubin"
+  - family-names: "Guo"
+    given-names: "Zirui"
+  - family-names: "Chu"
+    given-names: "Tianzhe"
+  - family-names: "Ma"
+    given-names: "Yi"
+  - family-names: "Huang"
+    given-names: "Chao"
+preferred-citation:
+  type: article
+  title: "DeepTutor: Towards Agentic Personalized Tutoring"
+  authors:
+    - family-names: "Zhao"
+      given-names: "Bingxi"
+    - family-names: "Zhang"
+      given-names: "Jiahao"
+    - family-names: "Ren"
+      given-names: "Xubin"
+    - family-names: "Guo"
+      given-names: "Zirui"
+    - family-names: "Chu"
+      given-names: "Tianzhe"
+    - family-names: "Ma"
+      given-names: "Yi"
+    - family-names: "Huang"
+      given-names: "Chao"
+  journal: "arXiv preprint arXiv:2604.26962"
+  year: 2026

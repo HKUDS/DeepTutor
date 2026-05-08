@@ -28,6 +28,14 @@
 
 ### 📦 रिलीज़
 
+> **[2026.5.4]** [v1.3.7](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.7) — थिंकिंग-मॉडल/प्रोवाइडर फिक्स, विज़िबल नॉलेज इंडेक्स हिस्ट्री, और सेफर Co-Writer क्लियर/टेम्पलेट एडिटिंग।
+
+> **[2026.5.3]** [v1.3.6](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.6) — चैट और TutorBot के लिए कैटलॉग-बेस्ड मॉडल सिलेक्शन, सेफर RAG री-इंडेक्सिंग, OpenAI Responses टोकन-लिमिट फिक्स, और Skills एडिटर वैलिडेशन।
+
+> **[2026.5.2]** [v1.3.5](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.5) — स्मूदर लोकल लॉन्च सेटिंग्स, सेफर RAG क्वेरीज, क्लीनर लोकल एम्बेडिंग ऑथ, और Settings डार्क-मोड पॉलिश।
+
+> **[2026.5.1]** [v1.3.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.4) — बुक पेज चैट पर्सिस्टेंस और रिबिल्ड फ्लोज, चैट-टु-बुक रेफरेंसेज, स्ट्रॉन्गर लैंग्वेज/रीजनिंग हैंडलिंग, RAG डॉक्यूमेंट एक्सट्रैक्शन हार्डनिंग।
+
 > **[2026.4.30]** [v1.3.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.3) — NVIDIA NIM + Gemini एम्बेडिंग समर्थन, चैट इतिहास / स्किल / मेमोरी के लिए एकीकृत Space संदर्भ, सत्र स्नैपशॉट, RAG पुनः-अनुक्रमण लचीलापन।
 
 > **[2026.4.29]** [v1.3.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.2) — पारदर्शी एम्बेडिंग एंडपॉइंट URL, अमान्य स्थायी वेक्टर पर RAG पुनः-अनुक्रमण लचीलापन, थिंकिंग-मॉडल आउटपुट के लिए मेमोरी सफाई, Deep Solve रनटाइम फिक्स।
@@ -107,7 +115,7 @@
 
 - **एकीकृत चैट वर्कस्पेस** — छह मोड, एक थ्रेड: Chat, Deep Solve, क्विज़, Deep Research, Math Animator और Visualize एक संदर्भ साझा करते हैं।
 - **AI Co-Writer** — मल्टी-दस्तावेज़ Markdown वर्कस्पेस में AI सह-लेखक: फिर से लिखें, विस्तार, संक्षेप; KB व वेब।
-- **Book Engine** — संरचित इंटरैक्टिव «जीवंत पुस्तकें»: मल्टी-एजेंट पाइपलाइन, 14 ब्लॉक प्रकार (क्विज़, फ्लैशकार्ड, टाइमलाइन, कॉन्सेप्ट ग्राफ़ आदि)।
+- **Book Engine** — संरचित इंटरैक्टिव «जीवंत पुस्तकें»: मल्टी-एजेंट पाइपलाइन, 13 ब्लॉक प्रकार (क्विज़, फ्लैशकार्ड, टाइमलाइन, कॉन्सेप्ट ग्राफ़ आदि)।
 - **नॉलेज हब** — RAG KB, रंगीन नोटबुक, प्रश्न बैंक, कस्टम Skills से शिक्षण शैली।
 - **स्थायी मेमोरी** — प्रगति सारांश व शिक्षार्थी प्रोफ़ाइल; TutorBot के साथ साझा।
 - **व्यक्तिगत TutorBot** — चैटबॉट नहीं: स्वायत्त ट्यूटर, अपना वर्कस्पेस, मेमोरी, व्यक्तित्व, कौशल। [nanobot](https://github.com/HKUDS/nanobot)।
@@ -126,8 +134,8 @@
 |:---|:---|:---|:---|
 | [Git](https://git-scm.com/) | कोई भी | `git --version` | क्लोन के लिए |
 | [Python](https://www.python.org/downloads/) | 3.11+ | `python --version` | बैकएंड |
-| [Node.js](https://nodejs.org/) | 18+ | `node --version` | फ्रंटएंड बिल्ड (केवल CLI या Docker पर अनिवार्य नहीं) |
-| [npm](https://www.npmjs.com/) | 9+ | `npm --version` | आमतौर पर Node के साथ |
+| [Node.js](https://nodejs.org/) | 20.9+ | `node --version` | लोकल वेब इंस्टॉल के लिए फ्रंटएंड रनटाइम |
+| [npm](https://www.npmjs.com/) | Node.js के साथ बंडल | `npm --version` | Node.js के साथ इंस्टॉल |
 
 कम से कम एक LLM प्रदाता की **API कुंजी** आवश्यक है (उदा. [OpenAI](https://platform.openai.com/api-keys), [DeepSeek](https://platform.deepseek.com/), [Anthropic](https://console.anthropic.com/))। सेटअप टूर भरने में मार्गदर्शन देता है।
 
@@ -358,6 +366,48 @@ NEXT_PUBLIC_API_BASE_EXTERNAL=https://your-server.com:8001
 </details>
 
 <details>
+<summary><b>प्रमाणीकरण (सार्वजनिक डिप्लॉयमेंट)</b></summary>
+
+प्रमाणीकरण **डिफ़ॉल्ट रूप से अक्षम** है — localhost पर लॉगिन आवश्यक नहीं। मल्टी-टेनेंट डिप्लॉयमेंट के लिए नीचे [मल्टी-यूज़र](#multi-user) अनुभाग देखें।
+
+**हेडलेस सिंगल-यूज़र (बिना `/register` फ्लो):** env वेरिएबल के माध्यम से पहले एडमिन को प्री-सीड करें:
+
+```bash
+python -c "from deeptutor.services.auth import hash_password; print(hash_password('yourpassword'))"
+```
+
+```dotenv
+AUTH_ENABLED=true
+AUTH_USERNAME=admin
+AUTH_PASSWORD_HASH=<यहाँ हैश पेस्ट करें>
+AUTH_SECRET=your-secret-here
+```
+
+</details>
+
+<details>
+<summary><b>PocketBase साइडकार (वैकल्पिक ऑथ + स्टोरेज)</b></summary>
+
+PocketBase एक वैकल्पिक हल्का बैकएंड है जो बिल्ट-इन SQLite/JSON ऑथ और सेशन स्टोरेज को रिप्लेस करता है।
+
+> ⚠️ **PocketBase मोड अभी केवल सिंगल-यूज़र के लिए है।** डिफ़ॉल्ट स्कीमा में `users` पर `role` फ़ील्ड नहीं है और queries `user_id` से फ़िल्टर नहीं होती हैं। मल्टी-यूज़र: `POCKETBASE_URL` खाली रखें।
+
+```bash
+docker compose up -d
+open http://localhost:8090/_/
+pip install pocketbase
+python scripts/pb_setup.py
+```
+
+```dotenv
+POCKETBASE_URL=http://localhost:8090
+POCKETBASE_ADMIN_EMAIL=admin@example.com
+POCKETBASE_ADMIN_PASSWORD=your-admin-password
+```
+
+</details>
+
+<details>
 <summary><b>डेव मोड (हॉट-रिलोड)</b></summary>
 
 स्रोत माउंट करने व दोनों सेवाओं पर हॉट-रिलोड के लिए डेव ओवरले लगाएँ:
@@ -395,7 +445,8 @@ docker compose up -d     # या docker compose -f docker-compose.ghcr.yml up -
 
 | कंटेनर पथ | होस्ट पथ | सामग्री |
 |:---|:---|:---|
-| `/app/data/user` | `./data/user` | सेटिंग्स, मेमोरी, वर्कस्पेस, सत्र, लॉग |
+| `/app/data/user` | `./data/user` | सेटिंग्स, वर्कस्पेस, सत्र, लॉग |
+| `/app/data/memory` | `./data/memory` | साझा दीर्घकालिक मेमोरी (`SUMMARY.md`, `PROFILE.md`) |
 | `/app/data/knowledge_bases` | `./data/knowledge_bases` | अपलोड दस्तावेज़ व वेक्टर इंडेक्स |
 
 `docker compose down` के बाद भी ये निर्देशिकाएँ बनी रहती हैं और अगले `up` पर पुनः उपयोग होती हैं।
@@ -496,7 +547,7 @@ deeptutor kb create my-kb --doc textbook.pdf
 
 पर्दे के पीछे मल्टी-एजेंट रूपरेखा, स्रोत, अध्याय वृक्ष, पृष्ठ योजना और ब्लॉक संकलन। आप नियंत्रण में: प्रस्ताव समीक्षा, अध्याय पुनःक्रम, किसी भी पृष्ठ पर चैट।
 
-14 ब्लॉक प्रकार — पाठ, कॉलआउट, क्विज़, फ्लैशकार्ड, कोड, आकृति, डीप डाइव, एनीमेशन, इंटरैक्टिव, टाइमलाइन, कॉन्सेप्ट ग्राफ़, अनुभाग, उपयोगकर्ता नोट, प्लेसहोल्डर — प्रत्येक अपने इंटरैक्टिव घटक के साथ। वास्तविक समय प्रगति टाइमलाइन।
+13 ब्लॉक प्रकार — पाठ, कॉलआउट, क्विज़, फ्लैशकार्ड, कोड, आकृति, डीप डाइव, एनीमेशन, इंटरैक्टिव, टाइमलाइन, कॉन्सेप्ट ग्राफ़, अनुभाग, उपयोगकर्ता नोट — प्रत्येक अपने इंटरैक्टिव घटक के साथ। वास्तविक समय प्रगति टाइमलाइन।
 
 ### 📚 ज्ञान प्रबंधन
 
@@ -668,6 +719,83 @@ deeptutor session open <id>
 | `deeptutor provider login <provider>` | प्रदाता प्रमाणीकरण (`openai-codex` OAuth लॉगिन; `github-copilot` मौजूदा Copilot सत्र सत्यापित करता है) |
 
 </details>
+
+---
+
+<a id="multi-user"></a>
+### 👥 मल्टी-यूज़र — प्रति-उपयोगकर्ता वर्कस्पेस के साथ साझा डिप्लॉयमेंट
+
+<div align="center">
+<img src="../../assets/figs/dt-multi-user.png" alt="मल्टी-यूज़र" width="800">
+</div>
+
+प्रमाणीकरण चालू करने पर DeepTutor एक मल्टी-टेनेंट डिप्लॉयमेंट बन जाता है: **प्रति-उपयोगकर्ता आइसोलेटेड वर्कस्पेस** और **एडमिन-क्यूरेटेड रिसोर्स**। पहला रजिस्टर करने वाला एडमिन बनता है। बाद के अकाउंट एडमिन (इनवाइट-ओनली) द्वारा बनाए जाते हैं, प्रत्येक को स्कोप्ड चैट हिस्ट्री/मेमोरी/नोटबुक/नॉलेज बेस मिलती है।
+
+**क्विक स्टार्ट (5 स्टेप्स):**
+
+```bash
+# 1. प्रोजेक्ट रूट .env में ऑथ सक्षम करें
+echo 'AUTH_ENABLED=true' >> .env
+echo 'AUTH_SECRET=<64+ रैंडम कैरेक्टर पेस्ट करें>' >> .env
+
+# 2. Web स्टैक रीस्टार्ट करें
+python scripts/start_web.py
+
+# 3. http://localhost:3782/register खोलें और पहला अकाउंट बनाएं
+#    पहला रजिस्ट्रेशन ही सार्वजनिक है; वह यूज़र एडमिन बनता है
+#    और /register एंडपॉइंट स्वचालित रूप से बंद हो जाता है
+
+# 4. एडमिन के रूप में /admin/users → "Add user" पर जाएं
+
+# 5. प्रत्येक यूज़र के लिए स्लाइडर आइकन क्लिक करें → LLM प्रोफाइल,
+#    नॉलेज बेस, और Skills असाइन करें → सेव करें
+```
+
+**एडमिन को क्या दिखता है:**
+
+- `/settings` पर **पूरा सेटिंग्स पेज** — LLM/एम्बेडिंग/सर्च, API कीज़, मॉडल कैटलॉग।
+- `/admin/users` पर **यूज़र मैनेजमेंट** — अकाउंट बनाना, प्रमोट करना, डिमोट करना, डिलीट करना।
+- **ग्रांट एडिटर** — नॉन-एडमिन यूज़र के लिए मॉडल प्रोफाइल, KB, Skills चुनें; ग्रांट में **केवल लॉजिकल IDs**।
+- **ऑडिट ट्रेल** — हर ग्रांट बदलाव `multi-user/_system/audit/usage.jsonl` में।
+
+**सामान्य यूज़र को क्या मिलता है:**
+
+- `multi-user/<uid>/` के तहत **आइसोलेटेड वर्कस्पेस** — अपना `chat_history.db`, मेमोरी, नोटबुक, KB।
+- एडमिन-असाइन्ड KB/स्किल्स का **रीड-ओनली एक्सेस**, "एडमिन द्वारा असाइन्ड" बैज के साथ।
+- **रिडैक्टेड सेटिंग्स पेज** — थीम, लैंग्वेज, ग्रांटेड मॉडल्स का सारांश; API कीज़ नॉन-एडमिन को नहीं दिखतीं।
+- **स्कोप्ड LLM** — एडमिन-असाइन्ड मॉडल से चैट; ग्रांट न होने पर अप-फ्रंट रिजेक्शन।
+
+**वर्कस्पेस लेआउट:**
+
+```
+multi-user/
+├── _system/
+│   ├── auth/users.json
+│   ├── auth/auth_secret
+│   ├── grants/<uid>.json
+│   └── audit/usage.jsonl
+└── <uid>/
+    ├── user/
+    │   ├── chat_history.db
+    │   ├── settings/interface.json
+    │   └── workspace/{chat,co-writer,book,...}
+    ├── memory/{SUMMARY.md,PROFILE.md}
+    └── knowledge_bases/...
+```
+
+**कॉन्फ़िगरेशन रेफरेंस:**
+
+| वेरिएबल | आवश्यक | विवरण |
+|:---|:---|:---|
+| `AUTH_ENABLED` | हाँ | `true` से मल्टी-यूज़र ऑथ सक्षम। डिफ़ॉल्ट `false`। |
+| `AUTH_SECRET` | अनुशंसित | JWT साइनिंग सीक्रेट; खाली हो तो `multi-user/_system/auth/auth_secret` में लिखा जाता है। |
+| `AUTH_TOKEN_EXPIRE_HOURS` | नहीं | JWT अवधि; डिफ़ॉल्ट 24 घंटे। |
+| `AUTH_USERNAME` / `AUTH_PASSWORD_HASH` | नहीं | सिंगल-यूज़र फ़ॉलबैक; मल्टी-यूज़र में खाली रखें। |
+| `NEXT_PUBLIC_AUTH_ENABLED` | ऑटो | `start_web.py` द्वारा `AUTH_ENABLED` से मिरर किया जाता है। |
+
+> ⚠️ **PocketBase मोड (`POCKETBASE_URL` सेट) केवल सिंगल-यूज़र** — कोई `role` फ़ील्ड नहीं, `user_id` से फ़िल्टर नहीं। मल्टी-यूज़र: `POCKETBASE_URL` खाली रखें।
+
+> ⚠️ **सिंगल-प्रोसेस रिकमेंडेड।** पहले एडमिन प्रमोशन को `threading.Lock` से सुरक्षित किया गया है। मल्टी-वर्कर: पहले एडमिन को ऑफलाइन बनाएं।
 
 <a id="roadmap"></a>
 ## 🗺️ रोडमैप

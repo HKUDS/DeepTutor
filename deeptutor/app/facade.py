@@ -9,7 +9,7 @@ from typing import Any, AsyncIterator
 
 from deeptutor.runtime.registry.capability_registry import get_capability_registry
 from deeptutor.services.notebook import get_notebook_manager
-from deeptutor.services.session import get_sqlite_session_store, get_turn_runtime_manager
+from deeptutor.services.session import get_session_store, get_turn_runtime_manager
 
 
 @dataclass(slots=True)
@@ -58,7 +58,7 @@ class DeepTutorApp:
 
     def __init__(self) -> None:
         self.runtime = get_turn_runtime_manager()
-        self.store = get_sqlite_session_store()
+        self.store = get_session_store()
         self.notebooks = get_notebook_manager()
         self.capabilities = get_capability_registry()
 

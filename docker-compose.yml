@@ -19,6 +19,28 @@
 
 services:
   # ============================================
+  # PocketBase — optional auth + storage sidecar
+  # Set POCKETBASE_URL=http://pocketbase:8090 in .env to activate.
+  # Leave POCKETBASE_URL blank to run without PocketBase (SQLite fallback).
+  # ============================================
+  pocketbase:
+    image: ghcr.io/muchobien/pocketbase:latest
+    container_name: pocketbase
+    restart: unless-stopped
+    ports:
+      - "${POCKETBASE_PORT:-8090}:8090"
+    volumes:
+      - ./data/pocketbase:/pb/pb_data
+    networks:
+      - deeptutor-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8090/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ============================================
   # All-in-One DeepTutor Service
   # ============================================
   deeptutor:
@@ -96,6 +118,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+
+    depends_on:
+      pocketbase:
+        condition: service_healthy
 
     networks:
       - deeptutor-network

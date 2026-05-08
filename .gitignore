@@ -7,6 +7,7 @@
 # ============================================
 # Runtime data (knowledge bases, tutorbot workspaces, memory, etc.)
 data/
+/multi-user/
 run_code_workspace/
 deeptutor/agents/question/reference_papers/
 deeptutor/services/rag/eg_only_for_analysis/
@@ -55,6 +56,7 @@ MANIFEST
 # Virtual Environments
 .env
 *.env
+*.env.local
 !.env.example
 env/
 venv/

@@ -1157,14 +1157,15 @@ class SQLiteSessionStore:
         return await self._run(self._get_entry_categories_sync, entry_id)
 
 
-_instance: SQLiteSessionStore | None = None
+_instances: dict[str, SQLiteSessionStore] = {}
 
 
 def get_sqlite_session_store() -> SQLiteSessionStore:
-    global _instance
-    if _instance is None:
-        _instance = SQLiteSessionStore()
-    return _instance
+    db_path = get_path_service().get_chat_history_db().resolve()
+    key = str(db_path)
+    if key not in _instances:
+        _instances[key] = SQLiteSessionStore(db_path=db_path)
+    return _instances[key]
 
 
 __all__ = ["SQLiteSessionStore", "get_sqlite_session_store"]

@@ -1,4 +1,4 @@
-import { apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl } from "@/lib/api";
 import type { LLMSelection } from "@/lib/unified-ws";
 
 export interface LLMOption extends LLMSelection {
@@ -28,7 +28,7 @@ export function sameLLMSelection(
 }
 
 export async function listLLMOptions(): Promise<LLMOptionsResponse> {
-  const response = await fetch(apiUrl("/api/v1/settings/llm-options"), {
+  const response = await apiFetch(apiUrl("/api/v1/settings/llm-options"), {
     cache: "no-store",
   });
   if (!response.ok) {

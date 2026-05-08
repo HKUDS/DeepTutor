@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslation } from "react-i18next";
-import { LayoutGrid } from "lucide-react";
 import { SPACE_ITEMS } from "@/lib/space-items";
 
 export default function SpaceMiniNav() {
@@ -11,25 +10,22 @@ export default function SpaceMiniNav() {
   const { t } = useTranslation();
 
   return (
-    <aside className="flex h-full w-[224px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--card)]">
-      <div className="flex items-center gap-2.5 border-b border-[var(--border)]/60 px-4 py-4">
-        <span
-          aria-hidden
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--border)]/70 bg-[var(--background)] text-[var(--foreground)]"
-        >
-          <LayoutGrid size={14} strokeWidth={1.7} />
-        </span>
-        <div className="min-w-0">
-          <h1 className="text-[15px] font-semibold leading-tight tracking-tight text-[var(--foreground)]">
-            {t("Space")}
-          </h1>
-          <p className="mt-0.5 line-clamp-1 text-[10.5px] leading-snug text-[var(--muted-foreground)]/80">
-            {t("Your personal learning library.")}
-          </p>
-        </div>
+    <aside className="flex h-full w-[248px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--card)]">
+      <div className="px-5 pb-4 pt-6">
+        <h1 className="text-[19px] font-semibold leading-tight tracking-tight text-[var(--foreground)]">
+          {t("Space")}
+        </h1>
+        <p className="mt-1.5 text-[12.5px] leading-snug text-[var(--muted-foreground)]/80">
+          {t("Your personal learning library.")}
+        </p>
       </div>
 
-      <nav className="flex-1 space-y-0.5 px-2 py-3">
+      <div
+        aria-hidden
+        className="mx-5 h-px bg-gradient-to-r from-transparent via-[var(--border)] to-transparent"
+      />
+
+      <nav className="flex-1 px-2.5 py-3">
         {SPACE_ITEMS.map(({ href, label, description, icon: Icon }) => {
           const active = pathname.startsWith(href);
           return (
@@ -37,34 +33,30 @@ export default function SpaceMiniNav() {
               key={href}
               href={href}
               title={t(description)}
-              className={`group flex h-12 items-center gap-2.5 rounded-lg px-2.5 transition-colors ${
+              className={`group relative flex h-11 items-center gap-3 rounded-md px-3 transition-colors ${
                 active
-                  ? "bg-[var(--muted)]/60 text-[var(--foreground)]"
+                  ? "bg-[var(--muted)]/70 text-[var(--foreground)]"
                   : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
               }`}
             >
+              {active && (
+                <span
+                  aria-hidden
+                  className="absolute left-0 top-1/2 h-5 w-[2.5px] -translate-y-1/2 rounded-r-full bg-[var(--foreground)]"
+                />
+              )}
+              <Icon
+                size={17}
+                strokeWidth={active ? 2 : 1.7}
+                className="shrink-0"
+              />
               <span
-                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-colors ${
-                  active
-                    ? "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] shadow-sm"
-                    : "border-[var(--border)]/50 bg-[var(--background)]/40 text-[var(--muted-foreground)] group-hover:border-[var(--border)]/80 group-hover:text-[var(--foreground)]"
-                }`}
-              >
-                <Icon size={13} strokeWidth={active ? 1.9 : 1.6} />
-              </span>
-              <span
-                className={`min-w-0 flex-1 truncate text-[13px] leading-tight tracking-tight ${
-                  active ? "font-semibold" : "font-medium"
+                className={`min-w-0 flex-1 truncate text-[14px] leading-none tracking-tight ${
+                  active ? "font-medium" : "font-normal"
                 }`}
               >
                 {t(label)}
               </span>
-              {active && (
-                <span
-                  aria-hidden
-                  className="h-4 w-[2px] shrink-0 rounded-full bg-[var(--foreground)]/60"
-                />
-              )}
             </Link>
           );
         })}

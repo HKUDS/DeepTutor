@@ -13,7 +13,7 @@ from deeptutor.core.trace import build_trace_metadata, merge_trace_metadata, new
 from deeptutor.services.llm.config import LLMConfig
 from deeptutor.services.llm.context_window import resolve_effective_context_window
 
-from .sqlite_store import SQLiteSessionStore
+from .protocol import SessionStoreProtocol
 
 
 def count_tokens(text: str) -> int:
@@ -90,7 +90,7 @@ class ContextBuilder:
 
     def __init__(
         self,
-        store: SQLiteSessionStore,
+        store: SessionStoreProtocol,
         history_budget_ratio: float = 0.35,
         summary_target_ratio: float = 0.40,
     ) -> None:

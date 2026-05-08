@@ -39,6 +39,15 @@ from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
 from deeptutor.services.rag.factory import DEFAULT_PROVIDER
 from deeptutor.services.rag.file_routing import FileTypeRouter
+from deeptutor.multi_user.context import get_current_user
+from deeptutor.multi_user.knowledge_access import (
+    assert_writable,
+    current_kb_base_dir,
+    current_kb_manager,
+    list_visible_knowledge_bases as list_visible_kb_access,
+    manager_for_resource,
+    resolve_kb,
+)
 from deeptutor.utils.document_validator import DocumentValidator
 from deeptutor.utils.error_utils import format_exception_message
 
@@ -73,13 +82,43 @@ kb_manager = None
 
 def get_kb_manager():
     """Get KnowledgeBaseManager instance (lazy init)"""
-    global kb_manager
-    if kb_manager is None:
-        kb_manager = KnowledgeBaseManager(base_dir=str(_kb_base_dir))
-    return kb_manager
+    if kb_manager is not None:
+        return kb_manager
+    return current_kb_manager()
+
+
+def _overridden_kb_manager() -> KnowledgeBaseManager | None:
+    """Return the legacy/test manager when the route-level getter is patched.
+
+    Production multi-user access control goes through ``assert_writable`` and
+    ``resolve_kb``. Older tests and single-module integrations patch
+    ``get_kb_manager`` directly, so we keep that seam without weakening the
+    normal write guard.
+    """
+    manager = get_kb_manager()
+    if kb_manager is not None or manager is not current_kb_manager():
+        return manager
+    return None
+
+
+def _current_kb_base_dir() -> Path:
+    manager = _overridden_kb_manager()
+    if manager is not None:
+        return Path(manager.base_dir)
+    return current_kb_base_dir()
+
+
+def _writable_kb(kb_name: str) -> tuple[KnowledgeBaseManager, str, Path]:
+    manager = _overridden_kb_manager()
+    if manager is not None:
+        resolved_name = _resolve_registered_kb_name(manager, kb_name)
+        return manager, resolved_name, Path(manager.base_dir)
+    resource = assert_writable(kb_name)
+    return manager_for_resource(resource), resource.name, resource.base_dir
 
 
 class KnowledgeBaseInfo(BaseModel):
+    id: str | None = None
     name: str
     is_default: bool
     statistics: dict
@@ -87,6 +126,11 @@ class KnowledgeBaseInfo(BaseModel):
     path: str | None = None
     status: str | None = None
     progress: dict | None = None
+    source: str | None = None
+    assigned: bool = False
+    read_only: bool = False
+    provenance_label: str | None = None
+    available: bool = True
 
 
 class LinkFolderRequest(BaseModel):
@@ -123,10 +167,22 @@ def _save_uploaded_files(
     files: list[UploadFile],
     target_dir: Path,
     allowed_extensions: set[str] | None = None,
+    kb_name: str | None = None,
 ) -> tuple[list[str], list[str]]:
+    """
+    Save uploaded files to the local raw/ directory.
+
+    When PocketBase is enabled and ``kb_name`` is supplied, each file is also
+    uploaded to the PocketBase knowledge_bases record as a file attachment
+    (best-effort — local write is always the primary path).
+    """
     uploaded_files: list[str] = []
     uploaded_file_paths: list[str] = []
     written_file_paths: list[Path] = []
+
+    from deeptutor.services.pocketbase_client import is_pocketbase_enabled
+
+    _pb_sync = is_pocketbase_enabled() and bool(kb_name)
 
     try:
         for file in files:
@@ -165,6 +221,17 @@ def _save_uploaded_files(
                 written_file_paths.append(file_path)
                 uploaded_files.append(sanitized_filename)
                 uploaded_file_paths.append(str(file_path))
+
+                # Mirror file to PocketBase when enabled (best-effort, non-blocking).
+                if _pb_sync and kb_name:
+                    try:
+                        _upload_file_to_pb(kb_name, sanitized_filename, file_path)
+                    except Exception as pb_exc:
+                        logger.debug(
+                            "PocketBase file upload failed for '%s': %s",
+                            sanitized_filename,
+                            pb_exc,
+                        )
             except Exception as e:
                 if file_path and file_path.exists():
                     try:
@@ -241,6 +308,29 @@ def _validate_upload_batch(
         )
 
     return validated
+
+
+def _upload_file_to_pb(kb_name: str, filename: str, file_path: Path) -> None:
+    """Upload a single file to the PocketBase knowledge_bases record."""
+    try:
+        from deeptutor.services.pocketbase_client import get_pb_client
+
+        pb = get_pb_client()
+        records = pb.collection("knowledge_bases").get_full_list(
+            query_params={"filter": f'kb_name="{kb_name}"'}
+        )
+        if not records:
+            logger.debug(f"PocketBase KB record not found for '{kb_name}', skipping file upload")
+            return
+        with open(file_path, "rb") as fh:
+            pb.collection("knowledge_bases").update(
+                records[0].id,
+                body={"kb_name": kb_name},
+                files={"raw_files": (filename, fh)},
+            )
+        logger.debug(f"Uploaded '{filename}' to PocketBase KB '{kb_name}'")
+    except Exception as exc:
+        logger.debug(f"_upload_file_to_pb failed: {exc}")
 
 
 def _task_log(task_id: str, message: str, level: str = "info") -> None:
@@ -620,7 +710,7 @@ async def sync_configs_from_metadata():
         from deeptutor.services.config import get_kb_config_service
 
         service = get_kb_config_service()
-        service.sync_all_from_metadata(_kb_base_dir)
+        service.sync_all_from_metadata(_current_kb_base_dir())
         return {"status": "success", "message": "Configurations synced from metadata files"}
     except Exception as e:
         logger.error(f"Error syncing configs: {e}")
@@ -643,7 +733,7 @@ async def get_default_kb():
 async def set_default_kb(kb_name: str):
     """Set the default knowledge base."""
     try:
-        manager = get_kb_manager()
+        manager, kb_name, _ = _writable_kb(kb_name)
 
         # Verify KB exists
         if kb_name not in manager.list_knowledge_bases():
@@ -664,12 +754,11 @@ async def list_knowledge_bases():
     try:
         manager = get_kb_manager()
         kb_names = manager.list_knowledge_bases()
+        access_items = list_visible_kb_access()
+        access_by_id = {str(item.get("id") or ""): item for item in access_items}
+        own_prefix = "admin:kb:" if get_current_user().is_admin else "user:kb:"
 
         logger.debug(f"Found {len(kb_names)} knowledge bases: {kb_names}")
-
-        if not kb_names:
-            logger.debug("No knowledge bases found, returning empty list")
-            return []
 
         result = []
         errors = []
@@ -680,6 +769,7 @@ async def list_knowledge_bases():
                 logger.debug(f"Successfully got info for KB '{name}': {info.get('statistics', {})}")
                 result.append(
                     KnowledgeBaseInfo(
+                        id=f"{own_prefix}{info['name']}",
                         name=info["name"],
                         is_default=info["is_default"],
                         statistics=info.get("statistics", {}),
@@ -687,6 +777,12 @@ async def list_knowledge_bases():
                         path=info.get("path"),
                         status=info.get("status"),
                         progress=info.get("progress"),
+                        source="admin" if get_current_user().is_admin else "user",
+                        assigned=False,
+                        read_only=False,
+                        provenance_label=access_by_id.get(
+                            f"{own_prefix}{info['name']}", {}
+                        ).get("provenance_label"),
                     )
                 )
             except Exception as e:
@@ -699,6 +795,7 @@ async def list_knowledge_bases():
                         logger.debug(f"KB '{name}' directory exists, creating fallback info")
                         result.append(
                             KnowledgeBaseInfo(
+                                id=f"{own_prefix}{name}",
                                 name=name,
                                 is_default=name == manager.get_default(),
                                 statistics={
@@ -711,6 +808,7 @@ async def list_knowledge_bases():
                                 path=str(kb_dir),
                                 status="unknown",
                                 progress=None,
+                                source="admin" if get_current_user().is_admin else "user",
                             )
                         )
                 except Exception as fallback_err:
@@ -727,6 +825,65 @@ async def list_knowledge_bases():
             )
 
         logger.debug(f"Returning {len(result)} knowledge bases")
+        if not get_current_user().is_admin:
+            own_ids = {item.id for item in result}
+            for access in access_items:
+                if access.get("source") != "admin" or access.get("id") in own_ids:
+                    continue
+                if not access.get("available", True):
+                    result.append(
+                        KnowledgeBaseInfo(
+                            id=str(access.get("id") or ""),
+                            name=str(access.get("name") or ""),
+                            is_default=False,
+                            statistics={},
+                            metadata={},
+                            path=None,
+                            status="unavailable",
+                            progress=None,
+                            source="admin",
+                            assigned=True,
+                            read_only=True,
+                            provenance_label=str(access.get("provenance_label") or ""),
+                            available=False,
+                        )
+                    )
+                    continue
+                resource = resolve_kb(str(access.get("id") or access.get("name") or ""))
+                assigned_manager = manager_for_resource(resource)
+                try:
+                    info = assigned_manager.get_info(resource.name)
+                    result.append(
+                        KnowledgeBaseInfo(
+                            id=resource.id,
+                            name=info["name"],
+                            is_default=False,
+                            statistics=info.get("statistics", {}),
+                            metadata=info.get("metadata"),
+                            path=None,
+                            status=info.get("status"),
+                            progress=info.get("progress"),
+                            source="admin",
+                            assigned=True,
+                            read_only=True,
+                            provenance_label=str(access.get("provenance_label") or ""),
+                        )
+                    )
+                except Exception:
+                    result.append(
+                        KnowledgeBaseInfo(
+                            id=resource.id,
+                            name=resource.name,
+                            is_default=False,
+                            statistics={},
+                            metadata={},
+                            status="unknown",
+                            source="admin",
+                            assigned=True,
+                            read_only=True,
+                            provenance_label=str(access.get("provenance_label") or ""),
+                        )
+                    )
         return result
     except HTTPException:
         raise
@@ -740,8 +897,24 @@ async def list_knowledge_bases():
 async def get_knowledge_base_details(kb_name: str):
     """Get detailed info for a specific KB."""
     try:
-        manager = get_kb_manager()
-        return manager.get_info(kb_name)
+        resource = resolve_kb(kb_name)
+        manager = manager_for_resource(resource)
+        info = manager.get_info(resource.name)
+        info.update(
+            {
+                "id": resource.id,
+                "source": resource.source,
+                "assigned": resource.assigned,
+                "read_only": resource.read_only,
+            }
+        )
+        if resource.assigned:
+            info.pop("path", None)
+        return info
+    except HTTPException:
+        raise
+    except HTTPException:
+        raise
     except ValueError:
         raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
     except Exception as e:
@@ -750,9 +923,13 @@ async def get_knowledge_base_details(kb_name: str):
 
 def _resolve_kb_raw_dir(kb_name: str) -> Path:
     """Resolve the raw/ directory for a KB, validating that it exists."""
-    manager = get_kb_manager()
-    resolved_name = _resolve_registered_kb_name(manager, kb_name)
-    kb_path = manager.get_knowledge_base_path(resolved_name)
+    manager = _overridden_kb_manager()
+    if manager is not None:
+        resolved_name = _resolve_registered_kb_name(manager, kb_name)
+        return manager.get_knowledge_base_path(resolved_name) / "raw"
+    resource = resolve_kb(kb_name)
+    manager = manager_for_resource(resource)
+    kb_path = manager.get_knowledge_base_path(resource.name)
     return kb_path / "raw"
 
 
@@ -817,8 +994,8 @@ async def serve_kb_raw_file(kb_name: str, filename: str):
 async def delete_knowledge_base(kb_name: str):
     """Delete a knowledge base."""
     try:
-        manager = get_kb_manager()
-        success = manager.delete_knowledge_base(kb_name, confirm=True)
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        success = manager.delete_knowledge_base(resolved_name, confirm=True)
         if not success:
             raise HTTPException(status_code=400, detail="Failed to delete knowledge base")
         logger.info(f"KB '{kb_name}' deleted")
@@ -850,7 +1027,7 @@ async def upload_files(
 ):
     """Upload files to a knowledge base and process them in background."""
     try:
-        manager = get_kb_manager()
+        manager, kb_name, kb_base_dir = _writable_kb(kb_name)
         kb_path = manager.get_knowledge_base_path(kb_name)
         raw_dir = kb_path / "raw"
         raw_dir.mkdir(parents=True, exist_ok=True)
@@ -885,7 +1062,7 @@ async def upload_files(
         background_tasks.add_task(
             run_upload_processing_task,
             kb_name=kb_name,
-            base_dir=str(_kb_base_dir),
+            base_dir=str(kb_base_dir),
             uploaded_file_paths=uploaded_file_paths,
             task_id=task_id,
             rag_provider=kb_provider,
@@ -921,6 +1098,7 @@ async def create_knowledge_base(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         manager = get_kb_manager()
+        kb_base_dir = _current_kb_base_dir()
         if name in manager.list_knowledge_bases():
             raise HTTPException(status_code=400, detail=f"Knowledge base '{name}' already exists")
 
@@ -953,11 +1131,11 @@ async def create_knowledge_base(
             manager.config["knowledge_bases"][name]["needs_reindex"] = False
             manager._save_config()
 
-        progress_tracker = ProgressTracker(name, _kb_base_dir)
+        progress_tracker = ProgressTracker(name, kb_base_dir)
 
         initializer = KnowledgeBaseInitializer(
             kb_name=name,
-            base_dir=str(_kb_base_dir),
+            base_dir=str(kb_base_dir),
             progress_tracker=progress_tracker,
             rag_provider=rag_provider,
         )
@@ -1148,8 +1326,7 @@ async def reindex_knowledge_base(
     manual re-index will converge them onto the flat layout.
     """
     try:
-        manager = get_kb_manager()
-        kb_name = _resolve_registered_kb_name(manager, kb_name)
+        manager, kb_name, kb_base_dir = _writable_kb(kb_name)
         kb_entry = _load_kb_entry_or_404(manager, kb_name)
         force_reindex = str(kb_entry.get("status") or "").lower() == "error"
 
@@ -1168,7 +1345,7 @@ async def reindex_knowledge_base(
                 ),
             )
 
-        kb_dir = _kb_base_dir / kb_name
+        kb_dir = kb_base_dir / kb_name
         matching_version = find_matching_version(kb_dir, signature)
         matching_valid = _matching_index_is_valid(kb_name, matching_version)
         if (
@@ -1205,7 +1382,7 @@ async def reindex_knowledge_base(
         background_tasks.add_task(
             run_reindex_task,
             kb_name=kb_name,
-            base_dir=str(_kb_base_dir),
+            base_dir=str(kb_base_dir),
             task_id=task_id,
             signature_hash=signature.hash(),
         )
@@ -1227,13 +1404,16 @@ async def reindex_knowledge_base(
 async def get_progress(kb_name: str):
     """Get initialization progress for a knowledge base"""
     try:
-        progress_tracker = ProgressTracker(kb_name, _kb_base_dir)
+        resource = resolve_kb(kb_name)
+        progress_tracker = ProgressTracker(resource.name, resource.base_dir)
         progress = progress_tracker.get_progress()
 
         if progress is None:
             return {"status": "not_started", "message": "Initialization not started"}
 
         return progress
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1242,9 +1422,12 @@ async def get_progress(kb_name: str):
 async def clear_progress(kb_name: str):
     """Clear progress file for a knowledge base (useful for stuck states)"""
     try:
-        progress_tracker = ProgressTracker(kb_name, _kb_base_dir)
+        _, resolved_name, base_dir = _writable_kb(kb_name)
+        progress_tracker = ProgressTracker(resolved_name, base_dir)
         progress_tracker.clear()
         return {"status": "success", "message": f"Progress cleared for {kb_name}"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1259,11 +1442,12 @@ async def websocket_progress(websocket: WebSocket, kb_name: str):
     try:
         await broadcaster.connect(kb_name, websocket)
 
-        progress_tracker = ProgressTracker(kb_name, _kb_base_dir)
+        base_dir = _current_kb_base_dir()
+        progress_tracker = ProgressTracker(kb_name, base_dir)
         initial_progress = progress_tracker.get_progress()
         expected_task_id = websocket.query_params.get("task_id")
 
-        kb_dir = _kb_base_dir / kb_name
+        kb_dir = base_dir / kb_name
         from deeptutor.services.rag.index_versioning import list_kb_versions
 
         kb_is_ready = any(bool(version.get("ready")) for version in list_kb_versions(kb_dir))
@@ -1395,10 +1579,12 @@ async def link_folder(kb_name: str, request: LinkFolderRequest):
     - Relative paths (resolved from server working directory)
     """
     try:
-        manager = get_kb_manager()
-        folder_info = manager.link_folder(kb_name, request.folder_path)
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        folder_info = manager.link_folder(resolved_name, request.folder_path)
         logger.info(f"Linked folder '{request.folder_path}' to KB '{kb_name}'")
         return LinkedFolderInfo(**folder_info)
+    except HTTPException:
+        raise
     except ValueError as e:
         error_msg = str(e)
         if "not found" in error_msg.lower():
@@ -1412,9 +1598,12 @@ async def link_folder(kb_name: str, request: LinkFolderRequest):
 async def get_linked_folders(kb_name: str):
     """Get list of linked folders for a knowledge base."""
     try:
-        manager = get_kb_manager()
-        folders = manager.get_linked_folders(kb_name)
+        resource = resolve_kb(kb_name)
+        manager = manager_for_resource(resource)
+        folders = manager.get_linked_folders(resource.name)
         return [LinkedFolderInfo(**f) for f in folders]
+    except HTTPException:
+        raise
     except ValueError:
         raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
     except Exception as e:
@@ -1425,12 +1614,14 @@ async def get_linked_folders(kb_name: str):
 async def unlink_folder(kb_name: str, folder_id: str):
     """Unlink a folder from a knowledge base."""
     try:
-        manager = get_kb_manager()
-        success = manager.unlink_folder(kb_name, folder_id)
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        success = manager.unlink_folder(resolved_name, folder_id)
         if not success:
             raise HTTPException(status_code=404, detail=f"Folder '{folder_id}' not found")
         logger.info(f"Unlinked folder '{folder_id}' from KB '{kb_name}'")
         return {"message": "Folder unlinked successfully", "folder_id": folder_id}
+    except HTTPException:
+        raise
     except ValueError:
         raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
     except Exception as e:
@@ -1446,7 +1637,7 @@ async def sync_folder(kb_name: str, folder_id: str, background_tasks: Background
     any new files that haven't been added yet.
     """
     try:
-        manager = get_kb_manager()
+        manager, kb_name, kb_base_dir = _writable_kb(kb_name)
         kb_entry = _load_kb_entry_or_404(manager, kb_name)
         _assert_kb_writable_or_409(kb_name, kb_entry)
         kb_provider = _validate_registered_provider(
@@ -1483,7 +1674,7 @@ async def sync_folder(kb_name: str, folder_id: str, background_tasks: Background
         background_tasks.add_task(
             run_upload_processing_task,
             kb_name=kb_name,
-            base_dir=str(_kb_base_dir),
+            base_dir=str(kb_base_dir),
             uploaded_file_paths=files_to_process,
             task_id=task_id,
             rag_provider=kb_provider,

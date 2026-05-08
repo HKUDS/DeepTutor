@@ -11,9 +11,10 @@ from deeptutor.services.rag.index_versioning import list_kb_versions
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CONFIG_PATH = (
-    get_path_service().project_root / "data" / "knowledge_bases" / "kb_config.json"
-)
+# Legacy fallback only — frozen at admin scope at import time. Production code
+# must enter through ``get_kb_config_service()`` (not used directly here, see
+# ``deeptutor/services/config/__init__.py``) which resolves the path lazily.
+DEFAULT_CONFIG_PATH = get_path_service().get_knowledge_bases_root() / "kb_config.json"
 
 
 def _default_payload() -> dict[str, Any]:
@@ -28,7 +29,7 @@ def _default_payload() -> dict[str, Any]:
 
 
 class KnowledgeBaseConfigService:
-    _instance: "KnowledgeBaseConfigService | None" = None
+    _instances: dict[str, "KnowledgeBaseConfigService"] = {}
 
     def __init__(self, config_path: Path | None = None):
         self.config_path = config_path or DEFAULT_CONFIG_PATH
@@ -36,9 +37,11 @@ class KnowledgeBaseConfigService:
 
     @classmethod
     def get_instance(cls, config_path: Path | None = None) -> "KnowledgeBaseConfigService":
-        if cls._instance is None:
-            cls._instance = cls(config_path)
-        return cls._instance
+        resolved = (config_path or get_path_service().get_knowledge_bases_root() / "kb_config.json").resolve()
+        key = str(resolved)
+        if key not in cls._instances:
+            cls._instances[key] = cls(resolved)
+        return cls._instances[key]
 
     def _load_config(self) -> dict[str, Any]:
         payload = _default_payload()
@@ -180,7 +183,9 @@ class KnowledgeBaseConfigService:
 
 
 def get_kb_config_service() -> KnowledgeBaseConfigService:
-    return KnowledgeBaseConfigService.get_instance()
+    return KnowledgeBaseConfigService.get_instance(
+        get_path_service().get_knowledge_bases_root() / "kb_config.json"
+    )
 
 
 __all__ = ["KnowledgeBaseConfigService", "get_kb_config_service"]

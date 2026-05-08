@@ -24,7 +24,9 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { writeStoredLanguage } from "@/context/app-shell-storage";
-import { apiUrl } from "@/lib/api";
+import { ModelAccessSummary } from "@/features/multi-user/components/ModelAccessSummary";
+import type { ModelAccess } from "@/features/multi-user/types";
+import { apiFetch, apiUrl } from "@/lib/api";
 import { setTheme as applyThemePreference } from "@/lib/theme";
 
 type ServiceName = "llm" | "embedding" | "search";
@@ -86,7 +88,8 @@ type ProviderOption = {
 
 type SettingsPayload = {
   ui: UiSettings;
-  catalog: Catalog;
+  catalog?: Catalog;
+  model_access?: ModelAccess;
   providers?: Record<ServiceName, ProviderOption[]>;
 };
 
@@ -588,6 +591,11 @@ function SettingsPageContent() {
   const [language, setLanguage] = useState<"en" | "zh">("en");
   const [catalog, setCatalog] = useState<Catalog>(defaultCatalog());
   const [draft, setDraft] = useState<Catalog>(defaultCatalog());
+  const [modelAccess, setModelAccess] = useState<ModelAccess | null>(null);
+  // ``null`` means "we haven't received a /settings response yet". We render
+  // a loading skeleton while it's null so non-admin users never see an empty
+  // catalog editor flash before the API answers with model_access.
+  const [catalogEditable, setCatalogEditable] = useState<boolean | null>(null);
   const [activeService, setActiveService] = useState<ServiceName>("llm");
   const [logs, setLogs] = useState<string>("Waiting for test run...");
   const [testRunning, setTestRunning] = useState<ServiceName | null>(null);
@@ -614,18 +622,39 @@ function SettingsPageContent() {
 
   useEffect(() => {
     const load = async () => {
-      const settingsResponse = await fetch(apiUrl("/api/v1/settings"));
-      const settingsPayload =
-        (await settingsResponse.json()) as SettingsPayload;
-      setCatalog(settingsPayload.catalog);
-      setDraft(cloneCatalog(settingsPayload.catalog));
-      setTheme(settingsPayload.ui.theme);
-      setLanguage(settingsPayload.ui.language);
-      if (settingsPayload.providers) setProviders(settingsPayload.providers);
+      try {
+        const settingsResponse = await apiFetch(apiUrl("/api/v1/settings"));
+        if (!settingsResponse.ok) {
+          throw new Error(`Settings fetch failed: ${settingsResponse.status}`);
+        }
+        const settingsPayload =
+          (await settingsResponse.json()) as SettingsPayload;
+        if (settingsPayload.catalog) {
+          setCatalog(settingsPayload.catalog);
+          setDraft(cloneCatalog(settingsPayload.catalog));
+          setCatalogEditable(true);
+          setModelAccess(null);
+        } else {
+          setCatalogEditable(false);
+          setModelAccess(settingsPayload.model_access ?? null);
+        }
+        setTheme(settingsPayload.ui.theme);
+        setLanguage(settingsPayload.ui.language);
+        if (settingsPayload.providers) setProviders(settingsPayload.providers);
+      } catch (err) {
+        console.error("Failed to load settings:", err);
+      }
 
-      const statusResponse = await fetch(apiUrl("/api/v1/system/status"));
-      const statusPayload = (await statusResponse.json()) as SystemStatus;
-      setStatus(statusPayload);
+      try {
+        const statusResponse = await apiFetch(apiUrl("/api/v1/system/status"));
+        if (!statusResponse.ok) {
+          throw new Error(`Status fetch failed: ${statusResponse.status}`);
+        }
+        const statusPayload = (await statusResponse.json()) as SystemStatus;
+        setStatus(statusPayload);
+      } catch (err) {
+        console.error("Failed to load system status:", err);
+      }
     };
     load();
     return () => {
@@ -660,9 +689,11 @@ function SettingsPageContent() {
 
   // -- Derived ------------------------------------------------------------
 
+  const settingsLoading = catalogEditable === null;
   const activeProfile = getActiveProfile(draft, activeService);
   const activeModel = getActiveModel(draft, activeService);
-  const hasUnsavedChanges = JSON.stringify(catalog) !== JSON.stringify(draft);
+  const hasUnsavedChanges =
+    catalogEditable === true && JSON.stringify(catalog) !== JSON.stringify(draft);
   const searchProviderRaw =
     activeService === "search"
       ? (activeProfile?.provider || "").trim().toLowerCase()
@@ -705,7 +736,7 @@ function SettingsPageContent() {
     nextTheme: "light" | "dark" | "glass" | "snow",
     nextLanguage: "en" | "zh",
   ) => {
-    await fetch(apiUrl("/api/v1/settings/ui"), {
+    await apiFetch(apiUrl("/api/v1/settings/ui"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ theme: nextTheme, language: nextLanguage }),
@@ -877,9 +908,10 @@ function SettingsPageContent() {
   // -- Save / Apply -------------------------------------------------------
 
   const saveCatalog = async () => {
+    if (!catalogEditable) return;
     setSaving(true);
     try {
-      const response = await fetch(apiUrl("/api/v1/settings/catalog"), {
+      const response = await apiFetch(apiUrl("/api/v1/settings/catalog"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ catalog: draft }),
@@ -894,9 +926,10 @@ function SettingsPageContent() {
   };
 
   const applyCatalog = async () => {
+    if (!catalogEditable) return;
     setApplying(true);
     try {
-      const response = await fetch(apiUrl("/api/v1/settings/apply"), {
+      const response = await apiFetch(apiUrl("/api/v1/settings/apply"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ catalog: draft }),
@@ -905,7 +938,7 @@ function SettingsPageContent() {
       setCatalog(payload.catalog);
       setDraft(cloneCatalog(payload.catalog));
       setToast(t("Applied to .env"));
-      const statusResponse = await fetch(apiUrl("/api/v1/system/status"));
+      const statusResponse = await apiFetch(apiUrl("/api/v1/system/status"));
       setStatus((await statusResponse.json()) as SystemStatus);
     } finally {
       setApplying(false);
@@ -915,6 +948,7 @@ function SettingsPageContent() {
   // -- Diagnostics (existing single-service test) -------------------------
 
   const runDetailedTest = async () => {
+    if (!catalogEditable) return;
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
@@ -925,7 +959,7 @@ function SettingsPageContent() {
       setEmbeddingCapabilities(null);
     }
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         apiUrl(`/api/v1/settings/tests/${activeService}/start`),
         {
           method: "POST",
@@ -1032,39 +1066,43 @@ function SettingsPageContent() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={runTour}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)]/50 px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
-            >
-              <Rocket className="h-3 w-3" />
-              {t("Tour")}
-            </button>
-            <button
-              data-tour="tour-save-test"
-              onClick={saveCatalog}
-              disabled={saving}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)]/50 px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-40"
-            >
-              {saving ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Save className="h-3 w-3" />
-              )}
-              {t("Save Draft")}
-            </button>
-            <button
-              data-tour="tour-actions"
-              onClick={applyCatalog}
-              disabled={applying}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] transition-opacity hover:opacity-80 disabled:opacity-40"
-            >
-              {applying ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Wand2 className="h-3 w-3" />
-              )}
-              {t("Apply")}
-            </button>
+            {catalogEditable === true && (
+              <>
+                <button
+                  onClick={runTour}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)]/50 px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
+                >
+                  <Rocket className="h-3 w-3" />
+                  {t("Tour")}
+                </button>
+                <button
+                  data-tour="tour-save-test"
+                  onClick={saveCatalog}
+                  disabled={saving}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)]/50 px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-40"
+                >
+                  {saving ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Save className="h-3 w-3" />
+                  )}
+                  {t("Save Draft")}
+                </button>
+                <button
+                  data-tour="tour-actions"
+                  onClick={applyCatalog}
+                  disabled={applying}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] transition-opacity hover:opacity-80 disabled:opacity-40"
+                >
+                  {applying ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Wand2 className="h-3 w-3" />
+                  )}
+                  {t("Apply")}
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -1119,7 +1157,34 @@ function SettingsPageContent() {
           </div>
         </div>
 
+        {settingsLoading && (
+          <div className="mt-5 rounded-2xl border border-[var(--border)]/50 bg-[var(--card)] p-5 animate-pulse">
+            <div className="h-4 w-32 rounded bg-[var(--muted)]/60" />
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="h-20 rounded-xl border border-[var(--border)]/40 bg-[var(--background)]/40"
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {catalogEditable === false && (
+          <>
+            {modelAccess && <ModelAccessSummary access={modelAccess} />}
+            <p className="mt-5 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
+              {t(
+                "Model endpoints are assigned by your administrator. You can still personalize theme and language here.",
+              )}
+            </p>
+          </>
+        )}
+
         {/* ── Runtime status ── */}
+        {catalogEditable === true && (
+          <>
         <div className="mb-8 grid grid-cols-2 overflow-hidden rounded-xl border border-[var(--border)]/60 sm:grid-cols-4">
           <div
             className="px-4 py-3.5"
@@ -1825,10 +1890,12 @@ function SettingsPageContent() {
         <p className="mt-2 pb-4 text-[11px] leading-relaxed text-[var(--muted-foreground)]/40">
           {t("settings.configNote")}
         </p>
+          </>
+        )}
       </div>
 
       {/* ── Spotlight overlay (tour onboarding) ── */}
-      {tourGuideStep >= 0 && tourGuideStep < TOUR_GUIDE_STEPS.length && (
+      {catalogEditable === true && tourGuideStep >= 0 && tourGuideStep < TOUR_GUIDE_STEPS.length && (
         <SpotlightOverlay
           stepIndex={tourGuideStep}
           onNext={() => {

@@ -36,6 +36,26 @@ logger = logging.getLogger(__name__)
 
 @router.websocket("/ws")
 async def unified_websocket(ws: WebSocket) -> None:
+    # Auth check — mirrors the require_auth HTTP dependency.
+    # Token is read from the ?token= query param (WebSocket headers can't
+    # carry cookies cross-origin in all browsers).
+    # Uses the same local jwt.decode() path — no network call.
+    from deeptutor.multi_user.context import reset_current_user, set_current_user
+    from deeptutor.multi_user.context import user_from_token_payload
+    from deeptutor.multi_user.paths import local_admin_user
+    from deeptutor.services.auth import AUTH_ENABLED, decode_token
+
+    user_token = None
+    if AUTH_ENABLED:
+        token = ws.query_params.get("token") or ws.cookies.get("dt_token")
+        payload = decode_token(token) if token else None
+        if not payload:
+            await ws.close(code=4001)
+            return
+        user_token = set_current_user(user_from_token_payload(payload))
+    else:
+        user_token = set_current_user(local_admin_user())
+
     await ws.accept()
     closed = False
     subscription_tasks: dict[str, asyncio.Task[None]] = {}
@@ -208,3 +228,5 @@ async def unified_websocket(ws: WebSocket) -> None:
         closed = True
         for key in list(subscription_tasks.keys()):
             await stop_subscription(key)
+        if user_token is not None:
+            reset_current_user(user_token)

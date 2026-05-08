@@ -24,7 +24,20 @@ class RAGService:
         provider: Optional[str] = None,  # accepted for backward compatibility
     ):
         self.logger = logging.getLogger(__name__)
-        self.kb_base_dir = kb_base_dir or DEFAULT_KB_BASE_DIR
+        if kb_base_dir is None:
+            try:
+                from deeptutor.services.path_service import get_path_service
+
+                kb_base_dir = str(get_path_service().get_knowledge_bases_root())
+            except Exception:
+                self.logger.warning(
+                    "RAGService falling back to DEFAULT_KB_BASE_DIR (%s); "
+                    "this should only happen in single-user / CLI mode. "
+                    "Multi-user requests must reach this path with an explicit kb_base_dir.",
+                    DEFAULT_KB_BASE_DIR,
+                )
+                kb_base_dir = DEFAULT_KB_BASE_DIR
+        self.kb_base_dir = kb_base_dir
         self.provider = DEFAULT_PROVIDER
         self._pipeline = None
 

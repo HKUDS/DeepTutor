@@ -21,13 +21,34 @@ Usage:
 """
 
 from .base_session_manager import BaseSessionManager
+from .protocol import SessionStoreProtocol
 from .sqlite_store import SQLiteSessionStore, get_sqlite_session_store
 from .turn_runtime import TurnRuntimeManager, get_turn_runtime_manager
 
+
+def get_session_store() -> SessionStoreProtocol:
+    """
+    Return the active session store backend.
+
+    When POCKETBASE_URL is set in the environment, returns a
+    PocketBaseSessionStore. Otherwise falls back to the local
+    SQLiteSessionStore (default, zero-config behaviour).
+    """
+    import os
+
+    if os.getenv("POCKETBASE_URL"):
+        from .pocketbase_store import PocketBaseSessionStore
+
+        return PocketBaseSessionStore()
+    return get_sqlite_session_store()
+
+
 __all__ = [
     "BaseSessionManager",
+    "SessionStoreProtocol",
     "SQLiteSessionStore",
     "TurnRuntimeManager",
+    "get_session_store",
     "get_sqlite_session_store",
     "get_turn_runtime_manager",
 ]

@@ -21,7 +21,7 @@ from typing import Literal
 from deeptutor.services.llm import clean_thinking_tags
 from deeptutor.services.llm import stream as llm_stream
 from deeptutor.services.path_service import PathService, get_path_service
-from deeptutor.services.session.sqlite_store import SQLiteSessionStore, get_sqlite_session_store
+from deeptutor.services.session.protocol import SessionStoreProtocol
 
 MemoryFile = Literal["summary", "profile"]
 MEMORY_FILES: list[MemoryFile] = ["summary", "profile"]
@@ -57,10 +57,12 @@ class MemoryService:
     def __init__(
         self,
         path_service: PathService | None = None,
-        store: SQLiteSessionStore | None = None,
+        store: SessionStoreProtocol | None = None,
     ) -> None:
+        from deeptutor.services.session import get_session_store
+
         self._path_service = path_service or get_path_service()
-        self._store = store or get_sqlite_session_store()
+        self._store = store or get_session_store()
         self._refresh_lock = asyncio.Lock()
         self._migrate_legacy()
 
@@ -464,14 +466,15 @@ def _clean_memory_content(content: str) -> str:
     return clean_thinking_tags(_strip_code_fence(content)).strip()
 
 
-_memory_service: MemoryService | None = None
+_memory_services: dict[str, MemoryService] = {}
 
 
 def get_memory_service() -> MemoryService:
-    global _memory_service
-    if _memory_service is None:
-        _memory_service = MemoryService()
-    return _memory_service
+    path_service = get_path_service()
+    key = str(path_service.get_memory_dir().resolve())
+    if key not in _memory_services:
+        _memory_services[key] = MemoryService(path_service=path_service)
+    return _memory_services[key]
 
 
 __all__ = [

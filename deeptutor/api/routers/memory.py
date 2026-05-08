@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from deeptutor.services.memory import MemoryFile, get_memory_service
-from deeptutor.services.session import get_sqlite_session_store
+from deeptutor.services.session import get_session_store
 
 router = APIRouter()
 
@@ -53,7 +53,7 @@ async def update_memory(payload: FileUpdateRequest):
 
 @router.post("/refresh")
 async def refresh_memory(payload: MemoryRefreshRequest):
-    store = get_sqlite_session_store()
+    store = get_session_store()
     session_id = str(payload.session_id or "").strip()
     if session_id:
         session = await store.get_session(session_id)

@@ -207,7 +207,7 @@ class LocalDiskAttachmentStore:
         return target
 
 
-_singleton: AttachmentStore | None = None
+_stores: dict[str, AttachmentStore] = {}
 
 
 def get_attachment_store() -> AttachmentStore:
@@ -216,13 +216,18 @@ def get_attachment_store() -> AttachmentStore:
     Today this is always a :class:`LocalDiskAttachmentStore`; future S3/MinIO
     backends can be selected here based on an env var.
     """
-    global _singleton
-    if _singleton is None:
-        _singleton = LocalDiskAttachmentStore()
-    return _singleton
+    override = os.environ.get(_ATTACHMENT_DIR_ENV, "").strip()
+    root = (
+        Path(override).expanduser().resolve()
+        if override
+        else get_path_service().get_user_root().joinpath(*_DEFAULT_SUBPATH).resolve()
+    )
+    key = str(root)
+    if key not in _stores:
+        _stores[key] = LocalDiskAttachmentStore(root=root)
+    return _stores[key]
 
 
 def reset_attachment_store() -> None:
     """Reset the singleton — only meant for tests."""
-    global _singleton
-    _singleton = None
+    _stores.clear()

@@ -11,6 +11,9 @@ from deeptutor.services.path_service import get_path_service
 from .embedding_endpoint import normalize_embedding_endpoint_for_display
 from .env_store import get_env_store
 
+# Legacy fallback only — frozen at admin scope at import time. Production code
+# must enter through ``get_model_catalog_service()`` so the path is resolved
+# from the current user's PathService on every call.
 CATALOG_PATH = get_path_service().get_settings_file("model_catalog")
 
 
@@ -41,16 +44,18 @@ def _default_catalog() -> dict[str, Any]:
 
 
 class ModelCatalogService:
-    _instance: "ModelCatalogService | None" = None
+    _instances: dict[str, "ModelCatalogService"] = {}
 
     def __init__(self, path: Path | None = None):
         self.path = path or CATALOG_PATH
 
     @classmethod
     def get_instance(cls, path: Path | None = None) -> "ModelCatalogService":
-        if cls._instance is None:
-            cls._instance = cls(path)
-        return cls._instance
+        resolved = (path or get_path_service().get_settings_file("model_catalog")).resolve()
+        key = str(resolved)
+        if key not in cls._instances:
+            cls._instances[key] = cls(resolved)
+        return cls._instances[key]
 
     def load(self) -> dict[str, Any]:
         if self.path.exists():
@@ -516,7 +521,17 @@ class ModelCatalogService:
 
 
 def get_model_catalog_service() -> ModelCatalogService:
-    return ModelCatalogService.get_instance()
+    try:
+        from deeptutor.multi_user.context import get_current_user
+        from deeptutor.multi_user.paths import get_admin_path_service
+
+        if not get_current_user().is_admin:
+            return ModelCatalogService.get_instance(
+                get_admin_path_service().get_settings_file("model_catalog")
+            )
+    except Exception:
+        pass
+    return ModelCatalogService.get_instance(get_path_service().get_settings_file("model_catalog"))
 
 
 __all__ = ["CATALOG_PATH", "ModelCatalogService", "get_model_catalog_service"]

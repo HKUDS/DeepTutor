@@ -427,14 +427,20 @@ class NotebookManager:
         }
 
 
-_instance: NotebookManager | None = None
+_instances: dict[str, NotebookManager] = {}
 
 
 def get_notebook_manager() -> NotebookManager:
-    global _instance
-    if _instance is None:
-        _instance = NotebookManager()
-    return _instance
+    base_dir = get_path_service().get_notebook_dir().resolve()
+    key = str(base_dir)
+    if key not in _instances:
+        _instances[key] = NotebookManager(base_dir=str(base_dir))
+    return _instances[key]
 
 
-notebook_manager = get_notebook_manager()
+class _NotebookManagerProxy:
+    def __getattr__(self, name: str):
+        return getattr(get_notebook_manager(), name)
+
+
+notebook_manager = _NotebookManagerProxy()

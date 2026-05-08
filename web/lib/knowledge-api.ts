@@ -1,9 +1,10 @@
-import { apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl } from "@/lib/api";
 import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
 
 const KNOWLEDGE_CACHE_PREFIX = "knowledge:";
 
 export interface KnowledgeBaseSummary {
+  id?: string;
   name: string;
   is_default?: boolean;
   status?: string;
@@ -11,6 +12,11 @@ export interface KnowledgeBaseSummary {
   metadata?: Record<string, unknown>;
   progress?: Record<string, unknown>;
   statistics?: Record<string, unknown>;
+  source?: "admin" | "user";
+  assigned?: boolean;
+  read_only?: boolean;
+  provenance_label?: string;
+  available?: boolean;
 }
 
 export interface RagProviderSummary {
@@ -37,7 +43,7 @@ export async function listKnowledgeBases(options?: { force?: boolean }) {
   return withClientCache<KnowledgeBaseSummary[]>(
     `${KNOWLEDGE_CACHE_PREFIX}list`,
     async () => {
-      const response = await fetch(apiUrl("/api/v1/knowledge/list"), {
+      const response = await apiFetch(apiUrl("/api/v1/knowledge/list"), {
         cache: "no-store",
       });
       const data = await response.json();
@@ -57,7 +63,7 @@ export async function listRagProviders(options?: { force?: boolean }) {
   return withClientCache<RagProviderSummary[]>(
     `${KNOWLEDGE_CACHE_PREFIX}providers`,
     async () => {
-      const response = await fetch(apiUrl("/api/v1/knowledge/rag-providers"), {
+      const response = await apiFetch(apiUrl("/api/v1/knowledge/rag-providers"), {
         cache: "no-store",
       });
       const data = await response.json();
@@ -73,7 +79,7 @@ export async function getKnowledgeUploadPolicy(options?: { force?: boolean }) {
   return withClientCache<KnowledgeUploadPolicy>(
     `${KNOWLEDGE_CACHE_PREFIX}upload-policy`,
     async () => {
-      const response = await fetch(
+      const response = await apiFetch(
         apiUrl("/api/v1/knowledge/supported-file-types"),
         {
           cache: "no-store",
@@ -121,7 +127,7 @@ export async function listKnowledgeBaseFiles(
   return withClientCache<KnowledgeBaseFile[]>(
     `${KNOWLEDGE_CACHE_PREFIX}files:${name}`,
     async () => {
-      const response = await fetch(
+      const response = await apiFetch(
         apiUrl(`/api/v1/knowledge/${encodeURIComponent(name)}/files`),
         { cache: "no-store" },
       );
@@ -185,7 +191,7 @@ export async function createKnowledgeBase(payload: {
   form.append("rag_provider", payload.provider);
   payload.files.forEach((file) => form.append("files", file));
 
-  const res = await fetch(apiUrl("/api/v1/knowledge/create"), {
+  const res = await apiFetch(apiUrl("/api/v1/knowledge/create"), {
     method: "POST",
     body: form,
   });
@@ -207,7 +213,7 @@ export async function uploadKnowledgeBaseFiles(
   files.forEach((file) => form.append("files", file));
   if (options?.provider) form.append("rag_provider", options.provider);
 
-  const res = await fetch(
+  const res = await apiFetch(
     apiUrl(`/api/v1/knowledge/${encodeURIComponent(name)}/upload`),
     { method: "POST", body: form },
   );
@@ -219,7 +225,7 @@ export async function uploadKnowledgeBaseFiles(
 }
 
 export async function setDefaultKnowledgeBase(name: string): Promise<void> {
-  const res = await fetch(
+  const res = await apiFetch(
     apiUrl(`/api/v1/knowledge/default/${encodeURIComponent(name)}`),
     { method: "PUT" },
   );
@@ -232,7 +238,7 @@ export async function setDefaultKnowledgeBase(name: string): Promise<void> {
 export async function reindexKnowledgeBase(
   name: string,
 ): Promise<KnowledgeTaskResponse> {
-  const res = await fetch(
+  const res = await apiFetch(
     apiUrl(`/api/v1/knowledge/${encodeURIComponent(name)}/reindex`),
     { method: "POST" },
   );
@@ -250,7 +256,7 @@ export async function reindexKnowledgeBase(
 }
 
 export async function deleteKnowledgeBase(name: string): Promise<void> {
-  const res = await fetch(
+  const res = await apiFetch(
     apiUrl(`/api/v1/knowledge/${encodeURIComponent(name)}`),
     { method: "DELETE" },
   );

@@ -9,6 +9,7 @@ import time
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from deeptutor.multi_user.context import get_current_user
 from deeptutor.services.config import resolve_search_runtime_config
 from deeptutor.services.embedding import get_embedding_client, get_embedding_config
 from deeptutor.services.llm import complete as llm_complete
@@ -129,6 +130,14 @@ async def get_system_status():
     except Exception as e:
         result["search"]["status"] = "error"
         result["search"]["error"] = str(e)
+
+    # Non-admin users have no need to know which model the admin configured;
+    # exposing the name leaks operational detail and would let curious users
+    # fingerprint the deployment. Strip the identifying fields.
+    if not get_current_user().is_admin:
+        for section in ("llm", "embeddings"):
+            result[section].pop("model", None)
+        result["search"].pop("provider", None)
 
     return result
 
