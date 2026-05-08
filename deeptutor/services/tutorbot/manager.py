@@ -966,6 +966,7 @@ class TutorBotManager:
                     channels=data.get("channels", {}),
                     model=data.get("model"),
                     llm_selection=data.get("llm_selection"),
+                    heartbeat_interval_s=data.get("heartbeat_interval_s", 30 * 60),
                 )
                 await self.start_bot(bid, config)
                 logger.info("Auto-started bot '%s'", bid)

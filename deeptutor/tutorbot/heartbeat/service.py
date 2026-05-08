@@ -165,7 +165,7 @@ class HeartbeatService:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("Heartbeat error: {}", e)
+                logger.error("Heartbeat (bot={}) error: {}", self.bot_id, e)
 
     async def _tick(self) -> None:
         """Execute a single heartbeat tick."""
@@ -173,23 +173,23 @@ class HeartbeatService:
 
         content = self._read_heartbeat_file()
         if not content:
-            logger.debug("Heartbeat: HEARTBEAT.md missing or empty")
+            logger.debug("Heartbeat (bot={}): HEARTBEAT.md missing or empty", self.bot_id)
             return
 
         if not self._has_active_tasks(content):
-            logger.debug("Heartbeat: no active tasks found, skipping LLM")
+            logger.debug("Heartbeat (bot={}): no active tasks found, skipping LLM", self.bot_id)
             return
 
-        logger.info("Heartbeat: checking for tasks...")
+        logger.info("Heartbeat (bot={}): checking for tasks...", self.bot_id)
 
         try:
             action, tasks = await self._decide(content)
 
             if action != "run":
-                logger.info("Heartbeat: OK (nothing to report)")
+                logger.info("Heartbeat (bot={}): OK (nothing to report)", self.bot_id)
                 return
 
-            logger.info("Heartbeat: tasks found, executing...")
+            logger.info("Heartbeat (bot={}): tasks found, executing...", self.bot_id)
             if self.on_execute:
                 response = await self.on_execute(tasks)
 
@@ -201,10 +201,10 @@ class HeartbeatService:
                         self.model,
                     )
                     if should_notify and self.on_notify:
-                        logger.info("Heartbeat: completed, delivering response")
+                        logger.info("Heartbeat (bot={}): completed, delivering response", self.bot_id)
                         await self.on_notify(response)
                     else:
-                        logger.info("Heartbeat: silenced by post-run evaluation")
+                        logger.info("Heartbeat (bot={}): silenced by post-run evaluation", self.bot_id)
         except Exception:
             logger.exception("Heartbeat execution failed")
 
