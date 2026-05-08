@@ -31,7 +31,7 @@ def store(tmp_path: Path, monkeypatch) -> SQLiteSessionStore:
         lambda: instance,
     )
     monkeypatch.setattr(
-        "deeptutor.api.routers.sessions.get_session_store",
+        "deeptutor.api.routers.sessions.get_sqlite_session_store",
         lambda: instance,
     )
     return instance
