@@ -532,6 +532,32 @@ class TutorBotManager:
             instance.heartbeat.model = instance.agent_loop.model
         logger.info("Reloaded LLM for TutorBot '%s' (model=%s)", bot_id, llm_config.model)
 
+    async def reload_heartbeat(self, bot_id: str) -> None:
+        """Apply the bot's current heartbeat_interval_s to the running instance.
+
+        Loads the latest config from disk and updates the heartbeat service
+        interval; resets adaptive state as well.
+        """
+        instance = self._bots.get(bot_id)
+        if not instance or not instance.running or not instance.heartbeat:
+            return
+
+        fresh = self.load_bot_config(bot_id)
+        if not fresh:
+            return
+
+        hb = instance.heartbeat
+        old_base = hb._base_interval_s
+        hb._base_interval_s = fresh.heartbeat_interval_s
+        hb.interval_s = fresh.heartbeat_interval_s
+        hb._consecutive_skips = 0
+        logger.info(
+            "Reloaded heartbeat interval for TutorBot '%s' ({}s -> {}s)",
+            bot_id,
+            old_base,
+            fresh.heartbeat_interval_s,
+        )
+
     async def _outbound_router(self, bot_id: str, bus: Any, instance: TutorBotInstance) -> None:
         """Route outbound messages to channels, web notify_queue, and EventBus.
 

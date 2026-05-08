@@ -70,24 +70,20 @@ class HeartbeatService:
         self.enabled = enabled
         self._running = False
         self._task: asyncio.Task | None = None
-        self._last_mtime: float | None = None
-        self._last_content_hash: str | None = None
         self._consecutive_skips: int = 0
 
     @property
     def heartbeat_file(self) -> Path:
         return self.workspace / "HEARTBEAT.md"
 
-    def _read_heartbeat_file(self) -> tuple[str | None, float | None]:
-        """Returns (content, mtime) or (None, None) if missing/invalid."""
+    def _read_heartbeat_file(self) -> str | None:
+        """Returns file content or None if missing/invalid."""
         if self.heartbeat_file.exists():
             try:
-                stat = self.heartbeat_file.stat()
-                content = self.heartbeat_file.read_text(encoding="utf-8")
-                return content, stat.st_mtime
+                return self.heartbeat_file.read_text(encoding="utf-8")
             except Exception:
-                return None, None
-        return None, None
+                return None
+        return None
 
     def _apply_adaptive_interval(self) -> None:
         """Double interval after consecutive skips, up to 4x the base."""
@@ -113,6 +109,26 @@ class HeartbeatService:
                 old,
                 self._base_interval_s,
             )
+
+    def _has_active_tasks(self, content: str) -> bool:
+        """Return True if content has non-comment/empty lines under ## Active Tasks."""
+        import re
+
+        idx = content.lower().find("## active tasks")
+        if idx < 0:
+            return False
+        section = content[idx + len("## Active Tasks") :]
+        end = re.search(r"\n##\s", section)
+        if end:
+            section = section[: end.start()]
+        lines = [
+            line.strip()
+            for line in section.splitlines()
+            if line.strip()
+            and not line.strip().startswith("<!--")
+            and not line.strip().startswith("#")
+        ]
+        return bool(lines)
 
     async def _decide(self, content: str) -> tuple[str, str]:
         """Phase 1: ask LLM to decide skip/run via virtual tool call.
@@ -179,22 +195,19 @@ class HeartbeatService:
         """Execute a single heartbeat tick."""
         from deeptutor.tutorbot.utils.evaluator import evaluate_response
 
-        content, mtime = self._read_heartbeat_file()
+        content = self._read_heartbeat_file()
         if not content:
             logger.debug("Heartbeat: HEARTBEAT.md missing or empty")
             self._reset_adaptive_interval()
             return
 
-        # Option 2: skip LLM if file hasn't changed since last tick
-        if mtime == self._last_mtime and self._last_content_hash is not None:
-            if content == self._last_content_hash:
-                logger.debug("Heartbeat: HEARTBEAT.md unchanged, skipping LLM")
-                self._consecutive_skips += 1
-                self._apply_adaptive_interval()
-                return
+        if not self._has_active_tasks(content):
+            logger.debug("Heartbeat: no active tasks found, skipping LLM")
+            self._reset_adaptive_interval()
+            self._consecutive_skips += 1
+            self._apply_adaptive_interval()
+            return
 
-        self._last_mtime = mtime
-        self._last_content_hash = content
         logger.info("Heartbeat: checking for tasks...")
 
         try:
@@ -206,7 +219,6 @@ class HeartbeatService:
                 self._apply_adaptive_interval()
                 return
 
-            # Reset on active work
             self._reset_adaptive_interval()
             self._consecutive_skips = 0
 
@@ -231,7 +243,7 @@ class HeartbeatService:
 
     async def trigger_now(self) -> str | None:
         """Manually trigger a heartbeat."""
-        content, _ = self._read_heartbeat_file()
+        content = self._read_heartbeat_file()
         if not content:
             return None
         action, tasks = await self._decide(content)
