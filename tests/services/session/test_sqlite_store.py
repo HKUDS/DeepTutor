@@ -11,53 +11,31 @@ from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 
 
 def test_sqlite_store_defaults_to_data_user_chat_history_db(tmp_path: Path) -> None:
-    from deeptutor.multi_user import paths as multi_paths
-
     service = PathService.get_instance()
     original_root = service._project_root
     original_user_dir = service._user_data_dir
-    original_instance = PathService._instance
 
     try:
-        from deeptutor.multi_user.context import get_current_user
-
-        PathService._instance = service
         service._project_root = tmp_path
-        service._workspace_root = tmp_path / "data"
         service._user_data_dir = tmp_path / "data" / "user"
-        # Pre-register at the REAL admin scope key so get_path_service() finds it
-        multi_paths._path_services.clear()
-        multi_paths._path_services[get_current_user().scope.cache_key] = service
 
         store = SQLiteSessionStore()
 
         assert store.db_path == tmp_path / "data" / "user" / "chat_history.db"
         assert store.db_path.exists()
     finally:
-        PathService._instance = original_instance
         service._project_root = original_root
-        service._workspace_root = original_root / "data"
         service._user_data_dir = original_user_dir
-        multi_paths._path_services.clear()
 
 
 def test_sqlite_store_migrates_legacy_chat_history_db(tmp_path: Path) -> None:
-    from deeptutor.multi_user import paths as multi_paths
-
     service = PathService.get_instance()
     original_root = service._project_root
     original_user_dir = service._user_data_dir
-    original_instance = PathService._instance
 
     try:
-        from deeptutor.multi_user.context import get_current_user
-
-        PathService._instance = service
         service._project_root = tmp_path
-        service._workspace_root = tmp_path / "data"
         service._user_data_dir = tmp_path / "data" / "user"
-        multi_paths._path_services.clear()
-        multi_paths._path_services[get_current_user().scope.cache_key] = service
         legacy_db = tmp_path / "data" / "chat_history.db"
         legacy_db.parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(legacy_db) as conn:
@@ -69,11 +47,8 @@ def test_sqlite_store_migrates_legacy_chat_history_db(tmp_path: Path) -> None:
         assert store.db_path.exists()
         assert not legacy_db.exists()
     finally:
-        PathService._instance = original_instance
         service._project_root = original_root
-        service._workspace_root = original_root / "data"
         service._user_data_dir = original_user_dir
-        multi_paths._path_services.clear()
 
 
 @pytest.fixture
