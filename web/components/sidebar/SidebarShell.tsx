@@ -108,14 +108,21 @@ export function SidebarShell({
     // Detect Electron via flags injected by shell/index.html dom-ready.
     // Cannot use window.electron (preload only runs in the shell BrowserWindow,
     // not inside the webview). Cannot use UA (Electron string is stripped).
-    const w = window as Window & {
-      __DEEPTUTOR_DESKTOP__?: boolean
-      __DEEPTUTOR_PLATFORM__?: string
+    //
+    // Poll once on next frame in case dom-ready injection hasn't arrived yet.
+    const detect = () => {
+      const w = window as Window & {
+        __DEEPTUTOR_DESKTOP__?: boolean
+        __DEEPTUTOR_PLATFORM__?: string
+      }
+      const isElectron = w.__DEEPTUTOR_DESKTOP__ === true
+      const platform = w.__DEEPTUTOR_PLATFORM__ ?? ''
+      setIsDesktopClient(isElectron)
+      setIsMacDesktop(isElectron && platform === 'mac')
     }
-    const isElectron = w.__DEEPTUTOR_DESKTOP__ === true
-    const platform = w.__DEEPTUTOR_PLATFORM__ ?? ''
-    setIsDesktopClient(isElectron)
-    setIsMacDesktop(isElectron && platform === 'mac')
+    detect()
+    const raf = requestAnimationFrame(detect)
+    return () => cancelAnimationFrame(raf)
   }, [])
 
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false)
@@ -305,8 +312,8 @@ export function SidebarShell({
                             activeSessionId={activeSessionId}
                             loading={loadingSessions}
                             onSelect={onSelectSession}
-                            onRenameSession={onRenameSession}
-                            onDeleteSession={onDeleteSession}
+                            onRename={onRenameSession}
+                            onDelete={onDeleteSession}
                             compact
                           />
                         </div>
