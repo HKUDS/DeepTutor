@@ -65,12 +65,10 @@ class HeartbeatService:
         self.model = model
         self.on_execute = on_execute
         self.on_notify = on_notify
-        self._base_interval_s = interval_s
         self.interval_s = interval_s
         self.enabled = enabled
         self._running = False
         self._task: asyncio.Task | None = None
-        self._consecutive_skips: int = 0
 
     @property
     def heartbeat_file(self) -> Path:
@@ -85,30 +83,6 @@ class HeartbeatService:
                 return None
         return None
 
-    def _apply_adaptive_interval(self) -> None:
-        """Double interval after consecutive skips, up to 4x the base."""
-        if self._consecutive_skips >= 2:
-            multiplier = min(2 ** (self._consecutive_skips - 1), 4)
-            new_interval = int(self._base_interval_s * multiplier)
-            if new_interval != self.interval_s:
-                self.interval_s = new_interval
-                logger.debug(
-                    "Heartbeat: {} consecutive skips, extended interval to {}s (base={}s)",
-                    self._consecutive_skips,
-                    self.interval_s,
-                    self._base_interval_s,
-                )
-
-    def _reset_adaptive_interval(self) -> None:
-        """Reset to base interval."""
-        if self.interval_s != self._base_interval_s:
-            old = self.interval_s
-            self.interval_s = self._base_interval_s
-            logger.debug(
-                "Heartbeat: reset interval from {}s to {}s",
-                old,
-                self._base_interval_s,
-            )
 
     def _has_active_tasks(self, content: str) -> bool:
         """Return True if content has non-comment/empty lines under ## Active Tasks."""
@@ -198,14 +172,10 @@ class HeartbeatService:
         content = self._read_heartbeat_file()
         if not content:
             logger.debug("Heartbeat: HEARTBEAT.md missing or empty")
-            self._reset_adaptive_interval()
             return
 
         if not self._has_active_tasks(content):
             logger.debug("Heartbeat: no active tasks found, skipping LLM")
-            self._reset_adaptive_interval()
-            self._consecutive_skips += 1
-            self._apply_adaptive_interval()
             return
 
         logger.info("Heartbeat: checking for tasks...")
@@ -215,12 +185,7 @@ class HeartbeatService:
 
             if action != "run":
                 logger.info("Heartbeat: OK (nothing to report)")
-                self._consecutive_skips += 1
-                self._apply_adaptive_interval()
                 return
-
-            self._reset_adaptive_interval()
-            self._consecutive_skips = 0
 
             logger.info("Heartbeat: tasks found, executing...")
             if self.on_execute:
