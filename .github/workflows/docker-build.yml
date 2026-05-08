@@ -19,14 +19,14 @@ on:
         default: ''
         type: string
       platforms:
-        description: '目标平台 (linux/amd64, linux/arm64, 或 both)'
+        description: '目标平台 (默认单平台，多平台需 QEMU 模拟可能导致构建异常)'
         required: false
-        default: 'linux/amd64,linux/arm64'
+        default: 'linux/amd64'
         type: choice
         options:
-          - linux/amd64,linux/arm64
           - linux/amd64
           - linux/arm64
+          - linux/amd64,linux/arm64
       target:
         description: 'Dockerfile 目标阶段'
         required: false
@@ -37,6 +37,11 @@ on:
           - development
       push_to_registry:
         description: '推送到容器镜像仓库'
+        required: false
+        default: true
+        type: boolean
+      no_cache:
+        description: '禁用构建缓存 (建议首次构建或排查问题时开启)'
         required: false
         default: true
         type: boolean
@@ -55,12 +60,6 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Set run name
-        run: |
-          echo "🚀 ${{ inputs.workflow_name }}"
-          echo "::set-output name=run_name::${{ inputs.workflow_name }}"
-        id: set_run_name
-
       - name: Determine branch
         id: branch
         run: |
@@ -72,6 +71,7 @@ jobs:
           ref: ${{ steps.branch.outputs.branch }}
 
       - name: Set up QEMU
+        if: inputs.platforms != 'linux/amd64'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -113,7 +113,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             ${{ steps.tag.outputs.tag }}
-            type=sha,format=short,prefix=${{ steps.tag.outputs.tag }}-,enable=${{ github.event_name == 'workflow_dispatch' && inputs.image_tag == '' }}
+            type=sha,format=short,prefix=${{ steps.tag.outputs.tag }}-,enable=${{ inputs.image_tag == '' }}
           labels: |
             org.opencontainers.image.title=DeepTutor
             org.opencontainers.image.description=DeepTutor AI Tutor Platform
@@ -131,9 +131,10 @@ jobs:
           push: ${{ inputs.push_to_registry }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: ${{ inputs.no_cache != true && 'type=gha' || '' }}
+          cache-to: ${{ inputs.no_cache != true && 'type=gha,mode=max' || '' }}
           build-args: |
+            BACKEND_PORT=8001
             APP_VERSION=${{ steps.tag.outputs.tag }}
 
       - name: Output build summary
@@ -149,6 +150,7 @@ jobs:
           echo "  - 平台：${{ inputs.platforms }}" >> $GITHUB_STEP_SUMMARY
           echo "  - 目标：${{ inputs.target }}" >> $GITHUB_STEP_SUMMARY
           echo "  - 推送：${{ inputs.push_to_registry && '是' || '否' }}" >> $GITHUB_STEP_SUMMARY
+          echo "  - 禁用缓存：${{ inputs.no_cache && '是' || '否' }}" >> $GITHUB_STEP_SUMMARY
           
           if [ "${{ inputs.push_to_registry }}" = "true" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
