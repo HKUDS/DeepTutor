@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - dev
+      - feature/heartbeat
     paths:
       - "deeptutor/**"
       - "deeptutor_cli/**"
@@ -17,6 +18,7 @@ on:
     branches:
       - main
       - dev
+      - feature/heartbeat
     paths:
       - "deeptutor/**"
       - "deeptutor_cli/**"
