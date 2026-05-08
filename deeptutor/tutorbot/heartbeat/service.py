@@ -93,18 +93,26 @@ class HeartbeatService:
         """Double interval after consecutive skips, up to 4x the base."""
         if self._consecutive_skips >= 2:
             multiplier = min(2 ** (self._consecutive_skips - 1), 4)
-            self.interval_s = int(self._base_interval_s * multiplier)
-            logger.info(
-                "Heartbeat: {} consecutive skips, extending interval to {}s",
-                self._consecutive_skips,
-                self.interval_s,
-            )
+            new_interval = int(self._base_interval_s * multiplier)
+            if new_interval != self.interval_s:
+                self.interval_s = new_interval
+                logger.debug(
+                    "Heartbeat: {} consecutive skips, extended interval to {}s (base={}s)",
+                    self._consecutive_skips,
+                    self.interval_s,
+                    self._base_interval_s,
+                )
 
     def _reset_adaptive_interval(self) -> None:
         """Reset to base interval."""
         if self.interval_s != self._base_interval_s:
+            old = self.interval_s
             self.interval_s = self._base_interval_s
-            logger.info("Heartbeat: resetting interval to {}s", self._base_interval_s)
+            logger.debug(
+                "Heartbeat: reset interval from {}s to {}s",
+                old,
+                self._base_interval_s,
+            )
 
     async def _decide(self, content: str) -> tuple[str, str]:
         """Phase 1: ask LLM to decide skip/run via virtual tool call.

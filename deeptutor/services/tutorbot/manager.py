@@ -328,6 +328,7 @@ class TutorBotManager:
                 channels=data.get("channels", {}),
                 model=data.get("model"),
                 llm_selection=data.get("llm_selection"),
+                heartbeat_interval_s=data.get("heartbeat_interval_s", 30 * 60),
             )
         except Exception:
             logger.exception("Failed to load bot config %s", bot_id)
@@ -348,6 +349,7 @@ class TutorBotManager:
             "persona": config.persona,
             "channels": config.channels,
             "auto_start": auto_start,
+            "heartbeat_interval_s": config.heartbeat_interval_s,
         }
         if config.model:
             data["model"] = config.model
