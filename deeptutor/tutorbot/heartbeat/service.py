@@ -59,6 +59,7 @@ class HeartbeatService:
         on_notify: Callable[[str], Coroutine[Any, Any, None]] | None = None,
         interval_s: int = 30 * 60,
         enabled: bool = True,
+        bot_id: str | None = None,
     ):
         self.workspace = workspace
         self.provider = provider
@@ -67,6 +68,7 @@ class HeartbeatService:
         self.on_notify = on_notify
         self.interval_s = interval_s
         self.enabled = enabled
+        self.bot_id = bot_id
         self._running = False
         self._task: asyncio.Task | None = None
 
@@ -144,7 +146,7 @@ class HeartbeatService:
 
         self._running = True
         self._task = asyncio.create_task(self._run_loop())
-        logger.info("Heartbeat started (every {}s)", self.interval_s)
+        logger.info("Heartbeat started (bot={}, every {}s)", self.bot_id, self.interval_s)
 
     def stop(self) -> None:
         """Stop the heartbeat service."""

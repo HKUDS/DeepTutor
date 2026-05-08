@@ -497,6 +497,7 @@ class TutorBotManager:
             on_execute=_hb_execute,
             on_notify=_hb_notify,
             interval_s=config.heartbeat_interval_s,
+            bot_id=bot_id,
         )
         instance.heartbeat = heartbeat
         await heartbeat.start()
@@ -546,7 +547,7 @@ class TutorBotManager:
         old = hb.interval_s
         hb.interval_s = fresh.heartbeat_interval_s
         logger.info(
-            "Reloaded heartbeat interval for TutorBot '%s' ({}s -> {}s)",
+            "Heartbeat reloaded (bot={}, {}s -> {}s)",
             bot_id,
             old,
             fresh.heartbeat_interval_s,
