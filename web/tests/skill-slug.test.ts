@@ -8,7 +8,10 @@ import {
 } from "../lib/skill-slug";
 
 test("slugifySkillName normalizes common free-text names", () => {
-  assert.equal(slugifySkillName("Socratic Math Mentor"), "socratic-math-mentor");
+  assert.equal(
+    slugifySkillName("Socratic Math Mentor"),
+    "socratic-math-mentor",
+  );
   assert.equal(slugifySkillName("My  Skill__v2"), "my-skill-v2");
   assert.equal(slugifySkillName("___Tutor!! 2026"), "tutor-2026");
 });

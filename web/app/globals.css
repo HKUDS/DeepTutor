@@ -567,3 +567,38 @@
     padding-right: min(560px, 92vw);
   }
 }
+
+/* Sidebar tooltip */
+.dt-tooltip-wrapper {
+  @apply relative inline-flex;
+}
+
+.dt-tooltip-content {
+  @apply absolute z-50 rounded-lg bg-[var(--popover)] px-3 py-1.5 text-xs shadow-md text-[var(--popover-foreground)] pointer-events-none;
+  animation: dt-tooltip-fade-in 150ms ease-out;
+}
+
+.dt-tooltip-label {
+  @apply font-medium truncate;
+}
+
+.dt-tooltip-desc {
+  @apply mt-0.5 text-[11px] text-[var(--muted-foreground)] truncate;
+}
+
+.dt-tooltip-content[data-side="right"] {
+  @apply left-full top-1/2 -translate-y-1/2 ml-2 max-w-[200px];
+}
+
+.dt-tooltip-content[data-side="bottom"] {
+  @apply bottom-[-40px] left-1/2 -translate-x-1/2 max-w-[180px];
+}
+
+@keyframes dt-tooltip-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

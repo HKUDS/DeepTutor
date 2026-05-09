@@ -1597,5 +1597,11 @@
   "Please use the attached file(s) and this chapter as context.": "Please use the attached file(s) and this chapter as context.",
   "Context": "Context",
   "Ask a question about this page. The current chapter content is sent to the assistant automatically.": "Ask a question about this page. The current chapter content is sent to the assistant automatically.",
-  "Ask about this page...": "Ask about this page..."
+  "Ask about this page...": "Ask about this page...",
+  "Chat tooltip": "Multi-tool AI chat and search.",
+  "TutorBot tooltip": "Persistent, specialized AI agents.",
+  "Co-Writer tooltip": "AI-powered document editor.",
+  "Book tooltip": "Create AI-powered books.",
+  "Knowledge tooltip": "Manage learning personas.",
+  "Space tooltip": "Your personal learning library."
 }

@@ -693,7 +693,8 @@ function SettingsPageContent() {
   const activeProfile = getActiveProfile(draft, activeService);
   const activeModel = getActiveModel(draft, activeService);
   const hasUnsavedChanges =
-    catalogEditable === true && JSON.stringify(catalog) !== JSON.stringify(draft);
+    catalogEditable === true &&
+    JSON.stringify(catalog) !== JSON.stringify(draft);
   const searchProviderRaw =
     activeService === "search"
       ? (activeProfile?.provider || "").trim().toLowerCase()
@@ -1185,729 +1186,749 @@ function SettingsPageContent() {
         {/* ── Runtime status ── */}
         {catalogEditable === true && (
           <>
-        <div className="mb-8 grid grid-cols-2 overflow-hidden rounded-xl border border-[var(--border)]/60 sm:grid-cols-4">
-          <div
-            className="px-4 py-3.5"
-            title={status?.backend.timestamp || t("Backend status")}
-          >
-            <div className="flex items-center gap-2">
-              <span
-                className={`h-1.5 w-1.5 rounded-full ${statusDotClass(
-                  status?.backend.status === "online",
-                  false,
-                )}`}
-              />
-              <span
-                className={`${labelClass("md")} text-[var(--muted-foreground)]`}
-              >
-                {t("Backend")}
-              </span>
-            </div>
-            <div className="mt-2 truncate text-[13px] font-medium text-[var(--foreground)]">
-              {status?.backend.status === "online"
-                ? t("Online")
-                : t("Checking")}
-            </div>
-            <div className="mt-0.5 truncate text-[11px] text-[var(--muted-foreground)]">
-              {(() => {
-                const ts = status?.backend.timestamp;
-                if (!ts) return "—";
-                const parsed = new Date(ts);
-                if (Number.isNaN(parsed.getTime())) return "";
-                return parsed.toLocaleTimeString(
-                  language === "zh" ? "zh-CN" : "en-US",
-                  { hour: "2-digit", minute: "2-digit" },
-                );
-              })()}
-            </div>
-          </div>
-
-          {SERVICES.map((service, i) => {
-            const profile = getActiveProfile(draft, service);
-            const model = getActiveModel(draft, service);
-            const serviceStatus =
-              service === "llm"
-                ? status?.llm
-                : service === "embedding"
-                  ? status?.embeddings
-                  : status?.search;
-            const runtimeModel =
-              service === "llm"
-                ? status?.llm.model
-                : service === "embedding"
-                  ? status?.embeddings.model
-                  : undefined;
-            const configured =
-              service === "search"
-                ? Boolean(profile?.provider || status?.search.provider)
-                : Boolean(model?.model || runtimeModel);
-            const pendingApply = servicePendingApply(catalog, draft, service);
-            const detail = activeModelDetail(profile, model, service, t);
-            const profileName = profile?.name || t("No profile");
-            const isActiveTab = activeService === service;
-            const borderClasses =
-              i === 0
-                ? "border-l border-[var(--border)]/40"
-                : i === 1
-                  ? "border-t border-[var(--border)]/40 sm:border-t-0 sm:border-l"
-                  : "border-t border-l border-[var(--border)]/40 sm:border-t-0";
-            return (
-              <button
-                key={service}
-                type="button"
-                onClick={() => setActiveService(service)}
-                title={`${serviceLabel(service, t)} · ${profileName} · ${detail}`}
-                className={`relative px-4 py-3.5 text-left transition-colors ${borderClasses} ${
-                  isActiveTab
-                    ? "bg-[var(--muted)]/55"
-                    : "hover:bg-[var(--muted)]/30"
-                }`}
+            <div className="mb-8 grid grid-cols-2 overflow-hidden rounded-xl border border-[var(--border)]/60 sm:grid-cols-4">
+              <div
+                className="px-4 py-3.5"
+                title={status?.backend.timestamp || t("Backend status")}
               >
                 <div className="flex items-center gap-2">
                   <span
                     className={`h-1.5 w-1.5 rounded-full ${statusDotClass(
-                      configured,
-                      Boolean(serviceStatus?.error),
+                      status?.backend.status === "online",
+                      false,
                     )}`}
                   />
                   <span
-                    className={`truncate ${labelClass("md")} text-[var(--muted-foreground)]`}
+                    className={`${labelClass("md")} text-[var(--muted-foreground)]`}
                   >
-                    {serviceLabel(service, t)}
+                    {t("Backend")}
                   </span>
-                  {pendingApply && (
-                    <span className="ml-auto shrink-0 text-[10px] font-medium text-amber-600 dark:text-amber-400">
-                      {t("Pending")}
-                    </span>
-                  )}
                 </div>
                 <div className="mt-2 truncate text-[13px] font-medium text-[var(--foreground)]">
-                  {detail}
+                  {status?.backend.status === "online"
+                    ? t("Online")
+                    : t("Checking")}
                 </div>
                 <div className="mt-0.5 truncate text-[11px] text-[var(--muted-foreground)]">
-                  {profileName}
+                  {(() => {
+                    const ts = status?.backend.timestamp;
+                    if (!ts) return "—";
+                    const parsed = new Date(ts);
+                    if (Number.isNaN(parsed.getTime())) return "";
+                    return parsed.toLocaleTimeString(
+                      language === "zh" ? "zh-CN" : "en-US",
+                      { hour: "2-digit", minute: "2-digit" },
+                    );
+                  })()}
                 </div>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* ── Service Configuration ── */}
-        <div className="mb-8">
-          <div className="mb-5 flex items-center justify-between">
-            <div className="flex items-center gap-1">
-              {(["llm", "embedding", "search"] as const).map((service) => (
-                <button
-                  key={service}
-                  data-tour={`tour-${service}`}
-                  onClick={() => setActiveService(service)}
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
-                    activeService === service
-                      ? "bg-[var(--muted)] font-medium text-[var(--foreground)]"
-                      : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                  }`}
-                >
-                  {serviceIcon(service)}
-                  {service.toUpperCase()}
-                  <span className="text-[11px] text-[var(--muted-foreground)]/60">
-                    {draft.services[service].profiles.length}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={addProfile}
-                className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)]/50 px-2.5 py-1 text-[12px] text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
-              >
-                <Plus className="h-3 w-3" />
-                {t("Profile")}
-              </button>
-              {activeService !== "search" && (
-                <button
-                  onClick={addModel}
-                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)]/50 px-2.5 py-1 text-[12px] text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
-                >
-                  <Plus className="h-3 w-3" />
-                  {t("Model")}
-                </button>
-              )}
-            </div>
-          </div>
-
-          {activeProfile ? (
-            <div className="grid grid-cols-[200px_1fr] gap-5">
-              {/* ── Profile list ── */}
-              <div className="space-y-2">
-                {draft.services[activeService].profiles.map((profile) => {
-                  const isActive =
-                    profile.id ===
-                    draft.services[activeService].active_profile_id;
-                  const activeProfileModel =
-                    activeService === "search"
-                      ? null
-                      : (profile.models.find(
-                          (model) =>
-                            model.id ===
-                            draft.services[activeService].active_model_id,
-                        ) ??
-                        profile.models[0] ??
-                        null);
-                  const profileDetail = activeProfileDetail(
-                    profile,
-                    activeService,
-                    t,
-                  );
-                  const modelDetail = activeModelDetail(
-                    profile,
-                    activeProfileModel,
-                    activeService,
-                    t,
-                  );
-                  return (
-                    <button
-                      key={profile.id}
-                      onClick={() =>
-                        mutateCatalog((next) => {
-                          next.services[activeService].active_profile_id =
-                            profile.id;
-                          if (activeService !== "search") {
-                            next.services[activeService].active_model_id =
-                              profile.models[0]?.id ?? null;
-                          }
-                        })
-                      }
-                      className={`relative w-full overflow-hidden rounded-xl px-3.5 py-3 text-left transition-colors ${
-                        isActive
-                          ? "bg-[var(--muted)]/60 text-[var(--foreground)]"
-                          : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/30"
-                      }`}
-                    >
-                      {isActive && (
-                        <span className="absolute inset-y-3 left-0 w-0.5 rounded-r-full bg-[var(--foreground)]/80" />
-                      )}
-                      <div className="truncate text-[13px] font-semibold">
-                        {profile.name}
-                      </div>
-                      <div className="mt-0.5 truncate text-[11px] text-[var(--muted-foreground)]">
-                        {profileDetail}
-                      </div>
-                      {isActive ? (
-                        <div className="mt-2.5 border-t border-[var(--border)]/40 pt-2">
-                          <div
-                            className={`${labelClass("sm")} text-[var(--muted-foreground)]/70`}
-                          >
-                            {activeService === "search"
-                              ? t("Active provider")
-                              : t("Active model")}
-                          </div>
-                          <div className="mt-0.5 truncate text-[12px] font-medium text-[var(--foreground)]">
-                            {modelDetail}
-                          </div>
-                        </div>
-                      ) : (
-                        activeService !== "search" && (
-                          <div className="mt-1 text-[11px] text-[var(--muted-foreground)]/60">
-                            {t("{{count}} models", {
-                              count: profile.models.length,
-                            })}
-                          </div>
-                        )
-                      )}
-                    </button>
-                  );
-                })}
-                <button
-                  onClick={removeActiveProfile}
-                  disabled={!activeProfile}
-                  className="flex w-full items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] text-[var(--muted-foreground)]/40 transition-colors hover:text-red-500 disabled:opacity-30"
-                >
-                  <Trash2 className="h-3 w-3" />
-                  {t("Delete profile")}
-                </button>
               </div>
 
-              {/* ── Editor ── */}
-              <div className="space-y-5">
-                <div className="rounded-xl border border-[var(--border)] p-5">
-                  <div className="mb-4 text-[13px] font-medium text-[var(--foreground)]">
-                    {t("Profile")}
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                        {t("Name")}
-                      </div>
-                      <input
-                        className={inputClass}
-                        value={activeProfile.name}
-                        onChange={(e) =>
-                          updateProfileField("name", e.target.value)
-                        }
+              {SERVICES.map((service, i) => {
+                const profile = getActiveProfile(draft, service);
+                const model = getActiveModel(draft, service);
+                const serviceStatus =
+                  service === "llm"
+                    ? status?.llm
+                    : service === "embedding"
+                      ? status?.embeddings
+                      : status?.search;
+                const runtimeModel =
+                  service === "llm"
+                    ? status?.llm.model
+                    : service === "embedding"
+                      ? status?.embeddings.model
+                      : undefined;
+                const configured =
+                  service === "search"
+                    ? Boolean(profile?.provider || status?.search.provider)
+                    : Boolean(model?.model || runtimeModel);
+                const pendingApply = servicePendingApply(
+                  catalog,
+                  draft,
+                  service,
+                );
+                const detail = activeModelDetail(profile, model, service, t);
+                const profileName = profile?.name || t("No profile");
+                const isActiveTab = activeService === service;
+                const borderClasses =
+                  i === 0
+                    ? "border-l border-[var(--border)]/40"
+                    : i === 1
+                      ? "border-t border-[var(--border)]/40 sm:border-t-0 sm:border-l"
+                      : "border-t border-l border-[var(--border)]/40 sm:border-t-0";
+                return (
+                  <button
+                    key={service}
+                    type="button"
+                    onClick={() => setActiveService(service)}
+                    title={`${serviceLabel(service, t)} · ${profileName} · ${detail}`}
+                    className={`relative px-4 py-3.5 text-left transition-colors ${borderClasses} ${
+                      isActiveTab
+                        ? "bg-[var(--muted)]/55"
+                        : "hover:bg-[var(--muted)]/30"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${statusDotClass(
+                          configured,
+                          Boolean(serviceStatus?.error),
+                        )}`}
                       />
+                      <span
+                        className={`truncate ${labelClass("md")} text-[var(--muted-foreground)]`}
+                      >
+                        {serviceLabel(service, t)}
+                      </span>
+                      {pendingApply && (
+                        <span className="ml-auto shrink-0 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                          {t("Pending")}
+                        </span>
+                      )}
                     </div>
-                    <div>
-                      <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                        {t("Provider")}
-                      </div>
-                      <div className="relative">
-                        <select
-                          className={selectClass}
-                          value={
-                            activeService === "search"
-                              ? activeProfile.provider || ""
-                              : activeProfile.binding || ""
+                    <div className="mt-2 truncate text-[13px] font-medium text-[var(--foreground)]">
+                      {detail}
+                    </div>
+                    <div className="mt-0.5 truncate text-[11px] text-[var(--muted-foreground)]">
+                      {profileName}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* ── Service Configuration ── */}
+            <div className="mb-8">
+              <div className="mb-5 flex items-center justify-between">
+                <div className="flex items-center gap-1">
+                  {(["llm", "embedding", "search"] as const).map((service) => (
+                    <button
+                      key={service}
+                      data-tour={`tour-${service}`}
+                      onClick={() => setActiveService(service)}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
+                        activeService === service
+                          ? "bg-[var(--muted)] font-medium text-[var(--foreground)]"
+                          : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                      }`}
+                    >
+                      {serviceIcon(service)}
+                      {service.toUpperCase()}
+                      <span className="text-[11px] text-[var(--muted-foreground)]/60">
+                        {draft.services[service].profiles.length}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={addProfile}
+                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)]/50 px-2.5 py-1 text-[12px] text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
+                  >
+                    <Plus className="h-3 w-3" />
+                    {t("Profile")}
+                  </button>
+                  {activeService !== "search" && (
+                    <button
+                      onClick={addModel}
+                      className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)]/50 px-2.5 py-1 text-[12px] text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
+                    >
+                      <Plus className="h-3 w-3" />
+                      {t("Model")}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {activeProfile ? (
+                <div className="grid grid-cols-[200px_1fr] gap-5">
+                  {/* ── Profile list ── */}
+                  <div className="space-y-2">
+                    {draft.services[activeService].profiles.map((profile) => {
+                      const isActive =
+                        profile.id ===
+                        draft.services[activeService].active_profile_id;
+                      const activeProfileModel =
+                        activeService === "search"
+                          ? null
+                          : (profile.models.find(
+                              (model) =>
+                                model.id ===
+                                draft.services[activeService].active_model_id,
+                            ) ??
+                            profile.models[0] ??
+                            null);
+                      const profileDetail = activeProfileDetail(
+                        profile,
+                        activeService,
+                        t,
+                      );
+                      const modelDetail = activeModelDetail(
+                        profile,
+                        activeProfileModel,
+                        activeService,
+                        t,
+                      );
+                      return (
+                        <button
+                          key={profile.id}
+                          onClick={() =>
+                            mutateCatalog((next) => {
+                              next.services[activeService].active_profile_id =
+                                profile.id;
+                              if (activeService !== "search") {
+                                next.services[activeService].active_model_id =
+                                  profile.models[0]?.id ?? null;
+                              }
+                            })
                           }
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            const field =
-                              activeService === "search"
-                                ? "provider"
-                                : "binding";
-                            updateProfileField(field, val);
-                            const match = (providers[activeService] || []).find(
-                              (p) => p.value === val,
-                            );
-                            if (match?.base_url) {
-                              updateProfileField("base_url", match.base_url);
-                            }
-                            if (
-                              activeService === "embedding" &&
-                              match?.default_dim
-                            ) {
-                              updateModelField("dimension", match.default_dim);
-                            }
-                          }}
-                        >
-                          <option className={selectOptionClass} value="">
-                            {t("Select provider...")}
-                          </option>
-                          {(providers[activeService] || []).map((p) => (
-                            <option
-                              className={selectOptionClass}
-                              key={p.value}
-                              value={p.value}
-                            >
-                              {p.label}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
-                      </div>
-                      {showSearchProviderWarning && (
-                        <p
-                          className={`mt-1.5 text-[11px] ${
-                            isSupportedSearchProvider
-                              ? "text-emerald-600 dark:text-emerald-400"
-                              : isDeprecatedSearchProvider
-                                ? "text-amber-600 dark:text-amber-400"
-                                : "text-red-500"
+                          className={`relative w-full overflow-hidden rounded-xl px-3.5 py-3 text-left transition-colors ${
+                            isActive
+                              ? "bg-[var(--muted)]/60 text-[var(--foreground)]"
+                              : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/30"
                           }`}
                         >
-                          {isSupportedSearchProvider
-                            ? isPerplexityMissingKey
-                              ? t(
-                                  "Perplexity requires API key. It will fail hard without credentials.",
-                                )
-                              : t("Supported provider.")
-                            : isDeprecatedSearchProvider
-                              ? t(
-                                  "Deprecated provider. Switch to brave/tavily/jina/searxng/duckduckgo/perplexity.",
-                                )
-                              : t(
-                                  "Unsupported provider. Use brave/tavily/jina/searxng/duckduckgo/perplexity.",
-                                )}
-                        </p>
-                      )}
-                    </div>
-                    <div className="sm:col-span-2">
-                      <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                        {activeService === "embedding"
-                          ? t("Endpoint URL")
-                          : t("Base URL")}
-                      </div>
-                      <input
-                        className={inputClass}
-                        value={activeProfile.base_url}
-                        onChange={(e) =>
-                          updateProfileField("base_url", e.target.value)
-                        }
-                        placeholder={
-                          activeService === "embedding"
-                            ? "https://api.openai.com/v1/embeddings"
-                            : "https://api.openai.com/v1"
-                        }
-                      />
-                      {activeService === "embedding" && (
-                        <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
-                          {t(
-                            "Embedding requests are sent to this URL exactly; DeepTutor does not append /embeddings or /api/embed at request time.",
+                          {isActive && (
+                            <span className="absolute inset-y-3 left-0 w-0.5 rounded-r-full bg-[var(--foreground)]/80" />
                           )}
-                        </p>
-                      )}
-                    </div>
-                    <div className="sm:col-span-2">
-                      <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                        {t("API Key")}
-                      </div>
-                      <div className="relative">
-                        <input
-                          type={showApiKey ? "text" : "password"}
-                          autoComplete="new-password"
-                          spellCheck={false}
-                          className={`${inputClass} pr-10 font-mono`}
-                          value={activeProfile.api_key}
-                          onChange={(e) =>
-                            updateProfileField("api_key", e.target.value)
-                          }
-                          placeholder="sk-..."
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowApiKey((prev) => !prev)}
-                          className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-                          aria-label={
-                            showApiKey ? t("Hide API key") : t("Show API key")
-                          }
-                          title={
-                            showApiKey ? t("Hide API key") : t("Show API key")
-                          }
-                        >
-                          {showApiKey ? (
-                            <EyeOff className="h-4 w-4" />
+                          <div className="truncate text-[13px] font-semibold">
+                            {profile.name}
+                          </div>
+                          <div className="mt-0.5 truncate text-[11px] text-[var(--muted-foreground)]">
+                            {profileDetail}
+                          </div>
+                          {isActive ? (
+                            <div className="mt-2.5 border-t border-[var(--border)]/40 pt-2">
+                              <div
+                                className={`${labelClass("sm")} text-[var(--muted-foreground)]/70`}
+                              >
+                                {activeService === "search"
+                                  ? t("Active provider")
+                                  : t("Active model")}
+                              </div>
+                              <div className="mt-0.5 truncate text-[12px] font-medium text-[var(--foreground)]">
+                                {modelDetail}
+                              </div>
+                            </div>
                           ) : (
-                            <Eye className="h-4 w-4" />
+                            activeService !== "search" && (
+                              <div className="mt-1 text-[11px] text-[var(--muted-foreground)]/60">
+                                {t("{{count}} models", {
+                                  count: profile.models.length,
+                                })}
+                              </div>
+                            )
                           )}
                         </button>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                        {t("API Version")}
-                      </div>
-                      <input
-                        className={inputClass}
-                        value={activeProfile.api_version}
-                        onChange={(e) =>
-                          updateProfileField("api_version", e.target.value)
-                        }
-                        placeholder={t("Optional")}
-                      />
-                    </div>
-                    {activeService === "search" ? (
-                      <div>
-                        <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                          {t("Proxy")}
-                        </div>
-                        <input
-                          className={inputClass}
-                          value={activeProfile.proxy || ""}
-                          onChange={(e) =>
-                            updateProfileField("proxy", e.target.value)
-                          }
-                          placeholder="http://127.0.0.1:7890 (optional)"
-                        />
-                      </div>
-                    ) : (
-                      <div className="sm:col-span-2">
-                        <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                          {t("Extra Headers (JSON)")}
-                        </div>
-                        <textarea
-                          className={`${inputClass} min-h-[84px] resize-y`}
-                          value={stringifyExtraHeaders(
-                            activeProfile.extra_headers,
-                          )}
-                          onChange={(e) =>
-                            updateProfileField("extra_headers", e.target.value)
-                          }
-                          placeholder='{"APP-Code":"your-app-code"}'
-                        />
-                      </div>
-                    )}
+                      );
+                    })}
+                    <button
+                      onClick={removeActiveProfile}
+                      disabled={!activeProfile}
+                      className="flex w-full items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] text-[var(--muted-foreground)]/40 transition-colors hover:text-red-500 disabled:opacity-30"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      {t("Delete profile")}
+                    </button>
                   </div>
-                </div>
 
-                {activeService !== "search" && (
-                  <div className="rounded-xl border border-[var(--border)] p-5">
-                    <div className="mb-4 flex items-center justify-between">
-                      <div className="text-[13px] font-medium text-[var(--foreground)]">
-                        {t("Models")}
+                  {/* ── Editor ── */}
+                  <div className="space-y-5">
+                    <div className="rounded-xl border border-[var(--border)] p-5">
+                      <div className="mb-4 text-[13px] font-medium text-[var(--foreground)]">
+                        {t("Profile")}
                       </div>
-                      <button
-                        onClick={removeActiveModel}
-                        disabled={!activeModel}
-                        className="inline-flex items-center gap-1 text-[11px] text-[var(--muted-foreground)]/40 transition-colors hover:text-red-500 disabled:opacity-30"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        {t("Delete")}
-                      </button>
-                    </div>
-                    {activeProfile.models.length > 0 && (
-                      <div className="mb-4 flex flex-wrap gap-1.5">
-                        {activeProfile.models.map((model) => (
-                          <button
-                            key={model.id}
-                            onClick={() =>
-                              mutateCatalog((next) => {
-                                next.services[activeService].active_model_id =
-                                  model.id;
-                              })
-                            }
-                            className={`rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
-                              model.id ===
-                              draft.services[activeService].active_model_id
-                                ? "bg-[var(--foreground)] font-medium text-[var(--background)] shadow-sm"
-                                : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/50"
-                            }`}
-                          >
-                            <span className="inline-flex items-center gap-1.5">
-                              {model.id ===
-                                draft.services[activeService]
-                                  .active_model_id && (
-                                <CheckCircle2 className="h-3 w-3" />
-                              )}
-                              {model.name}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {activeModel && (
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div>
                           <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                            {t("Label")}
+                            {t("Name")}
                           </div>
                           <input
                             className={inputClass}
-                            value={activeModel.name}
+                            value={activeProfile.name}
                             onChange={(e) =>
-                              updateModelField("name", e.target.value)
+                              updateProfileField("name", e.target.value)
                             }
                           />
                         </div>
                         <div>
                           <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                            {t("Model ID")}
+                            {t("Provider")}
+                          </div>
+                          <div className="relative">
+                            <select
+                              className={selectClass}
+                              value={
+                                activeService === "search"
+                                  ? activeProfile.provider || ""
+                                  : activeProfile.binding || ""
+                              }
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const field =
+                                  activeService === "search"
+                                    ? "provider"
+                                    : "binding";
+                                updateProfileField(field, val);
+                                const match = (
+                                  providers[activeService] || []
+                                ).find((p) => p.value === val);
+                                if (match?.base_url) {
+                                  updateProfileField(
+                                    "base_url",
+                                    match.base_url,
+                                  );
+                                }
+                                if (
+                                  activeService === "embedding" &&
+                                  match?.default_dim
+                                ) {
+                                  updateModelField(
+                                    "dimension",
+                                    match.default_dim,
+                                  );
+                                }
+                              }}
+                            >
+                              <option className={selectOptionClass} value="">
+                                {t("Select provider...")}
+                              </option>
+                              {(providers[activeService] || []).map((p) => (
+                                <option
+                                  className={selectOptionClass}
+                                  key={p.value}
+                                  value={p.value}
+                                >
+                                  {p.label}
+                                </option>
+                              ))}
+                            </select>
+                            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
+                          </div>
+                          {showSearchProviderWarning && (
+                            <p
+                              className={`mt-1.5 text-[11px] ${
+                                isSupportedSearchProvider
+                                  ? "text-emerald-600 dark:text-emerald-400"
+                                  : isDeprecatedSearchProvider
+                                    ? "text-amber-600 dark:text-amber-400"
+                                    : "text-red-500"
+                              }`}
+                            >
+                              {isSupportedSearchProvider
+                                ? isPerplexityMissingKey
+                                  ? t(
+                                      "Perplexity requires API key. It will fail hard without credentials.",
+                                    )
+                                  : t("Supported provider.")
+                                : isDeprecatedSearchProvider
+                                  ? t(
+                                      "Deprecated provider. Switch to brave/tavily/jina/searxng/duckduckgo/perplexity.",
+                                    )
+                                  : t(
+                                      "Unsupported provider. Use brave/tavily/jina/searxng/duckduckgo/perplexity.",
+                                    )}
+                            </p>
+                          )}
+                        </div>
+                        <div className="sm:col-span-2">
+                          <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                            {activeService === "embedding"
+                              ? t("Endpoint URL")
+                              : t("Base URL")}
                           </div>
                           <input
                             className={inputClass}
-                            value={activeModel.model}
+                            value={activeProfile.base_url}
                             onChange={(e) =>
-                              updateModelField("model", e.target.value)
+                              updateProfileField("base_url", e.target.value)
                             }
-                            placeholder="gpt-4o"
+                            placeholder={
+                              activeService === "embedding"
+                                ? "https://api.openai.com/v1/embeddings"
+                                : "https://api.openai.com/v1"
+                            }
+                          />
+                          {activeService === "embedding" && (
+                            <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
+                              {t(
+                                "Embedding requests are sent to this URL exactly; DeepTutor does not append /embeddings or /api/embed at request time.",
+                              )}
+                            </p>
+                          )}
+                        </div>
+                        <div className="sm:col-span-2">
+                          <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                            {t("API Key")}
+                          </div>
+                          <div className="relative">
+                            <input
+                              type={showApiKey ? "text" : "password"}
+                              autoComplete="new-password"
+                              spellCheck={false}
+                              className={`${inputClass} pr-10 font-mono`}
+                              value={activeProfile.api_key}
+                              onChange={(e) =>
+                                updateProfileField("api_key", e.target.value)
+                              }
+                              placeholder="sk-..."
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowApiKey((prev) => !prev)}
+                              className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                              aria-label={
+                                showApiKey
+                                  ? t("Hide API key")
+                                  : t("Show API key")
+                              }
+                              title={
+                                showApiKey
+                                  ? t("Hide API key")
+                                  : t("Show API key")
+                              }
+                            >
+                              {showApiKey ? (
+                                <EyeOff className="h-4 w-4" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                            {t("API Version")}
+                          </div>
+                          <input
+                            className={inputClass}
+                            value={activeProfile.api_version}
+                            onChange={(e) =>
+                              updateProfileField("api_version", e.target.value)
+                            }
+                            placeholder={t("Optional")}
                           />
                         </div>
-                        {activeService === "llm" && (
-                          <>
-                            <div>
-                              <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                                {t("Context Window")}
-                              </div>
-                              <input
-                                className={inputClass}
-                                inputMode="numeric"
-                                value={activeModel.context_window || ""}
-                                onChange={(e) =>
-                                  updateContextWindowField(e.target.value)
-                                }
-                                placeholder="65536"
-                              />
-                            </div>
-                            <div className="rounded-xl border border-[var(--border)]/70 bg-[var(--muted)]/30 px-3.5 py-3">
-                              <div className="flex items-center justify-between gap-3">
-                                <div
-                                  className={`${labelClass("lg")} text-[var(--muted-foreground)]/70`}
-                                >
-                                  {t("Source")}
-                                </div>
-                                <span className="rounded-full border border-[var(--border)]/70 bg-[var(--card)] px-2.5 py-1 text-[11px] font-medium text-[var(--foreground)]">
-                                  {formatContextWindowSource(
-                                    activeModel.context_window_source,
-                                    t,
-                                  )}
-                                </span>
-                              </div>
-                              <p className="mt-2 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
-                                {activeModel.context_window_source ===
-                                "metadata"
-                                  ? t(
-                                      "Detected from the provider during the latest LLM test and saved into model_catalog.json.",
-                                    )
-                                  : activeModel.context_window_source ===
-                                      "default"
-                                    ? t(
-                                        "The provider did not expose a context window, so the runtime fallback was saved during the latest LLM test.",
-                                      )
-                                    : activeModel.context_window_source ===
-                                        "manual"
-                                      ? t(
-                                          "Manual override from Settings. Save Draft to persist your edit.",
-                                        )
-                                      : t(
-                                          "Run the LLM test to auto-fill this field, or enter a value manually.",
-                                        )}
-                              </p>
-                              {activeModel.context_window_detected_at && (
-                                <div className="mt-2 text-[11px] text-[var(--muted-foreground)]/70">
-                                  {t("Detected at")}:{" "}
-                                  {formatContextWindowUpdatedAt(
-                                    activeModel.context_window_detected_at,
-                                    language,
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </>
-                        )}
-                        {activeService === "embedding" && (
+                        {activeService === "search" ? (
                           <div>
-                            <div className="mb-1.5 flex items-center justify-between gap-2">
-                              <span className="text-[12px] text-[var(--muted-foreground)]">
-                                {t("Dimension")}
-                              </span>
-                              <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-[var(--muted-foreground)] select-none">
-                                <input
-                                  type="checkbox"
-                                  className="h-3 w-3 cursor-pointer accent-[var(--foreground)]"
-                                  checked={
-                                    activeModel.send_dimensions !== false
-                                  }
-                                  onChange={(e) =>
-                                    updateModelBoolField(
-                                      "send_dimensions",
-                                      e.target.checked,
-                                    )
-                                  }
-                                />
-                                <span>{t("Send dimensions")}</span>
-                                <span
-                                  tabIndex={0}
-                                  className="group/info relative inline-flex cursor-help focus:outline-none"
-                                >
-                                  <Info className="h-3 w-3 opacity-50 transition-opacity group-hover/info:opacity-100 group-focus/info:opacity-100" />
-                                  <span
-                                    role="tooltip"
-                                    className="pointer-events-none absolute top-full left-1/2 z-20 mt-1.5 w-64 -translate-x-1/2 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2.5 text-[11px] leading-relaxed text-[var(--foreground)] opacity-0 shadow-lg transition-opacity duration-75 group-hover/info:opacity-100 group-focus/info:opacity-100"
-                                  >
-                                    {t(
-                                      "Some embedding models (e.g. Qwen text-embedding-v4) reject the `dimensions` request param. Turn this off if your provider returns HTTP 400.",
-                                    )}
-                                  </span>
-                                </span>
-                              </label>
+                            <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                              {t("Proxy")}
                             </div>
-                            <DimensionField
-                              activeModel={activeModel}
-                              activeBinding={activeProfile?.binding}
-                              capabilities={embeddingCapabilities}
-                              embeddingDefaultDim={embeddingDefaultDim}
-                              inputClass={inputClass}
-                              onChangeDimension={(value) =>
-                                updateModelField("dimension", value)
+                            <input
+                              className={inputClass}
+                              value={activeProfile.proxy || ""}
+                              onChange={(e) =>
+                                updateProfileField("proxy", e.target.value)
                               }
+                              placeholder="http://127.0.0.1:7890 (optional)"
+                            />
+                          </div>
+                        ) : (
+                          <div className="sm:col-span-2">
+                            <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                              {t("Extra Headers (JSON)")}
+                            </div>
+                            <textarea
+                              className={`${inputClass} min-h-[84px] resize-y`}
+                              value={stringifyExtraHeaders(
+                                activeProfile.extra_headers,
+                              )}
+                              onChange={(e) =>
+                                updateProfileField(
+                                  "extra_headers",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder='{"APP-Code":"your-app-code"}'
                             />
                           </div>
                         )}
                       </div>
+                    </div>
+
+                    {activeService !== "search" && (
+                      <div className="rounded-xl border border-[var(--border)] p-5">
+                        <div className="mb-4 flex items-center justify-between">
+                          <div className="text-[13px] font-medium text-[var(--foreground)]">
+                            {t("Models")}
+                          </div>
+                          <button
+                            onClick={removeActiveModel}
+                            disabled={!activeModel}
+                            className="inline-flex items-center gap-1 text-[11px] text-[var(--muted-foreground)]/40 transition-colors hover:text-red-500 disabled:opacity-30"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            {t("Delete")}
+                          </button>
+                        </div>
+                        {activeProfile.models.length > 0 && (
+                          <div className="mb-4 flex flex-wrap gap-1.5">
+                            {activeProfile.models.map((model) => (
+                              <button
+                                key={model.id}
+                                onClick={() =>
+                                  mutateCatalog((next) => {
+                                    next.services[
+                                      activeService
+                                    ].active_model_id = model.id;
+                                  })
+                                }
+                                className={`rounded-lg px-3 py-1.5 text-[13px] transition-colors ${
+                                  model.id ===
+                                  draft.services[activeService].active_model_id
+                                    ? "bg-[var(--foreground)] font-medium text-[var(--background)] shadow-sm"
+                                    : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/50"
+                                }`}
+                              >
+                                <span className="inline-flex items-center gap-1.5">
+                                  {model.id ===
+                                    draft.services[activeService]
+                                      .active_model_id && (
+                                    <CheckCircle2 className="h-3 w-3" />
+                                  )}
+                                  {model.name}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {activeModel && (
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                              <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                                {t("Label")}
+                              </div>
+                              <input
+                                className={inputClass}
+                                value={activeModel.name}
+                                onChange={(e) =>
+                                  updateModelField("name", e.target.value)
+                                }
+                              />
+                            </div>
+                            <div>
+                              <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                                {t("Model ID")}
+                              </div>
+                              <input
+                                className={inputClass}
+                                value={activeModel.model}
+                                onChange={(e) =>
+                                  updateModelField("model", e.target.value)
+                                }
+                                placeholder="gpt-4o"
+                              />
+                            </div>
+                            {activeService === "llm" && (
+                              <>
+                                <div>
+                                  <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                                    {t("Context Window")}
+                                  </div>
+                                  <input
+                                    className={inputClass}
+                                    inputMode="numeric"
+                                    value={activeModel.context_window || ""}
+                                    onChange={(e) =>
+                                      updateContextWindowField(e.target.value)
+                                    }
+                                    placeholder="65536"
+                                  />
+                                </div>
+                                <div className="rounded-xl border border-[var(--border)]/70 bg-[var(--muted)]/30 px-3.5 py-3">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div
+                                      className={`${labelClass("lg")} text-[var(--muted-foreground)]/70`}
+                                    >
+                                      {t("Source")}
+                                    </div>
+                                    <span className="rounded-full border border-[var(--border)]/70 bg-[var(--card)] px-2.5 py-1 text-[11px] font-medium text-[var(--foreground)]">
+                                      {formatContextWindowSource(
+                                        activeModel.context_window_source,
+                                        t,
+                                      )}
+                                    </span>
+                                  </div>
+                                  <p className="mt-2 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
+                                    {activeModel.context_window_source ===
+                                    "metadata"
+                                      ? t(
+                                          "Detected from the provider during the latest LLM test and saved into model_catalog.json.",
+                                        )
+                                      : activeModel.context_window_source ===
+                                          "default"
+                                        ? t(
+                                            "The provider did not expose a context window, so the runtime fallback was saved during the latest LLM test.",
+                                          )
+                                        : activeModel.context_window_source ===
+                                            "manual"
+                                          ? t(
+                                              "Manual override from Settings. Save Draft to persist your edit.",
+                                            )
+                                          : t(
+                                              "Run the LLM test to auto-fill this field, or enter a value manually.",
+                                            )}
+                                  </p>
+                                  {activeModel.context_window_detected_at && (
+                                    <div className="mt-2 text-[11px] text-[var(--muted-foreground)]/70">
+                                      {t("Detected at")}:{" "}
+                                      {formatContextWindowUpdatedAt(
+                                        activeModel.context_window_detected_at,
+                                        language,
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                            {activeService === "embedding" && (
+                              <div>
+                                <div className="mb-1.5 flex items-center justify-between gap-2">
+                                  <span className="text-[12px] text-[var(--muted-foreground)]">
+                                    {t("Dimension")}
+                                  </span>
+                                  <label className="inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-[var(--muted-foreground)] select-none">
+                                    <input
+                                      type="checkbox"
+                                      className="h-3 w-3 cursor-pointer accent-[var(--foreground)]"
+                                      checked={
+                                        activeModel.send_dimensions !== false
+                                      }
+                                      onChange={(e) =>
+                                        updateModelBoolField(
+                                          "send_dimensions",
+                                          e.target.checked,
+                                        )
+                                      }
+                                    />
+                                    <span>{t("Send dimensions")}</span>
+                                    <span
+                                      tabIndex={0}
+                                      className="group/info relative inline-flex cursor-help focus:outline-none"
+                                    >
+                                      <Info className="h-3 w-3 opacity-50 transition-opacity group-hover/info:opacity-100 group-focus/info:opacity-100" />
+                                      <span
+                                        role="tooltip"
+                                        className="pointer-events-none absolute top-full left-1/2 z-20 mt-1.5 w-64 -translate-x-1/2 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2.5 text-[11px] leading-relaxed text-[var(--foreground)] opacity-0 shadow-lg transition-opacity duration-75 group-hover/info:opacity-100 group-focus/info:opacity-100"
+                                      >
+                                        {t(
+                                          "Some embedding models (e.g. Qwen text-embedding-v4) reject the `dimensions` request param. Turn this off if your provider returns HTTP 400.",
+                                        )}
+                                      </span>
+                                    </span>
+                                  </label>
+                                </div>
+                                <DimensionField
+                                  activeModel={activeModel}
+                                  activeBinding={activeProfile?.binding}
+                                  capabilities={embeddingCapabilities}
+                                  embeddingDefaultDim={embeddingDefaultDim}
+                                  inputClass={inputClass}
+                                  onChangeDimension={(value) =>
+                                    updateModelField("dimension", value)
+                                  }
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-xl border border-dashed border-[var(--border)] py-12 text-center text-[13px] text-[var(--muted-foreground)]">
-              {t("No profiles configured. Add a profile to start.")}
-            </div>
-          )}
-        </div>
-
-        {/* ── Diagnostics ── */}
-        <div className="mb-6 rounded-xl border border-[var(--border)]">
-          <div className="flex items-center justify-between px-5 py-3.5">
-            <button
-              type="button"
-              onClick={() => setDiagnosticsOpen((v) => !v)}
-              className="flex min-w-0 flex-1 items-center gap-2 text-left"
-              aria-expanded={diagnosticsOpen}
-            >
-              <Terminal className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
-              <span className="text-[13px] font-medium text-[var(--foreground)]">
-                {t("Diagnostics")}
-              </span>
-              {testRunning && (
-                <Loader2 className="h-3 w-3 animate-spin text-[var(--primary)]" />
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-[var(--border)] py-12 text-center text-[13px] text-[var(--muted-foreground)]">
+                  {t("No profiles configured. Add a profile to start.")}
+                </div>
               )}
-            </button>
-            <div className="ml-3 flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!diagnosticsOpen) setDiagnosticsOpen(true);
-                  runDetailedTest();
-                }}
-                disabled={testRunning !== null}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)]/50 px-2.5 py-1 text-[12px] text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-40"
-              >
-                {serviceIcon(activeService)}
-                {t("Run test")}
-              </button>
-              <button
-                type="button"
-                onClick={() => setDiagnosticsOpen((v) => !v)}
-                className="text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-                aria-label={
-                  diagnosticsOpen
-                    ? t("Collapse diagnostics")
-                    : t("Expand diagnostics")
-                }
-                aria-expanded={diagnosticsOpen}
-              >
-                <ChevronDown
-                  className={`h-4 w-4 transition-transform ${diagnosticsOpen ? "rotate-180" : ""}`}
-                />
-              </button>
             </div>
-          </div>
-          {diagnosticsOpen && (
-            <div className="border-t border-[var(--border)] px-5 py-4">
-              <p className="mb-3 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
-                {t(
-                  "Streams config snapshot, request target, response summary, and service-specific validation for the active {{service}} profile.",
-                  { service: activeService },
-                )}
-              </p>
-              <pre className="max-h-[360px] overflow-y-auto rounded-lg bg-[#0f0f0f] p-4 font-mono text-[12px] leading-6 text-[#777] dark:bg-[#0a0a0a]">
-                {logs}
-              </pre>
-            </div>
-          )}
-        </div>
 
-        {/* ── Footer note ── */}
-        <p className="mt-2 pb-4 text-[11px] leading-relaxed text-[var(--muted-foreground)]/40">
-          {t("settings.configNote")}
-        </p>
+            {/* ── Diagnostics ── */}
+            <div className="mb-6 rounded-xl border border-[var(--border)]">
+              <div className="flex items-center justify-between px-5 py-3.5">
+                <button
+                  type="button"
+                  onClick={() => setDiagnosticsOpen((v) => !v)}
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  aria-expanded={diagnosticsOpen}
+                >
+                  <Terminal className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
+                  <span className="text-[13px] font-medium text-[var(--foreground)]">
+                    {t("Diagnostics")}
+                  </span>
+                  {testRunning && (
+                    <Loader2 className="h-3 w-3 animate-spin text-[var(--primary)]" />
+                  )}
+                </button>
+                <div className="ml-3 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!diagnosticsOpen) setDiagnosticsOpen(true);
+                      runDetailedTest();
+                    }}
+                    disabled={testRunning !== null}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)]/50 px-2.5 py-1 text-[12px] text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-40"
+                  >
+                    {serviceIcon(activeService)}
+                    {t("Run test")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDiagnosticsOpen((v) => !v)}
+                    className="text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                    aria-label={
+                      diagnosticsOpen
+                        ? t("Collapse diagnostics")
+                        : t("Expand diagnostics")
+                    }
+                    aria-expanded={diagnosticsOpen}
+                  >
+                    <ChevronDown
+                      className={`h-4 w-4 transition-transform ${diagnosticsOpen ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                </div>
+              </div>
+              {diagnosticsOpen && (
+                <div className="border-t border-[var(--border)] px-5 py-4">
+                  <p className="mb-3 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
+                    {t(
+                      "Streams config snapshot, request target, response summary, and service-specific validation for the active {{service}} profile.",
+                      { service: activeService },
+                    )}
+                  </p>
+                  <pre className="max-h-[360px] overflow-y-auto rounded-lg bg-[#0f0f0f] p-4 font-mono text-[12px] leading-6 text-[#777] dark:bg-[#0a0a0a]">
+                    {logs}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            {/* ── Footer note ── */}
+            <p className="mt-2 pb-4 text-[11px] leading-relaxed text-[var(--muted-foreground)]/40">
+              {t("settings.configNote")}
+            </p>
           </>
         )}
       </div>
 
       {/* ── Spotlight overlay (tour onboarding) ── */}
-      {catalogEditable === true && tourGuideStep >= 0 && tourGuideStep < TOUR_GUIDE_STEPS.length && (
-        <SpotlightOverlay
-          stepIndex={tourGuideStep}
-          onNext={() => {
-            if (tourGuideStep < TOUR_GUIDE_STEPS.length - 1) {
-              setTourGuideStep((s) => s + 1);
-            } else {
-              setTourGuideStep(-1);
-            }
-          }}
-          onSkip={() => setTourGuideStep(-1)}
-        />
-      )}
+      {catalogEditable === true &&
+        tourGuideStep >= 0 &&
+        tourGuideStep < TOUR_GUIDE_STEPS.length && (
+          <SpotlightOverlay
+            stepIndex={tourGuideStep}
+            onNext={() => {
+              if (tourGuideStep < TOUR_GUIDE_STEPS.length - 1) {
+                setTourGuideStep((s) => s + 1);
+              } else {
+                setTourGuideStep(-1);
+              }
+            }}
+            onSkip={() => setTourGuideStep(-1)}
+          />
+        )}
     </div>
   );
 }

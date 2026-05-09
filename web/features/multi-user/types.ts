@@ -29,10 +29,22 @@ export type GrantPayload = {
 
 export type MultiUserResources = {
   models: {
-    llm: Array<{ profile_id: string; name: string; models?: Array<{ model_id: string; name: string; model?: string }> }>;
-    embedding: Array<{ profile_id: string; name: string; models?: Array<{ model_id: string; name: string; model?: string }> }>;
+    llm: Array<{
+      profile_id: string;
+      name: string;
+      models?: Array<{ model_id: string; name: string; model?: string }>;
+    }>;
+    embedding: Array<{
+      profile_id: string;
+      name: string;
+      models?: Array<{ model_id: string; name: string; model?: string }>;
+    }>;
     search: Array<{ profile_id: string; name: string; provider?: string }>;
   };
-  knowledge_bases: Array<{ resource_id: string; name: string; source: "admin" }>;
+  knowledge_bases: Array<{
+    resource_id: string;
+    name: string;
+    source: "admin";
+  }>;
   skills: Array<{ name: string; description?: string; tags?: string[] }>;
 };

@@ -104,6 +104,19 @@ def run_capability(
 
 
 @app.command()
+def start() -> None:
+    """Launch backend + frontend together."""
+    from pathlib import Path
+    import subprocess
+    import sys
+
+    script = str(Path(__file__).resolve().parent.parent / "scripts" / "start_web.py")
+    result = subprocess.run([sys.executable, script], check=False)
+    if result.returncode:
+        raise typer.Exit(code=result.returncode)
+
+
+@app.command()
 def serve(
     host: str = typer.Option("0.0.0.0", help="Bind address."),
     port: int = typer.Option(get_backend_port(), help="Port number."),

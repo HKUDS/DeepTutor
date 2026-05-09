@@ -9,7 +9,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
-from deeptutor.services.session import get_session_store
+from deeptutor.services.session import get_session_store, get_sqlite_session_store
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ async def delete_session(session_id: str):
 async def record_quiz_results(session_id: str, payload: QuizResultsRequest):
     if not payload.answers:
         raise HTTPException(status_code=400, detail="Quiz results are required")
-    store = get_session_store()
+    store = get_sqlite_session_store()
     session = await store.get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")

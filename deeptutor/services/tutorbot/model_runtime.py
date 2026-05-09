@@ -22,9 +22,7 @@ def resolve_tutorbot_llm_config(bot_config: Any) -> LLMConfig:
     configs may still contain a raw ``model`` string, which is applied as a
     model-only override on top of the current system default provider.
     """
-    selection = normalize_tutorbot_llm_selection(
-        getattr(bot_config, "llm_selection", None)
-    )
+    selection = normalize_tutorbot_llm_selection(getattr(bot_config, "llm_selection", None))
     if selection:
         return resolve_llm_config_for_selection(selection)
 

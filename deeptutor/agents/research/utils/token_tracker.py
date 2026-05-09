@@ -29,6 +29,8 @@ MODEL_PRICING = {
     "gpt-3.5-turbo": {"input": 0.0005, "output": 0.0015},
     "deepseek-chat": {"input": 0.00014, "output": 0.00028},
     "deepseek-coder": {"input": 0.00014, "output": 0.00028},
+    "deepseek-v4-flash": {"input": 0.00014, "output": 0.00028},
+    "deepseek-v4-pro": {"input": 0.000435, "output": 0.00087},
 }
 
 

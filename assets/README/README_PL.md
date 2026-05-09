@@ -28,6 +28,10 @@
 
 ### 📦 Wydania
 
+> **[2026.5.9]** [v1.3.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.9) — TutorBot obsługuje Zulip i NVIDIA NIM, bezpieczniejszy routing modeli rozumujących, `deeptutor start`, podpowiedzi w pasku bocznym i parytet magazynu sesji.
+
+> **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — Opcjonalne wdrożenia multi-user z izolowanymi workspace’ami, uprawnieniami admina, trasami auth i scoped runtime access.
+
 > **[2026.5.4]** [v1.3.7](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.7) — Poprawki modeli rozumujących/dostawców, widoczna historia indeksu wiedzy, bezpieczniejsze czyszczenie Co-Writer i edycja szablonów.
 
 > **[2026.5.3]** [v1.3.6](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.6) — Wybór modeli z katalogu w czacie i TutorBot, bezpieczniejsza ponowna indeksacja RAG, poprawki limitu tokenów OpenAI Responses, walidacja edytora Skills.
@@ -48,6 +52,9 @@
 
 > **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — Załączniki tekst / kod / SVG, konfiguracja jednym poleceniem, eksport czatu Markdown, zwarty interfejs zarządzania KB.
 
+<details>
+<summary><b>Starsze wydania (ponad 2 tygodnie temu)</b></summary>
+
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — Załączniki dokumentów (PDF/DOCX/XLSX/PPTX), blok rozumowania modelu, edytor szablonów Soul, zapis z Co-Writer do notesu.
 
 > **[2026.4.22]** [v1.2.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.2) — System Skills tworzonych przez użytkownika, optymalizacja wydajności wpisywania w czacie, autostart TutorBot, UI biblioteki książek, wizualizacje pełnoekranowe.
@@ -55,9 +62,6 @@
 > **[2026.4.21]** [v1.2.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.1) — Limity tokenów na etap, ponowna generacja odpowiedzi we wszystkich punktach wejścia, poprawki zgodności RAG i Gemma.
 
 > **[2026.4.20]** [v1.2.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.0) — Kompilator Book Engine „żywych książek", Co-Writer wielodokumentowy, interaktywne wizualizacje HTML, @-wzmianki banku pytań na czacie.
-
-<details>
-<summary><b>Starsze wydania (ponad 2 tygodnie temu)</b></summary>
 
 > **[2026.4.18]** [v1.1.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.2) — Zakładka Channels oparta na schemacie, konsolidacja RAG w jednym potoku, zewnętrzne prompty czatu.
 

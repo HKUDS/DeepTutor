@@ -28,6 +28,10 @@
 
 ### 📦 Релизы
 
+> **[2026.5.9]** [v1.3.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.9) — TutorBot получил Zulip и NVIDIA NIM, более безопасный роутинг thinking-моделей, `deeptutor start`, подсказки сайдбара и паритет хранилищ сессий.
+
+> **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — Опциональные multi-user развёртывания с изолированными рабочими пространствами, admin grants, auth routes и scoped runtime access.
+
 > **[2026.5.4]** [v1.3.7](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.7) — Исправления для thinking-моделей/провайдеров, видимая история индекса знаний, более безопасные очистка Co-Writer и редактирование шаблонов.
 
 > **[2026.5.3]** [v1.3.6](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.6) — Выбор моделей через каталог в чате и TutorBot, более безопасная переиндексация RAG, исправления лимита токенов OpenAI Responses, валидация редактора Skills.
@@ -48,6 +52,9 @@
 
 > **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — Вложения текста / кода / SVG, тур настройки одной командой, экспорт чата в Markdown, компактный UI управления KB.
 
+<details>
+<summary><b>Прошлые релизы (более 2 недель назад)</b></summary>
+
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — Вложения документов (PDF/DOCX/XLSX/PPTX), блок размышлений модели рассуждений, редактор шаблонов Soul, сохранение из Co-Writer в блокнот.
 
 > **[2026.4.22]** [v1.2.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.2) — Пользовательские Skills, оптимизация ввода в чате, авто-старт TutorBot, UI библиотеки книг, полноэкранные визуализации.
@@ -59,10 +66,6 @@
 > **[2026.4.18]** [v1.1.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.2) — Вкладка Channels на схеме, единый конвейер RAG, вынесенные промпты чата.
 
 > **[2026.4.17]** [v1.1.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.1) — Универсальный «Ответить сейчас», синхронизация прокрутки Co-Writer, единая панель настроек, кнопка Stop при стриминге.
-
-
-<details>
-<summary><b>Прошлые релизы (более 2 недель назад)</b></summary>
 
 > **[2026.4.15]** [v1.1.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.0) — переработка разбора блочных формул LaTeX; LLM-диагностика через `agents.yaml`; исправление пересылки дополнительных заголовков; исправление UUID в SaveToNotebook; руководство по Docker и локальным LLM.
 

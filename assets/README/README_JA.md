@@ -28,6 +28,10 @@
 
 ### 📦 リリース
 
+> **[2026.5.9]** [v1.3.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.9) — TutorBot の Zulip／NVIDIA NIM 対応、思考モデルルーティングの安全化、`deeptutor start`、サイドバーツールチップ、セッションストア整合性。
+
+> **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — 任意のマルチユーザー展開、分離されたユーザーワークスペース、管理者権限付与、認証ルート、スコープ付き実行時アクセス。
+
 > **[2026.5.4]** [v1.3.7](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.7) — 思考モデル／プロバイダー修正、ナレッジインデックス履歴の表示、Co-Writer のクリア・テンプレート編集の安全性向上。
 
 > **[2026.5.3]** [v1.3.6](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.6) — チャットと TutorBot のカタログベースモデル選択、RAG 再インデックスの安全性向上、OpenAI Responses トークン上限修正、Skills エディター検証。
@@ -48,6 +52,9 @@
 
 > **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — テキスト/コード/SVG 添付ファイル、一コマンド Setup Tour、Markdown チャットエクスポート、コンパクトな KB 管理 UI。
 
+<details>
+<summary><b>過去のリリース（2週間以上前）</b></summary>
+
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — ドキュメント添付ファイル（PDF/DOCX/XLSX/PPTX）、推論思考ブロック表示、Soul テンプレートエディター、Co-Writer からノートブックへの保存。
 
 > **[2026.4.22]** [v1.2.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.2) — ユーザー作成 Skills システム、チャット入力パフォーマンス改善、TutorBot 自動起動、書籍ライブラリ UI、ビジュアライゼーション全画面表示。
@@ -55,9 +62,6 @@
 > **[2026.4.21]** [v1.2.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.1) — 各ステージのトークン制限、全エントリーポイントでの回答再生成、RAG と Gemma 互換性修正。
 
 > **[2026.4.20]** [v1.2.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.0) — Book Engine「生きた本」コンパイラー、マルチドキュメント Co-Writer、インタラクティブ HTML ビジュアライゼーション、質問バンク @-メンション。
-
-<details>
-<summary><b>過去のリリース（2週間以上前）</b></summary>
 
 > **[2026.4.18]** [v1.1.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.2) — スキーマ駆動の Channels タブ、RAG 単一パイプライン統合、チャットプロンプトの外部化。
 

@@ -37,7 +37,9 @@ class KnowledgeBaseConfigService:
 
     @classmethod
     def get_instance(cls, config_path: Path | None = None) -> "KnowledgeBaseConfigService":
-        resolved = (config_path or get_path_service().get_knowledge_bases_root() / "kb_config.json").resolve()
+        resolved = (
+            config_path or get_path_service().get_knowledge_bases_root() / "kb_config.json"
+        ).resolve()
         key = str(resolved)
         if key not in cls._instances:
             cls._instances[key] = cls(resolved)

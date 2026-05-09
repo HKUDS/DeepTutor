@@ -1597,5 +1597,11 @@
   "Please use the attached file(s) and this chapter as context.": "请结合附件文件和本章节上下文回答。",
   "Context": "上下文",
   "Ask a question about this page. The current chapter content is sent to the assistant automatically.": "可以询问本页内容。当前章节内容会自动发送给助手。",
-  "Ask about this page...": "询问本页内容…"
+  "Ask about this page...": "询问本页内容…",
+  "Chat tooltip": "多工具 AI 对话与搜索。",
+  "TutorBot tooltip": "常驻的专业 AI 智能体。",
+  "Co-Writer tooltip": "AI 驱动的协作文档编辑器。",
+  "Book tooltip": "生成交互式 AI 书籍。",
+  "Knowledge tooltip": "管理文档与教学人设。",
+  "Space tooltip": "你的个人学习空间。"
 }

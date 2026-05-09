@@ -14,7 +14,10 @@ function parseDotenvFile(filePath) {
         .map((line) => {
           const idx = line.indexOf("=");
           const key = line.slice(0, idx).trim();
-          const value = line.slice(idx + 1).trim().replace(/^['"]|['"]$/g, "");
+          const value = line
+            .slice(idx + 1)
+            .trim()
+            .replace(/^['"]|['"]$/g, "");
           return [key, value];
         }),
     );

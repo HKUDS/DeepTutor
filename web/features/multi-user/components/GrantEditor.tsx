@@ -18,7 +18,12 @@ function emptyGrant(userId: string): GrantPayload {
   };
 }
 
-function hasModel(grant: GrantPayload, service: "llm" | "embedding" | "search", profileId: string, modelId?: string) {
+function hasModel(
+  grant: GrantPayload,
+  service: "llm" | "embedding" | "search",
+  profileId: string,
+  modelId?: string,
+) {
   return grant.models[service].some((item) => {
     if (item.profile_id !== profileId) return false;
     if (!modelId) return true;
@@ -52,7 +57,9 @@ export function GrantEditor({ userId }: { userId: string }) {
       })
       .catch((error) => {
         setSaveState("error");
-        setMessage(error instanceof Error ? error.message : "Failed to load grants");
+        setMessage(
+          error instanceof Error ? error.message : "Failed to load grants",
+        );
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -63,14 +70,23 @@ export function GrantEditor({ userId }: { userId: string }) {
   }, [userId]);
 
   const currentFingerprint = useMemo(() => grantFingerprint(grant), [grant]);
-  const dirty = Boolean(savedFingerprint) && currentFingerprint !== savedFingerprint;
+  const dirty =
+    Boolean(savedFingerprint) && currentFingerprint !== savedFingerprint;
 
   const kbIds = useMemo(
-    () => new Set(grant.knowledge_bases.map((item) => String(item.resource_id || item.id || ""))),
+    () =>
+      new Set(
+        grant.knowledge_bases.map((item) =>
+          String(item.resource_id || item.id || ""),
+        ),
+      ),
     [grant.knowledge_bases],
   );
   const skillIds = useMemo(
-    () => new Set(grant.skills.map((item) => String(item.skill_id || item.id || ""))),
+    () =>
+      new Set(
+        grant.skills.map((item) => String(item.skill_id || item.id || "")),
+      ),
     [grant.skills],
   );
 
@@ -80,7 +96,8 @@ export function GrantEditor({ userId }: { userId: string }) {
         (total, service) =>
           total +
           grant.models[service].reduce((serviceTotal, item) => {
-            if (Array.isArray(item.model_ids)) return serviceTotal + item.model_ids.length;
+            if (Array.isArray(item.model_ids))
+              return serviceTotal + item.model_ids.length;
             return serviceTotal + 1;
           }, 0),
         0,
@@ -91,7 +108,11 @@ export function GrantEditor({ userId }: { userId: string }) {
   const saving = saveState === "saving";
   const controlsDisabled = loading || saving;
 
-  function toggleModel(service: "llm" | "embedding" | "search", profileId: string, modelId?: string) {
+  function toggleModel(
+    service: "llm" | "embedding" | "search",
+    profileId: string,
+    modelId?: string,
+  ) {
     setGrant((current) => {
       const next = structuredClone(current) as GrantPayload;
       const items = next.models[service];
@@ -103,14 +124,22 @@ export function GrantEditor({ userId }: { userId: string }) {
       }
       const existing = items.find((item) => item.profile_id === profileId);
       if (!existing) {
-        items.push({ profile_id: profileId, model_ids: [modelId], source: "admin" });
+        items.push({
+          profile_id: profileId,
+          model_ids: [modelId],
+          source: "admin",
+        });
         return next;
       }
-      const modelIds = new Set(Array.isArray(existing.model_ids) ? existing.model_ids : []);
+      const modelIds = new Set(
+        Array.isArray(existing.model_ids) ? existing.model_ids : [],
+      );
       if (modelIds.has(modelId)) modelIds.delete(modelId);
       else modelIds.add(modelId);
       existing.model_ids = Array.from(modelIds);
-      next.models[service] = items.filter((item) => Array.isArray(item.model_ids) ? item.model_ids.length > 0 : true);
+      next.models[service] = items.filter((item) =>
+        Array.isArray(item.model_ids) ? item.model_ids.length > 0 : true,
+      );
       return next;
     });
   }
@@ -120,8 +149,13 @@ export function GrantEditor({ userId }: { userId: string }) {
       const next = structuredClone(current) as GrantPayload;
       const exists = kbIds.has(resourceId);
       next.knowledge_bases = exists
-        ? next.knowledge_bases.filter((item) => String(item.resource_id || item.id || "") !== resourceId)
-        : [...next.knowledge_bases, { resource_id: resourceId, name, access: "read", source: "admin" }];
+        ? next.knowledge_bases.filter(
+            (item) => String(item.resource_id || item.id || "") !== resourceId,
+          )
+        : [
+            ...next.knowledge_bases,
+            { resource_id: resourceId, name, access: "read", source: "admin" },
+          ];
       return next;
     });
   }
@@ -131,7 +165,9 @@ export function GrantEditor({ userId }: { userId: string }) {
       const next = structuredClone(current) as GrantPayload;
       const exists = skillIds.has(name);
       next.skills = exists
-        ? next.skills.filter((item) => String(item.skill_id || item.id || "") !== name)
+        ? next.skills.filter(
+            (item) => String(item.skill_id || item.id || "") !== name,
+          )
         : [...next.skills, { skill_id: name, access: "use", source: "admin" }];
       return next;
     });
@@ -192,7 +228,8 @@ export function GrantEditor({ userId }: { userId: string }) {
                 Assign access
               </h2>
               <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
-                Admin resources stay linked server-side; users only receive allowed access.
+                Admin resources stay linked server-side; users only receive
+                allowed access.
               </p>
             </div>
             <div className="flex flex-wrap gap-1.5 text-[11px] text-[var(--muted-foreground)]">
@@ -212,21 +249,44 @@ export function GrantEditor({ userId }: { userId: string }) {
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 [scrollbar-gutter:stable]">
           <div className="grid gap-5 md:grid-cols-3">
             <section className="min-w-0">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Models</h3>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+                Models
+              </h3>
               <div className="space-y-3 text-xs">
                 {(["llm", "embedding"] as const).map((service) => (
                   <div key={service} className="space-y-1.5">
-                    <div className="font-medium text-[var(--foreground)]">{service.toUpperCase()}</div>
+                    <div className="font-medium text-[var(--foreground)]">
+                      {service.toUpperCase()}
+                    </div>
                     {(resources?.models[service] || []).map((profile) => (
-                      <div key={profile.profile_id} className="rounded-lg border border-[var(--border)]/60 p-2">
-                        <div className="mb-1 truncate text-[var(--muted-foreground)]">{profile.name}</div>
+                      <div
+                        key={profile.profile_id}
+                        className="rounded-lg border border-[var(--border)]/60 p-2"
+                      >
+                        <div className="mb-1 truncate text-[var(--muted-foreground)]">
+                          {profile.name}
+                        </div>
                         {(profile.models || []).map((model) => (
-                          <label key={model.model_id} className="flex cursor-pointer items-center gap-2 py-1 text-[var(--foreground)]">
+                          <label
+                            key={model.model_id}
+                            className="flex cursor-pointer items-center gap-2 py-1 text-[var(--foreground)]"
+                          >
                             <input
                               type="checkbox"
-                              checked={hasModel(grant, service, profile.profile_id, model.model_id)}
+                              checked={hasModel(
+                                grant,
+                                service,
+                                profile.profile_id,
+                                model.model_id,
+                              )}
                               disabled={controlsDisabled}
-                              onChange={() => toggleModel(service, profile.profile_id, model.model_id)}
+                              onChange={() =>
+                                toggleModel(
+                                  service,
+                                  profile.profile_id,
+                                  model.model_id,
+                                )
+                              }
                             />
                             <span className="truncate">{model.name}</span>
                           </label>
@@ -236,14 +296,21 @@ export function GrantEditor({ userId }: { userId: string }) {
                   </div>
                 ))}
                 <div className="space-y-1.5">
-                  <div className="font-medium text-[var(--foreground)]">SEARCH</div>
+                  <div className="font-medium text-[var(--foreground)]">
+                    SEARCH
+                  </div>
                   {(resources?.models.search || []).map((profile) => (
-                    <label key={profile.profile_id} className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--border)]/60 p-2 text-[var(--foreground)]">
+                    <label
+                      key={profile.profile_id}
+                      className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--border)]/60 p-2 text-[var(--foreground)]"
+                    >
                       <input
                         type="checkbox"
                         checked={hasModel(grant, "search", profile.profile_id)}
                         disabled={controlsDisabled}
-                        onChange={() => toggleModel("search", profile.profile_id)}
+                        onChange={() =>
+                          toggleModel("search", profile.profile_id)
+                        }
                       />
                       <span className="truncate">{profile.name}</span>
                     </label>
@@ -252,10 +319,15 @@ export function GrantEditor({ userId }: { userId: string }) {
               </div>
             </section>
             <section className="min-w-0">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Knowledge</h3>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+                Knowledge
+              </h3>
               <div className="space-y-1.5 text-xs">
                 {(resources?.knowledge_bases || []).map((kb) => (
-                  <label key={kb.resource_id} className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--border)]/60 p-2 text-[var(--foreground)]">
+                  <label
+                    key={kb.resource_id}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--border)]/60 p-2 text-[var(--foreground)]"
+                  >
                     <input
                       type="checkbox"
                       checked={kbIds.has(kb.resource_id)}
@@ -268,10 +340,15 @@ export function GrantEditor({ userId }: { userId: string }) {
               </div>
             </section>
             <section className="min-w-0">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">Skills</h3>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
+                Skills
+              </h3>
               <div className="space-y-1.5 text-xs">
                 {(resources?.skills || []).map((skill) => (
-                  <label key={skill.name} className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--border)]/60 p-2 text-[var(--foreground)]">
+                  <label
+                    key={skill.name}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--border)]/60 p-2 text-[var(--foreground)]"
+                  >
                     <input
                       type="checkbox"
                       checked={skillIds.has(skill.name)}
@@ -287,7 +364,10 @@ export function GrantEditor({ userId }: { userId: string }) {
         </div>
 
         <div className="flex shrink-0 items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--card)] px-5 py-3">
-          <div aria-live="polite" className={`flex min-w-0 items-center gap-1.5 text-xs ${statusTone}`}>
+          <div
+            aria-live="polite"
+            className={`flex min-w-0 items-center gap-1.5 text-xs ${statusTone}`}
+          >
             {saveState === "error" ? (
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
             ) : saveState === "saved" && !dirty ? (
@@ -307,7 +387,11 @@ export function GrantEditor({ userId }: { userId: string }) {
             ) : (
               <Save className="h-3 w-3" />
             )}
-            {saving ? "Saving..." : saveState === "saved" && !dirty ? "Saved" : "Save assignments"}
+            {saving
+              ? "Saving..."
+              : saveState === "saved" && !dirty
+                ? "Saved"
+                : "Save assignments"}
           </button>
         </div>
       </div>

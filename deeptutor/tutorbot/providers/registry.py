@@ -47,6 +47,7 @@ class ProviderSpec:
     # gateway behavior
     strip_model_prefix: bool = False
     supports_max_completion_tokens: bool = False
+    supports_stream_options: bool = True
 
     # per-model param overrides, e.g. (("kimi-k2.5", {"temperature": 1.0}),)
     model_overrides: tuple[tuple[str, dict[str, Any]], ...] = ()
@@ -325,6 +326,18 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_api_base="http://localhost:8000/v3",
     ),
     # === Auxiliary ==========================================================
+    ProviderSpec(
+        name="nvidia_nim",
+        keywords=("nvidia_nim", "nvidia-nim", "nim"),
+        env_key="NVIDIA_NIM_API_KEY",
+        display_name="NVIDIA NIM",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_key_prefix="nvapi-",
+        detect_by_base_keyword="api.nvidia.com",
+        default_api_base="https://integrate.api.nvidia.com/v1",
+        supports_stream_options=False,
+    ),
     ProviderSpec(
         name="groq",
         keywords=("groq",),

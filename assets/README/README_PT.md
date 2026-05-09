@@ -28,6 +28,10 @@
 
 ### 📦 Lançamentos
 
+> **[2026.5.9]** [v1.3.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.9) — TutorBot com Zulip e NVIDIA NIM, roteamento mais seguro para modelos de raciocínio, `deeptutor start`, tooltips na barra lateral e paridade do store de sessões.
+
+> **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — Deploys multiusuário opcionais com workspaces isolados, concessões de admin, rotas de autenticação e acesso runtime com escopo.
+
 > **[2026.5.4]** [v1.3.7](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.7) — Correções de modelos de raciocínio/provedores, histórico de índice de conhecimento visível e edição de templates e limpeza do Co-Writer mais seguros.
 
 > **[2026.5.3]** [v1.3.6](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.6) — Seleção de modelos por catálogo no chat e TutorBot, reindexação RAG mais segura, correções de limite de tokens do OpenAI Responses e validação do editor Skills.
@@ -48,6 +52,9 @@
 
 > **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — Anexos de texto / código / SVG, tour de configuração em um comando, exportação do chat Markdown, UI compacta de gestão de KB.
 
+<details>
+<summary><b>Lançamentos anteriores (há mais de 2 semanas)</b></summary>
+
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — Anexos de documentos (PDF/DOCX/XLSX/PPTX), exibição do bloco de raciocínio, editor de modelos Soul, salvar no caderno a partir do Co-Writer.
 
 > **[2026.4.22]** [v1.2.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.2) — Skills criados pelo usuário, melhoria de desempenho do input de chat, início automático do TutorBot, UI da biblioteca de livros, visualização em tela cheia.
@@ -59,10 +66,6 @@
 > **[2026.4.18]** [v1.1.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.2) — Aba Channels orientada por schema, consolidação RAG em pipeline único, prompts de chat externalizados.
 
 > **[2026.4.17]** [v1.1.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.1) — «Responder agora» universal, sincronização de rolagem no Co-Writer, painel de configurações unificado, botão Stop em streaming.
-
-
-<details>
-<summary><b>Lançamentos anteriores (há mais de 2 semanas)</b></summary>
 
 > **[2026.4.15]** [v1.1.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.0) — Reformulação do parsing de LaTeX em bloco; sonda de diagnóstico LLM via `agents.yaml`; correção do encaminhamento de cabeçalhos extras; correção de UUID no SaveToNotebook; guia Docker + LLM local.
 

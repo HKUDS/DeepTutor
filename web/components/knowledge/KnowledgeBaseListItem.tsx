@@ -117,7 +117,11 @@ export default function KnowledgeBaseListItem({
               onDelete();
             }}
             disabled={kb.read_only}
-            title={kb.read_only ? t("Assigned knowledge bases are read-only") : t("Delete")}
+            title={
+              kb.read_only
+                ? t("Assigned knowledge bases are read-only")
+                : t("Delete")
+            }
             className="rounded p-1 text-[var(--muted-foreground)] hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-red-950/30"
           >
             <Trash2 className="h-3 w-3" />

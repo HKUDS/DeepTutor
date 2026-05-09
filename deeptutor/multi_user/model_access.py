@@ -85,21 +85,26 @@ def redacted_model_access(user_id: str | None = None) -> dict[str, list[dict[str
     return result
 
 
-def allowed_llm_options() -> list[dict[str, Any]]:
+def allowed_llm_options() -> dict[str, Any]:
     user = get_current_user()
     if user.is_admin:
         return list_llm_options(admin_catalog())
-    return [
+    options = [
         {
             "profile_id": item.get("profile_id"),
             "model_id": item.get("model_id"),
+            "profile_name": item.get("name") or item.get("profile_id") or "LLM",
+            "model_name": item.get("name") or item.get("model") or item.get("model_id"),
             "label": item.get("name") or item.get("model") or item.get("model_id"),
             "model": item.get("model") or "",
+            "provider": "",
             "source": "admin",
+            "is_active_default": False,
         }
         for item in redacted_model_access(user.id).get("llm", [])
         if item.get("available")
     ]
+    return {"active": None, "options": options}
 
 
 def apply_allowed_llm_selection(selection: dict[str, Any] | None) -> dict[str, Any] | None:

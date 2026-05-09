@@ -92,6 +92,7 @@ tutorbot = [
     "python-socks[asyncio]>=2.8.0,<3.0.0",
     "socksio>=1.0.0,<2.0.0",
     "websocket-client>=1.9.0,<2.0.0",
+    "zulip>=0.8.0,<1.0.0",
 ]
 
 # Matrix (Element) channel for TutorBot. Mirrors requirements/matrix.txt.

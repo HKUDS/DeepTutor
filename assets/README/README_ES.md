@@ -28,6 +28,10 @@
 
 ### 📦 Lanzamientos
 
+> **[2026.5.9]** [v1.3.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.9) — TutorBot con Zulip y NVIDIA NIM, enrutamiento más seguro para modelos de razonamiento, `deeptutor start`, tooltips laterales y paridad del almacén de sesiones.
+
+> **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — Despliegues multiusuario opcionales con espacios aislados, permisos de administrador, rutas de autenticación y acceso runtime acotado.
+
 > **[2026.5.4]** [v1.3.7](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.7) — Correcciones de modelo de razonamiento/proveedor, historial de índice de conocimiento visible, vaciado de Co-Writer y edición de plantillas más seguros.
 
 > **[2026.5.3]** [v1.3.6](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.6) — Selección de modelos por catálogo en chat y TutorBot, reindexación RAG más segura, límites de tokens en OpenAI Responses, validación del editor de Skills.
@@ -48,6 +52,9 @@
 
 > **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — Adjuntos texto/código/SVG, Setup Tour en un comando, exportación Markdown del chat, UI compacta de KB.
 
+<details>
+<summary><b>Lanzamientos anteriores (más de 2 semanas)</b></summary>
+
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — Adjuntos PDF/DOCX/XLSX/PPTX, bloques de razonamiento, editor de plantillas Soul, Co-Writer guarda en cuaderno.
 
 > **[2026.4.22]** [v1.2.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.2) — Skills de usuario, rendimiento del input de chat, autoarranque TutorBot, UI de biblioteca de libros, visualización a pantalla completa.
@@ -55,9 +62,6 @@
 > **[2026.4.21]** [v1.2.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.1) — Límites de tokens por etapa, regenerar respuesta en todos los puntos de entrada, compatibilidad RAG y Gemma.
 
 > **[2026.4.20]** [v1.2.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.0) — Compilador Book Engine «libro vivo», Co-Writer multi-documento, visualizaciones HTML, @ en banco de preguntas.
-
-<details>
-<summary><b>Lanzamientos anteriores (más de 2 semanas)</b></summary>
 
 > **[2026.4.18]** [v1.1.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.2) — Pestaña Channels por esquema, pipeline RAG único, prompts externos.
 

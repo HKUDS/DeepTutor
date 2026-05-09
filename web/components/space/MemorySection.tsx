@@ -153,7 +153,9 @@ export default function MemorySection() {
       setEditors((prev) => ({ ...prev, [activeTab]: d[activeTab] || "" }));
       setToast(t("{{label}} saved", { label: t(tab.label) }));
     } catch (error) {
-      setToast(error instanceof Error ? error.message : t("Memory save failed"));
+      setToast(
+        error instanceof Error ? error.message : t("Memory save failed"),
+      );
     } finally {
       setSaving(false);
     }

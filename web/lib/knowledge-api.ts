@@ -63,9 +63,12 @@ export async function listRagProviders(options?: { force?: boolean }) {
   return withClientCache<RagProviderSummary[]>(
     `${KNOWLEDGE_CACHE_PREFIX}providers`,
     async () => {
-      const response = await apiFetch(apiUrl("/api/v1/knowledge/rag-providers"), {
-        cache: "no-store",
-      });
+      const response = await apiFetch(
+        apiUrl("/api/v1/knowledge/rag-providers"),
+        {
+          cache: "no-store",
+        },
+      );
       const data = await response.json();
       return Array.isArray(data?.providers) ? data.providers : [];
     },

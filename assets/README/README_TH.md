@@ -28,6 +28,10 @@
 
 ### 📦 ประวัติการเผยแพร่
 
+> **[2026.5.9]** [v1.3.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.9) — TutorBot รองรับ Zulip และ NVIDIA NIM, routing ของ thinking-model ปลอดภัยขึ้น, `deeptutor start`, tooltip ใน sidebar, และ session-store parity
+
+> **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — deployment แบบ multi-user ที่เปิดได้ตามต้องการ พร้อม workspace แยกผู้ใช้, admin grants, auth routes, และ scoped runtime access
+
 > **[2026.5.4]** [v1.3.7](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.7) — แก้ไข thinking-model/provider, แสดงประวัติ Knowledge index, และ Co-Writer clear/template editing ปลอดภัยขึ้น
 
 > **[2026.5.3]** [v1.3.6](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.6) — เลือกโมเดลจากคาตาล็อกสำหรับแชตและ TutorBot, RAG re-indexing ปลอดภัยขึ้น, แก้ token-limit ของ OpenAI Responses, และตรวจสอบ Skills editor
@@ -48,6 +52,9 @@
 
 > **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — แนบข้อความ / โค้ด / SVG, Setup Tour คำสั่งเดียว, ส่งออกแชต Markdown, UI จัดการ KB แบบกะทัดรัด
 
+<details>
+<summary><b>รุ่นที่ผ่านมา (มากกว่า 2 สัปดาห์ที่แล้ว)</b></summary>
+
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — แนบเอกสาร (PDF/DOCX/XLSX/PPTX), แสดงบล็อกการคิดของโมเดลให้เหตุผล, ตัวแก้เทมเพลต Soul, บันทึก Co-Writer ลงสมุด
 
 > **[2026.4.22]** [v1.2.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.2) — ระบบ Skills ที่ผู้ใช้สร้าง, ปรับประสิทธิ์อินพุตแชต, TutorBot สตาร์ทอัตโนมัติ, UI ห้องสมุดหนังสือ, โหมดเต็มจอของการแสดงผล
@@ -59,10 +66,6 @@
 > **[2026.4.18]** [v1.1.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.2) — แท็บ Channels แบบ schema-driven, รวม RAG เป็น pipeline เดียว, แยก chat prompts ออกเป็นไฟล์ภายนอก
 
 > **[2026.4.17]** [v1.1.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.1) — ปุ่ม "ตอบเลย" ครอบคลุมทุกความสามารถ, Co-Writer scroll sync, แผงตั้งค่ารวม, ปุ่ม Stop ระหว่างสตรีม
-
-
-<details>
-<summary><b>รุ่นที่ผ่านมา (มากกว่า 2 สัปดาห์ที่แล้ว)</b></summary>
 
 > **[2026.4.15]** [v1.1.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.0) — ปรับปรุงการ parse LaTeX block math, ตั้งค่า LLM probe ผ่าน agents.yaml, forward extra headers ใน LLM factory, แก้ UUID ของ SaveToNotebookModal, คำแนะนำ Docker + local LLM และขยาย test suite
 

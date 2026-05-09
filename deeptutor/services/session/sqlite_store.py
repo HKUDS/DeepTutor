@@ -614,13 +614,13 @@ class SQLiteSessionStore:
             metadata,
         )
 
-    def _delete_message_sync(self, message_id: int) -> bool:
+    def _delete_message_sync(self, message_id: int | str) -> bool:
         with self._connect() as conn:
             cur = conn.execute("DELETE FROM messages WHERE id = ?", (int(message_id),))
             conn.commit()
         return cur.rowcount > 0
 
-    async def delete_message(self, message_id: int) -> bool:
+    async def delete_message(self, message_id: int | str) -> bool:
         return await self._run(self._delete_message_sync, message_id)
 
     def _get_last_message_sync(

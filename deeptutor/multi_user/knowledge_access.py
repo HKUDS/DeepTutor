@@ -92,7 +92,9 @@ def resolve_kb(kb_ref: str, *, require_write: bool = False) -> KnowledgeResource
         if name not in assigned_names:
             raise HTTPException(status_code=403, detail="Knowledge base is not assigned to you")
         if require_write:
-            raise HTTPException(status_code=403, detail="Assigned admin knowledge bases are read-only")
+            raise HTTPException(
+                status_code=403, detail="Assigned admin knowledge bases are read-only"
+            )
         return KnowledgeResource(
             id=f"admin:kb:{name}",
             name=name,
@@ -137,7 +139,9 @@ def resolve_kb(kb_ref: str, *, require_write: bool = False) -> KnowledgeResource
 
     if name in assigned_names:
         if require_write:
-            raise HTTPException(status_code=403, detail="Assigned admin knowledge bases are read-only")
+            raise HTTPException(
+                status_code=403, detail="Assigned admin knowledge bases are read-only"
+            )
         return KnowledgeResource(
             id=f"admin:kb:{name}",
             name=name,

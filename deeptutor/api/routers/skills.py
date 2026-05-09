@@ -15,7 +15,6 @@ from pydantic import BaseModel, Field
 
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.skill_access import (
-    assert_skill_allowed,
     assigned_skill_detail,
     assigned_skill_ids,
     assigned_skill_infos,

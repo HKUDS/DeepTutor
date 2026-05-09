@@ -28,6 +28,10 @@
 
 ### 📦 रिलीज़
 
+> **[2026.5.9]** [v1.3.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.9) — TutorBot में Zulip और NVIDIA NIM सपोर्ट, thinking-model routing अधिक सुरक्षित, `deeptutor start`, sidebar tooltips, और session-store parity।
+
+> **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — वैकल्पिक multi-user deployments: isolated user workspaces, admin grants, auth routes, और scoped runtime access।
+
 > **[2026.5.4]** [v1.3.7](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.7) — थिंकिंग-मॉडल/प्रोवाइडर फिक्स, विज़िबल नॉलेज इंडेक्स हिस्ट्री, और सेफर Co-Writer क्लियर/टेम्पलेट एडिटिंग।
 
 > **[2026.5.3]** [v1.3.6](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.6) — चैट और TutorBot के लिए कैटलॉग-बेस्ड मॉडल सिलेक्शन, सेफर RAG री-इंडेक्सिंग, OpenAI Responses टोकन-लिमिट फिक्स, और Skills एडिटर वैलिडेशन।
@@ -48,6 +52,9 @@
 
 > **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — टेक्स्ट / कोड / SVG संलग्नक, एक-कमांड सेटअप टूर, Markdown चैट निर्यात, कॉम्पैक्ट KB प्रबंधन UI।
 
+<details>
+<summary><b>पुराने रिलीज़ (2 सप्ताह से अधिक पहले)</b></summary>
+
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — दस्तावेज़ संलग्नक (PDF/DOCX/XLSX/PPTX), तर्क मॉडल सोच-ब्लॉक, Soul टेम्पलेट संपादक, Co-Writer से नोटबुक सहेजें।
 
 > **[2026.4.22]** [v1.2.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.2) — उपयोगकर्ता-लिखित Skills, चैट इनपुट प्रदर्शन ओवरहॉल, TutorBot ऑटो-स्टार्ट, बुक लाइब्रेरी UI, विज़ुअलाइज़ेशन फ़ुलस्क्रीन।
@@ -59,10 +66,6 @@
 > **[2026.4.18]** [v1.1.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.2) — स्कीमा-चालित Channels टैब, एकल RAG पाइपलाइन, चैट प्रॉम्प्ट बाहरी फ़ाइलों में।
 
 > **[2026.4.17]** [v1.1.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.1) — सार्वभौमिक «अभी उत्तर दें», Co-Writer स्क्रॉल सिंक, एकीकृत सेटिंग्स पैनल, स्ट्रीमिंग Stop बटन।
-
-
-<details>
-<summary><b>पुराने रिलीज़ (2 सप्ताह से अधिक पहले)</b></summary>
 
 > **[2026.4.15]** [v1.1.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.0) — LaTeX ब्लॉक गणित पार्सिंग ओवरहॉल; `agents.yaml` के माध्यम से LLM डायग्नोस्टिक प्रोब; अतिरिक्त हेडर फॉरवर्डिंग फिक्स; SaveToNotebook UUID फिक्स; Docker + स्थानीय LLM मार्गदर्शिका।
 

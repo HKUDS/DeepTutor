@@ -461,7 +461,7 @@ const UserMessage = memo(function UserMessage({
               </div>
             );
           })()}
-          <div>{msg.content}</div>
+          <div className="whitespace-pre-wrap">{msg.content}</div>
         </div>
       </div>
     </div>

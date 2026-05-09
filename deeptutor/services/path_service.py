@@ -77,6 +77,7 @@ class PathService:
 
     def __init__(self, workspace_root: Path | None = None):
         self._project_root = Path(__file__).resolve().parent.parent.parent
+        self._uses_default_workspace_root = workspace_root is None
         self._workspace_root = (workspace_root or self._project_root / "data").resolve()
         self._user_data_dir = (self._workspace_root / "user").resolve()
 
@@ -100,6 +101,8 @@ class PathService:
 
     @property
     def workspace_root(self) -> Path:
+        if self._uses_default_workspace_root:
+            return (self._project_root / "data").resolve()
         return self._workspace_root
 
     def get_user_root(self) -> Path:

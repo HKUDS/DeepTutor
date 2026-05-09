@@ -121,7 +121,7 @@ def _migrate_secret() -> None:
         logger.warning("Failed to migrate legacy auth secret: %s", exc)
 
 
-def load_users(
+def load_users(  # nosec B107 - empty defaults mean "no env fallback supplied".
     env_username: str = "",
     env_password_hash: str = "",
 ) -> dict[str, dict[str, Any]]:
@@ -188,7 +188,10 @@ def save_user(username: str, hashed_password: str, role: Role = "user") -> dict[
     return record
 
 
-def list_user_info(env_username: str = "", env_password_hash: str = "") -> list[dict[str, Any]]:
+def list_user_info(  # nosec B107 - empty defaults mean "no env fallback supplied".
+    env_username: str = "",
+    env_password_hash: str = "",
+) -> list[dict[str, Any]]:
     return [
         {
             "id": record.get("id", ""),

@@ -23,6 +23,10 @@ def get_current_user() -> CurrentUser:
     return _current_user.get() or local_admin_user()
 
 
+def get_current_user_or_none() -> CurrentUser | None:
+    return _current_user.get()
+
+
 def user_from_token_payload(payload: Any | None) -> CurrentUser:
     if payload is None:
         return local_admin_user()
