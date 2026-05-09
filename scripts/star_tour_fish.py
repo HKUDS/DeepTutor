@@ -59,7 +59,7 @@ def _bootstrap() -> None:
     missing = [pip for imp, pip in _BOOTSTRAP_PACKAGES if not _can_import(imp)]
     if not missing:
         return
-    print(f"  Installing bootstrap dependencies: {', '.join(missing)} ..." )
+    print(f"  Installing bootstrap dependencies: {', '.join(missing)} ...")
     # Switched from [_PYTHON, "-m", "uv", "pip"...] to ["uv", "pip"...]
     subprocess.check_call(
         ["uv", "pip", "install", *missing, "-q"],
@@ -97,6 +97,7 @@ def _load_runtime_deps():
         step,
         text_input,
     )
+
     from deeptutor.services.config import (
         get_config_test_runner,
         get_env_store,
@@ -408,9 +409,7 @@ def _install_commands(
         cmds.append((["uv", "pip", "install", "-r", req], PROJECT_ROOT))
     if include_math_animator:
         # Switched from [_PYTHON, "-m", "pip"...] to ["uv", "pip"...]
-        cmds.append(
-            (["uv", "pip", "install", "-r", MATH_ANIMATOR_REQUIREMENTS], PROJECT_ROOT)
-        )
+        cmds.append((["uv", "pip", "install", "-r", MATH_ANIMATOR_REQUIREMENTS], PROJECT_ROOT))
     # Switched from [_PYTHON, "-m", "pip"...] to ["uv", "pip"...]
     cmds.append((["uv", "pip", "install", "-e", ".", "--no-deps"], PROJECT_ROOT))
     if profile.startswith("web"):
