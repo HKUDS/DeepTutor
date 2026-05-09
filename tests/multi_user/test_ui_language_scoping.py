@@ -10,9 +10,7 @@ from deeptutor.services.settings.interface_settings import (
 )
 
 
-def test_get_ui_language_reads_per_user_interface_json(
-    mu_isolated_root, as_user
-):
+def test_get_ui_language_reads_per_user_interface_json(mu_isolated_root, as_user):
     # Admin's interface.json says English…
     admin_settings = mu_isolated_root / "data" / "user" / "settings" / "interface.json"
     admin_settings.parent.mkdir(parents=True, exist_ok=True)

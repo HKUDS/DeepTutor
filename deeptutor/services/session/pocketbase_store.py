@@ -273,25 +273,22 @@ class PocketBaseSessionStore:
         capability: str = "",
         events: list[dict[str, Any]] | None = None,
         attachments: list[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> int:
         now = time.time()
 
         def _add():
-            record = (
-                _pb()
-                .collection("messages")
-                .create(
-                    {
-                        "session_id": session_id,
-                        "role": role,
-                        "content": content or "",
-                        "capability": capability or "",
-                        "events_json": events or [],
-                        "attachments_json": attachments or [],
-                        "msg_created_at": now,
-                    }
-                )
-            )
+            payload = {
+                "session_id": session_id,
+                "role": role,
+                "content": content or "",
+                "capability": capability or "",
+                "events_json": events or [],
+                "attachments_json": attachments or [],
+                "metadata_json": metadata or {},
+                "msg_created_at": now,
+            }
+            record = _pb().collection("messages").create(payload)
             # Update session title if still default
             sessions = (
                 _pb()
@@ -312,6 +309,45 @@ class PocketBaseSessionStore:
         except Exception as exc:
             logger.warning(f"add_message failed: {exc}")
             return 0
+
+    async def delete_message(self, message_id: int | str) -> bool:
+        def _delete():
+            _pb().collection("messages").delete(str(message_id))
+            return True
+
+        try:
+            return await asyncio.to_thread(_delete)
+        except Exception as exc:
+            logger.warning(f"delete_message failed: {exc}")
+            return False
+
+    async def get_last_message(
+        self, session_id: str, role: str | None = None
+    ) -> dict[str, Any] | None:
+        filter_str = f'session_id="{session_id}"'
+        if role:
+            filter_str += f' && role="{role}"'
+
+        def _get():
+            records = (
+                _pb()
+                .collection("messages")
+                .get_full_list(
+                    query_params={
+                        "filter": filter_str,
+                        "sort": "-msg_created_at",
+                        "perPage": 1,
+                    }
+                )
+            )
+            return records[0] if records else None
+
+        try:
+            record = await asyncio.to_thread(_get)
+            return self._message_record_to_dict(record) if record is not None else None
+        except Exception as exc:
+            logger.warning(f"get_last_message failed: {exc}")
+            return None
 
     async def get_messages(self, session_id: str) -> list[dict[str, Any]]:
         def _get():
@@ -350,6 +386,7 @@ class PocketBaseSessionStore:
             "capability": getattr(record, "capability", "") or "",
             "events": _json_loads(getattr(record, "events_json", None), []),
             "attachments": _json_loads(getattr(record, "attachments_json", None), []),
+            "metadata": _json_loads(getattr(record, "metadata_json", None), {}),
             "created_at": _to_float(getattr(record, "msg_created_at", None)),
         }
 

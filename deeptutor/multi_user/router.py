@@ -21,7 +21,7 @@ from .grants import load_grant, save_grant
 from .identity import get_user_by_id, list_user_info
 from .knowledge_access import admin_kb_base_dir, list_visible_knowledge_bases
 from .model_access import redacted_model_access
-from .paths import MULTI_USER_ROOT, get_admin_path_service, get_current_path_service
+from .paths import MULTI_USER_ROOT, get_admin_path_service
 from .skill_access import assigned_skill_ids
 
 router = APIRouter()

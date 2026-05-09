@@ -80,13 +80,11 @@ def load_launch_settings(project_root: Path | None = None) -> LaunchSettings:
     process_backend_port = _coerce_port(os.getenv("BACKEND_PORT"))
     process_frontend_port = _coerce_port(os.getenv("FRONTEND_PORT"))
     interface_language = _normalize_language(interface_settings.get("language"))
-    env_language = (
-        _normalize_language(env_values.get("UI_LANGUAGE"))
-        or _normalize_language(env_values.get("LANGUAGE"))
+    env_language = _normalize_language(env_values.get("UI_LANGUAGE")) or _normalize_language(
+        env_values.get("LANGUAGE")
     )
-    process_language = (
-        _normalize_language(os.getenv("UI_LANGUAGE"))
-        or _normalize_language(os.getenv("LANGUAGE"))
+    process_language = _normalize_language(os.getenv("UI_LANGUAGE")) or _normalize_language(
+        os.getenv("LANGUAGE")
     )
     backend_port = env_backend_port or process_backend_port or DEFAULT_BACKEND_PORT
     frontend_port = env_frontend_port or process_frontend_port or DEFAULT_FRONTEND_PORT

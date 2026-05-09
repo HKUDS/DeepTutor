@@ -516,7 +516,7 @@ class TurnRuntimeManager:
                 if turn_id:
                     previous_turn_id = turn_id
                     break
-            await self.store.delete_message(int(last_message["id"]))
+            await self.store.delete_message(last_message["id"])
 
         preferences = session.get("preferences") or {}
         overrides = overrides or {}
@@ -860,9 +860,7 @@ class TurnRuntimeManager:
                         s for s in auto_pool if s in allowed_skills or s in user_owned
                     ]
                 else:
-                    explicit = [
-                        s for s in requested_skills if isinstance(s, str) and s != "auto"
-                    ]
+                    explicit = [s for s in requested_skills if isinstance(s, str) and s != "auto"]
                     resolved_skills = [
                         s for s in explicit if s in allowed_skills or s in user_owned
                     ]

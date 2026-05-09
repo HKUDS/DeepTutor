@@ -28,6 +28,10 @@
 
 ### 📦 版本发布
 
+> **[2026.5.9]** [v1.3.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.9) — TutorBot 支持 Zulip 与 NVIDIA NIM，思考模型路由更安全，新增 `deeptutor start`，侧栏提示与会话存储一致性提升。
+
+> **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — 可选多用户部署，隔离用户工作区、管理员授权、认证路由与作用域运行时访问。
+
 > **[2026.5.4]** [v1.3.7](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.7) — 思考模型/提供商修复，知识索引历史可见，Co-Writer 清空与模板编辑更安全。
 
 > **[2026.5.3]** [v1.3.6](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.6) — 聊天与 TutorBot 基于目录的模型选择，更安全的 RAG 重建索引，OpenAI Responses token 上限修复，Skills 编辑器校验。
@@ -48,6 +52,9 @@
 
 > **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — 文本/代码/SVG 附件，一键 Setup Tour，Markdown 聊天导出，紧凑知识库管理界面。
 
+<details>
+<summary><b>更早发布（两周以前）</b></summary>
+
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — 文档附件（PDF/DOCX/XLSX/PPTX），推理思维块展示，Soul 模板编辑器，Co-Writer 保存至笔记本。
 
 > **[2026.4.22]** [v1.2.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.2) — 用户自建 Skills 体系，聊天输入性能重构，TutorBot 自动启动，图书库 UI，可视化全屏。
@@ -55,9 +62,6 @@
 > **[2026.4.21]** [v1.2.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.1) — 分阶段 token 上限，各入口重新生成回复，RAG 与 Gemma 兼容性修复。
 
 > **[2026.4.20]** [v1.2.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.0) — Book Engine「活书」编译器，多文档 Co-Writer，交互式 HTML 可视化，题库 @ 提及。
-
-<details>
-<summary><b>更早发布（两周以前）</b></summary>
 
 > **[2026.4.18]** [v1.1.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.2) — 基于 Schema 的 Channels 标签页，RAG 单一流水线收敛，聊天提示外置。
 

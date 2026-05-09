@@ -1,5 +1,5 @@
-import pytest
 from fastapi import HTTPException
+import pytest
 
 from deeptutor.api.routers import settings as settings_router
 from deeptutor.multi_user.context import reset_current_user, set_current_user
@@ -13,7 +13,9 @@ def make_user(tmp_path, role="user"):
         id=uid,
         username="admin" if role == "admin" else "alice",
         role=role,
-        scope=UserScope(kind="admin" if role == "admin" else "user", user_id=uid, root=tmp_path / uid),
+        scope=UserScope(
+            kind="admin" if role == "admin" else "user", user_id=uid, root=tmp_path / uid
+        ),
     )
 
 
@@ -21,8 +23,12 @@ def test_grants_reject_secret_material(tmp_path, monkeypatch):
     from deeptutor.multi_user import grants, identity
 
     monkeypatch.setattr(grants, "GRANTS_DIR", tmp_path / "grants")
-    monkeypatch.setattr(identity, "get_user_by_id", lambda user_id: ("alice", {}) if user_id == "u_alice" else None)
-    monkeypatch.setattr(grants, "get_user_by_id", lambda user_id: ("alice", {}) if user_id == "u_alice" else None)
+    monkeypatch.setattr(
+        identity, "get_user_by_id", lambda user_id: ("alice", {}) if user_id == "u_alice" else None
+    )
+    monkeypatch.setattr(
+        grants, "get_user_by_id", lambda user_id: ("alice", {}) if user_id == "u_alice" else None
+    )
 
     with pytest.raises(ValueError):
         save_grant("u_alice", {"models": {"llm": [{"profile_id": "p", "api_key": "sk"}]}})

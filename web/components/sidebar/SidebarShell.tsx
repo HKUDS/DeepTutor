@@ -24,20 +24,47 @@ import SessionList from "@/components/SessionList";
 import { TutorBotRecent } from "@/components/sidebar/TutorBotRecent";
 import { VersionBadge } from "@/components/sidebar/VersionBadge";
 import type { SessionSummary } from "@/lib/session-api";
+import { Tooltip } from "@/components/ui/Tooltip";
 
 interface NavEntry {
   href: string;
   label: string;
   icon: LucideIcon;
+  tooltipKey?: string;
 }
 
 const PRIMARY_NAV: NavEntry[] = [
-  { href: "/chat", label: "Chat", icon: MessageSquare },
-  { href: "/agents", label: "TutorBot", icon: Bot },
-  { href: "/co-writer", label: "Co-Writer", icon: PenLine },
-  { href: "/book", label: "Book", icon: Library },
-  { href: "/knowledge", label: "Knowledge", icon: BookOpen },
-  { href: "/space", label: "Space", icon: LayoutGrid },
+  {
+    href: "/chat",
+    label: "Chat",
+    icon: MessageSquare,
+    tooltipKey: "Chat tooltip",
+  },
+  {
+    href: "/agents",
+    label: "TutorBot",
+    icon: Bot,
+    tooltipKey: "TutorBot tooltip",
+  },
+  {
+    href: "/co-writer",
+    label: "Co-Writer",
+    icon: PenLine,
+    tooltipKey: "Co-Writer tooltip",
+  },
+  { href: "/book", label: "Book", icon: Library, tooltipKey: "Book tooltip" },
+  {
+    href: "/knowledge",
+    label: "Knowledge",
+    icon: BookOpen,
+    tooltipKey: "Knowledge tooltip",
+  },
+  {
+    href: "/space",
+    label: "Space",
+    icon: LayoutGrid,
+    tooltipKey: "Space tooltip",
+  },
 ];
 
 const SECONDARY_NAV: NavEntry[] = [
@@ -130,22 +157,31 @@ export function SidebarShell({
         <nav className="flex w-full flex-col items-center gap-1 px-1.5">
           {PRIMARY_NAV.map((item) => {
             const active = pathname.startsWith(item.href);
+            const description = item.tooltipKey
+              ? t(item.tooltipKey)
+              : undefined;
             return (
-              <Link
+              <Tooltip
                 key={item.href}
-                href={item.href}
-                title={t(item.label) as string}
-                className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150 ${
-                  active
-                    ? "bg-[var(--background)]/80 text-[var(--foreground)] shadow-sm"
-                    : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
-                }`}
+                label={t(item.label)}
+                description={description}
+                side="right"
               >
-                {active && (
-                  <span className="absolute -left-1.5 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-[var(--foreground)]/80" />
-                )}
-                <item.icon size={18} strokeWidth={active ? 2 : 1.6} />
-              </Link>
+                <Link
+                  href={item.href}
+                  aria-label={t(item.label)}
+                  className={`relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-150 ${
+                    active
+                      ? "bg-[var(--background)]/80 text-[var(--foreground)] shadow-sm"
+                      : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  {active && (
+                    <span className="absolute -left-1.5 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-full bg-[var(--foreground)]/80" />
+                  )}
+                  <item.icon size={18} strokeWidth={active ? 2 : 1.6} />
+                </Link>
+              </Tooltip>
             );
           })}
         </nav>

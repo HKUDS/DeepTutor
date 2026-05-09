@@ -103,6 +103,7 @@ class ProvidersConfig(Base):
     )  # BytePlus Coding Plan
     openai_codex: ProviderConfig = Field(default_factory=ProviderConfig)  # OpenAI Codex (OAuth)
     github_copilot: ProviderConfig = Field(default_factory=ProviderConfig)  # Github Copilot (OAuth)
+    nvidia_nim: ProviderConfig = Field(default_factory=ProviderConfig)  # NVIDIA NIM
 
 
 class HeartbeatConfig(Base):

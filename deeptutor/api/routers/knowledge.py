@@ -36,18 +36,20 @@ from deeptutor.knowledge.initializer import KnowledgeBaseInitializer
 from deeptutor.knowledge.manager import KnowledgeBaseManager
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
-from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
-from deeptutor.services.rag.factory import DEFAULT_PROVIDER
-from deeptutor.services.rag.file_routing import FileTypeRouter
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.knowledge_access import (
     assert_writable,
     current_kb_base_dir,
     current_kb_manager,
-    list_visible_knowledge_bases as list_visible_kb_access,
     manager_for_resource,
     resolve_kb,
 )
+from deeptutor.multi_user.knowledge_access import (
+    list_visible_knowledge_bases as list_visible_kb_access,
+)
+from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
+from deeptutor.services.rag.factory import DEFAULT_PROVIDER
+from deeptutor.services.rag.file_routing import FileTypeRouter
 from deeptutor.utils.document_validator import DocumentValidator
 from deeptutor.utils.error_utils import format_exception_message
 
@@ -780,9 +782,9 @@ async def list_knowledge_bases():
                         source="admin" if get_current_user().is_admin else "user",
                         assigned=False,
                         read_only=False,
-                        provenance_label=access_by_id.get(
-                            f"{own_prefix}{info['name']}", {}
-                        ).get("provenance_label"),
+                        provenance_label=access_by_id.get(f"{own_prefix}{info['name']}", {}).get(
+                            "provenance_label"
+                        ),
                     )
                 )
             except Exception as e:

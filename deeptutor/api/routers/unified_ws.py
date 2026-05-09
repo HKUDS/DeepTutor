@@ -40,8 +40,11 @@ async def unified_websocket(ws: WebSocket) -> None:
     # Token is read from the ?token= query param (WebSocket headers can't
     # carry cookies cross-origin in all browsers).
     # Uses the same local jwt.decode() path — no network call.
-    from deeptutor.multi_user.context import reset_current_user, set_current_user
-    from deeptutor.multi_user.context import user_from_token_payload
+    from deeptutor.multi_user.context import (
+        reset_current_user,
+        set_current_user,
+        user_from_token_payload,
+    )
     from deeptutor.multi_user.paths import local_admin_user
     from deeptutor.services.auth import AUTH_ENABLED, decode_token
 

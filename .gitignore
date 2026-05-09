@@ -13,6 +13,7 @@ deeptutor/agents/question/reference_papers/
 deeptutor/services/rag/eg_only_for_analysis/
 docs/
 .github
+.claude
 
 # LaTeX build artifacts
 *.aux

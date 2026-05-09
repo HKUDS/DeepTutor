@@ -1504,7 +1504,9 @@ function ProfilesTab({
               }),
             });
             if (tplRes.status === 409) {
-              onToast(t("A soul with this id already exists, try another name"));
+              onToast(
+                t("A soul with this id already exists, try another name"),
+              );
               return false;
             }
             if (!tplRes.ok) {

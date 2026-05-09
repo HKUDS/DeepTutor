@@ -233,94 +233,94 @@ export default function AdminUsersPage() {
                   const canManageAssignments = !isAdmin && Boolean(user.id);
                   return (
                     <Fragment key={user.username}>
-                    <tr
-                      className="group hover:bg-[var(--background)]/50 transition-colors"
-                    >
-                      <td className="px-5 py-3.5 font-medium text-[var(--foreground)]">
-                        {user.username}
-                        {isSelf && (
-                          <span className="ml-2 text-xs text-[var(--muted-foreground)]">
-                            (you)
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <span
-                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium
+                      <tr className="group hover:bg-[var(--background)]/50 transition-colors">
+                        <td className="px-5 py-3.5 font-medium text-[var(--foreground)]">
+                          {user.username}
+                          {isSelf && (
+                            <span className="ml-2 text-xs text-[var(--muted-foreground)]">
+                              (you)
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium
                             ${
                               user.role === "admin"
                                 ? "bg-purple-500/15 text-purple-600 dark:text-purple-400"
                                 : "bg-[var(--muted)]/50 text-[var(--muted-foreground)]"
                             }`}
-                        >
-                          {user.role === "admin" ? <Shield size={11} /> : null}
-                          {user.role}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3.5 text-[var(--muted-foreground)]">
-                        {formatDate(user.created_at)}
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {canManageAssignments && (
-                            <button
-                              onClick={() =>
-                                setExpandedUserId((current) =>
-                                  current === user.id ? null : user.id,
-                                )
-                              }
-                              title="Manage assignments"
-                              className="rounded-lg p-1.5 text-[var(--muted-foreground)]
-                                         hover:bg-[var(--background)] hover:text-[var(--foreground)]
-                                         transition-colors"
-                            >
-                              <SlidersHorizontal size={15} />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleToggleRole(user)}
-                            disabled={isSelf}
-                            title={
-                              isSelf
-                                ? "Cannot change your own role"
-                                : user.role === "admin"
-                                  ? "Demote to user"
-                                  : "Promote to admin"
-                            }
-                            className="rounded-lg p-1.5 text-[var(--muted-foreground)]
-                                       hover:bg-[var(--background)] hover:text-[var(--foreground)]
-                                       disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                           >
                             {user.role === "admin" ? (
-                              <ShieldOff size={15} />
-                            ) : (
-                              <Shield size={15} />
+                              <Shield size={11} />
+                            ) : null}
+                            {user.role}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3.5 text-[var(--muted-foreground)]">
+                          {formatDate(user.created_at)}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {canManageAssignments && (
+                              <button
+                                onClick={() =>
+                                  setExpandedUserId((current) =>
+                                    current === user.id ? null : user.id,
+                                  )
+                                }
+                                title="Manage assignments"
+                                className="rounded-lg p-1.5 text-[var(--muted-foreground)]
+                                         hover:bg-[var(--background)] hover:text-[var(--foreground)]
+                                         transition-colors"
+                              >
+                                <SlidersHorizontal size={15} />
+                              </button>
                             )}
-                          </button>
-                          <button
-                            onClick={() => handleDelete(user.username)}
-                            disabled={isSelf}
-                            title={
-                              isSelf
-                                ? "Cannot delete your own account"
-                                : `Delete ${user.username}`
-                            }
-                            className="rounded-lg p-1.5 text-[var(--muted-foreground)]
+                            <button
+                              onClick={() => handleToggleRole(user)}
+                              disabled={isSelf}
+                              title={
+                                isSelf
+                                  ? "Cannot change your own role"
+                                  : user.role === "admin"
+                                    ? "Demote to user"
+                                    : "Promote to admin"
+                              }
+                              className="rounded-lg p-1.5 text-[var(--muted-foreground)]
+                                       hover:bg-[var(--background)] hover:text-[var(--foreground)]
+                                       disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                            >
+                              {user.role === "admin" ? (
+                                <ShieldOff size={15} />
+                              ) : (
+                                <Shield size={15} />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleDelete(user.username)}
+                              disabled={isSelf}
+                              title={
+                                isSelf
+                                  ? "Cannot delete your own account"
+                                  : `Delete ${user.username}`
+                              }
+                              className="rounded-lg p-1.5 text-[var(--muted-foreground)]
                                        hover:bg-red-500/10 hover:text-red-500
                                        disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                    {canManageAssignments && expandedUserId === user.id && (
-                      <tr>
-                        <td colSpan={4} className="p-0">
-                          <GrantEditor userId={user.id} />
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
-                    )}
+                      {canManageAssignments && expandedUserId === user.id && (
+                        <tr>
+                          <td colSpan={4} className="p-0">
+                            <GrantEditor userId={user.id} />
+                          </td>
+                        </tr>
+                      )}
                     </Fragment>
                   );
                 })}

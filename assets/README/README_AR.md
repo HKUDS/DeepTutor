@@ -28,6 +28,10 @@
 
 ### 📦 الإصدارات
 
+> **[2026.5.9]** [v1.3.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.9) — دعم TutorBot لقناتي Zulip وNVIDIA NIM، توجيه أكثر أمانًا لنماذج التفكير، أمر `deeptutor start`، تلميحات الشريط الجانبي، وتكافؤ مخزن الجلسات.
+
+> **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — نشر اختياري متعدد المستخدمين مع مساحات عمل معزولة، صلاحيات يديرها المسؤول، مسارات مصادقة، ووصول runtime محدود النطاق.
+
 > **[2026.5.4]** [v1.3.7](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.7) — إصلاحات نماذج التفكير / المزودين، إظهار تاريخ فهرس المعرفة، وزيادة أمان مسح Co-Writer وتحرير القوالب.
 
 > **[2026.5.3]** [v1.3.6](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.6) — اختيار النماذج عبر الكتالوج في الدردشة وTutorBot، إعادة فهرسة RAG أكثر أمانًا، إصلاحات حد الرموز في OpenAI Responses، والتحقق من محرر Skills.
@@ -48,6 +52,9 @@
 
 > **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — مرفقات نص / شيفرة / SVG، جولة إعداد بأمر واحد، تصدير الدردشة Markdown، واجهة إدارة KB مدمجة.
 
+<details>
+<summary><b>إصدارات أقدم (أكثر من أسبوعين)</b></summary>
+
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — مرفقات مستندات (PDF/DOCX/XLSX/PPTX)، عرض كتلة تفكير النموذج، محرّر قوالب Soul، حفظ Co-Writer في الدفتر.
 
 > **[2026.4.22]** [v1.2.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.2) — نظام Skills من إنشاء المستخدم، تحسين أداء إدخال الدردشة، بدء تلقائي لـ TutorBot، واجهة مكتبة الكتب، تصور بملء الشاشة.
@@ -59,10 +66,6 @@
 > **[2026.4.18]** [v1.1.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.2) — تبويب القنوات المستند إلى المخطط، دمج RAG في مسار واحد، مطالبات الدردشة خارج الكود.
 
 > **[2026.4.17]** [v1.1.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.1) — «أجب الآن» شامل، مزامنة تمرير Co-Writer، لوحة إعدادات موحّدة، زر إيقاف أثناء البث.
-
-
-<details>
-<summary><b>إصدارات أقدم (أكثر من أسبوعين)</b></summary>
 
 > **[2026.4.15]** [v1.1.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.0) — إعادة هيكلة تحليل صيغ LaTeX في الكتل؛ فحص تشخيص LLM عبر `agents.yaml`؛ إصلاح تمرير رؤوس HTTP إضافية؛ إصلاح UUID في SaveToNotebook؛ إرشادات Docker وLLM محلي.
 

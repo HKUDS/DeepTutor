@@ -257,12 +257,9 @@ class OpenAICompatProvider(LLMProvider):
                     kwargs.update(overrides)
                     break
 
-        if reasoning_effort:
-            kwargs["reasoning_effort"] = reasoning_effort
-
+        extra: dict[str, Any] | None = None
         if spec and reasoning_effort is not None:
             thinking_enabled = reasoning_effort.lower() != "minimal"
-            extra: dict[str, Any] | None = None
             if spec.name == "dashscope":
                 extra = {"enable_thinking": thinking_enabled}
             elif spec.name in (
@@ -270,10 +267,18 @@ class OpenAICompatProvider(LLMProvider):
                 "volcengine_coding_plan",
                 "byteplus",
                 "byteplus_coding_plan",
+                "deepseek",
             ):
                 extra = {"thinking": {"type": "enabled" if thinking_enabled else "disabled"}}
+            elif spec.name == "minimax":
+                extra = {"reasoning_split": thinking_enabled}
             if extra:
                 kwargs.setdefault("extra_body", {}).update(extra)
+
+        # Providers that handle thinking via extra_body don't need a
+        # top-level reasoning_effort when the intent is to disable thinking.
+        if reasoning_effort and not (extra and reasoning_effort.lower() == "minimal"):
+            kwargs["reasoning_effort"] = reasoning_effort
 
         if tools:
             kwargs["tools"] = tools
@@ -561,7 +566,8 @@ class OpenAICompatProvider(LLMProvider):
             tool_choice,
         )
         kwargs["stream"] = True
-        kwargs["stream_options"] = {"include_usage": True}
+        if self._spec is None or self._spec.supports_stream_options:
+            kwargs["stream_options"] = {"include_usage": True}
         idle_timeout_s = 90
         try:
             stream = await self._client.chat.completions.create(**kwargs)

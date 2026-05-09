@@ -28,6 +28,10 @@
 
 ### 📦 Versions
 
+> **[2026.5.9]** [v1.3.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.9) — TutorBot prend en charge Zulip et NVIDIA NIM, routage plus sûr des modèles de raisonnement, `deeptutor start`, infobulles latérales et parité du stockage de sessions.
+
+> **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — Déploiements multi-utilisateurs optionnels avec espaces isolés, droits admin, routes d’authentification et accès runtime limité.
+
 > **[2026.5.4]** [v1.3.7](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.7) — Correctifs modèles de raisonnement / fournisseurs, historique d’index des connaissances visible, vidage Co-Writer et édition de modèles plus sûrs.
 
 > **[2026.5.3]** [v1.3.6](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.6) — Sélection de modèles par catalogue (chat et TutorBot), réindexation RAG plus sûre, plafonds de tokens OpenAI Responses, validation de l’éditeur Skills.
@@ -48,6 +52,9 @@
 
 > **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — PJ texte/code/SVG, Setup Tour en une commande, export Markdown du chat, UI KB compacte.
 
+<details>
+<summary><b>Anciennes versions (plus de 2 semaines)</b></summary>
+
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — PJ documents, blocs de raisonnement, éditeur de modèles Soul, Co-Writer vers carnet.
 
 > **[2026.4.22]** [v1.2.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.2) — Skills utilisateur, perf. saisie chat, démarrage auto TutorBot, UI bibliothèque, plein écran visualisation.
@@ -55,9 +62,6 @@
 > **[2026.4.21]** [v1.2.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.1) — Plafonds de tokens par étape, régénérer partout, compatibilité RAG & Gemma.
 
 > **[2026.4.20]** [v1.2.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.0) — Compilateur Book Engine « livre vivant », Co-Writer multi-documents, HTML interactif, @ dans la banque de questions.
-
-<details>
-<summary><b>Anciennes versions (plus de 2 semaines)</b></summary>
 
 > **[2026.4.18]** [v1.1.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.1.2) — Onglet Channels piloté par schéma, pipeline RAG unique, prompts externalisés.
 

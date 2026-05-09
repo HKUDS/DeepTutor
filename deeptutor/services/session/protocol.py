@@ -48,7 +48,14 @@ class SessionStoreProtocol(Protocol):
         capability: str = "",
         events: list[dict[str, Any]] | None = None,
         attachments: list[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> int: ...
+
+    async def delete_message(self, message_id: int | str) -> bool: ...
+
+    async def get_last_message(
+        self, session_id: str, role: str | None = None
+    ) -> dict[str, Any] | None: ...
 
     async def get_messages(self, session_id: str) -> list[dict[str, Any]]: ...
 

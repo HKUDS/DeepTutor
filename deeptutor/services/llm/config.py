@@ -259,9 +259,7 @@ def get_llm_config() -> LLMConfig:
     # Allow LLM_REASONING_EFFORT from .env to override the resolver path
     env_reasoning = _strip_value(get_env_store().get("LLM_REASONING_EFFORT"))
     if env_reasoning:
-        _LLM_CONFIG_CACHE = _LLM_CONFIG_CACHE.model_copy(
-            update={"reasoning_effort": env_reasoning}
-        )
+        _LLM_CONFIG_CACHE = _LLM_CONFIG_CACHE.model_copy(update={"reasoning_effort": env_reasoning})
 
     return _LLM_CONFIG_CACHE
 

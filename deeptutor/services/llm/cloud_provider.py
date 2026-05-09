@@ -83,6 +83,21 @@ def _coerce_int(value: object, default: int | None) -> int | None:
 # Use lowercase to avoid constant redefinition warning
 _ssl_warning_logged = False
 
+# Providers that handle thinking mode through extra_body (rather than
+# top-level reasoning_effort).  "minimal" means disable thinking — these
+# providers reject the literal "minimal" value and expect extra_body instead.
+_BINDINGS_WITH_EXTRA_BODY_THINKING = frozenset(
+    {
+        "deepseek",
+        "dashscope",
+        "volcengine",
+        "volcengine_coding_plan",
+        "byteplus",
+        "byteplus_coding_plan",
+        "minimax",
+    }
+)
+
 
 def _looks_like_unsupported_response_format(error_text: str) -> bool:
     """Detect whether a 400 error body indicates ``response_format`` is unsupported.
@@ -328,7 +343,11 @@ async def _openai_complete(
         data["response_format"] = response_format
     reasoning_effort = kwargs.get("reasoning_effort")
     if isinstance(reasoning_effort, str) and reasoning_effort.strip():
-        data["reasoning_effort"] = reasoning_effort.strip()
+        effort = reasoning_effort.strip()
+        if not (
+            effort.lower() == "minimal" and binding.lower() in _BINDINGS_WITH_EXTRA_BODY_THINKING
+        ):
+            data["reasoning_effort"] = effort
 
     timeout = aiohttp.ClientTimeout(total=120)
     connector = _get_aiohttp_connector()
@@ -493,7 +512,11 @@ async def _openai_stream(
         data["response_format"] = response_format
     reasoning_effort = kwargs.get("reasoning_effort")
     if isinstance(reasoning_effort, str) and reasoning_effort.strip():
-        data["reasoning_effort"] = reasoning_effort.strip()
+        effort = reasoning_effort.strip()
+        if not (
+            effort.lower() == "minimal" and binding.lower() in _BINDINGS_WITH_EXTRA_BODY_THINKING
+        ):
+            data["reasoning_effort"] = effort
 
     timeout = aiohttp.ClientTimeout(total=300)
     connector = _get_aiohttp_connector()

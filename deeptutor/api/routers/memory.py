@@ -15,6 +15,11 @@ router = APIRouter()
 _VALID_FILES: set[MemoryFile] = {"summary", "profile"}
 
 
+def get_sqlite_session_store():
+    """Backward-compatible hook for tests and legacy monkeypatches."""
+    return get_session_store()
+
+
 def _snap_dict(snap) -> dict:
     return {
         "summary": snap.summary,
@@ -53,7 +58,7 @@ async def update_memory(payload: FileUpdateRequest):
 
 @router.post("/refresh")
 async def refresh_memory(payload: MemoryRefreshRequest):
-    store = get_session_store()
+    store = get_sqlite_session_store()
     session_id = str(payload.session_id or "").strip()
     if session_id:
         session = await store.get_session(session_id)
