@@ -75,3 +75,37 @@ test("hasVisibleMarkdownContent keeps meaningful markdown", () => {
     true,
   );
 });
+
+test("normalizeMarkdownForDisplay preserves array indexing in fenced code blocks", () => {
+  const input = "Some text\n\n```python\n# Base case\nfor i in range(m + 1): dp[i][0] = i\nfor j in range(n + 1): dp[0][j] = j\n```\n\nMore text";
+  const output = normalizeMarkdownForDisplay(input);
+  assert.equal(output.includes("dp[i][0]"), true, "dp[i][0] should be preserved");
+  assert.equal(output.includes("dp[0][j]"), true, "dp[0][j] should be preserved");
+  assert.equal(output.includes("#references"), false, "citation markers should not be injected into code blocks");
+});
+
+test("normalizeMarkdownForDisplay preserves single bracket indexing in code blocks", () => {
+  const input = "```\narr[0] = 1\nitems[i] = value\n```";
+  const output = normalizeMarkdownForDisplay(input);
+  assert.equal(output.includes("arr[0]"), true);
+  assert.equal(output.includes("items[i]"), true);
+  assert.equal(output.includes("#references"), false);
+});
+
+test("normalizeMarkdownForDisplay still linkifies citations outside code blocks", () => {
+  const input = "This is a citation [1] and another [web-2]";
+  const output = normalizeMarkdownForDisplay(input);
+  assert.equal(output.includes('[1](#references "citation")'), true);
+  assert.equal(output.includes('[web-2](#references "citation")'), true);
+});
+
+test("normalizeMarkdownForDisplay preserves code with multiple bracket patterns", () => {
+  const input = "```python\nmatrix[i][j] = matrix[i-1][j-1] + matrix[i+1][j+1]\narr[0] = 0\nhash[key] = value\n```";
+  const output = normalizeMarkdownForDisplay(input);
+  assert.equal(output.includes("matrix[i][j]"), true);
+  assert.equal(output.includes("matrix[i-1][j-1]"), true);
+  assert.equal(output.includes("matrix[i+1][j+1]"), true);
+  assert.equal(output.includes("arr[0]"), true);
+  assert.equal(output.includes("hash[key]"), true);
+  assert.equal(output.includes("#references"), false);
+});
