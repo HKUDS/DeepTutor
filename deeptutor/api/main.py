@@ -44,6 +44,7 @@ CONFIG_DRIFT_ERROR_TEMPLATE = (
     "registered in the runtime tool registry. Register the missing tools or "
     "remove the stale tool names from the capability manifests."
 )
+TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
 
 
 class SafeOutputStaticFiles(StaticFiles):
@@ -85,6 +86,48 @@ def validate_tool_consistency():
     except Exception:
         logger.exception("Failed to load configuration for validation")
         raise
+
+
+def _env_truthy(value: str | None) -> bool:
+    return str(value or "").strip().lower() in TRUTHY_ENV_VALUES
+
+
+def _split_origins(value: str | None) -> list[str]:
+    if not value:
+        return []
+    origins: list[str] = []
+    seen: set[str] = set()
+    for raw in value.replace("\n", ",").split(","):
+        origin = raw.strip().rstrip("/")
+        if not origin or origin in seen:
+            continue
+        origins.append(origin)
+        seen.add(origin)
+    return origins
+
+
+def _build_cors_settings() -> dict[str, object]:
+    """Build CORS settings for both localhost and remote Docker deployments."""
+    frontend_port = os.getenv("FRONTEND_PORT", "3782").strip() or "3782"
+    extra_origins = _split_origins(os.getenv("CORS_ORIGIN")) + _split_origins(
+        os.getenv("CORS_ORIGINS")
+    )
+    origins = [
+        f"http://localhost:{frontend_port}",
+        f"http://127.0.0.1:{frontend_port}",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+    for origin in extra_origins:
+        if origin not in origins:
+            origins.append(origin)
+
+    # Auth is disabled by default. In that local/single-user mode, mirror the
+    # pre-v1.3.8 behavior and allow remote Docker/LAN origins out of the box.
+    # When auth is enabled, require explicit CORS_ORIGIN(S) for credentialed
+    # cross-origin requests.
+    allow_origin_regex = None if _env_truthy(os.getenv("AUTH_ENABLED")) else r"https?://.*"
+    return {"allow_origins": origins, "allow_origin_regex": allow_origin_regex}
 
 
 @asynccontextmanager
@@ -188,24 +231,11 @@ async def selective_access_log(request, call_next):
     return response
 
 
-# Configure CORS.
-# allow_origins=["*"] is incompatible with allow_credentials=True (browsers reject it).
-# We build an explicit list that covers both localhost and 127.0.0.1 variants so the
-# frontend works regardless of which loopback alias the browser resolves to.
-_frontend_port = os.getenv("FRONTEND_PORT", "3782")
-_extra_origin = os.getenv("CORS_ORIGIN", "")  # optional extra origin for deployments
-_cors_origins = [
-    f"http://localhost:{_frontend_port}",
-    f"http://127.0.0.1:{_frontend_port}",
-    "http://localhost:3000",  # common Next.js default
-    "http://127.0.0.1:3000",
-]
-if _extra_origin:
-    _cors_origins.append(_extra_origin)
-
+_cors_settings = _build_cors_settings()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins,
+    allow_origins=_cors_settings["allow_origins"],
+    allow_origin_regex=_cors_settings["allow_origin_regex"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

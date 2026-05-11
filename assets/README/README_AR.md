@@ -28,6 +28,8 @@
 
 ### 📦 الإصدارات
 
+> **[2026.5.10]** [v1.3.10](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.10) — إصلاح CORS في Docker البعيد، وتفعيل `DISABLE_SSL_VERIFY` عبر مزوّدي SDK، وحماية اقتباسات كتل الكود، وجعل Matrix E2EE إضافة اختيارية.
+
 > **[2026.5.9]** [v1.3.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.9) — دعم TutorBot لقناتي Zulip وNVIDIA NIM، توجيه أكثر أمانًا لنماذج التفكير، أمر `deeptutor start`، تلميحات الشريط الجانبي، وتكافؤ مخزن الجلسات.
 
 > **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — نشر اختياري متعدد المستخدمين مع مساحات عمل معزولة، صلاحيات يديرها المسؤول، مسارات مصادقة، ووصول runtime محدود النطاق.
@@ -48,12 +50,12 @@
 
 > **[2026.4.27]** [v1.3.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.0) — فهارس KB ذات إصدار مع سير إعادة الفهرسة، إعادة بناء مساحة المعرفة، اكتشاف تلقائي للتضمين مع محولات جديدة، مركز Space.
 
+<details>
+<summary><b>إصدارات أقدم (أكثر من أسبوعين)</b></summary>
+
 > **[2026.4.25]** [v1.2.5](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.5) — مرفقات دردشة دائمة مع درج معاينة الملفات، خطوط أنابيب قدرات تدرك المرفقات، تصدير Markdown لـ TutorBot.
 
 > **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — مرفقات نص / شيفرة / SVG، جولة إعداد بأمر واحد، تصدير الدردشة Markdown، واجهة إدارة KB مدمجة.
-
-<details>
-<summary><b>إصدارات أقدم (أكثر من أسبوعين)</b></summary>
 
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — مرفقات مستندات (PDF/DOCX/XLSX/PPTX)، عرض كتلة تفكير النموذج، محرّر قوالب Soul، حفظ Co-Writer في الدفتر.
 

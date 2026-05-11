@@ -28,6 +28,8 @@
 
 ### 📦 Релизы
 
+> **[2026.5.10]** [v1.3.10](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.10) — Исправлены CORS для удалённого Docker, `DISABLE_SSL_VERIFY` в SDK-провайдерах, цитаты в блоках кода; Matrix E2EE стал опциональным аддоном.
+
 > **[2026.5.9]** [v1.3.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.9) — TutorBot получил Zulip и NVIDIA NIM, более безопасный роутинг thinking-моделей, `deeptutor start`, подсказки сайдбара и паритет хранилищ сессий.
 
 > **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — Опциональные multi-user развёртывания с изолированными рабочими пространствами, admin grants, auth routes и scoped runtime access.
@@ -48,12 +50,12 @@
 
 > **[2026.4.27]** [v1.3.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.0) — Версионированные индексы KB с процессом переиндексации, перестроенное рабочее пространство знаний, автообнаружение эмбеддингов с новыми адаптерами, хаб Space.
 
+<details>
+<summary><b>Прошлые релизы (более 2 недель назад)</b></summary>
+
 > **[2026.4.25]** [v1.2.5](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.5) — Постоянные вложения в чате с ящиком предпросмотра, пайплайны возможностей с учётом вложений, экспорт Markdown для TutorBot.
 
 > **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — Вложения текста / кода / SVG, тур настройки одной командой, экспорт чата в Markdown, компактный UI управления KB.
-
-<details>
-<summary><b>Прошлые релизы (более 2 недель назад)</b></summary>
 
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — Вложения документов (PDF/DOCX/XLSX/PPTX), блок размышлений модели рассуждений, редактор шаблонов Soul, сохранение из Co-Writer в блокнот.
 

@@ -28,6 +28,8 @@
 
 ### 📦 Wydania
 
+> **[2026.5.10]** [v1.3.10](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.10) — Poprawki CORS dla zdalnego Dockera, `DISABLE_SSL_VERIFY` w providerach SDK, cytowań w blokach kodu oraz Matrix E2EE jako opcjonalny dodatek.
+
 > **[2026.5.9]** [v1.3.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.9) — TutorBot obsługuje Zulip i NVIDIA NIM, bezpieczniejszy routing modeli rozumujących, `deeptutor start`, podpowiedzi w pasku bocznym i parytet magazynu sesji.
 
 > **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — Opcjonalne wdrożenia multi-user z izolowanymi workspace’ami, uprawnieniami admina, trasami auth i scoped runtime access.
@@ -48,12 +50,12 @@
 
 > **[2026.4.27]** [v1.3.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.0) — Wersjonowane indeksy KB z przepływem ponownej indeksacji, przebudowana przestrzeń wiedzy, automatyczne wykrywanie embeddingów z nowymi adapterami, hub Space.
 
+<details>
+<summary><b>Starsze wydania (ponad 2 tygodnie temu)</b></summary>
+
 > **[2026.4.25]** [v1.2.5](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.5) — Trwałe załączniki czatu z szufladą podglądu plików, potoki zdolności świadome załączników, eksport Markdown TutorBot.
 
 > **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — Załączniki tekst / kod / SVG, konfiguracja jednym poleceniem, eksport czatu Markdown, zwarty interfejs zarządzania KB.
-
-<details>
-<summary><b>Starsze wydania (ponad 2 tygodnie temu)</b></summary>
 
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — Załączniki dokumentów (PDF/DOCX/XLSX/PPTX), blok rozumowania modelu, edytor szablonów Soul, zapis z Co-Writer do notesu.
 

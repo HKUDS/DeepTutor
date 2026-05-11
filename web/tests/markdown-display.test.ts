@@ -32,6 +32,30 @@ test("normalizeMarkdownForDisplay keeps meaningful tables", () => {
   assert.equal(normalizeMarkdownForDisplay(input), input);
 });
 
+test("normalizeMarkdownForDisplay linkifies bare citations in prose", () => {
+  assert.equal(
+    normalizeMarkdownForDisplay("Reference [1]."),
+    'Reference [1](#references "citation").',
+  );
+});
+
+test("normalizeMarkdownForDisplay keeps array indexes inside fenced code", () => {
+  const input = "```js\nconst item = values[0];\n```";
+  assert.equal(normalizeMarkdownForDisplay(input), input);
+});
+
+test("normalizeMarkdownForDisplay keeps array indexes inside inline code", () => {
+  const input = "Use `values[0]` for the first item.";
+  assert.equal(normalizeMarkdownForDisplay(input), input);
+});
+
+test("normalizeMarkdownForDisplay unwraps explicit citation code spans outside code", () => {
+  assert.equal(
+    normalizeMarkdownForDisplay("See `[web-1]` for details."),
+    'See [web-1](#references "citation") for details.',
+  );
+});
+
 test("escapeUnknownHtmlTagsForDisplay escapes LLM pseudo tags", () => {
   const input = "Before\n<think>internal scratchpad</think>\nAfter";
   assert.equal(

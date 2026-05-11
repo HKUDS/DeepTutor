@@ -282,7 +282,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "install_profile_tutorbot_label": "Web + TutorBot",
         "install_profile_tutorbot_desc": "Adds TutorBot engine and common channel SDKs",
         "install_profile_matrix_label": "Web + TutorBot + Matrix",
-        "install_profile_matrix_desc": "Also installs matrix-nio[e2e]; requires libolm on your system",
+        "install_profile_matrix_desc": "Adds Matrix support without E2EE/libolm; install matrix-e2e for encrypted rooms",
         "install_math_animator": "Install Math Animator add-on?",
         "install_math_animator_hint": (
             "Optional: Manim can require LaTeX, Cairo, pkg-config, CMake, and ffmpeg."
@@ -398,7 +398,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "install_profile_tutorbot_label": "Web + TutorBot",
         "install_profile_tutorbot_desc": "增加 TutorBot 引擎和常用渠道 SDK",
         "install_profile_matrix_label": "Web + TutorBot + Matrix",
-        "install_profile_matrix_desc": "额外安装 matrix-nio[e2e]；系统需先安装 libolm",
+        "install_profile_matrix_desc": "增加非 E2EE Matrix 支持；加密房间请另装 matrix-e2e/libolm",
         "install_math_animator": "是否安装 Math Animator 附加能力？",
         "install_math_animator_hint": "选填：Manim 可能需要 LaTeX、Cairo、pkg-config、CMake 和 ffmpeg。",
         "install_selected": "已选择安装配置：{profile}",

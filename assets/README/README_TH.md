@@ -28,6 +28,8 @@
 
 ### 📦 ประวัติการเผยแพร่
 
+> **[2026.5.10]** [v1.3.10](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.10) — แก้ CORS สำหรับ Docker ระยะไกล, `DISABLE_SSL_VERIFY` ใน SDK providers, citation ใน code block และแยก Matrix E2EE เป็น add-on
+
 > **[2026.5.9]** [v1.3.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.9) — TutorBot รองรับ Zulip และ NVIDIA NIM, routing ของ thinking-model ปลอดภัยขึ้น, `deeptutor start`, tooltip ใน sidebar, และ session-store parity
 
 > **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — deployment แบบ multi-user ที่เปิดได้ตามต้องการ พร้อม workspace แยกผู้ใช้, admin grants, auth routes, และ scoped runtime access
@@ -48,12 +50,12 @@
 
 > **[2026.4.27]** [v1.3.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.0) — ดัชนี KB แบบมีเวอร์ชันพร้อมเวิร์กโฟลว์ re-index, รีบิลด์ Knowledge workspace, embedding auto-discovery กับอะแดปเตอร์ใหม่, Space hub
 
+<details>
+<summary><b>รุ่นที่ผ่านมา (มากกว่า 2 สัปดาห์ที่แล้ว)</b></summary>
+
 > **[2026.4.25]** [v1.2.5](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.5) — แนบไฟล์ในแชตถาวรพร้อมลิ้นชักพรีวิว, pipeline ความสามารถที่รับรู้แนบไฟล์, ส่งออก Markdown ของ TutorBot
 
 > **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — แนบข้อความ / โค้ด / SVG, Setup Tour คำสั่งเดียว, ส่งออกแชต Markdown, UI จัดการ KB แบบกะทัดรัด
-
-<details>
-<summary><b>รุ่นที่ผ่านมา (มากกว่า 2 สัปดาห์ที่แล้ว)</b></summary>
 
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — แนบเอกสาร (PDF/DOCX/XLSX/PPTX), แสดงบล็อกการคิดของโมเดลให้เหตุผล, ตัวแก้เทมเพลต Soul, บันทึก Co-Writer ลงสมุด
 

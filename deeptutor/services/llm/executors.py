@@ -11,6 +11,7 @@ import uuid
 from openai import AsyncOpenAI, BadRequestError
 
 from deeptutor.services.llm.capabilities import disable_response_format_at_runtime
+from deeptutor.services.llm.openai_http_client import openai_client_kwargs
 from deeptutor.services.llm.provider_registry import find_by_name, strip_provider_prefix
 
 from .config import get_token_limit_kwargs
@@ -156,6 +157,7 @@ async def sdk_complete(
         base_url=effective_base,
         default_headers=default_headers,
         max_retries=0,
+        **openai_client_kwargs(),
     )
 
     max_tokens_val = _coerce_int(kwargs.pop("max_tokens", 4096), 4096)
@@ -222,6 +224,7 @@ async def sdk_stream(
         base_url=effective_base,
         default_headers=default_headers,
         max_retries=0,
+        **openai_client_kwargs(),
     )
 
     max_tokens_val = _coerce_int(kwargs.pop("max_tokens", 4096), 4096)

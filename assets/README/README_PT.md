@@ -28,6 +28,8 @@
 
 ### 📦 Lançamentos
 
+> **[2026.5.10]** [v1.3.10](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.10) — Correção de CORS em Docker remoto, `DISABLE_SSL_VERIFY` nos provedores SDK, citações seguras em blocos de código e E2EE do Matrix como add-on opcional.
+
 > **[2026.5.9]** [v1.3.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.9) — TutorBot com Zulip e NVIDIA NIM, roteamento mais seguro para modelos de raciocínio, `deeptutor start`, tooltips na barra lateral e paridade do store de sessões.
 
 > **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — Deploys multiusuário opcionais com workspaces isolados, concessões de admin, rotas de autenticação e acesso runtime com escopo.
@@ -48,12 +50,12 @@
 
 > **[2026.4.27]** [v1.3.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.0) — Índices KB versionados com fluxo de reindexação, espaço de conhecimento reconstruído, autodetecção de embeddings com novos adaptadores, hub Space.
 
+<details>
+<summary><b>Lançamentos anteriores (há mais de 2 semanas)</b></summary>
+
 > **[2026.4.25]** [v1.2.5](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.5) — Anexos de chat persistentes com gaveta de pré-visualização, pipelines de capacidade cientes de anexos, exportação Markdown do TutorBot.
 
 > **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — Anexos de texto / código / SVG, tour de configuração em um comando, exportação do chat Markdown, UI compacta de gestão de KB.
-
-<details>
-<summary><b>Lançamentos anteriores (há mais de 2 semanas)</b></summary>
 
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — Anexos de documentos (PDF/DOCX/XLSX/PPTX), exibição do bloco de raciocínio, editor de modelos Soul, salvar no caderno a partir do Co-Writer.
 

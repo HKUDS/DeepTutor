@@ -28,6 +28,8 @@
 
 ### 📦 版本发布
 
+> **[2026.5.10]** [v1.3.10](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.10) — 修复远程 Docker CORS、SDK Provider 的 `DISABLE_SSL_VERIFY`、代码块引用误注入，并将 Matrix E2EE 改为可选扩展。
+
 > **[2026.5.9]** [v1.3.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.9) — TutorBot 支持 Zulip 与 NVIDIA NIM，思考模型路由更安全，新增 `deeptutor start`，侧栏提示与会话存储一致性提升。
 
 > **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — 可选多用户部署，隔离用户工作区、管理员授权、认证路由与作用域运行时访问。
@@ -48,12 +50,12 @@
 
 > **[2026.4.27]** [v1.3.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.0) — 版本化知识库索引与重建工作流，知识工作区重构，嵌入自动发现与新适配器，Space 枢纽。
 
+<details>
+<summary><b>更早发布（两周以前）</b></summary>
+
 > **[2026.4.25]** [v1.2.5](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.5) — 聊天附件持久化与文件预览抽屉，感知附件的能力流水线，TutorBot Markdown 导出。
 
 > **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — 文本/代码/SVG 附件，一键 Setup Tour，Markdown 聊天导出，紧凑知识库管理界面。
-
-<details>
-<summary><b>更早发布（两周以前）</b></summary>
 
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — 文档附件（PDF/DOCX/XLSX/PPTX），推理思维块展示，Soul 模板编辑器，Co-Writer 保存至笔记本。
 
@@ -196,7 +198,7 @@ python scripts/start_tour.py
 |:---|:---|:---|
 | Web app（推荐） | CLI + API + RAG/文档解析 | 大多数首次用户 |
 | Web + TutorBot | 增加 TutorBot 与常见频道 SDK | 需要自主导师或频道集成 |
-| Web + TutorBot + Matrix | Matrix/Element | 已安装或愿意安装 `libolm` 时 |
+| Web + TutorBot + Matrix | 非 E2EE Matrix/Element | 需要 Matrix/Element 房间；加密房间再单独安装 `matrix-e2e` |
 | 数学动画扩展 | 单独安装 Manim | 需要动画且已备好 LaTeX/ffmpeg 等 |
 
 向导结束后：
@@ -233,7 +235,8 @@ python -m pip install -e ".[server]"
 
 # 可选扩展（按需）：
 #   python -m pip install -e ".[tutorbot]"
-#   python -m pip install -e ".[tutorbot,matrix]"  # 需要 libolm
+#   python -m pip install -e ".[tutorbot,matrix]"  # 非 E2EE Matrix，无需 libolm
+#   python -m pip install -e ".[matrix-e2e]"       # 加密 Matrix 房间；需要 libolm
 #   python -m pip install -e ".[math-animator]"
 #   python -m pip install -e ".[all]"
 
@@ -543,7 +546,8 @@ FRONTEND_PORT=4000
 | `POCKETBASE_PORT` | 否 | 可选 PocketBase 侧车在 Docker 中的端口映射（默认 `8090`） |
 | `NEXT_PUBLIC_API_BASE_EXTERNAL` | 否 | 云端部署时对外可访问的后端 URL |
 | `NEXT_PUBLIC_API_BASE` | 否 | Next.js 客户端直连后端的 URL 覆盖 |
-| `CORS_ORIGIN` | 否 | 追加到 FastAPI CORS 允许列表的额外 Origin |
+| `CORS_ORIGIN` | 否 | 追加到 FastAPI CORS 允许列表的单个额外 Origin |
+| `CORS_ORIGINS` | 否 | 认证远程部署可用的逗号/换行分隔额外 Origins |
 | `DISABLE_SSL_VERIFY` | 否 | 关闭出站 TLS 校验（默认 `false`） |
 | `AUTH_ENABLED` | 否 | 为 `true` 时要求登录（默认 `false`） |
 | `NEXT_PUBLIC_AUTH_ENABLED` | 否 | 前端可选覆盖；留空则从 `AUTH_ENABLED` 推导 |

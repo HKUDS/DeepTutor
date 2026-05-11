@@ -12,6 +12,8 @@ from typing import Any, Dict
 
 from openai import APIConnectionError, APIError, APIStatusError, AsyncOpenAI
 
+from deeptutor.services.llm.openai_http_client import openai_client_kwargs
+
 from .base import (
     BaseEmbeddingAdapter,
     EmbeddingProviderError,
@@ -57,6 +59,7 @@ class OpenAISDKEmbeddingAdapter(BaseEmbeddingAdapter):
                 else None
             ),
             max_retries=2,
+            **openai_client_kwargs(timeout=max(self.request_timeout, 60)),
         )
 
     async def embed(self, request: EmbeddingRequest) -> EmbeddingResponse:

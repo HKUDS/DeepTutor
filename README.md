@@ -28,6 +28,8 @@
 
 ### 📦 Releases
 
+> **[2026.5.10]** [v1.3.10](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.10) — Remote Docker CORS recovery, `DISABLE_SSL_VERIFY` across SDK providers, safer code-block citations, and optional Matrix E2EE add-on.
+
 > **[2026.5.9]** [v1.3.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.9) — TutorBot Zulip and NVIDIA NIM support, safer thinking-model routing, `deeptutor start`, sidebar tooltips, and session-store parity.
 
 > **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — Optional multi-user deployments with isolated user workspaces, admin grants, auth routes, and scoped runtime access.
@@ -48,12 +50,12 @@
 
 > **[2026.4.27]** [v1.3.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.0) — Versioned KB indexes with re-index workflow, rebuilt Knowledge workspace, embedding auto-discovery with new adapters, Space hub.
 
+<details>
+<summary><b>Past releases (more than 2 weeks ago)</b></summary>
+
 > **[2026.4.25]** [v1.2.5](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.5) — Persistent chat attachments with file-preview drawer, attachment-aware capability pipelines, TutorBot Markdown export.
 
 > **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — Text/code/SVG attachments, one-command Setup Tour, Markdown chat export, compact KB management UI.
-
-<details>
-<summary><b>Past releases (more than 2 weeks ago)</b></summary>
 
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — Document attachments (PDF/DOCX/XLSX/PPTX), reasoning thinking-block display, Soul template editor, Co-Writer save-to-notebook.
 
@@ -195,7 +197,7 @@ During the install step, the tour asks which dependency profile you want:
 |:---|:---|:---|
 | Web app (recommended) | CLI + API server + RAG/document parsing | Most first-time users |
 | Web + TutorBot | Adds TutorBot engine and common channel SDKs | If you want autonomous tutor bots or channel integrations |
-| Web + TutorBot + Matrix | Adds Matrix / Element channel support | Only if you already have `libolm` installed or are ready to install it |
+| Web + TutorBot + Matrix | Adds Matrix / Element channel support without E2EE | If you need Matrix/Element rooms; install `matrix-e2e` only for encrypted rooms |
 | Math Animator add-on | Installs Manim separately | Only if you need animation generation and have LaTeX/ffmpeg/system build tools ready |
 
 Once the wizard finishes:
@@ -256,7 +258,8 @@ python -m pip install -e ".[server]"
 
 # Optional add-ons — install only the ones you need:
 #   python -m pip install -e ".[tutorbot]"       # TutorBot engine + channel SDKs
-#   python -m pip install -e ".[tutorbot,matrix]" # TutorBot + Matrix channel; requires libolm
+#   python -m pip install -e ".[tutorbot,matrix]" # TutorBot + Matrix channel without E2EE/libolm
+#   python -m pip install -e ".[matrix-e2e]"      # Optional encrypted Matrix rooms; requires libolm
 #   python -m pip install -e ".[math-animator]"  # Manim; also requires LaTeX/ffmpeg/system build tools
 #   python -m pip install -e ".[all]"            # Everything above + dev tools
 
@@ -590,7 +593,8 @@ These directories survive `docker compose down` and are reused on the next `dock
 | `POCKETBASE_PORT` | No | Docker port mapping for the optional PocketBase sidecar (default `8090`) |
 | `NEXT_PUBLIC_API_BASE_EXTERNAL` | No | Public backend URL for cloud deployment |
 | `NEXT_PUBLIC_API_BASE` | No | Direct backend URL override for the Next.js client |
-| `CORS_ORIGIN` | No | Extra origin appended to the FastAPI CORS allowlist |
+| `CORS_ORIGIN` | No | Single extra origin appended to the FastAPI CORS allowlist |
+| `CORS_ORIGINS` | No | Comma/newline-separated extra origins for authenticated remote deployments |
 | `DISABLE_SSL_VERIFY` | No | Disable outbound TLS verification (default `false`) |
 | `AUTH_ENABLED` | No | Require login when `true` (default `false`) |
 | `NEXT_PUBLIC_AUTH_ENABLED` | No | Optional frontend override; blank derives from `AUTH_ENABLED` |

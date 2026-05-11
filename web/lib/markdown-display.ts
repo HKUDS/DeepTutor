@@ -180,6 +180,8 @@ const ALLOWED_HTML_TAGS = new Set<string>([
 ]);
 
 const HTML_LIKE_TAG_REGEX = /<\/?([A-Za-z][A-Za-z0-9_-]*)\b[^<>]*?\/?>/g;
+const FENCED_CODE_BLOCK_REGEX = /```[\s\S]*?```/g;
+const INLINE_CODE_SPAN_REGEX = /`[^`\n]*`/g;
 const PROTECTED_SPAN_REGEX = /```[\s\S]*?```|`[^`\n]*`/g;
 const PROTECTED_PLACEHOLDER_REGEX = /\u0000PROTECTED_(\d+)\u0000/g;
 
@@ -374,6 +376,42 @@ function linkifyCitations(content: string): string {
   return linked + tail;
 }
 
+function maskProtectedSpans(
+  content: string,
+  regex: RegExp,
+  label: string,
+): { masked: string; restore: (value: string) => string } {
+  const protectedSpans: string[] = [];
+  const masked = content.replace(regex, (match) => {
+    protectedSpans.push(match);
+    return `\u0000${label}_${protectedSpans.length - 1}\u0000`;
+  });
+  const placeholderRegex = new RegExp(`\\u0000${label}_(\\d+)\\u0000`, "g");
+  return {
+    masked,
+    restore: (value: string) =>
+      value.replace(
+        placeholderRegex,
+        (_match, idx: string) => protectedSpans[Number(idx)] ?? "",
+      ),
+  };
+}
+
+function linkifyCitationsOutsideCode(content: string): string {
+  const fenced = maskProtectedSpans(
+    content,
+    FENCED_CODE_BLOCK_REGEX,
+    "FENCED_CODE",
+  );
+  const unwrapped = unwrapBacktickedCitations(fenced.masked);
+  const inline = maskProtectedSpans(
+    unwrapped,
+    INLINE_CODE_SPAN_REGEX,
+    "INLINE_CODE",
+  );
+  return fenced.restore(inline.restore(linkifyCitations(inline.masked)));
+}
+
 export function normalizeMarkdownForDisplay(content: string): string {
   if (!content) return "";
 
@@ -392,7 +430,7 @@ export function normalizeMarkdownForDisplay(content: string): string {
     removeEmptyHtmlTables(normalized),
   ).replace(/\n{3,}/g, "\n\n");
   const safe = escapeUnknownHtmlTagsForDisplay(cleaned);
-  return linkifyCitations(unwrapBacktickedCitations(safe));
+  return linkifyCitationsOutsideCode(safe);
 }
 
 export function hasVisibleMarkdownContent(content: string): boolean {

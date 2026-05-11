@@ -19,6 +19,7 @@ import json_repair
 from openai import AsyncOpenAI
 
 from deeptutor.services.llm.capabilities import disable_response_format_at_runtime
+from deeptutor.services.llm.openai_http_client import openai_client_kwargs
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, ToolCallRequest
 from deeptutor.services.llm.provider_core.openai_responses import (
     adapt_chat_kwargs_to_responses,
@@ -142,6 +143,7 @@ class OpenAICompatProvider(LLMProvider):
             base_url=effective_base,
             default_headers=default_headers,
             max_retries=0,
+            **openai_client_kwargs(),
         )
         self._responses_failures: dict[str, int] = {}
         self._responses_tripped_at: dict[str, float] = {}

@@ -104,6 +104,9 @@ services:
       - NEXT_PUBLIC_API_BASE_EXTERNAL=${NEXT_PUBLIC_API_BASE_EXTERNAL:-}
       # Alternative: Direct API base URL (same priority as NEXT_PUBLIC_API_BASE_EXTERNAL)
       - NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE:-}
+      # Extra frontend origin(s) allowed by FastAPI CORS when auth is enabled.
+      - CORS_ORIGIN=${CORS_ORIGIN:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-}
 
     volumes:
       # Mount local data directory for persistence (read-write)

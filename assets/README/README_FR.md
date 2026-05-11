@@ -28,6 +28,8 @@
 
 ### 📦 Versions
 
+> **[2026.5.10]** [v1.3.10](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.10) — Correction du CORS Docker distant, `DISABLE_SSL_VERIFY` pour les fournisseurs SDK, citations sûres dans les blocs de code, et E2EE Matrix en extension optionnelle.
+
 > **[2026.5.9]** [v1.3.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.9) — TutorBot prend en charge Zulip et NVIDIA NIM, routage plus sûr des modèles de raisonnement, `deeptutor start`, infobulles latérales et parité du stockage de sessions.
 
 > **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — Déploiements multi-utilisateurs optionnels avec espaces isolés, droits admin, routes d’authentification et accès runtime limité.
@@ -48,12 +50,12 @@
 
 > **[2026.4.27]** [v1.3.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.0) — Index KB versionnés et flux de réindexation, espace connaissances refait, auto-détection d’embeddings, hub Space.
 
+<details>
+<summary><b>Anciennes versions (plus de 2 semaines)</b></summary>
+
 > **[2026.4.25]** [v1.2.5](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.5) — Pièces jointes persistantes et tiroir d’aperçu, pipelines sensibles aux PJ, export Markdown TutorBot.
 
 > **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — PJ texte/code/SVG, Setup Tour en une commande, export Markdown du chat, UI KB compacte.
-
-<details>
-<summary><b>Anciennes versions (plus de 2 semaines)</b></summary>
 
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — PJ documents, blocs de raisonnement, éditeur de modèles Soul, Co-Writer vers carnet.
 

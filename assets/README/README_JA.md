@@ -28,6 +28,8 @@
 
 ### 📦 リリース
 
+> **[2026.5.10]** [v1.3.10](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.10) — リモート Docker の CORS、SDK Provider の `DISABLE_SSL_VERIFY`、コードブロックの引用誤変換を修正し、Matrix E2EE を任意アドオン化。
+
 > **[2026.5.9]** [v1.3.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.9) — TutorBot の Zulip／NVIDIA NIM 対応、思考モデルルーティングの安全化、`deeptutor start`、サイドバーツールチップ、セッションストア整合性。
 
 > **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — 任意のマルチユーザー展開、分離されたユーザーワークスペース、管理者権限付与、認証ルート、スコープ付き実行時アクセス。
@@ -48,12 +50,12 @@
 
 > **[2026.4.27]** [v1.3.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.0) — バージョン管理付き KB インデックスと再インデックスワークフロー、ナレッジワークスペース再設計、埋め込み自動検出と新アダプター、Space ハブ。
 
+<details>
+<summary><b>過去のリリース（2週間以上前）</b></summary>
+
 > **[2026.4.25]** [v1.2.5](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.5) — チャット添付ファイルの永続化とファイルプレビュードロワー、添付ファイル対応機能パイプライン、TutorBot Markdown エクスポート。
 
 > **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — テキスト/コード/SVG 添付ファイル、一コマンド Setup Tour、Markdown チャットエクスポート、コンパクトな KB 管理 UI。
-
-<details>
-<summary><b>過去のリリース（2週間以上前）</b></summary>
 
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — ドキュメント添付ファイル（PDF/DOCX/XLSX/PPTX）、推論思考ブロック表示、Soul テンプレートエディター、Co-Writer からノートブックへの保存。
 

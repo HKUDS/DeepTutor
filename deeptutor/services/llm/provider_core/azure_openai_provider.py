@@ -9,6 +9,7 @@ import uuid
 
 from openai import AsyncOpenAI
 
+from deeptutor.services.llm.openai_http_client import openai_client_kwargs
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse
 from deeptutor.services.llm.provider_core.openai_responses import (
     adapt_chat_kwargs_to_responses,
@@ -52,6 +53,7 @@ class AzureOpenAIProvider(LLMProvider):
             base_url=base_url,
             default_headers=headers,
             max_retries=0,
+            **openai_client_kwargs(),
         )
 
     @staticmethod

@@ -28,6 +28,8 @@
 
 ### 📦 रिलीज़
 
+> **[2026.5.10]** [v1.3.10](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.10) — Remote Docker CORS, SDK providers में `DISABLE_SSL_VERIFY`, code-block citations ठीक हुए; Matrix E2EE अब optional add-on है।
+
 > **[2026.5.9]** [v1.3.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.9) — TutorBot में Zulip और NVIDIA NIM सपोर्ट, thinking-model routing अधिक सुरक्षित, `deeptutor start`, sidebar tooltips, और session-store parity।
 
 > **[2026.5.8]** [v1.3.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.8) — वैकल्पिक multi-user deployments: isolated user workspaces, admin grants, auth routes, और scoped runtime access।
@@ -48,12 +50,12 @@
 
 > **[2026.4.27]** [v1.3.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.3.0) — संस्करणित KB इंडेक्स व पुनः-अनुक्रमण वर्कफ़्लो, नॉलेज वर्कस्पेस पुनर्निर्माण, नए अडैप्टर के साथ एम्बेडिंग ऑटो-डिस्कवरी, Space हब।
 
+<details>
+<summary><b>पुराने रिलीज़ (2 सप्ताह से अधिक पहले)</b></summary>
+
 > **[2026.4.25]** [v1.2.5](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.5) — फ़ाइल-पूर्वावलोकन दराज के साथ स्थायी चैट संलग्नक, संलग्नक-जागरूक क्षमता पाइपलाइन, TutorBot Markdown निर्यात।
 
 > **[2026.4.25]** [v1.2.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.4) — टेक्स्ट / कोड / SVG संलग्नक, एक-कमांड सेटअप टूर, Markdown चैट निर्यात, कॉम्पैक्ट KB प्रबंधन UI।
-
-<details>
-<summary><b>पुराने रिलीज़ (2 सप्ताह से अधिक पहले)</b></summary>
 
 > **[2026.4.24]** [v1.2.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.2.3) — दस्तावेज़ संलग्नक (PDF/DOCX/XLSX/PPTX), तर्क मॉडल सोच-ब्लॉक, Soul टेम्पलेट संपादक, Co-Writer से नोटबुक सहेजें।
 

@@ -7,14 +7,12 @@
 # Preferred install (from a source clone): pip install -e ".[matrix]"
 # Use this file for Docker/CI when pyproject.toml/source code aren't yet available.
 #
-# Note: matrix-nio[e2e] requires the libolm native library. On macOS:
-#   brew install libolm
-# On Debian/Ubuntu:
-#   apt-get install libolm-dev
+# This default profile is non-E2EE and does not require libolm/python-olm.
+# For encrypted rooms, install requirements/matrix-e2e.txt or `deeptutor[matrix-e2e]`.
 
 -r tutorbot.txt
 
 # --- Matrix channel ---
-matrix-nio[e2e]>=0.25.2,<1.0.0
+matrix-nio>=0.25.2,<1.0.0
 mistune>=3.0.0,<4.0.0
 nh3>=0.2.18,<1.0.0
