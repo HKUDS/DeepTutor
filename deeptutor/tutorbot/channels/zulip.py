@@ -537,15 +537,16 @@ class ZulipChannel(BaseChannel):
         if not client:
             return
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: self._call_with_retry(
-                client.call_endpoint,
-                url="user_uploads",
-                files=[media_path],
-                timeout=self.config.timeout,
-            ),
-        )
+        with open(media_path, "rb") as f:
+            result = await loop.run_in_executor(
+                None,
+                lambda: self._call_with_retry(
+                    client.call_endpoint,
+                    url="user_uploads",
+                    files=[f],
+                    timeout=self.config.timeout,
+                ),
+            )
         if result.get("result") != "success":
             logger.error("Zulip upload failed: {}", result.get("msg", "unknown"))
             return
