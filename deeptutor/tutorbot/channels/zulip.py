@@ -157,6 +157,11 @@ class ZulipChannel(BaseChannel):
             logger.warning("Zulip client not running")
             return
 
+        if not msg.metadata.get("msg_type"):
+            stored = self._recipient_map.get(msg.chat_id)
+            if stored:
+                msg.metadata = {**stored, **msg.metadata}
+
         if not msg.metadata.get("_progress", False):
             self._stop_typing(msg.chat_id)
 
