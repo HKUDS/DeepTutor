@@ -532,12 +532,55 @@ class ZulipChannel(BaseChannel):
         if result.get("result") != "success":
             logger.error("Zulip send failed: {}", result.get("msg", "unknown"))
 
+    def _resolve_media_path(self, media_path: str) -> str | None:
+        if Path(media_path).exists():
+            return media_path
+
+        path_id: str | None = None
+        if media_path.startswith("/user_uploads/"):
+            path_id = media_path
+        elif self.config.site and media_path.startswith(self.config.site):
+            stripped = media_path[len(self.config.site.rstrip("/")):]
+            if stripped.startswith("/user_uploads/"):
+                path_id = stripped
+
+        if not path_id:
+            return None
+
+        media_dir = get_media_dir("zulip")
+        name = Path(unquote(path_id)).name
+        dest = self._attachment_destination(media_dir, name, path_id, 0)
+
+        if dest.exists():
+            return str(dest)
+
+        url = f"{self.config.site.rstrip('/')}{path_id}"
+        try:
+            resp = requests.get(
+                url,
+                auth=(self.config.email, self.config.api_key),
+                timeout=self.config.timeout,
+            )
+            resp.raise_for_status()
+            dest.write_bytes(resp.content)
+            logger.debug("Downloaded Zulip attachment for re-upload: {}", name)
+            return str(dest)
+        except Exception as e:
+            logger.warning("Failed to download Zulip attachment {}: {}", name, e)
+            return None
+
     async def _upload_and_send(self, chat_id: str, media_path: str, metadata: dict) -> None:
         client = self._client
         if not client:
             return
+
+        local_path = self._resolve_media_path(media_path)
+        if not local_path:
+            logger.error("Cannot resolve media path: {}", media_path)
+            return
+
         loop = asyncio.get_running_loop()
-        with open(media_path, "rb") as f:
+        with open(local_path, "rb") as f:
             result = await loop.run_in_executor(
                 None,
                 lambda: self._call_with_retry(
