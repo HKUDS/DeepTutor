@@ -157,7 +157,7 @@ def _extract_token(authorization: str | None, dt_token: str | None) -> str | Non
 # ---------------------------------------------------------------------------
 
 
-def require_auth(
+async def require_auth(
     authorization: str | None = Header(default=None, alias="Authorization"),
     dt_token: str | None = Cookie(default=None),
 ) -> TokenPayload | None:
@@ -168,11 +168,20 @@ def require_auth(
       - Authorization: Bearer <token> header
       - dt_token cookie
 
-    Works on both HTTP and WebSocket routes — ``Header`` and ``Cookie`` are
-    WS-compatible, while ``HTTPBearer`` (which we used to use here) is not.
+    ``Header`` and ``Cookie`` are kept here in place of ``HTTPBearer`` so the
+    function stays usable from WebSocket call sites that don't go through
+    FastAPI's standard HTTP request lifecycle.
 
     Returns the authenticated TokenPayload, or None if auth is disabled.
     Raises HTTP 401 if auth is enabled but the token is missing or invalid.
+
+    Declared ``async def`` so the ``set_current_user`` call runs in the same
+    asyncio context as the endpoint. A sync dependency is dispatched via
+    ``anyio.to_thread.run_sync``, which executes the function in a worker
+    thread under a *copy* of the request context; any ``ContextVar.set``
+    inside that thread is discarded when the thread returns, leaving the
+    endpoint to read the unset default. That regression was the root cause
+    of #481.
     """
     if not AUTH_ENABLED:
         from deeptutor.multi_user.context import set_current_user
@@ -248,7 +257,7 @@ async def ws_require_auth(ws: WebSocket) -> _CtxToken | _WsAuthFailed:
     return set_current_user(user_from_token_payload(payload))
 
 
-def require_admin(
+async def require_admin(
     payload: TokenPayload | None = Depends(require_auth),
 ) -> TokenPayload:
     """
@@ -256,6 +265,10 @@ def require_admin(
 
     Raises HTTP 403 if the authenticated user is not an admin.
     When AUTH_ENABLED=false, all requests are treated as admin.
+
+    ``async def`` mirrors ``require_auth`` so the dependency chain stays on
+    the event loop and the user ContextVar set by ``require_auth`` is visible
+    to the endpoint.
     """
     if not AUTH_ENABLED:
         from deeptutor.services.auth import TokenPayload as TP
