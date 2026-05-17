@@ -5,36 +5,76 @@ system: |
   Rules:
   - If render_type is "svg", output a complete, self-contained SVG string.
     The SVG must include the xmlns attribute and be well-formed XML.
-    Use viewBox for responsive sizing. Prefer clean, modern aesthetics with
-    readable fonts, clear colors, and proper spacing.
+    Use viewBox="0 0 900 480" unless the user explicitly needs another ratio.
+    Design it as a compact in-answer diagram, not a poster or full lesson page:
+      * Everything must fit inside the viewBox with 32px margins.
+      * Use one primary diagram area, not multiple large cards or sections.
+      * Keep labels short and tied to the written solution (same names/quantities).
+      * Use at most 6 prominent labels and at most 2 accent colors.
+      * Avoid large title banners, huge headings, explanatory paragraphs, and
+        dark formula blocks inside the SVG; the app renders the derivation below.
+      * Prefer the Google-style pattern: a small metric strip only when useful,
+        a simple axis/lane/geometry, direct annotations, and generous empty space.
+      * Text must never be clipped or placed outside the viewBox.
+    Prefer clean, minimal aesthetics with readable fonts, clear colors, and proper spacing.
   - If render_type is "chartjs", output a valid JavaScript object literal that
     can be passed as the configuration to `new Chart(ctx, config)`.
     The config must include `type`, `data`, and `options` fields.
-    Use modern color palettes and ensure labels are readable.
+    Set options.maintainAspectRatio=false and keep labels readable in a compact panel.
   - If render_type is "mermaid", output valid Mermaid.js diagram code.
     The code must start with a valid diagram type keyword (graph, flowchart,
     sequenceDiagram, classDiagram, stateDiagram-v2, erDiagram, gantt, mindmap, etc.).
     Use clear node labels and readable edge descriptions. Do NOT use spaces in
     node IDs — use camelCase or underscores. Avoid reserved keywords as node IDs.
-  - If render_type is "html", output one complete, self-contained single-file HTML
-    learning page.
-    Technical constraints:
-      * Must include everything from <!DOCTYPE html> to </html>.
-      * Put all CSS inside <style>; put all JavaScript inside <script> before </body>.
-      * Do NOT rely on external CDNs, fonts, or other resources (KaTeX is injected
-        by the host page; use $...$ for inline math, $$...$$ for block math).
-      * The page will render inside an iframe — use max-width: 100% and
-        box-sizing: border-box, avoid fixed widths.
-      * For long content use overflow-x: auto when needed; never let content be
-        clipped.
-      * Wrap all interactions inside DOMContentLoaded and use addEventListener;
-        do NOT use inline onclick handlers.
-      * Always check that an element exists before manipulating it.
-    Within these constraints, freely choose layout, colors, visual style, and
-    interaction patterns to make the page clear, beautiful, and easy to learn from.
+  - If render_type is "html", output a JSON widget spec (NOT a full HTML page).
+    The host app has a fixed Google-style shell that handles all layout, CSS, and
+    controls wiring. You only provide the DATA and LOGIC.
+
+    Output a ```json code block containing exactly this schema:
+
+    {
+      "metrics": [
+        {"id": "unique_id", "label": "SHORT LABEL", "value": "50", "unit": "km/h"},
+        ... (3–5 entries)
+      ],
+      "canvas_type": "svg",
+      "canvas_html": "<svg viewBox=\"0 0 800 280\" xmlns=\"...\" id=\"dt-svg\">
+                        ... complete SVG content with all shapes/labels ...
+                      </svg>",
+      "controls": [
+        {"type": "slider", "id": "ctrl_id", "label": "Label (unit)",
+         "min": 10, "max": 100, "step": 1, "value": 50},
+        {"type": "toggle", "id": "ctrl_id", "label": "Label", "value": false}
+      ],
+      "update_js": "// Plain JS that runs on every control change.
+                    // Available: values (object of {id: currentValue}),
+                    //            updateMetric(id, text) to update metric pills,
+                    //            dtSvg (the SVG element, for svg canvas_type).
+                    // Example for svg:
+                    //   var dist = values.speed * values.time;
+                    //   updateMetric('m_dist', dist.toFixed(1) + ' km');
+                    //   dtSvg.getElementById('bar').setAttribute('width', dist/800*760);
+                    "
+    }
+
+    For canvas2d instead of svg, use:
+      "canvas_type": "canvas2d",
+      "canvas_html": "",
+      "draw_js": "// Body of: function dtDraw(values) { var w=..., h=...
+                  //   dtCtx.clearRect(0,0,w,h); ... draw here ... }"
+
+    Rules for the spec:
+    - metrics: 3–5 short-label, live-updating key metrics. IDs must be unique.
+    - canvas_html: complete SVG with all initial shapes. Give interactive
+      elements unique id attributes so update_js can target them.
+    - controls: sliders for numeric variables, toggles for boolean flags.
+    - update_js: must call updateMetric() for EVERY metric on every change.
+      Must also update SVG attributes or call redraw for canvas2d.
+    - No titles, headings, explanations, or solution text anywhere in the spec.
+
   - Do NOT include any explanation outside the code fence.
   - Wrap the code in a fenced code block with the appropriate language tag
-    (```svg, ```javascript, ```mermaid, or ```html).
+    (```svg, ```javascript, ```mermaid, or ```json for html).
 
 user_template: |
   User request:
@@ -52,4 +92,4 @@ user_template: |
   - For SVG: ```svg ... ```
   - For Chart.js: ```javascript ... ```
   - For Mermaid: ```mermaid ... ```
-  - For HTML: ```html ... ```
+  - For HTML widget spec: ```json ... ```

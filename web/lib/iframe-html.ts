@@ -17,7 +17,6 @@ const KATEX_RESOURCES = [
     "/script>",
 ].join("\n  ");
 
-// eslint-disable-next-line no-template-curly-in-string
 const KATEX_INIT_SCRIPT =
   "<script data-katex-init>" +
   'document.addEventListener("DOMContentLoaded",function(){var t=0,i=setInterval(function(){if(typeof renderMathInElement==="function"){clearInterval(i);try{renderMathInElement(document.body,{delimiters:[{left:"$$",right:"$$",display:true},{left:"$",right:"$",display:false},{left:"\\\\(",right:"\\\\)",display:false},{left:"\\\\[",right:"\\\\]",display:true}],throwOnError:false})}catch(e){console.error("[KaTeX] Error:",e)}}else if(++t>50){clearInterval(i);console.warn("[KaTeX] Timeout")}},100)});' +
@@ -25,6 +24,82 @@ const KATEX_INIT_SCRIPT =
   "/script>";
 
 const KATEX_HEAD = KATEX_RESOURCES + "\n  " + KATEX_INIT_SCRIPT;
+
+type IframeTheme = "light" | "dark";
+
+function buildThemeStyle(theme: IframeTheme): string {
+  if (theme !== "dark") {
+    return `<style data-deeptutor-theme>
+      :root { color-scheme: light; --dt-bg: #ffffff; --dt-panel: #f8fafc; --dt-card: #ffffff; --dt-border: #d8e0eb; --dt-text: #111827; --dt-muted: #667085; --dt-track: #d9e2ee; }
+      html, body { background: var(--dt-bg); color: var(--dt-text); }
+    </style>`;
+  }
+
+  // Dark mode: set CSS custom properties and override ONLY html/body.
+  // The generated widget's own @media (prefers-color-scheme: dark) block
+  // handles element-level styling. We avoid broad !important overrides on
+  // generic elements (div, section, main …) which broke custom layouts.
+  return `<style data-deeptutor-theme>
+    :root { color-scheme: dark; --dt-bg: transparent; --dt-panel: rgba(255,255,255,0.05); --dt-card: rgba(255,255,255,0.05); --dt-border: rgba(255,255,255,0.1); --dt-text: #f5f1eb; --dt-muted: #b8aea6; --dt-track: #5a514b; }
+    html, body { background: transparent !important; color: var(--dt-text) !important; }
+    body { scrollbar-color: #5f5650 var(--dt-bg); }
+    /* Expose a prefers-color-scheme override so widget CSS that checks the
+       media query still triggers in dark mode even inside a sandboxed iframe. */
+    @media (prefers-color-scheme: light) {
+      :root { color-scheme: dark; }
+    }
+    /* Override inline-style white/light backgrounds that LLMs hardcode on divs */
+    [style*="background: white"],
+    [style*="background-color: white"],
+    [style*="background:#fff"],
+    [style*="background: #fff"],
+    [style*="background:#ffffff"],
+    [style*="background: #ffffff"],
+    [style*="background-color:#fff"],
+    [style*="background-color: #fff"],
+    [style*="background-color:#ffffff"],
+    [style*="background-color: #ffffff"] {
+      background: transparent !important;
+      background-color: transparent !important;
+    }
+    /* Override inline-style black text for readability */
+    [style*="color: black"], [style*="color:black"],
+    [style*="color: #000"], [style*="color:#000"],
+    [style*="color: #000000"], [style*="color:#000000"] {
+      color: var(--dt-text) !important;
+    }
+    /* Minimal fallback for widgets that don't handle dark mode themselves —
+       only target inputs and SVG text, not layout containers. */
+    input[type="range"] { color-scheme: dark; }
+    svg text, svg tspan { fill: currentColor; }
+    svg { background: transparent !important; }
+  </style>`;
+}
+
+function injectThemeStyle(html: string, theme: IframeTheme): string {
+  const themeStyle = buildThemeStyle(theme);
+  if (html.includes("</head>")) {
+    return html.replace("</head>", themeStyle + "\n</head>");
+  }
+  if (html.includes("<head>")) {
+    return html.replace(/<head([^>]*)>/i, "<head$1>\n" + themeStyle);
+  }
+  if (html.includes("<html")) {
+    return html.replace(
+      /(<html[^>]*>)/i,
+      '$1\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
+        themeStyle +
+        "\n</head>",
+    );
+  }
+  return (
+    '<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
+    themeStyle +
+    "\n</head>\n<body>\n" +
+    html +
+    "\n</body>\n</html>"
+  );
+}
 
 /**
  * Inject KaTeX (CSS + JS + auto-render init) into the document's `<head>`.
@@ -87,6 +162,9 @@ export function sanitizeIframeHtml(html: string): string {
  * Convenience: inject KaTeX, then sanitize. Suitable for a one-shot iframe
  * `srcdoc` write.
  */
-export function prepareIframeHtml(html: string): string {
-  return sanitizeIframeHtml(injectKaTeX(html));
+export function prepareIframeHtml(
+  html: string,
+  theme: IframeTheme = "light",
+): string {
+  return sanitizeIframeHtml(injectThemeStyle(injectKaTeX(html), theme));
 }

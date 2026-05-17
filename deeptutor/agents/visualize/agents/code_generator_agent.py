@@ -8,7 +8,7 @@ from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.trace import build_trace_metadata, new_call_id
 
 from ..models import VisualizationAnalysis
-from ..utils import extract_code_block
+from ..utils import build_widget_from_spec, extract_code_block, extract_json_object, is_widget_spec
 
 
 class CodeGeneratorAgent(BaseAgent):
@@ -73,15 +73,23 @@ class CodeGeneratorAgent(BaseAgent):
         else:
             lang_hint = "javascript"
 
-        extracted = extract_code_block(response, lang_hint) or extract_code_block(response)
-
-        # For html, the model sometimes returns the full document with no fence.
-        # `extract_code_block` will then return the trimmed raw response — accept
-        # it as long as it looks like an HTML document.
-        if analysis.render_type == "html" and not extracted:
+        # ── HTML: try JSON widget spec first, then fall back to raw HTML ──────
+        if analysis.render_type == "html":
+            try:
+                spec = extract_json_object(response)
+                if is_widget_spec(spec):
+                    return build_widget_from_spec(spec)
+            except Exception:
+                pass
+            # Fallback: accept raw HTML document if LLM returned one directly
             stripped = (response or "").strip()
             lowered = stripped.lower()
             if lowered.startswith("<!doctype") or lowered.startswith("<html"):
                 return stripped
+            extracted = extract_code_block(response, "html")
+            if extracted:
+                return extracted
+            return stripped
 
+        extracted = extract_code_block(response, lang_hint) or extract_code_block(response)
         return extracted

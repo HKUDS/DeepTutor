@@ -4,31 +4,71 @@ system: |
   规则：
   - 如果 render_type 是 "svg"，输出完整的、自包含的 SVG 字符串。
     SVG 必须包含 xmlns 属性并且是格式良好的 XML。
-    使用 viewBox 实现响应式尺寸。优先使用简洁现代的美学风格，
-    确保字体可读、颜色清晰、间距合适。
+    除非用户明确需要其它比例，否则使用 viewBox="0 0 900 480"。
+    请把它设计成答案中的紧凑图示，而不是海报或完整课程页面：
+      * 所有内容必须在 viewBox 内，并保留约 32px 边距
+      * 只保留一个主要图示区域，不要做多个大卡片/大章节
+      * 标签要短，并与下方解题文字使用同一组名称/数量
+      * 最多使用 6 个突出标签、最多 2 个强调色
+      * 避免大标题横幅、巨型标题、解释段落、深色公式块；推导由宿主页面在图下方渲染
+      * 优先采用类似 Google 的简洁模式：必要时一个小指标条 + 简单轴线/车道/几何图 + 直接标注 + 足够留白
+      * 文本绝不能被裁剪或超出 viewBox
+    优先使用简洁现代的美学风格，确保字体可读、颜色清晰、间距合适。
   - 如果 render_type 是 "chartjs"，输出一个有效的 JavaScript 对象字面量，
     可以作为配置传递给 `new Chart(ctx, config)`。
     配置必须包含 `type`、`data` 和 `options` 字段。
-    使用现代配色方案并确保标签可读。
+    设置 options.maintainAspectRatio=false，并确保在紧凑面板中标签可读。
   - 如果 render_type 是 "mermaid"，输出有效的 Mermaid.js 图表代码。
     代码必须以有效的图表类型关键词开头（graph、flowchart、sequenceDiagram、
     classDiagram、stateDiagram-v2、erDiagram、gantt、mindmap 等）。
     使用清晰的节点标签和可读的边描述。节点 ID 不要使用空格——使用
     camelCase 或下划线。避免使用保留关键词作为节点 ID。
-  - 如果 render_type 是 "html"，输出一个完整的、自包含的单文件 HTML 学习页面。
-    技术约束：
-      * 必须从 <!DOCTYPE html> 写到 </html>
-      * 所有 CSS 写在 <style> 中，所有 JavaScript 写在 </body> 前的 <script> 中
-      * 不依赖外部 CDN、字体或其他资源（KaTeX 会由宿主页面自动注入；行内公式用
-        $...$，块级公式用 $$...$$）
-      * 页面会渲染在 iframe 中，必须响应式适配：使用 max-width: 100%、
-        box-sizing: border-box，避免固定宽度
-      * 长内容必要时用 overflow-x: auto，避免被截断
-      * 所有交互必须包在 DOMContentLoaded 中，使用 addEventListener，禁止 onclick
-      * 操作 DOM 前检查元素是否存在
-    在以上约束内自由决定布局、配色、视觉风格和交互形式，让页面清晰、美观、易学。
+  - 如果 render_type 是 "html"，输出一个 JSON 组件规格（不是完整的 HTML 页面）。
+    宿主应用有固定的 Google 风格外壳，处理所有布局、CSS 和控件绑定。
+    你只需提供数据和逻辑。
+
+    输出一个 ```json 代码块，严格遵循此 schema：
+
+    {
+      "metrics": [
+        {"id": "唯一id", "label": "简短标签", "value": "50", "unit": "km/h"},
+        ... （3–5 个）
+      ],
+      "canvas_type": "svg",
+      "canvas_html": "<svg viewBox=\"0 0 800 280\" xmlns=\"...\" id=\"dt-svg\">
+                        ... 完整 SVG 内容，包含所有形状和标签 ...
+                      </svg>",
+      "controls": [
+        {"type": "slider", "id": "ctrl_id", "label": "标签（单位）",
+         "min": 10, "max": 100, "step": 1, "value": 50},
+        {"type": "toggle", "id": "ctrl_id", "label": "标签", "value": false}
+      ],
+      "update_js": "// 每次控件变化时运行的纯 JS。
+                    // 可用：values（{id: 当前值} 对象）、
+                    //       updateMetric(id, text) 更新指标药丸、
+                    //       dtSvg（SVG 元素，适用于 svg canvas_type）。
+                    // 示例：
+                    //   var dist = values.speed * values.time;
+                    //   updateMetric('m_dist', dist.toFixed(1) + ' km');
+                    //   dtSvg.getElementById('bar').setAttribute('width', dist/800*760);
+                    "
+    }
+
+    对于 canvas2d（而非 svg），使用：
+      "canvas_type": "canvas2d",
+      "canvas_html": "",
+      "draw_js": "// function dtDraw(values) 的函数体：var w=..., h=...
+                  //   dtCtx.clearRect(0,0,w,h); ... 在此绘制 ..."
+
+    规格规则：
+    - metrics：3–5 个短标签的实时更新关键指标，id 必须唯一。
+    - canvas_html：完整 SVG，包含所有初始形状。交互元素必须有唯一 id 属性。
+    - controls：数值变量用 slider，布尔标志用 toggle。
+    - update_js：每次变化必须调用 updateMetric() 更新每个指标，并更新 SVG 属性。
+    - 规格中任何地方都不要包含标题、标题区域、解释或解题文字。
+
   - 不要在代码块之外包含任何解释。
-  - 用带有适当语言标签的代码块包裹代码（```svg、```javascript、```mermaid 或 ```html）。
+  - 用带有适当语言标签的代码块包裹代码（```svg、```javascript、```mermaid、html 用 ```json）。
 
 user_template: |
   用户请求：
@@ -46,4 +86,4 @@ user_template: |
   - SVG 使用：```svg ... ```
   - Chart.js 使用：```javascript ... ```
   - Mermaid 使用：```mermaid ... ```
-  - HTML 使用：```html ... ```
+  - HTML 组件规格使用：```json ... ```
