@@ -30,6 +30,10 @@ import type {
 import { apiUrl } from "@/lib/api";
 import { docIconFor } from "@/lib/doc-attachments";
 import { extractMathAnimatorResult } from "@/lib/math-animator-types";
+import {
+  extractRetrievalSummary,
+  type RetrievalSummary,
+} from "@/lib/retrieval-summary";
 import { extractQuizQuestions } from "@/lib/quiz-types";
 import { extractVisualizeResult } from "@/lib/visualize-types";
 import type { StreamEvent } from "@/lib/unified-ws";
@@ -170,6 +174,11 @@ const AssistantMessage = memo(function AssistantMessage({
     return extractVisualizeResult(resultEvent.metadata);
   }, [msg.capability, resultEvent]);
 
+  const retrievalSummary = useMemo(() => {
+    if (msg.capability !== "chat" || !resultEvent) return null;
+    return extractRetrievalSummary(resultEvent.metadata);
+  }, [msg.capability, resultEvent]);
+
   // Auto turns have a fundamentally different layout (interleaved
   // thinking + collapsed delegation cards + final synthesis). Each sub-
   // capability's internal trace is rendered INSIDE its delegation card —
@@ -202,6 +211,9 @@ const AssistantMessage = memo(function AssistantMessage({
         isStreaming={isStreaming}
         content={msg.content}
       />
+      {retrievalSummary ? (
+        <RetrievalSummaryCard summary={retrievalSummary} />
+      ) : null}
       {isStreaming && onAnswerNow ? (
         <AnswerNowRow onAnswerNow={onAnswerNow} />
       ) : null}
@@ -236,6 +248,62 @@ const AssistantMessage = memo(function AssistantMessage({
 });
 
 AssistantMessage.displayName = "AssistantMessage";
+
+const RetrievalSummaryCard = memo(function RetrievalSummaryCard({
+  summary,
+}: {
+  summary: RetrievalSummary;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="mb-3 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-[var(--muted-foreground)]">
+        <span className="font-medium text-[var(--foreground)]">
+          {t("Retrieved from")}
+        </span>
+        <span>
+          {summary.knowledgeBases.length} {t("Knowledge Bases")}
+        </span>
+        <span>
+          {summary.totalFiles} {t("files")}
+        </span>
+        <span>
+          {summary.totalChunks} {t("chunks")}
+        </span>
+      </div>
+      <div className="mt-2 flex flex-col gap-2">
+        {summary.knowledgeBases.map((item) => (
+          <div key={item.kbName} className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
+              <span className="rounded-full bg-[var(--muted)] px-2 py-0.5 font-medium text-[var(--foreground)]">
+                {item.kbName}
+              </span>
+              <span className="text-[var(--muted-foreground)]">
+                {item.files.length} {t("files")} · {item.chunkCount}{" "}
+                {t("chunks")}
+              </span>
+            </div>
+            {item.files.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {item.files.map((file) => (
+                  <span
+                    key={`${item.kbName}:${file}`}
+                    className="rounded-full border border-[var(--border)] px-2 py-0.5 text-[11px] text-[var(--muted-foreground)]"
+                  >
+                    {file}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+});
+
+RetrievalSummaryCard.displayName = "RetrievalSummaryCard";
 
 /**
  * Inline "Answer now" affordance shown alongside the active assistant turn.

@@ -90,6 +90,10 @@ import {
   type OutlineItem,
   type ResearchSource,
 } from "@/lib/research-types";
+import {
+  applyChatRetrievalMode,
+  type ChatRetrievalMode,
+} from "@/lib/chat-retrieval-mode";
 import { listKnowledgeBases } from "@/lib/knowledge-api";
 import { listLLMOptions, type LLMOption } from "@/lib/llm-options";
 import { downloadChatMarkdown } from "@/lib/chat-export";
@@ -467,6 +471,8 @@ export default function ChatPage() {
   const [toolMenuOpen, setToolMenuOpen] = useState(false);
   const [spaceMenuOpen, setSpaceMenuOpen] = useState(false);
   const [kbMenuOpen, setKbMenuOpen] = useState(false);
+  const [chatRetrievalMode, setChatRetrievalMode] =
+    useState<ChatRetrievalMode>("auto");
   const [selectedNotebookRecords, setSelectedNotebookRecords] = useState<
     SelectedRecord[]
   >([]);
@@ -1299,6 +1305,18 @@ export default function ChatPage() {
       if (isVisualizeMode) config = buildVisualizeWSConfig(visualizeConfig);
       if (isResearchMode) config = buildResearchWSConfig(researchConfig);
 
+      const retrievalSelection =
+        activeCap.value === ""
+          ? applyChatRetrievalMode(
+              state.enabledTools,
+              state.knowledgeBases,
+              chatRetrievalMode,
+            )
+          : {
+              enabledTools: [...state.enabledTools],
+              knowledgeBases: [...state.knowledgeBases],
+            };
+
       const skillsPayload = skillsAutoMode ? ["auto"] : [...selectedSkills];
       const memoryPayload = [...memoryReferencesPayload];
       const messageContent =
@@ -1326,7 +1344,42 @@ export default function ChatPage() {
         config,
         notebookReferencesPayload,
         historyReferencesPayload,
-        { bookReferences: bookReferencesPayload },
+        {
+          bookReferences: bookReferencesPayload,
+          requestSnapshotOverride: {
+            content: messageContent,
+            capability: state.activeCapability,
+            enabledTools: retrievalSelection.enabledTools,
+            knowledgeBases: retrievalSelection.knowledgeBases,
+            language: state.language,
+            ...(extraAttachments.length
+              ? { attachments: extraAttachments }
+              : {}),
+            ...(config && Object.keys(config).length > 0 ? { config } : {}),
+            ...(notebookReferencesPayload.length
+              ? { notebookReferences: notebookReferencesPayload }
+              : {}),
+            ...(historyReferencesPayload.length
+              ? { historyReferences: historyReferencesPayload }
+              : {}),
+            ...(questionNotebookReferencesPayload.length
+              ? {
+                  questionNotebookReferences:
+                    questionNotebookReferencesPayload,
+                }
+              : {}),
+            ...(bookReferencesPayload.length
+              ? { bookReferences: bookReferencesPayload }
+              : {}),
+            ...(skillsPayload.length ? { skills: skillsPayload } : {}),
+            ...(memoryPayload.length
+              ? { memoryReferences: memoryPayload }
+              : {}),
+            ...(state.llmSelection
+              ? { llmSelection: state.llmSelection }
+              : {}),
+          },
+        },
         questionNotebookReferencesPayload,
         skillsPayload,
         memoryPayload,
@@ -1343,6 +1396,7 @@ export default function ChatPage() {
     },
     [
       attachments,
+      activeCap.value,
       bookReferencesPayload,
       historyReferencesPayload,
       isMathAnimatorMode,
@@ -1352,6 +1406,7 @@ export default function ChatPage() {
       mathAnimatorConfig,
       memoryReferencesPayload,
       notebookReferencesPayload,
+      chatRetrievalMode,
       questionNotebookReferencesPayload,
       quizConfig,
       quizPdf,
@@ -1365,7 +1420,12 @@ export default function ChatPage() {
       skillsAutoMode,
       sendMessage,
       shouldAutoScrollRef,
+      state.activeCapability,
+      state.enabledTools,
+      state.knowledgeBases,
       state.isStreaming,
+      state.language,
+      state.llmSelection,
       t,
       visualizeConfig,
     ],
@@ -1710,6 +1770,8 @@ export default function ChatPage() {
           onSetToolMenuOpen={setToolMenuOpen}
           onSetSpaceMenuOpen={setSpaceMenuOpen}
           onSetKbMenuOpen={setKbMenuOpen}
+          chatRetrievalMode={chatRetrievalMode}
+          onSetChatRetrievalMode={setChatRetrievalMode}
           onToggleAutoCap={noopToggleAutoCap}
           onToggleKB={handleToggleKB}
           onSelectLLM={setLLMSelection}
