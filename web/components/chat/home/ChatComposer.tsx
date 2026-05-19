@@ -39,6 +39,7 @@ import type { ResearchSource } from "@/lib/research-types";
 import ChatSpaceMenu from "@/components/chat/space/ChatSpaceMenu";
 import type { SpaceMemoryFile } from "@/lib/space-items";
 import type { SelectedBookReference } from "@/lib/book-references";
+import type { ChatRetrievalMode } from "@/lib/chat-retrieval-mode";
 import ModelSelector from "./ModelSelector";
 
 type SpaceSelectionCounts = {
@@ -122,6 +123,7 @@ export default memo(function ChatComposer({
   skillsAutoMode,
   selectedMemoryFiles,
   selectedKnowledgeBases,
+  chatRetrievalMode,
   isStreaming,
   isResearchMode,
   isMathAnimatorMode,
@@ -138,6 +140,7 @@ export default memo(function ChatComposer({
   onSetToolMenuOpen,
   onSetSpaceMenuOpen,
   onSetKbMenuOpen,
+  onSetChatRetrievalMode,
   onToggleAutoCap,
   onToggleKB,
   onSelectLLM,
@@ -208,6 +211,7 @@ export default memo(function ChatComposer({
   skillsAutoMode: boolean;
   selectedMemoryFiles: SpaceMemoryFile[];
   selectedKnowledgeBases: string[];
+  chatRetrievalMode: ChatRetrievalMode;
   isStreaming: boolean;
   isResearchMode: boolean;
   isMathAnimatorMode: boolean;
@@ -238,6 +242,7 @@ export default memo(function ChatComposer({
   onSetToolMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
   onSetSpaceMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
   onSetKbMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
+  onSetChatRetrievalMode: (mode: ChatRetrievalMode) => void;
   onToggleAutoCap: (cap: string) => void;
   onToggleKB: (name: string) => void;
   onSelectLLM: (selection: LLMSelection | null) => void;
@@ -312,6 +317,9 @@ export default memo(function ChatComposer({
     [onAddFiles],
   );
 
+  const activeCapabilityKey = activeCap.value || "chat";
+  const showRetrievalMode =
+    activeCapabilityKey === "chat" && selectedKnowledgeBases.length > 0;
   useEffect(() => {
     if (!hasMessages) textareaRef.current?.focus();
   }, [hasMessages]);
@@ -932,6 +940,39 @@ export default memo(function ChatComposer({
                     </div>
                   )}
                 </div>
+
+                {showRetrievalMode ? (
+                  <div
+                    className="ml-1 inline-flex items-center rounded-lg border border-[var(--border)] bg-[var(--background)]/65 p-0.5"
+                    title={t("Retrieval mode")}
+                    aria-label={t("Retrieval mode")}
+                  >
+                    {(
+                      [
+                        ["auto", t("Auto")],
+                        ["kb_only", t("KB")],
+                        ["kb_web", t("KB + Web")],
+                        ["off", t("Off")],
+                      ] as const
+                    ).map(([mode, label]) => {
+                      const active = chatRetrievalMode === mode;
+                      return (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => onSetChatRetrievalMode(mode)}
+                          className={`rounded-md px-2 py-1 text-[10px] font-medium transition-colors ${
+                            active
+                              ? "bg-[var(--primary)] text-white"
+                              : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
 
                 <div className="relative flex items-center gap-0.5">
                   <button
