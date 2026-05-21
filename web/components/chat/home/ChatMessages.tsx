@@ -281,17 +281,9 @@ const AssistantMessage = memo(function AssistantMessage({
         <VisualizationViewer result={visualizeResult} />
       ) : quizQuestions && quizQuestions.length > 0 ? (
         <>
-          {/* Phase 1's FINISH preface (the "I researched X, now let me
-              quiz you on Y" sentence the user watched stream in) rides
-              along ABOVE the quiz card. Without this, the streamed text
-              vanishes from the bubble the moment the first card appears
-              because the branch above is mutually exclusive with
-              <AssistantResponse>. The body is already free of the
-              per-question markdown — the pipeline trims that out of
-              ``msg.content`` since the QuizViewer renders the cards
-              themselves. */}
           {msg.content ? <AssistantResponse content={msg.content} /> : null}
           <QuizViewer
+            key={quizQuestions.map((q) => q.question_id || q.question).join("|")}
             questions={quizQuestions}
             sessionId={sessionId}
             turnId={resultEvent?.turn_id ?? null}
@@ -299,10 +291,6 @@ const AssistantMessage = memo(function AssistantMessage({
           />
         </>
       ) : hasInlineAskUser ? (
-        // Default chat surface with one or more ask_user calls: render
-        // text and cards in the exact order they were streamed, so the
-        // pre-ask_user narration sits above the card and the resumed
-        // iteration's text sits below.
         messageSegments.map((seg) =>
           seg.kind === "text" ? (
             <AssistantResponse key={seg.key} content={seg.text} />

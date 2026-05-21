@@ -237,6 +237,21 @@ export default function QuizViewer({
     [],
   );
 
+  // Reset quiz state when questions change (e.g. new quiz generated in same chat)
+  const questionsSignature = useMemo(
+    () => questions.map((q) => q.question_id || q.question).join("|"),
+    [questions],
+  );
+  useEffect(() => {
+    setIdx(0);
+    setAnswers({});
+    setThreads({});
+    setJudgments({});
+    setAnswerViews({});
+    setReviewCollapsed({});
+    lastReportedSignatureRef.current = "";
+  }, [questionsSignature]);
+
   const q = questions[idx];
   const ans = answers[idx] ?? EMPTY_ANSWER;
   const total = questions.length;
