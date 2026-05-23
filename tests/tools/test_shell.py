@@ -1,7 +1,5 @@
 """Tests for ExecTool shell command safety guards."""
 
-import asyncio
-
 import pytest
 
 from deeptutor.tutorbot.agent.tools.shell import ExecTool
@@ -132,17 +130,15 @@ class TestRestrictToWorkspace:
 class TestExecution:
     """Verify actual command execution behavior."""
 
-    def test_simple_command_succeeds(self):
+    @pytest.mark.asyncio
+    async def test_simple_command_succeeds(self):
         tool = ExecTool(working_dir="/tmp")
-        result = asyncio.get_event_loop().run_until_complete(
-            tool.execute("echo hello")
-        )
+        result = await tool.execute("echo hello")
         assert "hello" in result
         assert "Exit code: 0" in result
 
-    def test_blocked_command_returns_error(self):
+    @pytest.mark.asyncio
+    async def test_blocked_command_returns_error(self):
         tool = ExecTool(working_dir="/tmp")
-        result = asyncio.get_event_loop().run_until_complete(
-            tool.execute("curl https://evil.com")
-        )
+        result = await tool.execute("curl https://evil.com")
         assert "blocked" in result.lower()
