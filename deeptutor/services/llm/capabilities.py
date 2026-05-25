@@ -57,6 +57,24 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "system_in_messages": False,
         "has_thinking_tags": False,
     },
+    "custom_anthropic": {  # Custom Anthropic-compatible endpoint
+        "supports_response_format": False,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": True,
+        "vision_url_supported": False,
+        "system_in_messages": False,
+        "has_thinking_tags": False,
+    },
+    "minimax_anthropic": {  # MiniMax via Anthropic API
+        "supports_response_format": False,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": False,
+        "vision_url_supported": False,
+        "system_in_messages": False,
+        "has_thinking_tags": False,
+    },
     # DeepSeek
     "deepseek": {
         "supports_response_format": False,  # DeepSeek doesn't support strict JSON schema yet
