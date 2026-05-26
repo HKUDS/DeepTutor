@@ -73,6 +73,7 @@ from deeptutor.services.llm import (
     clean_thinking_tags,
     get_llm_config,
     get_token_limit_kwargs,  # noqa: F401  (re-exported for tests)
+    has_thinking_tags,
     prepare_multimodal_messages,
     supports_tools,  # noqa: F401  (re-exported for tests)
 )
@@ -421,13 +422,14 @@ class AgenticChatPipeline:
         # call_id so it does NOT spawn its own sub-trace; each LLM iteration
         # and each tool call below allocate their own call_id and surface as
         # individual sub-traces in CallTracePanel.
-        # When native tool calling is active, disable thinking mode for
-        # reasoning models (e.g. Qwen3.6-Plus via DashScope).  These models
-        # emit tool calls inside ``reasoning_content`` instead of the
-        # ``tool_calls`` field when thinking is enabled, causing
-        # ``tool_without_calls`` protocol violations and infinite retries.
         completion_kwargs = self._completion_kwargs(max_tokens=self._responding_max_tokens)
-        if use_native_tools:
+        # Reasoning models (has_thinking_tags=True, e.g. Qwen3.6-Plus via
+        # DashScope) emit tool calls inside ``reasoning_content`` instead of
+        # the ``tool_calls`` field when thinking is enabled, causing
+        # ``tool_without_calls`` protocol violations and infinite retries.
+        # Disable thinking only when the model is a known reasoner AND native
+        # tool calling is active.  Non-reasoning models ignore the parameter.
+        if use_native_tools and has_thinking_tags(self.binding, self.model):
             completion_kwargs.setdefault("extra_body", {})["enable_thinking"] = False
 
         # When native tool calling is unavailable (no tool schemas), strip
