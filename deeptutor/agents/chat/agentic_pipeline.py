@@ -1266,7 +1266,7 @@ class AgenticChatPipeline:
             note = (
                 "\n\n# 推理模型特别说明\n"
                 "你是一个原生支持推理和工具调用的模型。"
-                "请**忽略上面"输出协议"中关于 ``TOOL``/``THINK``/``FINISH``/``PAUSE`` 标签的指示**。"
+                "请**忽略上面「输出协议」中关于 ``TOOL``/``THINK``/``FINISH``/``PAUSE`` 标签的指示**。"
                 "你不需要在回复中输出任何标签。"
                 "你的推理过程会自动在独立区域显示。"
                 "当你需要调用工具时，直接通过原生 tool_calls 功能发起调用，不要在文本中写 JSON。"
@@ -1276,7 +1276,7 @@ class AgenticChatPipeline:
             note = (
                 "\n\n# Reasoning Model Special Instructions\n"
                 "You are a model with native reasoning and tool-calling support. "
-                "Please **ignore the "Output Protocol" instructions above about "
+                "Please **ignore the 'Output Protocol' instructions above about "
                 "``TOOL``/``THINK``/``FINISH``/``PAUSE`` labels**. "
                 "You do NOT need to output any labels in your replies. "
                 "Your reasoning is automatically displayed in a separate area. "
