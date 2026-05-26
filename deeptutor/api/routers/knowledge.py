@@ -51,6 +51,7 @@ from deeptutor.multi_user.knowledge_access import (
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
 from deeptutor.services.rag.factory import DEFAULT_PROVIDER
 from deeptutor.services.rag.file_routing import FileTypeRouter
+from deeptutor.services.rag.index_versioning import list_kb_versions
 from deeptutor.utils.document_validator import DocumentValidator
 from deeptutor.utils.error_utils import format_exception_message
 
@@ -1052,17 +1053,18 @@ async def list_kb_raw_files(kb_name: str):
         return {"files": []}
 
     files = []
-    for entry in sorted(raw_dir.iterdir(), key=lambda p: p.name.lower()):
-        if not entry.is_file():
+    for entry in sorted(raw_dir.rglob("*"), key=lambda p: p.name.lower()):
+        if not entry.is_file() or "__MACOSX" in entry.parts:
             continue
         try:
             stat = entry.stat()
         except OSError:
             continue
+        rel_path = str(entry.relative_to(raw_dir))
         media_type, _ = mimetypes.guess_type(entry.name)
         files.append(
             {
-                "name": entry.name,
+                "name": rel_path,
                 "size": stat.st_size,
                 "modified": stat.st_mtime,
                 "mime_type": media_type,

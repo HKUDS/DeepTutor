@@ -123,6 +123,9 @@ class CustomEmbedding(BaseEmbedding):
 
     def _get_text_embeddings(self, texts: List[str]) -> List[List[float]]:
         self._logger.info(f"Embedding {len(texts)} text chunks...")
+        for i, t in enumerate(texts):
+            if len(t) > 1000:
+                self._logger.warning(f"Large chunk #{i}: {len(t)} chars, first 200={t[:200]!r}")
         result = self._run_in_new_loop(self._aget_text_embeddings(texts))
         self._logger.info(f"Embedding complete: {len(result)} vectors")
         return result

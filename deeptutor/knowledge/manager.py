@@ -851,7 +851,10 @@ class KnowledgeBaseManager:
 
         if dir_exists:
             try:
-                raw_count = len([f for f in raw_dir.iterdir() if f.is_file()]) if raw_dir else 0
+                raw_count = (
+                    len([f for f in raw_dir.rglob("*") if f.is_file() and "__MACOSX" not in f.parts])
+                    if raw_dir else 0
+                )
             except Exception:
                 pass
 
