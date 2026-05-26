@@ -4,6 +4,7 @@ Unified session history API.
 
 from __future__ import annotations
 
+import json
 import logging
 
 from fastapi import APIRouter, HTTPException, Query
@@ -92,6 +93,46 @@ async def get_session(session_id: str):
     session = await store.get_session_with_messages(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    # Truncate oversized event payloads (e.g. full KB documents returned by RAG
+    # tools) so that the frontend TraceSurface can load large sessions without
+    # running out of memory.  This only affects the UI rendering path — the LLM
+    # context builder reads from a separate content-only store and is unaffected.
+    MAX_EVENT_PAYLOAD = 1024 * 1024
+    for msg in session.get("messages", []):
+        events_raw = msg.get("events_json") or msg.get("events")
+        if not events_raw or not isinstance(events_raw, (str, list)):
+            continue
+        try:
+            events = json.loads(events_raw) if isinstance(events_raw, str) else events_raw
+            truncated = False
+            for event in events:
+                if event.get("type") in ("tool_result", "observation"):
+                    # Truncate top-level content
+                    if isinstance(event.get("content"), str) and len(event["content"]) > MAX_EVENT_PAYLOAD:
+                        event["content"] = event["content"][:MAX_EVENT_PAYLOAD] + "\n\n[... content truncated]"
+                        event["_truncated"] = True
+                        truncated = True
+                    # Truncate nested tool_metadata fields
+                    tm = event.get("metadata", {}).get("tool_metadata", {})
+                    if isinstance(tm, dict):
+                        for field in ("content", "answer"):
+                            val = tm.get(field)
+                            if isinstance(val, str) and len(val) > MAX_EVENT_PAYLOAD:
+                                tm[field] = val[:MAX_EVENT_PAYLOAD] + "\n\n[... content truncated]"
+                                event["_truncated"] = True
+                                truncated = True
+            if truncated:
+                msg["events"] = events
+                msg.pop("events_json", None)
+        except (json.JSONDecodeError, TypeError, AttributeError):
+            pass
+
+    # Deduplicate redundant events_json strings (the events dict already
+    # carries the same data after the transformations above).
+    for msg in session.get("messages", []):
+        msg.pop("events_json", None)
+
     return session
 
 
