@@ -213,15 +213,18 @@ export async function lookupNotebookEntry(
   sessionId: string,
   questionId: string,
   turnId?: string | null,
+  options: { missingOk?: boolean } = {},
 ): Promise<NotebookEntry | null> {
   const params = new URLSearchParams({
     session_id: sessionId,
     question_id: questionId,
   });
   if (turnId) params.set("turn_id", turnId);
+  if (options.missingOk) params.set("missing_ok", "true");
   const response = await apiFetch(
     apiUrl(`/api/v1/question-notebook/entries/lookup/by-question?${params}`),
   );
+  if (response.status === 204) return null;
   if (response.status === 404) return null;
   return expectJson<NotebookEntry>(response);
 }

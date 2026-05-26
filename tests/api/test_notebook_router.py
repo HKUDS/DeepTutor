@@ -239,6 +239,17 @@ def test_lookup_entry_by_question(store: SQLiteSessionStore) -> None:
         )
         assert resp404.status_code == 404
 
+        resp204 = client.get(
+            "/api/v1/question-notebook/entries/lookup/by-question",
+            params={
+                "session_id": session["id"],
+                "question_id": "nope",
+                "missing_ok": "true",
+            },
+        )
+        assert resp204.status_code == 204
+        assert resp204.content == b""
+
 
 def test_quiz_state_isolated_per_turn(store: SQLiteSessionStore) -> None:
     """Regression test for #487 — two quizzes in the same chat session must

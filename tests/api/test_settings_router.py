@@ -372,3 +372,97 @@ async def test_complete_tour_invalidates_runtime_caches(
     assert new_llm_client is not old_llm_client
     assert new_embedding_client is not old_embedding_client
     assert '"status": "completed"' in cache
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_returns_normalized_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    from deeptutor.services.llm import factory as llm_factory
+
+    captured: dict[str, Any] = {}
+
+    async def _fake_fetch(binding, base_url, api_key):
+        captured["binding"] = binding
+        captured["base_url"] = base_url
+        captured["api_key"] = api_key
+        return ["qwen-max", "qwen-plus", "deepseek-chat"]
+
+    monkeypatch.setattr(llm_factory, "fetch_models", _fake_fetch)
+
+    response = await settings_router.fetch_models_from_provider(
+        settings_router.FetchModelsPayload(
+            binding="openai",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            api_key="sk-test",
+        )
+    )
+
+    assert captured == {
+        "binding": "openai",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "api_key": "sk-test",
+    }
+    assert response == {
+        "models": [
+            {"id": "qwen-max", "name": "qwen-max"},
+            {"id": "qwen-plus", "name": "qwen-plus"},
+            {"id": "deepseek-chat", "name": "deepseek-chat"},
+        ]
+    }
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_rejects_blank_base_url() -> None:
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc:
+        await settings_router.fetch_models_from_provider(
+            settings_router.FetchModelsPayload(
+                binding="openai",
+                base_url="   ",
+                api_key=None,
+            )
+        )
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_wraps_provider_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi import HTTPException
+
+    from deeptutor.services.llm import factory as llm_factory
+
+    async def _explode(binding, base_url, api_key):
+        raise RuntimeError("network unreachable")
+
+    monkeypatch.setattr(llm_factory, "fetch_models", _explode)
+
+    with pytest.raises(HTTPException) as exc:
+        await settings_router.fetch_models_from_provider(
+            settings_router.FetchModelsPayload(
+                binding="openai",
+                base_url="https://example.com/v1",
+                api_key="sk",
+            )
+        )
+    assert exc.value.status_code == 502
+    assert "network unreachable" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_forbidden_for_non_admin(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi import HTTPException
+
+    class _NonAdmin:
+        is_admin = False
+
+    monkeypatch.setattr(settings_router, "get_current_user", lambda: _NonAdmin())
+
+    with pytest.raises(HTTPException) as exc:
+        await settings_router.fetch_models_from_provider(
+            settings_router.FetchModelsPayload(
+                binding="openai",
+                base_url="https://example.com/v1",
+                api_key="sk",
+            )
+        )
+    assert exc.value.status_code == 403

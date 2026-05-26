@@ -9,6 +9,7 @@ import {
   Info,
   Loader2,
   Plus,
+  RefreshCw,
   Terminal,
   Trash2,
 } from "lucide-react";
@@ -41,6 +42,24 @@ const SERVICE_LABEL: Record<ServiceName, string> = {
   search: "Search",
 };
 
+// Providers like DashScope / OpenAI return LLM and embedding models from the
+// same `/v1/models` endpoint with no type filter. Sort the IDs so the ones
+// relevant to the current tab float to the top instead of forcing the user to
+// scan a mixed list. We do not hide entries — some providers use unconventional
+// naming (e.g. `bge-*`, `m3e-*`) and hard filtering would silently drop them.
+const EMBEDDING_NAME_HINT = /embed|bge|m3e|vector/i;
+function sortModelsByService(ids: string[], service: ServiceName): string[] {
+  if (service === "search") return ids;
+  return [...ids].sort((a, b) => {
+    const aEmb = EMBEDDING_NAME_HINT.test(a);
+    const bEmb = EMBEDDING_NAME_HINT.test(b);
+    if (aEmb !== bEmb) {
+      return service === "embedding" ? (aEmb ? -1 : 1) : aEmb ? 1 : -1;
+    }
+    return a.localeCompare(b);
+  });
+}
+
 export function ServiceConfigEditor({ service }: { service: ServiceName }) {
   const { t } = useTranslation();
   const {
@@ -65,6 +84,7 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
     llmContextDetection,
     applyDetectedContextWindow,
     runDetailedTest,
+    fetchAvailableModels,
   } = useSettings();
 
   const activeProfile = getActiveProfile(draft, service);
@@ -76,6 +96,10 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
   const [editingModelName, setEditingModelName] = useState("");
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
   const [editingProfileName, setEditingProfileName] = useState("");
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [fetchModelsError, setFetchModelsError] = useState<string | null>(null);
 
   // Reset API-key visibility whenever we land on a different profile or
   // switch services — same effect the old code had, but using React's
@@ -86,7 +110,28 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
   if (lastProfileKey !== profileKey) {
     setLastProfileKey(profileKey);
     if (showApiKey) setShowApiKey(false);
+    setModelPickerOpen(false);
+    setFetchModelsError(null);
+    setAvailableModels([]);
   }
+
+  const handleFetchModels = async () => {
+    setFetchModelsError(null);
+    setFetchingModels(true);
+    try {
+      const ids = await fetchAvailableModels(service);
+      setAvailableModels(sortModelsByService(ids, service));
+      setModelPickerOpen(true);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setFetchModelsError(
+        t("Failed to fetch models: {{error}}", { error: msg }),
+      );
+      setModelPickerOpen(false);
+    } finally {
+      setFetchingModels(false);
+    }
+  };
 
   const searchProviderRaw =
     service === "search"
@@ -418,9 +463,25 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                 )}
                 {activeModel && (
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                        {t("Model ID")}
+                    <div className="relative">
+                      <div className="mb-1.5 flex items-center justify-between gap-2">
+                        <span className="text-[12px] text-[var(--muted-foreground)]">
+                          {t("Model ID")}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleFetchModels}
+                          disabled={fetchingModels}
+                          className="inline-flex items-center gap-1 rounded-md border border-[var(--border)]/50 px-1.5 py-0.5 text-[10.5px] text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)] disabled:opacity-40"
+                          title={t("Fetch from provider")}
+                        >
+                          {fetchingModels ? (
+                            <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-2.5 w-2.5" />
+                          )}
+                          {t("Fetch from provider")}
+                        </button>
                       </div>
                       <input
                         className={inputClass}
@@ -430,6 +491,44 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                         }
                         placeholder="gpt-4o"
                       />
+                      {fetchModelsError && (
+                        <p className="mt-1 text-[11px] text-red-500">
+                          {fetchModelsError}
+                        </p>
+                      )}
+                      {modelPickerOpen && availableModels.length === 0 && (
+                        <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
+                          {t("No models returned by provider")}
+                        </p>
+                      )}
+                      {modelPickerOpen && availableModels.length > 0 && (
+                        <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-60 overflow-auto rounded-lg border border-[var(--border)] bg-[var(--card)] shadow-lg">
+                          <div className="flex items-center justify-between gap-2 border-b border-[var(--border)]/60 px-3 py-1.5 text-[11px] uppercase tracking-wide text-[var(--muted-foreground)]/70">
+                            <span>{t("Pick a model")}</span>
+                            <button
+                              type="button"
+                              onClick={() => setModelPickerOpen(false)}
+                              className="rounded px-1 text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                              aria-label={t("Close")}
+                            >
+                              ×
+                            </button>
+                          </div>
+                          {availableModels.map((id) => (
+                            <button
+                              key={id}
+                              type="button"
+                              onClick={() => {
+                                updateModelField(service, "model", id);
+                                setModelPickerOpen(false);
+                              }}
+                              className="block w-full px-3 py-1.5 text-left text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/40"
+                            >
+                              {id}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     {service === "llm" && (
                       <>
@@ -573,8 +672,16 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
           </div>
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed border-[var(--border)] py-12 text-center text-[13px] text-[var(--muted-foreground)]">
-          {t("No profiles configured. Add a profile to start.")}
+        <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-[var(--border)] py-12 text-center text-[13px] text-[var(--muted-foreground)]">
+          <span>{t("No profiles configured. Add a profile to start.")}</span>
+          <button
+            type="button"
+            onClick={() => addProfile(service)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/40"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t("Add profile")}
+          </button>
         </div>
       )}
     </div>

@@ -98,6 +98,12 @@ class CatalogPayload(BaseModel):
     catalog: dict[str, Any]
 
 
+class FetchModelsPayload(BaseModel):
+    binding: str
+    base_url: str
+    api_key: Optional[str] = None
+
+
 def _invalidate_runtime_caches() -> None:
     """Force runtime clients/config to pick up the latest saved catalog.
 
@@ -266,6 +272,32 @@ async def apply_catalog(payload: CatalogPayload | None = None):
         "catalog": get_model_catalog_service().load(),
         "runtime": applied,
     }
+
+
+@router.post("/fetch-models")
+async def fetch_models_from_provider(payload: FetchModelsPayload):
+    _require_settings_admin()
+    from deeptutor.services.llm.factory import fetch_models as fetch_llm_models
+
+    base_url = (payload.base_url or "").strip()
+    binding = (payload.binding or "").strip().lower() or "openai"
+    if not base_url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="base_url is required.",
+        )
+
+    try:
+        model_ids = await fetch_llm_models(binding, base_url, payload.api_key)
+    except Exception as exc:
+        logger.exception("Failed to fetch models from %s", base_url)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Provider request failed: {exc}",
+        ) from exc
+
+    models = [{"id": model_id, "name": model_id} for model_id in model_ids]
+    return {"models": models}
 
 
 @router.put("/theme")

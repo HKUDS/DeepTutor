@@ -8,7 +8,7 @@ import base64 as _b64
 import logging
 import uuid as _uuid
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 from deeptutor.services.session import get_sqlite_session_store
@@ -229,10 +229,13 @@ async def lookup_entry(
     session_id: str = Query(...),
     question_id: str = Query(...),
     turn_id: str | None = Query(default=None),
+    missing_ok: bool = Query(default=False),
 ):
     store = get_sqlite_session_store()
     entry = await store.find_notebook_entry(session_id, question_id, turn_id=turn_id)
     if entry is None:
+        if missing_ok:
+            return Response(status_code=204)
         raise HTTPException(status_code=404, detail="Entry not found")
     return entry
 

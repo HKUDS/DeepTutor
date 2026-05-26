@@ -332,6 +332,7 @@ type SettingsContextValue = {
   testRunning: ServiceName | null;
   embeddingCapabilities: EmbeddingCapabilities | null;
   runDetailedTest: (service: ServiceName) => Promise<void>;
+  fetchAvailableModels: (service: ServiceName) => Promise<string[]>;
 
   // Helpers
   embeddingDefaultDim: (binding?: string) => string;
@@ -805,6 +806,44 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     draft.services.llm.active_model_id,
   ]);
 
+  const fetchAvailableModels = useCallback(
+    async (service: ServiceName): Promise<string[]> => {
+      const profile = getActiveProfile(draft, service);
+      if (!profile) {
+        throw new Error(t("No active profile selected."));
+      }
+      const baseUrl = (profile.base_url || "").trim();
+      if (!baseUrl) {
+        throw new Error(t("Base URL is empty."));
+      }
+      const binding = (profile.binding || "openai").trim() || "openai";
+      const response = await apiFetch(
+        apiUrl("/api/v1/settings/fetch-models"),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            binding,
+            base_url: baseUrl,
+            api_key: profile.api_key || null,
+          }),
+        },
+      );
+      const payload = (await response.json().catch(() => ({}))) as {
+        models?: Array<{ id?: string }>;
+        detail?: string;
+      };
+      if (!response.ok) {
+        throw new Error(payload.detail || `HTTP ${response.status}`);
+      }
+      const ids = (payload.models || [])
+        .map((m) => (m.id || "").trim())
+        .filter((id): id is string => id.length > 0);
+      return ids;
+    },
+    [draft, t],
+  );
+
   const runDetailedTest = useCallback(
     async (service: ServiceName) => {
       if (!catalogEditable) return;
@@ -1013,6 +1052,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       testRunning,
       embeddingCapabilities,
       runDetailedTest,
+      fetchAvailableModels,
       embeddingDefaultDim,
       tourStepIndex,
       startTour,
@@ -1042,6 +1082,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       removeActiveModel,
       removeActiveProfile,
       runDetailedTest,
+      fetchAvailableModels,
       saveCatalog,
       saving,
       settingsError,
