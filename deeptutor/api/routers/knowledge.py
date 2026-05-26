@@ -13,6 +13,7 @@ import mimetypes
 import os
 from pathlib import Path
 import traceback
+import zipfile
 from uuid import uuid4
 
 from fastapi import (
@@ -189,6 +190,9 @@ def _save_uploaded_files(
     When PocketBase is enabled and ``kb_name`` is supplied, each file is also
     uploaded to the PocketBase knowledge_bases record as a file attachment
     (best-effort — local write is always the primary path).
+
+    .zip files are extracted into target_dir preserving the internal directory
+    structure, and the zip file itself is removed after extraction.
     """
     uploaded_files: list[str] = []
     uploaded_file_paths: list[str] = []
@@ -232,20 +236,64 @@ def _save_uploaded_files(
                 DocumentValidator.validate_upload_safety(
                     sanitized_filename, written_bytes, allowed_extensions=allowed_extensions
                 )
-                written_file_paths.append(file_path)
-                uploaded_files.append(sanitized_filename)
-                uploaded_file_paths.append(str(file_path))
 
-                # Mirror file to PocketBase when enabled (best-effort, non-blocking).
-                if _pb_sync and kb_name:
+                _is_zip = Path(sanitized_filename).suffix.lower() == ".zip"
+                if _is_zip:
                     try:
-                        _upload_file_to_pb(kb_name, sanitized_filename, file_path)
-                    except Exception as pb_exc:
-                        logger.debug(
-                            "PocketBase file upload failed for '%s': %s",
-                            sanitized_filename,
-                            pb_exc,
-                        )
+                        with zipfile.ZipFile(file_path, 'r') as zf:
+                            for info in zf.infolist():
+                                name = Path(info.filename).as_posix()
+                                if ".." in name.split("/") or name.startswith("/"):
+                                    raise HTTPException(
+                                        status_code=400,
+                                        detail=f"Zip entry with unsafe path: {info.filename}",
+                                    )
+                            zip_members = []
+                            for info in zf.infolist():
+                                if info.is_dir():
+                                    continue
+                                ext = Path(info.filename).suffix.lower()
+                                if ext in (allowed_extensions or set()):
+                                    zip_members.append(info.filename)
+                            zf.extractall(str(target_dir))
+                            logger.info(
+                                "Extracted zip '%s' to %s (%d files)",
+                                sanitized_filename, target_dir, len(zip_members),
+                            )
+                    except zipfile.BadZipFile:
+                        raise HTTPException(status_code=400, detail=f"Invalid zip file: {sanitized_filename}")
+                    file_path.unlink(missing_ok=True)
+                    extracted = []
+                    for rel_name in zip_members:
+                        fp = target_dir / rel_name
+                        if fp.is_file():
+                            extracted.append((rel_name, str(fp)))
+                            uploaded_files.append(rel_name)
+                            uploaded_file_paths.append(str(fp))
+                    if _pb_sync and kb_name:
+                        for rel_name, full_path in extracted:
+                            try:
+                                _upload_file_to_pb(kb_name, rel_name, Path(full_path))
+                            except Exception as pb_exc:
+                                logger.debug(
+                                    "PocketBase upload failed for '%s': %s",
+                                    rel_name,
+                                    pb_exc,
+                                )
+                else:
+                    written_file_paths.append(file_path)
+                    uploaded_files.append(sanitized_filename)
+                    uploaded_file_paths.append(str(file_path))
+
+                    if _pb_sync and kb_name:
+                        try:
+                            _upload_file_to_pb(kb_name, sanitized_filename, file_path)
+                        except Exception as pb_exc:
+                            logger.debug(
+                                "PocketBase file upload failed for '%s': %s",
+                                sanitized_filename,
+                                pb_exc,
+                            )
             except Exception as e:
                 if file_path and file_path.exists():
                     try:
@@ -439,7 +487,7 @@ async def run_initialization_task(initializer: KnowledgeBaseInitializer, task_id
             await initializer.process_documents()
             _task_log(task_id, "Document processing complete")
             _task_log(task_id, "Finalizing initialization")
-            indexed_count = len(FileTypeRouter.collect_supported_files(initializer.raw_dir))
+            indexed_count = len(FileTypeRouter.collect_supported_files(initializer.raw_dir, recursive=True))
 
             initializer.progress_tracker.update(
                 ProgressStage.COMPLETED,
@@ -541,6 +589,60 @@ async def run_upload_processing_task(
                 current=0,
                 total=len(uploaded_file_paths),
             )
+
+            kb_dir = Path(base_dir) / kb_name
+            has_index = any(
+                bool(v.get("ready")) for v in list_kb_versions(kb_dir)
+            )
+
+            if not has_index:
+                _task_log(
+                    task_id,
+                    "KB has no existing index (previous initialization may have failed), "
+                    "running full initialization...",
+                )
+                initializer = KnowledgeBaseInitializer(
+                    kb_name=kb_name,
+                    base_dir=base_dir,
+                    progress_tracker=progress_tracker,
+                    rag_provider=rag_provider,
+                )
+                await initializer.process_documents()
+                manager = get_kb_manager()
+                indexed_count = len(
+                    FileTypeRouter.collect_supported_files(initializer.raw_dir, recursive=True)
+                )
+                manager.update_kb_status(
+                    name=kb_name,
+                    status="ready",
+                    progress={
+                        "stage": "completed",
+                        "message": "Knowledge base initialized from upload",
+                        "percent": 100,
+                        "current": 1,
+                        "total": 1,
+                        "indexed_count": indexed_count,
+                        "index_changed": True,
+                        "index_action": "create",
+                        "task_id": task_id,
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                )
+                progress_tracker.update(
+                    ProgressStage.COMPLETED,
+                    f"Successfully processed {indexed_count} files!",
+                    current=indexed_count,
+                    total=indexed_count,
+                    indexed_count=indexed_count,
+                    index_changed=indexed_count > 0,
+                    index_action="create",
+                )
+                _task_log(task_id, f"Full initialization complete ({indexed_count} files indexed)", level="success")
+                task_manager.update_task_status(task_id, "completed")
+                task_stream_manager.emit_complete(
+                    task_id, f"Knowledge base '{kb_name}' initialized with {indexed_count} files"
+                )
+                return
 
             adder = DocumentAdder(
                 kb_name=kb_name,
@@ -652,7 +754,7 @@ async def get_rag_providers():
 @router.get("/supported-file-types", response_model=SupportedFileTypesInfo)
 async def get_supported_file_types():
     """Return the current upload policy so the web client stays in sync."""
-    extensions = sorted(FileTypeRouter.get_supported_extensions())
+    extensions = sorted(FileTypeRouter.get_supported_extensions() | {".zip"})
     accept_items = extensions + [
         mime
         for extension, mime in sorted(IMAGE_ACCEPT_MIME_TYPES.items())
@@ -1058,7 +1160,7 @@ async def upload_files(
                     "Update KB config first."
                 ),
             )
-        allowed_extensions = FileTypeRouter.get_supported_extensions()
+        allowed_extensions = FileTypeRouter.get_supported_extensions() | {".zip"}
         _validate_upload_batch(files, allowed_extensions=allowed_extensions)
         uploaded_files, uploaded_file_paths = _save_uploaded_files(
             files, raw_dir, allowed_extensions=allowed_extensions
@@ -1112,7 +1214,7 @@ async def create_knowledge_base(
             raise HTTPException(status_code=400, detail=f"Knowledge base '{name}' already exists")
 
         rag_provider = _validate_registered_provider(rag_provider)
-        allowed_extensions = FileTypeRouter.get_supported_extensions()
+        allowed_extensions = FileTypeRouter.get_supported_extensions() | {".zip"}
         _validate_upload_batch(files, allowed_extensions=allowed_extensions)
 
         logger.info(f"Creating KB: {name}")
@@ -1206,7 +1308,7 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
             raw_dir = kb_dir / "raw"
             if not raw_dir.is_dir():
                 raise FileNotFoundError(f"KB '{kb_name}' has no `raw/` directory; cannot reindex.")
-            file_paths = [str(path) for path in FileTypeRouter.collect_supported_files(raw_dir)]
+            file_paths = [str(path) for path in FileTypeRouter.collect_supported_files(raw_dir, recursive=True)]
             if not file_paths:
                 raise ValueError(f"KB '{kb_name}' has no source files in `raw/` to reindex.")
 

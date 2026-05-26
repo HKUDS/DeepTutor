@@ -139,7 +139,8 @@ export const kbNeedsReindex = (kb: KnowledgeBase): boolean =>
   resolveKbStatus(kb) === "needs_reindex";
 
 export const kbIsUploadable = (kb: KnowledgeBase): boolean =>
-  resolveKbStatus(kb) === "ready" && !kbNeedsReindex(kb);
+  !kbNeedsReindex(kb) &&
+  !["initializing", "processing"].includes(resolveKbStatus(kb));
 
 export const kbCanReindex = (kb: KnowledgeBase): boolean => {
   const status = resolveKbStatus(kb);

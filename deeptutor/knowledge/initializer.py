@@ -89,7 +89,7 @@ class KnowledgeBaseInitializer:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         metadata["last_updated"] = timestamp
         metadata["last_indexed_at"] = timestamp
-        metadata["last_indexed_count"] = len(FileTypeRouter.collect_supported_files(self.raw_dir))
+        metadata["last_indexed_count"] = len(FileTypeRouter.collect_supported_files(self.raw_dir, recursive=True))
         metadata["last_indexed_action"] = "create"
 
         with open(metadata_file, "w", encoding="utf-8") as f:
@@ -153,7 +153,7 @@ class KnowledgeBaseInitializer:
             total=0,
         )
 
-        doc_files = FileTypeRouter.collect_supported_files(self.raw_dir)
+        doc_files = FileTypeRouter.collect_supported_files(self.raw_dir, recursive=True)
 
         if not doc_files:
             self.progress_tracker.update(
@@ -323,7 +323,7 @@ async def main() -> None:
     if args.docs_dir:
         docs_dir = Path(args.docs_dir)
         if docs_dir.exists() and docs_dir.is_dir():
-            doc_files.extend(str(f) for f in FileTypeRouter.collect_supported_files(docs_dir))
+            doc_files.extend(str(f) for f in FileTypeRouter.collect_supported_files(docs_dir, recursive=True))
 
     initializer = KnowledgeBaseInitializer(
         kb_name=args.name,
