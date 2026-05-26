@@ -421,13 +421,35 @@ class AgenticChatPipeline:
         # call_id so it does NOT spawn its own sub-trace; each LLM iteration
         # and each tool call below allocate their own call_id and surface as
         # individual sub-traces in CallTracePanel.
+        # When native tool calling is active, disable thinking mode for
+        # reasoning models (e.g. Qwen3.6-Plus via DashScope).  These models
+        # emit tool calls inside ``reasoning_content`` instead of the
+        # ``tool_calls`` field when thinking is enabled, causing
+        # ``tool_without_calls`` protocol violations and infinite retries.
+        completion_kwargs = self._completion_kwargs(max_tokens=self._responding_max_tokens)
+        if use_native_tools:
+            completion_kwargs.setdefault("extra_body", {})["enable_thinking"] = False
+
+        # When native tool calling is unavailable (no tool schemas), strip
+        # the TOOL label from the protocol so the loop does not expect
+        # ``tool_calls`` deltas and trigger ``tool_without_calls`` violations.
+        protocol = _CHAT_PROTOCOL
+        if not use_native_tools and protocol.tool_label is not None:
+            protocol = LabelProtocol(
+                allowed=tuple(l for l in protocol.allowed if l != LABEL_TOOL),
+                terminal=protocol.terminal,
+                intermediate=protocol.intermediate,
+                final=protocol.final,
+                tool_label=None,
+            )
+
         async with stream.stage("responding", source="chat"):
             outcome = await run_agentic_loop(
                 initial_messages=messages,
-                protocol=_CHAT_PROTOCOL,
+                protocol=protocol,
                 client=client,
                 model=self.model,
-                completion_kwargs=self._completion_kwargs(max_tokens=self._responding_max_tokens),
+                completion_kwargs=completion_kwargs,
                 binding=self.binding,
                 tool_schemas=tool_schemas,
                 stream=stream,

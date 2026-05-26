@@ -105,6 +105,16 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "supports_vision": True,
         "system_in_messages": True,
     },
+    # DashScope / Alibaba Cloud (Qwen family)
+    # Uses OpenAI-compatible API with native function calling support.
+    "dashscope": {
+        "supports_response_format": True,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": False,  # Per-model; set True via MODEL_OVERRIDES
+        "system_in_messages": True,
+        "has_thinking_tags": True,  # Qwen reasoner models emit <think/> tags
+    },
     # Moonshot / Kimi — vision is per-model (see MODEL_OVERRIDES below).
     # Per the official docs the image input must be base64-encoded inline; URL
     # form is rejected. We therefore force the multimodal layer to resolve any
