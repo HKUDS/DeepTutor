@@ -380,6 +380,7 @@ class AgenticChatPipeline:
 
         enabled_tools = self._compose_enabled_tools(context)
         use_native_tools = bool(enabled_tools) and self._can_use_native_tool_calling()
+        _is_reasoner = has_thinking_tags(self.binding, self.model)
         tool_schemas = (
             self._build_llm_tool_schemas(enabled_tools, context) if use_native_tools else None
         )
@@ -426,7 +427,6 @@ class AgenticChatPipeline:
         # and each tool call below allocate their own call_id and surface as
         # individual sub-traces in CallTracePanel.
         completion_kwargs = self._completion_kwargs(max_tokens=self._responding_max_tokens)
-        _is_reasoner = has_thinking_tags(self.binding, self.model)
 
         # Reasoning models (e.g. Qwen3.6-Plus) need ``enable_thinking``
         # explicitly set so the API correctly handles thinking + tool_calls.

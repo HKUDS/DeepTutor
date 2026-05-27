@@ -29,6 +29,15 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "system_in_messages": True,  # System prompt goes in messages array
         "newer_models_use_max_completion_tokens": True,
     },
+    # Custom / user-defined OpenAI-compatible endpoints
+    "custom": {
+        "supports_response_format": True,
+        "supports_streaming": True,
+        "supports_tools": True,  # Most OpenAI-compat endpoints support function calling
+        "supports_vision": False,  # Per-model; set True via MODEL_OVERRIDES
+        "system_in_messages": True,
+        "has_thinking_tags": True,  # Reasoning models (e.g. Qwen) may emit <think/> tags
+    },
     "azure_openai": {
         "supports_response_format": True,
         "supports_streaming": True,
