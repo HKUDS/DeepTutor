@@ -36,7 +36,7 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "supports_tools": True,  # Most OpenAI-compat endpoints support function calling
         "supports_vision": False,  # Per-model; set True via MODEL_OVERRIDES
         "system_in_messages": True,
-        "has_thinking_tags": True,  # Reasoning models (e.g. Qwen) may emit <think/> tags
+        "has_thinking_tags": False,  # Per-model; MODEL_OVERRIDES handles qwen/deepseek etc.
     },
     "azure_openai": {
         "supports_response_format": True,
