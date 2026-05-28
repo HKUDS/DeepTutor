@@ -21,6 +21,14 @@ from .request_config import MathAnimatorRequestConfig
 from .retry_manager import CodeRetryManager
 from .visual_review import VisualReviewService
 
+# Imports for narration support
+try:
+    from ...services.tts import TTSClient, get_tts_client
+    from ...services.tts.models import TTSAudioResult
+    TTS_AVAILABLE = True
+except ImportError:
+    TTS_AVAILABLE = False
+
 
 class MathAnimatorPipeline:
     def __init__(
@@ -275,6 +283,191 @@ class MathAnimatorPipeline:
             "summary": summary,
             "timings": timings,
         }
+
+
+    async def generate_with_narration(
+        self,
+        *,
+        turn_id: str,
+        lecture_script: dict[str, Any],
+        tts_provider: str = "edge",
+        voice: str | None = None,
+        output_mode: str = "video",
+        quality: str = "medium",
+        on_progress: Callable[[str], Any] | None = None,
+    ) -> dict[str, Any]:
+        """Generate animated video with narration audio synchronized.
+
+        Args:
+            turn_id: Unique identifier for this generation
+            lecture_script: Lecture script with intro/segments/conclusion
+            tts_provider: TTS provider name ("edge", "azure", etc.)
+            voice: Voice identifier (provider-specific)
+            output_mode: "video" or "image"
+            quality: "low", "medium", or "high"
+            on_progress: Progress callback
+
+        Returns:
+            dict with video_path, audio_path, and timing info
+        """
+        if not TTS_AVAILABLE:
+            raise RuntimeError("TTS service not available")
+
+        if on_progress:
+            await on_progress("Generating narration audio...")
+
+        # Step 1: Generate TTS audio
+        tts = get_tts_client(provider=tts_provider)
+
+        # Merge script segments for TTS
+        full_script = self._merge_lecture_script(lecture_script)
+        tts_result = await tts.synthesize(full_script, voice=voice)
+
+        if on_progress:
+            await on_progress(f"Audio generated: {tts_result.duration_seconds:.1f}s")
+
+        # Step 2: Map TTS boundaries to segments
+        timed_segments = self._map_boundaries_to_segments(
+            lecture_script, tts_result.sentence_boundaries
+        )
+
+        # Step 3: Generate timed animation code
+        if on_progress:
+            await on_progress("Generating timed animation code...")
+
+        # Use code agent with timing constraints
+        timed_code = await self._generate_timed_code(
+            timed_segments=timed_segments,
+            total_duration=tts_result.duration_seconds,
+        )
+
+        # Step 4: Render video
+        if on_progress:
+            await on_progress("Rendering video...")
+
+        render_result = await self.run_render(
+            turn_id=turn_id,
+            user_input=lecture_script.get("problem_id", "math_lecture"),
+            request_config=MathAnimatorRequestConfig(
+                output_mode=output_mode,
+                quality=quality,
+            ),
+            initial_code=timed_code,
+            on_render_progress=lambda msg, raw: on_progress(msg) if on_progress else None,
+        )
+
+        # Step 5: Return result with paths for FFmpeg muxing
+        return {
+            "video_path": render_result[1].artifacts[0].url if render_result[1].artifacts else None,
+            "audio_path": tts_result.audio_path,
+            "duration_seconds": tts_result.duration_seconds,
+            "sentence_boundaries": [b.to_dict() for b in tts_result.sentence_boundaries],
+            "timed_segments": timed_segments,
+        }
+
+    def _merge_lecture_script(self, lecture_script: dict[str, Any]) -> str:
+        """Merge all script parts into a single text for TTS."""
+        parts = []
+
+        intro = lecture_script.get("intro", {})
+        if intro:
+            parts.append(intro.get("script", ""))
+
+        for segment in lecture_script.get("segments", []):
+            parts.append(segment.get("script", ""))
+
+        conclusion = lecture_script.get("conclusion", {})
+        if conclusion:
+            parts.append(conclusion.get("script", ""))
+
+        return "\n\n".join(parts)
+
+    def _map_boundaries_to_segments(
+        self,
+        lecture_script: dict[str, Any],
+        boundaries: list,
+    ) -> list[dict[str, Any]]:
+        """Map TTS sentence boundaries to lecture segments."""
+        import re
+
+        def split_sentences(text: str) -> list[str]:
+            pattern = r"[^。！？.!?]+[。！？.!?]+"
+            sentences = re.findall(pattern, text)
+            return [s.strip() for s in sentences if s.strip()]
+
+        result = []
+        boundary_idx = 0
+
+        all_segments = [
+            ("intro", lecture_script.get("intro", {})),
+        ]
+        all_segments.extend(("segment", s) for s in lecture_script.get("segments", []))
+        all_segments.append(("conclusion", lecture_script.get("conclusion", {})))
+
+        for seg_type, segment in all_segments:
+            if not segment:
+                continue
+
+            script = segment.get("script", "")
+            segment_sentences = split_sentences(script)
+
+            start_ms = 0
+            end_ms = 0
+
+            if boundary_idx < len(boundaries):
+                start_ms = boundaries[boundary_idx].start_ms
+
+                # Advance by number of sentences
+                boundary_idx += len(segment_sentences)
+
+                if boundary_idx <= len(boundaries):
+                    end_ms = boundaries[boundary_idx - 1].end_ms
+                else:
+                    end_ms = boundaries[-1].end_ms
+
+            result.append({
+                "type": seg_type,
+                "title": segment.get("title", ""),
+                "script": script,
+                "start_ms": start_ms,
+                "end_ms": end_ms,
+                "duration_ms": end_ms - start_ms,
+                "visual_description": segment.get("visual_description", ""),
+            })
+
+        return result
+
+    async def _generate_timed_code(
+        self,
+        timed_segments: list[dict[str, Any]],
+        total_duration: float,
+    ) -> str:
+        """Generate Manim code with timing constraints.
+
+        This is a simplified implementation that generates code with
+        run_time hints. Full implementation would need to modify
+        CodeGeneratorAgent to accept timing parameters.
+        """
+        # For MVP, generate a basic template with timing comments
+        # Full implementation would integrate with code_agent.generate()
+
+        code_parts = [
+            "from manim import *",
+            "",
+            f"# Total duration: {total_duration:.1f}s",
+            "",
+            "class MathLectureScene(Scene):",
+            "    def construct(self):",
+        ]
+
+        for seg in timed_segments:
+            duration_sec = seg["duration_ms"] / 1000
+            code_parts.append(f"        # {seg['title']} ({duration_sec:.1f}s)")
+            code_parts.append(f"        # Visual: {seg['visual_description']}")
+            code_parts.append(f"        self.wait({duration_sec:.1f})")
+            code_parts.append("")
+
+        return "\n".join(code_parts)
 
 
 __all__ = ["MathAnimatorPipeline"]
