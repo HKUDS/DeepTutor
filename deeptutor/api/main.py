@@ -275,6 +275,7 @@ from deeptutor.api.routers import (
     co_writer,
     dashboard,
     knowledge,
+    mathnet,
     memory,
     notebook,
     plugins_api,
@@ -375,6 +376,9 @@ app.include_router(unified_ws.router, prefix="/api/v1", tags=["unified-ws"])
 # Quiz AI-judge WebSocket — same caveat as unified_ws above; auth is checked
 # inside the handler so the WS upgrade isn't rejected by an HTTP-style dep.
 app.include_router(quiz_judge.router, prefix="/api/v1", tags=["quiz-judge"])
+app.include_router(
+    mathnet.router, prefix="/api/v1/mathnet", tags=["mathnet"], dependencies=_auth
+)
 
 
 @app.get("/")
