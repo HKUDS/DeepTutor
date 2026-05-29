@@ -18,6 +18,7 @@ import {
   PenLine,
   Plus,
   Settings,
+  Video,
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -59,6 +60,12 @@ const PRIMARY_NAV: NavEntry[] = [
     label: "Knowledge",
     icon: BookOpen,
     tooltipKey: "Knowledge tooltip",
+  },
+  {
+    href: "/mathnet-video",
+    label: "MathNet 视频",
+    icon: Video,
+    tooltipKey: "MathNet video generation",
   },
   {
     href: "/space",
