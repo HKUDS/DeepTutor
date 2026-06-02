@@ -50,14 +50,21 @@ def build_openai_client(config: LLMClientConfig) -> Any:
     if spec and spec.backend == "anthropic":
         from deeptutor.services.llm.provider_core import AnthropicProvider
 
-        provider = AnthropicProvider(
+        anthropic_provider = AnthropicProvider(
             api_key=config.api_key,
             api_base=config.base_url or spec.default_api_base or None,
             default_model=config.model or "claude-sonnet-4-20250514",
             extra_headers=config.extra_headers,
             supports_prompt_caching=spec.supports_prompt_caching,
         )
-        return _AnthropicOpenAIAdapter(provider)
+        return _AnthropicOpenAIAdapter(anthropic_provider)
+    if spec and spec.backend == "openai_codex":
+        from deeptutor.services.llm.provider_core import OpenAICodexProvider
+
+        oauth_provider = OpenAICodexProvider(
+            default_model=config.model or "openai-codex/gpt-5.1-codex",
+        )
+        return _AnthropicOpenAIAdapter(oauth_provider)
 
     http_client = None
     if load_system_settings()["disable_ssl_verify"]:

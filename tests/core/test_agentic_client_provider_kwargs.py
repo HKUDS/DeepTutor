@@ -115,6 +115,31 @@ def test_build_openai_client_routes_anthropic_backend_through_adapter(monkeypatc
     assert captured["extra_headers"] == {"X-Test": "1"}
 
 
+def test_build_openai_client_routes_oauth_backend_through_adapter(monkeypatch) -> None:
+    captured = {}
+
+    class FakeProvider:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(
+        "deeptutor.services.llm.provider_core.OpenAICodexProvider",
+        FakeProvider,
+    )
+
+    client = build_openai_client(
+        LLMClientConfig(
+            binding="openai_codex",
+            model="openai-codex/gpt-5.5",
+            api_key="unused",
+            base_url="https://chatgpt.com/backend-api",
+        )
+    )
+
+    assert isinstance(client, _AnthropicOpenAIAdapter)
+    assert captured["default_model"] == "openai-codex/gpt-5.5"
+
+
 def test_anthropic_backend_can_use_native_tool_calling() -> None:
     assert can_use_native_tool_calling(binding="custom_anthropic", model="claude-test") is True
     assert can_use_native_tool_calling(binding="minimax_anthropic", model="MiniMax-M2") is True
