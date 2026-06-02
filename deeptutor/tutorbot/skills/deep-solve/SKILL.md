@@ -31,7 +31,6 @@ deeptutor run deep_solve "<problem description>" --format json -l <lang>
 | `-t code_execution` | Enable code verification |
 | `-t reason` | Enable dedicated reasoning |
 | `--kb <name>` | Knowledge base to use with RAG |
-| `--config detailed_answer=false` | Return a concise answer |
 
 ## Examples
 
