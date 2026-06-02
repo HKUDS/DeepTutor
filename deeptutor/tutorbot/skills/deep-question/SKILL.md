@@ -28,7 +28,7 @@ deeptutor run deep_question "<topic>" --format json -l <lang> [options]
 | `-l <lang>` | Response language: `en` or `zh` |
 | `--config num_questions=N` | Number of questions (default: 1, max: 50) |
 | `--config difficulty=<level>` | `easy`, `medium`, `hard` |
-| `--config question_type=<type>` | `multiple_choice`, `open_ended`, `true_false`, etc. |
+| `--config question_types=<type1,type2>` | Comma-separated list: `multiple_choice`, `open_ended`, `true_false`, etc. |
 | `--config mode=<mode>` | `custom` (default) or `mimic` |
 | `-t rag` | Ground questions in a knowledge base |
 | `--kb <name>` | Knowledge base to use |
@@ -42,12 +42,12 @@ deeptutor run deep_question "Calculus integration techniques" --format json -l e
 
 Multiple-choice from a textbook:
 ```bash
-deeptutor run deep_question "Chapter 3: Linear Algebra" --format json -l zh -t rag --kb math-textbook --config question_type=multiple_choice --config num_questions=10
+deeptutor run deep_question "Chapter 3: Linear Algebra" --format json -l zh -t rag --kb math-textbook --config question_types=multiple_choice --config num_questions=10
 ```
 
 Hard open-ended questions:
 ```bash
-deeptutor run deep_question "Quantum mechanics fundamentals" --format json -l en --config difficulty=hard --config question_type=open_ended
+deeptutor run deep_question "Quantum mechanics fundamentals" --format json -l en --config difficulty=hard --config question_types=open_ended
 ```
 
 ## Important
