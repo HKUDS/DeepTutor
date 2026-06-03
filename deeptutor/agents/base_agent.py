@@ -27,6 +27,7 @@ from deeptutor.services.llm import (
 )
 from deeptutor.services.llm import stream as llm_stream
 from deeptutor.services.prompt import get_prompt_manager
+from deeptutor.services.prompt.language import append_language_directive
 
 
 class BaseAgent(ABC):
@@ -345,6 +346,32 @@ class BaseAgent(ABC):
     # LLM Call Interface
     # -------------------------------------------------------------------------
 
+    def _apply_language_directive(
+        self,
+        system_prompt: str,
+        messages: list[dict[str, Any]] | None = None,
+    ) -> tuple[str, list[dict[str, Any]] | None]:
+        directed_system_prompt = append_language_directive(system_prompt, self.language)
+        if not messages:
+            return directed_system_prompt, None
+
+        directed_messages: list[dict[str, Any]] = []
+        applied_to_message = False
+        for message in messages:
+            copied = dict(message)
+            if (
+                not applied_to_message
+                and copied.get("role") == "system"
+                and isinstance(copied.get("content"), str)
+            ):
+                copied["content"] = append_language_directive(copied["content"], self.language)
+                applied_to_message = True
+            directed_messages.append(copied)
+
+        if not applied_to_message:
+            directed_messages.insert(0, {"role": "system", "content": directed_system_prompt})
+        return directed_system_prompt, directed_messages
+
     async def call_llm(
         self,
         user_prompt: str,
@@ -409,6 +436,8 @@ class BaseAgent(ABC):
                 kwargs["response_format"] = response_format
             else:
                 self.logger.debug(f"response_format not supported for {binding}/{model}, skipping")
+
+        system_prompt, messages = self._apply_language_directive(system_prompt, messages)
 
         # Keep non-streaming calls aligned with stream_llm/chat: when images
         # are attached, convert the final user message to multimodal content.
@@ -567,6 +596,8 @@ class BaseAgent(ABC):
                 kwargs["response_format"] = response_format
             else:
                 self.logger.debug(f"response_format not supported for {binding}/{model}, skipping")
+
+        system_prompt, messages = self._apply_language_directive(system_prompt, messages)
 
         # Inject image attachments into messages when provided
         if attachments:
