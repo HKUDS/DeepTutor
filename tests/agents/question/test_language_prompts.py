@@ -49,3 +49,25 @@ async def test_followup_agent_appends_language_directive_to_system_prompt() -> N
     assert agent.captured_system_prompts
     assert "Followup system" in agent.captured_system_prompts[0]
     assert "请严格使用中文（简体）" in agent.captured_system_prompts[0]
+
+
+@pytest.mark.asyncio
+async def test_followup_agent_appends_german_language_directive() -> None:
+    agent = CaptureFollowupAgent(language="de")
+
+    reply = await agent.process(
+        user_message="Warum ist das die Antwort?",
+        question_context={
+            "question_id": "q_1",
+            "question_type": "choice",
+            "question": "Wann ist Matrixmultiplikation definiert?",
+            "correct_answer": "Wenn die inneren Dimensionen uebereinstimmen.",
+            "explanation": "Die Spaltenzahl von A muss zur Zeilenzahl von B passen.",
+        },
+        history_context="",
+    )
+
+    assert reply == "已回答"
+    assert agent.captured_system_prompts
+    assert "Followup system" in agent.captured_system_prompts[0]
+    assert "Write ALL reader-facing text strictly in Deutsch" in agent.captured_system_prompts[0]

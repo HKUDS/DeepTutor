@@ -68,7 +68,11 @@ from deeptutor.core.trace import (
     new_call_id,
 )
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
-from deeptutor.services.config import get_chat_params, load_system_settings  # noqa: F401
+from deeptutor.services.config import (
+    get_chat_params,
+    load_system_settings,  # noqa: F401
+    parse_language,
+)
 from deeptutor.services.llm import (
     clean_thinking_tags,
     get_llm_config,
@@ -312,7 +316,7 @@ class AgenticChatPipeline:
     """Run chat as a single iterative LLM loop with native tool calling."""
 
     def __init__(self, language: str = "en") -> None:
-        self.language = "zh" if language.lower().startswith("zh") else "en"
+        self.language = parse_language(language)
         self.llm_config = get_llm_config()
         self.binding = getattr(self.llm_config, "binding", None) or "openai"
         self.model = getattr(self.llm_config, "model", None)
