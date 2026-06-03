@@ -11,8 +11,8 @@ def test_prompt_manager_loads_prompts_from_deeptutor_tree() -> None:
 
     prompts = manager.load_prompts(
         module_name="question",
-        agent_name="idea_agent",
+        agent_name="pipeline",
         language="en",
     )
 
-    assert "generate_ideas" in prompts
+    assert "explore" in prompts
