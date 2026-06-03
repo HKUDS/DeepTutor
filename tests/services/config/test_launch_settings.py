@@ -74,3 +74,34 @@ def test_launch_settings_allows_process_env_as_deployment_override(
     assert settings.backend_port == 9201
     assert settings.frontend_port == 4300
     assert "environment" in settings.source
+
+
+def test_launch_settings_accepts_german_from_interface_json(
+    monkeypatch, tmp_path: Path
+) -> None:
+    for key in ("BACKEND_PORT", "FRONTEND_PORT", "UI_LANGUAGE", "LANGUAGE"):
+        monkeypatch.delenv(key, raising=False)
+
+    settings_dir = _settings_dir(tmp_path)
+    (settings_dir / "interface.json").write_text(
+        json.dumps({"language": "de-DE"}),
+        encoding="utf-8",
+    )
+
+    settings = load_launch_settings(tmp_path)
+
+    assert settings.language == "de"
+    assert "interface.json" in settings.source
+
+
+def test_launch_settings_accepts_german_from_environment(
+    monkeypatch, tmp_path: Path
+) -> None:
+    for key in ("BACKEND_PORT", "FRONTEND_PORT", "UI_LANGUAGE", "LANGUAGE"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("UI_LANGUAGE", "Deutsch")
+
+    settings = load_launch_settings(tmp_path)
+
+    assert settings.language == "de"
+    assert "environment" in settings.source

@@ -30,19 +30,22 @@ def _normalize_language(language: Any, default: str = "en") -> str:
     Normalize language codes:
     - en/english -> en
     - zh/chinese/cn -> zh
+    - de/german/deutsch/de-* -> de
     """
     if language is None or language == "":
         language = default
 
     if isinstance(language, str):
         s = language.lower().strip()
-        if s in {"en", "english"}:
+        if s in {"en", "english"} or s.startswith(("en-", "en_")):
             return "en"
-        if s in {"zh", "chinese", "cn"}:
+        if s in {"zh", "chinese", "cn"} or s.startswith(("zh-", "zh_")):
             return "zh"
+        if s in {"de", "german", "deutsch"} or s.startswith(("de-", "de_")):
+            return "de"
 
     # Fall back to default
-    if isinstance(default, str):
+    if isinstance(default, str) and default != "en":
         return _normalize_language(default, "en")
     return "en"
 
@@ -80,5 +83,7 @@ def get_ui_language(default: str = "en") -> str:
     2) provided default
     3) 'en'
     """
+    if not _interface_settings_file().exists():
+        return _normalize_language(default, "en")
     settings = get_ui_settings()
     return _normalize_language(settings.get("language"), default)

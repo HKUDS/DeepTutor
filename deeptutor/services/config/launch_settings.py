@@ -51,10 +51,12 @@ def _normalize_language(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
     language = value.strip().lower()
-    if language in {"en", "english"} or language.startswith("en_"):
+    if language in {"en", "english"} or language.startswith(("en-", "en_")):
         return "en"
-    if language in {"zh", "cn", "chinese"} or language.startswith("zh_"):
+    if language in {"zh", "cn", "chinese"} or language.startswith(("zh-", "zh_")):
         return "zh"
+    if language in {"de", "german", "deutsch"} or language.startswith(("de-", "de_")):
+        return "de"
     return None
 
 

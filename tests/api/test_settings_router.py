@@ -17,6 +17,11 @@ from deeptutor.services.llm import client as llm_client_module
 from deeptutor.services.llm import config as llm_config_module
 
 
+def test_settings_payload_models_accept_german_ui_language() -> None:
+    assert settings_router.LanguageUpdate(language="de").language == "de"
+    assert settings_router.UISettings(language="de").language == "de"
+
+
 class _FakeEmbeddingAdapter:
     def __init__(self, config: dict[str, Any]):
         self.config = config
