@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import path from "node:path";
 
 import {
   SUPPORTED_UI_LANGUAGES,
@@ -71,5 +73,20 @@ test("stored language normalization delegates to shared normalization", () => {
   for (const [input, expected] of cases) {
     assert.equal(normalizeStoredLanguage(input), expected);
     assert.equal(normalizeStoredLanguage(input), normalizeUiLanguage(input));
+  }
+});
+
+test("every supported UI language has locale resource files", () => {
+  for (const language of SUPPORTED_UI_LANGUAGES) {
+    assert.equal(
+      existsSync(path.join(process.cwd(), "locales", language, "app.json")),
+      true,
+      `${language} is missing app.json`,
+    );
+    assert.equal(
+      existsSync(path.join(process.cwd(), "locales", language, "common.json")),
+      true,
+      `${language} is missing common.json`,
+    );
   }
 });
