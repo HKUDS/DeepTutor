@@ -10,10 +10,17 @@ when a tool result reports an error, and when to stop the loop.
 
 from __future__ import annotations
 
+from deeptutor.services.config import parse_language
+from deeptutor.services.prompt.language import append_language_directive
+
 
 def pick_language(language: str) -> str:
-    """Normalize language code to 'zh' or 'en'."""
-    return "zh" if (language or "en").lower().startswith("zh") else "en"
+    """Normalize language code to a supported language."""
+    return parse_language(language)
+
+
+def _with_language_directive(system_prompt: str, language: str) -> str:
+    return append_language_directive(system_prompt, pick_language(language))
 
 
 # --------------------------------------------------------------------------- #
@@ -35,7 +42,8 @@ ANALYZER_SYSTEM_ZH = (
 
 
 def analyzer_system_prompt(language: str) -> str:
-    return ANALYZER_SYSTEM_ZH if pick_language(language) == "zh" else ANALYZER_SYSTEM_EN
+    selected = ANALYZER_SYSTEM_ZH if pick_language(language) == "zh" else ANALYZER_SYSTEM_EN
+    return _with_language_directive(selected, language)
 
 
 # --------------------------------------------------------------------------- #
@@ -113,7 +121,8 @@ ROUTER_SYSTEM_ZH = """\
 
 
 def router_system_prompt(language: str) -> str:
-    return ROUTER_SYSTEM_ZH if pick_language(language) == "zh" else ROUTER_SYSTEM_EN
+    selected = ROUTER_SYSTEM_ZH if pick_language(language) == "zh" else ROUTER_SYSTEM_EN
+    return _with_language_directive(selected, language)
 
 
 # --------------------------------------------------------------------------- #
@@ -136,4 +145,5 @@ SYNTHESIZER_SYSTEM_ZH = (
 
 
 def synthesizer_system_prompt(language: str) -> str:
-    return SYNTHESIZER_SYSTEM_ZH if pick_language(language) == "zh" else SYNTHESIZER_SYSTEM_EN
+    selected = SYNTHESIZER_SYSTEM_ZH if pick_language(language) == "zh" else SYNTHESIZER_SYSTEM_EN
+    return _with_language_directive(selected, language)
