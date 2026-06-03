@@ -512,6 +512,28 @@ class TutorBotManager:
             )
 
         async def _hb_notify(response: str) -> None:
+            from deeptutor.tutorbot.bus.events import OutboundMessage
+
+            # 1. Broadcast to all bound channels (telegram, zulip, etc.)
+            for ch_name, ch_chat_id in dict(instance.channel_bindings).items():
+                if instance.channel_manager:
+                    channel = instance.channel_manager.get_channel(ch_name)
+                    if channel:
+                        try:
+                            await channel.send(
+                                OutboundMessage(
+                                    channel=ch_name,
+                                    chat_id=ch_chat_id,
+                                    content=response,
+                                )
+                            )
+                        except Exception:
+                            logger.exception(
+                                "Heartbeat: failed to send to channel %s for bot %s",
+                                ch_name,
+                                bot_id,
+                            )
+            # 2. Also deliver to web clients via notify_queue
             await instance.notify_queue.put(response)
 
         heartbeat = HeartbeatService(
