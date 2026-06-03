@@ -48,6 +48,21 @@ def test_summarize_agent_empty_extra_headers(monkeypatch) -> None:
     assert agent.extra_headers == {}
 
 
+def test_summarize_agent_preserves_german_language(monkeypatch) -> None:
+    cfg = _make_cfg()
+    monkeypatch.setattr(
+        "deeptutor.agents.notebook.summarize_agent.get_llm_config",
+        lambda: cfg,
+    )
+
+    from deeptutor.agents.notebook.summarize_agent import NotebookSummarizeAgent
+
+    agent = NotebookSummarizeAgent(language="de-DE")
+
+    assert agent.language == "de"
+    assert "Write ALL reader-facing text strictly in Deutsch" in agent._system_prompt()
+
+
 @pytest.mark.asyncio
 async def test_summarize_agent_forwards_extra_headers(monkeypatch) -> None:
     """extra_headers must reach the underlying llm_stream call."""
@@ -114,3 +129,18 @@ async def test_summarize_agent_omits_extra_headers_when_empty(monkeypatch) -> No
         pass
 
     assert "extra_headers" not in captured
+
+
+def test_analysis_agent_preserves_german_language(monkeypatch) -> None:
+    cfg = _make_cfg()
+    monkeypatch.setattr(
+        "deeptutor.agents.notebook.analysis_agent.get_llm_config",
+        lambda: cfg,
+    )
+
+    from deeptutor.agents.notebook.analysis_agent import NotebookAnalysisAgent
+
+    agent = NotebookAnalysisAgent(language="Deutsch")
+
+    assert agent.language == "de"
+    assert "Write ALL reader-facing text strictly in Deutsch" in agent._thinking_system_prompt()

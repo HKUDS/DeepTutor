@@ -24,6 +24,7 @@ from deeptutor.services.llm import clean_thinking_tags
 from deeptutor.services.llm import complete as llm_complete
 from deeptutor.services.llm import stream as llm_stream
 from deeptutor.services.memory.document import Document, parse, serialize
+from deeptutor.services.prompt.language import append_language_directive
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,7 @@ async def call_llm(
     turn: int | None = None,
     chunk_index: int | None = None,
     label: str | None = None,
+    language: str = "en",
 ) -> str:
     """Single LLM call. Returns the raw text body; "" on failure.
 
@@ -107,6 +109,7 @@ async def call_llm(
     """
     from deeptutor.services.llm import get_llm_config
 
+    system_prompt = append_language_directive(system_prompt, language)
     model_label = get_llm_config().model or None
     if on_event is not None:
         await on_event(

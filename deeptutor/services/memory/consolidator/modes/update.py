@@ -258,6 +258,7 @@ async def _run_update_l2(
             turn=chunk.index + 1,
             chunk_index=chunk.index,
             label="update",
+            language=language,
         )
         facts = _parse_facts(raw)
 
@@ -489,6 +490,7 @@ async def _run_update_l3(
             turn=chunk.index + 1,
             chunk_index=chunk.index,
             label="update",
+            language=language,
         )
         facts = _parse_facts(raw)
 

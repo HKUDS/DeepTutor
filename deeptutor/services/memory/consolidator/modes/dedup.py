@@ -135,6 +135,7 @@ async def _run_dedup_inner(
             on_event=on_event,
             turn=i + 1,
             label="dedup",
+            language=language,
         )
         edits = parse_edits_payload(raw, layer=layer)
         if not edits:

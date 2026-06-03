@@ -186,6 +186,7 @@ async def _run_audit_l2(
             turn=chunk.index + 1,
             chunk_index=chunk.index,
             label="audit",
+            language=language,
         )
         edits = parse_edits_payload(raw, layer="L2")
         if not edits:
@@ -327,6 +328,7 @@ async def _run_audit_l3(
             turn=chunk.index + 1,
             chunk_index=chunk.index,
             label="audit",
+            language=language,
         )
         edits = parse_edits_payload(raw, layer="L3")
         if not edits:
