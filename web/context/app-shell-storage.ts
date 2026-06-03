@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  normalizeUiLanguage,
-  type AppLanguage,
-} from "../lib/ui-languages";
+import { normalizeUiLanguage, type AppLanguage } from "../lib/ui-languages";
 
 export type { AppLanguage } from "../lib/ui-languages";
 
@@ -15,9 +12,7 @@ export const ACTIVE_SESSION_EVENT = "deeptutor:active-session";
 export const LANGUAGE_EVENT = "deeptutor:language";
 export const SIDEBAR_COLLAPSED_EVENT = "deeptutor:sidebar-collapsed";
 
-export function normalizeLanguage(
-  value: unknown,
-): AppLanguage {
+export function normalizeLanguage(value: unknown): AppLanguage {
   return normalizeUiLanguage(value);
 }
 

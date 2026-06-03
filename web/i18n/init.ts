@@ -2,10 +2,7 @@ import i18n, { type Resource } from "i18next";
 import { initReactI18next } from "react-i18next";
 
 import enApp from "@/locales/en/app.json";
-import {
-  normalizeUiLanguage,
-  type AppLanguage,
-} from "../lib/ui-languages";
+import { normalizeUiLanguage, type AppLanguage } from "../lib/ui-languages";
 
 export type { AppLanguage } from "../lib/ui-languages";
 

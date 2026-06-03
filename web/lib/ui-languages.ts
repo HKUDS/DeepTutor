@@ -11,19 +11,19 @@ export const uiLanguageOptions: Array<{
   { value: "de", labelKey: "language.german" },
 ];
 
-export function isSupportedUiLanguage(
-  value: unknown,
-): value is AppLanguage {
+export function isSupportedUiLanguage(value: unknown): value is AppLanguage {
   return SUPPORTED_UI_LANGUAGES.includes(value as AppLanguage);
 }
 
-export function normalizeUiLanguage(
-  value: unknown,
-): AppLanguage {
+export function normalizeUiLanguage(value: unknown): AppLanguage {
   if (value == null) return "en";
 
   const language = String(value).trim().toLowerCase();
-  if (language === "en" || language === "english" || language.startsWith("en-")) {
+  if (
+    language === "en" ||
+    language === "english" ||
+    language.startsWith("en-")
+  ) {
     return "en";
   }
   if (language === "zh" || language === "cn" || language === "chinese") {

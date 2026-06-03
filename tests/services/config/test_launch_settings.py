@@ -76,9 +76,7 @@ def test_launch_settings_allows_process_env_as_deployment_override(
     assert "environment" in settings.source
 
 
-def test_launch_settings_accepts_german_from_interface_json(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_launch_settings_accepts_german_from_interface_json(monkeypatch, tmp_path: Path) -> None:
     for key in ("BACKEND_PORT", "FRONTEND_PORT", "UI_LANGUAGE", "LANGUAGE"):
         monkeypatch.delenv(key, raising=False)
 
@@ -94,9 +92,7 @@ def test_launch_settings_accepts_german_from_interface_json(
     assert "interface.json" in settings.source
 
 
-def test_launch_settings_accepts_german_from_environment(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_launch_settings_accepts_german_from_environment(monkeypatch, tmp_path: Path) -> None:
     for key in ("BACKEND_PORT", "FRONTEND_PORT", "UI_LANGUAGE", "LANGUAGE"):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("UI_LANGUAGE", "Deutsch")

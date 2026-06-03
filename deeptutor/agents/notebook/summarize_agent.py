@@ -7,8 +7,8 @@ from typing import AsyncGenerator
 from deeptutor.services.config import parse_language
 from deeptutor.services.llm import clean_thinking_tags, get_llm_config, get_token_limit_kwargs
 from deeptutor.services.llm import stream as llm_stream
-from deeptutor.services.prompt.manager import get_prompt_manager
 from deeptutor.services.prompt.language import append_language_directive
+from deeptutor.services.prompt.manager import get_prompt_manager
 
 
 def _clip_text(value: str, limit: int) -> str:

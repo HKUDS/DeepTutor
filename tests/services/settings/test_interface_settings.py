@@ -21,9 +21,7 @@ def _patch_settings_file(monkeypatch, tmp_path: Path) -> Path:
     return settings_file
 
 
-def test_get_ui_settings_accepts_german_language_alias(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_get_ui_settings_accepts_german_language_alias(monkeypatch, tmp_path: Path) -> None:
     settings_file = _patch_settings_file(monkeypatch, tmp_path)
     settings_file.write_text(
         json.dumps({"theme": "snow", "language": "de-DE"}),
