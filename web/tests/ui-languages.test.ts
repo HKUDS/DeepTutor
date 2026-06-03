@@ -4,16 +4,14 @@ import assert from "node:assert/strict";
 import {
   SUPPORTED_UI_LANGUAGES,
   isSupportedUiLanguage,
+  normalizeUiLanguage,
   uiLanguageOptions,
+  type AppLanguage,
 } from "../lib/ui-languages";
 import {
   normalizeLanguage as normalizeStoredLanguage,
   type AppLanguage as StoredAppLanguage,
 } from "../context/app-shell-storage";
-import {
-  normalizeLanguage as normalizeI18nLanguage,
-  type AppLanguage as I18nAppLanguage,
-} from "../i18n/init";
 
 test("SUPPORTED_UI_LANGUAGES exposes English, Chinese, and German in dropdown order", () => {
   assert.deepEqual(SUPPORTED_UI_LANGUAGES, ["en", "zh", "de"]);
@@ -40,10 +38,11 @@ test("isSupportedUiLanguage accepts only complete UI locales", () => {
   assert.equal(isSupportedUiLanguage(undefined), false);
 });
 
-test("stored language normalization accepts German aliases", () => {
-  const cases: Array<[unknown, StoredAppLanguage]> = [
+test("shared language normalization accepts supported aliases", () => {
+  const cases: Array<[unknown, AppLanguage]> = [
     ["en", "en"],
     ["english", "en"],
+    ["en-US", "en"],
     ["zh", "zh"],
     ["cn", "zh"],
     ["chinese", "zh"],
@@ -57,27 +56,20 @@ test("stored language normalization accepts German aliases", () => {
   ];
 
   for (const [input, expected] of cases) {
-    assert.equal(normalizeStoredLanguage(input as string | null | undefined), expected);
+    assert.equal(normalizeUiLanguage(input), expected);
   }
 });
 
-test("i18n language normalization accepts the same German aliases", () => {
-  const cases: Array<[unknown, I18nAppLanguage]> = [
-    ["en", "en"],
+test("stored language normalization delegates to shared normalization", () => {
+  const cases: Array<[unknown, StoredAppLanguage]> = [
     ["english", "en"],
-    ["zh", "zh"],
     ["cn", "zh"],
-    ["chinese", "zh"],
-    ["de", "de"],
-    ["de-DE", "de"],
-    ["de_de", "de"],
-    ["german", "de"],
-    ["deutsch", "de"],
-    ["es", "en"],
-    [undefined, "en"],
+    ["de_DE", "de"],
+    ["unsupported", "en"],
   ];
 
   for (const [input, expected] of cases) {
-    assert.equal(normalizeI18nLanguage(input), expected);
+    assert.equal(normalizeStoredLanguage(input), expected);
+    assert.equal(normalizeStoredLanguage(input), normalizeUiLanguage(input));
   }
 });

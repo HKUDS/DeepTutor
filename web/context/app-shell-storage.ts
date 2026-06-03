@@ -1,6 +1,11 @@
 "use client";
 
-export type AppLanguage = "en" | "zh";
+import {
+  normalizeUiLanguage,
+  type AppLanguage,
+} from "../lib/ui-languages";
+
+export type { AppLanguage } from "../lib/ui-languages";
 
 export const ACTIVE_SESSION_STORAGE_KEY = "deeptutor.activeSessionId.tab";
 export const LANGUAGE_STORAGE_KEY = "deeptutor-language";
@@ -11,9 +16,9 @@ export const LANGUAGE_EVENT = "deeptutor:language";
 export const SIDEBAR_COLLAPSED_EVENT = "deeptutor:sidebar-collapsed";
 
 export function normalizeLanguage(
-  value: string | null | undefined,
+  value: unknown,
 ): AppLanguage {
-  return value === "zh" ? "zh" : "en";
+  return normalizeUiLanguage(value);
 }
 
 export function readStoredLanguage(): AppLanguage {
