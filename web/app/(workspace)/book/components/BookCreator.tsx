@@ -17,6 +17,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useAppShell } from "@/context/AppShellContext";
 import type { BookProposal } from "@/lib/book-types";
+import { uiLanguageOptions, type AppLanguage } from "@/lib/ui-languages";
 import {
   listKnowledgeBases,
   type KnowledgeBaseSummary,
@@ -718,12 +719,15 @@ export default function BookCreator({
                   value={language}
                   onChange={(e) => {
                     languageTouchedRef.current = true;
-                    setLanguage(e.target.value as "en" | "zh");
+                    setLanguage(e.target.value as AppLanguage);
                   }}
                   className="ml-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-xs text-[var(--foreground)]"
                 >
-                  <option value="en">{t("language.english")}</option>
-                  <option value="zh">{t("language.chinese")}</option>
+                  {uiLanguageOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {t(option.labelKey)}
+                    </option>
+                  ))}
                 </select>
               </label>
               <button

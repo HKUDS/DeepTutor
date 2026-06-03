@@ -9,6 +9,7 @@ import {
   SettingSection,
   SettingsPageHeader,
 } from "@/components/settings/shared";
+import { uiLanguageOptions, type AppLanguage } from "@/lib/ui-languages";
 
 export default function AppearanceSettingsPage() {
   const { t } = useTranslation();
@@ -33,21 +34,19 @@ export default function AppearanceSettingsPage() {
             "Affects the UI only. Model output language is controlled by your prompt.",
           )}
           control={
-            <div className="flex gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
-              {(["en", "zh"] as const).map((v) => (
-                <button
-                  key={v}
-                  onClick={() => updateLanguage(v)}
-                  className={`rounded-md px-2.5 py-1 text-[12px] transition-all ${
-                    language === v
-                      ? "bg-[var(--card)] font-medium text-[var(--foreground)] shadow-sm"
-                      : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                  }`}
-                >
-                  {v === "en" ? t("language.english") : t("language.chinese")}
-                </button>
+            <select
+              value={language}
+              onChange={(event) =>
+                updateLanguage(event.target.value as AppLanguage)
+              }
+              className="min-w-36 rounded-md border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-sm text-[var(--foreground)] shadow-sm outline-none transition-colors hover:border-[var(--muted-foreground)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
+            >
+              {uiLanguageOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {t(option.labelKey)}
+                </option>
               ))}
-            </div>
+            </select>
           }
         />
       </SettingSection>

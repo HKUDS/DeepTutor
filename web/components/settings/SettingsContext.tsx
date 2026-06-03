@@ -17,6 +17,7 @@ import { writeStoredLanguage } from "@/context/app-shell-storage";
 import type { ModelAccess } from "@/features/multi-user/types";
 import { apiFetch, apiUrl } from "@/lib/api";
 import { setTheme as applyThemePreference } from "@/lib/theme";
+import type { AppLanguage } from "@/lib/ui-languages";
 
 // ─── Domain types ─────────────────────────────────────────────────────────
 
@@ -74,7 +75,7 @@ export type Catalog = {
 
 export type UiSettings = {
   theme: "light" | "dark" | "glass" | "snow";
-  language: "en" | "zh";
+  language: AppLanguage;
 };
 
 export type ProviderOption = {
@@ -259,7 +260,8 @@ function nextModelName(
   models: CatalogModel[],
   language: UiSettings["language"],
 ): string {
-  const prefix = language === "zh" ? "模型" : "Model ";
+  const prefix =
+    language === "zh" ? "模型" : language === "de" ? "Modell " : "Model ";
   const used = new Set(models.map((model) => model.name.trim()));
   let index = models.length + 1;
   while (used.has(`${prefix}${index}`)) {

@@ -224,7 +224,7 @@ export default function ToolsSettingsPage() {
                 <div className="overflow-hidden rounded-xl border border-[var(--border)]/60 bg-[var(--card)]/40">
                   {list.map((tool, idx) => {
                     const isOpen = expanded.has(tool.name);
-                    const hints = tool.hints[language];
+                    const hints = tool.hints[language === "zh" ? "zh" : "en"];
                     const isPending = pending.has(tool.name);
                     const isComingSoon = !!tool.coming_soon;
                     const isEnabled =
