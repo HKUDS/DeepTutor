@@ -514,6 +514,19 @@ class TutorBotManager:
         async def _hb_notify(response: str) -> None:
             from deeptutor.tutorbot.bus.events import OutboundMessage
 
+            # Guard: if the agent decided to skip (e.g. outside active time
+            # window), do not push the skip rationale to any channel or web
+            # client.  This can happen when Phase 1 (_decide) returns "run"
+            # but the agent loop (Phase 2) still concludes it should skip.
+            lower = response.lower()
+            skip_keywords = ("skip", "不打扰", "不需要打扰", "无需打扰", "不需要通知")
+            if any(kw in lower for kw in skip_keywords):
+                logger.info(
+                    "Heartbeat: response contains skip decision, suppressing delivery for bot %s",
+                    bot_id,
+                )
+                return
+
             # 1. Broadcast to all bound channels (telegram, zulip, etc.)
             for ch_name, ch_chat_id in dict(instance.channel_bindings).items():
                 if instance.channel_manager:
