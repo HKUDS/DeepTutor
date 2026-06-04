@@ -13,6 +13,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import partial
 import json
 import logging
 from pathlib import Path
@@ -962,7 +963,19 @@ class TutorBotManager:
         return response
 
     async def auto_start_bots(self) -> None:
-        """Scan persisted configs and start bots marked with auto_start: true."""
+        """Scan persisted configs and start bots marked with auto_start: true.
+
+        在多用户模式下（auth.enabled=true），也会遍历所有普通用户，在其各自的
+        workspace 下启动 auto_start: true 的 Bot。
+        """
+        await self._auto_start_bots_for_workspace()
+        await self._for_each_user_manager(
+            TutorBotManager._auto_start_bots_for_workspace,
+            "auto-start bots",
+        )
+
+    async def _auto_start_bots_for_workspace(self) -> None:
+        """扫描当前 workspace 下的 config.yaml，启动 auto_start: true 的 Bot。"""
         for bid in self._discover_bot_ids():
             if bid in self._bots and self._bots[bid].running:
                 continue
@@ -1026,9 +1039,73 @@ class TutorBotManager:
         return result
 
     async def stop_all(self, *, preserve_auto_start: bool = True) -> None:
-        """Stop all running bots while preserving restart intent by default."""
+        """Stop all running bots while preserving restart intent by default.
+
+        在多用户模式下（auth.enabled=true），也会遍历所有普通用户并停止其 Bot。
+        """
+        await self._stop_all_in_workspace(preserve_auto_start=preserve_auto_start)
+        await self._for_each_user_manager(
+            partial(
+                TutorBotManager._stop_all_in_workspace,
+                preserve_auto_start=preserve_auto_start,
+            ),
+            "stop bots",
+        )
+
+    async def _stop_all_in_workspace(
+        self, *, preserve_auto_start: bool = True
+    ) -> None:
+        """停止当前 workspace 下所有正在运行的 Bot。"""
         for bot_id in list(self._bots.keys()):
             await self.stop_bot(bot_id, preserve_auto_start=preserve_auto_start)
+
+    async def _for_each_user_manager(
+        self,
+        action: Callable[["TutorBotManager"], Awaitable[None]],
+        action_name: str,
+    ) -> None:
+        """多用户模式下遍历所有普通用户，为每个用户执行指定操作。
+
+        在单用户模式（auth.enabled=false）下直接返回，不做任何操作。
+        """
+        try:
+            from deeptutor.services.auth import AUTH_ENABLED
+        except ImportError:
+            logger.warning(
+                "Cannot import AUTH_ENABLED; skipping multi-user %s", action_name
+            )
+            return
+
+        if not AUTH_ENABLED:
+            return
+
+        try:
+            from deeptutor.multi_user.identity import list_user_info
+            from deeptutor.multi_user.models import CurrentUser
+            from deeptutor.multi_user.paths import scope_for_user, user_context
+        except ImportError:
+            logger.warning(
+                "Cannot import multi_user modules; skipping multi-user %s", action_name
+            )
+            return
+
+        for user_info in list_user_info():
+            if user_info.get("role") == "admin" or user_info.get("disabled"):
+                continue
+            user = CurrentUser(
+                id=user_info["id"],
+                username=user_info["username"],
+                role="user",
+                scope=scope_for_user(user_info["id"], is_admin=False),
+            )
+            with user_context(user):
+                mgr = get_tutorbot_manager()
+                try:
+                    await action(mgr)
+                except Exception:
+                    logger.exception(
+                        "Failed to %s for user '%s'", action_name, user_info["username"]
+                    )
 
     # ── Soul template library ─────────────────────────────────────
 
