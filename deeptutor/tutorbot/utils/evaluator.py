@@ -46,7 +46,9 @@ _SYSTEM_PROMPT = (
     "completed deliverables, or anything the user explicitly asked to "
     "be reminded about.\n\n"
     "Suppress when the response is a routine status check with nothing "
-    "new, a confirmation that everything is normal, or essentially empty."
+    "new, a confirmation that everything is normal, essentially empty, "
+    "or the agent explicitly decided to skip or not disturb the user "
+    "(e.g. outside active hours, no actionable items at this time)."
 )
 
 

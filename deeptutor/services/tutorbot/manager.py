@@ -155,6 +155,7 @@ class TutorBotInstance:
     agent_loop: Any = None
     channel_manager: Any = None
     heartbeat: Any = None
+    bus: Any = None
     notify_queue: asyncio.Queue = field(default_factory=asyncio.Queue)
     channel_bindings: dict[str, str] = field(default_factory=dict)
     # Serialise concurrent reload_channels invocations on the same bot.
@@ -478,6 +479,7 @@ class TutorBotManager:
             config=config,
             agent_loop=agent_loop,
             channel_manager=channel_manager,
+            bus=bus,
         )
 
         # -- Core tasks -------------------------------------------------------
@@ -512,7 +514,14 @@ class TutorBotManager:
             )
 
         async def _hb_notify(response: str) -> None:
-            await instance.notify_queue.put(response)
+            from deeptutor.tutorbot.bus.events import OutboundMessage
+
+            await bus.publish_outbound(OutboundMessage(
+                channel="web",
+                chat_id="web",
+                content=response,
+                broadcast=True,
+            ))
 
         heartbeat = HeartbeatService(
             workspace=workspace,
@@ -572,21 +581,45 @@ class TutorBotManager:
                 msg: _OMsg = await bus.consume_outbound()
                 is_progress = bool(msg.metadata and msg.metadata.get("_progress"))
 
-                # 1. Route to originating channel (if it exists)
+                # 1. Route to channel(s)
                 if instance.channel_manager:
-                    channel = instance.channel_manager.get_channel(msg.channel)
-                    if channel:
-                        try:
-                            await channel.send(msg)
-                        except Exception:
-                            logger.exception(
-                                "Failed to send to channel %s for bot %s", msg.channel, bot_id
-                            )
+                    if msg.broadcast:
+                        # Broadcast: deliver to ALL bound channels (heartbeat, web reply)
+                        for ch_name, ch_chat_id in dict(instance.channel_bindings).items():
+                            ch = instance.channel_manager.get_channel(ch_name)
+                            if ch:
+                                try:
+                                    await ch.send(
+                                        _OMsg(
+                                            channel=ch_name,
+                                            chat_id=ch_chat_id,
+                                            content=msg.content,
+                                            media=msg.media,
+                                            metadata=msg.metadata,
+                                        )
+                                    )
+                                except Exception:
+                                    logger.exception(
+                                        "Failed to broadcast to %s for bot %s", ch_name, bot_id
+                                    )
+                    else:
+                        # Single-channel: route to originating channel only
+                        channel = instance.channel_manager.get_channel(msg.channel)
+                        if channel:
+                            try:
+                                await channel.send(msg)
+                            except Exception:
+                                logger.exception(
+                                    "Failed to send to channel %s for bot %s", msg.channel, bot_id
+                                )
                         if not is_progress and msg.chat_id:
                             instance.channel_bindings[msg.channel] = msg.chat_id
 
-                # 2. Notify web clients (non-progress only)
-                if not is_progress:
+                # 2. Notify web clients (non-progress, non-web-api only)
+                #    Messages from send_message carry _source=web_api because
+                #    the HTTP response already delivers content to the web client.
+                is_web_api = bool(msg.metadata and msg.metadata.get("_source") == "web_api")
+                if not is_progress and not is_web_api:
                     await instance.notify_queue.put(msg.content or "")
 
                 # 3. Publish to EventBus
@@ -936,28 +969,20 @@ class TutorBotManager:
             on_progress=_progress,
         )
 
-        # Forward the reply to any bound external channels so mobile users
-        # see the web-originated conversation in their chat app.
-        if instance.channel_manager and response:
+        # Forward the reply to all bound external channels via the outbound
+        # router so mobile users see the web-originated conversation.
+        # Mark _source=web_api so _outbound_router skips notify_queue (the
+        # HTTP response already delivers content to the web client).
+        if instance.bus:
             from deeptutor.tutorbot.bus.events import OutboundMessage
 
-            for ch_name, ch_chat_id in instance.channel_bindings.items():
-                ch = instance.channel_manager.get_channel(ch_name)
-                if ch:
-                    try:
-                        await ch.send(
-                            OutboundMessage(
-                                channel=ch_name,
-                                chat_id=ch_chat_id,
-                                content=response,
-                            )
-                        )
-                    except Exception:
-                        logger.exception(
-                            "Failed to forward web reply to channel %s for bot %s",
-                            ch_name,
-                            bot_id,
-                        )
+            await instance.bus.publish_outbound(OutboundMessage(
+                channel="web",
+                chat_id=session_id or chat_id,
+                content=response or "",
+                broadcast=True,
+                metadata={"_source": "web_api"},
+            ))
 
         return response
 
