@@ -578,70 +578,73 @@ class TutorBotManager:
 
             event_bus = get_event_bus()
             while True:
-                msg: _OMsg = await bus.consume_outbound()
-                is_progress = bool(msg.metadata and msg.metadata.get("_progress"))
+                try:
+                    msg: _OMsg = await bus.consume_outbound()
+                    is_progress = bool(msg.metadata and msg.metadata.get("_progress"))
 
-                # 1. Route to channel(s)
-                if instance.channel_manager:
-                    if msg.broadcast:
-                        # Broadcast: deliver to ALL bound channels (heartbeat, web reply)
-                        for ch_name, ch_chat_id in dict(instance.channel_bindings).items():
-                            ch = instance.channel_manager.get_channel(ch_name)
-                            if ch:
-                                try:
-                                    await ch.send(
-                                        _OMsg(
-                                            channel=ch_name,
-                                            chat_id=ch_chat_id,
-                                            content=msg.content,
-                                            media=msg.media,
-                                            metadata=msg.metadata,
+                    # 1. Route to channel(s)
+                    if instance.channel_manager:
+                        if msg.broadcast:
+                            # Broadcast: deliver to ALL bound channels (heartbeat, web reply)
+                            for ch_name, ch_chat_id in dict(instance.channel_bindings).items():
+                                ch = instance.channel_manager.get_channel(ch_name)
+                                if ch:
+                                    try:
+                                        await ch.send(
+                                            _OMsg(
+                                                channel=ch_name,
+                                                chat_id=ch_chat_id,
+                                                content=msg.content,
+                                                media=msg.media,
+                                                metadata=msg.metadata,
+                                            )
                                         )
-                                    )
+                                    except Exception:
+                                        logger.exception(
+                                            "Failed to broadcast to %s for bot %s", ch_name, bot_id
+                                        )
+                        else:
+                            # Single-channel: route to originating channel only
+                            channel = instance.channel_manager.get_channel(msg.channel)
+                            if channel:
+                                try:
+                                    await channel.send(msg)
                                 except Exception:
                                     logger.exception(
-                                        "Failed to broadcast to %s for bot %s", ch_name, bot_id
+                                        "Failed to send to channel %s for bot %s", msg.channel, bot_id
                                     )
-                    else:
-                        # Single-channel: route to originating channel only
-                        channel = instance.channel_manager.get_channel(msg.channel)
-                        if channel:
-                            try:
-                                await channel.send(msg)
-                            except Exception:
-                                logger.exception(
-                                    "Failed to send to channel %s for bot %s", msg.channel, bot_id
-                                )
-                        if not is_progress and msg.chat_id:
-                            instance.channel_bindings[msg.channel] = msg.chat_id
+                            if not is_progress and msg.chat_id:
+                                instance.channel_bindings[msg.channel] = msg.chat_id
 
-                # 2. Notify web clients (non-progress, non-web-api only)
-                #    Messages from send_message carry _source=web_api because
-                #    the HTTP response already delivers content to the web client.
-                is_web_api = bool(msg.metadata and msg.metadata.get("_source") == "web_api")
-                if not is_progress and not is_web_api:
-                    await instance.notify_queue.put(msg.content or "")
+                    # 2. Notify web clients (non-progress, non-web-api only)
+                    #    Messages from send_message carry _source=web_api because
+                    #    the HTTP response already delivers content to the web client.
+                    is_web_api = bool(msg.metadata and msg.metadata.get("_source") == "web_api")
+                    if not is_progress and not is_web_api:
+                        await instance.notify_queue.put(msg.content or "")
 
-                # 3. Publish to EventBus
-                if not is_progress:
-                    await event_bus.publish(
-                        Event(
-                            type=EventType.CAPABILITY_COMPLETE,
-                            task_id=f"tutorbot:{bot_id}:{msg.channel}:{msg.chat_id}",
-                            user_input="",
-                            agent_output=msg.content or "",
-                            metadata={
-                                "source": "tutorbot",
-                                "bot_id": bot_id,
-                                "channel": msg.channel,
-                                "chat_id": msg.chat_id,
-                            },
+                    # 3. Publish to EventBus
+                    if not is_progress:
+                        await event_bus.publish(
+                            Event(
+                                type=EventType.CAPABILITY_COMPLETE,
+                                task_id=f"tutorbot:{bot_id}:{msg.channel}:{msg.chat_id}",
+                                user_input="",
+                                agent_output=msg.content or "",
+                                metadata={
+                                    "source": "tutorbot",
+                                    "bot_id": bot_id,
+                                    "channel": msg.channel,
+                                    "chat_id": msg.chat_id,
+                                },
+                            )
                         )
-                    )
+                except asyncio.CancelledError:
+                    return
+                except Exception:
+                    logger.exception("Outbound router error for bot %s (continuing)", bot_id)
         except asyncio.CancelledError:
             return
-        except Exception:
-            logger.exception("Outbound router failed for bot %s", bot_id)
 
     async def stop_bot(self, bot_id: str, *, preserve_auto_start: bool = False) -> bool:
         """Stop a running TutorBot instance.
