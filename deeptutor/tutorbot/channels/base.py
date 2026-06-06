@@ -142,3 +142,11 @@ class BaseChannel(ABC):
     def is_running(self) -> bool:
         """Check if the channel is running."""
         return self._running
+
+    @property
+    def default_chat_id(self) -> str:
+        """Default chat_id for broadcast when no channel_bindings exist yet.
+
+        Subclasses may override to provide a channel-specific default target.
+        """
+        return ""

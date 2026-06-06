@@ -586,7 +586,18 @@ class TutorBotManager:
                     if instance.channel_manager:
                         if msg.broadcast:
                             # Broadcast: deliver to ALL bound channels (heartbeat, web reply)
-                            for ch_name, ch_chat_id in dict(instance.channel_bindings).items():
+                            # Merge default_chat_id for channels without bindings
+                            targets = dict(instance.channel_bindings)
+                            for ch_name, ch in instance.channel_manager.channels.items():
+                                if ch_name not in targets and ch.default_chat_id:
+                                    targets[ch_name] = ch.default_chat_id
+                            if not targets:
+                                logger.debug(
+                                    "Broadcast: no channel_bindings and no "
+                                    "default_chat_id for bot '%s'; dropped.",
+                                    bot_id,
+                                )
+                            for ch_name, ch_chat_id in targets.items():
                                 ch = instance.channel_manager.get_channel(ch_name)
                                 if ch:
                                     try:
