@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Loader2, Save } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { apiFetch, apiUrl } from "@/lib/api";
 import { useSettings } from "@/components/settings/SettingsContext";
@@ -21,7 +21,7 @@ interface HeartbeatConfig {
 
 export default function HeartbeatSettingsPage() {
   const { t } = useTranslation();
-  const { catalogEditable } = useSettings();
+  const { catalogEditable, registerExtension } = useSettings();
   const isAdmin = catalogEditable === true;
 
   const [config, setConfig] = useState<HeartbeatConfig | null>(null);
@@ -30,14 +30,6 @@ export default function HeartbeatSettingsPage() {
   const [llmOptions, setLlmOptions] = useState<LLMOption[]>([]);
   const [activeLLMDefault, setActiveLLMDefault] = useState<LLMSelection | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState("");
-
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(""), 3500);
-    return () => clearTimeout(timer);
-  }, [toast]);
 
   // 加载心跳配置
   const loadConfig = useCallback(async () => {
@@ -71,31 +63,46 @@ export default function HeartbeatSettingsPage() {
     void Promise.all([loadConfig(), loadLLMOptions()]);
   }, [loadConfig, loadLLMOptions]);
 
+  // 计算 dirty 状态
+  const dirty =
+    config !== null &&
+    (Math.round(config.interval_s / 60) !== intervalMin ||
+      !sameLLMSelection(config.llm_selection, llmSelection));
+
+  // 使用 ref 确保闭包引用最新状态
+  const intervalMinRef = useRef(intervalMin);
+  intervalMinRef.current = intervalMin;
+  const llmSelectionRef = useRef(llmSelection);
+  llmSelectionRef.current = llmSelection;
+
+  // save 函数：被全局 Apply 调用
   const save = useCallback(async () => {
-    setSaving(true);
-    try {
-      const res = await apiFetch(apiUrl("/api/v1/settings/heartbeat"), {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          interval_s: intervalMin * 60,
-          llm_selection: llmSelection,
+    const res = await apiFetch(apiUrl("/api/v1/settings/heartbeat"), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        interval_s: intervalMinRef.current * 60,
+        llm_selection: llmSelectionRef.current,
+      }),
+    });
+    if (!res.ok) {
+      throw new Error(
+        t("Failed to save heartbeat settings (HTTP {{status}})", {
+          status: res.status,
         }),
-      });
-      if (res.ok) {
-        const data = (await res.json()) as HeartbeatConfig;
-        setConfig(data);
-        setToast(t("Heartbeat settings saved"));
-      } else {
-        const err = (await res.json().catch(() => ({}))) as { detail?: string };
-        setToast(err.detail ?? t("Failed to save"));
-      }
-    } catch {
-      setToast(t("Failed to save"));
-    } finally {
-      setSaving(false);
+      );
     }
-  }, [intervalMin, llmSelection, t]);
+    const data = (await res.json()) as HeartbeatConfig;
+    setConfig(data);
+    setIntervalMin(Math.round(data.interval_s / 60));
+    setLlmSelection(data.llm_selection);
+  }, [t]);
+
+  // 注册到全局 extensions，与 memory/capabilities 页面一致
+  useEffect(() => {
+    registerExtension("heartbeat", { dirty, save });
+    return () => registerExtension("heartbeat", null);
+  }, [dirty, save, registerExtension]);
 
   if (loading) {
     return (
@@ -104,11 +111,6 @@ export default function HeartbeatSettingsPage() {
       </div>
     );
   }
-
-  const hasChanges =
-    config !== null &&
-    (Math.round(config.interval_s / 60) !== intervalMin ||
-      !sameLLMSelection(config.llm_selection, llmSelection));
 
   return (
     <div className="space-y-6" data-tour="tour-heartbeat">
@@ -174,31 +176,12 @@ export default function HeartbeatSettingsPage() {
         </p>
       </div>
 
-      {/* 保存按钮 */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={save}
-          disabled={!isAdmin || saving || !hasChanges}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-4 py-2 text-[13px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-40"
-        >
-          {saving ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Save className="h-3.5 w-3.5" />
-          )}
-          {t("Save")}
-        </button>
-        {!isAdmin && (
-          <span className="text-[12px] text-[var(--muted-foreground)]">
-            {t("Only administrators can modify these settings.")}
-          </span>
-        )}
-        {toast && (
-          <span className="text-[12px] text-[var(--primary)] animate-fade-in">
-            {toast}
-          </span>
-        )}
-      </div>
+      {/* 权限提示 */}
+      {!isAdmin && (
+        <p className="text-[12px] text-[var(--muted-foreground)]">
+          {t("Only administrators can modify these settings.")}
+        </p>
+      )}
     </div>
   );
 }
