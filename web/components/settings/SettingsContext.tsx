@@ -163,6 +163,12 @@ export const TOUR_STEPS: TourStep[] = [
     descKey: "settingsTour.search.desc",
   },
   {
+    target: "tour-heartbeat",
+    route: "/settings/heartbeat",
+    titleKey: "settingsTour.heartbeat.title",
+    descKey: "settingsTour.heartbeat.desc",
+  },
+  {
     target: "tour-capabilities",
     route: "/settings/capabilities",
     titleKey: "settingsTour.capabilities.title",

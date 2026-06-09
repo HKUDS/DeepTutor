@@ -2,6 +2,7 @@
 
 import importlib
 
+from .heartbeat_settings import load_heartbeat_settings, save_heartbeat_settings
 from .knowledge_base_config import (
     KnowledgeBaseConfigService,
     get_kb_config_service,
@@ -36,6 +37,8 @@ loader = importlib.import_module(f"{__name__}.loader")
 __all__ = [
     "LaunchSettings",
     "load_launch_settings",
+    "load_heartbeat_settings",
+    "save_heartbeat_settings",
     # From loader.py
     "PROJECT_ROOT",
     "get_runtime_settings_dir",

@@ -514,13 +514,33 @@ class TutorBotManager:
         async def _hb_notify(response: str) -> None:
             await instance.notify_queue.put(response)
 
+        # 从持久化配置读取心跳参数
+        from deeptutor.services.config.heartbeat_settings import load_heartbeat_settings
+        hb_cfg = load_heartbeat_settings()
+
+        # 心跳模型：如果配置了独立心跳模型，使用独立 provider；否则使用主 Agent 的
+        hb_provider = provider
+        hb_model = agent_loop.model
+        hb_selection = hb_cfg.get("llm_selection")
+        if hb_selection:
+            from deeptutor.services.tutorbot.model_runtime import resolve_tutorbot_llm_config
+            from deeptutor.tutorbot.providers.deeptutor_adapter import create_deeptutor_provider
+            from deeptutor.services.model_selection import LLMSelection
+            from deeptutor.services.model_selection.runtime import resolve_llm_config_for_selection
+            try:
+                hb_llm_config = resolve_llm_config_for_selection(hb_selection)
+                hb_provider = create_deeptutor_provider(hb_llm_config)
+                hb_model = hb_llm_config.model
+            except Exception:
+                pass  # 回退到主 Agent 模型
+
         heartbeat = HeartbeatService(
             workspace=workspace,
-            provider=provider,
-            model=agent_loop.model,
+            provider=hb_provider,
+            model=hb_model,
             on_execute=_hb_execute,
             on_notify=_hb_notify,
-            interval_s=30 * 60,
+            interval_s=hb_cfg.get("interval_s", 30 * 60),
         )
         instance.heartbeat = heartbeat
         await heartbeat.start()
@@ -552,8 +572,24 @@ class TutorBotManager:
             context_window_tokens=context_window_tokens,
         )
         if instance.heartbeat:
-            instance.heartbeat.provider = provider
-            instance.heartbeat.model = instance.agent_loop.model
+            # 心跳模型：仅在未配置独立心跳模型时同步主 Agent 模型
+            from deeptutor.services.config.heartbeat_settings import load_heartbeat_settings
+            hb_cfg = load_heartbeat_settings()
+            hb_selection = hb_cfg.get("llm_selection")
+            if hb_selection:
+                from deeptutor.services.model_selection.runtime import resolve_llm_config_for_selection
+                from deeptutor.tutorbot.providers.deeptutor_adapter import create_deeptutor_provider
+                try:
+                    hb_llm_config = resolve_llm_config_for_selection(hb_selection)
+                    hb_provider = create_deeptutor_provider(hb_llm_config)
+                    instance.heartbeat.provider = hb_provider
+                    instance.heartbeat.model = hb_llm_config.model
+                except Exception:
+                    instance.heartbeat.provider = provider
+                    instance.heartbeat.model = instance.agent_loop.model
+            else:
+                instance.heartbeat.provider = provider
+                instance.heartbeat.model = instance.agent_loop.model
         logger.info("Reloaded LLM for TutorBot '%s' (model=%s)", bot_id, llm_config.model)
 
     async def _outbound_router(self, bot_id: str, bus: Any, instance: TutorBotInstance) -> None:

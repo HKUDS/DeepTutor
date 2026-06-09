@@ -5,6 +5,7 @@ import {
   BookMarked,
   Brain,
   Database,
+  HeartPulse,
   Network,
   Palette,
   Plug,
@@ -23,6 +24,7 @@ export type SettingsItemKey =
   | "llm"
   | "embedding"
   | "search"
+  | "heartbeat"
   | "memory"
   | "capabilities";
 
@@ -76,6 +78,13 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
     label: "Search",
     description: "Web search providers.",
     icon: Search,
+  },
+  {
+    key: "heartbeat",
+    href: "/settings/heartbeat",
+    label: "Heartbeat",
+    description: "Heartbeat interval and model configuration.",
+    icon: HeartPulse,
   },
   {
     key: "capabilities",

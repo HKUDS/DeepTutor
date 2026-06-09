@@ -116,6 +116,11 @@ class NetworkSettingsUpdate(BaseModel):
     cors_origins: list[str] = Field(default_factory=list)
 
 
+class HeartbeatSettingsUpdate(BaseModel):
+    interval_s: int = Field(ge=60, le=86400)
+    llm_selection: dict[str, str] | None = None
+
+
 def _invalidate_runtime_caches() -> None:
     """Force runtime clients/config to pick up the latest saved catalog.
 
@@ -508,6 +513,82 @@ async def cancel_service_test(service: str, run_id: str):
     _require_settings_admin()
     get_config_test_runner().cancel(run_id)
     return {"message": "Cancelled"}
+
+
+@router.get("/heartbeat")
+async def get_heartbeat_settings():
+    from deeptutor.services.config.heartbeat_settings import load_heartbeat_settings
+    return load_heartbeat_settings()
+
+
+@router.put("/heartbeat")
+async def update_heartbeat_settings(payload: HeartbeatSettingsUpdate):
+    _require_settings_admin()
+    from deeptutor.services.config.heartbeat_settings import save_heartbeat_settings
+    from deeptutor.services.model_selection import apply_llm_selection_to_catalog
+    from deeptutor.services.config import get_model_catalog_service
+
+    # 校验 llm_selection 有效性
+    if payload.llm_selection:
+        try:
+            apply_llm_selection_to_catalog(
+                get_model_catalog_service().load(), payload.llm_selection
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from None
+
+    settings = save_heartbeat_settings({
+        "interval_s": payload.interval_s,
+        "llm_selection": payload.llm_selection,
+    })
+
+    # 热更新所有运行中 Bot 的心跳
+    _apply_heartbeat_to_running_bots(settings)
+
+    return settings
+
+
+def _apply_heartbeat_to_running_bots(settings: dict[str, Any]) -> None:
+    """将心跳配置热更新到所有运行中的 Bot。"""
+    from deeptutor.services.tutorbot import get_tutorbot_manager
+    from deeptutor.services.model_selection.runtime import resolve_llm_config_for_selection
+    from deeptutor.tutorbot.providers.deeptutor_adapter import create_deeptutor_provider
+
+    mgr = get_tutorbot_manager()
+    hb_selection = settings.get("llm_selection")
+
+    for bot_id, instance in mgr._bots.items():
+        heartbeat = getattr(instance, "heartbeat", None)
+        if not heartbeat:
+            continue
+
+        # 更新间隔
+        heartbeat.interval_s = settings.get("interval_s", 30 * 60)
+
+        # 更新模型
+        if hb_selection:
+            try:
+                hb_llm_config = resolve_llm_config_for_selection(hb_selection)
+                hb_provider = create_deeptutor_provider(hb_llm_config)
+                heartbeat.provider = hb_provider
+                heartbeat.model = hb_llm_config.model
+            except Exception:
+                pass  # 保持当前模型
+        else:
+            # 使用主 Agent 模型
+            agent_loop = getattr(instance, "agent_loop", None)
+            if agent_loop:
+                heartbeat.model = agent_loop.model
+                # provider 需要使用主 Agent 的 provider
+                from deeptutor.services.tutorbot.model_runtime import resolve_tutorbot_llm_config
+                try:
+                    llm_config = resolve_tutorbot_llm_config(instance.config)
+                    heartbeat.provider = create_deeptutor_provider(llm_config)
+                except Exception:
+                    pass
 
 
 @router.get("/tour/status")

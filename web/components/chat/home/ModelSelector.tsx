@@ -32,6 +32,7 @@ export default function ModelSelector({
   systemDefaultDetail,
   helperText,
   placement = "top",
+  disabled: externalDisabled = false,
   onChange,
 }: {
   options: LLMOption[];
@@ -44,6 +45,7 @@ export default function ModelSelector({
   systemDefaultDetail?: string;
   helperText?: string;
   placement?: "top" | "bottom";
+  disabled?: boolean;
   onChange: (selection: LLMSelection | null) => void;
 }) {
   const { t } = useTranslation();
@@ -77,7 +79,10 @@ export default function ModelSelector({
   const defaultDetail =
     systemDefaultDetail || t("Use the active default model from Settings");
   const disabled =
-    loading || error || (options.length === 0 && !allowSystemDefault);
+    externalDisabled ||
+    loading ||
+    error ||
+    (options.length === 0 && !allowSystemDefault);
   const label = loading
     ? t("Loading models")
     : error
