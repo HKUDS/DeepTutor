@@ -524,9 +524,9 @@ async def get_heartbeat_settings():
 @router.put("/heartbeat")
 async def update_heartbeat_settings(payload: HeartbeatSettingsUpdate):
     _require_settings_admin()
+    from deeptutor.services.config import get_model_catalog_service
     from deeptutor.services.config.heartbeat_settings import save_heartbeat_settings
     from deeptutor.services.model_selection import apply_llm_selection_to_catalog
-    from deeptutor.services.config import get_model_catalog_service
 
     # 校验 llm_selection 有效性
     if payload.llm_selection:
@@ -553,8 +553,8 @@ async def update_heartbeat_settings(payload: HeartbeatSettingsUpdate):
 
 def _apply_heartbeat_to_running_bots(settings: dict[str, Any]) -> None:
     """将心跳配置热更新到所有运行中的 Bot。"""
-    from deeptutor.services.tutorbot import get_tutorbot_manager
     from deeptutor.services.model_selection.runtime import resolve_llm_config_for_selection
+    from deeptutor.services.tutorbot import get_tutorbot_manager
     from deeptutor.tutorbot.providers.deeptutor_adapter import create_deeptutor_provider
 
     mgr = get_tutorbot_manager()

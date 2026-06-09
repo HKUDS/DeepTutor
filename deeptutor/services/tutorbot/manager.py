@@ -523,10 +523,9 @@ class TutorBotManager:
         hb_model = agent_loop.model
         hb_selection = hb_cfg.get("llm_selection")
         if hb_selection:
+            from deeptutor.services.model_selection.runtime import resolve_llm_config_for_selection
             from deeptutor.services.tutorbot.model_runtime import resolve_tutorbot_llm_config
             from deeptutor.tutorbot.providers.deeptutor_adapter import create_deeptutor_provider
-            from deeptutor.services.model_selection import LLMSelection
-            from deeptutor.services.model_selection.runtime import resolve_llm_config_for_selection
             try:
                 hb_llm_config = resolve_llm_config_for_selection(hb_selection)
                 hb_provider = create_deeptutor_provider(hb_llm_config)
@@ -577,7 +576,9 @@ class TutorBotManager:
             hb_cfg = load_heartbeat_settings()
             hb_selection = hb_cfg.get("llm_selection")
             if hb_selection:
-                from deeptutor.services.model_selection.runtime import resolve_llm_config_for_selection
+                from deeptutor.services.model_selection.runtime import (
+                    resolve_llm_config_for_selection,
+                )
                 from deeptutor.tutorbot.providers.deeptutor_adapter import create_deeptutor_provider
                 try:
                     hb_llm_config = resolve_llm_config_for_selection(hb_selection)
