@@ -32,6 +32,7 @@ export default function ModelSelector({
   systemDefaultDetail,
   helperText,
   placement = "top",
+  align = "right",
   disabled: externalDisabled = false,
   onChange,
 }: {
@@ -45,6 +46,7 @@ export default function ModelSelector({
   systemDefaultDetail?: string;
   helperText?: string;
   placement?: "top" | "bottom";
+  align?: "left" | "right";
   disabled?: boolean;
   onChange: (selection: LLMSelection | null) => void;
 }) {
@@ -101,6 +103,7 @@ export default function ModelSelector({
   })();
   const menuPlacementClass =
     placement === "bottom" ? "top-full mt-1.5" : "bottom-full mb-1.5";
+  const menuAlignClass = align === "left" ? "left-0" : "right-0";
 
   return (
     <div ref={rootRef} className="relative">
@@ -133,7 +136,7 @@ export default function ModelSelector({
 
       {open && !disabled && (
         <div
-          className={`absolute right-0 z-50 ${menuPlacementClass} w-[min(340px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md`}
+          className={`absolute ${menuAlignClass} z-50 ${menuPlacementClass} w-[min(340px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md`}
         >
           <div className="border-b border-[var(--border)]/50 px-3 py-2">
             <div className="text-[12px] font-semibold text-[var(--foreground)]">

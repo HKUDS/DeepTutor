@@ -178,6 +178,7 @@ export default function HeartbeatSettingsPage() {
           disabled={!isAdmin}
           helperText={t("Model used for heartbeat decision")}
           placement="bottom"
+          align="left"
           onChange={isAdmin ? setLlmSelection : () => {}}
         />
         <p className="text-[11px] text-[var(--muted-foreground)]/60">
