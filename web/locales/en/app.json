@@ -133,6 +133,7 @@
   "Choose a lightweight model for heartbeat to reduce API costs. System default uses the main agent model.": "Choose a lightweight model for heartbeat to reduce API costs. System default uses the main agent model.",
   "Only administrators can modify these settings.": "Only administrators can modify these settings.",
   "Failed to save heartbeat settings (HTTP {{status}})": "Failed to save heartbeat settings (HTTP {{status}})",
+  "Setting interval to {{min}} minutes will consume API tokens frequently. Continue?": "Setting interval to {{min}} minutes will consume API tokens frequently. Continue?",
   "Knowledge Bases": "Knowledge Bases",
   "Refresh knowledge bases": "Refresh knowledge bases",
   "New Knowledge Base": "New Knowledge Base",

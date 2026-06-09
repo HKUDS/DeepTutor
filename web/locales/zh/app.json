@@ -133,6 +133,7 @@
   "Choose a lightweight model for heartbeat to reduce API costs. System default uses the main agent model.": "选择轻量级模型用于心跳以降低 API 成本。系统默认使用主 Agent 模型。",
   "Only administrators can modify these settings.": "仅管理员可修改这些设置。",
   "Failed to save heartbeat settings (HTTP {{status}})": "保存心跳设置失败（HTTP {{status}}）",
+  "Setting interval to {{min}} minutes will consume API tokens frequently. Continue?": "设置间隔为 {{min}} 分钟将频繁消耗 API tokens，确定继续？",
   "Knowledge Bases": "知识库",
   "Refresh knowledge bases": "刷新知识库列表",
   "New Knowledge Base": "新建知识库",

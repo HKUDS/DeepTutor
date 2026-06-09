@@ -77,6 +77,17 @@ export default function HeartbeatSettingsPage() {
 
   // save 函数：被全局 Apply 调用
   const save = useCallback(async () => {
+    // 短间隔确认：低于 30 分钟时弹出确认弹窗
+    if (intervalMinRef.current < 30) {
+      const confirmed = window.confirm(
+        t(
+          "Setting interval to {{min}} minutes will consume API tokens frequently. Continue?",
+          { min: intervalMinRef.current },
+        ),
+      );
+      if (!confirmed) return;
+    }
+
     const res = await apiFetch(apiUrl("/api/v1/settings/heartbeat"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
