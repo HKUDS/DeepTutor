@@ -642,6 +642,36 @@ class TestPatchBotStoppedAndRunning:
         assert saved_cfg[0].llm_selection is None
         assert resp.json()["llm_selection"] is None
 
+    def test_patch_stopped_can_update_shell_exec_flag(self, monkeypatch):
+        from deeptutor.services.tutorbot.manager import BotConfig
+
+        saved_cfg: list[BotConfig | None] = []
+
+        class FakeMgr:
+            def get_bot(self, bot_id: str):
+                return None
+
+            def load_bot_config(self, bot_id: str) -> BotConfig | None:
+                return BotConfig(name="b", allow_shell_exec=False)
+
+            def save_bot_config(
+                self, bot_id: str, config: BotConfig, *, auto_start: bool = True
+            ) -> None:
+                saved_cfg.append(config)
+
+        tutorbot_router_mod = importlib.import_module("deeptutor.api.routers.tutorbot")
+        monkeypatch.setattr(tutorbot_router_mod, "get_tutorbot_manager", lambda: FakeMgr())
+
+        app = FastAPI()
+        app.include_router(tutorbot_router_mod.router, prefix="/api/v1/tutorbot")
+        client = TestClient(app)
+
+        resp = client.patch("/api/v1/tutorbot/b", json={"allow_shell_exec": True})
+
+        assert resp.status_code == 200
+        assert saved_cfg[0].allow_shell_exec is True
+        assert resp.json()["allow_shell_exec"] is True
+
     def test_patch_running_channels_calls_reload(self, monkeypatch):
         from deeptutor.services.tutorbot.manager import BotConfig
 

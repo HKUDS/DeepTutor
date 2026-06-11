@@ -974,14 +974,9 @@ class TutorBotManager:
                 data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
                 if not data.get("auto_start", False):
                     continue
-                config = BotConfig(
-                    name=data.get("name", bid),
-                    description=data.get("description", ""),
-                    persona=data.get("persona", ""),
-                    channels=data.get("channels", {}),
-                    model=data.get("model"),
-                    llm_selection=data.get("llm_selection"),
-                )
+                config = self.load_bot_config(bid)
+                if config is None:
+                    continue
                 await self.start_bot(bid, config)
                 logger.info("Auto-started bot '%s'", bid)
             except Exception:

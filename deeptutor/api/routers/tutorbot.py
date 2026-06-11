@@ -84,6 +84,7 @@ class UpdateBotRequest(BaseModel):
     channels: dict | None = None
     model: str | None = None
     llm_selection: dict[str, str] | None = None
+    allow_shell_exec: bool | None = None
 
 
 class FileUpdateRequest(BaseModel):
@@ -339,6 +340,8 @@ def _apply_payload(target: BotConfig | TutorBotInstance, payload: UpdateBotReque
         cfg.model = payload.model
     if "llm_selection" in payload.model_fields_set:
         cfg.llm_selection = _validate_llm_selection_payload(payload.llm_selection)
+    if payload.allow_shell_exec is not None:
+        cfg.allow_shell_exec = payload.allow_shell_exec
 
 
 @router.patch("/{bot_id}")

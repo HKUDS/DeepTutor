@@ -395,6 +395,29 @@ class TestAutoStartPersistence:
 
         assert self._config_data(manager, "manual-only-bot")["auto_start"] is False
 
+    def test_auto_start_preserves_shell_exec_opt_in(
+        self,
+        manager: TutorBotManager,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        cfg = BotConfig(name="shell-auto", allow_shell_exec=True)
+        manager.save_bot_config("shell-auto-bot", cfg, auto_start=True)
+        started: list[tuple[str, BotConfig | None]] = []
+
+        async def fake_start_bot(bot_id: str, config: BotConfig | None = None):
+            started.append((bot_id, config))
+            return TutorBotInstance(
+                bot_id=bot_id,
+                config=config or BotConfig(name=bot_id),
+            )
+
+        monkeypatch.setattr(manager, "start_bot", fake_start_bot)
+
+        asyncio.run(manager.auto_start_bots())
+
+        assert started == [("shell-auto-bot", cfg)]
+        assert started[0][1].allow_shell_exec is True
+
 
 def test_start_bot_passes_shared_memory_dir(
     manager: TutorBotManager,
