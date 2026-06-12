@@ -79,12 +79,15 @@ class PartnerRunner:
         bus: MessageBus,
         store: PartnerSessionStore,
         save_config: Callable[[str, Any], None] | None = None,
+        *,
+        owner_id: str | None = None,
     ) -> None:
         self.partner_id = partner_id
         self.config = config
         self.bus = bus
         self.store = store
         self.save_config = save_config
+        self.owner_id = owner_id if owner_id is not None else getattr(config, "owner_id", "")
         self._session_locks: dict[str, asyncio.Lock] = {}
         self._tasks: set[asyncio.Task] = set()
 
@@ -178,7 +181,7 @@ class PartnerRunner:
         on_event: EventCallback | None = None,
         delivery_meta: dict[str, Any] | None = None,
     ) -> str:
-        ensure_partner_workspace(self.partner_id)
+        ensure_partner_workspace(self.partner_id, owner_id=self.owner_id)
         primary = getattr(self.config, "llm_selection", None) or None
         backup = getattr(self.config, "backup_llm_selection", None) or None
 
@@ -386,7 +389,7 @@ class PartnerRunner:
             knowledge_bases=kb_names,
             attachments=attachments,
             language=self._language(),
-            persona_context=read_soul(self.partner_id).strip(),
+            persona_context=read_soul(self.partner_id, owner_id=self.owner_id).strip(),
             skills_manifest=skills_manifest,
             source_manifest=source_manifest,
             metadata=metadata,

@@ -22,7 +22,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from deeptutor.core.i18n import t
-from deeptutor.partners.config.paths import get_partner_media_dir
+from deeptutor.partners.config.paths import get_partner_media_dir, resolve_owner_for_partner
 from deeptutor.partners.helpers import safe_filename
 from deeptutor.services.partners import get_partner_manager, slugify_partner_id
 from deeptutor.services.partners.manager import (
@@ -43,6 +43,38 @@ from deeptutor.services.partners.workspace import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+# ── Ownership 校验 ──────────────────────────────────────────────
+
+
+def _check_partner_owner(partner_id: str) -> str:
+    """校验当前用户是否有权操作该 partner。返回 owner_id。
+
+    - admin 用户可以操作任意 partner
+    - 普通用户只能操作 owner_id 等于自己 id 的 partner
+    - partner 不存在时返回 404（避免通过 403/404 差异确认 partner_id 是否存在）
+    - owner_id 为空串表示 admin owner，此时仅 admin 可操作
+    """
+    from deeptutor.multi_user.context import get_current_user
+
+    user = get_current_user()
+    owner_id = resolve_owner_for_partner(partner_id)
+
+    # partner 不存在时直接 404
+    mgr = get_partner_manager()
+    if not mgr.partner_exists(partner_id, owner_id=owner_id or None):
+        raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
+
+    if user.is_admin:
+        return owner_id
+
+    if owner_id != user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="你没有权限操作此 partner",
+        )
+    return owner_id
 
 
 # Per-partner async locks used to dedupe concurrent WebSocket-driven
@@ -67,7 +99,8 @@ async def _ensure_running_partner(partner_id: str) -> PartnerInstance:
     if instance and instance.running:
         return instance
 
-    config = mgr.load_config(partner_id)
+    owner_id = resolve_owner_for_partner(partner_id) or None
+    config = mgr.load_config(partner_id, owner_id=owner_id)
     if config is None:
         raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
 
@@ -300,11 +333,23 @@ def _load_persona_markdown(name: str) -> str:
 
 @router.get("/souls")
 async def list_souls():
+    # 灵魂模板是共享资源，仅 admin 可管理
+    from deeptutor.multi_user.context import get_current_user
+
+    user = get_current_user()
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
     return get_partner_manager().list_souls()
 
 
 @router.post("/souls")
 async def create_soul(payload: SoulCreateRequest):
+    # 灵魂模板是共享资源，仅 admin 可管理
+    from deeptutor.multi_user.context import get_current_user
+
+    user = get_current_user()
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
     mgr = get_partner_manager()
     if mgr.get_soul(payload.id):
         raise HTTPException(status_code=409, detail=t("api.soul_already_exists", name=payload.id))
@@ -313,6 +358,12 @@ async def create_soul(payload: SoulCreateRequest):
 
 @router.get("/souls/{soul_id}")
 async def get_soul(soul_id: str):
+    # 灵魂模板是共享资源，仅 admin 可管理
+    from deeptutor.multi_user.context import get_current_user
+
+    user = get_current_user()
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
     soul = get_partner_manager().get_soul(soul_id)
     if not soul:
         raise HTTPException(status_code=404, detail=t("api.soul_not_found"))
@@ -321,6 +372,12 @@ async def get_soul(soul_id: str):
 
 @router.put("/souls/{soul_id}")
 async def update_soul(soul_id: str, payload: SoulTemplateUpdateRequest):
+    # 灵魂模板是共享资源，仅 admin 可管理
+    from deeptutor.multi_user.context import get_current_user
+
+    user = get_current_user()
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
     result = get_partner_manager().update_soul(soul_id, payload.name, payload.content)
     if not result:
         raise HTTPException(status_code=404, detail=t("api.soul_not_found"))
@@ -329,6 +386,12 @@ async def update_soul(soul_id: str, payload: SoulTemplateUpdateRequest):
 
 @router.delete("/souls/{soul_id}")
 async def delete_soul(soul_id: str):
+    # 灵魂模板是共享资源，仅 admin 可管理
+    from deeptutor.multi_user.context import get_current_user
+
+    user = get_current_user()
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
     if not get_partner_manager().delete_soul(soul_id):
         raise HTTPException(status_code=404, detail=t("api.soul_not_found"))
     return {"id": soul_id, "deleted": True}
@@ -412,19 +475,28 @@ async def tool_options():
 
 @router.post("")
 async def create_partner(payload: CreatePartnerRequest):
+    from deeptutor.multi_user.context import get_current_user
+
     mgr = get_partner_manager()
     partner_id = slugify_partner_id(payload.partner_id or payload.name)
+
+    # 全局唯一性检查：如果 partner_id 已被任何用户占用，自动加后缀
     if mgr.partner_exists(partner_id):
-        raise HTTPException(
-            status_code=409,
-            detail=t("api.partner_already_exists", name=partner_id),
-        )
+        base = partner_id
+        suffix = 2
+        while mgr.partner_exists(partner_id):
+            partner_id = f"{base}-{suffix}"
+            suffix += 1
 
     if payload.channels is not None:
         _validate_channels_payload(payload.channels)
     llm_selection = _validate_llm_selection_payload(payload.llm_selection)
     backup_llm_selection = _validate_llm_selection_payload(payload.backup_llm_selection)
     soul_content, soul_origin = _resolve_soul_content(payload.soul)
+
+    # 从当前用户获取 owner_id：admin 为空串，普通用户为 uid
+    current_user = get_current_user()
+    owner_id = "" if current_user.is_admin else current_user.id
 
     config = PartnerConfig(
         name=payload.name.strip(),
@@ -439,14 +511,16 @@ async def create_partner(payload: CreatePartnerRequest):
         soul_origin=soul_origin,
         enabled_tools=payload.enabled_tools,
         mcp_tools=payload.mcp_tools,
+        owner_id=owner_id,
     )
     mgr.save_config(partner_id, config, auto_start=True)
-    write_soul(partner_id, soul_content)
+    write_soul(partner_id, soul_content, owner_id=owner_id or None)
 
     provisioning: dict[str, Any] = {"copied": {}, "errors": []}
     if payload.assets is not None:
         provisioning = provision_assets(
             partner_id,
+            owner_id=owner_id or None,
             knowledge_bases=payload.assets.knowledge_bases,
             skills=payload.assets.skills,
             notebooks=payload.assets.notebooks,
@@ -492,6 +566,7 @@ def _stopped_partner_dict(
         "soul_origin": cfg.soul_origin,
         "enabled_tools": cfg.enabled_tools,
         "mcp_tools": cfg.mcp_tools,
+        "owner_id": cfg.owner_id,
         "running": False,
         "started_at": None,
         "last_reload_error": None,
@@ -509,6 +584,7 @@ async def get_partner(
         ),
     ),
 ):
+    _check_partner_owner(partner_id)
     mgr = get_partner_manager()
     instance = mgr.get_partner(partner_id)
     if instance:
@@ -516,7 +592,8 @@ async def get_partner(
             include_secrets=include_secrets,
             mask_secrets=not include_secrets,
         )
-    cfg = mgr.load_config(partner_id)
+    owner_id = resolve_owner_for_partner(partner_id) or None
+    cfg = mgr.load_config(partner_id, owner_id=owner_id)
     if cfg:
         return _stopped_partner_dict(partner_id, cfg, include_secrets=include_secrets)
     raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
@@ -550,6 +627,7 @@ def _apply_update(cfg: PartnerConfig, payload: UpdatePartnerRequest) -> None:
 
 @router.patch("/{partner_id}")
 async def update_partner(partner_id: str, payload: UpdatePartnerRequest):
+    _check_partner_owner(partner_id)
     if payload.channels is not None:
         _validate_channels_payload(payload.channels)
 
@@ -574,7 +652,8 @@ async def update_partner(partner_id: str, payload: UpdatePartnerRequest):
         # llm_selection and tool config per turn from this same config object.
         return instance.to_dict(mask_secrets=True)
 
-    cfg = mgr.load_config(partner_id)
+    owner_id = resolve_owner_for_partner(partner_id) or None
+    cfg = mgr.load_config(partner_id, owner_id=owner_id)
     if not cfg:
         raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
     _apply_update(cfg, payload)
@@ -584,12 +663,14 @@ async def update_partner(partner_id: str, payload: UpdatePartnerRequest):
 
 @router.post("/{partner_id}/start")
 async def start_partner(partner_id: str):
+    _check_partner_owner(partner_id)
     instance = await _ensure_running_partner(partner_id)
     return instance.to_dict(mask_secrets=True)
 
 
 @router.post("/{partner_id}/stop")
 async def stop_partner(partner_id: str):
+    _check_partner_owner(partner_id)
     stopped = await get_partner_manager().stop_partner(partner_id)
     if not stopped:
         raise HTTPException(status_code=404, detail=t("api.partner_not_found_or_not_running"))
@@ -598,6 +679,7 @@ async def stop_partner(partner_id: str):
 
 @router.delete("/{partner_id}")
 async def destroy_partner(partner_id: str):
+    _check_partner_owner(partner_id)
     destroyed = await get_partner_manager().destroy_partner(partner_id)
     if not destroyed:
         raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
@@ -606,6 +688,7 @@ async def destroy_partner(partner_id: str):
 
 @router.post("/{partner_id}/channels/reload")
 async def reload_partner_channels(partner_id: str):
+    _check_partner_owner(partner_id)
     mgr = get_partner_manager()
     instance = mgr.get_partner(partner_id)
     if not instance or not instance.running:
@@ -625,18 +708,22 @@ async def reload_partner_channels(partner_id: str):
 
 @router.get("/{partner_id}/soul")
 async def get_partner_soul(partner_id: str):
+    _check_partner_owner(partner_id)
     mgr = get_partner_manager()
     if not mgr.partner_exists(partner_id):
         raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
-    return {"partner_id": partner_id, "content": read_soul(partner_id)}
+    owner_id = resolve_owner_for_partner(partner_id) or None
+    return {"partner_id": partner_id, "content": read_soul(partner_id, owner_id=owner_id)}
 
 
 @router.put("/{partner_id}/soul")
 async def put_partner_soul(partner_id: str, payload: SoulUpdateBody):
+    _check_partner_owner(partner_id)
     mgr = get_partner_manager()
     if not mgr.partner_exists(partner_id):
         raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
-    write_soul(partner_id, payload.content)
+    owner_id = resolve_owner_for_partner(partner_id) or None
+    write_soul(partner_id, payload.content, owner_id=owner_id)
     return {"partner_id": partner_id, "saved": True}
 
 
@@ -645,38 +732,45 @@ async def put_partner_soul(partner_id: str, payload: SoulUpdateBody):
 
 @router.get("/{partner_id}/assets")
 async def get_partner_assets(partner_id: str):
+    _check_partner_owner(partner_id)
     mgr = get_partner_manager()
     if not mgr.partner_exists(partner_id):
         raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
-    return list_assets(partner_id)
+    owner_id = resolve_owner_for_partner(partner_id) or None
+    return list_assets(partner_id, owner_id=owner_id)
 
 
 @router.post("/{partner_id}/assets")
 async def add_partner_assets(partner_id: str, payload: AssetAddRequest):
+    _check_partner_owner(partner_id)
     mgr = get_partner_manager()
     if not mgr.partner_exists(partner_id):
         raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
+    owner_id = resolve_owner_for_partner(partner_id) or None
     report = provision_assets(
         partner_id,
+        owner_id=owner_id,
         knowledge_bases=payload.knowledge_bases,
         skills=payload.skills,
         notebooks=payload.notebooks,
     )
-    return {"partner_id": partner_id, **report, "assets": list_assets(partner_id)}
+    return {"partner_id": partner_id, **report, "assets": list_assets(partner_id, owner_id=owner_id)}
 
 
 @router.delete("/{partner_id}/assets/{asset_type}/{name}")
 async def delete_partner_asset(partner_id: str, asset_type: str, name: str):
+    _check_partner_owner(partner_id)
     mgr = get_partner_manager()
     if not mgr.partner_exists(partner_id):
         raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
+    owner_id = resolve_owner_for_partner(partner_id) or None
     try:
-        removed = remove_asset(partner_id, asset_type, name)
+        removed = remove_asset(partner_id, asset_type, name, owner_id=owner_id)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     if not removed:
         raise HTTPException(status_code=404, detail="Asset not found")
-    return {"partner_id": partner_id, "removed": True, "assets": list_assets(partner_id)}
+    return {"partner_id": partner_id, "removed": True, "assets": list_assets(partner_id, owner_id=owner_id)}
 
 
 # ── History ────────────────────────────────────────────────────
@@ -688,15 +782,18 @@ async def get_partner_history(
     session_key: str | None = None,
     limit: int = 100,
 ):
+    _check_partner_owner(partner_id)
     return get_partner_manager().get_history(partner_id, session_key=session_key, limit=limit)
 
 
 @router.get("/{partner_id}/sessions")
 async def get_partner_sessions(partner_id: str):
+    _check_partner_owner(partner_id)
     mgr = get_partner_manager()
     if not mgr.partner_exists(partner_id):
         raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
-    return mgr.session_store(partner_id).list_sessions()
+    owner_id = resolve_owner_for_partner(partner_id) or None
+    return mgr.session_store(partner_id, owner_id=owner_id).list_sessions()
 
 
 @router.get("/commands/palette")
@@ -749,7 +846,8 @@ def _materialize_partner_attachments(
     if not attachments:
         return []
 
-    media_dir = get_partner_media_dir(partner_id, "web")
+    owner_id = resolve_owner_for_partner(partner_id) or None
+    media_dir = get_partner_media_dir(partner_id, "web", owner_id=owner_id)
     total_bytes = 0
     media_paths: list[str] = []
     for item in attachments:
@@ -784,6 +882,7 @@ def _materialize_partner_attachments(
 @router.post("/{partner_id}/chat")
 async def partner_chat_http(partner_id: str, payload: ChatMessageRequest) -> dict[str, Any]:
     """Send one HTTP message to a partner with persistent session context."""
+    _check_partner_owner(partner_id)
     content = payload.content.strip()
     if not content and not payload.attachments:
         raise HTTPException(status_code=400, detail=t("api.content_required"))
@@ -873,6 +972,7 @@ async def _partner_chat_stream(
 @router.post("/{partner_id}/chat/execute-stream")
 async def partner_chat_http_stream(partner_id: str, payload: ChatMessageRequest):
     """Stream one HTTP message to a partner as server-sent events."""
+    _check_partner_owner(partner_id)
     if not payload.content.strip() and not payload.attachments:
         raise HTTPException(status_code=400, detail=t("api.content_required"))
     await _ensure_running_partner(partner_id)
@@ -904,6 +1004,15 @@ async def partner_chat_ws(ws: WebSocket, partner_id: str):
     if user_token is ws_auth_failed:
         return
 
+    # Ownership 校验：WebSocket 不能抛 HTTPException，需手动处理
+    from deeptutor.multi_user.context import get_current_user
+
+    ws_user = get_current_user()
+    ws_owner_id = resolve_owner_for_partner(partner_id)
+    if not ws_user.is_admin and ws_owner_id != ws_user.id:
+        await ws.close(code=4003, reason="你没有权限操作此 partner")
+        return
+
     disconnected = asyncio.Event()
 
     async def _safe_send(payload: dict) -> bool:
@@ -920,7 +1029,8 @@ async def partner_chat_ws(ws: WebSocket, partner_id: str):
     await ws.accept()
 
     if not instance or not instance.running:
-        config = mgr.load_config(partner_id)
+        owner_id = resolve_owner_for_partner(partner_id) or None
+        config = mgr.load_config(partner_id, owner_id=owner_id)
         if config is None:
             message = t("api.partner_not_found")
             await _safe_send({"type": "error", "content": message})

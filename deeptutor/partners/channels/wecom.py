@@ -12,7 +12,7 @@ from pydantic import Field
 from deeptutor.partners.bus.events import OutboundMessage
 from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.partners.channels.base import BaseChannel
-from deeptutor.partners.config.paths import get_media_dir
+from deeptutor.partners.config.paths import get_partner_media_dir
 from deeptutor.partners.config.schema import DeliveryOverrides
 
 WECOM_AVAILABLE = importlib.util.find_spec("wecom_aibot_sdk") is not None
@@ -332,7 +332,7 @@ class WecomChannel(BaseChannel):
                 logger.warning("Failed to download media from WeCom")
                 return None
 
-            media_dir = get_media_dir("wecom")
+            media_dir = get_partner_media_dir(self.partner_id, "wecom")
             if not filename:
                 filename = fname or f"{media_type}_{hash(file_url) % 100000}"
             filename = os.path.basename(filename)

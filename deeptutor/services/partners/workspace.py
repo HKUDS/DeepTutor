@@ -65,9 +65,9 @@ adapt to the user's level, and value accuracy over speed.
 """
 
 
-def ensure_partner_workspace(partner_id: str) -> Path:
+def ensure_partner_workspace(partner_id: str, *, owner_id: str | None = None) -> Path:
     """Create the full chat-format workspace tree; returns the scope root."""
-    return ensure_scope_workspace(partner_scope(partner_id))
+    return ensure_scope_workspace(partner_scope(partner_id, owner_id=owner_id))
 
 
 def strip_frontmatter(text: str) -> str:
@@ -85,19 +85,19 @@ def strip_frontmatter(text: str) -> str:
     return raw[end + 4 :].lstrip("\n")
 
 
-def _partner_path_service(partner_id: str) -> PathService:
-    return PathService(workspace_root=ensure_partner_workspace(partner_id))
+def _partner_path_service(partner_id: str, *, owner_id: str | None = None) -> PathService:
+    return PathService(workspace_root=ensure_partner_workspace(partner_id, owner_id=owner_id))
 
 
 # ── Soul ──────────────────────────────────────────────────────────
 
 
-def soul_path(partner_id: str) -> Path:
-    return _partner_path_service(partner_id).get_workspace_dir() / SOUL_FILENAME
+def soul_path(partner_id: str, *, owner_id: str | None = None) -> Path:
+    return _partner_path_service(partner_id, owner_id=owner_id).get_workspace_dir() / SOUL_FILENAME
 
 
-def read_soul(partner_id: str) -> str:
-    path = soul_path(partner_id)
+def read_soul(partner_id: str, *, owner_id: str | None = None) -> str:
+    path = soul_path(partner_id, owner_id=owner_id)
     if not path.exists():
         return ""
     try:
@@ -107,8 +107,8 @@ def read_soul(partner_id: str) -> str:
         return ""
 
 
-def write_soul(partner_id: str, content: str) -> None:
-    path = soul_path(partner_id)
+def write_soul(partner_id: str, content: str, *, owner_id: str | None = None) -> None:
+    path = soul_path(partner_id, owner_id=owner_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content or "", encoding="utf-8")
 
@@ -119,6 +119,7 @@ def write_soul(partner_id: str, content: str) -> None:
 def provision_assets(
     partner_id: str,
     *,
+    owner_id: str | None = None,
     knowledge_bases: list[str] | None = None,
     skills: list[str] | None = None,
     notebooks: list[str] | None = None,
@@ -128,7 +129,7 @@ def provision_assets(
     Source resolution honours the calling user's permissions. Returns a
     report dict: ``{"copied": {...}, "errors": [{"type","name","error"}]}``.
     """
-    root = ensure_partner_workspace(partner_id)
+    root = ensure_partner_workspace(partner_id, owner_id=owner_id)
     copied: dict[str, list[str]] = {"knowledge_bases": [], "skills": [], "notebooks": []}
     errors: list[dict[str, str]] = []
 
@@ -141,14 +142,14 @@ def provision_assets(
 
     for skill_name in skills or []:
         try:
-            copied["skills"].append(_copy_skill(skill_name, partner_id))
+            copied["skills"].append(_copy_skill(skill_name, partner_id, owner_id=owner_id))
         except Exception as exc:
             logger.exception("Skill provisioning failed for %s", skill_name)
             errors.append({"type": "skill", "name": skill_name, "error": _err(exc)})
 
     for notebook_id in notebooks or []:
         try:
-            copied["notebooks"].append(_copy_notebook(notebook_id, partner_id))
+            copied["notebooks"].append(_copy_notebook(notebook_id, partner_id, owner_id=owner_id))
         except Exception as exc:
             logger.exception("Notebook provisioning failed for %s", notebook_id)
             errors.append({"type": "notebook", "name": notebook_id, "error": _err(exc)})
@@ -205,9 +206,9 @@ def _skill_source_dir(skill_name: str) -> Path:
     raise FileNotFoundError(f"Skill '{skill_name}' not found or not accessible")
 
 
-def _copy_skill(skill_name: str, partner_id: str) -> str:
+def _copy_skill(skill_name: str, partner_id: str, *, owner_id: str | None = None) -> str:
     src = _skill_source_dir(skill_name)
-    dst = _partner_path_service(partner_id).get_workspace_dir() / "skills" / skill_name
+    dst = _partner_path_service(partner_id, owner_id=owner_id).get_workspace_dir() / "skills" / skill_name
     if dst.exists():
         return skill_name
     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -215,13 +216,13 @@ def _copy_skill(skill_name: str, partner_id: str) -> str:
     return skill_name
 
 
-def _copy_notebook(notebook_id: str, partner_id: str) -> str:
+def _copy_notebook(notebook_id: str, partner_id: str, *, owner_id: str | None = None) -> str:
     src_dir = _requester_path_service().get_notebook_dir()
     src_file = src_dir / f"{notebook_id}.json"
     if not src_file.exists():
         raise FileNotFoundError(f"Notebook '{notebook_id}' not found")
 
-    dst_dir = _partner_path_service(partner_id).get_notebook_dir()
+    dst_dir = _partner_path_service(partner_id, owner_id=owner_id).get_notebook_dir()
     dst_dir.mkdir(parents=True, exist_ok=True)
     dst_file = dst_dir / f"{notebook_id}.json"
     if not dst_file.exists():
@@ -280,9 +281,9 @@ def _merge_index_entry(index_path: Path, entry: dict[str, Any]) -> None:
 # ── Asset inventory / removal (partner-side, no user context needed) ──
 
 
-def list_assets(partner_id: str) -> dict[str, list[dict[str, Any]]]:
-    root = ensure_partner_workspace(partner_id)
-    service = _partner_path_service(partner_id)
+def list_assets(partner_id: str, *, owner_id: str | None = None) -> dict[str, list[dict[str, Any]]]:
+    root = ensure_partner_workspace(partner_id, owner_id=owner_id)
+    service = _partner_path_service(partner_id, owner_id=owner_id)
 
     kbs: list[dict[str, Any]] = []
     kb_root = root / "knowledge_bases"
@@ -318,9 +319,9 @@ def list_assets(partner_id: str) -> dict[str, list[dict[str, Any]]]:
     return {"knowledge_bases": kbs, "skills": skills, "notebooks": notebooks}
 
 
-def remove_asset(partner_id: str, asset_type: str, name: str) -> bool:
-    root = ensure_partner_workspace(partner_id)
-    service = _partner_path_service(partner_id)
+def remove_asset(partner_id: str, asset_type: str, name: str, *, owner_id: str | None = None) -> bool:
+    root = ensure_partner_workspace(partner_id, owner_id=owner_id)
+    service = _partner_path_service(partner_id, owner_id=owner_id)
     if "/" in name or "\\" in name or name.startswith("."):
         raise ValueError("Invalid asset name")
 

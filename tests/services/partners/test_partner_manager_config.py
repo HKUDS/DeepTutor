@@ -70,8 +70,11 @@ class TestMergeSemantics:
         assert not hasattr(merged, "bogus")
 
     def test_mergeable_fields_match_partnerconfig_fields(self):
-        """Every config field must be mergeable via the API (anti-drift pin)."""
-        field_names = {f.name for f in dataclasses.fields(PartnerConfig)}
+        """Every config field must be mergeable via the API (anti-drift pin).
+
+        owner_id 除外：它不允许通过 merge 修改，由系统自动管理。
+        """
+        field_names = {f.name for f in dataclasses.fields(PartnerConfig)} - {"owner_id"}
         assert set(PartnerManager._MERGEABLE_FIELDS) == field_names
 
 
@@ -135,7 +138,7 @@ class TestLegacyTutorBotMigration:
         self._seed_legacy_bot(admin_root)
 
         mgr = _mgr()
-        ids = mgr._discover_partner_ids()
+        ids = mgr._discover_all_partner_ids()
         assert "old-bot" in ids
 
         cfg = mgr.load_config("old-bot")
@@ -154,13 +157,13 @@ class TestLegacyTutorBotMigration:
         legacy = self._seed_legacy_bot(admin_root)
 
         mgr = _mgr()
-        mgr._discover_partner_ids()
+        mgr._discover_all_partner_ids()
         # Tweak the migrated partner, then re-discover with a fresh manager.
         from deeptutor.services.partners.workspace import write_soul
 
         write_soul("old-bot", "# Edited after migration")
         mgr2 = _mgr()
-        mgr2._discover_partner_ids()
+        mgr2._discover_all_partner_ids()
         assert read_soul("old-bot") == "# Edited after migration"
         # Legacy tree untouched.
         assert (legacy / "config.yaml").exists()

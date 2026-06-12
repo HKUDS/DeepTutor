@@ -79,9 +79,14 @@ class TestCreate:
         assert body["soul_origin"] == {"type": "custom", "id": ""}
         assert body["provisioning"]["errors"] == []
 
-    def test_duplicate_id_conflicts(self, client):
-        assert _create(client).status_code == 200
-        assert _create(client).status_code == 409
+    def test_duplicate_id_auto_suffix(self, client):
+        res1 = _create(client)
+        assert res1.status_code == 200
+        assert res1.json()["partner_id"] == "ada"
+        # 同名 partner 自动加后缀，不再返回 409
+        res2 = _create(client)
+        assert res2.status_code == 200
+        assert res2.json()["partner_id"] == "ada-2"
 
     def test_top_level_delivery_flags_rejected(self, client):
         res = _create(client, channels={"send_progress": False})

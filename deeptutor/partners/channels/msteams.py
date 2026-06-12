@@ -38,7 +38,7 @@ from pydantic import Field
 from deeptutor.partners.bus.events import OutboundMessage
 from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.partners.channels.base import BaseChannel
-from deeptutor.partners.config.paths import get_runtime_subdir
+from deeptutor.partners.config.paths import get_partner_runtime_subdir
 from deeptutor.partners.config.schema import DeliveryOverrides
 
 MSTEAMS_AVAILABLE = (
@@ -133,15 +133,35 @@ class MSTeamsChannel(BaseChannel):
         self._botframework_openid_config_expires_at: float = 0.0
         self._botframework_jwks: dict[str, Any] | None = None
         self._botframework_jwks_expires_at: float = 0.0
-        state_dir = get_runtime_subdir("msteams")
-        self._refs_path = state_dir / MSTEAMS_REF_FILENAME
-        self._refs_meta_path = state_dir / MSTEAMS_REF_META_FILENAME
-        self._refs_lock_path = state_dir / MSTEAMS_REF_LOCK_FILENAME
         self._refs_guard = threading.RLock()
-        self._conversation_refs: dict[str, ConversationRef] = self._load_refs()
-        with self._refs_guard:
-            if self._prune_conversation_refs():
-                self._save_refs_locked(prune=True)
+        self._conversation_refs: dict[str, ConversationRef] = {}
+        self._refs_loaded = False
+
+    @property
+    def _state_dir(self) -> Path:
+        """按 partner 隔离的运行时目录（延迟计算，依赖注入后的 partner_id）。"""
+        return get_partner_runtime_subdir(self.partner_id, "msteams")
+
+    @property
+    def _refs_path(self) -> Path:
+        return self._state_dir / MSTEAMS_REF_FILENAME
+
+    @property
+    def _refs_meta_path(self) -> Path:
+        return self._state_dir / MSTEAMS_REF_META_FILENAME
+
+    @property
+    def _refs_lock_path(self) -> Path:
+        return self._state_dir / MSTEAMS_REF_LOCK_FILENAME
+
+    def _ensure_refs_loaded(self) -> None:
+        """延迟加载 refs（首次访问时触发）。"""
+        if not self._refs_loaded:
+            self._refs_loaded = True
+            self._conversation_refs = self._load_refs()
+            with self._refs_guard:
+                if self._prune_conversation_refs():
+                    self._save_refs_locked(prune=True)
 
     async def start(self) -> None:
         """Start the Teams webhook listener."""
@@ -163,6 +183,7 @@ class MSTeamsChannel(BaseChannel):
         self._loop = asyncio.get_running_loop()
         self._http = httpx.AsyncClient(timeout=30.0)
         self._running = True
+        self._ensure_refs_loaded()
 
         channel = self
 

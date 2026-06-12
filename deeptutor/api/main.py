@@ -318,9 +318,10 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 from deeptutor.api.routers.auth import require_admin, require_auth  # noqa: E402
 
 _auth = [Depends(require_auth)]
-# Partner data is anchored at the admin workspace (data/partners) and shared
-# process-wide, so management is admin-gated in multi-user deployments
-# (single-user local runs are implicitly admin — no behaviour change there).
+# Partners 使用 _auth（require_auth），ownership 校验在各端点内完成：
+# - /{partner_id} 端点通过 _check_partner_owner() 校验归属
+# - Soul library 端点（/souls/*）在端点内检查 admin 权限
+# 单机模式下 get_current_user() 返回 local_admin_user()，所有校验自动通过。
 _admin = [Depends(require_admin)]
 
 app.include_router(
@@ -394,7 +395,7 @@ app.include_router(
     vision_solver.router, prefix="/api/v1", tags=["vision-solver"], dependencies=_auth
 )
 app.include_router(
-    partners.router, prefix="/api/v1/partners", tags=["partners"], dependencies=_admin
+    partners.router, prefix="/api/v1/partners", tags=["partners"], dependencies=_auth
 )
 app.include_router(
     attachments.router,

@@ -16,7 +16,7 @@ from pydantic import Field
 from deeptutor.partners.bus.events import OutboundMessage
 from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.partners.channels.base import BaseChannel
-from deeptutor.partners.config.paths import get_runtime_subdir
+from deeptutor.partners.config.paths import get_partner_runtime_subdir
 from deeptutor.partners.config.schema import Base, DeliveryOverrides
 
 try:
@@ -293,8 +293,6 @@ class MochatChannel(BaseChannel):
         self._socket: Any = None
         self._ws_connected = self._ws_ready = False
 
-        self._state_dir = get_runtime_subdir("mochat")
-        self._cursor_path = self._state_dir / "session_cursors.json"
         self._session_cursor: dict[str, int] = {}
         self._cursor_save_task: asyncio.Task | None = None
 
@@ -314,6 +312,15 @@ class MochatChannel(BaseChannel):
         self._panel_fallback_tasks: dict[str, asyncio.Task] = {}
         self._refresh_task: asyncio.Task | None = None
         self._target_locks: dict[str, asyncio.Lock] = {}
+
+    @property
+    def _state_dir(self) -> Path:
+        """按 partner 隔离的运行时目录（延迟计算，依赖注入后的 partner_id）。"""
+        return get_partner_runtime_subdir(self.partner_id, "mochat")
+
+    @property
+    def _cursor_path(self) -> Path:
+        return self._state_dir / "session_cursors.json"
 
     # ---- lifecycle ---------------------------------------------------------
 

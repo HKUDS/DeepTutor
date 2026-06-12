@@ -17,6 +17,7 @@ def partners_root(tmp_path, monkeypatch) -> Path:
     patching that module is sufficient to keep tests off the real ``data/``.
     """
     from deeptutor.multi_user import paths
+    from deeptutor.partners.config import paths as partner_paths
 
     project_root = tmp_path
     admin_root = (project_root / "data").resolve()
@@ -25,6 +26,8 @@ def partners_root(tmp_path, monkeypatch) -> Path:
     monkeypatch.setattr(paths, "USERS_ROOT", admin_root / "users")
     monkeypatch.setattr(paths, "SYSTEM_ROOT", admin_root / "system")
     monkeypatch.setattr(paths, "_path_services", {})
+    # 清除 owner 缓存
+    monkeypatch.setattr(partner_paths, "_owner_cache", {})
 
     admin_root.mkdir(parents=True, exist_ok=True)
     return admin_root / "partners"

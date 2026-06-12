@@ -18,7 +18,7 @@ from pydantic import Field
 from deeptutor.partners.bus.events import OutboundMessage
 from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.partners.channels.base import BaseChannel
-from deeptutor.partners.config.paths import get_media_dir
+from deeptutor.partners.config.paths import get_partner_media_dir
 from deeptutor.partners.config.schema import DeliveryOverrides, StreamingSupport
 
 FEISHU_AVAILABLE = importlib.util.find_spec("lark_oapi") is not None
@@ -854,7 +854,7 @@ class FeishuChannel(BaseChannel):
             (file_path, content_text) - file_path is None if download failed
         """
         loop = asyncio.get_running_loop()
-        media_dir = get_media_dir("feishu")
+        media_dir = get_partner_media_dir(self.partner_id, "feishu")
 
         data, filename = None, None
 
