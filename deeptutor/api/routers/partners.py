@@ -485,11 +485,15 @@ async def create_partner(payload: CreatePartnerRequest):
     mgr = get_partner_manager()
     partner_id = slugify_partner_id(payload.partner_id or payload.name)
 
-    # 全局唯一性检查：如果 partner_id 已被任何用户占用，自动加后缀
-    if mgr.partner_exists(partner_id):
+    # 从当前用户获取 owner_id：admin 为空串，普通用户为 uid
+    current_user = get_current_user()
+    owner_id = "" if current_user.is_admin else current_user.id
+
+    # 同名唯一性检查：仅检查当前用户 scope 内是否已存在同名 partner
+    if mgr.partner_exists(partner_id, owner_id=owner_id or None):
         base = partner_id
         suffix = 2
-        while mgr.partner_exists(partner_id):
+        while mgr.partner_exists(partner_id, owner_id=owner_id or None):
             partner_id = f"{base}-{suffix}"
             suffix += 1
 
@@ -498,10 +502,6 @@ async def create_partner(payload: CreatePartnerRequest):
     llm_selection = _validate_llm_selection_payload(payload.llm_selection)
     backup_llm_selection = _validate_llm_selection_payload(payload.backup_llm_selection)
     soul_content, soul_origin = _resolve_soul_content(payload.soul)
-
-    # 从当前用户获取 owner_id：admin 为空串，普通用户为 uid
-    current_user = get_current_user()
-    owner_id = "" if current_user.is_admin else current_user.id
 
     config = PartnerConfig(
         name=payload.name.strip(),
