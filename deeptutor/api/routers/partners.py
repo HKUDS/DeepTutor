@@ -759,7 +759,11 @@ async def add_partner_assets(partner_id: str, payload: AssetAddRequest):
         skills=payload.skills,
         notebooks=payload.notebooks,
     )
-    return {"partner_id": partner_id, **report, "assets": list_assets(partner_id, owner_id=owner_id)}
+    return {
+        "partner_id": partner_id,
+        **report,
+        "assets": list_assets(partner_id, owner_id=owner_id),
+    }
 
 
 @router.delete("/{partner_id}/assets/{asset_type}/{name}")
@@ -775,7 +779,11 @@ async def delete_partner_asset(partner_id: str, asset_type: str, name: str):
         raise HTTPException(status_code=422, detail=str(exc)) from None
     if not removed:
         raise HTTPException(status_code=404, detail="Asset not found")
-    return {"partner_id": partner_id, "removed": True, "assets": list_assets(partner_id, owner_id=owner_id)}
+    return {
+        "partner_id": partner_id,
+        "removed": True,
+        "assets": list_assets(partner_id, owner_id=owner_id),
+    }
 
 
 # ── History ────────────────────────────────────────────────────

@@ -20,7 +20,6 @@ from typing import Any, Awaitable, Callable
 import yaml
 
 from deeptutor.partners.config.paths import (
-    get_data_dir,
     get_partner_dir,
     get_partner_sessions_dir,
     invalidate_owner_cache,
@@ -335,7 +334,9 @@ class PartnerManager:
         # 更新 owner 缓存
         invalidate_owner_cache(partner_id)
 
-    def _load_auto_start(self, partner_id: str, *, default: bool = False, owner_id: str | None = None) -> bool:
+    def _load_auto_start(
+        self, partner_id: str, *, default: bool = False, owner_id: str | None = None
+    ) -> bool:
         path = self._partner_dir(partner_id, owner_id=owner_id) / "config.yaml"
         if not path.exists():
             return default
@@ -474,7 +475,9 @@ class PartnerManager:
             return False
         owner_id = instance.config.owner_id or None
         auto_start = (
-            self._load_auto_start(partner_id, default=True, owner_id=owner_id) if preserve_auto_start else False
+            self._load_auto_start(partner_id, default=True, owner_id=owner_id)
+            if preserve_auto_start
+            else False
         )
 
         for task in instance.tasks:

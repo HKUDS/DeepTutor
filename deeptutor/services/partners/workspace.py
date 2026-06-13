@@ -208,7 +208,11 @@ def _skill_source_dir(skill_name: str) -> Path:
 
 def _copy_skill(skill_name: str, partner_id: str, *, owner_id: str | None = None) -> str:
     src = _skill_source_dir(skill_name)
-    dst = _partner_path_service(partner_id, owner_id=owner_id).get_workspace_dir() / "skills" / skill_name
+    dst = (
+        _partner_path_service(partner_id, owner_id=owner_id).get_workspace_dir()
+        / "skills"
+        / skill_name
+    )
     if dst.exists():
         return skill_name
     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -319,7 +323,9 @@ def list_assets(partner_id: str, *, owner_id: str | None = None) -> dict[str, li
     return {"knowledge_bases": kbs, "skills": skills, "notebooks": notebooks}
 
 
-def remove_asset(partner_id: str, asset_type: str, name: str, *, owner_id: str | None = None) -> bool:
+def remove_asset(
+    partner_id: str, asset_type: str, name: str, *, owner_id: str | None = None
+) -> bool:
     root = ensure_partner_workspace(partner_id, owner_id=owner_id)
     service = _partner_path_service(partner_id, owner_id=owner_id)
     if "/" in name or "\\" in name or name.startswith("."):

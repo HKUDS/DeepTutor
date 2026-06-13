@@ -13,11 +13,10 @@ partner scope，会导致递归。
 
 from __future__ import annotations
 
-import warnings
 from pathlib import Path
+import warnings
 
 from deeptutor.partners.helpers import ensure_dir
-
 
 # ── Owner-resolved base dirs ─────────────────────────────────────
 
@@ -35,7 +34,7 @@ def _base_dir_for_owner(owner_id: str) -> Path:
     - 空 owner_id → admin workspace（data/user/partners/ 或 data/partners/）
     - 非空 owner_id → user workspace（data/users/<uid>/partners/）
     """
-    from deeptutor.multi_user.paths import ADMIN_WORKSPACE_ROOT, USERS_ROOT
+    from deeptutor.multi_user.paths import USERS_ROOT
 
     if owner_id:
         return ensure_dir(USERS_ROOT / owner_id / "partners")
@@ -139,9 +138,7 @@ def get_partner_sessions_dir(partner_id: str, *, owner_id: str | None = None) ->
     return ensure_dir(get_partner_dir(partner_id, owner_id=owner_id) / "sessions")
 
 
-def get_partner_runtime_subdir(
-    partner_id: str, name: str, *, owner_id: str | None = None
-) -> Path:
+def get_partner_runtime_subdir(partner_id: str, name: str, *, owner_id: str | None = None) -> Path:
     """Partner 级别的运行时子目录（如 media）。"""
     return ensure_dir(get_partner_dir(partner_id, owner_id=owner_id) / name)
 
