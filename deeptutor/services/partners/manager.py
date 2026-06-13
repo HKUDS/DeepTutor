@@ -629,24 +629,33 @@ class PartnerManager:
     def list_partners(self) -> list[dict[str, Any]]:
         """All known partners (running + configured on disk); channels keys-only.
 
-        Admin 返回全部，普通用户只返回自己的（按当前用户过滤）。
+        Admin 只返回 admin 自己的 partner；普通用户只返回自己的。
         """
         from deeptutor.multi_user.context import get_current_user
+        from deeptutor.partners.config.paths import resolve_owner_for_partner
 
         current = get_current_user()
         result: dict[str, dict[str, Any]] = {}
 
         for inst in self._partners.values():
-            # 普通用户只能看到自己的 partner
-            if not current.is_admin and inst.config.owner_id != current.id:
+            # 用磁盘位置（resolve_owner_for_partner）而非 config.owner_id 判断归属，
+            # 避免遗留迁移 partner（config.owner_id = "local-admin"）被错误过滤。
+            inst_oid = resolve_owner_for_partner(inst.partner_id)
+            if current.is_admin:
+                if inst_oid:
+                    continue
+            elif inst_oid != current.id:
                 continue
             result[inst.partner_id] = inst.to_dict()
 
         for pid, oid in self._discover_all_partner_ids().items():
             if pid in result:
                 continue
-            # 普通用户只能看到自己的 partner
-            if not current.is_admin and oid != current.id:
+            # admin 只能看到自己的 partner（owner_id 为空），普通用户只能看到自己的
+            if current.is_admin:
+                if oid:
+                    continue
+            elif oid != current.id:
                 continue
             cfg = self.load_config(pid, owner_id=oid or None)
             result[pid] = {
@@ -698,8 +707,17 @@ class PartnerManager:
         return store.merged_messages(limit=limit)
 
     def get_recent_active_partners(self, limit: int = 3) -> list[dict[str, Any]]:
+        from deeptutor.multi_user.context import get_current_user
+
+        current = get_current_user()
         activity: list[tuple[str, dict[str, Any]]] = []
         for pid, oid in self._discover_all_partner_ids().items():
+            # admin 只能看到自己的 partner（owner_id 为空），普通用户只能看到自己的
+            if current.is_admin:
+                if oid:
+                    continue
+            elif oid != current.id:
+                continue
             sessions = self.session_store(pid, owner_id=oid or None).list_sessions()
             if not sessions:
                 continue

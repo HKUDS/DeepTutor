@@ -51,10 +51,10 @@ router = APIRouter()
 def _check_partner_owner(partner_id: str) -> str:
     """校验当前用户是否有权操作该 partner。返回 owner_id。
 
-    - admin 用户可以操作任意 partner
+    - admin 用户只能操作 admin 自己的 partner（owner_id 为空串）
     - 普通用户只能操作 owner_id 等于自己 id 的 partner
     - partner 不存在时返回 404（避免通过 403/404 差异确认 partner_id 是否存在）
-    - owner_id 为空串表示 admin owner，此时仅 admin 可操作
+    - owner_id 为空串表示 admin owner
     """
     from deeptutor.multi_user.context import get_current_user
 
@@ -67,6 +67,11 @@ def _check_partner_owner(partner_id: str) -> str:
         raise HTTPException(status_code=404, detail=t("api.partner_not_found"))
 
     if user.is_admin:
+        if owner_id:
+            raise HTTPException(
+                status_code=403,
+                detail="你没有权限操作此 partner",
+            )
         return owner_id
 
     if owner_id != user.id:
@@ -1009,7 +1014,11 @@ async def partner_chat_ws(ws: WebSocket, partner_id: str):
 
     ws_user = get_current_user()
     ws_owner_id = resolve_owner_for_partner(partner_id)
-    if not ws_user.is_admin and ws_owner_id != ws_user.id:
+    if ws_user.is_admin:
+        if ws_owner_id:
+            await ws.close(code=4003, reason="你没有权限操作此 partner")
+            return
+    elif ws_owner_id != ws_user.id:
         await ws.close(code=4003, reason="你没有权限操作此 partner")
         return
 
