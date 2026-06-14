@@ -18,6 +18,8 @@ import uuid
 
 from deeptutor.services.path_service import get_path_service
 
+from .store import register_session_store_backend
+
 
 def _json_dumps(value: Any) -> str:
     # default=str: a single non-serializable object inside an event payload
@@ -1676,12 +1678,21 @@ class SQLiteSessionStore:
 _instances: dict[str, SQLiteSessionStore] = {}
 
 
-def get_sqlite_session_store() -> SQLiteSessionStore:
-    db_path = get_path_service().get_chat_history_db().resolve()
+def get_sqlite_session_store(db_path: Path | None = None) -> SQLiteSessionStore:
+    if db_path is None:
+        db_path = get_path_service().get_chat_history_db().resolve()
     key = str(db_path)
     if key not in _instances:
         _instances[key] = SQLiteSessionStore(db_path=db_path)
     return _instances[key]
+
+
+def clear_sqlite_session_store_cache() -> None:
+    """Drop cached per-path store instances (mainly for tests)."""
+    _instances.clear()
+
+
+register_session_store_backend("sqlite", get_sqlite_session_store)
 
 
 __all__ = ["SQLiteSessionStore", "get_sqlite_session_store"]
