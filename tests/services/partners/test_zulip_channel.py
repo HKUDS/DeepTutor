@@ -316,7 +316,7 @@ class TestDownloadAttachments:
                 return_value=[("img.png", "/user_uploads/2/ce/abc/img.png")],
             ),
             patch(
-                "deeptutor.partners.channels.zulip.get_media_dir",
+                "deeptutor.partners.channels.zulip.get_partner_media_dir",
                 return_value=tmp_path,
             ),
             patch("deeptutor.partners.channels.zulip.requests.get") as mock_get,
@@ -353,7 +353,7 @@ class TestDownloadAttachments:
                 return_value=[("img.png", "/user_uploads/2/ce/abc/img.png")],
             ),
             patch(
-                "deeptutor.partners.channels.zulip.get_media_dir",
+                "deeptutor.partners.channels.zulip.get_partner_media_dir",
                 return_value=tmp_path,
             ),
         ):
@@ -861,7 +861,7 @@ class TestResolveMediaPath:
         path_id = "/user_uploads/2/ce/abc123/photo.png"
 
         with patch(
-            "deeptutor.partners.channels.zulip.get_media_dir",
+            "deeptutor.partners.channels.zulip.get_partner_media_dir",
             return_value=tmp_path,
         ):
             dest = ZulipChannel._attachment_destination(tmp_path, "photo.png", path_id, 0)
@@ -877,7 +877,7 @@ class TestResolveMediaPath:
 
         with (
             patch(
-                "deeptutor.partners.channels.zulip.get_media_dir",
+                "deeptutor.partners.channels.zulip.get_partner_media_dir",
                 return_value=tmp_path,
             ),
             patch("deeptutor.partners.channels.zulip.requests.get") as mock_get,
@@ -898,7 +898,7 @@ class TestResolveMediaPath:
 
         with (
             patch(
-                "deeptutor.partners.channels.zulip.get_media_dir",
+                "deeptutor.partners.channels.zulip.get_partner_media_dir",
                 return_value=tmp_path,
             ),
             patch("deeptutor.partners.channels.zulip.requests.get") as mock_get,
@@ -917,7 +917,7 @@ class TestResolveMediaPath:
 
         with (
             patch(
-                "deeptutor.partners.channels.zulip.get_media_dir",
+                "deeptutor.partners.channels.zulip.get_partner_media_dir",
                 return_value=tmp_path,
             ),
             patch("deeptutor.partners.channels.zulip.requests.get") as mock_get,

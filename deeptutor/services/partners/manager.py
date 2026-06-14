@@ -260,17 +260,17 @@ class PartnerManager:
             return None
         try:
             data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-            # 已有数据迁移：无 owner_id 时自动补充 "local-admin" 并回写
+            # 已有数据迁移：无 owner_id 时自动补充空串（= admin）并回写
             loaded_owner_id = str(data.get("owner_id") or "")
             if "owner_id" not in data:
-                data["owner_id"] = "local-admin"
+                data["owner_id"] = ""
                 try:
                     tmp_path = path.with_suffix(path.suffix + ".tmp")
                     tmp_path.write_text(yaml.dump(data, allow_unicode=True), encoding="utf-8")
                     tmp_path.replace(path)
                 except Exception:
                     logger.warning("无法回写 owner_id 迁移到 %s", path, exc_info=True)
-                loaded_owner_id = "local-admin"
+                loaded_owner_id = ""
             return PartnerConfig(
                 name=data.get("name", partner_id),
                 description=data.get("description", ""),
@@ -641,8 +641,8 @@ class PartnerManager:
         result: dict[str, dict[str, Any]] = {}
 
         for inst in self._partners.values():
-            # 用磁盘位置（resolve_owner_for_partner）而非 config.owner_id 判断归属，
-            # 避免遗留迁移 partner（config.owner_id = "local-admin"）被错误过滤。
+            # 用磁盘位置（resolve_owner_for_partner）判断归属，
+            # 与 config.owner_id 语义一致（admin = 空串）。
             inst_oid = resolve_owner_for_partner(inst.partner_id)
             if current.is_admin:
                 if inst_oid:

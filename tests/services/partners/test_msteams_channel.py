@@ -23,7 +23,7 @@ from deeptutor.partners.channels.msteams import (
 @pytest.fixture
 def state_dir(tmp_path, monkeypatch):
     """Redirect the channel's runtime state dir to a temp directory."""
-    monkeypatch.setattr(msteams_mod, "get_runtime_subdir", lambda name: tmp_path)
+    monkeypatch.setattr(msteams_mod, "get_partner_runtime_subdir", lambda partner_id, name: tmp_path)
     return tmp_path
 
 
