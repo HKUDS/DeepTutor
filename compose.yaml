@@ -134,7 +134,11 @@ services:
     tmpfs:
       - /tmp:size=512m,mode=1777
       - /run:size=32m,mode=0755
-      - /var/run:size=8m,mode=0755
+      # /var/run is sticky + world-writable so PID 1 (UID 1000, the
+      # non-root deeptutor user added in PR #577) can create
+      # supervisord's pidfile at /var/run/supervisord.pid without
+      # tripping a CRIT on every container start.
+      - /var/run:size=8m,mode=1777
       - /var/log:size=64m,mode=0755
       - /root:size=16m,mode=0700
       - /home:size=16m,mode=0755
