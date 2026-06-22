@@ -89,9 +89,9 @@ services:
       # reads and writes line up. (The pocketbase image's entrypoint
       # uses --dir=/pb_data --publicDir=/pb_public --hooksDir=/pb_hooks
       # — absolute paths, no /pb/ prefix.)
-      - ./data/pocketbase:/pb_data:U
-      - ./data/pocketbase/public:/pb_public:U
-      - ./data/pocketbase/hooks:/pb_hooks:U
+      - ${HOME}/.local/share/deeptutor/pocketbase:/pb_data:U
+      - ${HOME}/.local/share/deeptutor/pocketbase/public:/pb_public:U
+      - ${HOME}/.local/share/deeptutor/pocketbase/hooks:/pb_hooks:U
     networks:
       - deeptutor
     healthcheck:
@@ -149,13 +149,18 @@ services:
       # Bind mount a host directory so the host user (UID $UID) owns
       # the entire data tree. With userns_mode: keep-id the process
       # inside is also UID $UID, so writes from the FastAPI backend,
-      # Next.js, and supervisord all line up. The same path was used
-      # by the original docker-compose.yml; we keep it for consistency.
+      # Next.js, and supervisord all line up. The host location
+      # follows the XDG_DATA_HOME convention
+      # (`${HOME}/.local/share/deeptutor`), so the data path is
+      # per-user and independent of the working directory. The
+      # original docker-compose.yml still uses `./data`; the two
+      # files serve different deployment modes (rootless per-user
+      # vs. daemon-mode shared) and are intentionally divergent.
       # The data tree holds: admin workspace + runtime settings
       # (data/user), per-user workspaces (data/users), partners
       # (data/partners), accounts/grants/audit (data/system),
       # knowledge bases, memory, logs. One tree to back up.
-      - ./data:/app/data:U
+      - ${HOME}/.local/share/deeptutor:/app/data:U
     environment:
       # Time zone — picked up by Python (time.tzset) and Next.js at boot.
       - TZ=${TZ:-UTC}
