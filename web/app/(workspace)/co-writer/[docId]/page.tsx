@@ -15,6 +15,7 @@ import {
   Code2,
   Download,
   Eraser,
+  FileDown,
   FileText,
   Heading1,
   Heading2,
@@ -48,6 +49,7 @@ import {
   updateCoWriterDocument,
 } from "@/lib/co-writer-api";
 import { notifyCoWriterChanged } from "@/lib/co-writer-events";
+import { downloadElementAsPdf } from "@/lib/pdf-export";
 import SaveToNotebookModal, {
   type NotebookSavePayload,
 } from "@/components/notebook/SaveToNotebookModal";
@@ -171,6 +173,7 @@ export default function CoWriterPage() {
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
+  const previewContentRef = useRef<HTMLDivElement>(null);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const scrollSyncSourceRef = useRef<"editor" | "preview" | null>(null);
   const scrollSyncResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -807,6 +810,35 @@ export default function CoWriterPage() {
     anchor.download = `${safeTitle || "co-writer"}.md`;
     anchor.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadPdf = async () => {
+    const source = previewContentRef.current;
+    if (!source) {
+      setError(t("Open the preview before exporting PDF."));
+      return;
+    }
+    if (!markdown.trim()) {
+      setError(t("Add some content before exporting PDF."));
+      return;
+    }
+    const safeTitle = (docTitle || "co-writer")
+      .trim()
+      .replace(/[\\/:*?"<>|]/g, "-")
+      .slice(0, 80);
+    try {
+      setStatus(t("Preparing PDF..."));
+      setError("");
+      await downloadElementAsPdf(source, {
+        filename: `${safeTitle || "co-writer"}.pdf`,
+        title: docTitle || t("Untitled draft"),
+      });
+      setStatus(t("PDF exported."));
+    } catch (err) {
+      console.error("Failed to export PDF", err);
+      setError(t("PDF export failed."));
+      setStatus("");
+    }
   };
 
   const handleOpenSaveToNotebook = useCallback(() => {
@@ -1781,6 +1813,12 @@ export default function CoWriterPage() {
             <Download size={17} strokeWidth={1.7} />
           </ToolbarIconBtn>
           <ToolbarIconBtn
+            title={t("Export PDF")}
+            onClick={() => void handleDownloadPdf()}
+          >
+            <FileDown size={17} strokeWidth={1.7} />
+          </ToolbarIconBtn>
+          <ToolbarIconBtn
             title={t("Save to Notebook")}
             onClick={handleOpenSaveToNotebook}
           >
@@ -1997,11 +2035,13 @@ export default function CoWriterPage() {
               onScroll={handlePreviewScrollSync}
               className="min-h-0 flex-1 overflow-y-auto p-5"
             >
-              <MarkdownRenderer
-                content={markdown || `_${t("Nothing to preview yet.")}_`}
-                variant="prose"
-                trackSourceLines
-              />
+              <div ref={previewContentRef}>
+                <MarkdownRenderer
+                  content={markdown || `_${t("Nothing to preview yet.")}_`}
+                  variant="prose"
+                  trackSourceLines
+                />
+              </div>
             </div>
           </div>
         )}
