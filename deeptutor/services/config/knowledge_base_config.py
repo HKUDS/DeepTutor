@@ -79,7 +79,13 @@ class KnowledgeBaseConfigService:
                 continue
 
             raw_provider = config.get("rag_provider")
-            config["rag_provider"] = normalize_provider_name(raw_provider)
+            if raw_provider is None or (isinstance(raw_provider, str) and not raw_provider.strip()):
+                config.pop("rag_provider", None)
+            else:
+                config["rag_provider"] = normalize_provider_name(raw_provider)
+            resolved_provider = normalize_provider_name(
+                config.get("rag_provider") or defaults.get("rag_provider", DEFAULT_PROVIDER)
+            )
 
             # A KB indexed with an engine that no longer exists collapses to the
             # default and must be rebuilt.
@@ -94,7 +100,7 @@ class KnowledgeBaseConfigService:
             legacy_storage = kb_dir / "rag_storage"
             has_llamaindex_index = has_ready_provider_index(kb_dir, DEFAULT_PROVIDER)
             if (
-                config["rag_provider"] == DEFAULT_PROVIDER
+                resolved_provider == DEFAULT_PROVIDER
                 and legacy_storage.exists()
                 and legacy_storage.is_dir()
                 and not has_llamaindex_index
@@ -136,10 +142,11 @@ class KnowledgeBaseConfigService:
         kb_config = dict(self._config.get("knowledge_bases", {}).get(kb_name, {}))
         merged = {
             "default_kb": defaults.get("default_kb"),
-            "rag_provider": defaults.get("rag_provider", DEFAULT_PROVIDER),
-            "search_mode": kb_config.get("search_mode") or defaults.get("search_mode", "hybrid"),
             "needs_reindex": bool(kb_config.get("needs_reindex", False)),
             **kb_config,
+            "rag_provider": kb_config.get("rag_provider")
+            or defaults.get("rag_provider", DEFAULT_PROVIDER),
+            "search_mode": kb_config.get("search_mode") or defaults.get("search_mode", "hybrid"),
         }
         merged["rag_provider"] = normalize_provider_name(merged.get("rag_provider"))
         return merged

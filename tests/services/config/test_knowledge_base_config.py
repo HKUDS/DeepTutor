@@ -61,6 +61,31 @@ class TestProviderApi:
         cfg = fresh_service.get_kb_config("kb-4")
         assert cfg["rag_provider"] == "llamaindex"
 
+    def test_get_kb_config_empty_or_missing_fields_fall_back_to_defaults(
+        self, fresh_service
+    ) -> None:
+        _write_kb_config(
+            fresh_service.config_path,
+            {
+                "defaults": {"rag_provider": "graphrag", "search_mode": "global"},
+                "knowledge_bases": {
+                    "kb-empty": {
+                        "path": "kb-empty",
+                        "rag_provider": "",
+                        "search_mode": "",
+                    },
+                    "kb-missing": {"path": "kb-missing"},
+                },
+            },
+        )
+
+        cfg = fresh_service.get_kb_config("kb-empty")
+        assert cfg["rag_provider"] == "graphrag"
+        assert cfg["search_mode"] == "global"
+        missing = fresh_service.get_kb_config("kb-missing")
+        assert missing["rag_provider"] == "graphrag"
+        assert missing["search_mode"] == "global"
+
     def test_provider_mode_roundtrip(self, fresh_service) -> None:
         assert fresh_service.get_provider_mode("lightrag") == ""
         fresh_service.set_provider_mode("lightrag", "mix")
