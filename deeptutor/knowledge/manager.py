@@ -258,20 +258,24 @@ class KnowledgeBaseManager:
         Also runs inside a store transaction when changes must be persisted,
         so it must stay cheap: per-KB local index probes only.
         """
+        config_changed = False
+
         # Ensure knowledge_bases key exists
         if "knowledge_bases" not in config:
             config["knowledge_bases"] = {}
 
         # Migration: remove old "default" field if present (superseded by the
-        # config service's ``defaults.default_kb``). Dropped in memory; the
-        # next persisted write picks it up.
-        config.pop("default", None)
+        # config service's ``defaults.default_kb``). Must count as a change so
+        # the removal is committed — otherwise every later transaction reads
+        # the raw file and faithfully writes the stale field back.
+        if "default" in config:
+            del config["default"]
+            config_changed = True
 
         # Migration: normalize unknown/removed providers to the default
         # and mark them for rebuild. Known non-default providers are
         # first-class engines and must be preserved.
         knowledge_bases = config.get("knowledge_bases", {})
-        config_changed = False
         for kb_name, kb_entry in knowledge_bases.items():
             if not isinstance(kb_entry, dict):
                 continue

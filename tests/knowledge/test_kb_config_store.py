@@ -36,11 +36,19 @@ class TestStoreBasics:
         store = KBConfigStore(tmp_path / "kb_config.json")
         assert store.read() == {"knowledge_bases": {}}
 
-    def test_zero_byte_file_reads_as_default(self, tmp_path: Path) -> None:
+    def test_zero_byte_file_raises_and_is_preserved(self, tmp_path: Path) -> None:
+        """An empty file is the legacy truncate-crash artifact, not a fresh
+        install — rebuilding a default over it would hide the damage."""
         path = tmp_path / "kb_config.json"
         path.write_text("", encoding="utf-8")
         store = KBConfigStore(path)
-        assert store.read() == {"knowledge_bases": {}}
+
+        with pytest.raises(KBConfigCorruptionError, match="empty"):
+            store.read()
+        with pytest.raises(KBConfigCorruptionError, match="empty"):
+            store.transaction(lambda config: config.update(marker=1))
+
+        assert path.read_text(encoding="utf-8") == ""
 
     def test_invalid_json_raises_and_preserves_file(self, tmp_path: Path) -> None:
         path = tmp_path / "kb_config.json"
@@ -357,6 +365,30 @@ class TestManagerAndServiceRaces:
 
         with pytest.raises(KBConfigCorruptionError):
             KnowledgeBaseConfigService(config_path=path)
+
+    def test_legacy_default_field_removal_is_committed(self, tmp_path: Path) -> None:
+        """Migrating away the legacy top-level ``default`` field must be
+        persisted — an in-memory-only pop meant every later transaction read
+        the raw file and faithfully wrote the stale field back."""
+        base = tmp_path / "kbs"
+        base.mkdir()
+        (base / "kb").mkdir()
+        seed = {
+            "default": "legacy-kb",
+            "knowledge_bases": {
+                "kb": {"path": "kb", "description": "", "rag_provider": "llamaindex"}
+            },
+        }
+        (base / "kb_config.json").write_text(json.dumps(seed), encoding="utf-8")
+
+        manager = KnowledgeBaseManager(base_dir=str(base))
+        on_disk = json.loads((base / "kb_config.json").read_text(encoding="utf-8"))
+        assert "default" not in on_disk
+
+        manager.update_kb_status("kb", "processing")
+        on_disk = json.loads((base / "kb_config.json").read_text(encoding="utf-8"))
+        assert "default" not in on_disk
+        assert on_disk["knowledge_bases"]["kb"]["status"] == "processing"
 
     def test_service_cache_updates_from_committed_snapshot(self, tmp_path: Path) -> None:
         """A mutation must fold in changes other writers committed since the

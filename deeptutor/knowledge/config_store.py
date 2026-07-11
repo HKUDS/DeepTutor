@@ -12,9 +12,11 @@ the single write path that fixes both:
 * Writes go through a unique same-directory temp file + ``fsync`` +
   ``os.replace``, so any reader — locked or not — only ever sees the previous
   or the new file, never a truncated or partial one.
-* A file that exists but does not parse raises :class:`KBConfigCorruptionError`
-  instead of silently becoming an empty default that a later write would
-  persist over the damaged (but possibly recoverable) original.
+* A file that exists but does not parse — including a zero-byte file left
+  behind by an interrupted legacy truncate-then-write — raises
+  :class:`KBConfigCorruptionError` instead of silently becoming an empty
+  default that a later write would persist over the damaged (but possibly
+  recoverable) original. Only a missing file bootstraps the default payload.
 
 The lock lives in a sidecar (``.kb_config.json.lock``) rather than on the data
 file because ``os.replace`` swaps the data file's inode on every commit — a
@@ -156,11 +158,14 @@ class KBConfigStore:
         except FileNotFoundError:
             return self._default_factory()
         if not raw.strip():
-            # A zero-byte file is a truncate-crash artifact from the legacy
-            # write path. It carries no data, so recovering as the default
-            # loses nothing — unlike invalid JSON below, which does.
-            logger.warning("%s is empty; treating it as an unwritten config.", self.config_path)
-            return self._default_factory()
+            # A zero-byte file is the signature of the legacy truncate-then-
+            # crash write path: the pre-truncate content is already gone, and
+            # silently rebuilding a default here would hide that damage.
+            raise KBConfigCorruptionError(
+                f"{self.config_path} exists but is empty — likely an interrupted "
+                f"write truncated it. Refusing to rebuild it silently; remove the "
+                f"file to start fresh or restore it from a backup."
+            )
         try:
             config = json.loads(raw)
         except json.JSONDecodeError as exc:
