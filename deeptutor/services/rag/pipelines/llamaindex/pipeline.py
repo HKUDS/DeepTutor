@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from pathlib import Path
 import traceback
 from typing import Any, Callable, Dict, List, Optional
 
+from deeptutor.knowledge.config_store import KBConfigCorruptionError, KBConfigStore
 from deeptutor.runtime.home import get_runtime_data_root
 from deeptutor.services.embedding import get_embedding_config
 from deeptutor.services.rag.embedding_signature import signature_from_embedding_config
@@ -178,11 +178,8 @@ class LlamaIndexPipeline:
 
     def _embedding_mismatch_warning(self, kb_name: str) -> str:
         try:
-            cfg_path = Path(self.kb_base_dir) / "kb_config.json"
-            if not cfg_path.exists():
-                return ""
-            with open(cfg_path, encoding="utf-8") as handle:
-                kb_entry = json.load(handle).get("knowledge_bases", {}).get(kb_name, {})
+            config = KBConfigStore(Path(self.kb_base_dir) / "kb_config.json").read()
+            kb_entry = config.get("knowledge_bases", {}).get(kb_name, {})
             if not kb_entry.get("embedding_mismatch"):
                 return ""
             stored = kb_entry.get("embedding_model", "unknown")
@@ -193,6 +190,11 @@ class LlamaIndexPipeline:
             )
             self.logger.warning(warning)
             return warning
+        except KBConfigCorruptionError as exc:
+            # Cosmetic path — never fail a search over the mismatch banner —
+            # but surface the damaged config instead of staying silent.
+            self.logger.warning(f"Cannot check embedding mismatch: {exc}")
+            return ""
         except Exception:
             return ""
 
