@@ -7,7 +7,6 @@ Handles knowledge base CRUD operations, file uploads, and initialization.
 
 import asyncio
 from datetime import datetime
-import json
 import logging
 import mimetypes
 import os
@@ -37,6 +36,7 @@ from deeptutor.knowledge.add_documents import DocumentAdder, remove_raw_document
 from deeptutor.knowledge.initializer import KnowledgeBaseInitializer
 from deeptutor.knowledge.kb_types import is_connected_kb
 from deeptutor.knowledge.manager import KnowledgeBaseManager
+from deeptutor.knowledge.metadata_store import get_metadata_store
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
 from deeptutor.multi_user.context import get_current_user
@@ -2131,6 +2131,7 @@ async def create_knowledge_base(
                 "total": len(files),
                 "task_id": task_id,
             },
+            allow_recreate=True,
         )
 
         # Also store rag_provider in config (transactional update)
@@ -2260,18 +2261,14 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
             completed_at = datetime.now().isoformat()
             metadata_file = kb_dir / "metadata.json"
             try:
-                metadata = {}
-                if metadata_file.exists():
-                    with open(metadata_file, encoding="utf-8") as handle:
-                        loaded_metadata = json.load(handle)
-                    if isinstance(loaded_metadata, dict):
-                        metadata = loaded_metadata
-                metadata["last_updated"] = completed_at
-                metadata["last_indexed_at"] = completed_at
-                metadata["last_indexed_count"] = len(file_paths)
-                metadata["last_indexed_action"] = "reindex"
-                with open(metadata_file, "w", encoding="utf-8") as handle:
-                    json.dump(metadata, handle, indent=2, ensure_ascii=False)
+
+                def mutate(metadata: dict) -> None:
+                    metadata["last_updated"] = completed_at
+                    metadata["last_indexed_at"] = completed_at
+                    metadata["last_indexed_count"] = len(file_paths)
+                    metadata["last_indexed_action"] = "reindex"
+
+                get_metadata_store(metadata_file).transaction(mutate)
             except Exception as meta_err:
                 logger.warning(
                     "Failed to update re-index metadata for '%s': %s",

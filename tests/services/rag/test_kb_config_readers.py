@@ -52,6 +52,13 @@ class TestCorruptConfigRaises:
         with pytest.raises(KBConfigCorruptionError):
             resolve_bound_provider(tmp_path, "kb")
 
+    def test_schema_corrupt_config_raises_too(self, tmp_path: Path) -> None:
+        (tmp_path / "kb_config.json").write_text(
+            json.dumps({"knowledge_bases": []}), encoding="utf-8"
+        )
+        with pytest.raises(KBConfigCorruptionError):
+            resolve_bound_provider(tmp_path, "kb")
+
 
 class TestMissingConfigStillFallsBack:
     def test_provider_defaults(self, tmp_path: Path) -> None:

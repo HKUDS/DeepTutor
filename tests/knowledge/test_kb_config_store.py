@@ -18,7 +18,6 @@ from pathlib import Path
 import subprocess
 import sys
 import threading
-import time
 
 import pytest
 
@@ -70,6 +69,23 @@ class TestStoreBasics:
         with pytest.raises(KBConfigCorruptionError):
             KBConfigStore(path).read()
 
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"knowledge_bases": []},
+            {"defaults": []},
+            {"knowledge_bases": None},
+            {"_deleted_knowledge_bases": []},
+        ],
+    )
+    def test_invalid_top_level_sections_raise(self, tmp_path: Path, payload: dict) -> None:
+        path = tmp_path / "kb_config.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(KBConfigCorruptionError):
+            KBConfigStore(path).read()
+        assert json.loads(path.read_text(encoding="utf-8")) == payload
+
     def test_transaction_commits_and_returns_result(self, tmp_path: Path) -> None:
         path = tmp_path / "kb_config.json"
         store = KBConfigStore(path)
@@ -83,6 +99,21 @@ class TestStoreBasics:
         assert state["knowledge_bases"]["kb"] == {"path": "kb"}
         on_disk = json.loads(path.read_text(encoding="utf-8"))
         assert on_disk == state
+
+    def test_legacy_default_is_migrated_without_losing_its_value(self, tmp_path: Path) -> None:
+        path = tmp_path / "kb_config.json"
+        path.write_text(
+            json.dumps({"knowledge_bases": {"legacy": {"path": "legacy"}}, "default": "legacy"}),
+            encoding="utf-8",
+        )
+        (tmp_path / "legacy").mkdir()
+
+        manager = KnowledgeBaseManager(base_dir=str(tmp_path))
+
+        assert manager.get_default() == "legacy"
+        persisted = json.loads(path.read_text(encoding="utf-8"))
+        assert "default" not in persisted
+        assert persisted["defaults"]["default_kb"] == "legacy"
 
     def test_mutator_exception_writes_nothing_and_releases_lock(self, tmp_path: Path) -> None:
         path = tmp_path / "kb_config.json"
@@ -173,7 +204,9 @@ class TestStoreBasics:
 
 
 class TestStoreConcurrency:
-    def test_second_writer_blocks_and_neither_update_is_lost(self, tmp_path: Path) -> None:
+    def test_second_writer_blocks_and_neither_update_is_lost(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """The historic lost-update: writer B commits while writer A holds a
         pre-B snapshot, then A commits and erases B. With the lock spanning
         read-modify-write, B cannot even read until A commits."""
@@ -192,12 +225,27 @@ class TestStoreConcurrency:
         t1.start()
         assert entered.wait(10)
 
-        t2 = threading.Thread(
-            target=second.transaction,
-            args=(lambda config: config["knowledge_bases"].update(second={"path": "second"}),),
-        )
+        second_started = threading.Event()
+        second_attempted_lock = threading.Event()
+        original_try_lock = config_store_module._try_lock_exclusive
+
+        def observe_second_lock_attempt(fd: int) -> bool:
+            if second_started.is_set():
+                second_attempted_lock.set()
+            return original_try_lock(fd)
+
+        monkeypatch.setattr(config_store_module, "_try_lock_exclusive", observe_second_lock_attempt)
+
+        def second_transaction() -> None:
+            second_started.set()
+            second.transaction(
+                lambda config: config["knowledge_bases"].update(second={"path": "second"})
+            )
+
+        t2 = threading.Thread(target=second_transaction)
         t2.start()
-        time.sleep(0.05)  # give t2 the chance to (wrongly) slip past the lock
+        assert second_started.wait(10)
+        assert second_attempted_lock.wait(10)
         release.set()
         t1.join(10)
         t2.join(10)
@@ -288,7 +336,9 @@ def _stall_transactions(manager: KnowledgeBaseManager) -> tuple[threading.Event,
 
 
 class TestManagerAndServiceRaces:
-    def test_two_managers_concurrent_status_updates_both_persist(self, tmp_path: Path) -> None:
+    def test_two_managers_concurrent_status_updates_both_persist(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """The audit reproduction: manager A pauses mid-update while manager B
         commits; A's commit used to erase B's entirely."""
         base = tmp_path / "kbs"
@@ -300,12 +350,25 @@ class TestManagerAndServiceRaces:
         t1.start()
         assert entered.wait(10)
 
-        t2 = threading.Thread(
-            target=second.update_kb_status,
-            args=("other", "error", {"message": "second writer"}),
-        )
+        second_started = threading.Event()
+        second_attempted_lock = threading.Event()
+        original_try_lock = config_store_module._try_lock_exclusive
+
+        def observe_second_lock_attempt(fd: int) -> bool:
+            if second_started.is_set():
+                second_attempted_lock.set()
+            return original_try_lock(fd)
+
+        monkeypatch.setattr(config_store_module, "_try_lock_exclusive", observe_second_lock_attempt)
+
+        def second_update() -> None:
+            second_started.set()
+            second.update_kb_status("other", "error", {"message": "second writer"})
+
+        t2 = threading.Thread(target=second_update)
         t2.start()
-        time.sleep(0.05)
+        assert second_started.wait(10)
+        assert second_attempted_lock.wait(10)
         release.set()
         t1.join(10)
         t2.join(10)
@@ -315,7 +378,7 @@ class TestManagerAndServiceRaces:
         assert kbs["other"]["status"] == "error"
 
     def test_manager_and_config_service_concurrent_writes_both_persist(
-        self, tmp_path: Path
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         base = tmp_path / "kbs"
         manager = KnowledgeBaseManager(base_dir=str(base))
@@ -326,9 +389,27 @@ class TestManagerAndServiceRaces:
         t1.start()
         assert entered.wait(10)
 
-        t2 = threading.Thread(target=service.set_provider_mode, args=("lightrag", "mix"))
+        service_started = threading.Event()
+        service_attempted_lock = threading.Event()
+        original_try_lock = config_store_module._try_lock_exclusive
+
+        def observe_service_lock_attempt(fd: int) -> bool:
+            if service_started.is_set():
+                service_attempted_lock.set()
+            return original_try_lock(fd)
+
+        monkeypatch.setattr(
+            config_store_module, "_try_lock_exclusive", observe_service_lock_attempt
+        )
+
+        def service_update() -> None:
+            service_started.set()
+            service.set_provider_mode("lightrag", "mix")
+
+        t2 = threading.Thread(target=service_update)
         t2.start()
-        time.sleep(0.05)
+        assert service_started.wait(10)
+        assert service_attempted_lock.wait(10)
         release.set()
         t1.join(10)
         t2.join(10)
@@ -384,10 +465,12 @@ class TestManagerAndServiceRaces:
         manager = KnowledgeBaseManager(base_dir=str(base))
         on_disk = json.loads((base / "kb_config.json").read_text(encoding="utf-8"))
         assert "default" not in on_disk
+        assert on_disk["defaults"]["default_kb"] == "legacy-kb"
 
         manager.update_kb_status("kb", "processing")
         on_disk = json.loads((base / "kb_config.json").read_text(encoding="utf-8"))
         assert "default" not in on_disk
+        assert on_disk["defaults"]["default_kb"] == "legacy-kb"
         assert on_disk["knowledge_bases"]["kb"]["status"] == "processing"
 
     def test_service_cache_updates_from_committed_snapshot(self, tmp_path: Path) -> None:

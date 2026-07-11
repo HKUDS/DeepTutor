@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 import json
 import logging
 from pathlib import Path
@@ -149,9 +150,12 @@ class KnowledgeBaseConfigService:
         self._config = self._load_config()
 
     @staticmethod
-    def _ensure_kb(state: dict[str, Any], kb_name: str) -> dict[str, Any]:
+    def _ensure_kb(state: dict[str, Any], kb_name: str) -> dict[str, Any] | None:
         knowledge_bases = state.setdefault("knowledge_bases", {})
         if kb_name not in knowledge_bases:
+            deleted = state.get("_deleted_knowledge_bases")
+            if isinstance(deleted, dict) and kb_name in deleted:
+                return None
             knowledge_bases[kb_name] = {
                 "path": kb_name,
                 "description": f"Knowledge base: {kb_name}",
@@ -174,7 +178,9 @@ class KnowledgeBaseConfigService:
 
     def set_kb_config(self, kb_name: str, config: dict[str, Any]) -> None:
         def mutate(state: dict[str, Any]) -> None:
-            self._ensure_kb(state, kb_name).update(config)
+            kb_config = self._ensure_kb(state, kb_name)
+            if kb_config is not None:
+                kb_config.update(config)
 
         self._mutate(mutate)
 
@@ -205,6 +211,12 @@ class KnowledgeBaseConfigService:
     def delete_kb_config(self, kb_name: str) -> None:
         def mutate(state: dict[str, Any]) -> None:
             state.get("knowledge_bases", {}).pop(kb_name, None)
+            deleted = state.setdefault("_deleted_knowledge_bases", {})
+            deleted[kb_name] = datetime.now().isoformat()
+            defaults = state.get("defaults")
+            if isinstance(defaults, dict) and defaults.get("default_kb") == kb_name:
+                remaining = sorted(state.get("knowledge_bases", {}))
+                defaults["default_kb"] = remaining[0] if remaining else None
 
         self._mutate(mutate)
 

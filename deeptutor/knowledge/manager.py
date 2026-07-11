@@ -5,6 +5,7 @@ Knowledge Base Manager
 Manages multiple knowledge bases and provides utilities for accessing them.
 """
 
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 import hashlib
 import json
@@ -14,10 +15,10 @@ from pathlib import Path
 import shutil
 import stat
 from typing import Any
+from uuid import uuid4
 
 from deeptutor.knowledge.config_store import (
     KBConfigStore,
-    write_json_atomic,
 )
 from deeptutor.knowledge.kb_types import (
     LIGHTRAG_SERVER_KB_TYPE,
@@ -27,6 +28,7 @@ from deeptutor.knowledge.kb_types import (
     external_root_of,
     is_connected_kb,
 )
+from deeptutor.knowledge.metadata_store import get_metadata_store
 from deeptutor.services.rag.factory import (
     DEFAULT_PROVIDER,
     KNOWN_PROVIDERS,
@@ -227,6 +229,11 @@ class KnowledgeBaseManager:
         self.config_file = self.base_dir / "kb_config.json"
         self._store = KBConfigStore(self.config_file)
         self.config = self._load_config()
+        self._observed_generations = {
+            name: entry["_creation_generation"]
+            for name, entry in self.config.get("knowledge_bases", {}).items()
+            if isinstance(entry, dict) and isinstance(entry.get("_creation_generation"), str)
+        }
 
         # PocketBase sync — enabled when integrations.pocketbase_url is set.
         # The local JSON file stays the source of truth; PocketBase gets a
@@ -269,7 +276,10 @@ class KnowledgeBaseManager:
         # the removal is committed — otherwise every later transaction reads
         # the raw file and faithfully writes the stale field back.
         if "default" in config:
-            del config["default"]
+            legacy_default = config.pop("default")
+            defaults = config.setdefault("defaults", {})
+            if isinstance(defaults, dict) and defaults.get("default_kb") is None:
+                defaults["default_kb"] = legacy_default
             config_changed = True
 
         # Migration: normalize unknown/removed providers to the default
@@ -333,6 +343,13 @@ class KnowledgeBaseManager:
         self.config = config
         return result
 
+    @contextmanager
+    def _kb_lifecycle_lock(self, name: str):
+        """Serialize create/delete filesystem transitions for one KB only."""
+        lifecycle_store = KBConfigStore(self.base_dir / f".{name}.lifecycle")
+        with lifecycle_store.exclusive_lock():
+            yield
+
     def _register_entry(self, name: str, entry: dict) -> None:
         """Insert a new KB entry, failing on a name clash.
 
@@ -345,6 +362,9 @@ class KnowledgeBaseManager:
             knowledge_bases = config.setdefault("knowledge_bases", {})
             if name in knowledge_bases:
                 raise ValueError(f"A knowledge base named '{name}' already exists.")
+            deleted = config.get("_deleted_knowledge_bases")
+            if isinstance(deleted, dict):
+                deleted.pop(name, None)
             knowledge_bases[name] = entry
 
         self._mutate_config(mutate)
@@ -383,6 +403,9 @@ class KnowledgeBaseManager:
         name: str,
         status: str,
         progress: dict | None = None,
+        *,
+        allow_recreate: bool = False,
+        expected_generation: str | None = None,
     ):
         """
         Update knowledge base status and progress in kb_config.json.
@@ -405,6 +428,13 @@ class KnowledgeBaseManager:
         index_changed = False
         indexed_count: int | None = None
         index_action: str | None = None
+        if allow_recreate:
+            # An explicit create request intentionally starts a new generation
+            # after deletion, even when this cached manager observed the old
+            # one earlier in its lifetime.
+            expected_generation = None
+        elif expected_generation is None:
+            expected_generation = self._observed_generations.get(name)
         if isinstance(progress, dict):
             raw_indexed_count = progress.get("indexed_count")
             if isinstance(raw_indexed_count, bool):
@@ -450,14 +480,30 @@ class KnowledgeBaseManager:
             except Exception:  # pragma: no cover - best-effort metadata
                 pass
 
-        def mutate(config: dict) -> dict:
+        def mutate(config: dict) -> dict | None:
             knowledge_bases = config.setdefault("knowledge_bases", {})
+            existing = knowledge_bases.get(name)
+            if expected_generation is not None and (
+                not isinstance(existing, dict)
+                or existing.get("_creation_generation") != expected_generation
+            ):
+                return None
             if name not in knowledge_bases:
-                # Auto-register if not exists
+                # Background workers can report a stale status after delete.
+                # Only the explicit create path may clear this durable marker
+                # and create a fresh entry with the same name.
+                deleted = config.get("_deleted_knowledge_bases")
+                if isinstance(deleted, dict) and name in deleted:
+                    if not allow_recreate:
+                        return None
+                    deleted.pop(name, None)
+                # Auto-register if not exists.
                 knowledge_bases[name] = {
                     "path": name,
                     "description": f"Knowledge base: {name}",
                 }
+                if allow_recreate:
+                    knowledge_bases[name]["_creation_generation"] = uuid4().hex
 
             kb_config = knowledge_bases[name]
             kb_config["status"] = status
@@ -493,7 +539,17 @@ class KnowledgeBaseManager:
             return kb_config
 
         kb_config = self._mutate_config(mutate)
+        if kb_config is None:
+            logger.info(
+                "Ignoring late status update for deleted knowledge base '%s'.",
+                name,
+            )
+            return False
         self._sync_kb_to_pb(name, kb_config)
+        generation = kb_config.get("_creation_generation")
+        if isinstance(generation, str):
+            self._observed_generations[name] = generation
+        return True
 
     def get_kb_status(self, name: str) -> dict | None:
         """Get status and progress for a knowledge base."""
@@ -521,6 +577,8 @@ class KnowledgeBaseManager:
         self.config = self._load_config()
 
         config_kbs = self.config.get("knowledge_bases", {})
+        deleted_kbs = self.config.get("_deleted_knowledge_bases", {})
+        deleted_names = set(deleted_kbs) if isinstance(deleted_kbs, dict) else set()
         kb_list: set[str] = set()
         prune_candidates: list[str] = []
 
@@ -563,6 +621,13 @@ class KnowledgeBaseManager:
         if base_exists:
             for item in self.base_dir.iterdir():
                 if not item.is_dir() or item.name.startswith(("__", ".")):
+                    continue
+                # A delete may have had to leave orphan files behind (for
+                # example a Windows handle blocked rmtree). Do not turn that
+                # orphan back into a live KB merely because it still looks
+                # indexable; explicit registration/recreation clears the
+                # tombstone first.
+                if item.name in deleted_names:
                     continue
 
                 # Skip if already in config
@@ -608,6 +673,9 @@ class KnowledgeBaseManager:
                     )
                     del knowledge_bases[kb_name]
                 for kb_name, kb_entry in discovered.items():
+                    deleted = config.get("_deleted_knowledge_bases")
+                    if isinstance(deleted, dict) and kb_name in deleted:
+                        continue
                     knowledge_bases.setdefault(kb_name, kb_entry)
 
             self._mutate_config(mutate)
@@ -884,7 +952,7 @@ class KnowledgeBaseManager:
         """
         self.config = self._load_config()
         if name is None:
-            name = self.config.get("default")
+            name = self.get_default()
             if name is None:
                 raise ValueError("No default knowledge base set")
 
@@ -934,37 +1002,26 @@ class KnowledgeBaseManager:
         return kb_dir / "raw"
 
     def set_default(self, name: str):
-        """Set default knowledge base using centralized config service."""
+        """Set the default in this manager's own config store."""
         if name not in self.list_knowledge_bases():
             raise ValueError(f"Knowledge base not found: {name}")
 
-        # Persist default KB selection via the canonical KB config service.
-        try:
-            from deeptutor.services.config import get_kb_config_service
-
-            kb_config_service = get_kb_config_service()
-            kb_config_service.set_default_kb(name)
-        except Exception as e:
-            logger.warning(f"Failed to save default to centralized config: {e}")
+        self._mutate_config(
+            lambda config: config.setdefault("defaults", {}).update({"default_kb": name})
+        )
 
     def get_default(self) -> str | None:
         """
         Get default knowledge base name.
 
         Priority:
-        1. Canonical KB config service (`data/knowledge_bases/kb_config.json`)
+        1. Canonical ``defaults.default_kb`` in this manager's config file
         2. First knowledge base in the list (auto-fallback)
         """
-        # Try centralized config first
-        try:
-            from deeptutor.services.config import get_kb_config_service
-
-            kb_config_service = get_kb_config_service()
-            default_kb = kb_config_service.get_default_kb()
-            if default_kb and default_kb in self.list_knowledge_bases():
-                return default_kb
-        except Exception:
-            pass
+        self.config = self._load_config()
+        default_kb = self.config.get("defaults", {}).get("default_kb")
+        if default_kb and default_kb in self.list_knowledge_bases():
+            return default_kb
 
         # Fallback to first knowledge base in sorted list
         kb_list = self.list_knowledge_bases()
@@ -1261,19 +1318,7 @@ class KnowledgeBaseManager:
         if name not in config_kbs and not (self.base_dir / name).exists():
             raise ValueError(f"Knowledge base not found: {name}")
 
-        # Resolve the directory directly to stay idempotent: if the on-disk
-        # folder was already removed (e.g. manually rm-rf'd) we still want to
-        # purge the orphaned entry from kb_config.json instead of failing.
         kb_dir = self.base_dir / name
-        dir_exists = kb_dir.exists()
-
-        # Connected KBs (Obsidian vaults, linked indexes, subagent pointers)
-        # reference the user's own external resource — or, for subagents, no
-        # folder at all. Deleting one must only drop our pointer entry; never
-        # touch what it references, and don't warn about the "missing" folder.
-        connected = is_connected_kb(config_kbs.get(name, {}))
-        if connected:
-            dir_exists = False
 
         if not confirm:
             # Ask for confirmation in CLI
@@ -1284,47 +1329,47 @@ class KnowledgeBaseManager:
                 print("Deletion cancelled.")
                 return False
 
-        if dir_exists:
+        def _on_rmtree_error(func, path, exc_info):
+            exc = exc_info[1]
+            if isinstance(exc, FileNotFoundError):
+                return
+            try:
+                os.chmod(path, stat.S_IWRITE)
+                func(path)
+            except Exception as retry_exc:
+                logger.warning(
+                    f"Could not remove '{path}' while deleting KB '{name}': "
+                    f"{retry_exc}. Continuing; orphan files may remain on disk."
+                )
 
-            def _on_rmtree_error(func, path, exc_info):
-                exc = exc_info[1]
-                if isinstance(exc, FileNotFoundError):
-                    # Race: something else removed the entry between walk and unlink.
-                    return
-                # On Windows (and some bind-mounted filesystems) a read-only bit
-                # or a stale handle from a failed RAG init can block removal.
-                # Clear the read-only bit and retry once; if it still fails, log
-                # and continue so the config entry gets cleaned up regardless —
-                # leaving the KB stuck in the list is worse than orphan files on
-                # disk (issue #370).
-                try:
-                    os.chmod(path, stat.S_IWRITE)
-                    func(path)
-                except Exception as retry_exc:
-                    logger.warning(
-                        f"Could not remove '{path}' while deleting KB '{name}': "
-                        f"{retry_exc}. Continuing; orphan files may remain on disk."
-                    )
+        with self._kb_lifecycle_lock(name):
+            current = self._store.read().get("knowledge_bases", {}).get(name, {})
+            connected = is_connected_kb(current)
+            if not connected and kb_dir.exists():
+                shutil.rmtree(kb_dir, onerror=_on_rmtree_error)
+            elif not connected:
+                logger.warning(
+                    "KB directory '%s' missing on disk; cleaning up orphaned config entry.",
+                    kb_dir,
+                )
 
-            shutil.rmtree(kb_dir, onerror=_on_rmtree_error)
-        elif not connected:
-            logger.warning(
-                f"KB directory '{kb_dir}' missing on disk; cleaning up orphaned config entry."
-            )
+            def mutate(config: dict) -> None:
+                knowledge_bases = config.setdefault("knowledge_bases", {})
+                knowledge_bases.pop(name, None)
+                deleted = config.setdefault("_deleted_knowledge_bases", {})
+                deleted[name] = datetime.now().isoformat()
 
-        # Remove from config. The directory work above stays outside the
-        # transaction — only the entry removal runs under the store lock.
-        def mutate(config: dict) -> None:
-            knowledge_bases = config.setdefault("knowledge_bases", {})
-            knowledge_bases.pop(name, None)
+                # Keep the canonical default valid after deletion.  The legacy
+                # top-level field is migrated during load, but retain this branch
+                # for an interrupted migration or a manually edited old file.
+                remaining = sorted(knowledge_bases)
+                defaults = config.get("defaults")
+                if isinstance(defaults, dict) and defaults.get("default_kb") == name:
+                    defaults["default_kb"] = remaining[0] if remaining else None
+                if config.get("default") == name:
+                    config["default"] = remaining[0] if remaining else None
 
-            # Update default if this was the default (legacy field; the
-            # canonical default lives in the config service's ``defaults``)
-            if config.get("default") == name:
-                remaining = [n for n in knowledge_bases.keys() if n != name]
-                config["default"] = sorted(remaining)[0] if remaining else None
-
-        self._mutate_config(mutate)
+            self._mutate_config(mutate)
         return True
 
     def clean_rag_storage(self, name: str | None = None, backup: bool = True) -> bool:
@@ -1419,44 +1464,27 @@ class KnowledgeBaseManager:
             str(folder).encode(), usedforsecurity=False
         ).hexdigest()[:8]
 
-        # Load existing linked folders from metadata
         kb_dir = self.base_dir / kb_name
         metadata_file = kb_dir / "metadata.json"
-        metadata: dict = {}
-
-        if metadata_file.exists():
-            try:
-                with open(metadata_file, encoding="utf-8") as fp:
-                    metadata = json.load(fp)
-            except Exception:
-                metadata = {}
-
-        if "linked_folders" not in metadata:
-            metadata["linked_folders"] = []
-
-        # Check if already linked
-        existing_ids = [item["id"] for item in metadata.get("linked_folders", [])]
-        if folder_id in existing_ids:
-            # If already linked, treat as success (idempotent)
-            # Find and return existing info
-            for item in metadata.get("linked_folders", []):
-                if item["id"] == folder_id:
-                    return item
-
-        # Add folder info
         folder_info = {
             "id": folder_id,
             "path": str(folder),
             "added_at": datetime.now().isoformat(),
             "file_count": len(files),
         }
-        metadata["linked_folders"].append(folder_info)
 
-        # Save metadata
-        with open(metadata_file, "w", encoding="utf-8") as fp:
-            json.dump(metadata, fp, indent=2, ensure_ascii=False)
+        def mutate(metadata: dict) -> dict:
+            linked = metadata.setdefault("linked_folders", [])
+            if not isinstance(linked, list):
+                raise ValueError(f"Invalid linked_folders metadata for knowledge base: {kb_name}")
+            for item in linked:
+                if isinstance(item, dict) and item.get("id") == folder_id:
+                    return item
+            linked.append(folder_info)
+            return folder_info
 
-        return folder_info
+        _, linked_folder = get_metadata_store(metadata_file).transaction(mutate)
+        return linked_folder
 
     def get_linked_folders(self, kb_name: str) -> list[dict]:
         """
@@ -1476,13 +1504,9 @@ class KnowledgeBaseManager:
 
         if not metadata_file.exists():
             return []
-
-        try:
-            with open(metadata_file, encoding="utf-8") as f:
-                metadata = json.load(f)
-                return metadata.get("linked_folders", [])
-        except Exception:
-            return []
+        metadata = get_metadata_store(metadata_file).read()
+        linked = metadata.get("linked_folders", [])
+        return linked if isinstance(linked, list) else []
 
     def unlink_folder(self, kb_name: str, folder_id: str) -> bool:
         """
@@ -1504,24 +1528,20 @@ class KnowledgeBaseManager:
         if not metadata_file.exists():
             return False
 
-        try:
-            with open(metadata_file, encoding="utf-8") as f:
-                metadata = json.load(f)
-        except Exception:
-            return False
+        def mutate(metadata: dict) -> bool:
+            linked = metadata.get("linked_folders", [])
+            if not isinstance(linked, list):
+                return False
+            new_linked = [
+                item for item in linked if not isinstance(item, dict) or item.get("id") != folder_id
+            ]
+            if len(new_linked) == len(linked):
+                return False
+            metadata["linked_folders"] = new_linked
+            return True
 
-        linked = metadata.get("linked_folders", [])
-        new_linked = [f for f in linked if f["id"] != folder_id]
-
-        if len(new_linked) == len(linked):
-            return False  # Not found
-
-        metadata["linked_folders"] = new_linked
-
-        with open(metadata_file, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, indent=2, ensure_ascii=False)
-
-        return True
+        _, removed = get_metadata_store(metadata_file).transaction(mutate)
+        return removed
 
     def scan_linked_folder(self, folder_path: str, provider: str = DEFAULT_PROVIDER) -> list[str]:
         """
@@ -1631,21 +1651,20 @@ class KnowledgeBaseManager:
         if not metadata_file.exists():
             return
 
-        try:
-            with open(metadata_file, encoding="utf-8") as f:
-                metadata = json.load(f)
-        except Exception:
-            return
-
-        linked = metadata.get("linked_folders", [])
-
-        for folder in linked:
-            if folder["id"] == folder_id:
+        def mutate(metadata: dict) -> None:
+            linked = metadata.get("linked_folders", [])
+            if not isinstance(linked, list):
+                return
+            for folder in linked:
+                if not isinstance(folder, dict) or folder.get("id") != folder_id:
+                    continue
                 # Record sync timestamp
                 folder["last_sync"] = datetime.now().isoformat()
 
                 # Record file modification times
                 file_states = folder.get("synced_files", {})
+                if not isinstance(file_states, dict):
+                    file_states = {}
                 for file_path in synced_files:
                     try:
                         p = Path(file_path)
@@ -1657,8 +1676,9 @@ class KnowledgeBaseManager:
 
                 folder["synced_files"] = file_states
                 folder["file_count"] = len(file_states)
-                write_json_atomic(metadata_file, metadata)
-                break
+                return
+
+        get_metadata_store(metadata_file).transaction(mutate)
 
 
 def main():

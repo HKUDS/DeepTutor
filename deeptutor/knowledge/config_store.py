@@ -1,4 +1,4 @@
-"""Atomic, lock-guarded store for the shared ``kb_config.json`` file.
+"""Atomic, lock-guarded store for shared JSON state files.
 
 Both ``KnowledgeBaseManager`` and ``KnowledgeBaseConfigService`` mutate the
 same JSON file. Historically each did its own read-modify-write with no lock
@@ -120,11 +120,15 @@ class KBConfigStore:
         *,
         default_factory: Callable[[], dict] | None = None,
         lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+        validate_kb_schema: bool = True,
+        create_parent: bool = True,
     ):
         self.config_path = Path(config_path)
         self.lock_path = self.config_path.with_name(f".{self.config_path.name}.lock")
         self._default_factory = default_factory or (lambda: {"knowledge_bases": {}})
         self._lock_timeout = lock_timeout
+        self._validate_kb_schema = validate_kb_schema
+        self._create_parent = create_parent
 
     @contextmanager
     def _locked(self):
@@ -134,7 +138,12 @@ class KBConfigStore:
         offers nothing that blocks indefinitely, and a shared bounded loop
         also turns a would-be deadlock into a ``TimeoutError``.
         """
-        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+        if self._create_parent:
+            self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+        elif not self.lock_path.parent.is_dir():
+            raise FileNotFoundError(
+                f"Cannot lock {self.config_path}: parent directory {self.lock_path.parent} is missing."
+            )
         fd = os.open(str(self.lock_path), os.O_RDWR | os.O_CREAT, 0o644)
         try:
             deadline = time.monotonic() + self._lock_timeout
@@ -151,6 +160,17 @@ class KBConfigStore:
                 _unlock(fd)
         finally:
             os.close(fd)
+
+    @contextmanager
+    def exclusive_lock(self):
+        """Hold this store's stable sidecar lock without reading or writing.
+
+        Used for per-resource lifecycle transitions whose filesystem work must
+        serialize with each other, but must not hold the global JSON-config
+        transaction lock for the duration of slow I/O.
+        """
+        with self._locked():
+            yield
 
     def _read_current(self) -> dict:
         try:
@@ -177,6 +197,13 @@ class KBConfigStore:
             raise KBConfigCorruptionError(
                 f"{self.config_path} does not contain a JSON object (got {type(config).__name__})."
             )
+        if self._validate_kb_schema:
+            for key in ("knowledge_bases", "defaults", "_deleted_knowledge_bases"):
+                if key in config and not isinstance(config[key], dict):
+                    raise KBConfigCorruptionError(
+                        f"{self.config_path}.{key} must be a JSON object "
+                        f"(got {type(config[key]).__name__})."
+                    )
         return config
 
     def read(self) -> dict:

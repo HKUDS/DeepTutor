@@ -3,12 +3,16 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+import threading
+
+import pytest
 
 from deeptutor.knowledge.add_documents import (
     DocumentAdder,
     RawDocumentRemoval,
     remove_raw_document,
 )
+from deeptutor.knowledge.config_store import KBConfigCorruptionError
 
 
 def _write_provider_version(kb_dir: Path, provider: str) -> None:
@@ -159,3 +163,57 @@ def test_remove_raw_document_uses_relative_key_for_nested_file(
     assert removal.rel_path == "papers/2024/a.pdf"
     remaining = json.loads((kb_dir / "metadata.json").read_text(encoding="utf-8"))
     assert remaining["file_hashes"] == {"other.pdf": "keep"}
+
+
+def test_remove_raw_document_does_not_unlink_when_metadata_is_corrupt(tmp_path: Path) -> None:
+    kb_dir = tmp_path / "kb"
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True)
+    doc = raw_dir / "a.txt"
+    doc.write_text("keep me", encoding="utf-8")
+    metadata_file = kb_dir / "metadata.json"
+    damaged = "{broken"
+    metadata_file.write_text(damaged, encoding="utf-8")
+
+    with pytest.raises(KBConfigCorruptionError):
+        remove_raw_document(kb_dir, doc)
+
+    assert doc.exists()
+    assert metadata_file.read_text(encoding="utf-8") == damaged
+
+
+def test_delete_racing_hash_record_does_not_leave_stale_hash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    kb_dir = tmp_path / "kb"
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True)
+    _write_provider_version(kb_dir, "llamaindex")
+    doc = raw_dir / "a.txt"
+    doc.write_text("hello", encoding="utf-8")
+    adder = DocumentAdder(kb_name="kb", base_dir=str(tmp_path))
+
+    hash_computed = threading.Event()
+    release_hash_writer = threading.Event()
+    original_hash = adder._get_file_hash
+
+    def pause_after_hash(path: Path) -> str:
+        value = original_hash(path)
+        hash_computed.set()
+        assert release_hash_writer.wait(10)
+        return value
+
+    monkeypatch.setattr(adder, "_get_file_hash", pause_after_hash)
+    writer = threading.Thread(target=adder._record_successful_hash, args=(doc,))
+    writer.start()
+    assert hash_computed.wait(10)
+
+    removal = remove_raw_document(kb_dir, doc)
+    release_hash_writer.set()
+    writer.join(10)
+
+    assert not writer.is_alive()
+    assert removal.was_indexed is False
+    assert not doc.exists()
+    metadata = json.loads((kb_dir / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata.get("file_hashes", {}) == {}

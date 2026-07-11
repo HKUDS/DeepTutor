@@ -228,3 +228,20 @@ class TestPersistence:
         assert fresh_service.get_default_kb() == "primary"
         fresh_service.set_default_kb(None)
         assert fresh_service.get_default_kb() is None
+
+    def test_delete_kb_config_replaces_default(self, fresh_service) -> None:
+        fresh_service.set_kb_config("first", {"path": "first"})
+        fresh_service.set_kb_config("second", {"path": "second"})
+        fresh_service.set_default_kb("first")
+
+        fresh_service.delete_kb_config("first")
+
+        assert fresh_service.get_default_kb() == "second"
+
+    def test_late_service_update_does_not_resurrect_deleted_kb(self, fresh_service) -> None:
+        fresh_service.set_kb_config("demo", {"path": "demo"})
+        fresh_service.delete_kb_config("demo")
+
+        fresh_service.set_kb_config("demo", {"rag_provider": "graphrag"})
+
+        assert "demo" not in fresh_service.get_all_configs()["knowledge_bases"]
