@@ -15,7 +15,7 @@ from deeptutor.knowledge.manager import KnowledgeBaseManager
 
 
 def _seed_obsidian(manager: KnowledgeBaseManager, name: str, vault_path: str) -> None:
-    manager.config.setdefault("knowledge_bases", {})[name] = {
+    entry = {
         "type": "obsidian",
         "vault_path": vault_path,
         "description": "Connected vault",
@@ -23,7 +23,9 @@ def _seed_obsidian(manager: KnowledgeBaseManager, name: str, vault_path: str) ->
         # rewrite + flag for reindex — must be left alone for obsidian entries.
         "rag_provider": "pageindex",
     }
-    manager._save_config()
+    manager._mutate_config(
+        lambda config: config.setdefault("knowledge_bases", {}).update({name: entry})
+    )
 
 
 def test_obsidian_entry_survives_orphan_prune(tmp_path: Path) -> None:
@@ -70,8 +72,11 @@ def test_ordinary_kb_metadata_has_no_vault_fields(tmp_path: Path) -> None:
     kb_dir = manager.base_dir / "plain"
     (kb_dir / "version-1").mkdir(parents=True)
     (kb_dir / "version-1" / "docstore.json").write_text("{}", encoding="utf-8")
-    manager.config.setdefault("knowledge_bases", {})["plain"] = {"path": "plain", "status": "ready"}
-    manager._save_config()
+    manager._mutate_config(
+        lambda config: config.setdefault("knowledge_bases", {}).update(
+            {"plain": {"path": "plain", "status": "ready"}}
+        )
+    )
 
     meta = manager.get_metadata("plain")
     assert "type" not in meta and "vault_path" not in meta

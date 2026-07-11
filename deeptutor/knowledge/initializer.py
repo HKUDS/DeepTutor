@@ -67,11 +67,13 @@ class KnowledgeBaseInitializer:
                     "total": 0,
                 },
             )
-            manager.config = manager._load_config()
-            manager.config.setdefault("knowledge_bases", {}).setdefault(self.kb_name, {})[
-                "rag_provider"
-            ] = self.rag_provider
-            manager._save_config()
+
+            def set_provider(config: dict) -> None:
+                config.setdefault("knowledge_bases", {}).setdefault(self.kb_name, {})[
+                    "rag_provider"
+                ] = self.rag_provider
+
+            manager._mutate_config(set_provider)
         except Exception as e:
             logger.warning(f"Failed to register KB to config: {e}")
 

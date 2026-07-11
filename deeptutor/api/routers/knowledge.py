@@ -2132,12 +2132,15 @@ async def create_knowledge_base(
                 "task_id": task_id,
             },
         )
-        # Also store rag_provider in config (reload and update)
-        manager.config = manager._load_config()
-        if name in manager.config.get("knowledge_bases", {}):
-            manager.config["knowledge_bases"][name]["rag_provider"] = rag_provider
-            manager.config["knowledge_bases"][name]["needs_reindex"] = False
-            manager._save_config()
+
+        # Also store rag_provider in config (transactional update)
+        def _set_provider(config: dict) -> None:
+            entry = config.get("knowledge_bases", {}).get(name)
+            if entry is not None:
+                entry["rag_provider"] = rag_provider
+                entry["needs_reindex"] = False
+
+        manager._mutate_config(_set_provider)
 
         progress_tracker = ProgressTracker(name, kb_base_dir)
 
@@ -2293,18 +2296,18 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
                     "index_action": "reindex",
                 },
             )
+
             # Clear the legacy mismatch / needs_reindex flags now that an
             # index version matching the active config exists on disk.
-            kb_entry = manager.config.get("knowledge_bases", {}).get(kb_name) or {}
-            mutated = False
-            if kb_entry.get("needs_reindex"):
-                kb_entry["needs_reindex"] = False
-                mutated = True
-            if kb_entry.get("embedding_mismatch"):
+            def _clear_flags(config: dict) -> None:
+                kb_entry = config.get("knowledge_bases", {}).get(kb_name)
+                if not kb_entry:
+                    return
                 kb_entry.pop("embedding_mismatch", None)
-                mutated = True
-            if mutated:
-                manager._save_config()
+                if kb_entry.get("needs_reindex"):
+                    kb_entry["needs_reindex"] = False
+
+            manager._mutate_config(_clear_flags)
 
             _task_log(task_id, f"Re-index of '{kb_name}' complete", level="success")
             task_manager.update_task_status(task_id, "completed")

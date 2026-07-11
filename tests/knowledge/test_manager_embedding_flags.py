@@ -79,11 +79,13 @@ def test_ready_version_without_active_signature_marks_reindex(
     )
 
     manager = KnowledgeBaseManager(base_dir=str(tmp_path))
-    manager.config.setdefault("knowledge_bases", {})["old-kb"] = {
+    entry = {
         "path": "old-kb",
         "rag_provider": "llamaindex",
     }
-    manager._save_config()
+    manager._mutate_config(
+        lambda config: config.setdefault("knowledge_bases", {}).update({"old-kb": entry})
+    )
 
     reloaded = KnowledgeBaseManager(base_dir=str(tmp_path))
     entry = reloaded.config["knowledge_bases"]["old-kb"]

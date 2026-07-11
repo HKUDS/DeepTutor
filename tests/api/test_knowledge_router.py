@@ -44,8 +44,8 @@ class _FakeKBManager:
     def _load_config(self) -> dict:
         return self.config
 
-    def _save_config(self) -> None:
-        pass
+    def _mutate_config(self, mutate):
+        return mutate(self.config)
 
     def list_knowledge_bases(self) -> list[str]:
         return sorted(self.config.get("knowledge_bases", {}).keys())

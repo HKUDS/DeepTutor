@@ -229,12 +229,14 @@ def test_ready_lightrag_with_failed_doc_status_reports_error(
         encoding="utf-8",
     )
     manager = KnowledgeBaseManager(base_dir=str(tmp_path))
-    manager.config.setdefault("knowledge_bases", {})["kb-lightrag"] = {
+    entry = {
         "path": "kb-lightrag",
         "rag_provider": "lightrag",
         "status": "ready",
     }
-    manager._save_config()
+    manager._mutate_config(
+        lambda config: config.setdefault("knowledge_bases", {}).update({"kb-lightrag": entry})
+    )
 
     info = KnowledgeBaseManager(base_dir=str(tmp_path)).get_info("kb-lightrag")
     assert info["status"] == "error"

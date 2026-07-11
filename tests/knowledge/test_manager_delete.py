@@ -13,11 +13,13 @@ def _create_kb(manager: KnowledgeBaseManager, name: str) -> Path:
     (kb_dir / "raw").mkdir(parents=True, exist_ok=True)
     (kb_dir / "version-1").mkdir(parents=True, exist_ok=True)
     (kb_dir / "version-1" / "docstore.json").write_text("{}", encoding="utf-8")
-    manager.config.setdefault("knowledge_bases", {})[name] = {
+    entry = {
         "path": name,
         "description": "",
     }
-    manager._save_config()
+    manager._mutate_config(
+        lambda config: config.setdefault("knowledge_bases", {}).update({name: entry})
+    )
     return kb_dir
 
 

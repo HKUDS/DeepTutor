@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
+from deeptutor.knowledge.config_store import KBConfigStore
 from deeptutor.services.path_service import get_path_service
 from deeptutor.services.rag.factory import (
     DEFAULT_PROVIDER,
@@ -41,6 +42,10 @@ class KnowledgeBaseConfigService:
 
     def __init__(self, config_path: Path | None = None):
         self.config_path = config_path or DEFAULT_CONFIG_PATH
+        # Shares the sidecar lock + atomic-replace write path with
+        # ``KnowledgeBaseManager``: both mutate the same file, so both must
+        # go through the same locked read-modify-write transactions.
+        self._store = KBConfigStore(self.config_path, default_factory=_default_payload)
         self._config = self._load_config()
 
     @classmethod
@@ -54,19 +59,30 @@ class KnowledgeBaseConfigService:
         return cls._instances[key]
 
     def _load_config(self) -> dict[str, Any]:
-        payload = _default_payload()
-        if self.config_path.exists():
-            try:
-                with open(self.config_path, "r", encoding="utf-8") as handle:
-                    loaded = json.load(handle) or {}
-                payload.update({k: v for k, v in loaded.items() if k != "defaults"})
-                payload["defaults"].update(loaded.get("defaults", {}))
-            except Exception as exc:
-                logger.warning(f"Failed to load KB config: {exc}")
-        payload.setdefault("knowledge_bases", {})
-        payload.setdefault("defaults", _default_payload()["defaults"])
-        payload = self._normalize_payload(payload)
-        return payload
+        """Read the latest on-disk config, coerced and normalized.
+
+        Raises ``KBConfigCorruptionError`` when the file exists but does not
+        parse — the legacy fallback to a default payload let the next write
+        overwrite the damaged file with a near-empty config.
+        """
+        state = self._store.read()
+        self._coerce_payload(state)
+        return self._normalize_payload(state)
+
+    def _coerce_payload(self, state: dict[str, Any]) -> dict[str, Any]:
+        """Shape a raw payload in place: full defaults section + KB map.
+
+        The file is shared with ``KnowledgeBaseManager``, which knows nothing
+        about the ``defaults`` section — merge the stored values over the
+        stock defaults so partially-written sections stay complete.
+        """
+        defaults = _default_payload()["defaults"]
+        stored_defaults = state.get("defaults")
+        if isinstance(stored_defaults, dict):
+            defaults.update(stored_defaults)
+        state["defaults"] = defaults
+        state.setdefault("knowledge_bases", {})
+        return state
 
     def _normalize_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
         defaults = payload.setdefault("defaults", _default_payload()["defaults"])
@@ -105,24 +121,36 @@ class KnowledgeBaseConfigService:
 
         return payload
 
-    def _save(self) -> None:
-        self._config = self._normalize_payload(self._config)
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.config_path, "w", encoding="utf-8") as handle:
-            json.dump(self._config, handle, indent=2, ensure_ascii=False)
+    def _mutate(self, mutate: Callable[[dict[str, Any]], Any]) -> Any:
+        """Run one locked read-modify-write transaction on kb_config.json.
+
+        The mutator sees the latest coerced on-disk state — never the cached
+        ``self._config``, which may be stale — and edits it in place; the
+        committed, normalized snapshot becomes the new cache. Returns the
+        mutator's result.
+        """
+
+        def wrapped(state: dict[str, Any]) -> Any:
+            self._coerce_payload(state)
+            result = mutate(state)
+            self._normalize_payload(state)
+            return result
+
+        state, result = self._store.transaction(wrapped)
+        self._config = state
+        return result
 
     def _refresh(self) -> None:
         """Re-read kb_config.json so this singleton sees changes made by
         ``KnowledgeBaseManager`` (orphan pruning, new KB registrations).
-
-        Without this, every mutating call would rewrite the file from the
-        in-memory snapshot taken at process start and undo any external
-        cleanup. Read-modify-write keeps the two writers consistent.
+        Read-only paths call this; mutations always start from the latest
+        on-disk state inside ``_mutate`` regardless.
         """
         self._config = self._load_config()
 
-    def _ensure_kb(self, kb_name: str) -> dict[str, Any]:
-        knowledge_bases = self._config.setdefault("knowledge_bases", {})
+    @staticmethod
+    def _ensure_kb(state: dict[str, Any], kb_name: str) -> dict[str, Any]:
+        knowledge_bases = state.setdefault("knowledge_bases", {})
         if kb_name not in knowledge_bases:
             knowledge_bases[kb_name] = {
                 "path": kb_name,
@@ -145,10 +173,10 @@ class KnowledgeBaseConfigService:
         return merged
 
     def set_kb_config(self, kb_name: str, config: dict[str, Any]) -> None:
-        self._refresh()
-        entry = self._ensure_kb(kb_name)
-        entry.update(config)
-        self._save()
+        def mutate(state: dict[str, Any]) -> None:
+            self._ensure_kb(state, kb_name).update(config)
+
+        self._mutate(mutate)
 
     def get_rag_provider(self, kb_name: str) -> str:
         return normalize_provider_name(self.get_kb_config(kb_name).get("rag_provider"))
@@ -169,33 +197,32 @@ class KnowledgeBaseConfigService:
         return str(modes.get(provider, "")) if isinstance(modes, dict) else ""
 
     def set_provider_mode(self, provider: str, mode: str) -> None:
-        self._refresh()
-        defaults = self._config.setdefault("defaults", _default_payload()["defaults"])
-        modes = defaults.setdefault("provider_modes", {})
-        modes[provider] = mode
-        self._save()
+        def mutate(state: dict[str, Any]) -> None:
+            state["defaults"].setdefault("provider_modes", {})[provider] = mode
+
+        self._mutate(mutate)
 
     def delete_kb_config(self, kb_name: str) -> None:
-        self._refresh()
-        knowledge_bases = self._config.get("knowledge_bases", {})
-        if kb_name in knowledge_bases:
-            del knowledge_bases[kb_name]
-            self._save()
+        def mutate(state: dict[str, Any]) -> None:
+            state.get("knowledge_bases", {}).pop(kb_name, None)
+
+        self._mutate(mutate)
 
     def get_all_configs(self) -> dict[str, Any]:
         self._refresh()
         return self._config
 
     def set_global_defaults(self, defaults: dict[str, Any]) -> None:
-        self._refresh()
-        current = self._config.setdefault("defaults", _default_payload()["defaults"])
-        current.update(defaults)
-        self._save()
+        def mutate(state: dict[str, Any]) -> None:
+            state["defaults"].update(defaults)
+
+        self._mutate(mutate)
 
     def set_default_kb(self, kb_name: str | None) -> None:
-        self._refresh()
-        self._config.setdefault("defaults", _default_payload()["defaults"])["default_kb"] = kb_name
-        self._save()
+        def mutate(state: dict[str, Any]) -> None:
+            state["defaults"]["default_kb"] = kb_name
+
+        self._mutate(mutate)
 
     def get_default_kb(self) -> str | None:
         self._refresh()

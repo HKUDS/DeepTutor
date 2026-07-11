@@ -13,7 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from deeptutor.knowledge.manager import KnowledgeBaseManager, _write_json_atomic
+from deeptutor.knowledge.config_store import write_json_atomic
+from deeptutor.knowledge.manager import KnowledgeBaseManager
 
 
 def _manager_with_linked_folder(tmp_path: Path) -> tuple[KnowledgeBaseManager, Path, str, Path]:
@@ -65,7 +66,7 @@ def test_write_json_atomic_preserves_original_on_failure(tmp_path: Path) -> None
     target.write_text('{"ok": true}', encoding="utf-8")
 
     with pytest.raises(TypeError):
-        _write_json_atomic(target, {"bad": object()})
+        write_json_atomic(target, {"bad": object()})
 
     assert json.loads(target.read_text(encoding="utf-8")) == {"ok": True}
     # The failed write must not litter temp files next to the target.
