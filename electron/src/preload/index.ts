@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+const desktopPlatform = process.platform === 'darwin' ? 'mac' : 'win'
+
 export interface ElectronAPI {
   app: {
     getVersion: () => Promise<string>
@@ -38,6 +40,19 @@ export interface ElectronAPI {
     onDownloaded: (callback: (info: unknown) => void) => () => void
     onError: (callback: (error: string) => void) => () => void
   }
+}
+
+function rememberDesktopChrome(): void {
+  try {
+    window.localStorage.setItem('deeptutor.desktop', '1')
+    window.localStorage.setItem('deeptutor.platform', desktopPlatform)
+  } catch {
+    // Storage can be unavailable in restricted contexts; exposed globals remain.
+  }
+}
+
+function maximizeDesktopWindow(): Promise<void> {
+  return ipcRenderer.invoke('window:maximize')
 }
 
 const electronAPI: ElectronAPI = {
@@ -104,4 +119,9 @@ const electronAPI: ElectronAPI = {
   }
 }
 
+rememberDesktopChrome()
+
 contextBridge.exposeInMainWorld('electron', electronAPI)
+contextBridge.exposeInMainWorld('__DEEPTUTOR_DESKTOP__', true)
+contextBridge.exposeInMainWorld('__DEEPTUTOR_PLATFORM__', desktopPlatform)
+contextBridge.exposeInMainWorld('__DEEPTUTOR_MAXIMIZE__', maximizeDesktopWindow)

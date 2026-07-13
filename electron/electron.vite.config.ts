@@ -21,26 +21,5 @@ export default defineConfig({
         }
       }
     }
-  },
-  renderer: {
-    root: resolve(__dirname, '../web'),
-    build: {
-      outDir: resolve(__dirname, '../out/renderer'),
-      rollupOptions: {
-        input: resolve(__dirname, '../web/index.html')
-      }
-    },
-    server: {
-      proxy: {
-        '/api': {
-          target: 'http://127.0.0.1:8001',
-          changeOrigin: true
-        },
-        '/ws': {
-          target: 'http://127.0.0.1:8001',
-          ws: true
-        }
-      }
-    }
   }
 })

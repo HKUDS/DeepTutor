@@ -44,6 +44,8 @@ const PRIMARY_NAV: NavEntry[] = [
 const SECONDARY_NAV: NavEntry[] = [{ href: '/settings', label: 'Settings', icon: Settings }]
 const DEFAULT_SESSION_VIEWPORT_CLASS_NAME = 'max-h-[112px]'
 const GITHUB_REPO_URL = 'https://github.com/HKUDS/DeepTutor'
+const DESKTOP_CHROME_KEY = 'deeptutor.desktop'
+const DESKTOP_PLATFORM_KEY = 'deeptutor.platform'
 
 interface SidebarShellProps {
   children?: ReactNode
@@ -105,24 +107,39 @@ export function SidebarShell({
   const [isMacDesktop, setIsMacDesktop] = useState(false)
 
   useEffect(() => {
-    // Detect Electron via flags injected by shell/index.html dom-ready.
-    // Cannot use window.electron (preload only runs in the shell BrowserWindow,
-    // not inside the webview). Cannot use UA (Electron string is stripped).
-    //
-    // Poll once on next frame in case dom-ready injection hasn't arrived yet.
+    // Detect desktop mode before React has fully settled. The desktop preload
+    // exposes globals and writes localStorage; the query param is a final
+    // fallback for dev startup and deep links.
     const detect = () => {
       const w = window as Window & {
         __DEEPTUTOR_DESKTOP__?: boolean
         __DEEPTUTOR_PLATFORM__?: string
       }
-      const isElectron = w.__DEEPTUTOR_DESKTOP__ === true
-      const platform = w.__DEEPTUTOR_PLATFORM__ ?? ''
-      setIsDesktopClient(isElectron)
-      setIsMacDesktop(isElectron && platform === 'mac')
+      const desktopParam = new URLSearchParams(window.location.search).get('desktop')
+      let storedDesktop = false
+      let storedPlatform = ''
+      try {
+        storedDesktop = window.localStorage.getItem(DESKTOP_CHROME_KEY) === '1'
+        storedPlatform = window.localStorage.getItem(DESKTOP_PLATFORM_KEY) ?? ''
+      } catch (_error) {
+        // Ignore storage failures; injected globals and URL params still work.
+      }
+      const isDesktop =
+        w.__DEEPTUTOR_DESKTOP__ === true ||
+        desktopParam === '1' ||
+        desktopParam === 'true' ||
+        storedDesktop
+      const platform = (w.__DEEPTUTOR_PLATFORM__ || storedPlatform || window.navigator.platform || '').toLowerCase()
+      setIsDesktopClient(isDesktop)
+      setIsMacDesktop(isDesktop && platform.includes('mac'))
     }
     detect()
     const raf = requestAnimationFrame(detect)
-    return () => cancelAnimationFrame(raf)
+    const timeout = window.setTimeout(detect, 250)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.clearTimeout(timeout)
+    }
   }, [])
 
   const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false)
@@ -218,7 +235,8 @@ export function SidebarShell({
       >
         {isMacDesktop && !effectiveCollapsed && (
           <div
-            className="h-[80px] shrink-0"
+            data-desktop-drag-region
+            className="h-[40px] shrink-0"
             style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
             onDoubleClick={() => {
               const w = window as Window & { __DEEPTUTOR_MAXIMIZE__?: () => void }
@@ -231,7 +249,7 @@ export function SidebarShell({
           className={clsx(
             'shrink-0 flex items-center mb-[30px]',
             isMacDesktop && !effectiveCollapsed ? 'h-0' : 'h-14',
-            isMacDesktop && effectiveCollapsed && 'mt-[80px]'
+            isMacDesktop && effectiveCollapsed && 'mt-[40px]'
           )}
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
@@ -365,7 +383,7 @@ export function SidebarShell({
         {effectiveCollapsed && (
           <div
             className="flex-1 flex flex-col items-center gap-1 px-1.5 py-2"
-            style={isMacDesktop ? { paddingTop: '80px' } : undefined}
+            style={isMacDesktop ? { paddingTop: '40px' } : undefined}
           >
             <button
               onClick={handleNewChat}

@@ -21,6 +21,20 @@ function getIconPath(): string {
   return join(__dirname, "../build/icon.png");
 }
 
+function getDesktopWebUrl(): string {
+  const baseUrl =
+    process.env.DEEPTUTOR_WEB_URL ||
+    (is.dev ? "http://localhost:3000" : "http://localhost:8001");
+  const url = new URL(baseUrl);
+  url.searchParams.set("desktop", "1");
+  url.searchParams.set("_t", Date.now().toString());
+  return url.toString();
+}
+
+function stripElectronUserAgent(userAgent: string): string {
+  return userAgent.replace(/\s*Electron\/[\d.]+\s*/, " ");
+}
+
 function createWindow(): void {
   const isMacOS = process.platform === "darwin";
   const iconPath = getIconPath();
@@ -47,7 +61,6 @@ function createWindow(): void {
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
-      webviewTag: true,
     },
     icon: nativeImage.createFromPath(iconPath),
   });
@@ -67,25 +80,13 @@ function createWindow(): void {
     return { action: "deny" };
   });
 
-  // Strip "Electron/..." from webview user agent so the embedded web app
-  // runs as a standard browser — no custom traffic lights, no drag regions.
-  // This matches nexu's architecture: the shell owns chrome, the webview is just content.
-  mainWindow.webContents.on(
-    "will-attach-webview",
-    (_event, webPreferences, params) => {
-      const cleanUserAgent =
-        params.useragent || mainWindow!.webContents.getUserAgent();
-      params.useragent = cleanUserAgent.replace(/\s*Electron\/[\d.]+\s*/, " ");
-      webPreferences.sandbox = false;
-    },
+  // Load the web app directly. CSS app-region drag zones only reach the native
+  // BrowserWindow from the main renderer; nesting the app in <webview> swallows
+  // those drag events on macOS.
+  mainWindow.webContents.setUserAgent(
+    stripElectronUserAgent(mainWindow.webContents.getUserAgent()),
   );
-
-  // Load the desktop shell, which embeds the web app in a webview
-  if (is.dev) {
-    mainWindow.loadFile(join(__dirname, "../../shell/index.html"));
-  } else {
-    mainWindow.loadFile(join(__dirname, "../shell/index.html"));
-  }
+  mainWindow.loadURL(getDesktopWebUrl());
 
   // Setup menu
   createMenu(mainWindow);
