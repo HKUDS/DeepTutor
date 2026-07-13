@@ -7,6 +7,8 @@ List and inspect registered plugins (tools, capabilities, playground).
 
 from __future__ import annotations
 
+from dataclasses import asdict
+
 from rich.console import Console
 from rich.table import Table
 import typer
@@ -56,14 +58,19 @@ def register(app: typer.Typer) -> None:
 
         cap = cr.get(name)
         if cap:
+            from deeptutor.app import DeepTutorApp
+
+            availability = DeepTutorApp().get_capability_availability(name)
             console.print_json(
                 json.dumps(
                     {
                         "name": cap.manifest.name,
                         "description": cap.manifest.description,
+                        "cli_aliases": cap.manifest.cli_aliases,
                         "stages": cap.manifest.stages,
                         "tools_used": cap.manifest.tools_used,
                         "config_defaults": cap.manifest.config_defaults,
+                        "availability": asdict(availability),
                     },
                     indent=2,
                 )

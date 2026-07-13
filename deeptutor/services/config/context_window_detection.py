@@ -15,6 +15,7 @@ from deeptutor.services.llm.context_window import (
     coerce_positive_int,
     default_context_window_for_model,
 )
+from deeptutor.services.llm.openai_http_client import disable_ssl_verify_enabled
 from deeptutor.services.llm.utils import build_auth_headers
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,8 @@ _CONTEXT_WINDOW_KEYS = (
     "max_model_len",
     "max_sequence_length",
 )
+
+_KNOWN_CONTEXT_WINDOWS: tuple[tuple[str, int], ...] = (("deepseek-v4", 1_000_000),)
 
 
 @dataclass(frozen=True)
@@ -59,6 +62,16 @@ def _record_identities(item: Mapping[str, Any]) -> set[str]:
     for key in ("id", "model", "name"):
         aliases.update(_model_aliases(str(item.get(key, "") or "")))
     return aliases
+
+
+def _known_context_window(model: str) -> int | None:
+    normalized = (model or "").strip().lower()
+    if not normalized:
+        return None
+    for pattern, context_window in _KNOWN_CONTEXT_WINDOWS:
+        if pattern in normalized:
+            return context_window
+    return None
 
 
 def _recursive_context_window(value: Any) -> int | None:
@@ -137,9 +150,11 @@ async def _detect_from_models_endpoint(
     headers.pop("Content-Type", None)
 
     timeout = aiohttp.ClientTimeout(total=12)
+    connector = aiohttp.TCPConnector(ssl=False) if disable_ssl_verify_enabled() else None
     try:
         async with aiohttp.ClientSession(
             timeout=timeout,
+            connector=connector,
             trust_env=True,
         ) as session:
             async with session.get(url, headers=headers) as response:
@@ -172,6 +187,15 @@ async def detect_context_window(
             context_window=metadata_window,
             source="metadata",
             detail="Detected from provider `/models` metadata.",
+            detected_at=detected_at,
+        )
+
+    known_window = _known_context_window(llm_config.model)
+    if known_window is not None:
+        return ContextWindowDetectionResult(
+            context_window=known_window,
+            source="known_model",
+            detail="Matched built-in context-window metadata for this model family.",
             detected_at=detected_at,
         )
 

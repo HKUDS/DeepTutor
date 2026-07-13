@@ -1,48 +1,37 @@
-"""M4 regression — non-admin rag_search without kb_name must NOT hit admin KBs."""
+"""rag_search no longer accepts an implicit/default KB.
+
+The chat composer always sends an explicit ``kb_name`` selected from the
+user's attached knowledge bases, so the tool fails fast when called without
+one. Multi-user routing is verified separately in
+``test_grants_and_settings.py``.
+"""
 
 from __future__ import annotations
 
 import asyncio
+import importlib
 
-import pytest
+
+def _rag_search():
+    # Bypass parent-attribute pollution from earlier tests' fake modules:
+    # ``importlib.import_module`` reads ``sys.modules`` directly, which is
+    # properly reverted by ``monkeypatch``.
+    return importlib.import_module("deeptutor.tools.rag_tool").rag_search
 
 
-def test_rag_search_no_kb_non_admin_raises(mu_isolated_root, as_user):
-    from deeptutor.tools import rag_tool
+def test_rag_search_no_kb_raises_value_error(mu_isolated_root, as_user):
+    import pytest
 
+    rag_search = _rag_search()
     with as_user("u_alice", role="user"):
-        with pytest.raises(ValueError, match="No knowledge base selected"):
-            asyncio.run(rag_tool.rag_search(query="hi", kb_name=None))
+        with pytest.raises(ValueError, match="kb_name"):
+            asyncio.run(rag_search(query="hi", kb_name=""))
 
 
-def test_rag_search_no_kb_admin_does_not_raise_for_missing_kb(
-    mu_isolated_root, as_user, monkeypatch
-):
-    """Admin path keeps the legacy single-user fallback semantics."""
-    from deeptutor.tools import rag_tool
+def test_rag_search_admin_also_requires_kb_name(mu_isolated_root, as_user):
+    import pytest
 
-    sentinel = object()
-
-    async def _stub_search(self, *, query, kb_name, event_sink=None, **kwargs):
-        return {"answer": "stubbed", "kb_name": kb_name, "kb_base_dir": self.kb_base_dir}
-
-    monkeypatch.setattr(
-        "deeptutor.services.rag.service.RAGService.search",
-        _stub_search,
-    )
-
+    rag_search = _rag_search()
     with as_user("u_admin", role="admin"):
-        # Admin / single-user mode passes through the legacy resolver, which
-        # raises a different, KB-resolution error (no admin KBs in the temp
-        # workspace) — the important thing is we do NOT raise the M4 guard.
-        try:
-            asyncio.run(rag_tool.rag_search(query="hi", kb_name=None))
-        except ValueError as exc:
-            assert "No knowledge base selected" not in str(exc)
-        except Exception:
-            # Any other failure mode is fine — we only assert that the
-            # non-admin "deny by default" guard didn't fire.
-            pass
-
-    # Reference sentinel to silence ruff if assertions short-circuit.
-    assert sentinel is not None
+        with pytest.raises(ValueError, match="kb_name"):
+            asyncio.run(rag_search(query="hi", kb_name=""))

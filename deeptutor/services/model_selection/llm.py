@@ -6,6 +6,8 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
+from deeptutor.services.provider_registry import find_by_name
+
 
 @dataclass(frozen=True, slots=True)
 class LLMSelection:
@@ -69,6 +71,10 @@ def list_llm_options(catalog: dict[str, Any]) -> dict[str, Any]:
             continue
         provider = str(profile.get("binding") or "").strip()
         profile_name = str(profile.get("name") or provider or "LLM").strip()
+        # Human-readable provider name from the registry ("OpenRouter",
+        # "VolcEngine Coding Plan", ...) so the UI never shows binding keys.
+        provider_spec = find_by_name(provider)
+        provider_label = provider_spec.label if provider_spec else provider
 
         for model in profile.get("models", []) or []:
             if not isinstance(model, dict):
@@ -85,6 +91,7 @@ def list_llm_options(catalog: dict[str, Any]) -> dict[str, Any]:
                 "model_name": str(model.get("name") or model_value).strip(),
                 "model": model_value,
                 "provider": provider,
+                "provider_label": provider_label,
                 "is_active_default": (
                     profile_id == active_profile_id and model_id == active_model_id
                 ),

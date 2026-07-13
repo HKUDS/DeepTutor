@@ -27,18 +27,18 @@ def mu_isolated_root(tmp_path, monkeypatch) -> Path:
     from deeptutor.multi_user import grants, identity, paths
 
     project_root = tmp_path
-    multi_user_root = tmp_path / "multi-user"
-    system_root = multi_user_root / "_system"
     admin_root = (project_root / "data").resolve()
+    users_root = admin_root / "users"
+    system_root = admin_root / "system"
 
     monkeypatch.setattr(paths, "PROJECT_ROOT", project_root)
-    monkeypatch.setattr(paths, "MULTI_USER_ROOT", multi_user_root)
+    monkeypatch.setattr(paths, "USERS_ROOT", users_root)
     monkeypatch.setattr(paths, "SYSTEM_ROOT", system_root)
     monkeypatch.setattr(paths, "ADMIN_WORKSPACE_ROOT", admin_root)
+    monkeypatch.setattr(paths, "LEGACY_MULTI_USER_ROOT", project_root / "multi-user")
     monkeypatch.setattr(paths, "_path_services", {})
 
     monkeypatch.setattr(identity, "PROJECT_ROOT", project_root)
-    monkeypatch.setattr(identity, "MULTI_USER_ROOT", multi_user_root)
     monkeypatch.setattr(identity, "SYSTEM_ROOT", system_root)
     monkeypatch.setattr(identity, "AUTH_DIR", system_root / "auth")
     monkeypatch.setattr(identity, "USERS_FILE", system_root / "auth" / "users.json")
@@ -73,7 +73,7 @@ def make_user(mu_isolated_root):
             scope = UserScope(
                 kind="user",
                 user_id=uid,
-                root=(mu_isolated_root / "multi-user" / uid).resolve(),
+                root=(mu_isolated_root / "data" / "users" / uid).resolve(),
             )
         return CurrentUser(
             id=uid,

@@ -6,11 +6,14 @@ from typing import Any, Dict
 
 import httpx
 
+from deeptutor.services.llm.openai_http_client import disable_ssl_verify_enabled
+
 from .base import (
     BaseEmbeddingAdapter,
     EmbeddingProviderError,
     EmbeddingRequest,
     EmbeddingResponse,
+    looks_like_multimodal_embedding_model,
 )
 
 logger = logging.getLogger(__name__)
@@ -149,15 +152,21 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
             headers["Authorization"] = f"Bearer {api_key}"
         headers.update({str(k): str(v) for k, v in self.extra_headers.items()})
 
-        # Multimodal: pass `contents` through as `input` when set. SiliconFlow's
-        # Qwen3-VL family accepts mixed [{"text"}, {"image"}] arrays in `input`.
-        # Pure text-only OpenAI rejects them; that's on the user to pair models
-        # and providers correctly.
+        # Multimodal: pass `contents` through as `input` only for model names
+        # that clearly advertise image/vision embedding support. This prevents
+        # image indexing from accidentally hitting ordinary text-embedding
+        # models just because the provider family has some multimodal models.
+        model = request.model or self.model
+        if request.contents and not looks_like_multimodal_embedding_model(model):
+            raise ValueError(
+                f"OpenAI-compatible embedding model '{model}' does not support "
+                "multimodal `contents`."
+            )
         input_payload: Any = request.contents if request.contents else request.texts
 
         payload = {
             "input": input_payload,
-            "model": request.model or self.model,
+            "model": model,
             "encoding_format": request.encoding_format or "float",
         }
 
@@ -167,7 +176,7 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
         # supports the param — other providers (e.g. Qwen text-embedding-v4 via
         # litellm gateway) return HTTP 400 if we send it.
         dim_value = request.dimensions or self.dimensions
-        if dim_value and self._should_send_dimensions(request.model or self.model):
+        if dim_value and self._should_send_dimensions(model):
             payload["dimensions"] = dim_value
 
         # URL transparency: hit `base_url` verbatim. Azure's `?api-version=...`
@@ -190,7 +199,9 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
         last_exc: Exception | None = None
         for attempt in range(1 + self._MAX_RETRIES):
             try:
-                async with httpx.AsyncClient(timeout=timeout) as client:
+                async with httpx.AsyncClient(
+                    timeout=timeout, verify=not disable_ssl_verify_enabled()
+                ) as client:
                     response = await client.post(url, json=payload, headers=headers)
 
                     # Handle rate limiting (429) with retry
@@ -212,7 +223,7 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
                             f"Embedding provider returned HTTP {response.status_code}",
                             status=response.status_code,
                             body=body_text,
-                            model=request.model or self.model,
+                            model=model,
                             url=url,
                             provider="openai_compat",
                         )
@@ -249,7 +260,7 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
                             ),
                             status=response.status_code,
                             body=body_text,
-                            model=request.model or self.model,
+                            model=model,
                             url=url,
                             provider="openai_compat",
                         ) from exc
@@ -287,7 +298,7 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
         expected_dims = request.dimensions or self.dimensions
         model_name = data.get("model") if isinstance(data, dict) else None
         if not model_name:
-            model_name = request.model or self.model
+            model_name = model
 
         if expected_dims and actual_dims != expected_dims:
             logger.warning(
@@ -316,6 +327,7 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
                 "dimensions": model_info.get("default", self.dimensions),
                 "supported_dimensions": model_info.get("dimensions", []),
                 "supports_variable_dimensions": len(model_info.get("dimensions", [])) > 1,
+                "multimodal": looks_like_multimodal_embedding_model(self.model),
                 "provider": "openai_compatible",
             }
         else:
@@ -323,5 +335,6 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
                 "model": self.model,
                 "dimensions": model_info or self.dimensions,
                 "supports_variable_dimensions": False,
+                "multimodal": looks_like_multimodal_embedding_model(self.model),
                 "provider": "openai_compatible",
             }

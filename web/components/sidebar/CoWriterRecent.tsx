@@ -2,24 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   listCoWriterDocuments,
   type CoWriterDocumentSummary,
 } from "@/lib/co-writer-api";
 import { subscribeCoWriterChanges } from "@/lib/co-writer-events";
-
-function relativeTime(seconds: number): string {
-  if (!seconds || Number.isNaN(seconds)) return "";
-  const diff = Date.now() / 1000 - seconds;
-  if (diff < 60) return "now";
-  const mins = Math.floor(diff / 60);
-  if (mins < 60) return `${mins}m`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d`;
-}
+import { formatRelativeTime } from "@/lib/relative-time";
 
 interface CoWriterRecentProps {
   collapsed?: boolean;
@@ -30,29 +20,36 @@ export function CoWriterRecent({
   collapsed = false,
   limit = 4,
 }: CoWriterRecentProps) {
+  const { i18n } = useTranslation();
   const [docs, setDocs] = useState<CoWriterDocumentSummary[]>([]);
   const pathname = usePathname();
-  const limitRef = useRef(limit);
-  limitRef.current = limit;
-
-  const refresh = useCallback(async () => {
-    try {
-      const items = await listCoWriterDocuments();
-      setDocs(items.slice(0, limitRef.current));
-    } catch {
-      /* ignore */
-    }
-  }, []);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh, pathname]);
+    let active = true;
+    void listCoWriterDocuments()
+      .then((items) => {
+        if (active) setDocs(items.slice(0, limit));
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [limit, pathname]);
 
   useEffect(() => {
-    return subscribeCoWriterChanges(() => {
-      void refresh();
+    let active = true;
+    const unsubscribe = subscribeCoWriterChanges(() => {
+      void listCoWriterDocuments()
+        .then((items) => {
+          if (active) setDocs(items.slice(0, limit));
+        })
+        .catch(() => {});
     });
-  }, [refresh]);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [limit]);
 
   if (docs.length === 0) return null;
 
@@ -71,7 +68,7 @@ export function CoWriterRecent({
             {doc.title || "Untitled draft"}
           </span>
           <span className="shrink-0 text-[10px] tabular-nums text-[var(--muted-foreground)]/40">
-            {relativeTime(Number(doc.updated_at) || 0)}
+            {formatRelativeTime(Number(doc.updated_at) || 0, i18n.language)}
           </span>
         </Link>
       ))}

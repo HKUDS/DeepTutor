@@ -13,9 +13,8 @@ Usage:
     # With provider
     result = web_search("What is AI?", provider="tavily")
 
-Environment Variables:
-    - SEARCH_PROVIDER: Default search provider (default: brave)
-    - SEARCH_API_KEY: Unified API key for all providers
+Configuration:
+    Search profiles live in data/user/settings/model_catalog.json.
 
 Available Providers:
     - brave: Brave web search API

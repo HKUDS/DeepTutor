@@ -4,7 +4,8 @@
 # Mirrors pyproject.toml `[project.optional-dependencies].server`.
 # Keep in sync with pyproject.toml when adding/updating dependencies.
 #
-# Preferred install (from a source clone): pip install -e ".[server]"
+# Public install: pip install deeptutor
+# Source install: pip install -e .
 # Use this file for Docker/CI when pyproject.toml/source code aren't yet available.
 
 -r cli.txt
@@ -20,9 +21,11 @@ bcrypt>=4.0.0
 python-jose[cryptography]>=3.3.0
 
 # --- PocketBase (optional sidecar backend) ---
-# Only used when POCKETBASE_URL is set in the environment.
+# Only used when integrations.pocketbase_url is configured.
 pocketbase>=0.12.0
 
 # --- LLM provider runtime (unconditionally imported by provider_core) ---
 loguru>=0.7.3,<1.0.0
 json-repair>=0.57.0,<1.0.0
+# Built-in cron service (chat & partner scheduled tasks)
+croniter>=6.0.0,<7.0.0

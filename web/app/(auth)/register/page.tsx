@@ -3,9 +3,11 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useTranslation } from "react-i18next";
 import { register, checkIsFirstUser, fetchAuthStatus } from "@/lib/auth";
 
 export default function RegisterPage() {
+  const { t } = useTranslation();
   const router = useRouter();
 
   const [username, setUsername] = useState("");
@@ -34,7 +36,7 @@ export default function RegisterPage() {
     setError("");
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError(t("Passwords do not match"));
       return;
     }
 
@@ -44,7 +46,7 @@ export default function RegisterPage() {
     if (result.ok) {
       router.replace("/login?registered=1");
     } else {
-      setError(result.error ?? "Registration failed");
+      setError(result.error ?? t("Registration failed"));
       setLoading(false);
     }
   }
@@ -53,37 +55,39 @@ export default function RegisterPage() {
     <div className="w-full max-w-sm">
       {/* Logo / Title */}
       <div className="text-center mb-8">
-        <h1 className="text-2xl font-semibold text-[var(--foreground)] tracking-tight">
+        <h1 className="font-serif text-2xl font-semibold text-[var(--foreground)] tracking-tight">
           DeepTutor
         </h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-          Create your account
+          {t("Create your account")}
         </p>
       </div>
 
       {/* First-user notice */}
       {!checkingFirst && isFirst && (
         <div className="mb-4 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-600 dark:text-blue-400">
-          <strong>First user:</strong> You will be granted admin privileges and
-          can manage other users from the admin dashboard.
+          <strong>{t("First user:")}</strong>{" "}
+          {t(
+            "You will be granted admin privileges and can manage other users from the admin dashboard.",
+          )}
         </div>
       )}
 
       {/* Card */}
       <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl shadow-sm px-8 py-8">
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Email */}
+          {/* Email or username */}
           <div>
             <label
               htmlFor="username"
               className="block text-sm font-medium text-[var(--foreground)] mb-1.5"
             >
-              Email
+              {t("Email or username")}
             </label>
             <input
               id="username"
-              type="email"
-              autoComplete="email"
+              type="text"
+              autoComplete="username"
               required
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -102,7 +106,7 @@ export default function RegisterPage() {
               htmlFor="password"
               className="block text-sm font-medium text-[var(--foreground)] mb-1.5"
             >
-              Password
+              {t("Password")}
             </label>
             <input
               id="password"
@@ -119,7 +123,7 @@ export default function RegisterPage() {
               placeholder="••••••••"
             />
             <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-              At least 8 characters
+              {t("At least 8 characters")}
             </p>
           </div>
 
@@ -129,7 +133,7 @@ export default function RegisterPage() {
               htmlFor="confirmPassword"
               className="block text-sm font-medium text-[var(--foreground)] mb-1.5"
             >
-              Confirm password
+              {t("Confirm password")}
             </label>
             <input
               id="confirmPassword"
@@ -164,18 +168,18 @@ export default function RegisterPage() {
                        disabled:opacity-50 disabled:cursor-not-allowed
                        transition-opacity"
           >
-            {loading ? "Creating account…" : "Create account"}
+            {loading ? t("Creating account…") : t("Create account")}
           </button>
         </form>
       </div>
 
       <p className="mt-6 text-center text-sm text-[var(--muted-foreground)]">
-        Already have an account?{" "}
+        {t("Already have an account?")}{" "}
         <Link
           href="/login"
           className="text-[var(--primary)] hover:underline font-medium"
         >
-          Sign in
+          {t("Sign in")}
         </Link>
       </p>
 

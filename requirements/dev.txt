@@ -14,3 +14,12 @@ pytest-asyncio>=0.23.0
 pre-commit>=3.0.0
 safety<3.0.0
 bandit>=1.8.0
+
+# --- Test fixture builders for document-loader tests ---
+# These are also pulled by cli.txt at runtime; keep explicit here so dev/test
+# installs have the imports needed during pytest collection.
+python-docx>=1.1.0
+openpyxl>=3.1.0
+python-pptx>=1.0.0
+pypdf>=4.0.0
+defusedxml>=0.7.1

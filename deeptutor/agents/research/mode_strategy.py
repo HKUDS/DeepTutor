@@ -99,7 +99,7 @@ STRATEGIES: dict[ResearchMode, ModeStrategy] = {
     "notes": ModeStrategy(
         name="notes",
         style="study_notes",
-        rephrase_enabled=False,
+        rephrase_enabled=True,
         decompose_mode="manual",
         single_pass_threshold=99,
         min_section_length=260,
@@ -107,7 +107,7 @@ STRATEGIES: dict[ResearchMode, ModeStrategy] = {
     "report": ModeStrategy(
         name="report",
         style="report",
-        rephrase_enabled=False,
+        rephrase_enabled=True,
         decompose_mode="auto",
         single_pass_threshold=2,
         min_section_length=650,

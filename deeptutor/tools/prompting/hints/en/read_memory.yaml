@@ -1,0 +1,6 @@
+short_description: "Read the user's persistent memory: recent learning summary, profile, knowledge scope, and explicit preferences."
+when_to_use: "When the answer's tone, depth, examples, or recommendations can be meaningfully personalised to THIS user. Skip for pure factual / computational / translation questions."
+input_format: "No parameters. Returns all four L3 documents concatenated."
+guideline: "Call at most once per turn. Use memory to shape HOW you explain — examples, depth, follow-ups. Do NOT quote memory back at the user as factual content."
+note: "When the user hasn't built up memory yet, returns a `(No memory available...)` notice — treat as a generic question."
+phase: "exploration"

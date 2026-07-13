@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
 from fastapi import HTTPException
+import pytest
 
 from deeptutor.multi_user import grants as grants_mod
 from deeptutor.multi_user.skill_access import (
@@ -31,9 +31,7 @@ def _grant_skills(uid: str, names: list[str]) -> None:
 
 
 def test_assigned_skill_loads_admin_skill_body(mu_isolated_root, as_user):
-    admin_skills_root = (
-        mu_isolated_root / "data" / "user" / "workspace" / "skills"
-    ).resolve()
+    admin_skills_root = (mu_isolated_root / "data" / "user" / "workspace" / "skills").resolve()
     _write_skill(admin_skills_root, "research-mode", "Use citations rigorously.")
 
     _grant_skills("u_alice", ["research-mode"])

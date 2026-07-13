@@ -1,0 +1,19 @@
+# ============================================
+# DeepTutor Matrix E2EE Add-on — Dependencies
+# ============================================
+# Mirrors pyproject.toml `[project.optional-dependencies].matrix-e2e`.
+# Keep in sync with pyproject.toml when adding/updating dependencies.
+#
+# Preferred install (from a source clone): pip install -e ".[matrix-e2e]"
+# Use this file for Docker/CI when pyproject.toml/source code aren't yet available.
+#
+# Note: matrix-nio[e2e] pulls python-olm, which requires the libolm native library.
+# On macOS:
+#   brew install libolm
+# On Debian/Ubuntu:
+#   apt-get install libolm-dev
+
+-r matrix.txt
+
+# --- Matrix E2EE support ---
+matrix-nio[e2e]>=0.25.2,<1.0.0

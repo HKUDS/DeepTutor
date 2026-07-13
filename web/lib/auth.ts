@@ -1,6 +1,11 @@
-import { apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl, setRuntimeAuthEnabled } from "@/lib/api";
 
-export const AUTH_ENABLED = process.env.NEXT_PUBLIC_AUTH_ENABLED === "true";
+// Auth state is resolved at runtime from the backend (`/api/v1/auth/status`),
+// not from a build-time/env constant: the browser bundle never sees
+// `DEEPTUTOR_AUTH_ENABLED` (not a `NEXT_PUBLIC_` var), and auth is runtime
+// config that must not be baked into the bundle. Components observe it via the
+// `useAuthStatus` hook (web/hooks/useAuthStatus.ts); `apiFetch`'s redirect gate
+// is driven by `setRuntimeAuthEnabled`, which `fetchAuthStatus` calls below.
 
 export interface AuthStatus {
   enabled: boolean;
@@ -9,6 +14,8 @@ export interface AuthStatus {
   username?: string;
   role?: string;
   is_admin?: boolean;
+  /** Avatar marker: "", "icon:<name>:<color>", or "img:<version>". */
+  avatar?: string;
 }
 
 /**
@@ -17,11 +24,13 @@ export interface AuthStatus {
  */
 export async function fetchAuthStatus(): Promise<AuthStatus | null> {
   try {
-    const res = await fetch(apiUrl("/api/v1/auth/status"), {
-      credentials: "include",
-    });
+    const res = await apiFetch(apiUrl("/api/v1/auth/status"));
     if (!res.ok) return null;
-    return res.json();
+    const status: AuthStatus = await res.json();
+    // Record the real auth state so apiFetch's in-session 401 → /login redirect
+    // fires only when auth is actually enabled.
+    setRuntimeAuthEnabled(Boolean(status.enabled));
+    return status;
   } catch {
     return null;
   }
@@ -35,11 +44,13 @@ export async function login(
   password: string,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch(apiUrl("/api/v1/auth/login"), {
+    const res = await apiFetch(apiUrl("/api/v1/auth/login"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      credentials: "include",
       body: JSON.stringify({ username, password }),
+      // A 401 here means "wrong credentials", not an expired session — handle it
+      // inline as a form error instead of triggering the global login redirect.
+      skipAuthRedirect: true,
     });
 
     if (res.ok) return { ok: true };
@@ -79,11 +90,13 @@ export async function register(
   error?: string;
 }> {
   try {
-    const res = await fetch(apiUrl("/api/v1/auth/register"), {
+    const res = await apiFetch(apiUrl("/api/v1/auth/register"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      credentials: "include",
       body: JSON.stringify({ username, password }),
+      // Registration validation failures (e.g. 400/401) should surface inline
+      // rather than bounce the user through the global login redirect.
+      skipAuthRedirect: true,
     });
 
     const data = await res.json().catch(() => ({}));
@@ -100,9 +113,7 @@ export async function register(
  */
 export async function checkIsFirstUser(): Promise<boolean> {
   try {
-    const res = await fetch(apiUrl("/api/v1/auth/is_first_user"), {
-      credentials: "include",
-    });
+    const res = await apiFetch(apiUrl("/api/v1/auth/is_first_user"));
     if (!res.ok) return false;
     const data = await res.json();
     return Boolean(data.is_first_user);
@@ -116,9 +127,8 @@ export async function checkIsFirstUser(): Promise<boolean> {
  */
 export async function logout(): Promise<void> {
   try {
-    await fetch(apiUrl("/api/v1/auth/logout"), {
+    await apiFetch(apiUrl("/api/v1/auth/logout"), {
       method: "POST",
-      credentials: "include",
     });
   } catch {
     // Ignore — we'll redirect regardless

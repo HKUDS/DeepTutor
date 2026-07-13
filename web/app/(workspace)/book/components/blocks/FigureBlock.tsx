@@ -5,15 +5,15 @@ import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import { useTranslation } from "react-i18next";
 import type { Block } from "@/lib/book-types";
 import type {
-  VisualizeRenderType,
   VisualizeResult,
+  VisualizeTextRenderType,
 } from "@/lib/visualize-types";
 
 export interface FigureBlockProps {
   block: Block;
 }
 
-const FIGURE_RENDER_TYPES: ReadonlySet<VisualizeRenderType> = new Set([
+const FIGURE_RENDER_TYPES: ReadonlySet<VisualizeTextRenderType> = new Set([
   "svg",
   "chartjs",
   "mermaid",
@@ -22,12 +22,12 @@ const FIGURE_RENDER_TYPES: ReadonlySet<VisualizeRenderType> = new Set([
 function coerceRenderType(
   value: unknown,
   language: string,
-): VisualizeRenderType {
+): VisualizeTextRenderType {
   if (
     typeof value === "string" &&
     (FIGURE_RENDER_TYPES as Set<string>).has(value)
   ) {
-    return value as VisualizeRenderType;
+    return value as VisualizeTextRenderType;
   }
   if (language === "javascript" || language === "js") return "chartjs";
   if (language === "mermaid") return "mermaid";

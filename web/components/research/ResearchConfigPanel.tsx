@@ -17,9 +17,13 @@ import {
 interface ResearchConfigPanelProps {
   value: DeepResearchFormConfig;
   errors: Record<string, string>;
-  collapsed: boolean;
+  /**
+   * When provided, the panel is wrapped in a `CollapsibleConfigSection`.
+   * Omit both to render bare for the chat Activity panel.
+   */
+  collapsed?: boolean;
   onChange: (next: DeepResearchFormConfig) => void;
-  onToggleCollapsed: () => void;
+  onToggleCollapsed?: () => void;
 }
 
 // Note: `label` values are i18n keys resolved via `t(...)` at render time so
@@ -93,13 +97,8 @@ export default memo(function ResearchConfigPanel({
   const summary =
     rawSummary === t("Incomplete settings") ? undefined : rawSummary;
 
-  return (
-    <CollapsibleConfigSection
-      collapsed={collapsed}
-      summary={summary}
-      onToggleCollapsed={onToggleCollapsed}
-      bodyClassName="space-y-2 px-3.5 pb-2.5"
-    >
+  const body = (
+    <>
       <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
         <Field label={t("Mode")} width="min-w-[130px] flex-1">
           <select
@@ -148,6 +147,21 @@ export default memo(function ResearchConfigPanel({
           />
         </div>
       )}
+    </>
+  );
+
+  if (collapsed === undefined) {
+    return <div className="space-y-2 px-3.5 py-2.5">{body}</div>;
+  }
+
+  return (
+    <CollapsibleConfigSection
+      collapsed={collapsed}
+      summary={summary}
+      onToggleCollapsed={onToggleCollapsed ?? (() => undefined)}
+      bodyClassName="space-y-2 px-3.5 pb-2.5"
+    >
+      {body}
     </CollapsibleConfigSection>
   );
 });

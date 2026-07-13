@@ -12,6 +12,8 @@ Supported client message ``type`` values:
 - ``resume_from`` — resume an in-flight turn after reconnection.
 - ``unsubscribe`` — stop a previously created subscription.
 - ``cancel_turn`` — cancel a running turn.
+- ``submit_user_reply`` — deliver the user's reply for an ``ask_user``
+  paused turn so the agentic loop can resume on the same turn.
 - ``regenerate`` — re-run the last user message in the given session as a
   brand-new turn. Replaces the trailing assistant message (if any) and
   reuses the session's stored capability/tools/preferences. Optional
@@ -19,6 +21,11 @@ Supported client message ``type`` values:
   ``language``, ``config``, ``notebook_references``, ``history_references``.
   Errors: ``regenerate_busy`` (another turn is running) and
   ``nothing_to_regenerate`` (no prior user message).
+- ``check_active_turn`` — report whether the session has a live running turn;
+  replies with ``active_turn_info`` (``turn_id``/``status``), marking stale
+  persisted "running" rows as cancelled when no live execution exists.
+- ``user_input`` — deliver a learner answer to the turn's StreamBus
+  (resolves a pending ``wait_for_input``, e.g. an ``ask_user`` pause).
 """
 
 from __future__ import annotations
@@ -36,25 +43,12 @@ logger = logging.getLogger(__name__)
 
 @router.websocket("/ws")
 async def unified_websocket(ws: WebSocket) -> None:
-    # Auth check — mirrors the require_auth HTTP dependency.
-    # Token is read from the ?token= query param (WebSocket headers can't
-    # carry cookies cross-origin in all browsers).
-    # Uses the same local jwt.decode() path — no network call.
-    from deeptutor.multi_user.context import reset_current_user, set_current_user
-    from deeptutor.multi_user.context import user_from_token_payload
-    from deeptutor.multi_user.paths import local_admin_user
-    from deeptutor.services.auth import AUTH_ENABLED, decode_token
+    from deeptutor.api.routers.auth import ws_auth_failed, ws_require_auth
+    from deeptutor.multi_user.context import reset_current_user
 
-    user_token = None
-    if AUTH_ENABLED:
-        token = ws.query_params.get("token") or ws.cookies.get("dt_token")
-        payload = decode_token(token) if token else None
-        if not payload:
-            await ws.close(code=4001)
-            return
-        user_token = set_current_user(user_from_token_payload(payload))
-    else:
-        user_token = set_current_user(local_admin_user())
+    user_token = await ws_require_auth(ws)
+    if user_token is ws_auth_failed:
+        return
 
     await ws.accept()
     closed = False
@@ -65,7 +59,10 @@ async def unified_websocket(ws: WebSocket) -> None:
         if closed:
             return
         try:
-            await ws.send_json(data)
+            # default=str so one non-serializable value inside an event can
+            # never poison the push channel (send_json would raise, flag the
+            # socket as closed, and silently freeze the stream for the user).
+            await ws.send_text(json.dumps(data, ensure_ascii=False, default=str))
         except Exception:
             closed = True
 
@@ -136,6 +133,14 @@ async def unified_websocket(ws: WebSocket) -> None:
                 await subscribe_turn(turn["id"], after_seq=0)
                 continue
 
+            if msg_type == "ping":
+                # Client-side heartbeat. Respond with a lightweight pong so
+                # the client knows the socket is alive; the client never
+                # consumes pong as a user-visible event (see unified-ws.ts
+                # filter below) but does refresh ``lastReceivedAt`` from it.
+                await safe_send({"type": "pong"})
+                continue
+
             if msg_type == "subscribe_turn":
                 turn_id = str(msg.get("turn_id") or "").strip()
                 if not turn_id:
@@ -150,6 +155,41 @@ async def unified_websocket(ws: WebSocket) -> None:
                     await safe_send({"type": "error", "content": "Missing session_id."})
                     continue
                 await subscribe_session(session_id, after_seq=int(msg.get("after_seq") or 0))
+                continue
+
+            if msg_type == "check_active_turn":
+                session_id = str(msg.get("session_id") or "").strip()
+                if not session_id:
+                    await safe_send({"type": "error", "content": "Missing session_id."})
+                    continue
+                from deeptutor.services.session import get_turn_runtime_manager
+
+                runtime = get_turn_runtime_manager()
+                active_turn = await runtime.store.get_active_turn(session_id)
+                if active_turn:
+                    # Verify the turn has a live execution; stale persisted
+                    # "running" rows (e.g. after server restart) have none.
+                    turn_id = active_turn["id"]
+                    has_live = await runtime.has_live_execution(turn_id)
+                    if has_live:
+                        await safe_send(
+                            {
+                                "type": "active_turn_info",
+                                "turn_id": turn_id,
+                                "status": active_turn.get("status", "running"),
+                            }
+                        )
+                    else:
+                        # Stale turn from a previous process — mark it terminal
+                        # so create_turn won't reject the upcoming start_turn.
+                        await runtime.store.update_turn_status(
+                            turn_id, "cancelled", "Stale turn after restart"
+                        )
+                        await safe_send(
+                            {"type": "active_turn_info", "turn_id": "", "status": "none"}
+                        )
+                else:
+                    await safe_send({"type": "active_turn_info", "turn_id": "", "status": "none"})
                 continue
 
             if msg_type == "resume_from":
@@ -180,6 +220,42 @@ async def unified_websocket(ws: WebSocket) -> None:
                 cancelled = await runtime.cancel_turn(turn_id)
                 if not cancelled:
                     await safe_send({"type": "error", "content": f"Turn not found: {turn_id}"})
+                continue
+
+            if msg_type == "submit_user_reply":
+                turn_id = str(msg.get("turn_id") or "").strip()
+                if not turn_id:
+                    await safe_send({"type": "error", "content": "Missing turn_id."})
+                    continue
+                # Accept either the legacy ``text`` (single free-form
+                # reply) or the v2 ``answers`` (list of {questionId, text}
+                # pairs). Empty text is allowed (lets the user signal "I
+                # have no answer" without typing).
+                text = msg.get("text")
+                text_str = str(text) if text is not None else None
+                answers_raw = msg.get("answers")
+                answers: list[dict[str, Any]] | None = None
+                if isinstance(answers_raw, list):
+                    cleaned: list[dict[str, Any]] = []
+                    for entry in answers_raw:
+                        if not isinstance(entry, dict):
+                            continue
+                        qid = str(entry.get("questionId") or entry.get("id") or "").strip()
+                        if not qid:
+                            continue
+                        cleaned.append({"questionId": qid, "text": str(entry.get("text") or "")})
+                    answers = cleaned or None
+                from deeptutor.services.session import get_turn_runtime_manager
+
+                runtime = get_turn_runtime_manager()
+                accepted = await runtime.submit_user_reply(turn_id, text=text_str, answers=answers)
+                if not accepted:
+                    await safe_send(
+                        {
+                            "type": "error",
+                            "content": (f"Turn {turn_id} is not awaiting a user reply."),
+                        }
+                    )
                 continue
 
             if msg_type == "regenerate":
@@ -215,6 +291,22 @@ async def unified_websocket(ws: WebSocket) -> None:
                     )
                     continue
                 await subscribe_turn(turn["id"], after_seq=0)
+                continue
+
+            if msg_type == "user_input":
+                turn_id = str(msg.get("turn_id") or "").strip()
+                if not turn_id:
+                    await safe_send({"type": "error", "content": "Missing turn_id for user_input."})
+                    continue
+                from deeptutor.core.stream_bus import get_bus
+
+                bus = get_bus(turn_id)
+                if bus is None:
+                    await safe_send(
+                        {"type": "error", "content": f"No active bus for turn: {turn_id}"}
+                    )
+                    continue
+                bus.submit_input(str(msg.get("content") or ""))
                 continue
 
             await safe_send({"type": "error", "content": f"Unknown type: {msg_type}"})

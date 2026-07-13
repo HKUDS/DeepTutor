@@ -1,6 +1,6 @@
-import type { LLMSelection, StreamEvent } from "@/lib/unified-ws";
-import { apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl } from "@/lib/api";
 import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
+import type { LLMSelection, StreamEvent } from "@/lib/unified-ws";
 
 export interface SessionMessage {
   id: number;
@@ -17,9 +17,14 @@ export interface SessionMessage {
     mime_type?: string;
     id?: string;
     extracted_text?: string;
+    generated?: boolean;
+    size_bytes?: number;
   }>;
   metadata?: Record<string, unknown>;
   created_at: number;
+  /** Edit-branching: id of the message this row continues. `null` for the
+   *  first message in a session. Siblings share the same parent. */
+  parent_message_id?: number | null;
 }
 
 export interface SessionSummary {
@@ -44,6 +49,12 @@ export interface SessionSummary {
     knowledge_bases?: string[];
     language?: string;
     llm_selection?: LLMSelection | null;
+    /** Session-level persona preference; "" / absent = Default (no persona). */
+    persona?: string;
+    /** Edit-branching: maps a parent_message_id → the child id currently
+     *  shown at that branch point. Missing keys default to the latest
+     *  sibling (most recently created child). */
+    selected_branches?: Record<string, number>;
   };
 }
 
@@ -82,6 +93,12 @@ export interface SessionDetail {
     knowledge_bases?: string[];
     language?: string;
     llm_selection?: LLMSelection | null;
+    /** Session-level persona preference; "" / absent = Default (no persona). */
+    persona?: string;
+    /** Edit-branching: maps a parent_message_id → the child id currently
+     *  shown at that branch point. Missing keys default to the latest
+     *  sibling (most recently created child). */
+    selected_branches?: Record<string, number>;
   };
   messages: SessionMessage[];
   active_turns?: ActiveTurnSummary[];
@@ -116,14 +133,17 @@ export async function listSessions(
   offset = 0,
   options?: { force?: boolean },
 ): Promise<SessionSummary[]> {
+  const qs = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  });
   return withClientCache<SessionSummary[]>(
     `sessions:${limit}:${offset}`,
     async () => {
-      const response = await fetch(
-        apiUrl(`/api/v1/sessions?limit=${limit}&offset=${offset}`),
+      const response = await apiFetch(
+        apiUrl(`/api/v1/sessions?${qs.toString()}`),
         {
           cache: "no-store",
-          credentials: "include",
         },
       );
       const data = await expectJson<{ sessions: SessionSummary[] }>(response);
@@ -136,10 +156,13 @@ export async function listSessions(
   );
 }
 
-export async function getSession(sessionId: string): Promise<SessionDetail> {
-  const response = await fetch(apiUrl(`/api/v1/sessions/${sessionId}`), {
+export async function getSession(
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<SessionDetail> {
+  const response = await apiFetch(apiUrl(`/api/v1/sessions/${sessionId}`), {
     cache: "no-store",
-    credentials: "include",
+    signal,
   });
   return expectJson<SessionDetail>(response);
 }
@@ -148,10 +171,9 @@ export async function updateSessionTitle(
   sessionId: string,
   title: string,
 ): Promise<SessionDetail> {
-  const response = await fetch(apiUrl(`/api/v1/sessions/${sessionId}`), {
+  const response = await apiFetch(apiUrl(`/api/v1/sessions/${sessionId}`), {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    credentials: "include",
     body: JSON.stringify({ title }),
   });
   const data = await expectJson<{ session: SessionDetail }>(response);
@@ -160,9 +182,8 @@ export async function updateSessionTitle(
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {
-  const response = await fetch(apiUrl(`/api/v1/sessions/${sessionId}`), {
+  const response = await apiFetch(apiUrl(`/api/v1/sessions/${sessionId}`), {
     method: "DELETE",
-    credentials: "include",
   });
   await expectJson<{ deleted: boolean }>(response);
   invalidateClientCache("sessions:");
@@ -171,15 +192,41 @@ export async function deleteSession(sessionId: string): Promise<void> {
 export async function recordQuizResults(
   sessionId: string,
   answers: QuizResultItem[],
+  turnId?: string | null,
 ): Promise<void> {
-  const response = await fetch(
+  const response = await apiFetch(
     apiUrl(`/api/v1/sessions/${sessionId}/quiz-results`),
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ answers }),
+      body: JSON.stringify({ answers, turn_id: turnId || "" }),
     },
   );
   await expectJson<{ recorded: boolean }>(response);
+}
+
+export async function deleteMessage(
+  sessionId: string,
+  messageId: number,
+): Promise<void> {
+  const response = await apiFetch(
+    apiUrl(`/api/v1/sessions/${sessionId}/messages/${messageId}`),
+    { method: "DELETE" },
+  );
+  await expectJson<{ deleted: boolean }>(response);
+}
+
+export async function updateBranchSelection(
+  sessionId: string,
+  selectedBranches: Record<string, number>,
+): Promise<void> {
+  const response = await apiFetch(
+    apiUrl(`/api/v1/sessions/${sessionId}/branch-selection`),
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ selected_branches: selectedBranches }),
+    },
+  );
+  await expectJson<{ selected_branches: Record<string, number> }>(response);
 }

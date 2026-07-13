@@ -21,7 +21,7 @@ Layout (relative to ``data/user/workspace/book/``)::
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import logging
 import os
@@ -80,8 +80,11 @@ class BookStorage:
     """Async-friendly wrapper around the on-disk book layout."""
 
     def __init__(self) -> None:
-        self.path_service = get_path_service()
         self._lock = asyncio.Lock()
+
+    @property
+    def path_service(self):
+        return get_path_service()
 
     # ── Path helpers ─────────────────────────────────────────────────────
 
@@ -247,7 +250,7 @@ class BookStorage:
     def append_log(self, book_id: str, message: str, *, op: str = "info") -> None:
         path = self.path_service.get_book_log_file(book_id)
         path.parent.mkdir(parents=True, exist_ok=True)
-        ts = datetime.utcnow().isoformat(timespec="seconds")
+        ts = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds")
         line = f"- `{ts}Z` **{op}** — {message.strip()}\n"
         with open(path, "a", encoding="utf-8") as f:
             f.write(line)
@@ -262,14 +265,14 @@ class BookStorage:
         return not root.exists()
 
 
-_storage: BookStorage | None = None
+_storages: dict[str, BookStorage] = {}
 
 
 def get_book_storage() -> BookStorage:
-    global _storage
-    if _storage is None:
-        _storage = BookStorage()
-    return _storage
+    key = str(get_path_service().workspace_root.resolve())
+    if key not in _storages:
+        _storages[key] = BookStorage()
+    return _storages[key]
 
 
 __all__ = ["BookStorage", "get_book_storage"]

@@ -58,6 +58,8 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(false);
 
   useEffect(() => {
+    // Hydrate client-only preferences after SSR-safe first render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLanguageState(readStoredLanguage());
     setSidebarCollapsedState(readStoredSidebarCollapsed());
   }, []);

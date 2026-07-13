@@ -11,6 +11,23 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 
+def looks_like_multimodal_embedding_model(model_name: Optional[str]) -> bool:
+    """Best-effort guard for OpenAI-compatible multimodal embedding models."""
+    if not model_name:
+        return False
+    normalized = model_name.lower().replace("_", "-")
+    return any(
+        marker in normalized
+        for marker in (
+            "qwen3-vl-embedding",
+            "multimodal-embedding",
+            "vision-embedding",
+            "vl-embedding",
+            "image-embedding",
+        )
+    )
+
+
 @dataclass
 class EmbeddingRequest:
     """

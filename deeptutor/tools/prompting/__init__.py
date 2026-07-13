@@ -91,13 +91,34 @@ class ToolPromptComposer:
     def __init__(self, language: str = "en") -> None:
         self.language = _normalize_language(language)
 
-    def format_list(self, hints: list[ToolHintEntry], kb_name: str = "") -> str:
+    def format_list(self, hints: list[ToolHintEntry]) -> str:
         lines: list[str] = []
         for name, hint in hints:
-            description = self._apply_kb_name(hint.short_description, kb_name)
-            if description:
-                lines.append(f"- {name}: {description}")
+            if hint.short_description:
+                lines.append(f"- {name}: {hint.short_description}")
         return "\n".join(lines)
+
+    def format_list_with_usage(self, hints: list[ToolHintEntry]) -> str:
+        """Per-tool bullet that includes ``when_to_use`` and ``input_format``.
+
+        Used by the chat persona prompt so the LLM has enough per-tool
+        guidance to decide *whether* to call it, not just *what it is*.
+        Tools without a ``short_description`` are skipped entirely so the
+        block never carries empty bullets.
+        """
+        when_label = "When to use" if self.language != "zh" else "适用场景"
+        input_label = "Input" if self.language != "zh" else "参数格式"
+        blocks: list[str] = []
+        for name, hint in hints:
+            if not hint.short_description:
+                continue
+            entry: list[str] = [f"- `{name}` — {hint.short_description}"]
+            if hint.when_to_use:
+                entry.append(f"    {when_label}: {hint.when_to_use}")
+            if hint.input_format:
+                entry.append(f"    {input_label}: {hint.input_format}")
+            blocks.append("\n".join(entry))
+        return "\n".join(blocks)
 
     def format_table(
         self,
@@ -176,13 +197,6 @@ class ToolPromptComposer:
             label = labels.get(phase, labels["other"])
             sections.append(f"**{label}**\n" + "\n".join(items))
         return "\n\n".join(sections)
-
-    @staticmethod
-    def _apply_kb_name(text: str, kb_name: str) -> str:
-        if not kb_name or not text:
-            return text
-        updated = text.replace("the uploaded knowledge base", f'the knowledge base "{kb_name}"')
-        return updated.replace("已上传知识库", f'知识库 "{kb_name}"')
 
 
 __all__ = ["ToolPromptComposer", "load_prompt_hints"]

@@ -15,15 +15,15 @@ from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
 from deeptutor.services.llm.config import get_llm_config
 from deeptutor.services.settings.interface_settings import get_ui_language
 
-# Initialize logger
 config = load_config_with_main("main.yaml", PROJECT_ROOT)
 log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {}).get("log_dir")
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Initialize session manager
-session_manager = SessionManager()
+
+def _get_session_manager() -> SessionManager:
+    return SessionManager()
 
 
 # =============================================================================
@@ -33,30 +33,12 @@ session_manager = SessionManager()
 
 @router.get("/chat/sessions")
 async def list_sessions(limit: int = 20):
-    """
-    List recent chat sessions.
-
-    Args:
-        limit: Maximum number of sessions to return
-
-    Returns:
-        List of session summaries
-    """
-    return session_manager.list_sessions(limit=limit, include_messages=False)
+    return _get_session_manager().list_sessions(limit=limit, include_messages=False)
 
 
 @router.get("/chat/sessions/{session_id}")
 async def get_session(session_id: str):
-    """
-    Get a specific chat session with full message history.
-
-    Args:
-        session_id: Session identifier
-
-    Returns:
-        Complete session data including messages
-    """
-    session = session_manager.get_session(session_id)
+    session = _get_session_manager().get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     return session
@@ -64,16 +46,7 @@ async def get_session(session_id: str):
 
 @router.delete("/chat/sessions/{session_id}")
 async def delete_session(session_id: str):
-    """
-    Delete a chat session.
-
-    Args:
-        session_id: Session identifier
-
-    Returns:
-        Success message
-    """
-    if session_manager.delete_session(session_id):
+    if _get_session_manager().delete_session(session_id):
         return {"status": "deleted", "session_id": session_id}
     raise HTTPException(status_code=404, detail="Session not found")
 
@@ -85,35 +58,18 @@ async def delete_session(session_id: str):
 
 @router.websocket("/chat")
 async def websocket_chat(websocket: WebSocket):
-    """
-    WebSocket endpoint for chat with session and context management.
+    from deeptutor.api.routers.auth import ws_auth_failed, ws_require_auth
+    from deeptutor.multi_user.context import reset_current_user
 
-    Message format:
-    {
-        "message": str,              # User message
-        "session_id": str | null,    # Session ID (null for new session)
-        "history": [...] | null,     # Optional: explicit history override
-        "kb_name": str,              # Knowledge base name (for RAG)
-        "enable_rag": bool,          # Enable RAG retrieval
-        "enable_web_search": bool    # Enable Web Search
-    }
+    user_token = await ws_require_auth(websocket)
+    if user_token is ws_auth_failed:
+        return
 
-    Response format:
-    - {"type": "session", "session_id": str}           # Session ID (new or existing)
-    - {"type": "status", "stage": str, "message": str} # Status updates
-    - {"type": "stream", "content": str}               # Streaming response chunks
-    - {"type": "sources", "rag": list, "web": list}    # Source citations
-    - {"type": "result", "content": str}               # Final complete response
-    - {"type": "error", "message": str}                # Error message
-    """
     await websocket.accept()
 
     try:
         while True:
-            # Receive message
             data = await websocket.receive_json()
-            # Prefer the client-sent UI language for this turn; fall back to
-            # persisted Settings so prompt loading tracks the language switch.
             requested_language = str(data.get("language") or "").lower().strip()
             language = (
                 "zh"
@@ -124,7 +80,7 @@ async def websocket_chat(websocket: WebSocket):
             )
             message = data.get("message", "").strip()
             session_id = data.get("session_id")
-            explicit_history = data.get("history")  # Optional override
+            explicit_history = data.get("history")
             kb_name = data.get("kb_name", "")
             enable_rag = data.get("enable_rag", False)
             enable_web_search = data.get("enable_web_search", False)
@@ -139,12 +95,12 @@ async def websocket_chat(websocket: WebSocket):
             )
 
             try:
-                # Get or create session
+                sm = _get_session_manager()
+
                 if session_id:
-                    session = session_manager.get_session(session_id)
+                    session = sm.get_session(session_id)
                     if not session:
-                        # Session not found, create new one
-                        session = session_manager.create_session(
+                        session = sm.create_session(
                             title=message[:50] + ("..." if len(message) > 50 else ""),
                             settings={
                                 "kb_name": kb_name,
@@ -154,8 +110,7 @@ async def websocket_chat(websocket: WebSocket):
                         )
                         session_id = session["session_id"]
                 else:
-                    # Create new session
-                    session = session_manager.create_session(
+                    session = sm.create_session(
                         title=message[:50] + ("..." if len(message) > 50 else ""),
                         settings={
                             "kb_name": kb_name,
@@ -165,7 +120,6 @@ async def websocket_chat(websocket: WebSocket):
                     )
                     session_id = session["session_id"]
 
-                # Send session ID to frontend
                 await websocket.send_json(
                     {
                         "type": "session",
@@ -173,24 +127,20 @@ async def websocket_chat(websocket: WebSocket):
                     }
                 )
 
-                # Build history from session or explicit override
                 if explicit_history is not None:
                     history = explicit_history
                 else:
-                    # Get history from session messages
                     history = [
                         {"role": msg["role"], "content": msg["content"]}
                         for msg in session.get("messages", [])
                     ]
 
-                # Add user message to session
-                session_manager.add_message(
+                sm.add_message(
                     session_id=session_id,
                     role="user",
                     content=message,
                 )
 
-                # Initialize ChatAgent
                 try:
                     llm_config = get_llm_config()
                     api_key = llm_config.api_key
@@ -209,7 +159,6 @@ async def websocket_chat(websocket: WebSocket):
                     api_version=api_version,
                 )
 
-                # Send status updates
                 if enable_rag and kb_name:
                     await websocket.send_json(
                         {
@@ -236,7 +185,6 @@ async def websocket_chat(websocket: WebSocket):
                     }
                 )
 
-                # Process with streaming
                 full_response = ""
                 sources = {"rag": [], "web": []}
 
@@ -262,11 +210,9 @@ async def websocket_chat(websocket: WebSocket):
                         full_response = chunk_data["response"]
                         sources = chunk_data.get("sources", {"rag": [], "web": []})
 
-                # Send sources if any
                 if sources.get("rag") or sources.get("web"):
                     await websocket.send_json({"type": "sources", **sources})
 
-                # Send final result
                 await websocket.send_json(
                     {
                         "type": "result",
@@ -274,8 +220,7 @@ async def websocket_chat(websocket: WebSocket):
                     }
                 )
 
-                # Save assistant message to session
-                session_manager.add_message(
+                sm.add_message(
                     session_id=session_id,
                     role="assistant",
                     content=full_response,
@@ -296,3 +241,9 @@ async def websocket_chat(websocket: WebSocket):
             await websocket.send_json({"type": "error", "message": str(e)})
         except Exception:
             pass
+    finally:
+        if user_token is not None:
+            try:
+                reset_current_user(user_token)
+            except Exception:
+                pass

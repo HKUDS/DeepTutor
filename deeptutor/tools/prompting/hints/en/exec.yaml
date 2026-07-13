@@ -1,0 +1,6 @@
+short_description: "Run a shell command inside an isolated sandbox; returns stdout/stderr + exit code."
+when_to_use: "For data processing, running a skill's bundled scripts, or invoking CLI tools the task needs. Not for destructive or system-management commands."
+input_format: "`command` — the shell command. Optional `timeout` — seconds (default 30, max 300). Runs in this turn's workspace directory."
+guideline: "Prefer non-interactive flags (e.g. `-y`). Keep output small; pipe through `head`/`grep` when a command is chatty. Read a skill's SKILL.md before running its scripts. If the user asks you to create/export a file, run the command, save the file in the workspace, then include any Generated artifacts URL from the tool result in your final answer."
+note: "Destructive patterns (rm -rf, mkfs, shutdown, …) are blocked. The sandbox confines filesystem and network access; commands that need the open internet may fail."
+phase: "expansion"

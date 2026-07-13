@@ -5,18 +5,19 @@
 # No local build required — the image is pulled automatically.
 #
 # Usage:
-#   docker compose -f docker-compose.ghcr.yml up -d
+#   python scripts/docker_compose.py -f docker-compose.ghcr.yml up -d
 #
 # To pin a specific version:
 #   Edit the image tag below, e.g. ghcr.io/hkuds/deeptutor:1.0.0
 #
 # Prerequisites:
-#   1. Copy .env.example to .env and fill in your API keys
-#   2. Read the API URL note below before starting
+#   1. Configure providers in data/user/settings/model_catalog.json or the UI
+#   2. Use scripts/docker_compose.py so port mappings are rendered from system.json
+#   3. Read the API URL note below before starting
 #
 # Local LLM (LM Studio / Ollama / vLLM):
-#   Use "host.docker.internal" instead of "localhost" for LLM_HOST / EMBEDDING_HOST.
-#   See .env.example for details.
+#   Use "host.docker.internal" instead of "localhost" in provider base_url fields.
+#   Configure provider endpoints in data/user/settings/model_catalog.json or the UI.
 #
 # ============================================
 # IMPORTANT: Frontend-to-Backend API URL
@@ -25,12 +26,12 @@
 # This means "localhost" in the browser refers to the USER'S MACHINE, not the Docker host.
 #
 # LOCAL deployment (Docker on the same machine you browse from):
-#   Leave NEXT_PUBLIC_API_BASE_EXTERNAL blank. The default http://localhost:8001 works
+#   Leave system.next_public_api_base_external blank. The default http://localhost:8001 works
 #   because Docker maps port 8001 from the container to your local machine.
 #
 # REMOTE SERVER deployment (Docker on a server, accessed from another machine):
-#   Set NEXT_PUBLIC_API_BASE_EXTERNAL to your server's public IP or hostname, e.g.:
-#     NEXT_PUBLIC_API_BASE_EXTERNAL=http://203.0.113.10:8001
+#   Set system.next_public_api_base_external to your server's public IP or hostname, e.g.:
+#     "next_public_api_base_external": "http://203.0.113.10:8001"
 #   Without this, the browser will try to reach localhost:8001 on the USER'S laptop
 #   (not the server), and all API calls will fail.
 # ============================================
@@ -42,40 +43,8 @@ services:
     container_name: deeptutor
     restart: unless-stopped
     ports:
-      - "${BACKEND_PORT:-8001}:${BACKEND_PORT:-8001}"
-      - "${FRONTEND_PORT:-3782}:${FRONTEND_PORT:-3782}"
-
-    # Load environment variables from .env file
-    env_file:
-      - .env
-
-    environment:
-      # LLM Configuration (Required)
-      - LLM_BINDING=${LLM_BINDING:-openai}
-      - LLM_MODEL=${LLM_MODEL}
-      - LLM_API_KEY=${LLM_API_KEY}
-      - LLM_HOST=${LLM_HOST}
-      - LLM_API_VERSION=${LLM_API_VERSION:-}
-      - DISABLE_SSL_VERIFY=${DISABLE_SSL_VERIFY:-false}
-      # Embedding Configuration (Required for Knowledge Base)
-      - EMBEDDING_BINDING=${EMBEDDING_BINDING:-openai}
-      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-large}
-      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY}
-      - EMBEDDING_HOST=${EMBEDDING_HOST}
-      - EMBEDDING_DIMENSION=${EMBEDDING_DIMENSION:-3072}
-      - EMBEDDING_API_VERSION=${EMBEDDING_API_VERSION:-}
-      # Web Search Configuration (Optional)
-      - SEARCH_PROVIDER=${SEARCH_PROVIDER:-}
-      - SEARCH_API_KEY=${SEARCH_API_KEY:-}
-      - SEARCH_BASE_URL=${SEARCH_BASE_URL:-}
-      # Service Ports
-      - BACKEND_PORT=${BACKEND_PORT:-8001}
-      - FRONTEND_PORT=${FRONTEND_PORT:-3782}
-      # API URL for remote/cloud deployment (see note above)
-      # LOCAL:  leave blank
-      # REMOTE: set to http://<your-server-ip>:8001 or https://your-domain.com:8001
-      - NEXT_PUBLIC_API_BASE_EXTERNAL=${NEXT_PUBLIC_API_BASE_EXTERNAL:-}
-      - NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE:-}
+      - "${DEEPTUTOR_DOCKER_BACKEND_PORT:-8001}:${DEEPTUTOR_DOCKER_BACKEND_PORT:-8001}"
+      - "${DEEPTUTOR_DOCKER_FRONTEND_PORT:-3782}:${DEEPTUTOR_DOCKER_FRONTEND_PORT:-3782}"
 
     volumes:
       # Persistent data (created automatically on first start)
@@ -84,7 +53,7 @@ services:
       - ./data/knowledge_bases:/app/data/knowledge_bases
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${BACKEND_PORT:-8001}/"]
+      test: ["CMD", "curl", "-f", "http://localhost:${DEEPTUTOR_DOCKER_BACKEND_PORT:-8001}/"]
       interval: 30s
       timeout: 10s
       retries: 3

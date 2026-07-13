@@ -128,12 +128,13 @@ def extract_questions_with_llm(
         {
             "question_number": Question number,
             "question_text": Question text content (multiple choice includes options),
+            "question_type": One of choice|concept|fill_in_blank|short_answer|written|coding,
+            "difficulty": One of easy|medium|hard,
+            "answer": Reference answer if present in the paper, else "",
             "images": [List of relative paths to related images]
         }
     """
-    import os
-
-    binding = binding or os.getenv("LLM_BINDING", "openai")
+    binding = binding or get_llm_config().binding
 
     image_list = []
     if images_dir.exists():
@@ -146,10 +147,19 @@ def extract_questions_with_llm(
 Please carefully analyze the exam paper content and extract the following information for each question:
 1. Question number (e.g., "1.", "Question 1", etc.)
 2. Complete question text content (if multiple choice, include all options)
-3. Related image file names (if the question references images)
+3. Question type — classify into EXACTLY ONE of the canonical types below
+4. Difficulty — your best estimate: "easy", "medium", or "hard"
+5. Reference answer — if the paper includes an answer key / solution for this
+   question, copy it; otherwise use an empty string ""
+6. Related image file names (if the question references images)
 
-For multiple choice questions, please merge the stem and all options into one complete question text, for example:
-"1. Which of the following descriptions about neural networks is correct? ()\nA. Option A content\nB. Option B content\nC. Option C content\nD. Option D content"
+Canonical question types (the "question_type" field MUST be one of these exact strings):
+- "choice": multiple-choice with discrete options (A/B/C/D). Merge stem + all options into question_text.
+- "concept": a true/false proposition the learner judges (statement, not "which of the following...").
+- "fill_in_blank": the stem has a blank to fill in with a word or short phrase.
+- "short_answer": a conceptual question whose expected answer is a few sentences.
+- "written": a longer essay, proof, or multi-step derivation.
+- "coding": a programming / algorithm question expecting code or pseudocode.
 
 Please return results in JSON format as follows:
 ```json
@@ -158,11 +168,17 @@ Please return results in JSON format as follows:
         {
             "question_number": "1",
             "question_text": "Complete question content (including options)...",
+            "question_type": "choice",
+            "difficulty": "medium",
+            "answer": "B",
             "images": ["image_001.jpg", "image_002.jpg"]
         },
         {
             "question_number": "2",
             "question_text": "Complete content of another question...",
+            "question_type": "short_answer",
+            "difficulty": "hard",
+            "answer": "",
             "images": []
         }
     ]
@@ -173,9 +189,12 @@ Important Notes:
 1. Ensure all questions are extracted, do not miss any
 2. Keep the original question text, do not modify or summarize
 3. For multiple choice questions, must merge stem and options in question_text
-4. If a question has no associated images, set images field to empty array []
-5. Image file names should be actual existing file names
-6. Ensure the returned format is valid JSON
+4. "question_type" MUST be exactly one of: choice, concept, fill_in_blank, short_answer, written, coding
+5. "difficulty" MUST be exactly one of: easy, medium, hard
+6. If no answer key is present in the paper, set "answer" to ""
+7. If a question has no associated images, set images field to empty array []
+8. Image file names should be actual existing file names
+9. Ensure the returned format is valid JSON
 """
 
     user_prompt = f"""Exam paper content (Markdown format):
@@ -207,30 +226,26 @@ Please analyze the above exam paper content, extract all question information, a
         llm_kwargs["response_format"] = {"type": "json_object"}
 
     try:
-        # Call LLM via unified Factory (async, so we need to run in event loop)
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # We're in an existing event loop, run in a thread
-            import concurrent.futures
+        asyncio.get_running_loop()
+    except RuntimeError:
+        result_text = asyncio.run(
+            llm_complete(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                model=model,
+                api_key=api_key,
+                base_url=base_url,
+                api_version=api_version,
+                binding=binding,
+                **llm_kwargs,
+            )
+        )
+    else:
+        import concurrent.futures
 
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(
-                    asyncio.run,
-                    llm_complete(
-                        prompt=user_prompt,
-                        system_prompt=system_prompt,
-                        model=model,
-                        api_key=api_key,
-                        base_url=base_url,
-                        api_version=api_version,
-                        binding=binding,
-                        **llm_kwargs,
-                    ),
-                )
-                result_text = future.result()
-        else:
-            # No running loop, use run_until_complete
-            result_text = loop.run_until_complete(
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(
+                asyncio.run,
                 llm_complete(
                     prompt=user_prompt,
                     system_prompt=system_prompt,
@@ -240,30 +255,9 @@ Please analyze the above exam paper content, extract all question information, a
                     api_version=api_version,
                     binding=binding,
                     **llm_kwargs,
-                )
+                ),
             )
-    except RuntimeError as e:
-        if "already running" in str(e):
-            # Fallback: use asyncio.run in a thread
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(
-                    asyncio.run,
-                    llm_complete(
-                        prompt=user_prompt,
-                        system_prompt=system_prompt,
-                        model=model,
-                        api_key=api_key,
-                        base_url=base_url,
-                        api_version=api_version,
-                        binding=binding,
-                        **llm_kwargs,
-                    ),
-                )
-                result_text = future.result()
-        else:
-            raise
+            result_text = future.result()
 
     # Parse JSON response
     try:
@@ -352,9 +346,7 @@ def extract_questions_from_paper(paper_dir: str, output_dir: str | None = None) 
         llm_config = get_llm_config()
     except ValueError as e:
         print(f"✗ {e!s}")
-        print(
-            "Tip: Please create .env file in project root and configure LLM-related environment variables"
-        )
+        print("Tip: Configure an active LLM profile in Settings > Catalog")
         return False
 
     questions = extract_questions_with_llm(

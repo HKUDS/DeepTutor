@@ -25,7 +25,6 @@ class ProgressStage(Enum):
     INITIALIZING = "initializing"  # Initializing
     PROCESSING_DOCUMENTS = "processing_documents"  # Processing documents
     PROCESSING_FILE = "processing_file"  # Processing single file
-    EXTRACTING_ITEMS = "extracting_items"  # Extracting numbered items
     COMPLETED = "completed"  # Completed
     ERROR = "error"  # Error
 
@@ -62,15 +61,10 @@ class ProgressTracker:
                 broadcaster = ProgressBroadcaster.get_instance()
 
                 try:
-                    asyncio.get_running_loop()
-                    asyncio.create_task(broadcaster.broadcast(self.kb_name, progress))
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(broadcaster.broadcast(self.kb_name, progress))
                 except RuntimeError:
-                    try:
-                        loop = asyncio.get_event_loop()
-                        if loop.is_running():
-                            asyncio.create_task(broadcaster.broadcast(self.kb_name, progress))
-                    except RuntimeError:
-                        pass
+                    pass
             except (ImportError, Exception):
                 pass
 
@@ -98,7 +92,6 @@ class ProgressTracker:
                 "initializing",
                 "processing_documents",
                 "processing_file",
-                "extracting_items",
             ]:
                 status = "processing"
             else:

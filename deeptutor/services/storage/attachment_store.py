@@ -35,13 +35,13 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 from urllib.parse import quote
 
+from deeptutor.partners.helpers import safe_filename
+from deeptutor.services.config import load_system_settings
 from deeptutor.services.path_service import get_path_service
-from deeptutor.tutorbot.utils.helpers import safe_filename
 
 logger = logging.getLogger(__name__)
 
 
-_ATTACHMENT_DIR_ENV = "CHAT_ATTACHMENT_DIR"
 _DEFAULT_SUBPATH = ("workspace", "chat", "attachments")
 # Public route prefix served by deeptutor.api.routers.attachments
 _PUBLIC_URL_PREFIX = "/api/attachments"
@@ -88,6 +88,9 @@ class AttachmentStore(Protocol):
     async def delete_session(self, session_id: str) -> None:
         """Best-effort cleanup of all attachments for *session_id*."""
 
+    async def delete_attachment(self, session_id: str, attachment_id: str) -> None:
+        """Best-effort cleanup of a single attachment identified by *attachment_id*."""
+
     def resolve_path(self, *, session_id: str, attachment_id: str, filename: str) -> Path | None:
         """Return the absolute path on disk for an attachment, or ``None``
         if it does not exist or escapes the storage root.
@@ -102,16 +105,12 @@ class LocalDiskAttachmentStore:
 
     The root directory defaults to ``data/user/workspace/chat/attachments``
     under the project root (matching :class:`PathService`'s public outputs).
-    Override via ``$CHAT_ATTACHMENT_DIR`` (absolute path).
+    Override via ``data/user/settings/system.json`` ``chat_attachment_dir``.
     """
 
     def __init__(self, root: Path | None = None) -> None:
         if root is None:
-            override = os.environ.get(_ATTACHMENT_DIR_ENV, "").strip()
-            if override:
-                root = Path(override).expanduser().resolve()
-            else:
-                root = (get_path_service().get_user_root().joinpath(*_DEFAULT_SUBPATH)).resolve()
+            root = _attachment_root()
         self._root = root
 
     @property
@@ -190,6 +189,13 @@ class LocalDiskAttachmentStore:
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._rmtree_sync, session_dir)
 
+    async def delete_attachment(self, session_id: str, attachment_id: str) -> None:
+        session_dir = self._session_dir(session_id)
+        if not session_dir.exists():
+            return
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._delete_attachment_sync, session_dir, attachment_id)
+
     @staticmethod
     def _rmtree_sync(path: Path) -> None:
         import shutil
@@ -198,6 +204,21 @@ class LocalDiskAttachmentStore:
             shutil.rmtree(path)
         except OSError as exc:
             logger.warning("failed to clean up attachment dir %s: %s", path, exc)
+
+    @staticmethod
+    def _delete_attachment_sync(session_dir: Path, attachment_id: str) -> None:
+        prefix = f"{attachment_id}_"
+        for entry in session_dir.iterdir():
+            if entry.name.startswith(prefix):
+                try:
+                    entry.unlink()
+                except OSError as exc:
+                    logger.warning("failed to delete attachment file %s: %s", entry, exc)
+        try:
+            if session_dir.exists() and not any(session_dir.iterdir()):
+                session_dir.rmdir()
+        except OSError as exc:
+            logger.warning("failed to remove empty attachment dir %s: %s", session_dir, exc)
 
     def resolve_path(self, *, session_id: str, attachment_id: str, filename: str) -> Path | None:
         stored = self._stored_filename(attachment_id, filename)
@@ -216,16 +237,18 @@ def get_attachment_store() -> AttachmentStore:
     Today this is always a :class:`LocalDiskAttachmentStore`; future S3/MinIO
     backends can be selected here based on an env var.
     """
-    override = os.environ.get(_ATTACHMENT_DIR_ENV, "").strip()
-    root = (
-        Path(override).expanduser().resolve()
-        if override
-        else get_path_service().get_user_root().joinpath(*_DEFAULT_SUBPATH).resolve()
-    )
+    root = _attachment_root()
     key = str(root)
     if key not in _stores:
         _stores[key] = LocalDiskAttachmentStore(root=root)
     return _stores[key]
+
+
+def _attachment_root() -> Path:
+    override = str(load_system_settings().get("chat_attachment_dir") or "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    return get_path_service().get_user_root().joinpath(*_DEFAULT_SUBPATH).resolve()
 
 
 def reset_attachment_store() -> None:

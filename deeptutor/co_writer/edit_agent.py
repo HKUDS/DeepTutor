@@ -3,12 +3,14 @@ EditAgent - Co-writer editing agent.
 Inherits from unified BaseAgent.
 """
 
+import asyncio
 from datetime import datetime
 import json
 from typing import Any, Literal
 import uuid
 
 from deeptutor.agents.base_agent import BaseAgent
+from deeptutor.co_writer.storage import _atomic_write_json
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
 from deeptutor.services.llm import clean_thinking_tags
 from deeptutor.services.path_service import get_path_service
@@ -36,6 +38,13 @@ def ensure_dirs():
     tool_calls_dir().mkdir(parents=True, exist_ok=True)
 
 
+# History is a debugging/audit trail, not a primary store: cap the entry
+# count and clip stored texts so a long-lived workspace can't grow the file
+# (rewritten in full on every operation) without bound.
+_HISTORY_MAX_ENTRIES = 200
+_HISTORY_TEXT_LIMIT = 20_000
+
+
 def load_history() -> list:
     """Load history"""
     ensure_dirs()
@@ -50,10 +59,26 @@ def load_history() -> list:
 
 
 def save_history(history: list):
-    """Save history"""
+    """Save history (atomic write; a crash mid-write must not corrupt it)."""
     ensure_dirs()
-    with open(_history_file(), "w", encoding="utf-8") as f:
-        json.dump(history, f, ensure_ascii=False, indent=2)
+    _atomic_write_json(_history_file(), history)
+
+
+def _clip_history_value(value: Any) -> Any:
+    if isinstance(value, str) and len(value) > _HISTORY_TEXT_LIMIT:
+        return value[:_HISTORY_TEXT_LIMIT] + "…[truncated]"
+    if isinstance(value, dict):
+        return {k: _clip_history_value(v) for k, v in value.items()}
+    return value
+
+
+def append_history(record: dict) -> None:
+    """Append one operation record, clipping texts and capping entries."""
+    history = load_history()
+    history.append(_clip_history_value(record))
+    if len(history) > _HISTORY_MAX_ENTRIES:
+        history = history[-_HISTORY_MAX_ENTRIES:]
+    save_history(history)
 
 
 def save_tool_call(call_id: str, tool_type: str, data: dict[str, Any]) -> str:
@@ -114,65 +139,15 @@ class EditAgent(BaseAgent):
 
         context = ""
         tool_call_file = None
-        tool_call_data = None
 
-        if source == "rag" and "rag" not in self.enabled_tools:
-            self.logger.warning("RAG source requested but tool is not enabled")
-            source = None
-        if source == "web" and "web_search" not in self.enabled_tools:
-            self.logger.warning("Web source requested but tool is not enabled")
-            source = None
-
-        if source == "rag":
-            if not kb_name:
-                self.logger.warning(
-                    "RAG source selected but no kb_name provided, skipping RAG search"
-                )
-                source = None
-            else:
-                self.logger.info(f"Searching RAG in KB: {kb_name} for: {instruction}")
-                try:
-                    search_result = await rag_search(
-                        query=instruction, kb_name=kb_name, only_need_context=True
-                    )
-                    context = search_result.get("answer", "")
-                    self.logger.info(f"RAG context found: {len(context)} chars")
-
-                    tool_call_data = {
-                        "type": "rag",
-                        "timestamp": datetime.now().isoformat(),
-                        "operation_id": operation_id,
-                        "query": instruction,
-                        "kb_name": kb_name,
-                        "mode": "naive",
-                        "context": context,
-                        "raw_result": search_result,
-                    }
-                    tool_call_file = save_tool_call(operation_id, "rag", tool_call_data)
-                except Exception as e:
-                    self.logger.error(f"RAG search failed: {e}, continuing without context")
-                    source = None
-
-        elif source == "web":
-            self.logger.info(f"Searching Web for: {instruction}")
-            try:
-                search_result = web_search(instruction)
-                context = search_result.get("answer", "")
-                self.logger.info(f"Web context found: {len(context)} chars")
-
-                tool_call_data = {
-                    "type": "web_search",
-                    "timestamp": datetime.now().isoformat(),
-                    "operation_id": operation_id,
-                    "query": instruction,
-                    "answer": context,
-                    "citations": search_result.get("citations", []),
-                    "search_results": search_result.get("search_results", []),
-                    "usage": search_result.get("usage", {}),
-                }
-                tool_call_file = save_tool_call(operation_id, "web", tool_call_data)
-            except Exception as e:
-                self.logger.error(f"Web search failed: {e}, continuing without context")
+        if source:
+            context, tool_call_file = await self.gather_context(
+                source=source,
+                query=instruction,
+                kb_name=kb_name,
+                operation_id=operation_id,
+            )
+            if not context:
                 source = None
 
         # Build prompts
@@ -218,24 +193,98 @@ class EditAgent(BaseAgent):
         response = clean_thinking_tags("".join(_chunks), self.binding, self.get_model())
 
         # Record operation history
-        history = load_history()
-        operation_record = {
-            "id": operation_id,
-            "timestamp": datetime.now().isoformat(),
-            "action": action,
-            "source": source,
-            "kb_name": kb_name,
-            "input": {"original_text": text, "instruction": instruction},
-            "output": {"edited_text": response},
-            "tool_call_file": tool_call_file,
-            "model": self.get_model(),
-        }
-        history.append(operation_record)
-        save_history(history)
+        append_history(
+            {
+                "id": operation_id,
+                "timestamp": datetime.now().isoformat(),
+                "action": action,
+                "source": source,
+                "kb_name": kb_name,
+                "input": {"original_text": text, "instruction": instruction},
+                "output": {"edited_text": response},
+                "tool_call_file": tool_call_file,
+                "model": self.get_model(),
+            }
+        )
 
         self.logger.info(f"Operation {operation_id} recorded successfully")
 
         return {"edited_text": response, "operation_id": operation_id}
+
+    async def gather_context(
+        self,
+        *,
+        source: Literal["rag", "web"],
+        query: str,
+        kb_name: str | None = None,
+        operation_id: str = "",
+    ) -> tuple[str, str | None]:
+        """Fetch reference context for an edit.
+
+        Returns ``(context, tool_call_file)``; empty context means the tool
+        was unavailable or failed — callers degrade to a plain edit.
+        """
+        if source == "rag":
+            if "rag" not in self.enabled_tools:
+                self.logger.warning("RAG source requested but tool is not enabled")
+                return "", None
+            if not kb_name:
+                self.logger.warning("RAG source selected but no kb_name provided")
+                return "", None
+            self.logger.info(f"Searching RAG in KB: {kb_name} for: {query}")
+            try:
+                search_result = await rag_search(
+                    query=query, kb_name=kb_name, only_need_context=True
+                )
+                context = search_result.get("answer", "")
+                self.logger.info(f"RAG context found: {len(context)} chars")
+                tool_call_file = save_tool_call(
+                    operation_id,
+                    "rag",
+                    {
+                        "type": "rag",
+                        "timestamp": datetime.now().isoformat(),
+                        "operation_id": operation_id,
+                        "query": query,
+                        "kb_name": kb_name,
+                        "mode": "naive",
+                        "context": context,
+                        "raw_result": search_result,
+                    },
+                )
+                return context, tool_call_file
+            except Exception as e:
+                self.logger.error(f"RAG search failed: {e}, continuing without context")
+                return "", None
+
+        if "web_search" not in self.enabled_tools:
+            self.logger.warning("Web source requested but tool is not enabled")
+            return "", None
+        self.logger.info(f"Searching Web for: {query}")
+        try:
+            # web_search is synchronous network I/O; keep it off the
+            # event loop so concurrent requests aren't stalled.
+            search_result = await asyncio.to_thread(web_search, query)
+            context = search_result.get("answer", "")
+            self.logger.info(f"Web context found: {len(context)} chars")
+            tool_call_file = save_tool_call(
+                operation_id,
+                "web",
+                {
+                    "type": "web_search",
+                    "timestamp": datetime.now().isoformat(),
+                    "operation_id": operation_id,
+                    "query": query,
+                    "answer": context,
+                    "citations": search_result.get("citations", []),
+                    "search_results": search_result.get("search_results", []),
+                    "usage": search_result.get("usage", {}),
+                },
+            )
+            return context, tool_call_file
+        except Exception as e:
+            self.logger.error(f"Web search failed: {e}, continuing without context")
+            return "", None
 
     async def auto_mark(self, text: str) -> dict[str, Any]:
         """
@@ -265,20 +314,19 @@ class EditAgent(BaseAgent):
         response = clean_thinking_tags("".join(_chunks), self.binding, self.get_model())
 
         # Record operation history
-        history = load_history()
-        operation_record = {
-            "id": operation_id,
-            "timestamp": datetime.now().isoformat(),
-            "action": "automark",
-            "source": None,
-            "kb_name": None,
-            "input": {"original_text": text, "instruction": "AI Auto Mark"},
-            "output": {"edited_text": response},
-            "tool_call_file": None,
-            "model": self.get_model(),
-        }
-        history.append(operation_record)
-        save_history(history)
+        append_history(
+            {
+                "id": operation_id,
+                "timestamp": datetime.now().isoformat(),
+                "action": "automark",
+                "source": None,
+                "kb_name": None,
+                "input": {"original_text": text, "instruction": "AI Auto Mark"},
+                "output": {"edited_text": response},
+                "tool_call_file": None,
+                "model": self.get_model(),
+            }
+        )
 
         self.logger.info(f"Auto-mark operation {operation_id} recorded successfully")
 

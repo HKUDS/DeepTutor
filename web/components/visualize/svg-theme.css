@@ -1,0 +1,245 @@
+/* Theme for inlined visualization SVGs (rendered under .dt-svg-root).
+   The codegen prompt (rules_svg) emits these pre-built classes instead of
+   hard-coded fills, so figures follow the app's light/dark theme and font:
+     text:        .t (14px), .th (14px/500), .ts (12px muted)
+     neutral:     .box (container), .arr (arrow), .leader (dashed leader)
+     interactive: .node (hover), [data-prompt] (clickable)
+     color ramps: .c-{gray,blue,teal,coral,pink,purple,green,amber,red}
+   Ramp values are Claude's 9-ramp palette. Light = 50 fill / 600 stroke /
+   800 text; dark = 800 fill / 200 stroke / 100 text — switched via .dark. */
+
+.dt-svg-root svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Chart.js wrapper: keep inline charts compact. The canvas itself must
+   never be CSS-clamped — Chart.js owns the canvas size, and a stylesheet
+   max-height would squish the bitmap non-uniformly. */
+.dt-chart-wrap {
+  max-height: 480px;
+}
+
+/* ---- Fullscreen overlay (.dt-viz-fullscreen wraps the figure) ----
+   Fit every render type to the viewport in BOTH dimensions. */
+
+/* SVG (ours + mermaid's): clamp height; the default preserveAspectRatio
+   (xMidYMid meet) letterboxes the content inside the clamped box, so
+   nothing distorts. Width-only scaling would overflow the screen. */
+.dt-viz-fullscreen svg {
+  max-height: calc(100vh - 140px);
+}
+
+/* Chart.js: cap the WIDTH so the chart's own aspect-ratio scaling (default
+   2:1) lands within the viewport height, instead of clamping the canvas. */
+.dt-viz-fullscreen .dt-chart-wrap {
+  max-height: none;
+  max-width: min(100%, calc((100vh - 140px) * 2));
+  margin-inline: auto;
+}
+
+/* Use the app sans font (Geist), overriding any font-family on the SVG itself
+   and the serif (Lora) inherited from a surrounding .prose container. */
+.dt-svg-root,
+.dt-svg-root text {
+  font-family: var(
+    --font-sans,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif
+  );
+}
+
+/* Vertical centering is guaranteed by the host so the model never has to
+   emit (and possibly misspell) dominant-baseline itself: every text is
+   centered on its y, and the codegen prompt instructs y = box/row center. */
+.dt-svg-root text {
+  dominant-baseline: central;
+}
+
+/* Text roles */
+.dt-svg-root text.t,
+.dt-svg-root text.th {
+  font-size: 14px;
+  fill: var(--foreground);
+}
+.dt-svg-root text.th {
+  font-weight: 500;
+}
+.dt-svg-root text.ts {
+  font-size: 12px;
+  fill: var(--muted-foreground);
+}
+
+/* Neutral container + connectors */
+.dt-svg-root .box {
+  fill: var(--secondary);
+  stroke: var(--border);
+  stroke-width: 0.5;
+}
+.dt-svg-root .arr {
+  stroke: var(--muted-foreground);
+  stroke-width: 1.5;
+  fill: none;
+}
+.dt-svg-root .leader {
+  stroke: var(--muted-foreground);
+  stroke-width: 0.5;
+  stroke-dasharray: 3 3;
+  fill: none;
+}
+
+/* Interactive affordances */
+.dt-svg-root .node,
+.dt-svg-root [data-prompt] {
+  cursor: pointer;
+}
+.dt-svg-root .node {
+  transition: opacity 0.15s ease;
+}
+.dt-svg-root .node:hover,
+.dt-svg-root [data-prompt]:hover {
+  opacity: 0.82;
+}
+
+/* Color ramps — each publishes --fill / --stroke / --text (light defaults). */
+.dt-svg-root .c-gray {
+  --fill: #f1efe8;
+  --stroke: #5f5e5a;
+  --text: #2c2c2a;
+}
+.dt-svg-root .c-blue {
+  --fill: #e6f1fb;
+  --stroke: #185fa5;
+  --text: #0c447c;
+}
+.dt-svg-root .c-teal {
+  --fill: #e1f5ee;
+  --stroke: #0f6e56;
+  --text: #085041;
+}
+.dt-svg-root .c-coral {
+  --fill: #faece7;
+  --stroke: #993c1d;
+  --text: #712b13;
+}
+.dt-svg-root .c-pink {
+  --fill: #fbeaf0;
+  --stroke: #993556;
+  --text: #72243e;
+}
+.dt-svg-root .c-purple {
+  --fill: #eeedfe;
+  --stroke: #534ab7;
+  --text: #3c3489;
+}
+.dt-svg-root .c-green {
+  --fill: #eaf3de;
+  --stroke: #3b6d11;
+  --text: #27500a;
+}
+.dt-svg-root .c-amber {
+  --fill: #faeeda;
+  --stroke: #854f0b;
+  --text: #633806;
+}
+.dt-svg-root .c-red {
+  --fill: #fcebeb;
+  --stroke: #a32d2d;
+  --text: #791f1f;
+}
+
+/* Dark mode: flip to 800 fill / 200 stroke / 100 text. */
+.dark .dt-svg-root .c-gray {
+  --fill: #444441;
+  --stroke: #b4b2a9;
+  --text: #d3d1c7;
+}
+.dark .dt-svg-root .c-blue {
+  --fill: #0c447c;
+  --stroke: #85b7eb;
+  --text: #b5d4f4;
+}
+.dark .dt-svg-root .c-teal {
+  --fill: #085041;
+  --stroke: #5dcaa5;
+  --text: #9fe1cb;
+}
+.dark .dt-svg-root .c-coral {
+  --fill: #712b13;
+  --stroke: #f0997b;
+  --text: #f5c4b3;
+}
+.dark .dt-svg-root .c-pink {
+  --fill: #72243e;
+  --stroke: #ed93b1;
+  --text: #f4c0d1;
+}
+.dark .dt-svg-root .c-purple {
+  --fill: #3c3489;
+  --stroke: #afa9ec;
+  --text: #cecbf6;
+}
+.dark .dt-svg-root .c-green {
+  --fill: #27500a;
+  --stroke: #97c459;
+  --text: #c0dd97;
+}
+.dark .dt-svg-root .c-amber {
+  --fill: #633806;
+  --stroke: #ef9f27;
+  --text: #fac775;
+}
+.dark .dt-svg-root .c-red {
+  --fill: #791f1f;
+  --stroke: #f09595;
+  --text: #f7c1c1;
+}
+
+/* Apply ramp vars: shapes take fill+stroke, descendant text takes ramp text. */
+.dt-svg-root
+  :is(
+    .c-gray,
+    .c-blue,
+    .c-teal,
+    .c-coral,
+    .c-pink,
+    .c-purple,
+    .c-green,
+    .c-amber,
+    .c-red
+  )
+  > :is(rect, circle, ellipse, polygon),
+.dt-svg-root
+  :is(rect, circle, ellipse, polygon):is(
+    .c-gray,
+    .c-blue,
+    .c-teal,
+    .c-coral,
+    .c-pink,
+    .c-purple,
+    .c-green,
+    .c-amber,
+    .c-red
+  ) {
+  fill: var(--fill);
+  stroke: var(--stroke);
+}
+.dt-svg-root
+  :is(
+    .c-gray,
+    .c-blue,
+    .c-teal,
+    .c-coral,
+    .c-pink,
+    .c-purple,
+    .c-green,
+    .c-amber,
+    .c-red
+  )
+  text {
+  fill: var(--text);
+}

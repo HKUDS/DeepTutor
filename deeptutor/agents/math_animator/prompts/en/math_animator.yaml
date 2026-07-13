@@ -1,0 +1,7 @@
+status:
+  code_prepared: "Manim code prepared."
+  retry: "Retry {attempt}: {error}"
+  rendering: "Rendering {mode} with quality={quality}."
+  artifacts_one: "Prepared {count} artifact."
+  artifacts_many: "Prepared {count} artifacts."
+  llm_call_failed: "LLM call failed."

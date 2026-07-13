@@ -3,7 +3,12 @@
 import { useEffect } from "react";
 import i18n from "i18next";
 
-import { initI18n, normalizeLanguage, type AppLanguage } from "./init";
+import {
+  ensureLanguage,
+  initI18n,
+  normalizeLanguage,
+  type AppLanguage,
+} from "./init";
 
 // Initialize i18next at module load (before any React render) so that the
 // `init()` call — which fires `initialized` / `languageChanged` events that
@@ -22,15 +27,19 @@ export function I18nProvider({
   children: React.ReactNode;
 }) {
   useEffect(() => {
+    let cancelled = false;
     const nextLang = normalizeLanguage(language);
-    if (i18n.language !== nextLang) {
-      i18n.changeLanguage(nextLang);
-    }
-
-    // Keep <html lang="..."> in sync for accessibility & Intl defaults
-    if (typeof document !== "undefined") {
+    void ensureLanguage(nextLang).then(() => {
+      if (cancelled) return;
+      if (i18n.language !== nextLang) {
+        i18n.changeLanguage(nextLang);
+      }
+      // Keep <html lang="..."> in sync for accessibility & Intl defaults.
       document.documentElement.lang = nextLang;
-    }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [language]);
 
   return children;

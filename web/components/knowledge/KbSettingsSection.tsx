@@ -64,7 +64,7 @@ export default function KbSettingsSection({
             {t("Default knowledge base")}
           </div>
           <p className="mt-0.5 text-[11.5px] text-[var(--muted-foreground)]">
-            {t("The default KB is selected automatically in chat & TutorBot.")}
+            {t("The default KB is selected automatically in chat & partners.")}
           </p>
         </div>
         {kb.is_default ? (

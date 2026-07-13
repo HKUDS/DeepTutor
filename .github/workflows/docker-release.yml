@@ -64,10 +64,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Pass the release tag (e.g. "v1.2.3") into the Next.js build so the
-          # sidebar version badge can show the running version at runtime.
-          build-args: |
-            APP_VERSION=${{ github.ref_name }}
           # Use GitHub Actions cache to speed up repeated builds
           # mode=max caches all intermediate layers (frontend-builder and python-base are expensive)
           cache-from: type=gha

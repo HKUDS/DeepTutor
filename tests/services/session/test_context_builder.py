@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,6 +13,7 @@ from deeptutor.services.session.context_builder import (
     build_history_text,
     count_tokens,
     format_messages_as_transcript,
+    trim_incomplete_tail,
 )
 
 # ---------------------------------------------------------------------------
@@ -143,7 +145,7 @@ class TestContextBuilderBudgets:
     def test_history_budget_uses_explicit_context_window(self) -> None:
         builder = ContextBuilder(store=MagicMock(), history_budget_ratio=0.35)
         budget = builder._history_budget(self._make_llm_config(4096, context_window=128000))
-        assert budget == int(65536 * 0.35)
+        assert budget == int(128000 * 0.35)
 
     def test_history_budget_uses_large_context_model_heuristic(self) -> None:
         builder = ContextBuilder(store=MagicMock(), history_budget_ratio=0.35)
@@ -324,4 +326,146 @@ class TestContextBuilderBuild:
         result = await builder.build(session_id="s1", llm_config=cfg)
         assert len(result.conversation_history) == 2
         assert result.events == []
+        store.update_summary.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# trim_incomplete_tail
+# ---------------------------------------------------------------------------
+
+
+class TestTrimIncompleteTail:
+    def test_drops_trailing_partial_line(self) -> None:
+        assert trim_incomplete_tail("- done line\n- cut mid sent") == "- done line"
+
+    def test_single_line_kept(self) -> None:
+        assert trim_incomplete_tail("only one line, keep it") == "only one line, keep it"
+
+
+# ---------------------------------------------------------------------------
+# ContextBuilder.build — summarize paths (rebuild / fold-in / failure / branch)
+# ---------------------------------------------------------------------------
+
+
+def _make_store(
+    messages: list[dict[str, Any]],
+    *,
+    summary: str = "",
+    up_to: int = 0,
+) -> AsyncMock:
+    store = AsyncMock()
+    store.get_session = AsyncMock(
+        return_value={
+            "id": "s1",
+            "compressed_summary": summary,
+            "summary_up_to_msg_id": up_to,
+        }
+    )
+    store.get_messages_for_context = AsyncMock(return_value=messages)
+    return store
+
+
+def _small_window_cfg() -> MagicMock:
+    # context_window=1000 -> history budget 350, summary budget 140,
+    # recent budget 210, raw-rebuild budget floor 1024.
+    cfg = MagicMock()
+    cfg.max_tokens = 512
+    cfg.model = "test-model"
+    cfg.context_window = 1000
+    return cfg
+
+
+class TestContextBuilderSummarizePaths:
+    @pytest.mark.asyncio
+    async def test_rebuilds_from_raw_when_prefix_fits(self) -> None:
+        messages = [
+            {"id": 1, "role": "user", "content": "RAW_OLDEST_MARKER " + "alpha " * 90},
+            {"id": 2, "role": "assistant", "content": "beta " * 90},
+            {"id": 3, "role": "user", "content": "gamma " * 200},
+            {"id": 4, "role": "assistant", "content": "delta " * 400},
+            {"id": 5, "role": "user", "content": "recent question"},
+            {"id": 6, "role": "assistant", "content": "recent answer"},
+        ]
+        store = _make_store(messages, summary="OLD SUMMARY", up_to=2)
+        builder = ContextBuilder(store=store)
+        builder._summarize = AsyncMock(return_value=("NEW SUMMARY", []))
+
+        result = await builder.build(session_id="s1", llm_config=_small_window_cfg())
+
+        source = builder._summarize.call_args.kwargs["source_text"]
+        # Raw prefix fits the rebuild budget: source is the original
+        # transcript (anti-drift), not summary-of-summary fold-in.
+        assert "Conversation history to summarize:" in source
+        assert "RAW_OLDEST_MARKER" in source
+        assert "Existing summary:" not in source
+        store.update_summary.assert_awaited_once_with("s1", "NEW SUMMARY", 4)
+        assert result.conversation_summary == "NEW SUMMARY"
+        assert result.conversation_history[0] == {
+            "role": "system",
+            "content": "NEW SUMMARY",
+        }
+
+    @pytest.mark.asyncio
+    async def test_folds_in_when_prefix_exceeds_rebuild_budget(self) -> None:
+        messages = [
+            {"id": 1, "role": "user", "content": "RAW_OLDEST_MARKER " + "w1 " * 600},
+            {"id": 2, "role": "assistant", "content": "w2 " * 600},
+            {"id": 3, "role": "user", "content": "FOLD_MARKER " + "w3 " * 400},
+            {"id": 4, "role": "assistant", "content": "recent answer"},
+        ]
+        store = _make_store(messages, summary="OLD SUMMARY", up_to=2)
+        builder = ContextBuilder(store=store)
+        builder._summarize = AsyncMock(return_value=("NEW SUMMARY", []))
+
+        await builder.build(session_id="s1", llm_config=_small_window_cfg())
+
+        source = builder._summarize.call_args.kwargs["source_text"]
+        # Prefix transcript (>1024 tokens) exceeds the rebuild budget:
+        # degrade to folding the stored summary plus older turns only.
+        assert "Existing summary:\nOLD SUMMARY" in source
+        assert "FOLD_MARKER" in source
+        assert "RAW_OLDEST_MARKER" not in source
+        store.update_summary.assert_awaited_once_with("s1", "NEW SUMMARY", 3)
+
+    @pytest.mark.asyncio
+    async def test_failure_keeps_watermark_and_degrades_for_turn(self) -> None:
+        messages = [
+            {"id": 1, "role": "user", "content": "old " * 100},
+            {"id": 2, "role": "assistant", "content": "older reply " * 100},
+            {"id": 3, "role": "user", "content": "mid " * 400},
+            {"id": 4, "role": "assistant", "content": "recent answer"},
+        ]
+        store = _make_store(messages, summary="OLD SUMMARY", up_to=2)
+        builder = ContextBuilder(store=store)
+        builder._summarize = AsyncMock(side_effect=RuntimeError("llm down"))
+
+        result = await builder.build(session_id="s1", llm_config=_small_window_cfg())
+
+        # Nothing may be marked as summarized on failure — otherwise the
+        # unfolded turns are dropped from every future context build.
+        store.update_summary.assert_not_called()
+        assert result.conversation_summary == "OLD SUMMARY"
+        assert result.conversation_history[0] == {
+            "role": "system",
+            "content": "OLD SUMMARY",
+        }
+        contents = [m["content"] for m in result.conversation_history]
+        assert "recent answer" in contents
+
+    @pytest.mark.asyncio
+    async def test_branch_switch_discards_sibling_summary(self) -> None:
+        # Watermark 99 is not on this branch's ancestor chain: the stored
+        # summary was folded from a sibling branch and must not leak in.
+        messages = [
+            {"id": 1, "role": "user", "content": "Hi"},
+            {"id": 2, "role": "assistant", "content": "Hello!"},
+        ]
+        store = _make_store(messages, summary="SIBLING SUMMARY", up_to=99)
+        builder = ContextBuilder(store=store)
+        builder._summarize = AsyncMock(return_value=("", []))
+
+        result = await builder.build(session_id="s1", llm_config=_small_window_cfg())
+
+        assert result.conversation_summary == ""
+        assert all(m["role"] != "system" for m in result.conversation_history)
         store.update_summary.assert_not_called()

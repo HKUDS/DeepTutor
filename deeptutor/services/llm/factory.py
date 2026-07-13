@@ -17,7 +17,7 @@ from deeptutor.services.provider_registry import (
     find_gateway,
 )
 
-from .capabilities import supports_response_format
+from .capabilities import supports_response_format, supports_vision
 from .config import LLMConfig, get_llm_config
 from .error_mapping import map_error
 from .multimodal import prepare_multimodal_messages
@@ -27,6 +27,9 @@ from .utils import is_local_llm_server
 DEFAULT_MAX_RETRIES = settings.retry.max_retries
 DEFAULT_RETRY_DELAY = settings.retry.base_delay
 DEFAULT_EXPONENTIAL_BACKOFF = settings.retry.exponential_backoff
+DEFAULT_STREAM_COALESCE_CHARS = 64
+DEFAULT_STREAM_COALESCE_SECONDS = 0.04
+STREAM_CONTROL_TOKENS = {"<think>", "</think>"}
 
 CallKwargs = dict[str, Any]
 
@@ -203,7 +206,7 @@ def _resolve_call_config(
         return config, provider_spec
 
     current = get_llm_config()
-    merged_headers = dict(current.extra_headers or {})
+    merged_headers = dict(getattr(current, "extra_headers", None) or {})
     if extra_headers:
         merged_headers.update(extra_headers)
 
@@ -269,28 +272,18 @@ def _build_messages(
     ]
 
 
-def _find_last_user_message(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
-    for message in reversed(messages):
-        if message.get("role") == "user":
-            return message
-    return None
+def _coerce_stream_coalesce_chars(value: Any) -> int:
+    try:
+        return max(1, int(value))
+    except (TypeError, ValueError):
+        return DEFAULT_STREAM_COALESCE_CHARS
 
 
-def _append_image_placeholder(messages: list[dict[str, Any]]) -> None:
-    target = _find_last_user_message(messages)
-    placeholder = "[image omitted]"
-    if target is None:
-        messages.append({"role": "user", "content": placeholder})
-        return
-
-    content = target.get("content")
-    if isinstance(content, str):
-        target["content"] = f"{content}\n\n{placeholder}" if content else placeholder
-        return
-    if isinstance(content, list):
-        content.append({"type": "text", "text": placeholder})
-        return
-    target["content"] = placeholder
+def _coerce_stream_coalesce_seconds(value: Any) -> float:
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        return DEFAULT_STREAM_COALESCE_SECONDS
 
 
 def _apply_inline_image_data(
@@ -299,6 +292,8 @@ def _apply_inline_image_data(
     binding: str,
     model: str,
     image_data: str | None,
+    image_mime_type: str = "image/png",
+    image_filename: str = "image.png",
 ) -> list[dict[str, Any]]:
     if not image_data:
         return messages
@@ -306,12 +301,10 @@ def _apply_inline_image_data(
     attachment = SimpleNamespace(
         type="image",
         base64=image_data,
-        filename="image.png",
-        mime_type="image/png",
+        filename=image_filename,
+        mime_type=image_mime_type,
     )
     result = prepare_multimodal_messages(messages, [attachment], binding=binding, model=model)
-    if result.images_stripped:
-        _append_image_placeholder(messages)
     return result.messages
 
 
@@ -325,6 +318,8 @@ def _sanitize_call_kwargs(
     for key in (
         "messages",
         "image_data",
+        "image_mime_type",
+        "image_filename",
         "api_key",
         "base_url",
         "api_version",
@@ -356,6 +351,8 @@ async def complete(
     caller_extra_headers = kwargs.pop("extra_headers", None)
     reasoning_effort = kwargs.pop("reasoning_effort", None)
     image_data = kwargs.pop("image_data", None)
+    image_mime_type = kwargs.pop("image_mime_type", "image/png")
+    image_filename = kwargs.pop("image_filename", "image.png")
 
     config, provider_spec = _resolve_call_config(
         model=model,
@@ -374,6 +371,8 @@ async def complete(
         binding=capability_binding,
         model=config.model,
         image_data=image_data,
+        image_mime_type=str(image_mime_type or "image/png"),
+        image_filename=str(image_filename or "image.png"),
     )
     retry_delays = _build_retry_delays(max_retries, retry_delay, exponential_backoff)
     extra_kwargs = _sanitize_call_kwargs(
@@ -386,6 +385,7 @@ async def complete(
             model=config.model,
             reasoning_effort=config.reasoning_effort,
             retry_delays=retry_delays,
+            allow_image_fallback=not supports_vision(capability_binding, config.model),
             **extra_kwargs,
         )
     except Exception as exc:
@@ -415,6 +415,14 @@ async def stream(
     caller_extra_headers = kwargs.pop("extra_headers", None)
     reasoning_effort = kwargs.pop("reasoning_effort", None)
     image_data = kwargs.pop("image_data", None)
+    image_mime_type = kwargs.pop("image_mime_type", "image/png")
+    image_filename = kwargs.pop("image_filename", "image.png")
+    stream_coalesce_chars = _coerce_stream_coalesce_chars(
+        kwargs.pop("stream_coalesce_chars", DEFAULT_STREAM_COALESCE_CHARS)
+    )
+    stream_coalesce_seconds = _coerce_stream_coalesce_seconds(
+        kwargs.pop("stream_coalesce_seconds", DEFAULT_STREAM_COALESCE_SECONDS)
+    )
 
     config, provider_spec = _resolve_call_config(
         model=model,
@@ -433,6 +441,8 @@ async def stream(
         binding=capability_binding,
         model=config.model,
         image_data=image_data,
+        image_mime_type=str(image_mime_type or "image/png"),
+        image_filename=str(image_filename or "image.png"),
     )
     retry_delays = _build_retry_delays(max_retries, retry_delay, exponential_backoff)
     extra_kwargs = _sanitize_call_kwargs(
@@ -475,6 +485,7 @@ async def stream(
                 on_content_delta=_on_content_delta,
                 on_reasoning_delta=_on_reasoning_delta,
                 retry_delays=retry_delays,
+                allow_image_fallback=not supports_vision(capability_binding, config.model),
                 **extra_kwargs,
             )
             if in_think_block:
@@ -503,13 +514,70 @@ async def stream(
 
     task = asyncio.create_task(_runner())
     try:
+        sent_first_text_chunk = False
+        buffered_chunks: list[str] = []
+        buffered_chars = 0
+
+        def _flush_buffer() -> str:
+            nonlocal buffered_chars
+            text = "".join(buffered_chunks)
+            buffered_chunks.clear()
+            buffered_chars = 0
+            return text
+
+        async def _queue_get(timeout: float | None = None) -> str | BaseException | None:
+            if timeout is None:
+                return await queue.get()
+            return await asyncio.wait_for(queue.get(), timeout=timeout)
+
         while True:
             item = await queue.get()
             if item is None:
+                if buffered_chunks:
+                    yield _flush_buffer()
                 break
             if isinstance(item, BaseException):
+                if buffered_chunks:
+                    yield _flush_buffer()
                 raise item
-            yield item
+            if item in STREAM_CONTROL_TOKENS or stream_coalesce_seconds <= 0:
+                if buffered_chunks:
+                    yield _flush_buffer()
+                yield item
+                continue
+            if not sent_first_text_chunk:
+                sent_first_text_chunk = True
+                yield item
+                continue
+            buffered_chunks.append(item)
+            buffered_chars += len(item)
+            deadline = asyncio.get_running_loop().time() + stream_coalesce_seconds
+            while buffered_chunks and buffered_chars < stream_coalesce_chars:
+                timeout = deadline - asyncio.get_running_loop().time()
+                if timeout <= 0:
+                    break
+                try:
+                    next_item = await _queue_get(timeout)
+                except asyncio.TimeoutError:
+                    break
+                if next_item is None:
+                    if buffered_chunks:
+                        yield _flush_buffer()
+                    await task
+                    return
+                if isinstance(next_item, BaseException):
+                    if buffered_chunks:
+                        yield _flush_buffer()
+                    raise next_item
+                if next_item in STREAM_CONTROL_TOKENS:
+                    if buffered_chunks:
+                        yield _flush_buffer()
+                    yield next_item
+                    break
+                buffered_chunks.append(next_item)
+                buffered_chars += len(next_item)
+            if buffered_chunks:
+                yield _flush_buffer()
         await task
     finally:
         if not task.done():

@@ -3,8 +3,11 @@ import assert from "node:assert/strict";
 
 import {
   isChoiceQuizQuestion,
+  isConceptQuizQuestion,
+  isFillInBlankQuizQuestion,
   normalizeQuizQuestionType,
   resolveChoiceAnswerKey,
+  resolveConceptAnswer,
 } from "../lib/quiz-question-type";
 import { extractQuizQuestions } from "../lib/quiz-types";
 
@@ -16,11 +19,26 @@ test("normalizeQuizQuestionType maps legacy choice aliases to choice", () => {
   assert.equal(isChoiceQuizQuestion("multiple_choice"), true);
 });
 
-test("normalizeQuizQuestionType keeps written and coding families stable", () => {
+test("normalizeQuizQuestionType preserves every canonical type", () => {
   assert.equal(normalizeQuizQuestionType("written"), "written");
-  assert.equal(normalizeQuizQuestionType("fill_in_blank"), "written");
+  assert.equal(normalizeQuizQuestionType("essay"), "written");
+  assert.equal(normalizeQuizQuestionType("short_answer"), "short_answer");
+  assert.equal(normalizeQuizQuestionType("concept"), "concept");
+  assert.equal(normalizeQuizQuestionType("true_false"), "concept");
+  assert.equal(normalizeQuizQuestionType("fill_in_blank"), "fill_in_blank");
+  assert.equal(normalizeQuizQuestionType("fill-in-the-blank"), "fill_in_blank");
   assert.equal(normalizeQuizQuestionType("coding"), "coding");
   assert.equal(normalizeQuizQuestionType("programming"), "coding");
+  assert.equal(isConceptQuizQuestion("true_false"), true);
+  assert.equal(isFillInBlankQuizQuestion("fill-in-the-blank"), true);
+});
+
+test("resolveConceptAnswer normalizes T/F variants", () => {
+  assert.equal(resolveConceptAnswer("true"), "true");
+  assert.equal(resolveConceptAnswer("TRUE"), "true");
+  assert.equal(resolveConceptAnswer("false"), "false");
+  assert.equal(resolveConceptAnswer(""), "");
+  assert.equal(resolveConceptAnswer("maybe"), "");
 });
 
 test("resolveChoiceAnswerKey accepts either the option key or label text", () => {

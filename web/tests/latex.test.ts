@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  convertFlowFenceToMermaid,
   convertLatexDelimiters,
+  convertSequenceFenceToMermaid,
   processLatexContent,
   processMarkdownContent,
 } from "../lib/latex";
@@ -152,4 +154,51 @@ test("pipeline: preserves fenced code blocks", () => {
   const input = "```python\nprint('hello')\n```";
   const result = processMarkdownContent(input);
   assert.ok(result.includes("print('hello')"));
+});
+
+// ---------------------------------------------------------------------------
+// editor.md fence conversion (flow / seq)
+// ---------------------------------------------------------------------------
+
+test("flow fence: keeps yes/no branch labels from the source side", () => {
+  const input = [
+    "st=>start: Start",
+    "cond=>condition: Ready?",
+    "a=>operation: Go",
+    "b=>operation: Wait",
+    "e=>end: Done",
+    "st->cond",
+    "cond(yes)->a->e",
+    "cond(no)->b->e",
+  ].join("\n");
+  const result = convertFlowFenceToMermaid(input);
+  assert.ok(result, "conversion should succeed");
+  assert.ok(result.includes("cond -->|yes| a"));
+  assert.ok(result.includes("cond -->|no| b"));
+});
+
+test("flow fence: layout hints are not edge labels", () => {
+  const input = [
+    "st=>start: Start",
+    "op=>operation: Work",
+    "e=>end: Done",
+    "st(right)->op->e",
+  ].join("\n");
+  const result = convertFlowFenceToMermaid(input);
+  assert.ok(result, "conversion should succeed");
+  assert.ok(result.includes("st --> op"));
+  assert.ok(!result.includes("|right|"));
+});
+
+test("seq fence: converts messages and notes", () => {
+  const input = [
+    "Student->DeepTutor: Ask for help",
+    "Note right of DeepTutor: Collect memory\\nand context",
+    "DeepTutor-->Student: Respond",
+  ].join("\n");
+  const result = convertSequenceFenceToMermaid(input);
+  assert.ok(result, "conversion should succeed");
+  assert.ok(result.startsWith("sequenceDiagram"));
+  assert.ok(result.includes("Student->>DeepTutor: Ask for help"));
+  assert.ok(result.includes("Collect memory<br/>and context"));
 });

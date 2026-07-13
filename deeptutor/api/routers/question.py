@@ -66,6 +66,13 @@ async def websocket_mimic_generate(websocket: WebSocket):
         "max_questions": 5  // optional
     }
     """
+    from deeptutor.api.routers.auth import ws_auth_failed, ws_require_auth
+    from deeptutor.multi_user.context import reset_current_user
+
+    user_token = await ws_require_auth(websocket)
+    if user_token is ws_auth_failed:
+        return
+
     await websocket.accept()
 
     pusher_task = None
@@ -336,9 +343,22 @@ async def websocket_mimic_generate(websocket: WebSocket):
         except Exception:
             pass
 
+        if user_token is not None:
+            try:
+                reset_current_user(user_token)
+            except Exception:
+                pass
+
 
 @router.websocket("/generate")
 async def websocket_question_generate(websocket: WebSocket):
+    from deeptutor.api.routers.auth import ws_auth_failed, ws_require_auth
+    from deeptutor.multi_user.context import reset_current_user
+
+    user_token = await ws_require_auth(websocket)
+    if user_token is ws_auth_failed:
+        return
+
     await websocket.accept()
 
     # Get task ID manager
@@ -542,3 +562,9 @@ async def websocket_question_generate(websocket: WebSocket):
     except Exception as e:
         error_msg = format_exception_message(e)
         logger.error(f"WebSocket error: {error_msg}")
+    finally:
+        if user_token is not None:
+            try:
+                reset_current_user(user_token)
+            except Exception:
+                pass

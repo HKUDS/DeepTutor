@@ -8,10 +8,11 @@ import {
   NotebookPen,
   Sparkles,
   User,
-  X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { apiUrl } from "@/lib/api";
+import PickerShell from "@/components/common/PickerShell";
+import PickerHeader from "@/components/common/PickerHeader";
+import { apiFetch, apiUrl } from "@/lib/api";
 import {
   listNotebooks,
   type NotebookSummary as RealNotebookSummary,
@@ -301,7 +302,7 @@ export default function SaveToNotebookModal({
     }
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         apiUrl("/api/v1/notebook/add_record_with_summary"),
         {
           method: "POST",
@@ -320,7 +321,7 @@ export default function SaveToNotebookModal({
       );
 
       if (!response.ok || !response.body) {
-        throw new Error("Failed to save to notebook.");
+        throw new Error(t("Failed to save to notebook."));
       }
 
       const reader = response.body.getReader();
@@ -346,7 +347,7 @@ export default function SaveToNotebookModal({
             setSummaryPreview(finalSummary);
           } else if (type === "error") {
             throw new Error(
-              String(event.payload.detail || "Failed to save to notebook."),
+              String(event.payload.detail || t("Failed to save to notebook.")),
             );
           } else if (type === "result") {
             const summary = String(event.payload.summary || finalSummary);
@@ -359,17 +360,19 @@ export default function SaveToNotebookModal({
         }
       }
 
-      throw new Error("Notebook save stream ended unexpectedly.");
+      throw new Error(t("Notebook save stream ended unexpectedly."));
     } catch (err) {
       if (controller.signal.aborted) return;
       setError(
-        err instanceof Error ? err.message : "Failed to save to notebook.",
+        err instanceof Error ? err.message : t("Failed to save to notebook."),
       );
       setIsLoading(false);
     }
   };
 
-  if (!open || !payload) return null;
+  // payload may be null while the parent is preparing the save context.
+  // Treat that as "not open" so the shell never renders without content.
+  const isOpen = open && !!payload;
 
   const totalMessages = messages?.length ?? 0;
   const selectedMessageCount = selectedMessageIdx.size;
@@ -377,34 +380,30 @@ export default function SaveToNotebookModal({
     totalMessages > 0 && selectedMessageCount === totalMessages;
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[var(--background)]/65 p-4 backdrop-blur-md">
+    <PickerShell
+      open={isOpen}
+      onClose={onClose}
+      labelledBy="save-to-notebook-title"
+      zIndex={80}
+      className="p-4 backdrop-blur-md"
+      backdropClass="bg-[var(--background)]/65"
+    >
       <div className="surface-card flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] text-[var(--card-foreground)] shadow-[0_22px_70px_rgba(0,0,0,0.18)]">
-        <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-5 py-4">
-          <div className="min-w-0">
-            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--primary)]">
-              {t("Notebook Output")}
-            </div>
-            <h2 className="text-lg font-semibold text-[var(--foreground)]">
-              {t("Save to Notebook")}
-            </h2>
-            <p className="mt-0.5 text-sm text-[var(--muted-foreground)]">
-              {hasMessageSelection
-                ? t(
-                    "Choose which messages to include, pick one or more notebooks, and a summary will be generated automatically.",
-                  )
-                : t(
-                    "Select one or more notebooks. A summary will be generated automatically.",
-                  )}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-2 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-            aria-label={t("Close")}
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+        <PickerHeader
+          icon={NotebookPen}
+          titleId="save-to-notebook-title"
+          title={t("Save to Notebook")}
+          subtitle={
+            hasMessageSelection
+              ? t(
+                  "Choose which messages to include, pick one or more notebooks, and a summary will be generated automatically.",
+                )
+              : t(
+                  "Select one or more notebooks. A summary will be generated automatically.",
+                )
+          }
+          onClose={onClose}
+        />
 
         <div className="flex-1 space-y-5 overflow-y-auto bg-[var(--background)]/40 px-5 py-5">
           <div>
@@ -635,6 +634,6 @@ export default function SaveToNotebookModal({
           </button>
         </div>
       </div>
-    </div>
+    </PickerShell>
   );
 }

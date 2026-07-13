@@ -110,8 +110,14 @@ def _build_preview(content: str, limit: int = 160) -> str:
 class CoWriterStorage:
     """File-system backed store for Co-Writer documents."""
 
-    def __init__(self) -> None:
-        self.path_service = get_path_service()
+    def __init__(self, path_service=None) -> None:
+        self._path_service = path_service
+
+    @property
+    def path_service(self):
+        if self._path_service is not None:
+            return self._path_service
+        return get_path_service()
 
     # ── Path helpers ─────────────────────────────────────────────────────
 
@@ -240,14 +246,14 @@ class CoWriterStorage:
         _atomic_write_json(self.manifest_path(document.id), document.model_dump(mode="json"))
 
 
-_storage: CoWriterStorage | None = None
+_storages: dict[str, CoWriterStorage] = {}
 
 
 def get_co_writer_storage() -> CoWriterStorage:
-    global _storage
-    if _storage is None:
-        _storage = CoWriterStorage()
-    return _storage
+    key = str(get_path_service().workspace_root.resolve())
+    if key not in _storages:
+        _storages[key] = CoWriterStorage()
+    return _storages[key]
 
 
 __all__ = [

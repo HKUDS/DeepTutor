@@ -23,6 +23,8 @@
     "chart.js": "^4.5.1",
     "clsx": "^2.1.1",
     "cytoscape": "^3.33.1",
+    "docx-preview": "^0.3.7",
+    "exceljs": "^4.4.0",
     "framer-motion": "^12.24.0",
     "html2canvas": "^1.4.1",
     "i18next": "^25.8.0",

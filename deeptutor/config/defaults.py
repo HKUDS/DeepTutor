@@ -2,10 +2,9 @@
 Default configuration values for DeepTutor.
 """
 
-from pathlib import Path
+from deeptutor.runtime.home import get_runtime_home
 
-# Get project root
-_project_root = Path(__file__).parent.parent.parent
+_project_root = get_runtime_home()
 
 # Default configuration
 DEFAULTS = {

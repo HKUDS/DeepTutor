@@ -13,15 +13,11 @@ from typing import Any
 
 import yaml
 
+from deeptutor.runtime.home import get_runtime_home
 from deeptutor.services.path_service import get_path_service
 
-# PROJECT_ROOT points to the actual project root directory (DeepTutor/)
-# Path(__file__) = deeptutor/services/config/loader.py
-# .parent = deeptutor/services/config/
-# .parent.parent = deeptutor/services/
-# .parent.parent.parent = deeptutor/
-# .parent.parent.parent.parent = DeepTutor/ (project root)
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+# Runtime workspace root. Application settings live under PROJECT_ROOT/data/user/settings.
+PROJECT_ROOT = get_runtime_home()
 
 
 def get_runtime_settings_dir(project_root: Path | None = None) -> Path:
@@ -226,7 +222,7 @@ def get_agent_params(module_name: str) -> dict:
         >>> params["temperature"]  # 0.3
         >>> params["max_tokens"]   # 8192
     """
-    defaults = {
+    global_defaults = {
         "temperature": 0.5,
         "max_tokens": 4096,
     }
@@ -235,6 +231,7 @@ def get_agent_params(module_name: str) -> dict:
         "research": ("capabilities", "research"),
         "question": ("capabilities", "question"),
         "co_writer": ("capabilities", "co_writer"),
+        "visualize": ("capabilities", "visualize"),
         "brainstorm": ("tools", "brainstorm"),
         "vision_solver": ("plugins", "vision_solver"),
         "math_animator": ("plugins", "math_animator"),
@@ -245,26 +242,44 @@ def get_agent_params(module_name: str) -> dict:
         raise FileNotFoundError(f"Missing required configuration file: {path}")
     section = section_map.get(module_name)
     if section is None:
-        return defaults
+        return global_defaults
+
+    # Per-module defaults come from the shipped DEFAULT_AGENTS_SETTINGS so that
+    # adding a new capability seeded with non-default tokens (e.g. visualize at
+    # 16k) doesn't require existing users to hand-edit their stale agents.yaml.
+    # Imported lazily to avoid a circular dependency with services.setup.
+    from deeptutor.services.setup.init import DEFAULT_AGENTS_SETTINGS
+
+    seeded: dict[str, Any] = DEFAULT_AGENTS_SETTINGS
+    for key in section:
+        seeded = seeded.get(key, {}) if isinstance(seeded, dict) else {}
+    module_defaults = {
+        "temperature": seeded.get("temperature", global_defaults["temperature"])
+        if isinstance(seeded, dict)
+        else global_defaults["temperature"],
+        "max_tokens": seeded.get("max_tokens", global_defaults["max_tokens"])
+        if isinstance(seeded, dict)
+        else global_defaults["max_tokens"],
+    }
+
     with open(path, encoding="utf-8") as f:
         agents_config = yaml.safe_load(f) or {}
     module_config: dict[str, Any] = agents_config
     for key in section:
-        module_config = module_config.get(key, {})
+        module_config = module_config.get(key, {}) if isinstance(module_config, dict) else {}
     return {
-        "temperature": module_config.get("temperature", defaults["temperature"]),
-        "max_tokens": module_config.get("max_tokens", defaults["max_tokens"]),
+        "temperature": module_config.get("temperature", module_defaults["temperature"]),
+        "max_tokens": module_config.get("max_tokens", module_defaults["max_tokens"]),
     }
 
 
 DEFAULT_CHAT_PARAMS: dict[str, Any] = {
     "temperature": 0.2,
+    # Exploring-loop budget: max LLM rounds in one turn's loop (a round
+    # without tool calls ends the loop early — the normal exit).
+    "max_rounds": 8,
+    "exploring": {"max_tokens": 1600},
     "responding": {"max_tokens": 8000},
-    "answer_now": {"max_tokens": 8000},
-    "thinking": {"max_tokens": 2000},
-    "observing": {"max_tokens": 2000},
-    "acting": {"max_tokens": 2000},
-    "react_fallback": {"max_tokens": 1500},
 }
 
 
@@ -273,9 +288,10 @@ def get_chat_params() -> dict[str, Any]:
     Read ``capabilities.chat`` from agents.yaml with deep-merged defaults.
 
     Unlike :func:`get_agent_params`, the chat capability has per-stage
-    sub-sections (``responding``, ``answer_now``, ``thinking``, ``observing``,
-    ``acting``, ``react_fallback``), each with its own ``max_tokens``. A single
-    ``temperature`` is shared across all stages.
+    sub-sections (``exploring``, ``responding``), each with its own
+    ``max_tokens``. A single ``temperature`` and round budget are shared
+    across the chat loop. Legacy keys from the targeting-era schema
+    (``max_iterations``, ``max_explore_rounds``, …) are filtered out.
 
     Returns:
         dict: Deep-merged chat configuration. Always contains every stage key
@@ -287,7 +303,9 @@ def get_chat_params() -> dict[str, Any]:
         with open(path, encoding="utf-8") as f:
             agents_config = yaml.safe_load(f) or {}
         cfg = (agents_config.get("capabilities", {}) or {}).get("chat", {}) or {}
-    return _deep_merge(DEFAULT_CHAT_PARAMS, cfg)
+    known_keys = set(DEFAULT_CHAT_PARAMS)
+    filtered_cfg = {key: value for key, value in cfg.items() if key in known_keys}
+    return _deep_merge(DEFAULT_CHAT_PARAMS, filtered_cfg)
 
 
 __all__ = [

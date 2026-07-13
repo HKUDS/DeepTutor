@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { apiFetch } from "@/lib/api";
 
 const MAX_TEXT_BYTES = 8 * 1024 * 1024; // 8 MB — preview, not a download
 
@@ -48,7 +49,7 @@ export function useTextSource(
 
     (async () => {
       try {
-        const res = await fetch(url, { signal: controller.signal });
+        const res = await apiFetch(url, { signal: controller.signal });
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`);
         }

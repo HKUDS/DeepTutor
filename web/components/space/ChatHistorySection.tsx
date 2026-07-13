@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { History, Loader2, RefreshCw, Search } from "lucide-react";
+import {
+  History,
+  Loader2,
+  RefreshCw,
+  Search,
+  type LucideIcon,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import SessionList from "@/components/SessionList";
 import SpaceSectionHeader from "@/components/space/SpaceSectionHeader";
@@ -14,7 +20,22 @@ import {
   type SessionSummary,
 } from "@/lib/session-api";
 
-export default function ChatHistorySection() {
+/**
+ * Sessions list for chat history. Reopened sessions always route back to
+ * the main chat surface.
+ */
+export interface ChatHistorySectionProps {
+  icon?: LucideIcon;
+  title?: string;
+  description?: string;
+}
+
+export default function ChatHistorySection({
+  icon,
+  title,
+  description,
+}: ChatHistorySectionProps = {}) {
+  const basePath = "/home";
   const { t } = useTranslation();
   const router = useRouter();
   const { activeSessionId, setActiveSessionId } = useAppShell();
@@ -48,9 +69,9 @@ export default function ChatHistorySection() {
   const handleSelect = useCallback(
     (sessionId: string) => {
       setActiveSessionId(sessionId);
-      router.push(`/chat/${sessionId}`);
+      router.push(`${basePath}/${sessionId}`);
     },
-    [router, setActiveSessionId],
+    [basePath, router, setActiveSessionId],
   );
 
   const handleRename = useCallback(
@@ -73,14 +94,20 @@ export default function ChatHistorySection() {
     [activeSessionId, setActiveSessionId, t],
   );
 
+  const HeaderIcon = icon ?? History;
+  const headerTitle = title ?? t("Chat History");
+  const headerDescription =
+    description ??
+    t(
+      "Browse, rename, delete, and reopen previous conversations from your learning space.",
+    );
+
   return (
     <div className="space-y-6">
       <SpaceSectionHeader
-        icon={History}
-        title={t("Chat History")}
-        description={t(
-          "Browse, rename, delete, and reopen previous conversations from your learning space.",
-        )}
+        icon={HeaderIcon}
+        title={headerTitle}
+        description={headerDescription}
         meta={
           <span className="rounded-full border border-[var(--border)] bg-[var(--card)] px-2 py-0.5 text-[10.5px] font-medium text-[var(--muted-foreground)]">
             {sessions.length} {t("conversations")}

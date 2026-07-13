@@ -5,7 +5,6 @@ export type ResearchMode =
   | "comparison"
   | "learning_path";
 export type ResearchDepth = "" | "quick" | "standard" | "deep" | "manual";
-export type ResearchSource = "kb" | "web" | "papers";
 
 export interface OutlineItem {
   title: string;
@@ -15,7 +14,6 @@ export interface OutlineItem {
 export interface DeepResearchFormConfig {
   mode: ResearchMode;
   depth: ResearchDepth;
-  sources: ResearchSource[];
   manual_subtopics?: number;
   manual_max_iterations?: number;
   confirmed_outline?: OutlineItem[];
@@ -30,7 +28,6 @@ export function createEmptyResearchConfig(): DeepResearchFormConfig {
   return {
     mode: "",
     depth: "",
-    sources: [],
   };
 }
 
@@ -53,12 +50,6 @@ export function normalizeResearchConfig(
       raw?.depth === "manual"
         ? raw.depth
         : empty.depth,
-    sources: Array.isArray(raw?.sources)
-      ? raw.sources.filter(
-          (source): source is ResearchSource =>
-            source === "kb" || source === "web" || source === "papers",
-        )
-      : empty.sources,
   };
 }
 
@@ -89,7 +80,6 @@ export function buildResearchWSConfig(
   const result: Record<string, unknown> = {
     mode: cfg.mode,
     depth: cfg.depth,
-    sources: [...cfg.sources],
   };
 
   if (cfg.depth === "manual") {
@@ -128,11 +118,8 @@ export function summarizeResearchConfig(
   const validation = validateResearchConfig(cfg);
   const tr = translate ?? ((s: string) => s);
   if (!validation.valid) return tr("Incomplete settings");
-  const sourceSummary = cfg.sources.length
-    ? cfg.sources.join("+")
-    : tr("llm-only");
   const modeLabel =
     RESEARCH_MODE_LABELS[cfg.mode] ?? cfg.mode.replace("_", " ");
   const depthLabel = RESEARCH_DEPTH_LABELS[cfg.depth] ?? cfg.depth;
-  return [tr(modeLabel), tr(depthLabel), sourceSummary].join(" · ");
+  return [tr(modeLabel), tr(depthLabel)].join(" · ");
 }

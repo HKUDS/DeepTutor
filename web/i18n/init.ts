@@ -2,7 +2,6 @@ import i18n, { type Resource } from "i18next";
 import { initReactI18next } from "react-i18next";
 
 import enApp from "@/locales/en/app.json";
-import zhApp from "@/locales/zh/app.json";
 
 export type AppLanguage = "en" | "zh";
 
@@ -20,7 +19,6 @@ export function initI18n(language?: unknown) {
 
   const resources: Resource = {
     en: { app: enApp },
-    zh: { app: zhApp },
   };
 
   i18n.use(initReactI18next).init({
@@ -41,4 +39,12 @@ export function initI18n(language?: unknown) {
 
   _initialized = true;
   return i18n;
+}
+
+export async function ensureLanguage(language: AppLanguage) {
+  if (i18n.hasResourceBundle(language, "app")) return;
+  if (language === "zh") {
+    const zhApp = (await import("@/locales/zh/app.json")).default;
+    i18n.addResourceBundle("zh", "app", zhApp, true, true);
+  }
 }

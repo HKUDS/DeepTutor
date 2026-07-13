@@ -11,10 +11,11 @@ Version: v1.0
 Based on: TODO.md specification
 """
 
-import os
 import re
 
 import tiktoken
+
+from deeptutor.services.config import resolve_llm_runtime_config
 
 
 class TexChunker:
@@ -25,11 +26,13 @@ class TexChunker:
         Initialize chunking tool
 
         Args:
-            model: Model name (for token estimation). If not provided, read from LLM_MODEL environment variable
+            model: Model name for token estimation. If omitted, use the active LLM profile.
         """
-        # Read model configuration from environment variables
         if model is None:
-            model = os.getenv("LLM_MODEL")
+            try:
+                model = resolve_llm_runtime_config().model
+            except Exception:
+                model = None
 
         try:
             if model:

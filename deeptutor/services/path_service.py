@@ -25,6 +25,8 @@ data/user/
 from pathlib import Path
 from typing import Literal, cast
 
+from deeptutor.runtime.home import PACKAGE_ROOT, get_runtime_data_root
+
 AgentModule = Literal[
     "solve",
     "chat",
@@ -58,7 +60,7 @@ class PathService:
     """Runtime path manager rooted at a workspace root.
 
     The default root is the historical ``data/`` directory.  The optional
-    multi-user layer instantiates this class with ``multi-user/<uid>/`` so the
+    multi-user layer instantiates this class with ``data/users/<uid>/`` so the
     public API can stay the same while disk writes become scoped per user.
     """
 
@@ -76,8 +78,10 @@ class PathService:
     _PRIVATE_SUFFIXES = {".json", ".sqlite", ".db", ".md", ".yaml", ".yml", ".py", ".log"}
 
     def __init__(self, workspace_root: Path | None = None):
-        self._project_root = Path(__file__).resolve().parent.parent.parent
-        self._workspace_root = (workspace_root or self._project_root / "data").resolve()
+        self._package_root = PACKAGE_ROOT
+        self._uses_default_workspace_root = workspace_root is None
+        self._workspace_root = (workspace_root or get_runtime_data_root()).resolve()
+        self._project_root = self._workspace_root.parent.resolve()
         self._user_data_dir = (self._workspace_root / "user").resolve()
 
     @classmethod
@@ -102,11 +106,25 @@ class PathService:
     def workspace_root(self) -> Path:
         return self._workspace_root
 
+    @property
+    def package_root(self) -> Path:
+        return self._package_root
+
     def get_user_root(self) -> Path:
         return self._user_data_dir
 
     def get_knowledge_bases_root(self) -> Path:
         return self._workspace_root / "knowledge_bases"
+
+    def get_parse_cache_root(self) -> Path:
+        """Shared, content-addressed document-parse cache.
+
+        Lives under the workspace root (sibling of ``knowledge_bases``) so it is
+        automatically scoped per user/workspace. Both knowledge-base indexing
+        and question extraction draw from this one cache, keyed by
+        ``(source_hash, parser_signature)`` — see ``deeptutor/services/parsing``.
+        """
+        return self._workspace_root / "parse_cache"
 
     def get_chat_history_db(self) -> Path:
         return self._user_data_dir / "chat_history.db"
@@ -151,6 +169,13 @@ class PathService:
             return True
 
         if len(parts) >= 5 and parts[:2] == ("workspace", "chat") and "code_runs" in parts[3:]:
+            return True
+
+        # Generated media (imagegen / videogen tools write under <task>/media/).
+        if len(parts) >= 5 and parts[:2] == ("workspace", "chat") and "media" in parts[3:]:
+            return True
+
+        if len(parts) >= 5 and parts[:3] == ("workspace", "chat", "chat") and parts[4] == "exec":
             return True
 
         if len(parts) >= 4 and parts[:3] == ("workspace", "chat", "_detached_code_execution"):
@@ -402,6 +427,12 @@ def get_path_service() -> PathService:
 
         return get_current_path_service()
     except Exception:
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning(
+            "get_path_service() fell back to default instance; multi-user path resolution failed",
+            exc_info=True,
+        )
         return PathService.get_instance()
 
 

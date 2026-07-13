@@ -1,78 +1,27 @@
+import json
 from pathlib import Path
 
-from deeptutor.services.config import model_catalog as model_catalog_module
-from deeptutor.services.config.env_store import EnvStore
 from deeptutor.services.config.model_catalog import ModelCatalogService
 
 
-def test_load_hydrates_empty_catalog_from_env(tmp_path: Path, monkeypatch):
+def test_load_creates_empty_catalog_without_dotenv_hydration(tmp_path: Path):
     env_path = tmp_path / ".env"
     env_path.write_text(
-        "\n".join(
-            [
-                "LLM_BINDING=google",
-                "LLM_MODEL=gemini-3-flash-preview",
-                "LLM_API_KEY=test-llm-key",
-                "LLM_HOST=https://example-llm.test/v1",
-                "EMBEDDING_BINDING=openai",
-                "EMBEDDING_MODEL=text-embedding-3-large",
-                "EMBEDDING_API_KEY=test-emb-key",
-                "EMBEDDING_HOST=https://example-emb.test/v1",
-                "EMBEDDING_DIMENSION=3072",
-                "SEARCH_PROVIDER=perplexity",
-                "SEARCH_API_KEY=test-search-key",
-            ]
-        )
-        + "\n",
+        "LLM_MODEL=legacy-model\nLLM_API_KEY=legacy-key\nEMBEDDING_MODEL=legacy-embedding\n",
         encoding="utf-8",
     )
     catalog_path = tmp_path / "model_catalog.json"
-    catalog_path.write_text(
-        """{
-  "version": 1,
-  "services": {
-    "llm": {"active_profile_id": null, "active_model_id": null, "profiles": []},
-    "embedding": {"active_profile_id": null, "active_model_id": null, "profiles": []},
-    "search": {"active_profile_id": null, "profiles": []}
-  }
-}
-""",
-        encoding="utf-8",
-    )
 
-    env_store = EnvStore(path=env_path)
-    monkeypatch.setattr(model_catalog_module, "get_env_store", lambda: env_store)
+    catalog = ModelCatalogService(path=catalog_path).load()
 
-    service = ModelCatalogService(path=catalog_path)
-    catalog = service.load()
-
-    assert catalog["services"]["llm"]["profiles"][0]["binding"] == "google"
-    assert catalog["services"]["llm"]["profiles"][0]["extra_headers"] == {}
-    assert (
-        catalog["services"]["llm"]["profiles"][0]["models"][0]["model"] == "gemini-3-flash-preview"
-    )
-    assert catalog["services"]["embedding"]["profiles"][0]["models"][0]["dimension"] == "3072"
-    assert catalog["services"]["search"]["profiles"][0]["provider"] == "perplexity"
-    assert catalog["services"]["search"]["profiles"][0]["proxy"] == ""
+    assert catalog["services"]["llm"]["profiles"] == []
+    assert catalog["services"]["embedding"]["profiles"] == []
+    assert catalog["services"]["search"]["profiles"] == []
 
 
-def test_load_syncs_existing_active_profiles_from_env(tmp_path: Path, monkeypatch):
-    env_path = tmp_path / ".env"
-    env_path.write_text(
-        "\n".join(
-            [
-                "LLM_BINDING=dashscope",
-                "LLM_MODEL=qwen3.5-plus",
-                "LLM_API_KEY=new-llm-key",
-                "LLM_HOST=https://dashscope.aliyuncs.com/compatible-mode/v1",
-                "EMBEDDING_BINDING=dashscope",
-                "EMBEDDING_MODEL=text-embedding-v4",
-                "EMBEDDING_API_KEY=new-emb-key",
-                "EMBEDDING_HOST=https://dashscope.aliyuncs.com/compatible-mode/v1",
-                "EMBEDDING_DIMENSION=2048",
-            ]
-        )
-        + "\n",
+def test_load_does_not_sync_existing_active_profiles_from_dotenv(tmp_path: Path):
+    (tmp_path / ".env").write_text(
+        "LLM_MODEL=qwen3.5-plus\nEMBEDDING_MODEL=text-embedding-v4\n",
         encoding="utf-8",
     )
     catalog_path = tmp_path / "model_catalog.json"
@@ -128,9 +77,6 @@ def test_load_syncs_existing_active_profiles_from_env(tmp_path: Path, monkeypatc
         encoding="utf-8",
     )
 
-    env_store = EnvStore(path=env_path)
-    monkeypatch.setattr(model_catalog_module, "get_env_store", lambda: env_store)
-
     service = ModelCatalogService(path=catalog_path)
     catalog = service.load()
 
@@ -139,14 +85,76 @@ def test_load_syncs_existing_active_profiles_from_env(tmp_path: Path, monkeypatc
     emb_profile = catalog["services"]["embedding"]["profiles"][0]
     emb_model = emb_profile["models"][0]
 
-    assert llm_profile["binding"] == "dashscope"
-    assert llm_profile["base_url"] == "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    assert llm_profile["api_key"] == "new-llm-key"
-    assert llm_model["model"] == "qwen3.5-plus"
-    assert llm_model["name"] == "qwen3.5-plus"
-    assert emb_profile["binding"] == "dashscope"
-    assert emb_profile["base_url"] == "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    assert emb_profile["api_key"] == "new-emb-key"
-    assert emb_model["model"] == "text-embedding-v4"
-    assert emb_model["name"] == "text-embedding-v4"
-    assert emb_model["dimension"] == "2048"
+    assert llm_profile["binding"] == "openai"
+    assert llm_profile["base_url"] == "https://old-llm.example/v1"
+    assert llm_profile["api_key"] == "old-llm-key"
+    assert llm_model["model"] == "old-model"
+    assert llm_model["name"] == "old-model"
+    assert emb_profile["binding"] == "openai"
+    assert emb_profile["base_url"] == "https://old-emb.example/v1/embeddings"
+    assert emb_profile["api_key"] == "old-emb-key"
+    assert emb_model["model"] == "old-embedding"
+    assert emb_model["name"] == "old-embedding"
+    assert emb_model["dimension"] == "3072"
+
+
+def test_load_recovers_invalid_catalog_with_defaults(tmp_path: Path):
+    catalog_path = tmp_path / "model_catalog.json"
+    catalog_path.write_text("{not-json", encoding="utf-8")
+
+    catalog = ModelCatalogService(path=catalog_path).load()
+
+    expected_services = {
+        "llm",
+        "embedding",
+        "search",
+        "tts",
+        "stt",
+        "imagegen",
+        "videogen",
+    }
+    assert set(catalog["services"]) == expected_services
+    saved = json.loads(catalog_path.read_text(encoding="utf-8"))
+    assert set(saved["services"]) == expected_services
+
+
+def test_load_persists_normalized_active_ids(tmp_path: Path):
+    catalog_path = tmp_path / "model_catalog.json"
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "services": {
+                    "llm": {
+                        "active_profile_id": "missing-profile",
+                        "active_model_id": "missing-model",
+                        "profiles": [
+                            {
+                                "id": "llm-profile-a",
+                                "name": "A",
+                                "binding": "openai",
+                                "base_url": "https://example.test/v1",
+                                "api_key": "sk",
+                                "models": [
+                                    {
+                                        "id": "llm-model-a",
+                                        "name": "gpt",
+                                        "model": "gpt-test",
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    ModelCatalogService(path=catalog_path).load()
+
+    saved = json.loads(catalog_path.read_text(encoding="utf-8"))
+    llm = saved["services"]["llm"]
+    assert llm["active_profile_id"] == "llm-profile-a"
+    assert llm["active_model_id"] == "llm-model-a"
+    assert saved["services"]["embedding"]["profiles"] == []
+    assert saved["services"]["search"]["profiles"] == []

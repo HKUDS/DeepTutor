@@ -1,21 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 import json
-import os
 import threading
 from threading import Lock
 import time
 from typing import Any
 from uuid import uuid4
 
-from deeptutor.services.llm.client import reset_llm_client
-from deeptutor.services.llm.config import clear_llm_config_cache
-
 from .context_window_detection import detect_context_window
-from .env_store import get_env_store
 from .model_catalog import get_model_catalog_service
 from .provider_runtime import (
     resolve_embedding_runtime_config,
@@ -32,19 +26,19 @@ def _redact(value: str) -> str:
     return f"{value[:4]}...{value[-4:]}"
 
 
-@contextmanager
-def temporary_env(values: dict[str, str]):
-    original: dict[str, str | None] = {key: os.environ.get(key) for key in values}
+def _coerce_int(value: Any, default: int, *, minimum: int = 1) -> int:
     try:
-        for key, value in values.items():
-            os.environ[key] = value
-        yield
-    finally:
-        for key, original_value in original.items():
-            if original_value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = original_value
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, parsed)
+
+
+def _coerce_float(value: Any, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 @dataclass
@@ -101,7 +95,6 @@ class ConfigTestRunner:
 
     def _run_sync(self, run: TestRun, catalog: dict[str, Any]) -> None:
         try:
-            env_values = get_env_store().render_from_catalog(catalog)
             service = run.service
             profile = get_model_catalog_service().get_active_profile(catalog, service)
             model = get_model_catalog_service().get_active_model(catalog, service)
@@ -121,41 +114,28 @@ class ConfigTestRunner:
                     model=model,
                 )
 
-            with temporary_env(env_values):
-                if service == "llm":
-                    asyncio.run(self._test_llm(run, catalog))
-                elif service == "embedding":
-                    asyncio.run(self._test_embedding(run, model or {}, catalog))
-                elif service == "search":
-                    self._test_search(run, catalog)
-                else:
-                    raise ValueError(f"Unsupported service: {service}")
+            if service == "llm":
+                asyncio.run(self._test_llm(run, catalog))
+            elif service == "embedding":
+                asyncio.run(self._test_embedding(run, model or {}, catalog))
+            elif service == "search":
+                self._test_search(run, catalog)
+            elif service == "tts":
+                asyncio.run(self._test_tts(run, catalog))
+            elif service == "stt":
+                asyncio.run(self._test_stt(run, catalog))
+            elif service == "imagegen":
+                asyncio.run(self._test_imagegen(run, catalog))
+            elif service == "videogen":
+                asyncio.run(self._test_videogen(run, catalog))
+            else:
+                raise ValueError(f"Unsupported service: {service}")
             if not run.cancelled and run.status == "running":
                 run.status = "completed"
                 run.emit("completed", f"{service.upper()} test completed successfully.")
         except Exception as exc:
             run.status = "failed"
             run.emit("failed", str(exc))
-
-    def _persist_llm_context_window(
-        self,
-        *,
-        catalog: dict[str, Any],
-        context_window: int,
-        source: str,
-        detected_at: str,
-    ) -> dict[str, Any]:
-        service = get_model_catalog_service()
-        llm_model = service.get_active_model(catalog, "llm")
-        if llm_model is None:
-            return catalog
-        llm_model["context_window"] = str(context_window)
-        llm_model["context_window_source"] = source
-        llm_model["context_window_detected_at"] = detected_at
-        saved = service.save(catalog)
-        clear_llm_config_cache()
-        reset_llm_client()
-        return saved
 
     def _persist_embedding_dimension(
         self,
@@ -255,26 +235,38 @@ class ConfigTestRunner:
         from .loader import get_agent_params
 
         probe_params = get_agent_params("llm_probe")
-        max_tokens = max(1, int(probe_params.get("max_tokens", 1024)))
+        max_tokens = _coerce_int(probe_params.get("max_tokens"), 1024)
+        temperature = _coerce_float(probe_params.get("temperature"), 0.1)
         token_kwargs: dict[str, Any] = get_token_limit_kwargs(
             llm_config.model, max_tokens=max_tokens
         )
         run.emit("info", f"Token options: {json.dumps(token_kwargs)}")
+        if llm_config.reasoning_effort:
+            run.emit("info", f"Reasoning effort: {llm_config.reasoning_effort}")
         response = await llm_complete(
             model=llm_config.model,
             prompt="Say 'OK' and identify the model you are using.",
             system_prompt="Respond briefly but include your model identity if possible.",
             binding=llm_config.binding,
             api_key=llm_config.api_key or "sk-no-key-required",
-            base_url=llm_config.base_url or "",
-            temperature=0.1,
+            base_url=llm_config.effective_url or llm_config.base_url or "",
+            api_version=llm_config.api_version,
+            temperature=temperature,
             extra_headers=llm_config.extra_headers,
+            reasoning_effort=llm_config.reasoning_effort,
             **token_kwargs,
         )
         snippet = (response or "").strip()
         run.emit("response", "Received LLM response.", snippet=snippet[:400])
         if not snippet:
             raise ValueError("LLM returned an empty response.")
+        run.emit(
+            "info",
+            (
+                "Basic LLM completion succeeded. Chat additionally validates "
+                "streaming and provider tool compatibility at runtime."
+            ),
+        )
 
         run.emit("info", "Detecting model context window.")
         detection = await detect_context_window(
@@ -283,22 +275,15 @@ class ConfigTestRunner:
         )
         run.emit(
             "context_window",
-            (f"Context window set to {detection.context_window} tokens ({detection.source})."),
+            (f"Detected context window {detection.context_window} tokens ({detection.source})."),
             context_window=detection.context_window,
             source=detection.source,
             detail=detection.detail,
             detected_at=detection.detected_at,
         )
-        saved_catalog = self._persist_llm_context_window(
-            catalog=catalog,
-            context_window=detection.context_window,
-            source=detection.source,
-            detected_at=detection.detected_at,
-        )
         run.emit(
-            "catalog",
-            "Saved updated model metadata to model_catalog.json.",
-            catalog=saved_catalog,
+            "info",
+            "Context window detection is available in Settings and was not written automatically.",
         )
 
     async def _test_embedding(
@@ -309,7 +294,7 @@ class ConfigTestRunner:
 
         run.emit("info", "Loading embedding config from the active catalog selection.")
         resolved = resolve_embedding_runtime_config(catalog=catalog)
-        catalog_dim = int(str(model.get("dimension") or 0))
+        catalog_dim = _coerce_int(model.get("dimension"), 0, minimum=0)
         # Force the smoke probe to send NO `dimensions=` parameter so we get
         # the model's native max dim back. If we used the configured dim,
         # Matryoshka models (OpenAI text-embedding-3-*, Cohere embed-v4,
@@ -423,36 +408,30 @@ class ConfigTestRunner:
         # Always persist: the probe runs end-to-end successfully, so the
         # detected dim is authoritative. ``_persist_embedding_dimension`` also
         # writes the refreshed ``supported_dimensions`` CSV in the same save.
-        try:
-            saved_catalog = self._persist_embedding_dimension(catalog, model, detected_dim)
-            run.emit(
-                "catalog",
-                "Saved detected embedding dimension to model_catalog.json.",
-                catalog=saved_catalog,
-            )
-        except Exception as exc:  # pragma: no cover - persistence best-effort
-            run.emit(
-                "warning",
-                f"Could not save detected embedding dimension: {exc}",
-            )
+        saved_catalog = self._persist_embedding_dimension(catalog, model, detected_dim)
+        run.emit(
+            "catalog",
+            "Saved detected embedding dimension to model_catalog.json.",
+            catalog=saved_catalog,
+        )
 
     def _test_search(self, run: TestRun, catalog: dict[str, Any]) -> None:
         from deeptutor.services.search import web_search
 
         resolved = resolve_search_runtime_config(catalog=catalog)
-        if not resolved.requested_provider:
+        if resolved.provider == "none":
             run.status = "completed"
             run.emit("completed", "Search skipped because no active provider is configured.")
             return
         if resolved.unsupported_provider:
             raise ValueError(
                 f"Search provider `{resolved.requested_provider}` is deprecated/unsupported. "
-                "Switch to brave/tavily/jina/searxng/duckduckgo/perplexity."
+                "Switch to none/brave/tavily/jina/searxng/duckduckgo/perplexity/serper."
             )
         if resolved.missing_credentials:
             raise ValueError(
                 f"Search provider `{resolved.requested_provider}` requires api_key. "
-                "Set profile.api_key or PERPLEXITY_API_KEY."
+                "Set profile.api_key in Settings > Catalog."
             )
         provider = resolved.provider
         run.emit("info", f"Resolved search provider `{provider}`.")
@@ -470,9 +449,127 @@ class ConfigTestRunner:
         if not (result.get("answer") or result.get("search_results")):
             raise ValueError("Search provider returned no answer and no search results.")
 
+    async def _test_tts(self, run: TestRun, catalog: dict[str, Any]) -> None:
+        import base64
+
+        from deeptutor.services.config.provider_runtime import resolve_tts_runtime_config
+        from deeptutor.services.voice import synthesize_speech
+
+        run.emit("info", "Loading TTS config from the active catalog selection.")
+        resolved = resolve_tts_runtime_config(catalog=catalog)
+        run.emit(
+            "info",
+            f"Resolved model `{resolved.model}` (provider `{resolved.provider_name}`, "
+            f"voice `{resolved.voice or '(default)'}`).",
+        )
+        run.emit("info", f"Request target: {resolved.base_url}")
+        sample = "DeepTutor voice check. 这是一段语音合成测试。"
+        run.emit("info", "Synthesizing a short sample clip.")
+        audio, content_type = await synthesize_speech(sample, catalog=catalog)
+        run.emit(
+            "response",
+            f"Received {len(audio)} bytes of {content_type}.",
+            audio_base64=base64.b64encode(audio).decode("ascii"),
+            content_type=content_type,
+            bytes=len(audio),
+        )
+
+    async def _test_stt(self, run: TestRun, catalog: dict[str, Any]) -> None:
+        import io
+        import wave
+
+        from deeptutor.services.config.provider_runtime import resolve_stt_runtime_config
+        from deeptutor.services.voice import transcribe_audio
+
+        run.emit("info", "Loading STT config from the active catalog selection.")
+        resolved = resolve_stt_runtime_config(catalog=catalog)
+        run.emit(
+            "info",
+            f"Resolved model `{resolved.model}` (provider `{resolved.provider_name}`, "
+            f"style `{resolved.request_style}`).",
+        )
+        run.emit("info", f"Request target: {resolved.base_url}")
+
+        # One second of 16 kHz mono silence — a valid WAV that exercises the
+        # full upload + auth + model path. Most providers return empty/near-empty
+        # text; a clean HTTP 200 confirms the connection is configured correctly.
+        buffer = io.BytesIO()
+        with wave.open(buffer, "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(16000)
+            wav.writeframes(b"\x00\x00" * 16000)
+        run.emit("info", "Uploading a 1s silent probe clip to validate the endpoint.")
+        transcript = await transcribe_audio(
+            buffer.getvalue(),
+            catalog=catalog,
+            filename="probe.wav",
+            content_type="audio/wav",
+        )
+        run.emit(
+            "response",
+            "Transcription endpoint responded successfully.",
+            snippet=(transcript or "(empty — expected for a silent clip)")[:200],
+        )
+
+    async def _test_imagegen(self, run: TestRun, catalog: dict[str, Any]) -> None:
+        import base64
+
+        from deeptutor.services.config.provider_runtime import resolve_imagegen_runtime_config
+        from deeptutor.services.imagegen import generate_image
+
+        run.emit("info", "Loading image-generation config from the active catalog selection.")
+        resolved = resolve_imagegen_runtime_config(catalog=catalog)
+        run.emit(
+            "info",
+            f"Resolved model `{resolved.model}` (provider `{resolved.provider_name}`, "
+            f"size `{resolved.size or '(default)'}`).",
+        )
+        run.emit("info", f"Request target: {resolved.base_url}")
+        run.emit("info", "Generating a single test image (this is a billable call).")
+        images = await generate_image(
+            "A small minimalist test icon of a blue book on a white background.",
+            catalog=catalog,
+            n=1,
+        )
+        if not images:
+            raise ValueError("Image provider returned no images.")
+        image_bytes, content_type = images[0]
+        run.emit(
+            "response",
+            f"Received {len(image_bytes)} bytes of {content_type}.",
+            image_base64=base64.b64encode(image_bytes).decode("ascii"),
+            content_type=content_type,
+            bytes=len(image_bytes),
+        )
+
+    async def _test_videogen(self, run: TestRun, catalog: dict[str, Any]) -> None:
+        from deeptutor.services.config.provider_runtime import resolve_videogen_runtime_config
+        from deeptutor.services.videogen import probe_video
+
+        run.emit("info", "Loading video-generation config from the active catalog selection.")
+        resolved = resolve_videogen_runtime_config(catalog=catalog)
+        run.emit(
+            "info",
+            f"Resolved model `{resolved.model}` (provider `{resolved.provider_name}`, "
+            f"adapter `{resolved.adapter}`).",
+        )
+        run.emit("info", f"Request target: {resolved.base_url}")
+        run.emit(
+            "info",
+            "Submitting a probe task to validate endpoint + auth + model. "
+            "The render is not awaited (it is slow and billable).",
+        )
+        task_id = await probe_video("A short test clip of a calm ocean wave.", catalog=catalog)
+        run.emit(
+            "response",
+            "Video task accepted — connection is valid.",
+            task_id=task_id,
+        )
+
 
 def get_config_test_runner() -> ConfigTestRunner:
     return ConfigTestRunner.get_instance()
 
 
-__all__ = ["ConfigTestRunner", "TestRun", "get_config_test_runner", "temporary_env"]
+__all__ = ["ConfigTestRunner", "TestRun", "get_config_test_runner"]

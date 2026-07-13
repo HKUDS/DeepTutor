@@ -10,15 +10,16 @@ from typing import Any
 
 import pytest
 
+from deeptutor.agents.chat.capability import ChatCapability
+from deeptutor.agents.question.capability import DeepQuestionCapability
+from deeptutor.agents.research.capability import DeepResearchCapability
+from deeptutor.agents.visualize.capability import VisualizeCapability
 import deeptutor.agents.visualize.pipeline as visualize_pipeline
-from deeptutor.capabilities.chat import ChatCapability
-from deeptutor.capabilities.deep_question import DeepQuestionCapability
-from deeptutor.capabilities.deep_research import DeepResearchCapability
-from deeptutor.capabilities.deep_solve import DeepSolveCapability
-from deeptutor.capabilities.visualize import VisualizeCapability
+from deeptutor.capabilities.solve.capability import DeepSolveCapability
 from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.bootstrap.builtin_capabilities import BUILTIN_CAPABILITY_CLASSES
 
 
 def _install_module(
@@ -33,7 +34,10 @@ def _install_module(
             monkeypatch.setitem(sys.modules, pkg_name, pkg)
             if idx > 1:
                 parent = sys.modules[".".join(parts[: idx - 1])]
-                setattr(parent, parts[idx - 1], pkg)
+                # monkeypatch (not raw setattr) so the parent package's
+                # attribute is restored on teardown and never leaks a fake
+                # submodule into later tests.
+                monkeypatch.setattr(parent, parts[idx - 1], pkg, raising=False)
 
     module = types.ModuleType(fullname)
     for key, value in attrs.items():
@@ -41,7 +45,7 @@ def _install_module(
     monkeypatch.setitem(sys.modules, fullname, module)
     if len(parts) > 1:
         parent = sys.modules[".".join(parts[:-1])]
-        setattr(parent, parts[-1], module)
+        monkeypatch.setattr(parent, parts[-1], module, raising=False)
     return module
 
 
@@ -60,6 +64,18 @@ async def _collect_events(run_coro) -> list[StreamEvent]:
     await bus.close()
     await consumer
     return events
+
+
+def test_builtin_capability_registry_covers_documented_capabilities() -> None:
+    assert set(BUILTIN_CAPABILITY_CLASSES) == {
+        "chat",
+        "deep_solve",
+        "deep_question",
+        "deep_research",
+        "math_animator",
+        "visualize",
+        "mastery_path",
+    }
 
 
 @pytest.mark.asyncio
@@ -93,7 +109,7 @@ async def test_chat_capability_streams_content_and_geogebra_context(
             )
             await stream.content("assistant output", source="chat", stage="responding")
 
-    monkeypatch.setattr("deeptutor.capabilities.chat.AgenticChatPipeline", FakePipeline)
+    monkeypatch.setattr("deeptutor.agents.chat.capability.AgenticChatPipeline", FakePipeline)
 
     context = UnifiedContext(
         user_message="analyze triangle",
@@ -116,275 +132,51 @@ async def test_chat_capability_streams_content_and_geogebra_context(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("enabled_tools", "knowledge_bases", "expected_tools", "expected_kb", "expected_disable"),
-    [
-        (["rag", "code_execution"], ["algebra"], ["rag", "code_execution"], "algebra", False),
-        (None, ["algebra"], list(DeepSolveCapability.manifest.tools_used), "algebra", False),
-        ([], ["algebra"], [], None, True),
-    ],
-)
-async def test_deep_solve_capability_bridges_solver_output(
+async def test_deep_solve_capability_runs_chat_loop_in_solve_mode(
     monkeypatch: pytest.MonkeyPatch,
-    enabled_tools: list[str] | None,
-    knowledge_bases: list[str],
-    expected_tools: list[str],
-    expected_kb: str | None,
-    expected_disable: bool,
 ) -> None:
+    """The deep_solve capability is a thin shim: it marks the turn
+    ``solve_mode`` and resolves a session id, then runs the standard agentic
+    chat pipeline. The solve loop capability supplies the tools + playbook."""
     captured: dict[str, Any] = {}
 
-    class FakeMainSolver:
-        def __init__(self, **kwargs: Any) -> None:
-            captured["solver_init"] = kwargs
-            self.logger = SimpleNamespace(
-                logger=SimpleNamespace(addHandler=lambda *_: None, removeHandler=lambda *_: None)
-            )
+    class FakePipeline:
+        def __init__(self, *, language: str = "en", **_kwargs: Any) -> None:
+            captured["language"] = language
 
-        async def ainit(self) -> None:
-            captured["ainit"] = True
+        async def run(self, context: UnifiedContext, stream: StreamBus) -> None:
+            captured["solve_mode"] = context.metadata.get("solve_mode")
+            captured["solve_session_id"] = context.metadata.get("solve_session_id")
+            captured["attachments"] = list(context.attachments or [])
+            await stream.content("final solution", source="chat", stage="responding")
 
-        async def solve(self, **kwargs: Any) -> dict[str, Any]:
-            self._send_progress_update("reasoning", {"status": "solver-progress"})
-            captured["solve"] = kwargs
-            return {
-                "final_answer": "final solution",
-                "output_dir": "/tmp/solve",
-                "metadata": {"steps": 2},
-            }
-
-    _install_module(monkeypatch, "deeptutor.agents.solve.main_solver", MainSolver=FakeMainSolver)
-    _install_module(
-        monkeypatch,
-        "deeptutor.services.llm.config",
-        get_llm_config=lambda: SimpleNamespace(api_key="k", base_url="u", api_version="v1"),
-    )
+    monkeypatch.setattr("deeptutor.capabilities.solve.capability.AgenticChatPipeline", FakePipeline)
 
     context = UnifiedContext(
         user_message="solve x^2=4",
-        enabled_tools=enabled_tools,
-        knowledge_bases=knowledge_bases,
         language="en",
+        metadata={"turn_id": "turn-xyz"},
         attachments=[Attachment(type="image", base64="ZmFrZQ==", filename="graph.png")],
     )
     capability = DeepSolveCapability()
     events = await _collect_events(lambda bus: capability.run(context, bus))
 
-    assert captured["solver_init"]["enabled_tools"] == expected_tools
-    assert captured["solver_init"]["kb_name"] == expected_kb
-    assert captured["solver_init"]["disable_planner_retrieve"] is expected_disable
-    assert captured["solve"]["attachments"][0].filename == "graph.png"
-    assert any(
-        event.type == StreamEventType.PROGRESS and event.content == "solver-progress"
-        for event in events
-    )
+    assert captured["solve_mode"] is True
+    assert captured["solve_session_id"] == "turn-xyz"
+    # Attachments flow through unmodified for the loop's multimodal handling.
+    assert captured["attachments"][0].filename == "graph.png"
     assert any(
         event.type == StreamEventType.CONTENT and "final solution" in event.content
         for event in events
     )
-    result_event = next(event for event in events if event.type == StreamEventType.RESULT)
-    assert result_event.metadata["response"] == "final solution"
 
 
-@pytest.mark.asyncio
-async def test_deep_solve_capability_bridges_observation_and_retrieve_events(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    class FakeMainSolver:
-        def __init__(self, **_kwargs: Any) -> None:
-            self._trace_callback = None
-            self.logger = SimpleNamespace(
-                logger=SimpleNamespace(addHandler=lambda *_: None, removeHandler=lambda *_: None)
-            )
-
-        async def ainit(self) -> None:
-            return None
-
-        def set_trace_callback(self, callback) -> None:
-            self._trace_callback = callback
-
-        async def solve(self, **_kwargs: Any) -> dict[str, Any]:
-            assert self._trace_callback is not None
-            await self._trace_callback(
-                {
-                    "event": "llm_observation",
-                    "phase": "reasoning",
-                    "response": "round summary",
-                    "call_id": "solve-s1-round-1",
-                    "trace_role": "observe",
-                    "trace_group": "react_round",
-                }
-            )
-            await self._trace_callback(
-                {
-                    "event": "tool_log",
-                    "phase": "reasoning",
-                    "message": "Retrieving from KB...",
-                    "call_id": "solve-retrieve-1",
-                    "call_kind": "rag_retrieval",
-                    "trace_role": "retrieve",
-                    "trace_group": "retrieve",
-                    "trace_kind": "status",
-                }
-            )
-            return {
-                "final_answer": "final solution",
-                "output_dir": "/tmp/solve",
-                "metadata": {"steps": 1},
-            }
-
-    _install_module(monkeypatch, "deeptutor.agents.solve.main_solver", MainSolver=FakeMainSolver)
-    _install_module(
-        monkeypatch,
-        "deeptutor.services.llm.config",
-        get_llm_config=lambda: SimpleNamespace(api_key="k", base_url="u", api_version="v1"),
-    )
-
-    context = UnifiedContext(
-        user_message="solve x^2=4",
-        enabled_tools=["rag"],
-        knowledge_bases=["algebra"],
-        language="en",
-    )
-    capability = DeepSolveCapability()
-    events = await _collect_events(lambda bus: capability.run(context, bus))
-
-    observation_event = next(event for event in events if event.type == StreamEventType.OBSERVATION)
-    assert observation_event.content == "round summary"
-    assert observation_event.metadata["trace_role"] == "observe"
-
-    retrieve_event = next(
-        event
-        for event in events
-        if event.type == StreamEventType.PROGRESS and event.metadata.get("trace_role") == "retrieve"
-    )
-    assert retrieve_event.content == "Retrieving from KB..."
-    assert retrieve_event.metadata["trace_group"] == "retrieve"
-
-
-@pytest.mark.asyncio
-async def test_deep_question_capability_uses_user_message_as_topic(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    captured: dict[str, Any] = {}
-
-    class FakeCoordinator:
-        def __init__(self, **kwargs: Any) -> None:
-            captured["init"] = kwargs
-            self._callback = None
-
-        def set_ws_callback(self, callback) -> None:
-            self._callback = callback
-
-        async def generate_from_topic(self, **kwargs: Any) -> dict[str, Any]:
-            captured["topic_call"] = kwargs
-            await self._callback({"type": "idea_round", "message": "ideas"})
-            await self._callback({"type": "generating", "message": "writing"})
-            return {
-                "results": [
-                    {
-                        "qa_pair": {
-                            "question": "What is a matrix?",
-                            "options": {"A": "A table", "B": "A scalar"},
-                            "correct_answer": "A",
-                            "explanation": "A matrix is a table.",
-                        }
-                    }
-                ]
-            }
-
-    _install_module(
-        monkeypatch,
-        "deeptutor.agents.question.coordinator",
-        AgentCoordinator=FakeCoordinator,
-    )
-    _install_module(
-        monkeypatch,
-        "deeptutor.services.llm.config",
-        get_llm_config=lambda: SimpleNamespace(api_key="k", base_url="u", api_version="v1"),
-    )
-
-    context = UnifiedContext(
-        user_message="linear algebra fundamentals",
-        config_overrides={},
-        language="en",
-        attachments=[Attachment(type="image", base64="ZmFrZQ==", filename="topic.png")],
-    )
-    capability = DeepQuestionCapability()
-    events = await _collect_events(lambda bus: capability.run(context, bus))
-
-    assert captured["topic_call"]["user_topic"] == "linear algebra fundamentals"
-    assert captured["topic_call"]["attachments"][0].filename == "topic.png"
-    assert any(
-        event.type == StreamEventType.PROGRESS and event.stage == "ideation" for event in events
-    )
-    result_event = next(event for event in events if event.type == StreamEventType.RESULT)
-    assert "Question 1" in result_event.metadata["response"]
-
-
-@pytest.mark.asyncio
-async def test_deep_question_mimic_uses_extracted_attachment_text_when_pdf_was_stripped(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    captured: dict[str, Any] = {}
-
-    class FakeCoordinator:
-        def __init__(self, **_kwargs: Any) -> None:
-            self._callback = None
-
-        def set_ws_callback(self, callback) -> None:
-            self._callback = callback
-
-        async def generate_from_exam(self, **_kwargs: Any) -> dict[str, Any]:
-            raise AssertionError("raw PDF path should not be required after document extraction")
-
-        async def generate_from_topic(self, **kwargs: Any) -> dict[str, Any]:
-            captured["topic_call"] = kwargs
-            return {
-                "results": [
-                    {
-                        "qa_pair": {
-                            "question": "Question from attached paper?",
-                            "correct_answer": "Yes",
-                            "explanation": "The extracted document text was used.",
-                        }
-                    }
-                ]
-            }
-
-    _install_module(
-        monkeypatch,
-        "deeptutor.agents.question.coordinator",
-        AgentCoordinator=FakeCoordinator,
-    )
-    _install_module(
-        monkeypatch,
-        "deeptutor.services.llm.config",
-        get_llm_config=lambda: SimpleNamespace(api_key="k", base_url="u", api_version="v1"),
-    )
-
-    context = UnifiedContext(
-        user_message="[Attached Documents]\n[File: paper.pdf]\nExam text\n\n[User Question]\n",
-        config_overrides={"mode": "mimic", "max_questions": 4},
-        language="en",
-        attachments=[
-            Attachment(
-                type="pdf",
-                filename="paper.pdf",
-                base64="",
-                mime_type="application/pdf",
-            )
-        ],
-    )
-
-    capability = DeepQuestionCapability()
-    events = await _collect_events(lambda bus: capability.run(context, bus))
-
-    assert "Exam text" in captured["topic_call"]["user_topic"]
-    assert captured["topic_call"]["num_questions"] == 4
-    assert captured["topic_call"]["attachments"][0].filename == "paper.pdf"
-    result_event = next(event for event in events if event.type == StreamEventType.RESULT)
-    assert "Question 1" in result_event.metadata["response"]
+# Legacy tests for the AgentCoordinator-based custom + mimic paths were
+# removed when those code paths were deleted in the Phase A → C quiz
+# refactor. New-pipeline coverage lives in
+# ``tests/agents/question/test_pipeline.py`` (plan parsing, payload
+# normalization, templates_override / mimic flow, structured emission,
+# tool wiring, history loader, etc.).
 
 
 @pytest.mark.asyncio
@@ -478,33 +270,17 @@ async def test_deep_question_capability_uses_single_call_followup_agent(
     assert result_event.metadata["question_id"] == "q_3"
 
 
-def test_deep_question_capability_humanizes_question_progress_labels() -> None:
-    assert DeepQuestionCapability._humanize_question_id("q_3") == "Question 3"
-    assert (
-        DeepQuestionCapability._format_bridge_message(
-            "question_update",
-            {"question_id": "q_3", "current": 3, "total": 3},
-        )
-        == "Generating Question 3 (3/3)"
-    )
-    assert (
-        DeepQuestionCapability._format_bridge_message(
-            "result",
-            {
-                "question_id": "q_3",
-                "index": 2,
-                "question": {"question_type": "coding", "difficulty": "hard"},
-                "success": True,
-            },
-        )
-        == "Question 3 done (#3, coding/hard, success=True)"
-    )
-
-
 @pytest.mark.asyncio
-async def test_deep_research_capability_requires_explicit_config_and_streams_trace(
+async def test_deep_research_capability_delegates_to_pipeline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """The capability shim validates the request config, normalises
+    KB-without-KB, builds a runtime config, and hands the heavy lifting
+    to :class:`ResearchPipeline`. We mock the pipeline at its import site
+    in the capability module so we can assert what it was called with
+    without spinning up real LLM I/O.
+    """
+    import deeptutor.agents.research.capability as deep_research_mod
     import deeptutor.agents.research.request_config  # noqa: F401
 
     captured: dict[str, Any] = {}
@@ -513,63 +289,29 @@ async def test_deep_research_capability_requires_explicit_config_and_streams_tra
         def __init__(self, **kwargs: Any) -> None:
             captured["pipeline_init"] = kwargs
 
-        async def run(self, topic: str) -> dict[str, Any]:
-            # progress_callback is fire-and-forget (sync) inside the
-            # capability; just call it.
-            captured["pipeline_init"]["progress_callback"](
-                {"status": "gathering evidence", "stage": "researching", "block_id": "block_1"}
-            )
-            await captured["pipeline_init"]["trace_callback"](
-                {
-                    "event": "llm_call",
-                    "state": "running",
-                    "agent_name": "rephrase_agent",
-                    "stage": "rephrase",
-                }
-            )
-            await captured["pipeline_init"]["trace_callback"](
-                {
-                    "event": "tool_call",
-                    "phase": "researching",
-                    "tool_name": "web_search",
-                    "tool_args": {"query": "agent-native tutoring"},
-                    "label": "Use web_search",
-                    "call_id": "research-tool-1",
-                }
-            )
-            # Allow the scheduled progress task to flush onto the bus.
-            await asyncio.sleep(0)
-            return {"report": f"Report about {topic}", "metadata": {"citations": 3}}
+        async def run(self, **kwargs: Any) -> dict[str, Any]:
+            captured["pipeline_run"] = kwargs
+            return {
+                "response": f"Report about {kwargs['topic']}",
+                "metadata": {"mode": "agentic_research", "block_count": 2},
+            }
 
     def fake_load_config_with_main(_: str) -> dict[str, Any]:
         return {
-            "research": {
-                "researching": {
-                    "note_agent_mode": "auto",
-                    "tool_timeout": 60,
-                    "tool_max_retries": 2,
-                    "paper_search_years_limit": 3,
-                },
-                "rag": {"default_mode": "hybrid"},
+            "capabilities": {
+                "research": {
+                    "researching": {
+                        "note_agent_mode": "auto",
+                        "tool_timeout": 60,
+                        "tool_max_retries": 2,
+                        "paper_search_years_limit": 3,
+                    },
+                }
             },
-            "tools": {"web_search": {"enabled": True}},
         }
 
-    _install_module(
-        monkeypatch,
-        "deeptutor.agents.research.research_pipeline",
-        ResearchPipeline=FakeResearchPipeline,
-    )
-    _install_module(
-        monkeypatch,
-        "deeptutor.services.config",
-        load_config_with_main=fake_load_config_with_main,
-    )
-    _install_module(
-        monkeypatch,
-        "deeptutor.services.llm.config",
-        get_llm_config=lambda: SimpleNamespace(api_key="k", base_url="u", api_version="v1"),
-    )
+    monkeypatch.setattr(deep_research_mod, "ResearchPipeline", FakeResearchPipeline)
+    monkeypatch.setattr(deep_research_mod, "load_config_with_main", fake_load_config_with_main)
 
     context = UnifiedContext(
         user_message="agent-native tutoring",
@@ -579,9 +321,9 @@ async def test_deep_research_capability_requires_explicit_config_and_streams_tra
         config_overrides={
             "mode": "report",
             "depth": "standard",
-            "sources": ["kb", "web", "papers"],
             # Provide a confirmed outline so the capability skips the
-            # outline-preview short-circuit and runs the full pipeline.
+            # outline-preview short-circuit and drives the full
+            # research + reporting flow on the pipeline.
             "confirmed_outline": [
                 {"title": "Background", "overview": "Why this topic matters"},
                 {"title": "Approaches", "overview": "How to do it"},
@@ -590,31 +332,39 @@ async def test_deep_research_capability_requires_explicit_config_and_streams_tra
         language="en",
     )
     capability = DeepResearchCapability()
-    events = await _collect_events(lambda bus: capability.run(context, bus))
+    await _collect_events(lambda bus: capability.run(context, bus))
 
-    config = captured["pipeline_init"]["config"]
-    assert captured["pipeline_init"]["attachments"][0].filename == "brief.png"
-    assert config["planning"]["decompose"]["mode"] == "auto"
-    assert config["planning"]["decompose"]["auto_max_subtopics"] == 4
-    assert config["researching"]["max_iterations"] == 3
-    assert config["researching"]["enable_paper_search"] is True
-    assert config["researching"]["enable_web_search"] is True
-    assert config["reporting"]["style"] == "report"
-    assert config["tools"]["web_search"]["enabled"] is True
-    progress_event = next(
-        event
-        for event in events
-        if event.type == StreamEventType.PROGRESS and event.content == "gathering evidence"
-    )
-    assert progress_event.metadata["research_stage_card"] == "evidence"
-    tool_call_event = next(
-        event
-        for event in events
-        if event.type == StreamEventType.TOOL_CALL and event.content == "web_search"
-    )
-    assert tool_call_event.metadata["research_stage_card"] == "evidence"
-    result_event = next(event for event in events if event.type == StreamEventType.RESULT)
-    assert result_event.metadata["response"] == "Report about agent-native tutoring"
+    init_kwargs = captured["pipeline_init"]
+    runtime_cfg = init_kwargs["runtime_config"]
+    assert init_kwargs["kb_name"] == "research-kb"
+    assert init_kwargs["language"] == "en"
+    # ``enabled_tools`` is the user's composer toggles forwarded
+    # unchanged. The pipeline's per-block ``compose_enabled_tools`` call
+    # is what decides what the block loop actually exposes.
+    assert init_kwargs["enabled_tools"] == ["rag", "web_search", "paper_search"]
+    # Runtime config carries the structured policy sub-dicts the
+    # pipeline reads at init time. We only assert the keys the runtime
+    # config builder is contractually responsible for producing.
+    assert "planning" in runtime_cfg
+    assert "researching" in runtime_cfg
+    assert "reporting" in runtime_cfg
+    # Source-derived enable_* flags were removed; the block loop now
+    # composes tools the same way chat does (user toggles + auto-mounts).
+    assert "enable_rag" not in runtime_cfg["researching"]
+    assert "enable_web_search" not in runtime_cfg["researching"]
+    assert "enable_paper_search" not in runtime_cfg["researching"]
+    assert "enable_run_code" not in runtime_cfg["researching"]
+
+    run_kwargs = captured["pipeline_run"]
+    assert run_kwargs["topic"] == "agent-native tutoring"
+    assert run_kwargs["confirmed_outline"] is not None
+    assert [item.title for item in run_kwargs["confirmed_outline"]] == [
+        "Background",
+        "Approaches",
+    ]
+    # Attachments are forwarded verbatim so the rephrase / decompose
+    # prompts can see image evidence.
+    assert run_kwargs["attachments"][0].filename == "brief.png"
 
 
 @pytest.mark.asyncio
@@ -635,18 +385,6 @@ async def test_visualize_capability_passes_attachments_to_analysis_agent(
                 "data_description": self.data_description,
             }
 
-    class FakeReview:
-        optimized_code = "<svg></svg>"
-        changed = False
-        review_notes = "ok"
-
-        def model_dump(self) -> dict[str, Any]:
-            return {
-                "optimized_code": self.optimized_code,
-                "changed": self.changed,
-                "review_notes": self.review_notes,
-            }
-
     class FakeVisualizePipeline:
         def __init__(self, **kwargs: Any) -> None:
             captured["init"] = kwargs
@@ -657,11 +395,9 @@ async def test_visualize_capability_passes_attachments_to_analysis_agent(
 
         async def run_code_generation(self, **kwargs: Any) -> str:
             captured["code_generation"] = kwargs
-            return "<svg></svg>"
-
-        async def run_review(self, **kwargs: Any) -> FakeReview:
-            captured["review"] = kwargs
-            return FakeReview()
+            # Valid per validate_visualization (well-formed XML + camelCase
+            # viewBox), so the capability takes the no-repair path.
+            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>'
 
     monkeypatch.setattr(
         visualize_pipeline,

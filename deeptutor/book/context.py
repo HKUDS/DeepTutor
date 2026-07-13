@@ -74,9 +74,6 @@ def normalize_book_references(value: Any) -> list[NormalizedBookReference]:
             seen_pages.add(page_id)
             page_ids.append(page_id)
 
-        if not page_ids:
-            continue
-
         if book_id in seen_books:
             existing = next((ref for ref in refs if ref.book_id == book_id), None)
             if existing is not None:

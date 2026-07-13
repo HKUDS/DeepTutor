@@ -45,12 +45,12 @@ def test_atomic_save_and_deep_merge(tmp_path: Path):
     assert updated["features"]["enable_solve"] is True
 
 
-def test_env_reads_project_env(tmp_path: Path):
+def test_env_info_reads_project_model_catalog(tmp_path: Path):
     project = tmp_path
-    (project / ".env").write_text("LLM_MODEL=Base\n", encoding="utf-8")
 
     # Minimal valid config for schema
-    cfg_path = project / "data" / "user" / "settings" / "main.yaml"
+    settings_dir = project / "data" / "user" / "settings"
+    cfg_path = settings_dir / "main.yaml"
     base_cfg = {
         "llm": {"model": "Pro/Flash", "provider": "openai"},
         "paths": {
@@ -60,6 +60,34 @@ def test_env_reads_project_env(tmp_path: Path):
         },
     }
     write_yaml(cfg_path, base_cfg)
+    (settings_dir / "model_catalog.json").write_text(
+        """
+{
+  "version": 1,
+  "services": {
+    "llm": {
+      "active_profile_id": "llm-p",
+      "active_model_id": "llm-m",
+      "profiles": [
+        {
+          "id": "llm-p",
+          "name": "LLM",
+          "binding": "openai",
+          "base_url": "https://example.test/v1",
+          "api_key": "sk-test",
+          "api_version": "",
+          "extra_headers": {},
+          "models": [{"id": "llm-m", "name": "Base", "model": "Base"}]
+        }
+      ]
+    },
+    "embedding": {"active_profile_id": null, "active_model_id": null, "profiles": []},
+    "search": {"active_profile_id": null, "profiles": []}
+  }
+}
+""",
+        encoding="utf-8",
+    )
 
     cm = ConfigManager(project_root=project)
     env = cm.get_env_info()

@@ -2,26 +2,25 @@
 Web Search Base Provider - Abstract base class for all search providers
 
 This module defines the BaseSearchProvider class that all search providers must inherit from.
-All providers use a unified SEARCH_API_KEY environment variable.
+Providers read credentials from data/user/settings/model_catalog.json.
 """
 
 from abc import ABC, abstractmethod
 import logging
-import os
 from typing import Any
 
-from deeptutor.services.config import get_env_store
+from deeptutor.services.config import resolve_search_runtime_config
 
 from .types import WebSearchResponse
 
-# Unified API key environment variable
+# Legacy name retained for provider metadata only.
 SEARCH_API_KEY_ENV = "SEARCH_API_KEY"
 
 
 class BaseSearchProvider(ABC):
     """Abstract base class for search providers.
 
-    All providers use a unified SEARCH_API_KEY environment variable.
+    Providers use the active Search profile from Settings > Catalog.
     Each provider has its own BASE_URL defined as a class constant.
     """
 
@@ -38,7 +37,7 @@ class BaseSearchProvider(ABC):
         Initialize the provider.
 
         Args:
-            api_key: API key for the provider. If not provided, will be read from SEARCH_API_KEY.
+            api_key: API key for the provider. If not provided, use the active Search profile.
             **kwargs: Additional configuration options.
         """
         self.logger = logging.getLogger(__name__)
@@ -47,17 +46,13 @@ class BaseSearchProvider(ABC):
         self.proxy = kwargs.get("proxy")
 
     def _get_api_key(self) -> str:
-        """Get API key from provider-specific env vars with SEARCH_API_KEY fallback."""
+        """Get API key from the active search profile."""
         key = ""
-        for env_name in self.API_KEY_ENV_VARS:
-            key = get_env_store().get(env_name, "") or os.getenv(env_name, "")
-            if key:
-                break
+        resolved = resolve_search_runtime_config()
+        if resolved.provider == self.name or resolved.requested_provider == self.name:
+            key = resolved.api_key
         if self.requires_api_key and not key:
-            raise ValueError(
-                f"{self.name} requires one of {self.API_KEY_ENV_VARS}. "
-                f"Please set it before using this provider."
-            )
+            raise ValueError(f"{self.name} requires an api_key in Settings > Catalog > Search.")
         return key
 
     @abstractmethod
@@ -83,7 +78,7 @@ class BaseSearchProvider(ABC):
         """
         try:
             if self.requires_api_key:
-                key = self.api_key or get_env_store().get(SEARCH_API_KEY_ENV, "")
+                key = self.api_key or resolve_search_runtime_config().api_key
                 if not key:
                     return False
             return True

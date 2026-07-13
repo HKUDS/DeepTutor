@@ -40,8 +40,9 @@ class TestGetChatParams:
         monkeypatch.setattr(loader_module, "PROJECT_ROOT", project_root)
         params = get_chat_params()
         assert params["temperature"] == DEFAULT_CHAT_PARAMS["temperature"]
+        assert params["max_rounds"] == DEFAULT_CHAT_PARAMS["max_rounds"]
+        assert params["exploring"]["max_tokens"] == 1600
         assert params["responding"]["max_tokens"] == 8000
-        assert params["thinking"]["max_tokens"] == 2000
 
     def test_overrides_specific_stage_only(self, tmp_path: Path, monkeypatch):
         project_root = _write_agents_yaml(
@@ -57,9 +58,8 @@ class TestGetChatParams:
         monkeypatch.setattr(loader_module, "PROJECT_ROOT", project_root)
         params = get_chat_params()
         assert params["responding"]["max_tokens"] == 12000
-        assert params["answer_now"]["max_tokens"] == 8000
-        assert params["thinking"]["max_tokens"] == 2000
         assert params["temperature"] == 0.2
+        assert params["exploring"]["max_tokens"] == 1600
 
     def test_overrides_temperature(self, tmp_path: Path, monkeypatch):
         project_root = _write_agents_yaml(
@@ -80,12 +80,9 @@ class TestGetChatParams:
                 "capabilities": {
                     "chat": {
                         "temperature": 0.4,
+                        "max_rounds": 12,
+                        "exploring": {"max_tokens": 2400},
                         "responding": {"max_tokens": 16000},
-                        "answer_now": {"max_tokens": 16000},
-                        "thinking": {"max_tokens": 3000},
-                        "observing": {"max_tokens": 3000},
-                        "acting": {"max_tokens": 3000},
-                        "react_fallback": {"max_tokens": 2500},
                     },
                 },
             },
@@ -93,49 +90,99 @@ class TestGetChatParams:
         monkeypatch.setattr(loader_module, "PROJECT_ROOT", project_root)
         params = get_chat_params()
         assert params["temperature"] == 0.4
+        assert params["max_rounds"] == 12
+        assert params["exploring"]["max_tokens"] == 2400
         assert params["responding"]["max_tokens"] == 16000
-        assert params["answer_now"]["max_tokens"] == 16000
-        assert params["thinking"]["max_tokens"] == 3000
-        assert params["observing"]["max_tokens"] == 3000
-        assert params["acting"]["max_tokens"] == 3000
-        assert params["react_fallback"]["max_tokens"] == 2500
+
+    def test_legacy_targeting_era_keys_filtered(self, tmp_path: Path, monkeypatch):
+        """agents.yaml written by the targeting-era schema must not leak
+        stale knobs into the merged params (they are no longer read)."""
+        project_root = _write_agents_yaml(
+            tmp_path,
+            {
+                "capabilities": {
+                    "chat": {
+                        "max_iterations": 16,
+                        "max_explore_rounds": 3,
+                        "max_act_rounds": 7,
+                        "max_tool_steps": 6,
+                        "targeting": {"max_tokens": 128},
+                        "explore": {"max_tokens": 2000},
+                        "act": {"max_tokens": 3000},
+                        "responding": {"max_tokens": 9000},
+                    },
+                },
+            },
+        )
+        monkeypatch.setattr(loader_module, "PROJECT_ROOT", project_root)
+        params = get_chat_params()
+        assert params["responding"]["max_tokens"] == 9000
+        for stale in (
+            "max_iterations",
+            "max_explore_rounds",
+            "max_act_rounds",
+            "max_tool_steps",
+            "targeting",
+            "explore",
+            "act",
+        ):
+            assert stale not in params
+
+    def test_unknown_stage_keys_ignored_without_crashing(self, tmp_path: Path, monkeypatch):
+        """Forward-compat: extra keys in agents.yaml shouldn't break loading.
+
+        The chat pipeline reads ``exploring`` / ``responding``. Other
+        stage-shaped keys a user might have lying around from older
+        templates (e.g. ``answer_now``, ``thinking``) are tolerated,
+        not rejected.
+        """
+        project_root = _write_agents_yaml(
+            tmp_path,
+            {
+                "capabilities": {
+                    "chat": {
+                        "responding": {"max_tokens": 9000},
+                        "answer_now": {"max_tokens": 3000},
+                        "thinking": {"max_tokens": 3000},
+                        "acting": {"max_tokens": 3000},
+                    },
+                },
+            },
+        )
+        monkeypatch.setattr(loader_module, "PROJECT_ROOT", project_root)
+        params = get_chat_params()
+        assert params["responding"]["max_tokens"] == 9000
+        assert "answer_now" not in params
 
 
-class TestChatLimitsDataclass:
-    """Verify _ChatLimits.from_config gracefully handles malformed input."""
+class TestReadIntHelper:
+    """Verify ``_read_int`` gracefully resolves nested chat token budgets."""
 
-    def test_from_config_with_empty_dict_uses_fallbacks(self):
-        from deeptutor.agents.chat.agentic_pipeline import _ChatLimits
+    def test_empty_dict_falls_back_to_default(self):
+        from deeptutor.agents.chat.agentic_pipeline import _read_int
 
-        limits = _ChatLimits.from_config({})
-        assert limits.responding == 8000
-        assert limits.answer_now == 8000
-        assert limits.thinking == 2000
-        assert limits.observing == 2000
-        assert limits.acting == 2000
-        assert limits.react_fallback == 1500
+        assert _read_int({}, key="max_tokens", default=8000) == 8000
 
-    def test_from_config_with_chat_params_defaults(self):
-        from deeptutor.agents.chat.agentic_pipeline import _ChatLimits
+    def test_resolves_nested_max_tokens(self):
+        from deeptutor.agents.chat.agentic_pipeline import _read_int
 
-        limits = _ChatLimits.from_config(DEFAULT_CHAT_PARAMS)
-        assert limits.responding == 8000
-        assert limits.react_fallback == 1500
+        cfg = {"max_tokens": 5000}
+        assert _read_int(cfg, key="max_tokens", default=8000) == 5000
 
-    def test_from_config_coerces_string_numbers(self):
-        from deeptutor.agents.chat.agentic_pipeline import _ChatLimits
+    def test_coerces_string_numbers(self):
+        from deeptutor.agents.chat.agentic_pipeline import _read_int
 
-        limits = _ChatLimits.from_config({"responding": {"max_tokens": "5000"}})
-        assert limits.responding == 5000
+        cfg = {"max_tokens": "5000"}
+        assert _read_int(cfg, key="max_tokens", default=8000) == 5000
 
-    def test_from_config_falls_back_on_garbage(self):
-        from deeptutor.agents.chat.agentic_pipeline import _ChatLimits
+    def test_falls_back_on_garbage(self):
+        from deeptutor.agents.chat.agentic_pipeline import _read_int
 
-        limits = _ChatLimits.from_config({"responding": {"max_tokens": "abc"}})
-        assert limits.responding == 8000
+        cfg = {"max_tokens": "abc"}
+        assert _read_int(cfg, key="max_tokens", default=8000) == 8000
 
-    def test_from_config_handles_non_dict_stage_value(self):
-        from deeptutor.agents.chat.agentic_pipeline import _ChatLimits
+    def test_non_dict_input_falls_back(self):
+        from deeptutor.agents.chat.agentic_pipeline import _read_int
 
-        limits = _ChatLimits.from_config({"responding": 12345})
-        assert limits.responding == 8000
+        assert _read_int(12345, key="max_tokens", default=8000) == 8000
+        assert _read_int(None, key="max_tokens", default=8000) == 8000

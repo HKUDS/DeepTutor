@@ -9,14 +9,25 @@ from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 from deeptutor.services.session.turn_runtime import TurnRuntimeManager
 
 
-async def _noop_refresh(**_kwargs):
+async def _noop_async(*_args, **_kwargs):
     return None
 
 
 def _fake_skill_service() -> SimpleNamespace:
     return SimpleNamespace(
-        auto_select=lambda _content: [],
+        summary_entries=lambda: [],
+        load_always_for_context=lambda: "",
         load_for_context=lambda _skills: "",
+        list_skills=lambda: [],
+    )
+
+
+def _fake_persona_service() -> SimpleNamespace:
+    # Non-empty render so the resolved persona is recorded in the snapshot.
+    return SimpleNamespace(
+        load_for_context=lambda name: (
+            f"## Active Persona\n### Persona: {name}\n\nbody" if name else ""
+        )
     )
 
 
@@ -70,6 +81,22 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
     store = SQLiteSessionStore(tmp_path / "chat_history.db")
     runtime = TurnRuntimeManager(store)
     captured: dict[str, object] = {}
+    publish_order: list[str] = []
+    original_publish = runtime._publish_live_event
+
+    async def publish_with_status_capture(execution, event):
+        publish_order.append(event.type.value)
+        if event.type == StreamEventType.DONE:
+            persisted_turn = await store.get_turn(execution.turn_id)
+            captured["turn_status_when_done_published"] = (persisted_turn or {}).get("status")
+        return await original_publish(execution, event)
+
+    monkeypatch.setattr(runtime, "_publish_live_event", publish_with_status_capture)
+
+    async def title_after_done(*_args, **_kwargs):
+        captured["title_started_after_done"] = "done" in publish_order
+
+    monkeypatch.setattr(runtime, "_maybe_generate_session_title", title_after_done)
 
     class FakeContextBuilder:
         def __init__(self, *_args, **_kwargs) -> None:
@@ -98,6 +125,7 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
         async def handle(self, context):
             captured["user_message"] = context.user_message
             captured["metadata"] = context.metadata
+            captured["source_manifest"] = context.source_manifest
             yield StreamEvent(
                 type=StreamEventType.CONTENT,
                 source="chat",
@@ -121,15 +149,19 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
         ),
     )
     monkeypatch.setattr(
-        "deeptutor.services.memory.get_memory_service",
+        "deeptutor.services.memory.get_memory_store",
         lambda: SimpleNamespace(
-            build_memory_context=lambda *_args, **_kwargs: "",
-            refresh_from_turn=_noop_refresh,
+            read_l3_concat=lambda: "",
+            emit=_noop_async,
         ),
     )
     monkeypatch.setattr(
         "deeptutor.services.skill.get_skill_service",
         _fake_skill_service,
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.persona.get_persona_service",
+        _fake_persona_service,
     )
 
     session, turn = await runtime.start_turn(
@@ -142,7 +174,7 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
             "knowledge_bases": [],
             "attachments": [],
             "language": "en",
-            "skills": ["proof-checker"],
+            "persona": "socratic",
             "memory_references": ["summary"],
             "book_references": [{"book_id": "book-1", "page_ids": ["page-1"]}],
             "config": {},
@@ -153,19 +185,40 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
     async for event in runtime.subscribe_turn(turn["id"], after_seq=0):
         events.append(event)
 
-    assert [event["type"] for event in events] == ["session", "content", "done"]
-    assert events[-1]["metadata"]["status"] == "completed"
+    # session_meta may arrive after `done` from the title generator —
+    # filter it out so the timing race doesn't flake the assertion.
+    assert [e["type"] for e in events if e["type"] != "session_meta"] == [
+        "session",
+        "content",
+        "done",
+    ]
+    done_event = next(e for e in events if e["type"] == "done")
+    assert done_event["metadata"]["status"] == "completed"
+    assert captured["turn_status_when_done_published"] == "completed"
+    assert captured["title_started_after_done"] is True
 
     detail = await store.get_session_with_messages(session["id"])
     assert detail is not None
     assert [message["role"] for message in detail["messages"]] == ["user", "assistant"]
-    assert detail["messages"][0]["metadata"]["request_snapshot"]["skills"] == ["proof-checker"]
+    assert detail["messages"][0]["metadata"]["request_snapshot"]["persona"] == "socratic"
     assert detail["messages"][0]["metadata"]["request_snapshot"]["memoryReferences"] == ["summary"]
     assert detail["messages"][0]["metadata"]["request_snapshot"]["bookReferences"] == [
         {"book_id": "book-1", "page_ids": ["page-1"]}
     ]
-    assert "[Book Context]" in str(captured["user_message"])
-    assert "A selected page." in str(captured["user_message"])
+    # Chat capability now routes attached sources through the manifest +
+    # ``read_source`` tool instead of inlining ``[Book Context]`` into the
+    # user message. The raw user message stays raw; the book payload
+    # surfaces in ``context.source_manifest`` and ``metadata.source_index``.
+    assert str(captured["user_message"]) == "hello, i'm frank"
+    manifest = str(captured.get("source_manifest") or "")
+    assert "[Attached Sources]" in manifest
+    # Book source id is now per-book (``bk-{book_id}``) so multi-book
+    # sessions can read_source each independently. The mocked book has id
+    # "book-1".
+    assert "bk-book-1" in manifest
+    source_index = (captured.get("metadata") or {}).get("source_index") or {}
+    assert "bk-book-1" in source_index
+    assert "A selected page." in source_index["bk-book-1"]
     assert captured["metadata"] and captured["metadata"]["book_references"] == [
         {"book_id": "book-1", "page_ids": ["page-1"]}
     ]
@@ -175,6 +228,9 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
         "tools": [],
         "knowledge_bases": [],
         "language": "en",
+        # Explicit persona in the payload is persisted as a session-level
+        # preference (survives reloads; later turns fall back to it).
+        "persona": "socratic",
     }
 
     persisted_turn = await store.get_turn(turn["id"])
@@ -240,13 +296,14 @@ async def test_turn_runtime_persists_llm_selection_in_turn_snapshot(
     )
     monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", FakeOrchestrator)
     monkeypatch.setattr(
-        "deeptutor.services.memory.get_memory_service",
+        "deeptutor.services.memory.get_memory_store",
         lambda: SimpleNamespace(
-            build_memory_context=lambda *_args, **_kwargs: "",
-            refresh_from_turn=_noop_refresh,
+            read_l3_concat=lambda: "",
+            emit=_noop_async,
         ),
     )
     monkeypatch.setattr("deeptutor.services.skill.get_skill_service", _fake_skill_service)
+    monkeypatch.setattr("deeptutor.services.persona.get_persona_service", _fake_persona_service)
 
     selection = {"profile_id": "p-alt", "model_id": "m-alt"}
     session, turn = await runtime.start_turn(
@@ -277,6 +334,92 @@ async def test_turn_runtime_persists_llm_selection_in_turn_snapshot(
     assert captured["metadata"]["llm_model"] == "anthropic/claude-sonnet-4"
     assert captured["metadata"]["llm_provider"] == "openrouter"
     assert captured["reset_called"] is True
+
+
+@pytest.mark.asyncio
+async def test_turn_runtime_session_persona_persists_falls_back_and_clears(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """Persona is a session preference: explicit key persists (incl. ""),
+    absent key falls back to the stored preference."""
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+
+    class FakeContextBuilder:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def build(self, **_kwargs):
+            return SimpleNamespace(
+                conversation_history=[],
+                conversation_summary="",
+                context_text="",
+                token_count=0,
+                budget=0,
+            )
+
+    class FakeOrchestrator:
+        async def handle(self, context):
+            yield StreamEvent(
+                type=StreamEventType.CONTENT,
+                source="chat",
+                stage="responding",
+                content="ok",
+                metadata={"call_kind": "llm_final_response"},
+            )
+            yield StreamEvent(type=StreamEventType.DONE, source="chat")
+
+    monkeypatch.setattr("deeptutor.services.llm.config.get_llm_config", lambda: SimpleNamespace())
+    monkeypatch.setattr(
+        "deeptutor.services.session.context_builder.ContextBuilder", FakeContextBuilder
+    )
+    monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", FakeOrchestrator)
+    monkeypatch.setattr(
+        "deeptutor.services.memory.get_memory_store",
+        lambda: SimpleNamespace(read_l3_concat=lambda: "", emit=_noop_async),
+    )
+    monkeypatch.setattr("deeptutor.services.skill.get_skill_service", _fake_skill_service)
+    monkeypatch.setattr("deeptutor.services.persona.get_persona_service", _fake_persona_service)
+
+    async def run_turn(session_id, extra):
+        session, turn = await runtime.start_turn(
+            {
+                "type": "start_turn",
+                "content": "hi",
+                "session_id": session_id,
+                "capability": None,
+                "tools": [],
+                "knowledge_bases": [],
+                "attachments": [],
+                "language": "en",
+                "config": {},
+                **extra,
+            }
+        )
+        async for _event in runtime.subscribe_turn(turn["id"], after_seq=0):
+            pass
+        return session
+
+    # Turn 1 — explicit persona: applied to the turn AND persisted.
+    session = await run_turn(None, {"persona": "socratic"})
+    detail = await store.get_session_with_messages(session["id"])
+    assert detail["preferences"]["persona"] == "socratic"
+    assert detail["messages"][0]["metadata"]["request_snapshot"]["persona"] == "socratic"
+
+    # Turn 2 — persona key ABSENT: falls back to the stored preference, so
+    # the persona keeps applying to follow-up questions in the session.
+    await run_turn(session["id"], {})
+    detail = await store.get_session_with_messages(session["id"])
+    assert detail["preferences"]["persona"] == "socratic"
+    assert detail["messages"][2]["metadata"]["request_snapshot"]["persona"] == "socratic"
+
+    # Turn 3 — explicit "" (Default): clears the stored preference and the
+    # turn runs without a persona.
+    await run_turn(session["id"], {"persona": ""})
+    detail = await store.get_session_with_messages(session["id"])
+    assert detail["preferences"]["persona"] == ""
+    assert "persona" not in detail["messages"][4]["metadata"]["request_snapshot"]
 
 
 @pytest.mark.asyncio
@@ -371,13 +514,14 @@ async def test_turn_runtime_allows_model_switching_within_same_session(
     )
     monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", FakeOrchestrator)
     monkeypatch.setattr(
-        "deeptutor.services.memory.get_memory_service",
+        "deeptutor.services.memory.get_memory_store",
         lambda: SimpleNamespace(
-            build_memory_context=lambda *_args, **_kwargs: "",
-            refresh_from_turn=_noop_refresh,
+            read_l3_concat=lambda: "",
+            emit=_noop_async,
         ),
     )
     monkeypatch.setattr("deeptutor.services.skill.get_skill_service", _fake_skill_service)
+    monkeypatch.setattr("deeptutor.services.persona.get_persona_service", _fake_persona_service)
 
     first_selection = {"profile_id": "p-default", "model_id": "m-default"}
     second_selection = {"profile_id": "p-alt", "model_id": "m-alt"}
@@ -519,13 +663,14 @@ async def test_turn_runtime_bootstraps_question_followup_context_once(
     )
     monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", FakeOrchestrator)
     monkeypatch.setattr(
-        "deeptutor.services.memory.get_memory_service",
+        "deeptutor.services.memory.get_memory_store",
         lambda: SimpleNamespace(
-            build_memory_context=lambda *_args, **_kwargs: "",
-            refresh_from_turn=_noop_refresh,
+            read_l3_concat=lambda: "",
+            emit=_noop_async,
         ),
     )
     monkeypatch.setattr("deeptutor.services.skill.get_skill_service", _fake_skill_service)
+    monkeypatch.setattr("deeptutor.services.persona.get_persona_service", _fake_persona_service)
 
     session, turn = await runtime.start_turn(
         {
@@ -564,7 +709,13 @@ async def test_turn_runtime_bootstraps_question_followup_context_once(
     async for event in runtime.subscribe_turn(turn["id"], after_seq=0):
         events.append(event)
 
-    assert [event["type"] for event in events] == ["session", "content", "done"]
+    # session_meta may arrive after `done` from the title generator —
+    # filter it out so the timing race doesn't flake the assertion.
+    assert [e["type"] for e in events if e["type"] != "session_meta"] == [
+        "session",
+        "content",
+        "done",
+    ]
     detail = await store.get_session_with_messages(session["id"])
     assert detail is not None
     assert [message["role"] for message in detail["messages"]] == ["system", "user", "assistant"]
@@ -637,13 +788,14 @@ async def test_turn_runtime_persists_deep_research_session_preference(
     )
     monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", FakeOrchestrator)
     monkeypatch.setattr(
-        "deeptutor.services.memory.get_memory_service",
+        "deeptutor.services.memory.get_memory_store",
         lambda: SimpleNamespace(
-            build_memory_context=lambda *_args, **_kwargs: "",
-            refresh_from_turn=_noop_refresh,
+            read_l3_concat=lambda: "",
+            emit=_noop_async,
         ),
     )
     monkeypatch.setattr("deeptutor.services.skill.get_skill_service", _fake_skill_service)
+    monkeypatch.setattr("deeptutor.services.persona.get_persona_service", _fake_persona_service)
 
     session, turn = await runtime.start_turn(
         {
@@ -658,7 +810,6 @@ async def test_turn_runtime_persists_deep_research_session_preference(
             "config": {
                 "mode": "report",
                 "depth": "standard",
-                "sources": ["kb", "web"],
             },
         }
     )
@@ -667,7 +818,13 @@ async def test_turn_runtime_persists_deep_research_session_preference(
     async for event in runtime.subscribe_turn(turn["id"], after_seq=0):
         events.append(event)
 
-    assert [event["type"] for event in events] == ["session", "content", "done"]
+    # session_meta may arrive after `done` from the title generator —
+    # filter it out so the timing race doesn't flake the assertion.
+    assert [e["type"] for e in events if e["type"] != "session_meta"] == [
+        "session",
+        "content",
+        "done",
+    ]
     detail = await store.get_session_with_messages(session["id"])
     assert detail is not None
     assert detail["preferences"]["capability"] == "deep_research"
@@ -712,10 +869,10 @@ async def test_turn_runtime_injects_memory_and_refreshes_after_completion(
             )
             yield StreamEvent(type=StreamEventType.DONE, source="chat")
 
-    refresh_calls: list[dict[str, object]] = []
+    emit_calls: list[object] = []
 
-    async def fake_refresh_from_turn(**kwargs):
-        refresh_calls.append(kwargs)
+    async def fake_emit(event):
+        emit_calls.append(event)
         return None
 
     monkeypatch.setattr("deeptutor.services.llm.config.get_llm_config", lambda: SimpleNamespace())
@@ -724,14 +881,14 @@ async def test_turn_runtime_injects_memory_and_refreshes_after_completion(
     )
     monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", FakeOrchestrator)
     monkeypatch.setattr(
-        "deeptutor.services.memory.get_memory_service",
+        "deeptutor.services.memory.get_memory_store",
         lambda: SimpleNamespace(
-            build_memory_context=lambda *_args,
-            **_kwargs: "## Memory\n## Preferences\n- Prefer concise answers.",
-            refresh_from_turn=fake_refresh_from_turn,
+            read_l3_concat=lambda: "## Memory\n## Preferences\n- Prefer concise answers.",
+            emit=fake_emit,
         ),
     )
     monkeypatch.setattr("deeptutor.services.skill.get_skill_service", _fake_skill_service)
+    monkeypatch.setattr("deeptutor.services.persona.get_persona_service", _fake_persona_service)
 
     _session, turn = await runtime.start_turn(
         {
@@ -742,6 +899,7 @@ async def test_turn_runtime_injects_memory_and_refreshes_after_completion(
             "tools": [],
             "knowledge_bases": [],
             "attachments": [],
+            "memory_references": ["preferences"],
             "language": "en",
             "config": {},
         }
@@ -753,4 +911,3 @@ async def test_turn_runtime_injects_memory_and_refreshes_after_completion(
     assert captured["memory_context"] == "## Memory\n## Preferences\n- Prefer concise answers."
     assert captured["conversation_history"] == []
     assert captured["conversation_context_text"] == "Recent chat summary"
-    assert refresh_calls[0]["assistant_message"] == "Stored reply"

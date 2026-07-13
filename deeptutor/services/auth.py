@@ -1,19 +1,18 @@
 """
 Authentication service for DeepTutor.
 
-Disabled by default (AUTH_ENABLED=false) so localhost users are unaffected.
+Disabled by default (auth.enabled=false) so localhost users are unaffected.
 When enabled, guards all API routes with JWT bearer tokens.
 
-Quick setup (single user via env vars):
-    1. Set AUTH_ENABLED=true in .env
-    2. Set AUTH_USERNAME=<your username>
+Quick setup (single user via data/user/settings/auth.json):
+    1. Set enabled=true
+    2. Set username=<your username>
     3. Generate a password hash:
            python -c "from deeptutor.services.auth import hash_password; print(hash_password('yourpassword'))"
-       Paste the output into AUTH_PASSWORD_HASH=<hash>
-    4. Set AUTH_SECRET to a long random string
+       Paste the output into password_hash=<hash>
 
 Multi-user setup (recommended):
-    Enable AUTH_ENABLED=true and leave AUTH_USERNAME/AUTH_PASSWORD_HASH empty.
+    Enable auth and leave username/password_hash empty.
     Navigate to /register in the browser. The first user to register is granted
     admin privileges and can manage other users from /admin/users.
 
@@ -27,28 +26,33 @@ Multi-user setup (recommended):
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import logging
-import os
 from typing import Any
+
+from deeptutor.services.config import load_auth_settings, load_integrations_settings
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Configuration — read once at import time
+# Configuration — read once at import time from runtime JSON settings
 # ---------------------------------------------------------------------------
 
-AUTH_ENABLED: bool = os.getenv("AUTH_ENABLED", "false").lower() == "true"
-AUTH_USERNAME: str = os.getenv("AUTH_USERNAME", "admin")
-AUTH_PASSWORD_HASH: str = os.getenv("AUTH_PASSWORD_HASH", "")
-AUTH_SECRET: str = os.getenv("AUTH_SECRET", "")
-TOKEN_EXPIRE_HOURS: int = int(os.getenv("AUTH_TOKEN_EXPIRE_HOURS", "24"))
+_AUTH_SETTINGS = load_auth_settings()
+_INTEGRATIONS_SETTINGS = load_integrations_settings()
 
-# PocketBase auth mode — active when POCKETBASE_URL is set AND AUTH_ENABLED=true.
+AUTH_ENABLED: bool = bool(_AUTH_SETTINGS["enabled"])
+AUTH_USERNAME: str = str(_AUTH_SETTINGS["username"])
+AUTH_PASSWORD_HASH: str = str(_AUTH_SETTINGS["password_hash"])
+AUTH_SECRET: str = ""
+TOKEN_EXPIRE_HOURS: int = int(_AUTH_SETTINGS["token_expire_hours"])
+
+# PocketBase auth mode — active when integrations.pocketbase_url is set and auth is enabled.
 # When enabled, login/register proxy to PocketBase and token validation uses
 # PocketBase's auth-refresh endpoint (cached in memory — no static secret needed).
-POCKETBASE_URL: str = os.getenv("POCKETBASE_URL", "").rstrip("/")
-POCKETBASE_ENABLED: bool = bool(POCKETBASE_URL) and AUTH_ENABLED
+POCKETBASE_BASE_URL: str = str(_INTEGRATIONS_SETTINGS["pocketbase_url"]).rstrip("/")
+POCKETBASE_ENABLED: bool = bool(POCKETBASE_BASE_URL) and AUTH_ENABLED
 
 _ALGORITHM = "HS256"
+
 
 if AUTH_ENABLED and not POCKETBASE_ENABLED and not AUTH_SECRET:
     from deeptutor.multi_user.identity import load_or_create_auth_secret
@@ -93,7 +97,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# User store — JSON file takes priority over env vars
+# User store — multi-user JSON store plus optional auth.json bootstrap user
 # ---------------------------------------------------------------------------
 
 
@@ -107,6 +111,7 @@ def _make_user_record(hashed: str, role: str = "user", created_at: str = "") -> 
         "role": role,
         "created_at": created_at or datetime.now(timezone.utc).isoformat(),
         "disabled": False,
+        "avatar": "",
     }
 
 
@@ -115,8 +120,8 @@ def _load_users() -> dict[str, dict]:
     Load the user store, migrating old flat format if needed.
 
     Priority:
-      1. data/user/auth_users.json — multi-user file
-      2. AUTH_USERNAME + AUTH_PASSWORD_HASH env vars — single-user fallback
+      1. multi-user identity store
+      2. auth.json username + password_hash — single-user bootstrap user
 
     Old format: {"alice": "$2b$12$..."}
     New format: {"alice": {"hash": "...", "role": "admin", "created_at": "..."}}
@@ -158,7 +163,6 @@ def delete_user(username: str) -> bool:
     """
     Remove a user from the store. Returns True if the user existed.
 
-    Note: env-var-only users cannot be deleted via this function.
     """
     from deeptutor.multi_user.identity import delete_user as _delete_user
 
@@ -183,6 +187,29 @@ def set_role(username: str, role: str) -> bool:
         return False
     logger.info(f"User '{username}' role updated to {role!r}")
     return True
+
+
+def set_avatar(username: str, avatar: str) -> bool:
+    """
+    Update the avatar marker for an existing user. Returns True on success.
+
+    The marker is either '' (deterministic fallback), 'icon:<name>:<color>',
+    or 'img:<version>' (managed by the avatar upload endpoint).
+    """
+    from deeptutor.multi_user.identity import set_avatar as _set_avatar
+
+    if not _set_avatar(username, avatar):
+        return False
+    logger.info("User '%s' avatar updated", username)
+    return True
+
+
+def get_user_info(username: str) -> dict | None:
+    """Return the public info dict for a single user, or None if unknown."""
+    for item in list_users():
+        if item.get("username") == username:
+            return item
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -324,7 +351,7 @@ def authenticate(username: str, password: str) -> TokenPayload | None:
     """
     Validate credentials. Returns a TokenPayload on success, None on failure.
 
-    When AUTH_ENABLED=false, always returns a dummy admin payload so that
+    When auth is disabled, always returns a dummy admin payload so that
     callers don't need to special-case the disabled state.
     """
     if not AUTH_ENABLED:

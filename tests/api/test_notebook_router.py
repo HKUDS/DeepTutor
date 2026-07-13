@@ -238,3 +238,125 @@ def test_lookup_entry_by_question(store: SQLiteSessionStore) -> None:
             params={"session_id": session["id"], "question_id": "nope"},
         )
         assert resp404.status_code == 404
+
+
+def test_quiz_state_isolated_per_turn(store: SQLiteSessionStore) -> None:
+    """Regression test for #487 — two quizzes in the same chat session must
+    not share answer state, even when the positional ``question_id`` (e.g.
+    ``q_1``) collides. The producing turn_id scopes notebook entries.
+    """
+    session = asyncio.run(store.create_session())
+    sid = session["id"]
+
+    with TestClient(_build_app(store)) as client:
+        first = _quiz_answers()
+        resp1 = client.post(
+            f"/api/v1/sessions/{sid}/quiz-results",
+            json={"answers": first, "turn_id": "turn_A"},
+        )
+        assert resp1.status_code == 200
+        assert resp1.json()["notebook_count"] == 2
+
+        second = _quiz_answers()
+        second[0]["user_answer"] = ""
+        second[0]["is_correct"] = False
+        resp2 = client.post(
+            f"/api/v1/sessions/{sid}/quiz-results",
+            json={"answers": second, "turn_id": "turn_B"},
+        )
+        assert resp2.status_code == 200
+        assert resp2.json()["notebook_count"] == 2
+
+        listing = client.get("/api/v1/question-notebook/entries").json()
+        assert listing["total"] == 4
+
+        # Looking up q1 scoped to the first turn returns the first quiz's
+        # answer, not the second.
+        scoped_a = client.get(
+            "/api/v1/question-notebook/entries/lookup/by-question",
+            params={"session_id": sid, "question_id": "q1", "turn_id": "turn_A"},
+        )
+        assert scoped_a.status_code == 200
+        assert scoped_a.json()["user_answer"] == "A"
+        assert scoped_a.json()["turn_id"] == "turn_A"
+
+        # The second turn has no recorded answer for q1.
+        scoped_b = client.get(
+            "/api/v1/question-notebook/entries/lookup/by-question",
+            params={"session_id": sid, "question_id": "q1", "turn_id": "turn_B"},
+        )
+        assert scoped_b.status_code == 200
+        assert scoped_b.json()["user_answer"] == ""
+        assert scoped_b.json()["turn_id"] == "turn_B"
+
+
+def test_lookup_without_turn_id_falls_back_to_latest(
+    store: SQLiteSessionStore,
+) -> None:
+    """Callers that don't pass turn_id (legacy entries / external API) get the
+    most recently updated matching entry — deterministic even when multiple
+    turns share a question_id."""
+    session = asyncio.run(store.create_session())
+    sid = session["id"]
+
+    asyncio.run(
+        store.upsert_notebook_entries(
+            sid,
+            [
+                {
+                    "turn_id": "turn_old",
+                    "question_id": "q1",
+                    "question": "Q?",
+                    "user_answer": "A",
+                    "is_correct": False,
+                }
+            ],
+        )
+    )
+    asyncio.run(
+        store.upsert_notebook_entries(
+            sid,
+            [
+                {
+                    "turn_id": "turn_new",
+                    "question_id": "q1",
+                    "question": "Q?",
+                    "user_answer": "B",
+                    "is_correct": True,
+                }
+            ],
+        )
+    )
+
+    with TestClient(_build_app(store)) as client:
+        resp = client.get(
+            "/api/v1/question-notebook/entries/lookup/by-question",
+            params={"session_id": sid, "question_id": "q1"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["turn_id"] == "turn_new"
+        assert body["user_answer"] == "B"
+
+
+def test_lookup_missing_entry_returns_404_by_default(store: SQLiteSessionStore) -> None:
+    session = asyncio.run(store.create_session())
+    sid = session["id"]
+    with TestClient(_build_app(store)) as client:
+        resp = client.get(
+            "/api/v1/question-notebook/entries/lookup/by-question",
+            params={"session_id": sid, "question_id": "absent"},
+        )
+        assert resp.status_code == 404
+
+
+def test_lookup_missing_entry_returns_204_when_missing_ok(store: SQLiteSessionStore) -> None:
+    session = asyncio.run(store.create_session())
+    sid = session["id"]
+    with TestClient(_build_app(store)) as client:
+        resp = client.get(
+            "/api/v1/question-notebook/entries/lookup/by-question",
+            params={"session_id": sid, "question_id": "absent", "missing_ok": "true"},
+        )
+        assert resp.status_code == 204
+        assert resp.content == b""

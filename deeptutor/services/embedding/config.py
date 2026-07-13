@@ -1,4 +1,4 @@
-"""Normalized embedding configuration resolved from catalog + env compatibility."""
+"""Normalized embedding configuration resolved from the model catalog."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def get_embedding_config() -> EmbeddingConfig:
     resolved = resolve_embedding_runtime_config()
 
     if not resolved.model:
-        raise ValueError("EMBEDDING_MODEL not set. Please configure it in Settings > Catalog.")
+        raise ValueError("Embedding model not set. Please configure it in Settings > Catalog.")
 
     if not resolved.effective_url:
         raise ValueError(
@@ -41,7 +41,7 @@ def get_embedding_config() -> EmbeddingConfig:
 
     if resolved.provider_mode != "local" and not resolved.api_key:
         raise ValueError(
-            "EMBEDDING_API_KEY not set. Please configure it in Settings > Catalog or via env fallback."
+            "Embedding API key not set. Please configure the active profile in Settings > Catalog."
         )
 
     return EmbeddingConfig(

@@ -29,6 +29,16 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "system_in_messages": True,  # System prompt goes in messages array
         "newer_models_use_max_completion_tokens": True,
     },
+    # Custom / user-defined OpenAI-compatible endpoints
+    "custom": {
+        "supports_response_format": True,
+        "supports_streaming": True,
+        "supports_tools": True,  # Most OpenAI-compat endpoints support function calling
+        "supports_vision": False,  # Per-model; set True via MODEL_OVERRIDES
+        "vision_url_supported": True,
+        "system_in_messages": True,
+        "has_thinking_tags": False,  # Per-model; MODEL_OVERRIDES handles qwen/deepseek etc.
+    },
     "azure_openai": {
         "supports_response_format": True,
         "supports_streaming": True,
@@ -57,6 +67,24 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "system_in_messages": False,
         "has_thinking_tags": False,
     },
+    "custom_anthropic": {
+        "supports_response_format": False,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": True,
+        "vision_url_supported": False,
+        "system_in_messages": False,
+        "has_thinking_tags": False,
+    },
+    "minimax_anthropic": {
+        "supports_response_format": False,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": True,
+        "vision_url_supported": False,
+        "system_in_messages": False,
+        "has_thinking_tags": False,
+    },
     # DeepSeek
     "deepseek": {
         "supports_response_format": False,  # DeepSeek doesn't support strict JSON schema yet
@@ -65,6 +93,40 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "supports_vision": False,
         "system_in_messages": True,
         "has_thinking_tags": True,  # DeepSeek reasoner has thinking tags
+    },
+    # SiliconFlow exposes OpenAI-compatible chat completions for hosted models
+    # such as DeepSeek and Qwen; model-specific overrides below still govern
+    # response_format, thinking tags, and vision.
+    "siliconflow": {
+        "supports_response_format": True,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": False,
+        "vision_url_supported": True,
+        "system_in_messages": True,
+        "has_thinking_tags": False,
+    },
+    # VolcEngine Ark (Doubao) and BytePlus — OpenAI-compatible gateways that
+    # host natively multimodal models (Doubao-Vision). ``supports_vision`` is
+    # the Stage-2 fallback hint (see ``multimodal.py``), not a pre-flight gate:
+    # marking these True means a transient failure never causes images to be
+    # silently dropped. The Ark API expects inline base64 image data, so
+    # url-only attachments are resolved to bytes before sending.
+    "volcengine": {
+        "supports_response_format": True,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": True,
+        "vision_url_supported": False,
+        "system_in_messages": True,
+    },
+    "byteplus": {
+        "supports_response_format": True,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": True,
+        "vision_url_supported": False,
+        "system_in_messages": True,
     },
     # OpenRouter (aggregator, generally OpenAI-compatible)
     "openrouter": {
@@ -105,6 +167,16 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "supports_vision": True,
         "system_in_messages": True,
     },
+    # DashScope / Alibaba Cloud (Qwen family)
+    # Uses OpenAI-compatible API with native function calling support.
+    "dashscope": {
+        "supports_response_format": True,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": False,  # Per-model; set True via MODEL_OVERRIDES
+        "system_in_messages": True,
+        "has_thinking_tags": True,  # Qwen reasoner models emit <think/> tags
+    },
     # Moonshot / Kimi — vision is per-model (see MODEL_OVERRIDES below).
     # Per the official docs the image input must be base64-encoded inline; URL
     # form is rejected. We therefore force the multimodal layer to resolve any
@@ -115,6 +187,16 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "supports_tools": True,
         "supports_vision": False,
         "vision_url_supported": False,
+        "system_in_messages": True,
+    },
+    # MiniMax's OpenAI-compatible endpoint supports Chat Completions tools /
+    # function calling for M-series text models. Response-format support is
+    # still disabled by the model override below.
+    "minimax": {
+        "supports_response_format": False,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": False,
         "system_in_messages": True,
     },
     # Local providers (generally OpenAI-compatible)
@@ -174,8 +256,20 @@ MODEL_OVERRIDES: dict[str, dict[str, object]] = {
         "has_thinking_tags": True,
         "supports_vision": False,
     },
+    # Qwen text models often share the same provider/gateway as Qwen-VL.
+    # Keep thinking-tag handling broad, but only mark explicit VL/vision model
+    # names as image-capable so RAG image indexing can fail closed.
+    "qwen/qwen2.5-vl": {"has_thinking_tags": True, "supports_vision": True},
+    "qwen/qwen3-vl": {"has_thinking_tags": True, "supports_vision": True},
+    "qwen/qwen2-vl": {"has_thinking_tags": True, "supports_vision": True},
+    "qwen/qwen-vl": {"has_thinking_tags": True, "supports_vision": True},
+    "qwen2.5-vl": {"has_thinking_tags": True, "supports_vision": True},
+    "qwen3-vl": {"has_thinking_tags": True, "supports_vision": True},
+    "qwen2-vl": {"has_thinking_tags": True, "supports_vision": True},
+    "qwen-vl": {"has_thinking_tags": True, "supports_vision": True},
     "qwen": {
         "has_thinking_tags": True,
+        "supports_vision": False,
     },
     "qwq": {
         "has_thinking_tags": True,

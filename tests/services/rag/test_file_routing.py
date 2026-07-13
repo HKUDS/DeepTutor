@@ -66,12 +66,14 @@ class TestClassifyFiles:
         )
         assert cls.parser_files == [str(pdf), str(docx), str(xlsx), str(pptx)]
         assert cls.text_files == [str(txt)]
-        assert cls.unsupported == [str(png)]
+        assert cls.image_files == [str(png)]
+        assert cls.unsupported == []
 
     def test_empty_input_yields_empty_groups(self) -> None:
         cls = FileTypeRouter.classify_files([])
         assert cls.parser_files == []
         assert cls.text_files == []
+        assert cls.image_files == []
         assert cls.unsupported == []
 
 
@@ -84,6 +86,7 @@ class TestSupportedExtensionsAndGlobs:
         assert ".pptx" in exts
         assert ".md" in exts
         assert ".txt" in exts
+        assert ".png" in exts
 
     def test_glob_patterns_match_supported_extensions(self) -> None:
         exts = FileTypeRouter.get_supported_extensions()
@@ -103,17 +106,18 @@ class TestSupportedExtensionsAndGlobs:
         nested_upper.write_text("nested", encoding="utf-8")
         deck = tmp_path / "DECK.PPTX"
         deck.write_bytes(b"PK\x03\x04")
-        ignored = tmp_path / "image.PNG"
-        ignored.write_bytes(b"\x89PNG\r\n")
+        image = tmp_path / "image.PNG"
+        image.write_bytes(b"\x89PNG\r\n")
 
         assert [path.name for path in FileTypeRouter.collect_supported_files(tmp_path)] == [
             "DECK.PPTX",
+            "image.PNG",
             "notes.md",
             "REPORT.PDF",
         ]
         assert [
             path.name for path in FileTypeRouter.collect_supported_files(tmp_path, recursive=True)
-        ] == ["DECK.PPTX", "README.MD", "notes.md", "REPORT.PDF"]
+        ] == ["DECK.PPTX", "image.PNG", "README.MD", "notes.md", "REPORT.PDF"]
 
 
 class TestQuickHelpers:

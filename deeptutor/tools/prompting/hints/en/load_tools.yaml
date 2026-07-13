@@ -1,0 +1,6 @@
+short_description: "Load Extended Tools (e.g. MCP server tools) so they become callable in this session."
+when_to_use: "When the task needs a tool from the Extended Tools section that is not loaded yet. Calling an extended tool without loading it first will fail."
+input_format: "`names` — array of exact tool names from the Extended Tools section."
+guideline: "Load only the tools the current task needs — not the whole list. Once loaded, a tool stays available for the rest of the session; do not re-load it."
+note: "If a name comes back as unknown, re-check the Extended Tools section for the exact spelling."
+phase: "exploration"

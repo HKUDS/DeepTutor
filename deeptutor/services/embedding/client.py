@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from deeptutor.services.config.provider_runtime import (
     EMBEDDING_PROVIDERS,
@@ -151,20 +151,89 @@ class EmbeddingClient:
         )
         return all_embeddings
 
+    def supports_multimodal_contents(self) -> bool:
+        """Return whether the configured adapter/model accepts multimodal contents."""
+        try:
+            info = self.adapter.get_model_info()
+            if "multimodal" in info:
+                return bool(info.get("multimodal"))
+        except Exception:
+            pass
+
+        spec = EMBEDDING_PROVIDERS.get(self.config.binding)
+        return bool(spec and spec.multimodal)
+
+    async def embed_contents(
+        self,
+        contents: List[Dict[str, Any]],
+        *,
+        progress_callback=None,
+    ) -> List[List[float]]:
+        """Embed provider-agnostic multimodal content items.
+
+        ``contents`` uses the same simple contract as ``EmbeddingRequest``:
+        ``[{"text": "..."}, {"image": "data:...|url"}, {"video": "..."}]``.
+        """
+        if not contents:
+            return []
+        if not self.supports_multimodal_contents():
+            raise ValueError(
+                "Configured embedding provider/model does not support multimodal contents."
+            )
+
+        import asyncio
+
+        spec = EMBEDDING_PROVIDERS.get(self.config.binding)
+        provider_max = spec.max_batch_items if spec else 256
+        batch_size = max(1, min(self.config.batch_size, provider_max))
+        all_embeddings: List[List[float]] = []
+        total_batches = (len(contents) + batch_size - 1) // batch_size
+
+        for i, start in enumerate(range(0, len(contents), batch_size)):
+            batch = contents[start : start + batch_size]
+            request = EmbeddingRequest(
+                texts=[],
+                model=self.config.model,
+                dimensions=self.config.dim or None,
+                contents=batch,
+                enable_fusion=False,
+            )
+            response = await self.adapter.embed(request)
+            validated = validate_embedding_batch(
+                response.embeddings,
+                expected_count=len(batch),
+                binding=self.config.binding,
+                model=self.config.model,
+                batch_index=i + 1,
+                total_batches=total_batches,
+                start_index=start,
+            )
+            all_embeddings.extend(validated)
+
+            if progress_callback:
+                try:
+                    progress_callback(i + 1, total_batches)
+                except Exception:
+                    pass
+
+            if i < total_batches - 1 and self.config.batch_delay > 0:
+                await asyncio.sleep(self.config.batch_delay)
+
+        return all_embeddings
+
     def embed_sync(self, texts: List[str]) -> List[List[float]]:
         import asyncio
 
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
-
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(asyncio.run, self.embed(texts))
-                    return future.result()
-            return loop.run_until_complete(self.embed(texts))
+            asyncio.get_running_loop()
         except RuntimeError:
             return asyncio.run(self.embed(texts))
+
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(asyncio.run, self.embed(texts))
+            return future.result()
 
     def get_embedding_func(self):
         async def embedding_wrapper(texts: List[str]) -> List[List[float]]:

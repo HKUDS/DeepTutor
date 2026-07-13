@@ -4,33 +4,41 @@
 # This file provides orchestration for DeepTutor services
 #
 # Usage:
-#   Production:  docker compose up -d
-#   Development: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
-#   Build only:  docker compose build
+#   Production:  python scripts/docker_compose.py up -d
+#   Development: python scripts/docker_compose.py -f docker-compose.yml -f docker-compose.dev.yml up
+#   Build only:  python scripts/docker_compose.py build
 #
 # Prerequisites:
-#   1. Copy .env.example to .env and configure your API keys
-#   2. Runtime settings are stored in ./data/user/settings (created automatically)
+#   1. Runtime settings are stored in ./data/user/settings (created automatically)
+#   2. Configure model providers from the web Settings page or model_catalog.json
+#   3. Use scripts/docker_compose.py so port mappings are rendered from system.json
 #
 # Local LLM (LM Studio / Ollama / vLLM):
-#   Use "host.docker.internal" instead of "localhost" for LLM_HOST / EMBEDDING_HOST.
-#   See .env.example for details.
+#   Use "host.docker.internal" instead of "localhost" in provider base_url fields.
+#   Configure provider endpoints in data/user/settings/model_catalog.json or the UI.
 # ============================================
 
 services:
   # ============================================
   # PocketBase — optional auth + storage sidecar
-  # Set POCKETBASE_URL=http://pocketbase:8090 in .env to activate.
-  # Leave POCKETBASE_URL blank to run without PocketBase (SQLite fallback).
+  # Set integrations.pocketbase_url=http://pocketbase:8090 to activate.
+  # Leave integrations.pocketbase_url blank to run without PocketBase (SQLite fallback).
   # ============================================
   pocketbase:
     image: ghcr.io/muchobien/pocketbase:latest
     container_name: pocketbase
     restart: unless-stopped
     ports:
-      - "${POCKETBASE_PORT:-8090}:8090"
+      - "${DEEPTUTOR_DOCKER_POCKETBASE_PORT:-8090}:8090"
     volumes:
-      - ./data/pocketbase:/pb/pb_data
+      # The upstream pocketbase image's entrypoint uses absolute paths
+      # (no /pb/ prefix): --dir=/pb_data --publicDir=/pb_public
+      # --hooksDir=/pb_hooks. The previous example mounted at /pb/pb_data
+      # and crashed on first start with "mkdir /pb_data: read-only file
+      # system".
+      - ./data/pocketbase:/pb_data
+      - ./data/pocketbase/public:/pb_public
+      - ./data/pocketbase/hooks:/pb_hooks
     networks:
       - deeptutor-network
     healthcheck:
@@ -48,72 +56,33 @@ services:
       context: .
       dockerfile: Dockerfile
       target: production
-      args:
-        # Pass backend port at build time for Next.js static optimization
-        - BACKEND_PORT=${BACKEND_PORT:-8001}
     container_name: deeptutor
     restart: unless-stopped
     ports:
-      - "${BACKEND_PORT:-8001}:${BACKEND_PORT:-8001}"
-      - "${FRONTEND_PORT:-3782}:${FRONTEND_PORT:-3782}"
-
-    # Load environment variables from .env file
-    env_file:
-      - .env
-
-    environment:
-      # LLM Configuration (Required)
-      - LLM_BINDING=${LLM_BINDING:-openai}
-      - LLM_MODEL=${LLM_MODEL}
-      - LLM_API_KEY=${LLM_API_KEY}
-      - LLM_HOST=${LLM_HOST}
-      - LLM_API_VERSION=${LLM_API_VERSION:-}
-      - DISABLE_SSL_VERIFY=${DISABLE_SSL_VERIFY:-false}
-      # Embedding Configuration (Required for Knowledge Base)
-      - EMBEDDING_BINDING=${EMBEDDING_BINDING:-openai}
-      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-large}
-      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY}
-      - EMBEDDING_HOST=${EMBEDDING_HOST}
-      - EMBEDDING_DIMENSION=${EMBEDDING_DIMENSION:-3072}
-      - EMBEDDING_API_VERSION=${EMBEDDING_API_VERSION:-}
-      # Web Search Configuration (Optional)
-      - SEARCH_PROVIDER=${SEARCH_PROVIDER:-}
-      - SEARCH_API_KEY=${SEARCH_API_KEY:-}
-      - SEARCH_BASE_URL=${SEARCH_BASE_URL:-}
-      # ============================================
-      # Service Ports Configuration
-      # ============================================
-      # Backend API port (default: 8001)
-      - BACKEND_PORT=${BACKEND_PORT:-8001}
-      # Frontend web port (default: 3782)
-      - FRONTEND_PORT=${FRONTEND_PORT:-3782}
-      # ============================================
-      # API URL Configuration (Important for Remote Deployment)
-      # ============================================
-      # The frontend runs in the USER'S BROWSER — "localhost" means the user's machine,
-      # not the Docker host. This matters when Docker runs on a remote server.
-      #
-      # LOCAL (browsing from the same machine running Docker):
-      #   Leave blank — defaults to http://localhost:8001, which works via port mapping.
-      #
-      # REMOTE SERVER (Docker on a server, accessed from another machine):
-      #   Set to the server's public IP or hostname, e.g.:
-      #     NEXT_PUBLIC_API_BASE_EXTERNAL=http://203.0.113.10:8001
-      #   Without this the browser tries localhost:8001 on the user's laptop and all
-      #   API calls (including WebSocket) will fail.
-      - NEXT_PUBLIC_API_BASE_EXTERNAL=${NEXT_PUBLIC_API_BASE_EXTERNAL:-}
-      # Alternative: Direct API base URL (same priority as NEXT_PUBLIC_API_BASE_EXTERNAL)
-      - NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE:-}
+      - "${DEEPTUTOR_DOCKER_BACKEND_PORT:-8001}:${DEEPTUTOR_DOCKER_BACKEND_PORT:-8001}"
+      - "${DEEPTUTOR_DOCKER_FRONTEND_PORT:-3782}:${DEEPTUTOR_DOCKER_FRONTEND_PORT:-3782}"
 
     volumes:
-      # Mount local data directory for persistence (read-write)
-      # This includes runtime settings under ./data/user/settings.
-      - ./data/user:/app/data/user
-      - ./data/memory:/app/data/memory
-      - ./data/knowledge_bases:/app/data/knowledge_bases
+      # Everything DeepTutor persists lives under ./data — one tree to mount
+      # and back up: admin workspace + runtime settings (data/user), per-user
+      # workspaces (data/users), partners (data/partners), accounts/grants/
+      # audit (data/system), knowledge bases, memory.
+      # The sandbox-runner deliberately gets only the *workspace* subtrees of
+      # this volume (the mount contract below) — never data/system or
+      # data/user/settings, which hold auth state and provider API keys.
+      - ./data:/app/data
+
+    environment:
+      # Route untrusted shell exec to the runner sidecar (SYSTEM isolation).
+      # When this is set, the main app NEVER runs untrusted code in its own
+      # process — see deeptutor/services/sandbox/config.py:build_backend().
+      # On bare-metal / macOS deployments where the runner is not started, leave
+      # this unset: the app degrades to bwrap (Linux, if installed) or, only when
+      # DEEPTUTOR_SANDBOX_ALLOW_SUBPROCESS=1, a restricted subprocess.
+      - DEEPTUTOR_SANDBOX_RUNNER_URL=http://sandbox-runner:8900
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${BACKEND_PORT:-8001}/"]
+      test: ["CMD", "curl", "-f", "http://localhost:${DEEPTUTOR_DOCKER_BACKEND_PORT:-8001}/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -122,6 +91,71 @@ services:
     depends_on:
       pocketbase:
         condition: service_healthy
+      sandbox-runner:
+        condition: service_healthy
+
+    networks:
+      - deeptutor-network
+
+  # ============================================
+  # Sandbox Runner Sidecar
+  # ============================================
+  # Executes untrusted shell commands in an isolated, least-privileged
+  # container so the main app never has to. Rationale for the sidecar shape:
+  #   * the main `deeptutor` container keeps minimal privileges and does NOT
+  #     mount the docker socket or run untrusted code in its own process;
+  #   * a sandbox escape here lands in a stripped, unprivileged container with
+  #     no app secrets, not in the main app.
+  # Not exposed to the host: it is reachable only on the internal
+  # deeptutor-network at http://sandbox-runner:8900.
+  sandbox-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner
+    container_name: deeptutor-sandbox-runner
+    restart: unless-stopped
+
+    # Share the task workspaces at the SAME paths as the main app so the mount
+    # contract holds: a request with host_path == sandbox_path under
+    # /app/data/user/workspace (admin) or /app/data/users/<uid> (per-user)
+    # is already visible here, no per-command mounting needed.
+    # Scope note: every command in this container shares one filesystem view
+    # (per-command isolation is a roadmap item), so the mounts are kept as
+    # narrow as the exec feature allows — workspace subtrees only. Secrets
+    # (data/system, data/user/settings) never enter this container; the
+    # residual exposure is cross-user visibility *between user workspaces*,
+    # acceptable for the invite-only trust posture and enforced no further.
+    volumes:
+      - ./data/user/workspace:/app/data/user/workspace
+      - ./data/users:/app/data/users
+
+    # No `ports:` — intentionally not published to the host.
+
+    # ----- Security hardening -----
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Read-only root filesystem: the runner only needs to read its own code and
+    # write under the shared volume (and scratch space). Give it tmpfs for the
+    # paths shell tooling expects to be writable (/tmp, $HOME). If a workload
+    # needs more writable scratch, relax read_only rather than widening tmpfs.
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /home/runner
+    pids_limit: 256
+    mem_limit: 1g
+    # cgroup-enforced RSS cap is the authoritative memory backstop; the
+    # per-command RLIMIT_AS in server.py is a cheaper secondary guard.
+
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8900/health',timeout=3).status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
     networks:
       - deeptutor-network

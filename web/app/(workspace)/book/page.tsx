@@ -9,8 +9,9 @@ import {
   useRef,
   useState,
 } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Loader2, MessageSquare } from "lucide-react";
+import { notify } from "@/lib/notifications";
 import { useTranslation } from "react-i18next";
 
 import { bookApi, openBookSocket } from "@/lib/book-api";
@@ -65,9 +66,11 @@ function BookLoadingText() {
 
 function BookPageInner() {
   const { t } = useTranslation();
+  const router = useRouter();
   const [books, setBooks] = useState<Book[]>([]);
   const [loadingBooks, setLoadingBooks] = useState(false);
   const [view, setView] = useState<View>("list");
+  const [toast, setToast] = useState("");
 
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [detail, setDetail] = useState<BookDetail | null>(null);
@@ -122,6 +125,12 @@ function BookPageInner() {
   useEffect(() => {
     void refreshBooks();
   }, [refreshBooks]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(""), 3500);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   // ── Live WS event subscription ─────────────────────────────────────
 
@@ -314,6 +323,10 @@ function BookPageInner() {
       setCompilingPageId(pageId);
       try {
         await bookApi.compilePage(selectedBookId, pageId, force);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        notify(`Compile failed: ${msg}`, { tone: "error", durationMs: 8000 });
+        console.error("compilePage failed:", err);
       } finally {
         setCompilingPageId((current) => (current === pageId ? null : current));
         await loadBookDetail(selectedBookId);
@@ -333,8 +346,18 @@ function BookPageInner() {
 
   const handleRegenerateBlock = async (block: Block) => {
     if (!detail || !selectedPage) return;
-    await bookApi.regenerateBlock(detail.book.id, selectedPage.id, block.id);
-    await loadBookDetail(detail.book.id);
+    try {
+      await bookApi.regenerateBlock(detail.book.id, selectedPage.id, block.id);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      notify(`Regenerate block failed: ${msg}`, {
+        tone: "error",
+        durationMs: 8000,
+      });
+      console.error("regenerateBlock failed:", err);
+    } finally {
+      await loadBookDetail(detail.book.id);
+    }
   };
 
   const handleDeleteBlock = async (block: Block) => {
@@ -444,6 +467,11 @@ function BookPageInner() {
 
   return (
     <div className="flex h-screen w-full">
+      {toast && (
+        <div className="fixed top-4 right-4 z-50 rounded-lg bg-red-500/90 px-4 py-2 text-sm text-white shadow-lg">
+          {toast}
+        </div>
+      )}
       {view !== "list" && (
         <BookSidebar
           book={detail?.book || pendingBook || null}

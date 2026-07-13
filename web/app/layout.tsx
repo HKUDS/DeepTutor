@@ -1,19 +1,23 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Geist, Lora } from "next/font/google";
 import "./globals.css";
+import ThemeScript from "@/components/ThemeScript";
+import ToastViewport from "@/components/common/ToastViewport";
 import { AppShellProvider } from "@/context/AppShellContext";
 import { I18nClientBridge } from "@/i18n/I18nClientBridge";
 
-const fontSans = Inter({
+// Geist matches the public site (deeptutor.info) and stays crisp at the
+// small UI sizes the composer/toolbars use, unlike the rounder Jakarta.
+const fontSans = Geist({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-sans",
 });
 
-const fontMono = JetBrains_Mono({
+const fontSerif = Lora({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-mono",
+  variable: "--font-serif",
 });
 
 export const metadata: Metadata = {
@@ -34,16 +38,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth"       className={`${fontSans.variable} ${fontMono.variable}`}>
-      <body className="font-sans bg-[var(--background)] text-[var(--foreground)]">
+    <html
+      lang="en"
+      suppressHydrationWarning
+      data-scroll-behavior="smooth"
+      className={`${fontSans.variable} ${fontSerif.variable}`}
+    >
+      <head>
+        <ThemeScript />
+      </head>
+      <body
+        className="font-sans bg-[var(--background)] text-[var(--foreground)]"
+        suppressHydrationWarning
+      >
         <AppShellProvider>
           <I18nClientBridge>{children}</I18nClientBridge>
+          <ToastViewport />
         </AppShellProvider>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var s=localStorage.getItem('deeptutor-theme');document.documentElement.classList.remove('dark','theme-glass','theme-snow');if(s==='dark'){document.documentElement.classList.add('dark');}else if(s==='glass'){document.documentElement.classList.add('dark','theme-glass');}else if(s==='snow'){document.documentElement.classList.add('theme-snow');}else if(s==='light'){}else{if(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches){document.documentElement.classList.add('dark');localStorage.setItem('deeptutor-theme','dark');}else{localStorage.setItem('deeptutor-theme','light');}}}catch(e){}})();`,
-          }}
-        />
       </body>
     </html>
   );

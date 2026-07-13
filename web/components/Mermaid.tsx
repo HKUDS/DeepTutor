@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { subscribeToThemeChanges } from "@/lib/theme";
 
 interface MermaidProps {
   chart: string;
@@ -10,34 +11,56 @@ interface MermaidProps {
 
 let mermaidLoader: Promise<(typeof import("mermaid"))["default"]> | null = null;
 
+// Read a CSS custom property from :root. We re-derive these on every render
+// so the diagram colors track the active theme rather than freezing to the
+// first-render palette.
+function cssVar(name: string, fallback: string): string {
+  if (typeof window === "undefined") return fallback;
+  const value = getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim();
+  return value || fallback;
+}
+
+function themeVariablesFromCss() {
+  // Mermaid expects opaque colors; we pull from the theme's --foreground /
+  // --card / --border / --primary tokens so diagrams blend with the chat
+  // surface in every theme (light, dark, snow, glass).
+  return {
+    primaryColor: cssVar("--card", "#ffffff"),
+    primaryTextColor: cssVar("--foreground", "#1f1d1b"),
+    primaryBorderColor: cssVar("--border", "#dbd4c8"),
+    lineColor: cssVar("--muted-foreground", "#6b655f"),
+    secondaryColor: cssVar("--muted", "#ece7dd"),
+    tertiaryColor: cssVar("--background", "#faf9f6"),
+    textColor: cssVar("--foreground", "#1f1d1b"),
+    mainBkg: cssVar("--card", "#ffffff"),
+  };
+}
+
 async function loadMermaid() {
   if (!mermaidLoader) {
-    mermaidLoader = import("mermaid").then((module) => {
-      const mermaid = module.default;
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: "neutral",
-        securityLevel: "strict",
-        fontFamily: "ui-sans-serif, system-ui, sans-serif",
-        flowchart: {
-          useMaxWidth: true,
-          htmlLabels: false,
-          curve: "basis",
-        },
-        themeVariables: {
-          primaryColor: "#6366f1",
-          primaryTextColor: "#1e293b",
-          primaryBorderColor: "#c7d2fe",
-          lineColor: "#94a3b8",
-          secondaryColor: "#f1f5f9",
-          tertiaryColor: "#f8fafc",
-        },
-      });
-      return mermaid;
-    });
+    mermaidLoader = import("mermaid").then((module) => module.default);
   }
-
   return mermaidLoader;
+}
+
+// Re-applied on every render so theme changes pick up. mermaid.initialize()
+// is idempotent and cheap; the heavy work is the dynamic import which the
+// loader above only runs once.
+function applyMermaidTheme(mermaid: (typeof import("mermaid"))["default"]) {
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: "base",
+    securityLevel: "strict",
+    fontFamily: "ui-sans-serif, system-ui, sans-serif",
+    flowchart: {
+      useMaxWidth: true,
+      htmlLabels: false,
+      curve: "basis",
+    },
+    themeVariables: themeVariablesFromCss(),
+  });
 }
 
 function cleanupMermaidOrphans(id: string) {
@@ -60,6 +83,7 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, className = "" }) => {
   const [error, setError] = useState<string | null>(null);
   const [stable, setStable] = useState(false);
   const [id] = useState(() => `mermaid-${++mermaidIdCounter}`);
+  const [themeToken, setThemeToken] = useState(0);
   const lastChartRef = useRef(chart);
 
   useEffect(() => {
@@ -73,6 +97,13 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, className = "" }) => {
     return () => window.clearTimeout(timer);
   }, [chart]);
 
+  // Bump a token whenever the app's theme changes so the render effect below
+  // re-runs with fresh theme variables. Without this the diagram would keep
+  // its initial palette across light/dark/glass/snow switches.
+  useEffect(() => {
+    return subscribeToThemeChanges(() => setThemeToken((t) => t + 1));
+  }, []);
+
   useEffect(() => {
     if (!stable) return;
 
@@ -82,6 +113,7 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, className = "" }) => {
 
       try {
         const mermaid = await loadMermaid();
+        applyMermaidTheme(mermaid);
         cleanupMermaidOrphans(id);
         const { svg: renderedSvg } = await mermaid.render(id, chart.trim());
         if (!cancelled) {
@@ -102,7 +134,7 @@ export const Mermaid: React.FC<MermaidProps> = ({ chart, className = "" }) => {
     return () => {
       cancelled = true;
     };
-  }, [stable, chart, id, t]);
+  }, [stable, chart, id, t, themeToken]);
 
   if (error) {
     return (

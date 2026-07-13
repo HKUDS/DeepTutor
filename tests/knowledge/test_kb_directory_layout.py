@@ -24,6 +24,7 @@ def test_document_adder_does_not_create_compatibility_dirs(tmp_path: Path) -> No
     (kb_dir / "raw").mkdir(parents=True, exist_ok=True)
     (kb_dir / "version-1").mkdir(parents=True, exist_ok=True)
     (kb_dir / "version-1" / "docstore.json").write_text("{}", encoding="utf-8")
+    (kb_dir / "version-1" / "index_store.json").write_text("{}", encoding="utf-8")
     (kb_dir / "version-1" / "meta.json").write_text(
         '{"signature": "sig", "version": "version-1"}',
         encoding="utf-8",

@@ -172,21 +172,28 @@ export default function NotebooksSection() {
     return new Date(value * 1000).toLocaleString();
   };
 
-  const getRecordBadge = (type: string) => {
-    switch (type) {
+  const getRecordBadge = (record: NotebookRecord) => {
+    switch (record.type) {
       case "chat":
         return {
           label: t("Chat"),
           color: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
           icon: MessageSquare,
         };
-      case "tutorbot":
+      case "tutorbot": {
+        // Partner conversations carry the partner's name in metadata so the
+        // badge reads as that partner's own category, not a generic "Chat".
+        const partnerName =
+          typeof record.metadata?.partner_name === "string"
+            ? record.metadata.partner_name.trim()
+            : "";
         return {
-          label: t("Tutorbot"),
+          label: partnerName || t("Partner"),
           color:
             "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
           icon: Bot,
         };
+      }
       case "research":
         return {
           label: t("Research"),
@@ -203,7 +210,7 @@ export default function NotebooksSection() {
         };
       default:
         return {
-          label: type,
+          label: record.type,
           color:
             "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
           icon: NotebookPen,
@@ -389,7 +396,7 @@ export default function NotebooksSection() {
                 <div className="min-h-0 flex-1 overflow-y-auto pr-1">
                   <div className="divide-y divide-[var(--border)]">
                     {selected.records?.map((record) => {
-                      const badge = getRecordBadge(record.type);
+                      const badge = getRecordBadge(record);
                       const BadgeIcon = badge.icon;
                       const expanded = expandedRecordId === record.id;
                       const canOpenSession =

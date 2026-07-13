@@ -1,4 +1,4 @@
-import { apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl } from "@/lib/api";
 
 // ── Real notebook system (file-backed under data/user/workspace/notebook) ──
 //
@@ -43,7 +43,7 @@ export interface NotebookDetail extends NotebookSummary {
 }
 
 export async function listNotebooks(): Promise<NotebookSummary[]> {
-  const response = await fetch(apiUrl("/api/v1/notebook/list"), {
+  const response = await apiFetch(apiUrl("/api/v1/notebook/list"), {
     cache: "no-store",
   });
   if (!response.ok) throw new Error(`Request failed: ${response.status}`);
@@ -52,7 +52,7 @@ export async function listNotebooks(): Promise<NotebookSummary[]> {
 }
 
 export async function getNotebook(notebookId: string): Promise<NotebookDetail> {
-  const response = await fetch(apiUrl(`/api/v1/notebook/${notebookId}`), {
+  const response = await apiFetch(apiUrl(`/api/v1/notebook/${notebookId}`), {
     cache: "no-store",
   });
   if (!response.ok) throw new Error(`Request failed: ${response.status}`);
@@ -65,7 +65,7 @@ export async function createNotebook(payload: {
   color?: string;
   icon?: string;
 }): Promise<NotebookSummary> {
-  const response = await fetch(apiUrl("/api/v1/notebook/create"), {
+  const response = await apiFetch(apiUrl("/api/v1/notebook/create"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -89,7 +89,7 @@ export async function updateNotebook(
     icon?: string;
   },
 ): Promise<NotebookSummary> {
-  const response = await fetch(apiUrl(`/api/v1/notebook/${notebookId}`), {
+  const response = await apiFetch(apiUrl(`/api/v1/notebook/${notebookId}`), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -100,7 +100,7 @@ export async function updateNotebook(
 }
 
 export async function deleteNotebook(notebookId: string): Promise<void> {
-  const response = await fetch(apiUrl(`/api/v1/notebook/${notebookId}`), {
+  const response = await apiFetch(apiUrl(`/api/v1/notebook/${notebookId}`), {
     method: "DELETE",
   });
   if (!response.ok) throw new Error(`Request failed: ${response.status}`);
@@ -110,7 +110,7 @@ export async function deleteNotebookRecord(
   notebookId: string,
   recordId: string,
 ): Promise<void> {
-  const response = await fetch(
+  const response = await apiFetch(
     apiUrl(`/api/v1/notebook/${notebookId}/records/${recordId}`),
     { method: "DELETE" },
   );
@@ -119,10 +119,18 @@ export async function deleteNotebookRecord(
 
 // ── Question notebook (quiz entries + categories) ─────────────────
 
+export interface NotebookAnswerImage {
+  id: string;
+  url: string;
+  filename: string;
+  mime_type: string;
+}
+
 export interface NotebookEntry {
   id: number;
   session_id: string;
   session_title: string;
+  turn_id: string;
   question_id: string;
   question: string;
   question_type: string;
@@ -131,9 +139,12 @@ export interface NotebookEntry {
   explanation: string;
   difficulty: string;
   user_answer: string;
+  user_answer_images?: NotebookAnswerImage[];
   is_correct: boolean;
   bookmarked: boolean;
   followup_session_id: string;
+  /** Latest AI-judge text for this entry; empty when never run. */
+  ai_judgment?: string;
   created_at: number;
   updated_at: number;
   categories?: NotebookCategory[];
@@ -179,7 +190,7 @@ export async function listNotebookEntries(
   if (filter.limit !== undefined) params.set("limit", String(filter.limit));
   if (filter.offset !== undefined) params.set("offset", String(filter.offset));
   const query = params.toString();
-  const response = await fetch(
+  const response = await apiFetch(
     apiUrl(`/api/v1/question-notebook/entries${query ? `?${query}` : ""}`),
     { cache: "no-store" },
   );
@@ -189,7 +200,7 @@ export async function listNotebookEntries(
 export async function getNotebookEntry(
   entryId: number,
 ): Promise<NotebookEntry> {
-  const response = await fetch(
+  const response = await apiFetch(
     apiUrl(`/api/v1/question-notebook/entries/${entryId}`),
     {
       cache: "no-store",
@@ -201,23 +212,33 @@ export async function getNotebookEntry(
 export async function lookupNotebookEntry(
   sessionId: string,
   questionId: string,
+  turnId?: string | null,
 ): Promise<NotebookEntry | null> {
   const params = new URLSearchParams({
     session_id: sessionId,
     question_id: questionId,
+    // Probe quietly: a not-yet-saved question returns 204 instead of 404, so
+    // it stays out of the server error log and the browser network console.
+    missing_ok: "true",
   });
-  const response = await fetch(
+  if (turnId) params.set("turn_id", turnId);
+  const response = await apiFetch(
     apiUrl(`/api/v1/question-notebook/entries/lookup/by-question?${params}`),
   );
-  if (response.status === 404) return null;
+  // 204 (missing_ok hit) and 404 (older servers) both mean "no entry yet".
+  if (response.status === 204 || response.status === 404) return null;
   return expectJson<NotebookEntry>(response);
 }
 
 export async function updateNotebookEntry(
   entryId: number,
-  updates: { bookmarked?: boolean; followup_session_id?: string },
+  updates: {
+    bookmarked?: boolean;
+    followup_session_id?: string;
+    ai_judgment?: string;
+  },
 ): Promise<void> {
-  const response = await fetch(
+  const response = await apiFetch(
     apiUrl(`/api/v1/question-notebook/entries/${entryId}`),
     {
       method: "PATCH",
@@ -228,8 +249,19 @@ export async function updateNotebookEntry(
   await expectJson<{ updated: boolean }>(response);
 }
 
+export interface NotebookAnswerImageUpload {
+  id?: string;
+  /** Base64 (no ``data:`` prefix) for a freshly-picked image. */
+  base64?: string;
+  /** Existing AttachmentStore URL for an already-persisted image. */
+  url?: string;
+  filename: string;
+  mime_type: string;
+}
+
 export async function upsertNotebookEntry(data: {
   session_id: string;
+  turn_id?: string;
   question_id: string;
   question: string;
   question_type?: string;
@@ -238,9 +270,14 @@ export async function upsertNotebookEntry(data: {
   explanation?: string;
   difficulty?: string;
   user_answer?: string;
+  /**
+   * Optional list of images attached to the learner's answer. Omit to
+   * leave any stored images untouched; pass an empty array to clear them.
+   */
+  user_answer_images?: NotebookAnswerImageUpload[];
   is_correct?: boolean;
 }): Promise<NotebookEntry> {
-  const response = await fetch(
+  const response = await apiFetch(
     apiUrl("/api/v1/question-notebook/entries/upsert"),
     {
       method: "POST",
@@ -257,7 +294,7 @@ export async function upsertNotebookEntry(data: {
 }
 
 export async function deleteNotebookEntry(entryId: number): Promise<void> {
-  const response = await fetch(
+  const response = await apiFetch(
     apiUrl(`/api/v1/question-notebook/entries/${entryId}`),
     {
       method: "DELETE",
@@ -272,7 +309,7 @@ export async function addEntryToCategory(
   entryId: number,
   categoryId: number,
 ): Promise<void> {
-  const response = await fetch(
+  const response = await apiFetch(
     apiUrl(`/api/v1/question-notebook/entries/${entryId}/categories`),
     {
       method: "POST",
@@ -287,7 +324,7 @@ export async function removeEntryFromCategory(
   entryId: number,
   categoryId: number,
 ): Promise<void> {
-  const response = await fetch(
+  const response = await apiFetch(
     apiUrl(
       `/api/v1/question-notebook/entries/${entryId}/categories/${categoryId}`,
     ),
@@ -299,18 +336,24 @@ export async function removeEntryFromCategory(
 // ── Categories ──────────────────────────────────────────────────
 
 export async function listCategories(): Promise<NotebookCategory[]> {
-  const response = await fetch(apiUrl("/api/v1/question-notebook/categories"), {
-    cache: "no-store",
-  });
+  const response = await apiFetch(
+    apiUrl("/api/v1/question-notebook/categories"),
+    {
+      cache: "no-store",
+    },
+  );
   return expectJson<NotebookCategory[]>(response);
 }
 
 export async function createCategory(name: string): Promise<NotebookCategory> {
-  const response = await fetch(apiUrl("/api/v1/question-notebook/categories"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
-  });
+  const response = await apiFetch(
+    apiUrl("/api/v1/question-notebook/categories"),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    },
+  );
   return expectJson<NotebookCategory>(response);
 }
 
@@ -318,7 +361,7 @@ export async function renameCategory(
   categoryId: number,
   name: string,
 ): Promise<void> {
-  const response = await fetch(
+  const response = await apiFetch(
     apiUrl(`/api/v1/question-notebook/categories/${categoryId}`),
     {
       method: "PATCH",
@@ -330,7 +373,7 @@ export async function renameCategory(
 }
 
 export async function deleteCategory(categoryId: number): Promise<void> {
-  const response = await fetch(
+  const response = await apiFetch(
     apiUrl(`/api/v1/question-notebook/categories/${categoryId}`),
     {
       method: "DELETE",

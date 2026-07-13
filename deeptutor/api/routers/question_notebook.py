@@ -4,12 +4,15 @@ Question Notebook API — persists quiz questions, bookmarks, and categories.
 
 from __future__ import annotations
 
+import base64 as _b64
 import logging
+import uuid as _uuid
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 from deeptutor.services.session import get_sqlite_session_store
+from deeptutor.services.storage import get_attachment_store
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +22,24 @@ router = APIRouter()
 # ── Models ────────────────────────────────────────────────────────
 
 
+class AnswerImageItem(BaseModel):
+    """Persisted reference to one image attached to a learner's answer.
+
+    The bytes live in the AttachmentStore at ``url``; we never round-trip
+    base64 back to the client so notebook lookups stay cheap.
+    """
+
+    id: str = ""
+    url: str = ""
+    filename: str = ""
+    mime_type: str = ""
+
+
 class NotebookEntryItem(BaseModel):
     id: int
     session_id: str
     session_title: str = ""
+    turn_id: str = ""
     question_id: str = ""
     question: str
     question_type: str = ""
@@ -31,9 +48,11 @@ class NotebookEntryItem(BaseModel):
     explanation: str = ""
     difficulty: str = ""
     user_answer: str = ""
+    user_answer_images: list[AnswerImageItem] = []
     is_correct: bool = False
     bookmarked: bool = False
     followup_session_id: str = ""
+    ai_judgment: str = ""
     created_at: float
     updated_at: float
     categories: list[CategoryItem] | None = None
@@ -47,6 +66,7 @@ class NotebookEntryListResponse(BaseModel):
 class EntryUpdateRequest(BaseModel):
     bookmarked: bool | None = None
     followup_session_id: str | None = None
+    ai_judgment: str | None = None
 
 
 class CategoryItem(BaseModel):
@@ -68,8 +88,25 @@ class CategoryAddRequest(BaseModel):
     category_id: int
 
 
+class AnswerImageUpload(BaseModel):
+    """One image attached to the learner's answer.
+
+    Either ``base64`` (new upload) or ``url`` (re-submit of an already
+    persisted image) must be set. ``id`` is preserved when the client
+    sends one so the same logical image keeps a stable AttachmentStore
+    record across resubmissions.
+    """
+
+    id: str = ""
+    base64: str = ""
+    url: str = ""
+    filename: str = "answer.png"
+    mime_type: str = "image/png"
+
+
 class UpsertEntryRequest(BaseModel):
     session_id: str
+    turn_id: str = ""
     question_id: str
     question: str
     question_type: str = ""
@@ -78,20 +115,88 @@ class UpsertEntryRequest(BaseModel):
     explanation: str = ""
     difficulty: str = ""
     user_answer: str = ""
+    # Optional: list of images attached as part of the learner's answer.
+    # ``None`` means "don't touch any previously-stored images on update";
+    # an empty list explicitly clears them.
+    user_answer_images: list[AnswerImageUpload] | None = None
     is_correct: bool = False
 
 
 # ── Entry endpoints ──────────────────────────────────────────────
 
 
+async def _persist_answer_images(
+    session_id: str, images: list[AnswerImageUpload] | None
+) -> list[dict[str, str]] | None:
+    """Materialise base64 image uploads into the AttachmentStore.
+
+    Returns a list of ``{id, url, filename, mime_type}`` records suitable
+    for ``notebook_entries.user_answer_images_json``. ``None`` is returned
+    when ``images`` is ``None`` (no change to existing stored images).
+    Records whose bytes fail to upload are dropped from the result with
+    a warning — losing an image is better than failing the whole upsert.
+    """
+    if images is None:
+        return None
+
+    attachment_store = get_attachment_store()
+    records: list[dict[str, str]] = []
+    for image in images:
+        record_id = (image.id or _uuid.uuid4().hex[:12]).strip()
+        filename = (image.filename or "answer.png").strip() or "answer.png"
+        mime_type = (image.mime_type or "image/png").strip() or "image/png"
+        url = (image.url or "").strip()
+
+        if not url and image.base64:
+            try:
+                raw_bytes = _b64.b64decode(image.base64, validate=False)
+            except Exception as exc:
+                logger.warning("answer image %s rejected: invalid base64 (%s)", filename, exc)
+                continue
+            try:
+                url = await attachment_store.put(
+                    session_id=session_id,
+                    attachment_id=record_id,
+                    filename=filename,
+                    data=raw_bytes,
+                    mime_type=mime_type,
+                )
+            except Exception as exc:
+                logger.warning("attachment store rejected answer image %s: %s", filename, exc)
+                continue
+
+        if not url:
+            # No url and no base64 — nothing usable.
+            continue
+        records.append(
+            {
+                "id": record_id,
+                "url": url,
+                "filename": filename,
+                "mime_type": mime_type,
+            }
+        )
+    return records
+
+
 @router.post("/entries/upsert")
 async def upsert_single_entry(payload: UpsertEntryRequest):
     store = get_sqlite_session_store()
+    images_records = await _persist_answer_images(payload.session_id, payload.user_answer_images)
+    item = payload.model_dump()
+    # The store expects ``user_answer_images`` as a plain list of dicts
+    # (or absent to mean "leave the stored images alone"). Strip the
+    # upload payload version and replace with the persisted records.
+    item.pop("user_answer_images", None)
+    if images_records is not None:
+        item["user_answer_images"] = images_records
     try:
-        await store.upsert_notebook_entries(payload.session_id, [payload.model_dump()])
+        await store.upsert_notebook_entries(payload.session_id, [item])
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    entry = await store.find_notebook_entry(payload.session_id, payload.question_id)
+    entry = await store.find_notebook_entry(
+        payload.session_id, payload.question_id, turn_id=payload.turn_id
+    )
     if entry is None:
         raise HTTPException(status_code=500, detail="Upsert failed")
     return entry
@@ -120,10 +225,22 @@ async def list_entries(
 
 
 @router.get("/entries/lookup/by-question")
-async def lookup_entry(session_id: str = Query(...), question_id: str = Query(...)):
+async def lookup_entry(
+    session_id: str = Query(...),
+    question_id: str = Query(...),
+    turn_id: str | None = Query(default=None),
+    missing_ok: bool = Query(
+        default=False,
+        description="Return 204 No Content instead of 404 when the entry is "
+        "absent — used by the quiz viewer to probe not-yet-saved questions "
+        "without logging noisy 404s.",
+    ),
+):
     store = get_sqlite_session_store()
-    entry = await store.find_notebook_entry(session_id, question_id)
+    entry = await store.find_notebook_entry(session_id, question_id, turn_id=turn_id)
     if entry is None:
+        if missing_ok:
+            return Response(status_code=204)
         raise HTTPException(status_code=404, detail="Entry not found")
     return entry
 

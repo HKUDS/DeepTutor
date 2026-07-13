@@ -25,10 +25,7 @@ import shutil
 import sys
 import tempfile
 
-from dotenv import load_dotenv
-
 project_root = Path(__file__).resolve().parents[3]
-load_dotenv(project_root / ".env", override=False)
 
 
 # Test file path

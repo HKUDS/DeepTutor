@@ -4,9 +4,7 @@ Setup Service
 
 System setup and initialization for DeepTutor.
 
-Port configuration is done via .env file:
-    BACKEND_PORT=8001   (default: 8001)
-    FRONTEND_PORT=3782  (default: 3782)
+Port configuration is done via data/user/settings/system.json.
 
 Usage:
     from deeptutor.services.setup import init_user_directories, get_backend_port
@@ -14,7 +12,7 @@ Usage:
     # Initialize user directories
     init_user_directories()
 
-    # Get server ports (from .env)
+    # Get server ports
     backend_port = get_backend_port()
     frontend_port = get_frontend_port()
 """

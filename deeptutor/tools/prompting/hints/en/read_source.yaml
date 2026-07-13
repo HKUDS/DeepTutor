@@ -1,0 +1,6 @@
+short_description: "Load the full text of an attached source (notebook record, book pages, history session, question-bank entry, document attachment) by its manifest id."
+when_to_use: "Call ONLY when the preview shown in the \"Attached Sources\" manifest is not enough to answer the user's question. Do not re-fetch sources whose preview already covers the question."
+input_format: "{\"source_id\": \"the exact id from the manifest (e.g. nb-... / bk-... / hs-... / qb-... / at-...)\"}."
+guideline: "Copy source_id verbatim from the manifest — never invent or guess one. Load one source per call; issue separate calls if multiple sources are needed."
+note: "When no source is attached, this tool will not appear; do not ask the user to clarify \"which material\"."
+phase: "exploration"

@@ -6,11 +6,23 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useTranslation } from "react-i18next";
 import "katex/dist/katex.min.css";
-import { processMarkdownContent } from "@/lib/latex";
 import {
+  convertFlowFenceToMermaid,
+  convertSequenceFenceToMermaid,
+  processMarkdownContent,
+} from "@/lib/latex";
+import {
+  citationAnchorIdFor,
   escapeUnknownHtmlTagsForDisplay,
+  markdownUrlTransform,
   normalizeMarkdownForDisplay,
 } from "@/lib/markdown-display";
+import {
+  InlineFileCard,
+  makeFileLinkRemarkPlugin,
+  parseAttachmentHref,
+  useInlineFileCardContext,
+} from "@/components/common/InlineFileCard";
 import type { MarkdownRendererProps } from "./MarkdownRenderer";
 
 function MermaidLoading() {
@@ -31,6 +43,11 @@ const LazyCodeBlock = dynamic(() => import("./RichCodeBlock"), {
   ssr: false,
   loading: () => null,
 });
+
+const GeogebraOpenCTA = dynamic(
+  () => import("@/components/common/GeogebraOpenCTA"),
+  { ssr: false, loading: () => null },
+);
 
 type PluginBundle = {
   remarkMath?: unknown;
@@ -101,6 +118,35 @@ function sourceLineAttr(node: any): { "data-source-line"?: number } {
     return { "data-source-line": line };
   }
   return {};
+}
+
+// Scrolls only the nearest scrollable ancestor instead of every scrollable
+// ancestor up to the viewport. Using `Element.scrollIntoView` here walks the
+// ancestor chain and can shift outer panes that happen to be scrollable
+// (e.g. when the preview container sits inside a flex layout that briefly
+// gains scroll height), which manifests as the whole page jumping after a
+// citation click.
+function scrollAnchorIntoView(target: HTMLElement): void {
+  let container: HTMLElement | null = target.parentElement;
+  while (container) {
+    const style = window.getComputedStyle(container);
+    const overflowY = style.overflowY;
+    if (
+      (overflowY === "auto" || overflowY === "scroll") &&
+      container.scrollHeight > container.clientHeight
+    ) {
+      break;
+    }
+    container = container.parentElement;
+  }
+  if (!container) {
+    target.scrollIntoView({ block: "start", behavior: "smooth" });
+    return;
+  }
+  const containerRect = container.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const top = targetRect.top - containerRect.top + container.scrollTop;
+  container.scrollTo({ top, behavior: "smooth" });
 }
 
 export default function RichMarkdownRenderer({
@@ -437,6 +483,49 @@ export default function RichMarkdownRenderer({
         );
       }
 
+      // editor.md style fences. With `trackSourceLines` the preprocess
+      // pipeline is bypassed (it would shift line numbers), so the raw
+      // fence reaches us here and we convert at render time instead.
+      if (
+        (lang === "flow" || lang === "seq" || lang === "sequence") &&
+        enableMermaid
+      ) {
+        const converted =
+          lang === "flow"
+            ? convertFlowFenceToMermaid(raw)
+            : convertSequenceFenceToMermaid(raw);
+        if (converted) {
+          return (
+            <div {...lineProps}>
+              <LazyMermaid chart={converted} className={gap} />
+            </div>
+          );
+        }
+      }
+
+      if (lang === "ggbscript" && enableCode) {
+        // Backend emits ```ggbscript[page_id;title]. We don't render the
+        // applet inline anymore — the chat answer stays text-only and we
+        // surface a CTA card. Clicking it opens (or focuses) a GeoGebra
+        // tab inside the right-hand SessionViewerPanel where the user can
+        // interact with the figure without the chat scroll fighting it.
+        const metaMatch = /language-ggbscript\[([^;\]]*)(?:;([^\]]*))?\]/.exec(
+          blockClassName || "",
+        );
+        const ggbPayloadId = metaMatch?.[1]?.trim() || undefined;
+        const ggbTitle = metaMatch?.[2]?.trim() || undefined;
+        return (
+          <div {...lineProps}>
+            <GeogebraOpenCTA
+              script={raw}
+              payloadId={ggbPayloadId}
+              title={ggbTitle}
+              className={gap}
+            />
+          </div>
+        );
+      }
+
       // Route every multi-line block through the rich code block so the
       // indented (no-language) variant still gets a polished, consistent
       // theme instead of the washed-out fallback panel.
@@ -477,6 +566,10 @@ export default function RichMarkdownRenderer({
       );
     },
     a: ({ node, href, children, title, ...props }: any) => {
+      const attachmentName = parseAttachmentHref(href);
+      if (attachmentName) {
+        return <InlineFileCard name={attachmentName} fallback={children} />;
+      }
       const isCitation = title === "citation";
       const isHashLink = href?.startsWith("#");
       const external =
@@ -485,10 +578,22 @@ export default function RichMarkdownRenderer({
       if (isCitation) {
         const label = extractText(children);
         const ids = label.split(/\s*,\s*/);
-        const scrollToRef = (event: React.MouseEvent) => {
+        const scrollToRef = (event: React.MouseEvent, id?: string) => {
           event.preventDefault();
-          const target = document.getElementById("references");
-          target?.scrollIntoView({ block: "start", behavior: "smooth" });
+          const hashTarget =
+            id && citationAnchorIdFor(id)
+              ? citationAnchorIdFor(id)
+              : href?.startsWith("#")
+                ? decodeURIComponent(href.slice(1))
+                : "references";
+          const target =
+            document.getElementById(hashTarget || "") ??
+            document.getElementById("references");
+          const parentDetails = target?.closest("details");
+          if (parentDetails instanceof HTMLDetailsElement) {
+            parentDetails.open = true;
+          }
+          if (target) scrollAnchorIntoView(target);
         };
         return (
           <span
@@ -501,12 +606,13 @@ export default function RichMarkdownRenderer({
               const prefix = prefixMatch?.[1] ?? "";
               const num =
                 prefix && prefixMatch ? id.slice(prefixMatch[0].length) : id;
+              const citationAnchor = citationAnchorIdFor(id);
               return (
-                <React.Fragment key={id}>
+                <React.Fragment key={`${id}-${idx}`}>
                   {idx > 0 && ", "}
                   <a
-                    href={href}
-                    onClick={scrollToRef}
+                    href={citationAnchor ? `#${citationAnchor}` : href}
+                    onClick={(event) => scrollToRef(event, id)}
                     className="cursor-pointer text-[var(--primary)] no-underline transition-colors hover:text-[var(--primary)]/70 hover:underline"
                   >
                     {prefix ? (
@@ -540,7 +646,7 @@ export default function RichMarkdownRenderer({
             event.preventDefault();
             const targetId = decodeURIComponent(href.slice(1));
             const target = document.getElementById(targetId);
-            target?.scrollIntoView({ block: "start", behavior: "smooth" });
+            if (target) scrollAnchorIntoView(target);
           }}
           className="text-[var(--primary)] underline decoration-[var(--primary)]/40 underline-offset-2 transition-colors hover:decoration-[var(--primary)]"
           {...props}
@@ -621,11 +727,19 @@ export default function RichMarkdownRenderer({
       ? "md-renderer prose max-w-none font-serif"
       : "md-renderer prose prose-sm max-w-none font-serif";
 
+  // Linkify exact generated-filename mentions in the assistant's prose into
+  // clickable file links (no-op outside a chat message — fileCtx is null).
+  const fileCtx = useInlineFileCardContext();
+  const fileLinkPlugin = useMemo(
+    () => makeFileLinkRemarkPlugin(fileCtx?.files ?? []),
+    [fileCtx?.files],
+  );
   const remarkPlugins = useMemo(() => {
     const p: Array<any> = [remarkGfm];
     if (plugins.remarkMath) p.push(plugins.remarkMath as never);
+    if (fileLinkPlugin) p.push(fileLinkPlugin as never);
     return p;
-  }, [plugins.remarkMath]);
+  }, [plugins.remarkMath, fileLinkPlugin]);
 
   const rehypePlugins = useMemo(() => {
     const p: Array<any> = [];
@@ -640,6 +754,7 @@ export default function RichMarkdownRenderer({
         remarkPlugins={remarkPlugins}
         rehypePlugins={rehypePlugins}
         components={components}
+        urlTransform={markdownUrlTransform}
       >
         {processedContent}
       </ReactMarkdown>

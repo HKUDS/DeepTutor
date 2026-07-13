@@ -25,7 +25,7 @@ go to flat ``version-N`` directories:
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 import json
 import logging
@@ -271,7 +271,7 @@ def write_version_meta(
         "signature": signature.hash(),
         **asdict(signature),
         "layout": "flat" if target.parent == kb_dir else "nested_legacy",
-        "created_at": datetime.utcnow().isoformat() + "Z",
+        "created_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z",
     }
     with open(target / META_FILENAME, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2, ensure_ascii=False)

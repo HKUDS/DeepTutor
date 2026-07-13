@@ -2,23 +2,26 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 
 from deeptutor.logging import configure_logging
 from deeptutor.runtime.mode import RunMode, set_mode
-from deeptutor.services.setup import get_backend_port
 
 from .book import register as register_book
-from .bot import register as register_bot
 from .chat import register as register_chat
 from .common import build_turn_request, console, maybe_run
 from .config_cmd import register as register_config
+from .init_cmd import register as register_init
 from .kb import register as register_kb
 from .memory import register as register_memory
 from .notebook import register as register_notebook
+from .partner import register as register_partner
 from .plugin import register as register_plugin
 from .provider_cmd import register as register_provider
 from .session_cmd import register as register_session
+from .skill import register as register_skill
 
 set_mode(RunMode.CLI)
 configure_logging()
@@ -30,9 +33,10 @@ app = typer.Typer(
     add_completion=False,
 )
 
-bot_app = typer.Typer(help="Manage TutorBot instances.")
+partner_app = typer.Typer(help="Manage partners (IM-connected companions).")
 chat_app = typer.Typer(help="Interactive chat REPL.")
 kb_app = typer.Typer(help="Manage knowledge bases.")
+skill_app = typer.Typer(help="Manage skills and install from hubs (ClawHub, …).")
 memory_app = typer.Typer(help="View and manage lightweight memory.")
 plugin_app = typer.Typer(help="List plugins.")
 config_app = typer.Typer(help="Inspect configuration.")
@@ -41,9 +45,11 @@ notebook_app = typer.Typer(help="Manage notebooks and imported markdown records.
 provider_app = typer.Typer(help="Manage provider OAuth login.")
 book_app = typer.Typer(help="Manage interactive Books (BookEngine).")
 
-app.add_typer(bot_app, name="bot")
+app.add_typer(partner_app, name="partner")
 app.add_typer(chat_app, name="chat")
 app.add_typer(kb_app, name="kb")
+app.add_typer(skill_app, name="skill")
+app.add_typer(skill_app, name="skills")  # alias: `deeptutor skills …`
 app.add_typer(memory_app, name="memory")
 app.add_typer(plugin_app, name="plugin")
 app.add_typer(config_app, name="config")
@@ -52,9 +58,10 @@ app.add_typer(notebook_app, name="notebook")
 app.add_typer(provider_app, name="provider")
 app.add_typer(book_app, name="book")
 
-register_bot(bot_app)
+register_partner(partner_app)
 register_chat(chat_app)
 register_kb(kb_app)
+register_skill(skill_app)
 register_memory(memory_app)
 register_plugin(plugin_app)
 register_config(config_app)
@@ -62,13 +69,17 @@ register_session(session_app)
 register_notebook(notebook_app)
 register_provider(provider_app)
 register_book(book_app)
+register_init(app)
 
 
 @app.command("run")
 def run_capability(
     capability: str = typer.Argument(
         ...,
-        help="Capability name (e.g. chat, deep_solve, deep_question, deep_research, math_animator).",
+        help=(
+            "Capability name (e.g. chat, deep_solve, deep_question, "
+            "deep_research, visualize, math_animator, mastery_path)."
+        ),
     ),
     message: str = typer.Argument(..., help="Message to send."),
     session: str | None = typer.Option(None, "--session", help="Existing session id."),
@@ -104,9 +115,19 @@ def run_capability(
 
 
 @app.command()
+def start(
+    home: Path | None = typer.Option(None, "--home", help="Runtime workspace root."),
+) -> None:
+    """Launch backend + frontend together. Press Ctrl+C to stop."""
+    from deeptutor.runtime.launcher import start as start_web
+
+    start_web(home=home)
+
+
+@app.command()
 def serve(
     host: str = typer.Option("0.0.0.0", help="Bind address."),
-    port: int = typer.Option(get_backend_port(), help="Port number."),
+    port: int | None = typer.Option(None, help="Port number."),
     reload: bool = typer.Option(False, help="Enable auto-reload for development."),
 ) -> None:
     """Start the DeepTutor API server."""
@@ -114,6 +135,10 @@ def serve(
     import sys
 
     set_mode(RunMode.SERVER)
+    if port is None:
+        from deeptutor.services.setup import get_backend_port
+
+        port = get_backend_port()
 
     # Windows: uvicorn defaults to SelectorEventLoop which does not support
     # asyncio.create_subprocess_exec.  Switch to ProactorEventLoop so that
@@ -126,7 +151,7 @@ def serve(
     except ImportError:
         console.print(
             "[bold red]Error:[/] API server dependencies not installed.\n"
-            "Run: pip install -e '.[server]'"
+            "Run: pip install -U deeptutor"
         )
         raise typer.Exit(code=1)
 

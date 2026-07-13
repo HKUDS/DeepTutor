@@ -12,6 +12,7 @@ import logging
 from typing import Any
 
 from deeptutor.core.capability_protocol import BaseCapability
+from deeptutor.i18n.metadata_i18n import capability_description_i18n
 from deeptutor.runtime.bootstrap.builtin_capabilities import BUILTIN_CAPABILITY_CLASSES
 
 logger = logging.getLogger(__name__)
@@ -87,6 +88,10 @@ class CapabilityRegistry:
             {
                 "name": c.manifest.name,
                 "description": c.manifest.description,
+                "description_i18n": capability_description_i18n(
+                    c.manifest.name,
+                    c.manifest.description,
+                ),
                 "stages": c.manifest.stages,
                 "tools_used": c.manifest.tools_used,
                 "cli_aliases": c.manifest.cli_aliases,

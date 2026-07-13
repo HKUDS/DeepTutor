@@ -1,20 +1,4 @@
-"""Regression: env values must NOT overlay user-managed catalog profiles.
-
-Bug: ``ModelCatalogService.load()`` used to unconditionally call
-``_sync_active_services_from_env`` on every load, which copied the .env
-``EMBEDDING_HOST`` (etc.) onto whatever profile was currently active. Combined
-with the fact that "Save Draft" persists the catalog but does NOT write env,
-this destroyed the user's freshly-added second profile after a page refresh:
-
-* User has Default profile (active, env reflects its base_url)
-* User clicks "+ Profile", names it "aliyun", fills DashScope URL/key, saves draft
-* Catalog now has 2 profiles, aliyun is active. Env still has Default's URL.
-* Refresh → load() syncs env onto active (aliyun) → aliyun's base_url is
-  overwritten with Default's openrouter URL.
-
-Fix: only run the env→catalog sync while the catalog is in pristine
-default-bootstrap state (one auto-seeded profile per service).
-"""
+"""Regression: project-root .env must not overlay model catalog profiles."""
 
 from __future__ import annotations
 
@@ -24,9 +8,6 @@ from typing import Any
 
 import pytest
 
-from deeptutor.services.config import env_store as env_store_module
-from deeptutor.services.config import model_catalog as model_catalog_module
-from deeptutor.services.config.env_store import EnvStore
 from deeptutor.services.config.model_catalog import ModelCatalogService
 
 
@@ -35,23 +16,17 @@ def _write_env(path: Path, lines: list[str]) -> None:
 
 
 @pytest.fixture()
-def isolated_stores(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+def isolated_stores(tmp_path: Path) -> tuple[Path, Path]:
     catalog_path = tmp_path / "model_catalog.json"
     env_path = tmp_path / ".env"
-    env = EnvStore(env_path)
-    monkeypatch.setattr(env_store_module, "_env_store", env, raising=False)
-    monkeypatch.setattr(env_store_module, "get_env_store", lambda: env)
-    monkeypatch.setattr(model_catalog_module, "get_env_store", lambda: env)
-    # Reset the model_catalog singleton so each test gets a fresh service.
-    monkeypatch.setattr(ModelCatalogService, "_instance", None, raising=False)
+    ModelCatalogService._instances.clear()
     return catalog_path, env_path
 
 
 def test_user_added_second_profile_survives_reload(
-    isolated_stores: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+    isolated_stores: tuple[Path, Path],
 ) -> None:
     catalog_path, env_path = isolated_stores
-
     # Env reflects the previous "Default" profile values.
     _write_env(
         env_path,
@@ -146,11 +121,10 @@ def test_user_added_second_profile_survives_reload(
     assert len(embedding_service["profiles"]) == 2
 
 
-def test_env_still_seeds_pristine_single_default_profile(
+def test_legacy_env_does_not_overlay_existing_single_default_profile(
     isolated_stores: tuple[Path, Path],
 ) -> None:
-    """Power-user case: edit .env directly, single default profile in catalog
-    → env should still flow into the catalog on next load."""
+    """Once model_catalog.json exists, it is the source of truth."""
     catalog_path, env_path = isolated_stores
 
     _write_env(
@@ -198,10 +172,9 @@ def test_env_still_seeds_pristine_single_default_profile(
     loaded = service.load()
 
     profile = loaded["services"]["embedding"]["profiles"][0]
-    # Pristine catalog → env wins (legacy expected behavior preserved).
-    assert profile["base_url"] == "https://api.openai.com/v1/embeddings"
-    assert profile["api_key"] == "sk-newkey"
-    assert profile["models"][0]["model"] == "text-embedding-3-small"
+    assert profile["base_url"] == "stale-old-value"
+    assert profile["api_key"] == "stale-old-key"
+    assert profile["models"][0]["model"] == "stale-model"
 
 
 def _write_single_embedding_profile_catalog(

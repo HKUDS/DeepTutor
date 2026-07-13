@@ -10,10 +10,18 @@ from pydantic import BaseModel, Field
 class VisualizationAnalysis(BaseModel):
     """Output of the analysis stage."""
 
-    render_type: Literal["svg", "chartjs", "mermaid", "html"] = Field(
+    render_type: Literal[
+        "svg",
+        "chartjs",
+        "mermaid",
+        "html",
+        "manim_video",
+        "manim_image",
+    ] = Field(
         description=(
-            "Whether to render as raw SVG, a Chart.js configuration, a Mermaid "
-            "diagram, or a self-contained interactive HTML page."
+            "Render output: raw SVG, a Chart.js configuration, a Mermaid "
+            "diagram, a self-contained interactive HTML page, or a Manim "
+            "animation (video) / storyboard image."
         ),
     )
     description: str = Field(
@@ -40,6 +48,28 @@ class VisualizationAnalysis(BaseModel):
     rationale: str = Field(
         default="",
         description="Why this render_type was chosen over the alternative.",
+    )
+    visual_genre: Literal[
+        "",
+        "flowchart",
+        "structural",
+        "illustrative",
+        "chart",
+        "stepper",
+        "interactive",
+        "mockup",
+        "art",
+    ] = Field(
+        default="",
+        description=(
+            "Teaching-oriented sub-type that drives the code-generation style, "
+            "routed on the user's intent (the verb), not the topic (the noun): "
+            "'flowchart'/'structural' for reference maps, 'illustrative' for "
+            "intuition/'how does X work' spatial metaphors, 'stepper' for "
+            "cyclic or staged walkthroughs, 'chart' for quantitative data, "
+            "'interactive'/'mockup'/'art' for the matching HTML/SVG experiences. "
+            "Empty when no sub-type applies."
+        ),
     )
 
 

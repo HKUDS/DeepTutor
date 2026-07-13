@@ -43,8 +43,19 @@ export default function FileDropZone({
 }: FileDropZoneProps) {
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
+  const dirInputRef = useRef<HTMLInputElement>(null);
   const depthRef = useRef(0);
   const [dropState, setDropState] = useState<DropState>(EMPTY_DROP_STATE);
+
+  // `webkitdirectory`/`directory` are non-standard attrs (not in React's
+  // typings) but widely supported — set them imperatively to pick a folder.
+  const setDirInput = useCallback((el: HTMLInputElement | null) => {
+    dirInputRef.current = el;
+    if (el) {
+      el.setAttribute("webkitdirectory", "");
+      el.setAttribute("directory", "");
+    }
+  }, []);
 
   const selection = useMemo<ValidatedFileSelection>(
     () => validateFiles(files, uploadPolicy, t),
@@ -198,15 +209,21 @@ export default function FileDropZone({
         </div>
       </button>
 
+      {!disabled && (
+        <button
+          type="button"
+          onClick={() => dirInputRef.current?.click()}
+          className="text-[11px] font-medium text-[var(--muted-foreground)] underline-offset-2 transition-colors hover:text-[var(--foreground)] hover:underline"
+        >
+          {t("Or select an entire folder")}
+        </button>
+      )}
+
       {!hidePolicyHint && (
         <p className="text-[11px] text-[var(--muted-foreground)]">
           {uploadPolicy.extensions.length} {t("types")} ·{" "}
           {t("Maximum file size: {{size}}", {
             size: formatFileSize(uploadPolicy.max_file_size_bytes),
-          })}{" "}
-          ·{" "}
-          {t("PDF limit: {{size}}", {
-            size: formatFileSize(uploadPolicy.max_pdf_size_bytes),
           })}
         </p>
       )}
@@ -217,6 +234,20 @@ export default function FileDropZone({
         multiple
         className="hidden"
         accept={uploadPolicy.accept}
+        onChange={(event) => {
+          const picked = Array.from(event.target.files || []);
+          event.target.value = "";
+          onChange(mergeSelectedFiles(files, picked));
+        }}
+      />
+
+      {/* Directory picker — files carry webkitRelativePath so the upload keeps
+          the folder structure. Unsupported members are flagged, not blocked. */}
+      <input
+        ref={setDirInput}
+        type="file"
+        multiple
+        className="hidden"
         onChange={(event) => {
           const picked = Array.from(event.target.files || []);
           event.target.value = "";
@@ -266,12 +297,15 @@ function SelectionSummary({
               <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             )}
             {hasIssues
-              ? t("{{count}} invalid files", { count: invalidCount })
+              ? t("{{ready}} ready, {{skip}} will be skipped", {
+                  ready: readyCount,
+                  skip: invalidCount,
+                })
               : t("{{count}} files ready", { count: readyCount })}
           </div>
           <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
             {hasIssues
-              ? t("Only supported files can continue.")
+              ? t("Unsupported files are skipped; the rest will be indexed.")
               : t("Ready to upload")}{" "}
             · {formatFileSize(selection.totalBytes)}
           </p>

@@ -332,9 +332,7 @@ def ensure_safe_to_update(gap: BranchGap) -> None:
 def dependency_hints(changed_files: list[str]) -> list[str]:
     hints: list[str] = []
     if any(path == "pyproject.toml" or path.startswith("requirements/") for path in changed_files):
-        hints.append(
-            'Backend dependencies changed: consider running python -m pip install -e ".[server]"'
-        )
+        hints.append("Backend dependencies changed: consider running python -m pip install -e .")
     if any(
         path in {"web/package.json", "web/package-lock.json", "web/pnpm-lock.yaml"}
         or path == "web/yarn.lock"

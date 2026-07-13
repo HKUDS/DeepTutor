@@ -14,8 +14,8 @@ class ConfigManager:
     Minimal runtime YAML manager for `data/user/settings/main.yaml`.
 
     The long-lived configuration model is now:
-    - project root `.env` for service credentials and ports
-    - `data/user/settings/*.yaml` for runtime behavior
+    - `data/user/settings/model_catalog.json` for providers and credentials
+    - `data/user/settings/*.json` / `*.yaml` for runtime behavior
     """
 
     _instance: Optional["ConfigManager"] = None
@@ -38,18 +38,6 @@ class ConfigManager:
         self._config_cache: Dict[str, Any] = {}
         self._last_mtime: float = 0.0
         self._initialized = True
-
-    def _load_env_file(self, path: Path) -> Dict[str, str]:
-        if not path.exists():
-            return {}
-        values: Dict[str, str] = {}
-        for raw_line in path.read_text(encoding="utf-8").splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            values[key.strip()] = value.strip().strip("\"'")
-        return values
 
     def _read_yaml(self) -> Dict[str, Any]:
         if not self.config_path.exists():
@@ -109,17 +97,31 @@ class ConfigManager:
                         pass
 
     def get_env_info(self) -> Dict[str, str]:
-        parsed_env = self._load_env_file(self.project_root / ".env")
-
-        def _get(key: str, default: str = "") -> str:
-            return str(parsed_env.get(key) or os.environ.get(key, default))
-
-        return {"model": _get("LLM_MODEL", "")}
+        return {"model": self._runtime_key_values().get("LLM_MODEL", "")}
 
     def validate_required_env(self, keys: List[str]) -> Dict[str, List[str]]:
-        parsed_env = self._load_env_file(self.project_root / ".env")
-        missing = [key for key in keys if not (parsed_env.get(key) or os.environ.get(key))]
+        values = self._runtime_key_values()
+        missing = [key for key in keys if not values.get(key)]
         return {"missing": missing}
+
+    def _runtime_key_values(self) -> Dict[str, str]:
+        from deeptutor.services.config.model_catalog import ModelCatalogService
+        from deeptutor.services.config.runtime_settings import RuntimeSettingsService
+
+        settings_dir = get_runtime_settings_dir(self.project_root)
+        catalog_service = ModelCatalogService(settings_dir / "model_catalog.json")
+        catalog = catalog_service.load()
+        llm_profile = catalog_service.get_active_profile(catalog, "llm") or {}
+        llm_model = catalog_service.get_active_model(catalog, "llm") or {}
+        system = RuntimeSettingsService.get_instance(settings_dir).load_system()
+        return {
+            "BACKEND_PORT": str(system["backend_port"]),
+            "FRONTEND_PORT": str(system["frontend_port"]),
+            "LLM_BINDING": str(llm_profile.get("binding") or ""),
+            "LLM_MODEL": str(llm_model.get("model") or ""),
+            "LLM_API_KEY": str(llm_profile.get("api_key") or ""),
+            "LLM_HOST": str(llm_profile.get("base_url") or ""),
+        }
 
     @classmethod
     def reset_for_tests(cls) -> None:

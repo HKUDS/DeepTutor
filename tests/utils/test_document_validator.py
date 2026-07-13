@@ -42,3 +42,13 @@ def test_validate_upload_safety_custom_policy_allows_supported_code_mimes() -> N
     )
 
     assert safe_name == "solver.py"
+
+
+def test_validate_upload_safety_custom_policy_allows_images() -> None:
+    safe_name = DocumentValidator.validate_upload_safety(
+        "diagram.PNG",
+        1024,
+        allowed_extensions=FileTypeRouter.get_supported_extensions(),
+    )
+
+    assert safe_name == "diagram.png"

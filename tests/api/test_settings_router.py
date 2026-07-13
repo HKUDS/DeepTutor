@@ -10,6 +10,7 @@ from deeptutor.services.config.provider_runtime import (
     ResolvedEmbeddingConfig,
     ResolvedLLMConfig,
 )
+from deeptutor.services.config.runtime_settings import RuntimeSettingsService
 from deeptutor.services.embedding import client as embedding_client_module
 from deeptutor.services.embedding import config as embedding_config_module
 from deeptutor.services.llm import client as llm_client_module
@@ -35,21 +36,11 @@ class _FakeCatalogService:
     def load(self) -> dict[str, Any]:
         return deepcopy(self._catalog)
 
-    def apply(self, catalog: dict[str, Any]) -> dict[str, str]:
+    def apply(self, catalog: dict[str, Any]) -> dict[str, Any]:
         current = self.save(catalog)
-        llm_profile = current["services"]["llm"]["profiles"][0]
-        llm_model = llm_profile["models"][0]
-        embedding_profile = current["services"]["embedding"]["profiles"][0]
-        embedding_model = embedding_profile["models"][0]
         return {
-            "LLM_BINDING": llm_profile["binding"],
-            "LLM_API_KEY": llm_profile["api_key"],
-            "LLM_HOST": llm_profile["base_url"],
-            "LLM_MODEL": llm_model["model"],
-            "EMBEDDING_BINDING": embedding_profile["binding"],
-            "EMBEDDING_API_KEY": embedding_profile["api_key"],
-            "EMBEDDING_HOST": embedding_profile["base_url"],
-            "EMBEDDING_MODEL": embedding_model["model"],
+            "catalog_path": "memory://model_catalog.json",
+            "services": list(current["services"]),
         }
 
 
@@ -179,6 +170,229 @@ def _patch_runtime(
     )
 
 
+@pytest.mark.asyncio
+async def test_network_settings_roundtrip_normalizes_cors_origins(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    service.save_system({"backend_port": 8001, "frontend_port": 3782})
+    service.save_auth({"enabled": True, "cookie_secure": True})
+    monkeypatch.setattr(settings_router, "get_runtime_settings_service", lambda: service)
+
+    payload = settings_router.NetworkSettingsUpdate(
+        backend_port=8101,
+        frontend_port=3882,
+        public_api_base="https://api.example.com/deeptutor",
+        cors_origins=["app.example.com; https://learn.example.com/path"],
+    )
+
+    response = await settings_router.update_network_settings(payload)
+
+    assert response["settings"]["backend_port"] == 8101
+    assert response["settings"]["public_api_base"] == "https://api.example.com/deeptutor"
+    assert response["settings"]["cors_origins"] == [
+        "http://app.example.com",
+        "https://learn.example.com",
+    ]
+    assert response["effective"]["cors_mode"] == "explicit"
+    assert response["auth"]["cross_site_cookie_ready"] is True
+
+
+@pytest.mark.asyncio
+async def test_mineru_settings_roundtrip_redacts_token(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    monkeypatch.setattr(settings_router, "get_runtime_settings_service", lambda: service)
+
+    payload = settings_router.MinerUSettingsUpdate(
+        mode="cloud",
+        api_base_url="https://mineru.net/",
+        api_token="secret-token",
+        model_version="vlm",
+    )
+    response = await settings_router.update_mineru_settings(payload)
+
+    # The raw token never leaves the backend; only a boolean flag does.
+    assert response["api_token_set"] is True
+    assert "api_token" not in response["settings"]
+    assert response["settings"]["mode"] == "cloud"
+    assert response["settings"]["api_base_url"] == "https://mineru.net"
+    assert response["settings"]["model_version"] == "vlm"
+    # Persisted on disk under the canonical key.
+    assert service.load_mineru()["api_token"] == "secret-token"
+
+
+@pytest.mark.asyncio
+async def test_mineru_token_tristate_keep_then_clear(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    monkeypatch.setattr(settings_router, "get_runtime_settings_service", lambda: service)
+    service.save_mineru({"mode": "cloud", "api_token": "keep-me"})
+
+    # api_token=None → keep the stored token.
+    await settings_router.update_mineru_settings(
+        settings_router.MinerUSettingsUpdate(mode="cloud", api_token=None)
+    )
+    assert service.load_mineru()["api_token"] == "keep-me"
+
+    # api_token="" → explicitly clear it.
+    await settings_router.update_mineru_settings(
+        settings_router.MinerUSettingsUpdate(mode="cloud", api_token="")
+    )
+    assert service.load_mineru()["api_token"] == ""
+
+
+@pytest.mark.asyncio
+async def test_mineru_test_connection_reports_missing_token(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    monkeypatch.setattr(settings_router, "get_runtime_settings_service", lambda: service)
+
+    result = await settings_router.test_mineru_connection(
+        settings_router.MinerUSettingsUpdate(mode="cloud", api_token="")
+    )
+    assert result["ok"] is False
+    assert "token" in result["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_mineru_payload_includes_local_cli_probe(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from deeptutor.services.parsing.engines.mineru import backend as mineru_backend
+
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    monkeypatch.setattr(settings_router, "get_runtime_settings_service", lambda: service)
+    monkeypatch.setattr(
+        mineru_backend,
+        "local_cli_probe",
+        lambda *a: {"found": True, "command": "mineru", "path": "/env/bin/mineru"},
+    )
+
+    payload = await settings_router.get_mineru_settings()
+    assert payload["local_cli"] == {
+        "found": True,
+        "command": "mineru",
+        "path": "/env/bin/mineru",
+    }
+
+
+@pytest.mark.asyncio
+async def test_mineru_test_connection_local_mode(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    from deeptutor.services.parsing.engines.mineru import backend as mineru_backend
+
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    monkeypatch.setattr(settings_router, "get_runtime_settings_service", lambda: service)
+
+    # CLI present → ok with version detail.
+    monkeypatch.setattr(
+        mineru_backend,
+        "local_cli_probe",
+        lambda *a: {"found": True, "command": "mineru", "path": "/env/bin/mineru"},
+    )
+    monkeypatch.setattr(mineru_backend, "local_cli_version", lambda cmd: "mineru, version 2.5.0")
+    result = await settings_router.test_mineru_connection(
+        settings_router.MinerUSettingsUpdate(mode="local")
+    )
+    assert result["ok"] is True
+    assert "2.5.0" in result["message"]
+
+    # CLI absent → actionable failure message.
+    monkeypatch.setattr(
+        mineru_backend, "local_cli_probe", lambda *a: {"found": False, "command": "", "path": ""}
+    )
+    result = await settings_router.test_mineru_connection(
+        settings_router.MinerUSettingsUpdate(mode="local")
+    )
+    assert result["ok"] is False
+    assert "not found" in result["message"].lower()
+
+    # Bad configured path → message points at the path, not at PATH install.
+    monkeypatch.setattr(
+        mineru_backend,
+        "local_cli_probe",
+        lambda *a: {"found": False, "command": "", "path": "/bad/mineru", "source": "configured"},
+    )
+    result = await settings_router.test_mineru_connection(
+        settings_router.MinerUSettingsUpdate(mode="local", local_cli_path="/bad/mineru")
+    )
+    assert result["ok"] is False
+    assert "/bad/mineru" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_mineru_models_download_start_requires_downloader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.services.parsing.engines.mineru import models as mineru_models
+
+    monkeypatch.setattr(
+        mineru_models, "resolve_models_downloader", lambda p: {"found": False, "path": ""}
+    )
+    result = await settings_router.start_mineru_models_download(
+        settings_router.MinerUModelDownloadPayload()
+    )
+    assert result["ok"] is False
+    assert "not found" in result["message"].lower()
+
+    # Configured CLI without a sibling downloader → message names the path.
+    monkeypatch.setattr(
+        mineru_models,
+        "resolve_models_downloader",
+        lambda p: {"found": False, "path": "/env/bin/mineru-models-download"},
+    )
+    result = await settings_router.start_mineru_models_download(
+        settings_router.MinerUModelDownloadPayload(local_cli_path="/env/bin/mineru")
+    )
+    assert result["ok"] is False
+    assert "/env/bin/mineru-models-download" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_mineru_models_download_start_and_status_passthrough(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.services.parsing.engines.mineru import models as mineru_models
+
+    calls: dict[str, object] = {}
+
+    class _FakeManager:
+        def start(self, **kwargs):
+            calls.update(kwargs)
+            return {"ok": True, "message": ""}
+
+        def status(self, cursor=0):
+            return {"state": "running", "lines": ["l1"], "next_cursor": 1, "message": ""}
+
+        def cancel(self):
+            return {"ok": True, "message": ""}
+
+    monkeypatch.setattr(
+        mineru_models,
+        "resolve_models_downloader",
+        lambda p: {"found": True, "path": "/env/bin/mineru-models-download"},
+    )
+    monkeypatch.setattr(mineru_models, "get_model_download_manager", lambda: _FakeManager())
+
+    result = await settings_router.start_mineru_models_download(
+        settings_router.MinerUModelDownloadPayload(
+            model_type="all", source="modelscope", endpoint="https://hf-mirror.com"
+        )
+    )
+    assert result["ok"] is True
+    assert calls["downloader"] == "/env/bin/mineru-models-download"
+    assert calls["model_type"] == "all"
+    assert calls["source"] == "modelscope"
+
+    status = await settings_router.mineru_models_download_status(cursor=0)
+    assert status["lines"] == ["l1"]
+    cancel = await settings_router.cancel_mineru_models_download()
+    assert cancel["ok"] is True
+
+
 def test_embedding_provider_choices_use_full_endpoint_urls() -> None:
     embedding = {item["value"]: item for item in settings_router._provider_choices()["embedding"]}
 
@@ -302,13 +516,38 @@ async def test_apply_catalog_invalidates_runtime_caches(monkeypatch: pytest.Monk
     new_embedding_client = embedding_client_module.get_embedding_client()
 
     assert response["catalog"] == applied_catalog
-    assert response["env"]["LLM_MODEL"] == "gpt-after-apply"
-    assert response["env"]["EMBEDDING_MODEL"] == "text-embedding-after-apply"
+    assert response["runtime"]["catalog_path"]
     assert new_llm_config.model == "gpt-after-apply"
     assert new_llm_client is not old_llm_client
     assert new_llm_client.config.base_url == "https://after-apply-llm.example/v1"
     assert new_embedding_client is not old_embedding_client
     assert new_embedding_client.config.model == "text-embedding-after-apply"
+
+
+@pytest.mark.asyncio
+async def test_enabled_tools_roundtrip(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+
+    # Default state — no file yet, so the loader emits the full toggleable set.
+    assert set(settings_router.get_enabled_optional_tools()) == set(
+        settings_router.USER_TOGGLEABLE_TOOL_NAMES
+    )
+
+    # PUT a partial set; unknown tool names get filtered out.
+    update = settings_router.EnabledToolsUpdate(
+        enabled_tools=["web_search", "reason", "not_a_real_tool"]
+    )
+    response = await settings_router.update_enabled_tools(update)
+    assert response == {"enabled_optional_tools": ["web_search", "reason"]}
+    assert settings_router.get_enabled_optional_tools() == ["web_search", "reason"]
+
+    # Empty selection is a valid "all off" state.
+    response = await settings_router.update_enabled_tools(
+        settings_router.EnabledToolsUpdate(enabled_tools=[])
+    )
+    assert response == {"enabled_optional_tools": []}
+    assert settings_router.get_enabled_optional_tools() == []
 
 
 @pytest.mark.asyncio
@@ -351,10 +590,64 @@ async def test_complete_tour_invalidates_runtime_caches(
     new_embedding_client = embedding_client_module.get_embedding_client()
     cache = tour_cache.read_text(encoding="utf-8")
 
-    assert response["env"]["LLM_MODEL"] == "gpt-after-tour"
-    assert response["env"]["EMBEDDING_MODEL"] == "text-embedding-after-tour"
+    assert response["runtime"]["catalog_path"]
     assert response["status"] == "completed"
     assert new_llm_config.model == "gpt-after-tour"
     assert new_llm_client is not old_llm_client
     assert new_embedding_client is not old_embedding_client
     assert '"status": "completed"' in cache
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_returns_picker_options(monkeypatch: pytest.MonkeyPatch) -> None:
+    import deeptutor.services.llm.factory as factory_module
+
+    async def _fake_fetch(binding: str, base_url: str, api_key: str | None = None):
+        assert binding == "openai"  # "OpenAI" is normalized to lowercase
+        assert base_url == "https://api.example.com/v1"
+        assert api_key == "sk-x"
+        return ["gpt-4o", "gpt-4o-mini"]
+
+    monkeypatch.setattr(factory_module, "fetch_models", _fake_fetch)
+
+    response = await settings_router.fetch_models_from_provider(
+        settings_router.FetchModelsPayload(
+            binding="OpenAI", base_url="https://api.example.com/v1", api_key="sk-x"
+        )
+    )
+
+    assert response == {
+        "models": [
+            {"id": "gpt-4o", "name": "gpt-4o"},
+            {"id": "gpt-4o-mini", "name": "gpt-4o-mini"},
+        ]
+    }
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_requires_base_url() -> None:
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        await settings_router.fetch_models_from_provider(
+            settings_router.FetchModelsPayload(base_url="   ")
+        )
+    assert exc_info.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_maps_provider_error_to_502(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi import HTTPException
+
+    import deeptutor.services.llm.factory as factory_module
+
+    async def _boom(binding: str, base_url: str, api_key: str | None = None):
+        raise RuntimeError("connection refused")
+
+    monkeypatch.setattr(factory_module, "fetch_models", _boom)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await settings_router.fetch_models_from_provider(
+            settings_router.FetchModelsPayload(binding="custom", base_url="https://x/v1")
+        )
+    assert exc_info.value.status_code == 502

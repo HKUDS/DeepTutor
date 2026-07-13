@@ -175,7 +175,6 @@ def register(app: typer.Typer) -> None:
                     kb_name=name,
                     source_files=doc_paths,
                     base_dir=str(mgr.base_dir),
-                    skip_extract=True,
                 )
             )
         except Exception as exc:

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiUrl, wsUrl } from "@/lib/api";
 import type { ProgressInfo } from "@/lib/knowledge-helpers";
 
-export type TaskKind = "create" | "upload" | "reindex";
+export type TaskKind = "create" | "upload" | "reindex" | "retry";
 
 export interface TaskState {
   taskId: string;
@@ -126,7 +126,13 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
   );
 
   const openTaskStream = useCallback(
-    (kbName: string, taskId: string, kind: TaskKind, label: string) => {
+    (
+      kbName: string,
+      taskId: string,
+      kind: TaskKind,
+      label: string,
+      initialLogs: string[] = [],
+    ) => {
       closeSource(kbName);
       startedAtRef.current[`${kbName}:${taskId}`] = Date.now();
       setTasksByKb((prev) => ({
@@ -135,7 +141,7 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
           taskId,
           kind,
           label,
-          logs: [],
+          logs: initialLogs,
           executing: true,
           error: null,
         },
@@ -143,6 +149,7 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
 
       const source = new EventSource(
         apiUrl(`/api/v1/knowledge/tasks/${encodeURIComponent(taskId)}/stream`),
+        { withCredentials: true },
       );
       sourcesRef.current[kbName] = source;
 
@@ -274,10 +281,11 @@ export function useKnowledgeProgress(options?: UseKnowledgeProgressOptions) {
       kind: TaskKind;
       label: string;
       seed?: ProgressInfo;
+      initialLogs?: string[];
     }) => {
-      const { kbName, taskId, kind, label, seed } = params;
+      const { kbName, taskId, kind, label, seed, initialLogs } = params;
       if (seed) setProgress(kbName, { ...seed, task_id: taskId });
-      openTaskStream(kbName, taskId, kind, label);
+      openTaskStream(kbName, taskId, kind, label, initialLogs);
       subscribeWs(kbName, taskId);
     },
     [openTaskStream, setProgress, subscribeWs],

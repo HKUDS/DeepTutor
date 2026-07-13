@@ -2,8 +2,8 @@
  * Helpers for rendering AI-generated HTML inside a sandboxed `<iframe>`:
  * - {@link injectKaTeX} ensures the page can render `$...$` / `$$...$$`
  *   even if the model didn't include KaTeX itself.
- * - {@link sanitizeIframeHtml} strips bare `<script>` blocks (except the
- *   KaTeX init shim) and any inline event handlers / `javascript:` URLs.
+ * - {@link sanitizeIframeHtml} strips navigation escapes while leaving
+ *   interactive scripts isolated by the caller's sandboxed iframe.
  *
  * These were originally written for the (now-deprecated) Guided Learning
  * page; the visualize capability now reuses them for `render_mode=html`.
@@ -17,7 +17,6 @@ const KATEX_RESOURCES = [
     "/script>",
 ].join("\n  ");
 
-// eslint-disable-next-line no-template-curly-in-string
 const KATEX_INIT_SCRIPT =
   "<script data-katex-init>" +
   'document.addEventListener("DOMContentLoaded",function(){var t=0,i=setInterval(function(){if(typeof renderMathInElement==="function"){clearInterval(i);try{renderMathInElement(document.body,{delimiters:[{left:"$$",right:"$$",display:true},{left:"$",right:"$",display:false},{left:"\\\\(",right:"\\\\)",display:false},{left:"\\\\[",right:"\\\\]",display:true}],throwOnError:false})}catch(e){console.error("[KaTeX] Error:",e)}}else if(++t>50){clearInterval(i);console.warn("[KaTeX] Timeout")}},100)});' +
@@ -84,9 +83,39 @@ export function sanitizeIframeHtml(html: string): string {
 }
 
 /**
- * Convenience: inject KaTeX, then sanitize. Suitable for a one-shot iframe
- * `srcdoc` write.
+ * Bridge injected into every widget iframe. The iframe runs in a null origin
+ * (sandbox="allow-scripts", no allow-same-origin), so it talks to the host only
+ * via postMessage:
+ *   - `window.sendPrompt(text)` → posts a follow-up question; the host prefills
+ *     it into the composer (the widget analogue of an SVG node's data-prompt).
+ *   - a ResizeObserver posts the content height so the host can grow the iframe
+ *     to fit instead of clipping at a fixed height.
+ */
+const BRIDGE_SCRIPT =
+  "<script data-dt-bridge>" +
+  "(function(){" +
+  'window.sendPrompt=function(t){try{parent.postMessage({type:"dt:visualize-prompt",text:String(t||"")},"*")}catch(e){}};' +
+  'function rh(){try{var b=document.body,h=Math.max(document.documentElement.scrollHeight,b?b.scrollHeight:0);parent.postMessage({type:"dt:visualize-height",height:h},"*")}catch(e){}}' +
+  'if(typeof ResizeObserver!=="undefined"){var ro=new ResizeObserver(rh);document.addEventListener("DOMContentLoaded",function(){ro.observe(document.documentElement);rh()})}' +
+  'document.addEventListener("DOMContentLoaded",rh);window.addEventListener("load",rh);' +
+  "})();" +
+  "<" +
+  "/script>";
+
+function injectBridge(html: string): string {
+  if (html.includes("</body>")) {
+    return html.replace("</body>", BRIDGE_SCRIPT + "\n</body>");
+  }
+  if (html.includes("</html>")) {
+    return html.replace("</html>", BRIDGE_SCRIPT + "\n</html>");
+  }
+  return html + "\n" + BRIDGE_SCRIPT;
+}
+
+/**
+ * Convenience: inject KaTeX, sanitize, then add the host bridge. Suitable for a
+ * one-shot iframe `srcdoc` write.
  */
 export function prepareIframeHtml(html: string): string {
-  return sanitizeIframeHtml(injectKaTeX(html));
+  return injectBridge(sanitizeIframeHtml(injectKaTeX(html)));
 }

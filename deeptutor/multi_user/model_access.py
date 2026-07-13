@@ -1,8 +1,12 @@
-"""Server-side model grant resolution and redacted model views."""
+"""Server-side model grant resolution and redacted model views.
+
+Grants carry LLM assignments only (grant v2): embedding and search always
+resolve from the deployment's active profiles, so per-user grants for them
+were never enforced and are not stored.
+"""
 
 from __future__ import annotations
 
-from copy import deepcopy
 from typing import Any
 
 from deeptutor.services.config.model_catalog import ModelCatalogService
@@ -11,8 +15,6 @@ from deeptutor.services.model_selection import list_llm_options
 from .context import get_current_user
 from .grants import load_grant
 from .paths import get_admin_path_service
-
-SERVICES = ("llm", "embedding", "search")
 
 
 def admin_catalog_service() -> ModelCatalogService:
@@ -43,63 +45,71 @@ def redacted_model_access(user_id: str | None = None) -> dict[str, list[dict[str
         user_id = user.id
     grant = load_grant(user_id)
     catalog = admin_catalog()
-    result: dict[str, list[dict[str, Any]]] = {"llm": [], "embedding": [], "search": []}
-    for service in SERVICES:
-        for item in grant.get("models", {}).get(service, []) or []:
-            profile_id = str(item.get("profile_id") or item.get("id") or "")
-            profile = _profile_by_id(catalog, service, profile_id)
-            if not profile:
-                result[service].append(
-                    {
-                        "profile_id": profile_id,
-                        "name": item.get("name") or profile_id or "Unavailable profile",
-                        "source": "admin",
-                        "available": False,
-                    }
-                )
-                continue
-            model_ids = item.get("model_ids") or []
-            if service == "search":
-                result[service].append(
-                    {
-                        "profile_id": profile_id,
-                        "name": profile.get("name") or profile.get("provider") or profile_id,
-                        "provider": profile.get("provider", ""),
-                        "source": "admin",
-                        "available": True,
-                    }
-                )
-                continue
-            for model_id in model_ids:
-                model = _model_by_id(profile, str(model_id))
-                result[service].append(
-                    {
-                        "profile_id": profile_id,
-                        "model_id": str(model_id),
-                        "name": (model or {}).get("name") or str(model_id),
-                        "model": (model or {}).get("model") or "",
-                        "source": "admin",
-                        "available": model is not None,
-                    }
-                )
+    result: dict[str, list[dict[str, Any]]] = {"llm": []}
+    for item in grant.get("models", {}).get("llm", []) or []:
+        profile_id = str(item.get("profile_id") or item.get("id") or "")
+        profile = _profile_by_id(catalog, "llm", profile_id)
+        if not profile:
+            result["llm"].append(
+                {
+                    "profile_id": profile_id,
+                    "name": item.get("name") or profile_id or "Unavailable profile",
+                    "source": "admin",
+                    "available": False,
+                }
+            )
+            continue
+        for model_id in item.get("model_ids") or []:
+            model = _model_by_id(profile, str(model_id))
+            result["llm"].append(
+                {
+                    "profile_id": profile_id,
+                    "model_id": str(model_id),
+                    "name": (model or {}).get("name") or str(model_id),
+                    "model": (model or {}).get("model") or "",
+                    "source": "admin",
+                    "available": model is not None,
+                }
+            )
     return result
 
 
-def allowed_llm_options() -> list[dict[str, Any]]:
+def allowed_llm_options() -> dict[str, Any]:
     user = get_current_user()
     if user.is_admin:
         return list_llm_options(admin_catalog())
-    return [
+    options = [
         {
             "profile_id": item.get("profile_id"),
             "model_id": item.get("model_id"),
+            "profile_name": item.get("name") or item.get("profile_id") or "LLM",
+            "model_name": item.get("name") or item.get("model") or item.get("model_id"),
             "label": item.get("name") or item.get("model") or item.get("model_id"),
             "model": item.get("model") or "",
+            "provider": "",
             "source": "admin",
+            "is_active_default": False,
         }
         for item in redacted_model_access(user.id).get("llm", [])
         if item.get("available")
     ]
+    return {"active": None, "options": options}
+
+
+def has_capability_access(capability: str, user_id: str | None = None) -> bool:
+    """Whether the user has at least one usable model for ``capability``.
+
+    Admins are never gated — they manage the catalog directly. For ordinary
+    users this mirrors exactly what ``redacted_model_access`` exposes to the
+    frontend, so the server-side gate and the UI lock always agree.
+    """
+    user = get_current_user()
+    if user.is_admin:
+        return True
+    if user_id is None:
+        user_id = user.id
+    items = redacted_model_access(user_id).get(capability, []) or []
+    return any(item.get("available") for item in items)
 
 
 def apply_allowed_llm_selection(selection: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -113,7 +123,3 @@ def apply_allowed_llm_selection(selection: dict[str, Any] | None) -> dict[str, A
         if item.get("profile_id") == profile_id and item.get("model_id") == model_id:
             return selection
     raise PermissionError("This model is not assigned to your account.")
-
-
-def redacted_catalog_summary() -> dict[str, Any]:
-    return {"model_access": deepcopy(redacted_model_access())}

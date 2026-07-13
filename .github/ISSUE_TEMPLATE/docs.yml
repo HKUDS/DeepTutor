@@ -1,0 +1,58 @@
+name: Documentation Issue
+description: Report an inaccuracy, broken link, missing topic, or unclear explanation in the docs at deeptutor.info
+title: "[Docs]: "
+labels: ["docs", "triage"]
+
+body:
+  - type: checkboxes
+    id: existingcheck
+    attributes:
+      label: Before filing
+      options:
+        - label: I have searched the existing docs issues and this report is not already filed.
+        - label: This is about the docs at https://deeptutor.info — not a product bug.
+  - type: input
+    id: page
+    attributes:
+      label: Page URL
+      description: Which page does the issue affect?
+      placeholder: https://deeptutor.info/docs/...
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of issue?
+      options:
+        - Inaccurate or out-of-date content
+        - Broken link / 404
+        - Command or example that does not work
+        - Screenshot does not match the current product
+        - Missing topic / coverage gap
+        - Typo / formatting / wording
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's wrong?
+      description: Quote the affected text or describe the issue.
+      placeholder: e.g. "Get Started → Setup Tour references `scripts/start_tour.py` which doesn't exist in the repo."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: Optional — what should the docs say or show instead?
+      placeholder: e.g. "The PyPI install path should be the recommended entry, matching the README."
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment (optional)
+      description: Only if relevant to the issue (browser, OS, DeepTutor version).
+      placeholder: |
+        - Browser:
+        - DeepTutor version (if checked locally):
+        - OS:

@@ -9,6 +9,7 @@ from pathlib import Path
 import traceback
 from typing import Any, Callable, Dict, List, Optional
 
+from deeptutor.runtime.home import get_runtime_data_root
 from deeptutor.services.embedding import get_embedding_config
 from deeptutor.services.rag.embedding_signature import signature_from_embedding_config
 from deeptutor.services.rag.index_versioning import (
@@ -17,8 +18,10 @@ from deeptutor.services.rag.index_versioning import (
     resolve_storage_dir_for_rebuild,
     write_version_meta,
 )
+from deeptutor.services.rag.kb_paths import resolve_kb_dir
 
 from . import storage
+from .config import default_top_k
 from .document_loader import LlamaIndexDocumentLoader
 from .embedding_adapter import (
     configure_llamaindex_settings,
@@ -27,9 +30,7 @@ from .embedding_adapter import (
 )
 from .errors import search_error_result
 
-DEFAULT_KB_BASE_DIR = str(
-    Path(__file__).resolve().parent.parent.parent.parent.parent.parent / "data" / "knowledge_bases"
-)
+DEFAULT_KB_BASE_DIR = str(get_runtime_data_root() / "knowledge_bases")
 
 SignatureProvider = Callable[[], EmbeddingSignature | None]
 
@@ -79,7 +80,7 @@ class LlamaIndexPipeline:
             f"Initializing KB '{kb_name}' with {len(file_paths)} files using LlamaIndex"
         )
 
-        kb_dir = Path(self.kb_base_dir) / kb_name
+        kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
         signature = self._current_signature()
         storage_dir = resolve_storage_dir_for_rebuild(kb_dir, signature)
 
@@ -98,7 +99,7 @@ class LlamaIndexPipeline:
             if progress_callback:
                 set_progress_callback(progress_callback)
 
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(
                 None,
                 lambda: storage.create_index(documents, storage_dir, show_progress=True),
@@ -129,7 +130,7 @@ class LlamaIndexPipeline:
         self._configure_settings()
         self.logger.info(f"Searching KB '{kb_name}' with query: {query[:50]}...")
 
-        kb_dir = Path(self.kb_base_dir) / kb_name
+        kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
         signature = self._current_signature()
         storage_dir = resolve_storage_dir_for_read(kb_dir, signature)
 
@@ -153,8 +154,8 @@ class LlamaIndexPipeline:
         embedding_mismatch_warning = self._embedding_mismatch_warning(kb_name)
 
         try:
-            loop = asyncio.get_event_loop()
-            top_k = kwargs.get("top_k", 5)
+            loop = asyncio.get_running_loop()
+            top_k = kwargs.get("top_k") or default_top_k()
             nodes = await loop.run_in_executor(
                 None,
                 lambda: storage.retrieve_nodes(storage_dir, query, top_k=top_k),
@@ -227,7 +228,7 @@ class LlamaIndexPipeline:
 
         self.logger.info(f"Adding {len(file_paths)} documents to KB '{kb_name}' using LlamaIndex")
 
-        kb_dir = Path(self.kb_base_dir) / kb_name
+        kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
         signature = self._current_signature()
         plan = storage.resolve_add_storage_plan(kb_dir, signature)
 
@@ -241,7 +242,7 @@ class LlamaIndexPipeline:
                 self.logger.warning("No valid documents to add")
                 return False
 
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
 
             if plan.existing_storage is not None:
                 self.logger.info(f"Loading existing index from {plan.existing_storage}...")
@@ -278,7 +279,7 @@ class LlamaIndexPipeline:
             set_progress_callback(None)
 
     async def delete(self, kb_name: str) -> bool:
-        kb_dir = Path(self.kb_base_dir) / kb_name
+        kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
         deleted = storage.delete_kb_dir(kb_dir)
         if deleted:
             self.logger.info(f"Deleted KB '{kb_name}'")

@@ -1,6 +1,6 @@
 short_description: "Analyze a math problem image and generate validated GeoGebra commands for geometric visualization."
 when_to_use: "Use when the user uploads a geometry or math diagram and wants to reconstruct, visualize, or interact with the figure in GeoGebra."
 input_format: "The math problem text (question). The image is injected automatically from attachments."
-guideline: "Only invoke this tool when an image attachment is present and the problem involves geometric figures. The tool runs a full 4-stage pipeline (detection → analysis → scripting → reflection) and returns ready-to-render GeoGebra commands."
+guideline: "Only invoke this tool when an image attachment is present and the problem involves geometric figures. The tool runs a full 4-stage pipeline (detection → analysis → scripting → reflection) and returns ready-to-render GeoGebra commands. When the tool result contains a ```ggbscript[…]``` fenced block, copy that entire block verbatim into your final answer so the chat surface can render the interactive figure."
 note: "The pipeline requires a vision-capable LLM. Processing may take 15-30 seconds due to four sequential LLM calls."
 phase: "exploration"

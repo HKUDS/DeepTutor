@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -88,6 +89,14 @@ class TestParseJsonResponseRepair:
         with patch("deeptutor.utils.json_parser.repair_json", None):
             result = parse_json_response("{bad json", fallback={"err": True})
             assert result == {"err": True}
+
+    def test_invalid_plain_text_is_not_logged_as_error(self, caplog) -> None:
+        caplog.set_level(logging.ERROR)
+
+        result = parse_json_response("not json", fallback={"default": True})
+
+        assert result == {"default": True}
+        assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
 
 
 # ---------------------------------------------------------------------------

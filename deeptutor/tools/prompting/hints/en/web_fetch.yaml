@@ -1,0 +1,6 @@
+short_description: "Fetch a specific URL and extract readable content as markdown."
+when_to_use: "When the user's message contains a specific URL and reading that page is needed: shared blog / textbook / paper links with a question about them, or an explicit 'read this page' request. Use ``web_search`` for general topic searches."
+input_format: "{\"url\": \"full http(s):// URL\", \"max_chars\": 50000}. ``max_chars`` is optional (default 50000) and content beyond it is truncated."
+guideline: "Login-walled, anti-bot, or JS-only pages may return little useful content — say so honestly, don't fabricate around an empty result. The returned text already has scripts and sidebars stripped (first line is `# Title` when available)."
+note: "Refuses file:// / localhost / private IP addresses. Fetches one URL per call; issue separate calls for multiple URLs."
+phase: "exploration"

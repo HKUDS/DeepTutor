@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, Eye, EyeOff, XCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -77,26 +77,32 @@ function QuizQuestionCard({
   const { t } = useTranslation();
   const [selected, setSelected] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
-  const [reported, setReported] = useState(false);
+  const reportedRef = useRef<string | null>(null);
   const normalizedType = normalizeQuizQuestionType(question.question_type);
   const options = question.options || {};
   const isChoice = isChoiceQuizQuestion(normalizedType);
   const correct = String(question.correct_answer || "").trim();
   const correctChoiceKey = resolveChoiceAnswerKey(correct, options);
+  const reportKey = `${question.question_id || index}:${selected || ""}`;
 
   useEffect(() => {
-    if (revealed && selected && !reported && onAttempt) {
+    if (
+      revealed &&
+      selected &&
+      reportedRef.current !== reportKey &&
+      onAttempt
+    ) {
+      reportedRef.current = reportKey;
       onAttempt({
         questionId: question.question_id,
         userAnswer: selected,
         isCorrect: selected.toUpperCase() === correctChoiceKey,
       });
-      setReported(true);
     }
   }, [
+    reportKey,
     revealed,
     selected,
-    reported,
     onAttempt,
     question.question_id,
     correctChoiceKey,

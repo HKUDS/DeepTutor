@@ -29,7 +29,7 @@ export default function SpaceSectionHeader({
         </span>
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-[19px] font-semibold leading-tight tracking-tight text-[var(--foreground)]">
+            <h1 className="font-serif text-[19px] font-semibold leading-tight tracking-tight text-[var(--foreground)]">
               {title}
             </h1>
             {meta}

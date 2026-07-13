@@ -6,6 +6,8 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
+from deeptutor.services.llm.openai_http_client import disable_ssl_verify_enabled
+
 from .base import BaseEmbeddingAdapter, EmbeddingRequest, EmbeddingResponse
 
 logger = logging.getLogger(__name__)
@@ -58,7 +60,9 @@ class OllamaEmbeddingAdapter(BaseEmbeddingAdapter):
         logger.debug(f"Sending embedding request to {url} with {len(request.texts)} texts")
 
         try:
-            async with httpx.AsyncClient(timeout=self.request_timeout) as client:
+            async with httpx.AsyncClient(
+                timeout=self.request_timeout, verify=not disable_ssl_verify_enabled()
+            ) as client:
                 response = await client.post(
                     url,
                     json=payload,
@@ -136,5 +140,6 @@ class OllamaEmbeddingAdapter(BaseEmbeddingAdapter):
             "dimensions": self.MODELS_INFO.get(self.model, self.dimensions),
             "local": True,
             "supports_variable_dimensions": False,
+            "multimodal": False,
             "provider": "ollama",
         }

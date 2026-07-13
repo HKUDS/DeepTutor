@@ -34,6 +34,7 @@ class FileClassification:
 
     parser_files: List[str]
     text_files: List[str]
+    image_files: List[str]
     unsupported: List[str]
 
 
@@ -217,6 +218,7 @@ class FileTypeRouter:
         """Classify a list of files by processing method."""
         parser_files = []
         text_files = []
+        image_files = []
         unsupported = []
 
         for path in file_paths:
@@ -231,17 +233,21 @@ class FileTypeRouter:
                 parser_files.append(path)
             elif doc_type in (DocumentType.TEXT, DocumentType.MARKDOWN):
                 text_files.append(path)
+            elif doc_type == DocumentType.IMAGE:
+                image_files.append(path)
             else:
                 unsupported.append(path)
 
         logger.debug(
             f"Classified {len(file_paths)} files: "
-            f"{len(parser_files)} parser, {len(text_files)} text, {len(unsupported)} unsupported"
+            f"{len(parser_files)} parser, {len(text_files)} text, "
+            f"{len(image_files)} image, {len(unsupported)} unsupported"
         )
 
         return FileClassification(
             parser_files=parser_files,
             text_files=text_files,
+            image_files=image_files,
             unsupported=unsupported,
         )
 
@@ -303,7 +309,7 @@ class FileTypeRouter:
     @classmethod
     def get_supported_extensions(cls) -> set[str]:
         """Get the set of all supported file extensions."""
-        return cls.PARSER_EXTENSIONS | cls.TEXT_EXTENSIONS
+        return cls.PARSER_EXTENSIONS | cls.TEXT_EXTENSIONS | cls.IMAGE_EXTENSIONS
 
     @classmethod
     def has_supported_extension(cls, file_path: str | Path) -> bool:

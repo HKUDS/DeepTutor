@@ -6,46 +6,39 @@ Run this once after starting PocketBase for the first time:
 
     python scripts/pb_setup.py
 
-Requires POCKETBASE_URL, POCKETBASE_ADMIN_EMAIL, and POCKETBASE_ADMIN_PASSWORD
-to be set in your .env file (or exported as environment variables).
+Requires integrations.pocketbase_url, integrations.pocketbase_admin_email, and
+integrations.pocketbase_admin_password in data/user/settings/integrations.json.
 
 Safe to re-run — existing collections are left untouched.
 """
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 import sys
 
 # Allow running from project root without installing the package.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-# Load .env if present.
-try:
-    from dotenv import load_dotenv
+from deeptutor.services.config import load_integrations_settings
 
-    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-except ImportError:
-    pass
-
-
-POCKETBASE_URL = os.getenv("POCKETBASE_URL", "").rstrip("/")
-ADMIN_EMAIL = os.getenv("POCKETBASE_ADMIN_EMAIL", "")
-ADMIN_PASSWORD = os.getenv("POCKETBASE_ADMIN_PASSWORD", "")
+_INTEGRATIONS = load_integrations_settings()
+POCKETBASE_BASE_URL = str(_INTEGRATIONS["pocketbase_url"]).rstrip("/")
+ADMIN_EMAIL = str(_INTEGRATIONS["pocketbase_admin_email"])
+ADMIN_PASSWORD = str(_INTEGRATIONS["pocketbase_admin_password"])
 
 
 def _require_env():
     missing = []
-    if not POCKETBASE_URL:
-        missing.append("POCKETBASE_URL")
+    if not POCKETBASE_BASE_URL:
+        missing.append("integrations.pocketbase_url")
     if not ADMIN_EMAIL:
-        missing.append("POCKETBASE_ADMIN_EMAIL")
+        missing.append("integrations.pocketbase_admin_email")
     if not ADMIN_PASSWORD:
-        missing.append("POCKETBASE_ADMIN_PASSWORD")
+        missing.append("integrations.pocketbase_admin_password")
     if missing:
-        print(f"ERROR: Missing required env vars: {', '.join(missing)}")
-        print("Set them in your .env file or export them before running this script.")
+        print(f"ERROR: Missing required integration settings: {', '.join(missing)}")
+        print("Set them in data/user/settings/integrations.json before running this script.")
         sys.exit(1)
 
 
@@ -57,7 +50,7 @@ def _get_client():
         print("Run: pip install pocketbase")
         sys.exit(1)
 
-    pb = PocketBase(POCKETBASE_URL)
+    pb = PocketBase(POCKETBASE_BASE_URL)
     pb.admins.auth_with_password(ADMIN_EMAIL, ADMIN_PASSWORD)
     return pb
 
@@ -83,16 +76,23 @@ def _create_if_missing(pb, name: str, schema: dict, existing: set[str]):
 
 def main():
     _require_env()
-    print(f"Connecting to PocketBase at {POCKETBASE_URL} ...")
+    print(f"Connecting to PocketBase at {POCKETBASE_BASE_URL} ...")
     pb = _get_client()
     print("Authenticated as admin.")
 
     existing = _existing_collections(pb)
     print(f"Found {len(existing)} existing collection(s): {sorted(existing) or '(none)'}\n")
 
+    # Access control is enforced in the application layer, not by PocketBase
+    # collection rules: the backend connects with a single admin-authenticated
+    # client (see services/pocketbase_client.py), which bypasses collection
+    # RBAC entirely, so the rules below stay empty by design. Per-user session
+    # isolation is implemented in PocketBaseSessionStore by stamping every
+    # session row with ``user_id`` and filtering every query by the current
+    # user. Do NOT rely on these listRule/viewRule strings for isolation.
     collections = [
         # ----------------------------------------------------------------
-        # sessions
+        # sessions  (``user_id`` populated + filtered by PocketBaseSessionStore)
         # ----------------------------------------------------------------
         {
             "name": "sessions",
@@ -213,7 +213,7 @@ def main():
         _create_if_missing(pb, col["name"], col, existing)
 
     print("\nDone. PocketBase collections are ready.")
-    print(f"Open the admin panel at {POCKETBASE_URL}/_/ to view and configure collections.")
+    print(f"Open the admin panel at {POCKETBASE_BASE_URL}/_/ to view and configure collections.")
 
 
 if __name__ == "__main__":

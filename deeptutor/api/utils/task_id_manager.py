@@ -3,9 +3,12 @@ Task ID Manager - Assigns unique IDs to each background task
 """
 
 from datetime import datetime, timedelta
+import logging
 import threading
 from typing import Optional
 import uuid
+
+logger = logging.getLogger(__name__)
 
 
 class TaskIDManager:
@@ -90,8 +93,8 @@ class TaskIDManager:
                             finished_time = datetime.fromisoformat(finished_at)
                             if finished_time < cutoff:
                                 to_remove.append(task_id)
-                        except:
-                            pass
+                        except Exception:
+                            logger.warning("Failed to parse finished_at for task %s", task_id)
 
             for task_id in to_remove:
                 metadata = self._task_metadata.pop(task_id, {})

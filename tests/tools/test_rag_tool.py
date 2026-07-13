@@ -12,7 +12,6 @@ from deeptutor.services.rag.factory import (
 )
 from deeptutor.tools.rag_tool import (
     RAGService,
-    _resolve_kb_name,
     get_available_providers,
     get_current_provider,
 )
@@ -29,7 +28,6 @@ class TestNormalizeProviderName:
             "  ",
             "llamaindex",
             "LlamaIndex",
-            "lightrag",
             "raganything",
             "raganything_docling",
             "totally_unknown_xyz",
@@ -40,10 +38,16 @@ class TestNormalizeProviderName:
 
 
 class TestPipelineFactory:
-    def test_list_pipelines_only_default(self) -> None:
+    def test_list_pipelines_includes_pageindex(self) -> None:
         pipelines = list_pipelines()
         assert isinstance(pipelines, list)
-        assert {p["id"] for p in pipelines} == {DEFAULT_PROVIDER}
+        assert {p["id"] for p in pipelines} == {
+            DEFAULT_PROVIDER,
+            "pageindex",
+            "graphrag",
+            "lightrag",
+            "lightrag-server",
+        }
 
     def test_get_pipeline_returns_singleton(self) -> None:
         try:
@@ -53,21 +57,32 @@ class TestPipelineFactory:
             pytest.skip(f"LlamaIndex optional dependency missing: {exc}")
         assert first is second
 
-    def test_get_pipeline_ignores_provider_name(self) -> None:
-        """The legacy ``name`` argument is silently ignored."""
+    def test_get_pipeline_collapses_unknown_to_default_singleton(self) -> None:
+        """Unknown / legacy provider names resolve to the default pipeline."""
         try:
             a = get_pipeline("llamaindex")
-            b = get_pipeline("lightrag")
+            b = get_pipeline("raganything")  # legacy string → default
             c = get_pipeline("nonexistent_xyz")
         except (ValueError, ImportError) as exc:
             pytest.skip(f"LlamaIndex optional dependency missing: {exc}")
         assert a is b is c
 
+    def test_get_pipeline_dispatches_known_provider(self) -> None:
+        """A real provider name builds its own pipeline (not the default)."""
+        pipe = get_pipeline("lightrag", kb_base_dir="/tmp/kb-test")
+        assert type(pipe).__name__ == "LightRagPipeline"
+
 
 class TestRAGServiceClassHelpers:
-    def test_list_providers_only_default(self) -> None:
+    def test_list_providers_includes_pageindex(self) -> None:
         providers = RAGService.list_providers()
-        assert {p["id"] for p in providers} == {DEFAULT_PROVIDER}
+        assert {p["id"] for p in providers} == {
+            DEFAULT_PROVIDER,
+            "pageindex",
+            "graphrag",
+            "lightrag",
+            "lightrag-server",
+        }
 
     def test_has_provider_default_true(self) -> None:
         assert RAGService.has_provider(DEFAULT_PROVIDER) is True
@@ -76,8 +91,10 @@ class TestRAGServiceClassHelpers:
         assert RAGService.has_provider("nonexistent") is False
         assert RAGService.has_provider("") is False
 
-    def test_get_current_provider_ignores_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("RAG_PROVIDER", "lightrag")
+    def test_get_current_provider_collapses_unknown_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("RAG_PROVIDER", "raganything")  # unknown → default
         assert get_current_provider() == DEFAULT_PROVIDER
         monkeypatch.delenv("RAG_PROVIDER", raising=False)
         assert get_current_provider() == DEFAULT_PROVIDER
@@ -87,28 +104,18 @@ class TestToolLayerExports:
     def test_get_available_providers_matches_class_method(self) -> None:
         assert get_available_providers() == RAGService.list_providers()
 
-    def test_resolve_default_alias_to_configured_default(self, tmp_path) -> None:
-        from deeptutor.knowledge.manager import KnowledgeBaseManager
+    def test_rag_search_requires_kb_name(self) -> None:
+        import asyncio
 
-        base_dir = tmp_path / "knowledge_bases"
-        manager = KnowledgeBaseManager(base_dir=str(base_dir))
-        manager.config["knowledge_bases"]["actual-kb"] = {
-            "path": "actual-kb",
-            "status": "ready",
-        }
-        manager._save_config()
+        from deeptutor.tools.rag_tool import rag_search
 
-        assert _resolve_kb_name("default", kb_base_dir=str(base_dir)) == "actual-kb"
+        with pytest.raises(ValueError, match="kb_name"):
+            asyncio.run(rag_search(query="hi", kb_name=""))
 
-    def test_resolve_exact_kb_named_default_before_alias(self, tmp_path) -> None:
-        from deeptutor.knowledge.manager import KnowledgeBaseManager
+    def test_rag_search_requires_query(self) -> None:
+        import asyncio
 
-        base_dir = tmp_path / "knowledge_bases"
-        manager = KnowledgeBaseManager(base_dir=str(base_dir))
-        manager.config["knowledge_bases"] = {
-            "default": {"path": "default", "status": "ready"},
-            "z-kb": {"path": "z-kb", "status": "ready"},
-        }
-        manager._save_config()
+        from deeptutor.tools.rag_tool import rag_search
 
-        assert _resolve_kb_name("default", kb_base_dir=str(base_dir)) == "default"
+        with pytest.raises(ValueError, match="non-empty"):
+            asyncio.run(rag_search(query="", kb_name="any"))

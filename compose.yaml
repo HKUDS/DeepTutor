@@ -1,0 +1,206 @@
+# ============================================
+# DeepTutor — Podman Compose (rootless, read-only rootfs)
+# ============================================
+# Requires:
+#   * podman 4.1+ (rootless)
+#   * a compose provider. On podman 5.x without the native Go-based
+#     compose plugin, `podman compose` is a thin wrapper around
+#     `podman-compose` (Python). Both work; the `docker-compose` CLI
+#     also works if it's installed and pointed at the podman socket.
+#     This file is `podman-compose` 1.5+ compatible.
+#   * Verify with:  `podman compose version` and  `podman info | grep -i rootless`
+#
+# Bring up (this file lives next to docker-compose.yml, so always pass -f):
+#   cp .env.example .env       # then edit
+#   podman compose -f compose.yaml up -d
+#   podman compose -f compose.yaml ps
+#   podman compose -f compose.yaml logs -f deeptutor
+#
+#   Tip: alias it for the session —  alias dc='podman compose -f compose.yaml'
+#   or export COMPOSE_FILE=compose.yaml so the default `podman compose`
+#   picks this file up without -f.
+#
+# Tear down (keeps volumes):
+#   podman compose -f compose.yaml down
+# Wipe data (DESTRUCTIVE):
+#   podman compose -f compose.yaml down -v
+#
+# Top-level choices (see git log / PR for full rationale):
+#   * All services run with `read_only: true`. The `tmpfs:` mounts below are
+#     the only writable surface inside each container's rootfs.
+#   * `userns_mode: keep-id` plus the `:U` suffix on every volume mount
+#     implements rootless-keep-uid: host UID $UID maps to container UID $UID.
+#     Files you create on the host are visible as your own user inside.
+#   * Host-side port bindings are LOOPBACK ONLY (127.0.0.1:). Drop the
+#     `127.0.0.1:` prefix to expose on all interfaces.
+#   * Two services: `deeptutor` (backend+frontend in one GHCR image, run
+#     under supervisord) and `pocketbase` (optional auth/storage sidecar).
+#     The sandbox-runner sidecar from docker-compose.yml is intentionally
+#     NOT included: the main app falls back to bwrap (Linux, if installed
+#     in the image) or the restricted subprocess backend controlled by
+#     the `sandbox_allow_subprocess` setting in system.json. See
+#     deeptutor/services/sandbox/config.py:build_backend().
+#   * The backend and frontend run as a non-root `deeptutor` user (UID
+#     1000). supervisord runs as root (PID 1), the entrypoint chowns
+#     `/app/data`, and each program is dropped to `deeptutor` via its
+#     per-program `user=` directive, so the app processes are UID 1000
+#     inside the container. Under `userns_mode: keep-id` that maps to the
+#     host user.
+#   * URL knowledge lives in `data/user/settings/system.json` (in-network
+#     `next_public_api_base` for the typical case, or
+#     `next_public_api_base_external` for cloud/external). The entrypoint
+#     reads the JSON on every start and exports `DEEPTUTOR_API_BASE_URL`,
+#     which `web/proxy.ts` reads to rewrite `/api/*` and `/ws/*` to the
+#     configured backend at request time. There is no build-time
+#     placeholder, no runtime `sed -i` on the bundle, and no compose env
+#     var for the API base.
+#   * Runtime settings (ports, auth, model catalog, integrations) live in
+#     data/user/settings/*.json INSIDE the deeptutor-data volume. The
+#     entrypoint unsets BACKEND_PORT, FRONTEND_PORT, NEXT_PUBLIC_API_BASE,
+#     NEXT_PUBLIC_API_BASE_EXTERNAL, AUTH_ENABLED, POCKETBASE_URL, etc.
+#     and re-exports them from the JSONs on every start. So: edit JSONs
+#     + `podman compose restart deeptutor`, NOT compose env vars.
+# ============================================
+
+name: deeptutor
+
+services:
+  # ----------------------------------------------------------
+  # PocketBase — optional auth + storage sidecar
+  # ----------------------------------------------------------
+  # Activated by setting `integrations.pocketbase_url` to
+  # `http://pocketbase:8090` in data/user/settings/integrations.json.
+  # Leave blank to run with the SQLite fallback (single-user / invite-only).
+  pocketbase:
+    image: ghcr.io/muchobien/pocketbase:latest
+    container_name: deeptutor-pocketbase
+    pull_policy: always
+    restart: unless-stopped
+    userns_mode: keep-id
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /run:size=16m,mode=0755
+      - /var/run:size=8m,mode=0755
+    ports:
+      - "127.0.0.1:${HOST_PORT_POCKETBASE:-8090}:8090"
+    volumes:
+      # Bind mount a host directory so the host user (UID $UID) owns
+      # the SQLite DB and pocketbase's public/hooks dirs. With
+      # userns_mode: keep-id, the process inside is also UID $UID, so
+      # reads and writes line up. (The pocketbase image's entrypoint
+      # uses --dir=/pb_data --publicDir=/pb_public --hooksDir=/pb_hooks
+      # — absolute paths, no /pb/ prefix.)
+      - ./data/pocketbase:/pb_data:U
+      - ./data/pocketbase/public:/pb_public:U
+      - ./data/pocketbase/hooks:/pb_hooks:U
+    networks:
+      - deeptutor
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --quiet
+        - --tries=1
+        - --spider
+        - http://localhost:8090/api/health
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ----------------------------------------------------------
+  # DeepTutor — backend (FastAPI :8001) + frontend (Next.js :3782)
+  # ----------------------------------------------------------
+  # Both run inside the same image, supervised by supervisord under the
+  # unprivileged `deeptutor` user (UID 1000). The image's entrypoint loads
+  # runtime settings from data/user/settings/*.json and exports them into
+  # the supervisord children's environment, so changing ports/auth/providers
+  # means editing JSONs + `podman compose restart`.
+  deeptutor:
+    image: ghcr.io/hkuds/deeptutor:latest
+    container_name: deeptutor
+    pull_policy: always
+    restart: unless-stopped
+    userns_mode: keep-id
+    read_only: true
+    # Writable surfaces inside the RO rootfs. Each tmpfs is scoped to a
+    # specific need:
+    #   /tmp        — scratch for Python, uvicorn, Node, Next.js +
+    #                 supervisord's pidfile (/tmp/supervisord.pid)
+    #   /run        — standard Linux runtime dir
+    #   /var/run    — standard runtime dir (kept writable for any tooling)
+    #   /var/log    — covers any supervisord child that defaults there
+    #   /root       — catches stray $HOME-style writes (image sets
+    #                 PYTHONDONTWRITEBYTECODE=1, but be safe)
+    #   /home       — same, for any non-root code path
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+      - /run:size=32m,mode=0755
+      - /var/run:size=8m,mode=0755
+      - /var/log:size=64m,mode=0755
+      - /root:size=16m,mode=0700
+      - /home:size=16m,mode=0755
+    ports:
+      - "127.0.0.1:${HOST_PORT_BACKEND:-8001}:8001"
+      - "127.0.0.1:${HOST_PORT_FRONTEND:-3782}:3782"
+    volumes:
+      # Bind mount a host directory so the host user (UID $UID) owns
+      # the entire data tree. With userns_mode: keep-id the process
+      # inside is also UID $UID, so writes from the FastAPI backend,
+      # Next.js, and supervisord all line up. The same path was used
+      # by the original docker-compose.yml; we keep it for consistency.
+      # The data tree holds: admin workspace + runtime settings
+      # (data/user), per-user workspaces (data/users), partners
+      # (data/partners), accounts/grants/audit (data/system),
+      # knowledge bases, memory, logs. One tree to back up.
+      - ./data:/app/data:U
+    environment:
+      # Time zone — picked up by Python (time.tzset) and Next.js at boot.
+      - TZ=${TZ:-UTC}
+      # Local LLM (LM Studio / Ollama / vLLM) base URLs in
+      # data/user/settings/model_catalog.json should use
+      # `http://host.containers.internal:PORT` (podman) — NOT localhost,
+      # which inside the container is the container's own loopback.
+      # Uncomment to enable PocketBase auth (also set integrations.json):
+      #   - POCKETBASE_URL=http://pocketbase:8090
+      #   - POCKETBASE_EXTERNAL_URL=http://localhost:8090
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -fsS
+        - http://localhost:8001/
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      pocketbase:
+        condition: service_healthy
+    networks:
+      - deeptutor
+    # Optional hardening — uncomment to taste. supervisord runs as root
+    # (PID 1) and setuids each program down to UID 1000, which needs
+    # CAP_SETUID/CAP_SETGID — so do NOT `cap_drop: ALL` here, it would stop
+    # the backend/frontend from spawning. `no-new-privileges` is safe (a
+    # root process dropping its own privileges is not "gaining" any).
+    # security_opt:
+    #   - no-new-privileges:true
+    # # cap_drop: ALL is unsafe — supervisord needs CAP_SETUID/CAP_SETGID to
+    # # drop its children to the deeptutor user.
+    # Resource limits. Honored on cgroup v2 hosts; podman warns and skips
+    # on cgroup v1 or no-cgroup environments.
+    # pids_limit: 1024
+    # mem_limit: 4g
+    # cpus: 4.0
+
+networks:
+  deeptutor:
+    driver: bridge
+
+# Named volumes intentionally not used: with userns_mode: keep-id the
+# container process runs as the host user (UID $UID), but podman
+# auto-creates named volumes with UID 100000 (userns-mapped root),
+# so 755 perms + wrong owner = PermissionError on the first JSON
+# write. Bind mounts on a host directory you own work cleanly.

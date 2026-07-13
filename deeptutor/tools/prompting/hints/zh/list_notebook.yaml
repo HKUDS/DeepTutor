@@ -1,0 +1,6 @@
+short_description: "查看用户的笔记本（不传参数 → 列出全部）或某个笔记本内的所有记录（传 notebook_id → 列出 records）。"
+when_to_use: "在调用 `write_note` 的 edit 模式之前先调用此工具拿到 record_id。用户用描述引用某本笔记本但你需要它的精确 id 时也用此工具。"
+input_format: "{} 列总览；{\"notebook_id\": \"system prompt 列出的或先前 index 返回的 id\"} 钻取单本笔记本的记录。"
+guideline: "Index 模式返回 id + name + 记录数；钻取模式返回 record id + 标题 + summary + 日期（按时间倒序，最多 80 条）。如果 system prompt 的 notebook 索引已经能回答你的问题（笔记本名字 / id），就不要再调用此工具——只在确实需要新信息（例如发现 record_id 以便 edit，或用户中途新建了笔记本）时调用。"
+note: "用户没有任何笔记本时此工具不会出现。输出是 markdown，可以直接引用片段回复用户。"
+phase: "exploration"

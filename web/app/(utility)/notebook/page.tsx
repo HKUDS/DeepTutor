@@ -196,7 +196,7 @@ export default function NotebookPage() {
         {/* Header */}
         <div className="mb-6 flex items-start justify-between">
           <div>
-            <h1 className="text-[24px] font-semibold tracking-tight text-[var(--foreground)]">
+            <h1 className="font-serif text-[24px] font-semibold tracking-tight text-[var(--foreground)]">
               {t("Question Bank")}
             </h1>
             <p className="mt-1 text-[13px] text-[var(--muted-foreground)]">

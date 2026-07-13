@@ -8,16 +8,39 @@ Agent-first 的命令行界面。两条核心路径：
 ## 安装
 
 ```bash
-# 仅 CLI（含 RAG / 文档解析 / 各家 LLM provider SDK）
-pip install -e ".[cli]"
+# 仅 CLI（本地源码安装，含 RAG / 文档解析 / 各家 LLM provider SDK）
+git clone https://github.com/HKUDS/DeepTutor.git
+cd DeepTutor
+python3 -m venv .venv-cli
+source .venv-cli/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ./packaging/deeptutor-cli
+deeptutor init --cli
 
 # CLI + Web/API 服务
-pip install -e ".[server]"
+pip install deeptutor
+deeptutor init
+
+# 源码开发
+pip install -e .
+deeptutor init
 
 # 可选附加组件
-pip install -e ".[tutorbot]"       # TutorBot 智能体引擎 + 各渠道 SDK
+pip install -e ".[partners]"       # Partners 渠道 SDK + MCP 客户端
 pip install -e ".[math-animator]"  # 数学动画（另需系统 LaTeX/ffmpeg）
 pip install -e ".[all]"            # 全部依赖（含开发工具）
+```
+
+`deeptutor init --cli` 和普通 `deeptutor init` 使用同一套 `data/user/settings/` 配置目录；区别是 `--cli` 不询问 Web 后端/前端端口，仍会创建 `system.json`、`auth.json`、`integrations.json`、`model_catalog.json`、`main.yaml` 和 `agents.yaml`，并继续询问 LLM 配置。Embedding 配置默认跳过；如果要使用 `deeptutor kb ...` 或 RAG，请在向导里选择配置 embedding，或稍后编辑 `data/user/settings/model_catalog.json`。
+
+Windows PowerShell 可使用：
+
+```powershell
+py -3.11 -m venv .venv-cli
+.\.venv-cli\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e ./packaging/deeptutor-cli
+deeptutor init --cli
 ```
 
 ---
@@ -38,13 +61,15 @@ deeptutor run <capability> <message> [options]
 | `deep_solve` | 多阶段深度解题 |
 | `deep_question` | 智能出题 |
 | `deep_research` | 多 agent 深度研究 |
+| `visualize` | 生成图表、图解、Mermaid、HTML 或 Manim 可视化 |
 | `math_animator` | 数学动画生成 |
+| `mastery_path` | 掌握式学习路径与测评循环 |
 
 ### 选项
 
 | 选项 | 缩写 | 说明 |
 |------|------|------|
-| `--tool` | `-t` | 启用工具（可多次指定）：`rag`, `web_search`, `code_execution`, `reason`, `brainstorm`, `paper_search` |
+| `--tool` | `-t` | 启用工具（可多次指定）：`rag`, `web_search`, `code_execution`, `reason`, `brainstorm`, `paper_search`, `geogebra_analysis`, `imagegen`, `videogen` |
 | `--kb` | | 挂载知识库 |
 | `--language` | `-l` | 回复语言（默认 `en`） |
 | `--session` | | 继续已有会话 |
@@ -76,8 +101,14 @@ deeptutor run deep_question "模拟考试" --config mode=mimic --config paper_pa
 deeptutor run deep_research "Transformer 最新进展" \
   --config-json '{"mode":"report","depth":"deep","sources":["web","papers"]}'
 
+# 可视化
+deeptutor run visualize "画出注意力机制的数据流图" --config render_mode=mermaid
+
 # 数学动画
 deeptutor run math_animator "展示正弦函数变换" --config quality=high
+
+# 掌握式学习
+deeptutor run mastery_path "带我系统掌握特征值和特征向量"
 
 # JSON 输出（适合 agent 解析）
 deeptutor run deep_solve "求解 x^2=4" -f json
@@ -113,8 +144,14 @@ deeptutor chat [options]
 | `/kb <name>\|none` | 切换知识库 |
 | `/history add <id>\|clear` | 管理历史引用 |
 | `/notebook add <ref>\|clear` | 管理笔记本引用 |
+| `/regenerate`（别名 `/retry`） | 重跑上一条用户消息 |
+| `/show last\|<n>` | 展开被截断的工具结果或折叠的思考过程 |
 | `/refs` | 查看当前设置 |
 | `/config show\|set\|clear` | 管理 capability 配置 |
+
+回答生成期间按 `Ctrl-C` 会取消当前 turn 并回到输入提示符;模型通过
+`ask_user` 提问时,会在终端内渲染选项卡片并等待输入(非交互式 stdin
+下自动提交空回复,turn 不会挂起)。
 
 ---
 
@@ -123,6 +160,8 @@ deeptutor chat [options]
 ```bash
 deeptutor serve [--host 0.0.0.0] [--port 8001] [--reload]
 ```
+
+`deeptutor serve` 需要完整 Web/API 依赖；如果你是通过本地 `./packaging/deeptutor-cli` 安装的 CLI-only 包，请先卸载本地 CLI 包并切换到 `pip install -U deeptutor`。
 
 ---
 
@@ -166,7 +205,6 @@ deeptutor notebook remove-record <id> <record_id>
 
 ```bash
 deeptutor memory show
-deeptutor memory export ./backup/
 deeptutor memory clear --force
 ```
 

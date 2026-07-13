@@ -1,0 +1,78 @@
+name: EduHub / Skill Registry
+description: Report an issue with EduHub — the DeepTutor skill registry (site, API, CLI, or a published skill)
+title: "[EduHub]:"
+labels: ["eduhub", "triage"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        EduHub is DeepTutor's skill registry at https://eduhub.deeptutor.info.
+        Use this template for the EduHub web site, the ClawHub-compatible API, the `eduhub` CLI,
+        or a specific published skill. For bugs in the DeepTutor app itself, use the Bug Report template.
+  - type: checkboxes
+    id: existingcheck
+    attributes:
+      label: Do you need to file an issue?
+      description: Please help us manage our time by avoiding duplicates with the steps below.
+      options:
+        - label: I have searched the existing issues and this is not already filed.
+        - label: I have read the usage guide at https://eduhub.deeptutor.info/how-to-use
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of EduHub is this about?
+      options:
+        - Web site (eduhub.deeptutor.info)
+        - HTTP API (/api/v1)
+        - CLI (eduhub command)
+        - A published skill (install / content / metadata)
+        - Report a skill for removal (policy / copyright / security)
+        - Publishing a skill
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: skill_slug
+    attributes:
+      label: Skill slug
+      description: If this is about a specific skill, its slug (e.g. socratic-tutor). Leave blank otherwise.
+      placeholder: socratic-tutor
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the issue
+      description: A clear and concise description of the problem.
+      placeholder: What happened? What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Steps to reproduce the behavior (if applicable).
+      placeholder: |
+        1. Run `eduhub install <slug>`
+        2. ...
+        3. See error
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and screenshots
+      description: Paste the full command output or browser console errors.
+      render: shell
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        - eduhub CLI Version: run `eduhub --version` (CLI issues only)
+        - Operating System: e.g., macOS 14.0, Windows 11, Ubuntu 22.04
+        - Node.js Version: e.g., 20.x
+        - Registry: e.g., https://eduhub.deeptutor.info
+      value: |
+        - eduhub CLI Version:
+        - Operating System:
+        - Node.js Version:
+        - Registry:

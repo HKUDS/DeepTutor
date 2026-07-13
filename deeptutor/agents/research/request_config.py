@@ -1,4 +1,11 @@
-"""Validated request config and intent-to-policy mapping for deep research."""
+"""Validated request config and intent-to-policy mapping for deep research.
+
+Tool composition lives in :mod:`deeptutor.agents._shared.tool_composition`
+— the same shim chat uses. Research has no separate ``sources`` knob:
+whatever tools the user enables in the composer become available to the
+per-block research loop, with ``rag`` auto-mounted when a KB is attached
+(again, identical to chat).
+"""
 
 from __future__ import annotations
 
@@ -8,7 +15,6 @@ from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 ResearchMode = Literal["notes", "report", "comparison", "learning_path"]
 ResearchDepth = Literal["quick", "standard", "deep", "manual"]
-ResearchSource = Literal["kb", "web", "papers"]
 
 
 class OutlineItem(BaseModel):
@@ -21,18 +27,11 @@ class DeepResearchRequestConfig(BaseModel):
 
     mode: ResearchMode
     depth: ResearchDepth
-    sources: list[ResearchSource]
 
     manual_subtopics: int | None = None
     manual_max_iterations: int | None = None
 
     confirmed_outline: list[OutlineItem] | None = None
-
-    @field_validator("sources")
-    @classmethod
-    def validate_sources(cls, value: list[ResearchSource]) -> list[ResearchSource]:
-        deduped = list(dict.fromkeys(value))
-        return deduped
 
     @field_validator("manual_subtopics")
     @classmethod
@@ -67,7 +66,6 @@ def validate_research_request_config(
 def build_research_execution_policy(
     *,
     request_config: DeepResearchRequestConfig,
-    enabled_tools: set[str],
 ) -> dict[str, Any]:
     depth_policy = _build_depth_policy(
         request_config.depth,
@@ -82,22 +80,6 @@ def build_research_execution_policy(
             mode_policy["auto_max_subtopics"] = n
         else:
             mode_policy["initial_subtopics"] = n
-
-    source_tools: set[str] = set()
-    if "kb" in request_config.sources:
-        source_tools.add("rag")
-    if "web" in request_config.sources:
-        source_tools.add("web_search")
-    if "papers" in request_config.sources:
-        source_tools.add("paper_search")
-
-    allow_code_execution = (
-        bool(request_config.sources)
-        and "code_execution" in enabled_tools
-        and request_config.mode == "comparison"
-        and request_config.depth == "deep"
-    )
-    effective_tools = sorted(source_tools | ({"code_execution"} if allow_code_execution else set()))
 
     planning = {
         "rephrase": {
@@ -115,12 +97,6 @@ def build_research_execution_policy(
         "iteration_mode": depth_policy["iteration_mode"],
         "execution_mode": depth_policy["execution_mode"],
         "max_parallel_topics": depth_policy["max_parallel_topics"],
-        "new_topic_min_score": depth_policy["new_topic_min_score"],
-        "enable_rag": "rag" in source_tools,
-        "enable_web_search": "web_search" in source_tools,
-        "enable_paper_search": "paper_search" in source_tools,
-        "enable_run_code": allow_code_execution,
-        "enabled_tools": effective_tools,
     }
     reporting = {
         "min_section_length": mode_policy["min_section_length"],
@@ -147,7 +123,6 @@ def build_research_runtime_config(
     *,
     base_config: dict[str, Any],
     request_config: DeepResearchRequestConfig,
-    enabled_tools: set[str],
     kb_name: str | None,
 ) -> dict[str, Any]:
     capabilities = (
@@ -169,10 +144,7 @@ def build_research_runtime_config(
         else {}
     )
     rag_root: dict = {}
-    policy = build_research_execution_policy(
-        request_config=request_config,
-        enabled_tools=enabled_tools,
-    )
+    policy = build_research_execution_policy(request_config=request_config)
 
     runtime_config = dict(base_config)
     runtime_config["planning"] = policy["planning"]
@@ -212,12 +184,6 @@ def build_research_runtime_config(
     )
     runtime_config["system"] = system_cfg
 
-    tools_cfg = dict(runtime_config.get("tools", {}) or {})
-    web_cfg = dict(tools_cfg.get("web_search", {}) or {})
-    web_cfg["enabled"] = bool(runtime_config["researching"].get("enable_web_search"))
-    tools_cfg["web_search"] = web_cfg
-    runtime_config["tools"] = tools_cfg
-
     return runtime_config
 
 
@@ -233,7 +199,6 @@ def _build_depth_policy(
             "iteration_mode": "fixed",
             "execution_mode": "series",
             "max_parallel_topics": 1,
-            "new_topic_min_score": 0.95,
             "queue_max_length": 2,
         },
         "standard": {
@@ -241,7 +206,6 @@ def _build_depth_policy(
             "iteration_mode": "fixed",
             "execution_mode": "series",
             "max_parallel_topics": 1,
-            "new_topic_min_score": 0.88,
             "queue_max_length": 5,
         },
         "deep": {
@@ -249,7 +213,6 @@ def _build_depth_policy(
             "iteration_mode": "flexible",
             "execution_mode": "parallel",
             "max_parallel_topics": 3,
-            "new_topic_min_score": 0.78,
             "queue_max_length": 8,
         },
     }
@@ -262,7 +225,6 @@ def _build_depth_policy(
             "iteration_mode": "fixed",
             "execution_mode": "series" if subtopics <= 3 else "parallel",
             "max_parallel_topics": min(subtopics, 3),
-            "new_topic_min_score": 0.88,
             "queue_max_length": subtopics + 2,
         }
 
@@ -278,6 +240,9 @@ def _build_mode_policy(mode: ResearchMode, depth: ResearchDepth) -> dict[str, An
 
 __all__ = [
     "DeepResearchRequestConfig",
+    "OutlineItem",
+    "ResearchDepth",
+    "ResearchMode",
     "build_research_execution_policy",
     "build_research_runtime_config",
     "validate_research_request_config",

@@ -8,11 +8,12 @@ Provides both complete() and stream() methods.
 
 from collections.abc import AsyncGenerator, Mapping
 import logging
-import os
 import threading
 from typing import cast
 
 import aiohttp
+
+from deeptutor.services.config import load_system_settings
 
 from .capabilities import (
     disable_response_format_at_runtime,
@@ -21,6 +22,7 @@ from .capabilities import (
 )
 from .config import get_token_limit_kwargs
 from .exceptions import LLMAPIError, LLMAuthenticationError, LLMConfigError
+from .reasoning_params import default_reasoning_effort_for
 from .utils import (
     build_auth_headers,
     build_chat_url,
@@ -83,6 +85,21 @@ def _coerce_int(value: object, default: int | None) -> int | None:
 # Use lowercase to avoid constant redefinition warning
 _ssl_warning_logged = False
 
+# Providers that handle thinking mode through extra_body (rather than
+# top-level reasoning_effort).  "minimal" means disable thinking — these
+# providers reject the literal "minimal" value and expect extra_body instead.
+_BINDINGS_WITH_EXTRA_BODY_THINKING = frozenset(
+    {
+        "deepseek",
+        "dashscope",
+        "volcengine",
+        "volcengine_coding_plan",
+        "byteplus",
+        "byteplus_coding_plan",
+        "minimax",
+    }
+)
+
 
 def _looks_like_unsupported_response_format(error_text: str) -> bool:
     """Detect whether a 400 error body indicates ``response_format`` is unsupported.
@@ -112,7 +129,7 @@ def _get_aiohttp_connector() -> aiohttp.TCPConnector | None:
         is truthy; otherwise None to use aiohttp defaults.
     """
     # Thread-safe check and one-time warning emission
-    disable_flag = os.getenv("DISABLE_SSL_VERIFY", "").lower() in ("true", "1", "yes")
+    disable_flag = bool(load_system_settings()["disable_ssl_verify"])
     if not disable_flag:
         return None
 
@@ -328,7 +345,15 @@ async def _openai_complete(
         data["response_format"] = response_format
     reasoning_effort = kwargs.get("reasoning_effort")
     if isinstance(reasoning_effort, str) and reasoning_effort.strip():
-        data["reasoning_effort"] = reasoning_effort.strip()
+        effort = reasoning_effort.strip()
+        if not (
+            effort.lower() == "minimal" and binding.lower() in _BINDINGS_WITH_EXTRA_BODY_THINKING
+        ):
+            data["reasoning_effort"] = effort
+    else:
+        implicit_effort = default_reasoning_effort_for(binding, model)
+        if implicit_effort:
+            data["reasoning_effort"] = implicit_effort
 
     timeout = aiohttp.ClientTimeout(total=120)
     connector = _get_aiohttp_connector()
@@ -493,7 +518,15 @@ async def _openai_stream(
         data["response_format"] = response_format
     reasoning_effort = kwargs.get("reasoning_effort")
     if isinstance(reasoning_effort, str) and reasoning_effort.strip():
-        data["reasoning_effort"] = reasoning_effort.strip()
+        effort = reasoning_effort.strip()
+        if not (
+            effort.lower() == "minimal" and binding.lower() in _BINDINGS_WITH_EXTRA_BODY_THINKING
+        ):
+            data["reasoning_effort"] = effort
+    else:
+        implicit_effort = default_reasoning_effort_for(binding, model)
+        if implicit_effort:
+            data["reasoning_effort"] = implicit_effort
 
     timeout = aiohttp.ClientTimeout(total=300)
     connector = _get_aiohttp_connector()
@@ -625,9 +658,11 @@ async def _anthropic_complete(
     temperature: float | None = None,
 ) -> str:
     """Anthropic (Claude) API completion."""
-    api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        raise LLMAuthenticationError("Anthropic API key is missing.", provider="anthropic")
+        raise LLMAuthenticationError(
+            "Anthropic API key is missing from the active LLM profile.",
+            provider="anthropic",
+        )
 
     # Build URL using unified utility
     effective_base = base_url or "https://api.anthropic.com/v1"
@@ -701,9 +736,11 @@ async def _anthropic_stream(
     """Anthropic (Claude) API streaming."""
     import json
 
-    api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        raise LLMAuthenticationError("Anthropic API key is missing.", provider="anthropic")
+        raise LLMAuthenticationError(
+            "Anthropic API key is missing from the active LLM profile.",
+            provider="anthropic",
+        )
 
     # Build URL using unified utility
     effective_base = base_url or "https://api.anthropic.com/v1"
@@ -783,9 +820,11 @@ async def _cohere_complete(
     temperature: float | None = None,
 ) -> str:
     """Cohere API completion."""
-    api_key = api_key or os.getenv("COHERE_API_KEY")
     if not api_key:
-        raise LLMAuthenticationError("Cohere API key is missing.", provider="cohere")
+        raise LLMAuthenticationError(
+            "Cohere API key is missing from the active LLM profile.",
+            provider="cohere",
+        )
 
     # Build URL using unified utility
     effective_base = base_url or "https://api.cohere.ai/v1"

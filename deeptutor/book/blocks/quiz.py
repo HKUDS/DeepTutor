@@ -26,7 +26,12 @@ class QuizGenerator(BlockGenerator):
         question_type = str(params.get("question_type") or "")
 
         topic = chapter_title.strip() or ctx.book_id
-        preference = "; ".join(filter(None, [chapter_summary, *objectives]))
+        # Fold chapter context directly into the topic so the planner sees
+        # it without needing a separate "preference" channel.
+        extra_context = "; ".join(filter(None, [chapter_summary, *objectives]))
+        if extra_context:
+            topic = f"{topic}\n\n[Chapter context: {extra_context}]"
+        question_types = [question_type] if question_type else []
 
         try:
             from deeptutor.agents.question.coordinator import AgentCoordinator
@@ -38,10 +43,9 @@ class QuizGenerator(BlockGenerator):
             )
             summary = await coordinator.generate_from_topic(
                 user_topic=topic,
-                preference=preference,
                 num_questions=num_questions,
                 difficulty=difficulty,
-                question_type=question_type,
+                question_types=question_types,
             )
         except Exception as exc:
             logger.warning(f"QuizGenerator failed: {exc}", exc_info=True)

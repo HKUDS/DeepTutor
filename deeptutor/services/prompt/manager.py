@@ -9,7 +9,8 @@ from typing import Any
 
 import yaml
 
-from deeptutor.services.config import PROJECT_ROOT, parse_language
+from deeptutor.runtime.home import PACKAGE_ROOT
+from deeptutor.services.config import parse_language
 
 
 class PromptManager:
@@ -42,6 +43,7 @@ class PromptManager:
     NON_AGENT_MODULES: dict[str, str] = {
         "book": "book",
         "co_writer": "co_writer",
+        "capabilities": "capabilities",
     }
 
     def __new__(cls) -> "PromptManager":
@@ -117,12 +119,12 @@ class PromptManager:
     def _candidate_prompt_dirs(self, module_name: str) -> list[Path]:
         """Return legacy and current prompt roots for a module."""
         if module_name in self.NON_AGENT_MODULES:
-            legacy_dir = PROJECT_ROOT / "src" / module_name / "prompts"
-            current_dir = PROJECT_ROOT / "deeptutor" / module_name / "prompts"
+            legacy_dir = PACKAGE_ROOT / "src" / module_name / "prompts"
+            current_dir = PACKAGE_ROOT / "deeptutor" / module_name / "prompts"
             return [legacy_dir, current_dir]
 
-        legacy_dir = PROJECT_ROOT / "src" / "agents" / module_name / "prompts"
-        current_dir = PROJECT_ROOT / "deeptutor" / "agents" / module_name / "prompts"
+        legacy_dir = PACKAGE_ROOT / "src" / "agents" / module_name / "prompts"
+        current_dir = PACKAGE_ROOT / "deeptutor" / "agents" / module_name / "prompts"
         return [legacy_dir, current_dir]
 
     def _resolve_prompt_path(

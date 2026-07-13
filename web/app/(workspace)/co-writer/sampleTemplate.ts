@@ -12,23 +12,6 @@ export const CO_WRITER_SAMPLE_TEMPLATE = `# DeepTutor Co-Writer
 - HTML tag decoding for tags like <sub>, <sup>, <abbr>, and <mark>
 - A practical starter draft for DeepTutor product docs and learning content
 
-## Table of Contents
-
-[TOCM]
-
-[TOC]
-
-#DeepTutor Mission
-##DeepTutor Product Surface
-###DeepTutor Learning Experience
-####DeepTutor Co-Writer
-#####DeepTutor Knowledge Layer
-######DeepTutor Agent Runtime
-
-#DeepTutor Docs [Project Overview](#deeptutor-mission "Jump to project overview")
-##DeepTutor Authoring [Co-Writer Section](#deeptutor-co-writer "Jump to co-writer section")
-###DeepTutor Research [Learning Note](#deeptutor-learning-note "Jump to learning note")
-
 ## Headers (Underline)
 
 DeepTutor Learning Note
@@ -46,7 +29,7 @@ DeepTutor Study Outline
 **Emphasis** __Emphasis__
 ***Emphasis Italic*** ___Emphasis Italic___
 
-Superscript: X<sub>2</sub>, Subscript: O<sup>2</sup>
+Superscript: X<sup>2</sup>, Subscript: O<sub>2</sub>
 
 **Abbreviation(link HTML abbr tag)**
 
@@ -60,11 +43,11 @@ The <abbr title="Large Language Model">LLM</abbr> layer powers DeepTutor while t
 
 ### Links
 
-[DeepTutor Overview](#deeptutor-mission)
-
 [DeepTutor Co-Writer](#deeptutor-co-writer "co-writer section")
 
-[DeepTutor Runtime](#deeptutor-agent-runtime)
+[DeepTutor Learning Note](#deeptutor-learning-note)
+
+[DeepTutor Website](https://deeptutor.info)
 
 [Reference link][deeptutor-doc]
 
@@ -165,9 +148,9 @@ $$ E=mc^2 $$
 
 Inline $$E=mc^2$$ appears in physics notes, and Inline $$a^2+b^2=c^2$$ appears in geometry notes.
 
-$$\(\sqrt{3x-1}+(1+x)^2\)$$
+$$\\sqrt{3x-1}+(1+x)^2$$
 
-$$ \sin(\alpha)^{\theta}=\sum_{i=0}^{n}(x^i + \cos(f))$$
+$$ \\sin(\\alpha)^{\\theta}=\\sum_{i=0}^{n}(x^i + \\cos(f))$$
 
 ### FlowChart
 
@@ -191,7 +174,7 @@ ${FENCE}
 ${FENCE}seq
 Student->DeepTutor: Ask for help
 DeepTutor->KnowledgeBase: Load context
-Note right of DeepTutor: Collect memory\nand relevant knowledge
+Note right of DeepTutor: Collect memory\\nand relevant knowledge
 DeepTutor-->Student: Return guided response
 Student->>DeepTutor: Request rewrite in co-writer
 ${FENCE}

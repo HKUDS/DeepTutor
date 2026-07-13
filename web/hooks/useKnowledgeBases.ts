@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  connectLightRagServer as connectLightRagServerApi,
+  connectLinkedFolder as connectLinkedFolderApi,
+  connectObsidianVault as connectObsidianApi,
   createKnowledgeBase as createKbApi,
   deleteKnowledgeBase as deleteKbApi,
   getKnowledgeUploadPolicy,
@@ -9,6 +12,7 @@ import {
   listKnowledgeBases,
   listRagProviders,
   reindexKnowledgeBase as reindexKbApi,
+  retryKnowledgeBase as retryKbApi,
   setDefaultKnowledgeBase as setDefaultKbApi,
   uploadKnowledgeBaseFiles as uploadKbApi,
   type KnowledgeTaskResponse,
@@ -176,6 +180,10 @@ export function useKnowledgeBases() {
           taskId: result.task_id,
           kind: "create",
           label: `Create ${params.name}`,
+          initialLogs: [
+            `Queued create task for ${params.name}.`,
+            "Waiting for backend indexing logs...",
+          ],
           seed: {
             stage: "initializing",
             message: "Initializing knowledge base...",
@@ -208,6 +216,10 @@ export function useKnowledgeBases() {
           taskId: result.task_id,
           kind: "upload",
           label: `Upload to ${kbName}`,
+          initialLogs: [
+            `Queued upload task for ${kbName}.`,
+            "Waiting for backend indexing logs...",
+          ],
           seed: {
             stage: "processing_documents",
             message: `Processing ${fileCount} files...`,
@@ -246,7 +258,34 @@ export function useKnowledgeBases() {
           taskId: result.task_id,
           kind: "reindex",
           label: `Re-index ${kbName}`,
+          initialLogs: [
+            `Queued re-index task for ${kbName}.`,
+            "Waiting for backend indexing logs...",
+          ],
         });
+      }
+      await load({ force: true, showSpinner: false });
+      return result;
+    },
+    [load, progress],
+  );
+
+  const retry = useCallback(
+    async (kbName: string): Promise<KnowledgeTaskResponse> => {
+      const result = await retryKbApi(kbName);
+      if (result.task_id) {
+        progress.startTask({
+          kbName,
+          taskId: result.task_id,
+          kind: "retry",
+          label: `Retry ${kbName}`,
+          initialLogs: [
+            `Queued retry task for ${kbName}.`,
+            "Waiting for backend indexing logs...",
+          ],
+        });
+      } else {
+        progress.subscribeWs(kbName);
       }
       await load({ force: true, showSpinner: false });
       return result;
@@ -262,6 +301,38 @@ export function useKnowledgeBases() {
       await load({ force: true, showSpinner: false });
     },
     [history, load, progress],
+  );
+
+  const connectObsidian = useCallback(
+    async (params: { name: string; vaultPath: string }) => {
+      await connectObsidianApi(params);
+      invalidateKnowledgeCaches();
+      await load({ force: true, showSpinner: false });
+    },
+    [load],
+  );
+
+  const connectLinkedFolder = useCallback(
+    async (params: { name: string; folderPath: string; provider: string }) => {
+      await connectLinkedFolderApi(params);
+      invalidateKnowledgeCaches();
+      await load({ force: true, showSpinner: false });
+    },
+    [load],
+  );
+
+  const connectLightRagServer = useCallback(
+    async (params: {
+      name: string;
+      serverUrl: string;
+      apiKey?: string;
+      mode?: string;
+    }) => {
+      await connectLightRagServerApi(params);
+      invalidateKnowledgeCaches();
+      await load({ force: true, showSpinner: false });
+    },
+    [load],
   );
 
   return {
@@ -282,7 +353,11 @@ export function useKnowledgeBases() {
     uploadFiles,
     setDefault,
     reindex,
+    retry,
     deleteKb,
+    connectObsidian,
+    connectLinkedFolder,
+    connectLightRagServer,
   };
 }
 

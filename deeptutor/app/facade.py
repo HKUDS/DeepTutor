@@ -140,6 +140,16 @@ class DeepTutorApp:
     async def cancel_turn(self, turn_id: str) -> bool:
         return await self.runtime.cancel_turn(turn_id)
 
+    async def submit_user_reply(
+        self,
+        turn_id: str,
+        text: str | None = None,
+        *,
+        answers: list[dict[str, Any]] | None = None,
+    ) -> bool:
+        """Deliver the user's reply to a turn paused on ``ask_user``."""
+        return await self.runtime.submit_user_reply(turn_id, text=text, answers=answers)
+
     async def regenerate_last_turn(
         self,
         session_id: str,

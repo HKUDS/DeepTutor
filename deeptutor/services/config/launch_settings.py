@@ -6,9 +6,11 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .env_store import EnvStore
+from deeptutor.runtime.home import get_runtime_home
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+from .runtime_settings import RuntimeSettingsService
+
+PROJECT_ROOT = get_runtime_home()
 DEFAULT_BACKEND_PORT = 8001
 DEFAULT_FRONTEND_PORT = 3782
 DEFAULT_LANGUAGE = "en"
@@ -22,7 +24,7 @@ class LaunchSettings:
     source: str
     settings_dir: Path
     interface_json_path: Path
-    env_path: Path
+    system_json_path: Path
 
 
 def _load_json_object(path: Path) -> dict[str, Any]:
@@ -59,52 +61,47 @@ def _normalize_language(value: Any) -> str | None:
 def load_launch_settings(project_root: Path | None = None) -> LaunchSettings:
     """Load ports and UI language for launcher-style entry points.
 
-    Launch ports come from the project ``.env`` so every entry point follows
-    the same documented configuration path.  Environment variables remain a
-    compatibility fallback, then built-in defaults.  UI language can still come
-    from ``data/user/settings/interface.json`` because that file stores web UI
-    preferences rather than launch/runtime provider configuration.
+    Launch ports come from ``data/user/settings/system.json``. Environment
+    variables are treated as explicit deployment overrides (for example Docker
+    port mapping), not as a second application configuration file. UI language
+    remains in ``data/user/settings/interface.json``.
     """
 
     root = project_root or PROJECT_ROOT
     settings_dir = root / "data" / "user" / "settings"
     interface_json_path = settings_dir / "interface.json"
-    env_path = root / ".env"
+    system_json_path = settings_dir / "system.json"
 
     interface_settings = _load_json_object(interface_json_path)
-    env_store = EnvStore(env_path)
-    env_values = env_store.load()
+    service = RuntimeSettingsService.get_instance(settings_dir)
+    system_from_file = service.load_system(include_process_overrides=False)
+    system_settings = service.load_system(include_process_overrides=True)
 
-    env_backend_port = _coerce_port(env_values.get("BACKEND_PORT"))
-    env_frontend_port = _coerce_port(env_values.get("FRONTEND_PORT"))
+    settings_backend_port = _coerce_port(system_from_file.get("backend_port"))
+    settings_frontend_port = _coerce_port(system_from_file.get("frontend_port"))
     process_backend_port = _coerce_port(os.getenv("BACKEND_PORT"))
     process_frontend_port = _coerce_port(os.getenv("FRONTEND_PORT"))
     interface_language = _normalize_language(interface_settings.get("language"))
-    env_language = (
-        _normalize_language(env_values.get("UI_LANGUAGE"))
-        or _normalize_language(env_values.get("LANGUAGE"))
+    process_language = _normalize_language(os.getenv("UI_LANGUAGE")) or _normalize_language(
+        os.getenv("LANGUAGE")
     )
-    process_language = (
-        _normalize_language(os.getenv("UI_LANGUAGE"))
-        or _normalize_language(os.getenv("LANGUAGE"))
-    )
-    backend_port = env_backend_port or process_backend_port or DEFAULT_BACKEND_PORT
-    frontend_port = env_frontend_port or process_frontend_port or DEFAULT_FRONTEND_PORT
-    language = interface_language or env_language or process_language or DEFAULT_LANGUAGE
+    backend_port = _coerce_port(system_settings.get("backend_port")) or DEFAULT_BACKEND_PORT
+    frontend_port = _coerce_port(system_settings.get("frontend_port")) or DEFAULT_FRONTEND_PORT
+    language = interface_language or process_language or DEFAULT_LANGUAGE
 
     sources: list[str] = []
-    if env_backend_port is not None or env_frontend_port is not None or env_language is not None:
-        sources.append(".env")
-    elif (
-        process_backend_port is not None
-        or process_frontend_port is not None
-        or process_language is not None
-    ):
+    if settings_backend_port is not None or settings_frontend_port is not None:
+        sources.append("data/user/settings/system.json")
+    if process_backend_port is not None or process_frontend_port is not None:
         sources.append("environment")
-    else:
+    if not sources:
         sources.append("defaults")
+    if process_language is not None:
+        sources.append("environment")
     if interface_language is not None:
         sources.append("data/user/settings/interface.json")
+    else:
+        sources.append("default language")
 
     return LaunchSettings(
         backend_port=backend_port,
@@ -113,7 +110,7 @@ def load_launch_settings(project_root: Path | None = None) -> LaunchSettings:
         source=" + ".join(sources),
         settings_dir=settings_dir,
         interface_json_path=interface_json_path,
-        env_path=env_path,
+        system_json_path=system_json_path,
     )
 
 

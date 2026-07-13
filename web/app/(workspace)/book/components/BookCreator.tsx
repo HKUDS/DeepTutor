@@ -408,7 +408,7 @@ export default function BookCreator({
   return (
     <div className="mx-auto w-full max-w-2xl space-y-5 p-6">
       <div className="space-y-1.5">
-        <h1 className="text-2xl font-semibold text-[var(--foreground)]">
+        <h1 className="font-serif text-2xl font-semibold text-[var(--foreground)]">
           {t("Create a new book")}
         </h1>
         <p className="text-sm text-[var(--muted-foreground)]">

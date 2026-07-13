@@ -36,12 +36,18 @@ class _FakeAdapter:
         )()
 
 
-def _build_config(binding: str, *, send_dimensions: bool | None = None) -> EmbeddingConfig:
+def _build_config(
+    binding: str,
+    *,
+    model: str = "text-embedding-3-small",
+    base_url: str = "https://api.openai.com/v1/embeddings",
+    send_dimensions: bool | None = None,
+) -> EmbeddingConfig:
     return EmbeddingConfig(
-        model="text-embedding-3-small",
+        model=model,
         api_key="sk-test",
-        base_url="https://api.openai.com/v1/embeddings",
-        effective_url="https://api.openai.com/v1/embeddings",
+        base_url=base_url,
+        effective_url=base_url,
         binding=binding,
         provider_name=binding,
         provider_mode="standard",
@@ -217,3 +223,31 @@ def test_every_registered_provider_has_adapter() -> None:
     for name in EMBEDDING_PROVIDERS:
         cls = _resolve_adapter_class(name)
         assert cls is not None, f"Provider '{name}' has no adapter"
+
+
+def test_embedding_client_multimodal_detection_uses_model_level_metadata() -> None:
+    text_model = EmbeddingClient(
+        _build_config(
+            "siliconflow",
+            model="Qwen/Qwen3-Embedding-8B",
+            base_url="https://api.siliconflow.cn/v1/embeddings",
+        )
+    )
+    vision_model = EmbeddingClient(
+        _build_config(
+            "siliconflow",
+            model="Qwen/Qwen3-VL-Embedding-8B",
+            base_url="https://api.siliconflow.cn/v1/embeddings",
+        )
+    )
+    cohere_v3 = EmbeddingClient(
+        _build_config(
+            "cohere",
+            model="embed-multilingual-v3.0",
+            base_url="https://api.cohere.com/v2/embed",
+        )
+    )
+
+    assert text_model.supports_multimodal_contents() is False
+    assert vision_model.supports_multimodal_contents() is True
+    assert cohere_v3.supports_multimodal_contents() is False

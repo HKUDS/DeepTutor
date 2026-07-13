@@ -80,6 +80,7 @@ for (const manifestFile of manifestFiles) {
   if (!rootShellSize && rootLayoutFiles.length > 0) {
     rootShellSize = sumChunkSizes(rootLayoutFiles);
   }
+  const rootLayoutChunks = new Set(rootLayoutFiles);
 
   const routeEntryKey = Object.keys(entryFiles).find(
     (key) => key.startsWith("[project]/app/") && key.endsWith("/page") && !key.includes("/layout"),
@@ -88,7 +89,9 @@ for (const manifestFile of manifestFiles) {
     continue;
   }
 
-  const chunkPaths = entryFiles[routeEntryKey] || [];
+  const chunkPaths = (entryFiles[routeEntryKey] || []).filter(
+    (chunkPath) => !rootLayoutChunks.has(chunkPath),
+  );
   routeRows.push({
     route,
     sizeBytes: sumChunkSizes(chunkPaths),
@@ -98,7 +101,7 @@ for (const manifestFile of manifestFiles) {
 
 let hasFailure = false;
 
-console.log("Route budgets:");
+console.log("Route budgets (excluding root shell):");
 for (const row of routeRows) {
   const sizeKb = Math.round(row.sizeBytes / 1024);
   const budget = ROUTE_BUDGETS_KB[row.route];

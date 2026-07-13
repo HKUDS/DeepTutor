@@ -41,10 +41,6 @@ def admin_kb_manager() -> KnowledgeBaseManager:
     return _manager_for(str(admin_kb_base_dir().resolve()))
 
 
-def user_kb_manager_for_current_user() -> KnowledgeBaseManager:
-    return current_kb_manager()
-
-
 def _strip_resource_prefix(value: str) -> tuple[str | None, str]:
     raw = str(value or "").strip()
     if raw.startswith(ADMIN_PREFIX):
@@ -85,14 +81,16 @@ def resolve_kb(kb_ref: str, *, require_write: bool = False) -> KnowledgeResource
             read_only=False,
         )
 
-    user_manager = user_kb_manager_for_current_user()
+    user_manager = current_kb_manager()
     assigned_names = _assigned_admin_names()
 
     if requested_source == "admin":
         if name not in assigned_names:
             raise HTTPException(status_code=403, detail="Knowledge base is not assigned to you")
         if require_write:
-            raise HTTPException(status_code=403, detail="Assigned admin knowledge bases are read-only")
+            raise HTTPException(
+                status_code=403, detail="Assigned admin knowledge bases are read-only"
+            )
         return KnowledgeResource(
             id=f"admin:kb:{name}",
             name=name,
@@ -137,7 +135,9 @@ def resolve_kb(kb_ref: str, *, require_write: bool = False) -> KnowledgeResource
 
     if name in assigned_names:
         if require_write:
-            raise HTTPException(status_code=403, detail="Assigned admin knowledge bases are read-only")
+            raise HTTPException(
+                status_code=403, detail="Assigned admin knowledge bases are read-only"
+            )
         return KnowledgeResource(
             id=f"admin:kb:{name}",
             name=name,
@@ -169,7 +169,7 @@ def manager_for_resource(resource: KnowledgeResource) -> KnowledgeBaseManager:
 
 def list_visible_knowledge_bases() -> list[dict[str, Any]]:
     user = get_current_user()
-    manager = current_kb_manager() if user.is_admin else user_kb_manager_for_current_user()
+    manager = current_kb_manager()
     items: list[dict[str, Any]] = []
     for name in manager.list_knowledge_bases():
         items.append(
@@ -228,3 +228,20 @@ def resolve_for_rag(kb_ref: str | None) -> KnowledgeResource | None:
 
         log_usage("knowledge_base", resource.id, "rag_query")
     return resource
+
+
+def resolve_kb_metadata(kb_ref: str | None) -> dict[str, Any] | None:
+    """Access-checked KB metadata (``type`` / ``vault_path`` / …) for ``kb_ref``.
+
+    Returns ``None`` when the reference is empty or not accessible to the
+    current user. A pure read with no usage audit (unlike
+    :func:`resolve_for_rag`) — safe to call while resolving capability bindings.
+    """
+    if not kb_ref:
+        return None
+    try:
+        resource = resolve_kb(str(kb_ref), require_write=False)
+    except HTTPException:
+        return None
+    manager = _manager_for(str(resource.base_dir.resolve()))
+    return manager.get_metadata(resource.name)

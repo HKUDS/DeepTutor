@@ -33,16 +33,14 @@ class _Signature:
 def _create_ready_version(
     kb_dir: Path, version: int = 1, signature: str = ACTIVE_SIGNATURE
 ) -> None:
-    """Create a flat version-N directory recognised as ready by index_versioning.
-
-    ``_is_storage_ready`` only requires at least one non-meta file inside the
-    version dir, so a single ``docstore.json`` is sufficient. ``meta.json`` is
-    written with the active signature so the embedding reconcile logic does
-    not flag the KB as needs_reindex.
-    """
+    """Create a flat version-N directory recognised as queryable by LlamaIndex."""
     version_dir = kb_dir / f"version-{version}"
     version_dir.mkdir(parents=True, exist_ok=True)
-    (version_dir / "docstore.json").write_text("{}", encoding="utf-8")
+    (version_dir / "docstore.json").write_text(
+        json.dumps({"docstore/data": {"doc-1": {}}}),
+        encoding="utf-8",
+    )
+    (version_dir / "index_store.json").write_text("{}", encoding="utf-8")
     (version_dir / "meta.json").write_text(
         json.dumps({"signature": signature, "version": f"version-{version}"}),
         encoding="utf-8",
@@ -114,6 +112,24 @@ def test_processing_with_completed_progress_and_ready_index_promotes(
     assert info["progress"] is None
 
 
+def test_get_info_counts_nested_raw_documents(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_active_embedding(monkeypatch)
+    manager = KnowledgeBaseManager(base_dir=str(tmp_path))
+    kb_dir = tmp_path / "kb-nested"
+    raw_dir = kb_dir / "raw"
+    (raw_dir / "ModuleA").mkdir(parents=True)
+    (raw_dir / "ModuleA" / "a.pdf").write_text("%PDF-1.4\n", encoding="utf-8")
+    (raw_dir / "root.txt").write_text("hello", encoding="utf-8")
+    _create_ready_version(kb_dir)
+    manager.update_kb_status(name="kb-nested", status="ready", progress=None)
+
+    info = KnowledgeBaseManager(base_dir=str(tmp_path)).get_info("kb-nested")
+
+    assert info["statistics"]["raw_documents"] == 2
+
+
 def test_initializing_with_ready_index_promotes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -180,6 +196,52 @@ def test_ready_status_unaffected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 
     info = manager.get_info("kb6")
     assert info["status"] == "ready"
+
+
+def test_ready_lightrag_with_failed_doc_status_reports_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_active_embedding(monkeypatch)
+    kb_dir = tmp_path / "kb-lightrag"
+    version_dir = kb_dir / "version-1"
+    version_dir.mkdir(parents=True)
+    (version_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "provider": "lightrag",
+                "signature": "lightrag",
+                "version": "version-1",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (version_dir / "kv_store_doc_status.json").write_text(
+        json.dumps(
+            {
+                "doc-1": {
+                    "status": "failed",
+                    "file_path": "bad.docx",
+                    "error_msg": "'list' object has no attribute 'size'",
+                    "chunks_list": [],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    manager = KnowledgeBaseManager(base_dir=str(tmp_path))
+    manager.config.setdefault("knowledge_bases", {})["kb-lightrag"] = {
+        "path": "kb-lightrag",
+        "rag_provider": "lightrag",
+        "status": "ready",
+    }
+    manager._save_config()
+
+    info = KnowledgeBaseManager(base_dir=str(tmp_path)).get_info("kb-lightrag")
+    assert info["status"] == "error"
+    assert info["progress"]["stage"] == "error"
+    assert "bad.docx" in info["progress"]["error"]
+    assert info["statistics"]["rag_initialized"] is False
+    assert info["statistics"]["index_versions"][0]["ready"] is False
 
 
 def test_needs_reindex_takes_precedence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

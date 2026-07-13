@@ -1,23 +1,21 @@
 import asyncio
-from dataclasses import asdict
 from datetime import datetime
 import json
 import logging
+import re
 import traceback
 from typing import AsyncGenerator, Literal
 import uuid
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
-from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 from deeptutor.co_writer.edit_agent import (
     EditAgent,
+    append_history,
     load_history,
     print_stats,
-    save_history,
-    save_tool_call,
     tool_calls_dir,
 )
 from deeptutor.co_writer.storage import (
@@ -25,7 +23,6 @@ from deeptutor.co_writer.storage import (
     CoWriterDocumentSummary,
     get_co_writer_storage,
 )
-from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream_bus import StreamBus
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
 from deeptutor.services.llm import clean_thinking_tags
@@ -63,9 +60,16 @@ def get_edit_agent() -> EditAgent:
     return _edit_agent
 
 
+# Generous ceilings — they exist to stop runaway payloads (OOM / surprise
+# LLM bills), not to constrain normal documents.
+_MAX_DOC_CHARS = 600_000
+_MAX_SELECTION_CHARS = 120_000
+_MAX_INSTRUCTION_CHARS = 10_000
+
+
 class EditRequest(BaseModel):
-    text: str
-    instruction: str
+    text: str = Field(max_length=_MAX_DOC_CHARS)
+    instruction: str = Field(max_length=_MAX_INSTRUCTION_CHARS)
     action: Literal["rewrite", "shorten", "expand"] = "rewrite"
     source: Literal["rag", "web"] | None = None
     kb_name: str | None = None
@@ -77,44 +81,26 @@ class EditResponse(BaseModel):
 
 
 class ReactEditRequest(BaseModel):
-    selected_text: str
-    instruction: str = ""
+    selected_text: str = Field(max_length=_MAX_SELECTION_CHARS)
+    instruction: str = Field(default="", max_length=_MAX_INSTRUCTION_CHARS)
     mode: Literal["rewrite", "shorten", "expand", "none"] = "rewrite"
-    tools: list[str] = []
+    tools: list[Literal["rag", "web"]] = []
     kb_name: str | None = None
 
 
 class ReactEditResponse(BaseModel):
     edited_text: str
     operation_id: str
-    thinking: str = ""
-    tool_traces: list[dict] = []
+    tools_used: list[str] = []
 
 
 class AutoMarkRequest(BaseModel):
-    text: str
+    text: str = Field(max_length=_MAX_DOC_CHARS)
 
 
 class AutoMarkResponse(BaseModel):
     marked_text: str
     operation_id: str
-
-
-def _normalize_react_edit_tools(tools: list[str] | None) -> list[str]:
-    allowed = {
-        "brainstorm",
-        "rag",
-        "web_search",
-        "code_execution",
-        "reason",
-        "paper_search",
-    }
-    normalized: list[str] = []
-    for name in tools or []:
-        tool = str(name or "").strip()
-        if tool and tool in allowed and tool not in normalized:
-            normalized.append(tool)
-    return normalized
 
 
 def _default_mode_instruction(mode: str, language: str) -> str:
@@ -142,13 +128,16 @@ def _build_react_edit_prompt(
     instruction: str,
     mode: str,
     language: str,
+    context: str = "",
 ) -> str:
     user_instruction = instruction.strip() or _default_mode_instruction(mode, language)
     if language.startswith("zh"):
+        context_block = f"参考资料（按需取用，不必全部使用）:\n{context}\n\n" if context else ""
         return (
             "你正在编辑一段从 Markdown 编辑器里选中的文本。\n\n"
             f"编辑模式: {mode}\n"
             f"用户要求: {user_instruction}\n\n"
+            f"{context_block}"
             "待编辑的选中文本:\n"
             "```markdown\n"
             f"{selected_text}\n"
@@ -157,12 +146,18 @@ def _build_react_edit_prompt(
             "1. 只输出编辑后的那段 Markdown 文本，供编辑器直接替换。\n"
             "2. 不要输出解释、标题、前后缀、代码围栏。\n"
             "3. 保持 Markdown 语法合法。\n"
-            "4. 如果用了工具，把工具得到的事实自然融入结果，不要提工具名。\n"
+            "4. 如果给了参考资料，把相关事实自然融入结果，不要提工具或资料来源。\n"
         )
+    context_block = (
+        f"Reference material (use what is relevant, ignore the rest):\n{context}\n\n"
+        if context
+        else ""
+    )
     return (
         "You are editing a text selection from a Markdown editor.\n\n"
         f"Edit mode: {mode}\n"
         f"User request: {user_instruction}\n\n"
+        f"{context_block}"
         "Selected text to edit:\n"
         "```markdown\n"
         f"{selected_text}\n"
@@ -171,7 +166,8 @@ def _build_react_edit_prompt(
         "1. Output only the edited Markdown snippet for direct replacement.\n"
         "2. Do not include explanations, headings, prefixes, suffixes, or code fences.\n"
         "3. Keep the Markdown valid.\n"
-        "4. If tools were used, incorporate their facts naturally without mentioning the tools.\n"
+        "4. If reference material is given, weave the relevant facts in naturally "
+        "without mentioning tools or sources.\n"
     )
 
 
@@ -188,9 +184,19 @@ def _clean_react_edit_output(text: str, *, binding: str | None, model: str | Non
     return _strip_markdown_fence(clean_thinking_tags(text, binding, model))
 
 
+def _normalize_react_edit_tools(tools: list[str] | None) -> list[str]:
+    allowed = {"rag", "web"}
+    result: list[str] = []
+    for tool in tools or []:
+        name = str(tool or "").strip()
+        if name in allowed and name not in result:
+            result.append(name)
+    return result
+
+
 def _prepare_react_edit_request(
     request: ReactEditRequest, language: str
-) -> tuple[str, str, list[str], list[str], str]:
+) -> tuple[str, str, list[str]]:
     tools = _normalize_react_edit_tools(request.tools)
     instruction = request.instruction.strip()
     if request.mode == "none" and not instruction:
@@ -210,14 +216,17 @@ def _prepare_react_edit_request(
         )
         raise HTTPException(status_code=400, detail=detail)
 
-    knowledge_bases = [request.kb_name] if request.kb_name and "rag" in tools else []
-    prompt = _build_react_edit_prompt(
-        selected_text=selected_text,
-        instruction=instruction,
-        mode=request.mode,
-        language=language,
-    )
-    return selected_text, instruction, tools, knowledge_bases, prompt
+    return selected_text, instruction, tools
+
+
+_TRACE_PREVIEW_CHARS = 1200
+
+
+def _trace_preview(text: str) -> str:
+    cleaned = text.strip()
+    if len(cleaned) <= _TRACE_PREVIEW_CHARS:
+        return cleaned
+    return cleaned[:_TRACE_PREVIEW_CHARS].rstrip() + "…"
 
 
 async def _run_react_edit(
@@ -226,93 +235,80 @@ async def _run_react_edit(
     language: str,
     stream: StreamBus | None = None,
 ) -> dict[str, object]:
-    selected_text, instruction, tools, knowledge_bases, prompt = _prepare_react_edit_request(
-        request, language
-    )
+    selected_text, instruction, tools = _prepare_react_edit_request(request, language)
     operation_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:6]
 
-    context = UnifiedContext(
-        session_id="",
-        user_message=prompt,
-        conversation_history=[],
-        enabled_tools=tools,
-        active_capability="chat",
-        knowledge_bases=knowledge_bases,
-        attachments=[],
-        config_overrides={},
-        language=language,
-        metadata={"source": "co_writer_react_edit", "mode": request.mode},
-    )
-
-    pipeline = AgenticChatPipeline(language=language)
-    active_stream = stream or StreamBus()
-    enabled_tools = pipeline._normalize_enabled_tools(context.enabled_tools)
-    thinking_text = await pipeline._stage_thinking(context, enabled_tools, active_stream)
-    tool_traces = await pipeline._stage_acting(
-        context=context,
-        enabled_tools=enabled_tools,
-        thinking_text=thinking_text,
-        stream=active_stream,
-    )
-
     agent = get_edit_agent()
+
+    # Optional reference retrieval before the edit. Each tool degrades to a
+    # plain edit on failure — retrieval must never block the user's edit.
+    query = instruction or selected_text[:400]
+    context_blocks: list[str] = []
+    tools_used: list[str] = []
+    for tool in tools:
+        kb_name = request.kb_name if tool == "rag" else None
+        if tool == "rag" and not kb_name:
+            continue
+        if stream is not None:
+            await stream.tool_call(
+                tool,
+                {"query": query, **({"kb_name": kb_name} if kb_name else {})},
+                source="co_writer_react_edit",
+                stage="exploring",
+            )
+        context, _file = await agent.gather_context(
+            source=tool,
+            query=query,
+            kb_name=kb_name,
+            operation_id=operation_id,
+        )
+        if stream is not None:
+            await stream.tool_result(
+                tool,
+                _trace_preview(context) if context else "(no result)",
+                source="co_writer_react_edit",
+                stage="exploring",
+            )
+        if context:
+            context_blocks.append(context)
+            tools_used.append(tool)
+
     system_prompt = (
         "You are an expert markdown editor."
         if not language.startswith("zh")
         else "你是一个严格的 Markdown 编辑助手。"
     )
-    final_prompt = _build_react_edit_prompt(
+    prompt = _build_react_edit_prompt(
         selected_text=selected_text,
         instruction=instruction,
         mode=request.mode,
         language=language,
+        context="\n\n".join(context_blocks),
     )
-    if thinking_text.strip():
-        if language.startswith("zh"):
-            final_prompt += f"\n内部推理摘要（不要暴露给用户）:\n{thinking_text.strip()}\n"
-        else:
-            final_prompt += (
-                f"\nInternal reasoning summary (do not reveal):\n{thinking_text.strip()}\n"
-            )
-    if tool_traces:
-        formatted_traces = pipeline._format_tool_traces(tool_traces)
-        if language.startswith("zh"):
-            final_prompt += f"\n工具结果（只吸收事实，不要解释过程）:\n{formatted_traces}\n"
-        else:
-            final_prompt += (
-                f"\nTool results (absorb the facts only, do not explain the process):\n"
-                f"{formatted_traces}\n"
-            )
 
     response_chunks: list[str] = []
-    if stream is None:
-        async for _c in agent.stream_llm(
-            user_prompt=final_prompt,
+
+    async def _consume() -> None:
+        async for chunk in agent.stream_llm(
+            user_prompt=prompt,
             system_prompt=system_prompt,
             stage=f"react_edit_{request.mode}",
         ):
-            if _c:
-                response_chunks.append(_c)
-    else:
-        async with active_stream.stage("responding", source="co_writer_react_edit"):
-            await active_stream.progress(
-                "Writing final edit...",
-                source="co_writer_react_edit",
-                stage="responding",
-            )
-            async for chunk in agent.stream_llm(
-                user_prompt=final_prompt,
-                system_prompt=system_prompt,
-                stage=f"react_edit_{request.mode}",
-            ):
-                if not chunk:
-                    continue
-                response_chunks.append(chunk)
-                await active_stream.content(
+            if not chunk:
+                continue
+            response_chunks.append(chunk)
+            if stream is not None:
+                await stream.content(
                     chunk,
                     source="co_writer_react_edit",
                     stage="responding",
                 )
+
+    if stream is not None:
+        async with stream.stage("responding", source="co_writer_react_edit"):
+            await _consume()
+    else:
+        await _consume()
 
     edited_text = _clean_react_edit_output(
         "".join(response_chunks),
@@ -320,52 +316,31 @@ async def _run_react_edit(
         model=agent.get_model(),
     )
 
-    tool_call_file = None
-    if tool_traces:
-        tool_call_file = save_tool_call(
-            operation_id,
-            "react_tools",
-            {
-                "type": "react_tools",
-                "timestamp": datetime.now().isoformat(),
-                "operation_id": operation_id,
-                "mode": request.mode,
-                "tools": tools,
-                "kb_name": request.kb_name,
-                "thinking": thinking_text,
-                "tool_traces": [asdict(trace) for trace in tool_traces],
-            },
-        )
-
-    history = load_history()
-    history.append(
+    append_history(
         {
             "id": operation_id,
             "timestamp": datetime.now().isoformat(),
             "action": "react_edit",
             "mode": request.mode,
-            "tools": tools,
+            "tools": tools_used,
             "kb_name": request.kb_name,
             "input": {
                 "selected_text": request.selected_text,
                 "instruction": instruction,
             },
             "output": {"edited_text": edited_text},
-            "tool_call_file": tool_call_file,
             "model": agent.get_model(),
         }
     )
-    save_history(history)
     print_stats()
 
     result = {
         "edited_text": edited_text,
         "operation_id": operation_id,
-        "thinking": thinking_text,
-        "tool_traces": [asdict(trace) for trace in tool_traces],
+        "tools_used": tools_used,
     }
     if stream is not None:
-        await active_stream.result(result, source="co_writer_react_edit")
+        await stream.result(result, source="co_writer_react_edit")
     return result
 
 
@@ -507,25 +482,19 @@ async def get_tool_call(operation_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/export/markdown")
-async def export_markdown(content: dict):
-    """Export as Markdown file"""
-    try:
-        markdown_content = content.get("content", "")
-        filename = content.get("filename", "document.md")
-
-        return Response(
-            content=markdown_content,
-            media_type="text/markdown",
-            headers={"Content-Disposition": f"attachment; filename={filename}"},
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Document CRUD (multi-project Co-Writer)
 # ─────────────────────────────────────────────────────────────────────────────
+
+# Storage builds paths as `documents/doc_{doc_id}`; an unvalidated id like
+# "a/../../x" would escape the documents root (and DELETE runs rmtree).
+_DOC_ID_RE = re.compile(r"^[0-9a-f]{8,32}$")
+
+
+def _validate_doc_id(doc_id: str) -> str:
+    if not _DOC_ID_RE.fullmatch(doc_id):
+        raise HTTPException(status_code=404, detail="Document not found")
+    return doc_id
 
 
 class CreateDocumentRequest(BaseModel):
@@ -603,7 +572,7 @@ async def get_document(doc_id: str) -> DocumentResponse:
     """Get a single Co-Writer document by id."""
     try:
         storage = get_co_writer_storage()
-        document = storage.load_document(doc_id)
+        document = storage.load_document(_validate_doc_id(doc_id))
         if document is None:
             raise HTTPException(status_code=404, detail="Document not found")
         return DocumentResponse.from_model(document)
@@ -619,7 +588,9 @@ async def update_document(doc_id: str, request: UpdateDocumentRequest) -> Docume
     """Update a Co-Writer document (title and/or content)."""
     try:
         storage = get_co_writer_storage()
-        document = storage.update_document(doc_id, title=request.title, content=request.content)
+        document = storage.update_document(
+            _validate_doc_id(doc_id), title=request.title, content=request.content
+        )
         if document is None:
             raise HTTPException(status_code=404, detail="Document not found")
         return DocumentResponse.from_model(document)
@@ -635,6 +606,7 @@ async def delete_document(doc_id: str) -> dict[str, bool]:
     """Delete a Co-Writer document."""
     try:
         storage = get_co_writer_storage()
+        _validate_doc_id(doc_id)
         if not storage.doc_exists(doc_id):
             raise HTTPException(status_code=404, detail="Document not found")
         success = storage.delete_document(doc_id)

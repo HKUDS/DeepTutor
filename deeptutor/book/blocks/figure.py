@@ -4,6 +4,11 @@ Wraps :class:`deeptutor.agents.visualize.pipeline.VisualizePipeline` with
 ``render_mode="figure"`` so the LLM picks the best static rendering for the
 chapter, but never falls back to interactive HTML (handled by the
 ``interactive`` block type).
+
+Like the chat capability, the draft is checked by the deterministic local
+``validate_visualization``; only on failure do we spend one targeted repair
+call. If the code still fails after repair we raise ``GenerationFailure`` so
+the book engine can retry, instead of baking a broken figure into the book.
 """
 
 from __future__ import annotations
@@ -47,7 +52,9 @@ class FigureGenerator(BlockGenerator):
         )
 
         try:
+            from deeptutor.agents.visualize.models import ReviewResult
             from deeptutor.agents.visualize.pipeline import VisualizePipeline
+            from deeptutor.agents.visualize.utils import validate_visualization
             from deeptutor.services.llm.config import get_llm_config
 
             llm_config = get_llm_config()
@@ -67,17 +74,29 @@ class FigureGenerator(BlockGenerator):
                 history_context=history_context,
                 analysis=analysis,
             )
-            review = await pipeline.run_review(
-                user_input=user_input,
-                analysis=analysis,
-                code=code,
-            )
+            ok, validation_error = validate_visualization(code, analysis.render_type)
+            if ok:
+                review = ReviewResult(
+                    optimized_code=code,
+                    changed=False,
+                    review_notes="Passed local validation.",
+                )
+            else:
+                review = await pipeline.run_repair(
+                    user_input=user_input,
+                    analysis=analysis,
+                    code=code,
+                    error=validation_error,
+                )
         except Exception as exc:
             logger.warning(f"FigureGenerator failed: {exc}", exc_info=True)
             raise GenerationFailure(f"figure generation failed: {exc}") from exc
 
         final_code = review.optimized_code or code
         render_type = analysis.render_type
+        final_ok, residual_error = validate_visualization(final_code, render_type)
+        if not final_ok:
+            raise GenerationFailure(f"figure failed validation after repair: {residual_error}")
         lang_tag = {
             "svg": "svg",
             "mermaid": "mermaid",

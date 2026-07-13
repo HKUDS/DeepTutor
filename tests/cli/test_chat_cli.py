@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import pytest
 from typer.testing import CliRunner
 
-from deeptutor.app import TurnRequest
+from deeptutor.app import DeepTutorApp, TurnRequest
+from deeptutor.runtime.bootstrap.builtin_capabilities import BUILTIN_CAPABILITY_CLASSES
 from deeptutor_cli.main import app
 
 runner = CliRunner()
@@ -35,7 +37,7 @@ def test_run_command_json_mode(monkeypatch) -> None:
     captured_requests: list[TurnRequest] = []
     _install_fake_runtime(monkeypatch, captured_requests)
 
-    capabilities = ["chat", "deep_solve", "deep_question", "deep_research"]
+    capabilities = list(BUILTIN_CAPABILITY_CLASSES)
 
     for cap in capabilities:
         result = runner.invoke(
@@ -61,7 +63,7 @@ def test_run_command_json_mode(monkeypatch) -> None:
         lines = [json.loads(line) for line in result.output.splitlines() if line.strip()]
         assert any(line["type"] == "result" for line in lines)
 
-    assert len(captured_requests) == 4
+    assert len(captured_requests) == len(capabilities)
     assert captured_requests[0].capability == "chat"
     assert captured_requests[0].tools == ["rag"]
     assert captured_requests[0].knowledge_bases == ["demo-kb"]
@@ -69,7 +71,28 @@ def test_run_command_json_mode(monkeypatch) -> None:
     assert captured_requests[0].notebook_references == [
         {"notebook_id": "nb1", "record_ids": ["rec1", "rec2"]}
     ]
-    assert captured_requests[-1].capability == "deep_research"
+    assert {request.capability for request in captured_requests} == set(capabilities)
+
+
+def test_builtin_capability_aliases_resolve_to_canonical_names() -> None:
+    runtime = DeepTutorApp()
+
+    assert runtime.resolve_capability("solve") == "deep_solve"
+    assert runtime.resolve_capability("quiz") == "deep_question"
+    assert runtime.resolve_capability("research") == "deep_research"
+    assert runtime.resolve_capability("viz") == "visualize"
+    assert runtime.resolve_capability("animate") == "math_animator"
+    assert runtime.resolve_capability("mastery") == "mastery_path"
+    with pytest.raises(ValueError, match="Unknown capability `auto`"):
+        runtime.resolve_capability("auto")
+
+
+def test_run_command_rejects_removed_auto_capability() -> None:
+    result = runner.invoke(app, ["run", "auto", "hello"])
+
+    assert result.exit_code != 0
+    assert isinstance(result.exception, ValueError)
+    assert "Unknown capability `auto`" in str(result.exception)
 
 
 def test_run_command_rich_mode(monkeypatch) -> None:
@@ -94,7 +117,7 @@ def test_run_command_with_config(monkeypatch) -> None:
             "deep_research",
             "compare retrieval stacks",
             "--config-json",
-            '{"mode":"report","depth":"deep","sources":["web","papers"]}',
+            '{"mode":"report","depth":"deep"}',
         ],
     )
 
@@ -104,8 +127,57 @@ def test_run_command_with_config(monkeypatch) -> None:
     assert request.config == {
         "mode": "report",
         "depth": "deep",
-        "sources": ["web", "papers"],
     }
+
+
+def test_chat_repl_config_commands_match_docs_syntax(monkeypatch) -> None:
+    captured_requests: list[TurnRequest] = []
+    _install_fake_runtime(monkeypatch, captured_requests)
+
+    result = runner.invoke(
+        app,
+        ["chat", "--config", "initial=true"],
+        input=(
+            "/config set num_questions 5\n"
+            '/config set question_types \'["short_answer","mcq"]\'\n'
+            "/refs\n"
+            "Generate questions\n"
+            "/quit\n"
+        ),
+    )
+
+    assert result.exit_code == 0, result.output
+    assert '"num_questions": 5' in result.output
+    assert '"question_types"' in result.output
+    assert captured_requests[0].config == {
+        "initial": True,
+        "num_questions": 5,
+        "question_types": ["short_answer", "mcq"],
+    }
+
+
+def test_chat_repl_backslash_continuation_sends_single_message(monkeypatch) -> None:
+    captured_requests: list[TurnRequest] = []
+    _install_fake_runtime(monkeypatch, captured_requests)
+
+    result = runner.invoke(
+        app,
+        ["chat"],
+        input="Please review this code:\\\ndef fib(n): return n\n/quit\n",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured_requests[0].content == "Please review this code:\ndef fib(n): return n"
+
+
+def test_plugin_info_includes_capability_aliases_and_availability() -> None:
+    result = runner.invoke(app, ["plugin", "info", "deep_solve"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["name"] == "deep_solve"
+    assert payload["cli_aliases"] == ["solve"]
+    assert payload["availability"]["available"] is True
 
 
 def test_session_list_command_uses_shared_store(monkeypatch) -> None:
@@ -127,3 +199,17 @@ def test_session_list_command_uses_shared_store(monkeypatch) -> None:
     assert result.exit_code == 0, result.output
     assert "session-1" in result.output
     assert "Algebra" in result.output
+
+
+def test_start_command_delegates_to_runtime_launcher(monkeypatch) -> None:
+    calls: list[object] = []
+
+    def _fake_start(home=None):  # noqa: ANN001
+        calls.append(home)
+
+    monkeypatch.setattr("deeptutor.runtime.launcher.start", _fake_start)
+
+    result = runner.invoke(app, ["start"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [None]

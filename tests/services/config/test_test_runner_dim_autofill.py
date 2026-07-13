@@ -109,6 +109,32 @@ async def test_overwrite_when_catalog_dim_disagrees_unknown_model() -> None:
 
 
 @pytest.mark.asyncio
+async def test_non_numeric_catalog_dim_does_not_block_probe() -> None:
+    """Bad manual catalog values should not stop the smoke probe from detecting
+    and persisting the provider's actual dimension."""
+    runner = ConfigTestRunner()
+    run = _make_run()
+    catalog: dict[str, Any] = {}
+    model: dict[str, Any] = {"dimension": "not-a-number"}
+
+    fake_client = MagicMock()
+    fake_client.embed = AsyncMock(return_value=[[0.5] * 768, [0.6] * 768])
+
+    with (
+        patch(
+            "deeptutor.services.config.test_runner.resolve_embedding_runtime_config",
+            return_value=_resolved_stub(dim=0),
+        ),
+        patch("deeptutor.services.embedding.client.EmbeddingClient", return_value=fake_client),
+        patch.object(runner, "_persist_embedding_dimension", return_value=catalog) as persist_mock,
+    ):
+        await runner._test_embedding(run, model, catalog)
+
+    persist_mock.assert_called_once()
+    assert persist_mock.call_args.args[2] == 768
+
+
+@pytest.mark.asyncio
 async def test_empty_vector_still_fatal() -> None:
     runner = ConfigTestRunner()
     run = _make_run()

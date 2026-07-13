@@ -23,8 +23,15 @@ export interface MarkdownRendererProps {
   trackSourceLines?: boolean;
 }
 
+// Detection during streaming has a subtle correctness requirement: it must
+// be monotonic. Once `true`, it should stay `true` as more tokens arrive so
+// the renderer never downgrades from Rich back to Simple (which would cause
+// a full subtree remount and a visible flash). The patterns below match
+// *opening* tokens — `$$`, `\(`, `\[`, ` ``` ` — rather than requiring a
+// matched close. A partial fence still gets the rich treatment, then the
+// closer arriving later is just more append-only content with no swap.
 function detectMathContent(content: string): boolean {
-  if (/(^|[^\\])\$\$[\s\S]+?\$\$/.test(content)) return true;
+  if (/(^|[^\\])\$\$/.test(content)) return true;
   if (/\\\(|\\\[/.test(content)) return true;
   // Single-dollar inline math containing LaTeX commands (\cmd) or math operators ({}_^)
   if (
@@ -37,7 +44,10 @@ function detectMathContent(content: string): boolean {
 }
 
 function detectCodeContent(content: string): boolean {
-  return /```[A-Za-z0-9_+#.-]+/.test(content);
+  // Match any opening triple-backtick, even before the language identifier
+  // arrives. Otherwise streaming flips Simple→Rich the moment the language
+  // tag lands a few tokens after the fence.
+  return /```/.test(content);
 }
 
 function detectMermaidContent(content: string): boolean {
@@ -65,6 +75,11 @@ export default function MarkdownRenderer({
   const resolvedEnableCode = enableCode ?? detectCodeContent(content);
   const resolvedEnableMermaid = enableMermaid ?? detectMermaidContent(content);
   const resolvedAllowHtml = allowHtml ?? detectHtmlContent(content);
+  // Detection above is intentionally monotonic — once any of the rich
+  // triggers fire, more tokens never un-fire them. Combined with the
+  // append-only nature of streaming content this gives us a stable
+  // Simple→Rich one-way transition (the Rich subtree mounts once and
+  // stays). No additional lock state is needed.
   const shouldUseRich =
     variant !== "trace" &&
     (trackSourceLines ||

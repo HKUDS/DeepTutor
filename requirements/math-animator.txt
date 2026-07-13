@@ -6,7 +6,7 @@
 #
 # Preferred install (from a source clone): pip install -e ".[math-animator]"
 # Use this file for Docker/CI when pyproject.toml/source code aren't yet available.
-# Install alongside `.[cli]` or `.[server]`.
+# Install alongside `deeptutor`, `deeptutor-cli`, or a source checkout.
 #
 # System prerequisites (installed outside pip):
 # - LaTeX runtime (`latex`) for Tex/MathTex rendering

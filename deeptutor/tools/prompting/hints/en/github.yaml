@@ -1,0 +1,6 @@
+short_description: "Read-only queries against GitHub PRs / issues / repos / CI runs via the `gh` CLI."
+when_to_use: "When the user asks about a specific GitHub resource: 'is this PR's CI passing', 'what are the recent issues on owner/repo', 'show this release's changelog'. **Do not use it for general code-concept questions** — answer those from training knowledge or via ``web_search``."
+input_format: "{\"query_type\": \"pr|issue|run|repo|api\", \"target\": \"owner/repo[#number] or full URL; relative gh api path when query_type is api\"}."
+guideline: "Read-only by construction — this tool cannot comment, close, or merge. Tell the user to act on GitHub directly for write operations. Output is JSON; extract the relevant fields for your reply rather than dumping it raw."
+note: "If the server has no `gh` CLI installed the tool returns a clear error — relay that honestly rather than fabricating a GitHub state."
+phase: "exploration"

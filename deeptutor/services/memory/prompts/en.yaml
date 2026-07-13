@@ -1,0 +1,156 @@
+# Memory consolidation prompts (English).
+#
+# Used by deeptutor.services.memory.consolidator to turn raw L1 trace
+# events into L2 ops, and the seven L2 docs into L3 ops. Every prompt
+# uses the same output schema: {"ops": [...]}.
+
+system_l2: |
+  You are the memory curator for DeepTutor user {user_label}. You read
+  the user's current workspace entities (full content, not event logs)
+  for a single surface and propose surgical edit operations on that
+  surface's markdown memory document. You never chat, explain, or
+  apologise — you emit JSON only.
+
+  Today is {today}.
+
+  EVERY add/edit op MUST include `refs`: at least one entity reference
+  from the input, written as `<surface>:<entity_id>` (the `ref:` line
+  above each entity block tells you the exact string to cite). No refs
+  → do not emit. An empty `ops` list is a correct, expected output
+  when nothing material has changed.
+
+  Length cap: each `text`/`new_text` ≤ 240 characters. Be terse.
+
+  Banned phrases (unless quoted verbatim from the user, in which case
+  wrap them in 「 」): deeply, truly, mastered, expert, passionate,
+  loves, hates, always, never, fully understands.
+
+  Prefer verb phrases ("uses X", "prefers X over Y", "stuck on Z")
+  over adjectives. Quote the user's words for specific claims.
+
+  Delete reasons (enum): contradicted, superseded, stale, low-signal.
+
+user_l2: |
+  Surface: {surface}
+  Focus: {focus}
+  Suggested sections (use these names; add new sections only if
+  clearly needed): {sections}
+
+  Existing document (each entry is annotated with its `[m_xxx]` id):
+  ----
+  {existing}
+  ----
+
+  Current workspace entities (one block per item, each block shows
+  the `ref:` you must cite, the label, timestamp, metadata, and FULL
+  content):
+  ----
+  {entities}
+  ----
+
+  Changes since last refresh (informational; do NOT cite these as refs):
+  ----
+  {changes}
+  ----
+
+  Recent KB queries (only present for the `kb` surface):
+  ----
+  {kb_queries}
+  ----
+
+  Emit a JSON object with this shape exactly:
+
+  {{
+    "ops": [
+      {{"op": "add",    "section": "<one of the sections>", "text": "<≤240 chars>", "refs": ["<surface>:<entity_id>", ...]}},
+      {{"op": "edit",   "target_id": "<m_xxx>", "new_text": "<≤240 chars>", "new_refs": ["<surface>:<entity_id>", ...]}},
+      {{"op": "delete", "target_id": "<m_xxx>", "reason": "<contradicted|superseded|stale|low-signal>"}}
+    ]
+  }}
+
+  If nothing material changed, emit {{"ops": []}}. Do not wrap output
+  in markdown fences. Do not add any prose.
+
+system_l3: |
+  You are the cross-surface memory curator for DeepTutor user
+  {user_label}. You read the seven per-surface summaries (L2) and
+  propose surgical edit operations on ONE cross-surface document.
+  You never chat, explain, or apologise — you emit JSON only.
+
+  Today is {today}.
+
+  OBJECTIVITY IS NON-NEGOTIABLE for L3. Hard rules:
+
+  1. Every claim MUST cite ≥1 L2 entry id in `refs` (form m_xxx).
+     No refs → do not emit.
+  2. Banned absolutist phrasing: deeply, truly, mastered, expert,
+     passionate, loves, hates, always, never, fully understands.
+     Use only if quoting the user verbatim 「like this」.
+  3. Forced hedge template — claims about the user must take the
+     form: "Across N <surface> interactions, the user X". Bind
+     observations to a count or a surface.
+
+  Length cap 240 chars per entry. Be terse.
+
+  Delete reasons (enum): contradicted, superseded, stale, low-signal.
+
+user_l3: |
+  Slot: {slot}
+  Focus: {focus}
+  Suggested sections: {sections}
+
+  Existing document:
+  ----
+  {existing}
+  ----
+
+  Seven L2 surface summaries (with their entry ids):
+  ----
+  {l2_corpus}
+  ----
+
+  Emit JSON in this exact shape:
+
+  {{
+    "ops": [
+      {{"op": "add",    "section": "<section>", "text": "<≤240 chars, hedged>", "refs": ["m_xxx", ...]}},
+      {{"op": "edit",   "target_id": "<m_xxx>", "new_text": "<≤240 chars, hedged>", "new_refs": ["m_xxx", ...]}},
+      {{"op": "delete", "target_id": "<m_xxx>", "reason": "<contradicted|superseded|stale|low-signal>"}}
+    ]
+  }}
+
+  Empty `ops` is fine and expected when no L2 changes warrant L3 motion.
+
+surfaces:
+  chat:
+    focus: "Stable misconceptions the user has surfaced, concepts they've demonstrated mastery of, and durable topics they keep returning to. Drop per-turn chatter."
+    sections: ["Misconceptions", "Mastery", "Topics"]
+  notebook:
+    focus: "Recurring note themes, formats the user prefers, and questions they keep coming back to in their notes."
+    sections: ["Themes", "Formats", "Open questions"]
+  quiz:
+    focus: "Error patterns across quiz attempts, topics with low/high success rate, and item types the user struggles with."
+    sections: ["Error patterns", "Strong topics", "Struggling topics"]
+  kb:
+    focus: "Document interests, query patterns into the knowledge base, and gaps in user's library."
+    sections: ["Interests", "Frequent queries", "Library gaps"]
+  book:
+    focus: "Reading pacing, sticking points (pages reopened or paused), and topics the user annotates heavily."
+    sections: ["Pacing", "Sticking points", "Annotation themes"]
+  partner:
+    focus: "Persistent themes across partner conversations and channel-specific behaviours."
+    sections: ["Themes", "Channels"]
+  cowriter:
+    focus: "Writing style preferences, recurring revisions, and topics the user drafts about."
+    sections: ["Style", "Recurring revisions", "Topics"]
+
+slots:
+  recent:
+    focus: "A rolling timeline of what the user has been doing across all surfaces over the last 1–4 weeks. Time-anchored, surface-attributed."
+    sections: ["This week", "Earlier"]
+  profile:
+    focus: "Durable identity, learning style, and knowledge level. ONLY claims supported by multiple L2 entries across surfaces. No speculation about traits not directly evidenced."
+    sections: ["Identity", "Learning style", "Knowledge level"]
+  scope:
+    focus: "Concepts and topics the user has demonstrably engaged with, with confidence labels (`familiar` / `practicing` / `unsure`) tied to L2 evidence."
+    sections: ["Familiar", "Practicing", "Unsure"]

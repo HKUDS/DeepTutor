@@ -1,4 +1,4 @@
-import { apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl } from "@/lib/api";
 
 const BASE = "/api/v1/co_writer";
 
@@ -31,7 +31,9 @@ async function jsonOrThrow<T>(res: Response): Promise<T> {
 export async function listCoWriterDocuments(): Promise<
   CoWriterDocumentSummary[]
 > {
-  const res = await fetch(apiUrl(`${BASE}/documents`), { cache: "no-store" });
+  const res = await apiFetch(apiUrl(`${BASE}/documents`), {
+    cache: "no-store",
+  });
   const data = await jsonOrThrow<{ documents: CoWriterDocumentSummary[] }>(res);
   return Array.isArray(data?.documents) ? data.documents : [];
 }
@@ -40,7 +42,7 @@ export async function createCoWriterDocument(payload?: {
   title?: string;
   content?: string;
 }): Promise<CoWriterDocument> {
-  const res = await fetch(apiUrl(`${BASE}/documents`), {
+  const res = await apiFetch(apiUrl(`${BASE}/documents`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -54,7 +56,7 @@ export async function createCoWriterDocument(payload?: {
 export async function getCoWriterDocument(
   docId: string,
 ): Promise<CoWriterDocument> {
-  const res = await fetch(
+  const res = await apiFetch(
     apiUrl(`${BASE}/documents/${encodeURIComponent(docId)}`),
     {
       cache: "no-store",
@@ -67,7 +69,7 @@ export async function updateCoWriterDocument(
   docId: string,
   payload: { title?: string | null; content?: string | null },
 ): Promise<CoWriterDocument> {
-  const res = await fetch(
+  const res = await apiFetch(
     apiUrl(`${BASE}/documents/${encodeURIComponent(docId)}`),
     {
       method: "PUT",
@@ -82,7 +84,7 @@ export async function updateCoWriterDocument(
 }
 
 export async function deleteCoWriterDocument(docId: string): Promise<boolean> {
-  const res = await fetch(
+  const res = await apiFetch(
     apiUrl(`${BASE}/documents/${encodeURIComponent(docId)}`),
     {
       method: "DELETE",

@@ -3,21 +3,9 @@
 const fs = require("fs");
 const path = require("path");
 
-function parseDotenvFile(filePath) {
+function readJsonFile(filePath) {
   try {
-    const content = fs.readFileSync(filePath, "utf8");
-    return Object.fromEntries(
-      content
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter((line) => line && !line.startsWith("#") && line.includes("="))
-        .map((line) => {
-          const idx = line.indexOf("=");
-          const key = line.slice(0, idx).trim();
-          const value = line.slice(idx + 1).trim().replace(/^['"]|['"]$/g, "");
-          return [key, value];
-        }),
-    );
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
   } catch {
     return {};
   }
@@ -33,34 +21,38 @@ function firstNonEmpty(...values) {
 }
 
 function normalizeBoolean(value) {
+  if (value === "__NEXT_PUBLIC_AUTH_ENABLED_PLACEHOLDER__") {
+    return value;
+  }
   return ["1", "true", "yes", "on"].includes(String(value).trim().toLowerCase())
     ? "true"
     : "false";
 }
 
-const ROOT_ENV = parseDotenvFile(path.resolve(__dirname, "..", ".env"));
+const SETTINGS_DIR = path.resolve(__dirname, "..", "data", "user", "settings");
+const SYSTEM_SETTINGS = readJsonFile(path.join(SETTINGS_DIR, "system.json"));
+const AUTH_SETTINGS = readJsonFile(path.join(SETTINGS_DIR, "auth.json"));
 const BACKEND_PORT = firstNonEmpty(
-  ROOT_ENV.BACKEND_PORT,
   process.env.BACKEND_PORT,
+  SYSTEM_SETTINGS.backend_port,
   "8001",
 );
 
-// Use the project-root `.env` as the frontend source of truth. This keeps
-// local auth setup to one file: AUTH_ENABLED=true also enables Next middleware.
+// Use data/user/settings as the frontend source of truth. Environment values
+// remain explicit deployment overrides for Docker/CI.
 const NEXT_PUBLIC_API_BASE = firstNonEmpty(
-  ROOT_ENV.NEXT_PUBLIC_API_BASE_EXTERNAL,
   process.env.NEXT_PUBLIC_API_BASE_EXTERNAL,
-  ROOT_ENV.NEXT_PUBLIC_API_BASE,
+  SYSTEM_SETTINGS.next_public_api_base_external,
   process.env.NEXT_PUBLIC_API_BASE,
+  SYSTEM_SETTINGS.next_public_api_base,
   `http://localhost:${BACKEND_PORT}`,
 );
 
 const NEXT_PUBLIC_AUTH_ENABLED = normalizeBoolean(
   firstNonEmpty(
-    ROOT_ENV.NEXT_PUBLIC_AUTH_ENABLED,
-    ROOT_ENV.AUTH_ENABLED,
     process.env.NEXT_PUBLIC_AUTH_ENABLED,
     process.env.AUTH_ENABLED,
+    AUTH_SETTINGS.enabled,
     "false",
   ),
 );
@@ -68,23 +60,19 @@ const NEXT_PUBLIC_AUTH_ENABLED = normalizeBoolean(
 process.env.NEXT_PUBLIC_API_BASE = NEXT_PUBLIC_API_BASE;
 process.env.NEXT_PUBLIC_AUTH_ENABLED = NEXT_PUBLIC_AUTH_ENABLED;
 
-// Resolve the build-time application version. Priority:
-//   1. Explicit APP_VERSION env (set by CI from the release tag)
-//   2. `git describe --tags` when building from a checkout (local dev)
-//   3. Empty string → frontend treats it as "unknown" and shows the
-//      latest GitHub release as a neutral fallback.
+// Resolve the build-time application version from the single source of
+// truth at ``deeptutor/__version__.py``. The Python file is parsed with a
+// small regex so the JS build does not need to execute Python.
 const APP_VERSION = (() => {
-  if (process.env.APP_VERSION) return process.env.APP_VERSION;
   try {
-    const { execSync } = require("child_process");
-    return execSync("git describe --tags --always --dirty=-dev", {
-      stdio: ["ignore", "pipe", "ignore"],
-    })
-      .toString()
-      .trim();
-  } catch {
-    return "";
-  }
+    const text = fs.readFileSync(
+      path.resolve(__dirname, "..", "deeptutor", "__version__.py"),
+      "utf8",
+    );
+    const match = text.match(/__version__\s*=\s*["']([^"']+)["']/);
+    if (match) return match[1];
+  } catch {}
+  return "";
 })();
 
 const nextConfig = {
@@ -99,6 +87,16 @@ const nextConfig = {
   // Standalone output: self-contained server.js + minimal node_modules
   // This eliminates the need to copy the full node_modules into Docker production images
   output: "standalone",
+
+  // web/proxy.ts (the Next.js middleware) forwards /api/* and /ws/* to the
+  // backend by buffering and re-issuing the request. Next caps the buffered
+  // request body at 10MB by default, but the backend accepts uploads up to
+  // 200MB (DocumentValidator.MAX_FILE_SIZE). Raise the proxy cap to match (plus
+  // multipart overhead headroom) so knowledge-base document uploads aren't
+  // silently truncated when they pass through the proxy.
+  experimental: {
+    proxyClientMaxBodySize: 210 * 1024 * 1024,
+  },
 
   // Move dev indicator to bottom-right corner
   devIndicators: {

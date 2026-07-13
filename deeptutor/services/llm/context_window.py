@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 DEFAULT_CONTEXT_WINDOW_FALLBACK = 16_384
-MAX_EFFECTIVE_CONTEXT_WINDOW = 65_536
+MAX_EFFECTIVE_CONTEXT_WINDOW = 1_000_000
+LARGE_CONTEXT_MODEL_DEFAULT = 65_536
 KNOWN_LARGE_CONTEXT_MARKERS = (
     "gpt-4.1",
     "gpt-4o",
@@ -44,7 +45,7 @@ def default_context_window_for_model(
 ) -> int:
     """Return the fallback window used when no explicit model metadata exists."""
     if looks_like_large_context_model(model):
-        return MAX_EFFECTIVE_CONTEXT_WINDOW
+        return LARGE_CONTEXT_MODEL_DEFAULT
     output_limit = coerce_positive_int(max_tokens) or 4096
     return max(DEFAULT_CONTEXT_WINDOW_FALLBACK, output_limit * 4)
 
@@ -68,6 +69,7 @@ def resolve_effective_context_window(
 __all__ = [
     "DEFAULT_CONTEXT_WINDOW_FALLBACK",
     "MAX_EFFECTIVE_CONTEXT_WINDOW",
+    "LARGE_CONTEXT_MODEL_DEFAULT",
     "KNOWN_LARGE_CONTEXT_MARKERS",
     "coerce_positive_int",
     "default_context_window_for_model",

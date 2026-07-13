@@ -1,15 +1,28 @@
-import type {
-  MessageItem,
-  MessageAttachment,
-} from "@/context/UnifiedChatContext";
+/**
+ * Minimal message/attachment shape the markdown exporter needs. Product chat's
+ * `MessageItem` satisfies it structurally, and partner conversations map into
+ * it too — so both surfaces share one serializer.
+ */
+export interface ExportableAttachment {
+  type?: string;
+  filename?: string;
+  mime_type?: string;
+}
 
-function roleHeading(role: MessageItem["role"]): string {
+export interface ExportableMessage {
+  role: string;
+  content: string;
+  capability?: string;
+  attachments?: ExportableAttachment[];
+}
+
+function roleHeading(role: string): string {
   if (role === "user") return "User";
   if (role === "assistant") return "Assistant";
   return "System";
 }
 
-function formatAttachments(attachments?: MessageAttachment[]): string {
+function formatAttachments(attachments?: ExportableAttachment[]): string {
   if (!attachments?.length) return "";
   const items = attachments
     .map((a) => {
@@ -26,7 +39,7 @@ export interface BuildChatMarkdownOptions {
 }
 
 export function buildChatMarkdown(
-  messages: MessageItem[],
+  messages: ExportableMessage[],
   options: BuildChatMarkdownOptions = {},
 ): string {
   const title = options.title?.trim() || "Chat Session";
@@ -53,7 +66,7 @@ function sanitizeFilename(input: string): string {
 }
 
 export function downloadChatMarkdown(
-  messages: MessageItem[],
+  messages: ExportableMessage[],
   options: BuildChatMarkdownOptions = {},
 ): void {
   if (!messages.length) return;

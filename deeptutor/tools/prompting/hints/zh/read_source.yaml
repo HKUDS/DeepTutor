@@ -1,0 +1,6 @@
+short_description: "按 id 加载已挂载来源（笔记、书页、历史会话、题库条目、附件）的完整文本。"
+when_to_use: "仅当上方 \"Attached Sources\" 清单中某条目的 preview 不足以回答用户问题时才调用；preview 已经包含的内容不要重复调。"
+input_format: "{\"source_id\": \"清单中给出的精确 id（如 nb-... / bk-... / hs-... / qb-... / at-...）\"}。"
+guideline: "source_id 必须照搬清单原文，绝不拼造。一次只能取一个来源，多个来源相关时按需多次调用。"
+note: "如果用户根本没挂任何来源，本工具不会出现；不要凭空询问\"哪份资料\"。"
+phase: "exploration"

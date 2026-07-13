@@ -1,27 +1,10 @@
 """Vision Solver Agent Module.
 
-This module implements image analysis and GeoGebra visualization for math problems.
-It follows a four-stage pipeline:
-1. BBox - Visual element detection with pixel coordinates
-2. Analysis - Geometric semantic analysis
-3. GGBScript - Generate GeoGebra drawing commands
-4. Reflection - Validate and fix commands
+Single-call image analysis: read a math-problem figure and emit GeoGebra
+commands to reconstruct it (with one gated repair pass). Exposed to chat and
+solve through the ``geogebra_analysis`` built-in tool.
 """
 
-from deeptutor.agents.vision_solver.models import (
-    AnalysisOutput,
-    BBoxOutput,
-    GGBScriptOutput,
-    ImageAnalysisState,
-    ReflectionOutput,
-)
 from deeptutor.agents.vision_solver.vision_solver_agent import VisionSolverAgent
 
-__all__ = [
-    "VisionSolverAgent",
-    "BBoxOutput",
-    "AnalysisOutput",
-    "GGBScriptOutput",
-    "ReflectionOutput",
-    "ImageAnalysisState",
-]
+__all__ = ["VisionSolverAgent"]

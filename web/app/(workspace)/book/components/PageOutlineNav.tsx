@@ -90,26 +90,20 @@ export interface PageOutlineNavProps {
   blocks: Block[];
   scrollContainer?: HTMLElement | null;
   language?: string;
-  /** Stable identifier (e.g. page id) used to reset collapsed state when the page changes. */
-  resetKey?: string;
 }
 
 export default function PageOutlineNav({
   blocks,
   scrollContainer,
   language: _language,
-  resetKey,
 }: PageOutlineNavProps) {
   const { t } = useTranslation();
   const headerText = t("On this page");
   const collapseTip = t("Hide outline");
   const expandTip = t("Show outline");
 
-  // Default: expanded. Reset whenever the page changes.
+  // Default: expanded; PageReader keys this component by page id.
   const [collapsed, setCollapsed] = useState(false);
-  useEffect(() => {
-    setCollapsed(false);
-  }, [resetKey]);
 
   // Track which block is currently in view for active highlight.
   const [activeId, setActiveId] = useState<string | null>(null);

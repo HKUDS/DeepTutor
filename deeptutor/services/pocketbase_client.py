@@ -1,7 +1,7 @@
 """
 PocketBase client singleton.
 
-Only initialised when POCKETBASE_URL is present in the environment.
+Only initialised when integrations.pocketbase_url is configured.
 All other code checks ``is_pocketbase_enabled()`` before calling
 ``get_pb_client()`` to avoid import-time failures when PocketBase is
 not configured.
@@ -23,18 +23,16 @@ Usage:
 from __future__ import annotations
 
 import logging
-import os
 import time
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from deeptutor.services.config import load_integrations_settings
 
-_POCKETBASE_URL: str = os.getenv("POCKETBASE_URL", "").rstrip("/")
-_ADMIN_EMAIL: str = os.getenv("POCKETBASE_ADMIN_EMAIL", "")
-_ADMIN_PASSWORD: str = os.getenv("POCKETBASE_ADMIN_PASSWORD", "")
+logger = logging.getLogger(__name__)
 
 _client = None
 _client_initialised = False
+_client_key = ""
 
 # Token validation cache: token -> (payload_dict, expires_at)
 _TOKEN_CACHE: dict[str, tuple[dict[str, Any], float]] = {}
@@ -42,23 +40,40 @@ _TOKEN_CACHE_TTL: float = 60.0  # seconds
 
 
 def is_pocketbase_enabled() -> bool:
-    """Return True when POCKETBASE_URL is configured."""
-    return bool(_POCKETBASE_URL)
+    """Return True when integrations.pocketbase_url is configured."""
+    return bool(_pocketbase_settings()["url"])
+
+
+def _pocketbase_settings() -> dict[str, str]:
+    settings = load_integrations_settings()
+    return {
+        "url": str(settings["pocketbase_url"]).rstrip("/"),
+        "admin_email": str(settings["pocketbase_admin_email"]),
+        "admin_password": str(settings["pocketbase_admin_password"]),
+    }
 
 
 def get_pb_client():
     """
     Return an admin-authenticated PocketBase SDK client (cached singleton).
 
-    Raises RuntimeError if POCKETBASE_URL is not set.
+    Raises RuntimeError if integrations.pocketbase_url is not set.
     Raises on authentication failure.
     """
-    global _client, _client_initialised
+    global _client, _client_initialised, _client_key
 
-    if not is_pocketbase_enabled():
-        raise RuntimeError("PocketBase is not configured. Set POCKETBASE_URL in .env to enable it.")
+    settings = _pocketbase_settings()
+    pocketbase_url = settings["url"]
+    admin_email = settings["admin_email"]
+    admin_password = settings["admin_password"]
 
-    if _client_initialised:
+    if not pocketbase_url:
+        raise RuntimeError(
+            "PocketBase is not configured. Set integrations.pocketbase_url to enable it."
+        )
+
+    cache_key = f"{pocketbase_url}|{admin_email}"
+    if _client_initialised and _client_key == cache_key:
         return _client
 
     try:
@@ -68,27 +83,28 @@ def get_pb_client():
             "The 'pocketbase' package is not installed. Run: pip install pocketbase"
         ) from exc
 
-    pb = PocketBase(_POCKETBASE_URL)
+    pb = PocketBase(pocketbase_url)
 
-    if _ADMIN_EMAIL and _ADMIN_PASSWORD:
+    if admin_email and admin_password:
         try:
-            pb.admins.auth_with_password(_ADMIN_EMAIL, _ADMIN_PASSWORD)
-            logger.info(f"PocketBase admin authenticated at {_POCKETBASE_URL}")
+            pb.admins.auth_with_password(admin_email, admin_password)
+            logger.info(f"PocketBase admin authenticated at {pocketbase_url}")
         except Exception as exc:
             logger.error(
                 f"PocketBase admin authentication failed: {exc}. "
-                "Check POCKETBASE_ADMIN_EMAIL and POCKETBASE_ADMIN_PASSWORD."
+                "Check integrations.pocketbase_admin_email and integrations.pocketbase_admin_password."
             )
             raise
     else:
         logger.warning(
-            "POCKETBASE_ADMIN_EMAIL / POCKETBASE_ADMIN_PASSWORD not set. "
+            "PocketBase admin email/password not set in integrations.json. "
             "The backend will connect to PocketBase without admin privileges. "
             "Collection management (scripts/pb_setup.py) will not work."
         )
 
     _client = pb
     _client_initialised = True
+    _client_key = cache_key
     return _client
 
 
@@ -103,7 +119,9 @@ def validate_pb_token(token: str) -> dict[str, Any] | None:
     Returns a dict with at least ``username`` and ``role`` keys, or
     None if the token is invalid / expired.
     """
-    if not is_pocketbase_enabled():
+    settings = _pocketbase_settings()
+    pocketbase_url = settings["url"]
+    if not pocketbase_url:
         return None
 
     now = time.monotonic()
@@ -120,7 +138,7 @@ def validate_pb_token(token: str) -> dict[str, Any] | None:
     try:
         from pocketbase import PocketBase  # type: ignore[import]
 
-        pb = PocketBase(_POCKETBASE_URL)
+        pb = PocketBase(pocketbase_url)
         # Inject the user token so auth_refresh validates it
         pb.auth_store.save(token, None)
         result = pb.collection("users").auth_refresh()
@@ -151,26 +169,28 @@ async def ping_pocketbase() -> bool:
     Logs a clear warning (not an exception) so the server still starts
     when PocketBase is configured but temporarily unavailable.
     """
-    if not is_pocketbase_enabled():
+    settings = _pocketbase_settings()
+    pocketbase_url = settings["url"]
+    if not pocketbase_url:
         return False
 
     try:
         import httpx
 
         async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"{_POCKETBASE_URL}/api/health")
+            resp = await client.get(f"{pocketbase_url}/api/health")
             if resp.status_code == 200:
-                logger.info(f"PocketBase health check passed at {_POCKETBASE_URL}")
+                logger.info(f"PocketBase health check passed at {pocketbase_url}")
                 return True
             logger.warning(
-                f"PocketBase health check returned HTTP {resp.status_code} at {_POCKETBASE_URL}. "
+                f"PocketBase health check returned HTTP {resp.status_code} at {pocketbase_url}. "
                 "Sessions will fail until PocketBase is healthy."
             )
             return False
     except Exception as exc:
         logger.warning(
-            f"PocketBase is unreachable at {_POCKETBASE_URL} ({exc}). "
+            f"PocketBase is unreachable at {pocketbase_url} ({exc}). "
             "Sessions and auth will fall back to SQLite until PocketBase is available. "
-            "Check that the pocketbase container is running and POCKETBASE_URL is correct."
+            "Check that the pocketbase container is running and integrations.pocketbase_url is correct."
         )
         return False

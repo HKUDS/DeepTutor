@@ -10,8 +10,9 @@ Note: This is a legacy interface. Prefer using the factory functions directly:
 
 from collections.abc import Awaitable, Callable
 import logging
-from typing import cast
+from typing import Any, cast
 
+from .capabilities import supports_vision
 from .config import LLMConfig, get_llm_config
 from .utils import sanitize_url
 
@@ -139,9 +140,34 @@ class LLMClient:
         """
         return self._build_factory_model_func(allow_multimodal=True)
 
+    def supports_multimodal_images(self) -> bool:
+        """Return whether the configured LLM can accept image input."""
+        return supports_vision(getattr(self.config, "binding", "openai"), self.config.model)
+
     def _build_factory_model_func(self, allow_multimodal: bool) -> Callable[..., object]:
         """Build adapter callables on top of the unified factory.complete API."""
         from . import factory
+
+        def _resolve_messages(
+            prompt: str,
+            system_prompt: str | None,
+            history_messages: list[dict[str, object]] | None,
+            messages: list[dict[str, object]] | None,
+        ) -> list[dict[str, Any]] | None:
+            if messages:
+                return cast(list[dict[str, Any]], messages)
+            if not history_messages:
+                return None
+
+            full_messages: list[dict[str, Any]] = []
+            if system_prompt and not (
+                history_messages and history_messages[0].get("role") == "system"
+            ):
+                full_messages.append({"role": "system", "content": system_prompt})
+            full_messages.extend(cast(list[dict[str, Any]], history_messages))
+            if prompt:
+                full_messages.append({"role": "user", "content": prompt})
+            return full_messages or None
 
         async def model_func(
             prompt: str,
@@ -159,7 +185,13 @@ class LLMClient:
             payload_kwargs.pop("prompt", None)
             payload_kwargs.pop("system_prompt", None)
 
-            resolved_messages = messages or cast(list[dict[str, object]] | None, history_messages)
+            default_system_prompt = system_prompt or "You are a helpful assistant."
+            resolved_messages = _resolve_messages(
+                prompt,
+                default_system_prompt,
+                history_messages,
+                messages,
+            )
 
             if allow_multimodal and image_data is not None:
                 payload_kwargs["image_data"] = image_data
@@ -167,7 +199,7 @@ class LLMClient:
             factory_complete = cast(Callable[..., Awaitable[str]], factory.complete)
             return await factory_complete(
                 prompt=prompt,
-                system_prompt=system_prompt or "You are a helpful assistant.",
+                system_prompt=default_system_prompt,
                 model=self.config.model,
                 api_key=self.config.api_key,
                 base_url=sanitize_url(self.config.base_url) if self.config.base_url else None,

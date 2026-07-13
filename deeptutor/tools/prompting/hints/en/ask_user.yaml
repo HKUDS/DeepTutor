@@ -1,0 +1,17 @@
+short_description: "Pause the loop and ask the user 1-4 clarifying questions on one card; each question has 2-4 clickable options (label + description) plus automatic free-form input."
+when_to_use: "Only when you are blocked on a decision that is genuinely the user's to make — one you cannot resolve from the request, the conversation, the attached material, or sensible defaults (e.g. the user's level/grade would change the depth, the question's referent is ambiguous, or several reasonable paths diverge materially). Do NOT call it to ask \"should I proceed?\", to confirm what the user already said, or for choices with an obvious conventional answer — pick that answer, mention it in your response, and proceed. **At most one `ask_user` per assistant message**: bundle every clarification into the `questions` list of that single call (up to 4); never emit multiple parallel `ask_user` tool_calls — duplicate cards are a bug, not redundancy."
+input_format: |
+  {"intro": "optional one-line lead-in", "questions": [
+    {"id": "audience", "header": "Audience", "prompt": "Who is this presentation for?",
+     "options": [
+       {"label": "Executives (Recommended)", "description": "Conclusion-first, concise"},
+       {"label": "Engineering team", "description": "Technical detail and implementation"},
+       {"label": "External clients", "description": "Value proposition, polished visuals"}
+     ]},
+    {"id": "focus", "header": "Focus", "prompt": "Which areas should it cover?", "multi_select": true,
+     "options": [{"label": "Results"}, {"label": "Methodology"}, {"label": "Next steps"}]}
+  ]}
+  Rules: 2-4 distinct, mutually exclusive options per question — `label` short (1-5 words), `description` explains what picking it implies. If you recommend an option, put it FIRST and append " (Recommended)" to its label. Set `multi_select: true` when choices can combine, and phrase the question accordingly. `header` is a very short tab label (max 12 chars). Never add your own "Other" option — the card provides free-form input automatically.
+guideline: "After this call the loop **PAUSES** until the user answers, then **RESUMES on the SAME turn**. The user's reply appears as the matching tool result with content beginning ``User answered:`` followed by one ``- <prompt>\\n  → <answer>`` line per question (multi-select answers arrive comma-joined). When you see that, you MUST continue addressing the user's original request — call more tools if needed, then end with a substantive ``FINISH``. **Do NOT** treat ask_user as the end of the turn — a single-line acknowledgment is not an acceptable final answer."
+note: "Skipped questions arrive as ``(skipped)``. The user may answer with free text instead of any option — treat it as authoritative. The user can also cancel the pause via the stop button (cancels the whole turn)."
+phase: "exploration"

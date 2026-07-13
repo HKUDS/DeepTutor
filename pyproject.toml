@@ -7,13 +7,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deeptutor"
-version = "1.0.0"
+dynamic = ["version"]
 description = "An agent-native intelligent learning companion with multi-agent collaboration and RAG"
 requires-python = ">=3.11"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 dependencies = [
-    "python-dotenv>=1.0.0",
+    # Core runtime
     "PyYAML>=6.0",
     "jinja2>=3.1.0",
     "openai>=1.30.0",
@@ -30,38 +30,29 @@ dependencies = [
     "typer[all]>=0.9.0",
     "rich>=13.0.0",
     "prompt_toolkit>=3.0.36",
-]
-
-[project.scripts]
-deeptutor = "deeptutor_cli.main:main"
-
-[project.optional-dependencies]
-# Full CLI: RAG (LlamaIndex), document parsing, and LLM provider SDKs.
-# Mirrors requirements/cli.txt — keep in sync.
-cli = [
-    # LLM provider SDKs
+    "pyte>=0.8.1",  # in-memory terminal emulator: scrape Claude Code's /model TUI on sync
+    # Full app dependencies included by default for `pip install deeptutor`.
     "anthropic>=0.30.0",
     "dashscope>=1.14.0",
     "perplexityai>=0.1.0",
-    "oauth-cli-kit>=0.1.1; python_version >= '3.11'",
-    # RAG (LlamaIndex)
+    "oauth-cli-kit>=0.1.1",
     "llama-index>=0.14.12",
+    "llama-index-retrievers-bm25>=0.7.1,<0.8.0",
+    # FAISS vector store: vectorized ANN retrieval that replaces SimpleVectorStore's
+    # brute-force per-query scan for large knowledge bases (issue #552). The
+    # pipeline imports it lazily and falls back to SimpleVectorStore if absent.
+    "llama-index-vector-stores-faiss>=0.4.0,<1.0.0",
+    "faiss-cpu>=1.8.0,<2.0.0",
     "PyMuPDF>=1.26.0",
     "numpy>=1.24.0,<3.0.0",
     "arxiv>=2.0.0",
-    # Document text extraction (chat attachments)
     "python-docx>=1.1.0",
     "openpyxl>=3.1.0",
     "python-pptx>=1.0.0",
     "pypdf>=4.0.0",
+    "pdfplumber>=0.11.0,<0.11.8",  # 0.11.8+ pins pdfminer.six==20251230, conflicts with mineru (via raganything)
+    "reportlab>=4.0.0",
     "defusedxml>=0.7.1",
-]
-
-# Web/API server (CLI + FastAPI). Mirrors requirements/server.txt.
-# loguru / json-repair live here (not in [tutorbot]) because provider_core
-# imports them unconditionally — needed by every server install path.
-server = [
-    "deeptutor[cli]",
     "fastapi>=0.100.0",
     "uvicorn[standard]>=0.24.0",
     "websockets>=12.0",
@@ -73,15 +64,64 @@ server = [
     "json-repair>=0.57.0,<1.0.0",
 ]
 
-# TutorBot agent engine + channel SDKs. Mirrors requirements/tutorbot.txt.
-tutorbot = [
-    "deeptutor[server]",
+[project.scripts]
+deeptutor = "deeptutor_cli.main:main"
+
+[project.optional-dependencies]
+# Compatibility extra for source installs and older docs. These packages are
+# already included in the public `deeptutor` wheel; the local CLI-only project
+# under `packaging/deeptutor-cli` uses the same list without Web assets/server deps.
+cli = [
+    # LLM provider SDKs
+    "anthropic>=0.30.0",
+    "dashscope>=1.14.0",
+    "perplexityai>=0.1.0",
+    "oauth-cli-kit>=0.1.1",
+    # RAG (LlamaIndex)
+    "llama-index>=0.14.12",
+    "llama-index-retrievers-bm25>=0.7.1,<0.8.0",
+    # FAISS vector store: vectorized ANN retrieval that replaces SimpleVectorStore's
+    # brute-force per-query scan for large knowledge bases (issue #552). The
+    # pipeline imports it lazily and falls back to SimpleVectorStore if absent.
+    "llama-index-vector-stores-faiss>=0.4.0,<1.0.0",
+    "faiss-cpu>=1.8.0,<2.0.0",
+    "PyMuPDF>=1.26.0",
+    "numpy>=1.24.0,<3.0.0",
+    "arxiv>=2.0.0",
+    # Document text extraction (chat attachments) + office-skill authoring libs
+    "python-docx>=1.1.0",
+    "openpyxl>=3.1.0",
+    "python-pptx>=1.0.0",
+    "pypdf>=4.0.0",
+    "pdfplumber>=0.11.0,<0.11.8",  # 0.11.8+ pins pdfminer.six==20251230, conflicts with mineru (via raganything)
+    "reportlab>=4.0.0",
+    "defusedxml>=0.7.1",
+]
+
+# Compatibility extra for source installs and older docs. These packages are
+# already included in the public `deeptutor` wheel.
+server = [
+    "deeptutor[cli]",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.24.0",
+    "websockets>=12.0",
+    "python-multipart>=0.0.6",
+    "bcrypt>=4.0.0",
+    "python-jose[cryptography]>=3.3.0",
+    "pocketbase>=0.12.0",
+    "loguru>=0.7.3,<1.0.0",
+    "json-repair>=0.57.0,<1.0.0",
     "croniter>=6.0.0,<7.0.0",
-    "tiktoken>=0.12.0,<1.0.0",
-    "chardet>=3.0.2,<6.0.0",
+]
+
+# Partner channel SDKs + MCP client. Mirrors requirements/partners.txt.
+# Partners run on the chat agent loop, so there is no engine here — just the
+# IM platform SDKs and the MCP client used for deferred tools.
+partners = [
+    "deeptutor[server]",
     "mcp>=1.26.0,<2.0.0",
-    "readability-lxml>=0.8.4,<1.0.0",
     "python-telegram-bot[socks]>=22.6,<23.0",
+    "wecom-aibot-sdk>=1.0.8,<2.0.0",
     "lark-oapi>=1.5.0,<2.0.0",
     "dingtalk-stream>=0.24.0,<1.0.0",
     "slack-sdk>=3.39.0,<4.0.0",
@@ -92,19 +132,76 @@ tutorbot = [
     "python-socks[asyncio]>=2.8.0,<3.0.0",
     "socksio>=1.0.0,<2.0.0",
     "websocket-client>=1.9.0,<2.0.0",
+    "zulip>=0.8.0,<1.0.0",
+    # slack-sdk Socket Mode + napcat need the async `websockets` lib — pin it
+    # explicitly instead of relying on dingtalk-stream/lark-oapi transitives.
+    "websockets>=12.0",
+    # napcat (OneBot v11) media downloads
+    "aiohttp>=3.10.0,<4.0.0",
+    # msteams Bot Framework token validation
+    "PyJWT[crypto]>=2.8.0,<3.0.0",
+    # weixin QR-code login
+    "qrcode>=7.4.0,<9.0.0",
 ]
 
-# Matrix (Element) channel for TutorBot. Mirrors requirements/matrix.txt.
-# Kept as a separate extra because matrix-nio[e2e] requires libolm (native dep).
+# Optional document-parsing engines for the shared parse layer
+# (deeptutor/services/parsing). MinerU is an external CLI / hosted API and is
+# not a pip dependency. Engines import lazily, so these stay opt-in and an
+# absent engine simply reports unavailable in Settings → Document Parsing.
+parse-markitdown = ["markitdown[pdf,docx,pptx,xlsx]>=0.0.1a2"]
+parse-docling = ["docling>=2.0.0"]
+# PyMuPDF4LLM rides on PyMuPDF (already a core dep); the extra adds only the
+# thin Markdown layer, so it is the lightest image-capable engine. Pinned to the
+# pre-1.0 line on purpose: 1.x defaults to an onnxruntime layout-AI path that
+# pulls a heavy dep, downloads a model, and can't extract images — defeating the
+# "lightweight, runs on a Pi, extracts images" point of this engine.
+parse-pymupdf4llm = ["pymupdf4llm>=0.0.17,<1.0"]
+parse = [
+    "deeptutor[parse-markitdown]",
+    "deeptutor[parse-docling]",
+    "deeptutor[parse-pymupdf4llm]",
+]
+
+# Legacy alias kept for one release: `pip install deeptutor[tutorbot]`.
+tutorbot = ["deeptutor[partners]"]
+
+# Matrix (Element) channel for partners. Mirrors requirements/matrix.txt.
+# Default Matrix install is non-E2EE so it works without libolm/python-olm.
 matrix = [
-    "matrix-nio[e2e]>=0.25.2,<1.0.0",
+    "matrix-nio>=0.25.2,<1.0.0",
     "mistune>=3.0.0,<4.0.0",
     "nh3>=0.2.18,<1.0.0",
+]
+
+# Optional Matrix E2EE addon. Mirrors requirements/matrix-e2e.txt and requires libolm.
+matrix-e2e = [
+    "deeptutor[matrix]",
+    "matrix-nio[e2e]>=0.25.2,<1.0.0",
 ]
 
 # Math Animator addon (Manim). Mirrors requirements/math-animator.txt.
 # System prerequisites (installed outside pip): LaTeX, pkg-config, cairo, cmake, ffmpeg.
 math-animator = ["manim>=0.19.0"]
+
+# GraphRAG knowledge-base engine (microsoft/graphrag). Optional, heavy
+# (LiteLLM + lancedb + graspologic) and kept out of `all` so it stays a
+# deliberate opt-in. The pipeline imports lazily and the adapter targets the
+# 3.x API (see services/rag/pipelines/graphrag/engine.py). Every graphrag 3.x
+# release is capped at python <3.14; the `python_version` marker mirrors that
+# so on 3.14+ the extra resolves to a no-op instead of an unsatisfiable hard
+# dep — otherwise pip backtracks deeptutor to the last extra-free version
+# (1.4.5) and silently downgrades. Floor is 3.0.1 (3.0.0/3.0.3 were yanked).
+graphrag = ["graphrag>=3.0.1,<4.0.0; python_version < '3.14'"]
+
+# LightRAG knowledge-base engine (HKUDS/LightRAG) with multimodal parsing via
+# RAG-Anything (HKUDS/RAG-Anything). Optional, heavy (pulls MinerU transitively —
+# see the pdfplumber pin above). The pipeline imports lazily and the adapter is
+# isolated in services/rag/pipelines/lightrag/engine.py. raganything pulls
+# `mineru[core]`, which is capped at python <3.14, so this carries the same
+# `python_version` marker as graphrag to avoid a silent backtrack/downgrade on
+# 3.14+. Floor is 1.0.1 (no 1.0.0 was ever published) with a <2.0.0 ceiling so
+# a future API-breaking 2.x isn't pulled in silently.
+rag-lightrag = ["raganything>=1.0.1,<2.0.0; python_version < '3.14'"]
 
 # Dev/test tooling. Mirrors requirements/dev.txt.
 dev = [
@@ -114,11 +211,18 @@ dev = [
     "pre-commit>=3.0.0",
     "safety<3.0.0",
     "bandit>=1.8.0",
+    # Test fixture builders for document-loader tests. Runtime pulls these via
+    # cli/server, but dev keeps them explicit for pytest collection.
+    "python-docx>=1.1.0",
+    "openpyxl>=3.1.0",
+    "python-pptx>=1.0.0",
+    "pypdf>=4.0.0",
+    "defusedxml>=0.7.1",
 ]
 
-# Everything: server + tutorbot + matrix + math-animator + dev tools.
+# Everything: server + partners + non-E2EE matrix + math-animator + dev tools.
 all = [
-    "deeptutor[tutorbot]",
+    "deeptutor[partners]",
     "deeptutor[matrix]",
     "deeptutor[math-animator]",
     "deeptutor[dev]",
@@ -127,16 +231,37 @@ all = [
 [tool.setuptools]
 include-package-data = true
 
+[tool.setuptools.dynamic]
+version = {attr = "deeptutor.__version__.__version__"}
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["deeptutor*", "deeptutor_cli*"]
+
+[tool.setuptools.package-data]
+# Runtime data shipped inside the deeptutor package: prompt YAMLs (loaded by
+# PromptManager from PACKAGE_ROOT/deeptutor/.../prompts/*.yaml), markdown
+# templates (builtin SKILL.md files, vision_solver prompts), and helper shell
+# scripts. Without these, ``pip install deeptutor`` ships a wheel missing
+# every agent prompt and capability fails at first use.
+deeptutor = [
+    "**/*.yaml",
+    "**/*.yml",
+    "**/*.md",
+    "**/*.json",
+    "**/*.sh",
+    "**/*.j2",
+    "**/*.jinja",
+]
+deeptutor_cli = ["**/*.md"]
+deeptutor_web = ["**/*", ".next/**/*"]
 
 # ============================================
 # Black code formatter configuration
 # ============================================
 [tool.black]
 line-length = 100
-target-version = ['py311', 'py312']
+target-version = ['py311', 'py312', 'py313', 'py314']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -282,7 +407,7 @@ max-complexity = 10
 # Pytest configuration
 # ============================================
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "deeptutor/learning/tests"]
 pythonpath = ["."]
 markers = [
     "asyncio: mark async tests that require pytest-asyncio",
@@ -292,7 +417,8 @@ addopts = [
     "--strict-markers",
     "--strict-config",
     "--disable-warnings",
-    "--tb=short"
+    "--tb=short",
+    "--import-mode=importlib",
 ]
 
 # ============================================

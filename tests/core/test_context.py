@@ -62,9 +62,8 @@ class TestUnifiedContext:
         assert ctx.attachments == []
         assert ctx.config_overrides == {}
         assert ctx.language == "en"
-        assert ctx.notebook_context == ""
-        assert ctx.history_context == ""
         assert ctx.memory_context == ""
+        assert ctx.source_manifest == ""
         assert ctx.metadata == {}
 
     def test_mutable_defaults_are_independent(self) -> None:
@@ -85,9 +84,8 @@ class TestUnifiedContext:
             attachments=[att],
             config_overrides={"temperature": 0.5},
             language="zh",
-            notebook_context="some notes",
-            history_context="prior session",
             memory_context="user preference",
+            source_manifest='id=nb-1 name="Lecture" type=notebook preview="..."',
             metadata={"turn_id": "t1"},
         )
         assert ctx.session_id == "s1"

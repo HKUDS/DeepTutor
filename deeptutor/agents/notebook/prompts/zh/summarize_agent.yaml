@@ -23,6 +23,7 @@ user_template: |
 # 各记录类型的提示语，会被注入到 user_template 的 {record_hint}。
 record_hints:
   chat: "一段完整聊天历史，重点提炼问题、结论与后续行动。"
+  tutorbot: "一段与 Partner（具名 AI 助手）的对话，重点提炼提出的问题、Partner 给出的结论与后续行动。"
   guided_learning: "一段引导式学习记录，重点提炼学习主题、知识点结构与阶段性产出。"
   co_writer: "一份用户在 Co-Writer 中撰写的 Markdown 草稿，重点提炼文档主题、结构骨架、当前完成度，以及后续值得回顾的部分。"
   default: "请总结此记录中最值得复用的信息。"

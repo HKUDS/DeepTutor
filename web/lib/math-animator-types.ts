@@ -1,17 +1,4 @@
 export type MathAnimatorOutputMode = "video" | "image";
-export type MathAnimatorQuality = "low" | "medium" | "high";
-
-export interface MathAnimatorFormConfig {
-  output_mode: MathAnimatorOutputMode;
-  quality: MathAnimatorQuality;
-  style_hint: string;
-}
-
-export const DEFAULT_MATH_ANIMATOR_CONFIG: MathAnimatorFormConfig = {
-  output_mode: "video",
-  quality: "medium",
-  style_hint: "",
-};
 
 export interface MathAnimatorArtifact {
   type: "video" | "image";
@@ -49,38 +36,6 @@ export interface MathAnimatorResult {
     generated_output?: string;
     key_points?: string[];
   };
-}
-
-export function buildMathAnimatorWSConfig(
-  cfg: MathAnimatorFormConfig,
-): Record<string, unknown> {
-  return {
-    output_mode: cfg.output_mode,
-    quality: cfg.quality,
-    style_hint: cfg.style_hint.trim(),
-  };
-}
-
-function titleCase(value: string): string {
-  if (!value) return "";
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-/**
- * One-line summary of the math-animator form, shown next to the collapsed
- * `Settings` chevron in the composer. Pass `translate` (typically `t` from
- * `react-i18next`) so the summary follows the active UI language.
- */
-export function summarizeMathAnimatorConfig(
-  cfg: MathAnimatorFormConfig,
-  translate?: (key: string) => string,
-): string {
-  const output = titleCase(cfg.output_mode);
-  const quality = titleCase(cfg.quality);
-  return [
-    translate ? translate(output) : output,
-    translate ? translate(quality) : quality,
-  ].join(" · ");
 }
 
 export function extractMathAnimatorResult(

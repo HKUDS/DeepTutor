@@ -2,7 +2,8 @@
 
 import { LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { AUTH_ENABLED, logout } from "@/lib/auth";
+import { logout } from "@/lib/auth";
+import { useAuthStatus } from "@/hooks/useAuthStatus";
 
 interface LogoutButtonProps {
   collapsed?: boolean;
@@ -10,8 +11,9 @@ interface LogoutButtonProps {
 
 export function LogoutButton({ collapsed = false }: LogoutButtonProps) {
   const router = useRouter();
+  const { enabled } = useAuthStatus();
 
-  if (!AUTH_ENABLED) return null;
+  if (!enabled) return null;
 
   async function handleLogout() {
     await logout();

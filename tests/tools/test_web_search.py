@@ -127,6 +127,9 @@ class TestAssertProviderSupported:
     def test_supported_provider_does_not_raise(self) -> None:
         _assert_provider_supported("duckduckgo")
 
+    def test_none_provider_does_not_raise(self) -> None:
+        _assert_provider_supported("none")
+
     def test_deprecated_provider_raises(self) -> None:
         with pytest.raises(ValueError, match="deprecated"):
             _assert_provider_supported("exa")

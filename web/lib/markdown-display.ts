@@ -99,62 +99,18 @@ const ALLOWED_HTML_TAGS = new Set<string>([
   "caption",
   "col",
   "colgroup",
-  // media
+  // passive media
   "img",
   "video",
   "audio",
   "source",
   "picture",
   "track",
-  "iframe",
-  "canvas",
-  "embed",
-  "object",
-  "param",
-  "map",
-  "area",
-  // disclosure / forms (we keep these even if they are usually stripped)
+  // disclosure / lightweight status
   "details",
   "summary",
   "progress",
   "meter",
-  "input",
-  "textarea",
-  "select",
-  "button",
-  "label",
-  "fieldset",
-  "legend",
-  "form",
-  "option",
-  "optgroup",
-  "datalist",
-  "output",
-  // svg
-  "svg",
-  "g",
-  "path",
-  "rect",
-  "circle",
-  "ellipse",
-  "line",
-  "polyline",
-  "polygon",
-  "text",
-  "tspan",
-  "use",
-  "defs",
-  "lineargradient",
-  "radialgradient",
-  "stop",
-  "marker",
-  "pattern",
-  "mask",
-  "clippath",
-  "symbol",
-  "title",
-  "desc",
-  "foreignobject",
   // mathml
   "math",
   "mi",
@@ -180,8 +136,90 @@ const ALLOWED_HTML_TAGS = new Set<string>([
 ]);
 
 const HTML_LIKE_TAG_REGEX = /<\/?([A-Za-z][A-Za-z0-9_-]*)\b[^<>]*?\/?>/g;
+const FENCED_CODE_BLOCK_REGEX = /```[\s\S]*?```/g;
+const INLINE_CODE_SPAN_REGEX = /`[^`\n]*`/g;
+// Display math (\[…\], \(…\), $$…$$) plus single-dollar inline math ($…$).
+// The inline form mirrors remark-math's "tight" rule — no space just inside the
+// delimiters — so prose currency like "$5 and $10" is not swallowed, while real
+// inline math ($x = [1, 5, 9]$) is protected from citation linkification.
+const MATH_SPAN_REGEX =
+  /\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$\$[\s\S]*?\$\$|\$(?!\s)(?:\\.|[^$\n])*?(?<!\s)\$/g;
 const PROTECTED_SPAN_REGEX = /```[\s\S]*?```|`[^`\n]*`/g;
 const PROTECTED_PLACEHOLDER_REGEX = /\u0000PROTECTED_(\d+)\u0000/g;
+const HTML_ATTR_VALUE = /(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+)/.source;
+const HTML_EVENT_ATTR_REGEX = new RegExp(
+  String.raw`\s+on[a-z]+\s*=\s*${HTML_ATTR_VALUE}`,
+  "gi",
+);
+const HTML_STYLE_ATTR_REGEX = new RegExp(
+  String.raw`\s+style\s*=\s*${HTML_ATTR_VALUE}`,
+  "gi",
+);
+const HTML_SRCDOC_ATTR_REGEX = new RegExp(
+  String.raw`\s+srcdoc\s*=\s*${HTML_ATTR_VALUE}`,
+  "gi",
+);
+const HTML_UNSAFE_URL_ATTR_REGEX =
+  /\s+(href|src|xlink:href|formaction)\s*=\s*(?:"\s*(?:javascript:|data:text\/html|data:image\/svg\+xml)[^"]*"|'\s*(?:javascript:|data:text\/html|data:image\/svg\+xml)[^']*'|(?:javascript:|data:text\/html|data:image\/svg\+xml)[^\s"'=<>`]+)/gi;
+// ``attachment`` lets the model place generated-file cards inline via
+// ``[label](attachment:NAME)`` links (see components/common/InlineFileCard.tsx).
+// The renderers always intercept these — they're never emitted as real
+// navigable anchors — so allow-listing the scheme keeps the href intact
+// without widening the attack surface.
+const SAFE_MARKDOWN_PROTOCOL_REGEX = /^(https?|ircs?|mailto|xmpp|attachment)$/i;
+const SAFE_RASTER_DATA_IMAGE_REGEX =
+  /^data:image\/(?:png|jpe?g|gif|webp|bmp|tiff?|avif);base64,[a-z0-9+/=\s]+$/i;
+
+function isMarkdownImageSrc(key?: string, node?: unknown): boolean {
+  const tagName =
+    node && typeof node === "object" && "tagName" in node
+      ? String((node as { tagName?: unknown }).tagName || "").toLowerCase()
+      : "";
+  return key === "src" && tagName === "img";
+}
+
+/**
+ * react-markdown's default URL policy intentionally strips all `data:`
+ * URLs. Knowledge-base previews should still render self-contained markdown
+ * screenshots, so allow only passive raster image data URLs on `<img src>`.
+ */
+export function markdownUrlTransform(
+  value: string,
+  key?: string,
+  node?: unknown,
+): string {
+  if (
+    isMarkdownImageSrc(key, node) &&
+    SAFE_RASTER_DATA_IMAGE_REGEX.test(value)
+  ) {
+    return value;
+  }
+
+  const colon = value.indexOf(":");
+  const questionMark = value.indexOf("?");
+  const numberSign = value.indexOf("#");
+  const slash = value.indexOf("/");
+
+  if (
+    colon === -1 ||
+    (slash !== -1 && colon > slash) ||
+    (questionMark !== -1 && colon > questionMark) ||
+    (numberSign !== -1 && colon > numberSign) ||
+    SAFE_MARKDOWN_PROTOCOL_REGEX.test(value.slice(0, colon))
+  ) {
+    return value;
+  }
+
+  return "";
+}
+
+function sanitizeAllowedHtmlTag(tag: string): string {
+  return tag
+    .replace(HTML_EVENT_ATTR_REGEX, "")
+    .replace(HTML_STYLE_ATTR_REGEX, "")
+    .replace(HTML_SRCDOC_ATTR_REGEX, "")
+    .replace(HTML_UNSAFE_URL_ATTR_REGEX, "");
+}
 
 function escapeUnknownHtmlTags(content: string): string {
   if (!content || (!content.includes("<") && !content.includes(">"))) {
@@ -194,7 +232,7 @@ function escapeUnknownHtmlTags(content: string): string {
   });
   const escaped = masked.replace(HTML_LIKE_TAG_REGEX, (match, name: string) => {
     const lower = String(name).toLowerCase();
-    if (ALLOWED_HTML_TAGS.has(lower)) return match;
+    if (ALLOWED_HTML_TAGS.has(lower)) return sanitizeAllowedHtmlTag(match);
     // Already wrapped in backticks (would happen if the source already
     // protected a similar token earlier in the string).
     return `\`${match}\``;
@@ -312,7 +350,8 @@ function removeEmptyHtmlTables(content: string): string {
 
 const PREFIXED_CIT = String.raw`(?:web|rag|code|src)-\d+`;
 const NUMERIC_CIT = String.raw`\d+`;
-const SINGLE_CIT = `(?:${PREFIXED_CIT}|${NUMERIC_CIT})`;
+const RESEARCH_CIT = String.raw`(?:CIT-\d+-\d+|PLAN-\d+)`;
+const SINGLE_CIT = `(?:${PREFIXED_CIT}|${NUMERIC_CIT}|${RESEARCH_CIT})`;
 const MULTI_CIT = `${SINGLE_CIT}(?:\\s*,\\s*${SINGLE_CIT})*`;
 
 const INLINE_CITATION_REGEX = new RegExp(
@@ -328,50 +367,201 @@ const ESCAPED_CITATION_LINK_REGEX = new RegExp(
     String.raw`]\)`,
   "g",
 );
+const EXISTING_RESEARCH_CITATION_LINK_REGEX = new RegExp(
+  String.raw`\[(${RESEARCH_CIT})\]\(#(ref-[a-z0-9_-]+)\s+["` +
+    "\u201c" +
+    String.raw`]citation["` +
+    "\u201d" +
+    String.raw`]\)`,
+  "gi",
+);
+const REFERENCE_LIST_START_REGEX =
+  /^##\s+(References|参考文献|参考资料)|<details\b[^>]*\bid=["']references["'][^>]*>/im;
+const REFERENCE_LIST_DATA_ID_REGEX =
+  /data-citation-id=["'](CIT-\d+-\d+|PLAN-\d+)["']/gi;
+const RESEARCH_CITATION_ID_TEXT_REGEX = /\b(CIT-\d+-\d+|PLAN-\d+)\b/gi;
+
+/**
+ * Decide whether a bracketed comma list is a citation group rather than a plain
+ * number array. Prefixed (`web-1`/`rag-1`/…) and research (`CIT-…`/`PLAN-…`)
+ * tokens are unambiguous citations. Bare-numeric lists are ambiguous with data
+ * arrays (`[1, 5, 9, 5, 3, 2, 7]`), so they only count as a citation group when
+ * they look like one: a small set of *distinct* numbers. This keeps `[1]` and
+ * `[1, 2, 3]` working while leaving real arrays untouched.
+ */
+function isLikelyCitationList(refs: string): boolean {
+  const ids = String(refs || "")
+    .split(/\s*,\s*/)
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (!ids.length) return false;
+  if (ids.some((id) => !/^\d+$/.test(id))) return true;
+  if (ids.length > 3) return false;
+  return new Set(ids).size === ids.length;
+}
 
 function unwrapBacktickedCitations(content: string): string {
   return content.replace(
     new RegExp(
-      "`(\\[" +
+      "`(\\[(" +
         MULTI_CIT +
-        '\\](?:\\s*\\(#references\\s+["\\u201c]citation["\\u201d]\\))?)`',
+        ')\\](?:\\s*\\(#(?:references|ref-[a-z0-9_-]+)\\s+["\\u201c]citation["\\u201d]\\))?)`',
       "g",
     ),
-    "$1",
+    // Only strip the backticks when the bracket is a citation group; a
+    // backticked number array (`[1, 5, 9, 5, 3, 2, 7]`) stays code.
+    (match, inner: string, refs: string) =>
+      isLikelyCitationList(refs) ? inner : match,
   );
 }
 
 function linkifyCitations(content: string): string {
-  const refSectionIdx = content.search(/^##\s+(References|参考文献)/m);
+  const citationNumbers = buildResearchCitationNumberMap(content);
+  const refSectionIdx = content.search(REFERENCE_LIST_START_REGEX);
   const body = refSectionIdx >= 0 ? content.slice(0, refSectionIdx) : content;
   const tail = refSectionIdx >= 0 ? content.slice(refSectionIdx) : "";
 
   // Normalize existing citation links that may have escaped brackets or smart quotes
-  let linked = body.replace(
-    ESCAPED_CITATION_LINK_REGEX,
-    (_match, id: string) => `[${id.trim()}](#references "citation")`,
+  let linked = body.replace(ESCAPED_CITATION_LINK_REGEX, (_match, id: string) =>
+    formatCitationLinks(id.trim(), citationNumbers),
   );
 
-  // Convert bare [web-1] / [rag-1] / [1] / [1, 3] references to a single citation link
-  linked = linked.replace(INLINE_CITATION_REGEX, (_match, refs: string) => {
-    return `[${refs.trim()}](#references "citation")`;
+  linked = linked.replace(
+    EXISTING_RESEARCH_CITATION_LINK_REGEX,
+    (_match, id: string) => formatCitationLinks(id.trim(), citationNumbers),
+  );
+
+  // Convert bare [web-1] / [rag-1] / [1] / [1, 3] references to a single citation
+  // link — but only when the bracket is a citation group, not a number array.
+  linked = linked.replace(INLINE_CITATION_REGEX, (match, refs: string) => {
+    return isLikelyCitationList(refs)
+      ? formatCitationLinks(refs, citationNumbers)
+      : match;
   });
 
   // Handle escaped bare citations like \[web-1\] or \[1\] that linkifyCitations missed
   linked = linked.replace(
     new RegExp(String.raw`\\\[(${MULTI_CIT})\\\](?!\s*\()`, "g"),
-    (_match, refs: string) => {
-      return `[${refs.trim()}](#references "citation")`;
+    (match, refs: string) => {
+      return isLikelyCitationList(refs)
+        ? formatCitationLinks(refs, citationNumbers)
+        : match;
     },
   );
 
   // Remove stray space before trailing punctuation after citations
   linked = linked.replace(
-    /(\(#references\s+"citation"\))\s+([.。,，;:!?])/g,
+    /(\(#(?:references|ref-[a-z0-9_-]+)\s+"citation"\))\s+([.。,，;:!?])/gi,
     "$1$2",
   );
 
   return linked + tail;
+}
+
+export function citationAnchorIdFor(id: string): string | null {
+  const normalized = String(id || "").trim();
+  if (!/^(?:CIT-\d+-\d+|PLAN-\d+)$/i.test(normalized)) return null;
+  return `ref-${normalized.toLowerCase().replace(/[^a-z0-9_-]+/g, "-")}`;
+}
+
+export function citationHrefForId(id: string): string {
+  const anchor = citationAnchorIdFor(id);
+  return anchor ? `#${anchor}` : "#references";
+}
+
+function citationHrefForRefs(refs: string): string {
+  const ids = String(refs || "")
+    .split(/\s*,\s*/)
+    .map((id) => id.trim())
+    .filter(Boolean);
+  return ids.length === 1 ? citationHrefForId(ids[0]) : "#references";
+}
+
+function isResearchCitationId(id: string): boolean {
+  return /^(?:CIT-\d+-\d+|PLAN-\d+)$/i.test(String(id || "").trim());
+}
+
+function buildResearchCitationNumberMap(content: string): Map<string, number> {
+  const map = new Map<string, number>();
+  const refSectionIdx = content.search(REFERENCE_LIST_START_REGEX);
+  const scan = refSectionIdx >= 0 ? content.slice(refSectionIdx) : content;
+
+  const add = (id: string) => {
+    const normalized = String(id || "").trim();
+    if (!isResearchCitationId(normalized) || map.has(normalized)) return;
+    map.set(normalized, map.size + 1);
+  };
+
+  for (const match of scan.matchAll(REFERENCE_LIST_DATA_ID_REGEX)) {
+    add(match[1] || "");
+  }
+  if (map.size === 0) {
+    for (const match of scan.matchAll(RESEARCH_CITATION_ID_TEXT_REGEX)) {
+      add(match[1] || "");
+    }
+  }
+  return map;
+}
+
+function formatCitationLinks(
+  refs: string,
+  citationNumbers: Map<string, number>,
+): string {
+  const ids = String(refs || "")
+    .split(/\s*,\s*/)
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (!ids.length) return `[${refs}](#references "citation")`;
+  if (ids.every(isResearchCitationId)) {
+    return ids
+      .map((id) => {
+        const number = citationNumbers.get(id) ?? Number.NaN;
+        const label = Number.isFinite(number) ? String(number) : id;
+        return `[${label}](${citationHrefForId(id)} "citation")`;
+      })
+      .join("");
+  }
+  const label = ids.join(", ");
+  return `[${label}](${citationHrefForRefs(label)} "citation")`;
+}
+
+function maskProtectedSpans(
+  content: string,
+  regex: RegExp,
+  label: string,
+): { masked: string; restore: (value: string) => string } {
+  const protectedSpans: string[] = [];
+  const masked = content.replace(regex, (match) => {
+    protectedSpans.push(match);
+    return `\u0000${label}_${protectedSpans.length - 1}\u0000`;
+  });
+  const placeholderRegex = new RegExp(`\\u0000${label}_(\\d+)\\u0000`, "g");
+  return {
+    masked,
+    restore: (value: string) =>
+      value.replace(
+        placeholderRegex,
+        (_match, idx: string) => protectedSpans[Number(idx)] ?? "",
+      ),
+  };
+}
+
+function linkifyCitationsOutsideCode(content: string): string {
+  const fenced = maskProtectedSpans(
+    content,
+    FENCED_CODE_BLOCK_REGEX,
+    "FENCED_CODE",
+  );
+  const math = maskProtectedSpans(fenced.masked, MATH_SPAN_REGEX, "MATH");
+  const unwrapped = unwrapBacktickedCitations(math.masked);
+  const inline = maskProtectedSpans(
+    unwrapped,
+    INLINE_CODE_SPAN_REGEX,
+    "INLINE_CODE",
+  );
+  return fenced.restore(
+    math.restore(inline.restore(linkifyCitations(inline.masked))),
+  );
 }
 
 export function normalizeMarkdownForDisplay(content: string): string {
@@ -392,7 +582,20 @@ export function normalizeMarkdownForDisplay(content: string): string {
     removeEmptyHtmlTables(normalized),
   ).replace(/\n{3,}/g, "\n\n");
   const safe = escapeUnknownHtmlTagsForDisplay(cleaned);
-  return linkifyCitations(unwrapBacktickedCitations(safe));
+  return linkifyCitationsOutsideCode(safe);
+}
+
+/**
+ * Strip machine annotations the model occasionally echoes from tool results
+ * into its answer — e.g. a standalone "[Generated artifacts: foo.pdf]" line.
+ * The files themselves render as dedicated cards under the message, so the
+ * annotation is pure noise in the prose.
+ */
+export function stripArtifactAnnotations(content: string): string {
+  if (!content.includes("Generated artifacts")) return content;
+  return content
+    .replace(/^\s*\[Generated artifacts?:[^\]]*\]\s*$/gim, "")
+    .trim();
 }
 
 export function hasVisibleMarkdownContent(content: string): boolean {

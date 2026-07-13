@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 from loguru import logger
 
+from deeptutor.services.llm.openai_http_client import disable_ssl_verify_enabled
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, ToolCallRequest
 from deeptutor.services.llm.provider_core.openai_responses import (
     consume_sse,
@@ -76,7 +77,7 @@ class OpenAICodexProvider(LLMProvider):
                     DEFAULT_CODEX_URL,
                     headers,
                     body,
-                    verify=True,
+                    verify=not disable_ssl_verify_enabled(),
                     on_content_delta=on_content_delta,
                 )
             except Exception as exc:

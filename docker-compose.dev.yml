@@ -1,7 +1,7 @@
 # ============================================
 # DeepTutor Docker Compose - Development Override
 # ============================================
-# Use with: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# Use with: python scripts/docker_compose.py -f docker-compose.yml -f docker-compose.dev.yml up
 #
 # This override file provides:
 #   - Hot-reload for both frontend and backend
@@ -38,10 +38,6 @@ services:
       - ./data/user:/app/data/user
       - ./data/memory:/app/data/memory
       - ./data/knowledge_bases:/app/data/knowledge_bases
-
-    environment:
-      - NODE_ENV=development
-      - NEXT_PUBLIC_API_BASE=http://localhost:${BACKEND_PORT:-8001}
 
     # In development, we might want to see logs directly
     # Uncomment the following to disable log files and see everything in console

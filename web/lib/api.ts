@@ -1,128 +1,92 @@
-// API configuration and utility functions
-
-// Get API base URL from environment variable.
-// The launcher injects NEXT_PUBLIC_API_BASE from the canonical project-root `.env`.
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE ||
-  (() => {
-    if (typeof window !== "undefined") {
-      console.error("NEXT_PUBLIC_API_BASE is not set.");
-      console.error(
-        "Please configure NEXT_PUBLIC_API_BASE in your environment and restart the application.",
-      );
-      console.error(
-        "Run python scripts/start_tour.py to rebuild your local setup if needed.",
-      );
-    }
-    throw new Error(
-      "NEXT_PUBLIC_API_BASE is not configured. Please set it in your environment and restart.",
-    );
-  })();
-
-// Hostnames that always refer to the local machine. When the build-time base
-// URL points to one of these, but the page is opened from a non-local origin,
-// we rewrite the hostname so requests reach the actual server.
-const LOOPBACK_HOSTS = new Set([
-  "localhost",
-  "127.0.0.1",
-  "0.0.0.0",
-  "::1",
-  "[::1]",
-]);
-
-let warnedAboutHostSwap = false;
-
-function isLoopbackHost(host: string): boolean {
-  return LOOPBACK_HOSTS.has(host.toLowerCase());
-}
+// API configuration and utility functions.
+//
+// The frontend bundle is now URL-agnostic: the browser issues requests against
+// the frontend origin (`:3782/api/...` and `:3782/api/.../ws`), and
+// `web/proxy.ts` rewrites `/api/*` and `/ws/*` to the configured backend on
+// every request. This means there is no build-time or runtime URL substitution
+// in the bundle, and no placeholder token to keep alive. `apiUrl` and `wsUrl`
+// stay as one-liner pass-throughs so the dozens of existing call sites continue
+// to compile and work without modification.
 
 /**
- * Resolve the effective API base URL at runtime.
+ * Construct a full API URL from a path.
  *
- * NEXT_PUBLIC_API_BASE is a build-time constant that is typically set to
- * http://localhost:<port>.  When another machine on the LAN opens the app that
- * constant still points at "localhost", which the remote browser resolves to
- * its *own* loopback address instead of the server.  We detect this situation
- * and swap the hostname for window.location.hostname so the request reaches
- * the actual server regardless of which machine opened the page.
+ * Pass-through: returns the path unchanged. The actual backend URL is
+ * determined at request time by `web/proxy.ts`, which reads
+ * `DEEPTUTOR_API_BASE_URL` (exported by the container entrypoint from
+ * `data/user/settings/system.json`).
  *
- * The full path/search is preserved (so deployments behind a reverse proxy
- * like `http://localhost:8001/api` continue to work after the rewrite).
- */
-export function resolveBase(): string {
-  const base = API_BASE_URL;
-  if (typeof window === "undefined") return base;
-  try {
-    const url = new URL(base);
-    const clientHost = window.location.hostname;
-    if (isLoopbackHost(url.hostname) && !isLoopbackHost(clientHost)) {
-      url.hostname = clientHost;
-      if (!warnedAboutHostSwap) {
-        warnedAboutHostSwap = true;
-        console.warn(
-          `[api] NEXT_PUBLIC_API_BASE points to "${base}" but the page is served from "${clientHost}"; ` +
-            `routing API/WebSocket calls to "${url.toString()}" instead.`,
-        );
-      }
-      // Use href (full URL) instead of origin so we keep any path/search.
-      return url.toString().replace(/\/+$/, "");
-    }
-  } catch {
-    // base is not a valid absolute URL – return as-is
-  }
-  return base;
-}
-
-/**
- * Construct a full API URL from a path
  * @param path - API path (e.g., '/api/v1/knowledge/list')
- * @returns Full URL (e.g., 'http://localhost:8001/api/v1/knowledge/list')
+ * @returns The same path, unchanged
  */
 export function apiUrl(path: string): string {
-  // Remove leading slash if present to avoid double slashes
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-
-  // Remove trailing slash from base URL if present
-  const base = resolveBase();
-  const normalizedBase = base.endsWith("/") ? base.slice(0, -1) : base;
-
-  return `${normalizedBase}${normalizedPath}`;
+  return path;
 }
 
 /**
- * Construct a WebSocket URL from a path
+ * Construct a WebSocket URL from a path.
+ *
+ * Pass-through: returns the path unchanged. `proxy.ts` rewrites `/ws/*` to
+ * the configured backend, and the runtime upgrades to `ws://` /
+ * `wss://` based on the backend's scheme.
+ *
  * @param path - WebSocket path (e.g., '/api/v1/solve')
- * @returns WebSocket URL (e.g., 'ws://localhost:8001/api/v1/ws')
+ * @returns The same path, unchanged
  */
 export function wsUrl(path: string): string {
-  // Security Hardening: Convert http to ws and https to wss.
-  // In production environments (where API_BASE_URL starts with https), this ensures secure websockets.
-  const base = resolveBase()
-    .replace(/^http:/, "ws:")
-    .replace(/^https:/, "wss:");
-
-  // Remove leading slash if present to avoid double slashes
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-
-  // Remove trailing slash from base URL if present
-  const normalizedBase = base.endsWith("/") ? base.slice(0, -1) : base;
-
-  return `${normalizedBase}${normalizedPath}`;
+  return path;
 }
 
-const AUTH_ENABLED = process.env.NEXT_PUBLIC_AUTH_ENABLED === "true";
+/**
+ * Parse a "DEEPTUTOR_AUTH_ENABLED"-style flag at runtime.
+ *
+ * Used by both `apiFetch` (frontend) and `web/proxy.ts` (auth redirect) to
+ * decide whether to gate requests. Evaluated with a runtime regex so the
+ * value can be set by the container entrypoint on every start (no build-time
+ * inlining).
+ */
+export function parseAuthEnabled(raw: string | undefined): boolean {
+  return /^(1|true|yes|on)$/i.test((raw ?? "").trim());
+}
+
+// Whether auth is enabled, learned at runtime — NOT from a build-time env var.
+// The browser bundle never sees `DEEPTUTOR_AUTH_ENABLED` (it isn't a
+// `NEXT_PUBLIC_` var, so Next.js does not inline it), and auth is a runtime
+// setting that must not be baked at build time anyway. `fetchAuthStatus()` in
+// `web/lib/auth.ts` calls `setRuntimeAuthEnabled()` once the backend reports the
+// real state. Until then it defaults to `false`, so a stray 401 in the default
+// auth-disabled deployment never bounces the user to /login. The server-side
+// gate (web/proxy.ts middleware) enforces auth independently; this flag only
+// drives the client's in-session 401 → /login redirect.
+let runtimeAuthEnabled = false;
+
+/** Record the backend-reported auth state for `apiFetch`'s 401 redirect gate. */
+export function setRuntimeAuthEnabled(enabled: boolean): void {
+  runtimeAuthEnabled = enabled;
+}
 
 /**
  * Authenticated fetch wrapper. Behaves identically to `fetch` but automatically
  * redirects to /login when the backend returns 401 (expired / invalid token).
+ *
+ * Pass `skipAuthRedirect: true` for endpoints where a 401 is an expected,
+ * recoverable response that the caller wants to handle inline — most notably
+ * the login/register endpoints, where 401 means "wrong credentials" and must
+ * surface as a form error rather than reload the page.
  */
 export async function apiFetch(
   input: RequestInfo | URL,
-  init?: RequestInit,
+  init?: RequestInit & { skipAuthRedirect?: boolean },
 ): Promise<Response> {
-  const res = await fetch(input, { credentials: "include", ...init });
+  const { skipAuthRedirect, ...fetchInit } = init ?? {};
+  const res = await fetch(input, { credentials: "include", ...fetchInit });
 
-  if (res.status === 401 && AUTH_ENABLED && typeof window !== "undefined") {
+  if (
+    res.status === 401 &&
+    runtimeAuthEnabled &&
+    !skipAuthRedirect &&
+    typeof window !== "undefined"
+  ) {
     const next = encodeURIComponent(window.location.pathname);
     window.location.href = `/login?next=${next}`;
     return new Promise(() => {});

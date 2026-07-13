@@ -10,6 +10,7 @@ import {
   FileText,
   FileSearch,
   Globe,
+  GraduationCap,
   Lightbulb,
   Loader2,
   MessageSquare,
@@ -23,7 +24,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl } from "@/lib/api";
 import AssistantResponse from "@/components/common/AssistantResponse";
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import ProcessLogs from "@/components/common/ProcessLogs";
@@ -49,7 +50,6 @@ import {
   normalizeResearchConfig,
   validateResearchConfig,
   type DeepResearchFormConfig,
-  type ResearchSource,
 } from "@/lib/research-types";
 
 /* ------------------------------------------------------------------ */
@@ -74,21 +74,12 @@ const TOOL_LABELS: Record<string, string> = {
   paper_search: "Arxiv Search",
 };
 
-const RESEARCH_SOURCE_OPTIONS: Array<{
-  name: ResearchSource;
-  label: string;
-  icon: LucideIcon;
-}> = [
-  { name: "kb", label: "Knowledge Base", icon: Database },
-  { name: "web", label: "Web", icon: Globe },
-  { name: "papers", label: "Papers", icon: FileSearch },
-];
-
 const CAPABILITY_ICONS: Record<string, LucideIcon> = {
   chat: MessageSquare,
   deep_solve: BrainCircuit,
   deep_question: PenLine,
   deep_research: Microscope,
+  mastery_path: GraduationCap,
 };
 
 const CAPABILITY_LABELS: Record<string, string> = {
@@ -96,6 +87,7 @@ const CAPABILITY_LABELS: Record<string, string> = {
   deep_solve: "Deep Solve",
   deep_question: "Quiz Generation",
   deep_research: "Deep Research",
+  mastery_path: "Mastery Path",
 };
 
 function getToolIcon(name: string): LucideIcon {
@@ -399,7 +391,7 @@ function ToolExecutor({
         else coerced[p.name] = raw;
       }
 
-      const res = await fetch(
+      const res = await apiFetch(
         apiUrl(`/api/v1/plugins/tools/${tool.name}/execute-stream`),
         {
           method: "POST",
@@ -837,7 +829,7 @@ function DeepQuestionTester({
               max_questions: config.max_questions,
             };
 
-      const res = await fetch(
+      const res = await apiFetch(
         apiUrl(
           `/api/v1/plugins/capabilities/${capability.name}/execute-stream`,
         ),
@@ -1235,7 +1227,7 @@ function DeepResearchTester({
     setStreaming(true);
 
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         apiUrl(
           `/api/v1/plugins/capabilities/${capability.name}/execute-stream`,
         ),
@@ -1245,10 +1237,7 @@ function DeepResearchTester({
           body: JSON.stringify({
             content,
             tools: enabledTools,
-            knowledge_bases:
-              config.sources.includes("kb") && knowledgeBase
-                ? [knowledgeBase]
-                : [],
+            knowledge_bases: knowledgeBase ? [knowledgeBase] : [],
             language: i18n.language,
             config: buildResearchWSConfig(config),
           }),
@@ -1346,15 +1335,6 @@ function DeepResearchTester({
     }
   };
 
-  const toggleSource = (source: ResearchSource) => {
-    onConfigChange({
-      ...config,
-      sources: config.sources.includes(source)
-        ? config.sources.filter((item) => item !== source)
-        : [...config.sources, source],
-    });
-  };
-
   return (
     <div className="space-y-4">
       <ResearchConfigPanel
@@ -1364,37 +1344,6 @@ function DeepResearchTester({
         onChange={onConfigChange}
         onToggleCollapsed={() => {}}
       />
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-3">
-        <div className="mb-2 text-[12px] font-medium text-[var(--foreground)]">
-          {t("Sources")}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {RESEARCH_SOURCE_OPTIONS.map((source) => {
-            const active = config.sources.includes(source.name);
-            const Icon = source.icon;
-            return (
-              <button
-                key={source.name}
-                type="button"
-                onClick={() => toggleSource(source.name)}
-                className={`inline-flex h-[32px] items-center gap-1.5 rounded-full px-3 text-[12px] font-medium transition-[background-color,color,box-shadow] ${
-                  active
-                    ? "bg-[var(--muted)] text-[var(--foreground)] shadow-[0_1px_2px_rgba(15,23,42,0.05)] ring-1 ring-[var(--border)]/55"
-                    : "text-[var(--muted-foreground)]/75 hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
-                }`}
-              >
-                <Icon size={13} strokeWidth={1.7} />
-                {t(source.label)}
-              </button>
-            );
-          })}
-        </div>
-        <div className="mt-2 text-[11px] text-[var(--muted-foreground)]">
-          {config.sources.length
-            ? t("Selected sources will be queried during research.")
-            : t("No source selected: the run will use llm-only research.")}
-        </div>
-      </div>
       <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-3">
         <textarea
           value={input}
@@ -1522,7 +1471,7 @@ function CapabilityTester({
     setStreaming(true);
 
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         apiUrl(
           `/api/v1/plugins/capabilities/${capability.name}/execute-stream`,
         ),
@@ -1718,7 +1667,7 @@ export default function PlaygroundPage() {
       setLoading(true);
       try {
         const [pluginRes, knowledgeBaseList] = await Promise.all([
-          fetch(apiUrl("/api/v1/plugins/list")),
+          apiFetch(apiUrl("/api/v1/plugins/list")),
           listKnowledgeBases(),
         ]);
         const data = await pluginRes.json();
@@ -1853,7 +1802,7 @@ export default function PlaygroundPage() {
     <div className="min-h-screen bg-[var(--background)]">
       <div className="mx-auto max-w-5xl px-6 py-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)]">
+          <h1 className="font-serif text-2xl font-bold tracking-tight text-[var(--foreground)]">
             {t("Playground")}
           </h1>
           <p className="mt-1 text-[13px] text-[var(--muted-foreground)]">

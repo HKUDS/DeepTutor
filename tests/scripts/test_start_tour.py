@@ -1,223 +1,30 @@
 from __future__ import annotations
 
 import importlib.util
-import locale
 from pathlib import Path
-import shutil
-import sys
-import types
 from unittest import mock
 
 
-def _load_start_tour_module():
+def _load_module():
     module_path = Path(__file__).resolve().parents[2] / "scripts" / "start_tour.py"
-
-    cli_kit = types.ModuleType("_cli_kit")
-    for name in (
-        "accent",
-        "banner",
-        "bold",
-        "confirm",
-        "configure_text_streams",
-        "countdown",
-        "dim",
-        "log_error",
-        "log_info",
-        "log_success",
-        "log_warn",
-        "select",
-        "spinner",
-        "step",
-        "text_input",
-    ):
-        setattr(cli_kit, name, lambda *args, **kwargs: None)
-
-    deeptutor_pkg = types.ModuleType("deeptutor")
-    services_pkg = types.ModuleType("deeptutor.services")
-    config_module = types.ModuleType("deeptutor.services.config")
-    config_module.get_config_test_runner = lambda: None
-    config_module.get_env_store = lambda: None
-    config_module.get_model_catalog_service = lambda: None
-
-    original_modules = {
-        "_cli_kit": sys.modules.get("_cli_kit"),
-        "deeptutor": sys.modules.get("deeptutor"),
-        "deeptutor.services": sys.modules.get("deeptutor.services"),
-        "deeptutor.services.config": sys.modules.get("deeptutor.services.config"),
-    }
-
-    services_pkg.config = config_module
-    deeptutor_pkg.services = services_pkg
-    sys.modules["_cli_kit"] = cli_kit
-    sys.modules["deeptutor"] = deeptutor_pkg
-    sys.modules["deeptutor.services"] = services_pkg
-    sys.modules["deeptutor.services.config"] = config_module
-
-    try:
-        spec = importlib.util.spec_from_file_location("start_tour_under_test", module_path)
-        assert spec and spec.loader
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module
-    finally:
-        for module_name, original_module in original_modules.items():
-            if original_module is None:
-                sys.modules.pop(module_name, None)
-            else:
-                sys.modules[module_name] = original_module
+    spec = importlib.util.spec_from_file_location("start_tour_under_test", module_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
-def test_stream_text_kwargs_use_best_effort_decoding() -> None:
-    start_tour = _load_start_tour_module()
+def test_start_tour_parser_supports_cli_and_home(tmp_path: Path) -> None:
+    start_tour = _load_module()
+    args = start_tour.build_parser().parse_args(["--cli", "--home", str(tmp_path)])
 
-    kwargs = start_tour._stream_text_kwargs()
-
-    assert kwargs["text"] is True
-    assert kwargs["errors"] == "replace"
-    assert kwargs["encoding"] == locale.getpreferredencoding(False)
+    assert args.cli is True
+    assert args.home == tmp_path
 
 
-# ---------------------------------------------------------------------------
-# _resolve_python tests (issue #289 — Python 3.14+ compatibility)
-# ---------------------------------------------------------------------------
+def test_start_tour_delegates_to_init_command(tmp_path: Path) -> None:
+    start_tour = _load_module()
+    with mock.patch.object(start_tour, "run_init") as run_init:
+        start_tour.main(["--cli", "--home", str(tmp_path)])
 
-
-def _get_resolve_python():
-    """Import _resolve_python without triggering full module load."""
-    start_tour = _load_start_tour_module()
-    return start_tour._resolve_python
-
-
-class TestResolvePython:
-    """Verify _resolve_python handles broken sys.executable gracefully."""
-
-    def test_returns_resolved_path_when_executable_exists(self) -> None:
-        resolve = _get_resolve_python()
-        real_python = sys.executable
-        with mock.patch("sys.executable", real_python):
-            result = resolve()
-        assert Path(result).exists()
-
-    def test_falls_back_to_shutil_which_when_executable_missing(self) -> None:
-        """Simulates Python 3.14+ on Windows where sys.executable is bogus."""
-        resolve = _get_resolve_python()
-        fake_path = "/nonexistent/python3.14"
-        expected = shutil.which("python3") or shutil.which("python") or "python3"
-        with mock.patch("sys.executable", fake_path):
-            result = resolve()
-        assert result == expected
-
-    def test_falls_back_when_executable_is_empty(self) -> None:
-        """sys.executable can be '' in embedded or frozen environments."""
-        resolve = _get_resolve_python()
-        expected = shutil.which("python3") or shutil.which("python") or "python3"
-        with mock.patch("sys.executable", ""):
-            result = resolve()
-        assert result == expected
-
-    def test_ultimate_fallback_when_nothing_found(self) -> None:
-        """If sys.executable is empty and PATH has no python, return 'python3'."""
-        resolve = _get_resolve_python()
-        with (
-            mock.patch("sys.executable", ""),
-            mock.patch("shutil.which", return_value=None),
-        ):
-            result = resolve()
-        assert result == "python3"
-
-    def test_preserves_valid_sys_executable(self) -> None:
-        """Normal case: sys.executable points to a real file."""
-        resolve = _get_resolve_python()
-        result = resolve()
-        assert Path(result).exists()
-        assert "python" in Path(result).name.lower()
-
-    def test_install_commands_use_resolved_python(self) -> None:
-        """_install_commands should embed _PYTHON, not raw sys.executable."""
-        start_tour = _load_start_tour_module()
-        python_used = start_tour._PYTHON
-        catalog: dict = {"services": {}}
-        cmds = start_tour._install_commands("cli-core", catalog)
-        for cmd, _cwd in cmds:
-            if cmd[0] != "npm":
-                assert cmd[0] == python_used, (
-                    f"Expected resolved python {python_used!r}, got {cmd[0]!r}"
-                )
-
-    def test_install_commands_support_web_addon_profiles(self) -> None:
-        start_tour = _load_start_tour_module()
-        catalog: dict = {"services": {}}
-
-        tutorbot_cmds = start_tour._install_commands("web-tutorbot", catalog)
-        matrix_cmds = start_tour._install_commands("web-matrix", catalog)
-
-        assert any("requirements/tutorbot.txt" in cmd for cmd, _cwd in tutorbot_cmds)
-        assert any(
-            cmd[0].startswith("npm") or cmd[0].endswith("npm") for cmd, _cwd in tutorbot_cmds
-        )
-        assert any("requirements/matrix.txt" in cmd for cmd, _cwd in matrix_cmds)
-
-    def test_requirements_for_install_can_include_math_animator(self) -> None:
-        start_tour = _load_start_tour_module()
-
-        requirements = start_tour._requirements_for_install(
-            "web-tutorbot",
-            include_math_animator=True,
-        )
-
-        assert requirements == [
-            "requirements/tutorbot.txt",
-            "requirements/math-animator.txt",
-        ]
-
-    def test_node_version_requires_next_compatible_runtime(self) -> None:
-        start_tour = _load_start_tour_module()
-
-        assert start_tour._node_version_supported("v20.9.0")
-        assert start_tour._node_version_supported("v22.1.0")
-        assert not start_tour._node_version_supported("v18.20.0")
-
-
-def test_ensure_env_file_copies_template_when_missing(tmp_path: Path) -> None:
-    start_tour = _load_start_tour_module()
-    env_path = tmp_path / ".env"
-    template_path = tmp_path / ".env.example"
-    template_path.write_text("BACKEND_PORT=8001\n", encoding="utf-8")
-
-    created = start_tour._ensure_env_file(env_path=env_path, template_path=template_path)
-
-    assert created is True
-    assert env_path.read_text(encoding="utf-8") == "BACKEND_PORT=8001\n"
-
-
-def test_save_ui_language_preserves_existing_theme(tmp_path: Path) -> None:
-    start_tour = _load_start_tour_module()
-    settings_path = tmp_path / "interface.json"
-    settings_path.write_text('{"theme":"glass","language":"en"}', encoding="utf-8")
-
-    start_tour._save_ui_language("zh", path=settings_path)
-
-    saved = settings_path.read_text(encoding="utf-8")
-    assert '"theme": "glass"' in saved
-    assert '"language": "zh"' in saved
-
-
-def test_embedding_model_suggestions_include_gemini() -> None:
-    start_tour = _load_start_tour_module()
-    assert start_tour.EMBEDDING_MODEL_SUGGESTIONS["gemini"] == "gemini-embedding-001"
-
-
-def test_embedding_provider_options_include_gemini() -> None:
-    start_tour = _load_start_tour_module()
-    fake_spec = types.SimpleNamespace(
-        label="Gemini",
-        default_api_base="https://generativelanguage.googleapis.com/v1beta/openai/embeddings",
-        is_local=False,
-    )
-    with mock.patch.object(
-        start_tour,
-        "_load_provider_metadata",
-        return_value=({"gemini": fake_spec}, None, None),
-    ):
-        options = start_tour._embedding_provider_options(current=None)
-    assert any(value == "gemini" for value, _label, _desc in options)
+    run_init.assert_called_once_with(cli_only=True, home=tmp_path)

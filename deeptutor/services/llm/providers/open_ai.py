@@ -10,6 +10,8 @@ from typing import Callable, Protocol, TypeVar, cast
 import httpx
 import openai
 
+from deeptutor.services.config import load_system_settings
+
 from ..config import LLMConfig, get_token_limit_kwargs
 from ..exceptions import LLMConfigError
 from ..registry import register_provider
@@ -56,7 +58,7 @@ class OpenAIProvider(BaseLLMProvider):
     def __init__(self, config: LLMConfig) -> None:
         super().__init__(config)
         http_client = None
-        if os.getenv("DISABLE_SSL_VERIFY", "").lower() in ("true", "1", "yes"):
+        if load_system_settings()["disable_ssl_verify"]:
             if os.getenv("ENVIRONMENT", "").lower() in ("prod", "production"):
                 raise LLMConfigError("DISABLE_SSL_VERIFY is not allowed in production")
             logger.warning("SSL verification disabled for OpenAI HTTP client")

@@ -48,14 +48,6 @@ class OpenRouterProvider(BaseSearchProvider):
                 ) from e
 
             if not self.api_key:
-                # Try getting from env if not passed explicitly (though BaseSearchProvider handles this usually)
-                import os
-
-                self.api_key = os.environ.get("SEARCH_API_KEY") or os.environ.get(
-                    "OPENROUTER_API_KEY"
-                )
-
-            if not self.api_key:
                 raise ValueError("API Key is required for OpenRouter search provider.")
 
             self._client = OpenAI(

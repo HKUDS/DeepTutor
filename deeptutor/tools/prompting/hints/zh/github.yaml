@@ -1,0 +1,6 @@
+short_description: "通过 `gh` CLI 只读地查询 GitHub 上的 PR / issue / repo / CI 运行状态。"
+when_to_use: "用户问到具体 GitHub 资源时使用：'看看这个 PR 的 CI 通过了吗'、'某 repo 最近有什么 issue'、'这个 release 的 changelog'。**普通代码概念解释不要调它**，用通识或 web_search。"
+input_format: "{\"query_type\": \"pr|issue|run|repo|api\", \"target\": \"owner/repo[#number] 或完整 URL；api 类型时是 gh api 的相对路径\"}。"
+guideline: "本工具**只能读**，不会代用户评论、关 issue、合 PR——需要修改 GitHub 状态时让用户自己操作。返回的是 JSON，自己提取关键字段汇报给用户即可。"
+note: "服务端没装 `gh` CLI 时工具会返回一个明确错误，请如实告诉用户；不要凭空编造 GitHub 上的状态。"
+phase: "exploration"

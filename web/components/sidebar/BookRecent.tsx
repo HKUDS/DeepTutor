@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { apiUrl } from "@/lib/api";
+import { useTranslation } from "react-i18next";
+import { apiFetch, apiUrl } from "@/lib/api";
+import { formatRelativeTime } from "@/lib/relative-time";
 
 interface RecentBook {
   id: string;
@@ -24,31 +26,20 @@ const STATUS_DOT: Record<string, string> = {
   error: "bg-rose-400",
 };
 
-function relativeTime(seconds: number): string {
-  if (!seconds || Number.isNaN(seconds)) return "";
-  const diff = Date.now() / 1000 - seconds;
-  if (diff < 60) return "now";
-  const mins = Math.floor(diff / 60);
-  if (mins < 60) return `${mins}m`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d`;
-}
-
 interface BookRecentProps {
   collapsed?: boolean;
   limit?: number;
 }
 
 export function BookRecent({ collapsed = false, limit = 4 }: BookRecentProps) {
+  const { i18n } = useTranslation();
   const [books, setBooks] = useState<RecentBook[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(apiUrl("/api/v1/book/books"));
+        const res = await apiFetch(apiUrl("/api/v1/book/books"));
         if (!res.ok) return;
         const data = await res.json();
         const items: RecentBook[] = Array.isArray(data?.books)
@@ -89,7 +80,7 @@ export function BookRecent({ collapsed = false, limit = 4 }: BookRecentProps) {
               {book.title || "Untitled book"}
             </span>
             <span className="shrink-0 text-[10px] tabular-nums text-[var(--muted-foreground)]/40">
-              {relativeTime(Number(book.updated_at) || 0)}
+              {formatRelativeTime(Number(book.updated_at) || 0, i18n.language)}
             </span>
           </Link>
         );

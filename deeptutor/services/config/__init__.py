@@ -1,8 +1,7 @@
-"""Configuration helpers backed by runtime YAML and the project `.env` file."""
+"""Configuration helpers backed by runtime files under data/user/settings."""
 
 import importlib
 
-from .env_store import ConfigSummary, EnvStore, get_env_store
 from .knowledge_base_config import (
     KnowledgeBaseConfigService,
     get_kb_config_service,
@@ -20,15 +19,25 @@ from .loader import (
     resolve_config_path,
 )
 from .model_catalog import ModelCatalogService, get_model_catalog_service
+from .runtime_settings import (
+    RuntimeSettingsService,
+    ensure_runtime_settings_files,
+    export_runtime_settings_to_env,
+    get_runtime_settings_service,
+    load_auth_settings,
+    load_graphrag_settings,
+    load_integrations_settings,
+    load_lightrag_settings,
+    load_llamaindex_settings,
+    load_mineru_settings,
+    load_system_settings,
+)
 
 # Re-export the loader module itself for code paths that monkeypatch via the
 # package namespace, e.g. ``deeptutor.services.config.loader.PROJECT_ROOT``.
 loader = importlib.import_module(f"{__name__}.loader")
 
 __all__ = [
-    "ConfigSummary",
-    "EnvStore",
-    "get_env_store",
     "LaunchSettings",
     "load_launch_settings",
     # From loader.py
@@ -59,6 +68,17 @@ __all__ = [
     "ConfigTestRunner",
     "TestRun",
     "get_config_test_runner",
+    "RuntimeSettingsService",
+    "ensure_runtime_settings_files",
+    "export_runtime_settings_to_env",
+    "get_runtime_settings_service",
+    "load_auth_settings",
+    "load_graphrag_settings",
+    "load_integrations_settings",
+    "load_lightrag_settings",
+    "load_llamaindex_settings",
+    "load_mineru_settings",
+    "load_system_settings",
 ]
 
 

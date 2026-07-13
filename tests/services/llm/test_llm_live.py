@@ -1,7 +1,7 @@
 """
 Live LLM connectivity test.
 
-Run directly to verify your .env / config is working:
+Run directly to verify your data/user/settings model config is working:
 
     python tests/services/llm/test_llm_live.py
     python tests/services/llm/test_llm_live.py --stream    # also test streaming

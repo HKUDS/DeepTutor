@@ -13,6 +13,8 @@ from llama_index.core.bridge.pydantic import PrivateAttr
 from deeptutor.services.embedding import EmbeddingConfig, get_embedding_client, get_embedding_config
 from deeptutor.services.embedding.validation import validate_embedding_batch
 
+from .config import chunk_geometry
+
 
 def _config_fingerprint(config: EmbeddingConfig) -> tuple[Any, ...]:
     """Return the settings fields that affect LlamaIndex embedding behavior."""
@@ -139,13 +141,14 @@ def configure_llamaindex_settings(logger=None) -> None:
     else:
         Settings.embed_model = CustomEmbedding(embedding_config=embedding_cfg)
         configured = True
-    Settings.chunk_size = 512
-    Settings.chunk_overlap = 50
+    chunk_size, chunk_overlap = chunk_geometry()
+    Settings.chunk_size = chunk_size
+    Settings.chunk_overlap = chunk_overlap
 
     if logger is not None:
         message = (
             f"LlamaIndex configured: embedding={embedding_cfg.model} "
-            f"({embedding_cfg.dim}D, {embedding_cfg.binding}), chunk_size=512"
+            f"({embedding_cfg.dim}D, {embedding_cfg.binding}), chunk_size={chunk_size}"
         )
         if configured:
             logger.info(message)

@@ -28,9 +28,7 @@ def test_status_redacts_model_for_non_admin(mu_isolated_root, as_user, monkeypat
 
     monkeypatch.setattr(system_router, "get_llm_config", lambda: _FakeLLM())
     monkeypatch.setattr(system_router, "get_embedding_config", lambda: _FakeEmbedding())
-    monkeypatch.setattr(
-        system_router, "resolve_search_runtime_config", lambda: _FakeSearch()
-    )
+    monkeypatch.setattr(system_router, "resolve_search_runtime_config", lambda: _FakeSearch())
 
     with as_user("u_alice", role="user"):
         result = asyncio.run(system_router.get_system_status())
@@ -60,9 +58,7 @@ def test_status_keeps_model_for_admin(mu_isolated_root, as_user, monkeypatch):
 
     monkeypatch.setattr(system_router, "get_llm_config", lambda: _FakeLLM())
     monkeypatch.setattr(system_router, "get_embedding_config", lambda: _FakeEmbedding())
-    monkeypatch.setattr(
-        system_router, "resolve_search_runtime_config", lambda: _FakeSearch()
-    )
+    monkeypatch.setattr(system_router, "resolve_search_runtime_config", lambda: _FakeSearch())
 
     with as_user("u_admin", role="admin"):
         result = asyncio.run(system_router.get_system_status())

@@ -13,11 +13,8 @@ import unicodedata
 class DocumentValidator:
     """Document validation utilities"""
 
-    # Maximum file size in bytes (100MB)
-    MAX_FILE_SIZE: ClassVar[int] = 100 * 1024 * 1024
-
-    # Maximum file size for PDF processing (50MB to prevent resource exhaustion)
-    MAX_PDF_SIZE: ClassVar[int] = 50 * 1024 * 1024
+    # Maximum file size in bytes (200MB), applied uniformly to every format.
+    MAX_FILE_SIZE: ClassVar[int] = 200 * 1024 * 1024
 
     # Allowed file extensions
     ALLOWED_EXTENSIONS: ClassVar[set[str]] = {
@@ -95,12 +92,6 @@ class DocumentValidator:
 
         if not safe_name or safe_name in (".", "..") or safe_name.strip("_") == "":
             raise ValueError("Invalid filename")
-
-        # Additional size check for PDFs to prevent resource exhaustion
-        if ext == ".pdf" and file_size is not None and file_size > DocumentValidator.MAX_PDF_SIZE:
-            raise ValueError(
-                f"PDF file too large: {file_size} bytes. Maximum allowed for PDFs: {DocumentValidator.MAX_PDF_SIZE} bytes"
-            )
 
         # Check file extension
         exts_to_check = allowed_extensions or DocumentValidator.ALLOWED_EXTENSIONS

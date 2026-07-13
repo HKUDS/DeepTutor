@@ -1,0 +1,6 @@
+short_description: "Discover the user's notebooks (no args → index) or the records inside one notebook (notebook_id → drill-down)."
+when_to_use: "Call BEFORE `write_note` in edit mode so you have valid record ids. Also useful when the user references a notebook by description but you need its exact id, or when planning a multi-step save."
+input_format: "{} for the index, or {\"notebook_id\": \"id from the system-prompt notebook list / from a prior index call\"} to list records in one notebook."
+guideline: "Index mode shows id + name + record_count; drill-down shows record id + title + summary + date (newest first, capped at ~80). Don't call list_notebook just to confirm notebook names already visible in the system-prompt manifest — only call it when you genuinely need fresh info (e.g. to discover record ids for an edit, or after the user adds notebooks)."
+note: "Auto-mounted only when the user has at least one notebook. Output is markdown so you can paste/quote chunks back to the user."
+phase: "exploration"

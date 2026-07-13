@@ -1,0 +1,6 @@
+short_description: "抓取一个具体 URL 的网页内容并提取为 markdown 文本。"
+when_to_use: "用户消息里出现具体 URL 且需要读那个页面时使用：分享了博客 / 教材 / 论文链接并问相关问题，或者用户明确说\"帮我读这个页面\"。普通主题搜索请用 web_search。"
+input_format: "{\"url\": \"完整 http(s):// URL\", \"max_chars\": 50000}。max_chars 可选，默认 50000，超出会截断。"
+guideline: "对于需要登录、有反爬虫、或纯前端 JS 渲染的页面会失败——失败时如实告知用户，不要凭空补内容。返回结果是已经去掉脚本/侧边栏的纯文本（首行 `# 标题`）。"
+note: "拒绝 file:// / localhost / 内网 IP 等地址。一次只抓一个 URL；要抓多个分多次调用。"
+phase: "exploration"

@@ -6,8 +6,6 @@ This module manages the registration and retrieval of search providers.
 
 from typing import Type
 
-from deeptutor.services.config import get_env_store
-
 from ..base import BaseSearchProvider
 
 _PROVIDERS: dict[str, Type[BaseSearchProvider]] = {}
@@ -131,7 +129,7 @@ def get_providers_info() -> list[dict]:
 
 def get_default_provider(**kwargs) -> BaseSearchProvider:
     """
-    Get the default provider based on SEARCH_PROVIDER env var.
+    Get the default provider from Settings > Catalog.
 
     Args:
         **kwargs: Arguments to pass to provider constructor.
@@ -139,7 +137,9 @@ def get_default_provider(**kwargs) -> BaseSearchProvider:
     Returns:
         BaseSearchProvider: Default provider instance.
     """
-    provider_name = get_env_store().get("SEARCH_PROVIDER", "brave").lower()
+    from deeptutor.services.config import resolve_search_runtime_config
+
+    provider_name = resolve_search_runtime_config().provider.lower()
     if provider_name in _DEPRECATED_UNSUPPORTED:
         provider_name = "duckduckgo"
     return get_provider(provider_name, **kwargs)

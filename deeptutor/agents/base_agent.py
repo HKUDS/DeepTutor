@@ -12,7 +12,6 @@ This is the single source of truth for agent base functionality across:
 from abc import ABC, abstractmethod
 import inspect
 import logging
-import os
 import time
 from typing import Any, AsyncGenerator, Awaitable, Callable
 
@@ -104,13 +103,12 @@ class BaseAgent(ABC):
             self.model = model or env_llm.model
             self.api_version = api_version or getattr(env_llm, "api_version", None)
             self.binding = binding or getattr(env_llm, "binding", "openai")
-        except ValueError:
-            # Fallback if env config not available
-            self.api_key = api_key or os.getenv("LLM_API_KEY")
-            self.base_url = base_url or os.getenv("LLM_HOST")
-            self.model = model or os.getenv("LLM_MODEL")
-            self.api_version = api_version or os.getenv("LLM_API_VERSION")
-            self.binding = binding or os.getenv("LLM_BINDING", "openai")
+        except Exception:
+            self.api_key = api_key
+            self.base_url = base_url
+            self.model = model
+            self.api_version = api_version
+            self.binding = binding or "openai"
 
         # Get Agent-specific configuration (if config provided)
         self.agent_config = self.config.get("agents", {}).get(agent_name, {})
@@ -174,14 +172,9 @@ class BaseAgent(ABC):
         if self.model:
             return self.model
 
-        # 4. Fallback to environment variable
-        env_model = os.getenv("LLM_MODEL")
-        if env_model:
-            return env_model
-
         raise ValueError(
             f"Model not configured for agent {self.agent_name}. "
-            "Please set LLM_MODEL in .env or activate a provider."
+            "Please activate a model in Settings > Catalog."
         )
 
     def get_temperature(self) -> float:
@@ -429,12 +422,6 @@ class BaseAgent(ABC):
                 messages, attachments, binding=self.binding, model=model
             )
             messages = mm_result.messages
-            if mm_result.images_stripped:
-                self.logger.info(
-                    "Images stripped for %s/%s – model does not support vision",
-                    self.binding,
-                    model,
-                )
         if messages:
             kwargs["messages"] = messages
 
@@ -592,12 +579,6 @@ class BaseAgent(ABC):
                 messages, attachments, binding=self.binding, model=model
             )
             messages = mm_result.messages
-            if mm_result.images_stripped:
-                self.logger.info(
-                    "Images stripped for %s/%s – model does not support vision",
-                    self.binding,
-                    model,
-                )
 
         # Log input
         stage_label = stage or self.agent_name

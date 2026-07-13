@@ -6,12 +6,39 @@ Includes: TopicBlock, ToolTrace, DynamicTopicQueue
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
+import difflib
 from enum import Enum
 import json
 from pathlib import Path
+import re
 from typing import Any
 
 from deeptutor.utils.json_parser import parse_json_response
+
+# Default fuzzy-match threshold used by :meth:`DynamicTopicQueue.find_similar`.
+# 0.85 reliably catches near-duplicate titles (case / punctuation / one-word
+# reorderings) while letting genuinely distinct sub-topics through.
+DEFAULT_TOPIC_SIMILARITY_THRESHOLD = 0.85
+_TOPIC_TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
+_TOPIC_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "as",
+    "at",
+    "by",
+    "for",
+    "from",
+    "in",
+    "into",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "vs",
+    "with",
+}
 
 
 class TopicStatus(Enum):
@@ -240,7 +267,46 @@ class DynamicTopicQueue:
 
     @staticmethod
     def _normalize_topic(text: str) -> str:
-        return (text or "").strip().lower()
+        return re.sub(r"\s+", " ", (text or "").strip().lower())
+
+    @classmethod
+    def _topic_tokens(cls, text: str) -> set[str]:
+        tokens: set[str] = set()
+        for raw in _TOPIC_TOKEN_RE.findall(cls._normalize_topic(text)):
+            token = raw.strip()
+            if not token or token in _TOPIC_STOPWORDS:
+                continue
+            # Tiny English stemmer: enough to align "basics" and "basic"
+            # without adding a heavyweight NLP dependency.
+            if len(token) > 4 and token.endswith("ies"):
+                token = token[:-3] + "y"
+            elif len(token) > 3 and token.endswith("s"):
+                token = token[:-1]
+            tokens.add(token)
+        return tokens
+
+    @classmethod
+    def _topic_similarity(cls, left: str, right: str) -> float:
+        left_norm = cls._normalize_topic(left)
+        right_norm = cls._normalize_topic(right)
+        if not left_norm or not right_norm:
+            return 0.0
+        if left_norm == right_norm:
+            return 1.0
+
+        sequence_score = difflib.SequenceMatcher(None, left_norm, right_norm).ratio()
+        left_tokens = cls._topic_tokens(left_norm)
+        right_tokens = cls._topic_tokens(right_norm)
+        if not left_tokens or not right_tokens:
+            return sequence_score
+
+        overlap = left_tokens & right_tokens
+        jaccard = len(overlap) / max(1, len(left_tokens | right_tokens))
+        containment = len(overlap) / max(1, min(len(left_tokens), len(right_tokens)))
+        token_score = jaccard
+        if len(left_tokens) >= 2 and len(right_tokens) >= 2 and jaccard >= 0.5:
+            token_score = max(token_score, containment * 0.95)
+        return max(sequence_score, token_score)
 
     def add_block(self, sub_topic: str, overview: str) -> TopicBlock:
         """
@@ -270,6 +336,72 @@ class DynamicTopicQueue:
         if not target:
             return False
         return any(self._normalize_topic(b.sub_topic) == target for b in self.blocks)
+
+    def is_full(self) -> bool:
+        """Return ``True`` when the queue has reached its configured cap."""
+        return self.max_length is not None and len(self.blocks) >= self.max_length
+
+    def find_similar(
+        self,
+        sub_topic: str,
+        *,
+        threshold: float = DEFAULT_TOPIC_SIMILARITY_THRESHOLD,
+    ) -> TopicBlock | None:
+        """Return an existing block whose title is fuzzily similar to
+        ``sub_topic``, or ``None`` when no match exceeds ``threshold``.
+
+        Used to dedup ``APPEND`` requests so the LLM can't reliably keep
+        proposing the same topic in slightly different words. Exact
+        normalised matches always win; otherwise the highest-scoring
+        block above ``threshold`` is returned.
+        """
+        target = self._normalize_topic(sub_topic)
+        if not target:
+            return None
+
+        best: tuple[float, TopicBlock] | None = None
+        for block in self.blocks:
+            candidate = self._normalize_topic(block.sub_topic)
+            if not candidate:
+                continue
+            if candidate == target:
+                return block
+            score = self._topic_similarity(target, candidate)
+            if score >= threshold and (best is None or score > best[0]):
+                best = (score, block)
+        return best[1] if best else None
+
+    def append_child(
+        self,
+        *,
+        parent: TopicBlock | None,
+        sub_topic: str,
+        overview: str = "",
+    ) -> TopicBlock | None:
+        """Append a new block to the queue tail, optionally tagging the
+        parent block's id in metadata so reporting can reconstruct the
+        topic tree.
+
+        Returns the new block on success, or ``None`` when the queue is
+        already full. Duplicate detection is the caller's responsibility
+        (use :meth:`find_similar` first when needed).
+        """
+        if self.is_full():
+            return None
+        self.block_counter += 1
+        block_id = f"block_{self.block_counter}"
+        metadata: dict[str, Any] = {}
+        if parent is not None:
+            metadata["parent_block_id"] = parent.block_id
+        block = TopicBlock(
+            block_id=block_id,
+            sub_topic=sub_topic,
+            overview=overview,
+            metadata=metadata,
+        )
+        self.blocks.append(block)
+        self._auto_save()
+        return block
 
     def list_topics(self) -> list[str]:
         """List all current topic titles"""

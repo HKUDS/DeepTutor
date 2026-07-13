@@ -1,0 +1,36 @@
+# Per-surface and per-slot focus + suggested sections (English).
+# Same data shape used by every mode's prompt template.
+
+surfaces:
+  chat:
+    focus: "Stable misconceptions the user has surfaced, concepts they've demonstrated mastery of, and durable topics they keep returning to. Drop per-turn chatter."
+    sections: ["Misconceptions", "Mastery", "Topics"]
+  notebook:
+    focus: "Recurring note themes, formats the user prefers, and questions they keep coming back to in their notes."
+    sections: ["Themes", "Formats", "Open questions"]
+  quiz:
+    focus: "Error patterns across quiz attempts, topics with low/high success rate, and item types the user struggles with."
+    sections: ["Error patterns", "Strong topics", "Struggling topics"]
+  kb:
+    focus: "Document interests, query patterns into the knowledge base, and gaps in user's library."
+    sections: ["Interests", "Frequent queries", "Library gaps"]
+  book:
+    focus: "Reading pacing, sticking points (pages reopened or paused), and topics the user annotates heavily."
+    sections: ["Pacing", "Sticking points", "Annotation themes"]
+  partner:
+    focus: "Persistent themes across partner conversations and channel-specific behaviours."
+    sections: ["Themes", "Channels"]
+  cowriter:
+    focus: "Writing style preferences, recurring revisions, and topics the user drafts about."
+    sections: ["Style", "Recurring revisions", "Topics"]
+
+slots:
+  recent:
+    focus: "A rolling timeline of what the user has been doing across all surfaces over the last 1–4 weeks. Time-anchored, surface-attributed."
+    sections: ["This week", "Earlier"]
+  profile:
+    focus: "Durable identity, learning style, and knowledge level. ONLY claims supported by multiple L2 entries across surfaces. No speculation about traits not directly evidenced."
+    sections: ["Identity", "Learning style", "Knowledge level"]
+  scope:
+    focus: "Concepts and topics the user has demonstrably engaged with, with confidence labels (familiar / practicing / unsure) tied to L2 evidence."
+    sections: ["Familiar", "Practicing", "Unsure"]
