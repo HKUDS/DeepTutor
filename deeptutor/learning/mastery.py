@@ -31,7 +31,7 @@ def compute_mastery(correctness: list[bool]) -> float:
         return 0.0
     recent = correctness[-len(_RECENCY_WEIGHTS) :]
     weights = _RECENCY_WEIGHTS[-len(recent) :]
-    score = sum(w * (1.0 if c else 0.0) for w, c in zip(recent, weights, strict=True)) / sum(
+    score = sum(w * (1.0 if c else 0.0) for c, w in zip(recent, weights, strict=True)) / sum(
         weights
     )
     return min(score, _CONFIDENCE_CAP.get(len(recent), 1.0))
