@@ -147,7 +147,10 @@ def _terminate(proc: ManagedProcess | None) -> None:
 def _stream_output(prefix: str, process: subprocess.Popen[str]) -> None:
     assert process.stdout is not None
     for line in process.stdout:
-        print(f"  {prefix:<8} {line.rstrip()}", flush=True)
+        try:
+            print(f"  {prefix:<8} {line.rstrip()}", flush=True)
+        except UnicodeEncodeError:
+            pass
 
 
 def _spawn(command: list[str], *, cwd: Path, env: dict[str, str], name: str) -> ManagedProcess:

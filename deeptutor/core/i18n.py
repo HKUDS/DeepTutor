@@ -9,6 +9,8 @@ def _parse_language(language: str | None) -> str:
     raw = (language or "en").strip().lower()
     if raw.startswith("zh") or raw in {"cn", "chinese"}:
         return "zh"
+    if raw.startswith("tr") or raw in {"turkish"}:
+        return "tr"
     return "en"
 
 
@@ -58,6 +60,29 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "sandbox.command_blocked": "错误：命令被安全防护拦截（匹配危险模式）。",
         "sandbox.disabled_for_account": "你的账号已禁用代码执行。",
         "sandbox.no_backend": "没有可用的沙箱后端",
+    },
+    "tr": {
+        "api.content_required": "içerik zorunludur",
+        "api.invalid_channels_config": "Geçersiz kanal yapılandırması",
+        "api.partner_already_exists": "Partner '{name}' zaten mevcut",
+        "api.partner_not_found": "Partner bulunamadı",
+        "api.partner_not_found_or_not_running": "Partner bulunamadı veya çalışmıyor",
+        "api.partner_not_running": "Partner çalışmıyor",
+        "api.partner_stopped_start_required": "Partner durduruldu. Sohbet etmeden önce başlatın.",
+        "api.persona_already_exists": "Persona zaten mevcut: {name}",
+        "api.persona_name_required": "Persona adı zorunludur",
+        "api.persona_not_found": "Persona bulunamadı: {name}",
+        "api.soul_already_exists": "Soul '{name}' zaten mevcut",
+        "api.soul_content_empty": "Özel soul içeriği boş",
+        "api.soul_library_not_found": "Soul '{name}' kütüphanede bulunamadı",
+        "api.soul_not_found": "Soul bulunamadı",
+        "api.tool_not_found": "Araç '{name}' bulunamadı",
+        "mcp.configure_command_or_url": "Sunucu {name!r}: bir komut (stdio) veya url yapılandırın.",
+        "mcp.configure_before_testing": "Test etmeden önce bir komut (stdio) veya url yapılandırın.",
+        "mcp.server_error": "Sunucu {name!r}: {error}",
+        "sandbox.command_blocked": "Hata: komut güvenlik kalkanı tarafından engellendi (tehlikeli kalıp).",
+        "sandbox.disabled_for_account": "Hesabınız için kod yürütme devre dışı bırakıldı.",
+        "sandbox.no_backend": "kullanılabilir korumalı alan (sandbox) arka ucu yok",
     },
 }
 

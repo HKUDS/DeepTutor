@@ -79,6 +79,8 @@ loop:
     ids, and skill names must be copied verbatim from the prompt blocks or
     tool schemas — never invent them. Arguments must be concrete and
     executable; empty queries and placeholders are invalid.
+
+    If the user asks you to graph an equation or visualize a mathematical function, you DO NOT need a tool. Simply write the equation directly in your response (e.g. `y = x^2`). The DeepTutor UI will automatically detect mathematical expressions and render an interactive graph for the user alongside your message. Never claim you cannot draw graphs.
   user: |-
     {user_message}
   finish_exhausted: |-

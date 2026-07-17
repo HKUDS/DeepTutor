@@ -70,6 +70,46 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  // IP-based Language Auto-detection
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    // Only run if the user has not manually chosen a language yet
+    if (readStoredLanguage() !== "en") return;
+    // Skip if we already ran a successful geo-detection before
+    if (window.localStorage.getItem("deeptutor-language-detected")) return;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    fetch("https://api.country.is/", { signal: controller.signal })
+      .then((res) => res.json())
+      .then((data: { country?: string }) => {
+        clearTimeout(timeoutId);
+        if (data?.country === "TR") {
+          writeStoredLanguage("tr");
+          setLanguageState("tr");
+          // Persist to backend
+          fetch("/api/v1/settings/ui", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ theme: getStoredTheme() ?? "light", language: "tr" }),
+          }).catch(() => {});
+        }
+        // Mark detection as done only after a successful response (TR or not),
+        // so transient network failures don't permanently skip future attempts.
+        window.localStorage.setItem("deeptutor-language-detected", "1");
+      })
+      .catch(() => {
+        clearTimeout(timeoutId);
+        // Network error or timeout — do NOT set the flag so we retry next visit.
+      });
+
+    return () => {
+      controller.abort();
+      clearTimeout(timeoutId);
+    };
+  }, []);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
 
