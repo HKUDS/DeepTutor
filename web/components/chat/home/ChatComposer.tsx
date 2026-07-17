@@ -23,6 +23,8 @@ import {
   MessageSquare,
   Mic,
   Paperclip,
+  Pencil,
+  Headphones,
   Plus,
   Sparkles,
   Square,
@@ -49,6 +51,8 @@ import AgentSelector from "./AgentSelector";
 import KnowledgeSelector from "./KnowledgeSelector";
 import ModelSelector from "./ModelSelector";
 import PersonaSelector from "./PersonaSelector";
+import DrawingModal from "@/components/chat/input/DrawingModal";
+import VoiceTutorPanel from "../input/VoiceTutorPanel";
 
 type SpaceSelectionCounts = {
   attachments: number;
@@ -66,6 +70,7 @@ import ContextReferenceTree, {
 } from "./ContextReferenceTree";
 import { ComposerInput, type ComposerInputHandle } from "./ComposerInput";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
+import { useVoiceAutoplay } from "@/hooks/useVoiceAutoplay";
 
 interface PendingAttachment {
   type: string;
@@ -212,6 +217,7 @@ export default memo(function ChatComposer({
   onCancelStreaming,
   prefillInputRef,
   inputPlaceholder,
+  sessionId,
 }: {
   composerRef: RefObject<HTMLDivElement | null>;
   capMenuRef: RefObject<HTMLDivElement | null>;
@@ -319,13 +325,18 @@ export default memo(function ChatComposer({
   prefillInputRef?: React.MutableRefObject<((text: string) => void) | null>;
   /** Override the composer placeholder (e.g. quiz follow-up). */
   inputPlaceholder?: string;
+  sessionId?: string;
 }) {
   const { t } = useTranslation();
   const CapIcon = activeCap.icon;
 
   const [hasContent, setHasContent] = useState(false);
   const [moreCapsOpen, setMoreCapsOpen] = useState(false);
+  const [isDrawingModalOpen, setIsDrawingModalOpen] = useState(false);
   const [lastCapMenuOpen, setLastCapMenuOpen] = useState(capMenuOpen);
+  
+  const { autoplayEnabled, enableForSession, disableForSession } = useVoiceAutoplay(sessionId);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputHandleRef = useRef<ComposerInputHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -385,6 +396,18 @@ export default memo(function ChatComposer({
       if (picked.length) onAddFiles(picked);
       // Reset so picking the same file twice still triggers `change`.
       event.target.value = "";
+    },
+    [onAddFiles],
+  );
+
+  const handleInsertDrawing = useCallback(
+    async (dataUrl: string) => {
+      // The dataUrl is a base64 string: data:image/png;base64,...
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+      const file = new File([blob], `drawing-${Date.now()}.png`, { type: "image/png" });
+      onAddFiles([file]);
+      setIsDrawingModalOpen(false);
     },
     [onAddFiles],
   );
@@ -615,37 +638,43 @@ export default memo(function ChatComposer({
               </div>
             </div>
           )}
-          <ComposerInput
-            ref={inputHandleRef}
-            textareaRef={textareaRef}
-            isVisualizeMode={isVisualizeMode}
-            canSendEmpty={hasReferences}
-            onSend={doSend}
-            onInputChange={handleInputChange}
-            onPaste={onPaste}
-            connectedAgents={connectedAgents}
-            selectedAgent={selectedAgent}
-            onSelectAgent={onSelectAgent}
-            selectedCounts={spaceSelectionCounts}
-            knowledgeAvailable={false}
-            personaAvailable={!onPersonaSelectionChange}
-            onSelectAttach={handlePickFiles}
-            agentsAvailable={agentsAvailable}
-            onSelectNotebookPicker={onSelectNotebookPicker}
-            onSelectBookPicker={onSelectBookPicker}
-            onSelectHistoryPicker={onSelectHistoryPicker}
-            onSelectAgentsPicker={onSelectAgentsPicker}
-            onSelectQuestionBankPicker={onSelectQuestionBankPicker}
-            onSelectPersonaPicker={onSelectPersonaPicker}
-            onSelectMemoryPicker={onSelectMemoryPicker}
-            onOpenPersonaSelector={
-              onPersonaSelectionChange && onPersonaSelectorOpenChange
-                ? () => onPersonaSelectorOpenChange(true)
-                : undefined
-            }
-            placeholder={inputPlaceholder}
-            minHeight={hasMessages ? 28 : 64}
-          />
+          {activeCap.value === "voice_tutor" ? (
+            <div className="px-4 pb-2 pt-4">
+              <VoiceTutorPanel onSend={doSend} />
+            </div>
+          ) : (
+            <ComposerInput
+              ref={inputHandleRef}
+              textareaRef={textareaRef}
+              isVisualizeMode={isVisualizeMode}
+              canSendEmpty={hasReferences}
+              onSend={doSend}
+              onInputChange={handleInputChange}
+              onPaste={onPaste}
+              connectedAgents={connectedAgents}
+              selectedAgent={selectedAgent}
+              onSelectAgent={onSelectAgent}
+              selectedCounts={spaceSelectionCounts}
+              knowledgeAvailable={false}
+              personaAvailable={!onPersonaSelectionChange}
+              onSelectAttach={handlePickFiles}
+              agentsAvailable={agentsAvailable}
+              onSelectNotebookPicker={onSelectNotebookPicker}
+              onSelectBookPicker={onSelectBookPicker}
+              onSelectHistoryPicker={onSelectHistoryPicker}
+              onSelectAgentsPicker={onSelectAgentsPicker}
+              onSelectQuestionBankPicker={onSelectQuestionBankPicker}
+              onSelectPersonaPicker={onSelectPersonaPicker}
+              onSelectMemoryPicker={onSelectMemoryPicker}
+              onOpenPersonaSelector={
+                onPersonaSelectionChange && onPersonaSelectorOpenChange
+                  ? () => onPersonaSelectorOpenChange(true)
+                  : undefined
+              }
+              placeholder={inputPlaceholder}
+              minHeight={hasMessages ? 28 : 64}
+            />
+          )}
 
           {!!attachments.length && (
             <div className="flex flex-wrap gap-2 px-4 pb-2">
@@ -1003,6 +1032,30 @@ export default memo(function ChatComposer({
                   )}
                 </button>
 
+                <button
+                  type="button"
+                  onClick={() => autoplayEnabled ? disableForSession() : enableForSession()}
+                  className={`group relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] transition-[background-color,color,transform] duration-150 active:scale-90 ${
+                    autoplayEnabled
+                      ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                      : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
+                  }`}
+                  aria-label={autoplayEnabled ? t("Disable Voice Mode") : t("Enable Voice Mode")}
+                  title={autoplayEnabled ? t("Disable Voice Mode") : t("Enable Voice Mode")}
+                >
+                  <Headphones size={15} strokeWidth={1.9} />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsDrawingModalOpen(true)}
+                  className="group relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] transition-[background-color,color,transform] duration-150 active:scale-90 text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
+                  aria-label={t("Draw on whiteboard")}
+                  title={t("Draw on whiteboard")}
+                >
+                  <Pencil size={15} strokeWidth={1.9} />
+                </button>
+
                 {isStreaming ? (
                   <button
                     type="button"
@@ -1055,6 +1108,11 @@ export default memo(function ChatComposer({
           </div>
         </div>
       </div>
+      <DrawingModal
+        open={isDrawingModalOpen}
+        onClose={() => setIsDrawingModalOpen(false)}
+        onInsert={handleInsertDrawing}
+      />
     </div>
   );
 });

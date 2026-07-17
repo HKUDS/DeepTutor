@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Desmos Test</title>
+  <script src="https://www.desmos.com/api/v1.9/calculator.js?apiKey=dcb31709b452b1cf9dc26972add0fda6"></script>
+  <style>
+    body { margin: 0; padding: 20px; font-family: sans-serif; background: #f5f5f5; }
+    #calculator { width: 800px; height: 500px; border: 1px solid #ccc; background: white; }
+    #log { margin-top: 10px; padding: 10px; background: #222; color: #0f0; font-family: monospace; font-size: 12px; height: 150px; overflow-y: auto; }
+    button { margin: 5px; padding: 8px 16px; background: #2d70b3; color: white; border: none; border-radius: 4px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h2>Desmos API Debug Test</h2>
+  <div id="calculator"></div>
+  <div>
+    <button onclick="addExpressions()">Add Expressions: y = x^2 + 13, sin(x)</button>
+    <button onclick="clearAll()">Clear</button>
+    <button onclick="logState()">Log State</button>
+  </div>
+  <div id="log"></div>
+
+  <script>
+    var calc = Desmos.GraphingCalculator(
+      document.getElementById('calculator'),
+      {
+        keypad: false,
+        expressions: true,
+        settingsMenu: false,
+        invertedColors: false,
+        border: false
+      }
+    );
+
+    function log(msg) {
+      var d = document.getElementById('log');
+      d.innerHTML += msg + '<br>';
+      d.scrollTop = d.scrollHeight;
+    }
+
+    log('Desmos initialized: ' + (calc ? 'OK' : 'FAILED'));
+
+    function addExpressions() {
+      var exprs = ['y = x^2 + 13', 'sin(x)', 'y = 2*x + 1'];
+      exprs.forEach(function(latex, idx) {
+        try {
+          calc.setExpression({ id: 'e' + idx, latex: latex, color: Desmos.Colors.BLUE });
+          log('Set expression ' + idx + ': ' + latex + ' → OK');
+        } catch(e) {
+          log('Set expression ' + idx + ': ' + latex + ' → ERROR: ' + e.message);
+        }
+      });
+    }
+
+    function clearAll() {
+      calc.setDefaultState();
+      log('Cleared all expressions');
+    }
+
+    function logState() {
+      var state = calc.getState();
+      log('State: ' + JSON.stringify(state.expressions).substring(0, 200));
+    }
+  </script>
+</body>
+</html>

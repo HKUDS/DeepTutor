@@ -21,6 +21,7 @@ import {
   FileSearch,
   Globe,
   GraduationCap,
+  Headphones,
   Image as ImageIcon,
   Lightbulb,
   MessageSquare,
@@ -62,6 +63,14 @@ import {
 import { useAppShell } from "@/context/AppShellContext";
 import type { FilePreviewSource } from "@/components/chat/preview/previewerFor";
 import type { LLMSelection, StreamEvent } from "@/lib/unified-ws";
+import {
+  MathGraphProvider,
+  useMathGraph,
+} from "@/context/MathGraphContext";
+import {
+  extractMathExpressions,
+  hasMathContent,
+} from "@/lib/math-expression-detector";
 import {
   extractBase64FromDataUrl,
   readFileAsDataUrl,
@@ -277,6 +286,14 @@ const CAPABILITIES: CapabilityDef[] = [
     allowedTools: ["web_search", "code_execution"],
     defaultTools: [],
     loopEngine: true,
+  },
+  {
+    value: "voice_tutor",
+    label: "Voice Tutor",
+    description: "One-on one voice session with your tutor",
+    icon: Headphones,
+    allowedTools: ["web_search", "code_execution"],
+    defaultTools: []
   },
 ];
 
@@ -1119,8 +1136,8 @@ export default function ChatPage() {
       const enabledToolsForCap = capabilityConfigs[storageKey]
         ? [...config.enabledTools]
         : baseline.filter((tool) =>
-            cap.allowedTools.includes(tool as ToolName),
-          );
+          cap.allowedTools.includes(tool as ToolName),
+        );
       setTools(enabledToolsForCap);
       if (config.knowledgeBase) setKBs([config.knowledgeBase]);
       // Switching capability invalidates any prior config confirmation —
@@ -1461,11 +1478,11 @@ export default function ChatPage() {
       const messageContent =
         content ||
         (selectedNotebookRecords.length ||
-        selectedBookReferences.length ||
-        selectedHistorySessions.length ||
-        selectedAgentSessions.length ||
-        selectedQuestionEntries.length ||
-        memoryPayload.length
+          selectedBookReferences.length ||
+          selectedHistorySessions.length ||
+          selectedAgentSessions.length ||
+          selectedQuestionEntries.length ||
+          memoryPayload.length
           ? t("Please use the selected context to help with this request.")
           : "") ||
         (attachments.some((a) => a.type === "image")
@@ -1539,11 +1556,11 @@ export default function ChatPage() {
       const requestSnapshotOverride: MessageRequestSnapshot | undefined =
         originalSnapshot
           ? {
-              ...originalSnapshot,
-              content: _topic,
-              capability: "deep_research",
-              config,
-            }
+            ...originalSnapshot,
+            content: _topic,
+            capability: "deep_research",
+            config,
+          }
           : undefined;
       sendMessage(
         _topic,
@@ -1768,119 +1785,128 @@ export default function ChatPage() {
   return (
     <QuizFollowupProvider>
       <GeogebraTabProvider>
-        <QuizFollowupBridge viewerPanelRef={viewerPanelRef} />
-        <GeogebraTabBridge viewerPanelRef={viewerPanelRef} />
-        <SubagentTabWatcher
-          messages={state.messages}
-          viewerPanelRef={viewerPanelRef}
-        />
-        <div
-          // When the preview drawer is open AND the viewport is wide enough,
-          // push the chat content to the left by the drawer's width so the two
-          // panels live side-by-side (matches Claude desktop). On smaller
-          // screens the drawer overlays — squeezing a phone-width chat into
-          // the remaining ~30 px would be useless. The actual padding +
-          // transition lives in `chat-preview-shell` (globals.css) so we can
-          // hand-tune it without fighting Tailwind's arbitrary-value parser.
-          data-preview-open={previewSource ? "true" : "false"}
-          data-viewer-open={viewerPanelOpen ? "true" : "false"}
-          className="chat-preview-shell flex h-full flex-col overflow-hidden bg-[var(--background)]"
-        >
-          <div className="mx-auto flex w-full max-w-[960px] flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-6 pt-3 pb-0">
-            <div className="group/title min-w-0 flex flex-1 items-center gap-2">
-              {sessionTitleEditing ? (
-                <input
-                  ref={titleInputRef}
-                  value={sessionTitleDraft}
-                  onChange={(event) => setSessionTitleDraft(event.target.value)}
-                  onBlur={() => void commitSessionTitleEdit()}
-                  onKeyDown={handleSessionTitleKeyDown}
-                  disabled={sessionTitleSaving}
-                  aria-label={t("Session title")}
-                  className="min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 font-serif text-[17px] font-semibold tracking-[-0.01em] text-[var(--foreground)] shadow-sm outline-none transition focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20 disabled:opacity-60"
-                  maxLength={100}
-                />
-              ) : (
-                <button
-                  type="button"
-                  onClick={startSessionTitleEdit}
-                  disabled={!canRenameSession}
-                  title={
-                    canRenameSession
-                      ? t("Click to rename session")
-                      : t("Start a conversation to rename")
-                  }
-                  className="inline-flex min-w-0 max-w-full items-center gap-2 rounded-xl px-2 py-1 text-left font-serif text-[17px] font-semibold tracking-[-0.01em] text-[var(--foreground)] transition hover:bg-[var(--muted)]/55 disabled:cursor-default disabled:hover:bg-transparent"
-                >
-                  <span className="truncate">{displaySessionTitle}</span>
-                  {canRenameSession ? (
-                    <PenLine className="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover/title:opacity-100" />
-                  ) : null}
-                </button>
-              )}
-              {sessionTitleSaving ? (
-                <span className="shrink-0 text-xs text-[var(--muted-foreground)]">
-                  {t("Saving...")}
-                </span>
-              ) : null}
-              {sessionTitleError ? (
-                <span className="shrink-0 text-xs text-[var(--destructive)]">
-                  {sessionTitleError}
-                </span>
-              ) : null}
-            </div>
-            <div className="flex shrink-0 items-center gap-0.5">
-              <HeaderActionButton
-                onClick={() => setShowSaveModal(true)}
-                disabled={!chatSavePayload}
-                icon={BookmarkPlus}
-                label={t("Save to Notebook")}
-              />
-              <HeaderActionButton
-                onClick={handleDownloadMarkdown}
-                disabled={!state.messages.length}
-                icon={Download}
-                label={t("Download Markdown")}
-                title={t("Download chat history as Markdown")}
-              />
-              <HeaderActionButton
-                onClick={toggleViewerPanel}
-                active={viewerPanelOpen}
-                icon={PanelRight}
-                label={t("Activity")}
-                title={t("Session activity, attachments & previews")}
-              />
-            </div>
-          </div>
-          <div className="mx-auto flex w-full max-w-[960px] flex-1 min-h-0 flex-col overflow-hidden px-6">
-            {sessionLoading ? (
-              <SessionLoadingView onCancel={cancelSessionLoad} />
-            ) : !hasMessages ? (
-              <div className="flex flex-1 min-h-0 flex-col items-center justify-end pb-14 animate-fade-in">
-                <div className="flex items-center justify-center gap-4">
-                  <img
-                    src="/logo_black.png"
-                    alt="DeepTutor"
-                    width={40}
-                    height={40}
-                    className="h-10 w-10 select-none"
-                    draggable={false}
+        <MathGraphProvider>
+          <QuizFollowupBridge viewerPanelRef={viewerPanelRef} />
+          <GeogebraTabBridge viewerPanelRef={viewerPanelRef} />
+          <MathGraphTabBridge
+            viewerPanelRef={viewerPanelRef}
+            ensureActivityPanelOpen={ensureActivityPanelOpen}
+          />
+          <MathGraphWatcher
+            messages={state.messages}
+            isStreaming={state.isStreaming}
+          />
+          <SubagentTabWatcher
+            messages={state.messages}
+            viewerPanelRef={viewerPanelRef}
+          />
+          <div
+            // When the preview drawer is open AND the viewport is wide enough,
+            // push the chat content to the left by the drawer's width so the two
+            // panels live side-by-side (matches Claude desktop). On smaller
+            // screens the drawer overlays — squeezing a phone-width chat into
+            // the remaining ~30 px would be useless. The actual padding +
+            // transition lives in `chat-preview-shell` (globals.css) so we can
+            // hand-tune it without fighting Tailwind's arbitrary-value parser.
+            data-preview-open={previewSource ? "true" : "false"}
+            data-viewer-open={viewerPanelOpen ? "true" : "false"}
+            className="chat-preview-shell flex h-full flex-col overflow-hidden bg-[var(--background)]"
+          >
+            <div className="mx-auto flex w-full max-w-[960px] flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-6 pt-3 pb-0">
+              <div className="group/title min-w-0 flex flex-1 items-center gap-2">
+                {sessionTitleEditing ? (
+                  <input
+                    ref={titleInputRef}
+                    value={sessionTitleDraft}
+                    onChange={(event) => setSessionTitleDraft(event.target.value)}
+                    onBlur={() => void commitSessionTitleEdit()}
+                    onKeyDown={handleSessionTitleKeyDown}
+                    disabled={sessionTitleSaving}
+                    aria-label={t("Session title")}
+                    className="min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 font-serif text-[17px] font-semibold tracking-[-0.01em] text-[var(--foreground)] shadow-sm outline-none transition focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20 disabled:opacity-60"
+                    maxLength={100}
                   />
-                  <h1 className="font-serif text-[40px] font-medium leading-[1.1] tracking-[-0.015em] text-[var(--foreground)]">
-                    {t(welcomeGreeting)}
-                  </h1>
-                </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={startSessionTitleEdit}
+                    disabled={!canRenameSession}
+                    title={
+                      canRenameSession
+                        ? t("Click to rename session")
+                        : t("Start a conversation to rename")
+                    }
+                    className="inline-flex min-w-0 max-w-full items-center gap-2 rounded-xl px-2 py-1 text-left font-serif text-[17px] font-semibold tracking-[-0.01em] text-[var(--foreground)] transition hover:bg-[var(--muted)]/55 disabled:cursor-default disabled:hover:bg-transparent"
+                  >
+                    <span className="truncate">{displaySessionTitle}</span>
+                    {canRenameSession ? (
+                      <PenLine className="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover/title:opacity-100" />
+                    ) : null}
+                  </button>
+                )}
+                {sessionTitleSaving ? (
+                  <span className="shrink-0 text-xs text-[var(--muted-foreground)]">
+                    {t("Saving...")}
+                  </span>
+                ) : null}
+                {sessionTitleError ? (
+                  <span className="shrink-0 text-xs text-[var(--destructive)]">
+                    {sessionTitleError}
+                  </span>
+                ) : null}
               </div>
-            ) : (
-              <div
-                ref={messagesContainerRef}
-                data-chat-scroll-root="true"
-                onScroll={handleMessagesScroll}
-                onClick={handleMessagesClick}
-                className={`mx-auto w-full flex-1 min-h-0 space-y-9 overflow-y-auto pr-4 [scrollbar-gutter:stable] ${hasMessages ? "pt-6" : "pt-2 pb-6"}`}
-                style={
-                  hasMessages
-                    ? (() => {
+              <div className="flex shrink-0 items-center gap-0.5">
+                <HeaderActionButton
+                  onClick={() => setShowSaveModal(true)}
+                  disabled={!chatSavePayload}
+                  icon={BookmarkPlus}
+                  label={t("Save to Notebook")}
+                />
+                <HeaderActionButton
+                  onClick={handleDownloadMarkdown}
+                  disabled={!state.messages.length}
+                  icon={Download}
+                  label={t("Download Markdown")}
+                  title={t("Download chat history as Markdown")}
+                />
+                <HeaderActionButton
+                  onClick={toggleViewerPanel}
+                  active={viewerPanelOpen}
+                  icon={PanelRight}
+                  label={t("Activity")}
+                  title={t("Session activity, attachments & previews")}
+                />
+              </div>
+            </div>
+            <div className="mx-auto flex w-full max-w-[960px] flex-1 min-h-0 flex-col overflow-hidden px-6">
+              {sessionLoading ? (
+                <SessionLoadingView onCancel={cancelSessionLoad} />
+              ) : !hasMessages ? (
+                <div className="flex flex-1 min-h-0 flex-col items-center justify-end pb-14 animate-fade-in">
+                  <div className="flex items-center justify-center gap-4">
+                    <img
+                      src="/logo_black.png"
+                      alt="DeepTutor"
+                      width={40}
+                      height={40}
+                      className="h-10 w-10 select-none"
+                      draggable={false}
+                    />
+                    <h1 className="font-serif text-[40px] font-medium leading-[1.1] tracking-[-0.015em] text-[var(--foreground)]">
+                      {t(welcomeGreeting)}
+                    </h1>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  ref={messagesContainerRef}
+                  data-chat-scroll-root="true"
+                  onScroll={handleMessagesScroll}
+                  onClick={handleMessagesClick}
+                  className={`mx-auto w-full flex-1 min-h-0 space-y-9 overflow-y-auto pr-4 [scrollbar-gutter:stable] ${hasMessages ? "pt-6" : "pt-2 pb-6"}`}
+                  style={
+                    hasMessages
+                      ? (() => {
                         // The bottom 40 px of the messages area fades to
                         // transparent so content "dissolves" into the composer
                         // gutter. Without enough bottom padding, the fade
@@ -1896,165 +1922,167 @@ export default function ChatPage() {
                           maskImage,
                         };
                       })()
-                    : undefined
-                }
-              >
-                <ChatMessageList
-                  messages={state.messages}
-                  isStreaming={state.isStreaming}
-                  sessionId={state.sessionId}
-                  language={state.language}
-                  onCopyAssistantMessage={copyAssistantMessage}
-                  onRegenerateMessage={handleRegenerateMessage}
-                  onConfirmOutline={handleConfirmOutline}
-                  onPreviewAttachment={handlePreviewMessageAttachment}
-                  onDeleteTurn={deleteTurn}
-                  selectedBranches={state.selectedBranches}
-                  onEditMessage={editMessage}
-                  onSwitchBranch={switchBranch}
-                  onSubmitUserReply={submitUserReply}
-                />
-                <div ref={messagesEndRef} className="h-px w-full shrink-0" />
-              </div>
-            )}
+                      : undefined
+                  }
+                >
+                  <ChatMessageList
+                    messages={state.messages}
+                    isStreaming={state.isStreaming}
+                    sessionId={state.sessionId}
+                    language={state.language}
+                    onCopyAssistantMessage={copyAssistantMessage}
+                    onRegenerateMessage={handleRegenerateMessage}
+                    onConfirmOutline={handleConfirmOutline}
+                    onPreviewAttachment={handlePreviewMessageAttachment}
+                    onDeleteTurn={deleteTurn}
+                    selectedBranches={state.selectedBranches}
+                    onEditMessage={editMessage}
+                    onSwitchBranch={switchBranch}
+                    onSubmitUserReply={submitUserReply}
+                  />
+                  <div ref={messagesEndRef} className="h-px w-full shrink-0" />
+                </div>
+              )}
 
-            <ChatComposer
-              composerRef={composerRef}
-              capMenuRef={capMenuRef}
-              capBtnRef={capBtnRef}
-              spaceMenuRef={spaceMenuRef}
-              spaceBtnRef={spaceBtnRef}
-              dragCounter={dragCounter}
-              dragging={dragging}
-              capMenuOpen={capMenuOpen}
-              spaceMenuOpen={spaceMenuOpen}
-              hasMessages={hasMessages}
-              attachments={attachments}
-              attachmentError={attachmentError}
-              activeCap={activeCap}
-              knowledgeBases={kbOptions}
-              connectedAgents={agentOptions}
-              selectedAgent={selectedAgent}
-              onSelectAgent={handleSelectAgent}
-              subagentBudget={subagentBudget}
-              onSubagentBudgetChange={setSubagentBudget}
-              llmOptions={llmOptions}
-              activeLLMDefault={activeLLMDefault}
-              llmSelection={state.llmSelection}
-              llmOptionsLoading={llmOptionsLoading}
-              llmOptionsError={llmOptionsError}
-              selectedBookReferences={selectedBookReferences}
-              selectedNotebookRecords={selectedNotebookRecords}
-              selectedHistorySessions={selectedHistorySessions}
-              selectedAgentSessions={selectedAgentSessions}
-              selectedQuestionEntries={selectedQuestionEntries}
-              notebookReferenceGroups={notebookReferenceGroups}
-              selectedPersona={null}
-              selectedMemoryFiles={selectedMemoryFiles}
-              selectedKnowledgeBases={selectedKbOnly}
-              isStreaming={state.isStreaming}
-              isVisualizeMode={isVisualizeMode}
-              capabilityNeedsConfig={capabilityNeedsConfig}
-              capabilityConfigConfirmed={capabilityConfigConfirmed}
-              onRequestConfigConfirm={ensureActivityPanelOpen}
-              capabilities={CAPABILITIES}
-              onSetCapMenuOpen={setCapMenuOpen}
-              onSetSpaceMenuOpen={setSpaceMenuOpen}
-              onToggleKB={handleToggleKB}
-              onSelectLLM={setLLMSelection}
-              onSelectNotebookPicker={handleSelectNotebookPicker}
-              onSelectBookPicker={handleSelectBookPicker}
-              onSelectHistoryPicker={handleSelectHistoryPicker}
-              onSelectAgentsPicker={handleSelectAgentsPicker}
-              onSelectQuestionBankPicker={handleSelectQuestionBankPicker}
-              onSelectPersonaPicker={handleSelectPersonaPicker}
-              onSelectMemoryPicker={handleSelectMemoryPicker}
-              onClearPersona={handleClearPersona}
-              personaSelection={state.personaSelection}
-              onPersonaSelectionChange={setPersonaSelection}
-              personaSelectorOpen={personaSelectorOpen}
-              onPersonaSelectorOpenChange={setPersonaSelectorOpen}
-              onToggleMemoryFile={handleToggleMemoryFile}
-              onSend={handleSend}
-              onRemoveAttachment={removeAttachment}
-              onPreviewAttachment={handlePreviewPendingAttachment}
-              onRemoveHistory={handleRemoveHistory}
-              onRemoveAgent={handleRemoveAgent}
-              onRemoveBookReference={handleRemoveBookReference}
-              onRemoveNotebook={handleRemoveNotebook}
-              onRemoveQuestion={handleRemoveQuestion}
-              onDragEnter={handleDragEnter}
-              onDragLeave={handleDragLeave}
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
-              onPaste={handlePaste}
-              onAddFiles={handleAddFiles}
-              onSelectCapability={handleSelectCapability}
-              onCancelStreaming={cancelStreamingTurn}
-              prefillInputRef={prefillInputRef}
+              <ChatComposer
+                sessionId={state.sessionId || undefined}
+                composerRef={composerRef}
+                capMenuRef={capMenuRef}
+                capBtnRef={capBtnRef}
+                spaceMenuRef={spaceMenuRef}
+                spaceBtnRef={spaceBtnRef}
+                dragCounter={dragCounter}
+                dragging={dragging}
+                capMenuOpen={capMenuOpen}
+                spaceMenuOpen={spaceMenuOpen}
+                hasMessages={hasMessages}
+                attachments={attachments}
+                attachmentError={attachmentError}
+                activeCap={activeCap}
+                knowledgeBases={kbOptions}
+                connectedAgents={agentOptions}
+                selectedAgent={selectedAgent}
+                onSelectAgent={handleSelectAgent}
+                subagentBudget={subagentBudget}
+                onSubagentBudgetChange={setSubagentBudget}
+                llmOptions={llmOptions}
+                activeLLMDefault={activeLLMDefault}
+                llmSelection={state.llmSelection}
+                llmOptionsLoading={llmOptionsLoading}
+                llmOptionsError={llmOptionsError}
+                selectedBookReferences={selectedBookReferences}
+                selectedNotebookRecords={selectedNotebookRecords}
+                selectedHistorySessions={selectedHistorySessions}
+                selectedAgentSessions={selectedAgentSessions}
+                selectedQuestionEntries={selectedQuestionEntries}
+                notebookReferenceGroups={notebookReferenceGroups}
+                selectedPersona={null}
+                selectedMemoryFiles={selectedMemoryFiles}
+                selectedKnowledgeBases={selectedKbOnly}
+                isStreaming={state.isStreaming}
+                isVisualizeMode={isVisualizeMode}
+                capabilityNeedsConfig={capabilityNeedsConfig}
+                capabilityConfigConfirmed={capabilityConfigConfirmed}
+                onRequestConfigConfirm={ensureActivityPanelOpen}
+                capabilities={CAPABILITIES}
+                onSetCapMenuOpen={setCapMenuOpen}
+                onSetSpaceMenuOpen={setSpaceMenuOpen}
+                onToggleKB={handleToggleKB}
+                onSelectLLM={setLLMSelection}
+                onSelectNotebookPicker={handleSelectNotebookPicker}
+                onSelectBookPicker={handleSelectBookPicker}
+                onSelectHistoryPicker={handleSelectHistoryPicker}
+                onSelectAgentsPicker={handleSelectAgentsPicker}
+                onSelectQuestionBankPicker={handleSelectQuestionBankPicker}
+                onSelectPersonaPicker={handleSelectPersonaPicker}
+                onSelectMemoryPicker={handleSelectMemoryPicker}
+                onClearPersona={handleClearPersona}
+                personaSelection={state.personaSelection}
+                onPersonaSelectionChange={setPersonaSelection}
+                personaSelectorOpen={personaSelectorOpen}
+                onPersonaSelectorOpenChange={setPersonaSelectorOpen}
+                onToggleMemoryFile={handleToggleMemoryFile}
+                onSend={handleSend}
+                onRemoveAttachment={removeAttachment}
+                onPreviewAttachment={handlePreviewPendingAttachment}
+                onRemoveHistory={handleRemoveHistory}
+                onRemoveAgent={handleRemoveAgent}
+                onRemoveBookReference={handleRemoveBookReference}
+                onRemoveNotebook={handleRemoveNotebook}
+                onRemoveQuestion={handleRemoveQuestion}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                onPaste={handlePaste}
+                onAddFiles={handleAddFiles}
+                onSelectCapability={handleSelectCapability}
+                onCancelStreaming={cancelStreamingTurn}
+                prefillInputRef={prefillInputRef}
+              />
+              <div
+                aria-hidden="true"
+                className="shrink-0"
+                style={{
+                  flexGrow: hasMessages ? 0 : 1.4,
+                  transition: "flex-grow 650ms cubic-bezier(0.16, 1, 0.3, 1)",
+                }}
+              />
+            </div>
+            <NotebookRecordPicker
+              open={showNotebookPicker}
+              onClose={handleCloseNotebookPicker}
+              onApply={handleApplyNotebookRecords}
             />
-            <div
-              aria-hidden="true"
-              className="shrink-0"
-              style={{
-                flexGrow: hasMessages ? 0 : 1.4,
-                transition: "flex-grow 650ms cubic-bezier(0.16, 1, 0.3, 1)",
-              }}
+            <BookReferencePicker
+              open={showBookPicker}
+              initialReferences={selectedBookReferences}
+              onClose={handleCloseBookPicker}
+              onApply={handleApplyBookReferences}
+            />
+            <HistorySessionPicker
+              open={showHistoryPicker}
+              onClose={handleCloseHistoryPicker}
+              onApply={handleApplyHistorySessions}
+            />
+            <MyAgentsPicker
+              open={showAgentsPicker}
+              onClose={handleCloseAgentsPicker}
+              onApply={handleApplyAgentSessions}
+            />
+            <QuestionBankPicker
+              open={showQuestionBankPicker}
+              onClose={handleCloseQuestionBankPicker}
+              onApply={handleApplyQuestionEntries}
+            />
+            <MemoryPicker
+              open={showMemoryPicker}
+              initialFiles={selectedMemoryFiles}
+              onClose={handleCloseMemoryPicker}
+              onApply={handleApplyMemoryFiles}
+            />
+            <SaveToNotebookModal
+              open={showSaveModal}
+              payload={chatSavePayload}
+              messages={chatSaveMessages}
+              onClose={handleCloseSaveModal}
+            />
+            <FilePreviewDrawer
+              open={previewSource !== null}
+              source={previewSource}
+              onClose={handleClosePreview}
+            />
+            <SessionViewerPanel
+              ref={viewerPanelRef}
+              open={viewerPanelOpen && previewSource === null}
+              sessionId={state.sessionId}
+              activity={sessionActivity}
+              configSection={capabilityConfigSection}
+              onClose={() => setViewerOpen(false)}
+              onAutoOpen={() => setViewerOpen(true)}
             />
           </div>
-          <NotebookRecordPicker
-            open={showNotebookPicker}
-            onClose={handleCloseNotebookPicker}
-            onApply={handleApplyNotebookRecords}
-          />
-          <BookReferencePicker
-            open={showBookPicker}
-            initialReferences={selectedBookReferences}
-            onClose={handleCloseBookPicker}
-            onApply={handleApplyBookReferences}
-          />
-          <HistorySessionPicker
-            open={showHistoryPicker}
-            onClose={handleCloseHistoryPicker}
-            onApply={handleApplyHistorySessions}
-          />
-          <MyAgentsPicker
-            open={showAgentsPicker}
-            onClose={handleCloseAgentsPicker}
-            onApply={handleApplyAgentSessions}
-          />
-          <QuestionBankPicker
-            open={showQuestionBankPicker}
-            onClose={handleCloseQuestionBankPicker}
-            onApply={handleApplyQuestionEntries}
-          />
-          <MemoryPicker
-            open={showMemoryPicker}
-            initialFiles={selectedMemoryFiles}
-            onClose={handleCloseMemoryPicker}
-            onApply={handleApplyMemoryFiles}
-          />
-          <SaveToNotebookModal
-            open={showSaveModal}
-            payload={chatSavePayload}
-            messages={chatSaveMessages}
-            onClose={handleCloseSaveModal}
-          />
-          <FilePreviewDrawer
-            open={previewSource !== null}
-            source={previewSource}
-            onClose={handleClosePreview}
-          />
-          <SessionViewerPanel
-            ref={viewerPanelRef}
-            open={viewerPanelOpen && previewSource === null}
-            sessionId={state.sessionId}
-            activity={sessionActivity}
-            configSection={capabilityConfigSection}
-            onClose={() => setViewerOpen(false)}
-            onAutoOpen={() => setViewerOpen(true)}
-          />
-        </div>
+        </MathGraphProvider>
       </GeogebraTabProvider>
     </QuizFollowupProvider>
   );
@@ -2099,6 +2127,65 @@ function GeogebraTabBridge({
     });
     return () => controller.setOpenHandler(null);
   }, [controller, viewerPanelRef]);
+  return null;
+}
+
+/**
+ * Connects the `MathGraphContext` to the `SessionViewerPanel`.
+ * Any component inside `MathGraphProvider` can call `useMathGraph().openGraphTab(...)`,
+ * and this bridge executes the actual opening in the panel.
+ */
+function MathGraphTabBridge({
+  viewerPanelRef,
+  ensureActivityPanelOpen,
+}: {
+  viewerPanelRef: React.MutableRefObject<SessionViewerPanelHandle | null>;
+  ensureActivityPanelOpen: () => void;
+}) {
+  const ctrl = useMathGraph();
+  useEffect(() => {
+    if (!ctrl) return;
+    ctrl.setOpenHandler((payload) => {
+      ensureActivityPanelOpen();
+      viewerPanelRef.current?.openMathGraphTab(payload.id, payload.expressions);
+    });
+    return () => ctrl.setOpenHandler(null);
+  }, [ctrl, viewerPanelRef, ensureActivityPanelOpen]);
+  return null;
+}
+
+/**
+ * Watches the chat messages for math equations. When an assistant message
+ * contains math, it extracts the expressions and opens the Math Graph tab.
+ */
+function MathGraphWatcher({
+  messages,
+  isStreaming,
+}: {
+  messages: { role: string; content: string }[];
+  isStreaming: boolean;
+}) {
+  const ctrl = useMathGraph();
+  useEffect(() => {
+    if (!ctrl || messages.length === 0) return;
+
+    // Check the last message for equations
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.role === "assistant" && hasMathContent(lastMsg.content)) {
+      const exprs = extractMathExpressions(lastMsg.content);
+      if (exprs.length > 0) {
+        // Debounce slightly to smooth out streaming updates
+        const timer = setTimeout(() => {
+          ctrl.openGraphTab({
+            id: `math-graph-turn-${messages.length}`,
+            title: "Graph",
+            expressions: exprs,
+          });
+        }, isStreaming ? 800 : 50);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [messages, isStreaming, ctrl]);
   return null;
 }
 
@@ -2177,11 +2264,10 @@ function HeaderActionButton({
         disabled={disabled}
         aria-label={label}
         aria-pressed={active}
-        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-[background-color,color,transform] duration-150 active:scale-90 disabled:cursor-not-allowed disabled:opacity-40 ${
-          active
-            ? "bg-[var(--primary)]/10 text-[var(--primary)]"
-            : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)] disabled:hover:bg-transparent disabled:hover:text-[var(--muted-foreground)]"
-        }`}
+        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-[background-color,color,transform] duration-150 active:scale-90 disabled:cursor-not-allowed disabled:opacity-40 ${active
+          ? "bg-[var(--primary)]/10 text-[var(--primary)]"
+          : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)] disabled:hover:bg-transparent disabled:hover:text-[var(--muted-foreground)]"
+          }`}
       >
         <Icon size={16} strokeWidth={1.7} className="shrink-0" />
       </button>

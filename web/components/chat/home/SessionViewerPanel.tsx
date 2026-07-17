@@ -51,6 +51,7 @@ import {
 } from "@/components/chat/home/SessionActivityPanel";
 import QuizFollowupTabBody from "@/components/quiz/QuizFollowupTabBody";
 import SubagentTabBody from "@/components/chat/home/SubagentTabBody";
+import DesmosGraph from "@/components/DesmosGraph";
 import type { QuizFollowupTabContext } from "@/context/QuizFollowupContext";
 import type { GeogebraTabPayload } from "@/context/GeogebraTabContext";
 import { apiUrl } from "@/lib/api";
@@ -142,6 +143,12 @@ type ViewerTab =
       script: string;
     }
   | {
+      kind: "math-graph";
+      id: string;
+      label: string;
+      expressions: string[];
+    }
+  | {
       kind: "subagent";
       id: string;
       label: string;
@@ -158,6 +165,8 @@ export interface SessionViewerPanelHandle {
   openGeogebraTab(payload: GeogebraTabPayload): void;
   /** Opens (first time) or live-updates a connected subagent's run tab. */
   openSubagentTab(callId: string, label: string, events: StreamEvent[]): void;
+  /** Opens (or live-updates) an interactive Math Graph tab. */
+  openMathGraphTab(id: string, expressions: string[]): void;
   /** Opens the panel and switches to the Activity home (where the
    *  capability-config card lives). */
   focusActivityHome(): void;
@@ -192,6 +201,10 @@ function geogebraTabIdFor(payloadId: string): string {
 
 function subagentTabIdFor(callId: string): string {
   return `subagent:${callId}`;
+}
+
+function mathGraphTabIdFor(id: string): string {
+  return `math-graph:${id}`;
 }
 
 function hostnameFor(url: string): string {
@@ -450,6 +463,22 @@ function SessionViewerPanelInner(
       openQuizFollowupTab,
       openGeogebraTab,
       openSubagentTab,
+      openMathGraphTab: (tabId: string, expressions: string[]) => {
+        const id = mathGraphTabIdFor(tabId);
+        setTabs((prev) => {
+          const exists = prev.find((t) => t.id === id);
+          if (exists) {
+            return prev.map((t) =>
+              t.id === id
+                ? { ...t, kind: "math-graph", expressions }
+                : t,
+            );
+          }
+          return [...prev, { kind: "math-graph", id, label: "Graph", expressions }];
+        });
+        setActiveTabId(id);
+        onAutoOpen();
+      },
       focusActivityHome,
     }),
     [
@@ -459,6 +488,7 @@ function SessionViewerPanelInner(
       openGeogebraTab,
       openSubagentTab,
       focusActivityHome,
+      onAutoOpen,
     ],
   );
 
@@ -572,6 +602,12 @@ function SessionViewerPanelInner(
             key={activeTab.id}
             tabEvents={activeTab.events}
             sessionId={sessionId}
+          />
+        ) : activeTab?.kind === "math-graph" ? (
+          <MathGraphTabBody
+            key={activeTab.id}
+            expressions={activeTab.expressions}
+            title={activeTab.label}
           />
         ) : (
           <ActivityHome
@@ -1069,6 +1105,58 @@ function GeogebraTabBody({ script }: { script: string }) {
         height={520}
         className="m-0 border-0 bg-transparent"
       />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Math-graph tab body — Desmos Graphing Calculator                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Renders an interactive Desmos graphing calculator tab with the
+ * expressions detected from the current conversation.
+ */
+function MathGraphTabBody({
+  expressions,
+  title,
+}: {
+  expressions: string[];
+  title: string;
+}) {
+  return (
+    <div className="flex h-full flex-col overflow-hidden bg-[var(--card)]">
+      {/* DesmosGraph fills the parent — height controlled by flex-1 wrapper */}
+      <div className="flex-1 overflow-hidden">
+        <DesmosGraph
+          expressions={expressions}
+          title={title}
+          height={520}
+          className="h-full rounded-none border-0"
+        />
+      </div>
+      {/* Render equations below the graph */}
+      <div className="shrink-0 border-t border-[var(--border)] bg-[var(--muted)]/20 p-4 max-h-48 overflow-y-auto">
+        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+          Graphed Equations
+        </h4>
+        <div className="flex flex-col gap-2">
+          {expressions.length === 0 ? (
+            <span className="text-sm text-[var(--muted-foreground)] italic">
+              No equations detected.
+            </span>
+          ) : (
+            expressions.map((expr, i) => (
+              <code
+                key={i}
+                className="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm text-[var(--foreground)] shadow-sm"
+              >
+                {expr}
+              </code>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -612,6 +612,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [diagnosticsResults]);
 
+
+
   // ── UI preferences ──────────────────────────────────────────────────────
   const persistUi = useCallback(
     async (

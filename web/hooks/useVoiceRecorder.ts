@@ -81,9 +81,10 @@ export function useVoiceRecorder(onTranscript: (text: string) => void) {
         }
         const data = (await resp.json()) as { text?: string };
         const text = (data.text || "").trim();
-        if (text) onTranscriptRef.current(text);
+        onTranscriptRef.current(text);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Transcription failed.");
+        onTranscriptRef.current("");
       } finally {
         setState("idle");
       }
@@ -91,6 +92,17 @@ export function useVoiceRecorder(onTranscript: (text: string) => void) {
     recorder.start();
     recorderRef.current = recorder;
     setState("recording");
+
+    // --- Otomatik Durdurma: 10 saniye sonra kaydı bitir ---
+    const autoStopTimer = setTimeout(() => {
+      if (recorderRef.current && recorderRef.current.state === "recording") {
+        recorderRef.current.stop();
+      }
+    }, 10000);
+
+    // Timer'ı kaydın onstop'u ateşlenince iptal et
+    recorder.addEventListener("stop", () => clearTimeout(autoStopTimer), { once: true });
+
   }, [releaseStream, state]);
 
   const stop = useCallback(() => {
