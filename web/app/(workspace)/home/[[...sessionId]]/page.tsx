@@ -181,7 +181,8 @@ type ToolName =
   | "reason"
   | "paper_search"
   | "imagegen"
-  | "videogen";
+  | "videogen"
+  | "sql_query";
 
 interface ToolDef {
   name: ToolName;
@@ -194,6 +195,7 @@ const ALL_TOOLS: ToolDef[] = [
   { name: "geogebra_analysis", label: "GeoGebra", icon: Compass },
   { name: "web_search", label: "Web Search", icon: Globe },
   { name: "code_execution", label: "Code", icon: Code2 },
+  { name: "sql_query", label: "SQL", icon: BarChart3 },
   { name: "reason", label: "Reason", icon: Sparkles },
   { name: "paper_search", label: "Arxiv Search", icon: FileSearch },
   { name: "imagegen", label: "Image Gen", icon: ImageIcon },

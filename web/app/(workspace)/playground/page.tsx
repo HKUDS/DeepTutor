@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  BarChart3,
   BrainCircuit,
   ChevronDown,
   Check,
@@ -61,6 +62,7 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   rag: Database,
   web_search: Globe,
   code_execution: Code2,
+  sql_query: BarChart3,
   reason: Sparkles,
   paper_search: FileSearch,
 };
@@ -70,6 +72,7 @@ const TOOL_LABELS: Record<string, string> = {
   rag: "RAG",
   web_search: "Web Search",
   code_execution: "Code Execution",
+  sql_query: "SQL Query",
   reason: "Reason",
   paper_search: "Arxiv Search",
 };
