@@ -1,0 +1,6 @@
+short_description: "在会话级持久化 SQLite 数据库上执行 SQL；SELECT 结果以 Markdown 表格返回。"
+when_to_use: "当任务涉及结构化数据、关系查询、表结构设计、数据操作或表格分析时使用——包括建表、插入、过滤、聚合、连接等。"
+input_format: "`query`——任意合法 SQLite 语句（SELECT、INSERT、CREATE TABLE、UPDATE、DELETE、PRAGMA 等）。"
+guideline: "先用 CREATE TABLE 建表，再 INSERT 数据，最后 SELECT 查询。数据库在本会话内跨轮次持久保存。批量插入时尽量合并为单条语句。字符串值使用单引号。"
+note: "SQLite 数据库文件保存在会话工作区中，可跨轮次访问，无需沙箱。"
+phase: "expansion"

@@ -890,6 +890,13 @@ class AgenticChatPipeline:
             if media_dir is not None:
                 media_dir.mkdir(parents=True, exist_ok=True)
                 kwargs["_workspace_dir"] = str(media_dir)
+        elif tool_name == "sql_query":
+            # Persistent SQLite db lives in the session's task workspace so
+            # it survives across turns within the same chat.
+            sql_dir = task_dir / "sql" if task_dir is not None else None
+            if sql_dir is not None:
+                sql_dir.mkdir(parents=True, exist_ok=True)
+                kwargs["_workspace_dir"] = str(sql_dir)
         elif tool_name == "cron":
             # Owner routing is supplied server-side — the model never picks
             # where a scheduled task's output lands.

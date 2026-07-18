@@ -1,0 +1,6 @@
+short_description: "Run SQL against a persistent per-session SQLite database; SELECT results come back as Markdown tables."
+when_to_use: "When the task involves structured data, relational queries, schema design, data manipulation, or tabular analysis — creating tables, inserting rows, filtering, aggregating, or joining."
+input_format: "`query` — any valid SQLite statement (SELECT, INSERT, CREATE TABLE, UPDATE, DELETE, PRAGMA, etc.)."
+guideline: "Use CREATE TABLE to set up a schema first, then INSERT data, then SELECT to query. The database persists across turns in this chat session. For large inserts, batch multiple rows in a single statement. Quote string values with single quotes."
+note: "The SQLite database file is stored in the session workspace and survives across turns. No sandbox required."
+phase: "expansion"

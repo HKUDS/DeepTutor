@@ -1439,6 +1439,130 @@ class CronTool(_PromptHintsMixin, BaseTool):
         return ToolResult(content=outcome.text, success=outcome.ok, metadata=outcome.meta)
 
 
+class SqlQueryTool(_PromptHintsMixin, BaseTool):
+    """Execute raw SQL against a persistent per-session SQLite database.
+
+    The database file lives at ``<task_workspace>/sql/session.db`` so it
+    survives across turns within the same chat session. The LLM can CREATE
+    tables, INSERT data, and run SELECT queries — making it a lightweight
+    in-chat relational database without needing the sandbox.
+
+    Results for SELECT queries are rendered as Markdown tables; DDL/DML
+    statements return a short confirmation with the number of affected rows.
+    """
+
+    # Statements that return rows via cursor.description (fetchable).
+    _READABLE_KEYWORDS = frozenset({"SELECT", "PRAGMA", "EXPLAIN"})
+
+    def get_prompt_hints(self, language: str = "en"):
+        return load_prompt_hints(self.name, language=language)
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="sql_query",
+            description=(
+                "Execute a SQL statement against a persistent SQLite database "
+                "that lives for the duration of this chat session. Use it to "
+                "create tables, insert data, and run queries — a lightweight "
+                "in-chat relational database. SELECT results come back as "
+                "Markdown tables."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="query",
+                    type="string",
+                    description=(
+                        "The SQL statement to execute. May be a SELECT, "
+                        "INSERT, UPDATE, DELETE, CREATE TABLE, or any valid "
+                        "SQLite statement."
+                    ),
+                ),
+            ],
+        )
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        import sqlite3
+        from pathlib import Path
+
+        query = str(kwargs.get("query") or "").strip()
+        if not query:
+            raise ValueError("sql_query requires a non-empty 'query'.")
+
+        # Resolve the persistent db path from the injected workspace dir.
+        workspace_dir = str(kwargs.get("_workspace_dir") or "").strip()
+        if workspace_dir:
+            db_dir = Path(workspace_dir)
+        else:
+            # Fallback: use the path service's task workspace.
+            from deeptutor.services.path_service import get_path_service
+
+            db_dir = get_path_service().get_task_workspace("chat", "sql_default")
+        db_dir.mkdir(parents=True, exist_ok=True)
+        db_path = db_dir / "session.db"
+
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(query)
+
+            # Determine if this is a readable (row-returning) statement.
+            first_word = query.lstrip().split()[0].upper().rstrip(";")
+            if first_word in self._READABLE_KEYWORDS and cursor.description:
+                columns = [desc[0] for desc in cursor.description]
+                rows = cursor.fetchall()
+                content = self._render_markdown_table(columns, rows)
+                metadata = {
+                    "query": query,
+                    "columns": columns,
+                    "row_count": len(rows),
+                    "db_path": str(db_path),
+                }
+            else:
+                conn.commit()
+                affected = cursor.rowcount
+                if affected < 0:
+                    content = "OK — statement executed successfully."
+                else:
+                    content = f"OK — {affected} row(s) affected."
+                metadata = {
+                    "query": query,
+                    "rows_affected": max(affected, 0),
+                    "db_path": str(db_path),
+                }
+        except sqlite3.Error as exc:
+            return ToolResult(
+                content=f"SQL error: {exc}",
+                success=False,
+                metadata={"query": query, "db_path": str(db_path)},
+            )
+        finally:
+            conn.close()
+
+        return ToolResult(content=content, success=True, metadata=metadata)
+
+    @staticmethod
+    def _render_markdown_table(columns: list[str], rows: list[sqlite3.Row]) -> str:
+        if not columns:
+            return "(no columns)"
+        # Compute column widths for alignment.
+        str_rows = [[str(v) if v is not None else "NULL" for v in row] for row in rows]
+        widths = [len(c) for c in columns]
+        for row in str_rows:
+            for i, val in enumerate(row):
+                widths[i] = max(widths[i], len(val))
+
+        def _fmt_row(vals: list[str]) -> str:
+            return "| " + " | ".join(v.ljust(w) for v, w in zip(vals, widths)) + " |"
+
+        header = _fmt_row(columns)
+        separator = "| " + " | ".join("-" * w for w in widths) + " |"
+        body = "\n".join(_fmt_row(r) for r in str_rows)
+        parts = [header, separator]
+        if body:
+            parts.append(body)
+        return "\n".join(parts)
+
+
 BUILTIN_TOOL_TYPES: tuple[type[BaseTool], ...] = (
     BrainstormTool,
     RAGTool,
@@ -1458,6 +1582,7 @@ BUILTIN_TOOL_TYPES: tuple[type[BaseTool], ...] = (
     GithubTool,
     AskUserTool,
     CronTool,
+    SqlQueryTool,
     # Image → GeoGebra figure reconstruction. User-toggleable in chat; the
     # solve loop capability force-mounts it for diagram problems.
     GeoGebraAnalysisTool,
@@ -1526,6 +1651,7 @@ USER_TOGGLEABLE_TOOL_NAMES: tuple[str, ...] = (
 CONFIGURABLE_BUILTIN_TOOL_NAMES: tuple[str, ...] = (
     "rag",
     "code_execution",
+    "sql_query",
     "read_source",
     "read_memory",
     "write_memory",
@@ -1576,6 +1702,7 @@ __all__ = [
     "ReadSkillTool",
     "ReadSourceTool",
     "ReasonTool",
+    "SqlQueryTool",
     "WebFetchTool",
     "WebSearchTool",
     "WriteMemoryTool",
