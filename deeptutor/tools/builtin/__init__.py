@@ -1449,10 +1449,14 @@ class SqlQueryTool(_PromptHintsMixin, BaseTool):
 
     Results for SELECT queries are rendered as Markdown tables; DDL/DML
     statements return a short confirmation with the number of affected rows.
+
+    When ``chart`` is specified, an interactive Chart.js HTML visualization is
+    generated alongside the table and surfaced as a downloadable artifact.
     """
 
     # Statements that return rows via cursor.description (fetchable).
     _READABLE_KEYWORDS = frozenset({"SELECT", "PRAGMA", "EXPLAIN"})
+    _CHART_TYPES = frozenset({"bar", "line", "pie", "doughnut", "radar", "scatter"})
 
     def get_prompt_hints(self, language: str = "en"):
         return load_prompt_hints(self.name, language=language)
@@ -1465,7 +1469,8 @@ class SqlQueryTool(_PromptHintsMixin, BaseTool):
                 "that lives for the duration of this chat session. Use it to "
                 "create tables, insert data, and run queries — a lightweight "
                 "in-chat relational database. SELECT results come back as "
-                "Markdown tables."
+                "Markdown tables. Optionally generate an interactive Chart.js "
+                "visualization by passing `chart`."
             ),
             parameters=[
                 ToolParameter(
@@ -1477,6 +1482,23 @@ class SqlQueryTool(_PromptHintsMixin, BaseTool):
                         "SQLite statement."
                     ),
                 ),
+                ToolParameter(
+                    name="chart",
+                    type="string",
+                    description=(
+                        "Optional chart type to visualize the SELECT result: "
+                        "'bar', 'line', 'pie', 'doughnut', 'radar', or 'scatter'. "
+                        "First column is used as labels, remaining numeric "
+                        "columns as datasets. Only applies to SELECT queries."
+                    ),
+                    required=False,
+                ),
+                ToolParameter(
+                    name="chart_title",
+                    type="string",
+                    description="Optional title for the chart visualization.",
+                    required=False,
+                ),
             ],
         )
 
@@ -1487,6 +1509,14 @@ class SqlQueryTool(_PromptHintsMixin, BaseTool):
         query = str(kwargs.get("query") or "").strip()
         if not query:
             raise ValueError("sql_query requires a non-empty 'query'.")
+
+        chart_type = str(kwargs.get("chart") or "").strip().lower() or None
+        if chart_type and chart_type not in self._CHART_TYPES:
+            return ToolResult(
+                content=f"Invalid chart type {chart_type!r}. Supported: {', '.join(sorted(self._CHART_TYPES))}.",
+                success=False,
+            )
+        chart_title = str(kwargs.get("chart_title") or "").strip() or "SQL Query Result"
 
         # Resolve the persistent db path from the injected workspace dir.
         workspace_dir = str(kwargs.get("_workspace_dir") or "").strip()
@@ -1511,12 +1541,38 @@ class SqlQueryTool(_PromptHintsMixin, BaseTool):
                 columns = [desc[0] for desc in cursor.description]
                 rows = cursor.fetchall()
                 content = self._render_markdown_table(columns, rows)
-                metadata = {
+                metadata: dict[str, Any] = {
                     "query": query,
                     "columns": columns,
                     "row_count": len(rows),
                     "db_path": str(db_path),
                 }
+
+                # Generate chart visualization if requested.
+                sources: list[dict[str, Any]] = []
+                if chart_type and rows:
+                    html_path = db_dir / "chart.html"
+                    self._write_chart_html(
+                        html_path, chart_type, chart_title, columns, rows
+                    )
+                    # Surface as artifact via the public outputs convention.
+                    from deeptutor.services.sandbox.artifacts import (
+                        collect_public_artifacts,
+                    )
+
+                    artifacts = collect_public_artifacts(str(db_dir))
+                    for artifact in artifacts:
+                        if artifact.filename == "chart.html":
+                            sources.append({
+                                "type": "artifact",
+                                "filename": artifact.filename,
+                                "url": artifact.url,
+                                "path": artifact.path,
+                                "mime_type": artifact.mime_type,
+                                "size_bytes": artifact.size_bytes,
+                            })
+                            content += f"\n\n📊 Chart visualization: {artifact.url}"
+                            break
             else:
                 conn.commit()
                 affected = cursor.rowcount
@@ -1529,6 +1585,7 @@ class SqlQueryTool(_PromptHintsMixin, BaseTool):
                     "rows_affected": max(affected, 0),
                     "db_path": str(db_path),
                 }
+                sources = []
         except sqlite3.Error as exc:
             return ToolResult(
                 content=f"SQL error: {exc}",
@@ -1538,7 +1595,9 @@ class SqlQueryTool(_PromptHintsMixin, BaseTool):
         finally:
             conn.close()
 
-        return ToolResult(content=content, success=True, metadata=metadata)
+        return ToolResult(
+            content=content, success=True, metadata=metadata, sources=sources
+        )
 
     @staticmethod
     def _render_markdown_table(columns: list[str], rows: list[sqlite3.Row]) -> str:
@@ -1561,6 +1620,95 @@ class SqlQueryTool(_PromptHintsMixin, BaseTool):
         if body:
             parts.append(body)
         return "\n".join(parts)
+
+    @staticmethod
+    def _write_chart_html(
+        path: Path,
+        chart_type: str,
+        title: str,
+        columns: list[str],
+        rows: list[sqlite3.Row],
+    ) -> None:
+        """Write an interactive Chart.js HTML file for the query result."""
+        import json as _json
+
+        # First column = labels; remaining numeric columns = datasets.
+        labels = [str(row[0]) for row in rows]
+        numeric_cols: list[tuple[str, list[float]]] = []
+        for col_idx in range(1, len(columns)):
+            vals: list[float] = []
+            for row in rows:
+                try:
+                    vals.append(float(row[col_idx]))
+                except (TypeError, ValueError):
+                    vals.append(0.0)
+            numeric_cols.append((columns[col_idx], vals))
+
+        # If no numeric columns found, use row count as fallback.
+        if not numeric_cols:
+            numeric_cols = [("count", list(range(1, len(rows) + 1)))]
+
+        colors = [
+            "#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f",
+            "#edc948", "#b07aa1", "#ff9da7", "#9c755f", "#bab0ac",
+        ]
+
+        datasets_js = []
+        for i, (col_name, vals) in enumerate(numeric_cols):
+            color = colors[i % len(colors)]
+            ds = {
+                "label": col_name,
+                "data": vals,
+                "backgroundColor": color if chart_type in ("bar", "pie", "doughnut", "radar") else "transparent",
+                "borderColor": color,
+                "borderWidth": 2,
+                "fill": chart_type == "radar",
+                "pointBackgroundColor": color if chart_type == "scatter" else None,
+            }
+            # Remove None values
+            ds = {k: v for k, v in ds.items() if v is not None}
+            datasets_js.append(ds)
+
+        html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{title}</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         background: #1a1a2e; color: #e0e0e0; display: flex; justify-content: center;
+         align-items: center; min-height: 100vh; padding: 24px; }}
+  .card {{ background: #16213e; border-radius: 12px; padding: 24px; width: 100%;
+           max-width: 720px; box-shadow: 0 4px 24px rgba(0,0,0,0.3); }}
+  h2 {{ font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #e0e0e0; }}
+  canvas {{ width: 100% !important; }}
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>{title}</h2>
+  <canvas id="chart"></canvas>
+</div>
+<script>
+new Chart(document.getElementById('chart'), {{
+  type: {chart_type!r},
+  data: {{
+    labels: {_json.dumps(labels)},
+    datasets: {_json.dumps(datasets_js)}
+  }},
+  options: {{
+    responsive: true,
+    plugins: {{ legend: {{ labels: {{ color: '#e0e0e0' }} }} }},
+    scales: {json.dumps({}) if chart_type in ("pie", "doughnut", "radar") else "{ 'x': { 'ticks': { 'color': '#aaa' }, 'grid': { 'color': '#333' } }, 'y': { 'ticks': { 'color': '#aaa' }, 'grid': { 'color': '#333' } } }"}
+  }}
+}});
+</script>
+</body>
+</html>"""
+        path.write_text(html, encoding="utf-8")
 
 
 BUILTIN_TOOL_TYPES: tuple[type[BaseTool], ...] = (
