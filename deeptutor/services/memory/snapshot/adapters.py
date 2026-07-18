@@ -19,6 +19,7 @@ import json
 import logging
 import sqlite3
 
+from deeptutor.knowledge.config_store import KBConfigStore
 from deeptutor.services.memory.paths import Surface
 from deeptutor.services.memory.snapshot.entity import Entity
 from deeptutor.services.path_service import get_path_service
@@ -339,13 +340,7 @@ def read_kb_entities() -> list[Entity]:
     consolidator combines both signals.
     """
     kb_root = get_path_service().get_knowledge_bases_root()
-    cfg_file = kb_root / "kb_config.json"
-    if not cfg_file.exists():
-        return []
-    try:
-        cfg = json.loads(cfg_file.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
+    cfg = KBConfigStore(kb_root / "kb_config.json").read()
     kbs = cfg.get("knowledge_bases") or {}
     if not isinstance(kbs, dict):
         return []

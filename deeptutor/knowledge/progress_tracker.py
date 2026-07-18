@@ -34,16 +34,34 @@ class ProgressTracker:
 
     def __init__(self, kb_name: str, base_dir: Path):
         self.kb_name = kb_name
-        self.base_dir = base_dir
-        self.kb_dir = base_dir / kb_name
+        self.base_dir = Path(base_dir)
+        self.kb_dir = self.base_dir / kb_name
         self.progress_file = self.kb_dir / ".progress.json"
         self._callbacks: list = []  # Support multiple callbacks
         self.task_id: str | None = None  # Task ID (for log identification)
+        self._creation_generation: str | None = None
+        try:
+            from deeptutor.knowledge.manager import KnowledgeBaseManager
+
+            entry = (
+                KnowledgeBaseManager(base_dir=str(self.base_dir))
+                .config.get("knowledge_bases", {})
+                .get(self.kb_name, {})
+            )
+            generation = entry.get("_creation_generation") if isinstance(entry, dict) else None
+            if isinstance(generation, str):
+                self._creation_generation = generation
+        except Exception:
+            pass
 
     def set_callback(self, callback: Callable[[dict], None]):
         """Set progress callback function (can be called multiple times to add multiple callbacks)"""
         if callback not in self._callbacks:
             self._callbacks.append(callback)
+
+    def set_creation_generation(self, generation: str | None) -> None:
+        """Bind this tracker to the KB creation generation that owns it."""
+        self._creation_generation = generation
 
     def remove_callback(self, callback: Callable[[dict], None]):
         """Remove progress callback function"""
@@ -98,7 +116,7 @@ class ProgressTracker:
                 status = "initializing"
 
             # Update kb_config.json with status and progress
-            manager.update_kb_status(
+            persisted = manager.update_kb_status(
                 name=self.kb_name,
                 status=status,
                 progress={
@@ -115,9 +133,13 @@ class ProgressTracker:
                     "index_changed": progress.get("index_changed"),
                     "index_action": progress.get("index_action"),
                 },
+                expected_generation=self._creation_generation,
             )
+            if persisted is False:
+                return
         except Exception as e:
             _logger_instance().warning("Failed to save progress to kb_config.json: %s", e)
+            return
 
         # Persist the last seen progress snapshot so websocket subscribers and
         # page reloads can recover the live state without relying on in-memory callbacks.

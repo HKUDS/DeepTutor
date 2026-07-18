@@ -6,12 +6,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 from datetime import datetime
-import json
 import logging
 from pathlib import Path
 import shutil
 from typing import Optional
+from uuid import uuid4
 
+from deeptutor.knowledge.metadata_store import get_metadata_store
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
 from deeptutor.services.config import resolve_llm_runtime_config
@@ -45,6 +46,40 @@ class KnowledgeBaseInitializer:
         self.base_url = base_url
         self.progress_tracker = progress_tracker or ProgressTracker(self.kb_name, self.base_dir)
         self.rag_provider = normalize_provider_name(rag_provider)
+        self._creation_generation: str | None = None
+        try:
+            from deeptutor.knowledge.manager import KnowledgeBaseManager
+
+            entry = (
+                KnowledgeBaseManager(base_dir=str(self.base_dir))
+                .config.get("knowledge_bases", {})
+                .get(self.kb_name, {})
+            )
+            generation = entry.get("_creation_generation") if isinstance(entry, dict) else None
+            if isinstance(generation, str):
+                self._creation_generation = generation
+                self.progress_tracker.set_creation_generation(generation)
+        except Exception:
+            pass
+
+    def _assert_current_generation(self) -> None:
+        """Reject delayed initializer work from an older KB generation."""
+        from deeptutor.knowledge.manager import KnowledgeBaseManager
+
+        manager = KnowledgeBaseManager(base_dir=str(self.base_dir))
+        deleted = manager.config.get("_deleted_knowledge_bases", {})
+        if isinstance(deleted, dict) and self.kb_name in deleted:
+            raise ValueError(f"Knowledge base '{self.kb_name}' was deleted.")
+        if self._creation_generation is None:
+            return
+        entry = manager.config.get("knowledge_bases", {}).get(self.kb_name)
+        if (
+            not isinstance(entry, dict)
+            or entry.get("_creation_generation") != self._creation_generation
+        ):
+            raise ValueError(
+                f"Knowledge base '{self.kb_name}' was recreated; refusing stale initializer work."
+            )
 
     def _register_to_config(self) -> None:
         """Register KB in kb_config.json with initializing state."""
@@ -67,35 +102,30 @@ class KnowledgeBaseInitializer:
                     "total": 0,
                 },
             )
-            manager.config = manager._load_config()
-            manager.config.setdefault("knowledge_bases", {}).setdefault(self.kb_name, {})[
-                "rag_provider"
-            ] = self.rag_provider
-            manager._save_config()
+
+            def set_provider(config: dict) -> None:
+                entry = config.get("knowledge_bases", {}).get(self.kb_name)
+                if entry is not None:
+                    entry["rag_provider"] = self.rag_provider
+
+            manager._mutate_config(set_provider)
         except Exception as e:
             logger.warning(f"Failed to register KB to config: {e}")
 
     def _update_metadata_with_provider(self, provider: str) -> None:
+        self._assert_current_generation()
         metadata_file = self.kb_dir / "metadata.json"
-        metadata: dict = {}
-        if metadata_file.exists():
-            try:
-                with open(metadata_file, "r", encoding="utf-8") as f:
-                    metadata = json.load(f)
-            except Exception:
-                metadata = {}
-
-        metadata["rag_provider"] = provider
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        metadata["last_updated"] = timestamp
-        metadata["last_indexed_at"] = timestamp
-        metadata["last_indexed_count"] = len(
-            FileTypeRouter.collect_supported_files(self.raw_dir, recursive=True)
-        )
-        metadata["last_indexed_action"] = "create"
+        file_count = len(FileTypeRouter.collect_supported_files(self.raw_dir, recursive=True))
 
-        with open(metadata_file, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, indent=2, ensure_ascii=False)
+        def mutate(metadata: dict) -> None:
+            metadata["rag_provider"] = provider
+            metadata["last_updated"] = timestamp
+            metadata["last_indexed_at"] = timestamp
+            metadata["last_indexed_count"] = file_count
+            metadata["last_indexed_action"] = "create"
+
+        get_metadata_store(metadata_file).transaction(mutate)
 
         try:
             from deeptutor.services.config import get_kb_config_service
@@ -110,11 +140,13 @@ class KnowledgeBaseInitializer:
         """Create KB directory structure."""
         logger.info(f"Creating directory structure for knowledge base: {self.kb_name}")
 
-        for dir_path in [
-            self.raw_dir,
-        ]:
-            dir_path.mkdir(parents=True, exist_ok=True)
+        # A delete leaves a durable tombstone so delayed background work cannot
+        # recreate a directory after the user has removed the KB. Explicit
+        # recreation first registers a fresh ``initializing`` entry through
+        # the manager/API, which clears this marker.
+        from deeptutor.knowledge.manager import KnowledgeBaseManager
 
+        manager = KnowledgeBaseManager(base_dir=str(self.base_dir))
         metadata = {
             "name": self.kb_name,
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -124,13 +156,62 @@ class KnowledgeBaseInitializer:
             "needs_reindex": False,
         }
 
-        with open(self.kb_dir / "metadata.json", "w", encoding="utf-8") as f:
-            json.dump(metadata, indent=2, ensure_ascii=False, fp=f)
+        with manager._kb_lifecycle_lock(self.kb_name):
+            state = manager._store.read()
+            deleted = state.get("_deleted_knowledge_bases", {})
+            if isinstance(deleted, dict) and self.kb_name in deleted:
+                raise ValueError(
+                    f"Knowledge base '{self.kb_name}' was deleted; register a new creation before "
+                    "initializing it."
+                )
+            if self._creation_generation is not None:
+                entry = state.get("knowledge_bases", {}).get(self.kb_name)
+                if not isinstance(entry, dict) or (
+                    entry.get("_creation_generation") != self._creation_generation
+                ):
+                    raise ValueError(
+                        f"Knowledge base '{self.kb_name}' was recreated; refusing stale initializer work."
+                    )
+            if self._creation_generation is None and self.kb_name not in state.get(
+                "knowledge_bases", {}
+            ):
+                self._creation_generation = uuid4().hex
+                self.progress_tracker.set_creation_generation(self._creation_generation)
 
-        self._register_to_config()
+            self.raw_dir.mkdir(parents=True, exist_ok=True)
+
+            metadata_file = self.kb_dir / "metadata.json"
+
+            def initialize_metadata(existing: dict) -> None:
+                if not existing:
+                    existing.update(metadata)
+
+            get_metadata_store(metadata_file).transaction(initialize_metadata)
+
+            def register(config: dict) -> None:
+                deleted = config.get("_deleted_knowledge_bases", {})
+                if isinstance(deleted, dict) and self.kb_name in deleted:
+                    raise ValueError(
+                        f"Knowledge base '{self.kb_name}' was deleted while it was initializing."
+                    )
+                # Legacy direct users may initialize a previously unseen name;
+                # API-created KBs already have this entry.
+                config.setdefault("knowledge_bases", {}).setdefault(
+                    self.kb_name,
+                    {
+                        "path": self.kb_name,
+                        "description": f"Knowledge base: {self.kb_name}",
+                        "status": "initializing",
+                        "updated_at": datetime.now().isoformat(),
+                        "_creation_generation": self._creation_generation,
+                    },
+                )
+
+            manager._mutate_config(register)
 
     def copy_documents(self, source_files: list[str]) -> list[str]:
         """Copy source documents into raw directory."""
+        self._assert_current_generation()
         copied_files: list[str] = []
         for source in source_files:
             source_path = Path(source)
@@ -146,6 +227,7 @@ class KnowledgeBaseInitializer:
         self,
     ) -> bool:
         """Process documents with the KB's bound provider."""
+        self._assert_current_generation()
         provider = self.rag_provider
 
         self.progress_tracker.update(
@@ -255,6 +337,10 @@ async def initialize_knowledge_base(
     from deeptutor.knowledge.manager import KnowledgeBaseManager
 
     manager = KnowledgeBaseManager(base_dir=base_dir)
+    # This public command is an explicit user-requested creation, unlike a
+    # delayed initializer callback. It is therefore allowed to recreate a
+    # previously deleted name before constructing the initializer.
+    manager.update_kb_status(kb_name, "initializing", allow_recreate=True)
     initializer = KnowledgeBaseInitializer(
         kb_name=kb_name,
         base_dir=base_dir,
@@ -329,6 +415,13 @@ async def main() -> None:
         docs_dir = Path(args.docs_dir)
         if docs_dir.exists() and docs_dir.is_dir():
             doc_files.extend(str(f) for f in FileTypeRouter.collect_supported_files(docs_dir))
+
+    # The module CLI is also an explicit create request, so clear a prior
+    # deletion tombstone before the initializer performs filesystem work.
+    from deeptutor.knowledge.manager import KnowledgeBaseManager
+
+    manager = KnowledgeBaseManager(base_dir=args.base_dir)
+    manager.update_kb_status(args.name, "initializing", allow_recreate=True)
 
     initializer = KnowledgeBaseInitializer(
         kb_name=args.name,

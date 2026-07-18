@@ -21,12 +21,14 @@ def _seed_kb(manager: KnowledgeBaseManager, name: str) -> Path:
     (kb_dir / "raw").mkdir(parents=True, exist_ok=True)
     (kb_dir / "version-1").mkdir(parents=True, exist_ok=True)
     (kb_dir / "version-1" / "docstore.json").write_text("{}", encoding="utf-8")
-    manager.config.setdefault("knowledge_bases", {})[name] = {
+    entry = {
         "path": name,
         "description": "",
         "status": "ready",
     }
-    manager._save_config()
+    manager._mutate_config(
+        lambda config: config.setdefault("knowledge_bases", {}).update({name: entry})
+    )
     return kb_dir
 
 
@@ -62,12 +64,14 @@ def test_list_keeps_recent_entry_with_missing_dir(tmp_path: Path) -> None:
     a recent ``updated_at`` keeps it in the list.
     """
     manager = KnowledgeBaseManager(base_dir=str(tmp_path))
-    manager.config.setdefault("knowledge_bases", {})["in-flight"] = {
+    entry = {
         "path": "in-flight",
         "status": "initializing",
         "updated_at": datetime.now().isoformat(),
     }
-    manager._save_config()
+    manager._mutate_config(
+        lambda config: config.setdefault("knowledge_bases", {}).update({"in-flight": entry})
+    )
 
     assert manager.list_knowledge_bases() == ["in-flight"]
     assert "in-flight" in _read_config(manager.config_file).get("knowledge_bases", {})

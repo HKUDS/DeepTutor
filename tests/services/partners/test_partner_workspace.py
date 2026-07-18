@@ -175,6 +175,44 @@ class TestInventoryAndRemoval:
         with pytest.raises(ValueError):
             remove_asset("ada", "skill", "../escape")
 
+    def test_remove_kb_prunes_only_its_config_entry(self, partners_root):
+        """The prune goes through KBConfigStore now — unrelated entries must
+        survive and the file must never pass through a truncated state."""
+        admin_root = partners_root.parent
+        _seed_admin_kb(admin_root)
+        provision_assets("ada", knowledge_bases=["physics"])
+        config_file = partners_root / "ada" / "workspace" / "knowledge_bases" / "kb_config.json"
+        config_file.write_text(
+            json.dumps(
+                {
+                    "knowledge_bases": {
+                        "physics": {"path": "physics"},
+                        "chemistry": {"path": "chemistry"},
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        assert remove_asset("ada", "knowledge_base", "physics") is True
+
+        config = json.loads(config_file.read_text(encoding="utf-8"))
+        assert "physics" not in config["knowledge_bases"]
+        assert "chemistry" in config["knowledge_bases"]
+
+    def test_remove_kb_leaves_corrupt_config_untouched(self, partners_root):
+        admin_root = partners_root.parent
+        _seed_admin_kb(admin_root)
+        provision_assets("ada", knowledge_bases=["physics"])
+        config_file = partners_root / "ada" / "workspace" / "knowledge_bases" / "kb_config.json"
+        damaged = '{"knowledge_bases": {"physics": '
+        config_file.write_text(damaged, encoding="utf-8")
+
+        # Directory removal still succeeds; the damaged config is preserved
+        # instead of being replaced by a rebuilt default.
+        assert remove_asset("ada", "knowledge_base", "physics") is True
+        assert config_file.read_text(encoding="utf-8") == damaged
+
 
 class TestStripFrontmatter:
     def test_strips_yaml_block(self):

@@ -44,16 +44,25 @@ class _FakeKBManager:
     def _load_config(self) -> dict:
         return self.config
 
-    def _save_config(self) -> None:
-        pass
+    def _mutate_config(self, mutate):
+        return mutate(self.config)
 
     def list_knowledge_bases(self) -> list[str]:
         return sorted(self.config.get("knowledge_bases", {}).keys())
 
-    def update_kb_status(self, name: str, status: str, progress: dict | None = None) -> None:
+    def update_kb_status(
+        self,
+        name: str,
+        status: str,
+        progress: dict | None = None,
+        *,
+        allow_recreate: bool = False,
+        expected_generation: str | None = None,
+    ) -> bool:
         entry = self.config.setdefault("knowledge_bases", {}).setdefault(name, {"path": name})
         entry["status"] = status
         entry["progress"] = progress or {}
+        return True
 
     def get_default(self) -> str | None:
         names = self.list_knowledge_bases()

@@ -13,20 +13,23 @@ import json
 from pathlib import Path
 from typing import Any
 
+from deeptutor.knowledge.config_store import KBConfigStore
 from deeptutor.services.rag.factory import DEFAULT_PROVIDER, normalize_provider_name
 
 
 def load_kb_config_entry(kb_base_dir: str | Path, kb_name: str) -> dict[str, Any]:
-    """Return the raw ``kb_config.json`` entry for ``kb_name``, if present."""
-    config_path = Path(kb_base_dir) / "kb_config.json"
-    if not config_path.exists():
+    """Return the raw ``kb_config.json`` entry for ``kb_name``, if present.
+
+    A missing config file reads as empty. A file that exists but does not
+    parse raises ``KBConfigCorruptionError`` — silently returning ``{}``
+    here would rebind the KB to the default provider and mask the damage.
+    """
+    config = KBConfigStore(Path(kb_base_dir) / "kb_config.json").read()
+    knowledge_bases = config.get("knowledge_bases")
+    if not isinstance(knowledge_bases, dict):
         return {}
-    try:
-        with open(config_path, encoding="utf-8") as handle:
-            entry = json.load(handle).get("knowledge_bases", {}).get(kb_name, {})
-        return entry if isinstance(entry, dict) else {}
-    except Exception:
-        return {}
+    entry = knowledge_bases.get(kb_name, {})
+    return entry if isinstance(entry, dict) else {}
 
 
 def load_metadata_provider(kb_base_dir: str | Path, kb_name: str) -> str | None:
@@ -49,6 +52,10 @@ def resolve_bound_provider(kb_base_dir: str | Path, kb_name: str | None) -> str:
     1. ``kb_config.json``: authoritative runtime state.
     2. ``metadata.json``: legacy/import fallback.
     3. default provider.
+
+    A corrupt ``kb_config.json`` raises ``KBConfigCorruptionError`` instead
+    of falling through — resolving a damaged binding to the default provider
+    would silently query the wrong engine.
     """
     if kb_name:
         entry = load_kb_config_entry(kb_base_dir, kb_name)

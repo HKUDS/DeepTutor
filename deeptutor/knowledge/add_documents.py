@@ -8,12 +8,12 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 import hashlib
-import json
 import logging
 from pathlib import Path
 import shutil
 from typing import List, Optional
 
+from deeptutor.knowledge.metadata_store import get_metadata_store
 from deeptutor.services.config import resolve_llm_runtime_config
 from deeptutor.services.rag.factory import (
     DEFAULT_PROVIDER,
@@ -78,24 +78,6 @@ class RawDocumentRemoval:
     was_indexed: bool
 
 
-def _read_metadata(metadata_file: Path) -> dict:
-    """Load a KB's metadata.json, returning {} when absent or unreadable."""
-    if not metadata_file.exists():
-        return {}
-    try:
-        with open(metadata_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception:
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
-def _write_metadata(metadata_file: Path, metadata: dict) -> None:
-    """Persist a KB's metadata.json (pretty-printed, non-ASCII preserved)."""
-    with open(metadata_file, "w", encoding="utf-8") as f:
-        json.dump(metadata, f, indent=2, ensure_ascii=False)
-
-
 def _raw_hash_key(file_path: Path, raw_dir: Path) -> str:
     """Stable ``file_hashes`` key for a staged file.
 
@@ -126,17 +108,23 @@ def remove_raw_document(kb_dir: Path, file_path: Path) -> RawDocumentRemoval:
     raw_dir = kb_dir / "raw"
     hash_key = _raw_hash_key(file_path, raw_dir)
 
-    target = file_path.resolve()
-    if target.exists():
-        target.unlink()
-
     metadata_file = kb_dir / "metadata.json"
-    metadata = _read_metadata(metadata_file)
-    hashes = metadata.get("file_hashes")
-    was_indexed = isinstance(hashes, dict) and hash_key in hashes
-    if was_indexed:
-        del hashes[hash_key]
-        _write_metadata(metadata_file, metadata)
+
+    def mutate(metadata: dict) -> bool:
+        hashes = metadata.get("file_hashes")
+        was_indexed = isinstance(hashes, dict) and hash_key in hashes
+        # Keep file removal and hash removal in the same metadata transaction.
+        # This validates metadata before the irreversible unlink and prevents a
+        # concurrent successful-index update from recording a stale hash after
+        # the document has been deleted.
+        target = file_path.resolve()
+        if target.exists():
+            target.unlink()
+        if was_indexed:
+            del hashes[hash_key]
+        return was_indexed
+
+    _, was_indexed = get_metadata_store(metadata_file).transaction(mutate)
 
     return RawDocumentRemoval(rel_path=hash_key, was_indexed=was_indexed)
 
@@ -204,14 +192,10 @@ class DocumentAdder:
         return sha256_hash.hexdigest()
 
     def get_ingested_hashes(self) -> dict[str, str]:
-        if self.metadata_file.exists():
-            try:
-                with open(self.metadata_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                return data.get("file_hashes", {})
-            except Exception:
-                return {}
-        return {}
+        if not self.metadata_file.exists():
+            return {}
+        hashes = get_metadata_store(self.metadata_file).read().get("file_hashes", {})
+        return hashes if isinstance(hashes, dict) else {}
 
     def add_documents(self, source_files: List[str], allow_duplicates: bool = False) -> List[Path]:
         """Validate and stage files into raw/ before indexing."""
@@ -294,43 +278,49 @@ class DocumentAdder:
 
     def _record_successful_hash(self, file_path: Path) -> None:
         file_hash = self._get_file_hash(file_path)
-        metadata = _read_metadata(self.metadata_file)
         hash_key = _raw_hash_key(file_path, self.raw_dir)
-        metadata.setdefault("file_hashes", {})[hash_key] = file_hash
-        _write_metadata(self.metadata_file, metadata)
+
+        def mutate(metadata: dict) -> None:
+            # A concurrent raw-document deletion holds this same transaction
+            # while unlinking. If it won first, do not resurrect a hash for a
+            # document that is no longer staged.
+            if not file_path.exists():
+                return
+            hashes = metadata.setdefault("file_hashes", {})
+            if not isinstance(hashes, dict):
+                raise ValueError(f"Invalid file_hashes metadata for knowledge base: {self.kb_name}")
+            hashes[hash_key] = file_hash
+
+        get_metadata_store(self.metadata_file).transaction(mutate)
 
     def update_metadata(self, added_count: int) -> None:
         """Update metadata after incremental add."""
-        metadata: dict = {}
-        if self.metadata_file.exists():
-            try:
-                with open(self.metadata_file, "r", encoding="utf-8") as f:
-                    metadata = json.load(f)
-            except Exception:
-                metadata = {}
-
-        metadata["rag_provider"] = self.rag_provider
-        metadata["needs_reindex"] = False
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        metadata["last_updated"] = timestamp
-        if added_count > 0:
-            metadata["last_indexed_at"] = timestamp
-            metadata["last_indexed_count"] = added_count
-            metadata["last_indexed_action"] = "upload"
 
-        history = metadata.get("update_history", [])
-        history.append(
-            {
-                "timestamp": metadata["last_updated"],
-                "action": "incremental_add",
-                "count": added_count,
-                "provider": self.rag_provider,
-            }
-        )
-        metadata["update_history"] = history
+        def mutate(metadata: dict) -> None:
+            metadata["rag_provider"] = self.rag_provider
+            metadata["needs_reindex"] = False
+            metadata["last_updated"] = timestamp
+            if added_count > 0:
+                metadata["last_indexed_at"] = timestamp
+                metadata["last_indexed_count"] = added_count
+                metadata["last_indexed_action"] = "upload"
 
-        with open(self.metadata_file, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, indent=2, ensure_ascii=False)
+            history = metadata.setdefault("update_history", [])
+            if not isinstance(history, list):
+                raise ValueError(
+                    f"Invalid update_history metadata for knowledge base: {self.kb_name}"
+                )
+            history.append(
+                {
+                    "timestamp": timestamp,
+                    "action": "incremental_add",
+                    "count": added_count,
+                    "provider": self.rag_provider,
+                }
+            )
+
+        get_metadata_store(self.metadata_file).transaction(mutate)
 
 
 async def add_documents(

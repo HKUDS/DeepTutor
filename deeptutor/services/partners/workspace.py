@@ -32,6 +32,10 @@ from pathlib import Path
 import shutil
 from typing import Any
 
+from deeptutor.knowledge.config_store import (
+    KBConfigCorruptionError,
+    KBConfigStore,
+)
 from deeptutor.multi_user.paths import (
     ensure_scope_workspace,
     get_admin_path_service,
@@ -331,14 +335,14 @@ def remove_asset(partner_id: str, asset_type: str, name: str) -> bool:
         shutil.rmtree(target)
         config_file = root / "knowledge_bases" / "kb_config.json"
         if config_file.exists():
+            # The partner-side KnowledgeBaseManager reads/writes this same
+            # file, so the prune must go through the shared store — a raw
+            # read-modify-write here can lose a concurrent writer's update.
             try:
-                config = json.loads(config_file.read_text(encoding="utf-8"))
-                if name in config.get("knowledge_bases", {}):
-                    config["knowledge_bases"].pop(name, None)
-                    config_file.write_text(
-                        json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8"
-                    )
-            except (OSError, json.JSONDecodeError):
+                KBConfigStore(config_file).transaction(
+                    lambda config: config.get("knowledge_bases", {}).pop(name, None)
+                )
+            except (OSError, KBConfigCorruptionError):
                 logger.warning("Could not prune kb_config entry for %s", name, exc_info=True)
         return True
 

@@ -13,9 +13,9 @@ results.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
+from deeptutor.knowledge.config_store import KBConfigStore
 from deeptutor.knowledge.kb_types import external_root_of
 
 KB_CONFIG_FILENAME = "kb_config.json"
@@ -35,16 +35,19 @@ def resolve_kb_dir(kb_base_dir: str | Path, kb_name: str) -> Path:
 
 
 def _external_path(base: Path, kb_name: str) -> str | None:
-    """Read a KB entry's external pointer from ``kb_config.json``, if any."""
-    cfg = base / KB_CONFIG_FILENAME
-    if not cfg.exists():
+    """Read a KB entry's external pointer from ``kb_config.json``, if any.
+
+    A missing config file reads as pointer-less; a corrupt one raises
+    ``KBConfigCorruptionError`` — treating damage as "no pointer" would
+    resolve a linked KB to a non-existent local folder and silently return
+    empty results.
+    """
+    config = KBConfigStore(base / KB_CONFIG_FILENAME).read()
+    knowledge_bases = config.get("knowledge_bases")
+    if not isinstance(knowledge_bases, dict):
         return None
-    try:
-        with open(cfg, encoding="utf-8") as handle:
-            entry = json.load(handle).get("knowledge_bases", {}).get(kb_name, {})
-    except Exception:
-        return None
-    return external_root_of(entry)
+    entry = knowledge_bases.get(kb_name, {})
+    return external_root_of(entry if isinstance(entry, dict) else {})
 
 
 __all__ = ["resolve_kb_dir"]

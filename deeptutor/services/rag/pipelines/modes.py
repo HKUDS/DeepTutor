@@ -11,9 +11,10 @@ Resolution order, first valid wins:
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Optional, Sequence
+
+from deeptutor.knowledge.config_store import KBConfigStore
 
 
 def resolve_kb_mode(
@@ -25,17 +26,24 @@ def resolve_kb_mode(
     supported: Sequence[str],
     default: str,
 ) -> str:
+    """Resolve the retrieval mode; see the module docstring for the order.
+
+    A missing ``kb_config.json`` contributes no candidates; a corrupt one
+    raises ``KBConfigCorruptionError`` instead of silently dropping the
+    user's configured mode.
+    """
     candidates: list[Any] = [explicit]
-    try:
-        cfg_path = Path(kb_base_dir) / "kb_config.json"
-        if cfg_path.exists():
-            data = json.loads(cfg_path.read_text(encoding="utf-8"))
-            if kb_name:
-                entry = data.get("knowledge_bases", {}).get(kb_name, {})
-                candidates.append(entry.get("search_mode"))
-            candidates.append(data.get("defaults", {}).get("provider_modes", {}).get(provider))
-    except Exception:  # pragma: no cover - defensive
-        pass
+    data = KBConfigStore(Path(kb_base_dir) / "kb_config.json").read()
+    knowledge_bases = data.get("knowledge_bases")
+    if kb_name and isinstance(knowledge_bases, dict):
+        entry = knowledge_bases.get(kb_name)
+        if isinstance(entry, dict):
+            candidates.append(entry.get("search_mode"))
+    defaults = data.get("defaults")
+    if isinstance(defaults, dict):
+        provider_modes = defaults.get("provider_modes")
+        if isinstance(provider_modes, dict):
+            candidates.append(provider_modes.get(provider))
 
     supported_set = {m.lower() for m in supported}
     for candidate in candidates:
