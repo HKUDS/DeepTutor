@@ -335,11 +335,19 @@ class MathAnimatorPipeline:
         if on_progress:
             await on_progress("Generating timed animation code...")
 
-        # Use code agent with timing constraints
-        timed_code = await self._generate_timed_code(
-            timed_segments=timed_segments,
-            total_duration=tts_result.duration_seconds,
-        )
+        # Use provided manim_code if available, otherwise generate timed code
+        provided_code = lecture_script.get("manim_code")
+        if provided_code:
+            # Inject timing comments into the provided code
+            timed_code = self._inject_timing_to_code(
+                provided_code, timed_segments, tts_result.duration_seconds
+            )
+        else:
+            # Use code agent with timing constraints
+            timed_code = await self._generate_timed_code(
+                timed_segments=timed_segments,
+                total_duration=tts_result.duration_seconds,
+            )
 
         # Step 4: Render video
         if on_progress:
@@ -468,6 +476,34 @@ class MathAnimatorPipeline:
             code_parts.append("")
 
         return "\n".join(code_parts)
+
+    def _inject_timing_to_code(
+        self,
+        manim_code: str,
+        timed_segments: list[dict[str, Any]],
+        total_duration: float,
+    ) -> str:
+        """Inject timing comments into provided Manim code.
+
+        This preserves the LLM-generated visualizations while adding
+        timing guidance as comments for future enhancement.
+        """
+        timing_header = [
+            f"# Total duration: {total_duration:.1f}s",
+            f"# Segments: {len(timed_segments)}",
+        ]
+
+        for seg in timed_segments:
+            duration_sec = seg["duration_ms"] / 1000
+            timing_header.append(
+                f"# - {seg['title']}: {duration_sec:.1f}s "
+                f"({seg['start_ms']/1000:.1f}s - {seg['end_ms']/1000:.1f}s)"
+            )
+
+        timing_header.append("")
+
+        # Combine timing comments with the provided code
+        return "\n".join(timing_header) + "\n" + manim_code
 
 
 __all__ = ["MathAnimatorPipeline"]

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BookOpen, Video, ChevronRight, Search, Filter, Loader2 } from "lucide-react";
+import { apiUrl } from "@/lib/api";
 
 interface Problem {
   id: string;
@@ -39,19 +40,36 @@ export default function MathNetVideoPage() {
 
   const fetchProblems = async () => {
     setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams();
       params.append("page", page.toString());
       params.append("page_size", pageSize.toString());
       if (selectedTier) params.append("tier", selectedTier);
+      if (search.trim()) params.append("keyword", search.trim());
 
-      const res = await fetch(`/api/v1/mathnet/problems?${params}`);
-      if (!res.ok) throw new Error("Failed to fetch problems");
+      console.log("Fetching problems...", params.toString());
+      const res = await fetch(apiUrl(`/api/v1/mathnet/problems?${params}`));
+      console.log("Response status:", res.status);
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("API error:", res.status, errText);
+        if (res.status === 401) {
+          throw new Error("请先登录后再访问此页面");
+        }
+        if (res.status === 403) {
+          throw new Error("权限不足，无法访问题库数据");
+        }
+        throw new Error(`API ${res.status}: ${errText.substring(0, 100)}`);
+      }
 
       const data: ProblemListResponse = await res.json();
+      console.log("Received data:", data.total, "problems");
       setProblems(data.problems);
       setTotal(data.total);
     } catch (err) {
+      console.error("Fetch error:", err);
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
@@ -123,11 +141,25 @@ export default function MathNetVideoPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--muted-foreground)]" />
             <input
               type="text"
-              placeholder="搜索题目..."
+              placeholder="搜索题目（国家/竞赛/关键词）..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-[var(--card)] border border-[var(--border)] rounded-lg text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  fetchProblems();
+                }
+              }}
+              className="w-full pl-10 pr-20 py-2 bg-[var(--card)] border border-[var(--border)] rounded-lg text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
             />
+            <button
+              onClick={fetchProblems}
+              className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs bg-[var(--primary)] text-white rounded hover:opacity-90 transition-opacity"
+            >
+              搜索
+            </button>
           </div>
           <select
             value={selectedTier}
@@ -144,8 +176,23 @@ export default function MathNetVideoPage() {
 
         {/* Error */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-red-700">
-            {error}
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <div className="text-red-700 font-medium mb-2">加载失败</div>
+            <div className="text-red-600 text-sm mb-3">{error}</div>
+            <button
+              onClick={fetchProblems}
+              className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm"
+            >
+              重试
+            </button>
+          </div>
+        )}
+
+        {/* Debug Info */}
+        {!loading && !error && problems.length === 0 && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 text-yellow-700">
+            <div className="font-medium mb-1">暂无数据</div>
+            <div className="text-sm">API 返回了空列表，请检查后端数据。</div>
           </div>
         )}
 

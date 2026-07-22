@@ -9,6 +9,7 @@ import re
 from typing import Any
 
 from .models import LectureScript, LectureSegment, ScriptTiming
+from .visual_elements import extract_visual_elements, VisualElements
 
 
 class LectureScriptGenerator:
@@ -90,11 +91,11 @@ class LectureScriptGenerator:
 
         return LectureSegment(
             step_index=0,
-            title="题目介绍",
+            title="Introduction",
             script=script,
-            visual_description="显示题目原文，高亮关键条件",
+            visual_description="Display the original problem, highlight key conditions",
             timing=ScriptTiming(estimated_duration_seconds=duration),
-            key_points=["理解题意", "识别已知条件"],
+            key_points=["Understand the problem", "Identify key conditions"],
         )
 
     def _generate_step_segment(
@@ -112,7 +113,7 @@ class LectureScriptGenerator:
             LectureSegment for this step
         """
         # Extract step content
-        title = step_data.get("step_title_zh", f"第{step_index}步")
+        title = step_data.get("step_title_en") or step_data.get("step_title_zh", f"Step {step_index}")
         text = step_data.get("step_text_zh", "")
         explanation = step_data.get("explanation_zh", "")
         role = step_data.get("role_in_solution_zh", "")
@@ -147,8 +148,9 @@ class LectureScriptGenerator:
 
         script = "".join(parts)
 
-        # Generate visual description
-        visual = self._infer_visual_from_step(title, text)
+        # Generate visual description using visual elements extractor
+        visual_elements = extract_visual_elements(step_data)
+        visual = self._format_visual_description(visual_elements, title, text)
 
         # Extract key points from knowledge points
         key_points = []
@@ -156,6 +158,11 @@ class LectureScriptGenerator:
             kp_name = kp.get("name_zh", "")
             if kp_name:
                 key_points.append(kp_name)
+
+        # Also add key symbols from visual elements
+        for symbol in visual_elements.key_symbols[:3]:
+            if symbol not in key_points:
+                key_points.append(symbol)
 
         duration = self._estimate_duration(script)
 
@@ -168,32 +175,71 @@ class LectureScriptGenerator:
             key_points=key_points[:3],  # Limit to top 3
         )
 
-    def _infer_visual_from_step(self, title: str, text: str) -> str:
-        """Infer what visual should be shown for a step.
+    def _format_visual_description(
+        self, visual_elements: VisualElements, title: str, text: str
+    ) -> str:
+        """Format visual elements into a description string.
 
-        This is a simple heuristic-based approach.
+        Args:
+            visual_elements: Extracted visual elements
+            title: Step title
+            text: Step text
+
+        Returns:
+            Visual description string
         """
-        title_lower = title.lower()
-        text_lower = text.lower()
+        parts = []
 
-        # Check for specific visual patterns
-        if any(kw in title_lower or kw in text_lower for kw in ["图", "画", "构造", "作图"]):
-            return "几何图形，动画展示作图过程"
+        # Add geometry description
+        if visual_elements.geometry:
+            geom_parts = []
+            for geom in visual_elements.geometry:
+                geom_type_names = {
+                    "triangle": "三角形",
+                    "circle": "圆",
+                    "line": "线段",
+                    "angle": "角",
+                    "point": "点",
+                }
+                type_name = geom_type_names.get(geom.type, geom.type)
+                props = ""
+                if geom.properties.get("right_angle"):
+                    props = f"(直角在{geom.properties['right_angle']})"
+                if geom.properties.get("line_type") == "altitude":
+                    props = "(高线)"
+                if geom.properties.get("line_type") == "median":
+                    props = "(中线)"
+                geom_parts.append(f"{type_name}{geom.label}{props}")
+            parts.append("几何: " + ", ".join(geom_parts))
 
-        if any(kw in title_lower or kw in text_lower for kw in ["方程", "代数", "计算", "代入"]):
-            return "代数表达式，逐步计算过程"
+        # Add formulas description
+        if visual_elements.formulas:
+            formulas_str = ", ".join(visual_elements.formulas[:3])
+            parts.append(f"公式: {formulas_str}")
 
-        if any(kw in title_lower or kw in text_lower for kw in ["数列", "序列", "归纳"]):
-            return "数列项，递推关系图示"
+        # Fallback to heuristic if no structured elements found
+        if not parts:
+            title_lower = title.lower()
+            text_lower = text.lower()
 
-        if any(kw in title_lower or kw in text_lower for kw in ["证明", "推导", "因为", "所以"]):
-            return "逻辑推导链条，因果箭头"
+            if any(kw in title_lower or kw in text_lower for kw in ["图", "画", "构造", "作图"]):
+                return "几何图形，动画展示作图过程"
 
-        if any(kw in title_lower or kw in text_lower for kw in ["函数", "图像", "曲线"]):
-            return "函数图像，坐标系"
+            if any(kw in title_lower or kw in text_lower for kw in ["方程", "代数", "计算", "代入"]):
+                return "代数表达式，逐步计算过程"
 
-        # Default
-        return "数学表达式和关键步骤高亮"
+            if any(kw in title_lower or kw in text_lower for kw in ["数列", "序列", "归纳"]):
+                return "数列项，递推关系图示"
+
+            if any(kw in title_lower or kw in text_lower for kw in ["证明", "推导", "因为", "所以"]):
+                return "逻辑推导链条，因果箭头"
+
+            if any(kw in title_lower or kw in text_lower for kw in ["函数", "图像", "曲线"]):
+                return "函数图像，坐标系"
+
+            return "数学表达式和关键步骤高亮"
+
+        return "; ".join(parts)
 
     def _generate_conclusion_script(
         self,
@@ -219,7 +265,7 @@ class LectureScriptGenerator:
 
         return LectureSegment(
             step_index=len(steps) + 1,
-            title="总结",
+            title="Conclusion",
             script=script,
             visual_description="回顾解题步骤，显示最终答案",
             timing=ScriptTiming(estimated_duration_seconds=duration),

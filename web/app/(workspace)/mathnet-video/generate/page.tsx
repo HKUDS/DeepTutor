@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { ArrowLeft, Play, Download, Loader2, CheckCircle, AlertCircle } from "lucide-react";
+import { ArrowLeft, Play, Download, Loader2, CheckCircle, AlertCircle, RefreshCw } from "lucide-react";
+import { apiUrl } from "@/lib/api";
+import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 
 interface ProblemDetail {
   problem: {
@@ -40,6 +42,7 @@ export default function GenerateVideoPage() {
   const [status, setStatus] = useState<GenerationStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const [forceRegenerate, setForceRegenerate] = useState(false);
 
   useEffect(() => {
     if (problemId) {
@@ -49,7 +52,7 @@ export default function GenerateVideoPage() {
 
   const fetchProblemDetail = async () => {
     try {
-      const res = await fetch(`/api/v1/mathnet/problem/${problemId}`);
+      const res = await fetch(apiUrl(`/api/v1/mathnet/problem/${problemId}`));
       if (!res.ok) throw new Error("Failed to fetch problem");
       const data = await res.json();
       setProblem(data);
@@ -60,25 +63,27 @@ export default function GenerateVideoPage() {
     }
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = useCallback(async (force = false) => {
     if (!problemId) return;
 
     setGenerating(true);
     setProgress(0);
+    setError(null);
 
     // Simulate progress
     const progressInterval = setInterval(() => {
-      setProgress(p => Math.min(p + 10, 90));
-    }, 2000);
+      setProgress(p => Math.min(p + 5, 90));
+    }, 3000);
 
     try {
-      const res = await fetch("/api/v1/mathnet-video/generate", {
+      const res = await fetch(apiUrl("/api/v1/mathnet-video/generate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           problem_id: problemId,
           tts_provider: "edge",
           quality: "medium",
+          force_regenerate: force,
         }),
       });
 
@@ -98,6 +103,13 @@ export default function GenerateVideoPage() {
       setGenerating(false);
       clearInterval(progressInterval);
     }
+  }, [problemId]);
+
+  const handleRegenerate = () => {
+    setStatus(null);
+    setForceRegenerate(true);
+    // Use setTimeout to ensure state updates before calling handleGenerate
+    setTimeout(() => handleGenerate(true), 0);
   };
 
   if (loading) {
@@ -126,10 +138,10 @@ export default function GenerateVideoPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--background)]">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="min-h-screen bg-[var(--background)] overflow-hidden">
+      <div className="h-screen flex flex-col">
         {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
+        <div className="flex-shrink-0 flex items-center gap-4 px-4 sm:px-6 lg:px-8 py-4 border-b border-[var(--border)]">
           <button
             onClick={() => router.push("/mathnet-video")}
             className="p-2 hover:bg-[var(--muted)] rounded-lg transition-colors"
@@ -141,163 +153,188 @@ export default function GenerateVideoPage() {
           </h1>
         </div>
 
-        {problem && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Left: Problem Info */}
-            <div className="space-y-6">
-              <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-6">
-                <div className="text-sm text-[var(--muted-foreground)] mb-2">
-                  #{problem.problem.id} · {problem.problem.country}
-                </div>
-                <h2 className="text-xl font-semibold text-[var(--foreground)] mb-4">
-                  {problem.problem.competition}
-                </h2>
-                <div className="prose dark:prose-invert max-w-none">
-                  <div className="text-[var(--foreground)] whitespace-pre-wrap">
-                    {problem.problem.problem_markdown}
-                  </div>
-                </div>
-              </div>
-
-              {problem.architecture && (
+        {/* Main Content */}
+        <div className="flex-1 overflow-hidden">
+          {problem && (
+            <div className="h-full grid grid-cols-1 lg:grid-cols-2 gap-0">
+              {/* Left: Problem Info - Scrollable */}
+              <div className="h-full overflow-y-auto p-4 sm:px-6 lg:px-8 space-y-6">
+                {/* Problem Card */}
                 <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-6">
-                  <h3 className="text-lg font-medium text-[var(--foreground)] mb-3">
-                    解题策略
-                  </h3>
-                  <p className="text-[var(--muted-foreground)]">
-                    {problem.architecture.solution_strategy_zh}
-                  </p>
-                  <div className="mt-4 text-sm text-[var(--muted-foreground)]">
-                    共 {problem.architecture.step_count} 个步骤
+                  <div className="text-sm text-[var(--muted-foreground)] mb-2">
+                    #{problem.problem.id} · {problem.problem.country}
+                  </div>
+                  <h2 className="text-xl font-semibold text-[var(--foreground)] mb-4">
+                    {problem.problem.competition}
+                  </h2>
+                  <div className="prose dark:prose-invert max-w-none">
+                    <MarkdownRenderer content={problem.problem.problem_markdown} />
                   </div>
                 </div>
-              )}
 
-              {/* Steps Preview */}
-              {problem.steps.length > 0 && (
-                <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-6">
-                  <h3 className="text-lg font-medium text-[var(--foreground)] mb-4">
-                    解题步骤
-                  </h3>
-                  <div className="space-y-3">
-                    {problem.steps.slice(0, 5).map((step) => (
-                      <div
-                        key={step.step_index}
-                        className="flex items-start gap-3 p-3 bg-[var(--muted)] rounded-lg"
-                      >
-                        <span className="flex-shrink-0 w-6 h-6 bg-[var(--primary)] text-white rounded-full flex items-center justify-center text-sm">
-                          {step.step_index}
-                        </span>
-                        <div>
-                          <div className="font-medium text-[var(--foreground)]">
-                            {step.title_zh}
-                          </div>
-                          <div className="text-sm text-[var(--muted-foreground)] mt-1 line-clamp-2">
-                            {step.text_zh}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    {problem.steps.length > 5 && (
-                      <div className="text-center text-sm text-[var(--muted-foreground)]">
-                        还有 {problem.steps.length - 5} 个步骤...
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Right: Generation Panel */}
-            <div className="space-y-6">
-              <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-6">
-                <h3 className="text-lg font-medium text-[var(--foreground)] mb-4">
-                  视频生成
-                </h3>
-
-                {error && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4 text-red-700">
-                    {error}
+                {/* Strategy Card */}
+                {problem.architecture && (
+                  <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-6">
+                    <h3 className="text-lg font-medium text-[var(--foreground)] mb-3">
+                      解题策略
+                    </h3>
+                    <div className="prose dark:prose-invert max-w-none text-[var(--muted-foreground)]">
+                      <MarkdownRenderer content={problem.architecture.solution_strategy_zh} />
+                    </div>
+                    <div className="mt-4 text-sm text-[var(--muted-foreground)]">
+                      共 {problem.architecture.step_count} 个步骤
+                    </div>
                   </div>
                 )}
 
-                {!status ? (
-                  <div className="space-y-4">
-                    <div className="text-sm text-[var(--muted-foreground)]">
-                      <p className="mb-2">将生成以下内容：</p>
-                      <ul className="list-disc list-inside space-y-1">
-                        <li>AI 讲解音频（中文）</li>
-                        <li>步骤拆解动画</li>
-                        <li>字幕同步显示</li>
-                      </ul>
+                {/* Steps Card */}
+                {problem.steps.length > 0 && (
+                  <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-6">
+                    <h3 className="text-lg font-medium text-[var(--foreground)] mb-4">
+                      解题步骤
+                    </h3>
+                    <div className="space-y-4">
+                      {problem.steps.map((step) => (
+                        <div
+                          key={step.step_index}
+                          className="flex items-start gap-3 p-4 bg-[var(--muted)] rounded-lg"
+                        >
+                          <span className="flex-shrink-0 w-8 h-8 bg-[var(--primary)] text-white rounded-full flex items-center justify-center text-sm font-medium">
+                            {step.step_index}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-[var(--foreground)] mb-1">
+                              {step.title_zh}
+                            </div>
+                            <div className="prose dark:prose-invert max-w-none text-sm text-[var(--muted-foreground)]">
+                              <MarkdownRenderer content={step.text_zh} />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
+                  </div>
+                )}
 
-                    {generating ? (
-                      <div className="space-y-3">
-                        <div className="h-2 bg-[var(--muted)] rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-[var(--primary)] transition-all duration-500"
-                            style={{ width: `${progress}%` }}
+                {/* Bottom spacing */}
+                <div className="h-8" />
+              </div>
+
+              {/* Right: Generation Panel - Fixed */}
+              <div className="h-full overflow-y-auto border-l border-[var(--border)] bg-[var(--background)]">
+                <div className="p-4 sm:px-6 lg:px-8 space-y-6">
+                  <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-6">
+                    <h3 className="text-lg font-medium text-[var(--foreground)] mb-4">
+                      视频生成
+                    </h3>
+
+                    {error && (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4 text-red-700">
+                        {error}
+                      </div>
+                    )}
+
+                    {!status ? (
+                      <div className="space-y-4">
+                        <div className="text-sm text-[var(--muted-foreground)]">
+                          <p className="mb-2">将生成以下内容：</p>
+                          <ul className="list-disc list-inside space-y-1">
+                            <li>AI 讲解音频（中文）</li>
+                            <li>步骤拆解动画</li>
+                            <li>字幕同步显示</li>
+                          </ul>
+                        </div>
+
+                        {/* Force Regenerate Checkbox */}
+                        <label className="flex items-center gap-2 cursor-pointer p-2 hover:bg-[var(--muted)] rounded-lg transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={forceRegenerate}
+                            onChange={(e) => setForceRegenerate(e.target.checked)}
+                            className="w-4 h-4 rounded border-[var(--border)] text-[var(--primary)] focus:ring-[var(--primary)]"
                           />
-                        </div>
-                        <div className="text-center text-sm text-[var(--muted-foreground)]">
-                          {progress < 30 && "正在生成讲解脚本..."}
-                          {progress >= 30 && progress < 60 && "正在合成语音..."}
-                          {progress >= 60 && progress < 90 && "正在渲染动画..."}
-                          {progress >= 90 && "正在合成视频..."}
-                        </div>
+                          <span className="text-sm text-[var(--foreground)]">强制重新生成（忽略缓存）</span>
+                        </label>
+
+                        {generating ? (
+                          <div className="space-y-3">
+                            <div className="h-2 bg-[var(--muted)] rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-[var(--primary)] transition-all duration-500"
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                            <div className="text-center text-sm text-[var(--muted-foreground)]">
+                              {progress < 30 && "正在生成讲解脚本..."}
+                              {progress >= 30 && progress < 60 && "正在合成语音..."}
+                              {progress >= 60 && progress < 90 && "正在渲染动画..."}
+                              {progress >= 90 && "正在合成视频..."}
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => handleGenerate(forceRegenerate)}
+                            className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-[var(--primary)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={generating}
+                          >
+                            <Play className="w-5 h-5" />
+                            开始生成
+                          </button>
+                        )}
                       </div>
                     ) : (
-                      <button
-                        onClick={handleGenerate}
-                        className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-[var(--primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
-                      >
-                        <Play className="w-5 h-5" />
-                        开始生成
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-green-600">
-                      <CheckCircle className="w-5 h-5" />
-                      <span>生成完成！</span>
-                    </div>
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2 text-green-600">
+                          <CheckCircle className="w-5 h-5" />
+                          <span>生成完成！</span>
+                        </div>
 
-                    <div className="text-sm text-[var(--muted-foreground)]">
-                      <p>时长：{status.duration_seconds.toFixed(1)} 秒</p>
-                      <p>耗时：{status.generation_time_seconds.toFixed(1)} 秒</p>
-                    </div>
+                        <div className="text-sm text-[var(--muted-foreground)]">
+                          <p>时长：{status.duration_seconds.toFixed(1)} 秒</p>
+                          <p>耗时：{status.generation_time_seconds.toFixed(1)} 秒</p>
+                        </div>
 
-                    {status.video_url && (
-                      <div className="space-y-3">
-                        <video
-                          src={status.video_url}
-                          controls
-                          className="w-full rounded-lg"
-                        />
-                        <a
-                          href={status.video_url}
-                          download
-                          className="flex items-center justify-center gap-2 px-4 py-2 bg-[var(--muted)] text-[var(--foreground)] rounded-lg hover:bg-[var(--muted-foreground)]/20 transition-colors"
+                        {/* Regenerate button */}
+                        <button
+                          onClick={handleRegenerate}
+                          disabled={generating}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[var(--muted)] text-[var(--foreground)] rounded-lg hover:bg-[var(--muted-foreground)]/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <Download className="w-4 h-4" />
-                          下载视频
-                        </a>
+                          <RefreshCw className="w-4 h-4" />
+                          重新生成
+                        </button>
+
+                        {status.video_url && (
+                          <div className="space-y-3">
+                            <video
+                              src={apiUrl(status.video_url)}
+                              controls
+                              className="w-full rounded-lg"
+                            />
+                            <a
+                              href={apiUrl(status.video_url)}
+                              download
+                              className="flex items-center justify-center gap-2 px-4 py-2 bg-[var(--muted)] text-[var(--foreground)] rounded-lg hover:bg-[var(--muted-foreground)]/20 transition-colors"
+                            >
+                              <Download className="w-4 h-4" />
+                              下载视频
+                            </a>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
-              </div>
 
-              {/* Tips */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-700">
-                <p className="font-medium mb-1">提示</p>
-                <p>MVP 版本当前生成的是音频 + 测试视频。完整动画版本正在开发中。</p>
+                  {/* Tips */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-700">
+                    <p className="font-medium mb-1">提示</p>
+                    <p>MVP 版本当前生成的是音频 + 测试视频。完整动画版本正在开发中。</p>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

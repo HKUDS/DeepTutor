@@ -40,6 +40,7 @@ class LectureSegment:
     visual_description: str
     timing: ScriptTiming = field(default_factory=ScriptTiming)
     key_points: list[str] = field(default_factory=list)
+    step_text: str = ""  # Clean step explanation text (no $ signs), for RIGHT panel display
     start_time_ms: int = 0
     end_time_ms: int = 0
 

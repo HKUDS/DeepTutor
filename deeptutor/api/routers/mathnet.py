@@ -66,6 +66,19 @@ class StepDetail(BaseModel):
     knowledge_points: list[KnowledgePointInfo]
 
 
+class StepOutline(BaseModel):
+    """Step outline item in architecture."""
+
+    step_index: int
+    step_title_en: str
+    step_title_zh: str
+    step_goal_en: str
+    step_goal_zh: str
+    brief_content_en: str
+    brief_content_zh: str
+    depends_on: list[int]
+
+
 class ArchitectureInfo(BaseModel):
     """Problem architecture (solution strategy)."""
 
@@ -80,7 +93,7 @@ class ArchitectureInfo(BaseModel):
     prerequisites_en: list[str]
     major_categories: list[str]
     step_count: int
-    steps_outline: list[str]
+    steps_outline: list[StepOutline]
 
 
 class ProblemInfo(BaseModel):
@@ -204,6 +217,8 @@ async def list_problems(
     tier: str | None = None,
     topic: str | None = None,
     has_architecture: bool | None = None,
+    keyword: str | None = None,
+    country: str | None = None,
 ) -> ProblemListResponse:
     """List problems with pagination and filtering."""
     conn = _get_db_connection()
@@ -226,6 +241,18 @@ async def list_problems(
             where_clauses.append("a.id IS NOT NULL")
         else:
             where_clauses.append("a.id IS NULL")
+
+    if country:
+        where_clauses.append("p.country = ?")
+        params.append(country)
+
+    if keyword:
+        # Search in problem_id, problem_markdown, country, competition
+        keyword_pattern = f"%{keyword}%"
+        where_clauses.append(
+            "(p.id LIKE ? OR p.problem_markdown LIKE ? OR p.country LIKE ? OR p.competition LIKE ?)"
+        )
+        params.extend([keyword_pattern, keyword_pattern, keyword_pattern, keyword_pattern])
 
     where_sql = ""
     if where_clauses:

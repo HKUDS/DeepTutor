@@ -6,6 +6,7 @@ Supports Chinese and multiple other languages.
 
 from __future__ import annotations
 
+import logging
 import re
 import tempfile
 from pathlib import Path
@@ -15,6 +16,8 @@ import edge_tts
 
 from ..base import BaseTTSProvider
 from ..models import SentenceBoundary, TTSAudioResult
+
+logger = logging.getLogger(__name__)
 
 
 class EdgeTTSProvider(BaseTTSProvider):
@@ -115,7 +118,11 @@ class EdgeTTSProvider(BaseTTSProvider):
         voice: str | None = None,
         output_path: str | None = None,
     ) -> TTSAudioResult:
-        """Synthesize text to speech using Edge TTS.
+        """Synthesize text to speech using Edge TTS with REAL SentenceBoundary timing.
+
+        Uses edge-tts stream() instead of save() to capture Azure's real per-sentence
+        timing data (offset/duration in 100ns ticks). This is the KEY fix for subtitle-
+        voice alignment — previously we used char-count estimates.
 
         Args:
             text: Text to synthesize
@@ -123,7 +130,7 @@ class EdgeTTSProvider(BaseTTSProvider):
             output_path: Custom output path (default: auto-generated)
 
         Returns:
-            TTSAudioResult with audio file and estimated sentence boundaries
+            TTSAudioResult with audio file and REAL sentence boundaries
         """
         if not text or not text.strip():
             raise ValueError("Text cannot be empty")
@@ -138,32 +145,75 @@ class EdgeTTSProvider(BaseTTSProvider):
 
             audio_path = self.output_dir / f"tts_{uuid.uuid4().hex[:8]}.mp3"
 
-        # Generate audio using edge-tts
+        # Use stream() to capture real SentenceBoundary + audio events
+        # edge-tts v7.2.8 defaults to boundary="SentenceBoundary"
         communicate = edge_tts.Communicate(text, selected_voice)
-        await communicate.save(str(audio_path))
 
-        # Parse sentences for boundary detection
-        sentences = self._split_into_sentences(text)
+        audio_chunks: list[bytes] = []
+        real_boundaries: list[dict[str, Any]] = []
 
-        # Estimate sentence boundaries
-        # Since Edge TTS doesn't provide precise timestamps,
-        # we estimate based on character counts
-        boundaries = []
-        current_ms = 0
+        async for chunk in communicate.stream():
+            if chunk["type"] == "SentenceBoundary":
+                # Azure TTS provides offset/duration in 100-nanosecond ticks
+                # Convert to milliseconds: divide by 10000
+                start_ms = chunk["offset"] // 10000
+                end_ms = (chunk["offset"] + chunk["duration"]) // 10000
+                real_boundaries.append({
+                    "text": chunk["text"],
+                    "start_ms": start_ms,
+                    "end_ms": end_ms,
+                })
+            elif chunk["type"] == "audio":
+                audio_chunks.append(chunk["data"])
 
-        for idx, sentence in enumerate(sentences):
-            duration_ms = int(self._estimate_duration(sentence) * 1000)
+        # Write audio file from collected chunks
+        if audio_chunks:
+            audio_path.write_bytes(b"".join(audio_chunks))
+        else:
+            # Fallback: use edge-tts save() if stream() yielded no audio
+            communicate = edge_tts.Communicate(text, selected_voice)
+            await communicate.save(str(audio_path))
 
-            boundary = SentenceBoundary(
-                text=sentence,
-                start_ms=current_ms,
-                end_ms=current_ms + duration_ms,
-                index=idx,
+        # Build SentenceBoundary objects
+        boundaries: list[SentenceBoundary] = []
+        total_duration = 0.0
+
+        if real_boundaries:
+            # Use REAL Azure TTS timing
+            for idx, sb in enumerate(real_boundaries):
+                boundaries.append(SentenceBoundary(
+                    text=sb["text"],
+                    start_ms=sb["start_ms"],
+                    end_ms=sb["end_ms"],
+                    index=idx,
+                ))
+            total_duration = real_boundaries[-1]["end_ms"] / 1000.0
+            logger.info(
+                f"Edge TTS stream: {len(real_boundaries)} real SentenceBoundaries, "
+                f"total={total_duration:.1f}s"
             )
-            boundaries.append(boundary)
-            current_ms += duration_ms
+        else:
+            # FALLBACK: char-count estimation (same as before)
+            sentences = self._split_into_sentences(text)
+            current_ms = 0
 
-        total_duration = current_ms / 1000.0
+            for idx, sentence in enumerate(sentences):
+                duration_ms = int(self._estimate_duration(sentence) * 1000)
+
+                boundary = SentenceBoundary(
+                    text=sentence,
+                    start_ms=current_ms,
+                    end_ms=current_ms + duration_ms,
+                    index=idx,
+                )
+                boundaries.append(boundary)
+                current_ms += duration_ms
+
+            total_duration = current_ms / 1000.0
+            logger.info(
+                f"Edge TTS fallback (no SentenceBoundary events): "
+                f"{len(sentences)} estimated boundaries, total={total_duration:.1f}s"
+            )
 
         return TTSAudioResult(
             audio_path=str(audio_path),

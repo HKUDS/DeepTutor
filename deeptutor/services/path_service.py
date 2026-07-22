@@ -164,6 +164,10 @@ class PathService:
         if len(parts) >= 4 and parts[:3] == ("workspace", "chat", "_detached_code_execution"):
             return True
 
+        # MathNet video generation outputs
+        if len(parts) == 1 and parts[0].startswith("mathnet_") and parts[0].endswith(".mp4"):
+            return True
+
         return False
 
     def get_workspace_dir(self) -> Path:
