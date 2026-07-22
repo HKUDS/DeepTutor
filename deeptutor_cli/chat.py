@@ -129,6 +129,12 @@ async def _chat_repl(state: ChatState) -> None:
             except (EOFError, KeyboardInterrupt):
                 console.print()
                 break
+            except UnicodeDecodeError:
+                console.print(
+                    "[yellow]Input contains invalid UTF-8 characters."
+                    " Please check your input and try again.[/]"
+                )
+                continue
 
             if not user_input:
                 continue
