@@ -103,3 +103,4 @@ repos:
         additional_dependencies:
           - types-PyYAML
           - types-requests
+          - types-croniter

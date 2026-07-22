@@ -3,9 +3,12 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  ArrowLeft,
   Database,
   FileText,
   Layers,
+  Loader2,
+  RefreshCw,
   Settings as SettingsIcon,
   Star,
   Upload,
@@ -13,6 +16,7 @@ import {
 import type { KnowledgeUploadPolicy } from "@/lib/knowledge-api";
 import {
   formatKnowledgeTimestamp,
+  resolveKbStatus,
   type KnowledgeBase,
 } from "@/lib/knowledge-helpers";
 import type { TaskState } from "@/hooks/useKnowledgeProgress";
@@ -33,9 +37,11 @@ interface KnowledgeBaseDetailProps {
   onCreate: () => void;
   onUpload: (kbName: string, files: File[]) => Promise<void>;
   onReindex: (kbName: string) => Promise<void>;
+  onRetry: (kbName: string) => Promise<void>;
   onSetDefault: (kbName: string) => Promise<void>;
   onDelete: (kbName: string) => Promise<void>;
   onClearHistory: (kbName: string) => void;
+  onBack?: () => void;
 }
 
 const SECTIONS: {
@@ -60,12 +66,15 @@ export default function KnowledgeBaseDetail({
   onCreate,
   onUpload,
   onReindex,
+  onRetry,
   onSetDefault,
   onDelete,
   onClearHistory,
+  onBack,
 }: KnowledgeBaseDetailProps) {
   const { t } = useTranslation();
   const [section, setSection] = useState<DetailSection>("files");
+  const [retrySubmitting, setRetrySubmitting] = useState(false);
 
   if (!kb) {
     return (
@@ -106,7 +115,20 @@ export default function KnowledgeBaseDetail({
   const lastIndexedLabel = formatKnowledgeTimestamp(meta.last_indexed_at);
 
   const isReindexingLocally =
-    task?.kind === "reindex" && task.executing === true;
+    (task?.kind === "reindex" || task?.kind === "retry") &&
+    task.executing === true;
+  const status = resolveKbStatus(kb);
+  const canRetry = status === "error" && !kb.read_only;
+
+  const handleRetry = async () => {
+    if (!canRetry || retrySubmitting || isReindexingLocally) return;
+    setRetrySubmitting(true);
+    try {
+      await onRetry(kb.name);
+    } finally {
+      setRetrySubmitting(false);
+    }
+  };
 
   const fullBleed = FULL_BLEED_SECTIONS.has(section);
 
@@ -116,8 +138,18 @@ export default function KnowledgeBaseDetail({
       <div className="border-b border-[var(--border)] bg-[var(--card)] px-6 py-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                className="mb-1.5 inline-flex items-center gap-1 text-[11.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                {t("Knowledge bases")}
+              </button>
+            )}
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="truncate text-[18px] font-semibold tracking-tight text-[var(--foreground)]">
+              <h1 className="truncate font-serif text-[18px] font-semibold tracking-tight text-[var(--foreground)]">
                 {kb.name}
               </h1>
               {kb.is_default && (
@@ -143,6 +175,26 @@ export default function KnowledgeBaseDetail({
                 : ""}
             </p>
           </div>
+          {canRetry && (
+            <button
+              type="button"
+              onClick={handleRetry}
+              disabled={retrySubmitting || isReindexingLocally}
+              title={t(
+                "Retry indexing from the documents already stored in this knowledge base.",
+              )}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-[12px] font-medium text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
+            >
+              {retrySubmitting || isReindexingLocally ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3 w-3" />
+              )}
+              {retrySubmitting || isReindexingLocally
+                ? t("Retrying…")
+                : t("Retry indexing")}
+            </button>
+          )}
         </div>
 
         {/* Section nav */}
@@ -182,6 +234,7 @@ export default function KnowledgeBaseDetail({
                   task={task}
                   history={history}
                   onClearHistory={() => onClearHistory(kb.name)}
+                  onRetry={handleRetry}
                   onUpload={(files) =>
                     kb.read_only ? Promise.resolve() : onUpload(kb.name, files)
                   }
@@ -192,7 +245,11 @@ export default function KnowledgeBaseDetail({
                   kb={kb}
                   task={task}
                   onReindex={() =>
-                    kb.read_only ? Promise.resolve() : onReindex(kb.name)
+                    kb.read_only
+                      ? Promise.resolve()
+                      : status === "error"
+                        ? handleRetry()
+                        : onReindex(kb.name)
                   }
                 />
               )}

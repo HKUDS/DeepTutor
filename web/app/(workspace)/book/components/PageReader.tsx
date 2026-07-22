@@ -157,9 +157,15 @@ export default function PageReader({
             {!headerCollapsed && onRecompile && (
               <button
                 onClick={onRecompile}
-                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] px-2.5 py-1 text-xs font-medium text-[var(--muted-foreground)] hover:border-[var(--primary)]/40 hover:text-[var(--primary)]"
+                disabled={loading}
+                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] px-2.5 py-1 text-xs font-medium text-[var(--muted-foreground)] hover:border-[var(--primary)]/40 hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <RefreshCcw className="h-3.5 w-3.5" /> {t("Force regenerate")}
+                {loading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCcw className="h-3.5 w-3.5" />
+                )}
+                {loading ? t("Regenerating…") : t("Force regenerate")}
               </button>
             )}
             <button
@@ -208,10 +214,15 @@ export default function PageReader({
                   {onRecompile && (
                     <button
                       onClick={onRecompile}
-                      className="inline-flex items-center gap-1 rounded-md border border-current px-2 py-1 text-xs font-medium hover:bg-white/40 dark:hover:bg-white/10"
+                      disabled={loading}
+                      className="inline-flex items-center gap-1 rounded-md border border-current px-2 py-1 text-xs font-medium hover:bg-white/40 dark:hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <RefreshCcw className="h-3.5 w-3.5" />
-                      {t("Regenerate page")}
+                      {loading ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCcw className="h-3.5 w-3.5" />
+                      )}
+                      {loading ? t("Regenerating…") : t("Regenerate page")}
                     </button>
                   )}
                 </div>

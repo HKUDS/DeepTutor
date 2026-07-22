@@ -32,6 +32,10 @@ dependencies = [
     "oauth-cli-kit>=0.1.1",
     "llama-index>=0.14.12",
     "llama-index-retrievers-bm25>=0.7.1,<0.8.0",
+    # FAISS vector store: ANN retrieval replacing SimpleVectorStore brute force for
+    # large KBs (issue #552); imported lazily with SimpleVectorStore fallback.
+    "llama-index-vector-stores-faiss>=0.4.0,<1.0.0",
+    "faiss-cpu>=1.8.0,<2.0.0",
     "PyMuPDF>=1.26.0",
     "numpy>=1.24.0,<3.0.0",
     "arxiv>=2.0.0",

@@ -89,6 +89,40 @@ def test_public_output_filter_allows_math_animator_artifacts(tmp_path: Path) -> 
         service._user_data_dir = original_user_dir
 
 
+def test_public_output_filter_allows_chat_exec_artifacts(tmp_path: Path) -> None:
+    service = PathService.get_instance()
+    original_root = service._project_root
+    original_user_dir = service._user_data_dir
+
+    try:
+        service._project_root = tmp_path
+        service._user_data_dir = tmp_path / "data" / "user"
+
+        allowed = (
+            service._user_data_dir
+            / "workspace"
+            / "chat"
+            / "chat"
+            / "turn_1"
+            / "exec"
+            / "report.pdf"
+        )
+        allowed.parent.mkdir(parents=True, exist_ok=True)
+        allowed.write_bytes(b"%PDF-1.4\n")
+
+        private_script = allowed.with_name("build.py")
+        private_script.write_text("print('internal')", encoding="utf-8")
+        private_log = allowed.with_name("output.log")
+        private_log.write_text("debug", encoding="utf-8")
+
+        assert service.is_public_output_path("workspace/chat/chat/turn_1/exec/report.pdf") is True
+        assert service.is_public_output_path("workspace/chat/chat/turn_1/exec/build.py") is False
+        assert service.is_public_output_path("workspace/chat/chat/turn_1/exec/output.log") is False
+    finally:
+        service._project_root = original_root
+        service._user_data_dir = original_user_dir
+
+
 def test_task_workspace_maps_capabilities_into_workspace_chat(tmp_path: Path) -> None:
     service = PathService.get_instance()
     original_root = service._project_root

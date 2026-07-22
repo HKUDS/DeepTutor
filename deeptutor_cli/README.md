@@ -26,7 +26,7 @@ pip install -e .
 deeptutor init
 
 # 可选附加组件
-pip install -e ".[tutorbot]"       # TutorBot 智能体引擎 + 各渠道 SDK
+pip install -e ".[partners]"       # Partners 渠道 SDK + MCP 客户端
 pip install -e ".[math-animator]"  # 数学动画（另需系统 LaTeX/ffmpeg）
 pip install -e ".[all]"            # 全部依赖（含开发工具）
 ```
@@ -61,13 +61,15 @@ deeptutor run <capability> <message> [options]
 | `deep_solve` | 多阶段深度解题 |
 | `deep_question` | 智能出题 |
 | `deep_research` | 多 agent 深度研究 |
+| `visualize` | 生成图表、图解、Mermaid、HTML 或 Manim 可视化 |
 | `math_animator` | 数学动画生成 |
+| `mastery_path` | 掌握式学习路径与测评循环 |
 
 ### 选项
 
 | 选项 | 缩写 | 说明 |
 |------|------|------|
-| `--tool` | `-t` | 启用工具（可多次指定）：`rag`, `web_search`, `code_execution`, `reason`, `brainstorm`, `paper_search` |
+| `--tool` | `-t` | 启用工具（可多次指定）：`rag`, `web_search`, `code_execution`, `reason`, `brainstorm`, `paper_search`, `geogebra_analysis`, `imagegen`, `videogen` |
 | `--kb` | | 挂载知识库 |
 | `--language` | `-l` | 回复语言（默认 `en`） |
 | `--session` | | 继续已有会话 |
@@ -99,8 +101,14 @@ deeptutor run deep_question "模拟考试" --config mode=mimic --config paper_pa
 deeptutor run deep_research "Transformer 最新进展" \
   --config-json '{"mode":"report","depth":"deep","sources":["web","papers"]}'
 
+# 可视化
+deeptutor run visualize "画出注意力机制的数据流图" --config render_mode=mermaid
+
 # 数学动画
 deeptutor run math_animator "展示正弦函数变换" --config quality=high
+
+# 掌握式学习
+deeptutor run mastery_path "带我系统掌握特征值和特征向量"
 
 # JSON 输出（适合 agent 解析）
 deeptutor run deep_solve "求解 x^2=4" -f json
@@ -136,8 +144,14 @@ deeptutor chat [options]
 | `/kb <name>\|none` | 切换知识库 |
 | `/history add <id>\|clear` | 管理历史引用 |
 | `/notebook add <ref>\|clear` | 管理笔记本引用 |
+| `/regenerate`（别名 `/retry`） | 重跑上一条用户消息 |
+| `/show last\|<n>` | 展开被截断的工具结果或折叠的思考过程 |
 | `/refs` | 查看当前设置 |
 | `/config show\|set\|clear` | 管理 capability 配置 |
+
+回答生成期间按 `Ctrl-C` 会取消当前 turn 并回到输入提示符;模型通过
+`ask_user` 提问时,会在终端内渲染选项卡片并等待输入(非交互式 stdin
+下自动提交空回复,turn 不会挂起)。
 
 ---
 

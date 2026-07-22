@@ -8,12 +8,14 @@ import {
   EyeOff,
   Info,
   Loader2,
+  Pencil,
   Plus,
   Terminal,
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import ProviderIcon from "@/components/common/ProviderIcon";
 import {
   type CatalogModel,
   type CatalogProfile,
@@ -24,6 +26,8 @@ import {
   useSettings,
 } from "./SettingsContext";
 import { DimensionField } from "./DimensionField";
+import { nextProfileName } from "./profile-naming";
+import { searchProviderFields } from "./search-providers";
 import {
   activeProfileDetail,
   deprecatedSearchProviders,
@@ -39,6 +43,10 @@ const SERVICE_LABEL: Record<ServiceName, string> = {
   llm: "LLM",
   embedding: "Embedding",
   search: "Search",
+  tts: "Text-to-Speech",
+  stt: "Speech-to-Text",
+  imagegen: "Image Generation",
+  videogen: "Video Generation",
 };
 
 export function ServiceConfigEditor({ service }: { service: ServiceName }) {
@@ -254,12 +262,34 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                         aria-label={t("Rename profile")}
                       />
                     ) : (
-                      <div
-                        className={`truncate text-[13px] leading-tight ${
-                          isActive ? "font-semibold" : "font-medium"
-                        }`}
-                      >
-                        {profile.name}
+                      <div className="flex items-center gap-1.5">
+                        <ProviderIcon
+                          provider={
+                            service === "search"
+                              ? profile.provider
+                              : profile.binding
+                          }
+                          size={13}
+                        />
+                        <div
+                          className={`min-w-0 flex-1 truncate text-[13px] leading-tight ${
+                            isActive ? "font-semibold" : "font-medium"
+                          }`}
+                        >
+                          {profile.name}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            startProfileRename(profile);
+                          }}
+                          className="-mr-1 shrink-0 rounded-md p-1 text-[var(--muted-foreground)]/60 transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                          aria-label={t("Rename profile")}
+                          title={t("Rename profile")}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
                       </div>
                     )}
                     <div className="mt-0.5 truncate text-[11px] leading-tight text-[var(--muted-foreground)]/70">
@@ -354,7 +384,11 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                       const metric =
                         service === "llm"
                           ? formatCompactTokens(model.context_window)
-                          : formatDimensionBadge(model.dimension);
+                          : service === "embedding"
+                            ? formatDimensionBadge(model.dimension)
+                            : service === "tts"
+                              ? formatVoiceBadge(model.voice)
+                              : "";
                       return (
                         <div key={model.id} className="min-w-0">
                           {editingModelId === model.id ? (
@@ -503,6 +537,170 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                         />
                       </div>
                     )}
+                    {service === "tts" && (
+                      <>
+                        <div>
+                          <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                            {t("Voice")}
+                          </div>
+                          <input
+                            className={inputClass}
+                            value={activeModel.voice || ""}
+                            onChange={(e) =>
+                              updateModelField(service, "voice", e.target.value)
+                            }
+                            placeholder="alloy"
+                          />
+                          <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
+                            {t(
+                              "Provider-specific voice name, e.g. alloy (OpenAI) or model:voice (SiliconFlow).",
+                            )}
+                          </p>
+                        </div>
+                        <div>
+                          <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                            {t("Output format")}
+                          </div>
+                          <div className="relative">
+                            <select
+                              className={selectClass}
+                              value={activeModel.response_format || "mp3"}
+                              onChange={(e) =>
+                                updateModelField(
+                                  service,
+                                  "response_format",
+                                  e.target.value,
+                                )
+                              }
+                            >
+                              {["mp3", "wav", "opus", "aac", "flac", "pcm"].map(
+                                (fmt) => (
+                                  <option
+                                    className={selectOptionClass}
+                                    key={fmt}
+                                    value={fmt}
+                                  >
+                                    {fmt}
+                                  </option>
+                                ),
+                              )}
+                            </select>
+                            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
+                          </div>
+                        </div>
+                      </>
+                    )}
+                    {service === "imagegen" && (
+                      <>
+                        <div>
+                          <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                            {t("Image size")}
+                          </div>
+                          <input
+                            className={inputClass}
+                            value={activeModel.size || ""}
+                            onChange={(e) =>
+                              updateModelField(service, "size", e.target.value)
+                            }
+                            placeholder="1024x1024"
+                          />
+                          <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
+                            {t(
+                              "Default pixel size sent with each request. Leave empty for the provider default.",
+                            )}
+                          </p>
+                        </div>
+                        <div>
+                          <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                            {t("Quality / Style")}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <input
+                              className={inputClass}
+                              value={activeModel.quality || ""}
+                              onChange={(e) =>
+                                updateModelField(
+                                  service,
+                                  "quality",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder={t("quality (e.g. hd)")}
+                            />
+                            <input
+                              className={inputClass}
+                              value={activeModel.style || ""}
+                              onChange={(e) =>
+                                updateModelField(
+                                  service,
+                                  "style",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder={t("style (e.g. vivid)")}
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+                    {service === "videogen" && (
+                      <>
+                        <div>
+                          <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                            {t("Aspect ratio")}
+                          </div>
+                          <input
+                            className={inputClass}
+                            value={activeModel.aspect_ratio || ""}
+                            onChange={(e) =>
+                              updateModelField(
+                                service,
+                                "aspect_ratio",
+                                e.target.value,
+                              )
+                            }
+                            placeholder="16:9"
+                          />
+                          <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
+                            {t(
+                              "Defaults sent with each request. Leave empty for the provider default.",
+                            )}
+                          </p>
+                        </div>
+                        <div>
+                          <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                            {t("Duration / Resolution")}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <input
+                              className={inputClass}
+                              inputMode="numeric"
+                              value={activeModel.duration || ""}
+                              onChange={(e) =>
+                                updateModelField(
+                                  service,
+                                  "duration",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder={t("seconds")}
+                            />
+                            <input
+                              className={inputClass}
+                              value={activeModel.resolution || ""}
+                              onChange={(e) =>
+                                updateModelField(
+                                  service,
+                                  "resolution",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="720p"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -573,8 +771,16 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
           </div>
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed border-[var(--border)] py-12 text-center text-[13px] text-[var(--muted-foreground)]">
-          {t("No profiles configured. Add a profile to start.")}
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-[var(--border)] px-5 py-12 text-center text-[13px] text-[var(--muted-foreground)]">
+          <div>{t("No profiles configured. Add a profile to start.")}</div>
+          <button
+            type="button"
+            onClick={() => addProfile(service)}
+            className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)]/50 px-2.5 py-1 text-[12px] text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
+          >
+            <Plus className="h-3 w-3" />
+            {t("Profile")}
+          </button>
         </div>
       )}
     </div>
@@ -602,6 +808,16 @@ function formatCompactTokens(value: string | number | undefined): string {
     return `${k >= 10 ? k.toFixed(0) : k.toFixed(1).replace(/\.0$/, "")}K`;
   }
   return String(parsed);
+}
+
+function formatVoiceBadge(value: string | undefined): string {
+  const voice = (value || "").trim();
+  if (!voice) return "";
+  // "model:voice" → show just the voice segment to keep the chip compact.
+  const tail = voice.includes(":")
+    ? voice.slice(voice.lastIndexOf(":") + 1)
+    : voice;
+  return tail.length > 14 ? `${tail.slice(0, 13)}…` : tail;
 }
 
 function formatDimensionBadge(value: string | number | undefined): string {
@@ -727,6 +943,18 @@ function ProfileFields({
   const { providers, updateProfileField, updateModelField } = useSettings();
   const [extraOpen, setExtraOpen] = useState(false);
 
+  const providerValue =
+    service === "search" ? profile.provider || "" : profile.binding || "";
+
+  // Only the search service hides fields by provider. LLM/embedding always
+  // expose Base URL and API Key, so default both to shown for them.
+  const fields =
+    service === "search"
+      ? searchProviderFields(profile.provider)
+      : { apiKey: true, baseUrl: true, baseUrlRequired: false };
+  const searxngMissingBaseUrl =
+    fields.baseUrlRequired && !String(profile.base_url || "").trim();
+
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <div className="sm:col-span-2">
@@ -734,25 +962,50 @@ function ProfileFields({
           {t("Provider")}
         </div>
         <div className="relative">
+          {providerValue && (
+            <ProviderIcon
+              provider={providerValue}
+              size={15}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
+            />
+          )}
           <select
-            className={selectClass}
-            value={
-              service === "search"
-                ? profile.provider || ""
-                : profile.binding || ""
-            }
+            className={`${selectClass} ${providerValue ? "pl-9" : ""}`}
+            value={providerValue}
             onChange={(e) => {
               const val = e.target.value;
               const field = service === "search" ? "provider" : "binding";
+              const options = providers[service] || [];
+              const previousLabel =
+                options.find((p) => p.value === providerValue)?.label ?? "";
+              const match = options.find((p) => p.value === val);
               updateProfileField(service, field, val);
-              const match = (providers[service] || []).find(
-                (p) => p.value === val,
+              // Keep an un-customized profile name tracking its provider.
+              const renamed = nextProfileName(
+                profile.name,
+                previousLabel,
+                match?.label ?? "",
               );
+              if (renamed !== profile.name) {
+                updateProfileField(service, "name", renamed);
+              }
               if (match?.base_url) {
                 updateProfileField(service, "base_url", match.base_url);
               }
               if (service === "embedding" && match?.default_dim) {
                 updateModelField(service, "dimension", match.default_dim);
+              }
+              if (
+                (service === "tts" ||
+                  service === "stt" ||
+                  service === "imagegen" ||
+                  service === "videogen") &&
+                match?.default_model
+              ) {
+                updateModelField(service, "model", match.default_model);
+              }
+              if (service === "tts" && match?.default_voice) {
+                updateModelField(service, "voice", match.default_voice);
               }
             }}
           >
@@ -797,61 +1050,72 @@ function ProfileFields({
           </p>
         )}
       </div>
-      <div className="sm:col-span-2">
-        <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-          {service === "embedding" ? t("Endpoint URL") : t("Base URL")}
-        </div>
-        <input
-          className={inputClass}
-          value={profile.base_url}
-          onChange={(e) =>
-            updateProfileField(service, "base_url", e.target.value)
-          }
-          placeholder={
-            service === "embedding"
-              ? "https://api.openai.com/v1/embeddings"
-              : "https://api.openai.com/v1"
-          }
-        />
-        {service === "embedding" && (
-          <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
-            {t(
-              "Embedding requests are sent to this URL exactly; DeepTutor does not append /embeddings or /api/embed at request time.",
-            )}
-          </p>
-        )}
-      </div>
-      <div className="sm:col-span-2">
-        <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-          {t("API Key")}
-        </div>
-        <div className="relative">
+      {fields.baseUrl && (
+        <div className="sm:col-span-2">
+          <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+            {service === "embedding" ? t("Endpoint URL") : t("Base URL")}
+          </div>
           <input
-            type={showApiKey ? "text" : "password"}
-            autoComplete="new-password"
-            spellCheck={false}
-            className={`${inputClass} pr-10 font-mono`}
-            value={profile.api_key}
+            className={inputClass}
+            value={profile.base_url}
             onChange={(e) =>
-              updateProfileField(service, "api_key", e.target.value)
+              updateProfileField(service, "base_url", e.target.value)
             }
-            placeholder="sk-..."
+            placeholder={
+              service === "embedding"
+                ? "https://api.openai.com/v1/embeddings"
+                : service === "search"
+                  ? "http://localhost:8888"
+                  : "https://api.openai.com/v1"
+            }
           />
-          <button
-            type="button"
-            onClick={() => setShowApiKey((prev) => !prev)}
-            className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-            aria-label={showApiKey ? t("Hide API key") : t("Show API key")}
-            title={showApiKey ? t("Hide API key") : t("Show API key")}
-          >
-            {showApiKey ? (
-              <EyeOff className="h-4 w-4" />
-            ) : (
-              <Eye className="h-4 w-4" />
-            )}
-          </button>
+          {service === "embedding" && (
+            <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
+              {t(
+                "Embedding requests are sent to this URL exactly; DeepTutor does not append /embeddings or /api/embed at request time.",
+              )}
+            </p>
+          )}
+          {searxngMissingBaseUrl && (
+            <p className="mt-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+              {t("Required — without it, search falls back to DuckDuckGo.")}
+            </p>
+          )}
         </div>
-      </div>
+      )}
+      {fields.apiKey && (
+        <div className="sm:col-span-2">
+          <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+            {t("API Key")}
+          </div>
+          <div className="relative">
+            <input
+              type={showApiKey ? "text" : "password"}
+              autoComplete="new-password"
+              spellCheck={false}
+              className={`${inputClass} pr-10 font-mono`}
+              value={profile.api_key}
+              onChange={(e) =>
+                updateProfileField(service, "api_key", e.target.value)
+              }
+              placeholder="sk-..."
+            />
+            <button
+              type="button"
+              onClick={() => setShowApiKey((prev) => !prev)}
+              className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+              aria-label={showApiKey ? t("Hide API key") : t("Show API key")}
+              title={showApiKey ? t("Hide API key") : t("Show API key")}
+            >
+              {showApiKey ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
+            </button>
+          </div>
+        </div>
+      )}
       <div className="sm:col-span-2 rounded-xl border border-[var(--border)]/60 bg-[var(--muted)]/20">
         <button
           type="button"

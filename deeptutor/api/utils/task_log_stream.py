@@ -2,12 +2,19 @@ import asyncio
 from collections import deque
 from collections.abc import AsyncGenerator
 import contextlib
+import importlib
 import json
+import logging
 import threading
 import time
 from typing import Any
 
-from deeptutor.logging import ProcessLogEvent, bind_log_context, capture_process_logs
+from deeptutor.logging import (
+    ProcessLogEvent,
+    bind_log_context,
+    capture_process_logs,
+    current_log_context,
+)
 
 
 def _format_sse(event: str, payload: dict[str, Any]) -> str:
@@ -119,6 +126,63 @@ class KnowledgeTaskStreamManager:
             pass
 
 
+class _TaskScopedLogHandler(logging.Handler):
+    """Forward non-propagating library logs into one knowledge task stream."""
+
+    def __init__(self, task_id: str, manager: KnowledgeTaskStreamManager) -> None:
+        super().__init__(logging.INFO)
+        self._task_id = task_id
+        self._manager = manager
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            context = current_log_context()
+            record_task_id = context.get("task_id")
+            if record_task_id and record_task_id != self._task_id:
+                return
+
+            context.setdefault("task_id", self._task_id)
+            context.setdefault("capability", "knowledge")
+            context.setdefault("sink", "ui")
+            self._manager.emit_process_log(
+                self._task_id,
+                ProcessLogEvent(
+                    level=record.levelname,
+                    message=record.getMessage(),
+                    logger=record.name,
+                    timestamp=record.created,
+                    context=context,
+                ),
+            )
+        except Exception:
+            self.handleError(record)
+
+
+@contextlib.contextmanager
+def _capture_non_propagating_task_logs(task_id: str, manager: KnowledgeTaskStreamManager):
+    """Capture library loggers that intentionally do not propagate to root."""
+    logger_names = ("lightrag", "graphrag", "graphrag_llm")
+    handlers: list[tuple[logging.Logger, _TaskScopedLogHandler]] = []
+    for logger_name in logger_names:
+        if logger_name == "lightrag":
+            with contextlib.suppress(Exception):
+                importlib.import_module("lightrag.utils")
+        source_logger = logging.getLogger(logger_name)
+        if source_logger.propagate:
+            continue
+        handler = _TaskScopedLogHandler(task_id, manager)
+        source_logger.addHandler(handler)
+        handlers.append((source_logger, handler))
+
+    try:
+        yield
+    finally:
+        for source_logger, handler in handlers:
+            if handler in source_logger.handlers:
+                source_logger.removeHandler(handler)
+            handler.close()
+
+
 @contextlib.contextmanager
 def capture_task_logs(task_id: str):
     """Forward all logs bound to ``task_id`` into the task's SSE stream."""
@@ -130,7 +194,8 @@ def capture_task_logs(task_id: str):
 
     with bind_log_context(task_id=task_id, capability="knowledge", sink="ui"):
         with capture_process_logs(emit, task_id=task_id):
-            yield
+            with _capture_non_propagating_task_logs(task_id, manager):
+                yield
 
 
 def get_task_stream_manager() -> KnowledgeTaskStreamManager:

@@ -2,14 +2,14 @@
 #
 # 设计契约（2026-05-21）：L3 引用的是 L2 的**文件**，不是 L2 的 entry。每个 chunk
 # 开头会列出本 chunk 可见的 surface 名（chat / notebook / quiz / kb / book /
-# tutorbot / cowriter），模型应当为每条 fact 挑出它真正综合到的那些 surface。
+# partner / cowriter），模型应当为每条 fact 挑出它真正综合到的那些 surface。
 # refs 字段只能写裸的 surface 名，绝不可写 m_xxx 或 entry id。
 
 system: |
   你是 DeepTutor 用户 {user_label} 的跨 surface 记忆管理员。
 
   任务：阅读若干 surface 的 L2 摘要片段（chat / notebook / quiz / kb / book /
-  tutorbot / cowriter），给出关于用户的稳定、对冲过的判断。
+  partner / cowriter），给出关于用户的稳定、对冲过的判断。
 
   输出：唯一一个 JSON 对象。
 

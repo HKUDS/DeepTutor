@@ -42,7 +42,7 @@ const SURFACES = [
   "quiz",
   "kb",
   "book",
-  "tutorbot",
+  "partner",
   "cowriter",
 ] as const;
 
@@ -92,7 +92,7 @@ export default function MemoryHub() {
           <span className="grid h-10 w-10 place-items-center rounded-xl bg-[var(--primary)]/10 text-[var(--primary)]">
             <Brain className="h-5 w-5" />
           </span>
-          <h1 className="text-[28px] font-semibold tracking-tight text-[var(--foreground)] md:text-[32px]">
+          <h1 className="font-serif text-[28px] font-semibold tracking-tight text-[var(--foreground)] md:text-[32px]">
             {t("Memory")}
           </h1>
         </div>

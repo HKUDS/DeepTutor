@@ -15,6 +15,10 @@ from deeptutor.services.llm.context_window import resolve_effective_context_wind
 
 from .protocol import SessionStoreProtocol
 
+#: When the summarizer's output lands within this fraction of its hard token
+#: cap, assume the provider cut it mid-sentence and trim the partial tail.
+TRUNCATION_GUARD_RATIO = 0.95
+
 
 def count_tokens(text: str) -> int:
     """Estimate token count with tiktoken when available."""
@@ -27,6 +31,18 @@ def count_tokens(text: str) -> int:
         return len(encoding.encode(text))
     except Exception:
         return max(1, len(text) // 4)
+
+
+def trim_incomplete_tail(text: str) -> str:
+    """Drop the trailing partial line from output that hit a hard token cap.
+
+    A summary cut mid-sentence would otherwise be persisted as-is; losing the
+    last line is cheaper than carrying a corrupted entry forward.
+    """
+    lines = text.rstrip().split("\n")
+    if len(lines) > 1:
+        return "\n".join(lines[:-1]).rstrip()
+    return text.rstrip()
 
 
 def format_messages_as_transcript(messages: list[dict[str, Any]]) -> str:
@@ -114,6 +130,11 @@ class ContextBuilder:
 
     def _recent_budget(self, budget: int) -> int:
         return max(128, budget - self._summary_budget(budget))
+
+    def _rebuild_source_budget(self, llm_config: LLMConfig) -> int:
+        # Raw-rebuild input may use up to half the effective context window;
+        # beyond that we degrade to fold-in (existing summary + new turns).
+        return max(1024, self._effective_context_window(llm_config) // 2)
 
     def _build_history(self, summary: str, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         history: list[dict[str, Any]] = []
@@ -259,25 +280,44 @@ class ContextBuilder:
             ),
             on_event,
         )
+        # The instruction targets ~80% of the hard cap so the model's own
+        # length control — not the max_tokens cut — is the binding limit.
+        target_tokens = max(96, int(summary_budget * 0.8))
         system_prompt = (
-            "You compress conversation history for future turns. Preserve factual context, "
-            "user goals, constraints, decisions, unresolved questions, and any capability "
-            "switches. Keep the summary concise and faithful. Use bullet points only if useful."
+            "You maintain a running summary of a conversation so future turns can "
+            "continue seamlessly. Rewrite the summary from the material provided, "
+            "organized under these headings (omit any heading with no content):\n"
+            "- Goals: what the user wants to accomplish, and why if stated\n"
+            "- Key facts & context: stable facts, definitions, data points, names, "
+            "references (files, links, IDs)\n"
+            "- Decisions & preferences: choices made, options rejected, style or "
+            "format preferences, capability/mode switches\n"
+            "- Progress: what has been produced or completed so far\n"
+            "- Open items: unanswered questions, pending tasks, known blockers\n"
+            "Carry forward still-relevant entries from the existing summary unchanged "
+            "unless new information contradicts them; drop only what is obsolete. "
+            "Prefer concrete details (numbers, identifiers, exact terms) over "
+            "abstract restatement. Never invent information."
         )
         if language.startswith("zh"):
             system_prompt = (
-                "你负责把对话历史压缩成后续轮次可直接使用的上下文。保留用户目标、约束、已做决定、"
-                "未解决问题，以及能力切换带来的关键信息。总结要忠实、紧凑，不要虚构。"
+                "你负责维护一份对话的滚动摘要，供后续轮次无缝衔接。请基于给定材料重写摘要，"
+                "按以下小节组织（无内容的小节直接省略）：\n"
+                "- 目标：用户想完成什么，以及（如有说明）原因\n"
+                "- 关键事实与上下文：稳定的事实、定义、数据、名称、引用（文件、链接、ID）\n"
+                "- 决定与偏好：已做的选择、被否决的方案、风格/格式偏好、能力或模式切换\n"
+                "- 进展：目前已经产出或完成的内容\n"
+                "- 待办事项：未回答的问题、未完成的任务、已知阻塞\n"
+                "已有摘要中仍然有效的条目应原样保留，仅在新信息与之矛盾时修改，只删除确已过时"
+                "的内容。优先保留具体细节（数字、标识符、确切措辞），不要抽象转述，绝不虚构。"
             )
         user_prompt = (
-            f"Compress the following conversation history into <= {summary_budget} tokens.\n\n"
-            f"{source_text}"
+            f"Update the summary using the material below. "
+            f"Keep the total under {target_tokens} tokens.\n\n{source_text}"
         )
         if language.startswith("zh"):
             user_prompt = (
-                f"请把下面的对话历史压缩到不超过 {summary_budget} tokens 的长度，"
-                "供后续对话直接继承上下文。\n\n"
-                f"{source_text}"
+                f"请基于下面的材料更新摘要，总长度不超过 {target_tokens} tokens。\n\n{source_text}"
             )
         try:
             _chunks: list[str] = []
@@ -289,8 +329,10 @@ class ContextBuilder:
                 trace_meta=trace_meta,
             ):
                 _chunks.append(_c)
-            summary = "".join(_chunks)
-            return summary.strip(), events
+            summary = "".join(_chunks).strip()
+            if count_tokens(summary) >= int(summary_budget * TRUNCATION_GUARD_RATIO):
+                summary = trim_incomplete_tail(summary)
+            return summary, events
         finally:
             await self._append_event(
                 events,
@@ -328,6 +370,15 @@ class ContextBuilder:
 
         stored_summary = str(session.get("compressed_summary", "") or "").strip()
         summary_up_to_msg_id = int(session.get("summary_up_to_msg_id", 0) or 0)
+        # Branch guard: the watermark must sit on this turn's ancestor chain.
+        # After an edit-branch switch it may point into a sibling branch — the
+        # stored summary would then carry content this branch never saw.
+        # Discard both and rebuild from this branch's own messages.
+        if summary_up_to_msg_id > 0 and not any(
+            int(item.get("id", 0) or 0) == summary_up_to_msg_id for item in messages
+        ):
+            stored_summary = ""
+            summary_up_to_msg_id = 0
         unsummarized = [
             item for item in messages if int(item.get("id", 0) or 0) > summary_up_to_msg_id
         ]
@@ -347,15 +398,31 @@ class ContextBuilder:
         older_unsummarized, recent_messages = self._select_recent_messages(
             unsummarized, recent_budget
         )
+        # Everything not retained verbatim: previously summarized messages
+        # plus the older unsummarized turns.
+        prefix_messages = messages[: len(messages) - len(recent_messages)]
+        prefix_transcript = format_messages_as_transcript(prefix_messages)
+
+        # Anti-drift: while the raw prefix still fits the rebuild budget,
+        # re-summarize from the original messages instead of folding the
+        # previous summary into itself — summary-of-summary loses detail
+        # monotonically. Only beyond that budget degrade to fold-in.
+        rebuild_from_raw = bool(prefix_transcript) and count_tokens(
+            prefix_transcript
+        ) <= self._rebuild_source_budget(llm_config)
         merge_parts: list[str] = []
-        if stored_summary:
-            merge_parts.append(f"Existing summary:\n{stored_summary}")
-        older_transcript = format_messages_as_transcript(older_unsummarized)
-        if older_transcript:
-            merge_parts.append(f"Older turns to fold in:\n{older_transcript}")
+        if rebuild_from_raw:
+            merge_parts.append(f"Conversation history to summarize:\n{prefix_transcript}")
+        else:
+            if stored_summary:
+                merge_parts.append(f"Existing summary:\n{stored_summary}")
+            older_transcript = format_messages_as_transcript(older_unsummarized)
+            if older_transcript:
+                merge_parts.append(f"Older turns to fold in:\n{older_transcript}")
         if not merge_parts and recent_messages:
             merge_parts.append(format_messages_as_transcript(recent_messages))
 
+        summarize_ok = True
         try:
             new_summary, events = await self._summarize(
                 session_id=session_id,
@@ -365,20 +432,24 @@ class ContextBuilder:
                 on_event=on_event,
             )
         except Exception:
-            new_summary = stored_summary
+            summarize_ok = False
+            new_summary = ""
             events = []
 
-        up_to_msg_id = summary_up_to_msg_id
-        if older_unsummarized:
-            up_to_msg_id = int(older_unsummarized[-1]["id"])
-        elif stored_summary:
+        if summarize_ok and new_summary:
+            # Advance the watermark only on a successful summarize — never
+            # past turns that were not actually folded in.
             up_to_msg_id = summary_up_to_msg_id
-
-        if new_summary:
+            if prefix_messages:
+                up_to_msg_id = max(summary_up_to_msg_id, int(prefix_messages[-1].get("id", 0) or 0))
             await self.store.update_summary(session_id, new_summary, up_to_msg_id)
             stored_summary = new_summary
-
-        final_history = self._build_history(stored_summary, recent_messages)
+            final_history = self._build_history(stored_summary, recent_messages)
+        else:
+            # Degrade for this turn only: keep the stale summary and as many
+            # unsummarized turns as fit; nothing is marked as summarized, so
+            # the next turn retries with the full material.
+            final_history = self._build_history(stored_summary, unsummarized)
         while len(final_history) > 1 and count_tokens(build_history_text(final_history)) > budget:
             summary_prefix = 1 if final_history and final_history[0].get("role") == "system" else 0
             if len(final_history) <= summary_prefix + 1:
@@ -399,7 +470,9 @@ class ContextBuilder:
 __all__ = [
     "ContextBuildResult",
     "ContextBuilder",
+    "TRUNCATION_GUARD_RATIO",
     "build_history_text",
     "count_tokens",
     "format_messages_as_transcript",
+    "trim_incomplete_tail",
 ]

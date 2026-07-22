@@ -72,7 +72,7 @@ def test_render_view_strips_footnote_block() -> None:
 def test_replace_preserves_entry_id_and_replaces_refs() -> None:
     doc, ids = _doc_with_three_entries()
     view = render_view(doc)
-    target_line = next(l for l in view.lines if l.entry_id == ids[0])
+    target_line = next(line for line in view.lines if line.entry_id == ids[0])
     edit = ReplaceLineOp(
         line=target_line.number,
         new_text="uses SRS with FSRS scheduling",
@@ -89,7 +89,7 @@ def test_replace_preserves_entry_id_and_replaces_refs() -> None:
 def test_delete_lines_removes_entries_and_collapses_empty_section() -> None:
     doc, ids = _doc_with_three_entries()
     view = render_view(doc)
-    target_line = next(l for l in view.lines if l.entry_id == ids[2])
+    target_line = next(line for line in view.lines if line.entry_id == ids[2])
     edit = DeleteLinesOp(line_start=target_line.number, line_end=target_line.number, reason="stale")
     new_doc, report = apply_edits(doc, [edit])
     assert not report.rejected
@@ -101,7 +101,7 @@ def test_delete_lines_removes_entries_and_collapses_empty_section() -> None:
 def test_insert_after_bullet_keeps_section_context() -> None:
     doc, ids = _doc_with_three_entries()
     view = render_view(doc)
-    anchor = next(l for l in view.lines if l.entry_id == ids[1])
+    anchor = next(line for line in view.lines if line.entry_id == ids[1])
     edit = InsertAfterOp(
         after_line=anchor.number,
         text="uses Obsidian for daily notes",
@@ -117,7 +117,7 @@ def test_insert_after_bullet_keeps_section_context() -> None:
 def test_replace_rejects_when_refs_empty() -> None:
     doc, ids = _doc_with_three_entries()
     view = render_view(doc)
-    target_line = next(l for l in view.lines if l.entry_id == ids[0])
+    target_line = next(line for line in view.lines if line.entry_id == ids[0])
     edit = ReplaceLineOp(line=target_line.number, new_text="hello", refs=[], reason="bad")
     new_doc, report = apply_edits(doc, [edit])
     assert len(report.rejected) == 1
@@ -128,14 +128,14 @@ def test_replace_rejects_when_refs_empty() -> None:
 def test_apply_in_reverse_order_does_not_shift_line_numbers() -> None:
     doc, ids = _doc_with_three_entries()
     view = render_view(doc)
-    l_first = next(l for l in view.lines if l.entry_id == ids[0])
-    l_third = next(l for l in view.lines if l.entry_id == ids[2])
+    first_line = next(line for line in view.lines if line.entry_id == ids[0])
+    third_line = next(line for line in view.lines if line.entry_id == ids[2])
 
     # Delete line 8 (the third entry) and replace line 4 (the first
     # entry) — these are valid line numbers in the original view.
     edits = [
-        ReplaceLineOp(line=l_first.number, new_text="updated", refs=["notebook:r1"], reason="x"),
-        DeleteLinesOp(line_start=l_third.number, line_end=l_third.number, reason="stale"),
+        ReplaceLineOp(line=first_line.number, new_text="updated", refs=["notebook:r1"], reason="x"),
+        DeleteLinesOp(line_start=third_line.number, line_end=third_line.number, reason="stale"),
     ]
     new_doc, report = apply_edits(doc, edits)
     assert not report.rejected
@@ -203,7 +203,7 @@ def test_serialize_roundtrip_after_edits_keeps_footnotes_consistent() -> None:
     doc, ids = _doc_with_three_entries()
     view = render_view(doc)
     edit = ReplaceLineOp(
-        line=next(l for l in view.lines if l.entry_id == ids[0]).number,
+        line=next(line for line in view.lines if line.entry_id == ids[0]).number,
         new_text="updated text",
         refs=["notebook:r1-new"],
         reason="x",

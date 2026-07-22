@@ -179,11 +179,235 @@ def _port_accepts_connection(port: int) -> bool:
         return False
 
 
-def _ensure_ports_available(*ports: int) -> None:
-    occupied = [port for port in ports if _port_accepts_connection(port)]
-    if occupied:
-        joined = ", ".join(str(port) for port in occupied)
-        raise SystemExit(_t("start.port_in_use", ports=joined))
+def _port_listeners(port: int) -> list[tuple[int, str]]:
+    """Best-effort list of ``(pid, command)`` for processes listening on ``port``."""
+    if os.name == "nt":
+        return _port_listeners_windows(port)
+    lsof = shutil.which("lsof")
+    if not lsof:
+        return []
+    try:
+        completed = subprocess.run(
+            [lsof, "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-Fp"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+    except Exception:
+        return []
+    pids: list[int] = []
+    for line in completed.stdout.splitlines():
+        if not line.startswith("p"):
+            continue
+        try:
+            pid = int(line[1:])
+        except ValueError:
+            continue
+        if pid not in pids:
+            pids.append(pid)
+    return [(pid, _process_command(pid) or "?") for pid in pids]
+
+
+def _port_listeners_windows(port: int) -> list[tuple[int, str]]:
+    netstat = shutil.which("netstat")
+    if not netstat:
+        return []
+    try:
+        completed = subprocess.run(
+            [netstat, "-ano", "-p", "tcp"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except Exception:
+        return []
+    pids: list[int] = []
+    for line in completed.stdout.splitlines():
+        parts = line.split()
+        if len(parts) < 5 or parts[0].upper() != "TCP" or parts[3].upper() != "LISTENING":
+            continue
+        if not parts[1].endswith(f":{port}"):
+            continue
+        try:
+            pid = int(parts[4])
+        except ValueError:
+            continue
+        if pid not in pids:
+            pids.append(pid)
+    tasklist = shutil.which("tasklist")
+    listeners: list[tuple[int, str]] = []
+    for pid in pids:
+        name = ""
+        if tasklist:
+            try:
+                result = subprocess.run(
+                    [tasklist, "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                )
+                first = result.stdout.strip().splitlines()[:1]
+                if first and first[0].startswith('"'):
+                    name = first[0].split('","')[0].strip('"')
+            except Exception:
+                name = ""
+        listeners.append((pid, name or "?"))
+    return listeners
+
+
+def _suggest_free_port(preferred: int, taken: set[int]) -> int:
+    for candidate in range(preferred, min(preferred + 200, 65536)):
+        if candidate not in taken and not _port_accepts_connection(candidate):
+            return candidate
+    return preferred
+
+
+def _prompt_port(label: str, *, default: int, taken: set[int]) -> int:
+    while True:
+        try:
+            raw = input(f"{label} [{default}]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            raise SystemExit(130) from None
+        value = raw or str(default)
+        try:
+            port = int(value)
+        except ValueError:
+            port = -1
+        if 1 <= port <= 65535 and port not in taken and not _port_accepts_connection(port):
+            return port
+        _log(_t("start.port_invalid", value=value))
+
+
+def _prompt_conflict_choice() -> str:
+    _log("")
+    _log(f"  [1] {_t('start.port_option_change')}")
+    _log(f"  [2] {_t('start.port_option_kill')}")
+    while True:
+        try:
+            raw = input(f"{_t('init.choice')} [1/2]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            raise SystemExit(130) from None
+        if raw in {"1", "2"}:
+            return raw
+        _log(_t("init.choice_invalid"))
+
+
+def _persist_ports(settings_dir: Path, backend_port: int, frontend_port: int) -> Path:
+    from deeptutor.services.config.runtime_settings import RuntimeSettingsService
+
+    service = RuntimeSettingsService.get_instance(settings_dir)
+    system = service.load_system(include_process_overrides=False)
+    system["backend_port"] = backend_port
+    system["frontend_port"] = frontend_port
+    service.save_system(system)
+    return service.path_for("system")
+
+
+def _prompt_new_ports(
+    *,
+    backend_port: int,
+    frontend_port: int,
+    check_frontend: bool,
+    settings_dir: Path,
+) -> tuple[int, int]:
+    backend_occupied = _port_accepts_connection(backend_port)
+    new_backend = _prompt_port(
+        _t("init.backend_port"),
+        default=_suggest_free_port(backend_port + 1, {frontend_port})
+        if backend_occupied
+        else backend_port,
+        taken={frontend_port} if check_frontend else set(),
+    )
+    new_frontend = frontend_port
+    if check_frontend:
+        frontend_occupied = _port_accepts_connection(frontend_port)
+        new_frontend = _prompt_port(
+            _t("init.frontend_port"),
+            default=_suggest_free_port(frontend_port + 1, {new_backend})
+            if frontend_occupied
+            else frontend_port,
+            taken={new_backend},
+        )
+    path = _persist_ports(settings_dir, new_backend, new_frontend)
+    _log(_t("start.port_saved", path=path))
+    return new_backend, new_frontend
+
+
+def _kill_port_listeners(listeners: dict[int, list[tuple[int, str]]]) -> None:
+    for port, entries in listeners.items():
+        for pid, command in entries:
+            _log(_t("start.port_killing", pid=pid, command=command))
+            try:
+                _send_tree_signal(pid, None, signal.SIGTERM)
+            except Exception:
+                pass
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and _port_accepts_connection(port):
+            time.sleep(0.2)
+        if _port_accepts_connection(port):
+            for pid, _command in entries:
+                try:
+                    _send_tree_signal(pid, None, KILL_SIGNAL)
+                except Exception:
+                    pass
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline and _port_accepts_connection(port):
+                time.sleep(0.2)
+        if _port_accepts_connection(port):
+            pids = ", ".join(str(pid) for pid, _command in entries) or "?"
+            _log(_t("start.port_kill_failed", port=port, pid=pids))
+        else:
+            _log(_t("start.port_freed", port=port))
+
+
+def _resolve_port_conflicts(
+    *,
+    backend_port: int,
+    frontend_port: int,
+    check_frontend: bool,
+    settings_dir: Path,
+) -> tuple[int, int]:
+    """Return free ``(backend_port, frontend_port)``, resolving conflicts interactively.
+
+    When stdin is not a TTY (Docker, CI), falls back to exiting with the
+    historical ``start.port_in_use`` message.
+    """
+    while True:
+        roles = [("start.backend", backend_port)]
+        if check_frontend:
+            roles.append(("start.frontend", frontend_port))
+        occupied = [(key, port) for key, port in roles if _port_accepts_connection(port)]
+        if not occupied:
+            return backend_port, frontend_port
+
+        listeners = {port: _port_listeners(port) for _key, port in occupied}
+        _log(_t("start.port_conflict_title"))
+        for key, port in occupied:
+            _log(_t("start.port_conflict_line", role=_t(key), port=port))
+            entries = listeners[port]
+            if not entries:
+                _log(_t("start.port_conflict_unknown_proc"))
+            for pid, command in entries:
+                _log(_t("start.port_conflict_proc", pid=pid, command=command))
+
+        if sys.stdin is None or not sys.stdin.isatty():
+            joined = ", ".join(str(port) for _key, port in occupied)
+            raise SystemExit(_t("start.port_in_use", ports=joined))
+
+        if _prompt_conflict_choice() == "1":
+            backend_port, frontend_port = _prompt_new_ports(
+                backend_port=backend_port,
+                frontend_port=frontend_port,
+                check_frontend=check_frontend,
+                settings_dir=settings_dir,
+            )
+        else:
+            _kill_port_listeners(listeners)
 
 
 def _wait_for_http(
@@ -504,6 +728,7 @@ def start(home: str | Path | None = None) -> None:
     from deeptutor.services.config import (
         ensure_runtime_settings_files,
         export_runtime_settings_to_env,
+        get_ws_max_size,
         load_auth_settings,
         load_launch_settings,
     )
@@ -546,6 +771,29 @@ def start(home: str | Path | None = None) -> None:
         existing_frontend = None
     if existing_frontend is not None:
         frontend_port = existing_frontend.port
+
+    resolved_backend, resolved_frontend = _resolve_port_conflicts(
+        backend_port=backend_port,
+        frontend_port=frontend_port,
+        check_frontend=existing_frontend is None,
+        settings_dir=settings.settings_dir,
+    )
+    if (resolved_backend, resolved_frontend) != (backend_port, frontend_port):
+        backend_port, frontend_port = resolved_backend, resolved_frontend
+        runtime_env = export_runtime_settings_to_env(overwrite=True)
+        backend_url = f"http://localhost:{backend_port}"
+        api_base = (
+            runtime_env.get("NEXT_PUBLIC_API_BASE_EXTERNAL")
+            or runtime_env.get("NEXT_PUBLIC_API_BASE")
+            or backend_url
+        )
+        frontend = _resolve_frontend(
+            runtime_home,
+            frontend_port,
+            api_base=api_base,
+            auth_enabled=auth_enabled,
+        )
+
     frontend_url = (
         existing_frontend.url
         if existing_frontend is not None
@@ -561,11 +809,6 @@ def start(home: str | Path | None = None) -> None:
     _log(f"{_t('start.frontend_runtime')}: {frontend.kind}")
     _log(_t("start.press_ctrl_c"))
 
-    if existing_frontend is None:
-        _ensure_ports_available(backend_port, frontend_port)
-    else:
-        _ensure_ports_available(backend_port)
-
     common_env = os.environ.copy()
     common_env.update(runtime_env)
     common_env[DEEPTUTOR_HOME_ENV] = str(runtime_home)
@@ -575,6 +818,13 @@ def start(home: str | Path | None = None) -> None:
     common_env["HOSTNAME"] = "0.0.0.0"
     common_env["NEXT_PUBLIC_API_BASE"] = api_base
     common_env["NEXT_PUBLIC_AUTH_ENABLED"] = "true" if auth_enabled else "false"
+    # The Next.js middleware (web/proxy.ts) runs in the frontend's Node runtime
+    # and reads these at request time to forward /api/* and /ws/* to the backend
+    # and to gate the login redirect. The browser uses relative paths, so the
+    # frontend server reaches the backend on localhost at the resolved port —
+    # use backend_url (not api_base, which may be an external browser URL).
+    common_env["DEEPTUTOR_API_BASE_URL"] = backend_url
+    common_env["DEEPTUTOR_AUTH_ENABLED"] = "true" if auth_enabled else "false"
     common_env["PYTHONUNBUFFERED"] = "1"
     common_env["PYTHONIOENCODING"] = "utf-8:replace"
 
@@ -589,6 +839,17 @@ def start(home: str | Path | None = None) -> None:
         str(backend_port),
         "--log-level",
         "info",
+        # Disable uvicorn's per-request access log. The selective_access_log
+        # middleware (deeptutor/api/main.py) surfaces only non-200s, so routine
+        # 200 polling (/settings, /tools, /knowledge/list, ...) stays out of the
+        # logs — matching run_server.py's access_log=False.
+        "--no-access-log",
+        # Chat attachments ride the unified WS as base64 in one JSON message;
+        # uvicorn's default 16MB frame cap would sever the socket on uploads
+        # allowed by the configured policy. Derived from system.json — raising
+        # the attachment limits therefore takes a restart to fully apply.
+        "--ws-max-size",
+        str(get_ws_max_size()),
     ]
 
     processes: list[ManagedProcess] = []

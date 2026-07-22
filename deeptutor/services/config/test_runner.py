@@ -120,6 +120,14 @@ class ConfigTestRunner:
                 asyncio.run(self._test_embedding(run, model or {}, catalog))
             elif service == "search":
                 self._test_search(run, catalog)
+            elif service == "tts":
+                asyncio.run(self._test_tts(run, catalog))
+            elif service == "stt":
+                asyncio.run(self._test_stt(run, catalog))
+            elif service == "imagegen":
+                asyncio.run(self._test_imagegen(run, catalog))
+            elif service == "videogen":
+                asyncio.run(self._test_videogen(run, catalog))
             else:
                 raise ValueError(f"Unsupported service: {service}")
             if not run.cancelled and run.status == "running":
@@ -440,6 +448,124 @@ class ConfigTestRunner:
         )
         if not (result.get("answer") or result.get("search_results")):
             raise ValueError("Search provider returned no answer and no search results.")
+
+    async def _test_tts(self, run: TestRun, catalog: dict[str, Any]) -> None:
+        import base64
+
+        from deeptutor.services.config.provider_runtime import resolve_tts_runtime_config
+        from deeptutor.services.voice import synthesize_speech
+
+        run.emit("info", "Loading TTS config from the active catalog selection.")
+        resolved = resolve_tts_runtime_config(catalog=catalog)
+        run.emit(
+            "info",
+            f"Resolved model `{resolved.model}` (provider `{resolved.provider_name}`, "
+            f"voice `{resolved.voice or '(default)'}`).",
+        )
+        run.emit("info", f"Request target: {resolved.base_url}")
+        sample = "DeepTutor voice check. 这是一段语音合成测试。"
+        run.emit("info", "Synthesizing a short sample clip.")
+        audio, content_type = await synthesize_speech(sample, catalog=catalog)
+        run.emit(
+            "response",
+            f"Received {len(audio)} bytes of {content_type}.",
+            audio_base64=base64.b64encode(audio).decode("ascii"),
+            content_type=content_type,
+            bytes=len(audio),
+        )
+
+    async def _test_stt(self, run: TestRun, catalog: dict[str, Any]) -> None:
+        import io
+        import wave
+
+        from deeptutor.services.config.provider_runtime import resolve_stt_runtime_config
+        from deeptutor.services.voice import transcribe_audio
+
+        run.emit("info", "Loading STT config from the active catalog selection.")
+        resolved = resolve_stt_runtime_config(catalog=catalog)
+        run.emit(
+            "info",
+            f"Resolved model `{resolved.model}` (provider `{resolved.provider_name}`, "
+            f"style `{resolved.request_style}`).",
+        )
+        run.emit("info", f"Request target: {resolved.base_url}")
+
+        # One second of 16 kHz mono silence — a valid WAV that exercises the
+        # full upload + auth + model path. Most providers return empty/near-empty
+        # text; a clean HTTP 200 confirms the connection is configured correctly.
+        buffer = io.BytesIO()
+        with wave.open(buffer, "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(16000)
+            wav.writeframes(b"\x00\x00" * 16000)
+        run.emit("info", "Uploading a 1s silent probe clip to validate the endpoint.")
+        transcript = await transcribe_audio(
+            buffer.getvalue(),
+            catalog=catalog,
+            filename="probe.wav",
+            content_type="audio/wav",
+        )
+        run.emit(
+            "response",
+            "Transcription endpoint responded successfully.",
+            snippet=(transcript or "(empty — expected for a silent clip)")[:200],
+        )
+
+    async def _test_imagegen(self, run: TestRun, catalog: dict[str, Any]) -> None:
+        import base64
+
+        from deeptutor.services.config.provider_runtime import resolve_imagegen_runtime_config
+        from deeptutor.services.imagegen import generate_image
+
+        run.emit("info", "Loading image-generation config from the active catalog selection.")
+        resolved = resolve_imagegen_runtime_config(catalog=catalog)
+        run.emit(
+            "info",
+            f"Resolved model `{resolved.model}` (provider `{resolved.provider_name}`, "
+            f"size `{resolved.size or '(default)'}`).",
+        )
+        run.emit("info", f"Request target: {resolved.base_url}")
+        run.emit("info", "Generating a single test image (this is a billable call).")
+        images = await generate_image(
+            "A small minimalist test icon of a blue book on a white background.",
+            catalog=catalog,
+            n=1,
+        )
+        if not images:
+            raise ValueError("Image provider returned no images.")
+        image_bytes, content_type = images[0]
+        run.emit(
+            "response",
+            f"Received {len(image_bytes)} bytes of {content_type}.",
+            image_base64=base64.b64encode(image_bytes).decode("ascii"),
+            content_type=content_type,
+            bytes=len(image_bytes),
+        )
+
+    async def _test_videogen(self, run: TestRun, catalog: dict[str, Any]) -> None:
+        from deeptutor.services.config.provider_runtime import resolve_videogen_runtime_config
+        from deeptutor.services.videogen import probe_video
+
+        run.emit("info", "Loading video-generation config from the active catalog selection.")
+        resolved = resolve_videogen_runtime_config(catalog=catalog)
+        run.emit(
+            "info",
+            f"Resolved model `{resolved.model}` (provider `{resolved.provider_name}`, "
+            f"adapter `{resolved.adapter}`).",
+        )
+        run.emit("info", f"Request target: {resolved.base_url}")
+        run.emit(
+            "info",
+            "Submitting a probe task to validate endpoint + auth + model. "
+            "The render is not awaited (it is slow and billable).",
+        )
+        task_id = await probe_video("A short test clip of a calm ocean wave.", catalog=catalog)
+        run.emit(
+            "response",
+            "Video task accepted — connection is valid.",
+            task_id=task_id,
+        )
 
 
 def get_config_test_runner() -> ConfigTestRunner:

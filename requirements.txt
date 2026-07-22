@@ -11,12 +11,12 @@
 #   pip install deeptutor               # Full app (public wheel)
 #   pip install deeptutor-cli           # CLI-only public wheel
 #   pip install -e .                    # Source checkout
-#   pip install -e ".[tutorbot]"       # Server + TutorBot agent engine
-#   pip install -e ".[matrix]"         # Matrix channel for TutorBot (needs libolm)
+#   pip install -e ".[partners]"       # Server + partner channel SDKs
+#   pip install -e ".[matrix]"         # Matrix channel for partners
 #   pip install -e ".[math-animator]"  # Manim animation engine (addon)
 #   pip install -e ".[dev]"            # Server + dev/test tools
 #   pip install -e ".[all]"            # Everything
 #
-# This file installs the full server runtime (CLI + API + TutorBot).
+# This file installs the full server runtime (CLI + API + partners).
 
--r requirements/tutorbot.txt
+-r requirements/partners.txt

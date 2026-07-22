@@ -38,6 +38,10 @@ def _default_catalog() -> dict[str, Any]:
             "llm": _service_shell(),
             "embedding": _service_shell(),
             "search": _search_shell(),
+            "tts": _service_shell(),
+            "stt": _service_shell(),
+            "imagegen": _service_shell(),
+            "videogen": _service_shell(),
         },
     }
 
@@ -101,7 +105,11 @@ class ModelCatalogService:
         services.setdefault("llm", _service_shell())
         services.setdefault("embedding", _service_shell())
         services.setdefault("search", _search_shell())
-        for service_name in ("llm", "embedding", "search"):
+        services.setdefault("tts", _service_shell())
+        services.setdefault("stt", _service_shell())
+        services.setdefault("imagegen", _service_shell())
+        services.setdefault("videogen", _service_shell())
+        for service_name in ("llm", "embedding", "search", "tts", "stt", "imagegen", "videogen"):
             service = services[service_name]
             profiles = service.setdefault("profiles", [])
             for profile in profiles:
@@ -140,11 +148,26 @@ class ModelCatalogService:
                             # dropdown. Empty when the model is not in any
                             # adapter's MODELS_INFO map.
                             model.setdefault("supported_dimensions", "")
+                        elif service_name == "tts":
+                            # Provider/model-specific free-form voice string
+                            # (e.g. "alloy", "autumn", "model:voice").
+                            model.setdefault("voice", "")
+                            model.setdefault("response_format", "mp3")
+                        elif service_name == "imagegen":
+                            # Generation knobs; empty → provider default.
+                            model.setdefault("size", "")
+                            model.setdefault("quality", "")
+                            model.setdefault("style", "")
+                            model.setdefault("response_format", "")
+                        elif service_name == "videogen":
+                            model.setdefault("aspect_ratio", "")
+                            model.setdefault("duration", "")
+                            model.setdefault("resolution", "")
             profile_ids = {profile.get("id") for profile in profiles}
             if profiles and service.get("active_profile_id") not in profile_ids:
                 service["active_profile_id"] = profiles[0]["id"]
                 changed = True
-            if service_name in {"llm", "embedding"}:
+            if service_name in {"llm", "embedding", "tts", "stt", "imagegen", "videogen"}:
                 active_profile = self.get_active_profile(catalog, service_name)
                 models = (active_profile or {}).get("models") or []
                 model_ids = {model.get("id") for model in models}

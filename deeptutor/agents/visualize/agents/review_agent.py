@@ -1,4 +1,4 @@
-"""Review stage: check and optionally optimise the generated code."""
+"""Repair stage: targeted fix after deterministic local validation fails."""
 
 from __future__ import annotations
 
@@ -34,25 +34,23 @@ class ReviewAgent(BaseAgent):
         user_input: str,
         analysis: VisualizationAnalysis,
         code: str,
+        error: str,
     ) -> ReviewResult:
-        # HTML pages are 8-16k tokens of full single-file documents; a second
-        # LLM pass to "review" them costs another 30-60s with negligible
-        # quality gain. Skip the LLM review for html and return the code as-is.
-        if analysis.render_type == "html":
-            return ReviewResult(
-                optimized_code=code,
-                changed=False,
-                review_notes="Skipped LLM review for html render_type.",
-            )
+        """Targeted repair pass — this agent's single job.
 
-        system_prompt = self.get_prompt("system")
-        user_template = self.get_prompt("user_template")
+        Only invoked *after* the deterministic local validation has failed,
+        and handed the concrete error so the model fixes one specific defect
+        instead of re-judging everything (chat and Book share this path).
+        """
+        system_prompt = self.get_prompt("repair_system")
+        user_template = self.get_prompt("repair_user_template")
         if not system_prompt or not user_template:
-            raise ValueError("ReviewAgent prompts are not configured.")
+            raise ValueError("ReviewAgent repair prompts are not configured.")
 
         user_prompt = user_template.format(
             user_input=user_input.strip(),
             render_type=analysis.render_type,
+            error=error.strip() or "(unspecified)",
             analysis_json=json.dumps(analysis.model_dump(), ensure_ascii=False, indent=2),
             code=code,
         )
@@ -64,10 +62,10 @@ class ReviewAgent(BaseAgent):
             response_format={"type": "json_object"},
             stage="reviewing",
             trace_meta=build_trace_metadata(
-                call_id=new_call_id("viz-review"),
+                call_id=new_call_id("viz-repair"),
                 phase="reviewing",
-                label="Code review",
-                call_kind="viz_code_review",
+                label="Code repair",
+                call_kind="viz_code_repair",
                 trace_role="review",
                 trace_kind="llm_output",
             ),

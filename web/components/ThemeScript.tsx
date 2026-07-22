@@ -24,11 +24,14 @@ export default function ThemeScript() {
         } else if (stored === 'light') {
           // already clean
         } else {
+          // No stored preference: Default (snow) for light systems,
+          // Dark for prefers-color-scheme: dark.
           if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
             document.documentElement.classList.add('dark');
             localStorage.setItem('deeptutor-theme', 'dark');
           } else {
-            localStorage.setItem('deeptutor-theme', 'light');
+            document.documentElement.classList.add('theme-snow');
+            localStorage.setItem('deeptutor-theme', 'snow');
           }
         }
       } catch (e) {

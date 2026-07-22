@@ -120,7 +120,9 @@ def web_search(
     elif provider_name in {"perplexity", "serper"}:
         api_key = _resolve_provider_key(provider_name, resolved.api_key)
         if not api_key:
-            raise ValueError(f"{provider_name} requires profile.api_key in Settings > Catalog.")
+            raise ValueError(
+                f"{provider_name} requires api_key (profile.api_key in Settings > Catalog)."
+            )
         provider_kwargs.setdefault("api_key", api_key)
     elif provider_name == "searxng":
         base_url = provider_kwargs.get("base_url") or resolved.base_url

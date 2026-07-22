@@ -426,16 +426,25 @@ function TypeMultiSelect({ value, onChange }: TypeMultiSelectProps) {
     });
   }, []);
 
+  const closeMenu = useCallback(() => {
+    setOpen(false);
+    setMenuPos(null);
+  }, []);
+
+  const toggleMenu = useCallback(() => {
+    if (open) {
+      closeMenu();
+      return;
+    }
+    setOpen(true);
+  }, [closeMenu, open]);
+
   // Open/close: when the menu is open, listen for outside clicks
   // (mousedown on something outside both the trigger and the menu) and
   // for viewport changes that would move the trigger relative to the
   // page, so the portal-rendered menu follows.
   useLayoutEffect(() => {
-    if (!open) {
-      setMenuPos(null);
-      return;
-    }
-    recomputePosition();
+    if (open) recomputePosition();
   }, [open, recomputePosition]);
 
   useEffect(() => {
@@ -449,10 +458,10 @@ function TypeMultiSelect({ value, onChange }: TypeMultiSelectProps) {
       ) {
         return;
       }
-      setOpen(false);
+      closeMenu();
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") closeMenu();
     }
     function onReflow() {
       recomputePosition();
@@ -467,7 +476,7 @@ function TypeMultiSelect({ value, onChange }: TypeMultiSelectProps) {
       window.removeEventListener("scroll", onReflow, true);
       window.removeEventListener("resize", onReflow);
     };
-  }, [open, recomputePosition]);
+  }, [closeMenu, open, recomputePosition]);
 
   const summary = useMemo(() => {
     if (value.length === 0) return t("Auto");
@@ -551,7 +560,7 @@ function TypeMultiSelect({ value, onChange }: TypeMultiSelectProps) {
         ref={triggerRef}
         type="button"
         title={triggerTooltip}
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggleMenu}
         className={`${INPUT_CLS} flex w-full items-center justify-between gap-1`}
       >
         <span className="min-w-0 truncate text-left">{summary}</span>

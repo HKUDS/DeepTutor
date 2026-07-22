@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from deeptutor.capabilities.math_animator import MathAnimatorCapability
+from deeptutor.agents.math_animator.capability import MathAnimatorCapability
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.core.stream_bus import StreamBus
@@ -34,7 +34,7 @@ async def test_math_animator_capability_emits_summary_and_result(
 ) -> None:
     # Unit test should not require real optional dependency installation.
     monkeypatch.setattr(
-        "deeptutor.capabilities.math_animator.importlib.util.find_spec",
+        "deeptutor.agents.math_animator.capability.importlib.util.find_spec",
         lambda name: object() if name == "manim" else None,
     )
 

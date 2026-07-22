@@ -40,6 +40,10 @@ type BuiltinTool = {
   // cannot invoke them. The settings UI surfaces them with a locked-off
   // toggle and a "Coming soon" badge.
   coming_soon?: boolean;
+  // The capability that owns this tool (e.g. "solve" / "mastery"), or null
+  // for a plain system built-in. Owned tools render in their own section
+  // below the built-in tools.
+  capability?: string | null;
 };
 
 type ToolsResponse = {
@@ -47,9 +51,19 @@ type ToolsResponse = {
   enabled_optional_tools: string[];
 };
 
-type ToolCategory = "experience" | "builtin";
+type ToolSection = {
+  key: string;
+  label: string;
+  hint: string;
+  tools: BuiltinTool[];
+};
 
-const CATEGORY_ORDER: ToolCategory[] = ["experience", "builtin"];
+// Display labels for capability-owned tool sections, keyed by the backend's
+// capability id. Falls back to the raw id for any unmapped capability.
+const CAPABILITY_LABELS: Record<string, { zh: string; en: string }> = {
+  solve: { zh: "深度解题", en: "Deep Solve" },
+  mastery: { zh: "精通路径", en: "Mastery Path" },
+};
 
 export default function ToolsSettingsPage() {
   const { t } = useTranslation();
@@ -124,27 +138,62 @@ export default function ToolsSettingsPage() {
     [enabled, pending, persist],
   );
 
-  const grouped = useMemo(() => {
+  const sections = useMemo<ToolSection[] | null>(() => {
     if (!tools) return null;
-    // Two-bucket split: toggleable tools (体验增强 / Experience Enhancement)
-    // first, then locked-on built-ins. Within each bucket we preserve the
-    // backend's order (which mirrors USER_TOGGLEABLE_TOOL_NAMES / the
-    // BUILTIN_TOOL_TYPES registration order). Coming-soon tools are
-    // surfaced alongside the toggleable ones — same conceptual bucket,
-    // just temporarily unavailable.
-    const out: Record<ToolCategory, BuiltinTool[]> = {
-      experience: [],
-      builtin: [],
-    };
+    const zh = language === "zh";
+    // Buckets: toggleable (体验增强) first, then locked-on built-ins, then one
+    // section per capability for its owned tools. Backend order is preserved
+    // within each bucket (mirrors USER_TOGGLEABLE_TOOL_NAMES / the
+    // BUILTIN_TOOL_TYPES registration order). Coming-soon tools share the
+    // toggleable bucket — same concept, just temporarily unavailable.
+    const experience: BuiltinTool[] = [];
+    const builtin: BuiltinTool[] = [];
+    const capabilities = new Map<string, BuiltinTool[]>();
     for (const tool of tools) {
-      if (tool.coming_soon) {
-        out.experience.push(tool);
+      if (tool.capability) {
+        const list = capabilities.get(tool.capability) ?? [];
+        list.push(tool);
+        capabilities.set(tool.capability, list);
+      } else if (tool.coming_soon) {
+        experience.push(tool);
       } else {
-        out[tool.toggleable ? "experience" : "builtin"].push(tool);
+        (tool.toggleable ? experience : builtin).push(tool);
       }
     }
+    const out: ToolSection[] = [];
+    if (experience.length) {
+      out.push({
+        key: "experience",
+        label: zh ? "体验增强" : "Experience Enhancement",
+        hint: zh
+          ? "用户可选；按需为 chat agent 开启或关闭。"
+          : "User-toggleable. Switch on or off to shape the chat agent's behavior.",
+        tools: experience,
+      });
+    }
+    if (builtin.length) {
+      out.push({
+        key: "builtin",
+        label: zh ? "内置工具" : "Built-in Tools",
+        hint: zh
+          ? "Chat agent 在需要时自动挂载，无需手动开关。"
+          : "Mounted automatically by the chat agent when needed. Not user-toggleable.",
+        tools: builtin,
+      });
+    }
+    for (const [cap, list] of capabilities) {
+      const label = CAPABILITY_LABELS[cap]?.[zh ? "zh" : "en"] ?? cap;
+      out.push({
+        key: `cap:${cap}`,
+        label: zh ? `${label} · 能力工具` : `${label} · Capability Tools`,
+        hint: zh
+          ? "该能力的专属工具，仅在此能力运行时挂载。"
+          : "Tools specific to this capability; mounted only when it runs.",
+        tools: list,
+      });
+    }
     return out;
-  }, [tools]);
+  }, [tools, language]);
 
   const toggleExpanded = (name: string) => {
     setExpanded((prev) => {
@@ -153,24 +202,6 @@ export default function ToolsSettingsPage() {
       else next.add(name);
       return next;
     });
-  };
-
-  const categoryLabel = (cat: ToolCategory) => {
-    if (cat === "experience") {
-      return language === "zh" ? "体验增强" : "Experience Enhancement";
-    }
-    return language === "zh" ? "内置工具" : "Built-in Tools";
-  };
-
-  const categoryHint = (cat: ToolCategory) => {
-    if (cat === "experience") {
-      return language === "zh"
-        ? "用户可选；按需为 chat agent 开启或关闭。"
-        : "User-toggleable. Switch on or off to shape the chat agent's behavior.";
-    }
-    return language === "zh"
-      ? "Chat agent 在需要时自动挂载，无需手动开关。"
-      : "Mounted automatically by the chat agent when needed. Not user-toggleable.";
   };
 
   return (
@@ -201,20 +232,20 @@ export default function ToolsSettingsPage() {
         </div>
       )}
 
-      {grouped && (
+      {sections && (
         <div className="space-y-8">
-          {CATEGORY_ORDER.map((category) => {
-            const list = grouped[category];
+          {sections.map((section) => {
+            const list = section.tools;
             if (list.length === 0) return null;
             return (
-              <section key={category}>
+              <section key={section.key}>
                 <header className="mb-3 flex items-baseline justify-between gap-3">
                   <div className="min-w-0">
                     <h2 className="text-[14px] font-semibold tracking-tight text-[var(--foreground)]">
-                      {categoryLabel(category)}
+                      {section.label}
                     </h2>
                     <p className="mt-0.5 text-[11.5px] text-[var(--muted-foreground)]">
-                      {categoryHint(category)}
+                      {section.hint}
                     </p>
                   </div>
                   <span className="shrink-0 text-[11px] text-[var(--muted-foreground)]">

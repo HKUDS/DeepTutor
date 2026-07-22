@@ -17,7 +17,7 @@ from deeptutor.services.provider_registry import (
     find_gateway,
 )
 
-from .capabilities import supports_response_format
+from .capabilities import supports_response_format, supports_vision
 from .config import LLMConfig, get_llm_config
 from .error_mapping import map_error
 from .multimodal import prepare_multimodal_messages
@@ -272,13 +272,6 @@ def _build_messages(
     ]
 
 
-def _find_last_user_message(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
-    for message in reversed(messages):
-        if message.get("role") == "user":
-            return message
-    return None
-
-
 def _coerce_stream_coalesce_chars(value: Any) -> int:
     try:
         return max(1, int(value))
@@ -291,23 +284,6 @@ def _coerce_stream_coalesce_seconds(value: Any) -> float:
         return max(0.0, float(value))
     except (TypeError, ValueError):
         return DEFAULT_STREAM_COALESCE_SECONDS
-
-
-def _append_image_placeholder(messages: list[dict[str, Any]]) -> None:
-    target = _find_last_user_message(messages)
-    placeholder = "[image omitted]"
-    if target is None:
-        messages.append({"role": "user", "content": placeholder})
-        return
-
-    content = target.get("content")
-    if isinstance(content, str):
-        target["content"] = f"{content}\n\n{placeholder}" if content else placeholder
-        return
-    if isinstance(content, list):
-        content.append({"type": "text", "text": placeholder})
-        return
-    target["content"] = placeholder
 
 
 def _apply_inline_image_data(
@@ -329,8 +305,6 @@ def _apply_inline_image_data(
         mime_type=image_mime_type,
     )
     result = prepare_multimodal_messages(messages, [attachment], binding=binding, model=model)
-    if result.images_stripped:
-        _append_image_placeholder(messages)
     return result.messages
 
 
@@ -411,6 +385,7 @@ async def complete(
             model=config.model,
             reasoning_effort=config.reasoning_effort,
             retry_delays=retry_delays,
+            allow_image_fallback=not supports_vision(capability_binding, config.model),
             **extra_kwargs,
         )
     except Exception as exc:
@@ -510,6 +485,7 @@ async def stream(
                 on_content_delta=_on_content_delta,
                 on_reasoning_delta=_on_reasoning_delta,
                 retry_delays=retry_delays,
+                allow_image_fallback=not supports_vision(capability_binding, config.model),
                 **extra_kwargs,
             )
             if in_think_block:

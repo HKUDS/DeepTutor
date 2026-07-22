@@ -63,8 +63,8 @@ class LineView:
     def render(self, *, with_numbers: bool = True) -> str:
         if with_numbers:
             width = max(2, len(str(len(self.lines))))
-            return "\n".join(f"{l.number:>{width}}: {l.text}" for l in self.lines)
-        return "\n".join(l.text for l in self.lines)
+            return "\n".join(f"{line.number:>{width}}: {line.text}" for line in self.lines)
+        return "\n".join(line.text for line in self.lines)
 
     def line(self, number: int) -> Line | None:
         return self.lines[number - 1] if 1 <= number <= len(self.lines) else None

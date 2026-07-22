@@ -347,9 +347,9 @@ async def test_prelude_then_tool_call_routes_correctly() -> None:
 
 @pytest.mark.asyncio
 async def test_tool_calls_mid_prelude_close_prelude_synthetically() -> None:
-    """If tool_call deltas arrive while still inside an open ``<think>``
-    prelude, force-resolve to TOOL, flush remaining prelude content into
-    the reasoning sub-trace, and ensure the returned text is clean."""
+    """Tool-call deltas without a formal ``TOOL`` label are not enough to
+    choose the action. The tool calls are still accumulated so the caller can
+    include them in diagnostics, but the step is a missing-label violation."""
     events, result = await _run(
         [
             _chunk("<think>still reasoning"),  # never closes
@@ -357,7 +357,7 @@ async def test_tool_calls_mid_prelude_close_prelude_synthetically() -> None:
         ],
     )
 
-    assert result.label == "TOOL"
+    assert result.label == "UNKNOWN"
     assert result.tool_calls == [{"id": "call_a", "name": "lookup", "arguments": '{"k":1}'}]
     # Even though </think> never arrived, the returned text must not leak
     # the prelude content (clean_thinking_tags strips the synthesized block).
@@ -445,6 +445,40 @@ async def test_reasoning_content_field_streams_to_reasoning_subtrace() -> None:
 
 
 @pytest.mark.asyncio
+async def test_reasoning_content_does_not_imply_action_for_unlabeled_body() -> None:
+    """The dedicated reasoning stream is rendered as a trace, but the formal
+    content stream still needs a protocol label. Unlabeled body text is a
+    missing-label draft, not an implicit ``THINK`` or ``FINISH``."""
+    events, result = await _run(
+        [
+            _reasoning_chunk("private reasoning trace"),
+            _chunk("This reads like a final answer but has no label."),
+        ],
+        implicit_think_label="FINISH",
+    )
+
+    assert result.label == "UNKNOWN"
+    assert result.text == "This reads like a final answer but has no label."
+    assert "private reasoning trace" in "".join(_thinking_texts(events))
+
+
+@pytest.mark.asyncio
+async def test_tool_calls_without_tool_label_stay_unknown() -> None:
+    """Native tool calls are parsed, but they do not override the formal
+    first-line action protocol. The caller should repair the missing label."""
+    events, result = await _run(
+        [
+            _reasoning_chunk("I need a lookup"),
+            _tc_chunk(tc_id="call_1", name="search", arguments='{"q":"x"}'),
+        ]
+    )
+
+    assert result.label == "UNKNOWN"
+    assert result.tool_calls == [{"id": "call_1", "name": "search", "arguments": '{"q":"x"}'}]
+    assert "I need a lookup" in "".join(_thinking_texts(events))
+
+
+@pytest.mark.asyncio
 async def test_reasoning_content_then_inline_think_merge_into_same_subtrace() -> None:
     """Some providers emit *both* a ``reasoning_content`` stream AND inline
     ``<think>...</think>`` in ``content``. Both should land in the same
@@ -463,11 +497,10 @@ async def test_reasoning_content_then_inline_think_merge_into_same_subtrace() ->
 
 
 @pytest.mark.asyncio
-async def test_implicit_think_resolves_when_prelude_has_no_protocol_label() -> None:
-    """A reasoning model that emits ``<think>...</think>`` and *nothing else*
-    that matches the protocol should be accepted as an implicit ``THINK``
-    iteration when the caller opts in. Without this, the loop would treat
-    the iteration as a protocol violation and burn budget on repair."""
+async def test_thinking_trace_without_protocol_label_stays_unknown() -> None:
+    """A reasoning trace is trace data, not an action label. Even when the
+    caller passes the legacy ``implicit_think_label`` argument, the formal
+    content must still provide ``THINK`` / ``FINISH`` / ``TOOL`` / ``PAUSE``."""
     events, result = await _run(
         [
             _chunk("<think>I'm thinking about this carefully</think>"),
@@ -475,20 +508,15 @@ async def test_implicit_think_resolves_when_prelude_has_no_protocol_label() -> N
         implicit_think_label="THINK",
     )
 
-    assert result.label == "THINK"
-    # The full reasoning structure is preserved in the returned text so the
-    # next iteration's assistant context shows the model's native dialect.
-    assert "<think>" in result.text
-    assert "I'm thinking about this carefully" in result.text
-    assert "</think>" in result.text
+    assert result.label == "UNKNOWN"
+    assert result.text == ""
 
 
 @pytest.mark.asyncio
-async def test_implicit_think_resolves_on_probe_overflow_with_unlabeled_tail() -> None:
-    """If a reasoning model emits ``<think>...</think>`` followed by a long
-    body that doesn't include a protocol label, the implicit-THINK opt-in
-    should still resolve to ``THINK`` (rather than ``UNKNOWN``) so the loop
-    can continue with the next iteration."""
+async def test_unlabeled_tail_after_thinking_trace_stays_unknown() -> None:
+    """A long formal body after a thinking trace still needs a first-line
+    protocol label. The parser preserves the draft text for repair context
+    but does not silently convert it to ``THINK``."""
     long_unlabeled_tail = "x" * 200  # well past the 64-char probe window
     events, result = await _run(
         [
@@ -496,10 +524,9 @@ async def test_implicit_think_resolves_on_probe_overflow_with_unlabeled_tail() -
         ],
         implicit_think_label="THINK",
     )
-    assert result.label == "THINK"
-    # Both the prelude and the post-close trailing prose stay in text.
-    assert "<think>" in result.text
-    assert "some reasoning" in result.text
+    assert result.label == "UNKNOWN"
+    assert "<think>" not in result.text
+    assert "some reasoning" not in result.text
     assert long_unlabeled_tail in result.text
 
 

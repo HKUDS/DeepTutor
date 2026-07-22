@@ -9,14 +9,24 @@ import {
   useState,
   type RefObject,
 } from "react";
-import Image from "next/image";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowUp,
-  AtSign,
+  BookOpen,
+  Bot,
+  Brain,
+  Check,
   ChevronDown,
-  Database,
+  ChevronRight,
+  ClipboardList,
+  Loader2,
+  MessageSquare,
+  Mic,
   Paperclip,
+  Plus,
+  Sparkles,
   Square,
+  UserRound,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -35,18 +45,27 @@ import type { LLMOption } from "@/lib/llm-options";
 import ChatSpaceMenu from "@/components/chat/space/ChatSpaceMenu";
 import type { SpaceMemoryFile } from "@/lib/space-items";
 import type { SelectedBookReference } from "@/lib/book-references";
+import AgentSelector from "./AgentSelector";
+import KnowledgeSelector from "./KnowledgeSelector";
 import ModelSelector from "./ModelSelector";
+import PersonaSelector from "./PersonaSelector";
 
 type SpaceSelectionCounts = {
+  attachments: number;
+  knowledge: number;
   chatHistory: number;
+  myAgents: number;
   books: number;
   notebooks: number;
   questionBank: number;
-  skills: number;
+  persona: number;
   memory: number;
 };
-import { SpaceContextChips } from "./ChatMessages";
+import ContextReferenceTree, {
+  type ContextTreeItem,
+} from "./ContextReferenceTree";
 import { ComposerInput, type ComposerInputHandle } from "./ComposerInput";
+import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 
 interface PendingAttachment {
   type: string;
@@ -67,6 +86,54 @@ interface CapabilityDef {
   description: string;
   icon: LucideIcon;
   allowedTools: string[];
+  // Loop-engine capabilities (solve / mastery) run on the chat agent loop and
+  // are collapsed into the "More" flyout instead of listed directly.
+  loopEngine?: boolean;
+}
+
+/** One row in the capability picker — shared by the built-in list and the
+ *  "More" flyout so both render identically. */
+function CapMenuItem({
+  cap,
+  selected,
+  onSelect,
+}: {
+  cap: CapabilityDef;
+  selected: boolean;
+  onSelect: (value: string) => void;
+}) {
+  const { t } = useTranslation();
+  const Icon = cap.icon;
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(cap.value)}
+      className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
+        selected ? "bg-[var(--primary)]/[0.06]" : "hover:bg-[var(--muted)]/45"
+      }`}
+    >
+      <Icon
+        size={15}
+        strokeWidth={1.7}
+        className={`shrink-0 ${selected ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"}`}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[12.5px] font-medium leading-snug text-[var(--foreground)]">
+          {t(cap.label)}
+        </div>
+        <div className="truncate text-[11px] leading-snug text-[var(--muted-foreground)]">
+          {t(cap.description)}
+        </div>
+      </div>
+      {selected && (
+        <Check
+          size={14}
+          strokeWidth={2}
+          className="shrink-0 text-[var(--primary)]"
+        />
+      )}
+    </button>
+  );
 }
 
 export default memo(function ChatComposer({
@@ -75,18 +142,20 @@ export default memo(function ChatComposer({
   capBtnRef,
   spaceMenuRef,
   spaceBtnRef,
-  kbMenuRef,
-  kbBtnRef,
   dragCounter,
   dragging,
   capMenuOpen,
   spaceMenuOpen,
-  kbMenuOpen,
   hasMessages,
   attachments,
   attachmentError,
   activeCap,
   knowledgeBases,
+  connectedAgents = [],
+  selectedAgent = null,
+  onSelectAgent,
+  subagentBudget = null,
+  onSubagentBudgetChange,
   llmOptions,
   activeLLMDefault,
   llmSelection,
@@ -95,10 +164,10 @@ export default memo(function ChatComposer({
   selectedNotebookRecords,
   selectedBookReferences,
   selectedHistorySessions,
+  selectedAgentSessions,
   selectedQuestionEntries,
   notebookReferenceGroups,
-  selectedSkills,
-  skillsAutoMode,
+  selectedPersona,
   selectedMemoryFiles,
   selectedKnowledgeBases,
   isStreaming,
@@ -109,22 +178,27 @@ export default memo(function ChatComposer({
   capabilities,
   onSetCapMenuOpen,
   onSetSpaceMenuOpen,
-  onSetKbMenuOpen,
   onToggleKB,
   onSelectLLM,
   onSelectNotebookPicker,
   onSelectBookPicker,
   onSelectHistoryPicker,
+  onSelectAgentsPicker,
   onSelectQuestionBankPicker,
-  onSelectSkillsPicker,
+  onSelectPersonaPicker,
   onSelectMemoryPicker,
-  onToggleSkill,
-  onSetSkillsAuto,
+  onClearPersona,
+  personaSelection,
+  onPersonaSelectionChange,
+  personaSelectorOpen,
+  onPersonaSelectorOpenChange,
+  agentsAvailable = true,
   onToggleMemoryFile,
   onSend,
   onRemoveAttachment,
   onPreviewAttachment,
   onRemoveHistory,
+  onRemoveAgent,
   onRemoveBookReference,
   onRemoveNotebook,
   onRemoveQuestion,
@@ -144,18 +218,23 @@ export default memo(function ChatComposer({
   capBtnRef: RefObject<HTMLButtonElement | null>;
   spaceMenuRef: RefObject<HTMLDivElement | null>;
   spaceBtnRef: RefObject<HTMLButtonElement | null>;
-  kbMenuRef: RefObject<HTMLDivElement | null>;
-  kbBtnRef: RefObject<HTMLButtonElement | null>;
   dragCounter: RefObject<number>;
   dragging: boolean;
   capMenuOpen: boolean;
   spaceMenuOpen: boolean;
-  kbMenuOpen: boolean;
   hasMessages: boolean;
   attachments: PendingAttachment[];
   attachmentError: string | null;
   activeCap: CapabilityDef;
   knowledgeBases: KnowledgeBase[];
+  /** Connected local subagents (Claude Code / Codex) selectable for this turn. */
+  connectedAgents?: { name: string; kind?: string }[];
+  /** The connected agent selected for this turn, if any (single-select). */
+  selectedAgent?: string | null;
+  onSelectAgent?: (name: string | null) => void;
+  /** Max times DeepTutor may consult the selected agent this turn. */
+  subagentBudget?: number | null;
+  onSubagentBudgetChange?: (budget: number) => void;
   llmOptions: LLMOption[];
   activeLLMDefault: LLMSelection | null;
   llmSelection: LLMSelection | null;
@@ -164,14 +243,14 @@ export default memo(function ChatComposer({
   selectedNotebookRecords: SelectedRecord[];
   selectedBookReferences: SelectedBookReference[];
   selectedHistorySessions: SelectedHistorySession[];
+  selectedAgentSessions: SelectedHistorySession[];
   selectedQuestionEntries: SelectedQuestionEntry[];
   notebookReferenceGroups: Array<{
     notebookId: string;
     notebookName: string;
     count: number;
   }>;
-  selectedSkills: string[];
-  skillsAutoMode: boolean;
+  selectedPersona: string | null;
   selectedMemoryFiles: SpaceMemoryFile[];
   selectedKnowledgeBases: string[];
   isStreaming: boolean;
@@ -192,22 +271,34 @@ export default memo(function ChatComposer({
   capabilities: CapabilityDef[];
   onSetCapMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
   onSetSpaceMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
-  onSetKbMenuOpen: (open: boolean | ((prev: boolean) => boolean)) => void;
   onToggleKB: (name: string) => void;
   onSelectLLM: (selection: LLMSelection | null) => void;
   onSelectNotebookPicker: () => void;
   onSelectBookPicker: () => void;
   onSelectHistoryPicker: () => void;
+  onSelectAgentsPicker: () => void;
   onSelectQuestionBankPicker: () => void;
-  onSelectSkillsPicker: () => void;
+  onSelectPersonaPicker: () => void;
   onSelectMemoryPicker: () => void;
-  onToggleSkill: (skill: string) => void;
-  onSetSkillsAuto: (auto: boolean) => void;
+  onClearPersona: () => void;
+  /**
+   * Session-persona wiring (main chat only). When `onPersonaSelectionChange`
+   * is provided, the toolbar shows a PersonaSelector chip and the composer
+   * accepts the `/persona` slash command. The quiz follow-up surface omits
+   * these and keeps its per-turn persona picker flow.
+   */
+  personaSelection?: string;
+  onPersonaSelectionChange?: (persona: string) => void;
+  personaSelectorOpen?: boolean;
+  onPersonaSelectorOpenChange?: (open: boolean) => void;
+  /** Hide the My Agents reference entry (e.g. the quiz follow-up surface). */
+  agentsAvailable?: boolean;
   onToggleMemoryFile: (file: SpaceMemoryFile) => void;
   onSend: (content: string) => void;
   onRemoveAttachment: (index: number) => void;
   onPreviewAttachment?: (index: number) => void;
   onRemoveHistory: (sessionId: string) => void;
+  onRemoveAgent: (sessionId: string) => void;
   onRemoveBookReference: (bookId: string) => void;
   onRemoveNotebook: (notebookId: string) => void;
   onRemoveQuestion: (entryId: number) => void;
@@ -233,9 +324,15 @@ export default memo(function ChatComposer({
   const CapIcon = activeCap.icon;
 
   const [hasContent, setHasContent] = useState(false);
+  const [moreCapsOpen, setMoreCapsOpen] = useState(false);
+  const [lastCapMenuOpen, setLastCapMenuOpen] = useState(capMenuOpen);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputHandleRef = useRef<ComposerInputHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  if (lastCapMenuOpen !== capMenuOpen) {
+    setLastCapMenuOpen(capMenuOpen);
+    if (!capMenuOpen) setMoreCapsOpen(false);
+  }
 
   useEffect(() => {
     if (!prefillInputRef) return;
@@ -246,6 +343,15 @@ export default memo(function ChatComposer({
       if (prefillInputRef) prefillInputRef.current = null;
     };
   }, [prefillInputRef]);
+
+  // Microphone → speech-to-text. Appends the transcript to whatever is already
+  // in the composer so a dictated phrase can be combined with typed text.
+  const handleTranscript = useCallback((text: string) => {
+    const current = inputHandleRef.current?.getValue() || "";
+    const next = current.trim() ? `${current.trimEnd()} ${text}` : text;
+    inputHandleRef.current?.setValue(next);
+  }, []);
+  const recorder = useVoiceRecorder(handleTranscript);
 
   // Composer-row compaction: when the available width drops below ~620 px
   // (e.g. the Viewer panel is open or the user is on a narrow viewport),
@@ -287,6 +393,14 @@ export default memo(function ChatComposer({
     if (!hasMessages) textareaRef.current?.focus();
   }, [hasMessages]);
 
+  const handleSelectCapability = useCallback(
+    (value: string) => {
+      setMoreCapsOpen(false);
+      onSelectCapability(value);
+    },
+    [onSelectCapability],
+  );
+
   // Functional-update form keeps `handleInputChange` identity stable across
   // every keystroke (no `hasContent` in deps), so the memoized ComposerInput
   // doesn't get re-rendered just because we observed a content-empty toggle.
@@ -309,9 +423,9 @@ export default memo(function ChatComposer({
     !!selectedBookReferences.length ||
     !!selectedNotebookRecords.length ||
     !!selectedHistorySessions.length ||
+    !!selectedAgentSessions.length ||
     !!selectedQuestionEntries.length ||
-    !!selectedSkills.length ||
-    skillsAutoMode ||
+    !!selectedPersona ||
     !!selectedMemoryFiles.length;
 
   // `capabilityNeedsConfig && !capabilityConfigConfirmed` blocks send so the
@@ -322,25 +436,105 @@ export default memo(function ChatComposer({
   const canSend =
     (hasContent || hasReferences) && !isStreaming && !isConfigBlocked;
 
-  const skillsCount = skillsAutoMode ? 1 : selectedSkills.length;
   const spaceSelectionCounts: SpaceSelectionCounts = {
+    attachments: attachments.length,
+    knowledge: selectedKnowledgeBases.length,
     chatHistory: selectedHistorySessions.length,
+    myAgents: selectedAgentSessions.length,
     books: selectedBookReferences.reduce(
       (total, ref) => total + ref.pages.length,
       0,
     ),
     notebooks: selectedNotebookRecords.length,
     questionBank: selectedQuestionEntries.length,
-    skills: skillsCount,
+    persona: selectedPersona ? 1 : 0,
     memory: selectedMemoryFiles.length,
   };
-  const spaceSelectionCount =
-    spaceSelectionCounts.chatHistory +
-    spaceSelectionCounts.books +
-    spaceSelectionCounts.notebooks +
-    spaceSelectionCounts.questionBank +
-    spaceSelectionCounts.skills +
-    spaceSelectionCounts.memory;
+  // Badge on the "+" button = how many things are selected through the
+  // "+" menu. Knowledge is excluded: it no longer lives in this menu —
+  // it has its own toolbar chip (KnowledgeSelector) with its own active
+  // state, so counting it here would double-signal.
+  const contextSelectionCount = Object.entries(spaceSelectionCounts).reduce(
+    (total, [key, count]) => (key === "knowledge" ? total : total + count),
+    0,
+  );
+
+  // Unified reference tree above the textarea: Space references, persona
+  // and memory render as quiet monochrome rows, collapsed behind a count
+  // by default. File attachments intentionally stay OUT of the tree —
+  // they keep their preview cards below the textarea.
+  // Knowledge bases are intentionally NOT in this tree: they are a
+  // session-level retrieval SCOPE (sticky, persisted), not a one-shot
+  // reference like the rows below. That sticky state lives in the
+  // toolbar KnowledgeSelector chip instead — same lifecycle class as
+  // the persona selector.
+  const contextTreeItems: ContextTreeItem[] = [
+    ...selectedBookReferences.map(
+      (book): ContextTreeItem => ({
+        key: `book-${book.bookId}`,
+        icon: BookOpen,
+        kind: t("Book"),
+        label: `${book.bookTitle} (${book.pages.length})`,
+        onRemove: () => onRemoveBookReference(book.bookId),
+      }),
+    ),
+    ...notebookReferenceGroups.map(
+      (group): ContextTreeItem => ({
+        key: `nb-${group.notebookId}`,
+        icon: BookOpen,
+        kind: t("Notebook"),
+        label: `${group.notebookName} (${group.count})`,
+        onRemove: () => onRemoveNotebook(group.notebookId),
+      }),
+    ),
+    ...selectedHistorySessions.map(
+      (session): ContextTreeItem => ({
+        key: `hist-${session.sessionId}`,
+        icon: MessageSquare,
+        kind: t("Chat History"),
+        label: session.title,
+        onRemove: () => onRemoveHistory(session.sessionId),
+      }),
+    ),
+    ...selectedAgentSessions.map(
+      (session): ContextTreeItem => ({
+        key: `agent-${session.sessionId}`,
+        icon: Bot,
+        kind: t("My Agents"),
+        label: session.title,
+        onRemove: () => onRemoveAgent(session.sessionId),
+      }),
+    ),
+    ...selectedQuestionEntries.map(
+      (entry): ContextTreeItem => ({
+        key: `q-${entry.id}`,
+        icon: ClipboardList,
+        kind: t("Question Bank"),
+        label: entry.question,
+        onRemove: () => onRemoveQuestion(entry.id),
+      }),
+    ),
+    ...(selectedPersona
+      ? [
+          {
+            key: "persona",
+            icon: UserRound,
+            kind: t("Persona"),
+            label: selectedPersona,
+            onRemove: onClearPersona,
+          } satisfies ContextTreeItem,
+        ]
+      : []),
+    ...selectedMemoryFiles.map(
+      (file): ContextTreeItem => ({
+        key: `mem-${file}`,
+        icon: Brain,
+        kind: t("Memory"),
+        label: file === "summary" ? t("Summary") : t("Profile"),
+        onRemove: () => onToggleMemoryFile(file),
+      }),
+    ),
+  ];
 
   const handleManualSend = useCallback(() => {
     if (isConfigBlocked) {
@@ -357,7 +551,7 @@ export default memo(function ChatComposer({
   return (
     <div
       ref={composerRef}
-      className={`relative z-20 mx-auto w-full shrink-0 pb-5 ${hasMessages ? "pt-1 max-w-[960px]" : "max-w-[720px]"}`}
+      className={`relative z-20 mx-auto w-full shrink-0 px-6 pb-5 ${hasMessages ? "pt-1 max-w-[960px]" : "max-w-[768px]"}`}
       style={{
         transition: "max-width 650ms cubic-bezier(0.16, 1, 0.3, 1)",
       }}
@@ -404,24 +598,21 @@ export default memo(function ChatComposer({
             tabIndex={-1}
           />
 
-          {hasReferences && (
-            <div className="px-4 pt-3.5 [&>div]:mb-0">
-              <SpaceContextChips
-                historySessions={selectedHistorySessions}
-                bookReferences={selectedBookReferences}
-                notebookGroups={notebookReferenceGroups}
-                questionEntries={selectedQuestionEntries}
-                selectedSkills={selectedSkills}
-                skillsAutoMode={skillsAutoMode}
-                memoryFiles={selectedMemoryFiles}
-                onRemoveHistory={onRemoveHistory}
-                onRemoveBookReference={onRemoveBookReference}
-                onRemoveNotebook={onRemoveNotebook}
-                onRemoveQuestion={onRemoveQuestion}
-                onRemoveSkill={onToggleSkill}
-                onClearSkillsAuto={() => onSetSkillsAuto(false)}
-                onRemoveMemoryFile={onToggleMemoryFile}
-              />
+          {contextTreeItems.length > 0 && (
+            // The reference zone reads as its own layer: a faint muted band
+            // with a hairline against the input area, following the card's
+            // top radius.
+            <div className="rounded-t-[26px] border-b border-[var(--border)]/30 bg-[var(--muted)]/30 px-4 pb-2 pt-2.5">
+              {/* Narrower than the composer on purpose — long titles
+                  truncate early so the tree reads as an annotation, not a
+                  content row. */}
+              <div className="max-w-[min(560px,85%)]">
+                <ContextReferenceTree
+                  items={contextTreeItems}
+                  direction="up"
+                  summaryNoun={t("references")}
+                />
+              </div>
             </div>
           )}
           <ComposerInput
@@ -432,15 +623,28 @@ export default memo(function ChatComposer({
             onSend={doSend}
             onInputChange={handleInputChange}
             onPaste={onPaste}
+            connectedAgents={connectedAgents}
+            selectedAgent={selectedAgent}
+            onSelectAgent={onSelectAgent}
             selectedCounts={spaceSelectionCounts}
+            knowledgeAvailable={false}
+            personaAvailable={!onPersonaSelectionChange}
+            onSelectAttach={handlePickFiles}
+            agentsAvailable={agentsAvailable}
             onSelectNotebookPicker={onSelectNotebookPicker}
             onSelectBookPicker={onSelectBookPicker}
             onSelectHistoryPicker={onSelectHistoryPicker}
+            onSelectAgentsPicker={onSelectAgentsPicker}
             onSelectQuestionBankPicker={onSelectQuestionBankPicker}
-            onSelectSkillsPicker={onSelectSkillsPicker}
+            onSelectPersonaPicker={onSelectPersonaPicker}
             onSelectMemoryPicker={onSelectMemoryPicker}
+            onOpenPersonaSelector={
+              onPersonaSelectionChange && onPersonaSelectorOpenChange
+                ? () => onPersonaSelectorOpenChange(true)
+                : undefined
+            }
             placeholder={inputPlaceholder}
-            minHeight={hasMessages ? 28 : 88}
+            minHeight={hasMessages ? 28 : 64}
           />
 
           {!!attachments.length && (
@@ -448,44 +652,15 @@ export default memo(function ChatComposer({
               {attachments.map((a, i) => {
                 const previewLabel = t("Preview");
                 const removeLabel = t("Remove attachment");
-                if (a.type === "image" && a.previewUrl) {
-                  return (
-                    <div key={`${a.filename}-${i}`} className="group relative">
-                      <button
-                        type="button"
-                        onClick={() => onPreviewAttachment?.(i)}
-                        title={a.filename || previewLabel}
-                        aria-label={previewLabel}
-                        className="relative block h-16 w-16 overflow-hidden rounded-lg border border-[var(--border)] transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
-                      >
-                        <Image
-                          src={a.previewUrl}
-                          alt={a.filename || t("Attachment preview")}
-                          fill
-                          unoptimized
-                          className="object-cover"
-                        />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onRemoveAttachment(i);
-                        }}
-                        aria-label={removeLabel}
-                        className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--background)] opacity-0 shadow-sm transition-opacity group-hover:opacity-100"
-                      >
-                        <X size={10} />
-                      </button>
-                    </div>
-                  );
-                }
-                if (isSvgFilename(a.filename) && a.previewUrl) {
+                if (
+                  (a.type === "image" || isSvgFilename(a.filename)) &&
+                  a.previewUrl
+                ) {
                   return (
                     <div
                       key={`${a.filename}-${i}`}
                       className="group relative"
-                      title={a.filename}
+                      title={a.filename || previewLabel}
                     >
                       <button
                         type="button"
@@ -500,7 +675,7 @@ export default memo(function ChatComposer({
                         <img
                           src={a.previewUrl}
                           alt={a.filename || t("Attachment preview")}
-                          className="h-full w-full object-contain p-1"
+                          className={`h-full w-full ${isSvgFilename(a.filename) ? "object-contain p-1" : "object-cover"}`}
                         />
                       </button>
                       <button
@@ -573,26 +748,29 @@ export default memo(function ChatComposer({
             </div>
           )}
 
-          <div className="border-t border-[var(--border)]/35 px-3 py-2">
-            <div className="flex items-center gap-2">
+          {/* Claude-style chrome-free toolbar: no divider against the input
+              area, no pill borders — quiet text/icon buttons that surface
+              on hover. */}
+          <div className="px-3 pb-2 pt-0.5">
+            <div className="flex items-center gap-1">
               <div className="relative">
                 <button
                   ref={capBtnRef}
                   onClick={() => onSetCapMenuOpen((v) => !v)}
-                  className={`inline-flex ${composerCompact ? "" : "min-w-[118px]"} shrink-0 items-center justify-between gap-1.5 rounded-full border bg-[var(--card)] px-3 py-[6px] text-[13px] font-medium text-[var(--foreground)] shadow-[0_1px_2px_color-mix(in_srgb,var(--foreground)_4%,transparent)] transition-[background-color,border-color,color,box-shadow] duration-150 ${
+                  className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
                     capMenuOpen
-                      ? "border-[var(--primary)]/45 bg-[color-mix(in_srgb,var(--primary)_7%,var(--card))] text-[var(--primary)] shadow-[0_4px_14px_color-mix(in_srgb,var(--primary)_22%,transparent)]"
-                      : "border-[var(--border)]/65 hover:border-[var(--primary)]/30 hover:bg-[color-mix(in_srgb,var(--primary)_3%,var(--card))] hover:text-[var(--primary)]"
+                      ? "bg-[var(--primary)]/10 text-[var(--primary)]"
+                      : "text-[var(--foreground)] hover:bg-[var(--muted)]/55"
                   }`}
                 >
                   <span className="flex min-w-0 items-center gap-1.5">
-                    <CapIcon size={15} strokeWidth={1.7} className="shrink-0" />
+                    <CapIcon size={16} strokeWidth={1.7} className="shrink-0" />
                     {composerCompact ? null : (
                       <span className="truncate">{t(activeCap.label)}</span>
                     )}
                   </span>
                   <ChevronDown
-                    size={12}
+                    size={13}
                     strokeWidth={2}
                     className={`-mr-0.5 shrink-0 transition-transform duration-200 ${capMenuOpen ? "rotate-180" : ""}`}
                   />
@@ -601,175 +779,186 @@ export default memo(function ChatComposer({
                 {capMenuOpen && (
                   <div
                     ref={capMenuRef}
-                    className="dt-popup-up absolute bottom-full left-0 z-50 mb-2 w-[280px] rounded-2xl border border-[var(--border)]/70 bg-[var(--popover)] py-1.5 shadow-[0_8px_30px_color-mix(in_srgb,var(--foreground)_18%,transparent)] backdrop-blur-md"
+                    className="dt-popup-up absolute bottom-full left-0 z-50 mb-1.5 w-[260px] overflow-visible rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
                   >
-                    {capabilities.map((cap) => {
-                      const Icon = cap.icon;
-                      const selected = activeCap.value === cap.value;
-                      return (
-                        <button
+                    {capabilities
+                      .filter((cap) => !cap.loopEngine)
+                      .map((cap) => (
+                        <CapMenuItem
                           key={cap.value}
-                          onClick={() => onSelectCapability(cap.value)}
-                          className={`flex w-full items-center gap-3 px-3.5 py-2 text-left transition-colors ${
-                            selected
-                              ? "bg-[var(--muted)]"
-                              : "hover:bg-[var(--muted)]/50"
-                          }`}
+                          cap={cap}
+                          selected={activeCap.value === cap.value}
+                          onSelect={handleSelectCapability}
+                        />
+                      ))}
+                    {(() => {
+                      const loopCaps = capabilities.filter(
+                        (cap) => cap.loopEngine,
+                      );
+                      if (loopCaps.length === 0) return null;
+                      const loopSelected = loopCaps.some(
+                        (cap) => cap.value === activeCap.value,
+                      );
+                      return (
+                        <div
+                          className="group/more relative"
+                          onMouseEnter={() => setMoreCapsOpen(true)}
+                          onMouseLeave={() => setMoreCapsOpen(false)}
+                          onFocus={() => setMoreCapsOpen(true)}
+                          onBlur={(event) => {
+                            const next = event.relatedTarget;
+                            if (
+                              !next ||
+                              !event.currentTarget.contains(next as Node)
+                            ) {
+                              setMoreCapsOpen(false);
+                            }
+                          }}
                         >
-                          <Icon
-                            size={16}
-                            strokeWidth={1.6}
-                            className={`shrink-0 ${selected ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"}`}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="text-[13px] font-medium text-[var(--foreground)]">
-                              {t(cap.label)}
+                          <button
+                            type="button"
+                            aria-haspopup="menu"
+                            aria-expanded={moreCapsOpen}
+                            onClick={() => setMoreCapsOpen((open) => !open)}
+                            className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors ${
+                              moreCapsOpen
+                                ? "bg-[var(--muted)]/45"
+                                : "group-hover/more:bg-[var(--muted)]/45"
+                            } ${
+                              loopSelected && !moreCapsOpen
+                                ? "bg-[var(--primary)]/[0.06]"
+                                : ""
+                            }`}
+                          >
+                            <Sparkles
+                              size={15}
+                              strokeWidth={1.7}
+                              className={`shrink-0 ${loopSelected ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"}`}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-[12.5px] font-medium leading-snug text-[var(--foreground)]">
+                                {t("More Capabilities")}
+                              </div>
+                              <div className="truncate text-[11px] leading-snug text-[var(--muted-foreground)]">
+                                {t("Agent-loop driven modes")}
+                              </div>
                             </div>
-                            <div className="truncate text-[11px] text-[var(--muted-foreground)]">
-                              {t(cap.description)}
+                            <ChevronRight
+                              size={14}
+                              strokeWidth={2}
+                              className="shrink-0 text-[var(--muted-foreground)]"
+                            />
+                          </button>
+                          {/* Right flyout. ``pl-1.5`` is a pointer bridge so the
+                              cursor can cross the gap without dropping hover;
+                              click/focus also open it for touch and keyboard. */}
+                          <div
+                            className={`absolute bottom-0 left-full z-50 pl-1.5 transition-opacity duration-150 ${
+                              moreCapsOpen
+                                ? "visible opacity-100"
+                                : "invisible opacity-0"
+                            }`}
+                          >
+                            <div className="w-[240px] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md">
+                              {loopCaps.map((cap) => (
+                                <CapMenuItem
+                                  key={cap.value}
+                                  cap={cap}
+                                  selected={activeCap.value === cap.value}
+                                  onSelect={handleSelectCapability}
+                                />
+                              ))}
                             </div>
                           </div>
-                          {selected ? (
-                            <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--primary)]" />
-                          ) : null}
-                        </button>
+                        </div>
                       );
-                    })}
+                    })()}
                   </div>
                 )}
               </div>
 
-              <div className="flex min-w-0 flex-1 items-center gap-1">
+              <div className="relative flex min-w-0 flex-1 items-center">
                 <button
+                  ref={spaceBtnRef}
                   type="button"
-                  onClick={handlePickFiles}
-                  title={t("Attach files")}
-                  aria-label={t("Attach files")}
-                  className="inline-flex shrink-0 items-center gap-1 py-1 px-1.5 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                  onClick={() => onSetSpaceMenuOpen((v) => !v)}
+                  title={t("Add files & context")}
+                  aria-label={t("Add files & context")}
+                  className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-[background-color,color,transform] duration-150 active:scale-90 ${
+                    spaceMenuOpen
+                      ? "bg-[var(--muted)] text-[var(--foreground)]"
+                      : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
+                  }`}
                 >
-                  <Paperclip size={12} strokeWidth={1.7} />
-                  <span className="inline-flex items-baseline">
-                    {composerCompact ? null : t("Attach")}
-                    {attachments.length > 0 && (
-                      <span className="ml-1 flex h-[13px] min-w-[13px] translate-y-[3px] items-center justify-center rounded-full bg-[var(--primary)] px-[3px] text-[8px] font-semibold leading-none text-[var(--primary-foreground)] shadow-[0_1px_3px_color-mix(in_srgb,var(--primary)_35%,transparent)] ring-[1.5px] ring-[var(--card)]">
-                        {attachments.length}
-                      </span>
-                    )}
-                  </span>
-                </button>
-
-                <div className="relative flex items-center gap-0.5">
-                  <button
-                    ref={kbBtnRef}
-                    type="button"
-                    onClick={() => onSetKbMenuOpen((v) => !v)}
-                    disabled={knowledgeBases.length === 0}
-                    title={
-                      knowledgeBases.length === 0
-                        ? t("No knowledge bases available")
-                        : t("Attach knowledge bases")
-                    }
-                    className={`inline-flex shrink-0 items-center gap-1 py-1 px-1.5 text-[11px] font-medium transition-colors ${
-                      knowledgeBases.length === 0
-                        ? "cursor-not-allowed text-[var(--border)]"
-                        : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                    }`}
-                  >
-                    <Database size={12} strokeWidth={1.7} />
-                    <span className="inline-flex items-baseline">
-                      {composerCompact ? null : t("Knowledge")}
-                      {selectedKnowledgeBases.length > 0 && (
-                        <span className="ml-1 flex h-[13px] min-w-[13px] translate-y-[3px] items-center justify-center rounded-full bg-[var(--primary)] px-[3px] text-[8px] font-semibold leading-none text-[var(--primary-foreground)] shadow-[0_1px_3px_color-mix(in_srgb,var(--primary)_35%,transparent)] ring-[1.5px] ring-[var(--card)]">
-                          {selectedKnowledgeBases.length}
-                        </span>
-                      )}
+                  <Plus size={20} strokeWidth={1.8} />
+                  {contextSelectionCount > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 flex h-[13px] min-w-[13px] items-center justify-center rounded-full bg-[var(--primary)] px-[3px] text-[8px] font-semibold leading-none text-[var(--primary-foreground)] ring-[1.5px] ring-[var(--card)]">
+                      {contextSelectionCount}
                     </span>
-                    <ChevronDown
-                      size={10}
-                      className={`transition-transform ${kbMenuOpen ? "rotate-180" : ""}`}
-                    />
-                  </button>
-                  {kbMenuOpen && knowledgeBases.length > 0 && (
-                    <div
-                      ref={kbMenuRef}
-                      className="absolute bottom-full left-0 z-50 mb-1.5 max-h-[260px] min-w-[200px] max-w-[280px] overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
-                    >
-                      {knowledgeBases.map((kb) => {
-                        const active = selectedKnowledgeBases.includes(kb.name);
-                        return (
-                          <button
-                            key={kb.name}
-                            type="button"
-                            onClick={() => onToggleKB(kb.name)}
-                            className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] transition-colors ${
-                              active
-                                ? "text-[var(--primary)]"
-                                : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                            } hover:bg-[var(--muted)]/40`}
-                          >
-                            <Database size={13} strokeWidth={1.7} />
-                            <span className="flex-1 truncate font-medium">
-                              {kb.name}
-                            </span>
-                            {active && (
-                              <div className="h-1.5 w-1.5 rounded-full bg-[var(--primary)]" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
                   )}
-                </div>
-
-                <div className="relative flex items-center gap-0.5">
-                  <button
-                    ref={spaceBtnRef}
-                    type="button"
-                    onClick={() => onSetSpaceMenuOpen((v) => !v)}
-                    title={t("Space")}
-                    aria-label={t("Space")}
-                    className="inline-flex shrink-0 items-center gap-1 py-1 px-1.5 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-                  >
-                    <AtSign size={12} strokeWidth={1.7} />
-                    <span className="inline-flex items-baseline">
-                      {composerCompact ? null : t("Space")}
-                      {spaceSelectionCount > 0 && (
-                        <span className="ml-1 flex h-[13px] min-w-[13px] translate-y-[3px] items-center justify-center rounded-full bg-[var(--primary)] px-[3px] text-[8px] font-semibold leading-none text-[var(--primary-foreground)] shadow-[0_1px_3px_color-mix(in_srgb,var(--primary)_35%,transparent)] ring-[1.5px] ring-[var(--card)]">
-                          {spaceSelectionCount}
-                        </span>
-                      )}
-                    </span>
-                    <ChevronDown
-                      size={10}
-                      className={`transition-transform ${spaceMenuOpen ? "rotate-180" : ""}`}
-                    />
-                  </button>
+                </button>
+                <AnimatePresence>
                   {spaceMenuOpen && (
-                    <div
+                    <motion.div
                       ref={spaceMenuRef}
                       className="absolute bottom-full left-0 z-50 mb-1.5"
+                      style={{ transformOrigin: "bottom left" }}
+                      initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 4, scale: 0.97 }}
+                      transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
                     >
                       <ChatSpaceMenu
                         variant="toolbar"
                         selectedCounts={spaceSelectionCounts}
+                        knowledgeAvailable={false}
+                        personaAvailable={!onPersonaSelectionChange}
+                        agentsAvailable={agentsAvailable}
                         onSelectItem={(key) => {
                           onSetSpaceMenuOpen(false);
-                          if (key === "chat_history") onSelectHistoryPicker();
+                          if (key === "attach") handlePickFiles();
+                          else if (key === "chat_history")
+                            onSelectHistoryPicker();
+                          else if (key === "my_agents") onSelectAgentsPicker();
                           else if (key === "books") onSelectBookPicker();
                           else if (key === "notebooks")
                             onSelectNotebookPicker();
                           else if (key === "question_bank")
                             onSelectQuestionBankPicker();
-                          else if (key === "skills") onSelectSkillsPicker();
+                          else if (key === "persona") onSelectPersonaPicker();
                           else if (key === "memory") onSelectMemoryPicker();
                         }}
                       />
-                    </div>
+                    </motion.div>
                   )}
-                </div>
+                </AnimatePresence>
               </div>
 
               <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                {connectedAgents.length > 0 && onSelectAgent ? (
+                  <AgentSelector
+                    agents={connectedAgents}
+                    selected={selectedAgent}
+                    onSelect={onSelectAgent}
+                    budget={subagentBudget}
+                    onBudgetChange={onSubagentBudgetChange}
+                  />
+                ) : null}
+                {knowledgeBases.length > 0 ? (
+                  <KnowledgeSelector
+                    knowledgeBases={knowledgeBases}
+                    selected={selectedKnowledgeBases}
+                    onToggle={onToggleKB}
+                  />
+                ) : null}
+                {onPersonaSelectionChange ? (
+                  <PersonaSelector
+                    value={personaSelection ?? ""}
+                    onChange={onPersonaSelectionChange}
+                    open={personaSelectorOpen}
+                    onOpenChange={onPersonaSelectorOpenChange}
+                  />
+                ) : null}
                 <ModelSelector
                   options={llmOptions}
                   activeDefault={activeLLMDefault}
@@ -779,21 +968,56 @@ export default memo(function ChatComposer({
                   onChange={onSelectLLM}
                 />
 
+                <button
+                  type="button"
+                  onClick={recorder.toggle}
+                  disabled={recorder.state === "transcribing" || isStreaming}
+                  className={`group relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] transition-[background-color,color,transform] duration-150 active:scale-90 disabled:opacity-40 ${
+                    recorder.state === "recording"
+                      ? "bg-red-500/15 text-red-500"
+                      : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
+                  }`}
+                  aria-label={
+                    recorder.state === "recording"
+                      ? t("Stop recording")
+                      : t("Record voice")
+                  }
+                  title={
+                    recorder.error ||
+                    (recorder.state === "recording"
+                      ? t("Stop recording")
+                      : t("Record voice"))
+                  }
+                >
+                  {recorder.state === "recording" && (
+                    <span className="pointer-events-none absolute inset-0 rounded-[10px] border border-red-500/40 animate-pulse" />
+                  )}
+                  {recorder.state === "transcribing" ? (
+                    <Loader2
+                      size={16}
+                      strokeWidth={1.9}
+                      className="animate-spin"
+                    />
+                  ) : (
+                    <Mic size={16} strokeWidth={1.9} />
+                  )}
+                </button>
+
                 {isStreaming ? (
                   <button
                     type="button"
                     onClick={onCancelStreaming}
-                    className="group relative inline-flex h-[29px] w-[29px] shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-foreground)] shadow-[0_4px_12px_color-mix(in_srgb,var(--primary)_18%,transparent)] transition-[background-color,box-shadow] hover:bg-[var(--primary)]/90 hover:shadow-[0_6px_16px_color-mix(in_srgb,var(--primary)_28%,transparent)]"
+                    className="group relative ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-[var(--primary)] text-[var(--primary-foreground)] transition-[background-color,transform] duration-150 hover:bg-[var(--primary)]/90 active:scale-95"
                     aria-label={t("Stop generating")}
                     title={t("Stop generating")}
                   >
-                    {/* A faint ring slowly rotates around the rim while
-                        streaming, signalling "still working — click to
-                        cancel". The white square sits front-and-center so
-                        the click target is always obvious. */}
-                    <span className="pointer-events-none absolute inset-0 rounded-full border-[1.5px] border-white/30 border-t-white/85 animate-spin opacity-90 transition-opacity group-hover:opacity-40" />
+                    {/* A faint ring slowly rotates inside while streaming,
+                        signalling "still working — click to cancel". Kept
+                        circular (inset within the rounded square) so the
+                        rotation reads as a spinner, not a tumbling box. */}
+                    <span className="pointer-events-none absolute inset-[3px] rounded-full border-[1.5px] border-white/25 border-t-white/85 animate-spin opacity-90 transition-opacity group-hover:opacity-40" />
                     <Square
-                      size={9}
+                      size={10}
                       strokeWidth={2.6}
                       className="relative z-10 fill-current"
                     />
@@ -816,14 +1040,14 @@ export default memo(function ChatComposer({
                         : undefined
                     }
                     aria-disabled={!canSend}
-                    className={`rounded-full p-[7px] shadow-[0_4px_12px_color-mix(in_srgb,var(--primary)_15%,transparent)] transition-[transform,opacity,box-shadow] disabled:opacity-25 disabled:shadow-none ${
+                    className={`ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] transition-[background-color,transform,opacity] duration-150 active:scale-95 disabled:opacity-25 ${
                       isConfigBlocked
                         ? "bg-[var(--muted-foreground)]/30 text-[var(--primary-foreground)] hover:bg-[var(--muted-foreground)]/45"
-                        : "bg-[var(--primary)] text-[var(--primary-foreground)] hover:shadow-[0_6px_16px_color-mix(in_srgb,var(--primary)_22%,transparent)]"
+                        : "bg-[var(--primary)] text-[var(--primary-foreground)] hover:bg-[var(--primary)]/90"
                     }`}
                     aria-label={t("Send")}
                   >
-                    <ArrowUp size={15} strokeWidth={2.5} />
+                    <ArrowUp size={16} strokeWidth={2.5} />
                   </button>
                 )}
               </div>

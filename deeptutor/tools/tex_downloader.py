@@ -11,6 +11,7 @@ Version: v1.0
 Based on: TODO.md specification
 """
 
+import logging
 import os
 from pathlib import Path
 import re
@@ -20,6 +21,8 @@ import tempfile
 import zipfile
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 
 class TexDownloadResult:
@@ -140,7 +143,7 @@ class TexDownloader:
         try:
             with tarfile.open(file_path, "r:*") as tar:
                 return True
-        except:
+        except Exception:
             return False
 
     def _is_zip_file(self, file_path: Path) -> bool:
@@ -148,7 +151,7 @@ class TexDownloader:
         try:
             with zipfile.ZipFile(file_path, "r") as zip_file:
                 return True
-        except:
+        except Exception:
             return False
 
     def _extract_tar(self, tar_path: Path, extract_dir: Path):
@@ -203,7 +206,8 @@ class TexDownloader:
                 content = tex_file.read_text(encoding="utf-8", errors="ignore")
                 if r"\documentclass" in content:
                     return tex_file
-            except:
+            except Exception:
+                logger.warning("Failed to read tex file %s", tex_file)
                 continue
 
         # 3. Return largest tex file

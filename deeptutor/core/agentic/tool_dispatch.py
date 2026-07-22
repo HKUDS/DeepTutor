@@ -128,9 +128,14 @@ async def dispatch_tool_calls(
     for tool_index, (_tcid, tool_name, exec_args) in enumerate(prepared):
         if tool_index in suppress_ui_indices:
             continue
+        # Strip server-injected private kwargs (``_sandbox_mounts`` & co.)
+        # from the event payload: they are execution plumbing, not display
+        # args, and may not be JSON-serializable (a Mount dataclass in the
+        # event killed both the WS push and turn persistence).
+        display_args = {k: v for k, v in exec_args.items() if not k.startswith("_")}
         await stream.tool_call(
             tool_name=tool_name,
-            args=exec_args,
+            args=display_args,
             source=source,
             stage=stage,
             metadata=merge_trace_metadata(

@@ -4,22 +4,35 @@ import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { shouldAppendEventContent } from "@/lib/stream";
+import {
+  collectNarrationCallIds,
+  shouldAppendEventContent,
+} from "@/lib/stream";
 import type { StreamEvent } from "@/lib/unified-ws";
 
 /**
- * v2 ``ask_user`` payload. Mirrors ``deeptutor.tools.ask_user.AskUserPayload``.
+ * v3 ``ask_user`` payload. Mirrors ``deeptutor.tools.ask_user.AskUserPayload``.
  *
- * Every question is rendered as one tab on the card; the user can
- * switch between tabs freely, answer each (or skip), and submit once
- * via the footer "Submit answers" button. The frontend always carries
- * the v2 shape internally — legacy single-question payloads are
- * normalised at extraction time.
+ * Every question is rendered as one tab on the card (labelled by its
+ * short ``header`` when present); the user can switch between tabs
+ * freely, answer each (or skip), and submit once via the footer
+ * "Submit answers" button. Options carry a short ``label`` plus an
+ * optional ``description`` explaining what picking it implies —
+ * mirroring Claude Code's ``AskUserQuestion``. The frontend always
+ * carries the v3 shape internally — legacy payloads (plain-string
+ * options, single-question) are normalised at extraction time.
  */
+export interface AskUserOption {
+  label: string;
+  description: string | null;
+}
+
 export interface AskUserQuestion {
   id: string;
   prompt: string;
-  options: string[];
+  header: string | null;
+  multi_select: boolean;
+  options: AskUserOption[];
   allow_free_text: boolean;
   placeholder: string | null;
 }
@@ -185,6 +198,10 @@ export function extractMessageSegments(
   const seenAskUserCards = new Set<string>();
   let pendingTextIdx: number | null = null;
   let seq = 0;
+  // Narration rounds (chat-loop preamble alongside a tool call) stream as
+  // content but belong in the trace, not the answer — keep them out of the
+  // inline text segments too.
+  const narrationCallIds = collectNarrationCallIds(events);
 
   const ensureTextSegment = () => {
     if (pendingTextIdx === null) {
@@ -196,6 +213,8 @@ export function extractMessageSegments(
 
   for (const event of events) {
     if (shouldAppendEventContent(event)) {
+      const callId = ((event.metadata ?? {}) as { call_id?: string }).call_id;
+      if (callId && narrationCallIds.has(callId)) continue;
       const idx = ensureTextSegment();
       const seg = segments[idx];
       if (seg.kind === "text") {
@@ -295,11 +314,31 @@ export function extractMessageSegments(
   return segments.filter((s) => s.kind !== "text" || s.text.length > 0);
 }
 
+/**
+ * One option: v3 emits ``{label, description}`` objects; v2 payloads
+ * stored in older sessions carry plain strings. Both normalise to the
+ * object shape.
+ */
+function normaliseOption(raw: unknown): AskUserOption | null {
+  if (raw && typeof raw === "object") {
+    const o = raw as Record<string, unknown>;
+    const label = String(o.label ?? "").trim();
+    if (!label) return null;
+    const description =
+      typeof o.description === "string" && o.description.trim()
+        ? o.description.trim()
+        : null;
+    return { label, description };
+  }
+  const label = String(raw ?? "").trim();
+  return label ? { label, description: null } : null;
+}
+
 function normaliseAskUserPayload(raw: unknown): AskUserPayload | null {
   if (!raw || typeof raw !== "object") return null;
   const obj = raw as Record<string, unknown>;
 
-  // v2 shape: ``{intro?, questions: [...]}``
+  // v2/v3 shape: ``{intro?, questions: [...]}``
   if (Array.isArray(obj.questions)) {
     const questions: AskUserQuestion[] = [];
     for (const item of obj.questions) {
@@ -311,9 +350,14 @@ function normaliseAskUserPayload(raw: unknown): AskUserPayload | null {
       questions.push({
         id: String(q.id || `q${questions.length + 1}`),
         prompt,
+        header:
+          typeof q.header === "string" && q.header.trim()
+            ? q.header.trim()
+            : null,
+        multi_select: Boolean(q.multi_select ?? q.multiSelect),
         options: optionsRaw
-          .map((o) => String(o ?? "").trim())
-          .filter((o) => o.length > 0),
+          .map(normaliseOption)
+          .filter((o): o is AskUserOption => o !== null),
         allow_free_text: q.allow_free_text === false ? false : true,
         placeholder:
           typeof q.placeholder === "string" && q.placeholder.trim()
@@ -341,9 +385,11 @@ function normaliseAskUserPayload(raw: unknown): AskUserPayload | null {
       {
         id: "q1",
         prompt,
+        header: null,
+        multi_select: false,
         options: optionsRaw
-          .map((o) => String(o ?? "").trim())
-          .filter((o) => o.length > 0),
+          .map(normaliseOption)
+          .filter((o): o is AskUserOption => o !== null),
         allow_free_text: true,
         placeholder: null,
       },
@@ -365,8 +411,8 @@ const LETTERS = "ABCDEFGH"; // matches MAX_OPTIONS=8
 export const AskUserOptions = memo(function AskUserOptions({
   data,
   onSubmit,
-  collapsible = false,
-  defaultCollapsed = false,
+  collapsible,
+  defaultCollapsed,
 }: {
   data: AskUserCardData;
   onSubmit: (payload: {
@@ -374,9 +420,10 @@ export const AskUserOptions = memo(function AskUserOptions({
     answers?: Array<{ questionId: string; text: string }>;
   }) => void;
   /** When true, the resolved Q&A card renders with an inline toggle so
-   * the user can hide / show the question + answer summary. Used by the
-   * research flow once the research phase has started — the historical
-   * Q&A stays addressable but doesn't dominate the bubble. */
+   * the user can hide / show the question + answer summary. Resolved cards
+   * default to collapsible+collapsed (the Q&A history stays addressable
+   * without dominating the bubble); callers can override explicitly —
+   * research keeps its own phase-driven rule. */
   collapsible?: boolean;
   /** Only honoured when ``collapsible`` is true. */
   defaultCollapsed?: boolean;
@@ -386,8 +433,8 @@ export const AskUserOptions = memo(function AskUserOptions({
       <ResolvedAskUserCard
         payload={data.payload}
         answers={data.answers ?? []}
-        collapsible={collapsible}
-        defaultCollapsed={defaultCollapsed}
+        collapsible={collapsible ?? true}
+        defaultCollapsed={defaultCollapsed ?? true}
       />
     );
   }
@@ -410,14 +457,15 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
   const { t } = useTranslation();
   const totalQuestions = payload.questions.length;
 
-  // Committed answer per question. Mirrors whichever input is currently
-  // selected (an option text or the free-text draft) — what gets sent.
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  // Picked option labels per question. Single-select questions hold at
+  // most one entry; multi-select questions accumulate toggled labels.
+  const [picks, setPicks] = useState<Record<string, string[]>>({});
   // Sticky free-text draft per question. Preserved across option picks
   // and tab switches so the user never loses what they typed.
   const [customText, setCustomText] = useState<Record<string, string>>({});
-  // Whether the free-text input is the active choice for a question.
-  // Drives both textarea visibility and the "picked" visual state.
+  // Whether the free-text input is an active choice for a question.
+  // Drives both textarea visibility and the "picked" visual state. On
+  // multi-select questions it coexists with picked options.
   const [customSelected, setCustomSelected] = useState<Record<string, boolean>>(
     {},
   );
@@ -425,6 +473,28 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
   const [submitted, setSubmitted] = useState(false);
 
   const activeQuestion = payload.questions[activeIdx] ?? payload.questions[0];
+
+  // Committed answer per question, derived from picks + free text.
+  // Multi-select answers join labels with ", " — the same flat string
+  // travels to the backend, so the ``{text, answers}`` submit protocol
+  // is unchanged.
+  const answers = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const q of payload.questions) {
+      const picked = picks[q.id] ?? [];
+      const custom = customSelected[q.id]
+        ? (customText[q.id] ?? "").trim()
+        : "";
+      if (q.multi_select) {
+        const parts = [...picked];
+        if (custom) parts.push(custom);
+        out[q.id] = parts.join(", ");
+      } else {
+        out[q.id] = customSelected[q.id] ? custom : (picked[0] ?? "");
+      }
+    }
+    return out;
+  }, [payload.questions, picks, customText, customSelected]);
 
   const allAnswered = useMemo(
     () =>
@@ -449,24 +519,51 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
     onSubmit({ text: flat, answers: list });
   }, [submitted, payload.questions, answers, onSubmit]);
 
-  const pickOption = useCallback((qid: string, text: string) => {
-    setAnswers((prev) => ({ ...prev, [qid]: text }));
-    setCustomSelected((prev) => ({ ...prev, [qid]: false }));
-  }, []);
-
-  const selectCustom = useCallback(
-    (qid: string) => {
-      const draft = (customText[qid] ?? "").trim();
-      setCustomSelected((prev) => ({ ...prev, [qid]: true }));
-      setAnswers((prev) => ({ ...prev, [qid]: draft }));
+  const pickOption = useCallback(
+    (question: AskUserQuestion, label: string) => {
+      const qid = question.id;
+      if (question.multi_select) {
+        // Toggle — no auto-advance; the user may pick several.
+        setPicks((prev) => {
+          const cur = prev[qid] ?? [];
+          const next = cur.includes(label)
+            ? cur.filter((l) => l !== label)
+            : [...cur, label];
+          return { ...prev, [qid]: next };
+        });
+        return;
+      }
+      setPicks((prev) => ({ ...prev, [qid]: [label] }));
+      setCustomSelected((prev) => ({ ...prev, [qid]: false }));
+      // Single-select pick answers this question — hop to the next
+      // unanswered one so the flow needs no extra "Next" click
+      // (mirrors Claude Code's AskUserQuestion card).
+      if (totalQuestions > 1) {
+        for (let step = 1; step < totalQuestions; step++) {
+          const j = (activeIdx + step) % totalQuestions;
+          const other = payload.questions[j];
+          if (other.id === qid) continue;
+          if (!(answers[other.id] ?? "").trim()) {
+            setActiveIdx(j);
+            break;
+          }
+        }
+      }
     },
-    [customText],
+    [totalQuestions, activeIdx, payload.questions, answers],
   );
+
+  const selectCustom = useCallback((question: AskUserQuestion) => {
+    setCustomSelected((prev) => ({ ...prev, [question.id]: true }));
+    if (!question.multi_select) {
+      // Mutually exclusive with option picks on single-select.
+      setPicks((prev) => ({ ...prev, [question.id]: [] }));
+    }
+  }, []);
 
   const updateCustomText = useCallback((qid: string, text: string) => {
     setCustomText((prev) => ({ ...prev, [qid]: text }));
     setCustomSelected((prev) => ({ ...prev, [qid]: true }));
-    setAnswers((prev) => ({ ...prev, [qid]: text.trim() }));
   }, []);
 
   return (
@@ -520,7 +617,9 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
                 >
                   {answered ? "✓" : idx + 1}
                 </span>
-                <span className="max-w-[160px] truncate">{q.prompt}</span>
+                <span className="max-w-[160px] truncate">
+                  {q.header || q.prompt}
+                </span>
               </button>
             );
           })}
@@ -530,12 +629,12 @@ const InteractiveAskUserCard = memo(function InteractiveAskUserCard({
       <QuestionBody
         key={activeQuestion.id}
         question={activeQuestion}
-        currentAnswer={answers[activeQuestion.id] ?? ""}
+        pickedLabels={picks[activeQuestion.id] ?? []}
         customDraft={customText[activeQuestion.id] ?? ""}
         customSelected={!!customSelected[activeQuestion.id]}
         locked={submitted}
-        onPickOption={(text) => pickOption(activeQuestion.id, text)}
-        onSelectCustom={() => selectCustom(activeQuestion.id)}
+        onPickOption={(label) => pickOption(activeQuestion, label)}
+        onSelectCustom={() => selectCustom(activeQuestion)}
         onCustomTextChange={(text) => updateCustomText(activeQuestion.id, text)}
       />
 
@@ -589,7 +688,7 @@ InteractiveAskUserCard.displayName = "InteractiveAskUserCard";
 
 const QuestionBody = memo(function QuestionBody({
   question,
-  currentAnswer,
+  pickedLabels,
   customDraft,
   customSelected,
   locked,
@@ -598,11 +697,11 @@ const QuestionBody = memo(function QuestionBody({
   onCustomTextChange,
 }: {
   question: AskUserQuestion;
-  currentAnswer: string;
+  pickedLabels: string[];
   customDraft: string;
   customSelected: boolean;
   locked: boolean;
-  onPickOption: (text: string) => void;
+  onPickOption: (label: string) => void;
   onSelectCustom: () => void;
   onCustomTextChange: (text: string) => void;
 }) {
@@ -619,19 +718,25 @@ const QuestionBody = memo(function QuestionBody({
     <>
       <div className="mt-3 text-[14px] font-medium leading-snug text-[var(--foreground)]">
         {question.prompt}
+        {question.multi_select ? (
+          <span className="ml-1.5 text-[11px] font-normal text-[var(--muted-foreground)]">
+            {t("Select all that apply.")}
+          </span>
+        ) : null}
       </div>
 
       {question.options.length > 0 ? (
         <div className="mt-2 flex flex-col gap-1.5">
           {question.options.map((option, idx) => {
             const letter = LETTERS[idx] ?? String(idx + 1);
-            const isPicked =
-              !customSelected && currentAnswer.trim() === option.trim();
+            const isPicked = question.multi_select
+              ? pickedLabels.includes(option.label)
+              : !customSelected && pickedLabels[0] === option.label;
             return (
               <button
-                key={`${letter}-${option}`}
+                key={`${letter}-${option.label}`}
                 type="button"
-                onClick={() => !locked && onPickOption(option)}
+                onClick={() => !locked && onPickOption(option.label)}
                 disabled={locked}
                 className={
                   "group flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition-all " +
@@ -649,9 +754,18 @@ const QuestionBody = memo(function QuestionBody({
                       : "bg-[var(--muted)]/70 text-[var(--muted-foreground)] group-hover:bg-[color-mix(in_srgb,var(--foreground)_10%,transparent)] group-hover:text-[var(--foreground)]")
                   }
                 >
-                  {letter}
+                  {question.multi_select && isPicked ? "✓" : letter}
                 </span>
-                <span className="text-[13.5px] leading-snug">{option}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13.5px] leading-snug">
+                    {option.label}
+                  </span>
+                  {option.description ? (
+                    <span className="mt-0.5 block text-[11.5px] leading-snug text-[var(--muted-foreground)]">
+                      {option.description}
+                    </span>
+                  ) : null}
+                </span>
               </button>
             );
           })}
@@ -718,25 +832,14 @@ const ResolvedAskUserCard = memo(function ResolvedAskUserCard({
   defaultCollapsed: boolean;
 }) {
   const { t } = useTranslation();
-  const [collapsed, setCollapsed] = useState(defaultCollapsed && collapsible);
-  // Once the user manually toggles, their choice wins — don't keep
-  // slamming the card closed when ``defaultCollapsed`` re-emits true on
-  // every research-progress re-render.
-  const userToggledRef = useRef(false);
-  const lastIntentRef = useRef(defaultCollapsed);
-  useEffect(() => {
-    if (!collapsible) return;
-    if (userToggledRef.current) return;
-    if (lastIntentRef.current !== defaultCollapsed) {
-      lastIntentRef.current = defaultCollapsed;
-      setCollapsed(defaultCollapsed);
-    }
-  }, [collapsible, defaultCollapsed]);
+  // Null means "follow defaultCollapsed"; once the user toggles, their
+  // explicit choice wins across research-progress re-renders.
+  const [manualCollapsed, setManualCollapsed] = useState<boolean | null>(null);
+  const collapsed = collapsible ? (manualCollapsed ?? defaultCollapsed) : false;
 
   const toggleCollapsed = useCallback(() => {
-    userToggledRef.current = true;
-    setCollapsed((c) => !c);
-  }, []);
+    setManualCollapsed((current) => !(current ?? defaultCollapsed));
+  }, [defaultCollapsed]);
 
   const byId = useMemo(() => {
     const map = new Map<string, string>();

@@ -31,23 +31,25 @@ ignored.
 
 ### Level 1 — Tools
 
-Single-function tools the LLM picks on demand. The chat capability auto-mounts
-context-gated tools (rag, read_source, read_memory, write_memory, list_notebook,
-write_note, web_fetch, github, ask_user); five user-toggleable tools surface in
-`/settings/tools`:
+Single-function tools the LLM picks on demand. Four user-toggleable tools
+surface in `/settings/tools`:
 
-| Tool             | Description                                              |
-| ---------------- | -------------------------------------------------------- |
-| `brainstorm`     | Breadth-first idea exploration with rationale            |
-| `web_search`     | Web search with citations                                |
-| `paper_search`   | arXiv preprint search                                    |
-| `code_execution` | Sandboxed Python (NL intent → code → run)                |
-| `reason`         | Dedicated deep-reasoning LLM call                        |
+| Tool           | Description                                   |
+| -------------- | --------------------------------------------- |
+| `brainstorm`   | Breadth-first idea exploration with rationale |
+| `web_search`   | Web search with citations                     |
+| `paper_search` | arXiv preprint search                         |
+| `reason`       | Dedicated deep-reasoning LLM call             |
 
-Always-on, context-gated tools: `rag`, `read_source`, `read_memory`,
-`write_memory`, `web_fetch`, `list_notebook`, `write_note`, `github`,
-`ask_user` (pauses the turn and resumes with the user's reply).
-`geogebra_analysis` is parked under `COMING_SOON_TOOL_TYPES`.
+The rest are **context-gated**: the chat capability auto-mounts them from
+`ToolMountFlags` (presence of a KB, attachments, sandbox availability, …), and
+any of them can also be force-enabled via `--tool`. Auto-mounted set: `rag`,
+`read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`,
+`exec`, `code_execution` (sandboxed Python: NL intent → code → run),
+`list_notebook`, `write_note`, `web_fetch`, `github`, `cron`,
+`ask_user` (pauses the turn and resumes with the user's reply), plus the
+mastery-path tools. `geogebra_analysis` is parked under
+`COMING_SOON_TOOL_TYPES`.
 
 ### Level 2 — Capabilities
 
@@ -55,8 +57,8 @@ Multi-stage pipelines that own the turn:
 
 | Capability       | Stages                                                |
 | ---------------- | ----------------------------------------------------- |
-| `chat`           | thinking → acting → observing → responding (agentic loop, default) |
-| `auto`           | analyzing → delegating → synthesizing (routes to another capability) |
+| `chat`           | exploring → responding (single agentic loop, default) |
+| `mastery_path`   | responding (Guided Learning — chat loop + mastery tools, gated per topic type) |
 | `deep_solve`     | planning → reasoning → writing                        |
 | `deep_question`  | ideation → generation                                 |
 | `deep_research`  | rephrasing → decomposing → researching → reporting    |
@@ -78,17 +80,21 @@ pip install deeptutor-cli  # CLI-only
 # Run any capability
 deeptutor run chat "Explain Fourier transform"
 deeptutor run deep_solve "Solve x^2=4" -t rag --kb my-kb
-deeptutor run auto "Animate sine wave"   # picks the right capability
+deeptutor run visualize "Animate sine wave" --config render_mode=manim_video
 
 # Interactive REPL
 deeptutor chat
 # (inside the REPL: /regenerate or /retry re-runs the last user message)
 
+# Partners (IM-connected companions)
+deeptutor partner list
+
 # Knowledge bases, memory, server
 deeptutor kb list
 deeptutor kb create my-kb --doc textbook.pdf
 deeptutor memory show
-deeptutor serve --port 8001
+deeptutor serve --port 8001       # API server only
+deeptutor start                   # backend + frontend together
 ```
 
 ## Key Files
@@ -106,6 +112,7 @@ deeptutor serve --port 8001
 | `deeptutor/core/context.py`                | `UnifiedContext` dataclass            |
 | `deeptutor/tools/builtin/__init__.py`      | All built-in tool wrappers           |
 | `deeptutor/capabilities/`                  | Built-in capability implementations  |
+| `deeptutor/app.py`                         | `DeepTutorApp` — Python SDK facade    |
 | `deeptutor_cli/main.py`                    | Typer CLI entry point                |
 | `deeptutor/api/routers/unified_ws.py`      | Unified WebSocket endpoint           |
 
@@ -118,9 +125,14 @@ Requirements files mirror the same dependency groups for Docker/CI installs.
 pip install deeptutor      — Full app (CLI + Web/API + packaged Web assets)
 pip install deeptutor-cli  — CLI-only (LLM + RAG + providers + document parsing)
 pip install -e .           — Source install for development
-.[tutorbot]       — Full app + TutorBot agent engine + channel SDKs
-.[matrix]         — Matrix channel for TutorBot (matrix-nio[e2e]; needs libolm)
-.[math-animator]  — Manim addon (powers `visualize` Manim renders + `deeptutor animate`)
-.[dev]            — Full app + test/lint tools
+
+Source extras (.[ extra ], defined in pyproject.toml):
+.[cli]            — CLI-only dependency set
+.[server]         — Web/API server dependencies
+.[partners]       — Partner channel SDKs + MCP client  (legacy alias: .[tutorbot])
+.[matrix]         — Matrix channel for Partners (matrix-nio; needs libolm)
+.[matrix-e2e]     — Matrix with end-to-end encryption (matrix-nio[e2e])
+.[math-animator]  — Manim addon (powers `visualize` Manim renders + `deeptutor run math_animator`)
+.[dev]            — Test / lint tooling
 .[all]            — Everything above
 ```

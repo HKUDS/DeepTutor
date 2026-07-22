@@ -75,7 +75,7 @@ export interface StartTurnMessage {
     book_id: string;
     page_ids: string[];
   }[];
-  skills?: string[];
+  persona?: string;
   llm_selection?: LLMSelection | null;
   /** Edit-branching: when present (even as ``null``) the new user message
    *  attaches at this exact parent — creating a sibling rather than

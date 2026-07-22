@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass, field
 import json
 import shlex
@@ -77,6 +78,15 @@ def register(app: typer.Typer) -> None:
 
 async def _chat_repl(state: ChatState) -> None:
     client = DeepTutorApp()
+    cron_service = None
+    try:
+        from deeptutor.services.cron import get_cron_service
+
+        cron_service = get_cron_service()
+        await cron_service.start()
+    except Exception:
+        cron_service = None
+
     if state.session_id:
         existing = await client.get_session(state.session_id)
         if existing is None:
@@ -97,64 +107,69 @@ async def _chat_repl(state: ChatState) -> None:
     console.print(
         Panel(
             "[bold]DeepTutor CLI[/]\n"
-            "Type a message to chat. Commands:\n"
-            "  /quit  /session  /new\n"
+            "Type a message to chat. Ctrl-C interrupts a running turn. Commands:\n"
+            "  /quit  /session  /status  /new  /clear\n"
             "  /regenerate (alias /retry) — re-run the last user message\n"
             "  /tool on|off <name>\n"
             "  /cap <name>\n"
             "  /kb <name>|none\n"
             "  /history add <id> | /history clear\n"
             "  /notebook add <ref> | /notebook clear\n"
-            "  /show last|<n> — expand a truncated tool result\n"
+            "  /show last|<n> — expand a tool result or captured thinking\n"
             "  /refs  /config show|set|clear",
             title="deeptutor chat",
         )
     )
     _print_state(state)
 
-    while True:
-        try:
-            user_input = _read_repl_input()
-        except (EOFError, KeyboardInterrupt):
-            console.print()
-            break
+    try:
+        while True:
+            try:
+                user_input = _read_repl_input()
+            except (EOFError, KeyboardInterrupt):
+                console.print()
+                break
 
-        if not user_input:
-            continue
-        if user_input.startswith("/"):
-            command = user_input.split(maxsplit=1)[0].lower()
-            if command in {"/regenerate", "/retry"}:
-                if not state.session_id:
-                    console.print("[yellow]No active session yet — send a message first.[/]")
+            if not user_input:
+                continue
+            if user_input.startswith("/"):
+                command = user_input.split(maxsplit=1)[0].lower()
+                if command in {"/regenerate", "/retry"}:
+                    if not state.session_id:
+                        console.print("[yellow]No active session yet — send a message first.[/]")
+                        continue
+                    result = await regenerate_and_render(
+                        app=client,
+                        session_id=state.session_id,
+                        capability=state.capability,
+                        fmt="rich",
+                    )
+                    if result is not None:
+                        session, _turn = result
+                        state.session_id = str(session["id"])
                     continue
-                result = await regenerate_and_render(
-                    app=client,
-                    session_id=state.session_id,
-                    capability=state.capability,
-                    fmt="rich",
-                )
-                if result is not None:
-                    session, _turn = result
-                    state.session_id = str(session["id"])
-                continue
-            should_continue = _apply_command(user_input, state)
-            if should_continue:
-                continue
-            break
+                should_continue = _apply_command(user_input, state)
+                if should_continue:
+                    continue
+                break
 
-        request = TurnRequest(
-            content=user_input,
-            capability=state.capability,
-            session_id=state.session_id,
-            tools=list(state.tools),
-            knowledge_bases=list(state.knowledge_bases),
-            language=state.language,
-            config=dict(state.config),
-            notebook_references=list(state.notebook_references),
-            history_references=list(state.history_references),
-        )
-        session, _turn = await run_turn_and_render(app=client, request=request, fmt="rich")
-        state.session_id = str(session["id"])
+            request = TurnRequest(
+                content=user_input,
+                capability=state.capability,
+                session_id=state.session_id,
+                tools=list(state.tools),
+                knowledge_bases=list(state.knowledge_bases),
+                language=state.language,
+                config=dict(state.config),
+                notebook_references=list(state.notebook_references),
+                history_references=list(state.history_references),
+            )
+            session, _turn = await run_turn_and_render(app=client, request=request, fmt="rich")
+            state.session_id = str(session["id"])
+    finally:
+        if cron_service is not None:
+            with suppress(Exception):
+                await cron_service.stop()
 
 
 def _apply_command(raw: str, state: ChatState) -> bool:
@@ -171,7 +186,10 @@ def _apply_command(raw: str, state: ChatState) -> bool:
     if command == "/session":
         console.print(f"session={state.session_id or '(new)'}")
         return True
-    if command == "/new":
+    if command == "/status":
+        _print_state(state)
+        return True
+    if command in {"/new", "/clear"}:
         state.session_id = None
         console.print("[dim]Started a new chat context.[/]")
         return True
@@ -332,7 +350,7 @@ def _parse_notebook_refs(values: list[str]) -> list[dict[str, Any]]:
 def _parse_config_value(raw_value: str) -> Any:
     try:
         return json.loads(raw_value)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):
         lowered = raw_value.lower()
         if lowered == "true":
             return True

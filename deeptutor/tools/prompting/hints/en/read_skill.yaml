@@ -1,0 +1,6 @@
+short_description: "Read a skill's full playbook (SKILL.md) or a reference file inside the skill package."
+when_to_use: "When the current task matches a skill listed in the Skills section of your instructions. Read the skill BEFORE attempting the task, then follow its instructions."
+input_format: "`name` — skill name exactly as listed. Optional `file` — a path inside the package (e.g. `references/api.md`); defaults to SKILL.md."
+guideline: "Read at most the skills relevant to the task at hand. If SKILL.md links to a references/ file for the variant you need, read that file too before acting."
+note: "Skills marked `(unavailable: ...)` in the manifest cannot help until their requirements are met — say so instead of guessing."
+phase: "exploration"

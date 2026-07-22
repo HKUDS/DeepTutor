@@ -57,7 +57,7 @@ def test_uniqueness_across_calls() -> None:
 def test_shortname_ref_accepts_known_surfaces() -> None:
     """L3 refs are bare surface names. Whitelisted (not a loose regex)
     so an LLM hallucination like ``not-an-id`` doesn't sneak through."""
-    for surface in ("chat", "notebook", "quiz", "kb", "book", "tutorbot", "cowriter"):
+    for surface in ("chat", "notebook", "quiz", "kb", "book", "partner", "cowriter"):
         assert is_shortname_ref(surface), surface
     # is_valid_ref must accept the new form so the ops validator does too.
     assert is_valid_ref("chat")

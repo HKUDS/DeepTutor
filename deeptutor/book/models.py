@@ -70,6 +70,13 @@ class BlockType(str, Enum):
     # Phase 4 (BookEngine v2)
     SECTION = "section"  # long-form chapter section (multi-subsection)
     CONCEPT_GRAPH = "concept_graph"  # rendered overview / TOC graph
+    # Guided Learning
+    DIAGNOSTIC = "diagnostic"
+    PRETEST = "pretest"
+    RETRIEVAL_PRACTICE = "retrieval_practice"
+    ERROR_DIAGNOSIS = "error_diagnosis"
+    MODULE_TEST = "module_test"
+    PROGRESS_DASHBOARD = "progress_dashboard"
 
 
 class ContentType(str, Enum):

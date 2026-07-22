@@ -73,17 +73,61 @@ def test_compose_files_do_not_consume_legacy_env_names() -> None:
         assert "DEEPTUTOR_DOCKER_BACKEND_PORT" in content
 
 
-def test_dockerfile_uses_runtime_auth_placeholder() -> None:
+def test_dockerfile_is_json_driven_without_bundle_sed() -> None:
+    """The image no longer rewrites the built bundle at startup (the runtime
+    ``sed -i`` broke under a read-only rootfs). URL/auth knowledge is JSON-driven:
+    the entrypoint re-exports runtime settings from data/user/settings/*.json
+    (including DEEPTUTOR_API_BASE_URL / DEEPTUTOR_AUTH_ENABLED) and web/proxy.ts
+    forwards /api/* and /ws/* to the backend at request time."""
     root = Path(__file__).resolve().parents[2]
     content = (root / "Dockerfile").read_text(encoding="utf-8")
-    assert "__NEXT_PUBLIC_API_BASE_PLACEHOLDER__" in content
-    assert "__NEXT_PUBLIC_AUTH_ENABLED_PLACEHOLDER__" in content
+    # The build-time placeholder + runtime bundle sed mechanism is gone.
+    assert "__NEXT_PUBLIC_API_BASE_PLACEHOLDER__" not in content
+    assert "__NEXT_PUBLIC_AUTH_ENABLED_PLACEHOLDER__" not in content
+    # Still JSON-driven: stale runtime env names are ignored and re-exported
+    # from the settings JSON on every start.
     assert "DEEPTUTOR_IGNORE_PROCESS_ENV_OVERRIDES=1" in content
     assert 'unset "$key"' in content
+    assert "export_runtime_settings_to_env" in content
 
 
-def test_frontend_placeholder_validation_is_safe_for_runtime_replacement() -> None:
+def test_supervisord_runs_as_root_with_unprivileged_children() -> None:
+    """supervisord itself must run as root so it can open the container's
+    stdout/stderr (``/dev/fd/1,2`` — root-owned pipes under a rootful daemon
+    such as Docker Desktop) and write its pidfile under ``/var/run``. Dropping
+    supervisord to the unprivileged ``deeptutor`` user via ``gosu`` made child
+    spawning fail with ``EACCES`` ("making dispatchers ... EACCES"), so neither
+    the backend nor the frontend started under rootful Docker (it only worked
+    under rootless podman). The app processes stay non-root via the per-program
+    ``user=deeptutor`` directive instead, which keeps them unprivileged in both
+    runtimes. This guards against reintroducing the ``gosu`` privilege drop.
+    """
     root = Path(__file__).resolve().parents[2]
-    content = (root / "web" / "lib" / "api.ts").read_text(encoding="utf-8")
-    assert 'const API_BASE_PLACEHOLDER = "__NEXT_PUBLIC_API_BASE_PLACEHOLDER__"' not in content
-    assert "NEXT_PUBLIC_API_BASE_PLACEHOLDER" in content
+    content = (root / "Dockerfile").read_text(encoding="utf-8")
+    # supervisord is launched directly (as root), not behind a gosu priv-drop.
+    assert "exec /usr/bin/supervisord" in content
+    assert "gosu deeptutor /usr/bin/supervisord" not in content
+    # Every supervisord program drops to the unprivileged deeptutor user, so the
+    # backend/frontend processes never run as root. Each config heredoc closes
+    # with ``EOF``; slice to it so a program's section is bounded correctly.
+    program_blocks = content.split("[program:")[1:]
+    assert program_blocks, "expected supervisord [program:*] sections in the Dockerfile"
+    for block in program_blocks:
+        name = block.splitlines()[0].rstrip("]")
+        section = block.split("EOF")[0]
+        assert "user=deeptutor" in section, (
+            f"supervisord program '{name}' must run as deeptutor (user=deeptutor)"
+        )
+
+
+def test_frontend_api_is_url_agnostic_passthrough() -> None:
+    """web/lib/api.ts no longer carries a build-time API base or a placeholder
+    token; apiUrl/wsUrl are pass-throughs and the Next.js middleware
+    (web/proxy.ts) performs the forwarding at request time."""
+    root = Path(__file__).resolve().parents[2]
+    api_ts = (root / "web" / "lib" / "api.ts").read_text(encoding="utf-8")
+    assert "NEXT_PUBLIC_API_BASE_PLACEHOLDER" not in api_ts
+    assert "process.env.NEXT_PUBLIC_API_BASE" not in api_ts
+    proxy_ts = (root / "web" / "proxy.ts").read_text(encoding="utf-8")
+    assert "DEEPTUTOR_API_BASE_URL" in proxy_ts
+    assert "NextResponse.rewrite" in proxy_ts

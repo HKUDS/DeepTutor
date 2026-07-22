@@ -10,6 +10,7 @@ import {
   FileText,
   FileSearch,
   Globe,
+  GraduationCap,
   Lightbulb,
   Loader2,
   MessageSquare,
@@ -78,6 +79,7 @@ const CAPABILITY_ICONS: Record<string, LucideIcon> = {
   deep_solve: BrainCircuit,
   deep_question: PenLine,
   deep_research: Microscope,
+  mastery_path: GraduationCap,
 };
 
 const CAPABILITY_LABELS: Record<string, string> = {
@@ -85,6 +87,7 @@ const CAPABILITY_LABELS: Record<string, string> = {
   deep_solve: "Deep Solve",
   deep_question: "Quiz Generation",
   deep_research: "Deep Research",
+  mastery_path: "Mastery Path",
 };
 
 function getToolIcon(name: string): LucideIcon {
@@ -1799,7 +1802,7 @@ export default function PlaygroundPage() {
     <div className="min-h-screen bg-[var(--background)]">
       <div className="mx-auto max-w-5xl px-6 py-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)]">
+          <h1 className="font-serif text-2xl font-bold tracking-tight text-[var(--foreground)]">
             {t("Playground")}
           </h1>
           <p className="mt-1 text-[13px] text-[var(--muted-foreground)]">

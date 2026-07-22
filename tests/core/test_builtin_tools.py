@@ -11,9 +11,12 @@ import pytest
 
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolParameter, ToolResult
 from deeptutor.runtime.registry.tool_registry import ToolRegistry
+from deeptutor.services.path_service import PathService
+from deeptutor.services.sandbox.spec import ExecResult
 from deeptutor.tools.builtin import (
     BrainstormTool,
     CodeExecutionTool,
+    ExecTool,
     GeoGebraAnalysisTool,
     PaperSearchToolWrapper,
     RAGTool,
@@ -35,7 +38,11 @@ def _install_module(
             monkeypatch.setitem(sys.modules, pkg_name, pkg)
             if idx > 1:
                 parent = sys.modules[".".join(parts[: idx - 1])]
-                setattr(parent, parts[idx - 1], pkg)
+                # Use monkeypatch (not raw setattr) so the parent package's
+                # attribute is restored on teardown — otherwise a real
+                # submodule the parent exposes (e.g. ``llm.config``) stays
+                # shadowed by the fake and leaks into later tests.
+                monkeypatch.setattr(parent, parts[idx - 1], pkg, raising=False)
 
     module = types.ModuleType(fullname)
     for key, value in attrs.items():
@@ -43,8 +50,58 @@ def _install_module(
     monkeypatch.setitem(sys.modules, fullname, module)
     if len(parts) > 1:
         parent = sys.modules[".".join(parts[:-1])]
-        setattr(parent, parts[-1], module)
+        monkeypatch.setattr(parent, parts[-1], module, raising=False)
     return module
+
+
+@pytest.mark.asyncio
+async def test_exec_tool_reports_generated_public_artifacts(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path_service = PathService(workspace_root=tmp_path / "data")
+    workdir = path_service.get_task_workspace("chat", "turn_1") / "exec"
+
+    class FakeSandboxService:
+        async def run(self, request, *, user_id: str):
+            assert user_id == "user-1"
+            assert request.command == "python build_pdf.py"
+            output_dir = PathService(workspace_root=tmp_path / "data").get_task_workspace(
+                "chat", "turn_1"
+            )
+            assert request.workdir == str(output_dir / "exec")
+            work = output_dir / "exec"
+            work.mkdir(parents=True, exist_ok=True)
+            (work / "report.pdf").write_bytes(b"%PDF-1.4\n")
+            (work / "build_pdf.py").write_text("print('internal')", encoding="utf-8")
+            return ExecResult(stdout="created report.pdf\n", exit_code=0)
+
+    import deeptutor.services.sandbox as sandbox_pkg
+    import deeptutor.services.sandbox.artifacts as sandbox_artifacts
+
+    monkeypatch.setattr(sandbox_pkg, "get_sandbox_service", lambda: FakeSandboxService())
+    monkeypatch.setattr(sandbox_artifacts, "get_path_service", lambda: path_service)
+
+    result = await ExecTool().execute(
+        command="python build_pdf.py",
+        _sandbox_user_id="user-1",
+        _sandbox_workdir=str(workdir),
+    )
+
+    assert result.success is True
+    assert "Generated artifacts" in result.content
+    assert "report.pdf" in result.content
+    # The model is told to mention the exact filename (the UI linkifies it); the
+    # raw download URL is delivered out-of-band (sources/metadata), never in the
+    # model-facing text, so the model can't paste it.
+    assert "clickable link" in result.content
+    assert "/api/outputs/" not in result.content
+    assert "build_pdf.py" not in result.content
+    assert result.metadata["artifacts"][0]["filename"] == "report.pdf"
+    assert (
+        result.metadata["artifacts"][0]["url"]
+        == "/api/outputs/workspace/chat/chat/turn_1/exec/report.pdf"
+    )
+    assert result.sources[0]["url"].endswith("/report.pdf")
 
 
 @pytest.mark.asyncio
@@ -132,64 +189,88 @@ async def test_web_search_tool_wraps_sync_function(monkeypatch: pytest.MonkeyPat
 
 
 @pytest.mark.asyncio
-async def test_code_execution_tool_uses_direct_code_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_run_code(**kwargs: Any) -> dict[str, Any]:
-        assert kwargs["code"] == "print(2 + 2)"
-        assert kwargs["timeout"] == 5
-        assert kwargs["workspace_dir"] == "/tmp/code-runs"
-        return {
-            "stdout": "4\n",
-            "stderr": "",
-            "exit_code": 0,
-            "artifacts": [],
-            "artifact_paths": [],
-        }
+async def test_code_execution_tool_runs_python_via_sandbox(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from pathlib import Path
 
-    _install_module(monkeypatch, "deeptutor.tools.code_executor", run_code=fake_run_code)
+    path_service = PathService(workspace_root=tmp_path / "data")
+    workdir = path_service.get_task_workspace("chat", "turn_1") / "code_runs"
 
-    tool = CodeExecutionTool()
-    result = await tool.execute(code="print(2 + 2)", timeout=5, workspace_dir="/tmp/code-runs")
+    class FakeSandboxService:
+        async def run(self, request, *, user_id: str):
+            assert user_id == "user-1"
+            assert request.command == "python3 main.py"
+            run_dir = Path(request.workdir)
+            assert run_dir.parent == workdir
+            assert run_dir.name.startswith("python_")
+            # The tool wrote the source file into the run dir before invoking us.
+            assert (run_dir / "main.py").read_text(encoding="utf-8") == "print(2 + 2)"
+            (run_dir / "result.txt").write_text("ok", encoding="utf-8")
+            return ExecResult(stdout="4\n", exit_code=0)
+
+    import deeptutor.services.sandbox as sandbox_pkg
+    import deeptutor.services.sandbox.artifacts as sandbox_artifacts
+
+    monkeypatch.setattr(sandbox_pkg, "get_sandbox_service", lambda: FakeSandboxService())
+    monkeypatch.setattr(sandbox_artifacts, "get_path_service", lambda: path_service)
+
+    result = await CodeExecutionTool().execute(
+        language="python",
+        code="print(2 + 2)",
+        _sandbox_user_id="user-1",
+        _sandbox_workdir=str(workdir),
+    )
 
     assert result.success is True
-    assert result.content == "4"
-    assert result.metadata["code"] == "print(2 + 2)"
+    assert "4" in result.content
+    assert result.metadata["language"] == "python"
+    assert result.metadata["command"] == "python3 main.py"
+    # The program-generated file surfaces; the source file we wrote is filtered.
+    artifact_names = [row["filename"] for row in result.metadata["artifacts"]]
+    assert "result.txt" in artifact_names
+    assert "main.py" not in artifact_names
 
 
 @pytest.mark.asyncio
-async def test_code_execution_tool_generates_code_from_intent(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    executed: dict[str, Any] = {}
+async def test_code_execution_tool_compiles_cpp(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from pathlib import Path
 
-    async def fake_run_code(**kwargs: Any) -> dict[str, Any]:
-        executed.update(kwargs)
-        return {
-            "stdout": "42\n",
-            "stderr": "",
-            "exit_code": 0,
-            "artifacts": ["plot.png"],
-            "artifact_paths": ["/tmp/plot.png"],
-        }
+    path_service = PathService(workspace_root=tmp_path / "data")
+    workdir = path_service.get_task_workspace("chat", "turn_1") / "code_runs"
+    captured: dict[str, Any] = {}
 
-    _install_module(monkeypatch, "deeptutor.tools.code_executor", run_code=fake_run_code)
+    class FakeSandboxService:
+        async def run(self, request, *, user_id: str):
+            captured["command"] = request.command
+            run_dir = Path(request.workdir)
+            assert run_dir.name.startswith("cpp_")
+            assert (run_dir / "main.cpp").exists()
+            return ExecResult(stdout="hi\n", exit_code=0)
+
+    import deeptutor.services.sandbox as sandbox_pkg
+    import deeptutor.services.sandbox.artifacts as sandbox_artifacts
+
+    monkeypatch.setattr(sandbox_pkg, "get_sandbox_service", lambda: FakeSandboxService())
+    monkeypatch.setattr(sandbox_artifacts, "get_path_service", lambda: path_service)
+
+    result = await CodeExecutionTool().execute(
+        language="cpp",
+        code="int main(){}",
+        _sandbox_workdir=str(workdir),
+    )
+
+    assert result.success is True
+    assert captured["command"] == "c++ -std=c++17 -O2 main.cpp -o prog && ./prog"
+
+
+@pytest.mark.asyncio
+async def test_code_execution_tool_rejects_bad_input() -> None:
     tool = CodeExecutionTool()
-
-    async def fake_generate_code(intent: str) -> str:
-        assert intent == "compute the answer"
-        return "print(42)"
-
-    monkeypatch.setattr(tool, "_generate_code", fake_generate_code)
-
-    result = await tool.execute(intent="compute the answer")
-
-    assert executed["code"] == "print(42)"
-    assert "42" in result.content
-    assert result.sources[0]["file"] == "plot.png"
-
-
-def test_code_execution_tool_strips_markdown_fences() -> None:
-    fenced = "```python\nprint(7)\n```"
-    assert CodeExecutionTool._strip_markdown_fences(fenced) == "print(7)"
+    with pytest.raises(ValueError, match="Unsupported language"):
+        await tool.execute(language="ruby", code="puts 1")
+    with pytest.raises(ValueError, match="non-empty 'code'"):
+        await tool.execute(language="python", code="   ")
 
 
 @pytest.mark.asyncio
@@ -258,8 +339,7 @@ async def test_geogebra_analysis_tool_handles_success(monkeypatch: pytest.Monkey
                     "constraints": ["AB = 1"],
                     "geometric_relations": [{"description": "A and B are on x-axis"}],
                 },
-                "bbox_output": {"elements": [1, 2]},
-                "reflection_output": {"issues_found": []},
+                "image_is_reference": False,
             }
 
         def format_ggb_block(self, commands: list[str]) -> str:
@@ -297,7 +377,7 @@ async def test_tool_registry_resolves_aliases_and_argument_mapping() -> None:
         def get_definition(self) -> ToolDefinition:
             param_name = {
                 "rag": "query",
-                "code_execution": "intent",
+                "code_execution": "code",
             }[self._tool_name]
             return ToolDefinition(
                 name=self._tool_name,
@@ -317,9 +397,13 @@ async def test_tool_registry_resolves_aliases_and_argument_mapping() -> None:
     registry.register(code)
 
     rag_result = await registry.execute("rag_hybrid", query="find this")
-    code_result = await registry.execute("run_code", query="compute this")
+    code_result = await registry.execute("run_code", language="python", code="print(1)")
 
     assert rag_result.content == "rag"
     assert rag.calls[0]["mode"] == "hybrid"
     assert rag.calls[0]["query"] == "find this"
-    assert code.calls[0]["intent"] == "compute this"
+    # The `run_code` alias resolves to code_execution and forwards kwargs
+    # verbatim — no natural-language `query`→`intent` remapping any more.
+    assert code_result.content == "code_execution"
+    assert code.calls[0]["code"] == "print(1)"
+    assert code.calls[0]["language"] == "python"

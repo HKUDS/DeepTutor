@@ -1,0 +1,102 @@
+# ============================================
+# DeepTutor Sandbox Runner Sidecar Image
+# ============================================
+# A deliberately small, least-privileged image whose *only* job is to execute
+# untrusted shell commands on behalf of the main app, isolated in its own
+# container. The main app talks to it over HTTP via RunnerSidecarBackend
+# (see deeptutor/services/sandbox/backends.py), pointed here through
+# DEEPTUTOR_SANDBOX_RUNNER_URL.
+#
+# Build/run (normally orchestrated by docker-compose, not by hand):
+#   docker build -f Dockerfile.runner -t deeptutor-sandbox-runner:local .
+#   docker run --rm -p 8900:8900 deeptutor-sandbox-runner:local
+#
+# Why no app code beyond server.py: the runner ships ONLY the stdlib HTTP server
+# plus a set of common CLI tools. It must not depend on the DeepTutor package or
+# any heavy framework — keeping the attack surface and image size minimal.
+# ============================================
+
+FROM python:3.11-slim
+
+# ----- Common CLI + data tooling -------------------------------------------
+# A pragmatic toolbelt for the kinds of shell tasks the model runs (clone a
+# repo, fetch a URL, grep code, slice JSON). numpy/pandas are installed via pip
+# so simple data crunching works out of the box. Trim this list if image size
+# matters more than coverage for your deployment.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git \
+        curl \
+        ca-certificates \
+        ripgrep \
+        jq \
+        build-essential \
+        fonts-wqy-zenhei \
+    && rm -rf /var/lib/apt/lists/*
+
+# fonts-wqy-zenhei: a CJK font so reportlab-generated PDFs render Chinese/JP/KR
+# instead of tofu boxes (the pdf SKILL.md registers it from
+# /usr/share/fonts/truetype/wqy/wqy-zenhei.ttc). It MUST be a TrueType font:
+# reportlab cannot embed CFF/OpenType outlines, so fonts-noto-cjk (CFF .otf)
+# would fail to register. python:3.11-slim ships no CJK fonts on its own.
+
+# build-essential ships gcc / g++ / make + libc headers so the `code_execution`
+# tool can compile and run C (`cc`) and C++ (`c++ -std=c++17`) snippets, not
+# just Python. Drop it if your deployment only needs Python execution.
+
+# Python data + office-document stack. Kept separate so it is easy to drop.
+# --no-cache-dir keeps the layer lean.
+#
+# numpy/pandas cover simple data crunching. The rest back the built-in office
+# skills (deeptutor/skills/builtin/{docx,pptx,xlsx,pdf}/SKILL.md): the model
+# writes short Python against these libs and runs it via the `exec` tool, so
+# they MUST be present here in the sidecar — the runner image carries no
+# deeptutor deps of its own. All ship as wheels (no extra apt needed). Keep this
+# list in sync with the libraries those SKILL.md playbooks promise are available.
+RUN pip install --no-cache-dir \
+        numpy \
+        pandas \
+        python-docx \
+        python-pptx \
+        openpyxl \
+        pypdf \
+        pdfplumber \
+        PyMuPDF \
+        reportlab \
+        lxml \
+        defusedxml \
+        Pillow
+
+# Optional, NOT installed by default: LibreOffice (`soffice`) for format
+# conversion (.doc→.docx, →PDF) and Excel formula recalculation. It is large
+# (~400MB+), so the office skills gate every use on `command -v soffice` and
+# degrade gracefully when absent. To enable it for your deployment, uncomment:
+#   RUN apt-get update && apt-get install -y --no-install-recommends \
+#           libreoffice-writer libreoffice-calc libreoffice-impress \
+#       && rm -rf /var/lib/apt/lists/*
+
+# ----- Non-root user --------------------------------------------------------
+# Commands run as an unprivileged user (uid 1000) so a sandbox escape cannot act
+# as root inside the container. uid 1000 matches the host user that owns the
+# shared task-workspace volume in the common single-user deployment, so files
+# written into ./data/user stay readable by the main app.
+RUN useradd --create-home --uid 1000 --shell /bin/bash runner
+
+WORKDIR /app
+
+# Ship just the server module. We copy it to a flat path and run it directly
+# (python /app/server.py) rather than `python -m deeptutor...`: the runner image
+# intentionally does NOT contain the deeptutor package, so the module path would
+# not resolve. Direct-file execution is the simple, dependency-free choice.
+COPY deeptutor/services/sandbox/runner/server.py /app/server.py
+
+# The workspace shared with the main app is mounted here at runtime by
+# docker-compose (./data/user:/app/data/user), at the *same* path in both
+# containers so the mount contract (host_path == sandbox_path) holds.
+
+ENV RUNNER_PORT=8900 \
+    PYTHONUNBUFFERED=1
+EXPOSE 8900
+
+USER runner
+
+CMD ["python", "/app/server.py"]

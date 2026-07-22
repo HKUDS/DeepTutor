@@ -26,6 +26,13 @@ logger = logging.getLogger(__name__)
 MemoryReference = Literal["recent", "profile", "scope", "preferences", "summary"]
 
 
+# Content call_kinds that make up the persisted answer. The chat agent loop
+# streams every round's text as ``content`` with ``agent_loop_round``; the
+# finish round (and forced-finish) are the answer, narration rounds are
+# filtered back out via their ``call_role`` marker (see _narration_marker_call_id).
+_ANSWER_CONTENT_CALL_KINDS = frozenset({"llm_final_response", "agent_loop_round"})
+
+
 def _should_capture_assistant_content(event: StreamEvent) -> bool:
     if event.type != StreamEventType.CONTENT:
         return False
@@ -33,7 +40,66 @@ def _should_capture_assistant_content(event: StreamEvent) -> bool:
     call_id = metadata.get("call_id")
     if not call_id:
         return True
-    return metadata.get("call_kind") == "llm_final_response"
+    return metadata.get("call_kind") in _ANSWER_CONTENT_CALL_KINDS
+
+
+def _narration_marker_call_id(event: StreamEvent) -> str | None:
+    """call_id of a chat-loop round that resolved as narration (a short
+    preamble streamed alongside a tool call). Its text belongs to the trace,
+    not the persisted answer, so it is excluded when assembling content."""
+    metadata = event.metadata or {}
+    if (
+        metadata.get("trace_kind") == "call_status"
+        and metadata.get("call_state") == "complete"
+        and metadata.get("call_role") == "narration"
+    ):
+        call_id = metadata.get("call_id")
+        return str(call_id) if call_id else None
+    return None
+
+
+def _artifact_attachments(event: StreamEvent) -> list[dict[str, Any]]:
+    """Generated-file attachments carried by a stream event.
+
+    The ``exec`` / ``code_execution`` tools surface files written to the turn
+    workspace ({filename, url, mime_type, size_bytes}) in two places: each
+    ``tool_result`` event carries them in ``metadata.tool_metadata.artifacts``
+    the moment the tool finishes (the source that survives cancelled turns),
+    and the loop's final SOURCES event aggregates them as ``type=="artifact"``
+    sources. Both are read — the caller dedupes by URL. Persisting them as
+    assistant-message attachments lets the chat UI render openable cards —
+    same Viewer path as user uploads — instead of relying on the model
+    pasting a raw ``/api/outputs`` URL.
+    """
+    metadata = event.metadata or {}
+    raw: list[Any] = []
+    if event.type == StreamEventType.SOURCES:
+        raw = [
+            entry
+            for entry in metadata.get("sources") or []
+            if isinstance(entry, dict) and entry.get("type") == "artifact"
+        ]
+    elif event.type == StreamEventType.TOOL_RESULT:
+        tool_meta = metadata.get("tool_metadata")
+        if isinstance(tool_meta, dict):
+            raw = [e for e in tool_meta.get("artifacts") or [] if isinstance(e, dict)]
+    attachments: list[dict[str, Any]] = []
+    for entry in raw:
+        url = str(entry.get("url") or "")
+        if not url:
+            continue
+        mime = str(entry.get("mime_type") or "")
+        attachments.append(
+            {
+                "type": "image" if mime.startswith("image/") else "document",
+                "filename": str(entry.get("filename") or "file"),
+                "mime_type": mime,
+                "url": url,
+                "size_bytes": entry.get("size_bytes"),
+                "generated": True,
+            }
+        )
+    return attachments
 
 
 def _clip_text(value: str, limit: int = 4000) -> str:
@@ -140,7 +206,7 @@ def _request_snapshot_metadata(
     history_references: list[Any],
     question_notebook_references: list[Any],
     book_references: list[Any],
-    requested_skills: list[str],
+    persona: str,
     memory_references: Sequence[str],
     llm_selection: dict[str, str] | None,
 ) -> dict[str, Any]:
@@ -164,8 +230,8 @@ def _request_snapshot_metadata(
         snapshot["questionNotebookReferences"] = question_notebook_references
     if book_references:
         snapshot["bookReferences"] = book_references
-    if requested_skills:
-        snapshot["skills"] = requested_skills
+    if persona:
+        snapshot["persona"] = persona
     if memory_references:
         snapshot["memoryReferences"] = memory_references
     if llm_selection:
@@ -559,6 +625,14 @@ class TurnRuntimeManager:
         # frontend sends the v2 ``ask_user`` shape.
         self._reply_queues: dict[str, asyncio.Queue[dict[str, Any] | None]] = {}
 
+    async def has_live_execution(self, turn_id: str) -> bool:
+        """Public check for whether this process still owns the turn's runner.
+
+        Lets transport callers (e.g. the unified WS router) avoid reaching into
+        ``_lock`` / ``_executions`` directly.
+        """
+        return await self._has_live_execution(turn_id)
+
     async def _has_live_execution(self, turn_id: str) -> bool:
         """Whether this process still owns the turn's in-memory runner."""
         async with self._lock:
@@ -600,13 +674,17 @@ class TurnRuntimeManager:
             "_regenerated_from_message_id",
             "_superseded_turn_id",
             "followup_question_context",
-            "answer_now_context",
+            # Per-turn subagent consult budget (composer stepper). Not part of
+            # any capability's public config schema, so it rides as a runtime
+            # key — stripped before validation, merged back into the turn config
+            # and read by the subagent capability from context.config_overrides.
+            "subagent_consult_budget",
         )
         runtime_only_config = {
             key: raw_config.pop(key) for key in runtime_only_keys if key in raw_config
         }
         try:
-            from deeptutor.capabilities.request_contracts import validate_capability_config
+            from deeptutor.runtime.request_contracts import validate_capability_config
 
             validated_public_config = validate_capability_config(capability, raw_config)
         except ValueError as exc:
@@ -618,6 +696,16 @@ class TurnRuntimeManager:
         }
         session = await self.store.ensure_session(payload.get("session_id"))
         preferences = session.get("preferences") or {}
+        # Persona is a session-level preference (mirrors llm_selection): an
+        # explicit ``persona`` key in the payload — including an empty string,
+        # which means "Default" / no persona — wins and is persisted below; an
+        # absent key falls back to the session's stored preference so the
+        # active persona survives reloads and follows the session.
+        persona_explicit = "persona" in payload
+        persona_pref = str(
+            (payload.get("persona") if persona_explicit else preferences.get("persona")) or ""
+        ).strip()
+        payload = {**payload, "persona": persona_pref}
         raw_llm_selection = payload.get("llm_selection")
         if raw_llm_selection is None:
             raw_llm_selection = preferences.get("llm_selection")
@@ -638,19 +726,26 @@ class TurnRuntimeManager:
             # configured from admin runtime settings). Admin keeps the existing behavior
             # (None llm_selection → default config from admin scope).
             from deeptutor.multi_user.context import get_current_user
-            from deeptutor.multi_user.model_access import redacted_model_access
+            from deeptutor.multi_user.model_access import (
+                has_capability_access,
+                redacted_model_access,
+            )
 
             current_user = get_current_user()
             if not current_user.is_admin:
+                # Single gate, shared with the frontend lock and any HTTP
+                # surface: no usable LLM grant → a clear terminal error here
+                # instead of a silent fall-through to the global client.
+                if not has_capability_access("llm"):
+                    raise RuntimeError(
+                        "No LLM model is assigned to your account. Please contact an administrator."
+                    )
+                # Pin the first granted-and-available model as the selection.
                 assigned_llms = [
                     item
                     for item in redacted_model_access(current_user.id).get("llm", [])
                     if item.get("available")
                 ]
-                if not assigned_llms:
-                    raise RuntimeError(
-                        "No LLM model is assigned to your account. Please contact an administrator."
-                    )
                 llm_selection = {
                     "profile_id": assigned_llms[0].get("profile_id"),
                     "model_id": assigned_llms[0].get("model_id"),
@@ -682,6 +777,18 @@ class TurnRuntimeManager:
                 payload = {**payload, "tools": list(get_enabled_optional_tools())}
             except Exception:
                 payload = {**payload, "tools": []}
+        # Admin-imposed per-user tool whitelist (grant v2). Sits after the
+        # back-fill so explicit caller lists and settings defaults pass the
+        # same gate; this is the single enforcement point for every
+        # capability's turn.
+        from deeptutor.multi_user.tool_access import allowed_optional_tools
+
+        allowed_tools = allowed_optional_tools()
+        if allowed_tools is not None:
+            payload = {
+                **payload,
+                "tools": [t for t in (payload.get("tools") or []) if t in allowed_tools],
+            }
         payload = {**payload, "llm_selection": llm_selection}
         await self._recover_orphan_running_turns_for_session(session["id"])
         preference_update: dict[str, Any] = {
@@ -692,6 +799,9 @@ class TurnRuntimeManager:
         }
         if llm_selection:
             preference_update["llm_selection"] = llm_selection
+        if persona_explicit:
+            # Persist explicit set AND explicit clear ("" = back to Default).
+            preference_update["persona"] = persona_pref
         await self.store.update_session_preferences(session["id"], preference_update)
         turn = await self.store.create_turn(session["id"], capability=capability)
         execution = _TurnExecution(
@@ -845,6 +955,12 @@ class TurnRuntimeManager:
             await self.store.update_turn_status(turn_id, "cancelled", "Turn cancelled")
             return True
         execution.task.cancel()
+        # Wait for the task to finish so its finally block (including save)
+        # completes before the caller proceeds.
+        try:
+            await execution.task
+        except asyncio.CancelledError:
+            pass
         return True
 
     async def submit_user_reply(
@@ -1045,6 +1161,30 @@ class TurnRuntimeManager:
         attachment_records = []
         assistant_events: list[dict[str, Any]] = []
         assistant_content = ""
+        # Per-round content segments + narration call_ids: a chat-loop round's
+        # text is captured live but a round that resolves as narration is
+        # dropped from the persisted answer (mirrors the frontend bubble).
+        content_segments: list[tuple[str | None, str]] = []
+        narration_call_ids: set[str] = set()
+
+        def _persisted_answer() -> str:
+            # clean_thinking_tags is a second line of defence: providers that
+            # inline <think> in the content channel are split at streaming
+            # time by the agent loop, but anything that slips through must
+            # never be persisted as the user-facing answer.
+            return clean_thinking_tags(
+                "".join(
+                    text
+                    for call_id, text in content_segments
+                    if not (call_id and call_id in narration_call_ids)
+                )
+            )
+
+        # Files the model generated this turn (exec/code_execution artifacts),
+        # persisted as assistant-message attachments so the UI shows openable
+        # cards. Deduped by URL across the turn's SOURCES events.
+        generated_attachments: list[dict[str, Any]] = []
+        seen_artifact_urls: set[str] = set()
         stream_done_sent = False
         llm_scope_token: Token[LLMConfig | None] | None = None
         reset_active_llm_selection: Callable[[Token[LLMConfig | None] | None], None] | None = None
@@ -1223,57 +1363,54 @@ class TurnRuntimeManager:
             memory_store = get_memory_store()
             memory_context = memory_store.read_l3_concat() if memory_references else ""
 
-            # Skill resolution differs for admin vs non-admin users:
-            # - Admin: use the user-scope SkillService (which is the admin
-            #   workspace) for both auto_select and content load.
-            # - Non-admin: auto_select from their own workspace + the admin
-            #   pool (so admin-curated skills can fire), then intersect with
-            #   the assigned skill ids, then load content from BOTH scopes
-            #   (assigned skills live in admin workspace; user's own skills
-            #   live in their workspace).
+            # Persona: at most one behaviour preset per turn, eagerly
+            # injected (a persona must shape the voice from the first
+            # token). Resolution: the user's own workspace first; non-admin
+            # users fall back to admin-authored presets (personas carry no
+            # privileged workflow, so no grant gate applies).
             from deeptutor.multi_user.context import get_current_user
             from deeptutor.multi_user.paths import get_admin_path_service
             from deeptutor.multi_user.skill_access import assigned_skill_ids
-            from deeptutor.services.skill.service import SkillService
+            from deeptutor.services.persona import PersonaService, get_persona_service
+            from deeptutor.services.skill.service import SkillService, render_skills_manifest
 
             current_user = get_current_user()
-            user_skill_service = get_skill_service()
-            requested_skills = _string_list(payload.get("skills"))
+            requested_persona = str(payload.get("persona") or "").strip()
+            persona_context = ""
+            if requested_persona:
+                persona_context = get_persona_service().load_for_context(requested_persona)
+                if not persona_context and not current_user.is_admin:
+                    persona_context = PersonaService(
+                        root=get_admin_path_service().get_workspace_dir() / "personas"
+                    ).load_for_context(requested_persona)
+            active_persona = requested_persona if persona_context else ""
 
-            if current_user.is_admin:
-                if not requested_skills or requested_skills == ["auto"]:
-                    resolved_skills = user_skill_service.auto_select(raw_user_content)
-                else:
-                    resolved_skills = [
-                        s for s in requested_skills if isinstance(s, str) and s != "auto"
-                    ]
-                skills_context = user_skill_service.load_for_context(resolved_skills)
-            else:
-                admin_skill_service = SkillService(
-                    root=get_admin_path_service().get_workspace_dir() / "skills"
+            # Skills: never user-selected per turn. The model sees a
+            # one-line manifest of every skill visible to this user (own +
+            # builtin, plus admin-assigned for non-admin users) and pulls
+            # full content on demand via ``read_skill``. ``always`` skills
+            # are the exception — their bodies are injected eagerly.
+            user_skill_service = get_skill_service()
+            skill_entries = user_skill_service.summary_entries()
+            always_blocks = [user_skill_service.load_always_for_context()]
+            if not current_user.is_admin:
+                assigned_service = SkillService(
+                    root=get_admin_path_service().get_workspace_dir() / "skills",
+                    builtin_root=None,
                 )
                 allowed_skills = assigned_skill_ids(current_user.id)
-                user_owned = {info.name for info in user_skill_service.list_skills()}
-                if not requested_skills or requested_skills == ["auto"]:
-                    auto_pool = list(
-                        dict.fromkeys(
-                            user_skill_service.auto_select(raw_user_content)
-                            + admin_skill_service.auto_select(raw_user_content)
-                        )
+                assigned_entries = [
+                    e for e in assigned_service.summary_entries() if e.name in allowed_skills
+                ]
+                skill_entries = skill_entries + assigned_entries
+                always_blocks.append(
+                    assigned_service.load_for_context(
+                        [e.name for e in assigned_entries if e.always and e.available]
                     )
-                    resolved_skills = [
-                        s for s in auto_pool if s in allowed_skills or s in user_owned
-                    ]
-                else:
-                    explicit = [s for s in requested_skills if isinstance(s, str) and s != "auto"]
-                    resolved_skills = [
-                        s for s in explicit if s in allowed_skills or s in user_owned
-                    ]
-                admin_picks = [s for s in resolved_skills if s in allowed_skills]
-                user_picks = [s for s in resolved_skills if s not in allowed_skills]
-                admin_block = admin_skill_service.load_for_context(admin_picks)
-                user_block = user_skill_service.load_for_context(user_picks)
-                skills_context = "\n\n".join(part for part in (admin_block, user_block) if part)
+                )
+            skills_manifest = "\n\n".join(
+                part for part in (*always_blocks, render_skills_manifest(skill_entries)) if part
+            )
 
             # Chat capability uses the lightweight manifest + read_source
             # affordance (no upstream LLM call, no wholesale-dump into the
@@ -1314,6 +1451,7 @@ class TurnRuntimeManager:
                     fresh_book_references=book_references,
                     fresh_history_session_ids=history_references,
                     fresh_question_entry_ids=question_notebook_references,
+                    language=str(payload.get("language", "en") or "en"),
                 )
                 source_manifest_text, source_index = render_manifest(inventory)
                 effective_user_message = raw_user_content
@@ -1333,6 +1471,10 @@ class TurnRuntimeManager:
                         )
 
                 if history_references:
+                    from deeptutor.services.session.source_inventory import (
+                        serialize_referenced_transcript,
+                    )
+
                     history_records: list[dict[str, Any]] = []
                     for session_ref in history_references:
                         history_session_id = str(session_ref or "").strip()
@@ -1346,12 +1488,12 @@ class TurnRuntimeManager:
                         history_messages = await self.store.get_messages_for_context(
                             history_session_id
                         )
-                        transcript_lines = [
-                            f"## {str(message.get('role', '')).title()}\n{message.get('content', '')}"
-                            for message in history_messages
-                            if str(message.get("content", "") or "").strip()
-                        ]
-                        if not transcript_lines:
+                        transcript = serialize_referenced_transcript(
+                            history_session,
+                            history_messages,
+                            language=str(payload.get("language", "en") or "en"),
+                        )
+                        if not transcript:
                             continue
 
                         history_summary = str(
@@ -1378,7 +1520,7 @@ class TurnRuntimeManager:
                                     history_session.get("title", "") or "Untitled session"
                                 ),
                                 "summary": history_summary,
-                                "output": "\n\n".join(transcript_lines),
+                                "output": transcript,
                                 "metadata": {
                                     "session_id": history_session_id,
                                     "source": "history",
@@ -1461,7 +1603,7 @@ class TurnRuntimeManager:
                         history_references=history_references,
                         question_notebook_references=question_notebook_references,
                         book_references=book_references,
-                        requested_skills=requested_skills,
+                        persona=active_persona,
                         memory_references=memory_references,
                         llm_selection=payload.get("llm_selection"),
                     ),
@@ -1479,7 +1621,8 @@ class TurnRuntimeManager:
                 config_overrides=request_config,
                 language=payload.get("language", "en"),
                 memory_context=memory_context,
-                skills_context=skills_context,
+                persona_context=persona_context,
+                skills_manifest=skills_manifest,
                 source_manifest=source_manifest_text,
                 metadata={
                     "conversation_summary": history_result.conversation_summary,
@@ -1497,7 +1640,7 @@ class TurnRuntimeManager:
                     "memory_references": memory_references,
                     "question_bank_context": question_bank_context,
                     "memory_context": memory_context,
-                    "active_skills": resolved_skills,
+                    "active_persona": active_persona,
                     "llm_selection": payload.get("llm_selection") or {},
                     "llm_model": str(getattr(llm_config, "model", "") or ""),
                     "llm_provider": str(getattr(llm_config, "provider_name", "") or ""),
@@ -1516,16 +1659,30 @@ class TurnRuntimeManager:
             )
 
             orch = ChatOrchestrator()
+            pending_done_event: StreamEvent | None = None
             async for event in orch.handle(context):
                 if event.type == StreamEventType.SESSION:
                     continue
-                payload_event = await self._publish_live_event(execution, event)
                 if event.type == StreamEventType.DONE:
-                    stream_done_sent = True
+                    pending_done_event = event
+                    continue
+                payload_event = await self._publish_live_event(execution, event)
                 if payload_event.get("type") not in {"done", "session"}:
                     assistant_events.append(payload_event)
                 if _should_capture_assistant_content(event):
-                    assistant_content += event.content
+                    call_id = (event.metadata or {}).get("call_id")
+                    content_segments.append((str(call_id) if call_id else None, event.content))
+                narration_call_id = _narration_marker_call_id(event)
+                if narration_call_id:
+                    narration_call_ids.add(narration_call_id)
+                for attachment in _artifact_attachments(event):
+                    if attachment["url"] not in seen_artifact_urls:
+                        seen_artifact_urls.add(attachment["url"])
+                        generated_attachments.append(attachment)
+
+            # The persisted answer is the captured content minus any narration
+            # rounds (their text stayed in the trace, never the answer).
+            assistant_content = _persisted_answer()
 
             # Assistant continues the same branch as the user message it
             # answers. If we just persisted a new user row we chain off
@@ -1539,6 +1696,7 @@ class TurnRuntimeManager:
                     content=assistant_content,
                     capability=capability_name,
                     events=assistant_events,
+                    attachments=generated_attachments or None,
                     parent_message_id=new_user_message_id,
                 )
             elif branch_parent_explicit:
@@ -1548,6 +1706,7 @@ class TurnRuntimeManager:
                     content=assistant_content,
                     capability=capability_name,
                     events=assistant_events,
+                    attachments=generated_attachments or None,
                     parent_message_id=branch_parent_id,
                 )
             else:
@@ -1557,17 +1716,24 @@ class TurnRuntimeManager:
                     content=assistant_content,
                     capability=capability_name,
                     events=assistant_events,
+                    attachments=generated_attachments or None,
                 )
             await self._flush_buffered_events(execution)
             await self.store.update_turn_status(turn_id, "completed")
+            if pending_done_event is None:
+                pending_done_event = StreamEvent(
+                    type=StreamEventType.DONE,
+                    source=capability_name,
+                    metadata={"status": "completed"},
+                )
+            await self._publish_live_event(execution, pending_done_event)
+            stream_done_sent = True
             if not is_regenerate:
-                # The frontend disconnects from this turn's WS subscription
-                # shortly after ``done`` (with a small grace window), so we
-                # generate the title here — inside the try block, before
-                # finally sends the ``None`` sentinel to subscribers — so
-                # the ``session_meta`` event still reaches them. The LLM
-                # scope set up at turn start is still active in this
-                # context, meaning the user's selected model is used.
+                # Title generation is post-turn metadata. Keep it after DONE
+                # so the composer and duration clock stop as soon as the
+                # assistant answer is saved; the frontend keeps this socket
+                # open briefly so the later ``session_meta`` title update can
+                # still arrive.
                 try:
                     await self._maybe_generate_session_title(
                         execution=execution,
@@ -1595,8 +1761,30 @@ class TurnRuntimeManager:
                         metadata={"status": "cancelled"},
                     ),
                 )
-            await self._flush_buffered_events(execution)
-            await self.store.update_turn_status(turn_id, "cancelled", "Turn cancelled")
+            with contextlib.suppress(Exception):
+                await self._flush_buffered_events(execution)
+            # Best-effort: persist what the turn already produced (streamed
+            # answer text, trace events, generated files) so cancelling a
+            # turn does not erase visible work — files the model created are
+            # on disk either way and must stay reachable. Shielded because
+            # we are already unwinding a cancellation. Every step is
+            # suppressed separately so the status update below always runs —
+            # a turn left "running" gets mislabelled as a restart orphan.
+            partial_content = _persisted_answer()
+            if partial_content or generated_attachments or assistant_events:
+                with contextlib.suppress(Exception):
+                    await asyncio.shield(
+                        self.store.add_message(
+                            session_id=session_id,
+                            role="assistant",
+                            content=partial_content,
+                            capability=capability_name,
+                            events=assistant_events,
+                            attachments=generated_attachments or None,
+                        )
+                    )
+            with contextlib.suppress(Exception):
+                await self.store.update_turn_status(turn_id, "cancelled", "Turn cancelled")
             raise
         except Exception as exc:
             if stream_done_sent:
@@ -1606,8 +1794,12 @@ class TurnRuntimeManager:
                     exc,
                     exc_info=True,
                 )
+                # Suppress each step separately: a flush failure must not
+                # also skip the status update, or the turn stays "running"
+                # forever and gets mislabelled as a server-restart orphan.
                 with contextlib.suppress(Exception):
                     await self._flush_buffered_events(execution)
+                with contextlib.suppress(Exception):
                     await self.store.update_turn_status(turn_id, "failed", str(exc))
             else:
                 logger.error("Turn %s failed: %s", turn_id, exc, exc_info=True)
@@ -1628,7 +1820,8 @@ class TurnRuntimeManager:
                         metadata={"status": "failed"},
                     ),
                 )
-                await self._flush_buffered_events(execution)
+                with contextlib.suppress(Exception):
+                    await self._flush_buffered_events(execution)
                 await self.store.update_turn_status(turn_id, "failed", str(exc))
         finally:
             if llm_scope_token is not None and reset_active_llm_selection is not None:
@@ -1824,11 +2017,14 @@ class TurnRuntimeManager:
             task_dir.mkdir(parents=True, exist_ok=True)
             event_file = task_dir / "events.jsonl"
             with open(event_file, "a", encoding="utf-8") as f:
-                f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+                f.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
         except Exception:
             logger.debug("Failed to mirror turn event to workspace", exc_info=True)
 
 
+import threading
+
+_runtime_lock = threading.Lock()
 _runtime_instances: dict[str, TurnRuntimeManager] = {}
 
 
@@ -1837,9 +2033,10 @@ def get_turn_runtime_manager() -> TurnRuntimeManager:
 
     store = get_session_store()
     key = str(getattr(store, "db_path", id(store)))
-    if key not in _runtime_instances:
-        _runtime_instances[key] = TurnRuntimeManager(store=store)
-    return _runtime_instances[key]
+    with _runtime_lock:
+        if key not in _runtime_instances:
+            _runtime_instances[key] = TurnRuntimeManager(store=store)
+        return _runtime_instances[key]
 
 
 __all__ = ["TurnRuntimeManager", "get_turn_runtime_manager"]

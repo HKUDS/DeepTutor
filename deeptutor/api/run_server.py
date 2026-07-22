@@ -22,9 +22,9 @@ import uvicorn
 # Force unbuffered output
 os.environ["PYTHONUNBUFFERED"] = "1"
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(line_buffering=True, errors="replace")
+    sys.stdout.reconfigure(line_buffering=True, encoding="utf-8", errors="replace")
 if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(line_buffering=True, errors="replace")
+    sys.stderr.reconfigure(line_buffering=True, encoding="utf-8", errors="replace")
 
 
 def main() -> None:
@@ -35,6 +35,7 @@ def main() -> None:
     # Get port from configuration
     from deeptutor.logging import configure_logging
     from deeptutor.runtime.mode import RunMode, set_mode
+    from deeptutor.services.config import get_ws_max_size
     from deeptutor.services.setup import get_backend_port
 
     set_mode(RunMode.SERVER)
@@ -57,7 +58,8 @@ def main() -> None:
     # Filter out non-existent directories to avoid warnings
     reload_excludes = [d for d in reload_excludes if Path(d).exists()]
 
-    # Start uvicorn server with reload enabled
+    # Start uvicorn server with reload enabled. ws_max_size tracks the
+    # configured chat-attachment total so base64 uploads fit in one WS frame.
     uvicorn.run(
         "deeptutor.api.main:app",
         host="0.0.0.0",
@@ -66,6 +68,7 @@ def main() -> None:
         reload_excludes=reload_excludes,
         log_level="info",
         access_log=False,
+        ws_max_size=get_ws_max_size(),
     )
 
 

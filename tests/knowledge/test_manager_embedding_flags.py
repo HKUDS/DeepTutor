@@ -72,6 +72,7 @@ def test_ready_version_without_active_signature_marks_reindex(
     version_dir = kb_dir / "version-1"
     version_dir.mkdir(parents=True)
     (version_dir / "docstore.json").write_text("{}", encoding="utf-8")
+    (version_dir / "index_store.json").write_text("{}", encoding="utf-8")
     (version_dir / "meta.json").write_text(
         json.dumps({"signature": "old-signature", "version": "version-1"}),
         encoding="utf-8",
@@ -88,6 +89,53 @@ def test_ready_version_without_active_signature_marks_reindex(
     entry = reloaded.config["knowledge_bases"]["old-kb"]
     assert entry["needs_reindex"] is True
     assert entry["embedding_mismatch"] is True
+
+
+def test_ready_non_embedding_provider_version_does_not_mark_reindex(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_active_embedding(monkeypatch, sig_hash="active-signature")
+
+    kb_dir = tmp_path / "page-kb"
+    version_dir = kb_dir / "version-1"
+    version_dir.mkdir(parents=True)
+    (version_dir / "pageindex_docs.json").write_text(
+        json.dumps({"provider": "pageindex", "docs": {"a.pdf": {"doc_id": "doc-1"}}}),
+        encoding="utf-8",
+    )
+    (version_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "provider": "pageindex",
+                "signature": "pageindex",
+                "version": "version-1",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "kb_config.json").write_text(
+        json.dumps(
+            {
+                "knowledge_bases": {
+                    "page-kb": {
+                        "path": "page-kb",
+                        "rag_provider": "pageindex",
+                        "needs_reindex": True,
+                        "embedding_mismatch": True,
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    manager = KnowledgeBaseManager(base_dir=str(tmp_path))
+    entry = manager.config["knowledge_bases"]["page-kb"]
+    assert entry["rag_provider"] == "pageindex"
+    assert entry.get("needs_reindex", False) is False
+    assert entry.get("embedding_mismatch", False) is False
+    assert entry["index_versions"][0]["signature"] == "pageindex"
 
 
 def test_ready_status_records_last_indexed_only_when_index_changes(

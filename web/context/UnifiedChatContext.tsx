@@ -14,6 +14,7 @@ import {
   LANGUAGE_EVENT,
   LANGUAGE_STORAGE_KEY,
   normalizeLanguage,
+  readStoredChatResponseTimeout,
   readStoredLanguage,
   writeStoredActiveSessionId,
 } from "@/context/app-shell-storage";
@@ -29,7 +30,11 @@ import {
 import { normalizeMarkdownForDisplay } from "@/lib/markdown-display";
 import { normalizeMessageContent } from "@/lib/message-content";
 import { buildVisiblePath, tipMessageId } from "@/lib/message-branches";
-import { shouldAppendEventContent } from "@/lib/stream";
+import {
+  isNarrationMarker,
+  recomputeAnswerContent,
+  shouldAppendEventContent,
+} from "@/lib/stream";
 import { hasPendingAskUserInMessages } from "@/lib/ask-user-state";
 import { notify } from "@/lib/notifications";
 import i18n from "i18next";
@@ -83,6 +88,9 @@ export interface ChatState {
   activeCapability: string | null;
   knowledgeBases: string[];
   llmSelection: LLMSelection | null;
+  /** Session-level persona preference; "" = Default (no persona). Applies
+   *  to every following message until changed (persisted on the session). */
+  personaSelection: string;
   messages: MessageItem[];
   isStreaming: boolean;
   currentStage: string;
@@ -110,6 +118,12 @@ export interface MessageAttachment {
   /** Plain-text rendering of office docs, populated by the backend extractor.
    *  Used by the preview drawer to show "what the LLM saw" for binary docs. */
   extracted_text?: string;
+  /** Set on files the assistant produced this turn (exec/code_execution
+   *  artifacts) rather than files the user uploaded. Rendered as openable
+   *  cards under the assistant message. */
+  generated?: boolean;
+  /** Byte size of the generated file, for the card's subtitle. */
+  size_bytes?: number;
 }
 
 export interface MessageRequestSnapshot {
@@ -124,7 +138,7 @@ export interface MessageRequestSnapshot {
   historyReferences?: HistoryReferencePayload;
   questionNotebookReferences?: QuestionNotebookReferencePayload;
   bookReferences?: BookReferencePayload[];
-  skills?: string[];
+  persona?: string;
   memoryReferences?: MemoryReferencePayload;
   llmSelection?: LLMSelection | null;
 }
@@ -163,6 +177,7 @@ type Action =
   | { type: "SET_CAPABILITY"; cap: string | null }
   | { type: "SET_KB"; kbs: string[] }
   | { type: "SET_LLM_SELECTION"; selection: LLMSelection | null }
+  | { type: "SET_PERSONA_SELECTION"; persona: string }
   | { type: "SET_LANGUAGE"; lang: string }
   | {
       type: "ADD_USER_MSG";
@@ -201,6 +216,7 @@ type Action =
       capability?: string | null;
       knowledgeBases?: string[];
       llmSelection?: LLMSelection | null;
+      personaSelection?: string;
       language?: string;
       selectedBranches?: Record<string, number>;
     }
@@ -232,6 +248,7 @@ function createSessionEntry(
     activeCapability: null,
     knowledgeBases: [],
     llmSelection: null,
+    personaSelection: "",
     messages: [],
     isStreaming: false,
     currentStage: "",
@@ -298,6 +315,11 @@ function reducer(state: ProviderState, action: Action): ProviderState {
       return updateSelectedSession(state, (session) => ({
         ...session,
         llmSelection: action.selection,
+      }));
+    case "SET_PERSONA_SELECTION":
+      return updateSelectedSession(state, (session) => ({
+        ...session,
+        personaSelection: action.persona,
       }));
     case "SET_LANGUAGE":
       return updateSelectedSession(state, (session) => ({
@@ -445,8 +467,14 @@ function reducer(state: ProviderState, action: Action): ProviderState {
       }
       const events = [...(last?.events || []), action.event];
       let content = last?.content || "";
-      if (shouldAppendEventContent(action.event))
+      if (isNarrationMarker(action.event)) {
+        // A round just resolved as narration (preamble before a tool call):
+        // drop its already-streamed text from the answer — it stays in the
+        // trace. Recomputing is cheap here (only fires per narration round).
+        content = recomputeAnswerContent(events);
+      } else if (shouldAppendEventContent(action.event)) {
         content += action.event.content;
+      }
       const capability = last?.capability || session.activeCapability || "";
       msgs[msgs.length - 1] = {
         ...(last || { role: "assistant", content: "" }),
@@ -546,6 +574,10 @@ function reducer(state: ProviderState, action: Action): ProviderState {
               action.llmSelection !== undefined
                 ? action.llmSelection
                 : existing.llmSelection,
+            personaSelection:
+              action.personaSelection !== undefined
+                ? action.personaSelection
+                : existing.personaSelection,
             messages: action.messages,
             isStreaming: (action.status || "idle") === "running",
             currentStage: "",
@@ -691,6 +723,7 @@ interface ChatContextValue {
   setCapability: (cap: string | null) => void;
   setKBs: (kbs: string[]) => void;
   setLLMSelection: (selection: LLMSelection | null) => void;
+  setPersonaSelection: (persona: string) => void;
   setLanguage: (lang: string) => void;
   sendMessage: (
     content: string,
@@ -700,7 +733,7 @@ interface ChatContextValue {
     historyReferences?: HistoryReferencePayload,
     options?: SendMessageOptions,
     questionNotebookReferences?: QuestionNotebookReferencePayload,
-    skills?: string[],
+    persona?: string,
     memoryReferences?: MemoryReferencePayload,
   ) => void;
   cancelStreamingTurn: () => void;
@@ -733,7 +766,7 @@ interface ChatContextValue {
   switchBranch: (parentMessageId: number | null, childId: number) => void;
   renameSessionTitle: (title: string) => Promise<void>;
   newSession: () => void;
-  loadSession: (sessionId: string) => Promise<void>;
+  loadSession: (sessionId: string, signal?: AbortSignal) => Promise<void>;
   selectedSessionId: string | null;
   sessionStatuses: Record<string, SessionStatusSnapshot>;
   sidebarRefreshToken: number;
@@ -753,6 +786,8 @@ function hydrateMessageAttachments(
         mime_type: item.mime_type,
         id: item.id,
         extracted_text: item.extracted_text,
+        generated: item.generated,
+        size_bytes: item.size_bytes,
       }))
     : [];
 }
@@ -851,7 +886,10 @@ function hydrateRequestSnapshot(
   const questionNotebookReferences = asQuestionReferences(
     stored.questionNotebookReferences,
   );
-  const skills = asStringArray(stored.skills);
+  const persona =
+    typeof stored.persona === "string" && stored.persona.length > 0
+      ? stored.persona
+      : "";
   const memoryReferences = asMemoryReferences(stored.memoryReferences);
   const bookReferences = normalizeBookReferences(stored.bookReferences);
   const llmSelection = asLLMSelection(stored.llmSelection);
@@ -864,7 +902,7 @@ function hydrateRequestSnapshot(
     snapshot.questionNotebookReferences = questionNotebookReferences;
   }
   if (bookReferences.length) snapshot.bookReferences = bookReferences;
-  if (skills.length) snapshot.skills = skills;
+  if (persona) snapshot.persona = persona;
   if (memoryReferences.length) snapshot.memoryReferences = memoryReferences;
   if (llmSelection) snapshot.llmSelection = llmSelection;
   return snapshot;
@@ -1174,8 +1212,8 @@ export function UnifiedChatProvider({
   );
 
   const loadSession = useCallback(
-    async (sessionId: string) => {
-      const session = await getSession(sessionId);
+    async (sessionId: string, signal?: AbortSignal) => {
+      const session = await getSession(sessionId, signal);
       const activeTurn = Array.isArray(session.active_turns)
         ? session.active_turns[0]
         : undefined;
@@ -1197,6 +1235,10 @@ export function UnifiedChatProvider({
           ? session.preferences.knowledge_bases
           : [],
         llmSelection: asLLMSelection(session.preferences?.llm_selection),
+        personaSelection:
+          typeof session.preferences?.persona === "string"
+            ? session.preferences.persona
+            : "",
         // The Settings language is global UI state. Historical sessions may
         // have stale persisted preferences, so new turns follow the current
         // app language rather than the language saved when the session began.
@@ -1261,12 +1303,15 @@ export function UnifiedChatProvider({
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Idle timeout: if a streaming session receives no events for 60s, auto-fail it.
+  // Idle timeout: if a streaming session receives no events for the configured
+  // window (default 180s, set in Settings > Network), auto-fail it. Read per
+  // tick so a settings change applies without remounting.
   useEffect(() => {
-    const IDLE_TIMEOUT_MS = 60_000;
     const CHECK_INTERVAL_MS = 10_000;
 
     const timer = setInterval(() => {
+      const timeoutSeconds = readStoredChatResponseTimeout();
+      const idleTimeoutMs = timeoutSeconds * 1000;
       const current = stateRef.current;
       for (const [key, session] of Object.entries(current.sessions)) {
         if (!session.isStreaming) continue;
@@ -1275,7 +1320,7 @@ export function UnifiedChatProvider({
         ) {
           continue;
         }
-        if (Date.now() - session.updatedAt <= IDLE_TIMEOUT_MS) continue;
+        if (Date.now() - session.updatedAt <= idleTimeoutMs) continue;
 
         dispatch({
           type: "STREAM_EVENT",
@@ -1284,8 +1329,7 @@ export function UnifiedChatProvider({
             type: "error",
             source: "client",
             stage: "",
-            content:
-              "Connection timed out — no response received for 60 seconds.",
+            content: `Connection timed out — no response received for ${timeoutSeconds} seconds.`,
             metadata: { turn_terminal: true, status: "failed" },
             timestamp: Date.now() / 1000,
           },
@@ -1312,7 +1356,7 @@ export function UnifiedChatProvider({
       historyReferences?: HistoryReferencePayload,
       options?: SendMessageOptions,
       questionNotebookReferences?: QuestionNotebookReferencePayload,
-      skills?: string[],
+      persona?: string,
       memoryReferences?: MemoryReferencePayload,
     ) => {
       const msgAttachments = attachments?.map((a) => ({
@@ -1342,7 +1386,11 @@ export function UnifiedChatProvider({
           : session.llmSelection;
       const effectiveLanguage =
         replaySnapshot?.language ?? readStoredLanguage();
-      const effectiveSkills = replaySnapshot?.skills ?? skills;
+      // Persona resolution: replay snapshot wins; then an explicit per-call
+      // persona (quiz follow-up surface); then the session-level preference.
+      // Always a string — "" means Default / no persona.
+      const effectivePersona =
+        replaySnapshot?.persona ?? persona ?? session.personaSelection ?? "";
       const effectiveMemoryReferences =
         replaySnapshot?.memoryReferences ?? memoryReferences;
       const effectiveBookReferences =
@@ -1391,7 +1439,7 @@ export function UnifiedChatProvider({
         ...(effectiveBookReferences?.length
           ? { bookReferences: effectiveBookReferences }
           : {}),
-        ...(effectiveSkills?.length ? { skills: [...effectiveSkills] } : {}),
+        ...(effectivePersona ? { persona: effectivePersona } : {}),
         ...(effectiveMemoryReferences?.length
           ? { memoryReferences: [...effectiveMemoryReferences] }
           : {}),
@@ -1459,7 +1507,11 @@ export function UnifiedChatProvider({
         ...(effectiveBookReferences?.length
           ? { book_references: effectiveBookReferences }
           : {}),
-        ...(effectiveSkills?.length ? { skills: effectiveSkills } : {}),
+        // Always sent (possibly ""): an explicit key is the backend's signal
+        // to persist the value into session.preferences — "" clears back to
+        // Default. Omitting the key would make the backend fall back to the
+        // stored preference, so a clear could never propagate.
+        persona: effectivePersona,
         ...(effectiveMemoryReferences?.length
           ? { memory_references: effectiveMemoryReferences }
           : {}),
@@ -1488,15 +1540,19 @@ export function UnifiedChatProvider({
     const key = currentState.selectedKey;
     if (!key) return;
     const session = currentState.sessions[key];
-    const turnId = session?.activeTurnId;
-    if (!session || !turnId) return;
+    if (!session) return;
+    const turnId = session.activeTurnId;
     const runner = runnersRef.current.get(key);
     if (runner?.client.connected) {
-      runner.client.send({ type: "cancel_turn", turn_id: turnId });
+      if (turnId) {
+        runner.client.send({ type: "cancel_turn", turn_id: turnId });
+      }
       runner.client.disconnect();
       runnersRef.current.delete(key);
     }
-    dispatch({ type: "STREAM_END", key, status: "cancelled" });
+    if (session.isStreaming) {
+      dispatch({ type: "STREAM_END", key, status: "cancelled" });
+    }
   }, []);
 
   const submitUserReply = useCallback(
@@ -1577,6 +1633,7 @@ export function UnifiedChatProvider({
       activeCapability: current.activeCapability,
       knowledgeBases: current.knowledgeBases,
       llmSelection: current.llmSelection,
+      personaSelection: current.personaSelection,
       messages: current.messages,
       isStreaming: current.isStreaming,
       currentStage: current.currentStage,
@@ -1613,6 +1670,10 @@ export function UnifiedChatProvider({
 
   const setLLMSelection = useCallback((selection: LLMSelection | null) => {
     dispatch({ type: "SET_LLM_SELECTION", selection });
+  }, []);
+
+  const setPersonaSelection = useCallback((persona: string) => {
+    dispatch({ type: "SET_PERSONA_SELECTION", persona });
   }, []);
 
   const setLanguage = useCallback((lang: string) => {
@@ -1774,6 +1835,7 @@ export function UnifiedChatProvider({
       setCapability,
       setKBs,
       setLLMSelection,
+      setPersonaSelection,
       setLanguage,
       sendMessage,
       cancelStreamingTurn,
@@ -1795,6 +1857,7 @@ export function UnifiedChatProvider({
       setCapability,
       setKBs,
       setLLMSelection,
+      setPersonaSelection,
       setLanguage,
       sendMessage,
       cancelStreamingTurn,

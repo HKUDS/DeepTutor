@@ -1,6 +1,5 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -16,15 +15,13 @@ import {
   formatKnowledgeTimestamp,
   kbCanReindex,
   kbNeedsReindex,
+  resolveKbStatus,
   resolveProgressPercent,
   type IndexVersion,
   type KnowledgeBase,
 } from "@/lib/knowledge-helpers";
 import type { TaskState } from "@/hooks/useKnowledgeProgress";
-
-const ProcessLogs = dynamic(() => import("@/components/common/ProcessLogs"), {
-  ssr: false,
-});
+import ProcessLogs from "@/components/common/ProcessLogs";
 
 interface KbIndexVersionsSectionProps {
   kb: KnowledgeBase;
@@ -42,8 +39,10 @@ export default function KbIndexVersionsSection({
   const versions = kb.statistics?.index_versions ?? [];
   const activeSig = kb.statistics?.active_signature ?? null;
   const needsReindex = kbNeedsReindex(kb);
+  const isError = resolveKbStatus(kb) === "error";
   const mismatch = Boolean(kb.metadata?.embedding_mismatch);
-  const isReindexingHere = task?.kind === "reindex" && task.executing;
+  const isReindexingHere =
+    (task?.kind === "reindex" || task?.kind === "retry") && task.executing;
   const percent = resolveProgressPercent(kb.progress);
   const lastIndexed = formatKnowledgeTimestamp(kb.metadata?.last_indexed_at);
   const lastIndexedCount = kb.metadata?.last_indexed_count;
@@ -84,28 +83,54 @@ export default function KbIndexVersionsSection({
             type="button"
             onClick={handleReindex}
             disabled={submitting || isReindexingHere}
-            title={t(
-              "Click Re-index to rebuild this knowledge base with the active embedding model. Existing index versions are preserved.",
-            )}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-[12px] font-medium text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300"
+            title={
+              isError
+                ? t(
+                    "Retry indexing from the documents already stored in this knowledge base.",
+                  )
+                : t(
+                    "Click Re-index to rebuild this knowledge base with the active embedding model. Existing index versions are preserved.",
+                  )
+            }
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-[12px] font-medium transition-colors disabled:opacity-50 ${
+              isError
+                ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
+                : "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300"
+            }`}
           >
             {submitting || isReindexingHere ? (
               <Loader2 className="h-3 w-3 animate-spin" />
             ) : (
               <RefreshCw className="h-3 w-3" />
             )}
-            {isReindexingHere ? t("Re-indexing…") : t("Re-index")}
+            {isReindexingHere
+              ? isError
+                ? t("Retrying…")
+                : t("Re-indexing…")
+              : isError
+                ? t("Retry indexing")
+                : t("Re-index")}
           </button>
         )}
       </div>
 
-      {(needsReindex || mismatch) && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-[12px] text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
+      {(isError || needsReindex || mismatch) && (
+        <div
+          className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-[12px] ${
+            isError
+              ? "border-red-200 bg-red-50/80 text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-300"
+              : "border-amber-200 bg-amber-50/80 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300"
+          }`}
+        >
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
-            {t(
-              "The active embedding configuration doesn't match any ready index version. Re-index to rebuild against the current embedding model.",
-            )}
+            {isError
+              ? t(
+                  "Previous indexing failed. Retry will rebuild the index from the existing source documents.",
+                )
+              : t(
+                  "The active embedding configuration doesn't match any ready index version. Re-index to rebuild against the current embedding model.",
+                )}
           </span>
         </div>
       )}
@@ -150,7 +175,7 @@ export default function KbIndexVersionsSection({
         </div>
       )}
 
-      {task?.kind === "reindex" &&
+      {(task?.kind === "reindex" || task?.kind === "retry") &&
         (task.taskId || task.logs.length > 0 || task.executing) && (
           <div className="space-y-2">
             <div className="flex items-center justify-between text-[11px] text-[var(--muted-foreground)]">

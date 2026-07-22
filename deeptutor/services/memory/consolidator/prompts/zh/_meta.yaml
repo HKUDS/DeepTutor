@@ -16,8 +16,8 @@ surfaces:
   book:
     focus: "阅读节奏、卡点（页面重复打开或停留）、用户重点标注的主题。"
     sections: ["节奏", "卡点", "标注主题"]
-  tutorbot:
-    focus: "tutorbot 对话中反复出现的主题、不同频道的行为差异。"
+  partner:
+    focus: "伙伴对话中反复出现的主题、不同频道的行为差异。"
     sections: ["主题", "频道"]
   cowriter:
     focus: "写作风格偏好、反复修改的模式、用户起草的话题。"

@@ -83,9 +83,39 @@ export function sanitizeIframeHtml(html: string): string {
 }
 
 /**
- * Convenience: inject KaTeX, then sanitize. Suitable for a one-shot iframe
- * `srcdoc` write.
+ * Bridge injected into every widget iframe. The iframe runs in a null origin
+ * (sandbox="allow-scripts", no allow-same-origin), so it talks to the host only
+ * via postMessage:
+ *   - `window.sendPrompt(text)` → posts a follow-up question; the host prefills
+ *     it into the composer (the widget analogue of an SVG node's data-prompt).
+ *   - a ResizeObserver posts the content height so the host can grow the iframe
+ *     to fit instead of clipping at a fixed height.
+ */
+const BRIDGE_SCRIPT =
+  "<script data-dt-bridge>" +
+  "(function(){" +
+  'window.sendPrompt=function(t){try{parent.postMessage({type:"dt:visualize-prompt",text:String(t||"")},"*")}catch(e){}};' +
+  'function rh(){try{var b=document.body,h=Math.max(document.documentElement.scrollHeight,b?b.scrollHeight:0);parent.postMessage({type:"dt:visualize-height",height:h},"*")}catch(e){}}' +
+  'if(typeof ResizeObserver!=="undefined"){var ro=new ResizeObserver(rh);document.addEventListener("DOMContentLoaded",function(){ro.observe(document.documentElement);rh()})}' +
+  'document.addEventListener("DOMContentLoaded",rh);window.addEventListener("load",rh);' +
+  "})();" +
+  "<" +
+  "/script>";
+
+function injectBridge(html: string): string {
+  if (html.includes("</body>")) {
+    return html.replace("</body>", BRIDGE_SCRIPT + "\n</body>");
+  }
+  if (html.includes("</html>")) {
+    return html.replace("</html>", BRIDGE_SCRIPT + "\n</html>");
+  }
+  return html + "\n" + BRIDGE_SCRIPT;
+}
+
+/**
+ * Convenience: inject KaTeX, sanitize, then add the host bridge. Suitable for a
+ * one-shot iframe `srcdoc` write.
  */
 export function prepareIframeHtml(html: string): string {
-  return sanitizeIframeHtml(injectKaTeX(html));
+  return injectBridge(sanitizeIframeHtml(injectKaTeX(html)));
 }

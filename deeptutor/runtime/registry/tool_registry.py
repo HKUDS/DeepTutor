@@ -38,6 +38,14 @@ class ToolRegistry:
         self._tools[name] = tool
         logger.debug("Registered tool: %s", name)
 
+    def unregister(self, name: str) -> None:
+        """Remove a tool (no-op when absent). Used by MCP reloads."""
+        self._tools.pop(name, None)
+
+    def deferred_tools(self) -> list[BaseTool]:
+        """Tools flagged for progressive disclosure (see ``BaseTool.deferred``)."""
+        return [t for t in self._tools.values() if getattr(t, "deferred", False)]
+
     def load_builtins(self) -> None:
         """Instantiate and register all built-in tools."""
         for tool_type in BUILTIN_TOOL_TYPES:
@@ -60,9 +68,6 @@ class ToolRegistry:
 
         resolved_name, default_kwargs = TOOL_ALIASES.get(name, (name, {}))
         merged_kwargs = {**default_kwargs, **(kwargs or {})}
-
-        if resolved_name == "code_execution" and "query" in merged_kwargs:
-            merged_kwargs.setdefault("intent", merged_kwargs.pop("query"))
 
         return resolved_name, merged_kwargs
 
@@ -130,8 +135,15 @@ class ToolRegistry:
         """Build OpenAI function-calling tool schemas."""
         return [d.to_openai_schema() for d in self.get_definitions(names)]
 
-    async def execute(self, name: str, **kwargs: Any):
-        """Resolve aliases, execute the tool, and return its ToolResult."""
+    async def execute(self, name: str, /, **kwargs: Any):
+        """Resolve aliases, execute the tool, and return its ToolResult.
+
+        ``name`` (the tool to run) is positional-only so it never collides
+        with a tool argument that happens to also be called ``name`` — e.g.
+        ``read_skill(name=...)`` or an MCP tool whose schema declares a
+        ``name`` parameter. All callers already pass the tool name
+        positionally.
+        """
         resolved_name, resolved_kwargs = self._resolve_request(name, kwargs)
         tool = self._tools.get(resolved_name)
         if tool is None:

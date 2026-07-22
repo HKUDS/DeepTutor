@@ -13,6 +13,7 @@ from openai import AsyncOpenAI, BadRequestError
 from deeptutor.services.llm.capabilities import disable_response_format_at_runtime
 from deeptutor.services.llm.openai_http_client import openai_client_kwargs
 from deeptutor.services.llm.provider_registry import find_by_name, strip_provider_prefix
+from deeptutor.services.llm.reasoning_params import default_reasoning_effort_for
 
 from .config import get_token_limit_kwargs
 from .utils import extract_response_content
@@ -176,8 +177,11 @@ async def sdk_complete(
     token_kwargs = get_token_limit_kwargs(resolved_model, max_tokens_val)
     payload.update(token_kwargs)
 
-    if reasoning_effort:
-        payload["reasoning_effort"] = reasoning_effort
+    effective_effort = reasoning_effort or default_reasoning_effort_for(
+        provider_name, resolved_model
+    )
+    if effective_effort:
+        payload["reasoning_effort"] = effective_effort
     payload.update(kwargs)
 
     response = await _create_with_format_fallback(
@@ -244,8 +248,11 @@ async def sdk_stream(
     token_kwargs = get_token_limit_kwargs(resolved_model, max_tokens_val)
     payload.update(token_kwargs)
 
-    if reasoning_effort:
-        payload["reasoning_effort"] = reasoning_effort
+    effective_effort = reasoning_effort or default_reasoning_effort_for(
+        provider_name, resolved_model
+    )
+    if effective_effort:
+        payload["reasoning_effort"] = effective_effort
     payload.update(kwargs)
 
     stream_response = await _create_with_format_fallback(

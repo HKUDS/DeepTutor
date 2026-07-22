@@ -6,8 +6,12 @@ from pathlib import Path
 from typing import Any
 
 from deeptutor.services.path_service import get_path_service
-from deeptutor.services.rag.factory import DEFAULT_PROVIDER
-from deeptutor.services.rag.index_versioning import list_kb_versions
+from deeptutor.services.rag.factory import (
+    DEFAULT_PROVIDER,
+    KNOWN_PROVIDERS,
+    has_ready_provider_index,
+    normalize_provider_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +27,10 @@ def _default_payload() -> dict[str, Any]:
             "default_kb": None,
             "rag_provider": DEFAULT_PROVIDER,
             "search_mode": "hybrid",
+            # Per-engine default retrieval mode, set from the engine cards
+            # (e.g. {"lightrag": "hybrid", "graphrag": "local"}). A KB's own
+            # ``search_mode`` still wins; this is the fallback for that engine.
+            "provider_modes": {},
         },
         "knowledge_bases": {},
     }
@@ -62,7 +70,7 @@ class KnowledgeBaseConfigService:
 
     def _normalize_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
         defaults = payload.setdefault("defaults", _default_payload()["defaults"])
-        defaults["rag_provider"] = DEFAULT_PROVIDER
+        defaults["rag_provider"] = normalize_provider_name(defaults.get("rag_provider"))
 
         knowledge_bases = payload.setdefault("knowledge_bases", {})
         kb_base_dir = self.config_path.parent
@@ -71,21 +79,29 @@ class KnowledgeBaseConfigService:
                 continue
 
             raw_provider = config.get("rag_provider")
-            config["rag_provider"] = DEFAULT_PROVIDER
+            config["rag_provider"] = normalize_provider_name(raw_provider)
 
-            if isinstance(raw_provider, str) and raw_provider.strip().lower() not in {
-                "",
-                DEFAULT_PROVIDER,
-            }:
+            # A KB indexed with an engine that no longer exists collapses to the
+            # default and must be rebuilt.
+            if (
+                isinstance(raw_provider, str)
+                and raw_provider.strip()
+                and raw_provider.strip().lower() not in KNOWN_PROVIDERS
+            ):
                 config["needs_reindex"] = True
 
             kb_dir = kb_base_dir / kb_name
             legacy_storage = kb_dir / "rag_storage"
-            has_llamaindex_index = any(
-                bool(version.get("ready")) for version in list_kb_versions(kb_dir)
-            )
-            if legacy_storage.exists() and legacy_storage.is_dir() and not has_llamaindex_index:
+            has_llamaindex_index = has_ready_provider_index(kb_dir, DEFAULT_PROVIDER)
+            if (
+                config["rag_provider"] == DEFAULT_PROVIDER
+                and legacy_storage.exists()
+                and legacy_storage.is_dir()
+                and not has_llamaindex_index
+            ):
                 config["needs_reindex"] = True
+                if config.get("status") == "ready":
+                    config["status"] = "needs_reindex"
 
         return payload
 
@@ -120,12 +136,12 @@ class KnowledgeBaseConfigService:
         kb_config = dict(self._config.get("knowledge_bases", {}).get(kb_name, {}))
         merged = {
             "default_kb": defaults.get("default_kb"),
-            "rag_provider": DEFAULT_PROVIDER,
+            "rag_provider": defaults.get("rag_provider", DEFAULT_PROVIDER),
             "search_mode": kb_config.get("search_mode") or defaults.get("search_mode", "hybrid"),
             "needs_reindex": bool(kb_config.get("needs_reindex", False)),
             **kb_config,
         }
-        merged["rag_provider"] = DEFAULT_PROVIDER
+        merged["rag_provider"] = normalize_provider_name(merged.get("rag_provider"))
         return merged
 
     def set_kb_config(self, kb_name: str, config: dict[str, Any]) -> None:
@@ -135,16 +151,29 @@ class KnowledgeBaseConfigService:
         self._save()
 
     def get_rag_provider(self, kb_name: str) -> str:
-        return DEFAULT_PROVIDER
+        return normalize_provider_name(self.get_kb_config(kb_name).get("rag_provider"))
 
     def set_rag_provider(self, kb_name: str, provider: str) -> None:
-        self.set_kb_config(kb_name, {"rag_provider": DEFAULT_PROVIDER})
+        self.set_kb_config(kb_name, {"rag_provider": normalize_provider_name(provider)})
 
     def get_search_mode(self, kb_name: str) -> str:
         return str(self.get_kb_config(kb_name).get("search_mode", "hybrid"))
 
     def set_search_mode(self, kb_name: str, mode: str) -> None:
         self.set_kb_config(kb_name, {"search_mode": mode})
+
+    def get_provider_mode(self, provider: str) -> str:
+        """Global default retrieval mode for an engine ("" when unset)."""
+        self._refresh()
+        modes = self._config.get("defaults", {}).get("provider_modes", {})
+        return str(modes.get(provider, "")) if isinstance(modes, dict) else ""
+
+    def set_provider_mode(self, provider: str, mode: str) -> None:
+        self._refresh()
+        defaults = self._config.setdefault("defaults", _default_payload()["defaults"])
+        modes = defaults.setdefault("provider_modes", {})
+        modes[provider] = mode
+        self._save()
 
     def delete_kb_config(self, kb_name: str) -> None:
         self._refresh()
@@ -185,8 +214,8 @@ class KnowledgeBaseConfigService:
         config: dict[str, Any] = {}
         if metadata.get("rag_provider"):
             raw_provider = metadata["rag_provider"]
-            config["rag_provider"] = DEFAULT_PROVIDER
-            if str(raw_provider).strip().lower() not in {"", DEFAULT_PROVIDER}:
+            config["rag_provider"] = normalize_provider_name(raw_provider)
+            if str(raw_provider).strip().lower() not in KNOWN_PROVIDERS:
                 config["needs_reindex"] = True
         if metadata.get("search_mode"):
             config["search_mode"] = metadata["search_mode"]

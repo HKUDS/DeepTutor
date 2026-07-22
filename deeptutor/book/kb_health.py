@@ -259,7 +259,7 @@ def scan_log_health(book_id: str, storage: BookStorage | None = None) -> LogHeal
     if not log_path.exists():
         return report
 
-    counter: dict[str, int] = {}
+    counter: dict[tuple[str, str], int] = {}
     try:
         with open(log_path, encoding="utf-8") as f:
             for line in f:
@@ -277,14 +277,19 @@ def scan_log_health(book_id: str, storage: BookStorage | None = None) -> LogHeal
                     report.last_error_at = ts
                 if op == "block_error":
                     report.block_failures += 1
-                key = f"{op}:{msg[:80]}"
-                counter[key] = counter.get(key, 0) + 1
+                counter[(op, msg[:80])] = counter.get((op, msg[:80]), 0) + 1
     except OSError as exc:
         logger.warning(f"Could not read log {log_path}: {exc}")
         return report
 
+    # Only report repeated entries whose *operation* denotes a failure. Keying
+    # the failure test on the op (not the free-text message) avoids both false
+    # positives (a success whose message mentions "error"/"failure") and false
+    # negatives (a failure op whose message happens not to).
     repeated: list[dict[str, str | int]] = [
-        {"signature": k, "count": v} for k, v in counter.items() if v >= 3
+        {"signature": f"{op}:{msg}", "count": v}
+        for (op, msg), v in counter.items()
+        if v >= 3 and ("error" in op.lower() or "fail" in op.lower())
     ]
     repeated.sort(key=lambda r: r["count"] if isinstance(r["count"], int) else 0, reverse=True)
     report.repeated_failures = repeated[:10]

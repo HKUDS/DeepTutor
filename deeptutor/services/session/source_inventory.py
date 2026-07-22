@@ -117,6 +117,7 @@ async def build_inventory(
     fresh_book_references: Sequence[dict[str, Any]],
     fresh_history_session_ids: Sequence[Any],
     fresh_question_entry_ids: Sequence[Any],
+    language: str = "en",
 ) -> SourceInventory:
     """Compose the session-cumulative inventory for one chat turn.
 
@@ -143,6 +144,7 @@ async def build_inventory(
         store=store,
         history_session_ids=fresh_history_session_ids,
         current_turn_ordinal=current_turn_ordinal,
+        language=language,
     )
     await _add_fresh_questions(
         inv,
@@ -150,7 +152,13 @@ async def build_inventory(
         question_entry_ids=fresh_question_entry_ids,
         current_turn_ordinal=current_turn_ordinal,
     )
-    await _add_historical(inv, store=store, session_id=session_id, leaf_message_id=leaf_message_id)
+    await _add_historical(
+        inv,
+        store=store,
+        session_id=session_id,
+        leaf_message_id=leaf_message_id,
+        language=language,
+    )
     return inv
 
 
@@ -172,13 +180,11 @@ def render_manifest(inv: SourceInventory) -> tuple[str, dict[str, str]]:
 
     header = (
         "[Attached Sources]\n"
-        "Sources the user has attached in this conversation. Rows marked "
-        "`previously attached (turn N)` were uploaded in earlier turns and "
-        "show only their identity — call `read_source(source_id)` to load "
-        "their full text when the question warrants it. Rows with a "
-        "`preview` field were attached **this turn** and the preview is "
-        "often enough to answer without another tool call. Never invent "
-        "source ids."
+        "An index of the sources the user has attached in this conversation. "
+        "Rows with a `preview` field were attached **this turn**; rows marked "
+        "`previously attached (turn N)` were uploaded in earlier turns and show "
+        "only their identity. Their full text can be loaded on demand when a "
+        "source is relevant. Refer to sources by name; never invent source ids."
     )
     return header + "\n\n" + "\n\n".join(rendered_rows), source_index
 
@@ -300,12 +306,13 @@ async def _add_fresh_history(
     store: SessionStoreProtocol,
     history_session_ids: Sequence[Any],
     current_turn_ordinal: int,
+    language: str = "en",
 ) -> None:
     for raw in history_session_ids:
         hs_id = str(raw or "").strip()
         if not hs_id:
             continue
-        text, name = await _load_history_session(store, hs_id)
+        text, name = await _load_history_session(store, hs_id, language=language)
         if not text:
             continue
         inv.add(
@@ -359,6 +366,7 @@ async def _add_historical(
     store: SessionStoreProtocol,
     session_id: str,
     leaf_message_id: int | None,
+    language: str = "en",
 ) -> None:
     """Walk the active branch's ancestor user messages and pull in
     references they carried. Sources already in ``inv`` (i.e. fresh
@@ -369,7 +377,9 @@ async def _add_historical(
         if msg.get("role") != "user":
             continue
         user_turn_ordinal += 1
-        await _collect_from_user_message(inv, store=store, msg=msg, turn_ordinal=user_turn_ordinal)
+        await _collect_from_user_message(
+            inv, store=store, msg=msg, turn_ordinal=user_turn_ordinal, language=language
+        )
 
 
 async def _collect_from_user_message(
@@ -378,6 +388,7 @@ async def _collect_from_user_message(
     store: SessionStoreProtocol,
     msg: dict[str, Any],
     turn_ordinal: int,
+    language: str = "en",
 ) -> None:
     """Drain one prior user message into the inventory as historical
     entries. Attachments are pulled from the persisted ``attachments``
@@ -477,7 +488,7 @@ async def _collect_from_user_message(
         sid = f"hs-{hs_id}"
         if sid in inv:
             continue
-        text, name = await _load_history_session(store, hs_id)
+        text, name = await _load_history_session(store, hs_id, language=language)
         if not text:
             continue
         inv.add(
@@ -598,12 +609,174 @@ def _resolve_book_section(book_reference: dict[str, Any]) -> tuple[str, str]:
     return text, name
 
 
+# Human labels for the external agents a session can be imported from. The
+# import source is recorded at import time in ``preferences["import"]["source"]``
+# (see ``deeptutor/api/routers/imports.py``).
+_EXTERNAL_AGENT_LABELS: dict[str, str] = {
+    "claude_code": "Claude Code",
+    "codex": "Codex",
+}
+
+
+def _imported_agent_label(meta: dict[str, Any], lang: str) -> str | None:
+    """Return a human label for the external agent a session was imported from,
+    or ``None`` when the session is *not* an imported external-agent transcript.
+
+    A referenced session is "imported" when its id carries the ``imported_``
+    prefix or its preferences hold the ``import`` block written at import time.
+    A referenced *partner* session (resolved by :func:`_load_partner_session`)
+    carries ``source == "partner"`` and is framed with the partner's own name.
+    """
+    prefs = meta.get("preferences") if isinstance(meta, dict) else None
+    import_meta = prefs.get("import") if isinstance(prefs, dict) else None
+    source = str((import_meta or {}).get("source") or "").strip().lower()
+    sid = str(meta.get("session_id") or meta.get("id") or "")
+    if source == "partner":
+        name = str(meta.get("partner_name") or "").strip()
+        return name or ("伙伴" if lang == "zh" else "a partner")
+    if not source and not sid.startswith("imported_"):
+        return None
+    if source in _EXTERNAL_AGENT_LABELS:
+        return _EXTERNAL_AGENT_LABELS[source]
+    return "外部 AI 助手" if lang == "zh" else "an external AI assistant"
+
+
+def serialize_referenced_transcript(
+    meta: dict[str, Any],
+    messages: Sequence[dict[str, Any]],
+    *,
+    language: str = "en",
+) -> str:
+    """Serialize a *referenced* conversation into a clearly-framed transcript.
+
+    A referenced session is material the user attached for the assistant to
+    read and discuss — it is **not** the current conversation. Two failure
+    modes motivated this framing:
+
+    * An imported session is a transcript of the user talking to a *different*
+      AI agent. Rendered as bare ``## Assistant`` turns it reads exactly like
+      the model's own past replies, so the model adopts that agent's first
+      person voice and even claims its actions as its own.
+    * Even a referenced *native* session is a separate conversation, not the
+      current one.
+
+    The fix is structural: prepend an explicit boundary header and name the
+    other party (the external agent for imports) so the role label can never
+    be confused with the model's own ``assistant`` role. Returns ``""`` when
+    there is no content to serialize.
+    """
+    lang = "zh" if str(language or "en").lower().startswith("zh") else "en"
+    agent = _imported_agent_label(meta, lang)
+    if agent is not None:
+        assistant_label = agent
+        header = (
+            f"〔以下是用户与外部 AI 助手「{agent}」的历史对话记录，由用户附带进来供你参考和讨论。"
+            "这不是你与用户的对话——你没有参与其中，也没有执行其中的任何动作。"
+            "请把它当作第三方材料客观对待：复述时用第三人称，不要沿用其口吻，"
+            "也不要把其中助手做过的事说成是你做的。〕"
+            if lang == "zh"
+            else (
+                f"[The following is a transcript of a past conversation between the user and an "
+                f"external AI assistant ({agent}), attached by the user for your reference and "
+                "discussion. This is NOT your conversation with the user — you did not take part "
+                "in it and performed none of its actions. Treat it as third-party material: "
+                "describe it in the third person, do not adopt its voice, and never claim its "
+                "assistant's actions as your own.]"
+            )
+        )
+    else:
+        assistant_label = "Assistant"
+        header = (
+            "〔以下是另一段历史对话记录，由用户附带进来供你参考。它不是当前对话的一部分。〕"
+            if lang == "zh"
+            else (
+                "[The following is a transcript of a separate past conversation, attached by the "
+                "user for reference. It is not part of the current conversation.]"
+            )
+        )
+    user_label = "用户" if lang == "zh" else "User"
+    lines: list[str] = []
+    for message in messages:
+        content = str(message.get("content", "") or "").strip()
+        if not content:
+            continue
+        role = str(message.get("role", "")).strip().lower()
+        if role == "user":
+            label = user_label
+        elif role == "assistant":
+            label = assistant_label
+        else:
+            label = role.title() or "Message"
+        lines.append(f"## {label}\n{content}")
+    if not lines:
+        return ""
+    return header + "\n\n" + "\n\n".join(lines)
+
+
+# A referenced *partner* session: ``partner:{partner_id}:{session_key}``. The
+# session_key itself may contain ``:`` (e.g. ``web:abc``), so only the partner
+# id is split off — partner ids are colon-free slugs.
+_PARTNER_REF_PREFIX = "partner:"
+
+
+def _load_partner_session(ref: str, *, language: str = "en") -> tuple[str, str]:
+    """Resolve a ``partner:{pid}:{session_key}`` reference into transcript + title.
+
+    Partner conversations live in the admin-scoped ``PartnerSessionStore`` (one
+    JSONL per session under ``data/partners/<id>/sessions/``), not the main
+    session store — so they resolve here through the partner manager rather than
+    ``store.get_session``. Gated to admins: partner data is admin-scoped (the
+    whole partners API is admin-gated), and this read runs inside the user's
+    turn, so a non-admin must not be able to pull a partner's transcript by
+    hand-crafting a reference id. Returns ``("", "")`` on any miss.
+    """
+    rest = ref[len(_PARTNER_REF_PREFIX) :]
+    pid, _, session_key = rest.partition(":")
+    pid, session_key = pid.strip(), session_key.strip()
+    if not pid or not session_key:
+        return "", ""
+
+    from deeptutor.multi_user.context import get_current_user
+
+    if not get_current_user().is_admin:
+        return "", ""
+    try:
+        from deeptutor.services.partners import get_partner_manager
+
+        manager = get_partner_manager()
+        if not manager.partner_exists(pid):
+            return "", ""
+        messages = manager.get_history(pid, session_key=session_key, limit=400)
+        config = manager.load_config(pid)
+    except Exception:
+        logger.debug("Failed to resolve partner session %r", ref, exc_info=True)
+        return "", ""
+
+    partner_name = (getattr(config, "name", "") or pid).strip()
+    meta = {"preferences": {"import": {"source": "partner"}}, "partner_name": partner_name}
+    transcript = serialize_referenced_transcript(meta, messages, language=language)
+    if not transcript:
+        return "", ""
+    opener = next((m for m in messages if str(m.get("role")) == "user"), None)
+    first_line = str((opener or {}).get("content", "") or "").strip().splitlines()
+    title = (first_line[0][:60].strip() if first_line else "") or partner_name
+    return transcript, title
+
+
 async def _load_history_session(
-    store: SessionStoreProtocol, history_session_id: str
+    store: SessionStoreProtocol,
+    history_session_id: str,
+    *,
+    language: str = "en",
 ) -> tuple[str, str]:
     """Fetch and serialize a referenced history session into transcript +
     title. Returns ``("", "")`` when the session is empty or missing.
+
+    A ``partner:`` reference resolves through the partner store instead of the
+    main session store (see :func:`_load_partner_session`).
     """
+    if history_session_id.startswith(_PARTNER_REF_PREFIX):
+        return _load_partner_session(history_session_id, language=language)
     try:
         meta = await store.get_session(history_session_id)
     except Exception:
@@ -614,15 +787,11 @@ async def _load_history_session(
         messages_in_hs = await store.get_messages_for_context(history_session_id)
     except Exception:
         messages_in_hs = []
-    transcript_lines = [
-        f"## {str(m.get('role', '')).title()}\n{m.get('content', '')}"
-        for m in messages_in_hs
-        if str(m.get("content", "") or "").strip()
-    ]
-    if not transcript_lines:
+    transcript = serialize_referenced_transcript(meta, messages_in_hs, language=language)
+    if not transcript:
         return "", ""
     name = str(meta.get("title", "") or "Untitled session")
-    return "\n\n".join(transcript_lines), name
+    return transcript, name
 
 
 async def _load_question_entry(store: SessionStoreProtocol, entry_id: int) -> tuple[str, str]:
@@ -657,4 +826,5 @@ __all__ = [
     "SourceInventory",
     "build_inventory",
     "render_manifest",
+    "serialize_referenced_transcript",
 ]

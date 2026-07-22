@@ -14,7 +14,13 @@
  * intact and is reflected in the QuizViewer follow-up badge.
  */
 
-import { useEffect, useMemo, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
@@ -23,7 +29,8 @@ import {
   AskUserOptions,
   extractMessageSegments,
 } from "@/components/chat/home/AskUserOptions";
-import { TraceSurface } from "@/components/chat/home/TracePanels";
+import { StreamingStatus, TraceFlow } from "@/components/chat/home/TracePanels";
+import { useSmoothStreamText } from "@/hooks/useSmoothStreamText";
 import {
   type QuizFollowupTabContext,
   useFollowupThread,
@@ -50,10 +57,31 @@ export default function QuizFollowupTabBody({
   const controller = useQuizFollowupController();
   const thread = useFollowupThread(context.questionKey);
   const threadEndRef = useRef<HTMLDivElement | null>(null);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const shouldFollowRef = useRef(true);
 
-  useEffect(() => {
-    threadEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  // Pin-to-bottom autoscroll: direct ``scrollTop = scrollHeight`` in
+  // layout phase, no smooth animation. ``scrollIntoView`` with
+  // ``behavior: 'smooth'`` was the previous strategy here, but it
+  // races against the next-frame layout update during fast streams
+  // (the in-flight animation interrupts itself when a new delta
+  // lands and grows the container again), producing the visible
+  // jitter we're trying to eliminate. The pin pattern matches what
+  // ``useChatAutoScroll`` does on the main chat surface so the two
+  // surfaces feel identical mid-stream.
+  useLayoutEffect(() => {
+    if (!shouldFollowRef.current) return;
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
   }, [thread.messages, thread.isStreaming]);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    shouldFollowRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }, []);
 
   // Hydrate prior chat history when the tab opens and the notebook
   // entry has a persisted ``followup_session_id``. Skipped when the
@@ -121,8 +149,17 @@ export default function QuizFollowupTabBody({
         </div>
       </div>
 
-      {/* Scrollable body: pinned context + chat thread. */}
-      <div className="flex-1 overflow-y-auto px-4 py-3">
+      {/* Scrollable body: pinned context + chat thread.
+          ``data-chat-scroll-root`` opts this surface into the global
+          ``overflow-anchor: none`` + ``scroll-behavior: auto`` rule
+          (see app/globals.css) so the manual pin isn't fought by the
+          browser's built-in scroll anchoring. */}
+      <div
+        ref={scrollerRef}
+        onScroll={handleScroll}
+        data-chat-scroll-root="true"
+        className="flex-1 overflow-y-auto px-4 py-3"
+      >
         <div className="mx-auto flex max-w-[640px] flex-col gap-3">
           <div className="rounded-md border border-[var(--border)]/70 bg-[var(--background)]/70 px-3 py-2">
             <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
@@ -218,9 +255,9 @@ export default function QuizFollowupTabBody({
                     </div>
                   );
                 }
-                // Assistant message: render the same TraceSurface the
-                // main chat uses (reasoning blocks, tool-call cards,
-                // streaming-status row) followed by the message body. If
+                // Assistant message: render the same inline trace rows the
+                // main chat uses (TraceFlow) followed by the message body
+                // and the bottom-pinned StreamingStatus row. If
                 // the turn paused on ``ask_user``, splice the picker card
                 // into the body in stream order — text emitted before the
                 // pause sits above the card, text from the resumed
@@ -286,14 +323,15 @@ function AssistantThreadMessage({
     [message.events],
   );
   const hasInlineAskUser = segments.some((s) => s.kind === "ask_user");
+  // Smooth the trailing-text growth via the shared rAF typewriter so
+  // the markdown renderer sees a steadily-growing string instead of
+  // bursty deltas. Off when ``isStreaming`` is false — the hook
+  // short-circuits to a pure pass-through in that case.
+  const smoothedContent = useSmoothStreamText(message.content, isStreaming);
 
   return (
     <div className="flex flex-col gap-1.5">
-      <TraceSurface
-        events={message.events ?? []}
-        isStreaming={isStreaming}
-        content={message.content}
-      />
+      <TraceFlow events={message.events ?? []} isStreaming={isStreaming} />
       {hasInlineAskUser ? (
         segments.map((seg) =>
           seg.kind === "text" ? (
@@ -313,11 +351,17 @@ function AssistantThreadMessage({
             />
           ),
         )
-      ) : message.content ? (
+      ) : smoothedContent ? (
         <div className="text-[13px] leading-[1.6] text-[var(--foreground)]">
-          <MarkdownRenderer content={message.content} variant="compact" />
+          <MarkdownRenderer content={smoothedContent} variant="compact" />
         </div>
       ) : null}
+      {/* Status row pinned to the bottom of the assistant output. */}
+      <StreamingStatus
+        events={message.events ?? []}
+        isStreaming={isStreaming}
+        content={message.content}
+      />
     </div>
   );
 }

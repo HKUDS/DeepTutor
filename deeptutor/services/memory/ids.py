@@ -33,7 +33,7 @@ _SNAPSHOT_RE = re.compile(r"^[a-z][a-z0-9_-]*:[A-Za-z0-9_.:\-]+$")
 # refs need no id portion. Whitelist (not a loose regex) so a malformed
 # ref like ``not-an-id`` doesn't accidentally validate. Mirrors
 # :data:`paths.SURFACES`; if you add a surface, add it here too.
-_SHORTNAME_REFS = frozenset({"chat", "notebook", "quiz", "kb", "book", "tutorbot", "cowriter"})
+_SHORTNAME_REFS = frozenset({"chat", "notebook", "quiz", "kb", "book", "partner", "cowriter"})
 
 
 def _encode(n: int, length: int) -> str:

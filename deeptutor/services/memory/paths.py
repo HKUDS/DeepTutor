@@ -13,11 +13,36 @@ context (workspace_root) is picked up at call time, not import time.
 
 from __future__ import annotations
 
+import contextlib
+from contextvars import ContextVar
 from datetime import date
 from pathlib import Path
-from typing import Literal, get_args
+from typing import TYPE_CHECKING, Iterator, Literal, get_args
 
 from deeptutor.services.path_service import get_path_service
+
+if TYPE_CHECKING:
+    from deeptutor.services.path_service import PathService
+
+# When set, memory paths resolve through this PathService instead of the active
+# user's. A partner runtime installs the *owner's* (admin) service for the
+# duration of a turn so the chat agent's ``read_memory`` / ``write_memory``
+# tools see the owner's memory — not the partner's own (empty) scope — while
+# every *other* service (rag / skills / notebooks) stays on the partner scope.
+_memory_path_service: ContextVar[PathService | None] = ContextVar(
+    "memory_path_service", default=None
+)
+
+
+@contextlib.contextmanager
+def memory_path_service_override(service: PathService) -> Iterator[None]:
+    """Resolve memory paths through *service* within this context."""
+    token = _memory_path_service.set(service)
+    try:
+        yield
+    finally:
+        _memory_path_service.reset(token)
+
 
 Surface = Literal[
     "chat",
@@ -25,7 +50,7 @@ Surface = Literal[
     "quiz",
     "kb",
     "book",
-    "tutorbot",
+    "partner",
     "cowriter",
 ]
 L3Slot = Literal["recent", "profile", "scope", "preferences"]
@@ -35,7 +60,9 @@ L3_SLOTS: tuple[L3Slot, ...] = get_args(L3Slot)
 
 
 def memory_root() -> Path:
-    return get_path_service().get_memory_dir()
+    override = _memory_path_service.get()
+    service = override if override is not None else get_path_service()
+    return service.get_memory_dir()
 
 
 def trace_dir(surface: Surface) -> Path:

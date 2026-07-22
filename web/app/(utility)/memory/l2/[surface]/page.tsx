@@ -11,7 +11,7 @@ const SURFACES = [
   "quiz",
   "kb",
   "book",
-  "tutorbot",
+  "partner",
   "cowriter",
 ];
 

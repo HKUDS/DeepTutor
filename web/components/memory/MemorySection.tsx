@@ -41,7 +41,7 @@ type Surface =
   | "quiz"
   | "kb"
   | "book"
-  | "tutorbot"
+  | "partner"
   | "cowriter";
 
 const SURFACES: readonly Surface[] = [
@@ -50,7 +50,7 @@ const SURFACES: readonly Surface[] = [
   "quiz",
   "kb",
   "book",
-  "tutorbot",
+  "partner",
   "cowriter",
 ] as const;
 
@@ -147,7 +147,7 @@ const SURFACE_META: Record<Surface, SurfaceMeta> = {
   quiz: { icon: ClipboardList, label: "题库" },
   kb: { icon: BookOpen, label: "Knowledge base" },
   book: { icon: Library, label: "Book" },
-  tutorbot: { icon: Bot, label: "TutorBot" },
+  partner: { icon: Bot, label: "Partner" },
   cowriter: { icon: PenLine, label: "Co-writer" },
 };
 
@@ -162,7 +162,7 @@ const L3_LABELS: Record<string, string> = {
 // The id portion is intentionally permissive (notebook record_id, doc_id,
 // book_id, bot name, session_id, "session:question" composites, kb_name).
 const ENTITY_REF_RE =
-  /\b(chat|notebook|quiz|kb|book|tutorbot|cowriter):[A-Za-z0-9_.\-:]+/g;
+  /\b(chat|notebook|quiz|kb|book|partner|cowriter):[A-Za-z0-9_.\-:]+/g;
 
 function entityAnchorId(ref: string): string {
   // Anchor IDs can't contain ':' cleanly across CSS selectors — flatten
@@ -220,7 +220,7 @@ function entityDeepLinkUrl(surface: Surface, ent: Entity): string | null {
   const m = ent.metadata || {};
   switch (surface) {
     case "chat":
-      return `/chat/${encodeURIComponent(ent.id)}`;
+      return `/home/${encodeURIComponent(ent.id)}`;
     case "cowriter":
       return `/co-writer/${encodeURIComponent(ent.id)}`;
     case "notebook": {
@@ -231,8 +231,13 @@ function entityDeepLinkUrl(surface: Surface, ent: Entity): string | null {
     }
     case "book":
       return `/book?book=${encodeURIComponent(ent.id)}`;
-    case "tutorbot":
-      return `/agents/${encodeURIComponent(ent.id)}/chat`;
+    case "partner": {
+      // Partner entity.id is `partnerId:sessionKey`. Deep-link to the partner.
+      const partnerId = asString(m.partner_id) || ent.id.split(":")[0];
+      return partnerId
+        ? `/partners/${encodeURIComponent(partnerId)}`
+        : "/partners";
+    }
     case "quiz": {
       // Quiz entity.id is `session:question`. Deep-link to the session.
       const sessionId = asString(m.session_id) || ent.id.split(":")[0];

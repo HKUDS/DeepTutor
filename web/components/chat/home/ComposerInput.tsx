@@ -6,16 +6,20 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
   type RefObject,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { Bot, Check, UserRound } from "lucide-react";
 import ChatSpaceMenu, {
   type ChatSpaceSelectionCounts,
 } from "@/components/chat/space/ChatSpaceMenu";
+import { agentGlyph } from "@/components/agents/agent-icons";
 import { shouldSubmitOnEnter } from "@/lib/composer-keyboard";
 import { useAutoSizedTextarea } from "@/lib/use-auto-sized-textarea";
+import { useImeComposing } from "@/lib/use-ime-composing";
 
 interface ComposerInputProps {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
@@ -28,12 +32,41 @@ interface ComposerInputProps {
   onInputChange: (content: string) => void;
   onPaste: (e: React.ClipboardEvent) => void;
   selectedCounts: ChatSpaceSelectionCounts;
+  /**
+   * Hide the Knowledge entry in the @ menu. Knowledge now lives in the
+   * toolbar KnowledgeSelector chip, so this is currently always false —
+   * kept as a prop in case a surface wants the @ entry back.
+   */
+  knowledgeAvailable: boolean;
+  /** Hide the Persona entry (main chat: persona has its own selector). */
+  personaAvailable: boolean;
+  /**
+   * Connected subagents selectable via the ``@`` mention. When provided, ``@``
+   * opens an agent picker (the main-chat behavior) instead of the Space menu;
+   * surfaces that omit this (e.g. the quiz follow-up) keep the Space menu on @.
+   */
+  connectedAgents?: { name: string; kind?: string }[];
+  selectedAgent?: string | null;
+  onSelectAgent?: (name: string | null) => void;
+  onSelectAttach: () => void;
+  onSelectKnowledge?: () => void;
   onSelectNotebookPicker: () => void;
   onSelectBookPicker: () => void;
   onSelectHistoryPicker: () => void;
+  onSelectAgentsPicker?: () => void;
+  /** Hide the My Agents entry (e.g. the quiz follow-up surface). */
+  agentsAvailable?: boolean;
   onSelectQuestionBankPicker: () => void;
-  onSelectSkillsPicker: () => void;
+  onSelectPersonaPicker: () => void;
   onSelectMemoryPicker: () => void;
+  /**
+   * Wires the `/persona` slash command. Typing "/" (then any prefix of
+   * "persona") at the start of an empty composer pops a command hint;
+   * selecting it clears the input and invokes this callback to open the
+   * session persona selector. Omitted on surfaces without session
+   * personas (e.g. the quiz follow-up), which disables the slash popup.
+   */
+  onOpenPersonaSelector?: () => void;
   /**
    * Override the default placeholder. When unset, falls back to the
    * main chat ("How can I help you today?") / visualize defaults.
@@ -68,6 +101,28 @@ export function stripTrailingAtMention(value: string): string {
   return value.replace(/(^|\s)@[^\s]*$/, "$1").replace(/\s+$/, "");
 }
 
+/** The text typed after a trailing ``@`` (the agent-mention query), or "". */
+export function atMentionQuery(value: string, cursorPos: number): string {
+  const match = /(^|\s)@([^\s]*)$/.exec(value.slice(0, cursorPos));
+  return match ? match[2] : "";
+}
+
+/**
+ * `/persona` slash-command detection (Codex-style: command position is the
+ * very start of the input, not mid-text like @ mentions). Active while the
+ * text before the cursor is "/" plus any prefix of "persona" — `/x` or a
+ * trailing space closes the popup.
+ */
+export function shouldOpenSlashPopup(
+  value: string,
+  cursorPos: number,
+): boolean {
+  const prefix = value.slice(0, cursorPos);
+  const match = /^\/([a-z]*)$/i.exec(prefix);
+  if (!match) return false;
+  return "persona".startsWith(match[1].toLowerCase());
+}
+
 export const ComposerInput = memo(
   forwardRef<ComposerInputHandle, ComposerInputProps>(function ComposerInput(
     {
@@ -78,12 +133,22 @@ export const ComposerInput = memo(
       onInputChange,
       onPaste,
       selectedCounts,
+      knowledgeAvailable,
+      personaAvailable,
+      connectedAgents = [],
+      selectedAgent = null,
+      onSelectAgent,
+      onSelectAttach,
+      onSelectKnowledge,
       onSelectNotebookPicker,
       onSelectBookPicker,
       onSelectHistoryPicker,
+      onSelectAgentsPicker,
+      agentsAvailable = true,
       onSelectQuestionBankPicker,
-      onSelectSkillsPicker,
+      onSelectPersonaPicker,
       onSelectMemoryPicker,
+      onOpenPersonaSelector,
       placeholder,
       minHeight = 28,
     },
@@ -92,6 +157,21 @@ export const ComposerInput = memo(
     const { t } = useTranslation();
     const [input, setInput] = useState("");
     const [showAtPopup, setShowAtPopup] = useState(false);
+    const [showSlashPopup, setShowSlashPopup] = useState(false);
+    const [atQuery, setAtQuery] = useState("");
+    const slashEnabled = Boolean(onOpenPersonaSelector);
+    // Main chat passes ``onSelectAgent`` → ``@`` picks a connected agent. Other
+    // surfaces (quiz follow-up) omit it and keep the @ Space menu.
+    const agentMentionMode = Boolean(onSelectAgent);
+    const filteredAgents = useMemo(
+      () =>
+        agentMentionMode
+          ? connectedAgents.filter((agent) =>
+              agent.name.toLowerCase().includes(atQuery.toLowerCase()),
+            )
+          : [],
+      [agentMentionMode, atQuery, connectedAgents],
+    );
 
     // Latest text mirrored into a ref by the change handlers (never updated
     // during render). The @space handlers and the imperative handle read
@@ -99,7 +179,8 @@ export const ComposerInput = memo(
     // letting `memo` on ChatSpaceMenu actually skip re-renders when
     // `showAtPopup` doesn't change.
     const inputRef = useRef("");
-    const isComposingRef = useRef(false);
+    const { isComposingRef, onCompositionStart, onCompositionEnd } =
+      useImeComposing();
     // Helper that always updates state and ref together so they can't drift.
     const setInputBoth = useCallback((value: string) => {
       inputRef.current = value;
@@ -140,23 +221,37 @@ export const ComposerInput = memo(
         const cursorPos = e.target.selectionStart ?? value.length;
         setInputBoth(value);
         onInputChange(value);
-        setShowAtPopup(shouldOpenAtPopup(value, cursorPos));
+        const atOpen = shouldOpenAtPopup(value, cursorPos);
+        setShowAtPopup(atOpen);
+        setAtQuery(atOpen ? atMentionQuery(value, cursorPos) : "");
+        setShowSlashPopup(
+          slashEnabled && shouldOpenSlashPopup(value, cursorPos),
+        );
       },
-      [setInputBoth, onInputChange],
+      [setInputBoth, onInputChange, slashEnabled],
     );
 
     const handleTextareaClick = useCallback(
       (e: React.MouseEvent<HTMLTextAreaElement>) => {
         const target = e.currentTarget;
-        setShowAtPopup(
-          shouldOpenAtPopup(
-            target.value,
-            target.selectionStart ?? target.value.length,
-          ),
+        const cursorPos = target.selectionStart ?? target.value.length;
+        const atOpen = shouldOpenAtPopup(target.value, cursorPos);
+        setShowAtPopup(atOpen);
+        setAtQuery(atOpen ? atMentionQuery(target.value, cursorPos) : "");
+        setShowSlashPopup(
+          slashEnabled && shouldOpenSlashPopup(target.value, cursorPos),
         );
       },
-      [],
+      [slashEnabled],
     );
+
+    const handleSelectSlashPersona = useCallback(() => {
+      // The slash text is a command, not message content — clear it.
+      setInputBoth("");
+      onInputChange("");
+      setShowSlashPopup(false);
+      onOpenPersonaSelector?.();
+    }, [setInputBoth, onInputChange, onOpenPersonaSelector]);
 
     const doSend = useCallback(() => {
       const content = inputRef.current.trim();
@@ -168,31 +263,8 @@ export const ComposerInput = memo(
       setInputBoth("");
       onInputChange("");
       setShowAtPopup(false);
+      setShowSlashPopup(false);
     }, [canSendEmpty, onSend, setInputBoth, onInputChange]);
-
-    const handleKeyDown = useCallback(
-      (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (shouldSubmitOnEnter(e, isComposingRef.current)) {
-          e.preventDefault();
-          doSend();
-        } else if (e.key === "Escape") {
-          setShowAtPopup(false);
-        }
-      },
-      [doSend],
-    );
-
-    const handleCompositionStart = useCallback(() => {
-      isComposingRef.current = true;
-    }, []);
-
-    const handleCompositionEnd = useCallback(() => {
-      // Some IMEs fire compositionend before the Enter keydown that confirms
-      // a candidate, so keep the guard through the current event turn.
-      setTimeout(() => {
-        isComposingRef.current = false;
-      }, 0);
-    }, []);
 
     const clearTrailingMention = useCallback(() => {
       const next = stripTrailingAtMention(inputRef.current);
@@ -200,57 +272,181 @@ export const ComposerInput = memo(
       onInputChange(next);
     }, [setInputBoth, onInputChange]);
 
+    const handleSelectAgentMention = useCallback(
+      (name: string) => {
+        clearTrailingMention();
+        setShowAtPopup(false);
+        setAtQuery("");
+        onSelectAgent?.(name);
+      },
+      [clearTrailingMention, onSelectAgent],
+    );
+
+    const handleKeyDown = useCallback(
+      (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        // With the slash popup open, Enter/Tab confirm the command instead
+        // of submitting "/persona" as a message.
+        if (
+          showSlashPopup &&
+          !isComposingRef.current &&
+          (e.key === "Enter" || e.key === "Tab")
+        ) {
+          e.preventDefault();
+          handleSelectSlashPersona();
+          return;
+        }
+        // With the agent-mention popup open, Enter/Tab confirm the first match.
+        if (
+          showAtPopup &&
+          agentMentionMode &&
+          filteredAgents.length > 0 &&
+          !isComposingRef.current &&
+          (e.key === "Enter" || e.key === "Tab")
+        ) {
+          e.preventDefault();
+          handleSelectAgentMention(filteredAgents[0].name);
+          return;
+        }
+        if (shouldSubmitOnEnter(e, isComposingRef.current)) {
+          e.preventDefault();
+          doSend();
+        } else if (e.key === "Escape") {
+          setShowAtPopup(false);
+          setShowSlashPopup(false);
+        }
+      },
+      [
+        doSend,
+        showSlashPopup,
+        handleSelectSlashPersona,
+        showAtPopup,
+        agentMentionMode,
+        filteredAgents,
+        handleSelectAgentMention,
+        isComposingRef,
+      ],
+    );
+
     const handleSelectSpaceItem = useCallback(
       (
         key:
+          | "attach"
+          | "knowledge"
           | "chat_history"
+          | "my_agents"
           | "books"
           | "notebooks"
           | "question_bank"
-          | "skills"
+          | "persona"
           | "memory",
       ) => {
         clearTrailingMention();
         setShowAtPopup(false);
-        if (key === "chat_history") onSelectHistoryPicker();
+        if (key === "attach") onSelectAttach();
+        else if (key === "knowledge") onSelectKnowledge?.();
+        else if (key === "chat_history") onSelectHistoryPicker();
+        else if (key === "my_agents") onSelectAgentsPicker?.();
         else if (key === "books") onSelectBookPicker();
         else if (key === "notebooks") onSelectNotebookPicker();
         else if (key === "question_bank") onSelectQuestionBankPicker();
-        else if (key === "skills") onSelectSkillsPicker();
+        else if (key === "persona") onSelectPersonaPicker();
         else if (key === "memory") onSelectMemoryPicker();
       },
       [
         clearTrailingMention,
+        onSelectAttach,
+        onSelectKnowledge,
         onSelectHistoryPicker,
+        onSelectAgentsPicker,
         onSelectBookPicker,
         onSelectNotebookPicker,
         onSelectQuestionBankPicker,
-        onSelectSkillsPicker,
+        onSelectPersonaPicker,
         onSelectMemoryPicker,
       ],
     );
 
-    // Close the @-popup on outside click. Without this, clicking anywhere
-    // outside the popup or textarea left the menu hovering indefinitely.
-    // We bind on mousedown so the close fires before a synthetic click on
-    // a sibling button (e.g. the Tools menu) can re-open something else.
+    // Close the @/slash popups on outside click. Without this, clicking
+    // anywhere outside the popup or textarea left the menu hovering
+    // indefinitely. We bind on mousedown so the close fires before a
+    // synthetic click on a sibling button (e.g. the Tools menu) can
+    // re-open something else.
     const popupRef = useRef<HTMLDivElement>(null);
+    const slashPopupRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
-      if (!showAtPopup) return;
+      if (!showAtPopup && !showSlashPopup) return;
       const handler = (e: MouseEvent) => {
         const target = e.target as Node | null;
         if (!target) return;
         if (popupRef.current?.contains(target)) return;
+        if (slashPopupRef.current?.contains(target)) return;
         if (textareaRef.current?.contains(target)) return;
         setShowAtPopup(false);
+        setShowSlashPopup(false);
       };
       document.addEventListener("mousedown", handler);
       return () => document.removeEventListener("mousedown", handler);
-    }, [showAtPopup, textareaRef]);
+    }, [showAtPopup, showSlashPopup, textareaRef]);
 
     return (
       <div className="px-4 pt-3.5 pb-2">
-        {showAtPopup && (
+        {showAtPopup && agentMentionMode && (
+          <div
+            ref={popupRef}
+            className="absolute bottom-full left-0 z-[70] mb-2"
+          >
+            <div
+              role="listbox"
+              aria-label={t("Talk to an agent")}
+              className="w-[300px] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
+            >
+              <div className="px-3 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.05em] text-[var(--muted-foreground)]">
+                {t("Talk to an agent")}
+              </div>
+              {filteredAgents.length === 0 ? (
+                <div className="px-3 py-2 text-[12px] text-[var(--muted-foreground)]">
+                  {connectedAgents.length === 0
+                    ? t("No connected agents — connect one in My Agents.")
+                    : t("No matching agent")}
+                </div>
+              ) : (
+                <div className="max-h-[260px] overflow-y-auto">
+                  {filteredAgents.map((agent) => {
+                    const Glyph = agentGlyph(agent.kind) ?? Bot;
+                    const active = selectedAgent === agent.name;
+                    return (
+                      <button
+                        key={agent.name}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        onClick={() => handleSelectAgentMention(agent.name)}
+                        className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
+                          active
+                            ? "bg-[var(--primary)]/[0.06]"
+                            : "hover:bg-[var(--muted)]/45"
+                        }`}
+                      >
+                        <Glyph size={15} className="shrink-0" />
+                        <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--foreground)]">
+                          {agent.name}
+                        </span>
+                        {active && (
+                          <Check
+                            size={14}
+                            strokeWidth={2}
+                            className="shrink-0 text-[var(--primary)]"
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        {showAtPopup && !agentMentionMode && (
           <div
             ref={popupRef}
             className="absolute bottom-full left-0 z-[70] mb-2"
@@ -258,8 +454,45 @@ export const ComposerInput = memo(
             <ChatSpaceMenu
               variant="mention"
               selectedCounts={selectedCounts}
+              knowledgeAvailable={knowledgeAvailable}
+              personaAvailable={personaAvailable}
+              agentsAvailable={agentsAvailable}
               onSelectItem={handleSelectSpaceItem}
             />
+          </div>
+        )}
+        {showSlashPopup && (
+          <div
+            ref={slashPopupRef}
+            className="absolute bottom-full left-0 z-[70] mb-2"
+          >
+            <div
+              role="listbox"
+              aria-label={t("Commands")}
+              className="w-[300px] rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1.5 shadow-lg backdrop-blur-md"
+            >
+              <button
+                type="button"
+                role="option"
+                aria-selected
+                onClick={handleSelectSlashPersona}
+                className="flex w-full items-center gap-2.5 bg-[var(--muted)]/60 px-3 py-2 text-left text-[12.5px] transition-colors"
+              >
+                <UserRound
+                  size={14}
+                  strokeWidth={1.7}
+                  className="shrink-0 text-[var(--muted-foreground)]"
+                />
+                {/* Command syntax token — must not be localized. */}
+                {/* eslint-disable-next-line i18n/no-literal-ui-text */}
+                <span className="font-medium text-[var(--foreground)]">
+                  /persona
+                </span>
+                <span className="min-w-0 truncate text-[var(--muted-foreground)]">
+                  {t("Switch the persona for this chat session")}
+                </span>
+              </button>
+            </div>
           </div>
         )}
         <textarea
@@ -267,8 +500,8 @@ export const ComposerInput = memo(
           value={input}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
-          onCompositionStart={handleCompositionStart}
-          onCompositionEnd={handleCompositionEnd}
+          onCompositionStart={onCompositionStart}
+          onCompositionEnd={onCompositionEnd}
           onClick={handleTextareaClick}
           onPaste={onPaste}
           rows={1}
@@ -287,7 +520,7 @@ export const ComposerInput = memo(
                 )
               : t("How can I help you today?"))
           }
-          className="w-full resize-none overflow-hidden bg-transparent text-[15px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
+          className="w-full resize-none overflow-hidden bg-transparent text-[16px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
           style={{ transition: "height 0.15s ease-out" }}
         />
       </div>

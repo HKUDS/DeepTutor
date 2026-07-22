@@ -1,8 +1,10 @@
 "use client";
 
 import { Loader2, Rocket, Save, Wand2 } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { useTranslation } from "react-i18next";
 
+import { storagePathFor } from "@/lib/settings-nav";
 import { useSettings } from "./SettingsContext";
 
 // Sticky toolbar above the sub-page content. Save Draft / Apply only show
@@ -10,6 +12,8 @@ import { useSettings } from "./SettingsContext";
 // majority of sessions that just visit Appearance.
 export function SettingsToolbar() {
   const { t } = useTranslation();
+  const pathname = usePathname() ?? "";
+  const storagePath = storagePathFor(pathname);
   const {
     catalogEditable,
     hasUnsavedChanges,
@@ -35,7 +39,7 @@ export function SettingsToolbar() {
   return (
     <div className="flex items-center justify-between gap-3 px-1 py-2">
       <p
-        className={`text-[12px] ${
+        className={`min-w-0 truncate text-[12px] ${
           toast
             ? "text-[var(--primary)] animate-fade-in"
             : hasUnsavedChanges
@@ -43,11 +47,20 @@ export function SettingsToolbar() {
               : "text-[var(--muted-foreground)]"
         }`}
       >
-        {toast
-          ? toast
-          : hasUnsavedChanges
-            ? t("Draft has unsaved changes")
-            : t("All changes saved")}
+        {toast ? (
+          toast
+        ) : hasUnsavedChanges ? (
+          t("Draft has unsaved changes")
+        ) : storagePath ? (
+          <>
+            {t("Saved to")}{" "}
+            <span className="font-mono text-[var(--foreground)]/65">
+              {storagePath}
+            </span>
+          </>
+        ) : (
+          t("All changes saved")
+        )}
       </p>
       <div className="flex items-center gap-2">
         <button

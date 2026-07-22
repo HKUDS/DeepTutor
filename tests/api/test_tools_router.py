@@ -43,8 +43,10 @@ async def test_list_builtin_tools_marks_toggleable_set(
         "brainstorm",
         "web_search",
         "paper_search",
-        "code_execution",
         "reason",
+        "geogebra_analysis",
+        "imagegen",
+        "videogen",
     }
 
     # Locked-on (non-toggleable, non-coming-soon) tools always report
@@ -57,6 +59,27 @@ async def test_list_builtin_tools_marks_toggleable_set(
     assert set(response.enabled_optional_tools) == set(USER_TOGGLEABLE_TOOL_NAMES)
     for name in USER_TOGGLEABLE_TOOL_NAMES:
         assert by_name[name].enabled is True
+
+
+@pytest.mark.asyncio
+async def test_list_builtin_tools_marks_capability_owned_tools(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Capability-owned tools (solve_*, mastery_*) report their owning
+    capability so the /settings/tools UI groups them below the built-ins;
+    plain system built-ins report ``capability=None``."""
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+
+    response = await tools_router.list_builtin_tools()
+    by_name = {tool.name: tool for tool in response.tools}
+
+    assert by_name["solve_plan"].capability == "solve"
+    assert by_name["mastery_status"].capability == "mastery"
+    assert by_name["web_fetch"].capability is None
+    # Capability tools stay locked-on (not user-toggleable).
+    assert by_name["solve_plan"].toggleable is False
+    assert by_name["solve_plan"].enabled is True
 
 
 @pytest.mark.asyncio
@@ -78,8 +101,9 @@ async def test_list_builtin_tools_reflects_user_toggle(
     assert by_name["web_search"].enabled is True
     assert by_name["reason"].enabled is True
     assert by_name["brainstorm"].enabled is False
-    assert by_name["code_execution"].enabled is False
     assert by_name["paper_search"].enabled is False
-    # Locked-on tools stay on regardless.
+    # Locked-on tools stay on regardless (code_execution is now auto-mounted,
+    # gated by sandbox availability rather than a user toggle).
+    assert by_name["code_execution"].enabled is True
     assert by_name["rag"].enabled is True
     assert by_name["web_fetch"].enabled is True

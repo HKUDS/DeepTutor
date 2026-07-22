@@ -45,6 +45,7 @@ notices:
   tool_unknown_error: "Error executing {tool}."
   too_many_tool_calls: "Requested {requested} tool calls; capped at {limit}."
   max_iterations_reached: "Reached the iteration ceiling for this block; forcing FINISH."
+  partial_results: "{failed} of {total} research subtopics could not be completed; the report is based on the remaining evidence."
   rephrase_cap_reached: "ask_user limit reached ({max_rounds} rounds). Emit FINISH now with the best refined topic you can produce from prior answers."
   rephrase_only_ask_user: "Inside rephrase you may only call `ask_user`; `{tool}` is ignored."
   append_rejected_empty: "APPEND rejected: provide a title on the first line after the label."
@@ -96,7 +97,7 @@ rephrase:
     Hard rules:
     - You may call ``ask_user`` at most {max_rounds} times.
     - Each ``ask_user`` call carries at most {max_questions_per_round} questions.
-    - Each question should offer 3-5 suggested options as quick-pick chips.
+    - Each question should offer 2-4 distinct quick-pick options: keep each label short (1-5 words), put what picking it implies in its ``description``, and if you recommend one, place it first with " (Recommended)" appended to its label.
     - If the user's original topic is already clear, FINISH immediately without asking anything. Do not invent ambiguity to justify questions.
     - If the user skips a question (``(skipped)``), respect their preference and either ask follow-ups in a later round or FINISH.
     - Do not paste the user's original topic verbatim into FINISH — restate it as a sharper, more specific research target.

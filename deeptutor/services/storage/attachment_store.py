@@ -35,9 +35,9 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 from urllib.parse import quote
 
+from deeptutor.partners.helpers import safe_filename
 from deeptutor.services.config import load_system_settings
 from deeptutor.services.path_service import get_path_service
-from deeptutor.tutorbot.utils.helpers import safe_filename
 
 logger = logging.getLogger(__name__)
 

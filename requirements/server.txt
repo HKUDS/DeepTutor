@@ -27,3 +27,5 @@ pocketbase>=0.12.0
 # --- LLM provider runtime (unconditionally imported by provider_core) ---
 loguru>=0.7.3,<1.0.0
 json-repair>=0.57.0,<1.0.0
+# Built-in cron service (chat & partner scheduled tasks)
+croniter>=6.0.0,<7.0.0

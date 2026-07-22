@@ -380,6 +380,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_api_base="http://localhost:8080/v1",
     ),
     ProviderSpec(
+        name="lemonade",
+        keywords=("lemonade",),
+        env_key="LEMONADE_API_KEY",
+        display_name="Lemonade",
+        backend="openai_compat",
+        is_local=True,
+        detect_by_base_keyword="13305",
+        default_api_base="http://localhost:13305/api/v1",
+    ),
+    ProviderSpec(
         name="ovms",
         keywords=("openvino", "ovms"),
         env_key="",

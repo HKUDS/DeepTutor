@@ -5,6 +5,7 @@ import {
   BookOpen,
   Clock3,
   FileText,
+  GraduationCap,
   Layers,
   Library,
   Loader2,
@@ -137,6 +138,7 @@ export interface BookLibraryProps {
   onNewBook: () => void;
   onSelectBook: (id: string) => void;
   onDeleteBook: (id: string) => void;
+  onLearn?: (book: Book) => void;
 }
 
 export default function BookLibrary({
@@ -145,6 +147,7 @@ export default function BookLibrary({
   onNewBook,
   onSelectBook,
   onDeleteBook,
+  onLearn,
 }: BookLibraryProps) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
@@ -416,6 +419,19 @@ export default function BookLibrary({
                         {relativeTime(book.updated_at, t) || "—"}
                       </span>
                     </div>
+                    {onLearn && book.status === "ready" && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onLearn(book);
+                        }}
+                        className="mt-2 inline-flex items-center gap-1 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
+                      >
+                        <GraduationCap size={13} />
+                        {t("Start learning")}
+                      </button>
+                    )}
                   </div>
                 </div>
               );

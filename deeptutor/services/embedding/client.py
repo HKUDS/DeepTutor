@@ -88,16 +88,6 @@ class EmbeddingClient:
         total_batches = (len(texts) + batch_size - 1) // batch_size
         for i, start in enumerate(range(0, len(texts), batch_size)):
             batch = texts[start : start + batch_size]
-            # Truncate oversized chunks to prevent embedding API rejection (413)
-            MAX_CHUNK_CHARS = 2000
-            for t in batch:
-                if len(t) > MAX_CHUNK_CHARS:
-                    self.logger.warning(
-                        "Truncating oversized chunk from %d to %d chars",
-                        len(t), MAX_CHUNK_CHARS,
-                    )
-                    break
-            batch = [t[:MAX_CHUNK_CHARS] if len(t) > MAX_CHUNK_CHARS else t for t in batch]
             request = EmbeddingRequest(
                 texts=batch,
                 model=self.config.model,

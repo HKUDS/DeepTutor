@@ -22,7 +22,11 @@ Usage:
 
 from .base_session_manager import BaseSessionManager
 from .protocol import SessionStoreProtocol
-from .sqlite_store import SQLiteSessionStore, get_sqlite_session_store
+from .sqlite_store import (
+    SQLiteSessionStore,
+    get_sqlite_session_store,
+    make_imported_session_id,
+)
 from .turn_runtime import TurnRuntimeManager, get_turn_runtime_manager
 
 
@@ -51,4 +55,5 @@ __all__ = [
     "get_session_store",
     "get_sqlite_session_store",
     "get_turn_runtime_manager",
+    "make_imported_session_id",
 ]

@@ -40,9 +40,9 @@ class TestGetChatParams:
         monkeypatch.setattr(loader_module, "PROJECT_ROOT", project_root)
         params = get_chat_params()
         assert params["temperature"] == DEFAULT_CHAT_PARAMS["temperature"]
-        assert params["max_iterations"] == 20
+        assert params["max_rounds"] == DEFAULT_CHAT_PARAMS["max_rounds"]
+        assert params["exploring"]["max_tokens"] == 1600
         assert params["responding"]["max_tokens"] == 8000
-        assert params["answer_now"]["max_tokens"] == 8000
 
     def test_overrides_specific_stage_only(self, tmp_path: Path, monkeypatch):
         project_root = _write_agents_yaml(
@@ -58,9 +58,8 @@ class TestGetChatParams:
         monkeypatch.setattr(loader_module, "PROJECT_ROOT", project_root)
         params = get_chat_params()
         assert params["responding"]["max_tokens"] == 12000
-        assert params["answer_now"]["max_tokens"] == 8000
         assert params["temperature"] == 0.2
-        assert params["max_iterations"] == 20
+        assert params["exploring"]["max_tokens"] == 1600
 
     def test_overrides_temperature(self, tmp_path: Path, monkeypatch):
         project_root = _write_agents_yaml(
@@ -72,19 +71,6 @@ class TestGetChatParams:
         monkeypatch.setattr(loader_module, "PROJECT_ROOT", project_root)
         params = get_chat_params()
         assert params["temperature"] == 0.7
-        assert params["max_iterations"] == 20
-        assert params["responding"]["max_tokens"] == 8000
-
-    def test_overrides_max_iterations(self, tmp_path: Path, monkeypatch):
-        project_root = _write_agents_yaml(
-            tmp_path,
-            {
-                "capabilities": {"chat": {"max_iterations": 12}},
-            },
-        )
-        monkeypatch.setattr(loader_module, "PROJECT_ROOT", project_root)
-        params = get_chat_params()
-        assert params["max_iterations"] == 12
         assert params["responding"]["max_tokens"] == 8000
 
     def test_full_chat_block_round_trip(self, tmp_path: Path, monkeypatch):
@@ -94,9 +80,9 @@ class TestGetChatParams:
                 "capabilities": {
                     "chat": {
                         "temperature": 0.4,
-                        "max_iterations": 16,
+                        "max_rounds": 12,
+                        "exploring": {"max_tokens": 2400},
                         "responding": {"max_tokens": 16000},
-                        "answer_now": {"max_tokens": 16000},
                     },
                 },
             },
@@ -104,17 +90,51 @@ class TestGetChatParams:
         monkeypatch.setattr(loader_module, "PROJECT_ROOT", project_root)
         params = get_chat_params()
         assert params["temperature"] == 0.4
-        assert params["max_iterations"] == 16
+        assert params["max_rounds"] == 12
+        assert params["exploring"]["max_tokens"] == 2400
         assert params["responding"]["max_tokens"] == 16000
-        assert params["answer_now"]["max_tokens"] == 16000
 
-    def test_unknown_stage_keys_passthrough_without_crashing(self, tmp_path: Path, monkeypatch):
+    def test_legacy_targeting_era_keys_filtered(self, tmp_path: Path, monkeypatch):
+        """agents.yaml written by the targeting-era schema must not leak
+        stale knobs into the merged params (they are no longer read)."""
+        project_root = _write_agents_yaml(
+            tmp_path,
+            {
+                "capabilities": {
+                    "chat": {
+                        "max_iterations": 16,
+                        "max_explore_rounds": 3,
+                        "max_act_rounds": 7,
+                        "max_tool_steps": 6,
+                        "targeting": {"max_tokens": 128},
+                        "explore": {"max_tokens": 2000},
+                        "act": {"max_tokens": 3000},
+                        "responding": {"max_tokens": 9000},
+                    },
+                },
+            },
+        )
+        monkeypatch.setattr(loader_module, "PROJECT_ROOT", project_root)
+        params = get_chat_params()
+        assert params["responding"]["max_tokens"] == 9000
+        for stale in (
+            "max_iterations",
+            "max_explore_rounds",
+            "max_act_rounds",
+            "max_tool_steps",
+            "targeting",
+            "explore",
+            "act",
+        ):
+            assert stale not in params
+
+    def test_unknown_stage_keys_ignored_without_crashing(self, tmp_path: Path, monkeypatch):
         """Forward-compat: extra keys in agents.yaml shouldn't break loading.
 
-        The chat pipeline only reads ``responding`` and ``answer_now``; any
-        other stage-shaped keys a user might have lying around from older
-        templates (e.g. ``thinking``, ``observing``, ``acting``,
-        ``react_fallback``) are simply ignored, not rejected.
+        The chat pipeline reads ``exploring`` / ``responding``. Other
+        stage-shaped keys a user might have lying around from older
+        templates (e.g. ``answer_now``, ``thinking``) are tolerated,
+        not rejected.
         """
         project_root = _write_agents_yaml(
             tmp_path,
@@ -122,6 +142,7 @@ class TestGetChatParams:
                 "capabilities": {
                     "chat": {
                         "responding": {"max_tokens": 9000},
+                        "answer_now": {"max_tokens": 3000},
                         "thinking": {"max_tokens": 3000},
                         "acting": {"max_tokens": 3000},
                     },
@@ -131,12 +152,11 @@ class TestGetChatParams:
         monkeypatch.setattr(loader_module, "PROJECT_ROOT", project_root)
         params = get_chat_params()
         assert params["responding"]["max_tokens"] == 9000
-        assert params["answer_now"]["max_tokens"] == 8000
+        assert "answer_now" not in params
 
 
 class TestReadIntHelper:
-    """Verify ``_read_int`` gracefully resolves the two chat token budgets
-    the single-loop pipeline uses (``responding`` and ``answer_now``)."""
+    """Verify ``_read_int`` gracefully resolves nested chat token budgets."""
 
     def test_empty_dict_falls_back_to_default(self):
         from deeptutor.agents.chat.agentic_pipeline import _read_int

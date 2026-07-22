@@ -1,8 +1,12 @@
 """Exam-paper → QuizTemplate adapter for mimic mode.
 
-Wraps the (sync, IO-heavy) MinerU PDF parser + the rule-based question
-extractor so the capability layer can hand mimic templates to
-:class:`QuestionPipeline` via its ``templates_override`` entry.
+Wraps the (sync, IO-heavy) MinerU parsing backend (local CLI or cloud API,
+selected via ``document_parsing.json``) + the LLM question extractor so the capability
+layer can hand mimic templates to :class:`QuestionPipeline` via its
+``templates_override`` entry. Each extracted question carries its own
+``question_type`` and ``difficulty`` (classified by the extractor), so mimic
+templates preserve the source paper's format mix instead of defaulting every
+item to a written question.
 
 This module is intentionally narrow: it ONLY converts a PDF (or a
 previously-parsed working directory) into a list of
@@ -13,12 +17,17 @@ and result emission all stay in the pipeline / capability layers.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 import json
 import logging
 from pathlib import Path
 
-from deeptutor.agents.question.pipeline import QuizTemplate
-from deeptutor.tools.question.pdf_parser import parse_pdf_with_mineru
+from deeptutor.agents.question.pipeline import (
+    _VALID_DIFFICULTIES,
+    _VALID_QUESTION_TYPES,
+    QuizTemplate,
+)
+from deeptutor.services.parsing import get_parse_service
 from deeptutor.tools.question.question_extractor import extract_questions_from_paper
 
 logger = logging.getLogger(__name__)
@@ -29,26 +38,46 @@ _DEFAULT_QUESTION_TYPE = "written"
 _TOPIC_CLIP_CHARS = 240
 
 
+def _coerce_question_type(raw: object) -> str:
+    """Map the extractor's per-question type onto the canonical taxonomy.
+
+    The classification authority lives here (agents layer) rather than in the
+    tools-layer extractor, which only emits a best-effort string. Anything
+    outside the canonical set degrades to ``written`` (a free-text answer),
+    the safest catch-all for an unrecognized format."""
+    value = str(raw or "").strip().lower()
+    return value if value in _VALID_QUESTION_TYPES else _DEFAULT_QUESTION_TYPE
+
+
+def _coerce_difficulty(raw: object) -> str:
+    """Validate the extractor's per-question difficulty; default ``medium``."""
+    value = str(raw or "").strip().lower()
+    return value if value in _VALID_DIFFICULTIES else _DEFAULT_DIFFICULTY
+
+
 async def parse_exam_paper_to_templates(
     paper_path: str | Path,
     *,
     max_questions: int,
     paper_mode: str,
     output_dir: str | Path,
+    progress_callback: Callable[[str], None] | None = None,
 ) -> tuple[list[QuizTemplate], dict[str, str]]:
     """Resolve an exam paper into a list of mimic-mode ``QuizTemplate``\\ s.
 
     ``paper_mode``:
 
-    * ``"upload"``  — ``paper_path`` is a freshly-uploaded PDF; MinerU
-      parses it under ``output_dir`` and we pick the newest subdir.
+    * ``"upload"``  — ``paper_path`` is a freshly-uploaded PDF; the active
+      MinerU backend (local CLI or cloud API) parses it under ``output_dir``.
     * ``"parsed"``  — ``paper_path`` is a previously-parsed working dir
       (already contains the MinerU output); skip the parse step.
 
     Returns ``(templates, trace)``. ``trace`` carries paths + counts for
-    inclusion in the final ``stream.result`` envelope. Raises
-    ``RuntimeError`` when parsing or extraction fails — the caller emits
-    a user-facing error.
+    inclusion in the final ``stream.result`` envelope. ``progress_callback``
+    is a plain sync callable invoked from the parser worker thread with live
+    parsing progress lines (upload mode only — the parsed path has nothing to
+    report). Raises :class:`MinerUError` (a ``RuntimeError``) when parsing or
+    extraction fails — the caller emits a user-facing error.
     """
     return await asyncio.to_thread(
         _parse_sync,
@@ -56,6 +85,7 @@ async def parse_exam_paper_to_templates(
         int(max_questions),
         str(paper_mode),
         Path(output_dir),
+        progress_callback,
     )
 
 
@@ -64,30 +94,33 @@ def _parse_sync(
     max_questions: int,
     paper_mode: str,
     output_base: Path,
+    progress_callback: Callable[[str], None] | None = None,
 ) -> tuple[list[QuizTemplate], dict[str, str]]:
     output_base.mkdir(parents=True, exist_ok=True)
 
     if paper_mode == "parsed":
+        # Caller already has a parsed directory; skip the parse step. Its own
+        # dir doubles as the questions-output dir (legacy behavior).
         working_dir = paper_path
+        questions_dir = working_dir
     else:
-        ok = parse_pdf_with_mineru(str(paper_path), str(output_base))
-        if not ok:
-            raise RuntimeError("Failed to parse exam paper with MinerU")
-        subdirs = sorted(
-            [d for d in output_base.iterdir() if d.is_dir()],
-            key=lambda d: d.stat().st_mtime,
-            reverse=True,
-        )
-        if not subdirs:
-            raise RuntimeError("No parsed exam directory found after MinerU parsing")
-        working_dir = subdirs[0]
+        # Shared parse layer: cached + engine-pluggable (the active engine is
+        # selected in Settings → Document Parsing). Returns the cache dir with
+        # the parsed artifacts; the questions JSON goes to the session output
+        # dir so it never pollutes the shared parse cache.
+        doc = get_parse_service().parse(paper_path, on_output=progress_callback)
+        working_dir = doc.workdir or paper_path
+        questions_dir = output_base
 
-    json_files = list(working_dir.glob("*_questions.json"))
+    json_files = list(questions_dir.glob("*_questions.json"))
     if not json_files:
-        ok = extract_questions_from_paper(str(working_dir), output_dir=None)
+        ok = extract_questions_from_paper(
+            str(working_dir),
+            output_dir=None if questions_dir == working_dir else str(questions_dir),
+        )
         if not ok:
             raise RuntimeError("Failed to extract questions from parsed exam")
-        json_files = list(working_dir.glob("*_questions.json"))
+        json_files = list(questions_dir.glob("*_questions.json"))
     if not json_files:
         raise RuntimeError("Question extraction output not found")
 
@@ -108,8 +141,8 @@ def _parse_sync(
             QuizTemplate(
                 question_id=f"q_{idx}",
                 topic=q_text[:_TOPIC_CLIP_CHARS],
-                question_type=str(item.get("question_type") or _DEFAULT_QUESTION_TYPE).lower(),
-                difficulty=_DEFAULT_DIFFICULTY,
+                question_type=_coerce_question_type(item.get("question_type")),
+                difficulty=_coerce_difficulty(item.get("difficulty")),
                 source="mimic",
                 reference_question=q_text,
                 reference_answer=str(item.get("answer") or "").strip() or None,

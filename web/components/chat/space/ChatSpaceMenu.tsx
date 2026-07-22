@@ -1,39 +1,67 @@
 "use client";
 
-import { memo, useEffect, useRef, useState } from "react";
-import { BookOpen } from "lucide-react";
+import { Fragment, memo, useEffect, useRef, useState } from "react";
+import {
+  BookOpen,
+  Bot,
+  ChevronRight,
+  Database,
+  Paperclip,
+  UserRound,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { SPACE_ITEMS } from "@/lib/space-items";
+import { setPickerOrigin } from "@/lib/picker-origin";
 
 type SelectableSpaceKey =
+  | "attach"
+  | "knowledge"
   | "chat_history"
+  | "my_agents"
   | "books"
   | "notebooks"
   | "question_bank"
-  | "skills"
+  | "persona"
   | "memory";
 
 export interface ChatSpaceSelectionCounts {
+  attachments: number;
+  knowledge: number;
   chatHistory: number;
+  myAgents: number;
   books: number;
   notebooks: number;
   questionBank: number;
-  skills: number;
+  persona: number;
   memory: number;
 }
 
 interface ChatSpaceMenuProps {
   variant: "toolbar" | "mention";
   selectedCounts: ChatSpaceSelectionCounts;
+  /** Hide the Knowledge entry when no knowledge bases are configured. */
+  knowledgeAvailable?: boolean;
+  /**
+   * Hide the Persona entry. The main chat sets this to false — its
+   * persona lives in the standalone toolbar selector (and `/persona`),
+   * not in this menu. The quiz follow-up keeps the entry: this menu is
+   * its only persona entry point.
+   */
+  personaAvailable?: boolean;
+  /** Hide the My Agents entry (e.g. the quiz follow-up surface). */
+  agentsAvailable?: boolean;
   onSelectItem: (key: SelectableSpaceKey) => void;
 }
 
 const ITEM_ORDER: SelectableSpaceKey[] = [
+  "attach",
+  "knowledge",
   "chat_history",
+  "my_agents",
   "books",
   "notebooks",
   "question_bank",
-  "skills",
+  "persona",
   "memory",
 ];
 
@@ -42,16 +70,22 @@ function countFor(
   counts: ChatSpaceSelectionCounts,
 ): number {
   switch (key) {
+    case "attach":
+      return counts.attachments;
+    case "knowledge":
+      return counts.knowledge;
     case "chat_history":
       return counts.chatHistory;
+    case "my_agents":
+      return counts.myAgents;
     case "books":
       return counts.books;
     case "notebooks":
       return counts.notebooks;
     case "question_bank":
       return counts.questionBank;
-    case "skills":
-      return counts.skills;
+    case "persona":
+      return counts.persona;
     case "memory":
       return counts.memory;
     default:
@@ -62,6 +96,9 @@ function countFor(
 export default memo(function ChatSpaceMenu({
   variant,
   selectedCounts,
+  knowledgeAvailable = true,
+  personaAvailable = true,
+  agentsAvailable = true,
   onSelectItem,
 }: ChatSpaceMenuProps) {
   const { t } = useTranslation();
@@ -70,16 +107,58 @@ export default memo(function ChatSpaceMenu({
 
   // Render the items in a fixed, hand-tuned order so the menu always reads
   // the same regardless of how SPACE_ITEMS may be reordered for navigation.
-  const items = ITEM_ORDER.map((key) =>
-    key === "books"
-      ? {
+  const items = ITEM_ORDER.filter((key) => {
+    if (key === "knowledge") return knowledgeAvailable;
+    if (key === "persona") return personaAvailable;
+    if (key === "my_agents") return agentsAvailable;
+    return true;
+  })
+    .map((key) => {
+      // The first two entries are composer-only concepts (not Space pages),
+      // so they are defined here rather than in SPACE_ITEMS.
+      if (key === "attach") {
+        return {
+          key,
+          label: "Attach files",
+          description: "Upload images, Office docs, code & text.",
+          icon: Paperclip,
+        };
+      }
+      if (key === "knowledge") {
+        return {
+          key,
+          label: "Knowledge",
+          description: "Search the selected knowledge bases.",
+          icon: Database,
+        };
+      }
+      if (key === "my_agents") {
+        return {
+          key,
+          label: "My Agents",
+          description: "Reference imported Claude Code / Codex conversations.",
+          icon: Bot,
+        };
+      }
+      if (key === "books") {
+        return {
           key,
           label: "Books",
           description: "Reference generated book chapters in chat.",
           icon: BookOpen,
-        }
-      : SPACE_ITEMS.find((it) => it.key === key)!,
-  ).filter(Boolean);
+        };
+      }
+      if (key === "persona") {
+        return {
+          key,
+          label: "Persona",
+          description: "Apply a behavior persona for this turn.",
+          icon: UserRound,
+        };
+      }
+      return SPACE_ITEMS.find((it) => it.key === key)!;
+    })
+    .filter(Boolean);
 
   // Active row index for keyboard navigation. Only meaningful in the
   // mention variant — the toolbar variant is mouse/click driven.
@@ -136,50 +215,77 @@ export default memo(function ChatSpaceMenu({
       role={isMention ? "listbox" : undefined}
       aria-label={isMention ? t("Reference space") : undefined}
       className={`rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md ${
-        compact ? "w-[260px] py-1.5" : "w-64 p-2"
+        compact ? "w-[280px] py-1.5" : "w-64 p-2"
       }`}
     >
-      <div className={compact ? "space-y-0.5" : "space-y-1"}>
+      <div className={compact ? "" : "space-y-1"}>
         {items.map(({ key, label, description, icon: Icon }, idx) => {
           const count = countFor(key as SelectableSpaceKey, selectedCounts);
           const isActive = isMention && idx === activeIdx;
+          // Two kinds of rows, Claude-style: "attach" is a direct action
+          // (opens the file dialog), everything after it opens a
+          // second-level picker — those get a trailing chevron, and a
+          // divider separates the two groups.
+          const opensPicker = key !== "attach";
           return (
-            <button
-              key={key}
-              type="button"
-              role={isMention ? "option" : undefined}
-              aria-selected={isMention ? isActive : undefined}
-              onMouseEnter={isMention ? () => setActiveIdx(idx) : undefined}
-              onClick={() => onSelectItem(key as SelectableSpaceKey)}
-              className={`flex w-full items-center gap-2.5 text-left transition-colors ${
-                isActive ? "bg-[var(--muted)]/60" : "hover:bg-[var(--muted)]/40"
-              } ${
-                compact
-                  ? "px-3 py-1.5 text-[12px]"
-                  : "rounded-xl px-3 py-2.5 text-[13px]"
-              }`}
-            >
-              <Icon
-                size={compact ? 13 : 14}
-                strokeWidth={1.7}
-                className="shrink-0 text-[var(--muted-foreground)]"
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium text-[var(--foreground)]">
-                  {t(label)}
+            <Fragment key={key}>
+              {idx === 1 && items[0]?.key === "attach" && (
+                <div
+                  className={`border-t border-[var(--border)]/60 ${
+                    compact ? "mx-3 my-1" : "mx-1 my-1"
+                  }`}
+                />
+              )}
+              <button
+                type="button"
+                role={isMention ? "option" : undefined}
+                aria-selected={isMention ? isActive : undefined}
+                onMouseEnter={isMention ? () => setActiveIdx(idx) : undefined}
+                onClick={(e) => {
+                  // Record the row's rect so the fullscreen picker can expand
+                  // outward from exactly this clickable box.
+                  setPickerOrigin(e.currentTarget.getBoundingClientRect());
+                  onSelectItem(key as SelectableSpaceKey);
+                }}
+                className={`flex w-full items-center gap-2.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
+                  isActive
+                    ? "bg-[var(--muted)]/60"
+                    : "hover:bg-[var(--muted)]/40"
+                } ${
+                  compact
+                    ? "px-3.5 py-2 text-[13px]"
+                    : "rounded-xl px-3 py-2.5 text-[13px]"
+                }`}
+              >
+                <Icon
+                  size={15}
+                  strokeWidth={1.7}
+                  className="shrink-0 text-[var(--muted-foreground)]"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-[var(--foreground)]">
+                    {t(label)}
+                  </span>
+                  {!compact && (
+                    <span className="mt-0.5 block truncate text-[11px] text-[var(--muted-foreground)]">
+                      {t(description)}
+                    </span>
+                  )}
                 </span>
-                {!compact && (
-                  <span className="mt-0.5 block truncate text-[11px] text-[var(--muted-foreground)]">
-                    {t(description)}
+                {count > 0 && (
+                  <span className="shrink-0 rounded-full bg-[var(--primary)]/10 px-1.5 py-px text-[9px] font-semibold text-[var(--primary)]">
+                    {count}
                   </span>
                 )}
-              </span>
-              {count > 0 && (
-                <span className="rounded-full bg-[var(--primary)]/10 px-1.5 py-px text-[9px] font-semibold text-[var(--primary)]">
-                  {count}
-                </span>
-              )}
-            </button>
+                {opensPicker && (
+                  <ChevronRight
+                    size={14}
+                    strokeWidth={1.8}
+                    className="shrink-0 text-[var(--muted-foreground)]/55"
+                  />
+                )}
+              </button>
+            </Fragment>
           );
         })}
       </div>

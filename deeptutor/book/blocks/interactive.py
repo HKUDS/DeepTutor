@@ -3,6 +3,12 @@
 Wraps :class:`deeptutor.agents.visualize.pipeline.VisualizePipeline` with
 ``render_mode="html"``. The payload carries an HTML document the frontend
 renders in an isolated iframe.
+
+The draft is checked by the deterministic local ``validate_visualization``.
+HTML has no repair pass (full single-file documents are too large for a
+useful targeted fix), so an unrenderable document raises
+``GenerationFailure`` and lets the book engine retry — better than baking a
+placeholder page into the book.
 """
 
 from __future__ import annotations
@@ -48,6 +54,7 @@ class InteractiveGenerator(BlockGenerator):
 
         try:
             from deeptutor.agents.visualize.pipeline import VisualizePipeline
+            from deeptutor.agents.visualize.utils import validate_visualization
             from deeptutor.services.llm.config import get_llm_config
 
             llm_config = get_llm_config()
@@ -67,28 +74,25 @@ class InteractiveGenerator(BlockGenerator):
                 history_context=history_context,
                 analysis=analysis,
             )
-            review = await pipeline.run_review(
-                user_input=user_input,
-                analysis=analysis,
-                code=code,
-            )
         except Exception as exc:
             logger.warning(f"InteractiveGenerator failed: {exc}", exc_info=True)
             raise GenerationFailure(f"interactive generation failed: {exc}") from exc
 
-        final_code = review.optimized_code or code
+        ok, validation_error = validate_visualization(code, "html")
+        if not ok:
+            raise GenerationFailure(f"interactive html failed validation: {validation_error}")
 
         return (
             {
                 "render_type": "html",
-                "code": {"language": "html", "content": final_code},
+                "code": {"language": "html", "content": code},
                 "description": analysis.description,
                 "chart_type": analysis.chart_type,
             },
             [],
             {
-                "review_changed": review.changed,
-                "review_notes": review.review_notes,
+                "review_changed": False,
+                "review_notes": "Passed local validation.",
             },
         )
 

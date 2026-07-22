@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { SidebarShell } from "@/components/sidebar/SidebarShell";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { AdminLink } from "@/components/auth/AdminLink";
+import { ProfileLink } from "@/components/auth/ProfileLink";
 import { useUnifiedChat } from "@/context/UnifiedChatContext";
 import {
   deleteSession,
@@ -19,6 +20,7 @@ export default function WorkspaceSidebar() {
   const router = useRouter();
   const {
     newSession,
+    cancelStreamingTurn,
     selectedSessionId,
     sessionStatuses,
     sidebarRefreshToken,
@@ -72,14 +74,17 @@ export default function WorkspaceSidebar() {
     })
     .map(({ session }) => session);
 
-  const handleNewChat = () => {
+  // Cancel any in-flight streaming turn before starting a fresh session, so a
+  // new chat never inherits a still-running turn (mirrors handleDeleteSession).
+  const handleNewChat = useCallback(() => {
+    cancelStreamingTurn();
     newSession();
-    router.push("/chat");
-  };
+    router.push("/home");
+  }, [cancelStreamingTurn, newSession, router]);
 
   const handleSelectSession = useCallback(
     async (sessionId: string) => {
-      router.push(`/chat/${sessionId}`);
+      router.push(`/home/${sessionId}`);
     },
     [router],
   );
@@ -110,11 +115,12 @@ export default function WorkspaceSidebar() {
         prev.filter((session) => session.session_id !== sessionId),
       );
       if (selectedSessionId === sessionId) {
+        cancelStreamingTurn();
         newSession();
-        router.push("/chat");
+        router.push("/home");
       }
     },
-    [newSession, router, selectedSessionId, t],
+    [cancelStreamingTurn, newSession, router, selectedSessionId, t],
   );
 
   return (
@@ -127,12 +133,13 @@ export default function WorkspaceSidebar() {
       onSelectSession={handleSelectSession}
       onRenameSession={handleRenameSession}
       onDeleteSession={handleDeleteSession}
-      footerSlot={
+      footerSlot={(collapsed) => (
         <>
-          <AdminLink />
-          <LogoutButton />
+          <ProfileLink collapsed={collapsed} />
+          <AdminLink collapsed={collapsed} />
+          <LogoutButton collapsed={collapsed} />
         </>
-      }
+      )}
     />
   );
 }

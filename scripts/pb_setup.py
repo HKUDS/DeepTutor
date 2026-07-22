@@ -83,9 +83,16 @@ def main():
     existing = _existing_collections(pb)
     print(f"Found {len(existing)} existing collection(s): {sorted(existing) or '(none)'}\n")
 
+    # Access control is enforced in the application layer, not by PocketBase
+    # collection rules: the backend connects with a single admin-authenticated
+    # client (see services/pocketbase_client.py), which bypasses collection
+    # RBAC entirely, so the rules below stay empty by design. Per-user session
+    # isolation is implemented in PocketBaseSessionStore by stamping every
+    # session row with ``user_id`` and filtering every query by the current
+    # user. Do NOT rely on these listRule/viewRule strings for isolation.
     collections = [
         # ----------------------------------------------------------------
-        # sessions
+        # sessions  (``user_id`` populated + filtered by PocketBaseSessionStore)
         # ----------------------------------------------------------------
         {
             "name": "sessions",

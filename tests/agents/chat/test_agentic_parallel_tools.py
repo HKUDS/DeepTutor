@@ -167,7 +167,7 @@ async def test_execute_tool_call_streams_retrieve_progress_for_rag(
     ]
 
 
-_ALWAYS_ON_TOOLS = ["write_memory", "web_fetch", "github", "ask_user"]
+_ALWAYS_ON_TOOLS = ["write_memory", "web_fetch", "github", "ask_user", "cron"]
 
 
 def _stub_optional_services(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -182,6 +182,10 @@ def _stub_optional_services(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "deeptutor.services.notebook.get_notebook_manager",
         lambda: SimpleNamespace(list_notebooks=lambda: []),
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.cron.get_cron_service",
+        lambda: SimpleNamespace(),
     )
 
 
@@ -656,8 +660,8 @@ async def test_await_user_reply_overwrites_matching_tool_message(
     # the model to continue addressing the original request rather
     # than ending the turn with a one-line acknowledgment.
     assert paused_msg["content"].startswith("User answered: Lecture")
-    assert "NOT over" in paused_msg["content"]
-    assert "FINISH" in paused_msg["content"]
+    assert "ask_user resolved" in paused_msg["content"]
+    assert "Do not stop" in paused_msg["content"]
     # Sibling untouched — only the paused tool_call_id gets resolved.
     assert sibling_msg["content"] == "rag answer"
 
@@ -731,12 +735,12 @@ async def test_await_user_reply_handles_structured_v2_answers(
     body = paused_msg["content"]
     assert body.startswith("User answered:")
     assert "Which direction?" in body
-    assert "→ applications" in body
+    assert "-> applications" in body
     assert "How deep?" in body
-    assert "→ (skipped)" in body
+    assert "-> (skipped)" in body
     assert "What format?" in body
-    assert "→ learning path" in body
-    assert "NOT over" in body
+    assert "-> learning path" in body
+    assert "ask_user resolved" in body
 
     resolved_events = [
         e
@@ -813,6 +817,9 @@ async def test_run_does_not_finish_on_unlabeled_reply_after_ask_user(
         def build_prompt_text(self, *_args, **_kwargs):
             return "- ask_user: ask a clarifying question"
 
+        def deferred_tools(self):
+            return []
+
         def build_openai_schemas(self, _enabled_tools):
             return [
                 {
@@ -887,26 +894,14 @@ async def test_run_does_not_finish_on_unlabeled_reply_after_ask_user(
     await bus.close()
     await consumer
 
-    assert client.call_count == 3
+    assert client.call_count == 2
     result_events = [e for e in events if e.type == StreamEventType.RESULT]
     assert result_events
     assert result_events[-1].content == ""
     assert result_events[-1].source == "chat"
     result_payload = result_events[-1]
     assert result_payload.metadata["completed"] is True
-    assert result_payload.metadata["response"] == "Here is the lecture-focused answer."
-    assert result_payload.metadata["iterations"] == 3
-
-    protocol_warnings = [
-        e
-        for e in events
-        if e.type == StreamEventType.PROGRESS
-        and e.metadata.get("protocol_violation") == "missing_label"
-    ]
-    assert protocol_warnings
-    assert any(
-        "Protocol correction" in (m.get("content") or "") for m in client.calls[2]["messages"]
-    )
+    assert result_payload.metadata["response"] == "Okay, lecture mode."
 
 
 @pytest.mark.asyncio

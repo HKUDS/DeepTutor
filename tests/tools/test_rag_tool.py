@@ -28,7 +28,6 @@ class TestNormalizeProviderName:
             "  ",
             "llamaindex",
             "LlamaIndex",
-            "lightrag",
             "raganything",
             "raganything_docling",
             "totally_unknown_xyz",
@@ -39,10 +38,16 @@ class TestNormalizeProviderName:
 
 
 class TestPipelineFactory:
-    def test_list_pipelines_only_default(self) -> None:
+    def test_list_pipelines_includes_pageindex(self) -> None:
         pipelines = list_pipelines()
         assert isinstance(pipelines, list)
-        assert {p["id"] for p in pipelines} == {DEFAULT_PROVIDER}
+        assert {p["id"] for p in pipelines} == {
+            DEFAULT_PROVIDER,
+            "pageindex",
+            "graphrag",
+            "lightrag",
+            "lightrag-server",
+        }
 
     def test_get_pipeline_returns_singleton(self) -> None:
         try:
@@ -52,21 +57,32 @@ class TestPipelineFactory:
             pytest.skip(f"LlamaIndex optional dependency missing: {exc}")
         assert first is second
 
-    def test_get_pipeline_ignores_provider_name(self) -> None:
-        """The legacy ``name`` argument is silently ignored."""
+    def test_get_pipeline_collapses_unknown_to_default_singleton(self) -> None:
+        """Unknown / legacy provider names resolve to the default pipeline."""
         try:
             a = get_pipeline("llamaindex")
-            b = get_pipeline("lightrag")
+            b = get_pipeline("raganything")  # legacy string → default
             c = get_pipeline("nonexistent_xyz")
         except (ValueError, ImportError) as exc:
             pytest.skip(f"LlamaIndex optional dependency missing: {exc}")
         assert a is b is c
 
+    def test_get_pipeline_dispatches_known_provider(self) -> None:
+        """A real provider name builds its own pipeline (not the default)."""
+        pipe = get_pipeline("lightrag", kb_base_dir="/tmp/kb-test")
+        assert type(pipe).__name__ == "LightRagPipeline"
+
 
 class TestRAGServiceClassHelpers:
-    def test_list_providers_only_default(self) -> None:
+    def test_list_providers_includes_pageindex(self) -> None:
         providers = RAGService.list_providers()
-        assert {p["id"] for p in providers} == {DEFAULT_PROVIDER}
+        assert {p["id"] for p in providers} == {
+            DEFAULT_PROVIDER,
+            "pageindex",
+            "graphrag",
+            "lightrag",
+            "lightrag-server",
+        }
 
     def test_has_provider_default_true(self) -> None:
         assert RAGService.has_provider(DEFAULT_PROVIDER) is True
@@ -75,8 +91,10 @@ class TestRAGServiceClassHelpers:
         assert RAGService.has_provider("nonexistent") is False
         assert RAGService.has_provider("") is False
 
-    def test_get_current_provider_ignores_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("RAG_PROVIDER", "lightrag")
+    def test_get_current_provider_collapses_unknown_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("RAG_PROVIDER", "raganything")  # unknown → default
         assert get_current_provider() == DEFAULT_PROVIDER
         monkeypatch.delenv("RAG_PROVIDER", raising=False)
         assert get_current_provider() == DEFAULT_PROVIDER

@@ -16,7 +16,8 @@ import { CO_WRITER_SAMPLE_TEMPLATE } from "./sampleTemplate";
 function relativeTime(seconds: number): string {
   if (!seconds || Number.isNaN(seconds)) return "";
   const diff = Date.now() / 1000 - seconds;
-  if (diff < 60) return "just now";
+  // Compact locale-neutral units; the card wraps this as "Updated {x} ago".
+  if (diff < 60) return "1m";
   const mins = Math.floor(diff / 60);
   if (mins < 60) return `${mins}m`;
   const hrs = Math.floor(mins / 60);
@@ -78,6 +79,7 @@ export default function CoWriterHomePage() {
     async (docId: string) => {
       if (deletingId) return;
       setDeletingId(docId);
+      setError("");
       try {
         await deleteCoWriterDocument(docId);
         setDocuments((prev) => prev.filter((doc) => doc.id !== docId));
@@ -93,22 +95,24 @@ export default function CoWriterHomePage() {
   );
 
   const renderEmpty = () => (
-    <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-[var(--border)] bg-[var(--secondary)]/30 px-8 py-16 text-center">
-      <PenLine size={28} className="text-[var(--muted-foreground)]/50" />
-      <div>
-        <p className="text-base font-medium text-[var(--foreground)]">
-          {t("No drafts yet")}
-        </p>
-        <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-          {t("Start a new markdown draft to begin writing.")}
-        </p>
-      </div>
-      <div className="flex items-center gap-2">
+    <div className="flex min-h-[360px] flex-col items-center justify-center rounded-2xl border border-dashed border-[var(--border)] px-8 text-center">
+      <PenLine
+        size={30}
+        strokeWidth={1.5}
+        className="mb-3 text-[var(--muted-foreground)]"
+      />
+      <p className="text-[14px] font-medium text-[var(--foreground)]">
+        {t("No drafts yet")}
+      </p>
+      <p className="mt-1.5 max-w-sm text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
+        {t("Start a new markdown draft to begin writing.")}
+      </p>
+      <div className="mt-4 flex items-center gap-2">
         <button
           type="button"
           onClick={() => handleCreate(false)}
           disabled={creating}
-          className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3.5 py-2 text-[12.5px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-60"
         >
           {creating ? (
             <Loader2 size={14} className="animate-spin" />
@@ -121,7 +125,7 @@ export default function CoWriterHomePage() {
           type="button"
           onClick={() => handleCreate(true)}
           disabled={creating}
-          className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3.5 py-2 text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:opacity-60"
         >
           <FileText size={14} />
           {t("Start from template")}
@@ -131,54 +135,51 @@ export default function CoWriterHomePage() {
   );
 
   return (
-    <div className="flex h-full min-h-full flex-col overflow-hidden bg-[var(--background)]">
-      <header className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-6 py-3">
-        <div className="flex items-center gap-3">
-          <PenLine size={18} className="text-[var(--muted-foreground)]" />
+    <div className="h-full overflow-y-auto bg-[var(--background)]">
+      <div className="mx-auto max-w-5xl px-6 py-8">
+        <header className="mb-7 flex items-end justify-between gap-4">
           <div>
-            <div className="text-sm font-semibold text-[var(--foreground)]">
+            <h1 className="text-[19px] font-semibold tracking-tight text-[var(--foreground)]">
               {t("Co-Writer")}
-            </div>
-            <div className="text-xs text-[var(--muted-foreground)]">
+            </h1>
+            <p className="mt-1 text-[12.5px] text-[var(--muted-foreground)]">
               {t("Manage your markdown drafts and projects.")}
-            </div>
+            </p>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => handleCreate(true)}
-            disabled={creating}
-            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:opacity-60"
-          >
-            <FileText size={13} />
-            {t("From template")}
-          </button>
-          <button
-            type="button"
-            onClick={() => handleCreate(false)}
-            disabled={creating}
-            className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-          >
-            {creating ? (
-              <Loader2 size={13} className="animate-spin" />
-            ) : (
-              <Plus size={13} />
-            )}
-            {t("New draft")}
-          </button>
-        </div>
-      </header>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleCreate(true)}
+              disabled={creating}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3.5 py-2 text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:opacity-60"
+            >
+              <FileText size={14} />
+              {t("From template")}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleCreate(false)}
+              disabled={creating}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3.5 py-2 text-[12.5px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-60"
+            >
+              {creating ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Plus size={14} />
+              )}
+              {t("New draft")}
+            </button>
+          </div>
+        </header>
 
-      <main className="flex-1 overflow-y-auto px-6 py-6">
         {error ? (
-          <div className="mb-4 rounded-md border border-rose-300/30 bg-rose-50/40 px-3 py-2 text-xs text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">
+          <div className="mb-4 rounded-lg border border-rose-300/30 bg-rose-50/40 px-3 py-2 text-[12px] text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">
             {error}
           </div>
         ) : null}
 
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-20 text-sm text-[var(--muted-foreground)]">
+          <div className="flex items-center justify-center gap-2 py-20 text-[12.5px] text-[var(--muted-foreground)]">
             <Loader2 size={16} className="animate-spin" />
             {t("Loading drafts…")}
           </div>
@@ -201,22 +202,22 @@ export default function CoWriterHomePage() {
                       router.push(`/co-writer/${doc.id}`);
                     }
                   }}
-                  className="group relative flex h-44 cursor-pointer flex-col rounded-xl border border-[var(--border)] bg-[var(--secondary)]/40 p-4 transition-all hover:border-[var(--primary)]/40 hover:bg-[var(--secondary)]/70 hover:shadow-sm"
+                  className="group relative flex h-44 cursor-pointer flex-col rounded-2xl border border-[var(--border)] p-4 text-left transition-colors hover:border-[var(--ring)]"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex min-w-0 items-start gap-2">
                       <FileText
-                        size={14}
+                        size={15}
                         className="mt-0.5 shrink-0 text-[var(--muted-foreground)]"
                       />
                       <div className="min-w-0">
                         <div
-                          className="truncate text-sm font-medium text-[var(--foreground)]"
+                          className="truncate text-[14px] font-medium text-[var(--foreground)]"
                           title={doc.title || t("Untitled draft")}
                         >
                           {doc.title || t("Untitled draft")}
                         </div>
-                        <div className="text-[10px] text-[var(--muted-foreground)]/70">
+                        <div className="mt-0.5 text-[11px] text-[var(--muted-foreground)]/70">
                           {t("Updated")} {relativeTime(doc.updated_at)}{" "}
                           {t("ago")}
                         </div>
@@ -251,7 +252,7 @@ export default function CoWriterHomePage() {
                       )}
                     </button>
                   </div>
-                  <p className="mt-3 line-clamp-4 flex-1 text-xs leading-relaxed text-[var(--muted-foreground)]">
+                  <p className="mt-2.5 line-clamp-4 flex-1 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
                     {doc.preview || t("Empty draft")}
                   </p>
                 </div>
@@ -259,7 +260,7 @@ export default function CoWriterHomePage() {
             })}
           </div>
         )}
-      </main>
+      </div>
     </div>
   );
 }

@@ -5,6 +5,7 @@ Unified session history API.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
@@ -86,12 +87,56 @@ async def list_sessions(
     return {"sessions": sessions}
 
 
+# Cap (in characters) for a single event payload returned to the UI. RAG
+# tools can attach whole KB documents to ``tool_result``/``observation``
+# events; the frontend TraceSurface only needs a preview, and the LLM context
+# is built from a separate content-only store, so capping here never affects
+# model input.
+MAX_EVENT_PAYLOAD = 1024 * 1024
+_TRUNCATION_NOTICE = "\n\n[... content truncated]"
+_TRUNCATABLE_EVENT_TYPES = ("tool_result", "observation")
+
+
+def _truncate_oversized_events(
+    messages: list[dict[str, Any]], limit: int = MAX_EVENT_PAYLOAD
+) -> None:
+    """Cap oversized ``tool_result``/``observation`` payloads in place.
+
+    The session store already returns each message's events as a parsed
+    ``events`` list (see ``SqliteSessionStore._serialize_message``), so we
+    mutate that list directly. Only the UI rendering path is affected.
+    """
+
+    def _cap(container: dict[str, Any], field: str) -> bool:
+        value = container.get(field)
+        if isinstance(value, str) and len(value) > limit:
+            container[field] = value[:limit] + _TRUNCATION_NOTICE
+            return True
+        return False
+
+    for msg in messages:
+        events = msg.get("events")
+        if not isinstance(events, list):
+            continue
+        for event in events:
+            if not isinstance(event, dict) or event.get("type") not in _TRUNCATABLE_EVENT_TYPES:
+                continue
+            truncated = _cap(event, "content")
+            tool_metadata = (event.get("metadata") or {}).get("tool_metadata")
+            if isinstance(tool_metadata, dict):
+                for field in ("content", "answer"):
+                    truncated = _cap(tool_metadata, field) or truncated
+            if truncated:
+                event["_truncated"] = True
+
+
 @router.get("/{session_id}")
 async def get_session(session_id: str):
     store = get_session_store()
     session = await store.get_session_with_messages(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
+    _truncate_oversized_events(session.get("messages", []))
     return session
 
 

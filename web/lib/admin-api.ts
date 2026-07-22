@@ -6,6 +6,8 @@ export interface UserRecord {
   role: "admin" | "user";
   created_at: string;
   disabled?: boolean;
+  /** Avatar marker: "", "icon:<name>:<color>", or "img:<version>". */
+  avatar?: string;
 }
 
 export async function listUsers(): Promise<UserRecord[]> {

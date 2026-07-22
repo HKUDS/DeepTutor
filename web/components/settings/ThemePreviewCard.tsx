@@ -33,16 +33,15 @@ const PALETTES: Record<Theme, Palette> = {
     muted: "#f1ede2",
     border: "#e6decc",
   },
-  // theme id "snow" applies the .theme-snow class → cool blue-tinted palette
-  // with a royal-blue primary (no longer the warm terracotta — Snow now
-  // belongs to a cool family rather than mixing cold bg with warm accent)
+  // theme id "snow" applies the .theme-snow class → "Default": pure-white
+  // neutral palette, grey surfaces, blue primary (Codex-style chrome)
   snow: {
-    bg: "#f9fbfd",
-    fg: "#0e1a2e",
+    bg: "#ffffff",
+    fg: "#0d0d0d",
     card: "#ffffff",
-    primary: "#1d4ed8",
-    muted: "#e5ebf1",
-    border: "#cdd9e4",
+    primary: "#2563eb",
+    muted: "#f2f2f2",
+    border: "#e5e5e5",
   },
   dark: {
     bg: "#1a1918",

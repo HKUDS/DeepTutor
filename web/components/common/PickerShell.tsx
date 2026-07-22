@@ -1,10 +1,31 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { peekPickerOrigin } from "@/lib/picker-origin";
+
+// Ref-count of currently-open PickerShells. While any are open we mark the
+// <body> so global CSS can freeze ambient background animations (the sidebar
+// "running session" pulse / breathing titles). Those repaints were being
+// re-sampled by the modal's `backdrop-blur`, which read as a constant flicker
+// behind the frosted scrim. Freezing them keeps the backdrop rock-steady.
+let openShellCount = 0;
+function acquireBodyFlag() {
+  openShellCount += 1;
+  if (typeof document !== "undefined") {
+    document.body.setAttribute("data-picker-open", "");
+  }
+}
+function releaseBodyFlag() {
+  openShellCount = Math.max(0, openShellCount - 1);
+  if (openShellCount === 0 && typeof document !== "undefined") {
+    document.body.removeAttribute("data-picker-open");
+  }
+}
 
 /**
  * Behavioral wrapper for fullscreen pickers (NotebookRecordPicker,
- * HistorySessionPicker, MemoryPicker, QuestionBankPicker, SkillsPicker,
+ * HistorySessionPicker, MemoryPicker, QuestionBankPicker, PersonaPicker,
  * BookReferencePicker, SaveToNotebookModal, …). Each of those was rolled
  * by hand and skipped the basic dialog-behavior contract — Escape, backdrop
  * click, body scroll lock, focus trap, ARIA roles. This component lifts
@@ -76,6 +97,25 @@ export default function PickerShell({
 }: PickerShellProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const reduceMotion = useReducedMotion();
+
+  // Capture the trigger's rect at the moment `open` flips true so the card can
+  // expand outward from it. Derived during render (React's documented
+  // adjust-state-on-prop-change pattern) so it is available for the very first
+  // animated frame — an effect would run a frame too late.
+  const [originRect, setOriginRect] = useState<DOMRect | null>(null);
+  const [wasOpen, setWasOpen] = useState(false);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    setOriginRect(open ? peekPickerOrigin() : null);
+  }
+
+  // Freeze ambient background animations while this shell is open.
+  useEffect(() => {
+    if (!open) return;
+    acquireBodyFlag();
+    return () => releaseBodyFlag();
+  }, [open]);
 
   // Stash the focused element when the picker opens so we can return focus
   // there on close. Reset on every open so reopening returns to the latest
@@ -164,35 +204,102 @@ export default function PickerShell({
     [onClose],
   );
 
-  if (!open) return null;
-
   const alignmentClass =
     align === "center" ? "items-center justify-center" : "items-start";
 
+  // Motion. When we captured the trigger rect, the card *expands outward from
+  // it* — it starts small, centered on the clicked row, and grows + glides to
+  // the screen center. That sells the "this box unfolded into the picker"
+  // feeling. Without an origin (picker opened from elsewhere) it falls back to
+  // a quiet placed-from-below settle. The scrim always cross-fades, masking
+  // the menu's own exit so the handoff reads as one continuous motion.
+  // reduced-motion keeps presence (AnimatePresence still gates mount) but drops
+  // transforms to a plain fade.
+  const originExpand =
+    !reduceMotion && originRect && typeof window !== "undefined"
+      ? {
+          x: originRect.x + originRect.width / 2 - window.innerWidth / 2,
+          y: originRect.y + originRect.height / 2 - window.innerHeight / 2,
+        }
+      : null;
+
+  const scrimTransition = reduceMotion
+    ? { duration: 0 }
+    : { duration: 0.2, ease: [0.22, 1, 0.36, 1] as const };
+  const cardInitial = reduceMotion
+    ? { opacity: 0 }
+    : originExpand
+      ? { opacity: 0, scale: 0.5, x: originExpand.x, y: originExpand.y }
+      : { opacity: 0, y: 10, scale: 0.97, x: 0 };
+  const cardAnimate = reduceMotion
+    ? { opacity: 1 }
+    : { opacity: 1, y: 0, scale: 1, x: 0 };
+  const cardExit = reduceMotion
+    ? { opacity: 0 }
+    : {
+        opacity: 0,
+        y: 6,
+        scale: 0.985,
+        x: 0,
+        // Closing stays a quick, clean collapse — no bounce on the way out.
+        transition: { duration: 0.16, ease: [0.4, 0, 1, 1] as const },
+      };
+  const cardTransition = reduceMotion
+    ? { duration: 0 }
+    : {
+        // A gently under-damped spring gives the expand some life: it eases out
+        // and settles with a barely-there overshoot, instead of the flat,
+        // mechanical glide a fixed cubic-bezier produces. Opacity rides a quick
+        // separate fade so only the size/position carry the spring.
+        type: "spring" as const,
+        bounce: 0.28,
+        duration: 0.44,
+        opacity: { duration: 0.2, ease: [0.22, 1, 0.36, 1] as const },
+      };
+
   return (
-    <div
-      // Backdrop. mousedown rather than click so dragging out of a search
-      // input doesn't dismiss the picker on the eventual mouseup.
-      onMouseDown={handleBackdropMouseDown}
-      className={`fixed inset-0 flex ${backdropClass} ${alignmentClass} ${
-        className ?? ""
-      }`}
-      style={{ zIndex }}
-    >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={labelledBy}
-        aria-label={labelledBy ? undefined : ariaLabel}
-        onKeyDown={handleKeyDown}
-        // Stop propagation so a click *inside* the dialog never reaches the
-        // backdrop's mousedown handler above. Width/layout decisions stay
-        // with the picker that renders the card inside.
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        {children}
-      </div>
-    </div>
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          // Backdrop. mousedown rather than click so dragging out of a search
+          // input doesn't dismiss the picker on the eventual mouseup.
+          key="picker-backdrop"
+          onMouseDown={handleBackdropMouseDown}
+          className={`fixed inset-0 flex ${backdropClass} ${alignmentClass} ${
+            className ?? ""
+          }`}
+          style={{ zIndex }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={scrimTransition}
+        >
+          <motion.div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={labelledBy}
+            aria-label={labelledBy ? undefined : ariaLabel}
+            onKeyDown={handleKeyDown}
+            // Stop propagation so a click *inside* the dialog never reaches the
+            // backdrop's mousedown handler above. Width/layout decisions stay
+            // with the picker that renders the card inside.
+            onMouseDown={(e) => e.stopPropagation()}
+            // Own GPU layer keeps the expand transform crisp (no sub-pixel
+            // shimmer) and isolates it from the blurred backdrop's compositing.
+            style={{
+              willChange: "transform, opacity",
+              backfaceVisibility: "hidden",
+            }}
+            initial={cardInitial}
+            animate={cardAnimate}
+            exit={cardExit}
+            transition={cardTransition}
+          >
+            {children}
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

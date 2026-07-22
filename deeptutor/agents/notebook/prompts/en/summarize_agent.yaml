@@ -22,6 +22,7 @@ user_template: |
 # Per-record-type hints injected into `user_template` as `{record_hint}`.
 record_hints:
   chat: "A full chat transcript; focus on the question, conclusion, and next actions."
+  tutorbot: "A conversation with a Partner (a named AI assistant); focus on what was asked, the Partner's conclusion, and any next actions."
   guided_learning: "A guided learning record; focus on topic, knowledge structure, and partial/final output."
   co_writer: "A Co-Writer markdown draft authored by the user; focus on the document's topic, structure, current completion state, and what makes it worth revisiting."
   default: "Summarize the most reusable information in this record."

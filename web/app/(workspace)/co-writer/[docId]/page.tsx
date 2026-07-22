@@ -64,13 +64,8 @@ type EditAction = "rewrite" | "shorten" | "expand";
 type SelectionMode = EditAction | "none";
 type SourceOption = "none" | "rag" | "web";
 type ConfirmAction = "clear" | "template";
-type ToolName =
-  | "brainstorm"
-  | "rag"
-  | "web_search"
-  | "code_execution"
-  | "reason"
-  | "paper_search";
+// Only retrieval tools the backend actually wires into the selection edit.
+type ToolName = "rag" | "web";
 
 interface KnowledgeBase {
   name: string;
@@ -91,12 +86,8 @@ const ACTION_LABELS: Record<EditAction, string> = {
 };
 
 const TOOL_OPTIONS: Array<{ name: ToolName; label: string }> = [
-  { name: "brainstorm", label: "Brainstorm" },
-  { name: "rag", label: "RAG" },
-  { name: "web_search", label: "Web Search" },
-  { name: "code_execution", label: "Code" },
-  { name: "reason", label: "Reason" },
-  { name: "paper_search", label: "Arxiv Search" },
+  { name: "rag", label: "Knowledge Base" },
+  { name: "web", label: "Web Search" },
 ];
 
 const MODE_OPTIONS: Array<{ value: SelectionMode; label: string }> = [
@@ -139,7 +130,6 @@ interface SelectionToolTrace {
 }
 
 interface SelectionTraceData {
-  thinking: string;
   toolTraces: SelectionToolTrace[];
   response: string;
 }
@@ -194,6 +184,11 @@ export default function CoWriterPage() {
     offsetY: number;
   } | null>(null);
   const [markdown, setMarkdown] = useState("");
+  // Async edits (full-draft edit, auto-mark, selection edit) must verify the
+  // draft hasn't changed while the request was in flight before replacing
+  // content. State captured in their closures is stale by then; this ref
+  // always holds the latest value.
+  const markdownRef = useRef("");
   const [instruction, setInstruction] = useState("");
   const [action, setAction] = useState<EditAction>("rewrite");
   const [source, setSource] = useState<SourceOption>("none");
@@ -266,6 +261,10 @@ export default function CoWriterPage() {
       isUnmountedRef.current = true;
     };
   }, []);
+
+  useEffect(() => {
+    markdownRef.current = markdown;
+  }, [markdown]);
 
   // Load document content from server when docId is available.
   useEffect(() => {
@@ -523,6 +522,7 @@ export default function CoWriterPage() {
     setIsEditingTitle(false);
     if (next === current) return;
     try {
+      setError("");
       setIsSavingDoc(true);
       const updated = await updateCoWriterDocument(docId, { title: next });
       if (isUnmountedRef.current) return;
@@ -550,7 +550,15 @@ export default function CoWriterPage() {
   const wordCount = useMemo(() => {
     const trimmed = markdown.trim();
     if (!trimmed) return 0;
-    return trimmed.split(/\s+/).length;
+    // CJK has no word-delimiting spaces: count each CJK char as one word,
+    // then whitespace-split whatever remains.
+    const cjkPattern = /[一-鿿㐀-䶿぀-ヿ가-힯]/g;
+    const cjkCount = trimmed.match(cjkPattern)?.length ?? 0;
+    const latinWords = trimmed
+      .replace(cjkPattern, " ")
+      .split(/\s+/)
+      .filter(Boolean).length;
+    return cjkCount + latinWords;
   }, [markdown]);
 
   const charCount = markdown.length;
@@ -792,7 +800,11 @@ export default function CoWriterPage() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = "co-writer.md";
+    const safeTitle = (docTitle || "co-writer")
+      .trim()
+      .replace(/[\\/:*?"<>|]/g, "-")
+      .slice(0, 80);
+    anchor.download = `${safeTitle || "co-writer"}.md`;
     anchor.click();
     URL.revokeObjectURL(url);
   };
@@ -878,13 +890,7 @@ export default function CoWriterPage() {
   const updateSelectionTraceFromEvent = useCallback(
     (event: StreamTraceEvent) => {
       setSelectionTrace((prev) => {
-        const current = prev ?? { thinking: "", toolTraces: [], response: "" };
-        if (event.type === "thinking") {
-          return {
-            ...current,
-            thinking: `${current.thinking}${event.content || ""}`,
-          };
-        }
+        const current = prev ?? { toolTraces: [], response: "" };
         if (event.type === "tool_call") {
           return {
             ...current,
@@ -948,7 +954,7 @@ export default function CoWriterPage() {
     setIsEditing(true);
     setError("");
     setStatus("");
-    setSelectionTrace({ thinking: "", toolTraces: [], response: "" });
+    setSelectionTrace({ toolTraces: [], response: "" });
     setIsTraceExpanded(true);
     selectionRequestAbortRef.current?.abort();
     const controller = new AbortController();
@@ -1033,7 +1039,7 @@ export default function CoWriterPage() {
       }
       const editedText = finalResult.edited_text ?? "";
 
-      if (markdown !== selectedRange.snapshot) {
+      if (markdownRef.current !== selectedRange.snapshot) {
         throw new Error(
           t(
             "The draft changed before AI edit finished. Please reselect the text and try again.",
@@ -1056,7 +1062,6 @@ export default function CoWriterPage() {
     }
   }, [
     kbName,
-    markdown,
     replaceSelectedText,
     selectedRange,
     selectionInstruction,
@@ -1071,6 +1076,7 @@ export default function CoWriterPage() {
       setError(t("Please enter an editing instruction first."));
       return;
     }
+    const snapshot = markdown;
     setIsEditing(true);
     setError("");
     setStatus("");
@@ -1079,7 +1085,7 @@ export default function CoWriterPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          text: markdown,
+          text: snapshot,
           instruction: instruction.trim(),
           action,
           source: source === "none" ? null : source,
@@ -1089,7 +1095,12 @@ export default function CoWriterPage() {
       const data = await response.json();
       if (!response.ok)
         throw new Error(data?.detail || t("Failed to edit document."));
-      pushUndo(markdown);
+      if (markdownRef.current !== snapshot) {
+        throw new Error(
+          t("The draft changed while AI edit was running. Please try again."),
+        );
+      }
+      pushUndo(snapshot);
       setMarkdown(data.edited_text || "");
       setStatus(
         t("Applied {{action}} to the full draft.", {
@@ -1107,6 +1118,11 @@ export default function CoWriterPage() {
   };
 
   const applyAutoMark = async () => {
+    if (!markdown.trim()) {
+      setError(t("Add some content before running auto-mark."));
+      return;
+    }
+    const snapshot = markdown;
     setIsAutoMarking(true);
     setError("");
     setStatus("");
@@ -1114,12 +1130,17 @@ export default function CoWriterPage() {
       const response = await apiFetch(apiUrl("/api/v1/co_writer/automark"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: markdown }),
+        body: JSON.stringify({ text: snapshot }),
       });
       const data = await response.json();
       if (!response.ok)
         throw new Error(data?.detail || t("Failed to auto-mark document."));
-      pushUndo(markdown);
+      if (markdownRef.current !== snapshot) {
+        throw new Error(
+          t("The draft changed while AI edit was running. Please try again."),
+        );
+      }
+      pushUndo(snapshot);
       setMarkdown(data.marked_text || "");
       setStatus(t("Applied auto-mark annotations."));
     } catch (err) {
@@ -1661,7 +1682,7 @@ export default function CoWriterPage() {
         <button
           type="button"
           onClick={() => router.push("/co-writer")}
-          className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3.5 py-2 text-[12.5px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
         >
           <ChevronLeft size={14} />
           {t("Back to Co-Writer")}
@@ -1784,7 +1805,7 @@ export default function CoWriterPage() {
           <div className="mx-1 h-5 w-px bg-[var(--border)]" />
           <button
             onClick={() => setIsEditModalOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--primary-foreground)] transition-[opacity,transform] duration-150 hover:opacity-90 active:scale-[0.97]"
           >
             <WandSparkles size={13} />
             {t("Full Draft")}
@@ -1811,14 +1832,14 @@ export default function CoWriterPage() {
               onClick={() =>
                 item.action ? item.action() : insertSnippet(item.snippet || "")
               }
-              className="shrink-0 rounded p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+              className="shrink-0 rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)] active:scale-[0.97]"
             >
               <Icon size={16} />
             </button>
           );
         })}
 
-        <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-3 text-[10px] text-[var(--muted-foreground)]">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-3 text-[10.5px] text-[var(--muted-foreground)]">
           <button
             type="button"
             onClick={() => setSyncScrollEnabled((prev) => !prev)}
@@ -1828,10 +1849,10 @@ export default function CoWriterPage() {
                 ? t("Scroll sync is on. Click to disable.")
                 : t("Scroll sync is off. Click to enable.")
             }
-            className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+            className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[10.5px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
               syncScrollEnabled
-                ? "border-[var(--primary)]/40 bg-[var(--primary)]/10 text-[var(--primary)]"
-                : "border-[var(--border)] bg-transparent text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+                ? "bg-[var(--primary)]/10 text-[var(--primary)]"
+                : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55"
             }`}
           >
             <span
@@ -1848,10 +1869,14 @@ export default function CoWriterPage() {
             className="mx-0.5 h-3 w-px bg-[var(--border)]"
             aria-hidden="true"
           />
-          <span className="rounded bg-[var(--muted)] px-1.5 py-0.5">GFM</span>
-          <span className="rounded bg-[var(--muted)] px-1.5 py-0.5">KaTeX</span>
-          <span className="rounded bg-[var(--muted)] px-1.5 py-0.5">
-            Mermaid
+          <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5">
+            {"GFM"}
+          </span>
+          <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5">
+            {"KaTeX"}
+          </span>
+          <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5">
+            {"Mermaid"}
           </span>
         </div>
       </div>
@@ -1986,7 +2011,7 @@ export default function CoWriterPage() {
         <div
           ref={selectionPopoverRef}
           onMouseDown={handleSelectionPopoverDragStart}
-          className={`fixed z-50 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-2.5 shadow-2xl ${
+          className={`dt-popup-up fixed z-50 rounded-2xl border border-[var(--border)] bg-[var(--popover)] p-2.5 shadow-lg backdrop-blur-md ${
             isDraggingSelectionPopover ? "cursor-grabbing" : "cursor-grab"
           }`}
           style={{
@@ -2015,7 +2040,7 @@ export default function CoWriterPage() {
             <button
               onClick={() => void applyReactSelectionEdit()}
               disabled={isEditing || isAutoMarking}
-              className="absolute right-1.5 top-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-[var(--primary)] text-white transition-opacity disabled:opacity-45"
+              className="absolute right-1.5 top-1.5 inline-flex h-7 w-7 items-center justify-center rounded-[10px] bg-[var(--primary)] text-[var(--primary-foreground)] transition-[background-color,transform,opacity] duration-150 hover:bg-[var(--primary)]/90 active:scale-95 disabled:opacity-25"
               title={t("Apply AI edit")}
             >
               {isEditing ? (
@@ -2033,7 +2058,7 @@ export default function CoWriterPage() {
                   setIsToolMenuOpen((prev) => !prev);
                   setIsModeMenuOpen(false);
                 }}
-                className="flex h-9 w-full items-center justify-between rounded-xl border border-[var(--border)] px-3 text-[12px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+                className="flex h-8 w-full items-center justify-between rounded-lg border border-[var(--border)] px-2.5 text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/55"
               >
                 <span className="truncate">
                   {selectionTools.length === 0
@@ -2052,14 +2077,14 @@ export default function CoWriterPage() {
                 />
               </button>
               {isToolMenuOpen && (
-                <div className="absolute left-0 top-full z-20 mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] p-1 shadow-xl">
+                <div className="dt-popup-up absolute left-0 top-full z-20 mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--popover)] p-1 shadow-lg backdrop-blur-md">
                   {TOOL_OPTIONS.map((tool) => {
                     const active = selectionTools.includes(tool.name);
                     return (
                       <button
                         key={tool.name}
                         onClick={() => toggleSelectionTool(tool.name)}
-                        className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-[12px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+                        className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/45"
                       >
                         <span>{t(tool.label)}</span>
                         {active ? (
@@ -2080,7 +2105,7 @@ export default function CoWriterPage() {
                   setIsModeMenuOpen((prev) => !prev);
                   setIsToolMenuOpen(false);
                 }}
-                className="flex h-9 w-full items-center justify-between rounded-xl border border-[var(--border)] px-3 text-[12px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+                className="flex h-8 w-full items-center justify-between rounded-lg border border-[var(--border)] px-2.5 text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/55"
               >
                 <span>
                   {t(
@@ -2094,7 +2119,7 @@ export default function CoWriterPage() {
                 />
               </button>
               {isModeMenuOpen && (
-                <div className="absolute left-0 top-full z-20 mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--card)] p-1 shadow-xl">
+                <div className="dt-popup-up absolute left-0 top-full z-20 mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--popover)] p-1 shadow-lg backdrop-blur-md">
                   {MODE_OPTIONS.map((mode) => (
                     <button
                       key={mode.value}
@@ -2116,6 +2141,22 @@ export default function CoWriterPage() {
               )}
             </div>
           </div>
+
+          {selectionTools.includes("rag") && (
+            <select
+              value={kbName}
+              onChange={(e) => setKbName(e.target.value)}
+              aria-label={t("Knowledge Base")}
+              className="mt-2 h-8 w-full rounded-lg border border-[var(--border)] bg-transparent px-2.5 text-[12.5px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/35"
+            >
+              <option value="">{t("Select a knowledge base...")}</option>
+              {knowledgeBases.map((k) => (
+                <option key={k.name} value={k.name}>
+                  {k.name}
+                </option>
+              ))}
+            </select>
+          )}
 
           {(isEditing || selectionTrace) && (
             <div className="mt-2 rounded-xl border border-[var(--border)]/70 bg-[var(--muted)]/18">
@@ -2140,22 +2181,8 @@ export default function CoWriterPage() {
                   data-no-drag="true"
                   className="max-h-[280px] overflow-y-auto border-t border-[var(--border)]/60 px-3 py-2 text-[12px] leading-[1.7] text-[var(--muted-foreground)]"
                 >
-                  {selectionTrace?.thinking ? (
-                    <div className="space-y-1.5">
-                      <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--muted-foreground)]/60">
-                        {t("Thought")}
-                      </div>
-                      <MarkdownRenderer
-                        content={selectionTrace.thinking}
-                        variant="trace"
-                      />
-                    </div>
-                  ) : isEditing ? (
-                    <div className="opacity-70">{t("Thinking...")}</div>
-                  ) : null}
-
                   {selectionTrace && selectionTrace.toolTraces.length > 0 && (
-                    <div className="mt-3 space-y-1.5">
+                    <div className="space-y-1.5">
                       <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--muted-foreground)]/60">
                         {t("Tool")}
                       </div>
@@ -2170,7 +2197,11 @@ export default function CoWriterPage() {
                                 {trace.kind === "tool_result" ? "✓ " : "→ "}
                               </span>
                               <span className="text-[var(--foreground)]">
-                                {trace.name}
+                                {t(
+                                  TOOL_OPTIONS.find(
+                                    (item) => item.name === trace.name,
+                                  )?.label || trace.name,
+                                )}
                               </span>
                             </div>
                             {trace.arguments &&
@@ -2194,7 +2225,11 @@ export default function CoWriterPage() {
                   )}
 
                   {selectionTrace?.response ? (
-                    <div className="mt-3 space-y-1.5">
+                    <div
+                      className={`space-y-1.5 ${
+                        selectionTrace.toolTraces.length > 0 ? "mt-3" : ""
+                      }`}
+                    >
                       <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--muted-foreground)]/60">
                         {t("Response")}
                       </div>
@@ -2207,10 +2242,9 @@ export default function CoWriterPage() {
 
                   {isEditing &&
                   selectionTrace &&
-                  !selectionTrace.thinking &&
                   selectionTrace.toolTraces.length === 0 &&
                   !selectionTrace.response ? (
-                    <div className="mt-2 opacity-70">
+                    <div className="opacity-70">
                       {t("Running tools and preparing the final edit...")}
                     </div>
                   ) : null}
@@ -2237,12 +2271,12 @@ export default function CoWriterPage() {
       {/* ── AI Edit modal ── */}
       {isEditModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-sm"
+          className="animate-in fade-in fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] backdrop-blur-sm"
           onClick={(e) => {
             if (e.target === e.currentTarget) setIsEditModalOpen(false);
           }}
         >
-          <div className="w-full max-w-md rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-xl">
+          <div className="animate-in zoom-in-95 w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-2xl">
             <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
               <h2 className="text-sm font-semibold text-[var(--foreground)]">
                 {t("Full Draft AI Edit")}
@@ -2261,10 +2295,10 @@ export default function CoWriterPage() {
                   <button
                     key={a}
                     onClick={() => setAction(a)}
-                    className={`rounded-md px-3 py-1.5 text-xs transition-colors ${
+                    className={`rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-colors ${
                       action === a
-                        ? "bg-[var(--primary)] text-white"
-                        : "border border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--muted)]"
+                        ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+                        : "border border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--muted)]/55"
                     }`}
                   >
                     {t(ACTION_LABELS[a])}
@@ -2288,7 +2322,7 @@ export default function CoWriterPage() {
                   <select
                     value={source}
                     onChange={(e) => setSource(e.target.value as SourceOption)}
-                    className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-xs text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[12px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]"
                   >
                     <option value="none">{t("None")}</option>
                     <option value="rag">{t("Knowledge Base")}</option>
@@ -2303,7 +2337,7 @@ export default function CoWriterPage() {
                     value={kbName}
                     onChange={(e) => setKbName(e.target.value)}
                     disabled={source !== "rag"}
-                    className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-xs text-[var(--foreground)] outline-none focus:border-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[12px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <option value="">{t("Select...")}</option>
                     {knowledgeBases.map((k) => (
@@ -2320,7 +2354,7 @@ export default function CoWriterPage() {
               <button
                 onClick={applyAutoMark}
                 disabled={isEditing || isAutoMarking}
-                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/55 disabled:opacity-50"
               >
                 {isAutoMarking ? (
                   <Loader2 size={13} className="animate-spin" />
@@ -2332,7 +2366,7 @@ export default function CoWriterPage() {
               <button
                 onClick={applyEdit}
                 disabled={isEditing || isAutoMarking}
-                className="inline-flex items-center gap-1.5 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-white transition-opacity disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-50"
               >
                 {isEditing ? (
                   <Loader2 size={13} className="animate-spin" />
@@ -2348,7 +2382,7 @@ export default function CoWriterPage() {
 
       {confirmActionCopy && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] px-4 backdrop-blur-sm"
+          className="animate-in fade-in fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] px-4 backdrop-blur-sm"
           onClick={(e) => {
             if (e.target === e.currentTarget) setPendingConfirmAction(null);
           }}
@@ -2358,7 +2392,7 @@ export default function CoWriterPage() {
             aria-modal="true"
             aria-labelledby="co-writer-confirm-title"
             aria-describedby="co-writer-confirm-description"
-            className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-xl"
+            className="animate-in zoom-in-95 w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-2xl"
           >
             <div className="border-b border-[var(--border)] px-4 py-3">
               <h2
@@ -2387,7 +2421,7 @@ export default function CoWriterPage() {
               <button
                 type="button"
                 onClick={() => setPendingConfirmAction(null)}
-                className="rounded-md border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+                className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/55"
               >
                 {t("Cancel")}
               </button>
@@ -2398,9 +2432,9 @@ export default function CoWriterPage() {
                   setPendingConfirmAction(null);
                   onConfirm();
                 }}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 ${
+                className={`rounded-lg px-3 py-1.5 text-[12.5px] font-medium text-white transition-opacity hover:opacity-90 ${
                   confirmActionCopy.tone === "danger"
-                    ? "bg-red-600"
+                    ? "bg-rose-600"
                     : "bg-amber-600"
                 }`}
               >
@@ -2437,17 +2471,17 @@ function ToolbarIconBtn({
 }) {
   const toneClass =
     tone === "danger"
-      ? "hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
+      ? "hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400"
       : tone === "warning"
         ? "hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300"
-        : "hover:bg-[var(--muted)] hover:text-[var(--foreground)]";
+        : "hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]";
 
   return (
     <button
       type="button"
       aria-label={title}
       onClick={onClick}
-      className={`group relative inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/35 ${toneClass}`}
+      className={`group relative inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/35 ${toneClass}`}
     >
       {children}
       <span

@@ -5,7 +5,7 @@ Phase shape:
 
 * **Phase 1 (Rephrase)** — a mini agentic loop over ``THINK`` / ``TOOL``
   / ``FINISH`` whose only available tool is ``ask_user``. Up to 3
-  ask_user rounds (each with 1-3 questions on one card). FINISH text
+  ask_user rounds (each with 1-4 questions on one card). FINISH text
   is the refined research topic. May FINISH early when the user is
   unambiguous.
 * **Phase 2 (Decompose)** — one ``OUTLINE`` labeled step turning the
@@ -39,6 +39,7 @@ import logging
 import re
 from typing import Any
 
+from deeptutor.agents._shared.capability_result import emit_capability_result
 from deeptutor.agents._shared.tool_composition import (
     ToolMountFlags,
     compose_enabled_tools,
@@ -53,7 +54,6 @@ from deeptutor.agents.research.data_structures import (
     TopicStatus,
 )
 from deeptutor.agents.research.utils.citation_manager import CitationManager
-from deeptutor.capabilities._shared import emit_capability_result
 from deeptutor.core.agentic import (
     DispatchOutcome,
     LabeledStepResult,
@@ -85,6 +85,7 @@ from deeptutor.services.llm import get_llm_config, prepare_multimodal_messages
 from deeptutor.services.path_service import get_path_service
 from deeptutor.services.prompt import get_prompt_manager
 from deeptutor.services.prompt.language import append_language_directive
+from deeptutor.services.sandbox import exec_capability_available
 from deeptutor.utils.json_parser import parse_json_response
 
 logger = logging.getLogger(__name__)
@@ -524,6 +525,36 @@ class ResearchPipeline:
                 client=client,
             )
 
+        # A planned block that didn't reach COMPLETED (raised, or exhausted its
+        # iteration budget without a FINISH) is backfilled with empty knowledge
+        # so the surviving blocks can still produce a useful report. But the run
+        # must not then look like a clean success — surface the shortfall both
+        # visibly (a warning notice) and in the result envelope so callers can
+        # tell the report is partial (issue #595).
+        incomplete = [rb for rb in researched if rb.block.status != TopicStatus.COMPLETED]
+        failed_block_titles = [rb.block.sub_topic for rb in incomplete]
+        if incomplete:
+            logger.warning(
+                "Deep Research partial: %d/%d blocks did not complete: %s",
+                len(incomplete),
+                len(researched),
+                failed_block_titles,
+            )
+            await stream.progress(
+                self._t(
+                    "notices.partial_results",
+                    default=(
+                        "{failed} of {total} research subtopics could not be completed; "
+                        "the report is based on the remaining evidence."
+                    ),
+                    failed=len(incomplete),
+                    total=len(researched),
+                ),
+                source=SOURCE,
+                stage="researching",
+                metadata={"trace_kind": "warning"},
+            )
+
         # ----- Phase 4 (iterative reporting) -----
         async with stream.stage(
             "reporting",
@@ -549,6 +580,9 @@ class ResearchPipeline:
                 "topic": refined_topic,
                 "block_count": len(researched),
                 "citation_count": len(citations.get_all_citations()),
+                "partial": bool(incomplete),
+                "failed_block_count": len(incomplete),
+                "failed_block_titles": failed_block_titles,
             },
         }
         await emit_capability_result(stream, result_payload, source=SOURCE, usage=self.usage)
@@ -836,11 +870,6 @@ class ResearchPipeline:
                 usage=self.usage,
                 stream_body_live=False,
                 eager_sub_trace=True,
-                # Reasoning models may emit a native ``<think>...</think>``
-                # planning pass without the requested ``THINK`` label. Treat
-                # that as a real THINK iteration so the next round can perform
-                # the tool call instead of burning the budget on label repair.
-                implicit_think_label=LABEL_THINK,
             )
         except Exception as exc:
             logger.exception("Research block %s failed: %s", block.block_id, exc)
@@ -1730,6 +1759,7 @@ class ResearchPipeline:
                 has_sources=False,
                 has_memory=user_has_memory(),
                 has_notebooks=user_has_notebooks(),
+                has_code=exec_capability_available(),
             ),
         )
         return [
@@ -1778,13 +1808,15 @@ class ResearchPipeline:
             if self.kb_name:
                 kwargs.setdefault("kb_name", self.kb_name)
         elif tool_name == "code_execution":
-            kwargs.setdefault("intent", context.user_message)
-            kwargs.setdefault("timeout", 30)
-            kwargs.setdefault("feature", "deep_research")
-            kwargs.setdefault("session_id", context.session_id)
-            kwargs.setdefault("turn_id", turn_id)
+            from deeptutor.services.sandbox import Mount
+
             if task_dir is not None:
-                kwargs.setdefault("workspace_dir", str(task_dir / "code_runs"))
+                code_dir = task_dir / "code_runs"
+                code_dir.mkdir(parents=True, exist_ok=True)
+                kwargs["_sandbox_workdir"] = str(code_dir)
+                kwargs["_sandbox_mounts"] = (
+                    Mount(host_path=str(code_dir), sandbox_path=str(code_dir), read_only=False),
+                )
         elif tool_name == "web_search":
             kwargs.setdefault("query", context.user_message)
             if task_dir is not None:
@@ -2397,28 +2429,6 @@ class _BlockLoopHost:
         # actual report begins.
         return None
 
-    def assistant_message_with_tool_calls(
-        self,
-        *,
-        content: str,
-        tool_calls: list[dict[str, Any]],
-    ) -> dict[str, Any]:
-        return {
-            "role": "assistant",
-            "content": content or None,
-            "tool_calls": [
-                {
-                    "id": tc["id"],
-                    "type": "function",
-                    "function": {
-                        "name": tc["name"],
-                        "arguments": tc.get("arguments") or "{}",
-                    },
-                }
-                for tc in tool_calls
-            ],
-        }
-
     def protocol_retry_notice(self) -> str:
         return self._pipeline._t(
             "notices.protocol_retry",
@@ -2741,28 +2751,6 @@ class _RephraseLoopHost:
     async def emit_final(self, text: str, final_meta: dict[str, Any]) -> None:
         # The refined topic is internal; not streamed as user content.
         return None
-
-    def assistant_message_with_tool_calls(
-        self,
-        *,
-        content: str,
-        tool_calls: list[dict[str, Any]],
-    ) -> dict[str, Any]:
-        return {
-            "role": "assistant",
-            "content": content or None,
-            "tool_calls": [
-                {
-                    "id": tc["id"],
-                    "type": "function",
-                    "function": {
-                        "name": tc["name"],
-                        "arguments": tc.get("arguments") or "{}",
-                    },
-                }
-                for tc in tool_calls
-            ],
-        }
 
     def protocol_retry_notice(self) -> str:
         return self._pipeline._t(

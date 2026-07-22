@@ -10,15 +10,16 @@ from typing import Any
 
 import pytest
 
+from deeptutor.agents.chat.capability import ChatCapability
+from deeptutor.agents.question.capability import DeepQuestionCapability
+from deeptutor.agents.research.capability import DeepResearchCapability
+from deeptutor.agents.visualize.capability import VisualizeCapability
 import deeptutor.agents.visualize.pipeline as visualize_pipeline
-from deeptutor.capabilities.chat import ChatCapability
-from deeptutor.capabilities.deep_question import DeepQuestionCapability
-from deeptutor.capabilities.deep_research import DeepResearchCapability
-from deeptutor.capabilities.deep_solve import DeepSolveCapability
-from deeptutor.capabilities.visualize import VisualizeCapability
+from deeptutor.capabilities.solve.capability import DeepSolveCapability
 from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.core.stream_bus import StreamBus
+from deeptutor.runtime.bootstrap.builtin_capabilities import BUILTIN_CAPABILITY_CLASSES
 
 
 def _install_module(
@@ -33,7 +34,10 @@ def _install_module(
             monkeypatch.setitem(sys.modules, pkg_name, pkg)
             if idx > 1:
                 parent = sys.modules[".".join(parts[: idx - 1])]
-                setattr(parent, parts[idx - 1], pkg)
+                # monkeypatch (not raw setattr) so the parent package's
+                # attribute is restored on teardown and never leaks a fake
+                # submodule into later tests.
+                monkeypatch.setattr(parent, parts[idx - 1], pkg, raising=False)
 
     module = types.ModuleType(fullname)
     for key, value in attrs.items():
@@ -41,7 +45,7 @@ def _install_module(
     monkeypatch.setitem(sys.modules, fullname, module)
     if len(parts) > 1:
         parent = sys.modules[".".join(parts[:-1])]
-        setattr(parent, parts[-1], module)
+        monkeypatch.setattr(parent, parts[-1], module, raising=False)
     return module
 
 
@@ -60,6 +64,18 @@ async def _collect_events(run_coro) -> list[StreamEvent]:
     await bus.close()
     await consumer
     return events
+
+
+def test_builtin_capability_registry_covers_documented_capabilities() -> None:
+    assert set(BUILTIN_CAPABILITY_CLASSES) == {
+        "chat",
+        "deep_solve",
+        "deep_question",
+        "deep_research",
+        "math_animator",
+        "visualize",
+        "mastery_path",
+    }
 
 
 @pytest.mark.asyncio
@@ -93,7 +109,7 @@ async def test_chat_capability_streams_content_and_geogebra_context(
             )
             await stream.content("assistant output", source="chat", stage="responding")
 
-    monkeypatch.setattr("deeptutor.capabilities.chat.AgenticChatPipeline", FakePipeline)
+    monkeypatch.setattr("deeptutor.agents.chat.capability.AgenticChatPipeline", FakePipeline)
 
     context = UnifiedContext(
         user_message="analyze triangle",
@@ -116,67 +132,43 @@ async def test_chat_capability_streams_content_and_geogebra_context(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("enabled_tools", "knowledge_bases", "expected_kb"),
-    [
-        # Non-rag tools + attached KB → kb_name forwarded; pipeline mounts rag.
-        (["code_execution"], ["algebra"], "algebra"),
-        # Default tool set (manifest) flows through; rag absent from the
-        # forwarded toggle list because the pipeline owns mounting.
-        (None, ["algebra"], "algebra"),
-        # Legacy callers that still pass "rag" without attaching a KB get
-        # rag stripped at the capability boundary, and kb_name stays None.
-        (["rag", "web_search"], [], None),
-    ],
-)
-async def test_deep_solve_capability_forwards_to_pipeline(
+async def test_deep_solve_capability_runs_chat_loop_in_solve_mode(
     monkeypatch: pytest.MonkeyPatch,
-    enabled_tools: list[str] | None,
-    knowledge_bases: list[str],
-    expected_kb: str | None,
 ) -> None:
-    """The deep_solve capability is a thin shim over ``SolvePipeline``:
-    it strips ``rag`` from the enabled-tools list (the pipeline mounts rag
-    itself based on ``kb_name``) and forwards everything else."""
+    """The deep_solve capability is a thin shim: it marks the turn
+    ``solve_mode`` and resolves a session id, then runs the standard agentic
+    chat pipeline. The solve loop capability supplies the tools + playbook."""
     captured: dict[str, Any] = {}
 
     class FakePipeline:
-        def __init__(self, **kwargs: Any) -> None:
-            captured["pipeline_init"] = kwargs
+        def __init__(self, *, language: str = "en", **_kwargs: Any) -> None:
+            captured["language"] = language
 
-        async def run(self, *, stream: StreamBus, **kwargs: Any) -> dict[str, Any]:
-            captured["pipeline_run"] = kwargs
-            await stream.content("final solution", source="deep_solve", stage="writing")
-            payload = {
-                "response": "final solution",
-                "metadata": {"steps": 2},
-            }
-            await stream.result(payload, source="deep_solve")
-            return payload
+        async def run(self, context: UnifiedContext, stream: StreamBus) -> None:
+            captured["solve_mode"] = context.metadata.get("solve_mode")
+            captured["solve_session_id"] = context.metadata.get("solve_session_id")
+            captured["attachments"] = list(context.attachments or [])
+            await stream.content("final solution", source="chat", stage="responding")
 
-    monkeypatch.setattr("deeptutor.capabilities.deep_solve.SolvePipeline", FakePipeline)
+    monkeypatch.setattr("deeptutor.capabilities.solve.capability.AgenticChatPipeline", FakePipeline)
 
     context = UnifiedContext(
         user_message="solve x^2=4",
-        enabled_tools=enabled_tools,
-        knowledge_bases=knowledge_bases,
         language="en",
+        metadata={"turn_id": "turn-xyz"},
         attachments=[Attachment(type="image", base64="ZmFrZQ==", filename="graph.png")],
     )
     capability = DeepSolveCapability()
     events = await _collect_events(lambda bus: capability.run(context, bus))
 
-    init = captured["pipeline_init"]
-    assert init["kb_name"] == expected_kb
-    assert "rag" not in init["enabled_tools"]
-    # Attachments flow through unmodified.
-    assert captured["pipeline_run"]["attachments"][0].filename == "graph.png"
+    assert captured["solve_mode"] is True
+    assert captured["solve_session_id"] == "turn-xyz"
+    # Attachments flow through unmodified for the loop's multimodal handling.
+    assert captured["attachments"][0].filename == "graph.png"
     assert any(
         event.type == StreamEventType.CONTENT and "final solution" in event.content
         for event in events
     )
-    result_event = next(event for event in events if event.type == StreamEventType.RESULT)
-    assert result_event.metadata["response"] == "final solution"
 
 
 # Legacy tests for the AgentCoordinator-based custom + mimic paths were
@@ -288,8 +280,8 @@ async def test_deep_research_capability_delegates_to_pipeline(
     in the capability module so we can assert what it was called with
     without spinning up real LLM I/O.
     """
+    import deeptutor.agents.research.capability as deep_research_mod
     import deeptutor.agents.research.request_config  # noqa: F401
-    import deeptutor.capabilities.deep_research as deep_research_mod
 
     captured: dict[str, Any] = {}
 
@@ -393,18 +385,6 @@ async def test_visualize_capability_passes_attachments_to_analysis_agent(
                 "data_description": self.data_description,
             }
 
-    class FakeReview:
-        optimized_code = "<svg></svg>"
-        changed = False
-        review_notes = "ok"
-
-        def model_dump(self) -> dict[str, Any]:
-            return {
-                "optimized_code": self.optimized_code,
-                "changed": self.changed,
-                "review_notes": self.review_notes,
-            }
-
     class FakeVisualizePipeline:
         def __init__(self, **kwargs: Any) -> None:
             captured["init"] = kwargs
@@ -415,11 +395,9 @@ async def test_visualize_capability_passes_attachments_to_analysis_agent(
 
         async def run_code_generation(self, **kwargs: Any) -> str:
             captured["code_generation"] = kwargs
-            return "<svg></svg>"
-
-        async def run_review(self, **kwargs: Any) -> FakeReview:
-            captured["review"] = kwargs
-            return FakeReview()
+            # Valid per validate_visualization (well-formed XML + camelCase
+            # viewBox), so the capability takes the no-repair path.
+            return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>'
 
     monkeypatch.setattr(
         visualize_pipeline,

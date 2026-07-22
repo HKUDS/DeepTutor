@@ -43,8 +43,8 @@ export interface FollowupMessage {
   /**
    * Stream events that produced this message (assistant turns only).
    * Keeping the full event log on the assistant message lets the
-   * follow-up tab render the same ``TraceSurface`` the main chat uses —
-   * reasoning blocks, tool calls, stage transitions, etc.
+   * follow-up tab render the same inline trace rows (``TraceFlow``) the
+   * main chat uses — reasoning blocks, tool calls, stage transitions, etc.
    */
   events?: StreamEvent[];
 }
@@ -124,13 +124,14 @@ export interface SendMessageInput {
   language?: string;
   /** Selected knowledge bases (names) for this turn. */
   knowledgeBases?: string[];
-  /** Notebook/book/history/question/skill references — same shape the
+  /** Notebook/book/history/question references — same shape the
    *  main ChatPage builds for ``sendMessage``. */
   notebookReferences?: { notebook_id: string; record_ids: string[] }[];
   historyReferences?: string[];
   bookReferences?: { book_id: string; page_ids: string[] }[];
   questionNotebookReferences?: number[];
-  skills?: string[];
+  /** Behavior persona name to apply for this turn (single, optional). */
+  persona?: string;
   /** Pinned LLM selection — when null/undefined the server default applies. */
   llmSelection?: LLMSelection | null;
 }
@@ -429,7 +430,12 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
         history_references: input.historyReferences,
         book_references: input.bookReferences,
         question_notebook_references: input.questionNotebookReferences,
-        skills: input.skills,
+        // Always send the key (possibly ""): an absent key makes the backend
+        // fall back to the session's stored persona preference, which would
+        // turn this surface's deliberately per-turn persona into a sticky
+        // one. Explicit "" keeps each follow-up turn persona-free unless
+        // picked for that turn.
+        persona: input.persona ?? "",
         llm_selection: input.llmSelection ?? null,
       });
     },

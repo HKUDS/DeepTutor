@@ -7,6 +7,7 @@ import json
 from typing import Any
 from urllib.parse import urlparse
 
+from deeptutor.services.imagegen.config import ImagegenConfig
 from deeptutor.services.model_selection import LLMSelection, apply_llm_selection_to_catalog
 from deeptutor.services.provider_registry import (
     NANOBOT_LLM_PROVIDERS,
@@ -16,6 +17,15 @@ from deeptutor.services.provider_registry import (
     find_by_model,
     find_by_name,
     find_gateway,
+)
+from deeptutor.services.videogen.config import VideogenConfig
+from deeptutor.services.voice.config import (
+    AUTH_API_KEY_HEADER,
+    AUTH_BEARER,
+    STT_BASE64_JSON,
+    STT_MULTIPART,
+    STTConfig,
+    TTSConfig,
 )
 
 from .embedding_endpoint import (
@@ -181,6 +191,239 @@ EMBEDDING_PROVIDERS: dict[str, EmbeddingProviderSpec] = {
         is_local=False,
     ),
 }
+
+
+@dataclass(frozen=True)
+class VoiceProviderSpec:
+    """Metadata for one TTS or STT provider entry.
+
+    ``default_api_base`` is the provider's **API base** (e.g.
+    ``https://api.openai.com/v1``); the voice adapter appends ``/audio/speech``
+    or ``/audio/transcriptions``. ``adapter`` selects the HTTP adapter; the
+    OpenAI-compatible cluster all share ``openai_compat`` and differ only by
+    ``auth_style`` (Azure uses ``api-key``) and STT ``request_style``
+    (OpenRouter uses base64-JSON).
+    """
+
+    label: str
+    default_api_base: str
+    adapter: str = "openai_compat"
+    auth_style: str = AUTH_BEARER
+    default_model: str = ""
+    default_voice: str = ""  # TTS only
+    request_style: str = STT_MULTIPART  # STT only
+    is_local: bool = False
+
+
+# Voice providers in the OpenAI-compatible cluster. A single adapter covers all
+# of these; bespoke providers (DashScope native, ElevenLabs, Gemini, Deepgram)
+# would register their own ``adapter`` value once implemented.
+TTS_PROVIDERS: dict[str, VoiceProviderSpec] = {
+    "openai": VoiceProviderSpec(
+        label="OpenAI",
+        default_api_base="https://api.openai.com/v1",
+        default_model="gpt-4o-mini-tts",
+        default_voice="alloy",
+    ),
+    "openrouter": VoiceProviderSpec(
+        label="OpenRouter",
+        default_api_base="https://openrouter.ai/api/v1",
+        adapter="openrouter_tts",
+        default_model="openai/gpt-4o-mini-tts",
+        default_voice="alloy",
+    ),
+    "groq": VoiceProviderSpec(
+        label="Groq",
+        default_api_base="https://api.groq.com/openai/v1",
+        default_model="canopylabs/orpheus-v1-english",
+        default_voice="autumn",
+    ),
+    "siliconflow": VoiceProviderSpec(
+        label="SiliconFlow",
+        default_api_base="https://api.siliconflow.cn/v1",
+        default_model="FunAudioLLM/CosyVoice2-0.5B",
+        default_voice="FunAudioLLM/CosyVoice2-0.5B:alex",
+    ),
+    "azure_openai": VoiceProviderSpec(
+        label="Azure OpenAI",
+        default_api_base="",
+        auth_style=AUTH_API_KEY_HEADER,
+        default_model="tts-1",
+        default_voice="alloy",
+    ),
+    "vllm": VoiceProviderSpec(
+        label="vLLM / Local",
+        default_api_base="http://localhost:8000/v1",
+        default_model="",
+        default_voice="",
+        is_local=True,
+    ),
+    "custom": VoiceProviderSpec(
+        label="OpenAI Compatible",
+        default_api_base="",
+        default_model="",
+        default_voice="",
+    ),
+}
+
+STT_PROVIDERS: dict[str, VoiceProviderSpec] = {
+    "openai": VoiceProviderSpec(
+        label="OpenAI",
+        default_api_base="https://api.openai.com/v1",
+        default_model="gpt-4o-mini-transcribe",
+    ),
+    "openrouter": VoiceProviderSpec(
+        label="OpenRouter",
+        default_api_base="https://openrouter.ai/api/v1",
+        default_model="openai/whisper-large-v3",
+        request_style=STT_BASE64_JSON,
+    ),
+    "groq": VoiceProviderSpec(
+        label="Groq",
+        default_api_base="https://api.groq.com/openai/v1",
+        default_model="whisper-large-v3-turbo",
+    ),
+    "siliconflow": VoiceProviderSpec(
+        label="SiliconFlow",
+        default_api_base="https://api.siliconflow.cn/v1",
+        default_model="FunAudioLLM/SenseVoiceSmall",
+    ),
+    "azure_openai": VoiceProviderSpec(
+        label="Azure OpenAI",
+        default_api_base="",
+        auth_style=AUTH_API_KEY_HEADER,
+        default_model="whisper-1",
+    ),
+    "vllm": VoiceProviderSpec(
+        label="vLLM / Local",
+        default_api_base="http://localhost:8000/v1",
+        default_model="",
+        is_local=True,
+    ),
+    "custom": VoiceProviderSpec(
+        label="OpenAI Compatible",
+        default_api_base="",
+        default_model="",
+    ),
+}
+
+# Provider-name aliases accepted from older/loose catalog values.
+VOICE_PROVIDER_ALIASES = {
+    "azure": "azure_openai",
+    "aoai": "azure_openai",
+    "openai_compatible": "custom",
+    "lmstudio": "vllm",
+}
+
+
+def _canonical_voice_provider(name: str | None, table: dict[str, VoiceProviderSpec]) -> str:
+    key = (name or "").strip().lower().replace("-", "_")
+    key = VOICE_PROVIDER_ALIASES.get(key, key)
+    return key if key in table else "custom"
+
+
+@dataclass(frozen=True)
+class GenerationProviderSpec:
+    """Metadata for one image- or video-generation provider entry.
+
+    ``default_api_base`` is the provider's **API base** (e.g.
+    ``https://api.openai.com/v1`` or ``https://ark.cn-beijing.volces.com/api/v3``);
+    the adapter appends the relative path (``images/generations`` or
+    ``contents/generations/tasks``). ``adapter`` selects the HTTP adapter:
+    imagegen providers share ``openai_compat``; videogen task-style providers
+    use ``async_task``.
+    """
+
+    label: str
+    default_api_base: str
+    adapter: str = "openai_compat"
+    auth_style: str = AUTH_BEARER
+    default_model: str = ""
+    is_local: bool = False
+
+
+# Image-generation providers in the OpenAI-compatible cluster. A single adapter
+# covers all of these; ``default_model`` is only a Settings prefill hint.
+IMAGEGEN_PROVIDERS: dict[str, GenerationProviderSpec] = {
+    "openai": GenerationProviderSpec(
+        label="OpenAI",
+        default_api_base="https://api.openai.com/v1",
+        default_model="gpt-image-1",
+    ),
+    "volcengine": GenerationProviderSpec(
+        label="Volcengine Ark (Seedream)",
+        default_api_base="https://ark.cn-beijing.volces.com/api/v3",
+        default_model="doubao-seedream-3-0-t2i-250415",
+    ),
+    "siliconflow": GenerationProviderSpec(
+        label="SiliconFlow",
+        default_api_base="https://api.siliconflow.cn/v1",
+        default_model="Kwai-Kolors/Kolors",
+    ),
+    # OpenRouter generates images through /chat/completions (modalities), not the
+    # OpenAI Images API — so it uses the chat_completions adapter, not openai_compat.
+    "openrouter": GenerationProviderSpec(
+        label="OpenRouter",
+        default_api_base="https://openrouter.ai/api/v1",
+        adapter="chat_completions",
+        default_model="google/gemini-2.5-flash-image-preview",
+    ),
+    "azure_openai": GenerationProviderSpec(
+        label="Azure OpenAI",
+        default_api_base="",
+        auth_style=AUTH_API_KEY_HEADER,
+        default_model="dall-e-3",
+    ),
+    "custom": GenerationProviderSpec(
+        label="OpenAI Compatible",
+        default_api_base="",
+        default_model="",
+    ),
+    # Generic chat-completions image output (any OpenRouter-style gateway).
+    "custom_chat": GenerationProviderSpec(
+        label="Chat Completions (Custom)",
+        default_api_base="",
+        adapter="chat_completions",
+        default_model="",
+    ),
+}
+
+# Video-generation providers. Text-to-video has no synchronous standard; these
+# all use the async-task adapter (submit → poll → download).
+VIDEOGEN_PROVIDERS: dict[str, GenerationProviderSpec] = {
+    "volcengine": GenerationProviderSpec(
+        label="Volcengine Ark (Seedance)",
+        default_api_base="https://ark.cn-beijing.volces.com/api/v3",
+        adapter="async_task",
+        default_model="doubao-seedance-1-0-pro-250528",
+    ),
+    "custom": GenerationProviderSpec(
+        label="Async Task (Custom)",
+        default_api_base="",
+        adapter="async_task",
+        default_model="",
+    ),
+}
+
+# Provider-name aliases accepted from older/loose catalog values.
+GENERATION_PROVIDER_ALIASES = {
+    "ark": "volcengine",
+    "volces": "volcengine",
+    "doubao": "volcengine",
+    "seedream": "volcengine",
+    "seedance": "volcengine",
+    "azure": "azure_openai",
+    "aoai": "azure_openai",
+    "openai_compatible": "custom",
+}
+
+
+def _canonical_generation_provider(
+    name: str | None, table: dict[str, GenerationProviderSpec]
+) -> str:
+    key = (name or "").strip().lower().replace("-", "_")
+    key = GENERATION_PROVIDER_ALIASES.get(key, key)
+    return key if key in table else "custom"
 
 
 @dataclass(slots=True)
@@ -617,6 +860,169 @@ def resolve_embedding_runtime_config(
     )
 
 
+def _coerce_optional_float(value: Any) -> float | None:
+    """Parse a positive float from catalog values, returning ``None`` when unset."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    try:
+        parsed = float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def resolve_tts_runtime_config(
+    catalog: dict[str, Any] | None = None,
+    *,
+    service: ModelCatalogService | None = None,
+) -> TTSConfig:
+    """Resolve the active text-to-speech config from the model catalog."""
+    catalog_service = service or get_model_catalog_service()
+    loaded = _load_catalog(catalog)
+    profile, model = _active_profile_and_model(loaded, catalog_service, "tts")
+    resolved_model = _as_str((model or {}).get("model"))
+    if not resolved_model:
+        raise ValueError("No active TTS model is configured. Set it in Settings > Voice.")
+
+    provider = _canonical_voice_provider(_as_str((profile or {}).get("binding")), TTS_PROVIDERS)
+    spec = TTS_PROVIDERS[provider]
+    api_base = _as_str((profile or {}).get("base_url")) or spec.default_api_base
+    api_key = _as_str((profile or {}).get("api_key"))
+    if not api_key and spec.is_local:
+        api_key = "sk-no-key-required"
+    voice = _as_str((model or {}).get("voice")) or spec.default_voice
+    response_format = _as_str((model or {}).get("response_format")) or "mp3"
+
+    return TTSConfig(
+        model=resolved_model,
+        provider_name=provider,
+        adapter=spec.adapter,
+        auth_style=spec.auth_style,
+        api_key=api_key,
+        base_url=api_base,
+        api_version=_as_str((profile or {}).get("api_version")) or None,
+        extra_headers=_to_headers((profile or {}).get("extra_headers")),
+        voice=voice,
+        response_format=response_format,
+        speed=_coerce_optional_float((model or {}).get("speed")),
+    )
+
+
+def resolve_stt_runtime_config(
+    catalog: dict[str, Any] | None = None,
+    *,
+    service: ModelCatalogService | None = None,
+) -> STTConfig:
+    """Resolve the active speech-to-text config from the model catalog."""
+    catalog_service = service or get_model_catalog_service()
+    loaded = _load_catalog(catalog)
+    profile, model = _active_profile_and_model(loaded, catalog_service, "stt")
+    resolved_model = _as_str((model or {}).get("model"))
+    if not resolved_model:
+        raise ValueError("No active STT model is configured. Set it in Settings > Voice.")
+
+    provider = _canonical_voice_provider(_as_str((profile or {}).get("binding")), STT_PROVIDERS)
+    spec = STT_PROVIDERS[provider]
+    api_base = _as_str((profile or {}).get("base_url")) or spec.default_api_base
+    api_key = _as_str((profile or {}).get("api_key"))
+    if not api_key and spec.is_local:
+        api_key = "sk-no-key-required"
+
+    return STTConfig(
+        model=resolved_model,
+        provider_name=provider,
+        adapter=spec.adapter,
+        request_style=spec.request_style,
+        auth_style=spec.auth_style,
+        api_key=api_key,
+        base_url=api_base,
+        api_version=_as_str((profile or {}).get("api_version")) or None,
+        extra_headers=_to_headers((profile or {}).get("extra_headers")),
+        language=_as_str((model or {}).get("language")) or None,
+    )
+
+
+def resolve_imagegen_runtime_config(
+    catalog: dict[str, Any] | None = None,
+    *,
+    service: ModelCatalogService | None = None,
+) -> ImagegenConfig:
+    """Resolve the active text-to-image config from the model catalog."""
+    catalog_service = service or get_model_catalog_service()
+    loaded = _load_catalog(catalog)
+    profile, model = _active_profile_and_model(loaded, catalog_service, "imagegen")
+    resolved_model = _as_str((model or {}).get("model"))
+    if not resolved_model:
+        raise ValueError(
+            "No active image-generation model is configured. "
+            "Set it in Settings > Media Generation > Image Generation."
+        )
+
+    provider = _canonical_generation_provider(
+        _as_str((profile or {}).get("binding")), IMAGEGEN_PROVIDERS
+    )
+    spec = IMAGEGEN_PROVIDERS[provider]
+    api_base = _as_str((profile or {}).get("base_url")) or spec.default_api_base
+    api_key = _as_str((profile or {}).get("api_key"))
+    if not api_key and spec.is_local:
+        api_key = "sk-no-key-required"
+
+    return ImagegenConfig(
+        model=resolved_model,
+        provider_name=provider,
+        adapter=spec.adapter,
+        auth_style=spec.auth_style,
+        api_key=api_key,
+        base_url=api_base,
+        api_version=_as_str((profile or {}).get("api_version")) or None,
+        extra_headers=_to_headers((profile or {}).get("extra_headers")),
+        size=_as_str((model or {}).get("size")),
+        quality=_as_str((model or {}).get("quality")),
+        style=_as_str((model or {}).get("style")),
+        response_format=_as_str((model or {}).get("response_format")),
+    )
+
+
+def resolve_videogen_runtime_config(
+    catalog: dict[str, Any] | None = None,
+    *,
+    service: ModelCatalogService | None = None,
+) -> VideogenConfig:
+    """Resolve the active text-to-video config from the model catalog."""
+    catalog_service = service or get_model_catalog_service()
+    loaded = _load_catalog(catalog)
+    profile, model = _active_profile_and_model(loaded, catalog_service, "videogen")
+    resolved_model = _as_str((model or {}).get("model"))
+    if not resolved_model:
+        raise ValueError(
+            "No active video-generation model is configured. "
+            "Set it in Settings > Media Generation > Video Generation."
+        )
+
+    provider = _canonical_generation_provider(
+        _as_str((profile or {}).get("binding")), VIDEOGEN_PROVIDERS
+    )
+    spec = VIDEOGEN_PROVIDERS[provider]
+    api_base = _as_str((profile or {}).get("base_url")) or spec.default_api_base
+    api_key = _as_str((profile or {}).get("api_key"))
+    if not api_key and spec.is_local:
+        api_key = "sk-no-key-required"
+
+    return VideogenConfig(
+        model=resolved_model,
+        provider_name=provider,
+        adapter=spec.adapter,
+        auth_style=spec.auth_style,
+        api_key=api_key,
+        base_url=api_base,
+        api_version=_as_str((profile or {}).get("api_version")) or None,
+        extra_headers=_to_headers((profile or {}).get("extra_headers")),
+        aspect_ratio=_as_str((model or {}).get("aspect_ratio")),
+        duration=_as_str((model or {}).get("duration")),
+        resolution=_as_str((model or {}).get("resolution")),
+    )
+
+
 def _resolve_search_max_results(catalog: dict[str, Any], default: int = 5) -> int:
     profile = get_model_catalog_service().get_active_profile(catalog, "search") or {}
     raw = profile.get("max_results")
@@ -739,6 +1145,16 @@ __all__ = [
     "NANOBOT_LLM_PROVIDERS",
     "EmbeddingProviderSpec",
     "EMBEDDING_PROVIDERS",
+    "VoiceProviderSpec",
+    "TTS_PROVIDERS",
+    "STT_PROVIDERS",
+    "resolve_tts_runtime_config",
+    "resolve_stt_runtime_config",
+    "GenerationProviderSpec",
+    "IMAGEGEN_PROVIDERS",
+    "VIDEOGEN_PROVIDERS",
+    "resolve_imagegen_runtime_config",
+    "resolve_videogen_runtime_config",
     "EMBEDDING_PROVIDER_ALIASES",
     "embedding_endpoint_validation_error",
     "normalize_embedding_endpoint_for_display",

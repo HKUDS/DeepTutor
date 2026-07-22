@@ -60,7 +60,7 @@ class PathService:
     """Runtime path manager rooted at a workspace root.
 
     The default root is the historical ``data/`` directory.  The optional
-    multi-user layer instantiates this class with ``multi-user/<uid>/`` so the
+    multi-user layer instantiates this class with ``data/users/<uid>/`` so the
     public API can stay the same while disk writes become scoped per user.
     """
 
@@ -116,6 +116,16 @@ class PathService:
     def get_knowledge_bases_root(self) -> Path:
         return self._workspace_root / "knowledge_bases"
 
+    def get_parse_cache_root(self) -> Path:
+        """Shared, content-addressed document-parse cache.
+
+        Lives under the workspace root (sibling of ``knowledge_bases``) so it is
+        automatically scoped per user/workspace. Both knowledge-base indexing
+        and question extraction draw from this one cache, keyed by
+        ``(source_hash, parser_signature)`` — see ``deeptutor/services/parsing``.
+        """
+        return self._workspace_root / "parse_cache"
+
     def get_chat_history_db(self) -> Path:
         return self._user_data_dir / "chat_history.db"
 
@@ -161,11 +171,14 @@ class PathService:
         if len(parts) >= 5 and parts[:2] == ("workspace", "chat") and "code_runs" in parts[3:]:
             return True
 
-        if len(parts) >= 4 and parts[:3] == ("workspace", "chat", "_detached_code_execution"):
+        # Generated media (imagegen / videogen tools write under <task>/media/).
+        if len(parts) >= 5 and parts[:2] == ("workspace", "chat") and "media" in parts[3:]:
             return True
 
-        # MathNet video generation outputs
-        if len(parts) == 1 and parts[0].startswith("mathnet_") and parts[0].endswith(".mp4"):
+        if len(parts) >= 5 and parts[:3] == ("workspace", "chat", "chat") and parts[4] == "exec":
+            return True
+
+        if len(parts) >= 4 and parts[:3] == ("workspace", "chat", "_detached_code_execution"):
             return True
 
         return False

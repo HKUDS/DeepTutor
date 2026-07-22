@@ -22,6 +22,7 @@ from .capabilities import (
 )
 from .config import get_token_limit_kwargs
 from .exceptions import LLMAPIError, LLMAuthenticationError, LLMConfigError
+from .reasoning_params import default_reasoning_effort_for
 from .utils import (
     build_auth_headers,
     build_chat_url,
@@ -349,6 +350,10 @@ async def _openai_complete(
             effort.lower() == "minimal" and binding.lower() in _BINDINGS_WITH_EXTRA_BODY_THINKING
         ):
             data["reasoning_effort"] = effort
+    else:
+        implicit_effort = default_reasoning_effort_for(binding, model)
+        if implicit_effort:
+            data["reasoning_effort"] = implicit_effort
 
     timeout = aiohttp.ClientTimeout(total=120)
     connector = _get_aiohttp_connector()
@@ -518,6 +523,10 @@ async def _openai_stream(
             effort.lower() == "minimal" and binding.lower() in _BINDINGS_WITH_EXTRA_BODY_THINKING
         ):
             data["reasoning_effort"] = effort
+    else:
+        implicit_effort = default_reasoning_effort_for(binding, model)
+        if implicit_effort:
+            data["reasoning_effort"] = implicit_effort
 
     timeout = aiohttp.ClientTimeout(total=300)
     connector = _get_aiohttp_connector()

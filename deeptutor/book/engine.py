@@ -712,7 +712,22 @@ class BookEngine:
             raise ValueError(f"Cannot compile page – missing book/spine/page ({book_id}/{page_id})")
         if page.status == PageStatus.READY and not force:
             return page
-        if force and page.content_type != ContentType.OVERVIEW:
+
+        # Overview pages are built deterministically from the spine (intro,
+        # concept graph, chapter index). Never run the generic LLM compiler over
+        # their hand-built blocks — that would overwrite the deterministic
+        # "How to read this book" intro and chapter index with hallucinated
+        # prose. Reaching here means force=True or the page is not yet READY, so
+        # rebuild deterministically (this also refreshes a changed spine).
+        if page.content_type == ContentType.OVERVIEW:
+            page.status = PageStatus.PENDING
+            self.storage.save_page(page)
+            await self._materialize_overview_page(spine, [page], book, stream=stream)
+            page = self.storage.load_page(book_id, page_id) or page
+            await self._maybe_finalize_book(book_id)
+            return page
+
+        if force:
             self._reset_page_for_force_compile(page)
             self.storage.save_page(page)
 
@@ -723,15 +738,19 @@ class BookEngine:
         bus = stream or StreamBus()
         bstream = BookStream(bus)
 
-        async with bstream.stage(STAGE_COMPILATION):
-            page = await self.compiler.compile_page(
-                book_id=book_id,
-                chapter=chapter,
-                page=page,
-                stream=bstream,
-                knowledge_bases=book.knowledge_bases,
-                language=book.language,
-            )
+        try:
+            async with bstream.stage(STAGE_COMPILATION):
+                page = await self.compiler.compile_page(
+                    book_id=book_id,
+                    chapter=chapter,
+                    page=page,
+                    stream=bstream,
+                    knowledge_bases=book.knowledge_bases,
+                    language=book.language,
+                )
+        except Exception as exc:
+            self._mark_page_error(page, exc, prefix="Compilation failed")
+            raise
 
         # Refresh KB fingerprints once we successfully ship a READY page.
         # We capture them lazily so a brand-new book gets its baseline as
@@ -781,6 +800,28 @@ class BookEngine:
                 runtime.stream = BookStream(StreamBus())
             return runtime
 
+    def _mark_page_error(self, page: Page | None, exc: Exception, *, prefix: str) -> None:
+        """Flip a page stranded in an in-flight state to ``ERROR``.
+
+        The compiler persists ``page.status = PLANNING`` before the LLM
+        planning call and ``GENERATING`` before running block generators;
+        when either throws, nothing resets the status, so without this the
+        page spins forever and is neither retried on resume nor
+        force-regenerable in the UI. Saving is best-effort — this runs
+        inside exception handlers (including the background worker loop,
+        which must survive), so a failing save must not mask the original
+        error or kill the worker.
+        """
+        if page is None or page.status not in (PageStatus.GENERATING, PageStatus.PLANNING):
+            return
+        page.status = PageStatus.ERROR
+        page.error = f"{prefix}: {exc}"
+        page.updated_at = time.time()
+        try:
+            self.storage.save_page(page)
+        except Exception:
+            logger.warning(f"Failed to persist ERROR status for page {page.id}", exc_info=True)
+
     def _ensure_worker(self, book_id: str) -> None:
         runtime = self._runtimes.get(book_id)
         if runtime is None:
@@ -804,6 +845,11 @@ class BookEngine:
                         return
                 continue
 
+            # Re-bound every iteration: the except handler below reads `page`,
+            # which must be neither unbound (loader raised on the first item —
+            # the UnboundLocalError would kill this worker task) nor stale from
+            # a previous iteration (the wrong page would be flipped to ERROR).
+            page = None
             try:
                 book = self.storage.load_book(book_id)
                 spine = self.storage.load_spine(book_id)
@@ -830,15 +876,25 @@ class BookEngine:
                     f"Background compilation failed for {book_id}/{page_id}: {exc}",
                     exc_info=True,
                 )
-                self.storage.append_log(
-                    book_id,
-                    f"background compile failed for page {page_id}: {exc}",
-                    op="compile_error",
-                )
+                # Reset page status so it can be retried on next resume.
+                self._mark_page_error(page, exc, prefix="Background compile failed")
+                try:
+                    self.storage.append_log(
+                        book_id,
+                        f"background compile failed for page {page_id}: {exc}",
+                        op="compile_error",
+                    )
+                except Exception:
+                    logger.warning(
+                        f"Failed to append compile-error log for {book_id}", exc_info=True
+                    )
             finally:
                 runtime.queued.discard(page_id)
 
-            await self._maybe_finalize_book(book_id)
+            try:
+                await self._maybe_finalize_book(book_id)
+            except Exception:
+                logger.warning(f"finalize check failed for {book_id}", exc_info=True)
 
     async def _maybe_finalize_book(self, book_id: str) -> None:
         book = self.storage.load_book(book_id)
@@ -919,6 +975,7 @@ class BookEngine:
             self.storage.save_page(page)
             self.compiler._finalize_page_status(page)
             self.storage.save_page(page)
+            await self._maybe_finalize_book(book_id)
         return block
 
     # ── Maintenance / health (Phase 4) ─────────────────────────────────

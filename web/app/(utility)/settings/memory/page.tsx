@@ -40,16 +40,19 @@ export default function MemorySettingsPage() {
   const [serverSnapshot, setServerSnapshot] =
     useState<MemorySettingsDTO | null>(null);
 
-  const load = useCallback(async () => {
-    const res = await apiFetch(apiUrl("/api/v1/memory/settings"));
-    const data = (await res.json()) as MemorySettingsDTO;
-    setSettings(data);
-    setServerSnapshot(data);
-  }, []);
-
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+    void apiFetch(apiUrl("/api/v1/memory/settings"))
+      .then((res) => res.json() as Promise<MemorySettingsDTO>)
+      .then((data) => {
+        if (cancelled) return;
+        setSettings(data);
+        setServerSnapshot(data);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const dirty =
     !!settings &&
@@ -58,8 +61,10 @@ export default function MemorySettingsPage() {
 
   // Latest-save ref so the closure handed to registerExtension always
   // reflects the current settings without re-registering on each render.
-  const settingsRef = useRef(settings);
-  settingsRef.current = settings;
+  const settingsRef = useRef<MemorySettingsDTO | null>(null);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
   const save = useCallback(async () => {
     const current = settingsRef.current;
     if (!current) return;

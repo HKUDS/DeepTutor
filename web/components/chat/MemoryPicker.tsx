@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Brain, Check, FileText, ScrollText, X } from "lucide-react";
+import { Brain, Check, FileText, ScrollText } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { LucideIcon } from "lucide-react";
 import PickerShell from "@/components/common/PickerShell";
+import PickerHeader from "@/components/common/PickerHeader";
 import type { SpaceMemoryFile } from "@/lib/space-items";
 
 interface MemoryPickerProps {
@@ -80,32 +81,15 @@ export default function MemoryPicker({
       backdropClass="bg-[var(--background)]/65"
     >
       <div className="surface-card w-full max-w-xl overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] text-[var(--card-foreground)] shadow-[0_22px_70px_rgba(0,0,0,0.18)]">
-        <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-5 py-4">
-          <div className="min-w-0">
-            <div className="mb-1 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--primary)]">
-              <Brain className="h-3 w-3" />
-              {t("Memory Reference")}
-            </div>
-            <h2
-              id="memory-picker-title"
-              className="text-lg font-semibold text-[var(--foreground)]"
-            >
-              {t("Select Memory")}
-            </h2>
-            <p className="mt-0.5 text-sm text-[var(--muted-foreground)]">
-              {t(
-                "Choose which long-form memory artifacts to attach to this turn.",
-              )}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-2 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-            aria-label={t("Close")}
-          >
-            <X size={18} />
-          </button>
-        </div>
+        <PickerHeader
+          icon={Brain}
+          titleId="memory-picker-title"
+          title={t("Select Memory")}
+          subtitle={t(
+            "Choose which long-form memory artifacts to attach to this turn.",
+          )}
+          onClose={onClose}
+        />
 
         <div className="bg-[var(--background)]/40 p-5">
           <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)]">

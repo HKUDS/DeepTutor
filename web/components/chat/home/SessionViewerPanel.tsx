@@ -22,12 +22,15 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import dynamic from "next/dynamic";
 import {
+  Activity,
   AlertCircle,
   ArrowRight,
   Compass,
+  Download,
   ExternalLink,
   FileUp,
   Globe,
@@ -42,12 +45,17 @@ import {
   resolveSourceUrl,
   type FilePreviewSource,
 } from "@/components/chat/preview/previewerFor";
+import {
+  ActivityBody,
+  type SessionActivity,
+} from "@/components/chat/home/SessionActivityPanel";
 import QuizFollowupTabBody from "@/components/quiz/QuizFollowupTabBody";
+import SubagentTabBody from "@/components/chat/home/SubagentTabBody";
 import type { QuizFollowupTabContext } from "@/context/QuizFollowupContext";
 import type { GeogebraTabPayload } from "@/context/GeogebraTabContext";
 import { apiUrl } from "@/lib/api";
-import { docIconFor } from "@/lib/doc-attachments";
 import type { MessageAttachment } from "@/context/UnifiedChatContext";
+import type { StreamEvent } from "@/lib/unified-ws";
 
 const PdfPreview = dynamic(
   () => import("@/components/chat/preview/previewers/PdfPreview"),
@@ -64,6 +72,12 @@ const MarkdownPreview = dynamic(
 const TextPreview = dynamic(
   () => import("@/components/chat/preview/previewers/TextPreview"),
 );
+const DocxPreview = dynamic(
+  () => import("@/components/chat/preview/previewers/DocxPreview"),
+);
+const XlsxPreview = dynamic(
+  () => import("@/components/chat/preview/previewers/XlsxPreview"),
+);
 const OfficeTextPreview = dynamic(
   () => import("@/components/chat/preview/previewers/OfficeTextPreview"),
 );
@@ -75,6 +89,38 @@ const Geogebra = dynamic(() => import("@/components/Geogebra"), {
 });
 
 const ANIM_MS = 220;
+
+/* Resizable width — the panel overlays from the right and the chat shell
+   reserves space for it via the ``--viewer-width`` CSS var (see globals.css).
+   Both read the same var so the squeeze and the panel edge stay locked
+   together while dragging. */
+const VIEWER_WIDTH_VAR = "--viewer-width";
+const VIEWER_WIDTH_KEY = "dt:viewer-width";
+const VIEWER_WIDTH_DEFAULT = 620;
+const VIEWER_WIDTH_MIN = 400;
+const VIEWER_WIDTH_MAX = 960;
+
+function clampViewerWidth(px: number): number {
+  // Hard floor/ceiling, plus a soft ceiling that always leaves the chat
+  // column ~30% of the viewport so the panel can't swallow the conversation.
+  const ceiling =
+    typeof window !== "undefined"
+      ? Math.max(
+          VIEWER_WIDTH_MIN,
+          Math.min(VIEWER_WIDTH_MAX, window.innerWidth * 0.7),
+        )
+      : VIEWER_WIDTH_MAX;
+  return Math.round(Math.max(VIEWER_WIDTH_MIN, Math.min(px, ceiling)));
+}
+
+function readStoredViewerWidth(): number {
+  if (typeof window === "undefined") return VIEWER_WIDTH_DEFAULT;
+  const raw = window.localStorage.getItem(VIEWER_WIDTH_KEY);
+  const parsed = raw ? Number(raw) : NaN;
+  return Number.isFinite(parsed)
+    ? clampViewerWidth(parsed)
+    : VIEWER_WIDTH_DEFAULT;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Tab types                                                          */
@@ -94,6 +140,13 @@ type ViewerTab =
       id: string;
       label: string;
       script: string;
+    }
+  | {
+      kind: "subagent";
+      id: string;
+      label: string;
+      callId: string;
+      events: StreamEvent[];
     };
 
 export interface SessionViewerPanelHandle {
@@ -103,6 +156,11 @@ export interface SessionViewerPanelHandle {
   openQuizFollowupTab(context: QuizFollowupTabContext): void;
   /** Opens (or focuses) an interactive GeoGebra applet tab. */
   openGeogebraTab(payload: GeogebraTabPayload): void;
+  /** Opens (first time) or live-updates a connected subagent's run tab. */
+  openSubagentTab(callId: string, label: string, events: StreamEvent[]): void;
+  /** Opens the panel and switches to the Activity home (where the
+   *  capability-config card lives). */
+  focusActivityHome(): void;
 }
 
 interface SessionViewerPanelProps {
@@ -110,6 +168,10 @@ interface SessionViewerPanelProps {
   sessionId: string | null;
   onClose: () => void;
   onAutoOpen: () => void;
+  /** Aggregated session activity, shown on the Activity home view. */
+  activity: SessionActivity;
+  /** Optional capability-config card appended below the activity sections. */
+  configSection?: ReactNode;
 }
 
 function fileTabIdFor(a: MessageAttachment, fallback: number): string {
@@ -126,6 +188,10 @@ function quizFollowupTabIdFor(questionKey: string): string {
 
 function geogebraTabIdFor(payloadId: string): string {
   return `geogebra:${payloadId}`;
+}
+
+function subagentTabIdFor(callId: string): string {
+  return `subagent:${callId}`;
 }
 
 function hostnameFor(url: string): string {
@@ -153,12 +219,69 @@ function attachmentToPreviewSource(a: MessageAttachment): FilePreviewSource {
 /* ------------------------------------------------------------------ */
 
 function SessionViewerPanelInner(
-  { open, sessionId, onClose, onAutoOpen }: SessionViewerPanelProps,
+  {
+    open,
+    sessionId,
+    onClose,
+    onAutoOpen,
+    activity,
+    configSection,
+  }: SessionViewerPanelProps,
   ref: React.Ref<SessionViewerPanelHandle>,
 ) {
   const { t } = useTranslation();
   const [tabs, setTabs] = useState<ViewerTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+
+  // Drag-to-resize width. The width is NOT React state — the panel reads it
+  // from the ``--viewer-width`` CSS var (so does the chat shell's squeeze),
+  // and the drag writes that var directly. This keeps the inline style a
+  // constant string (no SSR/client hydration mismatch) and means a drag
+  // re-styles one DOM node per frame instead of re-rendering the whole panel
+  // every pointer move — the difference between janky and buttery.
+  const widthRef = useRef(VIEWER_WIDTH_DEFAULT);
+  useEffect(() => {
+    // Restore the persisted width after mount (kept out of the initial render
+    // so server and client agree on the fallback width).
+    widthRef.current = readStoredViewerWidth();
+    document.documentElement.style.setProperty(
+      VIEWER_WIDTH_VAR,
+      `${widthRef.current}px`,
+    );
+  }, []);
+
+  const startResize = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    document.documentElement.dataset.viewerResizing = "true";
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+
+    let rafId = 0;
+    let pendingX = e.clientX;
+    const apply = () => {
+      rafId = 0;
+      const w = clampViewerWidth(window.innerWidth - pendingX);
+      widthRef.current = w;
+      document.documentElement.style.setProperty(VIEWER_WIDTH_VAR, `${w}px`);
+    };
+    const onMove = (ev: PointerEvent) => {
+      // Coalesce to one var write per frame — pointermove can fire faster
+      // than the display refreshes.
+      pendingX = ev.clientX;
+      if (!rafId) rafId = requestAnimationFrame(apply);
+    };
+    const onUp = () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      delete document.documentElement.dataset.viewerResizing;
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.localStorage.setItem(VIEWER_WIDTH_KEY, String(widthRef.current));
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, []);
 
   // Wipe tabs whenever the session changes — preview/web state belongs to
   // the conversation that triggered it.
@@ -285,6 +408,40 @@ function SessionViewerPanelInner(
     [onAutoOpen],
   );
 
+  // A connected subagent's run streams into its own tab. The first call (when
+  // the consult starts) reveals + focuses the tab; later calls only refresh its
+  // events, so live streaming never yanks the user off whatever they're viewing.
+  const subagentSeenRef = useRef<Set<string>>(new Set());
+  const openSubagentTab = useCallback(
+    (callId: string, label: string, events: StreamEvent[]) => {
+      const id = subagentTabIdFor(callId);
+      const isNew = !subagentSeenRef.current.has(callId);
+      subagentSeenRef.current.add(callId);
+      setTabs((prev) => {
+        const existingIdx = prev.findIndex((tab) => tab.id === id);
+        const tab: ViewerTab = { kind: "subagent", id, label, callId, events };
+        if (existingIdx >= 0) {
+          const next = [...prev];
+          next[existingIdx] = tab;
+          return next;
+        }
+        return [...prev, tab];
+      });
+      if (isNew) {
+        setActiveTabId(id);
+        onAutoOpen();
+      }
+    },
+    [onAutoOpen],
+  );
+
+  // Open the panel and return to the Activity home (where the
+  // capability-config card surfaces). Used by the send-gate.
+  const focusActivityHome = useCallback(() => {
+    setActiveTabId(null);
+    onAutoOpen();
+  }, [onAutoOpen]);
+
   useImperativeHandle(
     ref,
     () => ({
@@ -292,8 +449,17 @@ function SessionViewerPanelInner(
       openWebTab,
       openQuizFollowupTab,
       openGeogebraTab,
+      openSubagentTab,
+      focusActivityHome,
     }),
-    [openFileTab, openWebTab, openQuizFollowupTab, openGeogebraTab],
+    [
+      openFileTab,
+      openWebTab,
+      openQuizFollowupTab,
+      openGeogebraTab,
+      openSubagentTab,
+      focusActivityHome,
+    ],
   );
 
   const closeTab = useCallback(
@@ -303,20 +469,18 @@ function SessionViewerPanelInner(
         if (idx === -1) return prev;
         const next = prev.filter((tab) => tab.id !== id);
         if (activeTabId === id) {
-          if (next.length === 0) {
-            setActiveTabId(null);
-            // Closing the last tab also closes the panel — there's nothing
-            // useful left to look at.
-            onClose();
-          } else {
-            const fallback = next[Math.max(0, idx - 1)] ?? next[0];
-            setActiveTabId(fallback.id);
-          }
+          // Fall back to the previous tab, or to the Activity home when none
+          // remain — the panel stays open since the home is always useful.
+          setActiveTabId(
+            next.length === 0
+              ? null
+              : (next[Math.max(0, idx - 1)] ?? next[0]).id,
+          );
         }
         return next;
       });
     },
-    [activeTabId, onClose],
+    [activeTabId],
   );
 
   // ESC closes the panel.
@@ -355,18 +519,38 @@ function SessionViewerPanelInner(
     <div
       role="dialog"
       aria-hidden={!visible}
-      className={`fixed right-0 top-0 z-[30] flex h-full w-[min(620px,92vw)] flex-col border-l border-[var(--border)] bg-[var(--card)] shadow-2xl transition-transform ease-out ${
-        visible ? "translate-x-0" : "translate-x-full"
+      className={`fixed right-0 top-0 z-[30] flex h-full max-w-[92vw] flex-col border-l border-[var(--border)] bg-[var(--card)] transition-transform ease-out ${
+        // shadow-2xl only while visible — when closed, translate-x-full moves
+        // the box off-screen but its blurred shadow still bleeds ~38px back
+        // onto the viewport's right edge. Dropping the shadow off-screen kills
+        // that stray sliver.
+        visible ? "translate-x-0 shadow-2xl" : "translate-x-full"
       }`}
       style={{
+        // Constant string (not a state value) so SSR and the first client
+        // render agree; the real width lives in the var, updated imperatively.
+        width: `var(${VIEWER_WIDTH_VAR}, ${VIEWER_WIDTH_DEFAULT}px)`,
         willChange: "transform",
         transitionDuration: `${ANIM_MS}ms`,
         pointerEvents: visible ? "auto" : "none",
       }}
     >
+      {/* Left-edge resize handle. A wide invisible hit-area with a hairline
+          that tints on hover/drag — drag left/right to set the panel width. */}
+      <div
+        onPointerDown={startResize}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={t("Resize viewer")}
+        className="group/resize absolute left-0 top-0 z-10 h-full w-2 -translate-x-1/2 cursor-col-resize"
+      >
+        <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover/resize:bg-[var(--primary)]/40" />
+      </div>
       <TabBar
         tabs={tabs}
         activeTabId={activeTabId}
+        homeActive={activeTab === null}
+        onSelectHome={() => setActiveTabId(null)}
         onSelect={setActiveTabId}
         onCloseTab={closeTab}
         onClosePanel={onClose}
@@ -383,8 +567,18 @@ function SessionViewerPanelInner(
           />
         ) : activeTab?.kind === "geogebra" ? (
           <GeogebraTabBody key={activeTab.id} script={activeTab.script} />
+        ) : activeTab?.kind === "subagent" ? (
+          <SubagentTabBody
+            key={activeTab.id}
+            tabEvents={activeTab.events}
+            sessionId={sessionId}
+          />
         ) : (
-          <ViewerLanding
+          <ActivityHome
+            activity={activity}
+            open={visible}
+            configSection={configSection}
+            onOpenAttachment={openFileTab}
             onOpenWebTab={openWebTab}
             onOpenLocalFile={openLocalFile}
           />
@@ -411,12 +605,16 @@ export default SessionViewerPanel;
 function TabBar({
   tabs,
   activeTabId,
+  homeActive,
+  onSelectHome,
   onSelect,
   onCloseTab,
   onClosePanel,
 }: {
   tabs: ViewerTab[];
   activeTabId: string | null;
+  homeActive: boolean;
+  onSelectHome: () => void;
   onSelect: (id: string) => void;
   onCloseTab: (id: string) => void;
   onClosePanel: () => void;
@@ -425,6 +623,22 @@ function TabBar({
   return (
     <div className="flex shrink-0 items-end gap-2 bg-[color-mix(in_srgb,var(--muted)_40%,var(--background))] px-2 pt-2 pb-0">
       <div className="flex min-w-0 flex-1 items-end gap-[2px] overflow-x-auto">
+        {/* Persistent Activity home — always first, never closeable. It's the
+            session-activity landing; opening a file/web tab focuses that tab
+            and this recedes, browser-home-tab style. */}
+        <button
+          type="button"
+          onClick={onSelectHome}
+          className={`inline-flex shrink-0 items-center gap-1.5 rounded-t-md py-1.5 pl-2.5 pr-3 text-[11.5px] font-medium transition-colors ${
+            homeActive
+              ? "bg-[var(--card)] text-[var(--foreground)]"
+              : "bg-transparent text-[var(--muted-foreground)] hover:bg-[color-mix(in_srgb,var(--card)_70%,transparent)] hover:text-[var(--foreground)]"
+          }`}
+          title={t("Activity")}
+        >
+          <Activity size={11} strokeWidth={1.9} className="shrink-0" />
+          <span>{t("Activity")}</span>
+        </button>
         {tabs.map((tab) => {
           const active = tab.id === activeTabId;
           const Icon =
@@ -482,10 +696,48 @@ function TabBar({
 }
 
 /* ------------------------------------------------------------------ */
-/*  Landing state — shown when no tabs are open                        */
+/*  Activity home — the panel's default view (no tab focused)          */
 /* ------------------------------------------------------------------ */
 
-function ViewerLanding({
+/**
+ * The merged Activity landing: the session-activity sections (tools, KBs,
+ * Space refs, attachments — see ``ActivityBody``) plus a compact opener for
+ * a URL or a local file. Clicking an attachment opens it as a file tab in
+ * this same panel.
+ */
+function ActivityHome({
+  activity,
+  open,
+  configSection,
+  onOpenAttachment,
+  onOpenWebTab,
+  onOpenLocalFile,
+}: {
+  activity: SessionActivity;
+  open: boolean;
+  configSection?: ReactNode;
+  onOpenAttachment: (a: MessageAttachment) => void;
+  onOpenWebTab: (url: string) => void;
+  onOpenLocalFile: (file: File) => void;
+}) {
+  return (
+    <div className="h-full overflow-y-auto px-3 py-3">
+      <ActivityBody
+        activity={activity}
+        open={open}
+        onOpenAttachment={onOpenAttachment}
+        configSection={configSection}
+      />
+      <ActivityOpener
+        onOpenWebTab={onOpenWebTab}
+        onOpenLocalFile={onOpenLocalFile}
+      />
+    </div>
+  );
+}
+
+/** Compact "open a URL or local file" footer for the Activity home. */
+function ActivityOpener({
   onOpenWebTab,
   onOpenLocalFile,
 }: {
@@ -514,27 +766,19 @@ function ViewerLanding({
   );
 
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-6 px-8 py-10">
-      <div className="text-center">
-        <h2 className="text-[15px] font-semibold tracking-[-0.005em] text-[var(--foreground)]">
-          {t("Viewer")}
-        </h2>
-        <p className="mt-1.5 text-[12px] text-[var(--muted-foreground)]">
-          {t(
-            "Paste a URL or open a local file. Attachments from chat will also land here.",
-          )}
-        </p>
+    <div className="mt-3 space-y-2 border-t border-[var(--border)]/40 pt-3">
+      <div className="px-1 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--muted-foreground)]/70">
+        {t("Open")}
       </div>
-
       <form
         onSubmit={(e) => {
           e.preventDefault();
           submitUrl();
         }}
-        className="flex w-full max-w-[420px] items-center gap-2 rounded-full border border-[var(--border)]/55 bg-[var(--background)] px-3 py-1.5 transition-colors focus-within:border-[var(--primary)]/40"
+        className="flex items-center gap-2 rounded-lg border border-[var(--border)]/55 bg-[var(--background)] px-2.5 py-1.5 transition-colors focus-within:border-[var(--primary)]/40"
       >
         <Globe
-          size={14}
+          size={13}
           strokeWidth={1.8}
           className="shrink-0 text-[var(--muted-foreground)]"
         />
@@ -543,28 +787,21 @@ function ViewerLanding({
           value={urlInput}
           onChange={(e) => setUrlInput(e.target.value)}
           placeholder={t("https://example.com")}
-          className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]/60"
+          className="min-w-0 flex-1 bg-transparent text-[12.5px] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]/60"
         />
         <button
           type="submit"
           disabled={!urlInput.trim()}
-          className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--primary)] px-3 py-1 text-[11px] font-medium text-[var(--primary-foreground)] transition-opacity disabled:opacity-30"
+          className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[var(--primary)] px-2 py-1 text-[11px] font-medium text-[var(--primary-foreground)] transition-opacity disabled:opacity-30"
           aria-label={t("Open URL")}
         >
           <ArrowRight size={11} strokeWidth={2.2} />
         </button>
       </form>
-
-      <div className="flex items-center gap-2 text-[11px] text-[var(--muted-foreground)]/70">
-        <span className="h-px w-12 bg-[var(--border)]/50" />
-        <span>{t("or")}</span>
-        <span className="h-px w-12 bg-[var(--border)]/50" />
-      </div>
-
       <button
         type="button"
         onClick={() => fileInputRef.current?.click()}
-        className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)]/55 bg-[var(--background)] px-3.5 py-2 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:border-[var(--primary)]/35 hover:text-[var(--primary)]"
+        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--border)]/55 bg-[var(--background)] px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)]/35 hover:text-[var(--primary)]"
       >
         <FileUp size={13} strokeWidth={1.8} />
         {t("Open a local file")}
@@ -590,38 +827,42 @@ function FileTabBody({ source }: { source: FilePreviewSource }) {
   const previewUrl = useMemo(() => resolveSourceUrl(source, apiUrl), [source]);
   const kind = previewKindFor(source);
   const filename = source.filename || t("Attachment");
-  const spec = docIconFor(filename);
 
-  const openInBrowser = useCallback(() => {
-    if (previewUrl) {
-      window.open(previewUrl, "_blank", "noopener,noreferrer");
-      return;
-    }
+  // Prefer the served URL; fall back to a data URL for pending (un-sent)
+  // base64 attachments so download / open-in-browser still work.
+  const fileUrl = useMemo(() => {
+    if (previewUrl) return previewUrl;
     if (source.base64) {
       const mime = source.mimeType || "application/octet-stream";
-      const url = `data:${mime};base64,${source.base64}`;
-      window.open(url, "_blank", "noopener,noreferrer");
+      return `data:${mime};base64,${source.base64}`;
     }
-  }, [previewUrl, source]);
+    return null;
+  }, [previewUrl, source.base64, source.mimeType]);
+
+  const openInBrowser = useCallback(() => {
+    if (fileUrl) window.open(fileUrl, "_blank", "noopener,noreferrer");
+  }, [fileUrl]);
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)]/40 bg-[var(--card)] px-4 py-2.5">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--muted)]/55">
-          <spec.Icon size={14} strokeWidth={1.6} className={spec.tint} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[12.5px] font-semibold text-[var(--foreground)]">
-            {filename}
-          </div>
-          <div className="truncate text-[10px] uppercase tracking-wide text-[var(--muted-foreground)]">
-            {spec.label}
-          </div>
-        </div>
+      {/* The tab already carries the filename + type, so this strip is just
+          a minimal action rail — no duplicated name/icon/label. */}
+      <div className="flex shrink-0 items-center justify-end gap-0.5 border-b border-[var(--border)]/40 bg-[var(--card)] px-2 py-1">
+        {fileUrl ? (
+          <a
+            href={fileUrl}
+            download={filename}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/45 hover:text-[var(--foreground)]"
+            title={t("Download")}
+          >
+            <Download size={13} strokeWidth={1.8} />
+          </a>
+        ) : null}
         <button
           type="button"
           onClick={openInBrowser}
-          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--border)]/55 px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)]/35 hover:text-[var(--primary)]"
+          disabled={!fileUrl}
+          className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/45 hover:text-[var(--foreground)] disabled:opacity-40"
         >
           <ExternalLink size={11} strokeWidth={1.8} />
           {t("Open in browser")}
@@ -662,6 +903,10 @@ const PreviewBody = memo(function PreviewBody({
   switch (kind) {
     case "pdf":
       return <PdfPreview url={previewUrl} filename={filename} />;
+    case "docx":
+      return <DocxPreview url={previewUrl} />;
+    case "xlsx":
+      return <XlsxPreview url={previewUrl} />;
     case "image":
       return <ImagePreview url={previewUrl} filename={filename} />;
     case "svg":

@@ -192,7 +192,7 @@ function injectEditorMdTableOfContents(content: string): string {
   return content.replace(/^\[TOCM?\]\s*$/gim, toc);
 }
 
-function convertFlowFenceToMermaid(source: string): string | null {
+export function convertFlowFenceToMermaid(source: string): string | null {
   const lines = source
     .split("\n")
     .map((line) => line.trim())
@@ -245,9 +245,15 @@ function convertFlowFenceToMermaid(source: string): string | null {
       const toMatch = /^([A-Za-z][\w-]*)(?:\(([^)]+)\))?$/.exec(parts[i + 1]);
       if (!fromMatch || !toMatch) continue;
 
-      const [, fromId] = fromMatch;
-      const [, toId, edgeLabel] = toMatch;
-      const label = edgeLabel ? `|${edgeLabel}|` : "";
+      const [, fromId, fromAnnotation] = fromMatch;
+      const [, toId] = toMatch;
+      // flowchart.js puts branch labels on the source side (`cond(yes)->x`);
+      // pure layout hints (`op(right)->x`) are not labels.
+      const branch = fromAnnotation?.split(",")[0]?.trim();
+      const label =
+        branch && !/^(left|right|top|bottom)$/i.test(branch)
+          ? `|${branch}|`
+          : "";
       edges.push(`  ${fromId} -->${label} ${toId}`);
     }
   }
@@ -256,7 +262,7 @@ function convertFlowFenceToMermaid(source: string): string | null {
   return ["flowchart TD", ...nodeDefs, ...edges].join("\n");
 }
 
-function convertSequenceFenceToMermaid(source: string): string | null {
+export function convertSequenceFenceToMermaid(source: string): string | null {
   const lines = source
     .split("\n")
     .map((line) => line.trim())

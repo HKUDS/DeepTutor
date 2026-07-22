@@ -35,7 +35,7 @@ export default function ChatHistorySection({
   title,
   description,
 }: ChatHistorySectionProps = {}) {
-  const basePath = "/chat";
+  const basePath = "/home";
   const { t } = useTranslation();
   const router = useRouter();
   const { activeSessionId, setActiveSessionId } = useAppShell();

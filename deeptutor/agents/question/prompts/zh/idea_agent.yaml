@@ -1,0 +1,3 @@
+generate_ideas:
+  system: "请根据用户主题和约束生成多样化的题目创意。"
+  user: "主题：{topic}"

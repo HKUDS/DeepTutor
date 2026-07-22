@@ -15,7 +15,7 @@
  *   for tools/KBs/Space/attachments that never showed up in this session.
  */
 
-import { memo, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
   AtSign,
@@ -27,7 +27,7 @@ import {
   History,
   NotebookPen,
   Paperclip,
-  Wand2,
+  UserRound,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
@@ -66,7 +66,7 @@ export interface SpaceReferenceSummary {
   notebookRecordCount: number;
   notebookIds: string[];
   questionEntryIds: number[];
-  skills: string[];
+  personas: string[];
   memoryKinds: Array<"summary" | "profile">;
 }
 
@@ -88,7 +88,7 @@ export function buildSessionActivity(messages: MessageItem[]): SessionActivity {
   const notebookIds = new Set<string>();
   let notebookRecordCount = 0;
   const questionEntryIds = new Set<number>();
-  const skills = new Set<string>();
+  const personas = new Set<string>();
   const memoryKinds = new Set<"summary" | "profile">();
   const attachments: AttachmentWithOrigin[] = [];
 
@@ -121,7 +121,7 @@ export function buildSessionActivity(messages: MessageItem[]): SessionActivity {
         notebookRecordCount += n.record_ids?.length ?? 0;
       });
       snap.questionNotebookReferences?.forEach((q) => questionEntryIds.add(q));
-      snap.skills?.forEach((s) => skills.add(s));
+      if (snap.persona) personas.add(snap.persona);
       snap.memoryReferences?.forEach((k) => memoryKinds.add(k));
     }
   });
@@ -138,7 +138,7 @@ export function buildSessionActivity(messages: MessageItem[]): SessionActivity {
     notebookRecordCount,
     notebookIds: Array.from(notebookIds),
     questionEntryIds: Array.from(questionEntryIds),
-    skills: Array.from(skills),
+    personas: Array.from(personas),
     memoryKinds: Array.from(memoryKinds),
   };
 
@@ -150,7 +150,7 @@ export function buildSessionActivity(messages: MessageItem[]): SessionActivity {
     space.bookIds.length === 0 &&
     space.notebookIds.length === 0 &&
     space.questionEntryIds.length === 0 &&
-    space.skills.length === 0 &&
+    space.personas.length === 0 &&
     space.memoryKinds.length === 0;
 
   return {
@@ -237,56 +237,12 @@ function useResolvedTitles(
 }
 
 /* ------------------------------------------------------------------ */
-/*  Panel shell                                                        */
-/* ------------------------------------------------------------------ */
-
-interface SessionActivityPanelProps {
-  open: boolean;
-  activity: SessionActivity;
-  onOpenAttachment: (a: MessageAttachment) => void;
-  /**
-   * Optional capability-config card (Quiz / Animator / Visualize / Research
-   * settings) appended below the standard activity sections. Built by the
-   * page when the active capability requires manual configuration before
-   * sending. See `CapabilityConfigCard` and `page.tsx`.
-   */
-  configSection?: ReactNode;
-}
-
-function SessionActivityPanelInner({
-  open,
-  activity,
-  onOpenAttachment,
-  configSection,
-}: SessionActivityPanelProps) {
-  return (
-    <aside
-      aria-hidden={!open}
-      className={`pointer-events-none fixed inset-y-0 right-0 z-[25] flex w-full max-w-[320px] flex-col overflow-hidden transition-transform duration-[220ms] ease-out ${
-        open ? "translate-x-0" : "translate-x-full"
-      }`}
-    >
-      <div
-        className={`pointer-events-auto h-full overflow-y-auto pl-3 pr-3 pt-3 pb-6 ${
-          open ? "" : "pointer-events-none"
-        }`}
-      >
-        <ActivityBody
-          activity={activity}
-          open={open}
-          onOpenAttachment={onOpenAttachment}
-          configSection={configSection}
-        />
-      </div>
-    </aside>
-  );
-}
-
-const SessionActivityPanel = memo(SessionActivityPanelInner);
-export default SessionActivityPanel;
-
-/* ------------------------------------------------------------------ */
 /*  Activity body                                                      */
+/*                                                                     */
+/*  Rendered as the "Activity" home view inside SessionViewerPanel (it */
+/*  used to live in its own floating-card panel; the two were merged   */
+/*  so the session's activity is the viewer's landing and files open   */
+/*  as tabs alongside it).                                             */
 /* ------------------------------------------------------------------ */
 
 interface SpaceCategoryDef {
@@ -321,11 +277,11 @@ const SPACE_CATEGORIES: Record<string, SpaceCategoryDef> = {
     label: "Question bank",
     icon: ClipboardList,
   },
-  skills: {
-    key: "skills",
-    href: "/space/skills",
-    label: "Skills",
-    icon: Wand2,
+  persona: {
+    key: "persona",
+    href: "/space/personas",
+    label: "Persona",
+    icon: UserRound,
   },
   memory: {
     key: "memory",
@@ -335,7 +291,7 @@ const SPACE_CATEGORIES: Record<string, SpaceCategoryDef> = {
   },
 };
 
-function ActivityBody({
+export function ActivityBody({
   activity,
   open,
   onOpenAttachment,
@@ -414,15 +370,15 @@ function ActivityBody({
       </SpaceSubsection>,
     );
   }
-  if (space.skills.length > 0) {
+  if (space.personas.length > 0) {
     spaceSubsections.push(
       <SpaceSubsection
-        key="skills"
-        category={SPACE_CATEGORIES.skills}
-        count={space.skills.length}
+        key="persona"
+        category={SPACE_CATEGORIES.persona}
+        count={space.personas.length}
       >
-        {space.skills.map((skill) => (
-          <SpaceItemRow key={skill} title={skill} />
+        {space.personas.map((persona) => (
+          <SpaceItemRow key={persona} title={persona} />
         ))}
       </SpaceSubsection>,
     );

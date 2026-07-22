@@ -7,8 +7,8 @@ Backend support matrix
 ----------------------
 
 The default JSON/SQLite backend (``integrations.pocketbase_url`` blank) is the supported
-multi-user path: per-user workspaces under ``multi-user/<uid>/``, per-user
-SQLite session DBs, and JWT-based auth.
+multi-user path: per-user workspaces under ``data/users/<uid>/``, accounts and
+grants under ``data/system/``, per-user SQLite session DBs, and JWT-based auth.
 
 PocketBase mode (``integrations.pocketbase_url`` set) is **single-user only** at the
 moment: the PocketBase ``users`` collection has no ``role`` field by default

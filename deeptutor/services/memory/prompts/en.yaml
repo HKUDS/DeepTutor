@@ -137,8 +137,8 @@ surfaces:
   book:
     focus: "Reading pacing, sticking points (pages reopened or paused), and topics the user annotates heavily."
     sections: ["Pacing", "Sticking points", "Annotation themes"]
-  tutorbot:
-    focus: "Persistent themes across tutorbot conversations and channel-specific behaviours."
+  partner:
+    focus: "Persistent themes across partner conversations and channel-specific behaviours."
     sections: ["Themes", "Channels"]
   cowriter:
     focus: "Writing style preferences, recurring revisions, and topics the user drafts about."

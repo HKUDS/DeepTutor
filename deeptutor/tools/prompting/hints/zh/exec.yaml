@@ -1,0 +1,6 @@
+short_description: "在隔离沙箱中执行 shell 命令，返回 stdout/stderr 与退出码。"
+when_to_use: "用于数据处理、运行技能自带脚本、调用任务所需的 CLI 工具。不要用于破坏性或系统管理类命令。"
+input_format: "`command` — shell 命令。可选 `timeout` — 秒（默认 30，上限 300）。命令运行在本回合的工作目录中。"
+guideline: "优先使用非交互参数（如 `-y`）。控制输出体量，命令过于啰嗦时用 `head`/`grep` 过滤。运行技能脚本前先读其 SKILL.md。若用户要求创建/导出文件，执行命令并把文件保存到工作目录，然后在最终回答中给出工具结果里的 Generated artifacts 下载链接。"
+note: "破坏性命令（rm -rf、mkfs、shutdown 等）会被拦截。沙箱限制文件与网络访问，需要公网的命令可能失败。"
+phase: "expansion"

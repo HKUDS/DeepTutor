@@ -1,0 +1,19 @@
+# Visualize capability status messages (English)
+# Loaded by StatusI18n from the `status:` section.
+status:
+  analyzing: "Analyzing visualization requirements..."
+  render_type_detected: "Render type: {render_type} — {description}"
+  generating: "Generating visualization code..."
+  code_generated: "Code generated."
+  validation_passed: "Looks good — passed local checks."
+  repairing: "Fixing a validation issue..."
+  code_repaired: "Fixed: {notes}"
+  repair_incomplete: "Repair attempted; residual issue: {error}"
+  repair_skipped_error: "Repair skipped — using draft as-is."
+  html_invalid_fallback: "HTML did not validate; using fallback template."
+  manim_code_prepared: "Manim code prepared."
+  manim_rendering: "Rendering {mode} with quality={quality}."
+  manim_retry: "Retry {attempt}: {error}"
+  manim_artifacts_one: "Prepared {count} artifact."
+  manim_artifacts_many: "Prepared {count} artifacts."
+  llm_call_failed: "LLM call failed."

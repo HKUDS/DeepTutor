@@ -44,11 +44,6 @@ async def test_incremental_add_migrates_matching_legacy_index_to_flat_version(
     captured: dict[str, str] = {}
 
     class _FakeStorageContext:
-        @classmethod
-        def from_defaults(cls, persist_dir: str):
-            captured["load_dir"] = persist_dir
-            return cls()
-
         def persist(self, persist_dir: str) -> None:
             captured["persist_dir"] = persist_dir
             target = Path(persist_dir)
@@ -63,6 +58,10 @@ async def test_incremental_add_migrates_matching_legacy_index_to_flat_version(
         def insert(self, document) -> None:
             self.inserted.append(document)
 
+    def _fake_load_index(storage_dir) -> _FakeIndex:
+        captured["load_dir"] = str(storage_dir)
+        return _FakeIndex()
+
     async def _verify_embedding_connectivity(self) -> None:
         return None
 
@@ -76,12 +75,7 @@ async def test_incremental_add_migrates_matching_legacy_index_to_flat_version(
         "_verify_embedding_connectivity",
         _verify_embedding_connectivity,
     )
-    monkeypatch.setattr(storage_module, "StorageContext", _FakeStorageContext)
-    monkeypatch.setattr(
-        storage_module,
-        "load_index_from_storage",
-        lambda _storage_context: _FakeIndex(),
-    )
+    monkeypatch.setattr(storage_module.vector_store, "load_index", _fake_load_index)
 
     pipeline = LlamaIndexPipeline(
         kb_base_dir=str(tmp_path),

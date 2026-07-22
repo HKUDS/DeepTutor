@@ -72,7 +72,7 @@ const _L3_SURFACES = new Set([
   "quiz",
   "kb",
   "book",
-  "tutorbot",
+  "partner",
   "cowriter",
 ]);
 const _FOOTNOTE_DEF_LINKIFY_BARE_RE =
@@ -157,7 +157,7 @@ const L2_NAV: NavEntry[] = [
   { key: "quiz", icon: ClipboardList, label: "Quiz" },
   { key: "kb", icon: BookOpen, label: "Knowledge base" },
   { key: "book", icon: Library, label: "Book" },
-  { key: "tutorbot", icon: Bot, label: "TutorBot" },
+  { key: "partner", icon: Bot, label: "Partner" },
   { key: "cowriter", icon: PenLine, label: "Co-writer" },
 ];
 

@@ -28,6 +28,9 @@ from deeptutor.services.llm.provider_core.openai_responses import (
     convert_tools,
     parse_response_output,
 )
+from deeptutor.services.llm.reasoning_params import (
+    build_openai_compatible_reasoning_kwargs,
+)
 
 if TYPE_CHECKING:
     from deeptutor.services.provider_registry import ProviderSpec
@@ -51,12 +54,6 @@ _DEFAULT_OPENROUTER_HEADERS = {
 }
 _RESPONSES_FAILURE_THRESHOLD = 2
 _RESPONSES_PROBE_INTERVAL_S = 300.0
-_THINKING_STYLE_MAP = {
-    "thinking_type": lambda enabled: {"thinking": {"type": "enabled" if enabled else "disabled"}},
-    "enable_thinking": lambda enabled: {"enable_thinking": enabled},
-    "reasoning_split": lambda enabled: {"reasoning_split": enabled},
-}
-_THINKING_DISABLED_BY_DEFAULT: tuple[tuple[str, str], ...] = (("deepseek", "deepseek-v4-flash"),)
 
 
 def _short_tool_id() -> str:
@@ -104,16 +101,6 @@ def _responses_circuit_key(
     model_name = (model or default_model or "").strip().lower()
     effort = (reasoning_effort or "").strip().lower() or "none"
     return f"{model_name}|{effort}"
-
-
-def _disable_thinking_by_default(spec: "ProviderSpec | None", model_name: str) -> bool:
-    if not spec:
-        return False
-    normalized = (model_name or "").strip().lower()
-    return any(
-        spec.name == provider and pattern in normalized
-        for provider, pattern in _THINKING_DISABLED_BY_DEFAULT
-    )
 
 
 class OpenAICompatProvider(LLMProvider):
@@ -306,38 +293,14 @@ class OpenAICompatProvider(LLMProvider):
                     kwargs.update(overrides)
                     break
 
-        if reasoning_effort is None and spec and spec.reasoning_model_patterns:
-            model_lower = model_name.lower()
-            if any(p.lower() in model_lower for p in spec.reasoning_model_patterns):
-                reasoning_effort = "high"
-
-        semantic_effort: str | None = None
-        if isinstance(reasoning_effort, str):
-            semantic_effort = reasoning_effort.lower()
-            if semantic_effort == "minimum":
-                semantic_effort = "minimal"
-
-        wire_effort = reasoning_effort
-        if spec and spec.name == "dashscope" and semantic_effort == "minimal":
-            wire_effort = "minimum"
-
-        # Providers with thinking_style handle thinking via extra_body.
-        # "minimal" means disable thinking — only send via extra_body, never
-        # as a top-level reasoning_effort (e.g. DeepSeek rejects it).
-        if wire_effort and not (spec and spec.thinking_style and semantic_effort == "minimal"):
-            kwargs["reasoning_effort"] = wire_effort
-
-        if spec and spec.thinking_style and reasoning_effort is not None:
-            thinking_enabled = semantic_effort != "minimal"
-            extra = _THINKING_STYLE_MAP.get(spec.thinking_style, lambda _enabled: None)(
-                thinking_enabled
+        kwargs.update(
+            build_openai_compatible_reasoning_kwargs(
+                spec=spec,
+                binding=getattr(spec, "name", None),
+                model=model_name,
+                reasoning_effort=reasoning_effort,
             )
-            if extra:
-                kwargs.setdefault("extra_body", {}).update(extra)
-        elif spec and spec.thinking_style and _disable_thinking_by_default(spec, model_name):
-            extra = _THINKING_STYLE_MAP.get(spec.thinking_style, lambda _enabled: None)(False)
-            if extra:
-                kwargs.setdefault("extra_body", {}).update(extra)
+        )
 
         if tools:
             kwargs["tools"] = tools

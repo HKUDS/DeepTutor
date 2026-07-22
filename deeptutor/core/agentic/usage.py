@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class UsageTracker:
@@ -93,3 +96,49 @@ class UsageTracker:
             "prompt_tokens": self.prompt_tokens,
             "completion_tokens": self.completion_tokens,
         }
+
+
+def message_content_chars(message: dict[str, Any]) -> int:
+    """Best-effort character count of one chat message, for usage estimates."""
+    content = message.get("content")
+    if isinstance(content, str):
+        return len(content)
+    if isinstance(content, list):
+        total = 0
+        for part in content:
+            if isinstance(part, dict):
+                total += len(str(part.get("text") or ""))
+            elif isinstance(part, str):
+                total += len(part)
+        return total
+    if content is None:
+        return 0
+    return len(str(content))
+
+
+def record_streamed_usage(
+    tracker: UsageTracker | None,
+    usage_frame: Any,
+    *,
+    input_chars: int = 0,
+    output_chars: int = 0,
+) -> None:
+    """Record one completed stream's usage exactly once.
+
+    Providers (esp. Gemini's OpenAI-compat API) may attach ``usage`` to more
+    than one stream chunk — callers keep only the *latest* frame and hand it
+    here after the stream ends, so ``total_calls``/tokens are never inflated
+    N× for a single completion. When no frame arrived, falls back to the
+    coarse char-based estimate (pass zero chars to skip the fallback).
+    Accounting must never break a completed stream, so failures are
+    swallowed and debug-logged.
+    """
+    if tracker is None:
+        return
+    try:
+        if usage_frame is not None:
+            tracker.add_from_response(usage_frame)
+        elif input_chars or output_chars:
+            tracker.add_estimated(input_chars=input_chars, output_chars=output_chars)
+    except Exception:
+        logger.debug("stream usage recording failed", exc_info=True)

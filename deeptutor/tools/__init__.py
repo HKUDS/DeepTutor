@@ -6,8 +6,6 @@ import importlib
 
 _LAZY_EXPORTS = {
     "brainstorm": (".brainstorm", "brainstorm"),
-    "run_code": (".code_executor", "run_code"),
-    "run_code_sync": (".code_executor", "run_code_sync"),
     "rag_search": (".rag_tool", "rag_search"),
     "reason": (".reason", "reason"),
     "web_search": (".web_search", "web_search"),

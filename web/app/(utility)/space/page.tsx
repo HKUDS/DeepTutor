@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import SpaceDashboard from "@/components/space/SpaceDashboard";
 
 export default function SpaceIndexPage() {
-  redirect("/space/chat-history");
+  return <SpaceDashboard />;
 }

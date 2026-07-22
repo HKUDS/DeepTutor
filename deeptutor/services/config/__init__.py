@@ -20,12 +20,19 @@ from .loader import (
 )
 from .model_catalog import ModelCatalogService, get_model_catalog_service
 from .runtime_settings import (
+    ChatAttachmentLimits,
     RuntimeSettingsService,
     ensure_runtime_settings_files,
     export_runtime_settings_to_env,
+    get_chat_attachment_limits,
     get_runtime_settings_service,
+    get_ws_max_size,
     load_auth_settings,
+    load_graphrag_settings,
     load_integrations_settings,
+    load_lightrag_settings,
+    load_llamaindex_settings,
+    load_mineru_settings,
     load_system_settings,
 )
 
@@ -64,12 +71,19 @@ __all__ = [
     "ConfigTestRunner",
     "TestRun",
     "get_config_test_runner",
+    "ChatAttachmentLimits",
     "RuntimeSettingsService",
     "ensure_runtime_settings_files",
     "export_runtime_settings_to_env",
+    "get_chat_attachment_limits",
     "get_runtime_settings_service",
+    "get_ws_max_size",
     "load_auth_settings",
+    "load_graphrag_settings",
     "load_integrations_settings",
+    "load_lightrag_settings",
+    "load_llamaindex_settings",
+    "load_mineru_settings",
     "load_system_settings",
 ]
 

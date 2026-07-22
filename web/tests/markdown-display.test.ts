@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import {
   escapeUnknownHtmlTagsForDisplay,
   hasVisibleMarkdownContent,
+  markdownUrlTransform,
   normalizeMarkdownForDisplay,
+  safeDecodeURIComponent,
 } from "../lib/markdown-display";
 
 test("normalizeMarkdownForDisplay removes empty details blocks", () => {
@@ -73,6 +75,42 @@ test("normalizeMarkdownForDisplay keeps array indexes inside inline code", () =>
   assert.equal(normalizeMarkdownForDisplay(input), input);
 });
 
+test("normalizeMarkdownForDisplay keeps bracketed vectors inside display math", () => {
+  const input = ["The row for `sat` is:", "", "\\[", "[1, 1, 2]", "\\]"].join(
+    "\n",
+  );
+  assert.equal(normalizeMarkdownForDisplay(input), input);
+});
+
+test("normalizeMarkdownForDisplay keeps bracketed vectors inside weighted math", () => {
+  const input = ["\\[", "0.212[1, 1] + 0.212[2, 0] + 0.576[0, 3]", "\\]"].join(
+    "\n",
+  );
+  assert.equal(normalizeMarkdownForDisplay(input), input);
+});
+
+test("normalizeMarkdownForDisplay keeps number arrays in prose untouched", () => {
+  const input = "线性卷积结果 [1, 5, 9, 5, 3, 2, 7] 与 [8, 5, 3, 6]。";
+  assert.equal(normalizeMarkdownForDisplay(input), input);
+});
+
+test("normalizeMarkdownForDisplay keeps number arrays inside inline math", () => {
+  const input = "序列 $x = [1, 5, 9, 5, 3, 2, 7]$ 与 $h = [8, 5, 3, 6]$。";
+  assert.equal(normalizeMarkdownForDisplay(input), input);
+});
+
+test("normalizeMarkdownForDisplay still linkifies small distinct numeric citation groups", () => {
+  assert.equal(
+    normalizeMarkdownForDisplay("See [1, 3] for details."),
+    'See [1, 3](#references "citation") for details.',
+  );
+});
+
+test("normalizeMarkdownForDisplay keeps backticked number arrays as code", () => {
+  const input = "Result `[1, 5, 9, 5, 3, 2, 7]` here.";
+  assert.equal(normalizeMarkdownForDisplay(input), input);
+});
+
 test("normalizeMarkdownForDisplay unwraps explicit citation code spans outside code", () => {
   assert.equal(
     normalizeMarkdownForDisplay("See `[web-1]` for details."),
@@ -127,6 +165,46 @@ test("escapeUnknownHtmlTagsForDisplay strips unsafe html attributes", () => {
   const input =
     '<a href="javascript:alert(1)" onclick="alert(2)" style="color:red">link</a>';
   assert.equal(escapeUnknownHtmlTagsForDisplay(input), "<a>link</a>");
+});
+
+test("markdownUrlTransform keeps raster data images on img src", () => {
+  const png = "data:image/png;base64,iVBORw0KGgo=";
+  assert.equal(markdownUrlTransform(png, "src", { tagName: "img" }), png);
+});
+
+test("markdownUrlTransform rejects active data URLs", () => {
+  assert.equal(
+    markdownUrlTransform("data:text/html;base64,PHNjcmlwdD4=", "src", {
+      tagName: "img",
+    }),
+    "",
+  );
+  assert.equal(
+    markdownUrlTransform(
+      "data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+",
+      "src",
+      { tagName: "img" },
+    ),
+    "",
+  );
+});
+
+test("markdownUrlTransform only allows data images on img src", () => {
+  assert.equal(
+    markdownUrlTransform("data:image/png;base64,iVBORw0KGgo=", "href", {
+      tagName: "a",
+    }),
+    "",
+  );
+});
+
+test("safeDecodeURIComponent decodes valid hash components", () => {
+  assert.equal(safeDecodeURIComponent("section%201"), "section 1");
+});
+
+test("safeDecodeURIComponent keeps malformed hash components intact", () => {
+  assert.doesNotThrow(() => safeDecodeURIComponent("%E0%A4%A"));
+  assert.equal(safeDecodeURIComponent("%E0%A4%A"), "%E0%A4%A");
 });
 
 test("hasVisibleMarkdownContent rejects empty raw-html placeholders", () => {

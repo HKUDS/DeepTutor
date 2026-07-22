@@ -17,6 +17,8 @@ export interface SessionMessage {
     mime_type?: string;
     id?: string;
     extracted_text?: string;
+    generated?: boolean;
+    size_bytes?: number;
   }>;
   metadata?: Record<string, unknown>;
   created_at: number;
@@ -47,6 +49,8 @@ export interface SessionSummary {
     knowledge_bases?: string[];
     language?: string;
     llm_selection?: LLMSelection | null;
+    /** Session-level persona preference; "" / absent = Default (no persona). */
+    persona?: string;
     /** Edit-branching: maps a parent_message_id → the child id currently
      *  shown at that branch point. Missing keys default to the latest
      *  sibling (most recently created child). */
@@ -89,6 +93,8 @@ export interface SessionDetail {
     knowledge_bases?: string[];
     language?: string;
     llm_selection?: LLMSelection | null;
+    /** Session-level persona preference; "" / absent = Default (no persona). */
+    persona?: string;
     /** Edit-branching: maps a parent_message_id → the child id currently
      *  shown at that branch point. Missing keys default to the latest
      *  sibling (most recently created child). */
@@ -150,9 +156,13 @@ export async function listSessions(
   );
 }
 
-export async function getSession(sessionId: string): Promise<SessionDetail> {
+export async function getSession(
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<SessionDetail> {
   const response = await apiFetch(apiUrl(`/api/v1/sessions/${sessionId}`), {
     cache: "no-store",
+    signal,
   });
   return expectJson<SessionDetail>(response);
 }

@@ -23,6 +23,7 @@ from rich.table import Table
 from rich.text import Text
 import typer
 
+from deeptutor.services.llm.config import get_token_limit_kwargs
 from deeptutor.services.provider_registry import PROVIDERS, ProviderSpec, find_by_name
 
 # --- Featured selection ------------------------------------------------------
@@ -794,7 +795,7 @@ def probe_llm(*, base_url: str, api_key: str, binding: str, model: str) -> tuple
             }
             body = {
                 "model": model,
-                "max_tokens": 1,
+                **get_token_limit_kwargs(model, 1),
                 "messages": [{"role": "user", "content": "ping"}],
             }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type {
   ChangeEvent,
   ClipboardEvent,
@@ -23,14 +23,14 @@ import {
   ATTACHMENT_ACCEPT,
   classifyFile,
   formatBytes,
-  MAX_ATTACHMENT_BYTES,
-  MAX_TOTAL_ATTACHMENT_BYTES,
 } from "@/lib/doc-attachments";
+import { useAttachmentLimits } from "@/lib/attachment-limits";
 import {
   extractBase64FromDataUrl,
   readFileAsDataUrl,
 } from "@/lib/file-attachments";
 import { shouldSubmitOnEnter } from "@/lib/composer-keyboard";
+import { useImeComposing } from "@/lib/use-ime-composing";
 import { shouldAppendEventContent } from "@/lib/stream";
 import {
   UnifiedWSClient,
@@ -108,6 +108,7 @@ export default function BookChatPanel({
   const [busy, setBusy] = useState(false);
   const [width, setWidth] = useState(360);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const attachmentLimits = useAttachmentLimits();
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const clientRef = useRef<UnifiedWSClient | null>(null);
@@ -115,7 +116,8 @@ export default function BookChatPanel({
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
-  const isComposingRef = useRef(false);
+  const { isComposingRef, onCompositionStart, onCompositionEnd } =
+    useImeComposing();
 
   useEffect(() => {
     const raw = window.localStorage.getItem("deeptutor.bookChat.width");
@@ -178,7 +180,11 @@ export default function BookChatPanel({
     };
   }, [book?.id, page?.id, initialSessionId, open]);
 
-  useEffect(() => {
+  // Pin-to-bottom in layout phase (not in a post-paint effect): the
+  // assignment lands before the browser commits the frame so the
+  // viewer never sees the "new content at the old scrollTop" flash
+  // that an ordinary ``useEffect`` would produce during fast streams.
+  useLayoutEffect(() => {
     if (scrollerRef.current) {
       scrollerRef.current.scrollTop = scrollerRef.current.scrollHeight;
     }
@@ -317,13 +323,13 @@ export default function BookChatPanel({
         setAttachmentError(t("Unsupported file type."));
         continue;
       }
-      if (file.size > MAX_ATTACHMENT_BYTES) {
+      if (file.size > attachmentLimits.maxFileBytes) {
         setAttachmentError(
           t("File is too large ({{size}}).", { size: formatBytes(file.size) }),
         );
         continue;
       }
-      if (nextTotal + file.size > MAX_TOTAL_ATTACHMENT_BYTES) {
+      if (nextTotal + file.size > attachmentLimits.maxTotalBytes) {
         setAttachmentError(t("Attachments exceed the total upload limit."));
         continue;
       }
@@ -433,7 +439,11 @@ export default function BookChatPanel({
         </button>
       </header>
 
-      <div ref={scrollerRef} className="flex-1 overflow-y-auto px-4 py-3">
+      <div
+        ref={scrollerRef}
+        data-chat-scroll-root="true"
+        className="flex-1 overflow-y-auto px-4 py-3"
+      >
         {messages.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--background)]/50 p-4 text-xs leading-5 text-[var(--muted-foreground)]">
             {t(
@@ -480,6 +490,7 @@ export default function BookChatPanel({
                     <AssistantResponse
                       content={m.content}
                       className="text-sm leading-relaxed"
+                      isStreaming={Boolean(m.streaming)}
                     />
                   ) : (
                     <div className="whitespace-pre-wrap break-words">
@@ -551,14 +562,8 @@ export default function BookChatPanel({
             placeholder={t("Ask about this page…")}
             rows={1}
             onPaste={handlePaste}
-            onCompositionStart={() => {
-              isComposingRef.current = true;
-            }}
-            onCompositionEnd={() => {
-              setTimeout(() => {
-                isComposingRef.current = false;
-              }, 0);
-            }}
+            onCompositionStart={onCompositionStart}
+            onCompositionEnd={onCompositionEnd}
             onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
               if (shouldSubmitOnEnter(e, isComposingRef.current)) {
                 e.preventDefault();

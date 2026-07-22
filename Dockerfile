@@ -39,11 +39,12 @@ COPY web/ ./
 # can read it during ``npm run build`` and inline it into the bundle.
 COPY deeptutor/__version__.py /app/deeptutor/__version__.py
 
-# Create .env.local with placeholders that will be replaced at runtime.
-RUN printf '%s\n' \
-    'NEXT_PUBLIC_API_BASE=__NEXT_PUBLIC_API_BASE_PLACEHOLDER__' \
-    'NEXT_PUBLIC_AUTH_ENABLED=__NEXT_PUBLIC_AUTH_ENABLED_PLACEHOLDER__' \
-    > .env.local
+# Create .env.local with the single env var the build needs (the app version,
+# exposed to the browser via next.config.js). URL knowledge is no longer baked
+# into the bundle: `apiUrl`/`wsUrl` in web/lib/api.ts are pass-throughs and
+# the actual backend host is read at request time by web/proxy.ts from
+# DEEPTUTOR_API_BASE_URL (exported by the entrypoint on every start).
+RUN printf 'NEXT_PUBLIC_APP_VERSION=\n' > .env.local
 
 # Build Next.js for production with standalone output
 # This allows runtime environment variable injection
@@ -113,6 +114,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     NODE_ENV=production \
     DEEPTUTOR_IGNORE_PROCESS_ENV_OVERRIDES=1
 
+# Code-execution sandbox: the restricted-subprocess backend (which the office
+# skills — docx/pdf/pptx/xlsx — rely on for `exec` / `code_execution`) is
+# enabled by default via the `sandbox_allow_subprocess` runtime setting
+# (system.json, default on), exported to DEEPTUTOR_SANDBOX_ALLOW_SUBPROCESS at
+# startup. No hardcoded ENV here — that would override the setting and block
+# disabling it. docker-compose still routes exec to the hardened runner sidecar
+# (DEEPTUTOR_SANDBOX_RUNNER_URL), which build_backend() prefers.
+
 WORKDIR /app
 
 # Install system dependencies
@@ -172,20 +181,54 @@ RUN mkdir -p \
     data/user/logs \
     data/knowledge_bases
 
-# Create supervisord configuration for running both services
-# Log output goes to stdout/stderr so docker logs can capture them
+# Bake a non-root user (UID 1000) for the supervisord programs. supervisord
+# itself runs as PID 1's UID — root under rootful Docker/Podman, or UID 1000
+# under rootless podman + `userns_mode: keep-id` (where PID 1 is the host
+# user). Each child (backend/frontend) is dropped to this `deeptutor` user via
+# the per-program `user=deeptutor` directive, so the app processes stay
+# non-root in either runtime. UID 1000 also matches the host user under
+# keep-id with a bind mount on ./data.
+RUN groupadd --system --gid 1000 deeptutor \
+    && useradd --system --uid 1000 --gid 1000 --no-create-home --shell /usr/sbin/nologin deeptutor \
+    && chown -R deeptutor:deeptutor /app/data /app/web/.next
+
+# supervisord config is split into two files so the production and development
+# images share one daemon-level [supervisord] section instead of duplicating it:
+#   - /etc/supervisor/supervisord.conf      — daemon-level settings (shared)
+#   - /etc/supervisor/conf.d/programs.conf  — the backend/frontend programs
+# Production defines the programs here; the development stage overrides only
+# programs.conf, leaving the shared daemon section untouched.
+# Program output goes to the container's stdout/stderr so `docker logs` captures it.
 RUN mkdir -p /etc/supervisor/conf.d
 
-RUN cat > /etc/supervisor/conf.d/deeptutor.conf <<'EOF'
+# Daemon-level config. No `user=` in [supervisord]: supervisord runs as PID 1's
+# UID (root under rootful; UID 1000 under rootless podman + keep-id, which has
+# no CAP_SETUID and would make a `user=` line fail at startup with
+# "Can't drop privilege as nonroot user" — see supervisord options.py). The
+# pidfile lives in /tmp, which is world-writable, so supervisord can create it
+# whether it runs as root or UID 1000; /var/run is root-owned and not writable
+# by UID 1000 under rootless keep-id.
+RUN cat > /etc/supervisor/supervisord.conf <<'EOF'
 [supervisord]
 nodaemon=true
 logfile=/dev/null
 logfile_maxbytes=0
-pidfile=/var/run/supervisord.pid
+pidfile=/tmp/supervisord.pid
 
+[include]
+files = /etc/supervisor/conf.d/programs.conf
+EOF
+
+RUN sed -i 's/\r$//' /etc/supervisor/supervisord.conf
+
+# Program definitions (production). Each child drops to the unprivileged
+# deeptutor user (UID 1000) via per-program `user=deeptutor`; see the note on
+# the user= design above the daemon config.
+RUN cat > /etc/supervisor/conf.d/programs.conf <<'EOF'
 [program:backend]
 command=/bin/bash /app/start-backend.sh
 directory=/app
+user=deeptutor
 autostart=true
 autorestart=true
 stdout_logfile=/dev/fd/1
@@ -197,6 +240,7 @@ environment=PYTHONPATH="/app",PYTHONUNBUFFERED="1"
 [program:frontend]
 command=/bin/bash /app/start-frontend.sh
 directory=/app/web
+user=deeptutor
 autostart=true
 autorestart=true
 startsecs=5
@@ -207,7 +251,7 @@ stderr_logfile_maxbytes=0
 environment=NODE_ENV="production"
 EOF
 
-RUN sed -i 's/\r$//' /etc/supervisor/conf.d/deeptutor.conf
+RUN sed -i 's/\r$//' /etc/supervisor/conf.d/programs.conf
 
 # Create backend startup script
 RUN cat > /app/start-backend.sh <<'EOF'
@@ -215,72 +259,42 @@ RUN cat > /app/start-backend.sh <<'EOF'
 set -e
 
 BACKEND_PORT=${BACKEND_PORT:-8001}
+BACKEND_HOST=${BACKEND_HOST:-0.0.0.0}
 
-echo "[Backend]  🚀 Starting FastAPI backend on port ${BACKEND_PORT}..."
+echo "[Backend]  🚀 Starting FastAPI backend on ${BACKEND_HOST}:${BACKEND_PORT}..."
 
 # Run uvicorn directly - the application's logging system already handles:
 # 1. Console output (visible in docker logs)
 # 2. File logging to data/user/logs/ai_tutor_*.log
-exec python -m uvicorn deeptutor.api.main:app --host 0.0.0.0 --port ${BACKEND_PORT}
+#
+# BACKEND_HOST defaults to 0.0.0.0 (LAN-reachable, matches bridge-mode
+# port publishing). Set BACKEND_HOST=127.0.0.1 when running with
+# network_mode: host to keep the backend on loopback only.
+#
+# --ws-max-size: chat attachments travel base64 inside one WS message; derive
+# the frame cap from the configured attachment policy (system.json) so uploads
+# the policy allows are not severed by uvicorn's 16MB default.
+WS_MAX_SIZE=$(python -c "from deeptutor.services.config import get_ws_max_size; print(get_ws_max_size())" 2>/dev/null || echo 16777216)
+exec python -m uvicorn deeptutor.api.main:app --host ${BACKEND_HOST} --port ${BACKEND_PORT} --no-access-log --ws-max-size ${WS_MAX_SIZE}
 EOF
 
 RUN sed -i 's/\r$//' /app/start-backend.sh && chmod +x /app/start-backend.sh
 
 # Create frontend startup script
-# This script handles runtime environment variable injection for Next.js
+# This script starts the Next.js standalone server. URL knowledge is no
+# longer baked into the bundle: web/proxy.ts rewrites /api/* and /ws/* to
+# the configured backend at request time, reading DEEPTUTOR_API_BASE_URL
+# (exported by the entrypoint from data/user/settings/system.json).
 RUN cat > /app/start-frontend.sh <<'EOF'
 #!/bin/bash
 set -e
 
-# Get the backend port (default to 8001)
-BACKEND_PORT=${BACKEND_PORT:-8001}
 FRONTEND_PORT=${FRONTEND_PORT:-3782}
-AUTH_ENABLED=${NEXT_PUBLIC_AUTH_ENABLED:-${AUTH_ENABLED:-false}}
-case "$(echo "$AUTH_ENABLED" | tr '[:upper:]' '[:lower:]')" in
-    1|true|yes|on) AUTH_ENABLED=true ;;
-    *) AUTH_ENABLED=false ;;
-esac
+FRONTEND_HOST=${FRONTEND_HOST:-0.0.0.0}
+echo "[Frontend] 🚀 Starting Next.js frontend on ${FRONTEND_HOST}:${FRONTEND_PORT}..."
 
-# Determine the API base URL with multiple fallback options
-# Priority: NEXT_PUBLIC_API_BASE_EXTERNAL > NEXT_PUBLIC_API_BASE > auto-detect
-if [ -n "$NEXT_PUBLIC_API_BASE_EXTERNAL" ]; then
-    # Explicit external URL for cloud deployments
-    API_BASE="$NEXT_PUBLIC_API_BASE_EXTERNAL"
-    echo "[Frontend] 📌 Using external API URL: ${API_BASE}"
-elif [ -n "$NEXT_PUBLIC_API_BASE" ]; then
-    # Custom API base URL
-    API_BASE="$NEXT_PUBLIC_API_BASE"
-    echo "[Frontend] 📌 Using custom API URL: ${API_BASE}"
-else
-    # Default: localhost with configured backend port
-    # Note: This only works for local development, not cloud deployments
-    API_BASE="http://localhost:${BACKEND_PORT}"
-    echo "[Frontend] 📌 Using default API URL: ${API_BASE}"
-    echo "[Frontend] ⚠️  For cloud deployment, set system.next_public_api_base_external in data/user/settings/system.json"
-    echo "[Frontend]    Example: \"next_public_api_base_external\": \"https://your-server.com:${BACKEND_PORT}\""
-fi
-
-echo "[Frontend] 🚀 Starting Next.js frontend on port ${FRONTEND_PORT}..."
-
-# Replace placeholder in built Next.js files
-# This is necessary because NEXT_PUBLIC_* vars are inlined at build time
-escape_sed_replacement() {
-    printf '%s' "$1" | sed -e 's/[|\/&]/\\&/g'
-}
-
-API_BASE_ESCAPED="$(escape_sed_replacement "$API_BASE")"
-AUTH_ENABLED_ESCAPED="$(escape_sed_replacement "$AUTH_ENABLED")"
-
-find /app/web/.next -type f \( -name "*.js" -o -name "*.json" \) -exec \
-    sed -i \
-        -e "s|__NEXT_PUBLIC_API_BASE_PLACEHOLDER__|${API_BASE_ESCAPED}|g" \
-        -e "s|__NEXT_PUBLIC_AUTH_ENABLED_PLACEHOLDER__|${AUTH_ENABLED_ESCAPED}|g" \
-        {} \; 2>/dev/null || true
-
-# Start Next.js standalone server
-# The standalone server reads PORT and HOSTNAME from environment variables
 export PORT=${FRONTEND_PORT}
-export HOSTNAME=0.0.0.0
+export HOSTNAME=${FRONTEND_HOST}
 exec node /app/web/server.js
 EOF
 
@@ -319,7 +333,9 @@ for key in \
     POCKETBASE_PORT \
     POCKETBASE_EXTERNAL_URL \
     POCKETBASE_ADMIN_EMAIL \
-    POCKETBASE_ADMIN_PASSWORD; do
+    POCKETBASE_ADMIN_PASSWORD \
+    DEEPTUTOR_API_BASE_URL \
+    DEEPTUTOR_AUTH_ENABLED; do
     unset "$key"
 done
 
@@ -331,6 +347,10 @@ from pathlib import Path
 from deeptutor.services.setup import init_user_directories
 init_user_directories(Path('/app'))
 " 2>/dev/null || echo "   ⚠️ Directory initialization skipped (will be created on first use)"
+
+# Idempotent: re-chown /app/data so the unprivileged `deeptutor` user (UID 1000)
+# owns it. Cheap on no-op; the only first-start cost is one stat per file.
+chown -R deeptutor:deeptutor /app/data 2>/dev/null || true
 
 echo "⚙️  Loading runtime JSON settings..."
 eval "$(python - <<'PY'
@@ -345,6 +365,15 @@ PY
 export BACKEND_PORT=${BACKEND_PORT:-8001}
 export FRONTEND_PORT=${FRONTEND_PORT:-3782}
 
+# DEEPTUTOR_API_BASE_URL and DEEPTUTOR_AUTH_ENABLED are exported by the
+# export_runtime_settings_to_env eval above (see render_environment in
+# deeptutor/services/config/runtime_settings.py). web/proxy.ts reads them at
+# request time to rewrite /api/* and /ws/* to the backend and to gate the login
+# redirect. Keeping them in the single JSON-backed exporter means the Docker and
+# `deeptutor start` paths stay in sync.
+echo "📌 API Base URL (proxy): ${DEEPTUTOR_API_BASE_URL:-http://localhost:${BACKEND_PORT}}"
+echo "📌 Auth enabled: ${DEEPTUTOR_AUTH_ENABLED:-false}"
+
 echo "📌 Backend Port: ${BACKEND_PORT}"
 echo "📌 Frontend Port: ${FRONTEND_PORT}"
 
@@ -358,8 +387,12 @@ echo "   - data/user/settings/main.yaml"
 echo "   - data/user/settings/agents.yaml"
 echo "============================================"
 
-# Start supervisord
-exec /usr/bin/supervisord -c /etc/supervisor/conf.d/deeptutor.conf
+# Hand off to supervisord as PID 1. The daemon-level config deliberately omits
+# `user=` so supervisord inherits PID 1's UID and stays portable across rootful
+# and rootless-keep-id runtimes; children drop to the deeptutor user via
+# per-program `user=`. Full rationale lives next to the [supervisord] section
+# in the build step that writes /etc/supervisor/supervisord.conf.
+exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
 EOF
 
 RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
@@ -402,6 +435,12 @@ COPY --from=frontend-builder /app/web/node_modules ./web/node_modules
 COPY --from=frontend-builder /app/web/package.json ./web/package.json
 COPY --from=frontend-builder /app/web/next.config.js ./web/next.config.js
 
+# `next dev` runs as the unprivileged deeptutor user (via `user=deeptutor` in
+# the supervisord config) and must create/write its build cache under
+# /app/web/.next, so give that user ownership of the web dir and the cache.
+RUN mkdir -p /app/web/.next \
+    && chown deeptutor:deeptutor /app/web /app/web/.next
+
 # Install development tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     vim \
@@ -414,18 +453,14 @@ RUN pip install --no-cache-dir \
     black \
     ruff
 
-# Override supervisord config for development (with reload)
-# Log output goes to stdout/stderr so docker logs can capture them
-RUN cat > /etc/supervisor/conf.d/deeptutor.conf <<'EOF'
-[supervisord]
-nodaemon=true
-logfile=/dev/null
-logfile_maxbytes=0
-pidfile=/var/run/supervisord.pid
-
+# Development overrides only the program definitions (uvicorn --reload and
+# `next dev`); the shared daemon-level /etc/supervisor/supervisord.conf from
+# the production stage is reused as-is.
+RUN cat > /etc/supervisor/conf.d/programs.conf <<'EOF'
 [program:backend]
-command=python -m uvicorn deeptutor.api.main:app --host 0.0.0.0 --port %(ENV_BACKEND_PORT)s --reload
+command=/bin/bash -c "exec python -m uvicorn deeptutor.api.main:app --host 0.0.0.0 --port ${BACKEND_PORT:-8001} --reload --no-access-log --ws-max-size $(python -c 'from deeptutor.services.config import get_ws_max_size; print(get_ws_max_size())' 2>/dev/null || echo 16777216)"
 directory=/app
+user=deeptutor
 autostart=true
 autorestart=true
 stdout_logfile=/dev/fd/1
@@ -437,6 +472,7 @@ environment=PYTHONPATH="/app",PYTHONUNBUFFERED="1"
 [program:frontend]
 command=/bin/bash -c "cd /app/web && node node_modules/next/dist/bin/next dev -H 0.0.0.0 -p ${FRONTEND_PORT:-3782}"
 directory=/app/web
+user=deeptutor
 autostart=true
 autorestart=true
 startsecs=5
@@ -447,7 +483,7 @@ stderr_logfile_maxbytes=0
 environment=NODE_ENV="development"
 EOF
 
-RUN sed -i 's/\r$//' /etc/supervisor/conf.d/deeptutor.conf
+RUN sed -i 's/\r$//' /etc/supervisor/conf.d/programs.conf
 
 # Development ports
 EXPOSE 8001 3782

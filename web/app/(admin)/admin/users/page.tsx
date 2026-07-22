@@ -11,14 +11,20 @@ import {
   type UserRecord,
 } from "@/lib/admin-api";
 import { GrantEditor } from "@/features/multi-user/components/GrantEditor";
+import { UserAvatar } from "@/components/UserAvatar";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { filterUsersByQuery } from "@/lib/admin-users";
 import {
+  Search,
   Shield,
+  ShieldCheck,
   ShieldOff,
   Trash2,
   RefreshCw,
   ArrowLeft,
   SlidersHorizontal,
   UserPlus,
+  Users,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -45,6 +51,12 @@ export default function AdminUsersPage() {
   const [actionError, setActionError] = useState("");
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [query, setQuery] = useState("");
+  const [confirmTarget, setConfirmTarget] = useState<{
+    kind: "delete" | "promote" | "demote";
+    user: UserRecord;
+  } | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
   const [createUsername, setCreateUsername] = useState("");
   const [createPassword, setCreatePassword] = useState("");
   const [createSubmitting, setCreateSubmitting] = useState(false);
@@ -115,35 +127,41 @@ export default function AdminUsersPage() {
     }
   }
 
-  async function handleDelete(username: string) {
-    if (!window.confirm(`Delete user "${username}"? This cannot be undone.`))
-      return;
+  async function handleConfirmAction() {
+    if (!confirmTarget || confirmBusy) return;
+    const { kind, user } = confirmTarget;
+    setConfirmBusy(true);
     setActionError("");
     try {
-      await deleteUser(username);
-      setUsers((prev) => prev.filter((u) => u.username !== username));
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Failed to delete user");
-    }
-  }
-
-  async function handleToggleRole(user: UserRecord) {
-    const newRole = user.role === "admin" ? "user" : "admin";
-    const verb = newRole === "admin" ? "Promote" : "Demote";
-    if (!window.confirm(`${verb} "${user.username}" to ${newRole}?`)) return;
-    setActionError("");
-    try {
-      await setUserRole(user.username, newRole);
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.username === user.username ? { ...u, role: newRole } : u,
-        ),
-      );
-      if (newRole === "admin") {
-        setExpandedUserId((current) => (current === user.id ? null : current));
+      if (kind === "delete") {
+        await deleteUser(user.username);
+        setUsers((prev) => prev.filter((u) => u.username !== user.username));
+      } else {
+        const newRole = kind === "promote" ? "admin" : "user";
+        await setUserRole(user.username, newRole);
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.username === user.username ? { ...u, role: newRole } : u,
+          ),
+        );
+        if (newRole === "admin") {
+          setExpandedUserId((current) =>
+            current === user.id ? null : current,
+          );
+        }
       }
+      setConfirmTarget(null);
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Failed to update role");
+      setConfirmTarget(null);
+      setActionError(
+        e instanceof Error
+          ? e.message
+          : confirmTarget.kind === "delete"
+            ? "Failed to delete user"
+            : "Failed to update role",
+      );
+    } finally {
+      setConfirmBusy(false);
     }
   }
 
@@ -155,46 +173,56 @@ export default function AdminUsersPage() {
     }
   }, [expandedUserId, users]);
 
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredUsers = filterUsersByQuery(users, query);
+
   return (
     <div className="h-screen overflow-y-auto bg-[var(--background)] px-4 py-10 [scrollbar-gutter:stable]">
       <div className="mx-auto max-w-3xl">
         {/* Header */}
-        <div className="mb-8 flex items-center gap-4">
+        <div className="mb-8">
           <Link
             href="/"
-            className="flex items-center gap-1.5 text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+            className="mb-4 inline-flex items-center gap-1.5 text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
           >
-            <ArrowLeft size={15} />
+            <ArrowLeft size={16} />
             Back
           </Link>
-          <div className="flex-1">
-            <h1 className="text-xl font-semibold text-[var(--foreground)]">
-              User Management
-            </h1>
-            <p className="mt-0.5 text-sm text-[var(--muted-foreground)]">
-              Manage registered accounts
-            </p>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="font-serif text-xl font-semibold text-[var(--foreground)]">
+                User Management
+              </h1>
+              <p className="mt-0.5 text-sm text-[var(--muted-foreground)]">
+                Manage registered accounts
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                onClick={openCreateDialog}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm
+                           border border-[var(--border)] text-[var(--foreground)]
+                           hover:bg-[var(--card)] transition-colors"
+              >
+                <UserPlus size={14} />
+                Add user
+              </button>
+              <button
+                onClick={load}
+                disabled={loading}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm
+                           border border-[var(--border)] text-[var(--muted-foreground)]
+                           hover:text-[var(--foreground)] hover:bg-[var(--card)]
+                           disabled:opacity-50 transition-colors"
+              >
+                <RefreshCw
+                  size={14}
+                  className={loading ? "animate-spin" : ""}
+                />
+                Refresh
+              </button>
+            </div>
           </div>
-          <button
-            onClick={openCreateDialog}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm
-                       border border-[var(--border)] text-[var(--foreground)]
-                       hover:bg-[var(--card)] transition-colors"
-          >
-            <UserPlus size={14} />
-            Add user
-          </button>
-          <button
-            onClick={load}
-            disabled={loading}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm
-                       border border-[var(--border)] text-[var(--muted-foreground)]
-                       hover:text-[var(--foreground)] hover:bg-[var(--card)]
-                       disabled:opacity-50 transition-colors"
-          >
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-            Refresh
-          </button>
         </div>
 
         {actionError && (
@@ -203,18 +231,94 @@ export default function AdminUsersPage() {
           </div>
         )}
 
+        {!loading && !error && users.length > 0 && (
+          <div className="mb-4 flex items-center gap-3">
+            <div className="relative flex-1">
+              <Search
+                size={14}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
+              />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search users…"
+                aria-label="Search users"
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--card)] py-2 pl-9 pr-3 text-sm
+                           text-[var(--foreground)] placeholder:text-[var(--muted-foreground)]/70
+                           outline-none focus:border-[var(--ring)] transition-colors"
+              />
+            </div>
+            <span className="shrink-0 text-xs text-[var(--muted-foreground)]">
+              {normalizedQuery
+                ? `${filteredUsers.length} of ${users.length}`
+                : `${users.length} ${users.length === 1 ? "user" : "users"}`}
+            </span>
+          </div>
+        )}
+
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] overflow-hidden shadow-sm">
           {loading ? (
-            <div className="flex items-center justify-center py-16 text-[var(--muted-foreground)] text-sm">
-              Loading…
+            <div className="divide-y divide-[var(--border)]" aria-hidden>
+              {[0, 1, 2].map((row) => (
+                <div
+                  key={row}
+                  className="flex animate-pulse items-center gap-3 px-5 py-4"
+                >
+                  <div className="h-8 w-8 rounded-full bg-[var(--muted)]/60" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 w-36 rounded bg-[var(--muted)]/60" />
+                    <div className="h-2.5 w-24 rounded bg-[var(--muted)]/40" />
+                  </div>
+                  <div className="h-5 w-16 rounded-full bg-[var(--muted)]/40" />
+                </div>
+              ))}
             </div>
           ) : error ? (
             <div className="flex items-center justify-center py-16 text-red-500 text-sm">
               {error}
             </div>
           ) : users.length === 0 ? (
-            <div className="flex items-center justify-center py-16 text-[var(--muted-foreground)] text-sm">
-              No users found.
+            <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+              <Users
+                size={28}
+                strokeWidth={1.5}
+                className="text-[var(--muted-foreground)]/50"
+              />
+              <p className="mt-3 text-sm font-medium text-[var(--foreground)]">
+                No users yet
+              </p>
+              <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                Accounts you create will appear here.
+              </p>
+              <button
+                onClick={openCreateDialog}
+                className="mt-4 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm
+                           border border-[var(--border)] text-[var(--foreground)]
+                           hover:bg-[var(--background)]/60 transition-colors"
+              >
+                <UserPlus size={14} />
+                Add user
+              </button>
+            </div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+              <Search
+                size={28}
+                strokeWidth={1.5}
+                className="text-[var(--muted-foreground)]/50"
+              />
+              <p className="mt-3 text-sm font-medium text-[var(--foreground)]">
+                No users match &ldquo;{query.trim()}&rdquo;
+              </p>
+              <button
+                onClick={() => setQuery("")}
+                className="mt-4 rounded-lg px-3 py-1.5 text-sm border border-[var(--border)]
+                           text-[var(--muted-foreground)] hover:text-[var(--foreground)]
+                           hover:bg-[var(--background)]/60 transition-colors"
+              >
+                Clear search
+              </button>
             </div>
           ) : (
             <table className="w-full text-sm">
@@ -227,34 +331,45 @@ export default function AdminUsersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
-                {users.map((user) => {
+                {filteredUsers.map((user) => {
                   const isSelf = user.username === currentUser;
                   const isAdmin = user.role === "admin";
                   const canManageAssignments = !isAdmin && Boolean(user.id);
                   return (
                     <Fragment key={user.username}>
                       <tr className="group hover:bg-[var(--background)]/50 transition-colors">
-                        <td className="px-5 py-3.5 font-medium text-[var(--foreground)]">
-                          {user.username}
-                          {isSelf && (
-                            <span className="ml-2 text-xs text-[var(--muted-foreground)]">
-                              (you)
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-3">
+                            <UserAvatar
+                              username={user.username}
+                              userId={user.id}
+                              avatar={user.avatar}
+                              role={user.role}
+                              size={32}
+                            />
+                            <span className="min-w-0 truncate font-medium text-[var(--foreground)]">
+                              {user.username}
+                              {isSelf && (
+                                <span className="ml-2 text-xs font-normal text-[var(--muted-foreground)]">
+                                  (you)
+                                </span>
+                              )}
                             </span>
-                          )}
+                          </div>
                         </td>
-                        <td className="px-5 py-3.5">
+                        <td className="px-5 py-3">
                           <span
                             className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium
                             ${
-                              user.role === "admin"
-                                ? "bg-purple-500/15 text-purple-600 dark:text-purple-400"
+                              isAdmin
+                                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
                                 : "bg-[var(--muted)]/50 text-[var(--muted-foreground)]"
                             }`}
                           >
-                            {user.role === "admin" ? (
-                              <Shield size={11} />
-                            ) : null}
-                            {user.role}
+                            {isAdmin && (
+                              <ShieldCheck size={11} strokeWidth={2} />
+                            )}
+                            {isAdmin ? "Admin" : "User"}
                           </span>
                         </td>
                         <td className="px-5 py-3.5 text-[var(--muted-foreground)]">
@@ -278,7 +393,12 @@ export default function AdminUsersPage() {
                               </button>
                             )}
                             <button
-                              onClick={() => handleToggleRole(user)}
+                              onClick={() =>
+                                setConfirmTarget({
+                                  kind: isAdmin ? "demote" : "promote",
+                                  user,
+                                })
+                              }
                               disabled={isSelf}
                               title={
                                 isSelf
@@ -298,7 +418,9 @@ export default function AdminUsersPage() {
                               )}
                             </button>
                             <button
-                              onClick={() => handleDelete(user.username)}
+                              onClick={() =>
+                                setConfirmTarget({ kind: "delete", user })
+                              }
                               disabled={isSelf}
                               title={
                                 isSelf
@@ -333,6 +455,65 @@ export default function AdminUsersPage() {
           DeepTutor Admin · User Management
         </p>
       </div>
+
+      <ConfirmDialog
+        open={confirmTarget !== null}
+        title={
+          confirmTarget?.kind === "delete"
+            ? "Delete user"
+            : confirmTarget?.kind === "promote"
+              ? "Promote to admin"
+              : "Demote to user"
+        }
+        tone={confirmTarget?.kind === "delete" ? "danger" : "default"}
+        confirmLabel={
+          confirmTarget?.kind === "delete"
+            ? "Delete user"
+            : confirmTarget?.kind === "promote"
+              ? "Promote"
+              : "Demote"
+        }
+        busyLabel={
+          confirmTarget?.kind === "delete"
+            ? "Deleting…"
+            : confirmTarget?.kind === "promote"
+              ? "Promoting…"
+              : "Demoting…"
+        }
+        busy={confirmBusy}
+        onConfirm={handleConfirmAction}
+        onCancel={() => setConfirmTarget(null)}
+      >
+        {confirmTarget && (
+          <>
+            <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--background)]/50 px-3 py-2.5">
+              <UserAvatar
+                username={confirmTarget.user.username}
+                userId={confirmTarget.user.id}
+                avatar={confirmTarget.user.avatar}
+                role={confirmTarget.user.role}
+                size={32}
+              />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-[var(--foreground)]">
+                  {confirmTarget.user.username}
+                </p>
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  {confirmTarget.user.role === "admin" ? "Admin" : "User"} ·
+                  joined {formatDate(confirmTarget.user.created_at)}
+                </p>
+              </div>
+            </div>
+            <p className="mt-3">
+              {confirmTarget.kind === "delete"
+                ? "This permanently removes the account and its assignments. This cannot be undone."
+                : confirmTarget.kind === "promote"
+                  ? "Admins can manage users and assignments, and work in the shared main workspace."
+                  : "They will lose access to the admin area and switch to their own assigned workspace."}
+            </p>
+          </>
+        )}
+      </ConfirmDialog>
 
       {showCreateDialog && (
         <div

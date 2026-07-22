@@ -27,7 +27,7 @@ type Surface =
   | "quiz"
   | "kb"
   | "book"
-  | "tutorbot"
+  | "partner"
   | "cowriter";
 
 interface NavEntry {
@@ -42,7 +42,7 @@ const L1_NAV: NavEntry[] = [
   { key: "quiz", icon: ClipboardList, label: "Quiz" },
   { key: "kb", icon: BookOpen, label: "Knowledge base" },
   { key: "book", icon: Library, label: "Book" },
-  { key: "tutorbot", icon: Bot, label: "TutorBot" },
+  { key: "partner", icon: Bot, label: "Partner" },
   { key: "cowriter", icon: PenLine, label: "Co-writer" },
 ];
 

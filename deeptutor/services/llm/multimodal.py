@@ -28,11 +28,15 @@ _LOCAL_ATTACHMENT_PREFIX = "/api/attachments/"
 
 @dataclass
 class MultimodalResult:
-    """Result of multimodal message preparation."""
+    """Result of Stage-1 multimodal message preparation.
+
+    Images are injected optimistically for every provider, so there is no
+    "stripped because unsupported" outcome here — that decision is deferred
+    to the Stage-2 fallback at each call site's retry seam (see
+    :func:`should_degrade_to_text`).
+    """
 
     messages: list[dict[str, Any]]
-    vision_supported: bool
-    images_stripped: bool
     # Number of url-only images we had to drop because the provider requires
     # base64 and we couldn't resolve the URL locally (external URL or missing
     # file). The caller can surface this to the user.
@@ -79,11 +83,6 @@ def _build_anthropic_image_part(
     }
 
 
-def _image_placeholder(url: str = "", filename: str = "") -> str:
-    label = filename or url
-    return f"[image: {label}]" if label else "[image omitted]"
-
-
 def _resolve_local_attachment_url(url: str) -> tuple[str, str] | None:
     """Resolve a ``/api/attachments/<sid>/<aid>/<name>`` URL to (base64, mime).
 
@@ -127,67 +126,46 @@ def prepare_multimodal_messages(
     model: str | None = None,
 ) -> MultimodalResult:
     """
-    Inject image attachments into the last user message.
+    Inject image attachments into the last user message (Stage 1).
 
-    If the model supports vision the last user message ``content`` field is
-    converted from a plain string into a content-parts array that includes
-    both the original text and the image(s).
+    Images are injected **optimistically for every provider/model** — this
+    function does not consult ``supports_vision``. A model that natively
+    understands images therefore always receives them, even one DeepTutor has
+    no capability entry for (the original Doubao/VolcEngine bug). When a model
+    genuinely cannot handle images the request fails and the Stage-2 fallback
+    (:func:`should_degrade_to_text` + :func:`strip_image_parts`, applied at
+    each call site's retry seam) strips the images and retries as text-only.
 
-    If the model does **not** support vision, the messages are returned
-    unchanged and ``images_stripped`` is set to ``True`` so the caller
-    can emit a warning to the user.
+    The last user message ``content`` is converted from a plain string into a
+    content-parts array holding the original text plus the image(s). The only
+    images dropped *here* are url-only attachments the provider can't accept in
+    URL form (Anthropic, or ``vision_url_supported=False``) and that can't be
+    resolved to local bytes — counted in ``url_images_dropped``.
 
     Args:
         messages: The OpenAI-style messages list (may be mutated).
         attachments: ``Attachment`` objects from ``UnifiedContext``.
         binding: Provider binding (``"openai"``, ``"anthropic"``, …).
-        model: Model name used for capability lookup.
+        model: Model name (used only to pick the URL-vs-base64 image format).
 
     Returns:
         A ``MultimodalResult`` with the (potentially modified) messages.
     """
     if not attachments:
-        return MultimodalResult(
-            messages=messages,
-            vision_supported=True,
-            images_stripped=False,
-        )
+        return MultimodalResult(messages=messages)
 
     image_attachments = [a for a in attachments if getattr(a, "type", "") == "image"]
     if not image_attachments:
-        return MultimodalResult(
-            messages=messages,
-            vision_supported=True,
-            images_stripped=False,
-        )
-
-    vision_ok = supports_vision(binding, model)
-
-    if not vision_ok:
-        logger.info(
-            "Model %s/%s does not support vision – stripping %d image(s)",
-            binding,
-            model,
-            len(image_attachments),
-        )
-        return MultimodalResult(
-            messages=messages,
-            vision_supported=False,
-            images_stripped=True,
-        )
+        return MultimodalResult(messages=messages)
 
     last_user_idx = _find_last_user_message(messages)
     if last_user_idx is None:
-        return MultimodalResult(
-            messages=messages,
-            vision_supported=True,
-            images_stripped=False,
-        )
+        return MultimodalResult(messages=messages)
 
     is_anthropic = (binding or "").lower() in ("anthropic", "claude")
     # Anthropic adapter only emits base64 source blocks, and providers like
-    # Moonshot reject URL form outright. In both cases url-only attachments
-    # must be resolved to bytes before injection.
+    # Moonshot / VolcEngine reject URL form outright. In both cases url-only
+    # attachments must be resolved to bytes before injection.
     require_base64 = is_anthropic or not supports_vision_url(binding, model)
     dropped = _inject_images(
         messages,
@@ -197,12 +175,7 @@ def prepare_multimodal_messages(
         require_base64=require_base64,
     )
 
-    return MultimodalResult(
-        messages=messages,
-        vision_supported=True,
-        images_stripped=False,
-        url_images_dropped=dropped,
-    )
+    return MultimodalResult(messages=messages, url_images_dropped=dropped)
 
 
 def _find_last_user_message(messages: list[dict[str, Any]]) -> int | None:
@@ -295,6 +268,24 @@ def _inject_images(
     return dropped
 
 
+_IMAGE_BLOCK_TYPES = frozenset({"image_url", "image"})
+
+
+def _block_image_placeholder(block: dict[str, Any]) -> str:
+    """Human-readable text placeholder for an image block being stripped."""
+    meta = block.get("_meta") or {}
+    label = ""
+    if isinstance(meta, dict):
+        label = str(meta.get("path") or meta.get("filename") or "").strip()
+    if not label and block.get("type") == "image_url":
+        image_url = block.get("image_url") or {}
+        if isinstance(image_url, dict):
+            url = str(image_url.get("url") or "").strip()
+            if url and not url.startswith("data:"):
+                label = url
+    return f"[image: {label}]" if label else "[image omitted]"
+
+
 def has_image_parts(messages: list[dict[str, Any]]) -> bool:
     """Return True when any message content contains image blocks."""
     for msg in messages:
@@ -302,38 +293,75 @@ def has_image_parts(messages: list[dict[str, Any]]) -> bool:
         if not isinstance(content, list):
             continue
         for item in content:
-            if isinstance(item, dict) and item.get("type") in {"image_url", "image"}:
+            if isinstance(item, dict) and item.get("type") in _IMAGE_BLOCK_TYPES:
                 return True
     return False
 
 
 def strip_image_parts(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Replace image blocks with text placeholders for fallback retries."""
+    """Return a **new** message list with image blocks replaced by text
+    placeholders. Use when the caller must preserve the original (e.g. to
+    attempt a text-only retry while keeping the image payload for a possible
+    second provider)."""
     stripped: list[dict[str, Any]] = []
     for msg in messages:
         content = msg.get("content")
         if not isinstance(content, list):
             stripped.append(dict(msg))
             continue
-        new_content: list[dict[str, Any]] = []
-        for item in content:
-            if isinstance(item, dict) and item.get("type") in {"image_url", "image"}:
-                image_url = item.get("image_url") or {}
-                url = image_url.get("url", "") if isinstance(image_url, dict) else ""
-                meta = item.get("_meta") or {}
-                filename = ""
-                if isinstance(meta, dict):
-                    filename = str(meta.get("path") or meta.get("filename") or "")
-                new_content.append({"type": "text", "text": _image_placeholder(url, filename)})
-            else:
-                new_content.append(item)
+        new_content: list[dict[str, Any]] = [
+            {"type": "text", "text": _block_image_placeholder(item)}
+            if isinstance(item, dict) and item.get("type") in _IMAGE_BLOCK_TYPES
+            else item
+            for item in content
+        ]
         stripped.append({**msg, "content": new_content})
     return stripped
+
+
+def strip_image_parts_inplace(messages: list[dict[str, Any]]) -> bool:
+    """Replace image blocks with text placeholders **in place**; return True
+    if any were replaced.
+
+    Used by call sites that share one message list across retries / loop
+    iterations (the chat agentic loop) so the degrade persists and images are
+    not re-sent — and re-rejected — on every subsequent call."""
+    found = False
+    for msg in messages:
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+        for idx, block in enumerate(content):
+            if isinstance(block, dict) and block.get("type") in _IMAGE_BLOCK_TYPES:
+                content[idx] = {"type": "text", "text": _block_image_placeholder(block)}
+                found = True
+    return found
+
+
+def should_degrade_to_text(
+    binding: str | None,
+    model: str | None,
+    messages: list[dict[str, Any]],
+) -> bool:
+    """Stage-2 fallback decision.
+
+    After a request that carried image content fails, return True when we
+    should strip the images and retry as text-only — i.e. the payload
+    actually had image parts **and** the model is *not* in the known-vision
+    allowlist (``supports_vision`` is False). For allowlisted (known
+    vision-capable) models we keep the images so a genuine error surfaces
+    instead of silently returning a misleading text-only answer.
+    """
+    if not has_image_parts(messages):
+        return False
+    return not supports_vision(binding or "openai", model)
 
 
 __all__ = [
     "MultimodalResult",
     "has_image_parts",
     "prepare_multimodal_messages",
+    "should_degrade_to_text",
     "strip_image_parts",
+    "strip_image_parts_inplace",
 ]

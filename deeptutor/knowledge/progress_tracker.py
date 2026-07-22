@@ -10,6 +10,8 @@ import json
 import logging
 from pathlib import Path
 
+from deeptutor.services.file_io import atomic_write_json
+
 # Use unified logging system
 
 _logger = logging.getLogger(__name__)
@@ -122,12 +124,7 @@ class ProgressTracker:
         # Persist the last seen progress snapshot so websocket subscribers and
         # page reloads can recover the live state without relying on in-memory callbacks.
         try:
-            self.kb_dir.mkdir(parents=True, exist_ok=True)
-            temp_progress_file = self.progress_file.parent / f"{self.progress_file.name}.tmp"
-            with open(temp_progress_file, "w", encoding="utf-8") as f:
-                json.dump(progress, f, indent=2, ensure_ascii=False)
-                f.flush()
-            temp_progress_file.replace(self.progress_file)
+            atomic_write_json(self.progress_file, progress)
         except Exception as e:
             _logger_instance().warning(
                 "Failed to persist progress snapshot for '%s': %s", self.kb_name, e

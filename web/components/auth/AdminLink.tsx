@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
-import { fetchAuthStatus, AUTH_ENABLED } from "@/lib/auth";
+import { useAuthStatus } from "@/hooks/useAuthStatus";
 
 interface AdminLinkProps {
   collapsed?: boolean;
@@ -12,16 +11,9 @@ interface AdminLinkProps {
 
 export function AdminLink({ collapsed = false }: AdminLinkProps) {
   const pathname = usePathname();
-  const [isAdmin, setIsAdmin] = useState(false);
+  const { enabled, isAdmin } = useAuthStatus();
 
-  useEffect(() => {
-    if (!AUTH_ENABLED) return;
-    fetchAuthStatus().then((status) => {
-      setIsAdmin(status?.role === "admin");
-    });
-  }, []);
-
-  if (!AUTH_ENABLED || !isAdmin) return null;
+  if (!enabled || !isAdmin) return null;
 
   const active = pathname.startsWith("/admin");
 

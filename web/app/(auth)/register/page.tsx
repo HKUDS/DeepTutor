@@ -55,7 +55,7 @@ export default function RegisterPage() {
     <div className="w-full max-w-sm">
       {/* Logo / Title */}
       <div className="text-center mb-8">
-        <h1 className="text-2xl font-semibold text-[var(--foreground)] tracking-tight">
+        <h1 className="font-serif text-2xl font-semibold text-[var(--foreground)] tracking-tight">
           DeepTutor
         </h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
@@ -76,18 +76,18 @@ export default function RegisterPage() {
       {/* Card */}
       <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl shadow-sm px-8 py-8">
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Email */}
+          {/* Email or username */}
           <div>
             <label
               htmlFor="username"
               className="block text-sm font-medium text-[var(--foreground)] mb-1.5"
             >
-              {t("Email")}
+              {t("Email or username")}
             </label>
             <input
               id="username"
-              type="email"
-              autoComplete="email"
+              type="text"
+              autoComplete="username"
               required
               value={username}
               onChange={(e) => setUsername(e.target.value)}

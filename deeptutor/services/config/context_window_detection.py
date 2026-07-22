@@ -15,6 +15,7 @@ from deeptutor.services.llm.context_window import (
     coerce_positive_int,
     default_context_window_for_model,
 )
+from deeptutor.services.llm.openai_http_client import disable_ssl_verify_enabled
 from deeptutor.services.llm.utils import build_auth_headers
 
 logger = logging.getLogger(__name__)
@@ -149,9 +150,11 @@ async def _detect_from_models_endpoint(
     headers.pop("Content-Type", None)
 
     timeout = aiohttp.ClientTimeout(total=12)
+    connector = aiohttp.TCPConnector(ssl=False) if disable_ssl_verify_enabled() else None
     try:
         async with aiohttp.ClientSession(
             timeout=timeout,
+            connector=connector,
             trust_env=True,
         ) as session:
             async with session.get(url, headers=headers) as response:

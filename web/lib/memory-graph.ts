@@ -10,7 +10,7 @@ export type Surface =
   | "quiz"
   | "kb"
   | "book"
-  | "tutorbot"
+  | "partner"
   | "cowriter";
 
 export const SURFACES: Surface[] = [
@@ -19,7 +19,7 @@ export const SURFACES: Surface[] = [
   "quiz",
   "kb",
   "book",
-  "tutorbot",
+  "partner",
   "cowriter",
 ];
 
@@ -416,7 +416,7 @@ export function buildGraph(
   // ── Build L2 + L1 cluster geometry: angular share per surface is
   // proportional to the *combined* L1+L2 count so dense surfaces own
   // a bigger arc and the whole outer ring stays uniformly dense.
-  // Each surface gets a minimum slice so tiny ones (book, tutorbot)
+  // Each surface gets a minimum slice so tiny ones (book, partner)
   // still register visually.
   const minSliceFraction = 0.025; // ≈ 9° floor
   const rawWeights = SURFACES.map(
@@ -751,7 +751,7 @@ export const SURFACE_LABEL: Record<Surface, string> = {
   quiz: "Quiz",
   kb: "Knowledge base",
   book: "Book",
-  tutorbot: "TutorBot",
+  partner: "Partner",
   cowriter: "Co-writer",
 };
 

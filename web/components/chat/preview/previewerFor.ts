@@ -18,6 +18,8 @@ export type PreviewKind =
   | "markdown"
   | "code"
   | "text"
+  | "docx"
+  | "xlsx"
   | "office-text"
   | "fallback";
 
@@ -36,13 +38,20 @@ export interface FilePreviewSource {
   base64?: string;
   /** Plain-text rendering of office docs, populated by the backend. */
   extractedText?: string;
+  /** Optional endpoint that returns extracted plain text on demand. */
+  extractedTextUrl?: string;
   /** Original byte size, used for empty-state copy. */
   size?: number;
   /** Stable id; lets the drawer build a stable React key. */
   id?: string;
 }
 
-const OFFICE_BINARY_EXTS = new Set([".docx", ".xlsx", ".pptx"]);
+// OOXML formats with a faithful browser renderer (docx-preview / exceljs).
+const DOCX_EXTS = new Set([".docx", ".docm"]);
+const XLSX_EXTS = new Set([".xlsx", ".xlsm"]);
+// Office binaries with no reliable browser renderer (PowerPoint, and the
+// legacy pre-OOXML formats) — fall back to the extractor's plain text.
+const OFFICE_BINARY_EXTS = new Set([".pptx", ".ppt", ".doc", ".xls"]);
 const MARKDOWN_EXTS = new Set([".md", ".markdown", ".rst", ".asciidoc"]);
 const PLAIN_TEXT_EXTS = new Set([
   ".txt",
@@ -85,6 +94,17 @@ export function previewKindFor(source: FilePreviewSource): PreviewKind {
   if (ext === ".svg" || mime === "image/svg+xml") return "svg";
   if (isImage(source, ext)) return "image";
   if (MARKDOWN_EXTS.has(ext) || mime === "text/markdown") return "markdown";
+  if (
+    DOCX_EXTS.has(ext) ||
+    mime ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  )
+    return "docx";
+  if (
+    XLSX_EXTS.has(ext) ||
+    mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  )
+    return "xlsx";
   if (OFFICE_BINARY_EXTS.has(ext)) return "office-text";
   // Catches both extension-based mappings (.js, .ts, .go, .vue, .lua, …)
   // and special filenames without extensions (Dockerfile, Makefile, …).

@@ -104,9 +104,18 @@ def test_load_recovers_invalid_catalog_with_defaults(tmp_path: Path):
 
     catalog = ModelCatalogService(path=catalog_path).load()
 
-    assert set(catalog["services"]) == {"llm", "embedding", "search"}
+    expected_services = {
+        "llm",
+        "embedding",
+        "search",
+        "tts",
+        "stt",
+        "imagegen",
+        "videogen",
+    }
+    assert set(catalog["services"]) == expected_services
     saved = json.loads(catalog_path.read_text(encoding="utf-8"))
-    assert set(saved["services"]) == {"llm", "embedding", "search"}
+    assert set(saved["services"]) == expected_services
 
 
 def test_load_persists_normalized_active_ids(tmp_path: Path):

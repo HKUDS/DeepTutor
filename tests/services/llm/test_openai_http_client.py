@@ -87,20 +87,6 @@ def test_azure_provider_passes_disable_ssl_http_client(monkeypatch: pytest.Monke
     assert clients[0].kwargs["verify"] is False
 
 
-def test_tutorbot_provider_passes_disable_ssl_http_client(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from deeptutor.tutorbot.providers import openai_compat_provider as tutorbot_mod
-
-    clients = _enable_ssl_override(monkeypatch)
-    captured = _capture_async_openai(monkeypatch, tutorbot_mod)
-
-    tutorbot_mod.OpenAICompatProvider(api_key="sk-test", api_base="https://example.com/v1")
-
-    assert captured[0]["http_client"] is clients[0]
-    assert clients[0].kwargs["verify"] is False
-
-
 @pytest.mark.asyncio
 async def test_sdk_complete_passes_disable_ssl_http_client(
     monkeypatch: pytest.MonkeyPatch,

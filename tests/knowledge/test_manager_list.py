@@ -71,3 +71,18 @@ def test_list_keeps_recent_entry_with_missing_dir(tmp_path: Path) -> None:
 
     assert manager.list_knowledge_bases() == ["in-flight"]
     assert "in-flight" in _read_config(manager.config_file).get("knowledge_bases", {})
+
+
+def test_auto_register_legacy_storage_marks_needs_reindex(tmp_path: Path) -> None:
+    kb_dir = tmp_path / "legacy"
+    (kb_dir / "raw").mkdir(parents=True)
+    legacy_storage = kb_dir / "rag_storage"
+    legacy_storage.mkdir()
+    (legacy_storage / "old.json").write_text("{}", encoding="utf-8")
+
+    manager = KnowledgeBaseManager(base_dir=str(tmp_path))
+
+    assert manager.list_knowledge_bases() == ["legacy"]
+    entry = _read_config(manager.config_file)["knowledge_bases"]["legacy"]
+    assert entry["status"] == "needs_reindex"
+    assert entry["needs_reindex"] is True

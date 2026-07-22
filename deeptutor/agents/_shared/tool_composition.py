@@ -24,25 +24,36 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from deeptutor.tools.builtin import BUILTIN_TOOL_NAMES, USER_TOGGLEABLE_TOOL_NAMES
+from deeptutor.tools.builtin import (
+    BUILTIN_TOOL_NAMES,
+    CONFIGURABLE_BUILTIN_TOOL_NAMES,
+    USER_TOGGLEABLE_TOOL_NAMES,
+)
 
 # Tools whose mounting is owned by the pipeline (auto-on under specific
-# context conditions), not by the user's composer toggles. Adding a tool
-# here hides it from ``{tool_list}`` until its corresponding condition
-# fires in :func:`compose_enabled_tools`.
-AUTO_MOUNTED_TOOLS: frozenset[str] = frozenset(
-    {
-        "rag",
-        "read_source",
-        "read_memory",
-        "write_memory",
-        "list_notebook",
-        "write_note",
-        "ask_user",
-        "web_fetch",
-        "github",
-    }
-)
+# context conditions), not by the user's composer toggles. Membership here
+# hides the tool from ``{tool_list}`` until its corresponding condition fires
+# in :func:`compose_enabled_tools`. Derived from
+# ``CONFIGURABLE_BUILTIN_TOOL_NAMES`` so the partner config surface and the
+# auto-mount set can never drift apart.
+AUTO_MOUNTED_TOOLS: frozenset[str] = frozenset(CONFIGURABLE_BUILTIN_TOOL_NAMES)
+
+# Conditional auto-mounts: tool name -> the ``ToolMountFlags`` attribute that
+# gates it. Single source of truth shared by the default composition (mount
+# when the flag is set) and the authoritative capability path (a capability's
+# declared built-in is dropped when its gate is unmet — e.g. ``rag`` without a KB).
+# Insertion order fixes the default surface's conditional-tool order.
+_CONDITIONAL_MOUNT_FLAGS: dict[str, str] = {
+    "rag": "has_kb",
+    "read_source": "has_sources",
+    "read_memory": "has_memory",
+    "list_notebook": "has_notebooks",
+    "write_note": "has_notebooks",
+    "read_skill": "has_skills",
+    "load_tools": "has_deferred_tools",
+    "exec": "has_exec",
+    "code_execution": "has_code",
+}
 
 
 def default_optional_tools(excluded: Iterable[str] = ()) -> list[str]:
@@ -75,6 +86,10 @@ class ToolMountFlags:
     has_sources: bool = False
     has_memory: bool = False
     has_notebooks: bool = False
+    has_skills: bool = False
+    has_deferred_tools: bool = False
+    has_exec: bool = False
+    has_code: bool = False
 
 
 def compose_enabled_tools(
@@ -83,43 +98,95 @@ def compose_enabled_tools(
     requested_tools: list[str] | None,
     optional_whitelist: list[str],
     mount_flags: ToolMountFlags,
+    capability_owned: Iterable[str] = (),
+    exclusive: bool = False,
+    builtin_whitelist: set[str] | None = None,
+    forced: Iterable[str] = (),
+    suppressed: Iterable[str] = (),
 ) -> list[str]:
     """Compose the per-turn enabled-tool list.
 
     Order:
 
-    1. User-toggled tools (filtered through the registry's ``get_enabled``
-       so disabled tools never sneak in, and intersected with
-       ``optional_whitelist`` so only legitimate composer toggles are
-       respected).
-    2. Conditional auto-mounts (``rag`` if a KB is attached, ``read_source``
-       if a source index exists, ``read_memory`` if memory has content,
-       ``list_notebook`` + ``write_note`` if notebooks exist).
-    3. Always-on auto-mounts (``web_fetch``, ``github``, ``ask_user``).
+    1. User-toggled tools (filtered through ``get_enabled`` so unknown tools
+       never sneak in, intersected with ``optional_whitelist`` so only
+       legitimate composer toggles are respected).
+    2. Conditional auto-mounts (:data:`_CONDITIONAL_MOUNT_FLAGS`: ``rag`` if a
+       KB is attached, ``read_source`` if a source index exists, …).
+    3. Active loop capabilities' *owned* tools (``capability_owned``) — the
+       capability's own tools, added on top.
+    4. Always-on auto-mounts (``write_memory`` / ``web_fetch`` / ``github`` /
+       ``ask_user`` / ``cron``).
 
-    The result is ordered (no dedup is applied — caller's prerequisite is
-    that ``optional_whitelist`` excludes ``AUTO_MOUNTED_TOOLS``, which
-    :func:`default_optional_tools` guarantees).
+    A loop capability (solve, mastery) reuses the *full* chat surface and only
+    *adds* its owned tools — it never curates or suppresses the reused
+    built-ins, so a capability turn respects the user's composer toggles
+    exactly as a chat turn does.
+
+    ``exclusive=True`` flips that for the *knowledge* category (an active
+    :class:`~deeptutor.capabilities.protocol.KnowledgeCapability`): the turn
+    runs only on ``capability_owned`` plus the ``ask_user`` floor — no built-ins,
+    no composer toggles, no conditional mounts. The capability owns the surface.
+
+    ``builtin_whitelist`` gates the *built-in* auto-mounts (steps 2 and 4 —
+    the :data:`AUTO_MOUNTED_TOOLS` members). ``None`` (the product-chat default)
+    means "no gating": every built-in mounts under its usual context condition,
+    exactly as before. A set restricts which built-ins may mount — partners use
+    this so an owner can deny e.g. ``read_memory`` to an IM-facing companion.
+    It never *adds* tools (a built-in still needs its context gate); it only
+    subtracts. User-toggled tools (step 1) and capability-owned tools (step 3)
+    are unaffected — they have their own gates.
+
+    ``forced`` tools are appended unconditionally — they bypass both the
+    ``builtin_whitelist`` and the context gates (used by the partner runtime to
+    mandate ``partner_read`` / ``partner_memorize`` / ``partner_search``).
+    ``suppressed`` tools are removed from the final list regardless of how they
+    got there (the partner runtime suppresses chat's ``read_memory`` /
+    ``write_memory`` in favour of the partner variants). Both apply in the
+    ``exclusive`` branch too.
+
+    The result is ordered and deduplicated. ``optional_whitelist`` is still
+    expected to exclude ``AUTO_MOUNTED_TOOLS`` via :func:`default_optional_tools`.
     """
+    if exclusive:
+        owned = [str(name) for name in capability_owned if str(name).strip()]
+        return _finalize([*owned, "ask_user"], forced, suppressed)
+
+    def _builtin_allowed(name: str) -> bool:
+        return builtin_whitelist is None or name in builtin_whitelist
+
     composed: list[str] = [
         tool.name
         for tool in registry.get_enabled(requested_tools or [])
         if tool.name in optional_whitelist
     ]
-    if mount_flags.has_kb:
-        composed.append("rag")
-    if mount_flags.has_sources:
-        composed.append("read_source")
-    if mount_flags.has_memory:
-        composed.append("read_memory")
-    if mount_flags.has_notebooks:
-        composed.append("list_notebook")
-        composed.append("write_note")
-    composed.append("write_memory")
-    composed.append("web_fetch")
-    composed.append("github")
-    composed.append("ask_user")
-    return composed
+    for tool_name, flag in _CONDITIONAL_MOUNT_FLAGS.items():
+        if getattr(mount_flags, flag) and _builtin_allowed(tool_name):
+            composed.append(tool_name)
+    composed.extend(str(name) for name in capability_owned if str(name).strip())
+    for always_on in ("write_memory", "web_fetch", "github", "ask_user", "cron"):
+        if _builtin_allowed(always_on):
+            composed.append(always_on)
+    return _finalize(composed, forced, suppressed)
+
+
+def _finalize(names: Iterable[str], forced: Iterable[str], suppressed: Iterable[str]) -> list[str]:
+    """Append ``forced`` (bypassing all gates), dedupe, then drop ``suppressed``."""
+    out = list(names)
+    out.extend(str(name) for name in forced if str(name).strip())
+    suppressed_set = {str(name) for name in suppressed}
+    return [name for name in _ordered_unique(out) if name not in suppressed_set]
+
+
+def _ordered_unique(names: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for name in names:
+        if name in seen:
+            continue
+        seen.add(name)
+        result.append(name)
+    return result
 
 
 def user_has_memory() -> bool:

@@ -6,7 +6,7 @@ import {
   docIconFor,
   formatBytes,
   isSvgFilename,
-  MAX_ATTACHMENT_BYTES,
+  DEFAULT_MAX_ATTACHMENT_BYTES,
 } from "../lib/doc-attachments";
 
 function makeFile(name: string, type = "", size = 0): File {
@@ -124,6 +124,6 @@ test("docIconFor: fallback for unknown extension", () => {
 
 // Limits sanity check -------------------------------------------------------
 
-test("MAX_ATTACHMENT_BYTES is 10 MB", () => {
-  assert.equal(MAX_ATTACHMENT_BYTES, 10 * 1024 * 1024);
+test("DEFAULT_MAX_ATTACHMENT_BYTES is 20 MB", () => {
+  assert.equal(DEFAULT_MAX_ATTACHMENT_BYTES, 20 * 1024 * 1024);
 });

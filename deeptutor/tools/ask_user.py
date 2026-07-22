@@ -1,6 +1,6 @@
 """Build the payload for the ``ask_user`` tool.
 
-The tool packages one-to-three structured questions into a payload that
+The tool packages one-to-four structured questions into a payload that
 the chat pipeline interprets as a "pause this same turn until the user
 answers" signal (``ToolResult.pause_for_user``). The frontend reads the
 same payload off ``tool_result.metadata.ask_user`` and renders a card
@@ -9,8 +9,12 @@ batch.
 
 The schema is intentionally a list-of-questions even for the common
 single-question case — every call wraps a list so the frontend has one
-code path. The legacy ``{question, options}`` argument shape is still
-accepted at the LLM-facing boundary (``build_ask_user_payload``) and is
+code path. Each option is a ``{label, description}`` pair (mirroring
+Claude Code's ``AskUserQuestion``): the label is the short clickable
+choice, the description explains what picking it means. Plain-string
+options are still accepted at the LLM-facing boundary and normalised to
+``{label, description: None}``. The legacy ``{question, options}``
+argument shape is likewise accepted (``build_ask_user_payload``) and
 normalised to a single-element list internally.
 """
 
@@ -19,12 +23,31 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-MAX_QUESTIONS = 3
+MAX_QUESTIONS = 4
 MAX_OPTIONS = 8
-MAX_OPTION_CHARS = 120
+MAX_OPTION_CHARS = 120  # option label
+MAX_OPTION_DESC_CHARS = 200
+MAX_HEADER_CHARS = 16
 MAX_QUESTION_CHARS = 800
 MAX_INTRO_CHARS = 400
 MAX_PLACEHOLDER_CHARS = 120
+
+# Labels the model sometimes adds as its own catch-all option. The card
+# already renders a free-form "Other" row whenever ``allow_free_text``
+# is on, so a model-supplied duplicate is dropped (exact match only —
+# being clever here risks eating legitimate options).
+_REDUNDANT_OTHER_LABELS = frozenset({"other", "其他", "其它"})
+
+
+@dataclass(frozen=True)
+class AskUserOption:
+    """One clickable choice: short label + optional explanation."""
+
+    label: str
+    description: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"label": self.label, "description": self.description}
 
 
 @dataclass(frozen=True)
@@ -33,7 +56,9 @@ class AskUserQuestion:
 
     id: str
     prompt: str
-    options: tuple[str, ...] = ()
+    options: tuple[AskUserOption, ...] = ()
+    header: str | None = None
+    multi_select: bool = False
     allow_free_text: bool = True
     placeholder: str | None = None
 
@@ -41,7 +66,9 @@ class AskUserQuestion:
         return {
             "id": self.id,
             "prompt": self.prompt,
-            "options": list(self.options),
+            "header": self.header,
+            "multi_select": self.multi_select,
+            "options": [o.to_dict() for o in self.options],
             "allow_free_text": self.allow_free_text,
             "placeholder": self.placeholder,
         }
@@ -137,27 +164,45 @@ def _build_question(raw: Any, idx: int, used_ids: set[str]) -> AskUserQuestion |
     if len(prompt) > MAX_QUESTION_CHARS:
         prompt = prompt[:MAX_QUESTION_CHARS].rstrip() + "…"
 
+    allow_free_text = raw.get("allow_free_text")
+    allow_free_text = True if allow_free_text is None else bool(allow_free_text)
+
     options_raw = raw.get("options")
-    options: tuple[str, ...] = ()
+    options: tuple[AskUserOption, ...] = ()
     if options_raw is not None:
         if not isinstance(options_raw, (list, tuple)):
-            return f"Question #{idx + 1}: `options` must be an array of strings."
-        cleaned: list[str] = []
+            return f"Question #{idx + 1}: `options` must be an array."
+        cleaned: list[AskUserOption] = []
+        seen_labels: set[str] = set()
         for opt in options_raw:
-            text = _coerce_string(opt).strip()
-            if not text:
+            normalised = _build_option(opt)
+            if normalised is None:
                 continue
-            if len(text) > MAX_OPTION_CHARS:
-                text = text[:MAX_OPTION_CHARS].rstrip() + "…"
-            if text in cleaned:
+            # The card auto-renders an "Other" free-text row; drop a
+            # model-supplied duplicate so the user never sees two.
+            if allow_free_text and normalised.label.lower() in _REDUNDANT_OTHER_LABELS:
                 continue
-            cleaned.append(text)
+            if normalised.label in seen_labels:
+                continue
+            seen_labels.add(normalised.label)
+            cleaned.append(normalised)
             if len(cleaned) >= MAX_OPTIONS:
                 break
         options = tuple(cleaned)
 
-    allow_free_text = raw.get("allow_free_text")
-    allow_free_text = True if allow_free_text is None else bool(allow_free_text)
+    # ``multi_select`` is canonical; accept camelCase ``multiSelect``
+    # since models trained on Claude Code's tool emit that spelling.
+    multi_select_raw = raw.get("multi_select")
+    if multi_select_raw is None:
+        multi_select_raw = raw.get("multiSelect")
+    multi_select = bool(multi_select_raw)
+
+    header_raw = raw.get("header")
+    header: str | None = None
+    if header_raw is not None:
+        header = _coerce_string(header_raw).strip() or None
+        if header and len(header) > MAX_HEADER_CHARS:
+            header = header[:MAX_HEADER_CHARS].rstrip()
 
     placeholder_raw = raw.get("placeholder")
     placeholder: str | None = None
@@ -180,9 +225,28 @@ def _build_question(raw: Any, idx: int, used_ids: set[str]) -> AskUserQuestion |
         id=qid,
         prompt=prompt,
         options=options,
+        header=header,
+        multi_select=multi_select,
         allow_free_text=allow_free_text,
         placeholder=placeholder,
     )
+
+
+def _build_option(raw: Any) -> AskUserOption | None:
+    """Normalise one option: ``{label, description?}`` dict or plain string."""
+    if isinstance(raw, dict):
+        label = _coerce_string(raw.get("label")).strip()
+        description = _coerce_string(raw.get("description")).strip() or None
+    else:
+        label = _coerce_string(raw).strip()
+        description = None
+    if not label:
+        return None
+    if len(label) > MAX_OPTION_CHARS:
+        label = label[:MAX_OPTION_CHARS].rstrip() + "…"
+    if description and len(description) > MAX_OPTION_DESC_CHARS:
+        description = description[:MAX_OPTION_DESC_CHARS].rstrip() + "…"
+    return AskUserOption(label=label, description=description)
 
 
 def _coerce_string(value: Any) -> str:
@@ -194,10 +258,13 @@ def _coerce_string(value: Any) -> str:
 
 
 __all__ = [
+    "AskUserOption",
     "AskUserPayload",
     "AskUserQuestion",
+    "MAX_HEADER_CHARS",
     "MAX_INTRO_CHARS",
     "MAX_OPTION_CHARS",
+    "MAX_OPTION_DESC_CHARS",
     "MAX_OPTIONS",
     "MAX_PLACEHOLDER_CHARS",
     "MAX_QUESTION_CHARS",

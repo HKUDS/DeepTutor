@@ -68,10 +68,40 @@ _OFFICE_EXTENSIONS: frozenset[str] = frozenset(FileTypeRouter.PARSER_EXTENSIONS)
 TEXT_LIKE_EXTENSIONS: frozenset[str] = frozenset(FileTypeRouter.TEXT_EXTENSIONS)
 SUPPORTED_DOC_EXTENSIONS: frozenset[str] = _OFFICE_EXTENSIONS | TEXT_LIKE_EXTENSIONS
 
-MAX_DOC_BYTES = 10 * 1024 * 1024
+# Built-in defaults, kept as module constants for callers that pass explicit
+# budgets (the KB text_only engine, tests). The chat turn path resolves the
+# effective values from system.json via ``_current_limits()`` on every call,
+# so the /settings/attachments page applies without a restart.
+MAX_DOC_BYTES = 20 * 1024 * 1024
 MAX_TOTAL_DOC_BYTES = 25 * 1024 * 1024
 MAX_EXTRACTED_CHARS_PER_DOC = 200_000
 MAX_EXTRACTED_CHARS_TOTAL = 150_000
+
+
+def _current_limits() -> tuple[int, int, int, int]:
+    """(max_file_bytes, max_total_bytes, max_chars_per_doc, max_chars_total).
+
+    Falls back to the module defaults when the settings layer is unavailable
+    (e.g. unit tests running without a data directory).
+    """
+    try:
+        from deeptutor.services.config.runtime_settings import get_chat_attachment_limits
+
+        limits = get_chat_attachment_limits()
+        return (
+            limits.max_file_bytes,
+            limits.max_total_bytes,
+            limits.max_chars_per_doc,
+            limits.max_chars_total,
+        )
+    except Exception:  # pragma: no cover - defensive fallback
+        return (
+            MAX_DOC_BYTES,
+            MAX_TOTAL_DOC_BYTES,
+            MAX_EXTRACTED_CHARS_PER_DOC,
+            MAX_EXTRACTED_CHARS_TOTAL,
+        )
+
 
 _PDF_MAGIC = b"%PDF-"
 _OOXML_MAGIC = b"PK\x03\x04"
@@ -562,6 +592,7 @@ def extract_documents_from_records(
     """
     doc_texts: list[str] = []
     updated: list[dict] = []
+    max_file_bytes, max_total_bytes, max_chars_per_doc, max_chars_total = _current_limits()
     total_bytes = 0
     total_chars = 0
     over_quota = False
@@ -594,7 +625,7 @@ def extract_documents_from_records(
             updated.append(record)
             continue
 
-        if total_bytes + len(data) > MAX_TOTAL_DOC_BYTES:
+        if total_bytes + len(data) > max_total_bytes:
             over_quota = True
             doc_texts.append(f"[File: {filename} — skipped: total attachment quota exceeded]")
             record["base64"] = ""
@@ -605,7 +636,12 @@ def extract_documents_from_records(
         total_bytes += len(data)
 
         try:
-            text = extract_text_from_bytes(filename, data)
+            text = extract_text_from_bytes(
+                filename,
+                data,
+                max_bytes=max_file_bytes,
+                max_chars=max_chars_per_doc,
+            )
         except DocumentExtractionError as exc:
             logger.info("Document extraction failed for %s: %s", filename, exc)
             doc_texts.append(f"[File: {filename} — could not be read: {exc}]")
@@ -614,7 +650,7 @@ def extract_documents_from_records(
             updated.append(record)
             continue
 
-        remaining_budget = MAX_EXTRACTED_CHARS_TOTAL - total_chars
+        remaining_budget = max_chars_total - total_chars
         if remaining_budget <= 0:
             doc_texts.append(f"[File: {filename} — skipped: total extracted-text quota exceeded]")
             record["base64"] = ""

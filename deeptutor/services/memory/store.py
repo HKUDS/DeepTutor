@@ -315,6 +315,75 @@ def migrate_v1_if_needed() -> Path | None:
     return backup_dir
 
 
+def migrate_partner_surface_if_needed() -> bool:
+    """Rename the legacy ``tutorbot`` memory surface to ``partner``.
+
+    The partner surface key used to be ``tutorbot`` — so footnote refs read
+    ``tutorbot:<id>`` and the consolidator even wrote "tutorbot" into L2
+    prose. It is now ``partner``. This moves any on-disk artifacts (L2 doc +
+    meta, snapshot dir, trace dir) to the new name, rewrites the ``tutorbot``
+    token to ``partner`` inside the L2 doc/meta (both the ``tutorbot:`` ref
+    prefix and the bare prose word), and renames the per-surface key inside
+    every L3 meta.
+
+    Idempotent: skips any target that already exists; a no-op when nothing
+    tutorbot-shaped lives under the memory root.
+    """
+    import json
+    import re
+
+    root = paths.memory_root()
+    if not root.exists():
+        return False
+
+    moved = False
+
+    l2 = paths.l2_dir()
+    old_md, new_md = l2 / "tutorbot.md", l2 / "partner.md"
+    if old_md.exists() and not new_md.exists():
+        text = old_md.read_text(encoding="utf-8")
+        text = text.replace("tutorbot:", "partner:")  # footnote/inline refs
+        text = re.sub(r"\btutorbot\b", "partner", text)  # bare prose word
+        text = re.sub(r"\bTutorbot\b", "Partner", text)
+        new_md.write_text(text, encoding="utf-8")
+        old_md.unlink()
+        moved = True
+    old_meta, new_meta = l2 / "tutorbot.meta.json", l2 / "partner.meta.json"
+    if old_meta.exists() and not new_meta.exists():
+        text = old_meta.read_text(encoding="utf-8").replace("tutorbot:", "partner:")
+        new_meta.write_text(text, encoding="utf-8")
+        old_meta.unlink()
+        moved = True
+
+    # snapshot/<surface>/ and trace/<surface>/ — plain directory moves
+    # (entity ids carry no surface prefix, so no content rewrite needed).
+    for sub in ("snapshot", "trace"):
+        old_dir, new_dir = root / sub / "tutorbot", root / sub / "partner"
+        if old_dir.is_dir() and not new_dir.exists():
+            shutil.move(str(old_dir), str(new_dir))
+            moved = True
+
+    # L3 metas track seen L2 entry ids per surface — rename that key.
+    l3 = paths.l3_dir()
+    if l3.is_dir():
+        for meta_path in l3.glob("*.meta.json"):
+            try:
+                data = json.loads(meta_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            seen = data.get("seen_l2_entry_ids")
+            if isinstance(seen, dict) and "tutorbot" in seen and "partner" not in seen:
+                seen["partner"] = seen.pop("tutorbot")
+                meta_path.write_text(
+                    json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+                )
+                moved = True
+
+    if moved:
+        logger.info("migrated legacy 'tutorbot' memory surface to 'partner'")
+    return moved
+
+
 # ── Singleton accessor ────────────────────────────────────────────────────
 
 

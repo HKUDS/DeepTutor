@@ -1,17 +1,21 @@
 "use client";
 
 import {
+  Bot,
   ClipboardList,
   History,
   NotebookPen,
+  UserRound,
   Wand2,
   type LucideIcon,
 } from "lucide-react";
 
 export type SpaceItemKey =
   | "chat_history"
+  | "agents"
   | "notebooks"
   | "question_bank"
+  | "personas"
   | "skills";
 
 export type SpaceMemoryFile = "summary" | "profile";
@@ -33,6 +37,13 @@ export const SPACE_ITEMS: SpaceItem[] = [
     icon: History,
   },
   {
+    key: "agents",
+    href: "/space/agents",
+    label: "My Agents",
+    description: "Chat with imported Claude Code and Codex agents.",
+    icon: Bot,
+  },
+  {
     key: "notebooks",
     href: "/space/notebooks",
     label: "Notebooks",
@@ -48,10 +59,17 @@ export const SPACE_ITEMS: SpaceItem[] = [
     icon: ClipboardList,
   },
   {
+    key: "personas",
+    href: "/space/personas",
+    label: "Personas",
+    description: "Behavior presets you can apply per chat turn.",
+    icon: UserRound,
+  },
+  {
     key: "skills",
     href: "/space/skills",
     label: "Skills",
-    description: "Behavior playbooks that guide chat responses.",
+    description: "Capability playbooks the model reads on demand.",
     icon: Wand2,
   },
 ];

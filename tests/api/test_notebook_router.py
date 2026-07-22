@@ -337,3 +337,26 @@ def test_lookup_without_turn_id_falls_back_to_latest(
         body = resp.json()
         assert body["turn_id"] == "turn_new"
         assert body["user_answer"] == "B"
+
+
+def test_lookup_missing_entry_returns_404_by_default(store: SQLiteSessionStore) -> None:
+    session = asyncio.run(store.create_session())
+    sid = session["id"]
+    with TestClient(_build_app(store)) as client:
+        resp = client.get(
+            "/api/v1/question-notebook/entries/lookup/by-question",
+            params={"session_id": sid, "question_id": "absent"},
+        )
+        assert resp.status_code == 404
+
+
+def test_lookup_missing_entry_returns_204_when_missing_ok(store: SQLiteSessionStore) -> None:
+    session = asyncio.run(store.create_session())
+    sid = session["id"]
+    with TestClient(_build_app(store)) as client:
+        resp = client.get(
+            "/api/v1/question-notebook/entries/lookup/by-question",
+            params={"session_id": sid, "question_id": "absent", "missing_ok": "true"},
+        )
+        assert resp.status_code == 204
+        assert resp.content == b""

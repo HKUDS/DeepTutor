@@ -143,7 +143,7 @@ def test_llm_minimax_binding_uses_minimaxi_endpoint() -> None:
             "api_key": "minimax-key",
             "api_version": "",
             "extra_headers": {},
-            "models": [{"id": "llm-m", "name": "m", "model": "MiniMax-M2.7"}],
+            "models": [{"id": "llm-m", "name": "m", "model": "MiniMax-M3"}],
         }
     )
     resolved = resolve_llm_runtime_config(catalog=catalog)

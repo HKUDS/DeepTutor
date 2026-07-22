@@ -111,6 +111,7 @@ def _make_user_record(hashed: str, role: str = "user", created_at: str = "") -> 
         "role": role,
         "created_at": created_at or datetime.now(timezone.utc).isoformat(),
         "disabled": False,
+        "avatar": "",
     }
 
 
@@ -186,6 +187,29 @@ def set_role(username: str, role: str) -> bool:
         return False
     logger.info(f"User '{username}' role updated to {role!r}")
     return True
+
+
+def set_avatar(username: str, avatar: str) -> bool:
+    """
+    Update the avatar marker for an existing user. Returns True on success.
+
+    The marker is either '' (deterministic fallback), 'icon:<name>:<color>',
+    or 'img:<version>' (managed by the avatar upload endpoint).
+    """
+    from deeptutor.multi_user.identity import set_avatar as _set_avatar
+
+    if not _set_avatar(username, avatar):
+        return False
+    logger.info("User '%s' avatar updated", username)
+    return True
+
+
+def get_user_info(username: str) -> dict | None:
+    """Return the public info dict for a single user, or None if unknown."""
+    for item in list_users():
+        if item.get("username") == username:
+            return item
+    return None
 
 
 # ---------------------------------------------------------------------------

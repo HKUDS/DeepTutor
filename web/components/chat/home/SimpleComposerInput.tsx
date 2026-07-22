@@ -1,9 +1,10 @@
 "use client";
 
-import { memo, useCallback, useRef, useState, type RefObject } from "react";
+import { memo, useCallback, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { shouldSubmitOnEnter } from "@/lib/composer-keyboard";
 import { useAutoSizedTextarea } from "@/lib/use-auto-sized-textarea";
+import { useImeComposing } from "@/lib/use-ime-composing";
 
 interface SimpleComposerInputProps {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
@@ -18,7 +19,8 @@ export const SimpleComposerInput = memo(function SimpleComposerInput({
 }: SimpleComposerInputProps) {
   const { t } = useTranslation();
   const [input, setInput] = useState("");
-  const isComposingRef = useRef(false);
+  const { isComposingRef, onCompositionStart, onCompositionEnd } =
+    useImeComposing();
 
   useAutoSizedTextarea(textareaRef, input, { min: 42, max: 200 });
 
@@ -40,20 +42,8 @@ export const SimpleComposerInput = memo(function SimpleComposerInput({
         }
       }
     },
-    [input, onSend, disabled],
+    [input, onSend, disabled, isComposingRef],
   );
-
-  const handleCompositionStart = useCallback(() => {
-    isComposingRef.current = true;
-  }, []);
-
-  const handleCompositionEnd = useCallback(() => {
-    // Some IMEs fire compositionend before the Enter keydown that confirms
-    // a candidate, so keep the guard through the current event turn.
-    setTimeout(() => {
-      isComposingRef.current = false;
-    }, 0);
-  }, []);
 
   return (
     <textarea
@@ -61,8 +51,8 @@ export const SimpleComposerInput = memo(function SimpleComposerInput({
       value={input}
       onChange={handleInputChange}
       onKeyDown={handleKeyDown}
-      onCompositionStart={handleCompositionStart}
-      onCompositionEnd={handleCompositionEnd}
+      onCompositionStart={onCompositionStart}
+      onCompositionEnd={onCompositionEnd}
       placeholder={t("Type a message...")}
       rows={1}
       // Defensive cap — see ComposerInput for the same guard. Anything beyond

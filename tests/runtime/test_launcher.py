@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+import builtins
 from pathlib import Path
 
+import pytest
+
 from deeptutor.runtime import launcher
+
+
+class _FakeTty:
+    def isatty(self) -> bool:
+        return True
 
 
 def test_packaged_web_cache_replaces_next_public_placeholders(tmp_path: Path) -> None:
@@ -94,3 +102,86 @@ def test_detect_existing_source_frontend_ignores_stale_lock(tmp_path: Path, monk
     )
 
     assert existing is None
+
+
+def test_resolve_port_conflicts_passthrough_when_free(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(launcher, "_port_accepts_connection", lambda port: False)
+
+    result = launcher._resolve_port_conflicts(
+        backend_port=8000,
+        frontend_port=3784,
+        check_frontend=True,
+        settings_dir=tmp_path,
+    )
+
+    assert result == (8000, 3784)
+
+
+def test_resolve_port_conflicts_non_tty_exits_with_message(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(launcher, "_port_accepts_connection", lambda port: port == 8000)
+    monkeypatch.setattr(launcher, "_port_listeners", lambda port: [(123, "python uvicorn")])
+    monkeypatch.setattr(launcher.sys, "stdin", None)
+
+    with pytest.raises(SystemExit) as excinfo:
+        launcher._resolve_port_conflicts(
+            backend_port=8000,
+            frontend_port=3784,
+            check_frontend=True,
+            settings_dir=tmp_path,
+        )
+
+    assert "8000" in str(excinfo.value)
+
+
+def test_resolve_port_conflicts_kill_option_frees_port(tmp_path: Path, monkeypatch) -> None:
+    occupied = {8000}
+    killed: list[int] = []
+
+    def fake_kill(pid, pgid, sig):
+        killed.append(pid)
+        occupied.discard(8000)
+
+    monkeypatch.setattr(launcher, "_port_accepts_connection", lambda port: port in occupied)
+    monkeypatch.setattr(launcher, "_port_listeners", lambda port: [(123, "python uvicorn")])
+    monkeypatch.setattr(launcher, "_send_tree_signal", fake_kill)
+    monkeypatch.setattr(launcher.sys, "stdin", _FakeTty())
+    monkeypatch.setattr(builtins, "input", lambda prompt="": "2")
+
+    result = launcher._resolve_port_conflicts(
+        backend_port=8000,
+        frontend_port=3784,
+        check_frontend=True,
+        settings_dir=tmp_path,
+    )
+
+    assert result == (8000, 3784)
+    assert killed == [123]
+
+
+def test_resolve_port_conflicts_change_option_prompts_and_persists(
+    tmp_path: Path, monkeypatch
+) -> None:
+    saved: dict[str, int] = {}
+
+    def fake_persist(settings_dir, backend_port, frontend_port):
+        saved["backend"] = backend_port
+        saved["frontend"] = frontend_port
+        return settings_dir / "system.json"
+
+    answers = iter(["1", "8002", "3785"])
+
+    monkeypatch.setattr(launcher, "_port_accepts_connection", lambda port: port == 8000)
+    monkeypatch.setattr(launcher, "_port_listeners", lambda port: [(123, "python uvicorn")])
+    monkeypatch.setattr(launcher, "_persist_ports", fake_persist)
+    monkeypatch.setattr(launcher.sys, "stdin", _FakeTty())
+    monkeypatch.setattr(builtins, "input", lambda prompt="": next(answers))
+
+    result = launcher._resolve_port_conflicts(
+        backend_port=8000,
+        frontend_port=3784,
+        check_frontend=True,
+        settings_dir=tmp_path,
+    )
+
+    assert result == (8002, 3785)
+    assert saved == {"backend": 8002, "frontend": 3785}

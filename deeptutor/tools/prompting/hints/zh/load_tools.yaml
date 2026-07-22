@@ -1,0 +1,6 @@
+short_description: "加载扩展工具（如 MCP 服务器工具），使其在本会话中可调用。"
+when_to_use: "当任务需要「Extended Tools」清单中尚未加载的工具时使用。未加载就直接调用扩展工具会失败。"
+input_format: "`names` — 字符串数组，工具名须与 Extended Tools 清单完全一致。"
+guideline: "只加载当前任务需要的工具，不要整批加载。加载后整个会话内持续可用，无需重复加载。"
+note: "若返回 unknown，回到 Extended Tools 清单核对名字拼写。"
+phase: "exploration"

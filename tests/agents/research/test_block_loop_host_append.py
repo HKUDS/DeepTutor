@@ -158,6 +158,11 @@ def _make_pipeline_with_registry(
     monkeypatch.setattr("deeptutor.agents.research.pipeline.get_tool_registry", lambda: registry)
     monkeypatch.setattr("deeptutor.agents.research.pipeline.user_has_memory", lambda: False)
     monkeypatch.setattr("deeptutor.agents.research.pipeline.user_has_notebooks", lambda: False)
+    # code_execution is now auto-mounted under sandbox availability; simulate a
+    # configured sandbox so the block loop exposes it as an evidence tool.
+    monkeypatch.setattr(
+        "deeptutor.agents.research.pipeline.exec_capability_available", lambda: True
+    )
     return ResearchPipeline(
         language="en",
         runtime_config={"queue": {"max_length": 5}},
@@ -191,11 +196,14 @@ def test_block_tool_names_keep_only_research_evidence_tools(
         kb_name="kb-main",
     )
 
+    # Order follows compose_enabled_tools: user-toggled tools first, then the
+    # conditional auto-mounts (rag for the attached KB, then code_execution
+    # under sandbox availability).
     assert pipeline._block_tool_names() == [
         "web_search",
         "paper_search",
-        "code_execution",
         "rag",
+        "code_execution",
     ]
 
 

@@ -1,82 +1,156 @@
-"""Tests for LlamaIndex document loading."""
+"""Tests for LlamaIndex document loading.
+
+Parser-backed files (PDF / Office / e-book) are routed through the shared
+parse layer, so these tests exercise the *routing* — that the loader turns a
+``ParsedDocument`` into text ``Document``s and feeds engine-extracted images
+into the multimodal ``ImageNode`` path. Real per-format text extraction is
+covered by ``tests/utils/test_document_extractor.py`` and the parse-engine
+tests under ``tests/services/parsing/``.
+"""
 
 from __future__ import annotations
 
 import asyncio
-import io
 from pathlib import Path
 
 import pytest
 
 
-def _make_docx(paragraphs: list[str]) -> bytes:
-    DocxDocument = pytest.importorskip("docx").Document
-    doc = DocxDocument()
-    for paragraph in paragraphs:
-        doc.add_paragraph(paragraph)
-    buffer = io.BytesIO()
-    doc.save(buffer)
-    return buffer.getvalue()
+def _install_stub_parse_service(monkeypatch, results: dict[str, "object"]) -> None:
+    """Point ``get_parse_service`` at a stub keyed by source file name.
+
+    ``results`` maps a file name to either a ``ParsedDocument`` to return or an
+    exception instance to raise (e.g. ``ParserError``).
+    """
+    import deeptutor.services.parsing as parsing
+
+    class _StubService:
+        def parse(self, source_path, **_kwargs):
+            outcome = results[Path(source_path).name]
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+
+    monkeypatch.setattr(parsing, "get_parse_service", lambda: _StubService())
 
 
-def _make_xlsx(rows: list[list[object]]) -> bytes:
-    Workbook = pytest.importorskip("openpyxl").Workbook
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "Data"
-    for row in rows:
-        sheet.append(row)
-    buffer = io.BytesIO()
-    workbook.save(buffer)
-    return buffer.getvalue()
-
-
-def _make_pptx(texts: list[str]) -> bytes:
-    Presentation = pytest.importorskip("pptx").Presentation
-    Inches = pytest.importorskip("pptx.util").Inches
-    presentation = Presentation()
-    slide = presentation.slides.add_slide(presentation.slide_layouts[5])
-    for index, text in enumerate(texts):
-        text_box = slide.shapes.add_textbox(
-            Inches(1),
-            Inches(1 + index * 0.5),
-            Inches(6),
-            Inches(0.5),
-        )
-        text_box.text_frame.text = text
-    buffer = io.BytesIO()
-    presentation.save(buffer)
-    return buffer.getvalue()
-
-
-def test_loader_extracts_chat_supported_office_files(tmp_path: Path) -> None:
+def test_loader_routes_parser_files_through_active_parse_engine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     pytest.importorskip("llama_index.core")
+    from deeptutor.services.parsing.types import ParsedDocument
     from deeptutor.services.rag.pipelines.llamaindex.document_loader import (
         LlamaIndexDocumentLoader,
     )
 
     docx_path = tmp_path / "notes.docx"
-    docx_path.write_bytes(_make_docx(["Docx paragraph"]))
-    xlsx_path = tmp_path / "book.xlsx"
-    xlsx_path.write_bytes(_make_xlsx([["cell-a", 42]]))
-    pptx_path = tmp_path / "slides.pptx"
-    pptx_path.write_bytes(_make_pptx(["Slide title", "Slide body"]))
+    docx_path.write_bytes(b"stub")
+    pdf_path = tmp_path / "paper.pdf"
+    pdf_path.write_bytes(b"stub")
 
-    documents = asyncio.run(
-        LlamaIndexDocumentLoader().load([str(docx_path), str(xlsx_path), str(pptx_path)])
+    _install_stub_parse_service(
+        monkeypatch,
+        {
+            "notes.docx": ParsedDocument(markdown="Docx body text"),
+            # No markdown, only structured blocks -> block-text fallback.
+            "paper.pdf": ParsedDocument(
+                markdown="",
+                blocks=[{"type": "text", "text": "Block one"}, {"content": "Block two"}],
+            ),
+        },
     )
 
-    assert {doc.metadata["file_name"] for doc in documents} == {
-        "notes.docx",
-        "book.xlsx",
-        "slides.pptx",
-    }
-    all_text = "\n".join(doc.text for doc in documents)
-    assert "Docx paragraph" in all_text
-    assert "cell-a" in all_text
-    assert "42" in all_text
-    assert "Slide title" in all_text
-    assert "Slide body" in all_text
+    documents = asyncio.run(LlamaIndexDocumentLoader().load([str(docx_path), str(pdf_path)]))
+
+    by_name = {doc.metadata["file_name"]: doc.text for doc in documents}
+    assert by_name["notes.docx"] == "Docx body text"
+    assert "Block one" in by_name["paper.pdf"]
+    assert "Block two" in by_name["paper.pdf"]
+
+
+def test_loader_skips_document_when_active_engine_cannot_parse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    pytest.importorskip("llama_index.core")
+    from deeptutor.services.parsing.types import ParserError
+    from deeptutor.services.rag.pipelines.llamaindex.document_loader import (
+        LlamaIndexDocumentLoader,
+    )
+
+    docx_path = tmp_path / "unsupported.docx"
+    docx_path.write_bytes(b"stub")
+
+    _install_stub_parse_service(
+        monkeypatch,
+        {"unsupported.docx": ParserError("the 'pymupdf4llm' engine doesn't support .docx files")},
+    )
+
+    with caplog.at_level("WARNING"):
+        documents = asyncio.run(LlamaIndexDocumentLoader().load([str(docx_path)]))
+
+    assert documents == []
+    assert "Skipped unsupported.docx" in caplog.text
+    assert "Settings" in caplog.text
+
+
+def test_loader_indexes_images_extracted_from_parsed_document(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("llama_index.core")
+    from llama_index.core.schema import ImageNode
+
+    from deeptutor.services.parsing.types import ParsedDocument
+    from deeptutor.services.rag.pipelines.llamaindex import document_loader as loader_module
+
+    pdf_path = tmp_path / "paper.pdf"
+    pdf_path.write_bytes(b"stub")
+    asset_dir = tmp_path / "assets"
+    asset_dir.mkdir()
+    (asset_dir / "figure-1.png").write_bytes(b"\x89PNG\r\n")
+    (asset_dir / "notes.txt").write_text("not an image", encoding="utf-8")  # ignored
+
+    _install_stub_parse_service(
+        monkeypatch,
+        {"paper.pdf": ParsedDocument(markdown="Paper body", asset_dir=asset_dir)},
+    )
+
+    class _MultimodalEmbeddingClient:
+        config = type("Config", (), {"binding": "siliconflow", "model": "qwen3-vl"})()
+
+        def supports_multimodal_contents(self) -> bool:
+            return True
+
+        async def embed_contents(self, contents):
+            return [[0.4, 0.5, 0.6] for _ in contents]
+
+    class _VisionClient:
+        config = type("Config", (), {"binding": "openai", "model": "gpt-4o"})()
+
+        def supports_multimodal_images(self) -> bool:
+            return True
+
+        async def complete(self, prompt, **kwargs):
+            return "Figure showing a bar chart."
+
+    monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _MultimodalEmbeddingClient())
+    monkeypatch.setattr(loader_module, "get_llm_client", lambda: _VisionClient())
+
+    documents = asyncio.run(loader_module.LlamaIndexDocumentLoader().load([str(pdf_path)]))
+
+    text_docs = [doc for doc in documents if not isinstance(doc, ImageNode)]
+    image_nodes = [doc for doc in documents if isinstance(doc, ImageNode)]
+
+    assert len(text_docs) == 1
+    assert text_docs[0].text == "Paper body"
+
+    assert len(image_nodes) == 1
+    node = image_nodes[0]
+    assert node.embedding == [0.4, 0.5, 0.6]
+    assert node.metadata["content_type"] == "image"
+    # Provenance: the extracted image cites the source document, not the cache asset.
+    assert node.metadata["file_name"] == "paper.pdf"
+    assert node.image_path == str(asset_dir / "figure-1.png")
+    assert "Figure showing a bar chart." in node.text
 
 
 def test_loader_skips_images_when_embedding_provider_is_text_only(

@@ -37,6 +37,7 @@ notices:
   tool_unknown_error: "执行 {tool} 时出错。"
   too_many_tool_calls: "本轮请求 {requested} 次工具调用，已截断到上限 {limit}。"
   max_iterations_reached: "当前研究块已达到迭代上限，强制 FINISH。"
+  partial_results: "{total} 个研究子主题中有 {failed} 个未能完成；报告基于其余已收集的证据生成。"
   rephrase_cap_reached: "ask_user 已达上限（{max_rounds} 轮）。请基于已有回答 FINISH 输出最优的精炼主题。"
   rephrase_only_ask_user: "在 rephrase 阶段仅允许调用 `ask_user`；本次 `{tool}` 被忽略。"
   append_rejected_empty: "APPEND 已拒绝：标签后第一行需提供新主题的标题。"
@@ -87,7 +88,7 @@ rephrase:
     硬约束：
     - 你最多可以调用 ``ask_user`` {max_rounds} 次。
     - 每次 ``ask_user`` 最多包含 {max_questions_per_round} 个问题。
-    - 每个问题应附带 3-5 个推荐选项（让用户快速点选）。
+    - 每个问题应附带 2-4 个有区分度的快捷选项：label 要短（1-5 个词），把选了它意味着什么写进 ``description``；如有推荐项放在第一个并在 label 末尾加「（推荐）」。
     - 如果用户的原始主题已经足够清晰，立即 FINISH，不要为了凑问题而制造模糊。
     - 如果用户跳过某个问题（回传 ``(skipped)``），尊重其选择：可以再问一轮或直接 FINISH。
     - FINISH 时不要原样复述用户的问题 —— 用更聚焦、更具体的语言重述研究目标。

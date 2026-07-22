@@ -1,9 +1,9 @@
 """
-Chat Module - Lightweight conversational AI with session management.
+Chat Module - conversational AI with session management.
 
 This module provides:
 - ChatAgent: Legacy conversational agent with RAG/Web Search support
-- AgenticChatPipeline: Four-stage chat orchestration with autonomous tool use
+- AgenticChatPipeline: exploring agent loop + respond stage with autonomous tool use
 - SessionManager: Chat session persistence and management
 
 Usage:

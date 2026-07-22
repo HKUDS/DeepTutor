@@ -81,7 +81,7 @@ def parse_json_response(
     # Strategy 1: Direct parsing
     try:
         return json.loads(extracted_response)
-    except json.JSONDecodeError as parse_error:
+    except (json.JSONDecodeError, TypeError) as parse_error:
         log.debug(f"Direct JSON parse failed: {parse_error}")
 
     # Strategy 2: Try json-repair if available
@@ -120,6 +120,6 @@ def safe_json_loads(data: str, fallback: Any = _UNSET) -> Any:
         fallback = {}
     try:
         return json.loads(data)
-    except json.JSONDecodeError as e:
+    except (json.JSONDecodeError, TypeError) as e:
         logger.warning(f"JSON parse error: {e}")
         return fallback

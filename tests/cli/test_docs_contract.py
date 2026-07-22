@@ -8,10 +8,23 @@ import shlex
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCS_ROOT = ROOT / "site" / "src" / "content" / "docs"
+PUBLIC_DOCS = (
+    ROOT / "README.md",
+    ROOT / "deeptutor_cli" / "README.md",
+    ROOT / "SKILL.md",
+)
+
+
+def _command_doc_paths() -> list[Path]:
+    paths: list[Path] = []
+    if DOCS_ROOT.exists():
+        paths.extend(DOCS_ROOT.rglob("*.md"))
+    paths.extend(path for path in PUBLIC_DOCS if path.exists())
+    return paths
 
 
 def _docs_text() -> str:
-    return "\n".join(path.read_text(encoding="utf-8") for path in DOCS_ROOT.rglob("*.md"))
+    return "\n".join(path.read_text(encoding="utf-8") for path in _command_doc_paths())
 
 
 def _doc_ids() -> set[str]:
@@ -30,7 +43,7 @@ def _doc_ids() -> set[str]:
 def _deeptutor_commands() -> list[str]:
     commands: list[str] = []
     pending = ""
-    for path in DOCS_ROOT.rglob("*.md"):
+    for path in _command_doc_paths():
         for line in path.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
             if not pending and not stripped.startswith("deeptutor "):
@@ -61,7 +74,6 @@ def test_internal_docs_links_point_to_existing_pages() -> None:
 
 def test_documented_deeptutor_subcommands_exist() -> None:
     top_level = {
-        "bot",
         "book",
         "chat",
         "config",
@@ -69,11 +81,13 @@ def test_documented_deeptutor_subcommands_exist() -> None:
         "kb",
         "memory",
         "notebook",
+        "partner",
         "plugin",
         "provider",
         "run",
         "serve",
         "session",
+        "skill",
         "start",
     }
     provider_subcommands = {"login"}

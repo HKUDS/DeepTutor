@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 /**
- * Root page now redirects to /chat.
+ * Root page now redirects to /home.
  * Handles backward compatibility for /?session=xxx URLs.
  */
 export default function HomePage() {
@@ -16,7 +16,7 @@ export default function HomePage() {
     const capability = params.get("capability");
     const tools = params.getAll("tool");
 
-    let target = sessionId ? `/chat/${sessionId}` : "/chat";
+    let target = sessionId ? `/home/${sessionId}` : "/home";
 
     const query: string[] = [];
     if (capability) query.push(`capability=${encodeURIComponent(capability)}`);

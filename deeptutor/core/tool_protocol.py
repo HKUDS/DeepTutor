@@ -48,14 +48,32 @@ class ToolParameter:
 class ToolDefinition:
     """
     Metadata that describes a tool to the LLM (OpenAI function-calling format).
+
+    ``raw_parameters`` carries a complete JSON-Schema object verbatim and
+    takes precedence over ``parameters`` — used by adapter tools (e.g. MCP)
+    whose upstream schemas are arbitrary JSON Schema that would be lossy to
+    re-encode as :class:`ToolParameter` rows.
     """
 
     name: str
     description: str
     parameters: list[ToolParameter] = field(default_factory=list)
+    raw_parameters: dict[str, Any] | None = None
 
     def to_openai_schema(self) -> dict[str, Any]:
         """Build an OpenAI-compatible function tool schema."""
+        if self.raw_parameters is not None:
+            schema = dict(self.raw_parameters)
+            schema.setdefault("type", "object")
+            schema.setdefault("properties", {})
+            return {
+                "type": "function",
+                "function": {
+                    "name": self.name,
+                    "description": self.description,
+                    "parameters": schema,
+                },
+            }
         properties = {}
         required = []
         for p in self.parameters:
@@ -155,6 +173,12 @@ class BaseTool(ABC):
 
     Subclasses must implement ``get_definition`` and ``execute``.
 
+    ``deferred`` marks a tool for progressive disclosure: its schema is NOT
+    included in the initial per-turn tool list. Instead, the system prompt
+    carries a one-line entry per deferred tool and the model loads full
+    schemas on demand via the ``load_tools`` tool. Source-agnostic — any
+    registered tool may set it (all MCP tools do).
+
     Example::
 
         class MyTool(BaseTool):
@@ -168,6 +192,8 @@ class BaseTool(ABC):
             async def execute(self, **kwargs) -> ToolResult:
                 return ToolResult(content="result")
     """
+
+    deferred: bool = False
 
     @abstractmethod
     def get_definition(self) -> ToolDefinition:

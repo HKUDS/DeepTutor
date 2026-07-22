@@ -90,7 +90,7 @@ export interface QuizFollowupContext {
  *
  * Returns ``null`` until at least one valid quiz event has arrived, so
  * the caller can fall back to the legacy ``extractQuizQuestions`` shape
- * for older (mimic / answer-now) result envelopes.
+ * for older (mimic) result envelopes.
  */
 export function extractStreamingQuizQuestions(
   events: Array<{

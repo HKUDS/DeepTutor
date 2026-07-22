@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
+  Bot,
   Brain,
   Check,
   ChevronLeft,
@@ -11,25 +12,35 @@ import {
   ClipboardList,
   Coins,
   Copy,
+  AlertCircle,
+  Database,
+  Loader2,
   MessageSquare,
   Pencil,
   RefreshCcw,
-  Wand2,
+  Square,
+  UserRound,
+  Volume2,
   X,
   Trash2,
-  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { SelectedHistorySession } from "@/components/chat/HistorySessionPicker";
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
 import AssistantResponse from "@/components/common/AssistantResponse";
+import {
+  InlineFileCardProvider,
+  mergeGeneratedFiles,
+} from "@/components/common/InlineFileCard";
+import Tooltip from "@/components/common/Tooltip";
 import type {
   MessageAttachment,
   MessageRequestSnapshot,
 } from "@/context/UnifiedChatContext";
-import { apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl } from "@/lib/api";
 import { docIconFor } from "@/lib/doc-attachments";
+import { useVoiceAutoplay } from "@/hooks/useVoiceAutoplay";
 import { extractMathAnimatorResult } from "@/lib/math-animator-types";
 import {
   extractQuizQuestions,
@@ -40,13 +51,20 @@ import type { StreamEvent } from "@/lib/unified-ws";
 import { hasVisibleMarkdownContent } from "@/lib/markdown-display";
 import type { SelectedBookReference } from "@/lib/book-references";
 import { buildVisiblePath, type SiblingInfo } from "@/lib/message-branches";
+import { shouldSubmitOnEnter } from "@/lib/composer-keyboard";
+import { useImeComposing } from "@/lib/use-ime-composing";
 import type { SpaceMemoryFile } from "@/lib/space-items";
 import {
   AskUserOptions,
   extractAskUserPayload,
   extractMessageSegments,
 } from "./AskUserOptions";
-import { TraceSurface } from "./TracePanels";
+import ContextReferenceTree, {
+  type ContextTreeItem,
+} from "./ContextReferenceTree";
+import { AssistantActivity } from "./TracePanels";
+import { agentGlyph } from "@/components/agents/agent-icons";
+import { useConnectedAgentKinds } from "@/hooks/useConnectedAgentKinds";
 
 const MathAnimatorViewer = dynamic(
   () => import("@/components/math-animator/MathAnimatorViewer"),
@@ -90,6 +108,7 @@ function getModeBadgeLabel(capability?: string | null): string {
   if (capability === "deep_research") return "Deep Research";
   if (capability === "math_animator") return "Math Animator";
   if (capability === "visualize") return "Visualize";
+  if (capability === "mastery_path") return "Mastery Path";
   return capability;
 }
 
@@ -111,6 +130,150 @@ function imageSrcForAttachment(attachment: MessageAttachment): string | null {
   return `data:${attachment.mime_type || "image/png"};base64,${base64}`;
 }
 
+/** Format a byte count for a file card subtitle (e.g. "14 KB"). */
+function formatFileSize(bytes?: number): string {
+  if (!bytes || bytes <= 0) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${unit === 0 ? value : value.toFixed(1)} ${units[unit]}`;
+}
+
+/** "DeepTutor_Introduction.pdf" → "DeepTutor Introduction" — the card title
+ * reads like a document name; the extension already shows in the subtitle. */
+function humanizeFilename(filename: string): string {
+  const stem = filename.replace(/\.[A-Za-z0-9]{1,8}$/, "");
+  return (
+    stem
+      .replace(/[_-]+/g, " ")
+      .replace(/\s{2,}/g, " ")
+      .trim() || filename
+  );
+}
+
+/**
+ * Files the assistant produced this turn (exec/code/media artifacts),
+ * rendered as openable cards under the message — click to open in the Viewer
+ * side panel, same path as user uploads. Sources: persisted ``generated``
+ * attachments on the message (durable) merged with artifacts from streamed
+ * tool_result events (live, while the turn is still running), deduped by URL.
+ */
+function GeneratedFileCards({
+  attachments,
+  events,
+  onOpen,
+}: {
+  attachments: MessageAttachment[];
+  events?: StreamEvent[];
+  onOpen?: (attachment: MessageAttachment) => void;
+}) {
+  const { t } = useTranslation();
+  const files = useMemo(
+    () => mergeGeneratedFiles(attachments, events),
+    [attachments, events],
+  );
+  if (!files.length) return null;
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      {files.map((a, i) => {
+        const filename = a.filename || t("File");
+        const key = a.id || a.url || `gen-${i}`;
+        const mime = a.mime_type || "";
+        const mediaSrc = imageSrcForAttachment(a);
+
+        // Generated images / videos render inline (preview the moment they
+        // arrive); everything else stays a compact openable file card.
+        if (mime.startsWith("image/") && mediaSrc) {
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={onOpen ? () => onOpen(a) : undefined}
+              className="group block w-full max-w-[min(520px,90%)] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] text-left shadow-sm transition hover:border-[var(--border)]"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={mediaSrc}
+                alt={filename}
+                loading="lazy"
+                className="block max-h-[360px] w-full bg-[var(--background)] object-contain"
+              />
+              <span className="flex items-center justify-between gap-2 px-3 py-2">
+                <span className="min-w-0 truncate text-[12.5px] font-medium text-[var(--foreground)]">
+                  {humanizeFilename(filename)}
+                </span>
+                <span className="shrink-0 text-[11px] text-[var(--muted-foreground)] transition group-hover:text-[var(--foreground)]">
+                  {t("Open")}
+                </span>
+              </span>
+            </button>
+          );
+        }
+
+        if (mime.startsWith("video/") && mediaSrc) {
+          return (
+            <div
+              key={key}
+              className="w-full max-w-[min(520px,90%)] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-sm"
+            >
+              <video
+                src={mediaSrc}
+                controls
+                preload="metadata"
+                className="block max-h-[360px] w-full bg-black"
+              />
+              <button
+                type="button"
+                onClick={onOpen ? () => onOpen(a) : undefined}
+                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition hover:bg-[var(--muted)]/30"
+              >
+                <span className="min-w-0 truncate text-[12.5px] font-medium text-[var(--foreground)]">
+                  {humanizeFilename(filename)}
+                </span>
+                <span className="shrink-0 text-[11px] text-[var(--muted-foreground)]">
+                  {t("Open")}
+                </span>
+              </button>
+            </div>
+          );
+        }
+
+        const spec = docIconFor(filename);
+        const Icon = spec.Icon;
+        const size = formatFileSize(a.size_bytes);
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={onOpen ? () => onOpen(a) : undefined}
+            className="group flex w-full max-w-[min(520px,90%)] items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-left shadow-sm transition hover:border-[var(--border)] hover:bg-[var(--muted)]/30"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--background)]">
+              <Icon className={`h-[18px] w-[18px] ${spec.tint}`} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-medium text-[var(--foreground)]">
+                {humanizeFilename(filename)}
+              </span>
+              <span className="block text-[11px] text-[var(--muted-foreground)]">
+                {spec.label}
+                {size ? ` · ${size}` : ""}
+              </span>
+            </span>
+            <span className="shrink-0 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-1 text-[11.5px] font-medium text-[var(--foreground)] transition group-hover:bg-[var(--muted)]/40">
+              {t("Open")}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 const AssistantMessage = memo(function AssistantMessage({
   msg,
   isStreaming,
@@ -118,7 +281,6 @@ const AssistantMessage = memo(function AssistantMessage({
   sessionId,
   language,
   onConfirmOutline,
-  onAnswerNow,
   onSubmitUserReply,
   researchRequestSnapshot,
 }: {
@@ -134,7 +296,6 @@ const AssistantMessage = memo(function AssistantMessage({
     researchConfig?: Record<string, unknown> | null,
     requestSnapshot?: MessageRequestSnapshot | null,
   ) => void;
-  onAnswerNow?: () => void;
   /**
    * Submit a reply for a turn that is paused on ``ask_user``. Wired
    * through from the page so the card's option-buttons / free-text
@@ -229,18 +390,20 @@ const AssistantMessage = memo(function AssistantMessage({
 
   return (
     <>
-      <TraceSurface
+      {/* Activity block pinned to the TOP: the status header
+          ("DeepTutor Exploring… · 8s" → "DeepTutor responded. · 10s") with
+          the exploring trace nested beneath it — expanded while DeepTutor is
+          still working, collapsed once it settles into the final answer. */}
+      <AssistantActivity
         events={events}
         isStreaming={isStreaming}
         content={msg.content}
+        className="mb-3"
       />
-      {isStreaming && onAnswerNow ? (
-        <AnswerNowRow onAnswerNow={onAnswerNow} />
-      ) : null}
       {outlinePreview && outlinePreview.sub_topics.length > 0 ? (
         <>
           {/* Layout for the merged research bubble:
-                1. trace cards (above, via TraceSurface)
+                1. trace rows (above, via TraceFlow)
                 2. ask_user Q&A summary (collapsible once research starts)
                 3. Outline editor (auto-collapses once locked)
                 4. Final report body (only after research is underway)
@@ -272,7 +435,10 @@ const AssistantMessage = memo(function AssistantMessage({
             status={outlineStatus}
           />
           {showResearchBody ? (
-            <AssistantResponse content={msg.content} />
+            <AssistantResponse
+              content={msg.content}
+              isStreaming={isStreaming}
+            />
           ) : null}
         </>
       ) : mathAnimatorResult ? (
@@ -281,16 +447,21 @@ const AssistantMessage = memo(function AssistantMessage({
         <VisualizationViewer result={visualizeResult} />
       ) : quizQuestions && quizQuestions.length > 0 ? (
         <>
-          {/* Phase 1's FINISH preface (the "I researched X, now let me
-              quiz you on Y" sentence the user watched stream in) rides
-              along ABOVE the quiz card. Without this, the streamed text
+          {/* The quiz preface (the "I researched X, now let me quiz you on Y"
+              sentence the user watched stream in) rides along ABOVE the quiz
+              card. Without this, the streamed text
               vanishes from the bubble the moment the first card appears
               because the branch above is mutually exclusive with
               <AssistantResponse>. The body is already free of the
               per-question markdown — the pipeline trims that out of
               ``msg.content`` since the QuizViewer renders the cards
               themselves. */}
-          {msg.content ? <AssistantResponse content={msg.content} /> : null}
+          {msg.content ? (
+            <AssistantResponse
+              content={msg.content}
+              isStreaming={isStreaming}
+            />
+          ) : null}
           <QuizViewer
             questions={quizQuestions}
             sessionId={sessionId}
@@ -305,7 +476,11 @@ const AssistantMessage = memo(function AssistantMessage({
         // iteration's text sits below.
         messageSegments.map((seg) =>
           seg.kind === "text" ? (
-            <AssistantResponse key={seg.key} content={seg.text} />
+            <AssistantResponse
+              key={seg.key}
+              content={seg.text}
+              isStreaming={isStreaming}
+            />
           ) : (
             <AskUserOptions
               key={seg.key}
@@ -318,7 +493,7 @@ const AssistantMessage = memo(function AssistantMessage({
           ),
         )
       ) : (
-        <AssistantResponse content={msg.content} />
+        <AssistantResponse content={msg.content} isStreaming={isStreaming} />
       )}
       {/* Non-default branches (quiz, math animator, visualize) keep
           ask_user below the body. The default branch inlines the card
@@ -339,53 +514,6 @@ const AssistantMessage = memo(function AssistantMessage({
 
 AssistantMessage.displayName = "AssistantMessage";
 
-/**
- * Inline "Answer now" affordance shown alongside the active assistant turn.
- * Lives outside the trace panel so it is visible as soon as the turn starts
- * — i.e. even before any tool / reasoning trace has been emitted, which is
- * the common case for the very first user message.
- */
-const AnswerNowRow = memo(function AnswerNowRow({
-  onAnswerNow,
-}: {
-  onAnswerNow: () => void;
-}) {
-  const { t } = useTranslation();
-  // Local single-shot guard: once the user has fired "answer now" we lock
-  // the button so a second click can't queue a duplicate cancel + restart
-  // race against the in-flight synthesis turn. The next assistant turn
-  // mounts a fresh ``AnswerNowRow`` with its own state, so this naturally
-  // resets per turn without any external bookkeeping.
-  const [triggered, setTriggered] = useState(false);
-  const handleClick = useCallback(() => {
-    if (triggered) return;
-    setTriggered(true);
-    onAnswerNow();
-  }, [triggered, onAnswerNow]);
-
-  return (
-    <div className="mt-1.5 mb-3 flex items-center">
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={triggered}
-        title={t("Skip reasoning and answer now")}
-        aria-disabled={triggered}
-        className="group inline-flex items-center gap-1.5 rounded-md border border-[var(--border)]/60 bg-[var(--card)]/60 px-2.5 py-1 text-[11.5px] font-medium text-[var(--muted-foreground)] shadow-sm transition-colors hover:border-[var(--primary)]/40 hover:bg-[var(--primary)]/5 hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-[var(--border)]/60 disabled:hover:bg-[var(--card)]/60 disabled:hover:text-[var(--muted-foreground)]"
-      >
-        <Zap
-          size={12}
-          strokeWidth={1.8}
-          className="shrink-0 transition-colors group-hover:text-[var(--primary)] group-disabled:group-hover:text-[var(--muted-foreground)]"
-        />
-        <span>{triggered ? t("Answering…") : t("Answer now")}</span>
-      </button>
-    </div>
-  );
-});
-
-AnswerNowRow.displayName = "AnswerNowRow";
-
 function CostFooter({
   cost,
   tokens,
@@ -405,14 +533,14 @@ function CostFooter({
     return String(n);
   };
   return (
-    <div className="flex items-center gap-2 text-[10px] text-[var(--muted-foreground)]/40">
-      <Coins size={10} strokeWidth={1.5} className="shrink-0" />
+    <div className="flex items-center gap-1.5 text-[11px] text-[var(--muted-foreground)]/70">
+      <Coins size={11} strokeWidth={1.5} className="shrink-0" />
       <span>{formatCost(cost)}</span>
-      <span className="opacity-40">·</span>
+      <span className="opacity-50">·</span>
       <span>
         {formatTokens(tokens)} {t("tokens")}
       </span>
-      <span className="opacity-40">·</span>
+      <span className="opacity-50">·</span>
       <span>
         {calls} {t("calls")}
       </span>
@@ -420,6 +548,8 @@ function CostFooter({
   );
 }
 
+// Claude-style icon-only message action: a quiet 15px glyph with the label
+// in an instant tooltip, brightening on hover.
 function RoughActionButton({
   icon: Icon,
   label,
@@ -432,15 +562,17 @@ function RoughActionButton({
   disabled?: boolean;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="inline-flex items-center gap-1 px-0.5 py-0.5 text-[11px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-35"
-    >
-      <Icon size={11} strokeWidth={1.5} />
-      <span>{label}</span>
-    </button>
+    <Tooltip label={label} side="top">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        aria-label={label}
+        className="inline-flex items-center justify-center rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-35"
+      >
+        <Icon size={15} strokeWidth={1.5} />
+      </button>
+    </Tooltip>
   );
 }
 
@@ -470,23 +602,179 @@ function CopyActionButton({
   }, [content, onCopy]);
 
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      aria-live="polite"
-      className={`inline-flex items-center gap-1 px-0.5 py-0.5 text-[11px] transition-colors ${
-        copied
-          ? "text-[var(--primary)]"
-          : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-      }`}
-    >
-      {copied ? (
-        <Check size={11} strokeWidth={2} />
-      ) : (
-        <Copy size={11} strokeWidth={1.5} />
+    <Tooltip label={copied ? t("Copied") : t("Copy")} side="top">
+      <button
+        type="button"
+        onClick={handleClick}
+        aria-live="polite"
+        aria-label={copied ? t("Copied") : t("Copy")}
+        className={`inline-flex items-center justify-center rounded-md p-1 transition-colors ${
+          copied
+            ? "text-[var(--primary)]"
+            : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)]"
+        }`}
+      >
+        {copied ? (
+          <Check size={15} strokeWidth={2} />
+        ) : (
+          <Copy size={15} strokeWidth={1.5} />
+        )}
+      </button>
+    </Tooltip>
+  );
+}
+
+// Speaker button: synthesizes the reply via the configured TTS provider and
+// plays it. On the first manual play of a session it offers to auto-play the
+// rest; `autoPlayFresh` triggers playback automatically for a reply that just
+// finished generating when auto-play is on.
+function PlayAudioButton({
+  content,
+  conversationKey,
+  autoPlayFresh,
+}: {
+  content: string;
+  conversationKey?: string;
+  autoPlayFresh: boolean;
+}) {
+  const { t } = useTranslation();
+  const {
+    autoplayEnabled,
+    enableForSession,
+    markPrompted,
+    shouldPromptOnFirstPlay,
+  } = useVoiceAutoplay(conversationKey);
+  const [state, setState] = useState<"idle" | "loading" | "playing">("idle");
+  const [showPrompt, setShowPrompt] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const urlRef = useRef<string | null>(null);
+  const autoPlayedRef = useRef(false);
+
+  const cleanup = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (urlRef.current) {
+      URL.revokeObjectURL(urlRef.current);
+      urlRef.current = null;
+    }
+  }, []);
+
+  const play = useCallback(async () => {
+    setState("loading");
+    try {
+      const resp = await apiFetch(apiUrl("/api/v1/voice/tts"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: content }),
+      });
+      if (!resp.ok) {
+        cleanup();
+        setState("idle");
+        return;
+      }
+      const blob = await resp.blob();
+      cleanup();
+      const url = URL.createObjectURL(blob);
+      urlRef.current = url;
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => {
+        setState("idle");
+        cleanup();
+      };
+      audio.onerror = () => {
+        setState("idle");
+        cleanup();
+      };
+      await audio.play();
+      setState("playing");
+    } catch {
+      cleanup();
+      setState("idle");
+    }
+  }, [cleanup, content]);
+
+  const handleClick = useCallback(() => {
+    if (state === "playing" || state === "loading") {
+      cleanup();
+      setState("idle");
+      return;
+    }
+    const willPrompt = shouldPromptOnFirstPlay();
+    void play();
+    if (willPrompt) {
+      markPrompted();
+      setShowPrompt(true);
+    }
+  }, [cleanup, markPrompted, play, shouldPromptOnFirstPlay, state]);
+
+  // Auto-play a freshly-generated reply when enabled, exactly once. Deferred
+  // to a timer so synthesis (which sets state) starts off the effect body.
+  useEffect(() => {
+    if (!autoPlayFresh || !autoplayEnabled) return;
+    if (autoPlayedRef.current) return;
+    if (!content.trim()) return;
+    autoPlayedRef.current = true;
+    const id = window.setTimeout(() => void play(), 0);
+    return () => window.clearTimeout(id);
+  }, [autoPlayFresh, autoplayEnabled, content, play]);
+
+  useEffect(() => cleanup, [cleanup]);
+
+  return (
+    <div className="relative inline-flex">
+      <Tooltip
+        label={state === "playing" ? t("Stop") : t("Play aloud")}
+        side="top"
+      >
+        <button
+          type="button"
+          onClick={handleClick}
+          aria-label={state === "playing" ? t("Stop") : t("Play aloud")}
+          className={`inline-flex items-center justify-center rounded-md p-1 transition-colors ${
+            state === "playing"
+              ? "text-[var(--primary)]"
+              : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)]"
+          }`}
+        >
+          {state === "loading" ? (
+            <Loader2 size={15} strokeWidth={1.8} className="animate-spin" />
+          ) : state === "playing" ? (
+            <Square size={13} strokeWidth={1.8} className="fill-current" />
+          ) : (
+            <Volume2 size={15} strokeWidth={1.5} />
+          )}
+        </button>
+      </Tooltip>
+      {showPrompt && (
+        <div className="absolute bottom-full left-0 z-30 mb-2 w-60 rounded-lg border border-[var(--border)] bg-[var(--card)] p-3 shadow-lg">
+          <p className="text-[12px] leading-relaxed text-[var(--foreground)]">
+            {t("Auto-play replies in this conversation?")}
+          </p>
+          <div className="mt-2.5 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setShowPrompt(false)}
+              className="rounded-md px-2.5 py-1 text-[11.5px] text-[var(--muted-foreground)] hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)]"
+            >
+              {t("Not now")}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                enableForSession();
+                setShowPrompt(false);
+              }}
+              className="rounded-md bg-[var(--primary)] px-2.5 py-1 text-[11.5px] font-medium text-[var(--primary-foreground)] hover:bg-[var(--primary)]/90"
+            >
+              {t("Turn on")}
+            </button>
+          </div>
+        </div>
       )}
-      <span>{copied ? t("Copied") : t("Copy")}</span>
-    </button>
+    </div>
   );
 }
 
@@ -590,6 +878,12 @@ const UserMessage = memo(function UserMessage({
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(msg.content);
+  const { isComposingRef, onCompositionStart, onCompositionEnd } =
+    useImeComposing();
+  // Connected subagents ride in knowledge_bases (same selection path) but are
+  // agents, not KBs — this maps a selected name to its backend kind so the
+  // reference chip can badge it with the agent's brand icon.
+  const agentKinds = useConnectedAgentKinds();
   if (msg.content.startsWith("[Quiz Performance]")) return null;
   // ``msg.id`` can be a negative client-side sentinel for optimistic
   // (just-sent, not yet reconciled with the server) rows. We still allow
@@ -618,6 +912,112 @@ const UserMessage = memo(function UserMessage({
     setEditing(false);
   };
 
+  // Everything this turn carried — file attachments plus the request
+  // snapshot's Space references — rendered as one collapsed tree under
+  // the bubble (the sent-message mirror of the composer's tree).
+  const snap = msg.requestSnapshot;
+  const refTreeItems: ContextTreeItem[] = [
+    ...(msg.attachments ?? []).map((a, ai): ContextTreeItem => {
+      const filename = a.filename || t("Attachment");
+      const spec = docIconFor(filename);
+      const src = a.type === "image" ? imageSrcForAttachment(a) : null;
+      return {
+        key: `att-${ai}`,
+        icon: spec.Icon,
+        kind: spec.label,
+        label: filename,
+        thumbnailUrl: src ?? undefined,
+        onClick: onPreviewAttachment ? () => onPreviewAttachment(a) : undefined,
+      };
+    }),
+    ...(snap?.knowledgeBases ?? []).map((name): ContextTreeItem => {
+      const agentKind = agentKinds[name];
+      if (agentKind) {
+        return {
+          key: `agent-${name}`,
+          // Brand SVG marks share the lucide call signature (size/strokeWidth/
+          // className); cast bridges the structural-variance gap.
+          icon: (agentGlyph(agentKind) ?? Bot) as unknown as LucideIcon,
+          kind: t("Agent"),
+          label: name,
+        };
+      }
+      return {
+        key: `kb-${name}`,
+        icon: Database,
+        kind: t("Knowledge"),
+        label: name,
+      };
+    }),
+    ...(snap?.bookReferences ?? []).map(
+      (ref): ContextTreeItem => ({
+        key: `book-${ref.book_id}`,
+        icon: BookOpen,
+        kind: t("Book"),
+        label: `${ref.page_ids.length} ${t("chapters")}`,
+      }),
+    ),
+    ...(snap?.notebookReferences ?? []).map(
+      (ref): ContextTreeItem => ({
+        key: `nb-${ref.notebook_id}`,
+        icon: BookOpen,
+        kind: t("Notebook"),
+        label: `${ref.record_ids.length} ${t("records")}`,
+      }),
+    ),
+    // Imported agent conversations are folded into the same history_references
+    // payload but carry the `imported_` id prefix — split them back out so they
+    // read as "My Agents" rather than "Chat History" (mirrors the composer).
+    ...(snap?.historyReferences ?? [])
+      .filter((sid) => !sid.startsWith("imported_"))
+      .map(
+        (sid): ContextTreeItem => ({
+          key: `hist-${sid}`,
+          icon: MessageSquare,
+          kind: t("Chat History"),
+          label: "",
+        }),
+      ),
+    ...(snap?.historyReferences ?? [])
+      .filter((sid) => sid.startsWith("imported_"))
+      .map(
+        (sid): ContextTreeItem => ({
+          key: `agent-${sid}`,
+          icon: Bot,
+          kind: t("My Agents"),
+          label: "",
+        }),
+      ),
+    ...(snap?.questionNotebookReferences?.length
+      ? [
+          {
+            key: "qb",
+            icon: ClipboardList,
+            kind: t("Question Bank"),
+            label: `${snap.questionNotebookReferences.length} ${t("items")}`,
+          } satisfies ContextTreeItem,
+        ]
+      : []),
+    ...(snap?.persona
+      ? [
+          {
+            key: "persona",
+            icon: UserRound,
+            kind: t("Persona"),
+            label: snap.persona,
+          } satisfies ContextTreeItem,
+        ]
+      : []),
+    ...(snap?.memoryReferences ?? []).map(
+      (file): ContextTreeItem => ({
+        key: `mem-${file}`,
+        icon: Brain,
+        kind: t("Memory"),
+        label: file === "summary" ? t("Summary") : t("Profile"),
+      }),
+    ),
+  ];
+
   return (
     <div key={`${msg.role}-${index}`} className="group flex justify-end">
       <div className="flex max-w-[75%] flex-col items-end gap-1.5">
@@ -626,66 +1026,6 @@ const UserMessage = memo(function UserMessage({
             {t(getModeBadgeLabel(msg.capability))}
           </span>
         </div>
-        {msg.attachments?.some((a) => a.type === "image") && (
-          <div className="flex flex-wrap justify-end gap-2">
-            {msg.attachments
-              .filter((a) => a.type === "image" && (a.base64 || a.url))
-              .map((a, ai) => {
-                const src = imageSrcForAttachment(a);
-                if (!src) return null;
-                return (
-                  <button
-                    key={`img-${ai}`}
-                    type="button"
-                    onClick={() => onPreviewAttachment?.(a)}
-                    title={a.filename || t("image")}
-                    className="overflow-hidden rounded-2xl border border-[var(--border)] transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={src}
-                      alt={a.filename || t("image")}
-                      className="max-h-48 max-w-[280px] rounded-2xl object-contain"
-                    />
-                  </button>
-                );
-              })}
-          </div>
-        )}
-        {msg.attachments?.some((a) => a.type !== "image") && (
-          <div className="flex flex-wrap justify-end gap-2">
-            {msg.attachments
-              .filter((a) => a.type !== "image")
-              .map((a, ai) => {
-                const filename = a.filename || t("Attachment");
-                const spec = docIconFor(filename);
-                const Icon = spec.Icon;
-                const cardClass =
-                  "flex h-14 w-[220px] items-center gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--card)] px-2.5 text-left shadow-sm transition-colors hover:border-[var(--primary)]/40 hover:bg-[var(--muted)]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40";
-                return (
-                  <button
-                    key={`doc-${ai}`}
-                    type="button"
-                    onClick={() => onPreviewAttachment?.(a)}
-                    title={filename}
-                    className={cardClass}
-                  >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[var(--muted)]/60">
-                      <Icon size={20} strokeWidth={1.5} className={spec.tint} />
-                    </div>
-                    <div className="min-w-0 flex-1 text-left">
-                      <div className="truncate text-[12px] font-medium text-[var(--foreground)]">
-                        {filename}
-                      </div>
-                      <div className="truncate text-[10px] uppercase tracking-wide text-[var(--muted-foreground)]">
-                        {spec.label}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-          </div>
-        )}
         {editing ? (
           <div className="w-[min(620px,75vw)] rounded-2xl border border-[var(--primary)]/40 bg-[var(--secondary)] px-3 py-2.5 text-[14px] leading-relaxed text-[var(--foreground)] shadow-sm">
             <textarea
@@ -699,8 +1039,13 @@ const UserMessage = memo(function UserMessage({
                 } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault();
                   submitEdit();
+                } else if (shouldSubmitOnEnter(e, isComposingRef.current)) {
+                  e.preventDefault();
+                  submitEdit();
                 }
               }}
+              onCompositionStart={onCompositionStart}
+              onCompositionEnd={onCompositionEnd}
               rows={Math.min(8, Math.max(2, draft.split("\n").length))}
               className="w-full resize-none border-0 bg-transparent text-[14px] leading-relaxed text-[var(--foreground)] outline-none focus:outline-none"
             />
@@ -729,88 +1074,21 @@ const UserMessage = memo(function UserMessage({
           </div>
         ) : (
           <div className="rounded-2xl bg-[var(--secondary)] px-4 py-2.5 text-[14px] leading-relaxed text-[var(--foreground)] shadow-sm">
-            {(() => {
-              const snap = msg.requestSnapshot;
-              const hasNotebook = Boolean(snap?.notebookReferences?.length);
-              const hasBooks = Boolean(snap?.bookReferences?.length);
-              const hasHistory = Boolean(snap?.historyReferences?.length);
-              const hasQuestions = Boolean(
-                snap?.questionNotebookReferences?.length,
-              );
-              const hasSkills = Boolean(snap?.skills?.length);
-              const hasMemory = Boolean(snap?.memoryReferences?.length);
-              if (
-                !hasNotebook &&
-                !hasBooks &&
-                !hasHistory &&
-                !hasQuestions &&
-                !hasSkills &&
-                !hasMemory
-              )
-                return null;
-              return (
-                <div className="mb-2 flex flex-wrap gap-1.5">
-                  {snap?.notebookReferences?.map((ref) => (
-                    <span
-                      key={ref.notebook_id}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--background)]/60 px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)]"
-                    >
-                      <BookOpen size={11} strokeWidth={1.8} />
-                      {t("Notebook")} · {ref.record_ids.length} {t("records")}
-                    </span>
-                  ))}
-                  {snap?.bookReferences?.map((ref) => (
-                    <span
-                      key={ref.book_id}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--background)]/60 px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)]"
-                    >
-                      <BookOpen size={11} strokeWidth={1.8} />
-                      {t("Book")} · {ref.page_ids.length} {t("chapters")}
-                    </span>
-                  ))}
-                  {snap?.historyReferences?.map((sid) => (
-                    <span
-                      key={sid}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--background)]/60 px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)]"
-                    >
-                      <MessageSquare size={11} strokeWidth={1.8} />
-                      {t("Chat History")}
-                    </span>
-                  ))}
-                  {hasQuestions && (
-                    <span className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--background)]/60 px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)]">
-                      <ClipboardList size={11} strokeWidth={1.8} />
-                      {t("Question Bank")} ·{" "}
-                      {snap?.questionNotebookReferences?.length} {t("items")}
-                    </span>
-                  )}
-                  {snap?.skills?.map((skill) => (
-                    <span
-                      key={skill}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--background)]/60 px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)]"
-                    >
-                      <Wand2 size={11} strokeWidth={1.8} />
-                      {skill === "auto" ? t("Skills Auto") : skill}
-                    </span>
-                  ))}
-                  {snap?.memoryReferences?.map((file) => (
-                    <span
-                      key={file}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--background)]/60 px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)]"
-                    >
-                      <Brain size={11} strokeWidth={1.8} />
-                      {t("Memory")} ·{" "}
-                      {file === "summary" ? t("Summary") : t("Profile")}
-                    </span>
-                  ))}
-                </div>
-              );
-            })()}
             <div className="whitespace-pre-wrap">{msg.content}</div>
           </div>
         )}
+        {!editing && refTreeItems.length > 0 && (
+          <div className="pr-1">
+            <ContextReferenceTree
+              items={refTreeItems}
+              direction="down"
+              align="right"
+              summaryNoun={t("attachments")}
+            />
+          </div>
+        )}
         {!editing && (onCopy || canEdit || siblingInfo) && msg.content && (
-          <div className="flex h-5 items-center justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          <div className="flex h-7 items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
             {siblingInfo && siblingInfo.total > 1 && (
               <BranchNavigator
                 info={siblingInfo}
@@ -838,188 +1116,11 @@ const UserMessage = memo(function UserMessage({
 
 UserMessage.displayName = "UserMessage";
 
-export const SpaceContextChips = memo(function SpaceContextChips({
-  historySessions,
-  bookReferences,
-  notebookGroups,
-  questionEntries,
-  selectedSkills,
-  skillsAutoMode,
-  memoryFiles,
-  onRemoveHistory,
-  onRemoveBookReference,
-  onRemoveNotebook,
-  onRemoveQuestion,
-  onRemoveSkill,
-  onClearSkillsAuto,
-  onRemoveMemoryFile,
-}: {
-  historySessions: SelectedHistorySession[];
-  bookReferences: SelectedBookReference[];
-  notebookGroups: NotebookReferenceGroup[];
-  questionEntries: SelectedQuestionEntry[];
-  selectedSkills: string[];
-  skillsAutoMode: boolean;
-  memoryFiles: SpaceMemoryFile[];
-  onRemoveHistory: (sessionId: string) => void;
-  onRemoveBookReference: (bookId: string) => void;
-  onRemoveNotebook: (notebookId: string) => void;
-  onRemoveQuestion: (entryId: number) => void;
-  onRemoveSkill: (skill: string) => void;
-  onClearSkillsAuto: () => void;
-  onRemoveMemoryFile: (file: SpaceMemoryFile) => void;
-}) {
-  const { t } = useTranslation();
-  if (
-    historySessions.length === 0 &&
-    bookReferences.length === 0 &&
-    notebookGroups.length === 0 &&
-    questionEntries.length === 0 &&
-    selectedSkills.length === 0 &&
-    !skillsAutoMode &&
-    memoryFiles.length === 0
-  )
-    return null;
-
-  return (
-    <div className="mb-3 flex flex-wrap gap-2">
-      {historySessions.map((session) => (
-        <span
-          key={session.sessionId}
-          className="inline-flex max-w-full items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-1.5 text-[12px] text-sky-800 shadow-sm dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-200"
-        >
-          <MessageSquare size={12} strokeWidth={1.8} className="shrink-0" />
-          <span className="shrink-0 font-medium">{t("Chat History")}</span>
-          <span className="truncate text-sky-700/90 dark:text-sky-200/90">
-            {session.title}
-          </span>
-          <button
-            onClick={() => onRemoveHistory(session.sessionId)}
-            className="shrink-0 opacity-60 transition hover:opacity-100"
-          >
-            <X size={12} />
-          </button>
-        </span>
-      ))}
-      {bookReferences.map((book) => (
-        <span
-          key={book.bookId}
-          className="inline-flex max-w-full items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-1.5 text-[12px] text-teal-800 shadow-sm dark:border-teal-900/60 dark:bg-teal-950/30 dark:text-teal-200"
-        >
-          <BookOpen size={12} strokeWidth={1.8} className="shrink-0" />
-          <span className="shrink-0 font-medium">{t("Book")}</span>
-          <span className="truncate text-teal-700/90 dark:text-teal-200/90">
-            {book.bookTitle} ({book.pages.length})
-          </span>
-          <button
-            onClick={() => onRemoveBookReference(book.bookId)}
-            className="shrink-0 opacity-60 transition hover:opacity-100"
-          >
-            <X size={12} />
-          </button>
-        </span>
-      ))}
-      {notebookGroups.map((group) => (
-        <span
-          key={group.notebookId}
-          className="inline-flex max-w-full items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 text-[12px] text-[var(--foreground)] shadow-sm"
-        >
-          <BookOpen size={12} strokeWidth={1.8} className="shrink-0" />
-          <span className="shrink-0 font-medium">{t("Notebook")}</span>
-          <span className="truncate text-[var(--muted-foreground)]">
-            {group.notebookName} ({group.count})
-          </span>
-          <button
-            onClick={() => onRemoveNotebook(group.notebookId)}
-            className="shrink-0 opacity-60 transition hover:opacity-100"
-          >
-            <X size={12} />
-          </button>
-        </span>
-      ))}
-      {questionEntries.map((entry) => (
-        <span
-          key={entry.id}
-          className="inline-flex max-w-full items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-[12px] text-amber-800 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
-        >
-          <ClipboardList size={12} strokeWidth={1.8} className="shrink-0" />
-          <span className="shrink-0 font-medium">{t("Question Bank")}</span>
-          <span className="truncate text-amber-700/90 dark:text-amber-200/90">
-            {entry.question.length > 40
-              ? `${entry.question.slice(0, 40)}…`
-              : entry.question}
-          </span>
-          <button
-            onClick={() => onRemoveQuestion(entry.id)}
-            className="shrink-0 opacity-60 transition hover:opacity-100"
-          >
-            <X size={12} />
-          </button>
-        </span>
-      ))}
-      {skillsAutoMode && (
-        <span className="inline-flex max-w-full items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-1.5 text-[12px] text-violet-800 shadow-sm dark:border-violet-900/60 dark:bg-violet-950/30 dark:text-violet-200">
-          <Wand2 size={12} strokeWidth={1.8} className="shrink-0" />
-          <span className="shrink-0 font-medium">{t("Skills")}</span>
-          <span className="truncate text-violet-700/90 dark:text-violet-200/90">
-            {t("Auto")}
-          </span>
-          <button
-            onClick={onClearSkillsAuto}
-            className="shrink-0 opacity-60 transition hover:opacity-100"
-          >
-            <X size={12} />
-          </button>
-        </span>
-      )}
-      {selectedSkills.map((skill) => (
-        <span
-          key={skill}
-          className="inline-flex max-w-full items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-1.5 text-[12px] text-violet-800 shadow-sm dark:border-violet-900/60 dark:bg-violet-950/30 dark:text-violet-200"
-        >
-          <Wand2 size={12} strokeWidth={1.8} className="shrink-0" />
-          <span className="shrink-0 font-medium">{t("Skill")}</span>
-          <span className="truncate text-violet-700/90 dark:text-violet-200/90">
-            {skill}
-          </span>
-          <button
-            onClick={() => onRemoveSkill(skill)}
-            className="shrink-0 opacity-60 transition hover:opacity-100"
-          >
-            <X size={12} />
-          </button>
-        </span>
-      ))}
-      {memoryFiles.map((file) => (
-        <span
-          key={file}
-          className="inline-flex max-w-full items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[12px] text-emerald-800 shadow-sm dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200"
-        >
-          <Brain size={12} strokeWidth={1.8} className="shrink-0" />
-          <span className="shrink-0 font-medium">{t("Memory")}</span>
-          <span className="truncate text-emerald-700/90 dark:text-emerald-200/90">
-            {file === "summary" ? t("Summary") : t("Profile")}
-          </span>
-          <button
-            onClick={() => onRemoveMemoryFile(file)}
-            className="shrink-0 opacity-60 transition hover:opacity-100"
-          >
-            <X size={12} />
-          </button>
-        </span>
-      ))}
-    </div>
-  );
-});
-
-SpaceContextChips.displayName = "SpaceContextChips";
-
 export const ChatMessageList = memo(function ChatMessageList({
   messages,
   isStreaming,
   sessionId,
   language,
-  onAnswerNow,
   onCopyAssistantMessage,
   onRegenerateMessage,
   onConfirmOutline,
@@ -1034,10 +1135,6 @@ export const ChatMessageList = memo(function ChatMessageList({
   isStreaming: boolean;
   sessionId?: string | null;
   language?: string;
-  onAnswerNow: (
-    snapshot?: MessageRequestSnapshot,
-    assistantMsg?: { content: string; events?: StreamEvent[] },
-  ) => void;
   onCopyAssistantMessage: (content: string) => void | Promise<void>;
   onRegenerateMessage: () => void;
   onConfirmOutline?: (
@@ -1093,11 +1190,10 @@ export const ChatMessageList = memo(function ChatMessageList({
   // deep_research msg, we synthesise a merged msg with:
   //
   // * events  — parent.events ++ followup.events (preserving order
-  //   so TraceSurface's call_id grouping keeps working).
+  //   so TraceFlow's call_id grouping keeps working).
   // * content — followup.content (the report). The parent's
-  //   rephrase-FINISH content is already represented inside the
-  //   rephrase trace card, so concatenating again would duplicate
-  //   the preface above the report.
+  //   rephrase preface is already represented inside the trace card,
+  //   so concatenating again would duplicate it above the report.
   //
   // The followup is dropped from the visible row list so only the
   // merged bubble renders.
@@ -1159,7 +1255,7 @@ export const ChatMessageList = memo(function ChatMessageList({
       }
     }
     return map;
-  }, [visibleMessages, isStreaming]);
+  }, [visibleMessages]);
 
   const messageRows = useMemo(() => {
     // System messages are backend grounding (e.g. quiz follow-up context) and
@@ -1209,6 +1305,28 @@ export const ChatMessageList = memo(function ChatMessageList({
     return -1;
   }, [messageRows]);
 
+  // Auto-play (when enabled) must fire only for a reply that JUST finished
+  // generating — never when loading history. We capture the last-assistant
+  // index at the moment streaming flips off; the matching speaker button
+  // plays once. Switching sessions clears the marker. Uses the "adjust state
+  // during render" pattern (state-vs-prop comparison, like the API-key reset
+  // in ServiceConfigEditor) — both branches are conditional and bounded.
+  const [prevStreaming, setPrevStreaming] = useState(isStreaming);
+  const [prevSession, setPrevSession] = useState(sessionId);
+  const [freshlyCompletedIndex, setFreshlyCompletedIndex] = useState<
+    number | null
+  >(null);
+  if (prevSession !== sessionId) {
+    setPrevSession(sessionId);
+    setPrevStreaming(false);
+    setFreshlyCompletedIndex(null);
+  } else if (prevStreaming !== isStreaming) {
+    setPrevStreaming(isStreaming);
+    if (!isStreaming && lastRenderedAssistantIndex >= 0) {
+      setFreshlyCompletedIndex(lastRenderedAssistantIndex);
+    }
+  }
+
   return (
     <>
       {messageRows.map(({ msg, originalIndex, pairedUserMessage }) => {
@@ -1249,28 +1367,6 @@ export const ChatMessageList = memo(function ChatMessageList({
             : null;
         const showDelete = deletableTurnUserId != null;
 
-        // The "Answer now" affordance lives inside the trace panel for the
-        // currently-streaming assistant turn. We hand the panel a thin
-        // closure so it does not need to know about MessageRequestSnapshot.
-        // Only enabled for the bare ``chat`` capability — solve / quiz /
-        // research run structured pipelines whose intermediate trace does
-        // not synthesize cleanly via the chat fast-path.
-        const capability =
-          pairedUserMessage?.requestSnapshot?.capability ??
-          pairedUserMessage?.capability ??
-          "";
-        const answerNowAllowed = !capability || capability === "chat";
-        const handleTraceAnswerNow =
-          isActiveAssistant &&
-          pairedUserMessage?.requestSnapshot &&
-          answerNowAllowed
-            ? () =>
-                onAnswerNow(pairedUserMessage.requestSnapshot, {
-                  content: msg.content,
-                  events: msg.events,
-                })
-            : undefined;
-
         const costSummary = (() => {
           if (!msgDone) return null;
           const resultEv = msg.events?.find((e) => e.type === "result");
@@ -1291,27 +1387,78 @@ export const ChatMessageList = memo(function ChatMessageList({
 
         return (
           <div key={`${msg.role}-${i}`} className="w-full">
-            <AssistantMessage
-              msg={msg}
-              isStreaming={isActiveAssistant}
-              outlineStatus={outlineStatusByIndex.get(i)}
-              sessionId={sessionId}
-              language={language}
-              onConfirmOutline={onConfirmOutline}
-              onAnswerNow={handleTraceAnswerNow}
-              onSubmitUserReply={onSubmitUserReply}
-              researchRequestSnapshot={
-                pairedUserMessage?.requestSnapshot ?? null
-              }
+            <InlineFileCardProvider
+              attachments={msg.attachments ?? []}
+              events={msg.events}
+              onOpen={onPreviewAttachment}
+            >
+              <AssistantMessage
+                msg={msg}
+                isStreaming={isActiveAssistant}
+                outlineStatus={outlineStatusByIndex.get(i)}
+                sessionId={sessionId}
+                language={language}
+                onConfirmOutline={onConfirmOutline}
+                onSubmitUserReply={onSubmitUserReply}
+                researchRequestSnapshot={
+                  pairedUserMessage?.requestSnapshot ?? null
+                }
+              />
+            </InlineFileCardProvider>
+            <GeneratedFileCards
+              attachments={msg.attachments ?? []}
+              events={msg.events}
+              onOpen={onPreviewAttachment}
             />
+            {(() => {
+              // A turn that died (LLM/provider failure, interruption) ends
+              // with a turn_terminal error event. Surface it as an error
+              // card with an inline retry instead of leaving a bare trace.
+              if (isActiveAssistant) return null;
+              const terminalError = (msg.events ?? []).find(
+                (e) =>
+                  e.type === "error" &&
+                  Boolean(
+                    (e.metadata as { turn_terminal?: boolean } | undefined)
+                      ?.turn_terminal,
+                  ),
+              );
+              if (!terminalError) return null;
+              return (
+                <div className="mt-3 flex w-full max-w-[min(520px,90%)] items-center gap-2 rounded-xl border border-[var(--destructive)]/30 bg-[var(--destructive)]/5 px-3 py-2">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-[var(--destructive)]" />
+                  <span className="min-w-0 flex-1 text-[12px] leading-[1.5] text-[var(--foreground)]">
+                    {terminalError.content || t("The turn was interrupted.")}
+                  </span>
+                  {showRegenerate ? (
+                    <button
+                      type="button"
+                      onClick={() => onRegenerateMessage()}
+                      className="shrink-0 rounded-md px-2 py-1 text-[11.5px] font-medium text-[var(--destructive)] hover:bg-[var(--destructive)]/10"
+                    >
+                      {t("Retry")}
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })()}
             {(showActions || costSummary || showDelete) && (
-              <div className="mt-2 flex items-center">
+              <div className="mt-3 flex items-center">
                 {(showActions || showDelete) && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     {showActions && (
                       <CopyActionButton
                         content={msg.content}
                         onCopy={onCopyAssistantMessage}
+                      />
+                    )}
+                    {showActions && (
+                      <PlayAudioButton
+                        content={msg.content}
+                        conversationKey={sessionId ?? undefined}
+                        autoPlayFresh={
+                          isLastAssistant && freshlyCompletedIndex === i
+                        }
                       />
                     )}
                     {showActions && showRegenerate && (

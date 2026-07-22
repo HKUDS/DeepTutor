@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ChevronDown,
   Plus,
@@ -35,21 +35,20 @@ export default function ResearchOutlineEditor({
   // ``userToggled`` latches on the first user click so subsequent
   // status-change re-renders don't keep slamming the card closed.
   const [collapsed, setCollapsed] = useState(false);
-  const userToggledRef = useRef(false);
+  const [userToggled, setUserToggled] = useState(false);
 
   const locked =
     externalStatus === "researching" ||
     externalStatus === "done" ||
     localConfirmed;
 
-  useEffect(() => {
-    if (locked && !userToggledRef.current) setCollapsed(true);
-  }, [locked]);
+  const displayCollapsed = locked && (userToggled ? collapsed : true);
 
   const toggleCollapsed = useCallback(() => {
-    userToggledRef.current = true;
-    setCollapsed((c) => !c);
-  }, []);
+    const wasAutoCollapsed = locked && !userToggled;
+    setUserToggled(true);
+    setCollapsed((c) => (wasAutoCollapsed ? false : !c));
+  }, [locked, userToggled]);
 
   const updateItem = useCallback(
     (index: number, field: keyof OutlineItem, value: string) => {
@@ -98,7 +97,7 @@ export default function ResearchOutlineEditor({
         type="button"
         disabled={!headerClickable}
         onClick={headerClickable ? toggleCollapsed : undefined}
-        className={`block w-full text-left ${collapsed ? "" : "border-b border-[var(--border)]/20"} px-4 py-2 ${
+        className={`block w-full text-left ${displayCollapsed ? "" : "border-b border-[var(--border)]/20"} px-4 py-2 ${
           headerClickable
             ? "cursor-pointer transition-colors hover:bg-[var(--muted-foreground)]/[0.025]"
             : "cursor-default"
@@ -110,14 +109,14 @@ export default function ResearchOutlineEditor({
               <ChevronDown
                 size={12}
                 className={`shrink-0 text-[var(--muted-foreground)]/50 transition-transform ${
-                  collapsed ? "-rotate-90" : ""
+                  displayCollapsed ? "-rotate-90" : ""
                 }`}
               />
             )}
             <h3 className="text-[13px] font-semibold text-[var(--foreground)]">
               {t("Research Outline")}
             </h3>
-            {collapsed && validItems.length > 0 && (
+            {displayCollapsed && validItems.length > 0 && (
               <span className="text-[11px] text-[var(--muted-foreground)]/45">
                 · {validItems.length} {t("sub-topics")}
               </span>
@@ -140,7 +139,7 @@ export default function ResearchOutlineEditor({
           </p>
         )}
       </button>
-      {!collapsed && (
+      {!displayCollapsed && (
         <>
           <div className="space-y-0 divide-y divide-[var(--border)]/15">
             {validItems.map((item, index) => (

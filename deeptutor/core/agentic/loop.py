@@ -30,6 +30,7 @@ from typing import Any, Protocol
 
 from deeptutor.core.agentic.labeled_step import LabeledStepResult, run_labeled_step
 from deeptutor.core.agentic.labels import LABEL_UNKNOWN, find_inline_labels
+from deeptutor.core.agentic.messages import assistant_message_with_tool_calls
 from deeptutor.core.agentic.tool_dispatch import DispatchOutcome
 from deeptutor.core.agentic.usage import UsageTracker
 from deeptutor.core.stream_bus import StreamBus
@@ -112,14 +113,6 @@ class LoopHost(Protocol):
         the loop, or ``None`` to accept the terminal label.
         """
         return None
-
-    def assistant_message_with_tool_calls(
-        self,
-        *,
-        content: str,
-        tool_calls: list[dict[str, Any]],
-    ) -> dict[str, Any]:
-        """Format the assistant turn that carries this iteration's tool calls."""
 
     def protocol_retry_notice(self) -> str:
         """Notice text shown when a protocol violation triggers a retry."""
@@ -302,12 +295,7 @@ async def run_agentic_loop(
             break
 
         if protocol.tool_label is not None and step.label == protocol.tool_label:
-            messages.append(
-                host.assistant_message_with_tool_calls(
-                    content=step.text,
-                    tool_calls=step.tool_calls,
-                )
-            )
+            messages.append(assistant_message_with_tool_calls(step.text, step.tool_calls))
             outcome = await host.dispatch_tools(
                 iteration=iteration,
                 tool_calls=step.tool_calls,

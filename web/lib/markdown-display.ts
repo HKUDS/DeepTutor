@@ -138,6 +138,12 @@ const ALLOWED_HTML_TAGS = new Set<string>([
 const HTML_LIKE_TAG_REGEX = /<\/?([A-Za-z][A-Za-z0-9_-]*)\b[^<>]*?\/?>/g;
 const FENCED_CODE_BLOCK_REGEX = /```[\s\S]*?```/g;
 const INLINE_CODE_SPAN_REGEX = /`[^`\n]*`/g;
+// Display math (\[…\], \(…\), $$…$$) plus single-dollar inline math ($…$).
+// The inline form mirrors remark-math's "tight" rule — no space just inside the
+// delimiters — so prose currency like "$5 and $10" is not swallowed, while real
+// inline math ($x = [1, 5, 9]$) is protected from citation linkification.
+const MATH_SPAN_REGEX =
+  /\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$\$[\s\S]*?\$\$|\$(?!\s)(?:\\.|[^$\n])*?(?<!\s)\$/g;
 const PROTECTED_SPAN_REGEX = /```[\s\S]*?```|`[^`\n]*`/g;
 const PROTECTED_PLACEHOLDER_REGEX = /\u0000PROTECTED_(\d+)\u0000/g;
 const HTML_ATTR_VALUE = /(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+)/.source;
@@ -155,6 +161,65 @@ const HTML_SRCDOC_ATTR_REGEX = new RegExp(
 );
 const HTML_UNSAFE_URL_ATTR_REGEX =
   /\s+(href|src|xlink:href|formaction)\s*=\s*(?:"\s*(?:javascript:|data:text\/html|data:image\/svg\+xml)[^"]*"|'\s*(?:javascript:|data:text\/html|data:image\/svg\+xml)[^']*'|(?:javascript:|data:text\/html|data:image\/svg\+xml)[^\s"'=<>`]+)/gi;
+// ``attachment`` lets the model place generated-file cards inline via
+// ``[label](attachment:NAME)`` links (see components/common/InlineFileCard.tsx).
+// The renderers always intercept these — they're never emitted as real
+// navigable anchors — so allow-listing the scheme keeps the href intact
+// without widening the attack surface.
+const SAFE_MARKDOWN_PROTOCOL_REGEX = /^(https?|ircs?|mailto|xmpp|attachment)$/i;
+const SAFE_RASTER_DATA_IMAGE_REGEX =
+  /^data:image\/(?:png|jpe?g|gif|webp|bmp|tiff?|avif);base64,[a-z0-9+/=\s]+$/i;
+
+function isMarkdownImageSrc(key?: string, node?: unknown): boolean {
+  const tagName =
+    node && typeof node === "object" && "tagName" in node
+      ? String((node as { tagName?: unknown }).tagName || "").toLowerCase()
+      : "";
+  return key === "src" && tagName === "img";
+}
+
+/**
+ * react-markdown's default URL policy intentionally strips all `data:`
+ * URLs. Knowledge-base previews should still render self-contained markdown
+ * screenshots, so allow only passive raster image data URLs on `<img src>`.
+ */
+export function markdownUrlTransform(
+  value: string,
+  key?: string,
+  node?: unknown,
+): string {
+  if (
+    isMarkdownImageSrc(key, node) &&
+    SAFE_RASTER_DATA_IMAGE_REGEX.test(value)
+  ) {
+    return value;
+  }
+
+  const colon = value.indexOf(":");
+  const questionMark = value.indexOf("?");
+  const numberSign = value.indexOf("#");
+  const slash = value.indexOf("/");
+
+  if (
+    colon === -1 ||
+    (slash !== -1 && colon > slash) ||
+    (questionMark !== -1 && colon > questionMark) ||
+    (numberSign !== -1 && colon > numberSign) ||
+    SAFE_MARKDOWN_PROTOCOL_REGEX.test(value.slice(0, colon))
+  ) {
+    return value;
+  }
+
+  return "";
+}
+
+export function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
 
 function sanitizeAllowedHtmlTag(tag: string): string {
   return tag
@@ -324,15 +389,37 @@ const REFERENCE_LIST_DATA_ID_REGEX =
   /data-citation-id=["'](CIT-\d+-\d+|PLAN-\d+)["']/gi;
 const RESEARCH_CITATION_ID_TEXT_REGEX = /\b(CIT-\d+-\d+|PLAN-\d+)\b/gi;
 
+/**
+ * Decide whether a bracketed comma list is a citation group rather than a plain
+ * number array. Prefixed (`web-1`/`rag-1`/…) and research (`CIT-…`/`PLAN-…`)
+ * tokens are unambiguous citations. Bare-numeric lists are ambiguous with data
+ * arrays (`[1, 5, 9, 5, 3, 2, 7]`), so they only count as a citation group when
+ * they look like one: a small set of *distinct* numbers. This keeps `[1]` and
+ * `[1, 2, 3]` working while leaving real arrays untouched.
+ */
+function isLikelyCitationList(refs: string): boolean {
+  const ids = String(refs || "")
+    .split(/\s*,\s*/)
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (!ids.length) return false;
+  if (ids.some((id) => !/^\d+$/.test(id))) return true;
+  if (ids.length > 3) return false;
+  return new Set(ids).size === ids.length;
+}
+
 function unwrapBacktickedCitations(content: string): string {
   return content.replace(
     new RegExp(
-      "`(\\[" +
+      "`(\\[(" +
         MULTI_CIT +
-        '\\](?:\\s*\\(#(?:references|ref-[a-z0-9_-]+)\\s+["\\u201c]citation["\\u201d]\\))?)`',
+        ')\\](?:\\s*\\(#(?:references|ref-[a-z0-9_-]+)\\s+["\\u201c]citation["\\u201d]\\))?)`',
       "g",
     ),
-    "$1",
+    // Only strip the backticks when the bracket is a citation group; a
+    // backticked number array (`[1, 5, 9, 5, 3, 2, 7]`) stays code.
+    (match, inner: string, refs: string) =>
+      isLikelyCitationList(refs) ? inner : match,
   );
 }
 
@@ -352,16 +439,21 @@ function linkifyCitations(content: string): string {
     (_match, id: string) => formatCitationLinks(id.trim(), citationNumbers),
   );
 
-  // Convert bare [web-1] / [rag-1] / [1] / [1, 3] references to a single citation link
-  linked = linked.replace(INLINE_CITATION_REGEX, (_match, refs: string) => {
-    return formatCitationLinks(refs, citationNumbers);
+  // Convert bare [web-1] / [rag-1] / [1] / [1, 3] references to a single citation
+  // link — but only when the bracket is a citation group, not a number array.
+  linked = linked.replace(INLINE_CITATION_REGEX, (match, refs: string) => {
+    return isLikelyCitationList(refs)
+      ? formatCitationLinks(refs, citationNumbers)
+      : match;
   });
 
   // Handle escaped bare citations like \[web-1\] or \[1\] that linkifyCitations missed
   linked = linked.replace(
     new RegExp(String.raw`\\\[(${MULTI_CIT})\\\](?!\s*\()`, "g"),
-    (_match, refs: string) => {
-      return formatCitationLinks(refs, citationNumbers);
+    (match, refs: string) => {
+      return isLikelyCitationList(refs)
+        ? formatCitationLinks(refs, citationNumbers)
+        : match;
     },
   );
 
@@ -468,13 +560,16 @@ function linkifyCitationsOutsideCode(content: string): string {
     FENCED_CODE_BLOCK_REGEX,
     "FENCED_CODE",
   );
-  const unwrapped = unwrapBacktickedCitations(fenced.masked);
+  const math = maskProtectedSpans(fenced.masked, MATH_SPAN_REGEX, "MATH");
+  const unwrapped = unwrapBacktickedCitations(math.masked);
   const inline = maskProtectedSpans(
     unwrapped,
     INLINE_CODE_SPAN_REGEX,
     "INLINE_CODE",
   );
-  return fenced.restore(inline.restore(linkifyCitations(inline.masked)));
+  return fenced.restore(
+    math.restore(inline.restore(linkifyCitations(inline.masked))),
+  );
 }
 
 export function normalizeMarkdownForDisplay(content: string): string {
@@ -496,6 +591,19 @@ export function normalizeMarkdownForDisplay(content: string): string {
   ).replace(/\n{3,}/g, "\n\n");
   const safe = escapeUnknownHtmlTagsForDisplay(cleaned);
   return linkifyCitationsOutsideCode(safe);
+}
+
+/**
+ * Strip machine annotations the model occasionally echoes from tool results
+ * into its answer — e.g. a standalone "[Generated artifacts: foo.pdf]" line.
+ * The files themselves render as dedicated cards under the message, so the
+ * annotation is pure noise in the prose.
+ */
+export function stripArtifactAnnotations(content: string): string {
+  if (!content.includes("Generated artifacts")) return content;
+  return content
+    .replace(/^\s*\[Generated artifacts?:[^\]]*\]\s*$/gim, "")
+    .trim();
 }
 
 export function hasVisibleMarkdownContent(content: string): boolean {

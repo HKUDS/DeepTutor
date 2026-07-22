@@ -15,7 +15,7 @@ import uuid
 
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
-from deeptutor.core.stream_bus import StreamBus
+from deeptutor.core.stream_bus import StreamBus, register_bus, unregister_bus
 from deeptutor.events.event_bus import Event, EventType, get_event_bus
 from deeptutor.runtime.registry.capability_registry import get_capability_registry
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
@@ -43,30 +43,8 @@ class ChatOrchestrator:
         if not context.session_id:
             context.session_id = str(uuid.uuid4())
 
-        # "Answer now" is a universal escape hatch but the actual fast-path
-        # is *capability-specific*: chat / visualize / math_animator each
-        # inspect ``answer_now_context`` at the top of their own ``run()``.
-        # Solve / quiz / research deliberately do NOT expose Answer Now
-        # (the UI hides the button). The orchestrator only adds a defensive
-        # fallback here: if the requested capability has been removed from
-        # the registry but the user is mid-``answer_now``, route to ``chat``
-        # so they still get *some* response instead of a hard error.
         cap_name = context.active_capability or "chat"
         capability = self._cap_registry.get(cap_name)
-
-        is_answer_now = bool(
-            isinstance(context.config_overrides, dict)
-            and context.config_overrides.get("answer_now_context")
-        )
-        if capability is None and is_answer_now:
-            fallback = self._cap_registry.get("chat")
-            if fallback is not None:
-                logger.info(
-                    "Capability %s missing for answer_now; falling back to chat.",
-                    cap_name,
-                )
-                cap_name = "chat"
-                capability = fallback
 
         if capability is None:
             bus = StreamBus()
@@ -90,6 +68,9 @@ class ChatOrchestrator:
         )
 
         bus = StreamBus()
+        _turn_id = str(context.metadata.get("turn_id") or "")
+        if _turn_id:
+            register_bus(_turn_id, bus)
 
         async def _run() -> None:
             try:
@@ -100,6 +81,8 @@ class ChatOrchestrator:
             finally:
                 await bus.emit(StreamEvent(type=StreamEventType.DONE, source=cap_name))
                 await bus.close()
+                if _turn_id:
+                    unregister_bus(_turn_id)
 
         stream = bus.subscribe()
         task = asyncio.create_task(_run())

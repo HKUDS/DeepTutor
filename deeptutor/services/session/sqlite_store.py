@@ -5,10 +5,13 @@ SQLite-backed unified chat session store.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
 import time
 from typing import Any
@@ -18,7 +21,10 @@ from deeptutor.services.path_service import get_path_service
 
 
 def _json_dumps(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False)
+    # default=str: a single non-serializable object inside an event payload
+    # (e.g. a dataclass smuggled into tool args) must degrade to its repr,
+    # never kill message/event persistence for the whole turn.
+    return json.dumps(value, ensure_ascii=False, default=str)
 
 
 # Sentinel so ``add_message`` can distinguish "caller wants the legacy
@@ -40,6 +46,24 @@ def _json_loads(value: str | None, default: Any) -> Any:
         return json.loads(value)
     except json.JSONDecodeError:
         return default
+
+
+# Imported conversations share the session tables with native chats but carry
+# this id prefix as their discriminator (see ``SQLiteSessionStore._WHERE_*``).
+_IMPORTED_ID_PREFIX = "imported_"
+_ID_SAFE = re.compile(r"[^A-Za-z0-9_-]")
+
+
+def make_imported_session_id(source: str, external_id: str) -> str:
+    """Build a deterministic, dedup-friendly id for an imported conversation.
+
+    ``source`` (e.g. ``claude_code``/``codex``) namespaces the original
+    session uuid so two tools that happen to reuse an id never collide; the
+    determinism is what makes re-importing the same folder idempotent.
+    """
+    src = _ID_SAFE.sub("-", (source or "external").strip()) or "external"
+    ext = _ID_SAFE.sub("-", (external_id or "").strip()) or uuid.uuid4().hex
+    return f"{_IMPORTED_ID_PREFIX}{src}_{ext}"
 
 
 @dataclass
@@ -93,8 +117,7 @@ class SQLiteSessionStore:
             pass
 
     def _initialize(self) -> None:
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("PRAGMA foreign_keys = ON")
+        with self._connect() as conn:
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS sessions (
@@ -376,11 +399,22 @@ class SQLiteSessionStore:
         async with self._lock:
             return await asyncio.to_thread(fn, *args)
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        # sqlite3.Connection's own context manager commits/rolls back but does
+        # NOT close the connection — so naked `with sqlite3.connect(...)` leaks
+        # one FD per call until GC. Wrap it so each call site gets both
+        # transaction semantics and deterministic close. The inner `with conn`
+        # commits on clean exit and rolls back on exception, so call sites do
+        # NOT need an explicit conn.commit() (any remaining ones are no-ops).
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
-        return conn
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def _create_session_sync(
         self,
@@ -816,6 +850,131 @@ class SQLiteSessionStore:
             parent_message_id,
         )
 
+    @staticmethod
+    def _backfill_import_meta_sync(
+        conn: sqlite3.Connection,
+        session_id: str,
+        current_prefs_json: str | None,
+        incoming_prefs: dict[str, Any],
+    ) -> bool:
+        """Merge agent attribution from a re-import into an existing session's
+        ``preferences.import`` block, leaving everything else untouched. Returns
+        whether anything changed (so the caller can skip a needless write)."""
+        incoming_import = (incoming_prefs or {}).get("import") or {}
+        if not incoming_import:
+            return False
+        prefs = _json_loads(current_prefs_json, {})
+        if not isinstance(prefs, dict):
+            prefs = {}
+        meta = dict(prefs.get("import") or {})
+        changed = False
+        # Only attribution fields propagate on re-import; source/external_id are
+        # part of the dedup identity and never change for a given session.
+        for key in ("agent_id", "agent_name", "source_cwd"):
+            value = incoming_import.get(key)
+            if value and meta.get(key) != value:
+                meta[key] = value
+                changed = True
+        if not changed:
+            return False
+        prefs["import"] = meta
+        conn.execute(
+            "UPDATE sessions SET preferences_json = ? WHERE id = ?",
+            (_json_dumps(prefs), session_id),
+        )
+        return True
+
+    def _import_session_sync(
+        self,
+        session_id: str,
+        title: str,
+        created_at: float,
+        updated_at: float,
+        preferences: dict[str, Any],
+        messages: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        with self._connect() as conn:
+            existing = conn.execute(
+                "SELECT preferences_json FROM sessions WHERE id = ?", (session_id,)
+            ).fetchone()
+            if existing is not None:
+                # Idempotent on content: a session imported before keeps its
+                # (possibly already-continued) state — re-importing the same
+                # folder never duplicates rows or clobbers the user's edits.
+                # We do, however, backfill agent attribution (agent_id /
+                # agent_name) so re-syncing re-tags conversations that were
+                # imported before the agent model existed, and an agent rename
+                # propagates. This only touches the ``import`` metadata block.
+                updated = self._backfill_import_meta_sync(
+                    conn, session_id, existing["preferences_json"], preferences
+                )
+                if updated:
+                    conn.commit()
+                return {
+                    "session_id": session_id,
+                    "imported": False,
+                    "updated": updated,
+                    "message_count": 0,
+                }
+            safe_title = (title or "").strip()[:100] or "Imported conversation"
+            conn.execute(
+                """
+                INSERT INTO sessions (
+                    id, title, created_at, updated_at,
+                    compressed_summary, summary_up_to_msg_id, preferences_json
+                ) VALUES (?, ?, ?, ?, '', 0, ?)
+                """,
+                (session_id, safe_title, created_at, updated_at, _json_dumps(preferences or {})),
+            )
+            prev_id: int | None = None
+            count = 0
+            for msg in messages:
+                cur = conn.execute(
+                    """
+                    INSERT INTO messages (
+                        session_id, role, content, capability, events_json,
+                        attachments_json, metadata_json, created_at, parent_message_id
+                    ) VALUES (?, ?, ?, '', '[]', '[]', ?, ?, ?)
+                    """,
+                    (
+                        session_id,
+                        msg.get("role") or "user",
+                        msg.get("content") or "",
+                        _json_dumps(msg.get("metadata") or {}),
+                        float(msg.get("created_at") or created_at),
+                        prev_id,
+                    ),
+                )
+                prev_id = int(cur.lastrowid)
+                count += 1
+            conn.commit()
+        return {"session_id": session_id, "imported": True, "message_count": count}
+
+    async def import_session(
+        self,
+        session_id: str,
+        title: str,
+        created_at: float,
+        updated_at: float,
+        preferences: dict[str, Any] | None,
+        messages: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Persist a pre-existing conversation (imported from an external CLI
+        such as Claude Code or Codex) as a normal session, so the chat loop can
+        re-open and continue it. ``session_id`` must carry the ``imported_``
+        prefix (see :data:`_IMPORTED_ID_PREFIX`). Idempotent by id: a session
+        already present is left untouched.
+        """
+        return await self._run(
+            self._import_session_sync,
+            session_id,
+            title,
+            created_at,
+            updated_at,
+            preferences or {},
+            messages,
+        )
+
     def _delete_message_sync(self, message_id: int | str) -> bool:
         with self._connect() as conn:
             cur = conn.execute("DELETE FROM messages WHERE id = ?", (int(message_id),))
@@ -1107,70 +1266,60 @@ class SQLiteSessionStore:
     ) -> list[dict[str, Any]]:
         return await self._run(self._get_messages_for_context_sync, session_id, leaf_message_id)
 
-    def _list_sessions_sync(
-        self,
-        limit: int = 50,
-        offset: int = 0,
+    # Imported conversations live in the same tables as native chats (so the
+    # chat loop can re-open and continue them) but carry an ``imported_`` id
+    # prefix. That prefix is the discriminator — it travels with the primary
+    # key, so we filter on it instead of adding a column + migration.
+    _SESSION_SUMMARY_SQL = """
+        SELECT
+            s.id,
+            s.title,
+            s.created_at,
+            s.updated_at,
+            s.compressed_summary,
+            s.summary_up_to_msg_id,
+            s.preferences_json,
+            COUNT(m.id) AS message_count,
+            COALESCE(
+                (SELECT t.status FROM turns t WHERE t.session_id = s.id
+                 ORDER BY t.updated_at DESC LIMIT 1),
+                'idle'
+            ) AS status,
+            COALESCE(
+                (SELECT t.id FROM turns t WHERE t.session_id = s.id AND t.status = 'running'
+                 ORDER BY t.updated_at DESC LIMIT 1),
+                ''
+            ) AS active_turn_id,
+            COALESCE(
+                (SELECT t.capability FROM turns t WHERE t.session_id = s.id
+                 ORDER BY t.updated_at DESC LIMIT 1),
+                ''
+            ) AS capability,
+            COALESCE(
+                (SELECT m2.content FROM messages m2
+                 WHERE m2.session_id = s.id AND TRIM(COALESCE(m2.content, '')) != ''
+                 ORDER BY m2.id DESC LIMIT 1),
+                ''
+            ) AS last_message
+        FROM sessions s
+        LEFT JOIN messages m ON m.session_id = s.id
+        {where}
+        GROUP BY s.id
+        ORDER BY s.updated_at DESC
+        LIMIT ? OFFSET ?
+    """
+
+    # ``ESCAPE '\'`` makes the underscore in ``imported_`` literal rather than
+    # the LIKE single-char wildcard.
+    _WHERE_NATIVE = r"WHERE s.id NOT LIKE 'imported\_%' ESCAPE '\'"
+    _WHERE_IMPORTED = r"WHERE s.id LIKE 'imported\_%' ESCAPE '\'"
+
+    def _list_session_summaries_sync(
+        self, where_sql: str, limit: int, offset: int
     ) -> list[dict[str, Any]]:
         with self._connect() as conn:
             rows = conn.execute(
-                """
-                SELECT
-                    s.id,
-                    s.title,
-                    s.created_at,
-                    s.updated_at,
-                    s.compressed_summary,
-                    s.summary_up_to_msg_id,
-                    s.preferences_json,
-                    COUNT(m.id) AS message_count,
-                    COALESCE(
-                        (
-                            SELECT t.status
-                            FROM turns t
-                            WHERE t.session_id = s.id
-                            ORDER BY t.updated_at DESC
-                            LIMIT 1
-                        ),
-                        'idle'
-                    ) AS status,
-                    COALESCE(
-                        (
-                            SELECT t.id
-                            FROM turns t
-                            WHERE t.session_id = s.id AND t.status = 'running'
-                            ORDER BY t.updated_at DESC
-                            LIMIT 1
-                        ),
-                        ''
-                    ) AS active_turn_id,
-                    COALESCE(
-                        (
-                            SELECT t.capability
-                            FROM turns t
-                            WHERE t.session_id = s.id
-                            ORDER BY t.updated_at DESC
-                            LIMIT 1
-                        ),
-                        ''
-                    ) AS capability,
-                    COALESCE(
-                        (
-                            SELECT m2.content
-                            FROM messages m2
-                            WHERE m2.session_id = s.id
-                              AND TRIM(COALESCE(m2.content, '')) != ''
-                            ORDER BY m2.id DESC
-                            LIMIT 1
-                        ),
-                        ''
-                    ) AS last_message
-                FROM sessions s
-                LEFT JOIN messages m ON m.session_id = s.id
-                GROUP BY s.id
-                ORDER BY s.updated_at DESC
-                LIMIT ? OFFSET ?
-                """,
+                self._SESSION_SUMMARY_SQL.format(where=where_sql),
                 (limit, offset),
             ).fetchall()
         sessions = []
@@ -1181,12 +1330,35 @@ class SQLiteSessionStore:
             sessions.append(payload)
         return sessions
 
+    def _list_sessions_sync(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        # Native chats only — imported histories surface under their own
+        # Space category, not the regular history list.
+        return self._list_session_summaries_sync(self._WHERE_NATIVE, limit, offset)
+
+    def _list_imported_sessions_sync(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        return self._list_session_summaries_sync(self._WHERE_IMPORTED, limit, offset)
+
     async def list_sessions(
         self,
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
         return await self._run(self._list_sessions_sync, limit, offset)
+
+    async def list_imported_sessions(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        return await self._run(self._list_imported_sessions_sync, limit, offset)
 
     def _update_summary_sync(self, session_id: str, summary: str, up_to_msg_id: int) -> bool:
         with self._connect() as conn:
@@ -1669,4 +1841,4 @@ def get_sqlite_session_store() -> SQLiteSessionStore:
     return _instances[key]
 
 
-__all__ = ["SQLiteSessionStore", "get_sqlite_session_store"]
+__all__ = ["SQLiteSessionStore", "get_sqlite_session_store", "make_imported_session_id"]

@@ -61,8 +61,26 @@ def test_moonshot_vision_models() -> None:
 def test_minimax_openai_compat_supports_tools_without_response_format() -> None:
     """MiniMax M-series models support OpenAI-compatible tool calls, but
     the provider still should not receive json_object response_format."""
+    # M3 is the current default model (512K context, image input support).
+    assert supports_tools("minimax", "MiniMax-M3") is True
+    assert supports_response_format("minimax", "MiniMax-M3") is False
+    # M2.7 and M2.7-highspeed remain as alternatives.
+    assert supports_tools("minimax", "MiniMax-M2.7") is True
+    assert supports_response_format("minimax", "MiniMax-M2.7") is False
     assert supports_tools("minimax", "MiniMax-M2.7-highspeed") is True
     assert supports_response_format("minimax", "MiniMax-M2.7-highspeed") is False
+
+
+def test_siliconflow_openai_compat_supports_tools_for_deepseek() -> None:
+    assert supports_tools("siliconflow", "deepseek-ai/DeepSeek-V4-Pro") is True
+    assert supports_response_format("siliconflow", "deepseek-ai/DeepSeek-V4-Pro") is False
+    assert has_thinking_tags("siliconflow", "deepseek-ai/DeepSeek-V4-Pro") is True
+
+
+def test_custom_and_dashscope_openai_compat_support_native_tools_for_qwen() -> None:
+    assert supports_tools("custom", "qwen3.6-plus") is True
+    assert supports_tools("dashscope", "qwen-plus") is True
+    assert has_thinking_tags("custom", "qwen3.6-plus") is True
 
 
 def test_qwen_model_override_enables_vision() -> None:

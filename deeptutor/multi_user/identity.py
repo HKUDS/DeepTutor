@@ -11,9 +11,8 @@ import threading
 from typing import Any
 from uuid import uuid4
 
-from deeptutor.runtime.home import get_runtime_home
-
 from .models import Role
+from .paths import PROJECT_ROOT, SYSTEM_ROOT, migrate_legacy_multi_user_tree
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +23,6 @@ logger = logging.getLogger(__name__)
 # (e.g. PocketBase), which is documented in the multi-user README.
 _USERS_WRITE_LOCK = threading.Lock()
 
-PROJECT_ROOT = get_runtime_home()
-MULTI_USER_ROOT = PROJECT_ROOT / "multi-user"
-SYSTEM_ROOT = MULTI_USER_ROOT / "_system"
 AUTH_DIR = SYSTEM_ROOT / "auth"
 USERS_FILE = AUTH_DIR / "users.json"
 SECRET_FILE = AUTH_DIR / "auth_secret"
@@ -55,6 +51,7 @@ def _canonical_record(
             "role": default_role,
             "created_at": utc_now(),
             "disabled": False,
+            "avatar": "",
         }
     if not isinstance(value, dict):
         return None
@@ -70,6 +67,7 @@ def _canonical_record(
         "role": role,
         "created_at": str(value.get("created_at") or utc_now()),
         "disabled": bool(value.get("disabled", False)),
+        "avatar": str(value.get("avatar") or ""),
     }
 
 
@@ -128,6 +126,7 @@ def load_users(  # nosec B107 - empty defaults mean "no env fallback supplied".
     env_password_hash: str = "",
 ) -> dict[str, dict[str, Any]]:
     """Load canonical users, migrating legacy records and env fallback in memory."""
+    migrate_legacy_multi_user_tree()
     users: dict[str, dict[str, Any]] | None = None
     if USERS_FILE.exists():
         users = _read_json(USERS_FILE)
@@ -184,6 +183,7 @@ def save_user(username: str, hashed_password: str, role: Role = "user") -> dict[
             "role": effective_role,
             "created_at": str(existing.get("created_at") or utc_now()),
             "disabled": bool(existing.get("disabled", False)),
+            "avatar": str(existing.get("avatar") or ""),
         }
         users[username] = record
         _write_users(users)
@@ -201,6 +201,7 @@ def list_user_info(  # nosec B107 - empty defaults mean "no env fallback supplie
             "role": record.get("role", "user"),
             "created_at": record.get("created_at", ""),
             "disabled": bool(record.get("disabled", False)),
+            "avatar": str(record.get("avatar") or ""),
         }
         for username, record in load_users(env_username, env_password_hash).items()
     ]
@@ -228,6 +229,64 @@ def delete_user(username: str) -> bool:
     return True
 
 
+def set_avatar(username: str, avatar: str) -> bool:
+    """Update the avatar marker for an existing user. Returns True on success."""
+    if not USERS_FILE.exists():
+        return False
+    with _USERS_WRITE_LOCK:
+        users = load_users()
+        if username not in users:
+            return False
+        users[username]["avatar"] = avatar
+        _write_users(users)
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Avatar image files — stored next to the user store, keyed by user id
+# ---------------------------------------------------------------------------
+
+# Extensions are derived from server-side content sniffing, never from the
+# uploaded filename, so this list is also the full set of files we may serve.
+AVATAR_EXTENSIONS = ("png", "jpg", "webp")
+
+
+def _avatar_dir() -> Path:
+    # Resolved lazily so tests that monkeypatch AUTH_DIR keep avatars isolated.
+    return AUTH_DIR / "avatars"
+
+
+def get_avatar_file(user_id: str) -> Path | None:
+    """Return the stored avatar image for ``user_id``, or None."""
+    for ext in AVATAR_EXTENSIONS:
+        candidate = _avatar_dir() / f"{user_id}.{ext}"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def save_avatar_file(user_id: str, data: bytes, ext: str) -> Path:
+    """Atomically persist an avatar image, replacing any previous one."""
+    if ext not in AVATAR_EXTENSIONS:
+        raise ValueError(f"Unsupported avatar extension: {ext!r}")
+    directory = _avatar_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    target = directory / f"{user_id}.{ext}"
+    tmp = directory / f"{user_id}.{ext}.tmp"
+    tmp.write_bytes(data)
+    tmp.replace(target)
+    # A re-upload may change the extension; drop stale siblings.
+    for other in AVATAR_EXTENSIONS:
+        if other != ext:
+            (directory / f"{user_id}.{other}").unlink(missing_ok=True)
+    return target
+
+
+def delete_avatar_file(user_id: str) -> None:
+    for ext in AVATAR_EXTENSIONS:
+        (_avatar_dir() / f"{user_id}.{ext}").unlink(missing_ok=True)
+
+
 def set_role(username: str, role: Role) -> bool:
     if role not in {"admin", "user"}:
         raise ValueError("role must be 'admin' or 'user'")
@@ -242,6 +301,7 @@ def set_role(username: str, role: Role) -> bool:
 
 
 def load_or_create_auth_secret() -> str:
+    migrate_legacy_multi_user_tree()
     _migrate_secret()
     try:
         if SECRET_FILE.exists():

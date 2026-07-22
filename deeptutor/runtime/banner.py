@@ -117,6 +117,17 @@ LABELS: dict[str, dict[str, str]] = {
             "DeepTutor cannot start because port(s) already in use: {ports}. "
             "Stop the existing process or change data/user/settings/system.json."
         ),
+        "start.port_conflict_title": "Port conflict detected:",
+        "start.port_conflict_line": "  {role} port {port} is in use by:",
+        "start.port_conflict_proc": "    PID {pid} · {command}",
+        "start.port_conflict_unknown_proc": "    (process info unavailable)",
+        "start.port_option_change": "Change ports (saved to data/user/settings/system.json)",
+        "start.port_option_kill": "Stop the occupying process(es) and continue",
+        "start.port_invalid": "Invalid port: {value}. Enter a free port between 1 and 65535.",
+        "start.port_saved": "Ports saved to {path}.",
+        "start.port_killing": "Stopping PID {pid} ({command}) ...",
+        "start.port_kill_failed": "Could not free port {port} (PID {pid}).",
+        "start.port_freed": "Port {port} released.",
     },
     "zh": {
         "tagline": "智能体原生的个性化辅导",
@@ -210,6 +221,17 @@ LABELS: dict[str, dict[str, str]] = {
             "无法启动 DeepTutor,端口已被占用: {ports}。"
             "请先停止占用进程,或修改 data/user/settings/system.json 中的端口设置。"
         ),
+        "start.port_conflict_title": "检测到端口被占用:",
+        "start.port_conflict_line": "  {role}端口 {port} 被以下进程占用:",
+        "start.port_conflict_proc": "    PID {pid} · {command}",
+        "start.port_conflict_unknown_proc": "    (无法获取进程信息)",
+        "start.port_option_change": "更改端口设置 (写入 data/user/settings/system.json)",
+        "start.port_option_kill": "停止占用进程并继续启动",
+        "start.port_invalid": "无效端口: {value}。请输入 1-65535 之间且未被占用的端口。",
+        "start.port_saved": "端口设置已保存到 {path}。",
+        "start.port_killing": "正在停止 PID {pid} ({command}) ...",
+        "start.port_kill_failed": "无法释放端口 {port} (PID {pid})。",
+        "start.port_freed": "端口 {port} 已释放。",
     },
 }
 
