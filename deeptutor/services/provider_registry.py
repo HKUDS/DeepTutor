@@ -149,6 +149,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         supports_prompt_caching=True,
     ),
     ProviderSpec(
+        name="edenai",
+        keywords=("edenai", "eden_ai", "eden-ai"),
+        env_key="EDENAI_API_KEY",
+        display_name="Eden AI",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_base_keyword="edenai",
+        default_api_base="https://api.edenai.run/v3",
+    ),
+    ProviderSpec(
         name="aihubmix",
         keywords=("aihubmix",),
         env_key="OPENAI_API_KEY",
