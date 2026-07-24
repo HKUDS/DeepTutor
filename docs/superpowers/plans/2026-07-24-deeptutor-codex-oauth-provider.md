@@ -1229,7 +1229,7 @@ git commit -m "feat: 统一 Codex Web 与 CLI 登录"
 - Create: `web/tests/codex-oauth-client.test.ts`
 - Modify: `web/components/settings/SettingsContext.tsx`
 
-- [ ] **Step 1: 写纯函数失败测试**
+- [x] **Step 1: 写纯函数失败测试**
 
 ```typescript
 test("terminal operation states stop polling", () => {
@@ -1253,7 +1253,7 @@ test("Sol missing message preserves the current model", () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -1265,7 +1265,7 @@ Set-Location ..
 
 Expected: module missing or compiled test failure.
 
-- [ ] **Step 3: 实现 API 类型和请求函数**
+- [x] **Step 3: 实现 API 类型和请求函数**
 
 `CodexOAuthStatus` 精确包含：
 
@@ -1295,7 +1295,7 @@ export type CodexOAuthStatus = {
 导出 `getCodexStatus()`、`startCodexLogin()`、`cancelCodexLogin()`、
 `refreshCodexModels()`、`logoutCodex()` 和纯函数 `shouldPollCodexStatus()`。
 
-- [ ] **Step 4: 实现 `CodexOAuthCard`**
+- [x] **Step 4: 实现 `CodexOAuthCard`**
 
 组件行为：
 
@@ -1309,7 +1309,7 @@ authorizing 时每秒轮询；进入终态即停止。completed、refresh 和 lo
 `reloadSettings()`，使 catalog/draft 同步。按钮在请求中禁用，错误只使用稳定
 `error_code` 到翻译键的映射。
 
-- [ ] **Step 5: 扩展 Provider/Catalog TypeScript 类型**
+- [x] **Step 5: 扩展 Provider/Catalog TypeScript 类型**
 
 `ProviderOption` 增加：
 
@@ -1323,7 +1323,7 @@ experimental?: boolean;
 `CatalogProfile` 和 `CatalogModel` 增加可选 `managed_by` 及 Codex capability 字段，类型与
 Task 5 JSON 一致。
 
-- [ ] **Step 6: 运行 Web 测试和 typecheck**
+- [x] **Step 6: 运行 Web 测试和 typecheck**
 
 Run:
 
@@ -1336,7 +1336,7 @@ Set-Location ..
 
 Expected: node tests and typecheck pass.
 
-- [ ] **Step 7: 中文提交**
+- [x] **Step 7: 中文提交**
 
 ```powershell
 git add web/lib/codex-oauth.ts web/components/settings/CodexOAuthCard.tsx web/tests web/components/settings/SettingsContext.tsx

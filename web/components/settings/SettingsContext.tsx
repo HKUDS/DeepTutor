@@ -40,6 +40,13 @@ export type CatalogModel = {
   id: string;
   name: string;
   model: string;
+  managed_by?: string;
+  codex_priority?: number;
+  codex_default_reasoning_level?: string | null;
+  codex_supported_reasoning_levels?: string[];
+  codex_supports_reasoning_summary?: boolean;
+  codex_supports_parallel_tool_calls?: boolean;
+  codex_use_responses_lite?: boolean;
   dimension?: string;
   send_dimensions?: boolean;
   supported_dimensions?: string;
@@ -75,6 +82,8 @@ export type LlmContextWindowDetection = {
 export type CatalogProfile = {
   id: string;
   name: string;
+  managed_by?: string;
+  read_only?: boolean;
   binding?: string;
   provider?: string;
   base_url: string;
@@ -160,6 +169,10 @@ export type ProviderOption = {
   default_dim?: string;
   default_model?: string;
   default_voice?: string;
+  auth_mode?: "api_key" | "oauth";
+  model_policy?: "configured" | "dynamic_catalog";
+  requires_api_key?: boolean;
+  experimental?: boolean;
 };
 
 export type SystemStatus = {
