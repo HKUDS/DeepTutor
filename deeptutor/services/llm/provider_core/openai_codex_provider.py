@@ -1,8 +1,7 @@
-"""OpenAI Codex Responses provider backed by oauth-cli-kit."""
+"""OpenAI Codex Responses provider backed by DeepTutor's private OAuth service."""
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Awaitable, Callable
 import hashlib
 import json
@@ -11,6 +10,9 @@ from typing import Any
 import httpx
 from loguru import logger
 
+from deeptutor.services.codex_auth import CodexAuthError, get_codex_oauth_service
+from deeptutor.services.codex_auth.constants import CODEX_RESPONSES_URL
+from deeptutor.services.codex_auth.contracts import CodexToken
 from deeptutor.services.llm.openai_http_client import disable_ssl_verify_enabled
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, ToolCallRequest
 from deeptutor.services.llm.provider_core.openai_responses import (
@@ -19,25 +21,25 @@ from deeptutor.services.llm.provider_core.openai_responses import (
     convert_tools,
 )
 
-DEFAULT_CODEX_URL = "https://chatgpt.com/backend-api/codex/responses"
+DEFAULT_CODEX_URL = CODEX_RESPONSES_URL
 DEFAULT_ORIGINATOR = "DeepTutor"
+
+
+class CodexHTTPError(RuntimeError):
+    def __init__(self, status_code: int, safe_message: str) -> None:
+        super().__init__(safe_message)
+        self.status_code = status_code
 
 
 class OpenAICodexProvider(LLMProvider):
     """Use OpenAI Codex OAuth tokens to call the Responses API."""
 
-    def __init__(self, default_model: str = "openai-codex/gpt-5.1-codex"):
+    def __init__(self, default_model: str = "openai-codex/gpt-5.6-sol"):
         super().__init__(api_key=None, api_base=None)
         self.default_model = default_model
 
-    async def _load_token(self) -> Any:
-        try:
-            from oauth_cli_kit import get_token as get_codex_token
-        except ImportError as exc:  # pragma: no cover - optional dependency
-            raise RuntimeError(
-                "oauth_cli_kit is not installed. Install CLI deps or switch provider."
-            ) from exc
-        return await asyncio.to_thread(get_codex_token)
+    async def _load_token(self) -> CodexToken:
+        return await get_codex_oauth_service().get_token()
 
     async def _call_codex(
         self,
@@ -50,9 +52,6 @@ class OpenAICodexProvider(LLMProvider):
     ) -> LLMResponse:
         model_name = model or self.default_model
         system_prompt, input_items = convert_messages(messages)
-
-        token = await self._load_token()
-        headers = _build_headers(getattr(token, "account_id", None), getattr(token, "access", None))
 
         body: dict[str, Any] = {
             "model": _strip_model_prefix(model_name),
@@ -71,29 +70,59 @@ class OpenAICodexProvider(LLMProvider):
         if tools:
             body["tools"] = convert_tools(tools)
 
-        try:
+        service = get_codex_oauth_service()
+        async with service.inference_guard():
             try:
-                content, tool_calls, finish_reason = await _request_codex(
-                    DEFAULT_CODEX_URL,
-                    headers,
-                    body,
-                    verify=not disable_ssl_verify_enabled(),
-                    on_content_delta=on_content_delta,
-                )
-            except Exception as exc:
-                if "CERTIFICATE_VERIFY_FAILED" not in str(exc):
+                token = await self._load_token()
+                headers = _build_headers(token.account_id, token.access_token)
+                try:
+                    content, tool_calls, finish_reason = await _request_codex(
+                        CODEX_RESPONSES_URL,
+                        headers,
+                        body,
+                        verify=not disable_ssl_verify_enabled(),
+                        on_content_delta=on_content_delta,
+                    )
+                except CodexHTTPError as exc:
+                    if exc.status_code == 401:
+                        try:
+                            await service.recover_after_unauthorized(token.generation)
+                        except CodexAuthError:
+                            pass
                     raise
-                logger.warning("SSL verification failed for Codex API; retrying with verify=False")
-                content, tool_calls, finish_reason = await _request_codex(
-                    DEFAULT_CODEX_URL,
-                    headers,
-                    body,
-                    verify=False,
-                    on_content_delta=on_content_delta,
+                except Exception as exc:
+                    if "CERTIFICATE_VERIFY_FAILED" not in str(exc):
+                        raise
+                    logger.warning(
+                        "SSL verification failed for Codex API; retrying with verify=False"
+                    )
+                    content, tool_calls, finish_reason = await _request_codex(
+                        CODEX_RESPONSES_URL,
+                        headers,
+                        body,
+                        verify=False,
+                        on_content_delta=on_content_delta,
+                    )
+                return LLMResponse(
+                    content=content,
+                    tool_calls=tool_calls,
+                    finish_reason=finish_reason,
                 )
-            return LLMResponse(content=content, tool_calls=tool_calls, finish_reason=finish_reason)
-        except Exception as exc:
-            return LLMResponse(content=f"Error calling Codex: {exc}", finish_reason="error")
+            except CodexHTTPError as exc:
+                return LLMResponse(
+                    content=f"Error calling Codex: {_friendly_error(exc.status_code)}",
+                    finish_reason="error",
+                )
+            except CodexAuthError as exc:
+                return LLMResponse(
+                    content=f"Error calling Codex: {exc.public_message}",
+                    finish_reason="error",
+                )
+            except Exception:
+                return LLMResponse(
+                    content="Error calling Codex: Codex request failed. Please try again.",
+                    finish_reason="error",
+                )
 
     async def chat(
         self,
@@ -142,7 +171,7 @@ def _strip_model_prefix(model: str) -> str:
     return model
 
 
-def _build_headers(account_id: Any, token: Any) -> dict[str, str]:
+def _build_headers(account_id: str, token: str) -> dict[str, str]:
     if not token:
         raise RuntimeError(
             "OpenAI Codex is not logged in. Run `deeptutor provider login openai-codex`."
@@ -170,9 +199,10 @@ async def _request_codex(
     async with httpx.AsyncClient(timeout=60.0, verify=verify) as client:
         async with client.stream("POST", url, headers=headers, json=body) as response:
             if response.status_code != 200:
-                text = await response.aread()
-                raise RuntimeError(
-                    _friendly_error(response.status_code, text.decode("utf-8", "ignore"))
+                await response.aread()
+                raise CodexHTTPError(
+                    response.status_code,
+                    _friendly_error(response.status_code),
                 )
             return await consume_sse(response, on_content_delta)
 
@@ -182,7 +212,11 @@ def _prompt_cache_key(messages: list[dict[str, Any]]) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _friendly_error(status_code: int, raw: str) -> str:
+def _friendly_error(status_code: int) -> str:
+    if status_code == 401:
+        return "Codex login expired. The session was refreshed; retry this request."
+    if status_code == 403:
+        return "This Codex account is not allowed to make the requested call."
     if status_code == 429:
-        return "ChatGPT usage quota exceeded or rate limit triggered. Please try again later."
-    return f"HTTP {status_code}: {raw}"
+        return "Codex usage quota exceeded or rate limit triggered. Please try again later."
+    return f"Codex returned HTTP {status_code}."

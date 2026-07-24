@@ -1028,7 +1028,7 @@ git commit -m "feat: 添加 Codex OAuth 设置接口"
 - Modify: `tests/services/llm/test_codex_disable_ssl_verify.py`
 - Create: `tests/services/llm/test_openai_codex_oauth_provider.py`
 
-- [ ] **Step 1: 写失败测试固定不重放和不回退**
+- [x] **Step 1: 写失败测试固定不重放和不回退**
 
 ```python
 @pytest.mark.asyncio
@@ -1095,7 +1095,7 @@ async def test_429_never_reads_openai_api_key(
 另覆盖 account header、Sol 原始 ID、工具转换、reasoning、SSE、403 失效、网络错误和
 推理 guard。
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -1105,7 +1105,7 @@ Run:
 
 Expected: provider still imports `oauth_cli_kit`.
 
-- [ ] **Step 3: 最小修改 Provider**
+- [x] **Step 3: 最小修改 Provider**
 
 修改要点：
 
@@ -1135,7 +1135,7 @@ async with service.inference_guard():
 默认模型改为 `openai-codex/gpt-5.6-sol`，但活动模型仍由已验证 catalog 选择传入。
 401 当前请求只调用一次 `_request_codex()`。
 
-- [ ] **Step 4: 运行 Provider 回归**
+- [x] **Step 4: 运行 Provider 回归**
 
 Run:
 
@@ -1148,7 +1148,7 @@ Run:
 
 Expected: all selected tests pass.
 
-- [ ] **Step 5: 中文提交**
+- [x] **Step 5: 中文提交**
 
 ```powershell
 git add deeptutor/services/llm/provider_core/openai_codex_provider.py tests/services/llm
