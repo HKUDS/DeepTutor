@@ -10,6 +10,10 @@ import {
 } from "../lib/codex-oauth";
 
 const CODEX_CLIENT = path.resolve(process.cwd(), "lib/codex-oauth.ts");
+const CODEX_CARD = path.resolve(
+  process.cwd(),
+  "components/settings/CodexOAuthCard.tsx",
+);
 
 function status(
   overrides: Partial<CodexOAuthStatus> = {},
@@ -89,4 +93,14 @@ test("Codex error codes map to stable translation keys", () => {
     ),
     "codex.oauth.inferenceActive",
   );
+});
+
+test("Codex sign-in opens its browser window before awaiting the API", () => {
+  const source = readFileSync(CODEX_CARD, "utf8");
+  const signIn = source.slice(
+    source.indexOf("const signIn"),
+    source.indexOf("const cancel"),
+  );
+
+  assert.ok(signIn.indexOf("window.open(") < signIn.indexOf("await startCodexLogin()"));
 });

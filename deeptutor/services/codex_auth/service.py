@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import secrets
-import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+import hashlib
+from pathlib import Path
+import secrets
+import time
 from typing import Any, AsyncIterator, Awaitable, Callable
 
 import httpx
 
+from deeptutor.multi_user.context import get_current_user
+from deeptutor.multi_user.paths import get_admin_path_service
 from deeptutor.services.config.model_catalog import (
     ModelCatalogService,
     get_model_catalog_service,
@@ -239,6 +242,7 @@ class CodexOAuthService:
         self._last_snapshot: CatalogSnapshot | None = None
         self._operation_lock = asyncio.Lock()
         self._refresh_lock = asyncio.Lock()
+        self._catalog_sync_lock = asyncio.Lock()
         self._inference_lock = asyncio.Lock()
         self._active_inferences = 0
         self._logging_out = False
@@ -389,25 +393,26 @@ class CodexOAuthService:
         return self.public_status()
 
     async def refresh_models(self) -> dict[str, Any]:
-        token = await self.get_token()
-        credentials = self._store.load_credentials()
-        if credentials is None or credentials.generation != token.generation:
-            raise CodexAuthError(
-                "authentication_changed",
-                "Codex authentication changed before models could be refreshed.",
-                409,
+        async with self._catalog_sync_lock:
+            token = await self.get_token()
+            credentials = self._store.load_credentials()
+            if credentials is None or credentials.generation != token.generation:
+                raise CodexAuthError(
+                    "authentication_changed",
+                    "Codex authentication changed before models could be refreshed.",
+                    409,
+                )
+            snapshot = await self._catalog.get(credentials, force=True)
+            state = self._store.load_state()
+            sync_codex_catalog(
+                self._model_catalog,
+                snapshot,
+                activate_sol=False,
+                state=state,
             )
-        snapshot = await self._catalog.get(credentials, force=True)
-        state = self._store.load_state()
-        sync_codex_catalog(
-            self._model_catalog,
-            snapshot,
-            activate_sol=False,
-            state=state,
-        )
-        self._store.save_state(state)
-        self._last_snapshot = snapshot
-        return self.public_status()
+            self._store.save_state(state)
+            self._last_snapshot = snapshot
+            return self.public_status()
 
     async def get_token(self) -> CodexToken:
         async with self._refresh_lock:
@@ -486,29 +491,30 @@ class CodexOAuthService:
             self._logging_out = True
         try:
             await self.cancel_login()
-            credentials = self._store.load_credentials()
-            if credentials is not None:
+            async with self._catalog_sync_lock:
+                credentials = self._store.load_credentials()
+                if credentials is not None:
+                    try:
+                        await self._oauth.revoke(credentials)
+                    except Exception:
+                        pass
+                    self._store.clear_credentials(
+                        expected_generation=credentials.generation
+                    )
+                else:
+                    self._store.clear_credentials(
+                        expected_generation=self._store.current_generation()
+                    )
+                state = self._store.load_state()
+                remove_codex_catalog(self._model_catalog, state)
+                self._store.save_state(state)
                 try:
-                    await self._oauth.revoke(credentials)
+                    await self._catalog.invalidate()
                 except Exception:
                     pass
-                self._store.clear_credentials(
-                    expected_generation=credentials.generation
-                )
-            else:
-                self._store.clear_credentials(
-                    expected_generation=self._store.current_generation()
-                )
-            state = self._store.load_state()
-            remove_codex_catalog(self._model_catalog, state)
-            self._store.save_state(state)
-            try:
-                await self._catalog.invalidate()
-            except Exception:
-                pass
-            self._last_snapshot = None
-            self._operation = None
-            return self.public_status()
+                self._last_snapshot = None
+                self._operation = None
+                return self.public_status()
         finally:
             async with self._inference_lock:
                 self._logging_out = False
@@ -676,8 +682,14 @@ class CodexOAuthService:
 _SERVICE_INSTANCES: dict[str, CodexOAuthService] = {}
 
 
+def _codex_user_root() -> Path:
+    if not get_current_user().is_admin:
+        return get_admin_path_service().get_user_root().resolve()
+    return get_path_service().get_user_root().resolve()
+
+
 def get_codex_oauth_service() -> CodexOAuthService:
-    user_root = get_path_service().get_user_root().resolve()
+    user_root = _codex_user_root()
     key = str(user_root)
     service = _SERVICE_INSTANCES.get(key)
     if service is None:

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from dataclasses import dataclass
 import hashlib
 import secrets
-from dataclasses import dataclass
 from typing import Any, Iterable
 from urllib.parse import parse_qs, urlencode, urlsplit
 

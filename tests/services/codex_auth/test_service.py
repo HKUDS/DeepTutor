@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
+from deeptutor.services.codex_auth import service as service_module
 from deeptutor.services.codex_auth.contracts import (
     CatalogSnapshot,
     CodexAuthError,
@@ -26,6 +27,31 @@ from deeptutor.services.codex_auth.service import (
 )
 from deeptutor.services.codex_auth.storage import CodexCredentialStore
 from deeptutor.services.config.model_catalog import ModelCatalogService
+
+
+def test_non_admin_codex_credentials_are_admin_anchored(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    admin_root = tmp_path / "admin-user"
+    current_root = tmp_path / "regular-user"
+    monkeypatch.setattr(
+        service_module,
+        "get_current_user",
+        lambda: type("User", (), {"is_admin": False})(),
+    )
+    monkeypatch.setattr(
+        service_module,
+        "get_admin_path_service",
+        lambda: type("Paths", (), {"get_user_root": lambda self: admin_root})(),
+    )
+    monkeypatch.setattr(
+        service_module,
+        "get_path_service",
+        lambda: type("Paths", (), {"get_user_root": lambda self: current_root})(),
+    )
+
+    assert service_module._codex_user_root() == admin_root
 
 
 def _model(
@@ -357,6 +383,8 @@ class FakeCatalog:
         self.error = error
         self.calls: list[tuple[int, bool]] = []
         self.invalidated = False
+        self.get_started: asyncio.Event | None = None
+        self.get_release: asyncio.Event | None = None
 
     async def get(
         self,
@@ -364,6 +392,10 @@ class FakeCatalog:
         force: bool,
     ) -> CatalogSnapshot:
         self.calls.append((credentials.generation, force))
+        if self.get_started is not None:
+            self.get_started.set()
+        if self.get_release is not None:
+            await self.get_release.wait()
         if self.error is not None:
             raise self.error
         return self.snapshot
@@ -611,6 +643,31 @@ async def test_logout_rejected_while_inference_is_active(tmp_path: Path) -> None
 
     assert exc_info.value.code == "inference_in_progress"
     assert store.load_credentials() is not None
+
+
+@pytest.mark.asyncio
+async def test_logout_cannot_be_undone_by_inflight_model_refresh(
+    tmp_path: Path,
+) -> None:
+    service, _callback, _oauth, catalog, store, model_catalog = await _oauth_service(
+        tmp_path
+    )
+    store.commit_credentials(_stored_credentials(), expected_generation=0)
+    catalog.get_started = asyncio.Event()
+    catalog.get_release = asyncio.Event()
+
+    refresh_task = asyncio.create_task(service.refresh_models())
+    await catalog.get_started.wait()
+    logout_task = asyncio.create_task(service.logout())
+    await asyncio.sleep(0)
+    catalog.get_release.set()
+    await asyncio.gather(refresh_task, logout_task)
+
+    assert store.load_credentials() is None
+    assert not any(
+        profile.get("managed_by") == MANAGED_BY
+        for profile in model_catalog.load()["services"]["llm"]["profiles"]
+    )
 
 
 @pytest.mark.asyncio

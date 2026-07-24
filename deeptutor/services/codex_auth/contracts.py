@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import base64
-import json
 from dataclasses import dataclass, field
+import json
 from typing import Any, Literal, Mapping
 
 CatalogSource = Literal["live", "fresh-cache", "revalidated-cache", "stale-cache"]
@@ -61,14 +61,41 @@ class CodexCredentials:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> CodexCredentials:
         try:
+            schema_version = payload["schema_version"]
+            access_token = payload["access_token"]
+            refresh_token = payload["refresh_token"]
+            id_token = payload["id_token"]
+            account_id = payload["account_id"]
+            expires_at = payload["expires_at"]
+            generation = payload["generation"]
+            if (
+                isinstance(schema_version, bool)
+                or schema_version != 1
+                or not all(
+                    isinstance(value, str) and bool(value)
+                    for value in (
+                        access_token,
+                        refresh_token,
+                        id_token,
+                        account_id,
+                    )
+                )
+                or isinstance(expires_at, bool)
+                or not isinstance(expires_at, int)
+                or expires_at <= 0
+                or isinstance(generation, bool)
+                or not isinstance(generation, int)
+                or generation < 0
+            ):
+                raise ValueError
             return cls(
-                schema_version=int(payload["schema_version"]),
-                access_token=str(payload["access_token"]),
-                refresh_token=str(payload["refresh_token"]),
-                id_token=str(payload["id_token"]),
-                account_id=str(payload["account_id"]),
-                expires_at=int(payload["expires_at"]),
-                generation=int(payload["generation"]),
+                schema_version=schema_version,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                id_token=id_token,
+                account_id=account_id,
+                expires_at=expires_at,
+                generation=generation,
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise CodexAuthError(

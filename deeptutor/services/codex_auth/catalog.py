@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import hashlib
 import time
-from dataclasses import replace
 from typing import Any, Callable, Mapping
 
 import httpx

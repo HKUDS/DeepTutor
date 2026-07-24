@@ -113,6 +113,39 @@ def test_credentials_round_trip_and_public_token() -> None:
     assert not hasattr(restored.public_token(), "refresh_token")
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("access_token", None),
+        ("refresh_token", ""),
+        ("id_token", 123),
+        ("account_id", None),
+        ("expires_at", True),
+        ("generation", True),
+        ("schema_version", 2),
+    ],
+)
+def test_credentials_reject_corrupt_field_types(
+    field: str,
+    value: object,
+) -> None:
+    payload = CodexCredentials(
+        schema_version=1,
+        access_token="access-secret",
+        refresh_token="refresh-secret",
+        id_token="id-secret",
+        account_id="account-123",
+        expires_at=2_000_000_000,
+        generation=7,
+    ).to_dict()
+    payload[field] = value
+
+    with pytest.raises(CodexAuthError) as exc_info:
+        CodexCredentials.from_dict(payload)
+
+    assert exc_info.value.code == "credential_corrupt"
+
+
 def test_catalog_snapshot_round_trip_preserves_tuples() -> None:
     snapshot = CatalogSnapshot(
         models=(_model(),),

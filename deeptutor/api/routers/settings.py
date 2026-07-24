@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.model_access import allowed_llm_options
+from deeptutor.services.codex_auth import CodexAuthError, get_codex_oauth_service
 from deeptutor.services.config import (
     get_config_test_runner,
     get_model_catalog_service,
@@ -33,7 +34,6 @@ from deeptutor.services.config.runtime_settings import (
     CHAT_ATTACHMENT_MAX_TOTAL_MB_RANGE,
     compute_ws_max_size,
 )
-from deeptutor.services.codex_auth import CodexAuthError, get_codex_oauth_service
 from deeptutor.services.embedding.client import reset_embedding_client
 from deeptutor.services.llm.client import reset_llm_client
 from deeptutor.services.llm.config import clear_llm_config_cache

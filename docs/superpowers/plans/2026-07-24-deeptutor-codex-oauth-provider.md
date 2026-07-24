@@ -1555,7 +1555,11 @@ Run:
 
 Expected: zero failures; existing environment-only skips are reported as skips.
 
-- [ ] **Step 2: Python lint 与依赖检查**
+Windows 实测：`2786 passed, 10 skipped, 24 failed`。失败集中在未改动的可选
+Partners 依赖，以及 POSIX 路径、`resource`、`sleep` 和 symlink 权限测试；
+本 PR 聚焦套件另行全绿，完整 Linux 结果交由 PR CI 验证。
+
+- [x] **Step 2: Python lint 与依赖检查**
 
 Run:
 
@@ -1570,7 +1574,7 @@ Run:
 
 Expected: both commands exit 0.
 
-- [ ] **Step 3: Web 全量验证**
+- [x] **Step 3: Web 全量验证**
 
 Run:
 
@@ -1586,7 +1590,7 @@ Set-Location ..
 
 Expected: all commands exit 0.
 
-- [ ] **Step 4: medium 深度代码审查**
+- [x] **Step 4: medium 深度代码审查**
 
 按 `origin/main...HEAD` 逐文件审查：
 

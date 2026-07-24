@@ -67,17 +67,20 @@ export function CodexOAuthCard() {
   }, [reloadSettings, status]);
 
   const signIn = async () => {
+    const authWindow = window.open("about:blank", "_blank", "popup");
+    if (authWindow) authWindow.opener = null;
     setPending(true);
     setErrorKey(null);
     try {
       const started = await startCodexLogin();
-      window.open(
-        started.authorize_url,
-        "_blank",
-        "noopener,noreferrer",
-      );
+      if (authWindow) {
+        authWindow.location.replace(started.authorize_url);
+      } else {
+        window.location.assign(started.authorize_url);
+      }
       setStatus(await getCodexStatus());
     } catch (error) {
+      authWindow?.close();
       setErrorKey(
         codexErrorMessageKey(
           error instanceof CodexOAuthApiError ? error.code : null,

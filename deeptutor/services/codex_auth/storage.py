@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from dataclasses import replace
 import json
 import os
+from pathlib import Path
 import stat
 import tempfile
 import threading
-from contextlib import contextmanager
-from dataclasses import replace
-from pathlib import Path
 from typing import Any, BinaryIO, Iterator, Mapping
 
 from .contracts import CodexAuthError, CodexCredentials
