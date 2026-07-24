@@ -183,3 +183,11 @@ class TestStripFrontmatter:
 
     def test_passthrough_without_frontmatter(self):
         assert strip_frontmatter("# Plain") == "# Plain"
+
+    def test_ignores_triple_dash_prefix_that_is_not_a_fence(self):
+        text = "---\nname: Ada\n---not-a-fence\nactual: keep\n"
+        assert strip_frontmatter(text) == text
+
+    def test_preserves_horizontal_rule_in_body(self):
+        text = "---\ntitle: T\n---\nIntro\n\n---\n\nSection\n"
+        assert strip_frontmatter(text) == "Intro\n\n---\n\nSection\n"
