@@ -150,7 +150,7 @@ Expected: Windows 回归测试、全部 Node 测试和 TypeScript 检查通过�
 - Create: `deeptutor/services/codex_auth/__init__.py`
 - Test: `tests/services/codex_auth/test_contracts.py`
 
-- [ ] **Step 1: 写失败测试，固定上游常量和 JWT 只取必要字段**
+- [x] **Step 1: 写失败测试，固定上游常量和 JWT 只取必要字段**
 
 ```python
 def test_codex_upstream_contract_is_pinned() -> None:
@@ -176,7 +176,7 @@ def test_decode_token_claims_drops_email() -> None:
     assert "email" not in repr(claims).lower()
 ```
 
-- [ ] **Step 2: 运行测试并确认因模块不存在而失败**
+- [x] **Step 2: 运行测试并确认因模块不存在而失败**
 
 Run:
 
@@ -186,7 +186,7 @@ Run:
 
 Expected: collection fails with `ModuleNotFoundError: deeptutor.services.codex_auth`.
 
-- [ ] **Step 3: 实现最小常量与不可变数据契约**
+- [x] **Step 3: 实现最小常量与不可变数据契约**
 
 `constants.py` 必须集中定义：
 
@@ -280,7 +280,7 @@ exchange 是信任边界，JWT 解码不被描述成签名验证。
 `CodexAuthError` 固定包含 `code`、`public_message` 和 `http_status`，`str(error)` 只能返回
 公开消息。
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run:
 
@@ -290,7 +290,7 @@ Run:
 
 Expected: all tests pass.
 
-- [ ] **Step 5: 中文提交**
+- [x] **Step 5: 中文提交**
 
 ```powershell
 git add deeptutor/services/codex_auth tests/services/codex_auth/test_contracts.py
