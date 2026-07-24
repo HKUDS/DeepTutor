@@ -72,3 +72,22 @@ def split_message(content: str, max_len: int = 2000) -> list[str]:
         chunks.append(content[:pos])
         content = content[pos:].lstrip()
     return chunks
+
+def convert_markdown_table_to_labeled_rows(table_text: str) -> str:
+    """Convert a Markdown pipe table to labeled rows (for Slack-style text).
+
+    Empty cells are kept so blank columns are not dropped.
+    """
+    lines = [ln.strip() for ln in table_text.strip().splitlines() if ln.strip()]
+    if len(lines) < 2:
+        return table_text
+    headers = [h.strip() for h in lines[0].strip('|').split('|')]
+    start = 2 if re.fullmatch(r'[|\s:\-]+', lines[1]) else 1
+    rows: list[str] = []
+    for line in lines[start:]:
+        cells = [c.strip() for c in line.strip('|').split('|')]
+        cells = (cells + [''] * len(headers))[: len(headers)]
+        parts = [f'**{headers[i]}**: {cells[i]}' for i in range(len(headers))]
+        if parts:
+            rows.append(' · '.join(parts))
+    return chr(10).join(rows)
