@@ -36,16 +36,25 @@ responses    = https://chatgpt.com/backend-api/codex/responses
 
 这些端点属于实验性 Codex 兼容面，不被描述成稳定公开 API。
 
-- [ ] **Step 0.1: 从已提交设计与计划的当前 HEAD 创建功能分支**
+- [ ] **Step 0.1: 准备被 Git 忽略的本地 worktree 目录**
 
 ```powershell
-git switch -c feat/codex-oauth-provider
-git merge-base --is-ancestor origin/main HEAD
-git rev-list --left-right --count origin/main...HEAD
+git check-ignore -q .worktrees
 ```
 
-Expected: 新分支创建成功；`origin/main` 是 HEAD 的祖先；右侧计数只包含设计、计划和后续
-功能提交。
+Expected: exit 0，证明 `.worktrees/` 不会进入版本控制。
+
+- [ ] **Step 0.2: 从已提交设计与计划的当前 HEAD 创建隔离功能 worktree**
+
+```powershell
+git worktree add '.worktrees/feat-codex-oauth-provider' `
+  -b feat/codex-oauth-provider HEAD
+git -C '.worktrees/feat-codex-oauth-provider' merge-base --is-ancestor origin/main HEAD
+git -C '.worktrees/feat-codex-oauth-provider' rev-list --left-right --count origin/main...HEAD
+```
+
+Expected: worktree 和新分支创建成功；`origin/main` 是 HEAD 的祖先；右侧计数只包含设计、
+计划和后续功能提交。
 
 ## 1. 文件结构
 

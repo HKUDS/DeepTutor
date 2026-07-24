@@ -15,6 +15,7 @@ deeptutor/services/rag/eg_only_for_analysis/
 /site/
 .claude
 .agents/
+.worktrees/
 
 # LaTeX build artifacts
 *.aux
