@@ -93,8 +93,13 @@ export function useKnowledgeBases() {
         const typedKbs = kbList as KnowledgeBase[];
         setKbs(typedKbs);
         setUploadPolicy(policy);
-        setProviders(
-          providerList.length ? providerList : DEFAULT_PROVIDER_FALLBACK,
+        const newProviders = providerList.length
+          ? providerList
+          : DEFAULT_PROVIDER_FALLBACK;
+        setProviders((prev) =>
+          JSON.stringify(prev) === JSON.stringify(newProviders)
+            ? prev
+            : newProviders,
         );
 
         // Auto-resubscribe to progress for KBs that are still live
