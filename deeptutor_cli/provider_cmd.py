@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+import webbrowser
+
 import typer
+
+from deeptutor.services.codex_auth import CodexAuthError, get_codex_oauth_service
 
 from .common import maybe_run
 
@@ -18,7 +23,7 @@ def register(app: typer.Typer) -> None:
         """Authenticate or validate provider access."""
         key = provider.strip().lower().replace("-", "_")
         if key == "openai_codex":
-            _login_openai_codex()
+            maybe_run(_login_openai_codex())
             return
         if key == "github_copilot":
             maybe_run(_login_github_copilot())
@@ -28,30 +33,36 @@ def register(app: typer.Typer) -> None:
         )
 
 
-def _login_openai_codex() -> None:
+async def _login_openai_codex() -> None:
+    service = get_codex_oauth_service()
     try:
-        from oauth_cli_kit import get_token, login_oauth_interactive
-    except ImportError:
+        started = await service.start_login()
+        authorize_url = str(started["authorize_url"])
         typer.echo(
-            "oauth_cli_kit is not installed. Install CLI deps from a local checkout: "
-            "python -m pip install -e ./packaging/deeptutor-cli"
+            "正在浏览器中打开 OpenAI Codex 登录；凭据仅保存到 DeepTutor 私有凭据目录。"
         )
-        raise typer.Exit(code=1)
+        if not webbrowser.open(authorize_url):
+            typer.echo(f"浏览器未自动打开，请访问：{authorize_url}")
 
-    token = None
-    try:
-        token = get_token()
-    except Exception:
-        token = None
-    if not (token and getattr(token, "access", None)):
-        token = login_oauth_interactive(
-            print_fn=typer.echo,
-            prompt_fn=typer.prompt,
-        )
-    if not (token and getattr(token, "access", None)):
-        typer.echo("OpenAI Codex OAuth authentication failed.")
+        while True:
+            status = service.public_status()
+            operation_state = status.get("operation_state")
+            if operation_state == "completed":
+                active_model = status.get("active_model") or "未自动切换模型"
+                typer.echo(f"OpenAI Codex 登录成功。当前模型：{active_model}")
+                return
+            if operation_state in {"failed", "expired", "cancelled"}:
+                error_code = status.get("error_code") or operation_state
+                typer.echo(f"OpenAI Codex 登录未完成：{error_code}")
+                raise typer.Exit(code=1)
+            await asyncio.sleep(0.5)
+    except asyncio.CancelledError:
+        await service.cancel_login()
+        typer.echo("已取消 OpenAI Codex 登录。")
+        raise typer.Exit(code=130) from None
+    except CodexAuthError as exc:
+        typer.echo(f"OpenAI Codex 登录失败：{exc.public_message}")
         raise typer.Exit(code=1)
-    typer.echo("OpenAI Codex OAuth authentication succeeded.")
 
 
 async def _login_github_copilot() -> None:

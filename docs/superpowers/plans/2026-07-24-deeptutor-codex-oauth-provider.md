@@ -1162,13 +1162,14 @@ git commit -m "feat: 接入 DeepTutor 独立 Codex 凭据"
 - Modify: `deeptutor_cli/provider_cmd.py`
 - Modify: `tests/cli/test_provider_cli.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 def test_openai_codex_cli_does_not_import_codex_cli_credentials() -> None:
     assert "oauth_cli_kit" not in PROVIDER_CMD
     assert "get_codex_oauth_service" in PROVIDER_CMD
-    assert ".codex" not in PROVIDER_CMD
+    assert "~/.codex" not in PROVIDER_CMD
+    assert "Path.home" not in PROVIDER_CMD
 
 
 def test_cli_opens_authorize_url_and_waits_for_completion(monkeypatch) -> None:
@@ -1183,7 +1184,7 @@ def test_cli_opens_authorize_url_and_waits_for_completion(monkeypatch) -> None:
     assert "DeepTutor 私有凭据" in result.stdout
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -1193,7 +1194,7 @@ Run:
 
 Expected: source contract still finds `oauth_cli_kit`.
 
-- [ ] **Step 3: 改造 CLI**
+- [x] **Step 3: 改造 CLI**
 
 CLI 使用 `maybe_run(_login_openai_codex())`。协程调用同一
 `get_codex_oauth_service().start_login()`，用 `webbrowser.open(authorize_url)` 打开页面，
@@ -1202,7 +1203,7 @@ CLI 使用 `maybe_run(_login_openai_codex())`。协程调用同一
 
 `oauth-cli-kit` 依赖继续保留给 GitHub Copilot，不再用于 OpenAI Codex。
 
-- [ ] **Step 4: 运行 CLI 测试**
+- [x] **Step 4: 运行 CLI 测试**
 
 Run:
 
@@ -1212,7 +1213,7 @@ Run:
 
 Expected: all tests pass.
 
-- [ ] **Step 5: 中文提交**
+- [x] **Step 5: 中文提交**
 
 ```powershell
 git add deeptutor_cli/provider_cmd.py tests/cli/test_provider_cli.py
