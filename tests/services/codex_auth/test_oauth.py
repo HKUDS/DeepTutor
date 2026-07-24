@@ -1,0 +1,208 @@
+from __future__ import annotations
+
+import asyncio
+import json
+from urllib.parse import parse_qs, urlsplit
+
+import httpx
+import pytest
+
+from deeptutor.services.codex_auth.constants import (
+    CODEX_OAUTH_CLIENT_ID,
+    CODEX_OAUTH_SCOPE,
+)
+from deeptutor.services.codex_auth.contracts import CodexAuthError, CodexCredentials
+from deeptutor.services.codex_auth.oauth import (
+    CodexOAuthClient,
+    LoopbackCallback,
+    PkceCodes,
+    build_authorize_url,
+    generate_pkce,
+)
+
+
+async def _send_get(port: int, target: str) -> str:
+    reader, writer = await asyncio.open_connection("127.0.0.1", port)
+    writer.write(
+        f"GET {target} HTTP/1.1\r\nHost: localhost:{port}\r\nConnection: close\r\n\r\n".encode()
+    )
+    await writer.drain()
+    response = (await reader.read()).decode("utf-8", errors="replace")
+    writer.close()
+    await writer.wait_closed()
+    return response
+
+
+def _credentials() -> CodexCredentials:
+    return CodexCredentials(
+        schema_version=1,
+        access_token="access-secret",
+        refresh_token="refresh-secret",
+        id_token="id-secret",
+        account_id="account-123",
+        expires_at=2_000_000_000,
+        generation=1,
+    )
+
+
+def test_authorize_url_matches_audited_codex_contract() -> None:
+    pkce = PkceCodes(verifier="v" * 64, challenge="challenge")
+    url = build_authorize_url(
+        redirect_uri="http://localhost:1455/auth/callback",
+        state="state-123",
+        pkce=pkce,
+    )
+    query = parse_qs(urlsplit(url).query)
+
+    assert query["client_id"] == [CODEX_OAUTH_CLIENT_ID]
+    assert query["scope"] == [CODEX_OAUTH_SCOPE]
+    assert query["code_challenge_method"] == ["S256"]
+    assert query["state"] == ["state-123"]
+    assert query["id_token_add_organizations"] == ["true"]
+    assert query["codex_cli_simplified_flow"] == ["true"]
+    assert query["originator"] == ["codex_cli_rs"]
+
+
+def test_generated_pkce_is_url_safe_and_self_consistent() -> None:
+    first = generate_pkce()
+    second = generate_pkce()
+
+    assert 43 <= len(first.verifier) <= 128
+    assert "=" not in first.verifier
+    assert "=" not in first.challenge
+    assert first != second
+
+
+@pytest.mark.asyncio
+async def test_loopback_accepts_callback_without_echoing_secrets() -> None:
+    callback = await LoopbackCallback.start(ports=(0,))
+
+    response = await _send_get(
+        callback.port,
+        "/auth/callback?code=secret-code&state=expected",
+    )
+    result = await callback.wait(timeout=1)
+
+    assert result.code == "secret-code"
+    assert result.state == "expected"
+    assert result.error is None
+    assert "200 OK" in response
+    assert "secret-code" not in response
+    assert "expected" not in response
+
+
+@pytest.mark.asyncio
+async def test_loopback_ignores_wrong_path_then_accepts_oauth_error() -> None:
+    callback = await LoopbackCallback.start(ports=(0,))
+
+    response = await _send_get(callback.port, "/wrong?code=do-not-accept")
+    assert "404 Not Found" in response
+    result_task = asyncio.create_task(callback.wait(timeout=1))
+    await asyncio.sleep(0)
+    assert not result_task.done()
+
+    await _send_get(
+        callback.port,
+        "/auth/callback?error=access_denied&state=expected",
+    )
+    result = await result_task
+    assert result.code is None
+    assert result.error == "access_denied"
+    assert result.state == "expected"
+
+
+@pytest.mark.asyncio
+async def test_loopback_falls_back_when_first_port_is_occupied() -> None:
+    occupied = await asyncio.start_server(lambda _reader, _writer: None, "127.0.0.1", 0)
+    occupied_port = int(occupied.sockets[0].getsockname()[1])
+    callback = await LoopbackCallback.start(ports=(occupied_port, 0))
+    try:
+        assert callback.host == "127.0.0.1"
+        assert callback.port != occupied_port
+    finally:
+        await callback.cancel()
+        occupied.close()
+        await occupied.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_loopback_timeout_and_cancel_are_public_errors() -> None:
+    timed_out = await LoopbackCallback.start(ports=(0,))
+    with pytest.raises(CodexAuthError) as timeout_error:
+        await timed_out.wait(timeout=0.01)
+    assert timeout_error.value.code == "login_timeout"
+
+    cancelled = await LoopbackCallback.start(ports=(0,))
+    waiter = asyncio.create_task(cancelled.wait(timeout=1))
+    await asyncio.sleep(0)
+    await cancelled.cancel()
+    with pytest.raises(CodexAuthError) as cancel_error:
+        await waiter
+    assert cancel_error.value.code == "login_cancelled"
+
+
+@pytest.mark.asyncio
+async def test_oauth_http_requests_match_exchange_refresh_and_revoke_contracts() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path.endswith("/revoke"):
+            return httpx.Response(200)
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "new-access",
+                "refresh_token": "new-refresh",
+                "id_token": "new-id",
+                "expires_in": 3600,
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        client = CodexOAuthClient(http)
+        exchanged = await client.exchange_code(
+            code="authorization-code",
+            redirect_uri="http://localhost:1455/auth/callback",
+            verifier="verifier",
+        )
+        refreshed = await client.refresh("refresh-secret")
+        await client.revoke(_credentials())
+
+    exchange_body = parse_qs(requests[0].content.decode())
+    assert requests[0].headers["content-type"].startswith("application/x-www-form-urlencoded")
+    assert exchange_body == {
+        "client_id": [CODEX_OAUTH_CLIENT_ID],
+        "grant_type": ["authorization_code"],
+        "code": ["authorization-code"],
+        "redirect_uri": ["http://localhost:1455/auth/callback"],
+        "code_verifier": ["verifier"],
+    }
+    assert json.loads(requests[1].content) == {
+        "client_id": CODEX_OAUTH_CLIENT_ID,
+        "grant_type": "refresh_token",
+        "refresh_token": "refresh-secret",
+    }
+    revoke_body = parse_qs(requests[2].content.decode())
+    assert revoke_body == {
+        "client_id": [CODEX_OAUTH_CLIENT_ID],
+        "token": ["refresh-secret"],
+        "token_type_hint": ["refresh_token"],
+    }
+    assert exchanged["access_token"] == "new-access"
+    assert refreshed["refresh_token"] == "new-refresh"
+
+
+@pytest.mark.asyncio
+async def test_oauth_http_failure_does_not_echo_upstream_body() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, text="private-upstream-detail")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        client = CodexOAuthClient(http)
+        with pytest.raises(CodexAuthError) as exc_info:
+            await client.refresh("refresh-secret")
+
+    assert exc_info.value.code == "token_refresh_failed"
+    assert "private-upstream-detail" not in str(exc_info.value)
+    assert "refresh-secret" not in str(exc_info.value)

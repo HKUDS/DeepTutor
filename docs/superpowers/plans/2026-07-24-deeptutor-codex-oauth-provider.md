@@ -431,7 +431,7 @@ git commit -m "feat: 添加 Codex 独立凭据存储"
 - Create: `deeptutor/services/codex_auth/oauth.py`
 - Test: `tests/services/codex_auth/test_oauth.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 def test_authorize_url_matches_audited_codex_contract() -> None:
@@ -465,7 +465,7 @@ async def test_loopback_accepts_one_matching_callback() -> None:
 另写测试覆盖错误 path、OAuth error query、取消、超时、1455 被占用后使用 1457、只绑定
 `127.0.0.1`、HTML 响应不回显 code/state，以及 token exchange/refresh/revoke 的请求体。
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -475,7 +475,7 @@ Run:
 
 Expected: missing `oauth` module.
 
-- [ ] **Step 3: 实现 OAuth 边界**
+- [x] **Step 3: 实现 OAuth 边界**
 
 以下数据结构作为固定接口：
 
@@ -511,7 +511,7 @@ class OAuthCallbackResult:
 撤销优先 refresh token，并发送 `token_type_hint=refresh_token` 和 client ID；失败只抛
 脱敏异常。httpx 异常和上游 body 不进入普通日志。
 
-- [ ] **Step 4: 运行 OAuth 测试**
+- [x] **Step 4: 运行 OAuth 测试**
 
 Run:
 
@@ -521,7 +521,7 @@ Run:
 
 Expected: all tests pass.
 
-- [ ] **Step 5: 中文提交**
+- [x] **Step 5: 中文提交**
 
 ```powershell
 git add deeptutor/services/codex_auth/oauth.py tests/services/codex_auth/test_oauth.py
