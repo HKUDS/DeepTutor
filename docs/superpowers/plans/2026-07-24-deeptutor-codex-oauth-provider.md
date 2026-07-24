@@ -536,7 +536,7 @@ git commit -m "feat: 实现 Codex 浏览器 OAuth 流程"
 - Test: `tests/services/codex_auth/test_catalog.py`
 - Add fixture: `tests/services/codex_auth/fixtures/models-response.json`
 
-- [ ] **Step 1: 写官方 schema 风格 fixture 与失败测试**
+- [x] **Step 1: 写官方 schema 风格 fixture 与失败测试**
 
 Fixture 至少包含：
 
@@ -602,7 +602,7 @@ async def test_live_catalog_uses_account_headers_and_client_version(
 - 旧 generation、另一账户、401 和 403 不使用缓存；
 - stale cache 不能作为自动切换依据。
 
-- [ ] **Step 2: 运行目录测试确认失败**
+- [x] **Step 2: 运行目录测试确认失败**
 
 Run:
 
@@ -612,7 +612,7 @@ Run:
 
 Expected: missing `catalog` module.
 
-- [ ] **Step 3: 实现目录客户端**
+- [x] **Step 3: 实现目录客户端**
 
 `CodexModelCatalog` 构造函数接受 `CodexCredentialStore`、可注入的
 `httpx.AsyncClient` 和 `clock`。公开异步方法固定为
@@ -628,7 +628,7 @@ account_hash = hashlib.sha256(credentials.account_id.encode("utf-8")).hexdigest(
 `catalog_unauthorized` / `catalog_forbidden` 并清缓存。只有 HTTP 200 或 304 能产生
 `live` / `revalidated-cache`；磁盘新鲜缓存为 `fresh-cache`，网络降级为 `stale-cache`。
 
-- [ ] **Step 4: 运行目录测试**
+- [x] **Step 4: 运行目录测试**
 
 Run:
 
@@ -638,7 +638,7 @@ Run:
 
 Expected: all tests pass.
 
-- [ ] **Step 5: 中文提交**
+- [x] **Step 5: 中文提交**
 
 ```powershell
 git add deeptutor/services/codex_auth/catalog.py tests/services/codex_auth
