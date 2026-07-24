@@ -788,7 +788,7 @@ git commit -m "feat: 同步受管理的 Codex 模型配置"
 - Modify: `deeptutor/services/codex_auth/__init__.py`
 - Test: `tests/services/codex_auth/test_service.py`
 
-- [ ] **Step 1: 扩展失败测试覆盖完整状态机**
+- [x] **Step 1: 扩展失败测试覆盖完整状态机**
 
 ```python
 @pytest.mark.asyncio
@@ -851,7 +851,7 @@ async def test_logout_rejected_while_inference_is_active(
 - operation 不持久化，重新实例化只恢复 connected 状态；
 - public status 不含 token、email、完整 account ID 和上游正文。
 
-- [ ] **Step 2: 运行测试并确认失败**
+- [x] **Step 2: 运行测试并确认失败**
 
 Run:
 
@@ -861,7 +861,7 @@ Run:
 
 Expected: state-machine methods are missing.
 
-- [ ] **Step 3: 实现 `CodexOAuthService`**
+- [x] **Step 3: 实现 `CodexOAuthService`**
 
 `CodexOAuthService` 的公开接口固定为：
 
@@ -887,7 +887,7 @@ catalog = CodexModelCatalog(store)
 return CodexOAuthService(store, catalog, get_model_catalog_service())
 ```
 
-- [ ] **Step 4: 运行服务测试**
+- [x] **Step 4: 运行服务测试**
 
 Run:
 
@@ -897,7 +897,7 @@ Run:
 
 Expected: all Codex auth tests pass.
 
-- [ ] **Step 5: 中文提交**
+- [x] **Step 5: 中文提交**
 
 ```powershell
 git add deeptutor/services/codex_auth tests/services/codex_auth

@@ -1,16 +1,30 @@
 from __future__ import annotations
 
+import asyncio
 from copy import deepcopy
+import json
 from pathlib import Path
+from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
-from deeptutor.services.codex_auth.contracts import CatalogSnapshot, CodexModel
+import pytest
+
+from deeptutor.services.codex_auth.contracts import (
+    CatalogSnapshot,
+    CodexAuthError,
+    CodexCredentials,
+    CodexModel,
+)
+from deeptutor.services.codex_auth.oauth import OAuthCallbackResult
 from deeptutor.services.codex_auth.service import (
     CODEX_PROFILE_ID,
     MANAGED_BY,
+    CodexOAuthService,
     codex_model_id,
     remove_codex_catalog,
     sync_codex_catalog,
 )
+from deeptutor.services.codex_auth.storage import CodexCredentialStore
 from deeptutor.services.config.model_catalog import ModelCatalogService
 
 
@@ -251,3 +265,447 @@ def test_catalog_sync_does_not_touch_neighboring_history_file(tmp_path: Path) ->
     )
 
     assert history.read_text(encoding="utf-8") == '{"model":"old"}'
+
+
+class FakeCallback:
+    port = 1455
+
+    def __init__(self, error: CodexAuthError | None = None) -> None:
+        self._result: asyncio.Future[OAuthCallbackResult] = (
+            asyncio.get_running_loop().create_future()
+        )
+        self.error = error
+
+    async def wait(self, timeout: float) -> OAuthCallbackResult:
+        if self.error is not None:
+            raise self.error
+        return await asyncio.wait_for(asyncio.shield(self._result), timeout)
+
+    async def cancel(self) -> None:
+        if not self._result.done():
+            self._result.set_exception(
+                CodexAuthError("login_cancelled", "Codex sign-in was cancelled.", 409)
+            )
+
+    def complete(self, authorize_url: str, *, code: str = "authorization-code") -> None:
+        state = parse_qs(urlsplit(authorize_url).query)["state"][0]
+        self._result.set_result(
+            OAuthCallbackResult(code=code, state=state, error=None)
+        )
+
+    def complete_with_state(self, state: str) -> None:
+        self._result.set_result(
+            OAuthCallbackResult(code="authorization-code", state=state, error=None)
+        )
+
+
+class FakeOAuthClient:
+    def __init__(self) -> None:
+        self.exchange_payload: dict[str, Any] = {
+            "access_token": "new-access",
+            "refresh_token": "new-refresh",
+            "id_token": "new-id",
+            "account_id": "account-123",
+            "expires_in": 3_600,
+        }
+        self.refresh_payload: dict[str, Any] = {
+            "access_token": "refreshed-access",
+            "refresh_token": "refreshed-refresh",
+            "id_token": "refreshed-id",
+            "account_id": "account-123",
+            "expires_in": 3_600,
+        }
+        self.exchange_error: CodexAuthError | None = None
+        self.revoke_error: CodexAuthError | None = None
+        self.refresh_started: asyncio.Event | None = None
+        self.refresh_release: asyncio.Event | None = None
+        self.refresh_calls = 0
+
+    async def exchange_code(
+        self,
+        code: str,
+        redirect_uri: str,
+        verifier: str,
+    ) -> dict[str, Any]:
+        del code, redirect_uri, verifier
+        if self.exchange_error is not None:
+            raise self.exchange_error
+        return dict(self.exchange_payload)
+
+    async def refresh(self, refresh_token: str) -> dict[str, Any]:
+        del refresh_token
+        self.refresh_calls += 1
+        if self.refresh_started is not None:
+            self.refresh_started.set()
+        if self.refresh_release is not None:
+            await self.refresh_release.wait()
+        return dict(self.refresh_payload)
+
+    async def revoke(self, credentials: CodexCredentials) -> None:
+        del credentials
+        if self.revoke_error is not None:
+            raise self.revoke_error
+
+
+class FakeCatalog:
+    def __init__(
+        self,
+        snapshot: CatalogSnapshot,
+        error: CodexAuthError | None = None,
+    ) -> None:
+        self.snapshot = snapshot
+        self.error = error
+        self.calls: list[tuple[int, bool]] = []
+        self.invalidated = False
+
+    async def get(
+        self,
+        credentials: CodexCredentials,
+        force: bool,
+    ) -> CatalogSnapshot:
+        self.calls.append((credentials.generation, force))
+        if self.error is not None:
+            raise self.error
+        return self.snapshot
+
+    async def invalidate(self) -> None:
+        self.invalidated = True
+
+
+def _stored_credentials(
+    token: str = "old",
+    *,
+    expires_at: int = 10_000,
+) -> CodexCredentials:
+    return CodexCredentials(
+        schema_version=1,
+        access_token=f"{token}-access",
+        refresh_token=f"{token}-refresh",
+        id_token=f"{token}-id",
+        account_id="account-123",
+        expires_at=expires_at,
+        generation=0,
+    )
+
+
+async def _oauth_service(
+    tmp_path: Path,
+    *,
+    callback_error: CodexAuthError | None = None,
+    catalog_error: CodexAuthError | None = None,
+    clock: list[int] | None = None,
+) -> tuple[
+    CodexOAuthService,
+    FakeCallback,
+    FakeOAuthClient,
+    FakeCatalog,
+    CodexCredentialStore,
+    ModelCatalogService,
+]:
+    callback = FakeCallback(callback_error)
+    oauth = FakeOAuthClient()
+    snapshot = _snapshot("live", _model("gpt-5.6-sol"))
+    catalog = FakeCatalog(snapshot, catalog_error)
+    store = CodexCredentialStore(tmp_path)
+    model_catalog, _original = _seeded_service(tmp_path)
+
+    async def callback_factory() -> FakeCallback:
+        return callback
+
+    service = CodexOAuthService(
+        store,
+        catalog,
+        model_catalog,
+        oauth_client=oauth,
+        callback_factory=callback_factory,
+        clock=(lambda: (clock or [1_000])[0]),
+    )
+    return service, callback, oauth, catalog, store, model_catalog
+
+
+async def _wait_until_terminal(service: CodexOAuthService) -> dict[str, Any]:
+    for _ in range(100):
+        status = service.public_status()
+        if status["operation_state"] in {
+            "completed",
+            "cancelled",
+            "expired",
+            "failed",
+        }:
+            return status
+        await asyncio.sleep(0)
+    raise AssertionError("Codex login operation did not finish")
+
+
+@pytest.mark.asyncio
+async def test_successful_live_login_switches_only_exact_sol(tmp_path: Path) -> None:
+    service, callback, _oauth, _catalog, _store, _models = await _oauth_service(
+        tmp_path
+    )
+
+    started = await service.start_login()
+    duplicate = await service.start_login()
+    callback.complete(started["authorize_url"])
+    status = await _wait_until_terminal(service)
+
+    assert duplicate == started
+    assert status["connection"] == "connected"
+    assert status["operation_state"] == "completed"
+    assert status["catalog_source"] == "live"
+    assert status["active_model"] == "gpt-5.6-sol"
+    assert status["auto_switched"] is True
+    assert set(started) == {"operation_id", "authorize_url", "expires_in"}
+
+
+@pytest.mark.asyncio
+async def test_catalog_failure_keeps_auth_but_not_selection(tmp_path: Path) -> None:
+    service, callback, _oauth, _catalog, store, model_catalog = await _oauth_service(
+        tmp_path,
+        catalog_error=CodexAuthError(
+            "catalog_unavailable",
+            "The Codex model catalog is unavailable.",
+            503,
+        ),
+    )
+    original_selection = _selection(model_catalog.load())
+
+    started = await service.start_login()
+    callback.complete(started["authorize_url"])
+    status = await _wait_until_terminal(service)
+
+    assert status["connection"] == "connected"
+    assert status["operation_state"] == "failed"
+    assert status["error_code"] == "catalog_unavailable"
+    assert _selection(model_catalog.load()) == original_selection
+    assert store.load_credentials() is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["state", "timeout", "exchange"])
+async def test_login_failures_do_not_overwrite_old_credentials(
+    tmp_path: Path,
+    failure: str,
+) -> None:
+    callback_error = (
+        CodexAuthError("login_timeout", "Codex sign-in timed out.", 408)
+        if failure == "timeout"
+        else None
+    )
+    service, callback, oauth, _catalog, store, _models = await _oauth_service(
+        tmp_path,
+        callback_error=callback_error,
+    )
+    old = store.commit_credentials(_stored_credentials(), expected_generation=0)
+    if failure == "exchange":
+        oauth.exchange_error = CodexAuthError(
+            "token_exchange_failed",
+            "Codex sign-in could not be completed.",
+            502,
+        )
+
+    started = await service.start_login()
+    if failure == "state":
+        callback.complete_with_state("wrong-state")
+    elif failure == "exchange":
+        callback.complete(started["authorize_url"])
+    status = await _wait_until_terminal(service)
+
+    loaded = store.load_credentials()
+    assert loaded is not None
+    assert loaded.access_token == old.access_token
+    assert status["operation_state"] == ("expired" if failure == "timeout" else "failed")
+
+
+@pytest.mark.asyncio
+async def test_cancel_login_preserves_existing_credentials(tmp_path: Path) -> None:
+    service, _callback, _oauth, _catalog, store, _models = await _oauth_service(
+        tmp_path
+    )
+    old = store.commit_credentials(_stored_credentials(), expected_generation=0)
+
+    await service.start_login()
+    status = await service.cancel_login()
+
+    loaded = store.load_credentials()
+    assert loaded is not None
+    assert loaded.access_token == old.access_token
+    assert status["operation_state"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_get_token_refreshes_inside_five_minute_window(tmp_path: Path) -> None:
+    clock = [1_000]
+    service, _callback, oauth, _catalog, store, _models = await _oauth_service(
+        tmp_path,
+        clock=clock,
+    )
+    store.commit_credentials(
+        _stored_credentials(expires_at=1_200),
+        expected_generation=0,
+    )
+
+    token = await service.get_token()
+
+    assert oauth.refresh_calls == 1
+    assert token.access_token == "refreshed-access"
+    assert token.generation == 2
+
+
+@pytest.mark.asyncio
+async def test_refresh_rejects_changed_account_without_overwriting(tmp_path: Path) -> None:
+    clock = [1_000]
+    service, _callback, oauth, _catalog, store, _models = await _oauth_service(
+        tmp_path,
+        clock=clock,
+    )
+    original = store.commit_credentials(
+        _stored_credentials(expires_at=1_200),
+        expected_generation=0,
+    )
+    oauth.refresh_payload["account_id"] = "different-account"
+
+    with pytest.raises(CodexAuthError) as exc_info:
+        await service.get_token()
+
+    assert exc_info.value.code == "account_changed"
+    loaded = store.load_credentials()
+    assert loaded is not None
+    assert loaded.access_token == original.access_token
+
+
+@pytest.mark.asyncio
+async def test_late_refresh_cannot_resurrect_logged_out_credentials(tmp_path: Path) -> None:
+    clock = [1_000]
+    service, _callback, oauth, _catalog, store, _models = await _oauth_service(
+        tmp_path,
+        clock=clock,
+    )
+    committed = store.commit_credentials(
+        _stored_credentials(expires_at=1_200),
+        expected_generation=0,
+    )
+    oauth.refresh_started = asyncio.Event()
+    oauth.refresh_release = asyncio.Event()
+
+    refresh_task = asyncio.create_task(service.get_token())
+    await oauth.refresh_started.wait()
+    store.clear_credentials(expected_generation=committed.generation)
+    oauth.refresh_release.set()
+
+    with pytest.raises(CodexAuthError) as exc_info:
+        await refresh_task
+    assert exc_info.value.code == "generation_changed"
+    assert store.load_credentials() is None
+
+
+@pytest.mark.asyncio
+async def test_logout_rejected_while_inference_is_active(tmp_path: Path) -> None:
+    service, _callback, _oauth, _catalog, store, _models = await _oauth_service(
+        tmp_path
+    )
+    store.commit_credentials(_stored_credentials(), expected_generation=0)
+
+    async with service.inference_guard():
+        with pytest.raises(CodexAuthError) as exc_info:
+            await service.logout()
+
+    assert exc_info.value.code == "inference_in_progress"
+    assert store.load_credentials() is not None
+
+
+@pytest.mark.asyncio
+async def test_revoke_failure_does_not_block_local_logout_and_restore(
+    tmp_path: Path,
+) -> None:
+    service, _callback, oauth, _catalog, store, model_catalog = await _oauth_service(
+        tmp_path
+    )
+    committed = store.commit_credentials(_stored_credentials(), expected_generation=0)
+    state = store.load_state()
+    original = model_catalog.load()
+    sync_codex_catalog(
+        model_catalog,
+        _snapshot("live", _model("gpt-5.6-sol")),
+        activate_sol=True,
+        state=state,
+    )
+    store.save_state(state)
+    oauth.revoke_error = CodexAuthError(
+        "token_revoke_failed",
+        "Codex authentication could not be revoked remotely.",
+        502,
+    )
+
+    status = await service.logout()
+
+    assert status["connection"] == "disconnected"
+    assert store.current_generation() == committed.generation + 1
+    assert store.load_credentials() is None
+    assert _selection(model_catalog.load()) == _selection(original)
+
+
+@pytest.mark.asyncio
+async def test_restarted_service_restores_connection_without_operation_or_secrets(
+    tmp_path: Path,
+) -> None:
+    service, _callback, oauth, catalog, store, model_catalog = await _oauth_service(
+        tmp_path
+    )
+    del service
+    committed = store.commit_credentials(
+        CodexCredentials(
+            schema_version=1,
+            access_token="top-secret-access",
+            refresh_token="top-secret-refresh",
+            id_token="top-secret-id",
+            account_id="full-account-secret",
+            expires_at=10_000,
+            generation=0,
+        ),
+        expected_generation=0,
+    )
+    store.save_catalog_cache(
+        CatalogSnapshot(
+            models=(_model("gpt-5.6-sol"),),
+            source="live",
+            fetched_at=1_000,
+            etag=None,
+            generation=committed.generation,
+            account_hash="hash-only",
+        ).to_dict()
+    )
+    restarted = CodexOAuthService(
+        store,
+        catalog,
+        model_catalog,
+        oauth_client=oauth,
+        callback_factory=lambda: None,  # type: ignore[arg-type,return-value]
+        clock=lambda: 1_000,
+    )
+
+    status = restarted.public_status()
+    serialized = json.dumps(status)
+
+    assert status["connection"] == "connected"
+    assert status["operation_id"] is None
+    assert status["operation_state"] is None
+    assert "top-secret" not in serialized
+    assert "full-account-secret" not in serialized
+
+
+@pytest.mark.asyncio
+async def test_recover_after_unauthorized_forces_refresh_for_next_request(
+    tmp_path: Path,
+) -> None:
+    service, _callback, oauth, _catalog, store, _models = await _oauth_service(
+        tmp_path
+    )
+    committed = store.commit_credentials(
+        _stored_credentials(expires_at=10_000),
+        expected_generation=0,
+    )
+
+    await service.recover_after_unauthorized(committed.generation)
+
+    assert oauth.refresh_calls == 1
+    assert store.load_credentials().access_token == "refreshed-access"  # type: ignore[union-attr]
