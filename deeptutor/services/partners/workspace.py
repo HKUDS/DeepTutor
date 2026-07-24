@@ -81,7 +81,8 @@ def strip_frontmatter(text: str) -> str:
     if not raw.startswith("---"):
         return text or ""
     # Closing fence must be alone on its line (optional trailing whitespace).
-    match = re.match(r"^---[ \t]*\r?\n.*?\r?\n---[ \t]*(?:\r?\n|$)", raw, flags=re.DOTALL)
+    # Body between fences may be empty (---\n---\nbody).
+    match = re.match(r"^---[ \t]*\r?\n(?:.*?\r?\n)?---[ \t]*(?:\r?\n|$)", raw, flags=re.DOTALL)
     if match is None:
         return text or ""
     return raw[match.end() :].lstrip("\n")

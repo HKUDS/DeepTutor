@@ -191,3 +191,6 @@ class TestStripFrontmatter:
     def test_preserves_horizontal_rule_in_body(self):
         text = "---\ntitle: T\n---\nIntro\n\n---\n\nSection\n"
         assert strip_frontmatter(text) == "Intro\n\n---\n\nSection\n"
+
+    def test_strips_empty_frontmatter_block(self):
+        assert strip_frontmatter("---\n---\nbody") == "body"
