@@ -169,7 +169,9 @@ def test_windows_reparse_point_is_rejected(
     assert exc_info.value.code == "unsafe_storage_path"
 
 
-@pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits are not authoritative on Windows")
+@pytest.mark.skipif(
+    os.name == "nt", reason="POSIX permission bits are not authoritative on Windows"
+)
 def test_private_files_are_owner_only_on_supported_platforms(tmp_path: Path) -> None:
     store = CodexCredentialStore(tmp_path)
     store.commit_credentials(_credentials("token"), expected_generation=0)

@@ -296,6 +296,9 @@ extend-exclude = '''
 # Target Python version
 target-version = "py311"
 line-length = 100
+# Ruff 0.16+ formats fenced Python snippets in Markdown by default. Keep the
+# repository-wide check scoped to Python source, as it was before that change.
+extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 # Enable only foundational lint rules (intentionally relaxed)

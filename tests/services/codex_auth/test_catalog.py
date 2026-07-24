@@ -122,9 +122,7 @@ def test_parse_catalog_rejects_more_than_model_limit() -> None:
 
 @pytest.mark.asyncio
 async def test_live_catalog_uses_account_headers_and_client_version(tmp_path: Path) -> None:
-    queue = ResponseQueue(
-        httpx.Response(200, json=_fixture(), headers={"ETag": '"catalog-v1"'})
-    )
+    queue = ResponseQueue(httpx.Response(200, json=_fixture(), headers={"ETag": '"catalog-v1"'}))
     clock = [1_000]
     catalog, http = _catalog(tmp_path, queue, clock)
     try:

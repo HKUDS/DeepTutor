@@ -38,9 +38,7 @@ async def _login_openai_codex() -> None:
     try:
         started = await service.start_login()
         authorize_url = str(started["authorize_url"])
-        typer.echo(
-            "正在浏览器中打开 OpenAI Codex 登录；凭据仅保存到 DeepTutor 私有凭据目录。"
-        )
+        typer.echo("正在浏览器中打开 OpenAI Codex 登录；凭据仅保存到 DeepTutor 私有凭据目录。")
         if not webbrowser.open(authorize_url):
             typer.echo(f"浏览器未自动打开，请访问：{authorize_url}")
 

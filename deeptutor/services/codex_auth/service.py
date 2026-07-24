@@ -132,9 +132,7 @@ def sync_codex_catalog(
         if managed_indexes:
             first_index = managed_indexes[0]
             profiles[:] = [
-                existing
-                for existing in profiles
-                if existing.get("managed_by") != MANAGED_BY
+                existing for existing in profiles if existing.get("managed_by") != MANAGED_BY
             ]
             profiles.insert(min(first_index, len(profiles)), profile)
         else:
@@ -161,9 +159,7 @@ def sync_codex_catalog(
         elif current_profile_id == CODEX_PROFILE_ID:
             valid_model_ids = {model["id"] for model in profile["models"]}
             if current_model_id not in valid_model_ids:
-                llm["active_model_id"] = (
-                    profile["models"][0]["id"] if profile["models"] else None
-                )
+                llm["active_model_id"] = profile["models"][0]["id"] if profile["models"] else None
 
     catalog = catalog_service.update(mutate)
     if selection_to_store is not None:
@@ -194,11 +190,7 @@ def remove_codex_catalog(
             profile_id = previous.get("profile_id")
             model_id = previous.get("model_id")
             backup_profile = next(
-                (
-                    profile
-                    for profile in llm["profiles"]
-                    if profile.get("id") == profile_id
-                ),
+                (profile for profile in llm["profiles"] if profile.get("id") == profile_id),
                 None,
             )
             backup_model_ids = {
@@ -259,9 +251,7 @@ class CodexOAuthService:
             callback = await self._callback_factory()
             pkce = generate_pkce()
             state_secret = secrets.token_urlsafe(32)
-            redirect_uri = (
-                f"http://localhost:{callback.port}{CODEX_CALLBACK_PATH}"
-            )
+            redirect_uri = f"http://localhost:{callback.port}{CODEX_CALLBACK_PATH}"
             operation = _LoginOperation(
                 operation_id=secrets.token_urlsafe(24),
                 state_secret=state_secret,
@@ -498,9 +488,7 @@ class CodexOAuthService:
                         await self._oauth.revoke(credentials)
                     except Exception:
                         pass
-                    self._store.clear_credentials(
-                        expected_generation=credentials.generation
-                    )
+                    self._store.clear_credentials(expected_generation=credentials.generation)
                 else:
                     self._store.clear_credentials(
                         expected_generation=self._store.current_generation()
@@ -543,25 +531,18 @@ class CodexOAuthService:
         return {
             "connection": connection,
             "operation_id": operation.operation_id if operation is not None else None,
-            "operation_state": (
-                operation.operation_state if operation is not None else None
-            ),
+            "operation_state": (operation.operation_state if operation is not None else None),
             "model_count": len(snapshot.models) if snapshot is not None else 0,
             "catalog_source": snapshot.source if snapshot is not None else None,
-            "catalog_fetched_at": (
-                snapshot.fetched_at if snapshot is not None else None
-            ),
+            "catalog_fetched_at": (snapshot.fetched_at if snapshot is not None else None),
             "active_model": active_model,
-            "auto_switched": (
-                operation.auto_switched if operation is not None else False
-            ),
+            "auto_switched": (operation.auto_switched if operation is not None else False),
             "sol_available": bool(
                 snapshot is not None
                 and any(model.slug == CODEX_DEFAULT_MODEL for model in snapshot.models)
             ),
             "error_code": (
-                storage_error
-                or (operation.error_code if operation is not None else None)
+                storage_error or (operation.error_code if operation is not None else None)
             ),
         }
 

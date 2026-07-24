@@ -209,11 +209,14 @@ def test_refresh_replaces_only_managed_models_and_preserves_backup(tmp_path: Pat
     assert [model["model"] for model in _managed_profile(refreshed.catalog)["models"]] == [
         "new-model"
     ]
-    assert next(
-        profile
-        for profile in refreshed.catalog["services"]["llm"]["profiles"]
-        if profile["id"] == "llm-profile-existing"
-    ) == existing_profile
+    assert (
+        next(
+            profile
+            for profile in refreshed.catalog["services"]["llm"]["profiles"]
+            if profile["id"] == "llm-profile-existing"
+        )
+        == existing_profile
+    )
     assert state["previous_selection"] == _selection(original)
 
 
@@ -315,9 +318,7 @@ class FakeCallback:
 
     def complete(self, authorize_url: str, *, code: str = "authorization-code") -> None:
         state = parse_qs(urlsplit(authorize_url).query)["state"][0]
-        self._result.set_result(
-            OAuthCallbackResult(code=code, state=state, error=None)
-        )
+        self._result.set_result(OAuthCallbackResult(code=code, state=state, error=None))
 
     def complete_with_state(self, state: str) -> None:
         self._result.set_result(
@@ -471,9 +472,7 @@ async def _wait_until_terminal(service: CodexOAuthService) -> dict[str, Any]:
 
 @pytest.mark.asyncio
 async def test_successful_live_login_switches_only_exact_sol(tmp_path: Path) -> None:
-    service, callback, _oauth, _catalog, _store, _models = await _oauth_service(
-        tmp_path
-    )
+    service, callback, _oauth, _catalog, _store, _models = await _oauth_service(tmp_path)
 
     started = await service.start_login()
     duplicate = await service.start_login()
@@ -550,9 +549,7 @@ async def test_login_failures_do_not_overwrite_old_credentials(
 
 @pytest.mark.asyncio
 async def test_cancel_login_preserves_existing_credentials(tmp_path: Path) -> None:
-    service, _callback, _oauth, _catalog, store, _models = await _oauth_service(
-        tmp_path
-    )
+    service, _callback, _oauth, _catalog, store, _models = await _oauth_service(tmp_path)
     old = store.commit_credentials(_stored_credentials(), expected_generation=0)
 
     await service.start_login()
@@ -632,9 +629,7 @@ async def test_late_refresh_cannot_resurrect_logged_out_credentials(tmp_path: Pa
 
 @pytest.mark.asyncio
 async def test_logout_rejected_while_inference_is_active(tmp_path: Path) -> None:
-    service, _callback, _oauth, _catalog, store, _models = await _oauth_service(
-        tmp_path
-    )
+    service, _callback, _oauth, _catalog, store, _models = await _oauth_service(tmp_path)
     store.commit_credentials(_stored_credentials(), expected_generation=0)
 
     async with service.inference_guard():
@@ -649,9 +644,7 @@ async def test_logout_rejected_while_inference_is_active(tmp_path: Path) -> None
 async def test_logout_cannot_be_undone_by_inflight_model_refresh(
     tmp_path: Path,
 ) -> None:
-    service, _callback, _oauth, catalog, store, model_catalog = await _oauth_service(
-        tmp_path
-    )
+    service, _callback, _oauth, catalog, store, model_catalog = await _oauth_service(tmp_path)
     store.commit_credentials(_stored_credentials(), expected_generation=0)
     catalog.get_started = asyncio.Event()
     catalog.get_release = asyncio.Event()
@@ -674,9 +667,7 @@ async def test_logout_cannot_be_undone_by_inflight_model_refresh(
 async def test_revoke_failure_does_not_block_local_logout_and_restore(
     tmp_path: Path,
 ) -> None:
-    service, _callback, oauth, _catalog, store, model_catalog = await _oauth_service(
-        tmp_path
-    )
+    service, _callback, oauth, _catalog, store, model_catalog = await _oauth_service(tmp_path)
     committed = store.commit_credentials(_stored_credentials(), expected_generation=0)
     state = store.load_state()
     original = model_catalog.load()
@@ -705,9 +696,7 @@ async def test_revoke_failure_does_not_block_local_logout_and_restore(
 async def test_restarted_service_restores_connection_without_operation_or_secrets(
     tmp_path: Path,
 ) -> None:
-    service, _callback, oauth, catalog, store, model_catalog = await _oauth_service(
-        tmp_path
-    )
+    service, _callback, oauth, catalog, store, model_catalog = await _oauth_service(tmp_path)
     del service
     committed = store.commit_credentials(
         CodexCredentials(
@@ -754,9 +743,7 @@ async def test_restarted_service_restores_connection_without_operation_or_secret
 async def test_recover_after_unauthorized_forces_refresh_for_next_request(
     tmp_path: Path,
 ) -> None:
-    service, _callback, oauth, _catalog, store, _models = await _oauth_service(
-        tmp_path
-    )
+    service, _callback, oauth, _catalog, store, _models = await _oauth_service(tmp_path)
     committed = store.commit_credentials(
         _stored_credentials(expires_at=10_000),
         expected_generation=0,

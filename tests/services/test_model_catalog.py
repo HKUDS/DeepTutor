@@ -1,5 +1,5 @@
-import json
 from concurrent.futures import ThreadPoolExecutor
+import json
 from pathlib import Path
 
 from deeptutor.services.config.model_catalog import ModelCatalogService

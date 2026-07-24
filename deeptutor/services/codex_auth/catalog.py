@@ -66,9 +66,7 @@ def parse_models_response(payload: Mapping[str, Any]) -> tuple[CodexModel, ...]:
                 display_name=display_name,
                 priority=priority,
                 visibility="list",
-                default_reasoning_level=_optional_string(
-                    raw_model.get("default_reasoning_level")
-                ),
+                default_reasoning_level=_optional_string(raw_model.get("default_reasoning_level")),
                 supported_reasoning_levels=_reasoning_levels(
                     raw_model.get("supported_reasoning_levels")
                 ),

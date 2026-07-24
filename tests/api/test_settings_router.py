@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from deeptutor.api.routers import settings as settings_router
+from deeptutor.services.codex_auth.contracts import CodexAuthError
 from deeptutor.services.config.provider_runtime import (
     ResolvedEmbeddingConfig,
     ResolvedLLMConfig,
@@ -17,7 +18,6 @@ from deeptutor.services.embedding import client as embedding_client_module
 from deeptutor.services.embedding import config as embedding_config_module
 from deeptutor.services.llm import client as llm_client_module
 from deeptutor.services.llm import config as llm_config_module
-from deeptutor.services.codex_auth.contracts import CodexAuthError
 
 
 class _FakeEmbeddingAdapter:
@@ -762,10 +762,7 @@ async def test_update_ui_settings_preserves_theme_and_language_when_code_block_u
 
 
 def test_codex_provider_choice_includes_oauth_dynamic_metadata() -> None:
-    llm = {
-        item["value"]: item
-        for item in settings_router._provider_choices()["llm"]
-    }
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
 
     assert llm["openai_codex"] == {
         "value": "openai_codex",
@@ -826,9 +823,10 @@ async def test_codex_oauth_routes_return_only_public_service_payloads(
     logged_out = await settings_router.logout_openai_codex_oauth()
 
     assert set(started) == {"operation_id", "authorize_url", "expires_in"}
-    assert "token" not in json.dumps(
-        [started, status_payload, cancelled, refreshed, logged_out]
-    ).lower()
+    assert (
+        "token"
+        not in json.dumps([started, status_payload, cancelled, refreshed, logged_out]).lower()
+    )
     assert fake.calls == [
         "start",
         "status",

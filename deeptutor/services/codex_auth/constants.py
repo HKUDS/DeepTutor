@@ -4,9 +4,7 @@ CODEX_UPSTREAM_COMMIT = "81da9deb065d7adb283816b19b40f89bcc484276"
 CODEX_CLIENT_VERSION = "0.145.0"
 CODEX_OAUTH_ISSUER = "https://auth.openai.com"
 CODEX_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
-CODEX_OAUTH_SCOPE = (
-    "openid profile email offline_access api.connectors.read api.connectors.invoke"
-)
+CODEX_OAUTH_SCOPE = "openid profile email offline_access api.connectors.read api.connectors.invoke"
 CODEX_OAUTH_ORIGINATOR = "codex_cli_rs"
 CODEX_CALLBACK_PORTS = (1455, 1457)
 CODEX_CALLBACK_PATH = "/auth/callback"

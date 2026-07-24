@@ -5,8 +5,8 @@ from typing import Any, AsyncIterator
 
 import pytest
 
-from deeptutor.services.codex_auth.contracts import CodexToken
 from deeptutor.services.codex_auth.constants import CODEX_RESPONSES_URL
+from deeptutor.services.codex_auth.contracts import CodexToken
 from deeptutor.services.llm.provider_core import openai_codex_provider as module
 from deeptutor.services.llm.provider_core.openai_codex_provider import (
     CodexHTTPError,
