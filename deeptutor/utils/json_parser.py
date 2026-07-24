@@ -78,11 +78,43 @@ def parse_json_response(
             extracted_response = json_match.group(1).strip()
             log.debug("Extracted JSON from markdown code block")
 
-    # Strategy 1: Direct parsing
+    # Strategy 1: Direct parsing. Done before any <think> stripping so a valid
+    # JSON payload whose string values legitimately contain "<think>" is
+    # preserved exactly.
     try:
         return json.loads(extracted_response)
     except (json.JSONDecodeError, TypeError) as parse_error:
         log.debug(f"Direct JSON parse failed: {parse_error}")
+
+    # Strategy 1b: strip chain-of-thought <think> reasoning that models like
+    # Qwen/DeepSeek emit before the JSON payload, then retry. Only reached once
+    # direct parsing has failed, so it never rewrites already-valid JSON. Left
+    # in place, a brace inside the reasoning is picked up by the raw_decode scan
+    # below and returned instead of the real object (see issue #673).
+    if "<think" in extracted_response.lower():
+        cleaned = re.sub(
+            r"<think\b[^>]*>.*?</think>",
+            "",
+            extracted_response,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        # Also drop an unclosed leading <think> prelude up to the first opener.
+        cleaned = re.sub(
+            r"^\s*<think\b[^>]*>.*?(?=[{\[])",
+            "",
+            cleaned,
+            count=1,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        cleaned = cleaned.strip()
+        if cleaned != extracted_response.strip():
+            if not cleaned:
+                log.warning("LLM response contained only <think> reasoning, no JSON payload")
+                return fallback
+            try:
+                return json.loads(cleaned)
+            except (json.JSONDecodeError, TypeError):
+                extracted_response = cleaned
 
     # Prefer raw_decode before repair so trailing brace-prose cannot become a wrapping array.
     if isinstance(extracted_response, str):
