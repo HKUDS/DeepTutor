@@ -73,6 +73,7 @@ def split_message(content: str, max_len: int = 2000) -> list[str]:
         content = content[pos:].lstrip()
     return chunks
 
+
 def convert_markdown_table_to_labeled_rows(table_text: str) -> str:
     """Convert a Markdown pipe table to labeled rows (for Slack-style text).
 
@@ -81,13 +82,21 @@ def convert_markdown_table_to_labeled_rows(table_text: str) -> str:
     lines = [ln.strip() for ln in table_text.strip().splitlines() if ln.strip()]
     if len(lines) < 2:
         return table_text
-    headers = [h.strip() for h in lines[0].strip('|').split('|')]
-    start = 2 if re.fullmatch(r'[|\s:\-]+', lines[1]) else 1
+    headers = [h.strip() for h in lines[0].strip("|").split("|")]
+    start = 2 if re.fullmatch(r"[|\s:\-]+", lines[1]) else 1
     rows: list[str] = []
     for line in lines[start:]:
-        cells = [c.strip() for c in line.strip('|').split('|')]
-        cells = (cells + [''] * len(headers))[: len(headers)]
-        parts = [f'**{headers[i]}**: {cells[i]}' for i in range(len(headers))]
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        cells = (cells + [""] * len(headers))[: len(headers)]
+        parts = [f"**{headers[i]}**: {cells[i]}" for i in range(len(headers))]
         if parts:
-            rows.append(' · '.join(parts))
-    return chr(10).join(rows)
+            rows.append(" · ".join(parts))
+    return "\n".join(rows)
+
+
+def is_markdown_table_separator_row(cells: list[str]) -> bool:
+    """True if *cells* look like a markdown table separator row.
+
+    An all-empty row is not a separator (`all([])` would otherwise be True).
+    """
+    return bool(any(c for c in cells)) and all(re.match(r"^:?-+:?$", c) for c in cells if c)

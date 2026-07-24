@@ -128,3 +128,58 @@ class TestParseJsonResponseTrailingProse:
         raw = '[{"id":1},{"id":2}] trailing {x}'
         result = parse_json_response(raw, fallback=None)
         assert result == [{"id": 1}, {"id": 2}]
+
+
+# ---------------------------------------------------------------------------
+# parse_json_response — <think> reasoning tags (issue #673)
+# ---------------------------------------------------------------------------
+
+
+class TestParseJsonResponseThinkTags:
+    def test_think_block_before_json(self) -> None:
+        response = (
+            "<think>\n1. Analyze user intent...\n2. Determine target audience...\n</think>\n"
+            '{"title":"T","description":"D","scope":"S","rationale":"R"}'
+        )
+        assert parse_json_response(response) == {
+            "title": "T",
+            "description": "D",
+            "scope": "S",
+            "rationale": "R",
+        }
+
+    def test_think_block_containing_braces_does_not_leak(self) -> None:
+        """Braces inside the reasoning must not be returned instead of the real object."""
+        response = (
+            '<think>maybe output {"draft": true} or [a, b]</think>\n'
+            '{"title":"Real","description":"D"}'
+        )
+        assert parse_json_response(response) == {"title": "Real", "description": "D"}
+
+    def test_think_block_with_markdown_fence(self) -> None:
+        response = '<think>reasoning here</think>\n```json\n{"answer": 42}\n```'
+        assert parse_json_response(response) == {"answer": 42}
+
+    def test_think_tag_case_insensitive(self) -> None:
+        response = '<THINK>step by step</THINK>{"ok": true}'
+        assert parse_json_response(response) == {"ok": True}
+
+    def test_only_think_block_returns_fallback(self) -> None:
+        response = "<think>just reasoning, no payload</think>"
+        assert parse_json_response(response) == {}
+        assert parse_json_response(response, fallback=None) is None
+
+    def test_multiple_think_blocks_stripped(self) -> None:
+        response = '<think>one</think>{"a":1}<think>two {b}</think>'
+        assert parse_json_response(response) == {"a": 1}
+
+    def test_literal_think_in_valid_json_preserved(self) -> None:
+        """A valid JSON string value that literally contains <think> must not be altered."""
+        response = '{"x":"literal <think>keep</think> value"}'
+        assert parse_json_response(response, fallback=None) == {
+            "x": "literal <think>keep</think> value"
+        }
+
+    def test_unclosed_think_prelude_without_braces(self) -> None:
+        response = '<think>reasoning here, no JSON yet\n{"real":1}'
+        assert parse_json_response(response, fallback=None) == {"real": 1}

@@ -485,7 +485,13 @@ class FeishuChannel(BaseChannel):
             return None
 
         def split(_line: str) -> list[str]:
-            return [c.strip() for c in _line.strip("|").split("|")]
+            # strip("|") collapses leading/trailing empty cells (||col|| → one cell).
+            line = _line.strip()
+            if line.startswith("|"):
+                line = line[1:]
+            if line.endswith("|"):
+                line = line[:-1]
+            return [c.strip() for c in line.split("|")]
 
         headers = split(lines[0])
         rows = [split(_line) for _line in lines[2:]]
