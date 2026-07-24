@@ -653,7 +653,7 @@ git commit -m "feat: 添加 Codex 动态模型目录"
 - Test: `tests/services/test_model_catalog.py`
 - Test: `tests/services/codex_auth/test_service.py`
 
-- [ ] **Step 1: 写失败测试固定受管理条目和回退语义**
+- [x] **Step 1: 写失败测试固定受管理条目和回退语义**
 
 ```python
 def test_sync_creates_read_only_managed_codex_profile(tmp_path: Path) -> None:
@@ -707,7 +707,7 @@ def test_stale_or_missing_sol_never_changes_active_selection(
 - 备份模型已删除时保持当前选择；
 - 聊天历史文件不被访问。
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -717,7 +717,7 @@ Run:
 
 Expected: missing atomic update and sync functions.
 
-- [ ] **Step 3: 给 `ModelCatalogService` 增加最小原子更新能力**
+- [x] **Step 3: 给 `ModelCatalogService` 增加最小原子更新能力**
 
 新增实例锁和方法：
 
@@ -732,7 +732,7 @@ def update(self, mutator: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
 `save()` 改为同目录临时文件、UTF-8 flush/fsync、`os.replace()`；不修改 catalog schema 的
 既有默认值。
 
-- [ ] **Step 4: 在 `service.py` 实现目录同步纯函数**
+- [x] **Step 4: 在 `service.py` 实现目录同步纯函数**
 
 稳定 ID：
 
@@ -763,7 +763,7 @@ def codex_model_id(slug: str) -> str:
 }
 ```
 
-- [ ] **Step 5: 运行目录同步测试**
+- [x] **Step 5: 运行目录同步测试**
 
 Run:
 
@@ -773,7 +773,7 @@ Run:
 
 Expected: all selected tests pass.
 
-- [ ] **Step 6: 中文提交**
+- [x] **Step 6: 中文提交**
 
 ```powershell
 git add deeptutor/services/config/model_catalog.py deeptutor/services/codex_auth/service.py tests/services
