@@ -39,7 +39,7 @@ responses    = https://chatgpt.com/backend-api/codex/responses
 - [ ] **Step 0.1: 准备被 Git 忽略的本地 worktree 目录**
 
 ```powershell
-git check-ignore -q .worktrees
+git check-ignore -q .worktrees/probe
 ```
 
 Expected: exit 0，证明 `.worktrees/` 不会进入版本控制。
