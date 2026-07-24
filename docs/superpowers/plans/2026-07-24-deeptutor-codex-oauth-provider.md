@@ -1460,7 +1460,7 @@ git commit -m "feat: 在模型设置中启用 Codex OAuth"
 - Modify: `deeptutor_cli/README.md`
 - Modify: all affected tests
 
-- [ ] **Step 1: 写 CSSwitch MIT 来源声明**
+- [x] **Step 1: 写 CSSwitch MIT 来源声明**
 
 `THIRD_PARTY_NOTICES.md` 包含：
 
@@ -1480,7 +1480,7 @@ The MIT license text from the pinned source is reproduced below.
 随后原样附上 CSSwitch `LICENSE` 的 MIT 正文。不得把 OpenAI Codex 源码复制进项目；官方
 源码只作为协议核对来源。
 
-- [ ] **Step 2: 更新中文 README**
+- [x] **Step 2: 更新中文 README**
 
 Root README 和 CLI README 说明：
 
@@ -1492,7 +1492,7 @@ Root README 和 CLI README 说明：
 - 429/上游失败不会自动转付费 Provider；
 - 该 Codex backend 兼容路径是实验性的。
 
-- [ ] **Step 3: 运行敏感信息静态回归**
+- [x] **Step 3: 运行敏感信息静态回归**
 
 Run:
 
@@ -1513,7 +1513,7 @@ Expected:
 - Codex Provider/CLI 不出现 `oauth_cli_kit`；
 - auth 实现不出现 `~/.codex` 或 Codex CLI auth path；仅测试和用户文档可出现隔离说明。
 
-- [ ] **Step 4: 运行后端聚焦测试**
+- [x] **Step 4: 运行后端聚焦测试**
 
 Run:
 
@@ -1531,7 +1531,7 @@ Run:
 
 Expected: all selected tests pass.
 
-- [ ] **Step 5: 中文提交**
+- [x] **Step 5: 中文提交**
 
 ```powershell
 git add THIRD_PARTY_NOTICES.md README.md deeptutor_cli/README.md tests

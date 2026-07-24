@@ -617,6 +617,17 @@ Settings is the operational control plane, with a live status strip (Backend, LL
 
 Most sections use a draft-and-apply flow, so you can test a provider before committing it. Four themes ship in the box — Default, Cream, Dark, and Glass. Project-root `.env` files are intentionally ignored; runtime configuration lives under `data/user/settings/*.json` unless `DEEPTUTOR_HOME` or `deeptutor start --home` points the app elsewhere.
 
+### OpenAI Codex OAuth（实验性）
+
+在 **Settings → Models → LLM** 中选择 **OpenAI Codex**，再点击 **使用 Codex 登录**，即可在浏览器完成 DeepTutor 自己的独立 OAuth 授权。登录后，DeepTutor 使用当前 Codex 账号的认证额度调用模型，不需要设置 `OPENAI_API_KEY`。
+
+- OAuth 凭据只保存在 DeepTutor 的 `<user-root>/private/openai-codex/`，不会读取、复制、修改或删除本机 `~/.codex`。
+- 模型列表来自当前账号的动态目录；只有实时目录包含完全匹配的原始模型 ID `gpt-5.6-sol` 时，才会自动切换到 **Codex / GPT-5.6-Sol**。
+- 如果目录刷新失败、账号不包含该精确模型，或上游返回 `429`，DeepTutor 会保留当前状态并报告错误，不会静默改用其他模型或付费 API Provider。
+- 这条 Codex backend 兼容路径属于实验性能力，上游接口未来可能变化。
+
+CLI 可执行 `deeptutor provider login openai-codex`，它与 Web 共用同一套 DeepTutor 私有凭据和模型目录。
+
 </details>
 
 <details>
