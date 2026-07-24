@@ -199,6 +199,10 @@ def remove_codex_catalog(
             if backup_profile is not None and model_id in backup_model_ids:
                 llm["active_profile_id"] = profile_id
                 llm["active_model_id"] = model_id
+                return
+        if current_is_managed:
+            llm["active_profile_id"] = None
+            llm["active_model_id"] = None
 
     catalog = catalog_service.update(mutate)
     state.pop("previous_selection", None)

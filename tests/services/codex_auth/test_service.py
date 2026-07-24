@@ -240,6 +240,27 @@ def test_logout_restores_backup_only_while_managed_codex_is_active(tmp_path: Pat
     assert "previous_selection" not in state
 
 
+def test_logout_clears_managed_selection_when_login_started_without_profiles(
+    tmp_path: Path,
+) -> None:
+    service = ModelCatalogService(tmp_path / "model_catalog.json")
+    state: dict = {}
+    sync_codex_catalog(
+        service,
+        _snapshot("live", _model("gpt-5.6-sol")),
+        activate_sol=True,
+        state=state,
+    )
+
+    removed = remove_codex_catalog(service, state)
+
+    assert removed["services"]["llm"]["profiles"] == []
+    assert _selection(removed) == {
+        "profile_id": None,
+        "model_id": None,
+    }
+
+
 def test_logout_does_not_override_later_user_selection(tmp_path: Path) -> None:
     service, _original = _seeded_service(tmp_path)
     state: dict = {}
