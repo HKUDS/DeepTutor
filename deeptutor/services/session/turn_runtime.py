@@ -1992,20 +1992,46 @@ class TurnRuntimeManager:
             execution.events_flushed = True
             events = list(execution.events)
 
-        for payload in events:
+        # Prefer the store's batch append (single transaction) when available:
+        # per-event commits fsync once per event, which on slow storage (NAS
+        # spinning disks) stretches this flush — and the visible spinner — to
+        # minutes for a long turn.
+        append_batch = getattr(self.store, "append_turn_events", None)
+        if callable(append_batch):
+            try:
+                persisted_batch = await append_batch(execution.turn_id, events)
+            except ValueError as exc:
+                # A turn can disappear when the session is deleted while the
+                # turn task is draining post-stream persistence.
+                if "Turn not found:" not in str(exc):
+                    raise
+                logger.warning(
+                    "Skip persisting %d buffered event(s) for missing turn %s",
+                    len(events),
+                    execution.turn_id,
+                )
+                return
+            for persisted in persisted_batch:
+                self._mirror_event_to_workspace(execution, persisted)
+            return
+
+        for index, payload in enumerate(events):
             try:
                 persisted = await self.store.append_turn_event(execution.turn_id, payload)
             except ValueError as exc:
                 # A turn can disappear when the session is deleted while the turn task
-                # is draining post-stream persistence. Avoid cascading failures.
+                # is draining post-stream persistence. Avoid cascading failures. The
+                # turn will not come back, so drop the whole remaining batch with one
+                # summary line instead of logging once per buffered event.
                 if "Turn not found:" not in str(exc):
                     raise
                 logger.warning(
-                    "Skip persisting event for missing turn %s (%s)",
+                    "Skip persisting %d buffered event(s) for missing turn %s (first: %s)",
+                    len(events) - index,
                     execution.turn_id,
                     payload.get("type", ""),
                 )
-                continue
+                break
             self._mirror_event_to_workspace(execution, persisted)
 
     @staticmethod
