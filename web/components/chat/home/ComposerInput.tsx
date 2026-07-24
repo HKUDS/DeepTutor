@@ -24,6 +24,7 @@ import { useImeComposing } from "@/lib/use-ime-composing";
 interface ComposerInputProps {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   isVisualizeMode: boolean;
+  isStreaming?: boolean;
   // When true, parent has attachments/references queued and will accept a
   // send even if the text body is empty. Without this, Enter would silently
   // do nothing for an attachment-only message.
@@ -128,6 +129,7 @@ export const ComposerInput = memo(
     {
       textareaRef,
       isVisualizeMode,
+      isStreaming = false,
       canSendEmpty,
       onSend,
       onInputChange,
@@ -309,7 +311,7 @@ export const ComposerInput = memo(
         }
         if (shouldSubmitOnEnter(e, isComposingRef.current)) {
           e.preventDefault();
-          doSend();
+          if (!isStreaming) doSend();
         } else if (e.key === "Escape") {
           setShowAtPopup(false);
           setShowSlashPopup(false);
@@ -317,6 +319,7 @@ export const ComposerInput = memo(
       },
       [
         doSend,
+        isStreaming,
         showSlashPopup,
         handleSelectSlashPersona,
         showAtPopup,
