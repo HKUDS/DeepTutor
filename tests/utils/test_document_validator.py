@@ -52,3 +52,8 @@ def test_validate_upload_safety_custom_policy_allows_images() -> None:
     )
 
     assert safe_name == "diagram.png"
+
+
+def test_validate_upload_safety_strips_edge_whitespace_around_filename() -> None:
+    safe_name = DocumentValidator.validate_upload_safety("  notes.PDF  ", 1024)
+    assert safe_name == "notes.pdf"

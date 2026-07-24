@@ -86,6 +86,8 @@ class DocumentValidator:
         safe_name = re.sub(r"[\x00-\x1f\x7f]", "", safe_name)
         # Replace problematic characters
         safe_name = re.sub(r'[<>:"/\\|?*]', "_", safe_name)
+        # Edge whitespace breaks extension matching (``.pdf `` ≠ ``.pdf``).
+        safe_name = safe_name.strip()
         stem, ext = os.path.splitext(safe_name)
         ext = ext.lower()
         safe_name = f"{stem}{ext}"
