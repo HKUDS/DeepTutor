@@ -304,7 +304,7 @@ git commit -m "feat: 定义 Codex OAuth 兼容契约"
 - Create: `deeptutor/services/codex_auth/storage.py`
 - Test: `tests/services/codex_auth/test_storage.py`
 
-- [ ] **Step 1: 写失败测试覆盖路径、原子提交、并发和 `~/.codex` 隔离**
+- [x] **Step 1: 写失败测试覆盖路径、原子提交、并发和 `~/.codex` 隔离**
 
 ```python
 def test_store_is_scoped_below_deeptutor_user_root(tmp_path: Path) -> None:
@@ -339,7 +339,7 @@ def test_store_never_calls_path_home(monkeypatch, tmp_path: Path) -> None:
 - 两个线程同时刷新只有一个 generation 可以提交；
 - 支持平台上的 owner-only 权限。
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -349,7 +349,7 @@ Run:
 
 Expected: import or attribute failures.
 
-- [ ] **Step 3: 实现存储**
+- [x] **Step 3: 实现存储**
 
 `CodexCredentialStore` 的公开接口固定为 `current_generation()`、`load_credentials()`、
 `commit_credentials()`（接收 credentials 和整数 expected_generation）、
@@ -407,7 +407,7 @@ def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
 `stat.FILE_ATTRIBUTE_REPARSE_POINT`。`clear_credentials()` 在锁内先写入新的持久化
 generation，再删除凭据与模型缓存。
 
-- [ ] **Step 4: 运行存储测试**
+- [x] **Step 4: 运行存储测试**
 
 Run:
 
@@ -417,7 +417,7 @@ Run:
 
 Expected: all tests pass.
 
-- [ ] **Step 5: 中文提交**
+- [x] **Step 5: 中文提交**
 
 ```powershell
 git add deeptutor/services/codex_auth/storage.py tests/services/codex_auth/test_storage.py
