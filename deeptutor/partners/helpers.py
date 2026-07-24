@@ -72,3 +72,13 @@ def split_message(content: str, max_len: int = 2000) -> list[str]:
         chunks.append(content[:pos])
         content = content[pos:].lstrip()
     return chunks
+
+
+def is_markdown_table_separator_row(cells: list[str]) -> bool:
+    """True if *cells* look like a markdown table separator row.
+
+    An all-empty row is not a separator (`all([])` would otherwise be True).
+    """
+    return bool(any(c for c in cells)) and all(
+        re.match(r"^:?-+:?$", c) for c in cells if c
+    )
