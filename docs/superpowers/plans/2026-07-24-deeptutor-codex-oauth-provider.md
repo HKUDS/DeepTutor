@@ -1352,7 +1352,7 @@ git commit -m "feat: 添加 Codex OAuth 网页状态卡片"
 - Modify: `web/locales/zh/app.json`
 - Create: `web/tests/codex-oauth-settings-contract.test.ts`
 
-- [ ] **Step 1: 写失败的 Settings 源码契约测试**
+- [x] **Step 1: 写失败的 Settings 源码契约测试**
 
 ```typescript
 test("Codex OAuth profile renders the OAuth card", () => {
@@ -1368,7 +1368,7 @@ test("managed Codex profiles cannot expose API key or model editing", () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -1380,7 +1380,7 @@ Set-Location ..
 
 Expected: new contract tests fail.
 
-- [ ] **Step 3: 修改 `ProfileFields`**
+- [x] **Step 3: 修改 `ProfileFields`**
 
 计算当前 Provider 元数据：
 
@@ -1406,7 +1406,7 @@ Base URL、API Key、Extra headers 和手工新增模型。其他 OAuth Provider
 -仍可从受管理模型列表选择活动模型；
 -“+ Profile”保留，使用户可以新增其他 Provider Profile。
 
-- [ ] **Step 4: 添加中英文文案**
+- [x] **Step 4: 添加中英文文案**
 
 至少增加以下翻译键：
 
@@ -1428,7 +1428,7 @@ Base URL、API Key、Extra headers 和手工新增模型。其他 OAuth Provider
 
 英文文件提供等义英文，不把实验性接口描述为官方第三方 API。
 
-- [ ] **Step 5: 运行 Web 完整检查**
+- [x] **Step 5: 运行 Web 完整检查**
 
 Run:
 
@@ -1444,7 +1444,7 @@ Set-Location ..
 
 Expected: all commands exit 0.
 
-- [ ] **Step 6: 中文提交**
+- [x] **Step 6: 中文提交**
 
 ```powershell
 git add web/components/settings/ServiceConfigEditor.tsx web/locales web/tests

@@ -2684,5 +2684,28 @@
   "Connected to LightRAG server": "已连接到 LightRAG 服务器",
   "Core {{version}}": "内核 {{version}}",
   "API key accepted": "API 密钥已通过",
-  "Open access": "开放访问"
+  "Open access": "开放访问",
+  "codex": {
+    "oauth": {
+      "title": "OpenAI Codex OAuth",
+      "signIn": "使用 Codex 登录",
+      "waiting": "等待浏览器授权…",
+      "connected": "Codex 已连接。",
+      "refresh": "刷新模型",
+      "logout": "退出登录",
+      "experimental": "实验性连接：上游 Codex 兼容接口未来可能变化。",
+      "isolated": "凭据仅由 DeepTutor 保存，不会读取或修改 Codex CLI 的登录状态。",
+      "solActive": "已切换至 Codex / GPT-5.6-Sol。",
+      "solMissing": "账户模型目录未返回完全匹配的 gpt-5.6-sol，已保留当前模型。",
+      "catalogFailed": "无法刷新 Codex 模型目录，登录状态和当前模型均已保留。",
+      "inferenceActive": "请等待当前 Codex 回复结束后再退出登录。",
+      "disconnected": "Codex 尚未连接。",
+      "cancel": "取消",
+      "cancelled": "已取消 Codex 登录。",
+      "expired": "Codex 登录已超时，请重新开始。",
+      "denied": "Codex 授权被拒绝。",
+      "requestFailed": "Codex 请求失败，请重试。",
+      "modelCount": "模型：{{count}}"
+    }
+  }
 }
