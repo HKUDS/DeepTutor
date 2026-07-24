@@ -32,9 +32,9 @@ test("Codex OAuth copy exists in both locales", () => {
   const zh = JSON.parse(readFileSync(ZH, "utf8"));
 
   for (const locale of [en, zh]) {
-    assert.equal(typeof locale.codex.oauth.signIn, "string");
-    assert.equal(typeof locale.codex.oauth.solMissing, "string");
-    assert.equal(typeof locale.codex.oauth.experimental, "string");
-    assert.equal(typeof locale.codex.oauth.isolated, "string");
+    assert.equal(typeof locale["codex.oauth.signIn"], "string");
+    assert.equal(typeof locale["codex.oauth.solMissing"], "string");
+    assert.equal(typeof locale["codex.oauth.experimental"], "string");
+    assert.equal(typeof locale["codex.oauth.isolated"], "string");
   }
 });
