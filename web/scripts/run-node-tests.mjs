@@ -40,7 +40,8 @@ function collectTests(dir) {
 
 rmSync(distRoot, { recursive: true, force: true });
 
-run(path.join(webRoot, "node_modules", ".bin", "tsc"), [
+run(process.execPath, [
+  path.join(webRoot, "node_modules", "typescript", "bin", "tsc"),
   "-p",
   "tsconfig.node-tests.json",
 ]);

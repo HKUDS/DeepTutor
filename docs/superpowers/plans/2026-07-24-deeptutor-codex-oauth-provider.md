@@ -36,7 +36,7 @@ responses    = https://chatgpt.com/backend-api/codex/responses
 
 这些端点属于实验性 Codex 兼容面，不被描述成稳定公开 API。
 
-- [ ] **Step 0.1: 准备被 Git 忽略的本地 worktree 目录**
+- [x] **Step 0.1: 准备被 Git 忽略的本地 worktree 目录**
 
 ```powershell
 git check-ignore -q .worktrees/probe
@@ -44,7 +44,7 @@ git check-ignore -q .worktrees/probe
 
 Expected: exit 0，证明 `.worktrees/` 不会进入版本控制。
 
-- [ ] **Step 0.2: 从已提交设计与计划的当前 HEAD 创建隔离功能 worktree**
+- [x] **Step 0.2: 从已提交设计与计划的当前 HEAD 创建隔离功能 worktree**
 
 ```powershell
 git worktree add '.worktrees/feat-codex-oauth-provider' `
@@ -55,6 +55,29 @@ git -C '.worktrees/feat-codex-oauth-provider' rev-list --left-right --count orig
 
 Expected: worktree 和新分支创建成功；`origin/main` 是 HEAD 的祖先；右侧计数只包含设计、
 计划和后续功能提交。
+
+- [x] **Step 0.3: 修复 Windows 下 Web Node 测试入口**
+
+在 Windows 上，`spawnSync()` 直接启动 `node_modules/.bin/tsc` 会返回 `EINVAL`。新增回归测试，
+并改为用当前 Node 进程执行 TypeScript 的 JavaScript 入口：
+
+```javascript
+run(process.execPath, [
+  path.join(webRoot, "node_modules", "typescript", "bin", "tsc"),
+  "-p",
+  "tsconfig.node-tests.json",
+]);
+```
+
+验证：
+
+```powershell
+Set-Location web
+npm run test:node
+npx tsc --noEmit
+```
+
+Expected: Windows 回归测试、全部 Node 测试和 TypeScript 检查通过。
 
 ## 1. 文件结构
 
