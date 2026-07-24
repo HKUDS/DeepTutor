@@ -45,6 +45,9 @@ class ProviderSpec:
     supports_stream_options: bool = True
     model_overrides: tuple[tuple[str, dict[str, Any]], ...] = ()
     is_oauth: bool = False
+    model_policy: str = "configured"
+    experimental: bool = False
+    requires_api_key: bool = True
     is_direct: bool = False
     thinking_style: str = ""
     # Substring patterns (case-insensitive) marking models whose native
@@ -64,6 +67,10 @@ class ProviderSpec:
         if self.is_local:
             return "local"
         return "standard"
+
+    @property
+    def auth_mode(self) -> str:
+        return "oauth" if self.is_oauth else "api_key"
 
     @property
     def label(self) -> str:
@@ -250,6 +257,9 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         display_name="OpenAI Codex",
         backend="openai_codex",
         is_oauth=True,
+        model_policy="dynamic_catalog",
+        experimental=True,
+        requires_api_key=False,
         default_api_base="https://chatgpt.com/backend-api",
     ),
     ProviderSpec(
@@ -259,6 +269,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         display_name="GitHub Copilot",
         backend="github_copilot",
         is_oauth=True,
+        requires_api_key=False,
         default_api_base="https://api.githubcopilot.com",
         strip_model_prefix=True,
         supports_max_completion_tokens=True,

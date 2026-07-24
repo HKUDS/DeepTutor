@@ -913,7 +913,7 @@ git commit -m "feat: 编排 Codex 登录与登出状态机"
 - Modify: `tests/services/test_provider_registry.py`
 - Modify: `tests/api/test_settings_router.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 def test_openai_codex_provider_exposes_oauth_dynamic_policy() -> None:
@@ -941,7 +941,7 @@ async def test_codex_oauth_start_returns_only_public_fields(monkeypatch) -> None
     assert "token" not in json.dumps(payload).lower()
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -951,7 +951,7 @@ Run:
 
 Expected: missing metadata and route functions.
 
-- [ ] **Step 3: 扩展 Provider 元数据**
+- [x] **Step 3: 扩展 Provider 元数据**
 
 `ProviderSpec` 新增最小字段：
 
@@ -970,7 +970,7 @@ def auth_mode(self) -> str:
 其既有 OAuth 语义。
 `_provider_choices()` 返回 `auth_mode`、`model_policy`、`requires_api_key`、`experimental`。
 
-- [ ] **Step 4: 新增五个管理员 API**
+- [x] **Step 4: 新增五个管理员 API**
 
 ```python
 @router.post("/providers/openai-codex/oauth/start")
@@ -1003,7 +1003,7 @@ async def refresh_openai_codex_models() -> dict[str, Any]:
 `HTTPException(status_code=error.http_status, detail={"code": error.code,
 "message": error.public_message})`；Settings router 不记录异常对象或上游 body。
 
-- [ ] **Step 5: 运行 API 测试**
+- [x] **Step 5: 运行 API 测试**
 
 Run:
 
@@ -1013,7 +1013,7 @@ Run:
 
 Expected: all selected tests pass.
 
-- [ ] **Step 6: 中文提交**
+- [x] **Step 6: 中文提交**
 
 ```powershell
 git add deeptutor/services/provider_registry.py deeptutor/api/routers/settings.py tests

@@ -27,3 +27,21 @@ def test_atlascloud_provider_aliases_and_base_detection() -> None:
 
 def test_openai_codex_is_not_detected_from_api_base() -> None:
     assert find_gateway(api_base="https://codex.example.com/v1") is None
+
+
+def test_openai_codex_provider_exposes_oauth_dynamic_policy() -> None:
+    spec = find_by_name("openai_codex")
+
+    assert spec is not None
+    assert spec.auth_mode == "oauth"
+    assert spec.model_policy == "dynamic_catalog"
+    assert spec.requires_api_key is False
+    assert spec.experimental is True
+
+
+def test_github_copilot_oauth_does_not_require_api_key() -> None:
+    spec = find_by_name("github_copilot")
+
+    assert spec is not None
+    assert spec.auth_mode == "oauth"
+    assert spec.requires_api_key is False

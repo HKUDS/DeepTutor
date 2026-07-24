@@ -33,6 +33,7 @@ from deeptutor.services.config.runtime_settings import (
     CHAT_ATTACHMENT_MAX_TOTAL_MB_RANGE,
     compute_ws_max_size,
 )
+from deeptutor.services.codex_auth import CodexAuthError, get_codex_oauth_service
 from deeptutor.services.embedding.client import reset_embedding_client
 from deeptutor.services.llm.client import reset_llm_client
 from deeptutor.services.llm.config import clear_llm_config_cache
@@ -331,7 +332,17 @@ def _require_settings_admin() -> None:
         )
 
 
-def _provider_choices() -> dict[str, list[dict[str, str]]]:
+def _codex_http_exception(error: CodexAuthError) -> HTTPException:
+    return HTTPException(
+        status_code=error.http_status,
+        detail={
+            "code": error.code,
+            "message": error.public_message,
+        },
+    )
+
+
+def _provider_choices() -> dict[str, list[dict[str, Any]]]:
     """Build dropdown options for provider selection, keyed by service type."""
     from deeptutor.services.config.provider_runtime import (
         EMBEDDING_PROVIDERS,
@@ -354,6 +365,10 @@ def _provider_choices() -> dict[str, list[dict[str, str]]]:
                     else s.label
                 ),
                 "base_url": s.default_api_base,
+                "auth_mode": s.auth_mode,
+                "model_policy": s.model_policy,
+                "requires_api_key": s.requires_api_key,
+                "experimental": s.experimental,
             }
             for s in PROVIDERS
         ],
@@ -506,6 +521,51 @@ async def get_settings():
         "catalog": get_model_catalog_service().load(),
         "providers": _provider_choices(),
     }
+
+
+@router.post("/providers/openai-codex/oauth/start")
+async def start_openai_codex_oauth() -> dict[str, Any]:
+    _require_settings_admin()
+    try:
+        return await get_codex_oauth_service().start_login()
+    except CodexAuthError as exc:
+        raise _codex_http_exception(exc) from None
+
+
+@router.get("/providers/openai-codex/oauth/status")
+async def get_openai_codex_oauth_status() -> dict[str, Any]:
+    _require_settings_admin()
+    try:
+        return get_codex_oauth_service().public_status()
+    except CodexAuthError as exc:
+        raise _codex_http_exception(exc) from None
+
+
+@router.post("/providers/openai-codex/oauth/cancel")
+async def cancel_openai_codex_oauth() -> dict[str, Any]:
+    _require_settings_admin()
+    try:
+        return await get_codex_oauth_service().cancel_login()
+    except CodexAuthError as exc:
+        raise _codex_http_exception(exc) from None
+
+
+@router.post("/providers/openai-codex/oauth/logout")
+async def logout_openai_codex_oauth() -> dict[str, Any]:
+    _require_settings_admin()
+    try:
+        return await get_codex_oauth_service().logout()
+    except CodexAuthError as exc:
+        raise _codex_http_exception(exc) from None
+
+
+@router.post("/providers/openai-codex/models/refresh")
+async def refresh_openai_codex_models() -> dict[str, Any]:
+    _require_settings_admin()
+    try:
+        return await get_codex_oauth_service().refresh_models()
+    except CodexAuthError as exc:
+        raise _codex_http_exception(exc) from None
 
 
 @router.get("/catalog")
