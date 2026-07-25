@@ -3,10 +3,12 @@ System Status API Router
 Manages system status checks and model connection tests
 """
 
+import asyncio
 from datetime import datetime
 import time
+from typing import Annotated, Protocol
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from deeptutor.multi_user.context import get_current_user
@@ -15,6 +17,12 @@ from deeptutor.services.embedding import get_embedding_client, get_embedding_con
 from deeptutor.services.llm import complete as llm_complete
 from deeptutor.services.llm import get_llm_config, get_token_limit_kwargs
 from deeptutor.services.search import web_search
+from deeptutor.update import (
+    InstallMode,
+    UpdateCheck,
+    UpdateStatus,
+    create_update_coordinator,
+)
 
 router = APIRouter()
 
@@ -25,6 +33,49 @@ class TestResponse(BaseModel):
     model: str | None = None
     response_time_ms: float | None = None
     error: str | None = None
+
+
+class UpdateCheckResponse(BaseModel):
+    """Read-only update availability returned to Web clients."""
+
+    status: UpdateStatus
+    current_version: str
+    latest_version: str | None
+    install_mode: InstallMode
+    can_auto_update: bool
+    release_url: str | None
+    detail: str
+
+
+class UpdateChecker(Protocol):
+    """Public check seam consumed by the system API."""
+
+    def check(self) -> UpdateCheck:
+        """Return current update availability."""
+
+
+def get_update_coordinator() -> UpdateChecker:
+    """Provide the process update coordinator for dependency injection."""
+
+    return create_update_coordinator()
+
+
+@router.get("/update", response_model=UpdateCheckResponse)
+async def get_update_status(
+    coordinator: Annotated[UpdateChecker, Depends(get_update_coordinator)],
+) -> UpdateCheckResponse:
+    """Check the latest stable release without mutating the installation."""
+
+    result = await asyncio.to_thread(coordinator.check)
+    return UpdateCheckResponse(
+        status=result.status,
+        current_version=result.current_version,
+        latest_version=result.latest_version,
+        install_mode=result.install_mode,
+        can_auto_update=result.can_auto_update,
+        release_url=result.release_url,
+        detail=result.detail,
+    )
 
 
 @router.get("/runtime-topology")
