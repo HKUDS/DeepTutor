@@ -194,3 +194,4 @@ class TestStripFrontmatter:
 
     def test_strips_empty_frontmatter_block(self):
         assert strip_frontmatter("---\n---\nbody") == "body"
+
