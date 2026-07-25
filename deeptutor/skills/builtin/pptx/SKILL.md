@@ -34,6 +34,7 @@ the final answer so the user can download the deck.
 ## Read / extract
 ```python
 from pptx import Presentation
+
 prs = Presentation("deck.pptx")
 print(len(prs.slides), prs.slide_width, prs.slide_height)  # EMU dims
 
@@ -41,7 +42,7 @@ for i, slide in enumerate(prs.slides, 1):
     print(f"--- slide {i} (layout: {slide.slide_layout.name}) ---")
     for shape in slide.shapes:
         if shape.has_text_frame:
-            print(shape.text_frame.text)          # \n-joined paragraphs
+            print(shape.text_frame.text)  # \n-joined paragraphs
         elif shape.has_table:
             for row in shape.table.rows:
                 print([c.text for c in row.cells])
@@ -67,15 +68,17 @@ for idx, lay in enumerate(prs.slide_layouts):
 # Title slide
 s = prs.slides.add_slide(prs.slide_layouts[0])
 s.shapes.title.text = "My Deck"
-s.placeholders[1].text = "Subtitle"      # idx from the listing above
+s.placeholders[1].text = "Subtitle"  # idx from the listing above
 
 # Title + bullets
 s = prs.slides.add_slide(prs.slide_layouts[1])
 s.shapes.title.text = "Agenda"
 tf = s.placeholders[1].text_frame
-tf.text = "First point"                    # first paragraph
+tf.text = "First point"  # first paragraph
 for line, lvl in [("Second", 0), ("Sub-point", 1)]:
-    p = tf.add_paragraph(); p.text = line; p.level = lvl
+    p = tf.add_paragraph()
+    p.text = line
+    p.level = lvl
 
 prs.save("out.pptx")
 ```
@@ -85,7 +88,10 @@ indentation/bullets come from the layout via `paragraph.level`.
 Add a free text box or picture on any slide:
 ```python
 tb = s.shapes.add_textbox(Inches(1), Inches(1), Inches(8), Inches(1))
-r = tb.text_frame.paragraphs[0].add_run(); r.text = "Hi"; r.font.size = Pt(28); r.font.bold = True
+r = tb.text_frame.paragraphs[0].add_run()
+r.text = "Hi"
+r.font.size = Pt(28)
+r.font.bold = True
 s.shapes.add_picture("logo.png", Inches(0.5), Inches(0.5), height=Inches(1))  # omit w to keep ratio
 ```
 
@@ -95,7 +101,8 @@ Edit at the **run** level to preserve a run's formatting; rewriting
 ```python
 for slide in prs.slides:
     for shape in slide.shapes:
-        if not shape.has_text_frame: continue
+        if not shape.has_text_frame:
+            continue
         for para in shape.text_frame.paragraphs:
             for run in para.runs:
                 if "{{NAME}}" in run.text:
@@ -110,6 +117,7 @@ python-pptx has no direct setter; swap the bytes of the related image part. Read
 the picture's `r:embed` rId off its `<a:blip>`, then overwrite the part's blob.
 ```python
 from pptx.oxml.ns import qn
+
 for shape in slide.shapes:
     if shape.shape_type == 13:  # MSO_SHAPE_TYPE.PICTURE
         blip = shape._element.find(".//" + qn("a:blip"))
@@ -121,16 +129,19 @@ for shape in slide.shapes:
 ### Tables and charts
 ```python
 from pptx.util import Inches
-tbl = s.shapes.add_table(rows=2, cols=2, left=Inches(1), top=Inches(1),
-                         width=Inches(6), height=Inches(2)).table
-tbl.cell(0,0).text = "Header"
+
+tbl = s.shapes.add_table(
+    rows=2, cols=2, left=Inches(1), top=Inches(1), width=Inches(6), height=Inches(2)
+).table
+tbl.cell(0, 0).text = "Header"
 
 from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE
-cd = CategoryChartData(); cd.categories = ["Q1","Q2","Q3"]
+
+cd = CategoryChartData()
+cd.categories = ["Q1", "Q2", "Q3"]
 cd.add_series("Sales", (4.5, 5.5, 6.2))
-s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(1), Inches(1),
-                   Inches(8), Inches(4.5), cd)
+s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(1), Inches(1), Inches(8), Inches(4.5), cd)
 ```
 
 ## Design (only when the user wants a polished deck, not a data dump)
@@ -193,6 +204,7 @@ Minimal text edit by zip surgery (zip members can't be overwritten in place —
 rebuild the archive, swapping the one part):
 ```python
 import zipfile
+
 target = "ppt/slides/slide1.xml"
 with zipfile.ZipFile("in.pptx") as zin:
     xml = zin.read(target).decode().replace("Old title", "New title")
