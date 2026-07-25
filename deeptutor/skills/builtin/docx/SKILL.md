@@ -26,9 +26,10 @@ After `exec` completes, use the Generated artifacts URL from the tool result in 
 
 ```python
 from docx import Document
+
 doc = Document("in.docx")
-text = "\n".join(p.text for p in doc.paragraphs)      # body paragraphs
-for tbl in doc.tables:                                 # tables
+text = "\n".join(p.text for p in doc.paragraphs)  # body paragraphs
+for tbl in doc.tables:  # tables
     for row in tbl.rows:
         print([c.text for c in row.cells])
 ```
@@ -39,6 +40,7 @@ To read **tracked changes**, parse the XML directly — `python-docx` ignores `<
 
 ```python
 import zipfile, re
+
 xml = zipfile.ZipFile("in.docx").read("word/document.xml").decode("utf-8")
 # inserted text = <w:ins>…<w:t>…  deleted = <w:del>…<w:delText>…
 print(re.findall(r"<w:t[^>]*>(.*?)</w:t>", xml))
@@ -51,20 +53,23 @@ from docx import Document
 from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-doc = Document()                                  # default template page size
-doc.add_heading("Quarterly Report", level=0)      # 0 = title; 1..9 = H1..H9
+doc = Document()  # default template page size
+doc.add_heading("Quarterly Report", level=0)  # 0 = title; 1..9 = H1..H9
 p = doc.add_paragraph("Intro paragraph. ")
-run = p.add_run("Bold tail."); run.bold = True
-doc.add_paragraph("First item", style="List Bullet")   # real list style, never a "• " literal
+run = p.add_run("Bold tail.")
+run.bold = True
+doc.add_paragraph("First item", style="List Bullet")  # real list style, never a "• " literal
 doc.add_paragraph("Step one", style="List Number")
 
 # Table — header row + data
-tbl = doc.add_table(rows=1, cols=2); tbl.style = "Light Grid Accent 1"
+tbl = doc.add_table(rows=1, cols=2)
+tbl.style = "Light Grid Accent 1"
 tbl.rows[0].cells[0].text, tbl.rows[0].cells[1].text = "Metric", "Value"
 for k, v in [("Revenue", "1.2M"), ("Growth", "15%")]:
-    c = tbl.add_row().cells; c[0].text, c[1].text = k, v
+    c = tbl.add_row().cells
+    c[0].text, c[1].text = k, v
 
-doc.add_picture("chart.png", width=Inches(5))     # image, scaled to width
+doc.add_picture("chart.png", width=Inches(5))  # image, scaled to width
 doc.add_page_break()
 doc.save("out.docx")
 ```
@@ -79,8 +84,9 @@ Rules:
 
 ```python
 from docx.shared import Inches
+
 sec = doc.sections[0]
-sec.page_width, sec.page_height = Inches(8.5), Inches(11)   # Letter
+sec.page_width, sec.page_height = Inches(8.5), Inches(11)  # Letter
 sec.top_margin = sec.bottom_margin = Inches(1)
 sec.header.paragraphs[0].text = "Confidential"
 ```
@@ -90,14 +96,22 @@ Page-number fields aren't in the python-docx API; inject the field XML into a fo
 ```python
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
+
+
 def add_page_number(paragraph):
     for t in ("begin", "instr", "end"):
         r = OxmlElement("w:r")
         if t == "instr":
-            fld = OxmlElement("w:instrText"); fld.set(qn("xml:space"), "preserve"); fld.text = "PAGE"
+            fld = OxmlElement("w:instrText")
+            fld.set(qn("xml:space"), "preserve")
+            fld.text = "PAGE"
         else:
-            fld = OxmlElement("w:fldChar"); fld.set(qn("w:fldCharType"), t)
-        r.append(fld); paragraph._p.append(r)
+            fld = OxmlElement("w:fldChar")
+            fld.set(qn("w:fldCharType"), t)
+        r.append(fld)
+        paragraph._p.append(r)
+
+
 add_page_number(doc.sections[0].footer.paragraphs[0])
 ```
 
@@ -136,12 +150,16 @@ Only when python-docx can't express it: **tracked changes, comments, exact-fidel
 
 ```python
 import zipfile
+
 src, dst = "in.docx", "out.docx"
-with zipfile.ZipFile(src) as z: xml = z.read("word/document.xml").decode("utf-8")
-xml = xml.replace("OLD", "NEW")          # or splice tracked-change elements (below)
+with zipfile.ZipFile(src) as z:
+    xml = z.read("word/document.xml").decode("utf-8")
+xml = xml.replace("OLD", "NEW")  # or splice tracked-change elements (below)
 with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
     for item in zin.infolist():
-        data = xml.encode("utf-8") if item.filename == "word/document.xml" else zin.read(item.filename)
+        data = (
+            xml.encode("utf-8") if item.filename == "word/document.xml" else zin.read(item.filename)
+        )
         zout.writestr(item, data)
 ```
 
@@ -180,7 +198,9 @@ Always confirm the file reopens cleanly — a silent corruption is the most comm
 
 ```python
 from docx import Document
-d = Document("out.docx"); print(len(d.paragraphs), "paragraphs OK")
+
+d = Document("out.docx")
+print(len(d.paragraphs), "paragraphs OK")
 ```
 
 For raw-OOXML edits also run `python -c "import zipfile; zipfile.ZipFile('out.docx').testzip()"` and well-formedness-check each edited XML part with `lxml.etree.parse`.
