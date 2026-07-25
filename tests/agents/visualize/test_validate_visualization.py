@@ -23,3 +23,4 @@ def test_validate_chartjs_rejects_non_object_json() -> None:
     ok, err = validate_visualization("[1, 2, 3]", "chartjs")
     assert ok is False
     assert "JSON object" in err
+
