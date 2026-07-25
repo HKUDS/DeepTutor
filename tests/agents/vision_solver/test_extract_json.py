@@ -29,3 +29,4 @@ def test_extract_json_fenced_block() -> None:
 def test_extract_json_rejects_non_object() -> None:
     with pytest.raises(json.JSONDecodeError):
         VisionSolverAgent._extract_json("[1, 2, 3]")
+
