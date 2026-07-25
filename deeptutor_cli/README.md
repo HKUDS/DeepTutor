@@ -164,8 +164,10 @@ deeptutor update --check  # 仅检查，不修改环境
 
 `--check` 只读取当前安装方式和官方稳定版元数据。PyPI 安装执行更新时，
 当前 CLI 会先退出，再由独立 Worker 升级固定的 `deeptutor` 包；完成后不会
-自动启动应用。源码安装目前仍只检查，Docker 只提示在宿主机更新镜像并
-重建服务。
+自动启动应用。editable 源码安装只会在工作区干净、分支未分叉且最新稳定
+Release tag 可从当前 HEAD 快进时更新；随后以 `--no-deps` 刷新原 editable
+安装，不推断 extras。完整源码仅在前端锁文件变化时用 Bun 刷新依赖。
+Docker 只提示在宿主机更新镜像并重建服务。
 
 通过 `deeptutor start` 启动的 PyPI 完整版也可在网页侧栏版本徽标中确认
 “更新并重启”。有对话任务运行时会拒绝更新；重启沿用同一 `--home` 与端口设置。

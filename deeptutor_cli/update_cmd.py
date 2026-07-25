@@ -6,8 +6,15 @@ import os
 
 import typer
 
-from deeptutor.update import InstallMode, UpdateCheck, UpdateStatus, create_update_coordinator
+from deeptutor.update import (
+    InstallMode,
+    UpdateCheck,
+    UpdateStatus,
+    create_update_coordinator,
+    detect_current_installation,
+)
 from deeptutor.update.jobs import UpdateInProgressError, create_update_scheduler
+from deeptutor.update.source import SourceUpdateError, create_source_updater
 
 
 def _print_check(result: UpdateCheck) -> None:
@@ -47,17 +54,41 @@ def register(app: typer.Typer) -> None:
             raise typer.Exit(code=1)
         if check or result.status is UpdateStatus.UP_TO_DATE:
             return
-        if result.install_mode is not InstallMode.PYPI:
+        if result.install_mode not in {
+            InstallMode.PYPI,
+            InstallMode.SOURCE_WEB,
+            InstallMode.SOURCE_CLI,
+        }:
             typer.echo(f"Automatic updates are not available for {result.install_mode.value} yet.")
             raise typer.Exit(code=2)
         if not result.latest_version:
             typer.echo("The stable target version is unavailable.")
             raise typer.Exit(code=1)
+        package_name = (
+            "deeptutor-cli" if result.install_mode is InstallMode.SOURCE_CLI else "deeptutor"
+        )
         if not typer.confirm(
-            f"Update deeptutor from {result.current_version} to {result.latest_version}?",
+            f"Update {package_name} from {result.current_version} to {result.latest_version}?",
             default=False,
         ):
             typer.echo("Update cancelled.")
+            return
+        if result.install_mode in {InstallMode.SOURCE_WEB, InstallMode.SOURCE_CLI}:
+            installation = detect_current_installation()
+            if installation.mode is not result.install_mode or installation.source_root is None:
+                typer.echo("The editable source installation changed during the update check.")
+                raise typer.Exit(code=1)
+            try:
+                source_result = create_source_updater().update(
+                    installation,
+                    result.latest_version,
+                )
+            except (SourceUpdateError, ValueError) as exc:
+                typer.echo(str(exc))
+                raise typer.Exit(code=1) from exc
+            typer.echo("Source update complete.")
+            if source_result.frontend_dependencies_refreshed:
+                typer.echo("Frontend dependencies refreshed with Bun.")
             return
         try:
             job = create_update_scheduler().schedule_pypi(

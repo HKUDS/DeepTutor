@@ -17,6 +17,17 @@ from deeptutor.update.jobs import JobStatus, UpdateJobStore
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _run_git(cwd: Path, *args: str) -> str:
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+    return completed.stdout.strip()
+
+
 class _GitHubReleaseHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         if self.path.startswith("/pypi/"):
@@ -380,3 +391,161 @@ def test_web_worker_restarts_with_persisted_launcher_arguments(tmp_path: Path) -
     assert json.loads(command_path.read_text(encoding="utf-8")) == list(restart_argv)
     assert store.load().status is JobStatus.RESTARTING
     assert store.load().restart_count == 1
+
+
+@pytest.mark.parametrize("cli_only", [False, True], ids=["full-source", "cli-only-source"])
+def test_source_user_can_fast_forward_from_the_real_cli_process(
+    tmp_path: Path,
+    cli_only: bool,
+) -> None:
+    remote = tmp_path / "remote.git"
+    seed = tmp_path / "seed"
+    checkout = tmp_path / "checkout"
+    _run_git(tmp_path, "init", "--bare", str(remote))
+    _run_git(tmp_path, "init", "--initial-branch=main", str(seed))
+    _run_git(seed, "config", "user.email", "tests@example.com")
+    _run_git(seed, "config", "user.name", "DeepTutor Tests")
+    (seed / "deeptutor").mkdir()
+    (seed / "deeptutor" / "__init__.py").write_text("", encoding="utf-8")
+    (seed / "pyproject.toml").write_text(
+        "[project]\nname='deeptutor'\n",
+        encoding="utf-8",
+    )
+    cli_project = seed / "packaging" / "deeptutor-cli"
+    cli_project.mkdir(parents=True)
+    (cli_project / "pyproject.toml").write_text(
+        "[project]\nname='deeptutor-cli'\n",
+        encoding="utf-8",
+    )
+    (seed / "web").mkdir()
+    (seed / "web" / "package-lock.json").write_text("unchanged\n", encoding="utf-8")
+    (seed / "release.txt").write_text("base\n", encoding="utf-8")
+    _run_git(seed, "add", ".")
+    _run_git(seed, "commit", "-m", "base")
+    _run_git(seed, "remote", "add", "origin", str(remote))
+    _run_git(seed, "push", "-u", "origin", "main")
+    _run_git(tmp_path, "clone", str(remote), str(checkout))
+    (seed / "release.txt").write_text("stable\n", encoding="utf-8")
+    _run_git(seed, "add", ".")
+    _run_git(seed, "commit", "-m", "stable release")
+    target = _run_git(seed, "rev-parse", "HEAD")
+    _run_git(seed, "tag", "v1.6.0")
+    _run_git(seed, "push", "origin", "main", "v1.6.0")
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _GitHubReleaseHandler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    hook_dir = tmp_path / "hook"
+    hook_dir.mkdir()
+    checkout_uri = checkout.as_uri()
+    if cli_only:
+        detection_hook = [
+            "from pathlib import Path",
+            "import deeptutor.update as update_module",
+            "from deeptutor.update import Installation, InstallMode",
+            "def _detect_installation():",
+            (
+                "    return Installation(mode=InstallMode.SOURCE_CLI, "
+                "current_version='1.5.4', package_name='deeptutor-cli', "
+                f"source_root=Path({str(checkout)!r}))"
+            ),
+            "update_module.detect_current_installation = _detect_installation",
+        ]
+    else:
+        detection_hook = [
+            "import importlib.metadata as metadata",
+            "import json",
+            "_real_distribution = metadata.distribution",
+            "class _SourceDistribution:",
+            "    version = '1.5.4'",
+            "    def read_text(self, name):",
+            "        if name != 'direct_url.json':",
+            "            return None",
+            (
+                "        return json.dumps({'url': "
+                f"'{checkout_uri}', "
+                "'dir_info': {'editable': True}})"
+            ),
+            "def _distribution(name):",
+            "    normalized = name.lower().replace('_', '-')",
+            "    if normalized == 'deeptutor':",
+            "        return _SourceDistribution()",
+            "    if normalized == 'deeptutor-cli':",
+            "        raise metadata.PackageNotFoundError(name)",
+            "    return _real_distribution(name)",
+            "metadata.distribution = _distribution",
+        ]
+    (hook_dir / "sitecustomize.py").write_text(
+        "\n".join(
+            [
+                "import os",
+                *detection_hook,
+                "from deeptutor.update import HttpReleaseProvider",
+                (
+                    "HttpReleaseProvider.GITHUB_LATEST_URL = "
+                    "os.environ['DEEPTUTOR_TEST_RELEASE_URL']"
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    fake_modules = tmp_path / "fake-modules"
+    fake_pip = fake_modules / "pip"
+    fake_pip.mkdir(parents=True)
+    (fake_pip / "__init__.py").write_text("", encoding="utf-8")
+    (fake_pip / "__main__.py").write_text(
+        "\n".join(
+            [
+                "import json",
+                "import os",
+                "from pathlib import Path",
+                "import sys",
+                "if sys.argv[1:] == ['--version']:",
+                "    print('pip test')",
+                "else:",
+                (
+                    "    Path(os.environ['DEEPTUTOR_TEST_PIP_COMMAND']).write_text("
+                    "json.dumps(sys.argv[1:]), encoding='utf-8')"
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    command_path = tmp_path / "source-pip-command.json"
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join((str(hook_dir), str(fake_modules), str(PROJECT_ROOT)))
+    env["DEEPTUTOR_TEST_RELEASE_URL"] = f"http://127.0.0.1:{server.server_port}/releases/latest"
+    env["DEEPTUTOR_TEST_PIP_COMMAND"] = str(command_path)
+    env["DEEPTUTOR_HOME"] = str(tmp_path / "runtime-home")
+    env.pop("DEEPTUTOR_CONTAINER", None)
+
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-m", "deeptutor_cli.main", "update"],
+            cwd=checkout,
+            env=env,
+            input="y\n",
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    assert completed.returncode == 0, completed.stderr
+    package_name = "deeptutor-cli" if cli_only else "deeptutor"
+    assert f"Update {package_name} from " in completed.stdout
+    assert " to 1.6.0?" in completed.stdout
+    assert "Source update complete" in completed.stdout
+    assert _run_git(checkout, "rev-parse", "HEAD") == target
+    assert json.loads(command_path.read_text(encoding="utf-8")) == [
+        "install",
+        "--no-deps",
+        "--editable",
+        str(
+            (checkout / "packaging" / "deeptutor-cli").resolve() if cli_only else checkout.resolve()
+        ),
+    ]
