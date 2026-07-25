@@ -1,11 +1,7 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 
 export type InstallMode =
-  | "pypi"
-  | "source_web"
-  | "source_cli"
-  | "docker"
-  | "unsupported";
+  "pypi" | "source_web" | "source_cli" | "docker" | "unsupported";
 
 export type UpdateStatus = "available" | "up_to_date" | "failed";
 
@@ -20,12 +16,7 @@ export interface UpdateCheckResponse {
 }
 
 export type UpdateJobStatus =
-  | "pending"
-  | "handoff"
-  | "running"
-  | "restarting"
-  | "succeeded"
-  | "failed";
+  "pending" | "handoff" | "running" | "restarting" | "succeeded" | "failed";
 
 export interface UpdateJobResponse {
   id: string;

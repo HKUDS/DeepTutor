@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const RELEASE_URL =
-  "https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.0";
+const RELEASE_URL = "https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.0";
 const AVAILABLE_UPDATE = {
   status: "available",
   current_version: "1.5.4",
@@ -82,16 +81,79 @@ test("version badge reports an up-to-date installation", async ({ page }) => {
   );
 });
 
-test("version badge reports a failed update check", async ({ page }) => {
-  await page.route("**/api/v1/system/update", (route) =>
-    route.fulfill({ status: 503, body: "service unavailable" }),
-  );
+test("version badge reports a failed check and stops retrying", async ({
+  page,
+}) => {
+  let checks = 0;
+  await page.route("**/api/v1/system/update", (route) => {
+    checks += 1;
+    return route.fulfill({ status: 503, body: "service unavailable" });
+  });
 
   await page.goto("/");
 
   await expect(page.getByTestId("version-badge")).toContainText(
     "Update check failed",
   );
+  await expect.poll(() => checks).toBe(4);
+  await page.waitForTimeout(1_000);
+  expect(checks).toBe(4);
+});
+
+test("a refreshed page recovers the persisted job after the backend restarts", async ({
+  page,
+}) => {
+  let checks = 0;
+  let jobChecks = 0;
+  await page.route("**/api/v1/auth/status", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        enabled: false,
+        authenticated: true,
+        role: "admin",
+        is_admin: true,
+      }),
+    }),
+  );
+  await page.route("**/api/v1/system/update", (route) => {
+    checks += 1;
+    if (checks === 1) return route.abort("connectionfailed");
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...AVAILABLE_UPDATE,
+        status: "failed",
+        current_version: "1.6.0",
+        latest_version: null,
+        release_url: null,
+      }),
+    });
+  });
+  await page.route("**/api/v1/system/update/job", (route) => {
+    jobChecks += 1;
+    if (jobChecks < 3) return route.abort("connectionfailed");
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "job-1",
+        status: "succeeded",
+        current_version: "1.5.4",
+        target_version: "1.6.0",
+        error: null,
+        restart_count: 1,
+      }),
+    });
+  });
+
+  await page.goto("/");
+
+  await expect(page.getByTestId("update-action")).toContainText(/reconnected/i);
+  await expect.poll(() => checks).toBeGreaterThan(1);
+  expect(jobChecks).toBeGreaterThan(2);
 });
 
 test("Docker installations direct updates to the host without an update action", async ({
@@ -105,7 +167,8 @@ test("Docker installations direct updates to the host without an update action",
         ...AVAILABLE_UPDATE,
         install_mode: "docker",
         can_auto_update: false,
-        detail: "Update the image on the Docker host and recreate the container.",
+        detail:
+          "Update the image on the Docker host and recreate the container.",
       }),
     }),
   );
@@ -116,6 +179,129 @@ test("Docker installations direct updates to the host without an update action",
   await expect(badge).toContainText("v1.6.0");
   await expect(badge).toContainText(/update on host/i);
   await expect(badge.getByRole("button", { name: /update/i })).toHaveCount(0);
+});
+
+test("editable Web installations expose the managed update action", async ({
+  page,
+}) => {
+  let requested = false;
+  await page.route("**/api/v1/auth/status", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        enabled: false,
+        authenticated: true,
+        role: "admin",
+        is_admin: true,
+      }),
+    }),
+  );
+  await page.route("**/api/v1/system/update", (route) => {
+    if (route.request().method() === "POST") {
+      requested = true;
+      return route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "source-job",
+          status: "pending",
+          current_version: "1.5.4",
+          target_version: "1.6.0",
+          error: null,
+          restart_count: 0,
+        }),
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...AVAILABLE_UPDATE,
+        install_mode: "source_web",
+        detail: "editable full installation",
+      }),
+    });
+  });
+  await page.route("**/api/v1/system/update/job", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: requested
+        ? JSON.stringify({
+            id: "source-job",
+            status: "succeeded",
+            current_version: "1.5.4",
+            target_version: "1.6.0",
+            error: null,
+            restart_count: 1,
+          })
+        : "null",
+    }),
+  );
+
+  await page.goto("/");
+
+  await expect(page.getByTestId("update-action")).toContainText(
+    /update and restart/i,
+  );
+  await page.getByTestId("update-action").click();
+  await page
+    .getByRole("alertdialog")
+    .getByRole("button", { name: /update and restart/i })
+    .click();
+  await expect(page.getByTestId("update-action")).toContainText(/reconnected/i);
+});
+
+test("a failed source refresh remains visible after the code fast-forwards", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/auth/status", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        enabled: false,
+        authenticated: true,
+        role: "admin",
+        is_admin: true,
+      }),
+    }),
+  );
+  await page.route("**/api/v1/system/update", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...AVAILABLE_UPDATE,
+        status: "up_to_date",
+        current_version: "1.6.0",
+        latest_version: "1.6.0",
+        install_mode: "source_web",
+      }),
+    }),
+  );
+  await page.route("**/api/v1/system/update/job", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "source-job",
+        status: "failed",
+        current_version: "1.5.4",
+        target_version: "1.6.0",
+        error: "Bun dependency refresh failed",
+        restart_count: 0,
+      }),
+    }),
+  );
+
+  await page.goto("/");
+
+  await expect(page.getByTestId("update-action")).toContainText(
+    /update failed/i,
+  );
+  await expect(page.getByTestId("update-action")).toBeDisabled();
 });
 
 test("admin can confirm an update and reconnect after the managed restart", async ({
@@ -162,7 +348,11 @@ test("admin can confirm an update and reconnect after the managed restart", asyn
   });
   await page.route("**/api/v1/system/update/job", async (route) => {
     if (!requested) {
-      await route.fulfill({ status: 200, contentType: "application/json", body: "null" });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "null",
+      });
       return;
     }
     poll += 1;
@@ -170,7 +360,8 @@ test("admin can confirm an update and reconnect after the managed restart", asyn
       await route.abort("connectionfailed");
       return;
     }
-    const status = poll === 1 ? "running" : poll === 3 ? "restarting" : "succeeded";
+    const status =
+      poll === 1 ? "running" : poll === 3 ? "restarting" : "succeeded";
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -258,5 +449,7 @@ test("failed Web update remains visible to the user", async ({ page }) => {
     .getByRole("button", { name: /update and restart/i })
     .click();
 
-  await expect(page.getByTestId("update-action")).toContainText(/update failed/i);
+  await expect(page.getByTestId("update-action")).toContainText(
+    /update failed/i,
+  );
 });

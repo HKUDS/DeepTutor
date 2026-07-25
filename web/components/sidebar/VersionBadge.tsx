@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { fetchUpdateStatus } from "@/lib/update-api";
+import { fetchUpdateStatus, type UpdateCheckResponse } from "@/lib/update-api";
 import {
   presentUpdateBadge,
   type UpdateBadgePresentation,
@@ -17,21 +17,42 @@ interface VersionBadgeProps {
 }
 
 const RELEASES_URL = "https://github.com/HKUDS/DeepTutor/releases";
+const UPDATE_CHECK_RETRY_MS = 750;
+const UPDATE_CHECK_RETRY_LIMIT = 3;
 
 export function VersionBadge({ collapsed = false }: VersionBadgeProps) {
   const { t } = useTranslation();
   const [update, setUpdate] = useState<UpdateBadgePresentation | null>(null);
+  const [check, setCheck] = useState<UpdateCheckResponse | null>(null);
 
   useEffect(() => {
     if (collapsed) return;
 
     const controller = new AbortController();
-    void fetchUpdateStatus(controller.signal)
-      .then((result) => setUpdate(presentUpdateBadge(result)))
-      .catch(() => {
-        if (!controller.signal.aborted) setUpdate({ kind: "failed" });
-      });
-    return () => controller.abort();
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let retries = 0;
+    const checkForUpdate = async () => {
+      try {
+        const result = await fetchUpdateStatus(controller.signal);
+        if (controller.signal.aborted) return;
+        setCheck(result);
+        setUpdate(presentUpdateBadge(result));
+      } catch {
+        if (!controller.signal.aborted) {
+          setCheck(null);
+          setUpdate({ kind: "failed" });
+          if (retries < UPDATE_CHECK_RETRY_LIMIT) {
+            retries += 1;
+            retryTimer = setTimeout(checkForUpdate, UPDATE_CHECK_RETRY_MS);
+          }
+        }
+      }
+    };
+    void checkForUpdate();
+    return () => {
+      controller.abort();
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [collapsed]);
 
   // Keep the collapsed sidebar entirely free of version chrome.
@@ -58,6 +79,15 @@ export function VersionBadge({ collapsed = false }: VersionBadgeProps) {
   const ariaLabel = available
     ? `${statusText}: ${displayTag} → ${available.version}. ${t("Latest release") as string}`
     : `${displayTag}. ${statusText}`;
+  const checkedTarget = normalizeVersionTag(check?.latest_version ?? "");
+  const webManagedInstall =
+    check?.install_mode === "pypi" || check?.install_mode === "source_web";
+  const supportsWebUpdate = Boolean(
+    check?.can_auto_update && webManagedInstall,
+  );
+  const canRunUpdate = Boolean(available && supportsWebUpdate && checkedTarget);
+  const shouldRecoverJob =
+    webManagedInstall || (update?.kind === "failed" && check === null);
 
   return (
     <div
@@ -94,8 +124,11 @@ export function VersionBadge({ collapsed = false }: VersionBadgeProps) {
           <span className="truncate leading-none">· {statusText}</span>
         ) : null}
       </a>
-      {available?.canAutoUpdate && available.installMode === "pypi" ? (
-        <UpdateAction targetVersion={available.version} />
+      {shouldRecoverJob ? (
+        <UpdateAction
+          targetVersion={checkedTarget}
+          actionAvailable={canRunUpdate}
+        />
       ) : null}
     </div>
   );

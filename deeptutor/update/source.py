@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+import sysconfig
 from typing import Protocol
 
 from packaging.version import Version
@@ -60,6 +62,21 @@ class SourceUpdateResult:
     frontend_dependencies_refreshed: bool
 
 
+@dataclass(frozen=True)
+class SourceUpdatePlan:
+    """Preflighted source state that must still match when applying an update."""
+
+    source_root: Path
+    editable_root: Path
+    previous_commit: str
+    target_commit: str
+    branch: str
+    remote: str
+    tag: str
+    frontend_dependencies_changed: bool
+    bun_executable: str | None
+
+
 _FRONTEND_LOCKS = (
     "web/bun.lock",
     "web/bun.lockb",
@@ -86,8 +103,49 @@ class SourceUpdater:
         installation: Installation,
         target_version: str,
     ) -> SourceUpdateResult:
-        """Apply a stable source update or refuse before changing the checkout."""
+        """Preflight and apply one stable source update."""
 
+        return self.apply(self.preflight(installation, target_version))
+
+    def preflight(
+        self,
+        installation: Installation,
+        target_version: str,
+    ) -> SourceUpdatePlan:
+        """Validate a source update without moving HEAD or changing dependencies."""
+
+        source_root, editable_root = self._resolve_editable_checkout(installation)
+        version = Version(target_version)
+        if version.is_prerelease or version.is_devrelease:
+            raise SourceUpdateError("The source update target must be stable")
+        tag = f"v{version}"
+        previous_commit, target_commit, branch, remote = self._resolve_git_target(
+            source_root,
+            tag,
+        )
+        frontend_changed, bun = self._preflight_dependencies(
+            installation.mode,
+            source_root,
+            editable_root,
+            previous_commit,
+            target_commit,
+        )
+        return SourceUpdatePlan(
+            source_root=source_root,
+            editable_root=editable_root,
+            previous_commit=previous_commit,
+            target_commit=target_commit,
+            branch=branch,
+            remote=remote,
+            tag=tag,
+            frontend_dependencies_changed=frontend_changed,
+            bun_executable=bun,
+        )
+
+    def _resolve_editable_checkout(
+        self,
+        installation: Installation,
+    ) -> tuple[Path, Path]:
         if installation.mode not in {InstallMode.SOURCE_WEB, InstallMode.SOURCE_CLI}:
             raise SourceUpdateError("This is not an editable source installation")
         if installation.source_root is None:
@@ -101,12 +159,6 @@ class SourceUpdater:
         )
         if not (editable_root / "pyproject.toml").is_file():
             raise SourceUpdateError("The editable source project is incomplete")
-
-        version = Version(target_version)
-        if version.is_prerelease or version.is_devrelease:
-            raise SourceUpdateError("The source update target must be stable")
-        tag = f"v{version}"
-
         repository_root = Path(
             self._git_required(
                 source_root,
@@ -116,7 +168,34 @@ class SourceUpdater:
         ).resolve()
         if repository_root != source_root:
             raise SourceUpdateError("The editable source root is not the Git checkout root")
+        git_dir_raw = self._git_required(
+            source_root,
+            ["rev-parse", "--git-dir"],
+            "Git metadata directory",
+        )
+        git_dir = Path(git_dir_raw)
+        if not git_dir.is_absolute():
+            git_dir = source_root / git_dir
+        python_site = Path(sysconfig.get_paths()["purelib"])
+        if not all(
+            os.access(path, os.W_OK)
+            for path in (
+                source_root,
+                git_dir.resolve(),
+                editable_root,
+                python_site,
+            )
+        ):
+            raise SourceUpdateError(
+                "Source update refused: checkout or Python environment is not writable"
+            )
+        return source_root, editable_root
 
+    def _resolve_git_target(
+        self,
+        source_root: Path,
+        tag: str,
+    ) -> tuple[str, str, str, str]:
         branch_result = self._git(
             source_root,
             ["symbolic-ref", "--quiet", "--short", "HEAD"],
@@ -204,9 +283,18 @@ class SourceUpdater:
             )
         if ancestor.returncode != 0:
             self._raise_command_error("release ancestry check", ancestor)
+        return previous_commit, target_commit, branch, remote
 
+    def _preflight_dependencies(
+        self,
+        mode: InstallMode,
+        source_root: Path,
+        editable_root: Path,
+        previous_commit: str,
+        target_commit: str,
+    ) -> tuple[bool, str | None]:
         frontend_changed = False
-        if installation.mode is InstallMode.SOURCE_WEB:
+        if mode is InstallMode.SOURCE_WEB:
             lock_diff = self._git(
                 source_root,
                 [
@@ -229,6 +317,8 @@ class SourceUpdater:
         )
         bun = self._bun or shutil.which("bun")
         if frontend_changed:
+            if not os.access(source_root / "web", os.W_OK):
+                raise SourceUpdateError("Source update refused: frontend directory is not writable")
             if not bun:
                 raise SourceUpdateError(
                     "Frontend dependencies changed, but Bun is not available on PATH"
@@ -238,27 +328,58 @@ class SourceUpdater:
                 cwd=source_root / "web",
                 purpose="Bun preflight",
             )
+        return frontend_changed, bun
+
+    def apply(self, plan: SourceUpdatePlan) -> SourceUpdateResult:
+        """Apply a preflighted plan after rechecking its non-mutating invariants."""
+
+        current_branch = self._git_required(
+            plan.source_root,
+            ["symbolic-ref", "--quiet", "--short", "HEAD"],
+            "current branch",
+        )
+        if current_branch != plan.branch:
+            raise SourceUpdateError("Source branch changed after preflight")
+        self._require_clean(plan.source_root)
+        if (
+            self._git_required(
+                plan.source_root,
+                ["rev-parse", "HEAD"],
+                "current revision",
+            )
+            != plan.previous_commit
+        ):
+            raise SourceUpdateError("Source revision changed after preflight")
+        if (
+            self._git_required(
+                plan.source_root,
+                ["rev-parse", "--verify", f"refs/tags/{plan.tag}^{{commit}}"],
+                f"stable release tag {plan.tag}",
+            )
+            != plan.target_commit
+        ):
+            raise SourceUpdateError("Stable release tag changed after preflight")
 
         self._git_required(
-            source_root,
+            plan.source_root,
             [
                 "pull",
                 "--ff-only",
                 "--no-rebase",
                 "--no-tags",
-                remote,
-                f"refs/tags/{tag}",
+                plan.remote,
+                f"refs/tags/{plan.tag}",
             ],
-            f"fast-forward to {tag}",
+            f"fast-forward to {plan.tag}",
             allow_empty=True,
         )
         if (
             self._git_required(
-                source_root,
+                plan.source_root,
                 ["rev-parse", "HEAD"],
                 "updated revision",
             )
-            != target_commit
+            != plan.target_commit
         ):
             raise SourceUpdateError("Git did not finish at the stable release commit")
 
@@ -270,22 +391,22 @@ class SourceUpdater:
                 "install",
                 "--no-deps",
                 "--editable",
-                str(editable_root),
+                str(plan.editable_root),
             ],
-            cwd=editable_root,
+            cwd=plan.editable_root,
             purpose="editable Python refresh",
         )
-        if frontend_changed and bun:
+        if plan.frontend_dependencies_changed and plan.bun_executable:
             self._required(
-                [bun, "install", "--no-save"],
-                cwd=source_root / "web",
+                [plan.bun_executable, "install", "--no-save"],
+                cwd=plan.source_root / "web",
                 purpose="Bun dependency refresh",
             )
 
         return SourceUpdateResult(
-            previous_commit=previous_commit,
-            target_commit=target_commit,
-            frontend_dependencies_refreshed=frontend_changed,
+            previous_commit=plan.previous_commit,
+            target_commit=plan.target_commit,
+            frontend_dependencies_refreshed=plan.frontend_dependencies_changed,
         )
 
     def _require_clean(self, source_root: Path) -> None:
@@ -345,6 +466,7 @@ __all__ = (
     "CommandResult",
     "SourceCommandRunner",
     "SourceUpdateError",
+    "SourceUpdatePlan",
     "SourceUpdateResult",
     "SourceUpdater",
     "SubprocessSourceCommandRunner",

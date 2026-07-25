@@ -101,11 +101,19 @@ def test_full_source_update_fast_forwards_and_refreshes_changed_dependencies(
     checkout, target = _source_checkout(tmp_path)
     runner = _Runner()
 
-    result = SourceUpdater(
+    updater = SourceUpdater(
         runner=runner,
         python_executable="python-under-test",
         bun_executable="bun",
-    ).update(_installation(checkout, InstallMode.SOURCE_WEB), "1.6.0")
+    )
+    original = _git(checkout, "rev-parse", "HEAD")
+
+    plan = updater.preflight(
+        _installation(checkout, InstallMode.SOURCE_WEB),
+        "1.6.0",
+    )
+    assert _git(checkout, "rev-parse", "HEAD") == original
+    result = updater.apply(plan)
 
     assert _git(checkout, "rev-parse", "HEAD") == target
     assert result.frontend_dependencies_refreshed is True
@@ -124,6 +132,22 @@ def test_full_source_update_fast_forwards_and_refreshes_changed_dependencies(
     assert (["bun", "install", "--no-save"], checkout.resolve() / "web") in runner.commands
     git_verbs = {command[1] for command, _cwd in runner.commands if command[0] == "git"}
     assert git_verbs.isdisjoint({"stash", "reset", "rebase", "merge"})
+
+
+def test_source_preflight_rejects_a_read_only_checkout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.update import source as source_module
+
+    checkout, _ = _source_checkout(tmp_path)
+    monkeypatch.setattr(source_module.os, "access", lambda path, mode: False)
+
+    with pytest.raises(SourceUpdateError, match="not writable"):
+        SourceUpdater(runner=_Runner()).preflight(
+            _installation(checkout, InstallMode.SOURCE_WEB),
+            "1.6.0",
+        )
 
 
 def test_cli_source_update_refreshes_only_the_existing_cli_editable(

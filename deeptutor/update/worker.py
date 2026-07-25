@@ -12,7 +12,9 @@ from typing import Callable, Protocol
 
 from packaging.version import Version
 
-from .jobs import JobStatus, UpdateJobStore
+from . import Installation, InstallMode
+from .jobs import JobStatus, UpdateJob, UpdateJobStore
+from .source import create_source_updater
 
 
 class CommandExecutor(Protocol):
@@ -20,6 +22,13 @@ class CommandExecutor(Protocol):
 
     def run(self, command: list[str], *, log_path: Path) -> int:
         """Run *command* without a shell and return its exit status."""
+
+
+class SourceUpdateExecutor(Protocol):
+    """Boundary for applying one preflighted source update."""
+
+    def update(self, installation: Installation, target_version: str) -> object:
+        """Update the detected source checkout."""
 
 
 class SubprocessCommandExecutor:
@@ -123,46 +132,75 @@ def wait_for_process_exit(pid: int, *, timeout: float = 60.0) -> None:
         time.sleep(0.05)
 
 
+def _restart_application(
+    job: UpdateJob,
+    *,
+    store: UpdateJobStore,
+    launcher: RestartLauncher | None,
+) -> None:
+    if not job.restart_home:
+        raise RuntimeError("Update job is missing its restart home")
+    if not job.restart_argv:
+        raise RuntimeError("Update job is missing its restart arguments")
+    home = Path(job.restart_home).resolve()
+    (launcher or SubprocessRestartLauncher()).launch(
+        build_restart_command(job.restart_argv),
+        cwd=home,
+        log_path=store.log_path,
+    )
+
+
 def run_update_worker(
     *,
     store_root: Path,
     parent_pid: int | None,
     executor: CommandExecutor | None = None,
     restart_launcher: RestartLauncher | None = None,
+    source_updater: SourceUpdateExecutor | None = None,
     wait_for_parent: Callable[[int], None] = wait_for_process_exit,
 ) -> int:
-    """Apply one persisted PyPI job and persist its terminal status."""
+    """Apply one persisted update job and persist its terminal status."""
 
     store = UpdateJobStore(store_root)
     try:
         job = store.load()
     except Exception:
         return 1
+    restart_attempted = False
     try:
         if job.status not in {JobStatus.PENDING, JobStatus.HANDOFF}:
             raise RuntimeError("Update job is not pending")
         if parent_pid is not None:
             wait_for_parent(parent_pid)
         store.mark_running(job.id)
-        command = build_pypi_update_command(job.target_version)
-        exit_code = (executor or SubprocessCommandExecutor()).run(
-            command,
-            log_path=store.log_path,
-        )
-        if exit_code != 0:
-            store.mark_failed(job.id, f"pip exited with status {exit_code}")
-            return 1
-        if job.restart_requested:
-            if not job.restart_home:
-                raise RuntimeError("Update job is missing its restart home")
-            if not job.restart_argv:
-                raise RuntimeError("Update job is missing its restart arguments")
-            home = Path(job.restart_home).resolve()
-            store.mark_restarting(job.id)
-            (restart_launcher or SubprocessRestartLauncher()).launch(
-                build_restart_command(job.restart_argv),
-                cwd=home,
+        if job.kind == "source":
+            if not job.source_root:
+                raise RuntimeError("Source update job is missing its checkout")
+            (source_updater or create_source_updater()).update(
+                Installation(
+                    mode=InstallMode.SOURCE_WEB,
+                    current_version=job.current_version,
+                    package_name="deeptutor",
+                    source_root=Path(job.source_root).resolve(),
+                    detail="editable full installation",
+                ),
+                job.target_version,
+            )
+        else:
+            command = build_pypi_update_command(job.target_version)
+            exit_code = (executor or SubprocessCommandExecutor()).run(
+                command,
                 log_path=store.log_path,
+            )
+            if exit_code != 0:
+                raise RuntimeError(f"pip exited with status {exit_code}")
+        if job.restart_requested:
+            store.mark_restarting(job.id)
+            restart_attempted = True
+            _restart_application(
+                job,
+                store=store,
+                launcher=restart_launcher,
             )
         else:
             store.mark_succeeded(job.id)
@@ -172,6 +210,22 @@ def run_update_worker(
             store.mark_failed(job.id, str(exc) or type(exc).__name__)
         except Exception:
             pass
+        if job.restart_requested and job.restart_home and not restart_attempted:
+            try:
+                restart_attempted = True
+                _restart_application(
+                    job,
+                    store=store,
+                    launcher=restart_launcher,
+                )
+            except Exception as restart_exc:
+                try:
+                    store.mark_failed(
+                        job.id,
+                        f"{str(exc) or type(exc).__name__}; app restart failed: {restart_exc}",
+                    )
+                except Exception:
+                    pass
         return 1
 
 

@@ -18,8 +18,7 @@ test("fetchUpdateStatus returns the system update payload", async () => {
         latest_version: "1.6.0",
         install_mode: "pypi",
         can_auto_update: true,
-        release_url:
-          "https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.0",
+        release_url: "https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.0",
         detail: "installed distribution",
       }),
       { status: 200, headers: { "Content-Type": "application/json" } },
@@ -77,7 +76,10 @@ test("requestWebUpdate sends the fixed restart confirmation", async () => {
     const job = await requestWebUpdate();
 
     assert.equal(request?.method, "POST");
-    assert.equal(request?.body, JSON.stringify({ confirmation: "update-and-restart" }));
+    assert.equal(
+      request?.body,
+      JSON.stringify({ confirmation: "update-and-restart" }),
+    );
     assert.equal(job.status, "pending");
   } finally {
     globalThis.fetch = originalFetch;

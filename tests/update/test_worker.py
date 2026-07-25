@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 import sys
 
+from deeptutor.update import InstallMode
 from deeptutor.update.jobs import JobStatus, UpdateJobStore
+from deeptutor.update.source import SourceUpdateError
 from deeptutor.update.worker import run_update_worker
 
 
@@ -128,3 +130,68 @@ def test_web_worker_restarts_the_same_home_exactly_once_after_upgrade(tmp_path: 
     restarted = store.load()
     assert restarted.status is JobStatus.RESTARTING
     assert restarted.restart_count == 1
+
+
+def test_web_worker_applies_a_source_job_before_restarting(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    checkout = tmp_path / "checkout"
+    store = UpdateJobStore(tmp_path / "jobs")
+    job = store.create_source(
+        current_version="1.5.4",
+        target_version="1.6.0",
+        source_root=checkout,
+        restart_requested=True,
+    )
+    store.prepare_restart(job.id, home=home)
+    seen: dict[str, object] = {}
+
+    class SourceUpdater:
+        def update(self, installation, target_version):
+            seen["installation"] = installation
+            seen["target_version"] = target_version
+
+    restart_launcher = RecordingRestartLauncher()
+    exit_code = run_update_worker(
+        store_root=store.root,
+        parent_pid=None,
+        source_updater=SourceUpdater(),
+        restart_launcher=restart_launcher,
+    )
+
+    assert exit_code == 0
+    installation = seen["installation"]
+    assert installation.mode is InstallMode.SOURCE_WEB
+    assert installation.source_root == checkout.resolve()
+    assert seen["target_version"] == "1.6.0"
+    assert len(restart_launcher.commands) == 1
+    assert store.load().status is JobStatus.RESTARTING
+
+
+def test_failed_source_job_attempts_to_restore_the_app_once(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    store = UpdateJobStore(tmp_path / "jobs")
+    job = store.create_source(
+        current_version="1.5.4",
+        target_version="1.6.0",
+        source_root=tmp_path / "checkout",
+        restart_requested=True,
+    )
+    store.prepare_restart(job.id, home=home)
+
+    class BrokenSourceUpdater:
+        def update(self, installation, target_version):
+            raise SourceUpdateError("dependency refresh failed")
+
+    restart_launcher = RecordingRestartLauncher()
+    exit_code = run_update_worker(
+        store_root=store.root,
+        parent_pid=None,
+        source_updater=BrokenSourceUpdater(),
+        restart_launcher=restart_launcher,
+    )
+
+    failed = store.load()
+    assert exit_code == 1
+    assert failed.status is JobStatus.FAILED
+    assert failed.error == "dependency refresh failed"
+    assert len(restart_launcher.commands) == 1

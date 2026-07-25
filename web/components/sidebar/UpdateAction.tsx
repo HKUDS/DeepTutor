@@ -15,16 +15,12 @@ import { normalizeVersionTag } from "@/lib/version";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 interface UpdateActionProps {
-  targetVersion: string;
+  targetVersion: string | null;
+  actionAvailable: boolean;
 }
 
 type UpdatePhase =
-  | "idle"
-  | "requesting"
-  | "updating"
-  | "restarting"
-  | "reconnected"
-  | "failed";
+  "idle" | "requesting" | "updating" | "restarting" | "reconnected" | "failed";
 
 const POLL_INTERVAL_MS = 750;
 const POLL_TIMEOUT_MS = 120_000;
@@ -40,7 +36,10 @@ function isActiveStatus(status: UpdateJobStatus): boolean {
   return ["pending", "handoff", "running", "restarting"].includes(status);
 }
 
-export function UpdateAction({ targetVersion }: UpdateActionProps) {
+export function UpdateAction({
+  targetVersion,
+  actionAvailable,
+}: UpdateActionProps) {
   const { t } = useTranslation();
   const { enabled, isAdmin, loading } = useAuthStatus();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -49,20 +48,32 @@ export function UpdateAction({ targetVersion }: UpdateActionProps) {
 
   useEffect(() => {
     const controller = new AbortController();
-    void fetchUpdateJob(controller.signal)
-      .then((job) => {
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = Date.now() + POLL_TIMEOUT_MS;
+    const restoreJob = async () => {
+      try {
+        const job = await fetchUpdateJob(controller.signal);
         if (!job) return;
         const sameTarget =
+          targetVersion === null ||
           (normalizeVersionTag(job.target_version) ?? job.target_version) ===
-          targetVersion;
+            targetVersion;
         if (isActiveStatus(job.status) || sameTarget) {
           setPhase(phaseForStatus(job.status));
           setPolling(isActiveStatus(job.status));
         }
-      })
-      .catch(() => undefined);
-    return () => controller.abort();
-  }, [targetVersion]);
+      } catch {
+        if (!controller.signal.aborted && Date.now() < deadline) {
+          retryTimer = setTimeout(restoreJob, POLL_INTERVAL_MS);
+        }
+      }
+    };
+    void restoreJob();
+    return () => {
+      controller.abort();
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [actionAvailable, targetVersion]);
 
   useEffect(() => {
     if (!polling) return;
@@ -119,6 +130,7 @@ export function UpdateAction({ targetVersion }: UpdateActionProps) {
   }, [t]);
 
   if (loading || (enabled && !isAdmin)) return null;
+  if (!actionAvailable && phase === "idle") return null;
 
   const labels: Record<UpdatePhase, string> = {
     idle: t("Update and restart") as string,
@@ -155,7 +167,7 @@ export function UpdateAction({ targetVersion }: UpdateActionProps) {
         data-testid="update-action"
         data-phase={phase}
         onClick={() => setDialogOpen(true)}
-        disabled={busy || phase === "reconnected"}
+        disabled={!actionAvailable || busy || phase === "reconnected"}
         title={buttonLabel}
         aria-label={buttonLabel}
         className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-[background-color,color,box-shadow,scale,opacity] duration-150 ease-out active:not-disabled:scale-[0.96] disabled:cursor-default disabled:opacity-70 ${tone}`}
@@ -179,10 +191,12 @@ export function UpdateAction({ targetVersion }: UpdateActionProps) {
         onConfirm={() => void startUpdate()}
         onCancel={() => setDialogOpen(false)}
       >
-        {t(
-          "DeepTutor will stop briefly, install {{version}}, and restart with the same settings.",
-          { version: targetVersion },
-        ) as string}
+        {
+          t(
+            "DeepTutor will stop briefly, install {{version}}, and restart with the same settings.",
+            { version: targetVersion ?? "" },
+          ) as string
+        }
       </ConfirmDialog>
     </>
   );

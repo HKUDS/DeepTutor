@@ -36,7 +36,7 @@ class UpdateInProgressError(RuntimeError):
 
 @dataclass(frozen=True)
 class UpdateJob:
-    """Trusted data required to apply one PyPI update."""
+    """Trusted data required to apply one persisted update."""
 
     id: str
     status: JobStatus
@@ -50,6 +50,7 @@ class UpdateJob:
     restart_home: str | None = None
     restart_argv: tuple[str, ...] = ()
     restart_count: int = 0
+    source_root: str | None = None
     schema_version: int = 1
     kind: str = "pypi"
 
@@ -64,8 +65,12 @@ class UpdateJob:
     def from_dict(cls, payload: dict[str, object]) -> UpdateJob:
         """Validate and deserialize one stored job."""
 
-        if payload.get("schema_version") != 1 or payload.get("kind") != "pypi":
+        kind = str(payload.get("kind"))
+        if payload.get("schema_version") != 1 or kind not in {"pypi", "source"}:
             raise ValueError("Unsupported update job")
+        source_root = _optional_string(payload.get("source_root"))
+        if kind == "source" and not source_root:
+            raise ValueError("Source update job is missing its checkout")
         restart_home = _optional_string(payload.get("restart_home"))
         return cls(
             id=str(payload["id"]),
@@ -83,6 +88,8 @@ class UpdateJob:
                 home=restart_home,
             ),
             restart_count=int(str(payload.get("restart_count") or 0)),
+            source_root=source_root,
+            kind=kind,
         )
 
 
@@ -152,6 +159,31 @@ class UpdateJobStore:
             created_at=_now(),
             restart_requested=restart_requested,
         )
+        return self._create(job)
+
+    def create_source(
+        self,
+        *,
+        current_version: str,
+        target_version: str,
+        source_root: Path,
+        restart_requested: bool = True,
+    ) -> UpdateJob:
+        """Reserve the active slot for one editable source update."""
+
+        job = UpdateJob(
+            id=uuid.uuid4().hex,
+            status=JobStatus.PENDING,
+            current_version=_canonical_version(current_version, stable=False),
+            target_version=_canonical_version(target_version, stable=True),
+            created_at=_now(),
+            restart_requested=restart_requested,
+            source_root=str(source_root.resolve()),
+            kind="source",
+        )
+        return self._create(job)
+
+    def _create(self, job: UpdateJob) -> UpdateJob:
         self.root.mkdir(parents=True, exist_ok=True)
         try:
             descriptor = os.open(

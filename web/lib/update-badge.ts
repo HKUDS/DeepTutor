@@ -7,8 +7,6 @@ export type UpdateBadgePresentation =
       version: string;
       href: string;
       hostManaged: boolean;
-      installMode: UpdateCheckResponse["install_mode"];
-      canAutoUpdate: boolean;
     }
   | { kind: "up_to_date"; version: string | null; href: string | null }
   | { kind: "failed" };
@@ -27,8 +25,6 @@ export function presentUpdateBadge(
         normalizeVersionTag(update.latest_version) ?? update.latest_version,
       href: update.release_url,
       hostManaged: update.install_mode === "docker",
-      installMode: update.install_mode,
-      canAutoUpdate: update.can_auto_update,
     };
   }
   if (update.status === "up_to_date") {

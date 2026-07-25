@@ -22,16 +22,23 @@ from deeptutor.services.llm import complete as llm_complete
 from deeptutor.services.llm import get_llm_config, get_token_limit_kwargs
 from deeptutor.services.search import web_search
 from deeptutor.update import (
+    Installation,
     InstallMode,
     UpdateCheck,
     UpdateStatus,
     create_update_coordinator,
+    detect_current_installation,
 )
 from deeptutor.update.jobs import (
     JobStatus,
     UpdateInProgressError,
     UpdateJob,
     UpdateJobStore,
+)
+from deeptutor.update.source import (
+    SourceUpdateError,
+    SourceUpdatePlan,
+    create_source_updater,
 )
 
 router = APIRouter()
@@ -71,6 +78,17 @@ class ConversationActivity(Protocol):
         """Return whether a turn is currently running."""
 
 
+class SourcePreflight(Protocol):
+    """Non-mutating source checks required before the Launcher exits."""
+
+    def preflight(
+        self,
+        installation: Installation,
+        target_version: str,
+    ) -> SourceUpdatePlan:
+        """Validate one source update without changing the checkout."""
+
+
 class WebUpdateRequest(BaseModel):
     """Explicit second confirmation for an update and restart."""
 
@@ -95,17 +113,35 @@ def get_update_coordinator() -> UpdateChecker:
 
 
 def get_conversation_activity() -> ConversationActivity:
+    """Provide live conversation state for disruptive update checks."""
+
     from deeptutor.services.session import get_turn_runtime_manager
 
     return get_turn_runtime_manager()
 
 
 def get_update_job_store() -> UpdateJobStore:
+    """Provide the update job store under the active runtime home."""
+
     root = get_runtime_home() / "data" / "user" / "update"
     return UpdateJobStore(root)
 
 
+def get_current_installation() -> Installation:
+    """Provide current installation evidence for source preflight."""
+
+    return detect_current_installation()
+
+
+def get_source_preflight() -> SourcePreflight:
+    """Provide the source updater's non-mutating preflight boundary."""
+
+    return create_source_updater()
+
+
 def is_launcher_available() -> bool:
+    """Return whether the backend is managed by a live Web launcher."""
+
     raw_pid = os.getenv("DEEPTUTOR_LAUNCHER_PID", "").strip()
     try:
         launcher_pid = int(raw_pid)
@@ -178,8 +214,10 @@ async def request_web_update(
     ],
     store: Annotated[UpdateJobStore, Depends(get_update_job_store)],
     launcher_ready: Annotated[bool, Depends(is_launcher_available)],
+    installation: Annotated[Installation, Depends(get_current_installation)],
+    source_preflight: Annotated[SourcePreflight, Depends(get_source_preflight)],
 ) -> UpdateJobResponse:
-    """Request a trusted PyPI update for the managing Launcher to apply."""
+    """Request a trusted update for the managing Launcher to apply."""
 
     del request
     if not launcher_ready:
@@ -193,21 +231,53 @@ async def request_web_update(
             detail="An active conversation must finish before updating.",
         )
     result = await asyncio.to_thread(coordinator.check)
-    if (
-        result.status is not UpdateStatus.AVAILABLE
-        or result.install_mode is not InstallMode.PYPI
-        or not result.latest_version
-    ):
+    if result.status is not UpdateStatus.AVAILABLE or not result.latest_version:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="No automatic PyPI update is currently available.",
+            detail="No automatic update is currently available.",
+        )
+    source_root = installation.source_root
+    if result.install_mode is InstallMode.SOURCE_WEB:
+        if installation.mode is not InstallMode.SOURCE_WEB or source_root is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The editable source installation changed during the update check.",
+            )
+        try:
+            await asyncio.to_thread(
+                source_preflight.preflight,
+                installation,
+                result.latest_version,
+            )
+        except (SourceUpdateError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            ) from exc
+    elif result.install_mode is not InstallMode.PYPI:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This installation cannot be updated from the Web app.",
         )
     try:
-        job = store.create_pypi(
-            current_version=result.current_version,
-            target_version=result.latest_version,
-            restart_requested=True,
-        )
+        if result.install_mode is InstallMode.SOURCE_WEB:
+            if source_root is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="The editable source root is unavailable.",
+                )
+            job = store.create_source(
+                current_version=result.current_version,
+                target_version=result.latest_version,
+                source_root=source_root,
+                restart_requested=True,
+            )
+        else:
+            job = store.create_pypi(
+                current_version=result.current_version,
+                target_version=result.latest_version,
+                restart_requested=True,
+            )
     except UpdateInProgressError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

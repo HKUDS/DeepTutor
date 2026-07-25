@@ -23,6 +23,21 @@ def test_only_one_update_job_can_be_active(tmp_path: Path) -> None:
     assert store.load() == first
 
 
+def test_source_job_persists_the_detected_checkout(tmp_path: Path) -> None:
+    store = UpdateJobStore(tmp_path / "jobs")
+    checkout = tmp_path / "checkout"
+
+    job = store.create_source(
+        current_version="1.5.4",
+        target_version="1.6.0",
+        source_root=checkout,
+    )
+
+    assert job.kind == "source"
+    assert job.source_root == str(checkout.resolve())
+    assert store.load() == job
+
+
 def test_restart_handoff_rejects_a_tampered_command(tmp_path: Path) -> None:
     store = UpdateJobStore(tmp_path / "jobs")
     home = tmp_path / "home"

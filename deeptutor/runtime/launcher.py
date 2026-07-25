@@ -15,13 +15,16 @@ import subprocess
 import sys
 import threading
 import time
-from typing import Callable, Sequence
+from typing import TYPE_CHECKING, Callable, Sequence
 from urllib import error as urlerror
 from urllib import parse as urlparse
 from urllib import request as urlrequest
 
 from deeptutor.runtime.banner import labels_for, print_banner, resolve_language
 from deeptutor.runtime.home import DEEPTUTOR_HOME_ENV, PACKAGE_ROOT, get_runtime_home
+
+if TYPE_CHECKING:
+    from deeptutor.update.jobs import WorkerLauncher
 
 BACKEND_READY_TIMEOUT = 60
 FRONTEND_READY_TIMEOUT = 120
@@ -930,7 +933,7 @@ def _handoff_pending_update(
     runtime_home: Path,
     *,
     restart_argv: Sequence[str],
-    worker_launcher=None,
+    worker_launcher: WorkerLauncher | None = None,
     parent_pid: int | None = None,
 ) -> bool:
     """Hand one pending Web update to a worker before this launcher exits."""
