@@ -9,6 +9,7 @@ import {
   type UpdateBadgePresentation,
 } from "@/lib/update-badge";
 import { normalizeVersionTag } from "@/lib/version";
+import { UpdateAction } from "@/components/sidebar/UpdateAction";
 
 interface VersionBadgeProps {
   /** Render the compact variant for the collapsed sidebar (currently hidden). */
@@ -63,7 +64,7 @@ export function VersionBadge({ collapsed = false }: VersionBadgeProps) {
       data-testid="version-badge"
       aria-live="polite"
       aria-atomic="true"
-      className="flex min-w-0 flex-1"
+      className="flex min-w-0 flex-1 items-center gap-1"
     >
       <a
         data-testid="update-status"
@@ -72,12 +73,12 @@ export function VersionBadge({ collapsed = false }: VersionBadgeProps) {
         rel="noreferrer noopener"
         title={title}
         aria-label={ariaLabel}
-        className="group/ver flex min-w-0 flex-1 items-center gap-1 rounded-lg px-3 py-1.5 text-[11px] font-mono tracking-tight text-[var(--muted-foreground)]/55 transition-colors hover:bg-[var(--background)]/50 hover:text-[var(--muted-foreground)]"
+        className="group/ver flex min-w-0 flex-1 items-center gap-1 overflow-hidden rounded-md px-2 py-1.5 text-[11px] font-mono tracking-tight text-[var(--muted-foreground)]/55 transition-colors hover:bg-[var(--background)]/50 hover:text-[var(--muted-foreground)]"
       >
         <span className="shrink-0 leading-none decoration-[var(--muted-foreground)]/40 decoration-dotted underline-offset-[3px] group-hover/ver:underline">
           {displayTag}
         </span>
-        {available ? (
+        {available && !supportsWebUpdate ? (
           <>
             <span aria-hidden="true" className="shrink-0 opacity-55">
               →
@@ -89,10 +90,13 @@ export function VersionBadge({ collapsed = false }: VersionBadgeProps) {
               <span className="truncate leading-none">· {statusText}</span>
             ) : null}
           </>
-        ) : (
+        ) : !available ? (
           <span className="truncate leading-none">· {statusText}</span>
-        )}
+        ) : null}
       </a>
+      {available?.canAutoUpdate && available.installMode === "pypi" ? (
+        <UpdateAction targetVersion={available.version} />
+      ) : null}
     </div>
   );
 }

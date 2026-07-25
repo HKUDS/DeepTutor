@@ -5,13 +5,17 @@ Manages system status checks and model connection tests
 
 import asyncio
 from datetime import datetime
+import json
+import os
 import time
-from typing import Annotated, Protocol
+from typing import Annotated, Literal, Protocol
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from deeptutor.api.routers.auth import require_admin
 from deeptutor.multi_user.context import get_current_user
+from deeptutor.runtime.home import get_runtime_home
 from deeptutor.services.config import resolve_search_runtime_config
 from deeptutor.services.embedding import get_embedding_client, get_embedding_config
 from deeptutor.services.llm import complete as llm_complete
@@ -22,6 +26,12 @@ from deeptutor.update import (
     UpdateCheck,
     UpdateStatus,
     create_update_coordinator,
+)
+from deeptutor.update.jobs import (
+    JobStatus,
+    UpdateInProgressError,
+    UpdateJob,
+    UpdateJobStore,
 )
 
 router = APIRouter()
@@ -54,10 +64,73 @@ class UpdateChecker(Protocol):
         """Return current update availability."""
 
 
+class ConversationActivity(Protocol):
+    """Conversation liveness needed before a disruptive update."""
+
+    async def has_live_executions(self) -> bool:
+        """Return whether a turn is currently running."""
+
+
+class WebUpdateRequest(BaseModel):
+    """Explicit second confirmation for an update and restart."""
+
+    confirmation: Literal["update-and-restart"]
+
+
+class UpdateJobResponse(BaseModel):
+    """Persisted update state consumed across application restarts."""
+
+    id: str
+    status: JobStatus
+    current_version: str
+    target_version: str
+    error: str | None
+    restart_count: int
+
+
 def get_update_coordinator() -> UpdateChecker:
     """Provide the process update coordinator for dependency injection."""
 
     return create_update_coordinator()
+
+
+def get_conversation_activity() -> ConversationActivity:
+    from deeptutor.services.session import get_turn_runtime_manager
+
+    return get_turn_runtime_manager()
+
+
+def get_update_job_store() -> UpdateJobStore:
+    root = get_runtime_home() / "data" / "user" / "update"
+    return UpdateJobStore(root)
+
+
+def is_launcher_available() -> bool:
+    raw_pid = os.getenv("DEEPTUTOR_LAUNCHER_PID", "").strip()
+    try:
+        launcher_pid = int(raw_pid)
+    except ValueError:
+        return False
+    if launcher_pid <= 0:
+        return False
+    try:
+        os.kill(launcher_pid, 0)
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _job_response(job: UpdateJob) -> UpdateJobResponse:
+    return UpdateJobResponse(
+        id=job.id,
+        status=job.status,
+        current_version=job.current_version,
+        target_version=job.target_version,
+        error=job.error,
+        restart_count=job.restart_count,
+    )
 
 
 @router.get("/update", response_model=UpdateCheckResponse)
@@ -76,6 +149,71 @@ async def get_update_status(
         release_url=result.release_url,
         detail=result.detail,
     )
+
+
+@router.get("/update/job", response_model=UpdateJobResponse | None)
+def get_update_job(
+    store: Annotated[UpdateJobStore, Depends(get_update_job_store)],
+) -> UpdateJobResponse | None:
+    """Read the durable job state before or after a restart."""
+
+    try:
+        return _job_response(store.load())
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+
+
+@router.post(
+    "/update",
+    response_model=UpdateJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_admin)],
+)
+async def request_web_update(
+    request: WebUpdateRequest,
+    coordinator: Annotated[UpdateChecker, Depends(get_update_coordinator)],
+    conversations: Annotated[
+        ConversationActivity,
+        Depends(get_conversation_activity),
+    ],
+    store: Annotated[UpdateJobStore, Depends(get_update_job_store)],
+    launcher_ready: Annotated[bool, Depends(is_launcher_available)],
+) -> UpdateJobResponse:
+    """Request a trusted PyPI update for the managing Launcher to apply."""
+
+    del request
+    if not launcher_ready:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Web updates require the app to be running under `deeptutor start`.",
+        )
+    if await conversations.has_live_executions():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An active conversation must finish before updating.",
+        )
+    result = await asyncio.to_thread(coordinator.check)
+    if (
+        result.status is not UpdateStatus.AVAILABLE
+        or result.install_mode is not InstallMode.PYPI
+        or not result.latest_version
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No automatic PyPI update is currently available.",
+        )
+    try:
+        job = store.create_pypi(
+            current_version=result.current_version,
+            target_version=result.latest_version,
+            restart_requested=True,
+        )
+    except UpdateInProgressError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    return _job_response(job)
 
 
 @router.get("/runtime-topology")

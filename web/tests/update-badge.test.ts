@@ -18,6 +18,8 @@ test("presentUpdateBadge exposes an actionable release link for available update
     version: "v1.6.0",
     href: "https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.0",
     hostManaged: false,
+    installMode: "pypi",
+    canAutoUpdate: true,
   });
 });
 
@@ -37,6 +39,8 @@ test("presentUpdateBadge marks Docker updates as host-managed", () => {
     version: "v1.6.0",
     href: "https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.0",
     hostManaged: true,
+    installMode: "docker",
+    canAutoUpdate: false,
   });
 });
 

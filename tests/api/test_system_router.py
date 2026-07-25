@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 import pytest
 
 from deeptutor.api.routers import system as system_router
 from deeptutor.update import InstallMode, UpdateCheck, UpdateStatus
+from deeptutor.update.jobs import JobStatus, UpdateJobStore
 
 
 @pytest.mark.asyncio
@@ -102,3 +104,129 @@ def test_update_endpoint_is_available_through_the_system_http_route() -> None:
     assert response.status_code == 200
     assert response.json()["status"] == "up_to_date"
     assert response.json()["install_mode"] == "source_web"
+
+
+class _AvailablePypiUpdate:
+    def check(self) -> UpdateCheck:
+        return UpdateCheck(
+            status=UpdateStatus.AVAILABLE,
+            current_version="1.5.4",
+            latest_version="1.6.0",
+            install_mode=InstallMode.PYPI,
+            can_auto_update=True,
+            release_url="https://github.com/HKUDS/DeepTutor/releases/tag/v1.6.0",
+            detail="installed distribution",
+        )
+
+
+class _IdleConversations:
+    async def has_live_executions(self) -> bool:
+        return False
+
+
+@pytest.mark.asyncio
+async def test_web_update_refuses_to_interrupt_a_live_conversation(tmp_path: Path) -> None:
+    class BusyConversations:
+        async def has_live_executions(self) -> bool:
+            return True
+
+    with pytest.raises(HTTPException) as exc_info:
+        await system_router.request_web_update(
+            system_router.WebUpdateRequest(confirmation="update-and-restart"),
+            coordinator=_AvailablePypiUpdate(),
+            conversations=BusyConversations(),
+            store=UpdateJobStore(tmp_path),
+            launcher_ready=True,
+        )
+
+    assert exc_info.value.status_code == 409
+    assert "conversation" in str(exc_info.value.detail).lower()
+    assert not (tmp_path / "state.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_web_update_persists_a_restart_request(tmp_path: Path) -> None:
+    store = UpdateJobStore(tmp_path)
+
+    response = await system_router.request_web_update(
+        system_router.WebUpdateRequest(confirmation="update-and-restart"),
+        coordinator=_AvailablePypiUpdate(),
+        conversations=_IdleConversations(),
+        store=store,
+        launcher_ready=True,
+    )
+
+    assert response.status is JobStatus.PENDING
+    assert response.target_version == "1.6.0"
+    assert store.load().restart_requested is True
+
+
+def test_web_update_http_route_is_admin_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.api.routers import auth as auth_router
+
+    app = FastAPI()
+    app.include_router(system_router.router, prefix="/api/v1/system")
+    app.dependency_overrides[system_router.get_update_coordinator] = _AvailablePypiUpdate
+    app.dependency_overrides[system_router.get_conversation_activity] = _IdleConversations
+    app.dependency_overrides[system_router.get_update_job_store] = lambda: UpdateJobStore(tmp_path)
+    app.dependency_overrides[system_router.is_launcher_available] = lambda: True
+    monkeypatch.setattr(auth_router, "AUTH_ENABLED", True)
+
+    response = TestClient(app).post(
+        "/api/v1/system/update",
+        json={"confirmation": "update-and-restart"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_web_update_http_route_requires_confirmation_and_creates_job(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.api.routers import auth as auth_router
+
+    app = FastAPI()
+    app.include_router(system_router.router, prefix="/api/v1/system")
+    app.dependency_overrides[system_router.get_update_coordinator] = _AvailablePypiUpdate
+    app.dependency_overrides[system_router.get_conversation_activity] = _IdleConversations
+    app.dependency_overrides[system_router.get_update_job_store] = lambda: UpdateJobStore(tmp_path)
+    app.dependency_overrides[system_router.is_launcher_available] = lambda: True
+    monkeypatch.setattr(auth_router, "AUTH_ENABLED", False)
+    client = TestClient(app)
+
+    rejected = client.post(
+        "/api/v1/system/update",
+        json={"confirmation": "yes"},
+    )
+    accepted = client.post(
+        "/api/v1/system/update",
+        json={"confirmation": "update-and-restart"},
+    )
+
+    assert rejected.status_code == 422
+    assert accepted.status_code == 202
+    assert accepted.json()["status"] == "pending"
+    assert UpdateJobStore(tmp_path).load().restart_requested is True
+
+
+def test_update_job_status_survives_a_router_recreation(tmp_path: Path) -> None:
+    store = UpdateJobStore(tmp_path)
+    job = store.create_pypi(
+        current_version="1.5.4",
+        target_version="1.6.0",
+        restart_requested=True,
+    )
+    store.prepare_restart(job.id, home=tmp_path / "home")
+    store.mark_running(job.id)
+    store.mark_restarting(job.id)
+
+    response = system_router.get_update_job(store)
+
+    assert response is not None
+    assert response.id == job.id
+    assert response.status is JobStatus.RESTARTING
+    assert response.restart_count == 1

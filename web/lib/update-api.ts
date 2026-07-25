@@ -19,6 +19,33 @@ export interface UpdateCheckResponse {
   detail: string;
 }
 
+export type UpdateJobStatus =
+  | "pending"
+  | "handoff"
+  | "running"
+  | "restarting"
+  | "succeeded"
+  | "failed";
+
+export interface UpdateJobResponse {
+  id: string;
+  status: UpdateJobStatus;
+  current_version: string;
+  target_version: string;
+  error: string | null;
+  restart_count: number;
+}
+
+async function responseError(response: Response): Promise<Error> {
+  try {
+    const payload = (await response.json()) as { detail?: unknown };
+    if (typeof payload.detail === "string") return new Error(payload.detail);
+  } catch {
+    // Fall through to the status-only message for non-JSON responses.
+  }
+  return new Error(`Update request failed (HTTP ${response.status})`);
+}
+
 export async function fetchUpdateStatus(
   signal?: AbortSignal,
 ): Promise<UpdateCheckResponse> {
@@ -26,8 +53,27 @@ export async function fetchUpdateStatus(
     cache: "no-store",
     signal,
   });
-  if (!response.ok) {
-    throw new Error(`Update check failed (HTTP ${response.status})`);
-  }
+  if (!response.ok) throw await responseError(response);
   return (await response.json()) as UpdateCheckResponse;
+}
+
+export async function requestWebUpdate(): Promise<UpdateJobResponse> {
+  const response = await apiFetch(apiUrl("/api/v1/system/update"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirmation: "update-and-restart" }),
+  });
+  if (!response.ok) throw await responseError(response);
+  return (await response.json()) as UpdateJobResponse;
+}
+
+export async function fetchUpdateJob(
+  signal?: AbortSignal,
+): Promise<UpdateJobResponse | null> {
+  const response = await apiFetch(apiUrl("/api/v1/system/update/job"), {
+    cache: "no-store",
+    signal,
+  });
+  if (!response.ok) throw await responseError(response);
+  return (await response.json()) as UpdateJobResponse | null;
 }

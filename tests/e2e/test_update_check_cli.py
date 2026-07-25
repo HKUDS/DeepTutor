@@ -12,6 +12,8 @@ import time
 
 import pytest
 
+from deeptutor.update.jobs import JobStatus, UpdateJobStore
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -309,3 +311,72 @@ def test_pypi_user_can_confirm_an_update_that_runs_after_cli_exit(tmp_path: Path
         "--no-input",
         "deeptutor==1.6.0",
     ]
+
+
+def test_web_worker_restarts_with_persisted_launcher_arguments(tmp_path: Path) -> None:
+    fake_modules = tmp_path / "fake-modules"
+    fake_pip = fake_modules / "pip"
+    fake_pip.mkdir(parents=True)
+    (fake_pip / "__init__.py").write_text("", encoding="utf-8")
+    (fake_pip / "__main__.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
+    fake_cli = fake_modules / "deeptutor_cli"
+    fake_cli.mkdir()
+    (fake_cli / "__init__.py").write_text("", encoding="utf-8")
+    (fake_cli / "main.py").write_text(
+        "\n".join(
+            [
+                "import json",
+                "import os",
+                "from pathlib import Path",
+                "import sys",
+                (
+                    "Path(os.environ['DEEPTUTOR_TEST_RESTART_ARGV']).write_text("
+                    "json.dumps(sys.argv[1:]), encoding='utf-8')"
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    home = tmp_path / "runtime home"
+    home.mkdir()
+    restart_argv = ("start", "--home", str(home.resolve()), "--dev")
+    store = UpdateJobStore(tmp_path / "update")
+    job = store.create_pypi(
+        current_version="1.5.4",
+        target_version="1.6.0",
+        restart_requested=True,
+    )
+    store.prepare_restart(job.id, home=home, restart_argv=restart_argv)
+    exited_parent = subprocess.Popen([sys.executable, "-c", "pass"])
+    exited_parent.wait(timeout=10)
+    command_path = tmp_path / "restart-argv.json"
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join((str(fake_modules), str(PROJECT_ROOT)))
+    env["DEEPTUTOR_TEST_RESTART_ARGV"] = str(command_path)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "deeptutor.update.worker",
+            "--store-root",
+            str(store.root),
+            "--parent-pid",
+            str(exited_parent.pid),
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and not command_path.is_file():
+        time.sleep(0.05)
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(command_path.read_text(encoding="utf-8")) == list(restart_argv)
+    assert store.load().status is JobStatus.RESTARTING
+    assert store.load().restart_count == 1

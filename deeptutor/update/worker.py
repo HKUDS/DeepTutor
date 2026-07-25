@@ -40,6 +40,37 @@ class SubprocessCommandExecutor:
         return completed.returncode
 
 
+class RestartLauncher(Protocol):
+    """Boundary for starting the updated application."""
+
+    def launch(self, command: list[str], *, cwd: Path, log_path: Path) -> None:
+        """Start the fixed restart command without waiting for it to exit."""
+
+
+class SubprocessRestartLauncher:
+    """Start the updated application as a detached process."""
+
+    def launch(self, command: list[str], *, cwd: Path, log_path: Path) -> None:
+        """Launch the fixed application command as a detached process."""
+
+        kwargs: dict[str, object] = {
+            "stdin": subprocess.DEVNULL,
+            "stderr": subprocess.STDOUT,
+            "close_fds": True,
+            "shell": False,
+            "cwd": str(cwd),
+        }
+        if os.name == "nt":
+            kwargs["creationflags"] = (
+                subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+                | subprocess.DETACHED_PROCESS  # type: ignore[attr-defined]
+            )
+        else:
+            kwargs["start_new_session"] = True
+        with log_path.open("a", encoding="utf-8") as log:
+            subprocess.Popen(command, stdout=log, **kwargs)  # type: ignore[arg-type,call-overload]
+
+
 def build_pypi_update_command(target_version: str) -> list[str]:
     """Build the only command a PyPI update job may execute."""
 
@@ -54,6 +85,19 @@ def build_pypi_update_command(target_version: str) -> list[str]:
         "--upgrade",
         "--no-input",
         f"deeptutor=={version}",
+    ]
+
+
+def build_restart_command(restart_argv: tuple[str, ...]) -> list[str]:
+    """Build the only application restart command the worker may launch."""
+
+    if len(restart_argv) < 3 or restart_argv[:2] != ("start", "--home"):
+        raise ValueError("Invalid restart arguments")
+    return [
+        sys.executable,
+        "-m",
+        "deeptutor_cli.main",
+        *restart_argv,
     ]
 
 
@@ -84,6 +128,7 @@ def run_update_worker(
     store_root: Path,
     parent_pid: int | None,
     executor: CommandExecutor | None = None,
+    restart_launcher: RestartLauncher | None = None,
     wait_for_parent: Callable[[int], None] = wait_for_process_exit,
 ) -> int:
     """Apply one persisted PyPI job and persist its terminal status."""
@@ -94,7 +139,7 @@ def run_update_worker(
     except Exception:
         return 1
     try:
-        if job.status is not JobStatus.PENDING:
+        if job.status not in {JobStatus.PENDING, JobStatus.HANDOFF}:
             raise RuntimeError("Update job is not pending")
         if parent_pid is not None:
             wait_for_parent(parent_pid)
@@ -107,7 +152,20 @@ def run_update_worker(
         if exit_code != 0:
             store.mark_failed(job.id, f"pip exited with status {exit_code}")
             return 1
-        store.mark_succeeded(job.id)
+        if job.restart_requested:
+            if not job.restart_home:
+                raise RuntimeError("Update job is missing its restart home")
+            if not job.restart_argv:
+                raise RuntimeError("Update job is missing its restart arguments")
+            home = Path(job.restart_home).resolve()
+            store.mark_restarting(job.id)
+            (restart_launcher or SubprocessRestartLauncher()).launch(
+                build_restart_command(job.restart_argv),
+                cwd=home,
+                log_path=store.log_path,
+            )
+        else:
+            store.mark_succeeded(job.id)
         return 0
     except Exception as exc:
         try:

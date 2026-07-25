@@ -9,6 +9,23 @@ from deeptutor.services.session.turn_runtime import TurnRuntimeManager, _TurnExe
 
 
 @pytest.mark.asyncio
+async def test_runtime_reports_whether_any_conversation_is_live(tmp_path) -> None:
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+
+    assert await runtime.has_live_executions() is False
+
+    runtime._executions["turn-1"] = _TurnExecution(
+        turn_id="turn-1",
+        session_id="session-1",
+        capability="chat",
+        payload={},
+    )
+
+    assert await runtime.has_live_executions() is True
+
+
+@pytest.mark.asyncio
 async def test_subscribe_turn_does_not_synthesize_done_for_running_turn(tmp_path) -> None:
     """A paused/replaced subscription must not make the UI think the turn ended."""
 

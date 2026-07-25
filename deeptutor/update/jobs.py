@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-from typing import Protocol
+from typing import Protocol, Sequence
 import uuid
 
 from packaging.version import Version
@@ -23,7 +23,9 @@ class JobStatus(str, Enum):
     """Durable lifecycle of one update job."""
 
     PENDING = "pending"
+    HANDOFF = "handoff"
     RUNNING = "running"
+    RESTARTING = "restarting"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
 
@@ -44,6 +46,10 @@ class UpdateJob:
     started_at: str | None = None
     finished_at: str | None = None
     error: str | None = None
+    restart_requested: bool = False
+    restart_home: str | None = None
+    restart_argv: tuple[str, ...] = ()
+    restart_count: int = 0
     schema_version: int = 1
     kind: str = "pypi"
 
@@ -60,6 +66,7 @@ class UpdateJob:
 
         if payload.get("schema_version") != 1 or payload.get("kind") != "pypi":
             raise ValueError("Unsupported update job")
+        restart_home = _optional_string(payload.get("restart_home"))
         return cls(
             id=str(payload["id"]),
             status=JobStatus(str(payload["status"])),
@@ -69,11 +76,43 @@ class UpdateJob:
             started_at=_optional_string(payload.get("started_at")),
             finished_at=_optional_string(payload.get("finished_at")),
             error=_optional_string(payload.get("error")),
+            restart_requested=payload.get("restart_requested") is True,
+            restart_home=restart_home,
+            restart_argv=_validated_restart_argv(
+                payload.get("restart_argv"),
+                home=restart_home,
+            ),
+            restart_count=int(str(payload.get("restart_count") or 0)),
         )
 
 
 def _optional_string(value: object) -> str | None:
     return None if value is None else str(value)
+
+
+def _validated_restart_argv(
+    value: object,
+    *,
+    home: str | None,
+) -> tuple[str, ...]:
+    if value is None:
+        return ("start", "--home", home) if home else ()
+    if not isinstance(value, (list, tuple)) or any(
+        not isinstance(argument, str) or not argument for argument in value
+    ):
+        raise ValueError("Invalid restart arguments")
+    restart_argv = tuple(value)
+    if not restart_argv:
+        return ("start", "--home", home) if home else ()
+    if (
+        home is None
+        or restart_argv[:3] != ("start", "--home", home)
+        or any(
+            argument == "--home" or argument.startswith("--home=") for argument in restart_argv[3:]
+        )
+    ):
+        raise ValueError("Invalid restart arguments")
+    return restart_argv
 
 
 def _now() -> str:
@@ -96,7 +135,13 @@ class UpdateJobStore:
         self.active_path = self.root / "active"
         self.log_path = self.root / "worker.log"
 
-    def create_pypi(self, *, current_version: str, target_version: str) -> UpdateJob:
+    def create_pypi(
+        self,
+        *,
+        current_version: str,
+        target_version: str,
+        restart_requested: bool = False,
+    ) -> UpdateJob:
         """Reserve the active slot for one PyPI update."""
 
         job = UpdateJob(
@@ -105,6 +150,7 @@ class UpdateJobStore:
             current_version=_canonical_version(current_version, stable=False),
             target_version=_canonical_version(target_version, stable=True),
             created_at=_now(),
+            restart_requested=restart_requested,
         )
         self.root.mkdir(parents=True, exist_ok=True)
         try:
@@ -138,6 +184,55 @@ class UpdateJobStore:
         """Mark a pending or handed-off job as running."""
 
         return self._transition(job_id, JobStatus.RUNNING)
+
+    def prepare_restart(
+        self,
+        job_id: str,
+        *,
+        home: Path,
+        restart_argv: Sequence[str] | None = None,
+    ) -> UpdateJob:
+        """Persist the runtime home and launch arguments before handoff."""
+
+        current = self.load()
+        if (
+            current.id != job_id
+            or current.status is not JobStatus.PENDING
+            or not current.restart_requested
+        ):
+            raise RuntimeError("Update job is not awaiting launcher handoff")
+        resolved_home = str(home.resolve())
+        updated = replace(
+            current,
+            status=JobStatus.HANDOFF,
+            restart_home=resolved_home,
+            restart_argv=_validated_restart_argv(
+                restart_argv,
+                home=resolved_home,
+            ),
+        )
+        self._write(updated)
+        return updated
+
+    def mark_restarting(self, job_id: str) -> UpdateJob:
+        """Record the single managed restart attempt."""
+
+        current = self.load()
+        if (
+            current.id != job_id
+            or current.status is not JobStatus.RUNNING
+            or not current.restart_requested
+            or not current.restart_home
+            or not current.restart_argv
+        ):
+            raise RuntimeError("Update job is not ready to restart")
+        updated = replace(
+            current,
+            status=JobStatus.RESTARTING,
+            restart_count=current.restart_count + 1,
+        )
+        self._write(updated)
+        return updated
 
     def mark_succeeded(self, job_id: str) -> UpdateJob:
         """Finish a job successfully and release its active slot."""

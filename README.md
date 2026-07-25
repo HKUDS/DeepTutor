@@ -718,7 +718,7 @@ The repo ships a root [`SKILL.md`](SKILL.md) — a ~150-line handover doc that t
 | Command | Description |
 |:---|:---|
 | `deeptutor init` | Create or update `data/user/settings` for the current workspace |
-| `deeptutor start [--home PATH] [--dev]` | Launch backend + frontend together; `--dev` enables frontend HMR |
+| `deeptutor start [--home PATH] [--dev]` | Launch backend + frontend together; `--dev` enables frontend HMR, and PyPI installs can update and restart from the Web version badge |
 | `deeptutor serve [--port PORT]` | Start only the FastAPI backend |
 | `deeptutor update` | Confirm and schedule a PyPI upgrade in the current Python environment; the CLI exits before the worker runs and does not restart the app |
 | `deeptutor update --check` | Detect the installation mode and check the latest stable release without changing the installation |

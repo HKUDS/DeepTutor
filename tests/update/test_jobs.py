@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,27 @@ def test_only_one_update_job_can_be_active(tmp_path: Path) -> None:
         store.create_pypi(current_version="1.5.4", target_version="1.6.0")
 
     assert store.load() == first
+
+
+def test_restart_handoff_rejects_a_tampered_command(tmp_path: Path) -> None:
+    store = UpdateJobStore(tmp_path / "jobs")
+    home = tmp_path / "home"
+    job = store.create_pypi(
+        current_version="1.5.4",
+        target_version="1.6.0",
+        restart_requested=True,
+    )
+    store.prepare_restart(
+        job.id,
+        home=home,
+        restart_argv=("start", "--home", str(home.resolve()), "--dev"),
+    )
+    payload = json.loads(store.state_path.read_text(encoding="utf-8"))
+    payload["restart_argv"].extend(["--home", str(tmp_path / "other-home")])
+    store.state_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Invalid restart arguments"):
+        store.load()
 
 
 def test_scheduler_persists_job_before_launching_worker(tmp_path: Path) -> None:
