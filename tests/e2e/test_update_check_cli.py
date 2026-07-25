@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 from threading import Thread
+import time
 
 import pytest
 
@@ -215,3 +216,96 @@ def test_cli_only_user_can_check_for_updates_from_the_real_cli_process(
     assert completed.returncode == 0, completed.stderr
     assert "Installation: source_cli" in completed.stdout
     assert "Latest stable: 1.6.0" in completed.stdout
+
+
+def test_pypi_user_can_confirm_an_update_that_runs_after_cli_exit(tmp_path: Path) -> None:
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _GitHubReleaseHandler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    installed = tmp_path / "site-packages"
+    shutil.copytree(PROJECT_ROOT / "deeptutor", installed / "deeptutor")
+    shutil.copytree(PROJECT_ROOT / "deeptutor_cli", installed / "deeptutor_cli")
+    dist_info = installed / "deeptutor-1.5.4.dist-info"
+    dist_info.mkdir()
+    (dist_info / "METADATA").write_text(
+        "Metadata-Version: 2.1\nName: deeptutor\nVersion: 1.5.4\n",
+        encoding="utf-8",
+    )
+
+    hook_dir = tmp_path / "hook"
+    hook_dir.mkdir()
+    (hook_dir / "sitecustomize.py").write_text(
+        "\n".join(
+            [
+                "import os",
+                "from deeptutor.update import HttpReleaseProvider",
+                "HttpReleaseProvider.PYPI_URL = os.environ['DEEPTUTOR_TEST_PYPI_URL']",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    fake_modules = tmp_path / "fake-modules"
+    fake_pip = fake_modules / "pip"
+    fake_pip.mkdir(parents=True)
+    (fake_pip / "__init__.py").write_text("", encoding="utf-8")
+    (fake_pip / "__main__.py").write_text(
+        "\n".join(
+            [
+                "import json",
+                "import os",
+                "from pathlib import Path",
+                "import sys",
+                (
+                    "Path(os.environ['DEEPTUTOR_TEST_PIP_COMMAND']).write_text("
+                    "json.dumps(sys.argv[1:]), encoding='utf-8')"
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    runtime_home = tmp_path / "home"
+    command_path = tmp_path / "pip-command.json"
+    state_path = runtime_home / "data" / "user" / "update" / "state.json"
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join((str(hook_dir), str(fake_modules), str(installed)))
+    env["DEEPTUTOR_HOME"] = str(runtime_home)
+    env["DEEPTUTOR_TEST_PYPI_URL"] = f"http://127.0.0.1:{server.server_port}/pypi/deeptutor/json"
+    env["DEEPTUTOR_TEST_PIP_COMMAND"] = str(command_path)
+    env.pop("DEEPTUTOR_CONTAINER", None)
+
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-m", "deeptutor_cli.main", "update"],
+            cwd=tmp_path,
+            env=env,
+            input="y\n",
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        deadline = time.monotonic() + 20
+        state = {}
+        while time.monotonic() < deadline:
+            if state_path.is_file():
+                state = json.loads(state_path.read_text(encoding="utf-8"))
+                if state.get("status") in {"succeeded", "failed"}:
+                    break
+            time.sleep(0.05)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    assert completed.returncode == 0, completed.stderr
+    assert "Update scheduled:" in completed.stdout
+    assert "will not restart" in completed.stdout
+    assert state.get("status") == "succeeded", state
+    assert json.loads(command_path.read_text(encoding="utf-8")) == [
+        "install",
+        "--upgrade",
+        "--no-input",
+        "deeptutor==1.6.0",
+    ]

@@ -155,15 +155,17 @@ deeptutor chat [options]
 
 ---
 
-## `update --check` — 检查稳定版更新
+## `update` — 检查或安装稳定版更新
 
 ```bash
-deeptutor update --check
+deeptutor update          # PyPI 安装：确认后更新当前 Python 环境
+deeptutor update --check  # 仅检查，不修改环境
 ```
 
-该命令只读取当前安装方式和官方稳定版元数据，不会修改环境。它会区分
-PyPI、完整源码、CLI-only 源码和 Docker 安装；Docker 只提示在宿主机
-更新镜像并重建服务。
+`--check` 只读取当前安装方式和官方稳定版元数据。PyPI 安装执行更新时，
+当前 CLI 会先退出，再由独立 Worker 升级固定的 `deeptutor` 包；完成后不会
+自动启动应用。源码安装目前仍只检查，Docker 只提示在宿主机更新镜像并
+重建服务。
 
 ---
 
