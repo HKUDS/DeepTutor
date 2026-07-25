@@ -22,6 +22,7 @@ from .plugin import register as register_plugin
 from .provider_cmd import register as register_provider
 from .session_cmd import register as register_session
 from .skill import register as register_skill
+from .update_cmd import register as register_update
 
 set_mode(RunMode.CLI)
 configure_logging()
@@ -70,6 +71,7 @@ register_notebook(notebook_app)
 register_provider(provider_app)
 register_book(book_app)
 register_init(app)
+register_update(app)
 
 
 @app.command("run")

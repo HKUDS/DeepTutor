@@ -47,6 +47,7 @@ dependencies = [
     "python-pptx>=1.0.0",
     "pypdf>=4.0.0",
     "defusedxml>=0.7.1",
+    "packaging>=23.0",
 ]
 
 [project.scripts]

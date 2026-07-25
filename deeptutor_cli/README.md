@@ -155,6 +155,18 @@ deeptutor chat [options]
 
 ---
 
+## `update --check` — 检查稳定版更新
+
+```bash
+deeptutor update --check
+```
+
+该命令只读取当前安装方式和官方稳定版元数据，不会修改环境。它会区分
+PyPI、完整源码、CLI-only 源码和 Docker 安装；Docker 只提示在宿主机
+更新镜像并重建服务。
+
+---
+
 ## `serve` — 启动 API 服务
 
 ```bash
