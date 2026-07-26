@@ -118,16 +118,22 @@ export const bookApi = {
     page_id: string,
     block_id: string,
     params_override?: Record<string, unknown>,
+    onEvent?: (event: BookWsEvent) => void,
   ) =>
-    request<{ block: Block | null }>("/books/regenerate-block", {
-      method: "POST",
-      body: JSON.stringify({
+    requestOverSocket<{
+      type: "regenerate_block_result";
+      block: Block | null;
+    }>(
+      {
+        type: "regenerate_block",
         book_id,
         page_id,
         block_id,
         params_override: params_override ?? null,
-      }),
-    }),
+      },
+      "regenerate_block_result",
+      onEvent,
+    ),
 
   insertBlock: (params: {
     book_id: string;
