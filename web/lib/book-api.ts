@@ -70,11 +70,19 @@ export const bookApi = {
     request<{ page: Page }>(
       `/books/${encodeURIComponent(book_id)}/pages/${encodeURIComponent(page_id)}`,
     ),
-  create: (payload: CreateBookPayload) =>
-    request<{ book: Book; proposal: BookProposal }>("/books", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
+  create: (
+    payload: CreateBookPayload,
+    onEvent?: (event: BookWsEvent) => void,
+  ) =>
+    requestOverSocket<{
+      type: "create_result";
+      book: Book;
+      proposal: BookProposal;
+    }>(
+      { type: "create", ...payload },
+      "create_result",
+      onEvent,
+    ),
   confirmProposal: (
     book_id: string,
     proposal?: BookProposal,

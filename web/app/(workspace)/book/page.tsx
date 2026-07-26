@@ -269,7 +269,7 @@ function BookPageInner() {
   }) => {
     setCreating(true);
     try {
-      const result = await bookApi.create(payload);
+      const result = await bookApi.create(payload, handleBookOperationEvent);
       setPendingBook(result.book);
       setPendingProposal(result.proposal);
       setSelectedBookId(result.book.id);
