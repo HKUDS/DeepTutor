@@ -1,10 +1,11 @@
 """Post-stream turn-event flush: batching, workspace mirror, PocketBase upload.
 
 The turn runtime buffers every live event in memory and persists the whole
-batch after the stream drains, right before publishing DONE. Everything on
-that path must stay O(1) round-trips w.r.t. the event count — per-event
-commits/opens/POSTs sat between the last streamed token and the client's
-spinner clearing (the "stuck on generating" report).
+batch, including DONE and any post-turn ``session_meta`` title update, once
+the turn has fully finished. Everything on that path must stay O(1) round
+trips w.r.t. the event count — per-event commits/opens/POSTs sat between the
+last streamed token and the client's spinner clearing (the "stuck on
+generating" report).
 """
 
 from __future__ import annotations

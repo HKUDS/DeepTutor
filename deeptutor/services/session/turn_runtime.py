@@ -1766,7 +1766,6 @@ class TurnRuntimeManager:
                     events=assistant_events,
                     attachments=generated_attachments or None,
                 )
-            await self._flush_buffered_events(execution)
             turn_status, turn_error = _resolve_turn_outcome(
                 assistant_events,
                 pending_done_event,
@@ -1812,6 +1811,17 @@ class TurnRuntimeManager:
                     )
                 except Exception:
                     logger.debug("Failed to generate session title", exc_info=True)
+            # Flush once every terminal/post-turn event (DONE, and the title
+            # ``session_meta`` above) has been published, not before: a
+            # client that reconnects after this task's ``finally`` pops
+            # ``execution`` from ``_executions`` falls back entirely to this
+            # persisted backlog, and ``subscribe_turn`` synthesises an
+            # id-less DONE when it finds none there -- permanently orphaning
+            # the just-persisted assistant reply from that client's
+            # reconcile path (it can still see the message after a full
+            # session reload, since the row itself is fine; only the
+            # targeted in-place swap is unreachable).
+            await self._flush_buffered_events(execution)
         except asyncio.CancelledError:
             if not stream_done_sent:
                 await self._publish_live_event(
