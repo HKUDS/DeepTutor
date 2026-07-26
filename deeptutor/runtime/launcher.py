@@ -578,6 +578,21 @@ def _resolve_frontend(
             raise SystemExit(
                 "npm not found. Source installs require Node.js/npm and `cd web && npm install`."
             )
+        if not (source / "node_modules").exists():
+            # node_modules is absent — install deps before starting the dev server.
+            # Use `npm ci` when a lockfile is present (reproducible, faster) and
+            # fall back to `npm install` otherwise.
+            has_lockfile = (source / "package-lock.json").exists()
+            install_cmd = [npm, "ci" if has_lockfile else "install"]
+            _log(
+                f"web/node_modules not found — running `{' '.join(install_cmd[1:])}` in {source} ..."
+            )
+            result = subprocess.run(install_cmd, cwd=source)
+            if result.returncode != 0:
+                raise SystemExit(
+                    f"`npm {'ci' if has_lockfile else 'install'}` failed (exit {result.returncode}). "
+                    "Fix the error above, then retry `deeptutor start`."
+                )
         return FrontendRuntime(
             "source", [npm, "run", "dev", "--", "--port", str(frontend_port)], source
         )
