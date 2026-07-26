@@ -254,18 +254,17 @@ class SpineSynthesizer(BaseAgent):
         stage: str,
     ) -> dict[str, Any]:
         from ..blocks._language import language_directive
+        from deeptutor.services.llm import complete as llm_complete
 
         system_prompt = system_prompt.rstrip() + language_directive(self.language)
         try:
-            buf: list[str] = []
-            async for piece in self.stream_llm(
-                user_prompt=user_prompt,
+            raw = await llm_complete(
+                prompt=user_prompt,
                 system_prompt=system_prompt,
                 response_format={"type": "json_object"},
-                stage=stage,
-            ):
-                buf.append(piece)
-            raw = "".join(buf)
+                temperature=self.get_temperature(),
+                max_tokens=self.get_max_tokens(),
+            )
         except Exception as exc:
             logger.warning(f"SpineSynthesizer LLM call ({stage}) failed: {exc}")
             return {}
