@@ -12,6 +12,8 @@ export type CodexOAuthStatus = {
     | "expired"
     | "failed"
     | null;
+  callback_port: number | null;
+  redirect_uri: string | null;
   model_count: number;
   catalog_source:
     | "live"
@@ -29,6 +31,9 @@ export type CodexLoginStart = {
   operation_id: string;
   authorize_url: string;
   expires_in: number;
+  callback_port: number;
+  redirect_uri: string;
+  ssh_forward_command: string;
 };
 
 export class CodexOAuthApiError extends Error {
@@ -43,12 +48,55 @@ export class CodexOAuthApiError extends Error {
 
 const BASE = "/api/v1/settings/providers/openai-codex";
 
-async function request<T>(path: string, method: "GET" | "POST"): Promise<T> {
-  const response = await apiFetch(apiUrl(`${BASE}${path}`), {
+export function isLoopbackHostname(hostname: string): boolean {
+  const normalized = hostname.trim().toLowerCase();
+  if (
+    normalized === "localhost" ||
+    normalized.endsWith(".localhost") ||
+    normalized === "::1" ||
+    normalized === "[::1]"
+  ) {
+    return true;
+  }
+
+  const octets = normalized.split(".");
+  return (
+    octets.length === 4 &&
+    octets[0] === "127" &&
+    octets.every(
+      (octet) =>
+        /^\d+$/.test(octet) && Number(octet) >= 0 && Number(octet) <= 255,
+    )
+  );
+}
+
+export function buildSshForwardCommand(
+  port: number,
+  hostname: string,
+): string {
+  const serverHost = hostname.trim() || "<server-host>";
+  return `ssh -N -L ${port}:127.0.0.1:${port} <ssh-user>@${serverHost}`;
+}
+
+export async function requestCodex<T>(
+  path: string,
+  method: "GET" | "POST",
+  fetchImpl: typeof apiFetch = apiFetch,
+): Promise<T> {
+  const response = await fetchImpl(apiUrl(`${BASE}${path}`), {
     method,
     skipAuthRedirect: true,
   });
-  if (response.ok) return (await response.json()) as T;
+  if (response.ok) {
+    try {
+      return (await response.json()) as T;
+    } catch {
+      throw new CodexOAuthApiError(
+        "invalid_response",
+        "DeepTutor returned an invalid Codex OAuth response.",
+      );
+    }
+  }
 
   let code = `http_${response.status}`;
   let message = "Codex request failed.";
@@ -65,23 +113,23 @@ async function request<T>(path: string, method: "GET" | "POST"): Promise<T> {
 }
 
 export function getCodexStatus(): Promise<CodexOAuthStatus> {
-  return request<CodexOAuthStatus>("/oauth/status", "GET");
+  return requestCodex<CodexOAuthStatus>("/oauth/status", "GET");
 }
 
 export function startCodexLogin(): Promise<CodexLoginStart> {
-  return request<CodexLoginStart>("/oauth/start", "POST");
+  return requestCodex<CodexLoginStart>("/oauth/start", "POST");
 }
 
 export function cancelCodexLogin(): Promise<CodexOAuthStatus> {
-  return request<CodexOAuthStatus>("/oauth/cancel", "POST");
+  return requestCodex<CodexOAuthStatus>("/oauth/cancel", "POST");
 }
 
 export function refreshCodexModels(): Promise<CodexOAuthStatus> {
-  return request<CodexOAuthStatus>("/models/refresh", "POST");
+  return requestCodex<CodexOAuthStatus>("/models/refresh", "POST");
 }
 
 export function logoutCodex(): Promise<CodexOAuthStatus> {
-  return request<CodexOAuthStatus>("/oauth/logout", "POST");
+  return requestCodex<CodexOAuthStatus>("/oauth/logout", "POST");
 }
 
 export function shouldPollCodexStatus(status: CodexOAuthStatus): boolean {
