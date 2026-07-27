@@ -379,13 +379,10 @@ async def receive_codex_oauth_callback(
 ) -> HTMLResponse:
     headers = {"Cache-Control": "no-store"}
     try:
-        if len(request.query_params.getlist("state")) != 1:
-            raise CodexAuthError(
-                "state_mismatch",
-                "Codex sign-in returned an invalid state.",
-                400,
-            )
-        await get_codex_oauth_service().receive_callback(code, state, error)
+        callback_state = (
+            state if len(request.query_params.getlist("state")) == 1 else None
+        )
+        await get_codex_oauth_service().receive_callback(code, callback_state, error)
     except CodexAuthError as exc:
         return HTMLResponse(
             (

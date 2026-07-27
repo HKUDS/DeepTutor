@@ -26,6 +26,8 @@ class FakeCodexOAuthService:
         error: str | None,
     ) -> None:
         self.received.append((code, state, error))
+        if self.error is not None:
+            raise self.error
         if self.expected_state is not None and not oauth_state_matches(
             state,
             self.expected_state,
@@ -35,8 +37,6 @@ class FakeCodexOAuthService:
                 "Codex sign-in returned an invalid state.",
                 400,
             )
-        if self.error is not None:
-            raise self.error
 
 
 def _client(
@@ -75,10 +75,10 @@ def test_codex_callback_endpoint_delivers_without_echoing_secrets(
         assert secret not in response.text
 
 
-def test_codex_callback_endpoint_rejects_repeated_state_before_delivery(
+def test_codex_callback_endpoint_rejects_repeated_state_for_active_login(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    service = FakeCodexOAuthService()
+    service = FakeCodexOAuthService(expected_state="expected-state")
     client = _client(monkeypatch, service)
 
     response = client.get(
@@ -93,7 +93,44 @@ def test_codex_callback_endpoint_rejects_repeated_state_before_delivery(
     assert response.status_code == 400
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["content-type"].startswith("text/html")
-    assert service.received == []
+    assert service.received == [("private-code", None, None)]
+    for secret in ("private-code", "first-state", "second-state"):
+        assert secret not in response.text
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        [("code", "private-code")],
+        [
+            ("code", "private-code"),
+            ("state", "first-state"),
+            ("state", "second-state"),
+        ],
+    ],
+)
+def test_codex_callback_endpoint_prioritizes_no_active_login(
+    monkeypatch: pytest.MonkeyPatch,
+    params: list[tuple[str, str]],
+) -> None:
+    service = FakeCodexOAuthService(
+        error=CodexAuthError(
+            "login_not_active",
+            "Codex sign-in is not waiting for a callback.",
+            409,
+        )
+    )
+    client = _client(monkeypatch, service)
+
+    response = client.get(
+        "/api/v1/auth/openai-codex/callback",
+        params=params,
+    )
+
+    assert response.status_code == 409
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["content-type"].startswith("text/html")
+    assert service.received == [("private-code", None, None)]
     for secret in ("private-code", "first-state", "second-state"):
         assert secret not in response.text
 
