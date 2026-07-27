@@ -63,9 +63,16 @@ class ProviderCliDocsContractTest(unittest.TestCase):
             "ordinary reverse proxy alone",
             "default Docker bridge network",
             "listener remains on the backend loopback",
+            "ports `1455` and `1457` are not published",
+            "The tunnel reaches the already-published Web port",
+            "Next.js rewrites only the exact callback path to the public callback broker",
             "validates `state` before routing to the original OAuth operation",
+            "A custom deployment must use the forward port shown by the page or CLI",
             "`<server-host>` must be an SSH-reachable frontend host",
+            "If the browser URL names a reverse proxy or load balancer, replace it with the correct SSH frontend host",
+            "read `redirect_uri` in that operation's authorize URL to identify callback port `1455` or `1457`",
             "cancel that Web operation and start a new one with the CLI",
+            "the CLI output belongs to the new operation and must not be used for the existing Web operation",
         )
         for text in english_contract:
             self.assertIn(text, ROOT_README)
@@ -78,9 +85,17 @@ class ProviderCliDocsContractTest(unittest.TestCase):
             "仅有普通反向代理",
             "默认 Docker bridge 网络",
             "listener 仍位于后端 loopback",
+            "不发布 `1455`/`1457`",
+            "隧道通向已发布的 Web 端口",
+            "Next.js 只把精确的 callback 路径改写到 public callback broker",
             "校验 `state` 后才路由到原 OAuth operation",
+            "自定义部署必须采用页面或 CLI 显示的 forward port",
+            "也就是 SSH 主机实际可达的 Web 端口",
             "`<server-host>` 必须是可通过 SSH 到达的前端主机",
+            "若浏览器域名指向反向代理或负载均衡器，请替换为正确的 SSH 前端主机",
+            "从该 operation 的 authorize URL 中读取 `redirect_uri`",
             "取消该 Web operation，再通过 CLI 启动一个新 operation",
+            "CLI 输出只属于新 operation，不能用于当前 Web operation",
         )
         for readme in (CN_README, CLI_README):
             for text in chinese_contract:
