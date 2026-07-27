@@ -27,6 +27,7 @@ function status(overrides: Partial<CodexOAuthStatus> = {}): CodexOAuthStatus {
     operation_id: null,
     operation_state: null,
     callback_port: null,
+    callback_forward_port: null,
     redirect_uri: null,
     model_count: 0,
     catalog_source: null,
@@ -44,20 +45,24 @@ test("Codex OAuth response types expose remote-login guidance", () => {
     authorize_url: "https://auth.example.com",
     expires_in: 300,
     callback_port: 1457,
+    callback_forward_port: 4782,
     redirect_uri: "http://localhost:1457/auth/callback",
     ssh_forward_command:
-      "ssh -N -L 1457:127.0.0.1:1457 <ssh-user>@deeptutor.example.com",
+      "ssh -N -L 1457:127.0.0.1:4782 <ssh-user>@deeptutor.example.com",
   };
   const current = status({
     callback_port: 1457,
+    callback_forward_port: 4782,
     redirect_uri: "http://localhost:1457/auth/callback",
   });
 
   assert.equal(login.callback_port, 1457);
+  assert.equal(login.callback_forward_port, 4782);
   assert.equal(
     login.ssh_forward_command,
-    "ssh -N -L 1457:127.0.0.1:1457 <ssh-user>@deeptutor.example.com",
+    "ssh -N -L 1457:127.0.0.1:4782 <ssh-user>@deeptutor.example.com",
   );
+  assert.equal(current.callback_forward_port, 4782);
   assert.equal(current.redirect_uri, "http://localhost:1457/auth/callback");
 });
 
@@ -94,12 +99,30 @@ test("Codex OAuth recognizes loopback hostnames", () => {
 
 test("Codex OAuth builds SSH forwarding guidance for the current server", () => {
   assert.equal(
-    buildSshForwardCommand(1457, "deeptutor.example.com"),
-    "ssh -N -L 1457:127.0.0.1:1457 <ssh-user>@deeptutor.example.com",
+    buildSshForwardCommand(1457, "deeptutor.example.com", 4782),
+    "ssh -N -L 1457:127.0.0.1:4782 <ssh-user>@deeptutor.example.com",
   );
   assert.equal(
-    buildSshForwardCommand(1457, ""),
-    "ssh -N -L 1457:127.0.0.1:1457 <ssh-user>@<server-host>",
+    buildSshForwardCommand(1457, "", 4782),
+    "ssh -N -L 1457:127.0.0.1:4782 <ssh-user>@<server-host>",
+  );
+});
+
+test("SSH forwarding source contract requires distinct callback and forward ports", () => {
+  const source = readFileSync(CODEX_CLIENT, "utf8");
+  const commandBuilder = componentBlock(
+    source,
+    "export function buildSshForwardCommand",
+    "export async function requestCodex",
+  );
+
+  assert.match(
+    commandBuilder,
+    /callbackPort:\s*number,\s*hostname:\s*string,\s*forwardPort:\s*number,/,
+  );
+  assert.match(
+    commandBuilder,
+    /\$\{callbackPort\}:127\.0\.0\.1:\$\{forwardPort\}/,
   );
 });
 
@@ -322,7 +345,7 @@ test("Remote Codex guidance uses the real callback port and explicit user action
 
   assert.match(
     source,
-    /buildSshForwardCommand\(\s*loginStart\.callback_port,\s*window\.location\.hostname,\s*\)/,
+    /buildSshForwardCommand\(\s*loginStart\.callback_port,\s*window\.location\.hostname,\s*loginStart\.callback_forward_port,\s*\)/,
   );
   assert.match(source, /\{loginStart\.redirect_uri\}/);
 

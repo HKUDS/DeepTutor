@@ -13,6 +13,7 @@ export type CodexOAuthStatus = {
     | "failed"
     | null;
   callback_port: number | null;
+  callback_forward_port: number | null;
   redirect_uri: string | null;
   model_count: number;
   catalog_source:
@@ -32,6 +33,7 @@ export type CodexLoginStart = {
   authorize_url: string;
   expires_in: number;
   callback_port: number;
+  callback_forward_port: number;
   redirect_uri: string;
   ssh_forward_command: string;
 };
@@ -71,11 +73,12 @@ export function isLoopbackHostname(hostname: string): boolean {
 }
 
 export function buildSshForwardCommand(
-  port: number,
+  callbackPort: number,
   hostname: string,
+  forwardPort: number,
 ): string {
   const serverHost = hostname.trim() || "<server-host>";
-  return `ssh -N -L ${port}:127.0.0.1:${port} <ssh-user>@${serverHost}`;
+  return `ssh -N -L ${callbackPort}:127.0.0.1:${forwardPort} <ssh-user>@${serverHost}`;
 }
 
 export async function requestCodex<T>(

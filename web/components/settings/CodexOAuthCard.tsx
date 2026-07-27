@@ -154,6 +154,7 @@ export function CodexOAuthCard() {
     ? buildSshForwardCommand(
         loginStart.callback_port,
         window.location.hostname,
+        loginStart.callback_forward_port,
       )
     : "";
 
