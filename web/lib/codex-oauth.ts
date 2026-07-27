@@ -49,7 +49,7 @@ export class CodexOAuthApiError extends Error {
 const BASE = "/api/v1/settings/providers/openai-codex";
 
 export function isLoopbackHostname(hostname: string): boolean {
-  const normalized = hostname.trim().toLowerCase();
+  const normalized = hostname.trim().toLowerCase().replace(/\.$/, "");
   if (
     normalized === "localhost" ||
     normalized.endsWith(".localhost") ||

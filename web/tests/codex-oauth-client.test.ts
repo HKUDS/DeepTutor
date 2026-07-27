@@ -63,7 +63,9 @@ test("Codex OAuth response types expose remote-login guidance", () => {
 test("Codex OAuth recognizes loopback hostnames", () => {
   for (const hostname of [
     "localhost",
+    "localhost.",
     "app.localhost",
+    "app.localhost.",
     "127.0.0.1",
     "127.12.34.56",
     "::1",
@@ -75,6 +77,9 @@ test("Codex OAuth recognizes loopback hostnames", () => {
   for (const hostname of [
     "192.168.1.10",
     "deeptutor.example.com",
+    "deeptutor.example.com.",
+    "localhost..",
+    "app.localhost..",
     "10.0.0.8",
     "127.0.0.256",
     "127.12.999.56",
