@@ -33,6 +33,7 @@ export function CodexOAuthCard() {
   const [pollTick, setPollTick] = useState(0);
   const [loginStart, setLoginStart] = useState<CodexLoginStart | null>(null);
   const reloadedOperation = useRef<string | null>(null);
+  const statusRequestSequence = useRef(0);
   const remoteAccess =
     typeof window !== "undefined" &&
     !isLoopbackHostname(window.location.hostname);
@@ -52,16 +53,32 @@ export function CodexOAuthCard() {
     );
   }, []);
 
+  const invalidateStatusRequests = useCallback(() => {
+    statusRequestSequence.current += 1;
+  }, []);
+
   const loadStatus = useCallback(
     async (shouldApply: () => boolean = () => true) => {
+      statusRequestSequence.current += 1;
+      const requestSequence = statusRequestSequence.current;
       try {
         const next = await getCodexStatus();
-        if (!shouldApply()) return null;
+        if (
+          requestSequence !== statusRequestSequence.current ||
+          !shouldApply()
+        ) {
+          return null;
+        }
         recordStatus(next);
         setErrorKey(null);
         return next;
       } catch (error) {
-        if (!shouldApply()) return null;
+        if (
+          requestSequence !== statusRequestSequence.current ||
+          !shouldApply()
+        ) {
+          return null;
+        }
         setErrorKey(
           codexErrorMessageKey(
             error instanceof CodexOAuthApiError ? error.code : null,
@@ -78,11 +95,12 @@ export function CodexOAuthCard() {
     void loadStatus(() => !cancelled);
     return () => {
       cancelled = true;
+      invalidateStatusRequests();
     };
-  }, [loadStatus]);
+  }, [invalidateStatusRequests, loadStatus]);
 
   useEffect(() => {
-    if (!status || !shouldPollCodexStatus(status)) return;
+    if (pending || !status || !shouldPollCodexStatus(status)) return;
     // pollTick, not the status object, is what schedules the next poll: a failed
     // request leaves `status` identical, and keying the timer off it alone would
     // strand the card on "waiting" forever after one dropped response.
@@ -97,7 +115,7 @@ export function CodexOAuthCard() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [loadStatus, status, pollTick]);
+  }, [loadStatus, pending, status, pollTick]);
 
   // Reloading replaces the whole catalog draft, so this must never run behind
   // the operator's back while they have unsaved edits open on another provider.
@@ -122,6 +140,7 @@ export function CodexOAuthCard() {
   }, [syncCatalog, status]);
 
   const localSignIn = async () => {
+    invalidateStatusRequests();
     const authWindow = window.open("about:blank", "_blank", "popup");
     if (authWindow) authWindow.opener = null;
     setPending(true);
@@ -133,7 +152,7 @@ export function CodexOAuthCard() {
       } else {
         window.location.assign(started.authorize_url);
       }
-      recordStatus(await getCodexStatus());
+      await loadStatus();
     } catch (error) {
       authWindow?.close();
       setErrorKey(
@@ -147,12 +166,13 @@ export function CodexOAuthCard() {
   };
 
   const remoteSignIn = async () => {
+    invalidateStatusRequests();
     setPending(true);
     setErrorKey(null);
     try {
       const started = await startCodexLogin();
       setLoginStart(started);
-      recordStatus(await getCodexStatus());
+      await loadStatus();
     } catch (error) {
       setErrorKey(
         codexErrorMessageKey(
@@ -191,9 +211,12 @@ export function CodexOAuthCard() {
   };
 
   const cancel = async () => {
+    invalidateStatusRequests();
     setPending(true);
     try {
-      recordStatus(await cancelCodexLogin());
+      const nextStatus = await cancelCodexLogin();
+      invalidateStatusRequests();
+      recordStatus(nextStatus);
     } catch (error) {
       setErrorKey(
         codexErrorMessageKey(
@@ -207,9 +230,12 @@ export function CodexOAuthCard() {
   };
 
   const refresh = async () => {
+    invalidateStatusRequests();
     setPending(true);
     try {
-      recordStatus(await refreshCodexModels());
+      const nextStatus = await refreshCodexModels();
+      invalidateStatusRequests();
+      recordStatus(nextStatus);
       await syncCatalog();
       setErrorKey(null);
     } catch (error) {
@@ -224,9 +250,12 @@ export function CodexOAuthCard() {
   };
 
   const logout = async () => {
+    invalidateStatusRequests();
     setPending(true);
     try {
-      recordStatus(await logoutCodex());
+      const nextStatus = await logoutCodex();
+      invalidateStatusRequests();
+      recordStatus(nextStatus);
       setLoginStart(null);
       await syncCatalog();
       setErrorKey(null);

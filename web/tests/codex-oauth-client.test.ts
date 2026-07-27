@@ -356,7 +356,7 @@ test("Codex status polling waits for each request and stops state updates after 
   );
   const pollingEffect = componentBlock(
     source,
-    "if (!status || !shouldPollCodexStatus(status)) return;",
+    "if (pending || !status || !shouldPollCodexStatus(status)) return;",
     "// Reloading replaces",
   );
 
@@ -364,7 +364,7 @@ test("Codex status polling waits for each request and stops state updates after 
     loadStatus,
     /async \(shouldApply: \(\) => boolean = \(\) => true\)/,
   );
-  assert.match(loadStatus, /if \(!shouldApply\(\)\) return null;/);
+  assert.match(loadStatus, /!shouldApply\(\)/);
   assert.match(pollingEffect, /let cancelled = false;/);
   assert.match(pollingEffect, /await loadStatus\(\(\) => !cancelled\);/);
   assert.ok(
@@ -377,6 +377,76 @@ test("Codex status polling waits for each request and stops state updates after 
     /return \(\) => \{\s*cancelled = true;\s*window\.clearTimeout\(timer\);\s*\};/,
   );
   assert.match(pollingEffect, /}, 1_000\);/);
+  assert.match(
+    pollingEffect,
+    /if \(\s*pending \|\|\s*!status \|\| !shouldPollCodexStatus\(status\)\s*\) return;/,
+  );
+  assert.match(
+    pollingEffect,
+    /\[loadStatus, pending, status, pollTick\]/,
+  );
+});
+
+test("Codex status request epochs reject stale responses across user actions", () => {
+  const source = readFileSync(CODEX_CARD, "utf8");
+  const loadStatus = componentBlock(
+    source,
+    "const loadStatus",
+    "useEffect(() =>",
+  );
+
+  assert.match(source, /const statusRequestSequence = useRef\(0\);/);
+  assert.match(
+    source,
+    /const invalidateStatusRequests = useCallback\(\(\) => \{\s*statusRequestSequence\.current \+= 1;\s*\}, \[\]\);/,
+  );
+  assert.match(
+    loadStatus,
+    /const requestSequence = statusRequestSequence\.current;/,
+  );
+  assert.match(
+    loadStatus,
+    /requestSequence !== statusRequestSequence\.current/,
+  );
+  assert.ok(
+    loadStatus.indexOf("requestSequence !== statusRequestSequence.current") <
+      loadStatus.indexOf("recordStatus(next)"),
+  );
+  assert.match(
+    source,
+    /return \(\) => \{\s*cancelled = true;\s*invalidateStatusRequests\(\);\s*\};/,
+  );
+
+  const actionBlocks = [
+    componentBlock(source, "const localSignIn", "const remoteSignIn"),
+    componentBlock(source, "const remoteSignIn", "const signIn"),
+    componentBlock(source, "const cancel", "const refresh"),
+    componentBlock(source, "const refresh", "const logout"),
+    componentBlock(source, "const logout", "const polling"),
+  ];
+  for (const action of actionBlocks) {
+    assert.ok(
+      action.indexOf("invalidateStatusRequests()") <
+        action.indexOf("await "),
+    );
+  }
+
+  for (const login of actionBlocks.slice(0, 2)) {
+    assert.match(login, /await loadStatus\(\);/);
+    assert.equal(login.includes("recordStatus(await getCodexStatus())"), false);
+  }
+  for (const [action, request] of [
+    [actionBlocks[2], "cancelCodexLogin"],
+    [actionBlocks[3], "refreshCodexModels"],
+    [actionBlocks[4], "logoutCodex"],
+  ]) {
+    assert.match(
+      action,
+      new RegExp(
+        `const nextStatus = await ${request}\\(\\);\\s*invalidateStatusRequests\\(\\);\\s*recordStatus\\(nextStatus\\);`,
+      ),
+    );
+  }
 });
 
 test("Local Codex sign-in opens its browser window before awaiting the API", () => {
@@ -422,7 +492,7 @@ test("Codex sign-in detects remote browsers and retains the login start", () => 
   );
   assert.ok(
     remoteSignIn.indexOf("setLoginStart(started)") <
-      remoteSignIn.indexOf("await getCodexStatus()"),
+      remoteSignIn.indexOf("await loadStatus()"),
   );
 });
 
