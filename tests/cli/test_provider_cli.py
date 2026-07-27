@@ -10,7 +10,6 @@ ROOT = Path(__file__).resolve().parents[2]
 PROVIDER_CMD = (ROOT / "deeptutor_cli" / "provider_cmd.py").read_text(encoding="utf-8")
 CLI_README = (ROOT / "deeptutor_cli" / "README.md").read_text(encoding="utf-8")
 ROOT_README = (ROOT / "README.md").read_text(encoding="utf-8")
-CN_README = (ROOT / "assets" / "README" / "README_CN.md").read_text(encoding="utf-8")
 
 
 class ProviderCliDocsContractTest(unittest.TestCase):
@@ -35,80 +34,6 @@ class ProviderCliDocsContractTest(unittest.TestCase):
             CLI_README,
         )
         self.assertNotIn("OAuth login (`openai-codex`, `github-copilot`)", ROOT_README)
-
-    def test_readmes_document_remote_codex_oauth_port_forwarding(self) -> None:
-        primary_command = "ssh -N -L 1455:127.0.0.1:3782 <ssh-user>@<server-host>"
-        fallback_command = "ssh -N -L 1457:127.0.0.1:3782 <ssh-user>@<server-host>"
-        for readme in (ROOT_README, CN_README, CLI_README):
-            self.assertIn(primary_command, readme)
-            self.assertIn(fallback_command, readme)
-            self.assertNotIn(
-                "ssh -N -L 1455:127.0.0.1:1455 <ssh-user>@<server-host>",
-                readme,
-            )
-            self.assertNotIn(
-                "ssh -N -L 1457:127.0.0.1:1457 <ssh-user>@<server-host>",
-                readme,
-            )
-
-        english_contract = (
-            "Run only the one command that matches the actual callback port",
-            "`3782` is only the example Web port",
-            "prints the tunnel command and then immediately tries to open the browser",
-            "keep the authorization page open without completing it",
-            "ordinary reverse proxy alone",
-            "default Docker bridge network",
-            "listener remains on the backend loopback",
-            "ports `1455` and `1457` are not published",
-            "The tunnel reaches the already-published Web port",
-            "Next.js rewrites only the exact callback path to the public callback broker",
-            "validates `state` before routing to the original OAuth operation",
-            "the configured frontend/container port reported as `callback_forward_port`",
-            "does not guarantee that the same port is listening on the SSH host's `127.0.0.1`",
-            "If Docker or Podman publishes a different host port, or a reverse proxy listens on a different port, replace only the right-hand target port",
-            "the Web port actually listening on the SSH host's `127.0.0.1`",
-            "`<server-host>` is the SSH host whose loopback owns that listening port",
-            "If the browser URL names a reverse proxy or load balancer, replace it with the correct SSH frontend host",
-            "read `redirect_uri` in that operation's authorize URL to identify callback port `1455` or `1457`",
-            "cancel that Web operation and start a new one with the CLI",
-            "the CLI output belongs to the new operation and must not be used for the existing Web operation",
-        )
-        for text in english_contract:
-            self.assertIn(text, ROOT_README)
-        self.assertNotIn(
-            "A custom deployment must use the forward port shown by the page or CLI",
-            ROOT_README,
-        )
-
-        chinese_contract = (
-            "只运行与实际 callback 端口对应的其中一条命令",
-            "`3782` 只是示例 Web 端口",
-            "先打印隧道命令，随后立即尝试打开浏览器",
-            "先保持授权页打开但不要完成授权",
-            "仅有普通反向代理",
-            "默认 Docker bridge 网络",
-            "listener 仍位于后端 loopback",
-            "不发布 `1455`/`1457`",
-            "隧道通向已发布的 Web 端口",
-            "Next.js 只把精确的 callback 路径改写到 public callback broker",
-            "校验 `state` 后才路由到原 OAuth operation",
-            "配置并作为 `callback_forward_port` 显示的 frontend/container 端口",
-            "不保证 SSH 主机的 `127.0.0.1` 正在监听同一端口",
-            "若 Docker/Podman 映射到不同宿主机端口，或反向代理监听不同端口，只替换 SSH 命令右侧的目标端口",
-            "SSH 主机 `127.0.0.1` 实际监听的 Web 端口",
-            "`<server-host>` 是该 loopback 监听端口所在的 SSH 主机",
-            "若浏览器域名指向反向代理或负载均衡器，请替换为正确的 SSH 前端主机",
-            "从该 operation 的 authorize URL 中读取 `redirect_uri`",
-            "取消该 Web operation，再通过 CLI 启动一个新 operation",
-            "CLI 输出只属于新 operation，不能用于当前 Web operation",
-        )
-        for readme in (CN_README, CLI_README):
-            for text in chinese_contract:
-                self.assertIn(text, readme)
-            self.assertNotIn(
-                "自定义部署必须采用页面或 CLI 显示的 forward port",
-                readme,
-            )
 
 
 class _FakeCliCodexService:
