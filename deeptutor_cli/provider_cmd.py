@@ -38,6 +38,11 @@ async def _login_openai_codex() -> None:
     try:
         started = await service.start_login()
         authorize_url = str(started["authorize_url"])
+        typer.echo(f"Callback: {started['redirect_uri']}")
+        typer.echo(f"Authorization URL: {authorize_url}")
+        typer.echo(
+            f"Remote server tunnel command: {started['ssh_forward_command']}"
+        )
         typer.echo(
             "Opening the OpenAI Codex sign-in in your browser; "
             "credentials are written only to DeepTutor's private directory."

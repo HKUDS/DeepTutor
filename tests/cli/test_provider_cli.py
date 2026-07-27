@@ -44,6 +44,11 @@ class _FakeCliCodexService:
         return {
             "operation_id": "operation-1",
             "authorize_url": "https://auth.openai.com/oauth/authorize?state=opaque",
+            "callback_port": 1457,
+            "redirect_uri": "http://localhost:1457/auth/callback",
+            "ssh_forward_command": (
+                "ssh -N -L 1457:127.0.0.1:1457 <ssh-user>@<server-host>"
+            ),
             "expires_in": 300,
         }
 
@@ -71,16 +76,24 @@ def test_openai_codex_cli_does_not_import_codex_cli_credentials() -> None:
 def test_cli_opens_authorize_url_and_waits_for_completion(monkeypatch) -> None:
     service = _FakeCliCodexService()
     urls: list[str] = []
+    events: list[tuple[str, str]] = []
+    original_echo = provider_cmd.typer.echo
+
+    def record_echo(message: object, *args: object, **kwargs: object) -> None:
+        events.append(("echo", str(message)))
+        original_echo(message, *args, **kwargs)
+
     monkeypatch.setattr(
         provider_cmd,
         "get_codex_oauth_service",
         lambda: service,
         raising=False,
     )
+    monkeypatch.setattr(provider_cmd.typer, "echo", record_echo)
     monkeypatch.setattr(
         provider_cmd.webbrowser,
         "open",
-        lambda url: urls.append(url) or True,
+        lambda url: events.append(("open", url)) or urls.append(url) or True,
         raising=False,
     )
 
@@ -91,6 +104,16 @@ def test_cli_opens_authorize_url_and_waits_for_completion(monkeypatch) -> None:
 
     assert urls == ["https://auth.openai.com/oauth/authorize?state=opaque"]
     assert result.exit_code == 0
+    assert "http://localhost:1457/auth/callback" in result.stdout
+    assert "https://auth.openai.com/oauth/authorize?state=opaque" in result.stdout
+    assert "ssh -N -L 1457:127.0.0.1:1457" in result.stdout
+    open_index = events.index(
+        ("open", "https://auth.openai.com/oauth/authorize?state=opaque")
+    )
+    output_before_open = "\n".join(message for kind, message in events[:open_index])
+    assert "http://localhost:1457/auth/callback" in output_before_open
+    assert "https://auth.openai.com/oauth/authorize?state=opaque" in output_before_open
+    assert "ssh -N -L 1457:127.0.0.1:1457" in output_before_open
     # The CLI speaks English like every other command in this app.
     assert "private directory" in result.stdout
     assert "gpt-5.6-sol" in result.stdout
