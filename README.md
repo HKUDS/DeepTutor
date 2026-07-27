@@ -621,7 +621,21 @@ Settings is the operational control plane, with a live status strip (Backend, LL
 
 Most sections use a draft-and-apply flow, so you can test a provider before committing it. Four themes ship in the box — Default, Cream, Dark, and Glass. Project-root `.env` files are intentionally ignored; runtime configuration lives under `data/user/settings/*.json` unless `DEEPTUTOR_HOME` or `deeptutor start --home` points the app elsewhere.
 
-**OpenAI Codex OAuth (experimental).** Picking **OpenAI Codex** under Models → LLM replaces the API-key fields with a browser sign-in that runs against your own ChatGPT plan, so no `OPENAI_API_KEY` is needed. Tokens live only in `<user-root>/private/openai-codex/` and DeepTutor never reads or modifies your `~/.codex` CLI login. The model list comes from that account's live catalog; signing in publishes the profile but only becomes the active model when no LLM is configured yet, so it never repoints a deployment behind your back. Because a token authorizes one person's plan, the profile is not shareable through user grants — each account signs in for itself, and the browser has to reach the machine running the backend (on a remote server run `deeptutor provider login openai-codex` there instead). Quota errors and catalog failures are reported as-is and never fall back to a paid provider. This compatibility path is experimental: the upstream interface may change.
+**OpenAI Codex OAuth (experimental).** Picking **OpenAI Codex** under Models → LLM replaces the API-key fields with a browser sign-in that runs against your own ChatGPT plan, so no `OPENAI_API_KEY` is needed. Tokens live only in `<user-root>/private/openai-codex/` and DeepTutor never reads or modifies your `~/.codex` CLI login. The model list comes from that account's live catalog; signing in publishes the profile but only becomes the active model when no LLM is configured yet. Because a token authorizes one person's plan, the profile is not shareable through user grants — each account signs in for itself.
+
+For a remote backend, the callback listener still binds only to the server's loopback address. The browser's `localhost` and the server's `localhost` are different machines, and an ordinary reverse proxy does not automatically forward this callback. Before opening or completing the authorization page, start this tunnel on the browser's machine and keep it open until login succeeds:
+
+```bash
+ssh -N -L 1455:127.0.0.1:1455 <ssh-user>@<server-host>
+```
+
+If the page or CLI actually reports port `1457`, replace the port on both sides:
+
+```bash
+ssh -N -L 1457:127.0.0.1:1457 <ssh-user>@<server-host>
+```
+
+Forward only the callback port that DeepTutor displays; do not forward both `1455` and `1457`. When Web is accessed through a non-`localhost` URL, it shows the actual callback port and matching command before you explicitly open authorization. Detection has one boundary: if Web itself reaches the remote server through an SSH or IDE forward and therefore appears as `localhost`, the browser cannot identify that remote topology. Follow the CLI output or actual callback port and manually establish this second forward before completing authorization. Quota errors and catalog failures are reported as-is and never fall back to a paid provider. This compatibility path is experimental: the upstream interface may change.
 
 </details>
 

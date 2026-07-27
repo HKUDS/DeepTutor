@@ -228,7 +228,21 @@ deeptutor provider login openai-codex      # 执行 OpenAI Codex OAuth 登录
 deeptutor provider login github-copilot    # 校验现有 GitHub Copilot 认证是否可用
 ```
 
-`openai-codex` 会打开系统浏览器，使用 DeepTutor 自己的独立 OAuth 流程登录。它不需要 `OPENAI_API_KEY`，也不会读取或同步本机 `~/.codex`；凭据保存在 `<user-root>/private/openai-codex/`，与 Web 设置页共用。授权回调监听本机回环地址，因此须在运行后端的机器上完成登录。
+`openai-codex` 使用 DeepTutor 自己的独立 OAuth 流程登录。它不需要 `OPENAI_API_KEY`，也不会读取或同步本机 `~/.codex`；凭据保存在 `<user-root>/private/openai-codex/`，与 Web 设置页共用。
+
+远程服务器上的 callback listener 仍只绑定服务器 loopback。浏览器的 `localhost` 和服务器的 `localhost` 不是同一台机器，普通反向代理不会自动转发该 callback。打开或完成授权页面前，先在浏览器所在机器建立隧道，并保持到登录成功：
+
+```bash
+ssh -N -L 1455:127.0.0.1:1455 <ssh-user>@<server-host>
+```
+
+若页面或 CLI 实际显示 `1457`，应将命令两端均换成 `1457`：
+
+```bash
+ssh -N -L 1457:127.0.0.1:1457 <ssh-user>@<server-host>
+```
+
+只转发实际显示的 callback 端口，不要同时转发 `1455` 和 `1457`。通过非 `localhost` 地址访问 Web 时，页面会先显示实际端口和对应命令，再由用户显式打开授权。若 Web 本身经 SSH 或 IDE 转发并以 `localhost` 访问，浏览器无法识别远程拓扑；此时按 CLI 输出或实际 callback 端口手动建立第二条转发，再完成授权。
 
 Codex 令牌授权的是**你本人**的 ChatGPT 套餐，因此凭据只归当前登录用户，不会通过模型授权共享给部署内的其他用户——每位用户各自登录。登录成功后，模型列表来自该账号的动态目录；仅当此前尚未配置任何 LLM 时，Codex 才会被自动设为活动模型，否则不改动你已选的模型。目录刷新失败、上游 `429` 或其他错误都会如实报告，不会回退到付费 API Provider。这条 Codex backend 兼容路径目前属于实验性能力。
 

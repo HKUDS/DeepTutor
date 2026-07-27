@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PROVIDER_CMD = (ROOT / "deeptutor_cli" / "provider_cmd.py").read_text(encoding="utf-8")
 CLI_README = (ROOT / "deeptutor_cli" / "README.md").read_text(encoding="utf-8")
 ROOT_README = (ROOT / "README.md").read_text(encoding="utf-8")
+CN_README = (ROOT / "assets" / "README" / "README_CN.md").read_text(encoding="utf-8")
 
 
 class ProviderCliDocsContractTest(unittest.TestCase):
@@ -34,6 +35,20 @@ class ProviderCliDocsContractTest(unittest.TestCase):
             CLI_README,
         )
         self.assertNotIn("OAuth login (`openai-codex`, `github-copilot`)", ROOT_README)
+
+    def test_readmes_document_remote_codex_oauth_port_forwarding(self) -> None:
+        for readme in (ROOT_README, CLI_README):
+            self.assertIn("ssh -N -L", readme)
+            self.assertIn("1455", readme)
+            self.assertIn("1457", readme)
+
+        self.assertIn(
+            "浏览器的 `localhost` 和服务器的 `localhost` 不是同一台机器",
+            CN_README,
+        )
+        self.assertIn("ssh -N -L", CN_README)
+        self.assertIn("1455", CN_README)
+        self.assertIn("1457", CN_README)
 
 
 class _FakeCliCodexService:
