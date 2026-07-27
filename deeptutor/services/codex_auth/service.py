@@ -627,6 +627,13 @@ def _codex_user_root() -> Path:
     users to the administrator's root would run a whole deployment on a single
     subscription, so every account signs in for itself or does not use Codex.
     """
+    from deeptutor.multi_user.context import get_current_user_or_none
+    from deeptutor.multi_user.paths import get_admin_path_service
+    from deeptutor.services.partners.scope import PARTNER_USER_PREFIX
+
+    user = get_current_user_or_none()
+    if user is not None and user.id.startswith(PARTNER_USER_PREFIX):
+        return get_admin_path_service().get_user_root().resolve()
     return get_path_service().get_user_root().resolve()
 
 
