@@ -100,5 +100,7 @@ test("Codex OAuth callback copy interpolates real ports and has a safe unknown-p
     assert.notEqual(fallback, "codex.oauth.callbackMissingUnknown");
     assert.equal(fallback.includes("{{port}}"), false);
     assert.equal(fallback.includes("localhost:"), false);
+    assert.equal(fallback.includes("SSH"), false);
+    assert.equal(fallback.includes("隧道"), false);
   }
 });
