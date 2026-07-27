@@ -55,8 +55,7 @@ def test_each_user_gets_their_own_codex_credential_root(
 
 def test_ssh_forward_command_maps_callback_to_frontend_port() -> None:
     assert (
-        ssh_forward_command(1457, 4782)
-        == "ssh -N -L 1457:127.0.0.1:4782 <ssh-user>@<server-host>"
+        ssh_forward_command(1457, 4782) == "ssh -N -L 1457:127.0.0.1:4782 <ssh-user>@<server-host>"
     )
 
 
@@ -519,9 +518,7 @@ async def test_successful_live_login_keeps_the_existing_model_selection(
     status = await _wait_until_terminal(service)
 
     assert duplicate == started
-    assert callback.expected_state == parse_qs(urlsplit(started["authorize_url"]).query)[
-        "state"
-    ][0]
+    assert callback.expected_state == parse_qs(urlsplit(started["authorize_url"]).query)["state"][0]
     assert status["connection"] == "connected"
     assert status["operation_state"] == "completed"
     assert status["catalog_source"] == "live"
@@ -534,8 +531,7 @@ async def test_successful_live_login_keeps_the_existing_model_selection(
     assert started["callback_forward_port"] == 4782
     assert started["redirect_uri"] == "http://localhost:1455/auth/callback"
     assert (
-        started["ssh_forward_command"]
-        == "ssh -N -L 1455:127.0.0.1:4782 <ssh-user>@<server-host>"
+        started["ssh_forward_command"] == "ssh -N -L 1455:127.0.0.1:4782 <ssh-user>@<server-host>"
     )
     assert set(started) == {
         "operation_id",
@@ -649,11 +645,7 @@ async def test_login_status_keeps_callback_metadata_without_exposing_secrets(
     assert timed_out["operation_state"] == "expired"
     for status in (waiting, timed_out):
         assert status["callback_port"] == started["callback_port"] == 1455
-        assert (
-            status["callback_forward_port"]
-            == started["callback_forward_port"]
-            == 4782
-        )
+        assert status["callback_forward_port"] == started["callback_forward_port"] == 4782
         assert (
             status["redirect_uri"]
             == started["redirect_uri"]

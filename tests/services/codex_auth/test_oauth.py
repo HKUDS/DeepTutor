@@ -316,9 +316,7 @@ async def test_loopback_timeout_stops_submit_before_close_finishes() -> None:
     await asyncio.wait_for(close_started.wait(), timeout=1)
 
     with pytest.raises(CodexAuthError) as exc_info:
-        callback.submit(
-            OAuthCallbackResult(code="too-late", state="too-late", error=None)
-        )
+        callback.submit(OAuthCallbackResult(code="too-late", state="too-late", error=None))
 
     assert exc_info.value.code == "login_not_active"
     release_close.set()
@@ -337,9 +335,7 @@ async def test_loopback_wait_cancellation_stops_submit_before_close_finishes() -
     await asyncio.wait_for(close_started.wait(), timeout=1)
 
     with pytest.raises(CodexAuthError) as exc_info:
-        callback.submit(
-            OAuthCallbackResult(code="too-late", state="too-late", error=None)
-        )
+        callback.submit(OAuthCallbackResult(code="too-late", state="too-late", error=None))
 
     assert exc_info.value.code == "login_not_active"
     release_close.set()
@@ -355,9 +351,7 @@ async def test_loopback_cancel_stops_submit_before_close_finishes() -> None:
     await asyncio.wait_for(close_started.wait(), timeout=1)
 
     with pytest.raises(CodexAuthError) as exc_info:
-        callback.submit(
-            OAuthCallbackResult(code="too-late", state="too-late", error=None)
-        )
+        callback.submit(OAuthCallbackResult(code="too-late", state="too-late", error=None))
 
     assert exc_info.value.code == "login_not_active"
     release_close.set()

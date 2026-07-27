@@ -131,8 +131,7 @@ class LoopbackCallback:
                     query = parse_qs(parsed.query, keep_blank_values=True)
                     states = query.get("state", [])
                     if expected_state is not None and (
-                        len(states) != 1
-                        or not oauth_state_matches(states[0], expected_state)
+                        len(states) != 1 or not oauth_state_matches(states[0], expected_state)
                     ):
                         status = "400 Bad Request"
                         body = (

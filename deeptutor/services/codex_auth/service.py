@@ -73,10 +73,7 @@ class _LoginOperation:
 
 
 def ssh_forward_command(callback_port: int, forward_port: int) -> str:
-    return (
-        f"ssh -N -L {callback_port}:127.0.0.1:{forward_port} "
-        "<ssh-user>@<server-host>"
-    )
+    return f"ssh -N -L {callback_port}:127.0.0.1:{forward_port} <ssh-user>@<server-host>"
 
 
 def codex_model_id(slug: str) -> str:
@@ -532,9 +529,7 @@ class CodexOAuthService:
             "connection": connection,
             "operation_id": operation.operation_id if operation is not None else None,
             "operation_state": (operation.operation_state if operation is not None else None),
-            "callback_port": (
-                operation.callback.port if operation is not None else None
-            ),
+            "callback_port": (operation.callback.port if operation is not None else None),
             "callback_forward_port": (
                 self._callback_forward_port if operation is not None else None
             ),
