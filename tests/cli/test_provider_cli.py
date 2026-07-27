@@ -67,8 +67,11 @@ class ProviderCliDocsContractTest(unittest.TestCase):
             "The tunnel reaches the already-published Web port",
             "Next.js rewrites only the exact callback path to the public callback broker",
             "validates `state` before routing to the original OAuth operation",
-            "A custom deployment must use the forward port shown by the page or CLI",
-            "`<server-host>` must be an SSH-reachable frontend host",
+            "the configured frontend/container port reported as `callback_forward_port`",
+            "does not guarantee that the same port is listening on the SSH host's `127.0.0.1`",
+            "If Docker or Podman publishes a different host port, or a reverse proxy listens on a different port, replace only the right-hand target port",
+            "the Web port actually listening on the SSH host's `127.0.0.1`",
+            "`<server-host>` is the SSH host whose loopback owns that listening port",
             "If the browser URL names a reverse proxy or load balancer, replace it with the correct SSH frontend host",
             "read `redirect_uri` in that operation's authorize URL to identify callback port `1455` or `1457`",
             "cancel that Web operation and start a new one with the CLI",
@@ -76,6 +79,10 @@ class ProviderCliDocsContractTest(unittest.TestCase):
         )
         for text in english_contract:
             self.assertIn(text, ROOT_README)
+        self.assertNotIn(
+            "A custom deployment must use the forward port shown by the page or CLI",
+            ROOT_README,
+        )
 
         chinese_contract = (
             "只运行与实际 callback 端口对应的其中一条命令",
@@ -89,9 +96,11 @@ class ProviderCliDocsContractTest(unittest.TestCase):
             "隧道通向已发布的 Web 端口",
             "Next.js 只把精确的 callback 路径改写到 public callback broker",
             "校验 `state` 后才路由到原 OAuth operation",
-            "自定义部署必须采用页面或 CLI 显示的 forward port",
-            "也就是 SSH 主机实际可达的 Web 端口",
-            "`<server-host>` 必须是可通过 SSH 到达的前端主机",
+            "配置并作为 `callback_forward_port` 显示的 frontend/container 端口",
+            "不保证 SSH 主机的 `127.0.0.1` 正在监听同一端口",
+            "若 Docker/Podman 映射到不同宿主机端口，或反向代理监听不同端口，只替换 SSH 命令右侧的目标端口",
+            "SSH 主机 `127.0.0.1` 实际监听的 Web 端口",
+            "`<server-host>` 是该 loopback 监听端口所在的 SSH 主机",
             "若浏览器域名指向反向代理或负载均衡器，请替换为正确的 SSH 前端主机",
             "从该 operation 的 authorize URL 中读取 `redirect_uri`",
             "取消该 Web operation，再通过 CLI 启动一个新 operation",
@@ -100,6 +109,10 @@ class ProviderCliDocsContractTest(unittest.TestCase):
         for readme in (CN_README, CLI_README):
             for text in chinese_contract:
                 self.assertIn(text, readme)
+            self.assertNotIn(
+                "自定义部署必须采用页面或 CLI 显示的 forward port",
+                readme,
+            )
 
 
 class _FakeCliCodexService:

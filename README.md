@@ -635,7 +635,7 @@ If DeepTutor reports fallback callback port `1457`, use:
 ssh -N -L 1457:127.0.0.1:3782 <ssh-user>@<server-host>
 ```
 
-Run only the one command that matches the actual callback port; never run both. `3782` is only the example Web port. A custom deployment must use the forward port shown by the page or CLI, which is the actual Web port reachable from the SSH host. `<server-host>` must be an SSH-reachable frontend host that serves or can reach that Web port. If the browser URL names a reverse proxy or load balancer, replace it with the correct SSH frontend host.
+Run only the one command that matches the actual callback port; never run both. `3782` is only the example Web port: it is the configured frontend/container port reported as `callback_forward_port`. That value does not guarantee that the same port is listening on the SSH host's `127.0.0.1`. If Docker or Podman publishes a different host port, or a reverse proxy listens on a different port, replace only the right-hand target port (`3782` above) with the Web port actually listening on the SSH host's `127.0.0.1`; keep the left-hand callback port as `1455` or `1457`. `<server-host>` is the SSH host whose loopback owns that listening port. If the browser URL names a reverse proxy or load balancer, replace it with the correct SSH frontend host.
 
 The CLI prints the tunnel command and then immediately tries to open the browser. On a remote deployment, keep the authorization page open without completing it, establish the printed tunnel in another terminal, and only then continue authorization.
 
