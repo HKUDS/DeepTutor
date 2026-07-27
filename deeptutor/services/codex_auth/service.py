@@ -41,6 +41,7 @@ from .oauth import (
     PkceCodes,
     build_authorize_url,
     generate_pkce,
+    oauth_state_matches,
 )
 from .storage import CodexCredentialStore
 
@@ -190,7 +191,7 @@ class CodexOAuthService:
         model_catalog: ModelCatalogService,
         *,
         oauth_client: CodexOAuthClient | None = None,
-        callback_factory: Callable[[], Awaitable[Any]] | None = None,
+        callback_factory: Callable[[str], Awaitable[Any]] | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._store = store
@@ -213,17 +214,20 @@ class CodexOAuthService:
         self._logging_out = False
 
     @staticmethod
-    async def _start_default_callback() -> LoopbackCallback:
-        return await LoopbackCallback.start(CODEX_CALLBACK_PORTS)
+    async def _start_default_callback(expected_state: str) -> LoopbackCallback:
+        return await LoopbackCallback.start(
+            CODEX_CALLBACK_PORTS,
+            expected_state=expected_state,
+        )
 
     async def start_login(self) -> dict[str, Any]:
         async with self._operation_lock:
             if self._operation_is_active():
                 return self._login_start_payload(self._operation)
 
-            callback = await self._callback_factory()
             pkce = generate_pkce()
             state_secret = secrets.token_urlsafe(32)
+            callback = await self._callback_factory(state_secret)
             redirect_uri = f"http://localhost:{callback.port}{CODEX_CALLBACK_PATH}"
             operation = _LoginOperation(
                 operation_id=secrets.token_urlsafe(24),
@@ -282,7 +286,7 @@ class CodexOAuthService:
                     "Codex sign-in is not waiting for a callback.",
                     409,
                 )
-            if not state or not secrets.compare_digest(state, operation.state_secret):
+            if not oauth_state_matches(state, operation.state_secret):
                 raise CodexAuthError(
                     "state_mismatch",
                     "Codex sign-in returned an invalid state.",
@@ -345,10 +349,7 @@ class CodexOAuthService:
                 else "oauth_callback_failed"
             )
             raise CodexAuthError(code, "Codex sign-in was not authorized.", 401)
-        if callback.state is None or not secrets.compare_digest(
-            callback.state,
-            expected_state,
-        ):
+        if not oauth_state_matches(callback.state, expected_state):
             raise CodexAuthError(
                 "state_mismatch",
                 "Codex sign-in returned an invalid state.",

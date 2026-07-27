@@ -38,6 +38,27 @@ class OAuthCallbackResult:
     error: str | None
 
 
+_OAUTH_STATE_MAX_LENGTH = 128
+_BASE64URL_STATE_CHARS = frozenset(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+)
+
+
+def oauth_state_matches(value: str | None, expected: str) -> bool:
+    if (
+        not value
+        or len(value) > _OAUTH_STATE_MAX_LENGTH
+        or any(character not in _BASE64URL_STATE_CHARS for character in value)
+    ):
+        return False
+    try:
+        value_bytes = value.encode("ascii")
+        expected_bytes = expected.encode("ascii")
+    except UnicodeEncodeError:
+        return False
+    return secrets.compare_digest(value_bytes, expected_bytes)
+
+
 def generate_pkce() -> PkceCodes:
     verifier = secrets.token_urlsafe(64)
     digest = hashlib.sha256(verifier.encode("ascii")).digest()
@@ -83,10 +104,15 @@ class LoopbackCallback:
         self._server = server
         self._result = result
         self._cancelled = False
+        self._accepting = True
         self.port = port
 
     @classmethod
-    async def start(cls, ports: Iterable[int]) -> LoopbackCallback:
+    async def start(
+        cls,
+        ports: Iterable[int],
+        expected_state: str | None = None,
+    ) -> LoopbackCallback:
         loop = asyncio.get_running_loop()
         result: asyncio.Future[OAuthCallbackResult] = loop.create_future()
 
@@ -96,24 +122,43 @@ class LoopbackCallback:
                 "<!doctype html><title>DeepTutor Codex</title>"
                 "<p>This callback path is not available.</p>"
             )
-            callback_result: OAuthCallbackResult | None = None
             try:
                 request = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=2)
                 request_line = request.split(b"\r\n", 1)[0].decode("ascii")
                 method, target, _version = request_line.split(" ", 2)
                 parsed = urlsplit(target)
                 if method == "GET" and parsed.path == CODEX_CALLBACK_PATH:
-                    query = parse_qs(parsed.query)
-                    callback_result = OAuthCallbackResult(
-                        code=_first(query.get("code")),
-                        state=_first(query.get("state")),
-                        error=_first(query.get("error")),
-                    )
-                    status = "200 OK"
-                    body = (
-                        "<!doctype html><title>DeepTutor Codex</title>"
-                        "<p>Authentication received. You can return to DeepTutor.</p>"
-                    )
+                    query = parse_qs(parsed.query, keep_blank_values=True)
+                    states = query.get("state", [])
+                    if expected_state is not None and (
+                        len(states) != 1
+                        or not oauth_state_matches(states[0], expected_state)
+                    ):
+                        status = "400 Bad Request"
+                        body = (
+                            "<!doctype html><title>DeepTutor Codex</title>"
+                            "<p>The authentication callback was invalid.</p>"
+                        )
+                    else:
+                        callback_result = OAuthCallbackResult(
+                            code=_first(query.get("code")),
+                            state=_first(states),
+                            error=_first(query.get("error")),
+                        )
+                        try:
+                            callback.submit(callback_result)
+                        except CodexAuthError:
+                            status = "409 Conflict"
+                            body = (
+                                "<!doctype html><title>DeepTutor Codex</title>"
+                                "<p>Authentication could not be received.</p>"
+                            )
+                        else:
+                            status = "200 OK"
+                            body = (
+                                "<!doctype html><title>DeepTutor Codex</title>"
+                                "<p>Authentication received. You can return to DeepTutor.</p>"
+                            )
             except (ValueError, UnicodeDecodeError, asyncio.IncompleteReadError, TimeoutError):
                 status = "400 Bad Request"
                 body = (
@@ -138,15 +183,14 @@ class LoopbackCallback:
                 writer.close()
                 await writer.wait_closed()
 
-            if callback_result is not None:
-                try:
-                    callback.submit(callback_result)
-                except CodexAuthError:
-                    pass
-
         async def bind(hosts: list[str], port: int) -> asyncio.Server | None:
             try:
-                server = await asyncio.start_server(handle, hosts, port)
+                server = await asyncio.start_server(
+                    handle,
+                    hosts,
+                    port,
+                    start_serving=False,
+                )
             except OSError:
                 return None
             if len({int(sock.getsockname()[1]) for sock in server.sockets}) == 1:
@@ -170,15 +214,17 @@ class LoopbackCallback:
             )
         bound_port = int(server.sockets[0].getsockname()[1])
         callback = cls(server=server, result=result, port=bound_port)
+        await server.start_serving()
         return callback
 
     def submit(self, result: OAuthCallbackResult) -> None:
-        if self._result.done():
+        if not self._accepting or self._result.done():
             raise CodexAuthError(
                 "login_not_active",
                 "Codex sign-in is not waiting for a callback.",
                 409,
             )
+        self._accepting = False
         self._result.set_result(result)
 
     async def _close(self) -> None:
@@ -189,6 +235,7 @@ class LoopbackCallback:
         try:
             callback = await asyncio.wait_for(asyncio.shield(self._result), timeout=timeout)
         except TimeoutError as exc:
+            self._accepting = False
             await self._close()
             raise CodexAuthError(
                 "login_timeout",
@@ -200,6 +247,7 @@ class LoopbackCallback:
                 408,
             ) from exc
         except asyncio.CancelledError as exc:
+            self._accepting = False
             await self._close()
             if self._cancelled:
                 raise CodexAuthError(
@@ -208,11 +256,13 @@ class LoopbackCallback:
                     409,
                 ) from exc
             raise
+        self._accepting = False
         await self._close()
         return callback
 
     async def cancel(self) -> None:
         self._cancelled = True
+        self._accepting = False
         if not self._result.done():
             self._result.cancel()
         await self._close()

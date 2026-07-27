@@ -6,11 +6,17 @@ import pytest
 
 from deeptutor.api.routers import auth as auth_router
 from deeptutor.services.codex_auth.contracts import CodexAuthError
+from deeptutor.services.codex_auth.oauth import oauth_state_matches
 
 
 class FakeCodexOAuthService:
-    def __init__(self, error: CodexAuthError | None = None) -> None:
+    def __init__(
+        self,
+        error: CodexAuthError | None = None,
+        expected_state: str | None = None,
+    ) -> None:
         self.error = error
+        self.expected_state = expected_state
         self.received: list[tuple[str | None, str | None, str | None]] = []
 
     async def receive_callback(
@@ -20,6 +26,15 @@ class FakeCodexOAuthService:
         error: str | None,
     ) -> None:
         self.received.append((code, state, error))
+        if self.expected_state is not None and not oauth_state_matches(
+            state,
+            self.expected_state,
+        ):
+            raise CodexAuthError(
+                "state_mismatch",
+                "Codex sign-in returned an invalid state.",
+                400,
+            )
         if self.error is not None:
             raise self.error
 
@@ -57,6 +72,49 @@ def test_codex_callback_endpoint_delivers_without_echoing_secrets(
         ("private-code", "private-state", "private-error"),
     ]
     for secret in ("private-code", "private-state", "private-error"):
+        assert secret not in response.text
+
+
+def test_codex_callback_endpoint_rejects_repeated_state_before_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = FakeCodexOAuthService()
+    client = _client(monkeypatch, service)
+
+    response = client.get(
+        "/api/v1/auth/openai-codex/callback",
+        params=[
+            ("code", "private-code"),
+            ("state", "first-state"),
+            ("state", "second-state"),
+        ],
+    )
+
+    assert response.status_code == 400
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["content-type"].startswith("text/html")
+    assert service.received == []
+    for secret in ("private-code", "first-state", "second-state"):
+        assert secret not in response.text
+
+
+@pytest.mark.parametrize("invalid_state", ["snowman-\u2603", "a" * 129])
+def test_codex_callback_endpoint_returns_safe_html_for_malformed_state(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_state: str,
+) -> None:
+    service = FakeCodexOAuthService(expected_state="expected-state")
+    client = _client(monkeypatch, service)
+
+    response = client.get(
+        "/api/v1/auth/openai-codex/callback",
+        params={"code": "private-code", "state": invalid_state},
+    )
+
+    assert response.status_code == 400
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["content-type"].startswith("text/html")
+    for secret in ("private-code", invalid_state):
         assert secret not in response.text
 
 

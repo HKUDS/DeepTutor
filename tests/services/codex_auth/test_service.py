@@ -263,6 +263,7 @@ class FakeCallback:
             asyncio.get_running_loop().create_future()
         )
         self.error = error
+        self.expected_state: str | None = None
 
     async def wait(self, timeout: float) -> OAuthCallbackResult:
         if self.error is not None:
@@ -408,7 +409,8 @@ async def _oauth_service(
     store = CodexCredentialStore(tmp_path)
     model_catalog, _original = _seeded_service(tmp_path)
 
-    async def callback_factory() -> FakeCallback:
+    async def callback_factory(expected_state: str) -> FakeCallback:
+        callback.expected_state = expected_state
         return callback
 
     service = CodexOAuthService(
@@ -449,6 +451,9 @@ async def test_successful_live_login_keeps_the_existing_model_selection(
     status = await _wait_until_terminal(service)
 
     assert duplicate == started
+    assert callback.expected_state == parse_qs(urlsplit(started["authorize_url"]).query)[
+        "state"
+    ][0]
     assert status["connection"] == "connected"
     assert status["operation_state"] == "completed"
     assert status["catalog_source"] == "live"
@@ -514,6 +519,42 @@ async def test_callback_broker_rejects_when_no_login_is_active(tmp_path: Path) -
 
     assert exc_info.value.code == "login_not_active"
     assert exc_info.value.http_status == 409
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid_state", ["snowman-\u2603", "a" * 129])
+async def test_callback_broker_rejects_malformed_state_without_ending_login(
+    tmp_path: Path,
+    invalid_state: str,
+) -> None:
+    service, _callback, _oauth, _catalog, _store, _models = await _oauth_service(tmp_path)
+    await service.start_login()
+
+    with pytest.raises(CodexAuthError) as exc_info:
+        await service.receive_callback(
+            code="do-not-accept",
+            state=invalid_state,
+            error=None,
+        )
+
+    assert exc_info.value.code == "state_mismatch"
+    assert exc_info.value.http_status == 400
+    assert service.public_status()["operation_state"] == "waiting"
+    await service.cancel_login()
+
+
+@pytest.mark.asyncio
+async def test_background_callback_unicode_state_has_stable_error(
+    tmp_path: Path,
+) -> None:
+    service, callback, _oauth, _catalog, _store, _models = await _oauth_service(tmp_path)
+    await service.start_login()
+
+    callback.complete_with_state("snowman-\u2603")
+    status = await _wait_until_terminal(service)
+
+    assert status["operation_state"] == "failed"
+    assert status["error_code"] == "state_mismatch"
 
 
 @pytest.mark.asyncio
@@ -788,7 +829,7 @@ async def test_restarted_service_restores_connection_without_operation_or_secret
         catalog,
         model_catalog,
         oauth_client=oauth,
-        callback_factory=lambda: None,  # type: ignore[arg-type,return-value]
+        callback_factory=lambda _state: None,  # type: ignore[arg-type,return-value]
         clock=lambda: 1_000,
     )
 

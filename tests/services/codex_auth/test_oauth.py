@@ -34,6 +34,67 @@ async def _send_get(port: int, target: str) -> str:
     return response
 
 
+class _EagerReader:
+    async def readuntil(self, _separator: bytes) -> bytes:
+        return (
+            b"GET /auth/callback?code=eager-code&state=eager-state HTTP/1.1\r\n"
+            b"Host: localhost\r\n\r\n"
+        )
+
+
+class _EagerWriter:
+    def __init__(self) -> None:
+        self.response = bytearray()
+
+    def write(self, data: bytes) -> None:
+        self.response.extend(data)
+
+    async def drain(self) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+    async def wait_closed(self) -> None:
+        return None
+
+
+class _EagerSocket:
+    def getsockname(self) -> tuple[str, int]:
+        return ("127.0.0.1", 1455)
+
+
+class _EagerServer:
+    def __init__(self, handler: object) -> None:
+        self._handler = handler
+        self.sockets = [_EagerSocket()]
+
+    async def start_serving(self) -> None:
+        await self._handler(_EagerReader(), _EagerWriter())  # type: ignore[operator]
+
+    def close(self) -> None:
+        return None
+
+    async def wait_closed(self) -> None:
+        return None
+
+
+def _pause_callback_close(
+    callback: LoopbackCallback,
+) -> tuple[asyncio.Event, asyncio.Event]:
+    original_close = callback._close
+    close_started = asyncio.Event()
+    release_close = asyncio.Event()
+
+    async def blocked_close() -> None:
+        close_started.set()
+        await release_close.wait()
+        await original_close()
+
+    callback._close = blocked_close  # type: ignore[method-assign]
+    return close_started, release_close
+
+
 def _credentials() -> CodexCredentials:
     return CodexCredentials(
         schema_version=1,
@@ -112,6 +173,34 @@ async def test_loopback_submit_wakes_waiter_and_rejects_late_delivery() -> None:
 
 
 @pytest.mark.asyncio
+async def test_loopback_does_not_serve_before_callback_closure_is_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def eager_start_server(
+        handler: object,
+        _hosts: object,
+        _port: int,
+        *,
+        start_serving: bool = True,
+    ) -> _EagerServer:
+        server = _EagerServer(handler)
+        if start_serving:
+            await server.start_serving()
+        return server
+
+    monkeypatch.setattr(asyncio, "start_server", eager_start_server)
+
+    callback = await LoopbackCallback.start(ports=(0,))
+    result = await callback.wait(timeout=1)
+
+    assert result == OAuthCallbackResult(
+        code="eager-code",
+        state="eager-state",
+        error=None,
+    )
+
+
+@pytest.mark.asyncio
 async def test_loopback_ignores_wrong_path_then_accepts_oauth_error() -> None:
     callback = await LoopbackCallback.start(ports=(0,))
 
@@ -129,6 +218,57 @@ async def test_loopback_ignores_wrong_path_then_accepts_oauth_error() -> None:
     assert result.code is None
     assert result.error == "access_denied"
     assert result.state == "expected"
+
+
+@pytest.mark.asyncio
+async def test_loopback_rejects_invalid_state_then_accepts_correct_callback() -> None:
+    callback = await LoopbackCallback.start(ports=(0,), expected_state="expected-state")
+    waiter = asyncio.create_task(callback.wait(timeout=1))
+
+    invalid_targets = (
+        "/auth/callback?code=wrong-code&state=wrong-state",
+        "/auth/callback?code=missing-state",
+        "/auth/callback?code=unicode-state&state=snowman-%E2%98%83",
+        f"/auth/callback?code=long-state&state={'a' * 129}",
+        "/auth/callback?code=repeated-state&state=expected-state&state=expected-state",
+    )
+    for target in invalid_targets:
+        response = await _send_get(callback.port, target)
+        assert "400 Bad Request" in response
+        assert not waiter.done()
+
+    response = await _send_get(
+        callback.port,
+        "/auth/callback?code=correct-code&state=expected-state",
+    )
+    result = await waiter
+
+    assert "200 OK" in response
+    assert result == OAuthCallbackResult(
+        code="correct-code",
+        state="expected-state",
+        error=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_loopback_returns_conflict_when_callback_cannot_be_submitted() -> None:
+    callback = await LoopbackCallback.start(ports=(0,), expected_state="expected-state")
+    first = OAuthCallbackResult(
+        code="first-code",
+        state="expected-state",
+        error=None,
+    )
+    callback.submit(first)
+
+    response = await _send_get(
+        callback.port,
+        "/auth/callback?code=second-code&state=expected-state",
+    )
+
+    assert "409 Conflict" in response
+    assert "200 OK" not in response
+    assert await callback.wait(timeout=1) == first
 
 
 @pytest.mark.asyncio
@@ -166,6 +306,62 @@ async def test_loopback_timeout_and_cancel_are_public_errors() -> None:
         cancelled.submit(OAuthCallbackResult(code="late-code", state="late-state", error=None))
     assert late_submit.value.code == "login_not_active"
     assert late_submit.value.http_status == 409
+
+
+@pytest.mark.asyncio
+async def test_loopback_timeout_stops_submit_before_close_finishes() -> None:
+    callback = await LoopbackCallback.start(ports=(0,))
+    close_started, release_close = _pause_callback_close(callback)
+    waiter = asyncio.create_task(callback.wait(timeout=0.01))
+    await asyncio.wait_for(close_started.wait(), timeout=1)
+
+    with pytest.raises(CodexAuthError) as exc_info:
+        callback.submit(
+            OAuthCallbackResult(code="too-late", state="too-late", error=None)
+        )
+
+    assert exc_info.value.code == "login_not_active"
+    release_close.set()
+    with pytest.raises(CodexAuthError) as timeout_error:
+        await waiter
+    assert timeout_error.value.code == "login_timeout"
+
+
+@pytest.mark.asyncio
+async def test_loopback_wait_cancellation_stops_submit_before_close_finishes() -> None:
+    callback = await LoopbackCallback.start(ports=(0,))
+    close_started, release_close = _pause_callback_close(callback)
+    waiter = asyncio.create_task(callback.wait(timeout=1))
+    await asyncio.sleep(0)
+    waiter.cancel()
+    await asyncio.wait_for(close_started.wait(), timeout=1)
+
+    with pytest.raises(CodexAuthError) as exc_info:
+        callback.submit(
+            OAuthCallbackResult(code="too-late", state="too-late", error=None)
+        )
+
+    assert exc_info.value.code == "login_not_active"
+    release_close.set()
+    with pytest.raises(asyncio.CancelledError):
+        await waiter
+
+
+@pytest.mark.asyncio
+async def test_loopback_cancel_stops_submit_before_close_finishes() -> None:
+    callback = await LoopbackCallback.start(ports=(0,))
+    close_started, release_close = _pause_callback_close(callback)
+    cancel_task = asyncio.create_task(callback.cancel())
+    await asyncio.wait_for(close_started.wait(), timeout=1)
+
+    with pytest.raises(CodexAuthError) as exc_info:
+        callback.submit(
+            OAuthCallbackResult(code="too-late", state="too-late", error=None)
+        )
+
+    assert exc_info.value.code == "login_not_active"
+    release_close.set()
+    await cancel_task
 
 
 @pytest.mark.asyncio

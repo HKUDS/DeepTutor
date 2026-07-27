@@ -11,6 +11,7 @@ from fastapi import (
     File,
     Header,
     HTTPException,
+    Request,
     Response,
     UploadFile,
     WebSocket,
@@ -371,12 +372,19 @@ def _local_admin_token_payload() -> TokenPayload:
 
 @router.get("/openai-codex/callback")
 async def receive_codex_oauth_callback(
+    request: Request,
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
 ) -> HTMLResponse:
     headers = {"Cache-Control": "no-store"}
     try:
+        if len(request.query_params.getlist("state")) != 1:
+            raise CodexAuthError(
+                "state_mismatch",
+                "Codex sign-in returned an invalid state.",
+                400,
+            )
         await get_codex_oauth_service().receive_callback(code, state, error)
     except CodexAuthError as exc:
         return HTMLResponse(
