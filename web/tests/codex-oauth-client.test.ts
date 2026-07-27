@@ -305,7 +305,19 @@ test("Remote Codex guidance uses the real callback port and explicit user action
   assert.equal(current.callback_port, 1457);
   assert.match(
     source,
-    /t\(messageKey,\s*\{\s*port:\s*status\?\.callback_port\s*\?\?\s*loginStart\?\.callback_port,?\s*\}\s*\)/,
+    /const callbackPort\s*=\s*status\?\.callback_port\s*\?\?\s*loginStart\?\.callback_port/,
+  );
+  assert.match(
+    source,
+    /messageKey === "codex\.oauth\.callbackMissing"\s*&&\s*callbackPort == null/,
+  );
+  assert.match(
+    source,
+    /\?\s*"codex\.oauth\.callbackMissingUnknown"\s*:\s*messageKey/,
+  );
+  assert.match(
+    source,
+    /t\(displayMessageKey,\s*\{\s*port:\s*callbackPort,?\s*\}\s*\)/,
   );
 
   assert.match(

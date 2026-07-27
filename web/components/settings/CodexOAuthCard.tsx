@@ -227,6 +227,12 @@ export function CodexOAuthCard() {
   const connected = status?.connection === "connected";
   const messageKey =
     errorKey || (status ? codexStatusMessageKey(status) : null);
+  const callbackPort =
+    status?.callback_port ?? loginStart?.callback_port;
+  const displayMessageKey =
+    messageKey === "codex.oauth.callbackMissing" && callbackPort == null
+      ? "codex.oauth.callbackMissingUnknown"
+      : messageKey;
 
   return (
     <section className="rounded-xl border border-[var(--border)] bg-[var(--muted)]/30 p-4">
@@ -248,10 +254,10 @@ export function CodexOAuthCard() {
           <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
             {t("codex.oauth.experimental")}
           </p>
-          {messageKey && (
+          {displayMessageKey && (
             <p className="mt-3 text-sm text-[var(--foreground)]">
-              {t(messageKey, {
-                port: status?.callback_port ?? loginStart?.callback_port,
+              {t(displayMessageKey, {
+                port: callbackPort,
               })}
             </p>
           )}

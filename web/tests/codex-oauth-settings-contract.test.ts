@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { createInstance } from "i18next";
 
 const EDITOR = path.resolve(
   process.cwd(),
@@ -62,6 +63,7 @@ test("Codex OAuth copy stays in sync across locales", () => {
     "codex.oauth.copyFailed",
     "codex.oauth.openAuthorization",
     "codex.oauth.callbackMissing",
+    "codex.oauth.callbackMissingUnknown",
     "codex.oauth.callbackUnavailable",
     "codex.oauth.invalidResponse",
   ]) {
@@ -72,5 +74,31 @@ test("Codex OAuth copy stays in sync across locales", () => {
   for (const key of codexKeys(en)) {
     assert.equal(typeof en[key], "string");
     assert.equal(typeof zh[key], "string");
+  }
+});
+
+test("Codex OAuth callback copy interpolates real ports and has a safe unknown-port fallback", async () => {
+  const en = JSON.parse(readFileSync(EN, "utf8")) as Record<string, string>;
+  const zh = JSON.parse(readFileSync(ZH, "utf8")) as Record<string, string>;
+  const i18n = createInstance();
+  await i18n.init({
+    lng: "en",
+    fallbackLng: false,
+    resources: {
+      en: { translation: en },
+      zh: { translation: zh },
+    },
+  });
+
+  for (const locale of ["en", "zh"]) {
+    await i18n.changeLanguage(locale);
+    assert.match(
+      i18n.t("codex.oauth.callbackMissing", { port: 1457 }),
+      /localhost:1457/,
+    );
+    const fallback = i18n.t("codex.oauth.callbackMissingUnknown");
+    assert.notEqual(fallback, "codex.oauth.callbackMissingUnknown");
+    assert.equal(fallback.includes("{{port}}"), false);
+    assert.equal(fallback.includes("localhost:"), false);
   }
 });
