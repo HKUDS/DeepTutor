@@ -253,6 +253,10 @@ test("Codex sign-in detects remote browsers and retains the login start", () => 
     source,
     /useState<CodexLoginStart \| null>\(null\)/,
   );
+  assert.match(
+    source,
+    /const signIn = remoteAccess \? remoteSignIn : localSignIn;/,
+  );
 
   const remoteSignIn = componentBlock(
     source,
