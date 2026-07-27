@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   buildSshForwardCommand,
   CodexOAuthApiError,
+  codexErrorMessageKey,
   codexStatusMessageKey,
   isLoopbackHostname,
   requestCodex,
@@ -212,6 +213,18 @@ test("Codex error codes map to stable translation keys", () => {
     codexStatusMessageKey(status({ error_code: "inference_in_progress" })),
     "codex.oauth.inferenceActive",
   );
+  assert.equal(
+    codexErrorMessageKey("login_timeout"),
+    "codex.oauth.callbackMissing",
+  );
+  assert.equal(
+    codexErrorMessageKey("callback_unavailable"),
+    "codex.oauth.callbackUnavailable",
+  );
+  assert.equal(
+    codexErrorMessageKey("invalid_response"),
+    "codex.oauth.invalidResponse",
+  );
 });
 
 function componentBlock(
@@ -287,6 +300,13 @@ test("Remote Codex sign-in never opens or redirects the browser automatically", 
 
 test("Remote Codex guidance uses the real callback port and explicit user actions", () => {
   const source = readFileSync(CODEX_CARD, "utf8");
+  const current = status({ callback_port: 1457 });
+
+  assert.equal(current.callback_port, 1457);
+  assert.match(
+    source,
+    /t\(messageKey,\s*\{\s*port:\s*status\?\.callback_port\s*\?\?\s*loginStart\?\.callback_port,?\s*\}\s*\)/,
+  );
 
   assert.match(
     source,

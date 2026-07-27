@@ -250,7 +250,9 @@ export function CodexOAuthCard() {
           </p>
           {messageKey && (
             <p className="mt-3 text-sm text-[var(--foreground)]">
-              {t(messageKey)}
+              {t(messageKey, {
+                port: status?.callback_port ?? loginStart?.callback_port,
+              })}
             </p>
           )}
           {connected && status?.model_count !== undefined && (

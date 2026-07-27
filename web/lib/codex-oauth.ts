@@ -147,7 +147,11 @@ export function codexErrorMessageKey(code: string | null): string {
   if (code === "inference_in_progress") {
     return "codex.oauth.inferenceActive";
   }
-  if (code === "login_timeout") return "codex.oauth.expired";
+  if (code === "login_timeout") return "codex.oauth.callbackMissing";
+  if (code === "callback_unavailable") {
+    return "codex.oauth.callbackUnavailable";
+  }
+  if (code === "invalid_response") return "codex.oauth.invalidResponse";
   if (code === "login_cancelled") return "codex.oauth.cancelled";
   if (code === "authorization_denied") return "codex.oauth.denied";
   return "codex.oauth.requestFailed";

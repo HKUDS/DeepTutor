@@ -51,8 +51,23 @@ test("Codex OAuth copy stays in sync across locales", () => {
       .sort();
 
   assert.deepEqual(codexKeys(en), codexKeys(zh));
-  for (const key of ["codex.oauth.signIn", "codex.oauth.ownerBound"]) {
+  for (const key of [
+    "codex.oauth.signIn",
+    "codex.oauth.ownerBound",
+    "codex.oauth.remoteTitle",
+    "codex.oauth.remoteSteps",
+    "codex.oauth.callbackAddress",
+    "codex.oauth.copyCommand",
+    "codex.oauth.commandCopied",
+    "codex.oauth.copyFailed",
+    "codex.oauth.openAuthorization",
+    "codex.oauth.callbackMissing",
+    "codex.oauth.callbackUnavailable",
+    "codex.oauth.invalidResponse",
+  ]) {
     assert.ok(codexKeys(en).includes(key));
+    assert.equal(typeof en[key], "string");
+    assert.equal(typeof zh[key], "string");
   }
   for (const key of codexKeys(en)) {
     assert.equal(typeof en[key], "string");
