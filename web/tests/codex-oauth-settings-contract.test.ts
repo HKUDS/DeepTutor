@@ -62,6 +62,7 @@ test("Codex OAuth copy stays in sync across locales", () => {
     "codex.oauth.commandCopied",
     "codex.oauth.copyFailed",
     "codex.oauth.openAuthorization",
+    "codex.oauth.expiresIn",
     "codex.oauth.callbackMissing",
     "codex.oauth.callbackMissingUnknown",
     "codex.oauth.callbackUnavailable",
@@ -102,5 +103,9 @@ test("Codex OAuth callback copy interpolates real ports and has a safe unknown-p
     assert.equal(fallback.includes("localhost:"), false);
     assert.equal(fallback.includes("SSH"), false);
     assert.equal(fallback.includes("隧道"), false);
+    assert.match(
+      i18n.t("codex.oauth.expiresIn", { seconds: 42 }),
+      /42/,
+    );
   }
 });

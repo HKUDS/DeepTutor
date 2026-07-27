@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   buildSshForwardCommand,
   CodexOAuthApiError,
+  codexRemoteGuidance,
   codexErrorMessageKey,
   codexStatusMessageKey,
   isLoopbackHostname,
@@ -26,6 +27,8 @@ function status(overrides: Partial<CodexOAuthStatus> = {}): CodexOAuthStatus {
     connection: "disconnected",
     operation_id: null,
     operation_state: null,
+    authorize_url: null,
+    expires_in: null,
     callback_port: null,
     callback_forward_port: null,
     redirect_uri: null,
@@ -39,6 +42,21 @@ function status(overrides: Partial<CodexOAuthStatus> = {}): CodexOAuthStatus {
   };
 }
 
+function waitingStatus(
+  overrides: Partial<CodexOAuthStatus> = {},
+): CodexOAuthStatus {
+  return status({
+    operation_id: "operation-1",
+    operation_state: "waiting",
+    authorize_url: "https://auth.example.com",
+    expires_in: 275,
+    callback_port: 1457,
+    callback_forward_port: 4782,
+    redirect_uri: "http://localhost:1457/auth/callback",
+    ...overrides,
+  });
+}
+
 test("Codex OAuth response types expose remote-login guidance", () => {
   const login: CodexLoginStart = {
     operation_id: "operation-1",
@@ -50,11 +68,7 @@ test("Codex OAuth response types expose remote-login guidance", () => {
     ssh_forward_command:
       "ssh -N -L 1457:127.0.0.1:4782 <ssh-user>@deeptutor.example.com",
   };
-  const current = status({
-    callback_port: 1457,
-    callback_forward_port: 4782,
-    redirect_uri: "http://localhost:1457/auth/callback",
-  });
+  const current = waitingStatus();
 
   assert.equal(login.callback_port, 1457);
   assert.equal(login.callback_forward_port, 4782);
@@ -64,6 +78,77 @@ test("Codex OAuth response types expose remote-login guidance", () => {
   );
   assert.equal(current.callback_forward_port, 4782);
   assert.equal(current.redirect_uri, "http://localhost:1457/auth/callback");
+  assert.equal(current.authorize_url, "https://auth.example.com");
+  assert.equal(current.expires_in, 275);
+});
+
+test("Codex remote guidance recovers from a complete waiting status", () => {
+  const guidance = codexRemoteGuidance(waitingStatus(), null);
+
+  assert.deepEqual(guidance, {
+    operation_id: "operation-1",
+    authorize_url: "https://auth.example.com",
+    expires_in: 275,
+    callback_port: 1457,
+    callback_forward_port: 4782,
+    redirect_uri: "http://localhost:1457/auth/callback",
+  });
+});
+
+test("Codex remote guidance requires waiting state and complete operation fields", () => {
+  const complete = waitingStatus();
+
+  for (const operation_state of [
+    null,
+    "exchanging",
+    "fetching_models",
+    "completed",
+    "cancelled",
+    "expired",
+    "failed",
+  ] as const) {
+    assert.equal(
+      codexRemoteGuidance({ ...complete, operation_state }, null),
+      null,
+    );
+  }
+  for (const field of [
+    "operation_id",
+    "authorize_url",
+    "expires_in",
+    "callback_port",
+    "callback_forward_port",
+    "redirect_uri",
+  ] as const) {
+    assert.equal(codexRemoteGuidance({ ...complete, [field]: null }, null), null);
+  }
+});
+
+test("Codex remote guidance prefers status expiry and only falls back to the matching start", () => {
+  const login: CodexLoginStart = {
+    operation_id: "operation-1",
+    authorize_url: "https://auth.example.com",
+    expires_in: 300,
+    callback_port: 1457,
+    callback_forward_port: 4782,
+    redirect_uri: "http://localhost:1457/auth/callback",
+    ssh_forward_command:
+      "ssh -N -L 1457:127.0.0.1:4782 <ssh-user>@deeptutor.example.com",
+  };
+  const waiting = waitingStatus({ expires_in: 42 });
+
+  assert.equal(codexRemoteGuidance(waiting, login)?.expires_in, 42);
+  assert.equal(
+    codexRemoteGuidance({ ...waiting, expires_in: null }, login)?.expires_in,
+    300,
+  );
+  assert.equal(
+    codexRemoteGuidance(
+      { ...waiting, expires_in: null },
+      { ...login, operation_id: "stale-operation" },
+    ),
+    null,
+  );
 });
 
 test("Codex OAuth recognizes loopback hostnames", () => {
@@ -345,9 +430,17 @@ test("Remote Codex guidance uses the real callback port and explicit user action
 
   assert.match(
     source,
-    /buildSshForwardCommand\(\s*loginStart\.callback_port,\s*window\.location\.hostname,\s*loginStart\.callback_forward_port,\s*\)/,
+    /buildSshForwardCommand\(\s*remoteGuidance\.callback_port,\s*window\.location\.hostname,\s*remoteGuidance\.callback_forward_port,\s*\)/,
   );
-  assert.match(source, /\{loginStart\.redirect_uri\}/);
+  assert.match(source, /\{remoteGuidance\.redirect_uri\}/);
+  assert.match(
+    source,
+    /const remoteGuidance = codexRemoteGuidance\(status,\s*loginStart\)/,
+  );
+  assert.match(
+    source,
+    /t\("codex\.oauth\.expiresIn",\s*\{\s*seconds:\s*remoteGuidance\.expires_in,\s*\}\)/,
+  );
 
   const copyCommand = componentBlock(
     source,
@@ -365,7 +458,7 @@ test("Remote Codex guidance uses the real callback port and explicit user action
   );
   assert.match(
     openAuthorization,
-    /window\.open\(loginStart\.authorize_url,\s*"_blank",\s*"noopener"\)/,
+    /window\.open\(remoteGuidance\.authorize_url,\s*"_blank",\s*"noopener"\)/,
   );
 });
 

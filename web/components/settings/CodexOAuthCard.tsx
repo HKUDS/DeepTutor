@@ -8,6 +8,7 @@ import Button from "@/components/ui/Button";
 import {
   buildSshForwardCommand,
   cancelCodexLogin,
+  codexRemoteGuidance,
   CodexOAuthApiError,
   codexErrorMessageKey,
   codexStatusMessageKey,
@@ -150,11 +151,12 @@ export function CodexOAuthCard() {
 
   const signIn = remoteAccess ? remoteSignIn : localSignIn;
 
-  const sshCommand = loginStart
+  const remoteGuidance = codexRemoteGuidance(status, loginStart);
+  const sshCommand = remoteGuidance
     ? buildSshForwardCommand(
-        loginStart.callback_port,
+        remoteGuidance.callback_port,
         window.location.hostname,
-        loginStart.callback_forward_port,
+        remoteGuidance.callback_forward_port,
       )
     : "";
 
@@ -169,8 +171,8 @@ export function CodexOAuthCard() {
   };
 
   const openAuthorization = () => {
-    if (!loginStart) return;
-    window.open(loginStart.authorize_url, "_blank", "noopener");
+    if (!remoteGuidance) return;
+    window.open(remoteGuidance.authorize_url, "_blank", "noopener");
   };
 
   const cancel = async () => {
@@ -267,7 +269,7 @@ export function CodexOAuthCard() {
               {t("codex.oauth.modelCount", { count: status.model_count })}
             </p>
           )}
-          {remoteAccess && loginStart && (
+          {remoteAccess && remoteGuidance && (
             <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
               <p className="text-sm font-medium">
                 {t("codex.oauth.remoteTitle")}
@@ -279,8 +281,13 @@ export function CodexOAuthCard() {
                 {t("codex.oauth.callbackAddress")}
               </p>
               <code className="mt-1 block break-all text-xs">
-                {loginStart.redirect_uri}
+                {remoteGuidance.redirect_uri}
               </code>
+              <p className="mt-2 text-xs text-[var(--muted-foreground)]">
+                {t("codex.oauth.expiresIn", {
+                  seconds: remoteGuidance.expires_in,
+                })}
+              </p>
               <pre className="mt-3 overflow-x-auto rounded-md bg-[var(--muted)] p-2 text-xs">
                 <code>{sshCommand}</code>
               </pre>
@@ -325,7 +332,7 @@ export function CodexOAuthCard() {
                 {t("codex.oauth.signIn")}
               </Button>
             )}
-            {polling && !(remoteAccess && loginStart) && (
+            {polling && !(remoteAccess && remoteGuidance) && (
               <Button
                 type="button"
                 size="sm"

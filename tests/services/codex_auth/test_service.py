@@ -521,6 +521,8 @@ async def test_successful_live_login_keeps_the_existing_model_selection(
     assert callback.expected_state == parse_qs(urlsplit(started["authorize_url"]).query)["state"][0]
     assert status["connection"] == "connected"
     assert status["operation_state"] == "completed"
+    assert status["authorize_url"] is None
+    assert status["expires_in"] is None
     assert status["catalog_source"] == "live"
     # Codex is published but not activated, so it reports no active model of its
     # own and the deployment keeps running on whatever was already selected.
@@ -627,6 +629,7 @@ async def test_background_callback_unicode_state_has_stable_error(
 async def test_login_status_keeps_callback_metadata_without_exposing_secrets(
     tmp_path: Path,
 ) -> None:
+    clock = [1_000]
     service, _callback, _oauth, _catalog, _store, _models = await _oauth_service(
         tmp_path,
         callback_error=CodexAuthError(
@@ -634,14 +637,21 @@ async def test_login_status_keeps_callback_metadata_without_exposing_secrets(
             "Codex sign-in timed out.",
             408,
         ),
+        clock=clock,
         callback_forward_port=4_782,
     )
 
     started = await service.start_login()
     waiting = service.public_status()
+    clock[0] += 17
+    later_waiting = service.public_status()
     timed_out = await _wait_until_terminal(service)
 
     assert waiting["operation_state"] == "waiting"
+    assert waiting["authorize_url"] == started["authorize_url"]
+    assert waiting["expires_in"] == started["expires_in"]
+    assert later_waiting["authorize_url"] == started["authorize_url"]
+    assert later_waiting["expires_in"] == started["expires_in"] - 17
     assert timed_out["operation_state"] == "expired"
     for status in (waiting, timed_out):
         assert status["callback_port"] == started["callback_port"] == 1455
@@ -651,7 +661,8 @@ async def test_login_status_keeps_callback_metadata_without_exposing_secrets(
             == started["redirect_uri"]
             == "http://localhost:1455/auth/callback"
         )
-        assert "authorize_url" not in status
+    assert timed_out["authorize_url"] is None
+    assert timed_out["expires_in"] is None
 
     forbidden_fields = {
         "state_secret",
@@ -724,6 +735,8 @@ async def test_login_failures_do_not_overwrite_old_credentials(
     assert loaded is not None
     assert loaded.access_token == old.access_token
     assert status["operation_state"] == ("expired" if failure == "timeout" else "failed")
+    assert status["authorize_url"] is None
+    assert status["expires_in"] is None
 
 
 @pytest.mark.asyncio
@@ -738,6 +751,8 @@ async def test_cancel_login_preserves_existing_credentials(tmp_path: Path) -> No
     assert loaded is not None
     assert loaded.access_token == old.access_token
     assert status["operation_state"] == "cancelled"
+    assert status["authorize_url"] is None
+    assert status["expires_in"] is None
 
 
 @pytest.mark.asyncio
@@ -910,6 +925,8 @@ async def test_restarted_service_restores_connection_without_operation_or_secret
     assert status["callback_port"] is None
     assert status["callback_forward_port"] is None
     assert status["redirect_uri"] is None
+    assert status["authorize_url"] is None
+    assert status["expires_in"] is None
     assert "top-secret" not in serialized
     assert "full-account-secret" not in serialized
 

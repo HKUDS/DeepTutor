@@ -529,6 +529,14 @@ class CodexOAuthService:
             "connection": connection,
             "operation_id": operation.operation_id if operation is not None else None,
             "operation_state": (operation.operation_state if operation is not None else None),
+            "authorize_url": (
+                operation.authorize_url if active_operation and operation is not None else None
+            ),
+            "expires_in": (
+                max(0, int(operation.deadline - self._clock()))
+                if active_operation and operation is not None
+                else None
+            ),
             "callback_port": (operation.callback.port if operation is not None else None),
             "callback_forward_port": (
                 self._callback_forward_port if operation is not None else None

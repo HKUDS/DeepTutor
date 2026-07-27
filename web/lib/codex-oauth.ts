@@ -12,6 +12,8 @@ export type CodexOAuthStatus = {
     | "expired"
     | "failed"
     | null;
+  authorize_url: string | null;
+  expires_in: number | null;
   callback_port: number | null;
   callback_forward_port: number | null;
   redirect_uri: string | null;
@@ -37,6 +39,11 @@ export type CodexLoginStart = {
   redirect_uri: string;
   ssh_forward_command: string;
 };
+
+export type CodexRemoteGuidance = Omit<
+  CodexLoginStart,
+  "ssh_forward_command"
+>;
 
 export class CodexOAuthApiError extends Error {
   code: string;
@@ -79,6 +86,40 @@ export function buildSshForwardCommand(
 ): string {
   const serverHost = hostname.trim() || "<server-host>";
   return `ssh -N -L ${callbackPort}:127.0.0.1:${forwardPort} <ssh-user>@${serverHost}`;
+}
+
+export function codexRemoteGuidance(
+  status: CodexOAuthStatus | null,
+  loginStart: CodexLoginStart | null,
+): CodexRemoteGuidance | null {
+  if (status?.operation_state !== "waiting" || !status.operation_id) {
+    return null;
+  }
+  const matchingStart =
+    loginStart?.operation_id === status.operation_id ? loginStart : null;
+  const authorizeUrl = status.authorize_url ?? matchingStart?.authorize_url;
+  const expiresIn = status.expires_in ?? matchingStart?.expires_in;
+  const callbackPort = status.callback_port ?? matchingStart?.callback_port;
+  const callbackForwardPort =
+    status.callback_forward_port ?? matchingStart?.callback_forward_port;
+  const redirectUri = status.redirect_uri ?? matchingStart?.redirect_uri;
+  if (
+    !authorizeUrl ||
+    expiresIn == null ||
+    callbackPort == null ||
+    callbackForwardPort == null ||
+    !redirectUri
+  ) {
+    return null;
+  }
+  return {
+    operation_id: status.operation_id,
+    authorize_url: authorizeUrl,
+    expires_in: expiresIn,
+    callback_port: callbackPort,
+    callback_forward_port: callbackForwardPort,
+    redirect_uri: redirectUri,
+  };
 }
 
 export async function requestCodex<T>(

@@ -2703,6 +2703,7 @@
   "codex.oauth.commandCopied": "SSH 隧道命令已复制。",
   "codex.oauth.copyFailed": "无法复制 SSH 隧道命令。",
   "codex.oauth.openAuthorization": "打开授权页面",
+  "codex.oauth.expiresIn": "剩余 {{seconds}} 秒。",
   "codex.oauth.callbackMissing": "DeepTutor 服务器未在 localhost:{{port}} 收到 OAuth 回调。远程部署请保持 SSH 隧道运行并重试。",
   "codex.oauth.callbackMissingUnknown": "DeepTutor 服务器未收到 OAuth 回调。请重新开始登录，并按照新一轮显示的授权说明操作。",
   "codex.oauth.callbackUnavailable": "DeepTutor 无法监听 localhost:1455 和 localhost:1457。请释放其中一个端口后重试。",

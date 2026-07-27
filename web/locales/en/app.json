@@ -2703,6 +2703,7 @@
   "codex.oauth.commandCopied": "SSH tunnel command copied.",
   "codex.oauth.copyFailed": "Could not copy the SSH tunnel command.",
   "codex.oauth.openAuthorization": "Open authorization",
+  "codex.oauth.expiresIn": "Expires in {{seconds}} seconds.",
   "codex.oauth.callbackMissing": "The DeepTutor server did not receive the OAuth callback on localhost:{{port}}. For a remote deployment, keep the SSH tunnel running and try again.",
   "codex.oauth.callbackMissingUnknown": "The DeepTutor server did not receive the OAuth callback. Start the login again and follow the authorization instructions shown for the new attempt.",
   "codex.oauth.callbackUnavailable": "DeepTutor cannot listen on either localhost:1455 or localhost:1457. Free one of these ports and try again.",
