@@ -23,6 +23,7 @@ from deeptutor.services.codex_auth.service import (
     CodexOAuthService,
     codex_model_id,
     remove_codex_catalog,
+    ssh_forward_command,
     sync_codex_catalog,
 )
 from deeptutor.services.codex_auth.storage import CodexCredentialStore
@@ -50,6 +51,68 @@ def test_each_user_gets_their_own_codex_credential_root(
     signed_in["who"] = "learner"
     assert service_module._codex_user_root() == roots["learner"]
     assert not hasattr(service_module, "get_admin_path_service")
+
+
+def test_ssh_forward_command_maps_callback_to_frontend_port() -> None:
+    assert (
+        ssh_forward_command(1457, 4782)
+        == "ssh -N -L 1457:127.0.0.1:4782 <ssh-user>@<server-host>"
+    )
+
+
+@pytest.mark.parametrize("callback_forward_port", [0, 65_536, True, "3782"])
+def test_callback_forward_port_must_be_a_valid_integer(
+    tmp_path: Path,
+    callback_forward_port: object,
+) -> None:
+    store = CodexCredentialStore(tmp_path)
+    model_catalog, _original = _seeded_service(tmp_path)
+
+    with pytest.raises(ValueError):
+        CodexOAuthService(
+            store,
+            FakeCatalog(_snapshot("live")),
+            model_catalog,
+            oauth_client=FakeOAuthClient(),
+            callback_forward_port=callback_forward_port,  # type: ignore[arg-type]
+        )
+
+
+def test_service_singleton_reads_frontend_port_only_when_created(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings_calls = 0
+    captured: dict[str, Any] = {}
+
+    def load_settings() -> dict[str, int]:
+        nonlocal settings_calls
+        settings_calls += 1
+        return {"frontend_port": 4782}
+
+    class CapturingService:
+        def __init__(self, *_args: object, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr(service_module, "_SERVICE_INSTANCES", {})
+    monkeypatch.setattr(service_module, "_codex_user_root", lambda: tmp_path)
+    monkeypatch.setattr(service_module, "load_system_settings", load_settings)
+    monkeypatch.setattr(service_module, "CodexCredentialStore", lambda _root: object())
+    monkeypatch.setattr(
+        service_module,
+        "CodexModelCatalog",
+        lambda _store, *, http: object(),
+    )
+    monkeypatch.setattr(service_module, "CodexOAuthClient", lambda _http: object())
+    monkeypatch.setattr(service_module, "get_model_catalog_service", lambda: object())
+    monkeypatch.setattr(service_module, "CodexOAuthService", CapturingService)
+
+    first = service_module.get_codex_oauth_service()
+    second = service_module.get_codex_oauth_service()
+
+    assert first is second
+    assert settings_calls == 1
+    assert captured["callback_forward_port"] == 4782
 
 
 def _model(
@@ -394,6 +457,7 @@ async def _oauth_service(
     callback_error: CodexAuthError | None = None,
     catalog_error: CodexAuthError | None = None,
     clock: list[int] | None = None,
+    callback_forward_port: int = 3_782,
 ) -> tuple[
     CodexOAuthService,
     FakeCallback,
@@ -420,6 +484,7 @@ async def _oauth_service(
         oauth_client=oauth,
         callback_factory=callback_factory,
         clock=(lambda: (clock or [1_000])[0]),
+        callback_forward_port=callback_forward_port,
     )
     return service, callback, oauth, catalog, store, model_catalog
 
@@ -442,7 +507,10 @@ async def _wait_until_terminal(service: CodexOAuthService) -> dict[str, Any]:
 async def test_successful_live_login_keeps_the_existing_model_selection(
     tmp_path: Path,
 ) -> None:
-    service, callback, _oauth, _catalog, _store, model_catalog = await _oauth_service(tmp_path)
+    service, callback, _oauth, _catalog, _store, model_catalog = await _oauth_service(
+        tmp_path,
+        callback_forward_port=4_782,
+    )
     original_selection = _selection(model_catalog.load())
 
     started = await service.start_login()
@@ -463,16 +531,18 @@ async def test_successful_live_login_keeps_the_existing_model_selection(
     assert status["activated"] is False
     assert _selection(model_catalog.load()) == original_selection
     assert started["callback_port"] == 1455
+    assert started["callback_forward_port"] == 4782
     assert started["redirect_uri"] == "http://localhost:1455/auth/callback"
     assert (
         started["ssh_forward_command"]
-        == "ssh -N -L 1455:127.0.0.1:1455 <ssh-user>@<server-host>"
+        == "ssh -N -L 1455:127.0.0.1:4782 <ssh-user>@<server-host>"
     )
     assert set(started) == {
         "operation_id",
         "authorize_url",
         "expires_in",
         "callback_port",
+        "callback_forward_port",
         "redirect_uri",
         "ssh_forward_command",
     }
@@ -568,6 +638,7 @@ async def test_login_status_keeps_callback_metadata_without_exposing_secrets(
             "Codex sign-in timed out.",
             408,
         ),
+        callback_forward_port=4_782,
     )
 
     started = await service.start_login()
@@ -578,6 +649,11 @@ async def test_login_status_keeps_callback_metadata_without_exposing_secrets(
     assert timed_out["operation_state"] == "expired"
     for status in (waiting, timed_out):
         assert status["callback_port"] == started["callback_port"] == 1455
+        assert (
+            status["callback_forward_port"]
+            == started["callback_forward_port"]
+            == 4782
+        )
         assert (
             status["redirect_uri"]
             == started["redirect_uri"]
@@ -840,6 +916,7 @@ async def test_restarted_service_restores_connection_without_operation_or_secret
     assert status["operation_id"] is None
     assert status["operation_state"] is None
     assert status["callback_port"] is None
+    assert status["callback_forward_port"] is None
     assert status["redirect_uri"] is None
     assert "top-secret" not in serialized
     assert "full-account-secret" not in serialized
