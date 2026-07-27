@@ -347,6 +347,38 @@ function componentBlock(
   return source.slice(start, end);
 }
 
+test("Codex status polling waits for each request and stops state updates after cleanup", () => {
+  const source = readFileSync(CODEX_CARD, "utf8");
+  const loadStatus = componentBlock(
+    source,
+    "const loadStatus",
+    "useEffect(() =>",
+  );
+  const pollingEffect = componentBlock(
+    source,
+    "if (!status || !shouldPollCodexStatus(status)) return;",
+    "// Reloading replaces",
+  );
+
+  assert.match(
+    loadStatus,
+    /async \(shouldApply: \(\) => boolean = \(\) => true\)/,
+  );
+  assert.match(loadStatus, /if \(!shouldApply\(\)\) return null;/);
+  assert.match(pollingEffect, /let cancelled = false;/);
+  assert.match(pollingEffect, /await loadStatus\(\(\) => !cancelled\);/);
+  assert.ok(
+    pollingEffect.indexOf("await loadStatus") <
+      pollingEffect.indexOf("setPollTick"),
+  );
+  assert.match(pollingEffect, /if \(!cancelled\) setPollTick/);
+  assert.match(
+    pollingEffect,
+    /return \(\) => \{\s*cancelled = true;\s*window\.clearTimeout\(timer\);\s*\};/,
+  );
+  assert.match(pollingEffect, /}, 1_000\);/);
+});
+
 test("Local Codex sign-in opens its browser window before awaiting the API", () => {
   const source = readFileSync(CODEX_CARD, "utf8");
   const localSignIn = componentBlock(

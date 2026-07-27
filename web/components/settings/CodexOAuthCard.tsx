@@ -52,24 +52,33 @@ export function CodexOAuthCard() {
     );
   }, []);
 
-  const loadStatus = useCallback(async () => {
-    try {
-      const next = await getCodexStatus();
-      recordStatus(next);
-      setErrorKey(null);
-      return next;
-    } catch (error) {
-      setErrorKey(
-        codexErrorMessageKey(
-          error instanceof CodexOAuthApiError ? error.code : null,
-        ),
-      );
-      return null;
-    }
-  }, [recordStatus]);
+  const loadStatus = useCallback(
+    async (shouldApply: () => boolean = () => true) => {
+      try {
+        const next = await getCodexStatus();
+        if (!shouldApply()) return null;
+        recordStatus(next);
+        setErrorKey(null);
+        return next;
+      } catch (error) {
+        if (!shouldApply()) return null;
+        setErrorKey(
+          codexErrorMessageKey(
+            error instanceof CodexOAuthApiError ? error.code : null,
+          ),
+        );
+        return null;
+      }
+    },
+    [recordStatus],
+  );
 
   useEffect(() => {
-    void loadStatus();
+    let cancelled = false;
+    void loadStatus(() => !cancelled);
+    return () => {
+      cancelled = true;
+    };
   }, [loadStatus]);
 
   useEffect(() => {
@@ -77,11 +86,17 @@ export function CodexOAuthCard() {
     // pollTick, not the status object, is what schedules the next poll: a failed
     // request leaves `status` identical, and keying the timer off it alone would
     // strand the card on "waiting" forever after one dropped response.
+    let cancelled = false;
     const timer = window.setTimeout(() => {
-      void loadStatus();
-      setPollTick((tick) => tick + 1);
+      void (async () => {
+        await loadStatus(() => !cancelled);
+        if (!cancelled) setPollTick((tick) => tick + 1);
+      })();
     }, 1_000);
-    return () => window.clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [loadStatus, status, pollTick]);
 
   // Reloading replaces the whole catalog draft, so this must never run behind
