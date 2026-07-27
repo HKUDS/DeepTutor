@@ -37,18 +37,54 @@ class ProviderCliDocsContractTest(unittest.TestCase):
         self.assertNotIn("OAuth login (`openai-codex`, `github-copilot`)", ROOT_README)
 
     def test_readmes_document_remote_codex_oauth_port_forwarding(self) -> None:
-        for readme in (ROOT_README, CLI_README):
-            self.assertIn("ssh -N -L", readme)
-            self.assertIn("1455", readme)
-            self.assertIn("1457", readme)
-
-        self.assertIn(
-            "浏览器的 `localhost` 和服务器的 `localhost` 不是同一台机器",
-            CN_README,
+        primary_command = (
+            "ssh -N -L 1455:127.0.0.1:3782 <ssh-user>@<server-host>"
         )
-        self.assertIn("ssh -N -L", CN_README)
-        self.assertIn("1455", CN_README)
-        self.assertIn("1457", CN_README)
+        fallback_command = (
+            "ssh -N -L 1457:127.0.0.1:3782 <ssh-user>@<server-host>"
+        )
+        for readme in (ROOT_README, CN_README, CLI_README):
+            self.assertIn(primary_command, readme)
+            self.assertIn(fallback_command, readme)
+            self.assertNotIn(
+                "ssh -N -L 1455:127.0.0.1:1455 <ssh-user>@<server-host>",
+                readme,
+            )
+            self.assertNotIn(
+                "ssh -N -L 1457:127.0.0.1:1457 <ssh-user>@<server-host>",
+                readme,
+            )
+
+        english_contract = (
+            "Run only the one command that matches the actual callback port",
+            "`3782` is only the example Web port",
+            "prints the tunnel command and then immediately tries to open the browser",
+            "keep the authorization page open without completing it",
+            "ordinary reverse proxy alone",
+            "default Docker bridge network",
+            "listener remains on the backend loopback",
+            "validates `state` before routing to the original OAuth operation",
+            "`<server-host>` must be an SSH-reachable frontend host",
+            "cancel that Web operation and start a new one with the CLI",
+        )
+        for text in english_contract:
+            self.assertIn(text, ROOT_README)
+
+        chinese_contract = (
+            "只运行与实际 callback 端口对应的其中一条命令",
+            "`3782` 只是示例 Web 端口",
+            "先打印隧道命令，随后立即尝试打开浏览器",
+            "先保持授权页打开但不要完成授权",
+            "仅有普通反向代理",
+            "默认 Docker bridge 网络",
+            "listener 仍位于后端 loopback",
+            "校验 `state` 后才路由到原 OAuth operation",
+            "`<server-host>` 必须是可通过 SSH 到达的前端主机",
+            "取消该 Web operation，再通过 CLI 启动一个新 operation",
+        )
+        for readme in (CN_README, CLI_README):
+            for text in chinese_contract:
+                self.assertIn(text, readme)
 
 
 class _FakeCliCodexService:
@@ -60,9 +96,10 @@ class _FakeCliCodexService:
             "operation_id": "operation-1",
             "authorize_url": "https://auth.openai.com/oauth/authorize?state=opaque",
             "callback_port": 1457,
+            "callback_forward_port": 3782,
             "redirect_uri": "http://localhost:1457/auth/callback",
             "ssh_forward_command": (
-                "ssh -N -L 1457:127.0.0.1:1457 <ssh-user>@<server-host>"
+                "ssh -N -L 1457:127.0.0.1:3782 <ssh-user>@<server-host>"
             ),
             "expires_in": 300,
         }
@@ -121,14 +158,22 @@ def test_cli_opens_authorize_url_and_waits_for_completion(monkeypatch) -> None:
     assert result.exit_code == 0
     assert "http://localhost:1457/auth/callback" in result.stdout
     assert "https://auth.openai.com/oauth/authorize?state=opaque" in result.stdout
-    assert "ssh -N -L 1457:127.0.0.1:1457" in result.stdout
+    assert (
+        "ssh -N -L 1457:127.0.0.1:3782 <ssh-user>@<server-host>"
+        in result.stdout
+    )
+    assert "ssh -N -L 1457:127.0.0.1:1457" not in result.stdout
     open_index = events.index(
         ("open", "https://auth.openai.com/oauth/authorize?state=opaque")
     )
     output_before_open = "\n".join(message for kind, message in events[:open_index])
     assert "http://localhost:1457/auth/callback" in output_before_open
     assert "https://auth.openai.com/oauth/authorize?state=opaque" in output_before_open
-    assert "ssh -N -L 1457:127.0.0.1:1457" in output_before_open
+    assert (
+        "ssh -N -L 1457:127.0.0.1:3782 <ssh-user>@<server-host>"
+        in output_before_open
+    )
+    assert "ssh -N -L 1457:127.0.0.1:1457" not in output_before_open
     # The CLI speaks English like every other command in this app.
     assert "private directory" in result.stdout
     assert "gpt-5.6-sol" in result.stdout

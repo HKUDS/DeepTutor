@@ -480,19 +480,23 @@ Settings 是操作控制面板，带有实时状态条（后端、LLM、嵌入�
 
 **OpenAI Codex OAuth（实验性）。** 在 **模型 → LLM** 下选择 **OpenAI Codex**，会用基于你自己 ChatGPT 订阅运行的浏览器登录取代 API Key 输入框，因此无需 `OPENAI_API_KEY`。令牌仅保存在 `<user-root>/private/openai-codex/` 中，DeepTutor 绝不会读取或修改你的 `~/.codex` CLI 登录状态。模型列表来自该账号的实时目录；只有尚未配置任何 LLM 时，登录后的 Codex 才会成为活跃模型。令牌只授权一个人的订阅，无法通过用户授权共享，因此每个账号都需自行登录。
 
-远程部署时，回调 listener 仍只绑定服务器的 loopback 地址。浏览器的 `localhost` 和服务器的 `localhost` 不是同一台机器，普通反向代理不会自动转发这个 callback。打开或完成授权页面前，先在浏览器所在机器建立以下隧道，并保持到登录成功：
+远程部署时，浏览器的 `localhost` 和服务器的 `localhost` 不是同一台机器，仅有普通反向代理无法把浏览器的 localhost callback 送到服务器，必须用 SSH 隧道建立 callback 桥。隧道通向已发布的 Web 端口；Next.js 只把精确的 callback 路径改写到 public callback broker，broker 校验 `state` 后才路由到原 OAuth operation。callback listener 仍位于后端 loopback，不发布 `1455`/`1457`，并支持默认 Docker bridge 网络。
 
 ```bash
-ssh -N -L 1455:127.0.0.1:1455 <ssh-user>@<server-host>
+ssh -N -L 1455:127.0.0.1:3782 <ssh-user>@<server-host>
 ```
 
-若页面或 CLI 实际显示端口 `1457`，应把命令两端都换成 `1457`：
+若 DeepTutor 显示 fallback callback 端口 `1457`，则使用：
 
 ```bash
-ssh -N -L 1457:127.0.0.1:1457 <ssh-user>@<server-host>
+ssh -N -L 1457:127.0.0.1:3782 <ssh-user>@<server-host>
 ```
 
-只转发 DeepTutor 显示的 callback 端口，不要同时转发 `1455` 和 `1457`。通过非 `localhost` 地址访问 Web 时，DeepTutor 会先显示实际 callback 端口和对应命令，再由你显式打开授权。检测也有边界：若 Web 本身已通过 SSH 或 IDE 转发并以 `localhost` 访问，浏览器无法识别远程拓扑；请按 CLI 输出或实际 callback 端口手动建立第二条转发，再完成授权。配额错误和目录获取失败会如实报告，绝不会回退到付费提供商。此兼容路径为实验性功能：上游接口可能发生变化。
+只运行与实际 callback 端口对应的其中一条命令，不能两条都运行。`3782` 只是示例 Web 端口；自定义部署必须采用页面或 CLI 显示的 forward port，也就是 SSH 主机实际可达的 Web 端口。`<server-host>` 必须是可通过 SSH 到达的前端主机，并承载或能够到达该 Web 端口；若浏览器域名指向反向代理或负载均衡器，请替换为正确的 SSH 前端主机。
+
+CLI 会先打印隧道命令，随后立即尝试打开浏览器。远程用户应先保持授权页打开但不要完成授权，在另一终端建立所显示的隧道，然后再继续授权。
+
+localhost 检测存在边界：若 Web 本身已通过 SSH 或 IDE localhost 转发访问，浏览器无法判断服务器是远程的。对于当前 Web operation，应保持其授权页未完成，从该 operation 的 authorize URL 中读取 `redirect_uri`，确认 callback 是 `1455` 还是 `1457`，再把该本地端口通过第二条隧道转到实际 Web 端口。另一种方法是取消该 Web operation，再通过 CLI 启动一个新 operation；CLI 输出只属于新 operation，不能用于当前 Web operation。配额错误和目录获取失败会如实报告，绝不会回退到付费提供商。此兼容路径为实验性功能：上游接口可能发生变化。
 
 </details>
 

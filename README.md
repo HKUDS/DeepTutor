@@ -623,19 +623,23 @@ Most sections use a draft-and-apply flow, so you can test a provider before comm
 
 **OpenAI Codex OAuth (experimental).** Picking **OpenAI Codex** under Models → LLM replaces the API-key fields with a browser sign-in that runs against your own ChatGPT plan, so no `OPENAI_API_KEY` is needed. Tokens live only in `<user-root>/private/openai-codex/` and DeepTutor never reads or modifies your `~/.codex` CLI login. The model list comes from that account's live catalog; signing in publishes the profile but only becomes the active model when no LLM is configured yet. Because a token authorizes one person's plan, the profile is not shareable through user grants — each account signs in for itself.
 
-For a remote backend, the callback listener still binds only to the server's loopback address. The browser's `localhost` and the server's `localhost` are different machines, and an ordinary reverse proxy does not automatically forward this callback. Before opening or completing the authorization page, start this tunnel on the browser's machine and keep it open until login succeeds:
+For a remote deployment, the browser's `localhost` and the server's `localhost` are different machines, so an ordinary reverse proxy alone cannot carry the browser's localhost callback to the server. Use an SSH tunnel as the callback bridge. The tunnel reaches the already-published Web port; Next.js rewrites only the exact callback path to the public callback broker, and the broker validates `state` before routing to the original OAuth operation. The callback listener remains on the backend loopback, ports `1455` and `1457` are not published, and this path supports the default Docker bridge network.
 
 ```bash
-ssh -N -L 1455:127.0.0.1:1455 <ssh-user>@<server-host>
+ssh -N -L 1455:127.0.0.1:3782 <ssh-user>@<server-host>
 ```
 
-If the page or CLI actually reports port `1457`, replace the port on both sides:
+If DeepTutor reports fallback callback port `1457`, use:
 
 ```bash
-ssh -N -L 1457:127.0.0.1:1457 <ssh-user>@<server-host>
+ssh -N -L 1457:127.0.0.1:3782 <ssh-user>@<server-host>
 ```
 
-Forward only the callback port that DeepTutor displays; do not forward both `1455` and `1457`. When Web is accessed through a non-`localhost` URL, it shows the actual callback port and matching command before you explicitly open authorization. Detection has one boundary: if Web itself reaches the remote server through an SSH or IDE forward and therefore appears as `localhost`, the browser cannot identify that remote topology. Follow the CLI output or actual callback port and manually establish this second forward before completing authorization. Quota errors and catalog failures are reported as-is and never fall back to a paid provider. This compatibility path is experimental: the upstream interface may change.
+Run only the one command that matches the actual callback port; never run both. `3782` is only the example Web port. A custom deployment must use the forward port shown by the page or CLI, which is the actual Web port reachable from the SSH host. `<server-host>` must be an SSH-reachable frontend host that serves or can reach that Web port. If the browser URL names a reverse proxy or load balancer, replace it with the correct SSH frontend host.
+
+The CLI prints the tunnel command and then immediately tries to open the browser. On a remote deployment, keep the authorization page open without completing it, establish the printed tunnel in another terminal, and only then continue authorization.
+
+Remote-topology detection has a localhost boundary. If Web itself is reached through an SSH or IDE localhost forward, the browser cannot tell that the server is remote. For the current Web operation, leave its authorization page unfinished, read `redirect_uri` in that operation's authorize URL to identify callback port `1455` or `1457`, and create the second tunnel from that local port to the actual Web port. Alternatively, cancel that Web operation and start a new one with the CLI; the CLI output belongs to the new operation and must not be used for the existing Web operation. Quota errors and catalog failures are reported as-is and never fall back to a paid provider. This compatibility path is experimental: the upstream interface may change.
 
 </details>
 

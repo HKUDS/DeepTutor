@@ -230,19 +230,23 @@ deeptutor provider login github-copilot    # 校验现有 GitHub Copilot 认证�
 
 `openai-codex` 使用 DeepTutor 自己的独立 OAuth 流程登录。它不需要 `OPENAI_API_KEY`，也不会读取或同步本机 `~/.codex`；凭据保存在 `<user-root>/private/openai-codex/`，与 Web 设置页共用。
 
-远程服务器上的 callback listener 仍只绑定服务器 loopback。浏览器的 `localhost` 和服务器的 `localhost` 不是同一台机器，普通反向代理不会自动转发该 callback。打开或完成授权页面前，先在浏览器所在机器建立隧道，并保持到登录成功：
+远程部署时，浏览器的 `localhost` 和服务器的 `localhost` 不是同一台机器，仅有普通反向代理无法把浏览器的 localhost callback 送到服务器，必须用 SSH 隧道建立 callback 桥。隧道通向已发布的 Web 端口；Next.js 只把精确的 callback 路径改写到 public callback broker，broker 校验 `state` 后才路由到原 OAuth operation。callback listener 仍位于后端 loopback，不发布 `1455`/`1457`，并支持默认 Docker bridge 网络。
 
 ```bash
-ssh -N -L 1455:127.0.0.1:1455 <ssh-user>@<server-host>
+ssh -N -L 1455:127.0.0.1:3782 <ssh-user>@<server-host>
 ```
 
-若页面或 CLI 实际显示 `1457`，应将命令两端均换成 `1457`：
+若 DeepTutor 显示 fallback callback 端口 `1457`，则使用：
 
 ```bash
-ssh -N -L 1457:127.0.0.1:1457 <ssh-user>@<server-host>
+ssh -N -L 1457:127.0.0.1:3782 <ssh-user>@<server-host>
 ```
 
-只转发实际显示的 callback 端口，不要同时转发 `1455` 和 `1457`。通过非 `localhost` 地址访问 Web 时，页面会先显示实际端口和对应命令，再由用户显式打开授权。若 Web 本身经 SSH 或 IDE 转发并以 `localhost` 访问，浏览器无法识别远程拓扑；此时按 CLI 输出或实际 callback 端口手动建立第二条转发，再完成授权。
+只运行与实际 callback 端口对应的其中一条命令，不能两条都运行。`3782` 只是示例 Web 端口；自定义部署必须采用页面或 CLI 显示的 forward port，也就是 SSH 主机实际可达的 Web 端口。`<server-host>` 必须是可通过 SSH 到达的前端主机，并承载或能够到达该 Web 端口；若浏览器域名指向反向代理或负载均衡器，请替换为正确的 SSH 前端主机。
+
+CLI 会先打印隧道命令，随后立即尝试打开浏览器。远程用户应先保持授权页打开但不要完成授权，在另一终端建立所显示的隧道，然后再继续授权。
+
+localhost 检测存在边界：若 Web 本身已通过 SSH 或 IDE localhost 转发访问，浏览器无法判断服务器是远程的。对于当前 Web operation，应保持其授权页未完成，从该 operation 的 authorize URL 中读取 `redirect_uri`，确认 callback 是 `1455` 还是 `1457`，再把该本地端口通过第二条隧道转到实际 Web 端口。另一种方法是取消该 Web operation，再通过 CLI 启动一个新 operation；CLI 输出只属于新 operation，不能用于当前 Web operation。
 
 Codex 令牌授权的是**你本人**的 ChatGPT 套餐，因此凭据只归当前登录用户，不会通过模型授权共享给部署内的其他用户——每位用户各自登录。登录成功后，模型列表来自该账号的动态目录；仅当此前尚未配置任何 LLM 时，Codex 才会被自动设为活动模型，否则不改动你已选的模型。目录刷新失败、上游 `429` 或其他错误都会如实报告，不会回退到付费 API Provider。这条 Codex backend 兼容路径目前属于实验性能力。
 
