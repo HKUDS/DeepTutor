@@ -168,31 +168,36 @@ def get_path_from_config(config: dict[str, Any], path_key: str, default: str = N
     return default
 
 
+_LANGUAGE_ALIASES = {
+    "english": "en",
+    "chinese": "zh",
+    "cn": "zh",
+    "japanese": "ja",
+    "korean": "ko",
+    "spanish": "es",
+    "french": "fr",
+    "german": "de",
+    "russian": "ru",
+    "portuguese": "pt",
+    "italian": "it",
+}
+
+
 def parse_language(language: Any) -> str:
     """
     Unified language configuration parser, supports multiple input formats
 
-    Supported language representations:
-    - English: "en", "english", "English"
-    - Chinese: "zh", "chinese", "Chinese"
-
     Args:
-        language: Language configuration value (can be "zh"/"en"/"Chinese"/"English" etc.)
+        language: Language configuration value (ISO 639 code or full name)
 
     Returns:
-        Standardized language code: 'zh' or 'en', defaults to 'zh'
+        Standardized language code, defaults to 'en'
     """
-    if not language:
-        return "zh"
+    if not isinstance(language, str) or not language.strip():
+        return "en"
 
-    if isinstance(language, str):
-        lang_lower = language.lower()
-        if lang_lower in ["en", "english"]:
-            return "en"
-        if lang_lower in ["zh", "chinese", "cn"]:
-            return "zh"
-
-    return "zh"  # Default Chinese
+    lang_lower = language.strip().lower()
+    return _LANGUAGE_ALIASES.get(lang_lower, lang_lower)
 
 
 def get_agent_params(module_name: str) -> dict:

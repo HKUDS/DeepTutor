@@ -100,7 +100,7 @@ class PromptManager:
     ) -> dict[str, Any]:
         """Load prompt file with language fallback."""
         prompt_dirs = self._candidate_prompt_dirs(module_name)
-        fallback_chain = self.LANGUAGE_FALLBACKS.get(lang_code, ["en"])
+        fallback_chain = self.LANGUAGE_FALLBACKS.get(lang_code, [lang_code, "en"])
 
         for prompts_dir in prompt_dirs:
             for lang in fallback_chain:
