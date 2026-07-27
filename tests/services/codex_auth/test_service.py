@@ -275,14 +275,21 @@ class FakeCallback:
                 CodexAuthError("login_cancelled", "Codex sign-in was cancelled.", 409)
             )
 
+    def submit(self, result: OAuthCallbackResult) -> None:
+        if self._result.done():
+            raise CodexAuthError(
+                "login_not_active",
+                "Codex sign-in is not waiting for a callback.",
+                409,
+            )
+        self._result.set_result(result)
+
     def complete(self, authorize_url: str, *, code: str = "authorization-code") -> None:
         state = parse_qs(urlsplit(authorize_url).query)["state"][0]
-        self._result.set_result(OAuthCallbackResult(code=code, state=state, error=None))
+        self.submit(OAuthCallbackResult(code=code, state=state, error=None))
 
     def complete_with_state(self, state: str) -> None:
-        self._result.set_result(
-            OAuthCallbackResult(code="authorization-code", state=state, error=None)
-        )
+        self.submit(OAuthCallbackResult(code="authorization-code", state=state, error=None))
 
 
 class FakeOAuthClient:
@@ -464,6 +471,49 @@ async def test_successful_live_login_keeps_the_existing_model_selection(
         "redirect_uri",
         "ssh_forward_command",
     }
+
+
+@pytest.mark.asyncio
+async def test_callback_broker_keeps_waiting_after_wrong_state_then_completes(
+    tmp_path: Path,
+) -> None:
+    service, _callback, _oauth, _catalog, _store, _models = await _oauth_service(tmp_path)
+    started = await service.start_login()
+    expected_state = parse_qs(urlsplit(started["authorize_url"]).query)["state"][0]
+
+    with pytest.raises(CodexAuthError) as exc_info:
+        await service.receive_callback(
+            code="do-not-accept",
+            state="wrong-state",
+            error=None,
+        )
+
+    assert exc_info.value.code == "state_mismatch"
+    assert exc_info.value.http_status == 400
+    assert service.public_status()["operation_state"] == "waiting"
+
+    await service.receive_callback(
+        code="authorization-code",
+        state=expected_state,
+        error=None,
+    )
+    status = await _wait_until_terminal(service)
+    assert status["operation_state"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_callback_broker_rejects_when_no_login_is_active(tmp_path: Path) -> None:
+    service, _callback, _oauth, _catalog, _store, _models = await _oauth_service(tmp_path)
+
+    with pytest.raises(CodexAuthError) as exc_info:
+        await service.receive_callback(
+            code="authorization-code",
+            state="untrusted-state",
+            error=None,
+        )
+
+    assert exc_info.value.code == "login_not_active"
+    assert exc_info.value.http_status == 409
 
 
 @pytest.mark.asyncio

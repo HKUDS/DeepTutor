@@ -268,6 +268,28 @@ class CodexOAuthService:
             and (operation.task is None or not operation.task.done())
         )
 
+    async def receive_callback(
+        self,
+        code: str | None,
+        state: str | None,
+        error: str | None,
+    ) -> None:
+        async with self._operation_lock:
+            operation = self._operation
+            if operation is None or not self._operation_is_active():
+                raise CodexAuthError(
+                    "login_not_active",
+                    "Codex sign-in is not waiting for a callback.",
+                    409,
+                )
+            if not state or not secrets.compare_digest(state, operation.state_secret):
+                raise CodexAuthError(
+                    "state_mismatch",
+                    "Codex sign-in returned an invalid state.",
+                    400,
+                )
+            operation.callback.submit(OAuthCallbackResult(code=code, state=state, error=error))
+
     async def _run_login(self, operation: _LoginOperation) -> None:
         try:
             callback = await operation.callback.wait(

@@ -15,6 +15,7 @@ from deeptutor.services.codex_auth.contracts import CodexAuthError, CodexCredent
 from deeptutor.services.codex_auth.oauth import (
     CodexOAuthClient,
     LoopbackCallback,
+    OAuthCallbackResult,
     PkceCodes,
     build_authorize_url,
     generate_pkce,
@@ -92,6 +93,25 @@ async def test_loopback_accepts_callback_without_echoing_secrets() -> None:
 
 
 @pytest.mark.asyncio
+async def test_loopback_submit_wakes_waiter_and_rejects_late_delivery() -> None:
+    callback = await LoopbackCallback.start(ports=(0,))
+    waiter = asyncio.create_task(callback.wait(timeout=1))
+    result = OAuthCallbackResult(
+        code="authorization-code",
+        state="expected-state",
+        error=None,
+    )
+
+    callback.submit(result)
+
+    assert await waiter == result
+    with pytest.raises(CodexAuthError) as exc_info:
+        callback.submit(result)
+    assert exc_info.value.code == "login_not_active"
+    assert exc_info.value.http_status == 409
+
+
+@pytest.mark.asyncio
 async def test_loopback_ignores_wrong_path_then_accepts_oauth_error() -> None:
     callback = await LoopbackCallback.start(ports=(0,))
 
@@ -142,6 +162,10 @@ async def test_loopback_timeout_and_cancel_are_public_errors() -> None:
     with pytest.raises(CodexAuthError) as cancel_error:
         await waiter
     assert cancel_error.value.code == "login_cancelled"
+    with pytest.raises(CodexAuthError) as late_submit:
+        cancelled.submit(OAuthCallbackResult(code="late-code", state="late-state", error=None))
+    assert late_submit.value.code == "login_not_active"
+    assert late_submit.value.http_status == 409
 
 
 @pytest.mark.asyncio

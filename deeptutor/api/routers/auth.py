@@ -16,7 +16,7 @@ from fastapi import (
     WebSocket,
     status,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, field_validator
 
 from deeptutor.services.config import load_auth_settings
@@ -48,6 +48,8 @@ from deeptutor.services.auth import (
     set_avatar,
     set_role,
 )
+from deeptutor.services.codex_auth.contracts import CodexAuthError
+from deeptutor.services.codex_auth.service import get_codex_oauth_service
 
 logger = logging.getLogger(__name__)
 
@@ -365,6 +367,33 @@ def _local_admin_token_payload() -> TokenPayload:
 # ---------------------------------------------------------------------------
 # Public endpoints (no auth required)
 # ---------------------------------------------------------------------------
+
+
+@router.get("/openai-codex/callback")
+async def receive_codex_oauth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+) -> HTMLResponse:
+    headers = {"Cache-Control": "no-store"}
+    try:
+        await get_codex_oauth_service().receive_callback(code, state, error)
+    except CodexAuthError as exc:
+        return HTMLResponse(
+            (
+                "<!doctype html><title>DeepTutor Codex</title>"
+                "<p>Authentication could not be received. Return to DeepTutor and try again.</p>"
+            ),
+            status_code=exc.http_status,
+            headers=headers,
+        )
+    return HTMLResponse(
+        (
+            "<!doctype html><title>DeepTutor Codex</title>"
+            "<p>Authentication received. You can return to DeepTutor.</p>"
+        ),
+        headers=headers,
+    )
 
 
 @router.get("/status", response_model=AuthStatusResponse)

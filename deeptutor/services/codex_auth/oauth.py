@@ -138,8 +138,11 @@ class LoopbackCallback:
                 writer.close()
                 await writer.wait_closed()
 
-            if callback_result is not None and not result.done():
-                result.set_result(callback_result)
+            if callback_result is not None:
+                try:
+                    callback.submit(callback_result)
+                except CodexAuthError:
+                    pass
 
         async def bind(hosts: list[str], port: int) -> asyncio.Server | None:
             try:
@@ -166,7 +169,17 @@ class LoopbackCallback:
                 503,
             )
         bound_port = int(server.sockets[0].getsockname()[1])
-        return cls(server=server, result=result, port=bound_port)
+        callback = cls(server=server, result=result, port=bound_port)
+        return callback
+
+    def submit(self, result: OAuthCallbackResult) -> None:
+        if self._result.done():
+            raise CodexAuthError(
+                "login_not_active",
+                "Codex sign-in is not waiting for a callback.",
+                409,
+            )
+        self._result.set_result(result)
 
     async def _close(self) -> None:
         self._server.close()
