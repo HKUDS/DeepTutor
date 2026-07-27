@@ -743,3 +743,70 @@ fix: guide remote Codex OAuth loopback callbacks
 ```
 
 PR 正文不包含服务器地址、用户名、token、account ID 或内部路径。
+
+### Task 9: 支持 Docker bridge callback broker
+
+**Files:**
+- Modify: `deeptutor/services/codex_auth/oauth.py`
+- Modify: `deeptutor/services/codex_auth/service.py`
+- Modify: `deeptutor/api/routers/auth.py`
+- Modify: backend Codex/auth tests
+- Modify: `web/lib/proxy-policy.ts`
+- Modify: `web/proxy.ts`
+- Modify: Web proxy tests
+
+- [ ] **Step 1: 后端 broker TDD**
+
+先增加失败测试，覆盖活动 operation 的正确 state 能提交 callback，错误或缺失
+state 返回稳定错误且不结束 operation，无活动 operation 返回稳定错误。实现
+`LoopbackCallback.submit()` 和 service 的 state 校验入口，并在公共 auth router
+增加 callback endpoint。broker 响应不得包含凭据。
+
+- [ ] **Step 2: Next rewrite TDD**
+
+先增加失败测试，锁定只有精确 `/auth/callback` 会在 auth gate 前 rewrite 到
+`/api/v1/auth/openai-codex/callback`；其他路径和现有 `/api/*` 行为不变。
+
+- [ ] **Step 3: 回归**
+
+运行 Codex backend、auth router、Web Node、TypeScript 和 build 测试，确认
+listener 仍只绑定 loopback。
+
+### Task 10: 让 SSH 命令转发到实际 Web 端口
+
+**Files:**
+- Modify: `deeptutor/services/codex_auth/service.py`
+- Modify: `web/lib/codex-oauth.ts`
+- Modify: `web/components/settings/CodexOAuthCard.tsx`
+- Modify: `deeptutor_cli/provider_cmd.py`
+- Modify: related tests and three READMEs
+
+- [ ] **Step 1: 元数据与命令 TDD**
+
+新增 `callback_forward_port`，生产 singleton 取运行时 `frontend_port`，测试注入
+非默认 `4782`。SSH 命令必须使用 callback 端口作为本地端口、forward port
+作为服务器目标端口。
+
+- [ ] **Step 2: UI/CLI/文档同步**
+
+UI、CLI 和三份 README 使用同一命令语义。默认示例为：
+
+```bash
+ssh -N -L 1455:127.0.0.1:3782 <ssh-user>@<server-host>
+```
+
+回退示例为：
+
+```bash
+ssh -N -L 1457:127.0.0.1:3782 <ssh-user>@<server-host>
+```
+
+说明 `<server-host>` 是承载 Web 端口的 SSH 主机；CLI 会先打印命令再立即尝试
+打开浏览器，远程用户应先不要完成授权，在另一终端建立隧道。
+
+- [ ] **Step 3: Docker 远程验收**
+
+在服务器临时容器/端口中启动待测分支，客户端建立页面显示的
+`callback -> frontend` 隧道，发送无敏感模拟 callback。Expected：Next rewrite
+到 backend broker，state 校验通过，operation 收到 callback；错误 state 不会
+结束 operation；生产容器和端口不修改。

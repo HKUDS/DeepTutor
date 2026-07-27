@@ -165,3 +165,39 @@ CLI：
 - 远程 callback 通过 SSH 隧道到达服务器。
 - 回调缺失和反向代理响应异常有不同且可操作的错误提示。
 - 新增测试通过，现有 Codex OAuth 后端、前端和 CLI 测试全部通过。
+
+## Docker bridge 补充设计
+
+真实服务器核验确认 DeepTutor 运行在 Docker bridge 网络中。此时宿主机 SSH
+访问的 `127.0.0.1:<callback-port>` 与容器内 callback listener 所在的
+loopback 不是同一个网络命名空间，原先的同端口 SSH 转发只适用于原生或
+host-network 部署。
+
+为同时覆盖源码安装、默认单容器和前后端拆分部署，远程 callback 改走已经存在
+的 Web/API 通道：
+
+1. 浏览器仍回到 OpenAI 允许的
+   `http://localhost:<callback-port>/auth/callback`。
+2. SSH 将浏览器本机的 callback 端口转到服务器实际 Web 端口，例如：
+
+   ```bash
+   ssh -N -L 1455:127.0.0.1:3782 <ssh-user>@<server-host>
+   ```
+
+3. Next.js 对精确路径 `/auth/callback` 做服务端 rewrite，转给公共的
+   `/api/v1/auth/openai-codex/callback`。
+4. 后端 callback broker 只在存在活动 operation 且 state 常量时间匹配时，
+   把 code/error 交给原来的 `LoopbackCallback` future。
+5. 原 callback listener 继续只绑定容器或主机自身的 loopback；不发布
+   1455/1457，不监听 `0.0.0.0`。
+
+公共 start/status 元数据新增 `callback_forward_port`，取运行时实际
+`frontend_port`。UI 和 CLI 用 callback 端口作为 SSH 本地端口，用
+`callback_forward_port` 作为服务器目标端口。1455 被占用而回退 1457 时，
+命令应为 `-L 1457:127.0.0.1:<frontend-port>`，服务器目标 Web 端口不随之
+变化。
+
+callback broker 不依赖登录 cookie，因为 OAuth 从不同的 localhost origin
+返回时不会携带 DeepTutor 域名 cookie。state 是进入 broker 的必要凭据；缺失
+或不匹配的 state 不得结束当前 operation，也不得返回 token、account 或
+authorize URL。现有 PKCE 校验和 token 交换路径保持不变。
