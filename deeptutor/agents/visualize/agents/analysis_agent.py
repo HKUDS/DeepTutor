@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.context import Attachment
-from deeptutor.core.trace import build_trace_metadata, new_call_id
 
 from ..models import VisualizationAnalysis
 from ..utils import extract_json_object
@@ -72,25 +71,16 @@ class AnalysisAgent(BaseAgent):
 
         user_prompt = user_template.format(**format_kwargs)
 
-        chunks: list[str] = []
-        async for chunk in self.stream_llm(
-            user_prompt=user_prompt,
+        from deeptutor.services.llm import complete as llm_complete
+
+        raw = await llm_complete(
+            prompt=user_prompt,
             system_prompt=system_prompt,
             response_format={"type": "json_object"},
-            stage="analyzing",
-            attachments=attachments,
-            trace_meta=build_trace_metadata(
-                call_id=new_call_id("viz-analysis"),
-                phase="analyzing",
-                label="Visualization analysis",
-                call_kind="viz_analysis",
-                trace_role="analyze",
-                trace_kind="llm_output",
-            ),
-        ):
-            chunks.append(chunk)
-        response = "".join(chunks)
-        result = VisualizationAnalysis.model_validate(extract_json_object(response))
+            temperature=self.get_temperature(),
+            max_tokens=self.get_max_tokens(),
+        )
+        result = VisualizationAnalysis.model_validate(extract_json_object(raw))
         if render_mode in ("svg", "chartjs", "mermaid", "html"):
             result.render_type = render_mode  # type: ignore[assignment]
         elif render_mode == "figure" and result.render_type not in (
