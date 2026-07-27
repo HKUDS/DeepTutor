@@ -214,14 +214,105 @@ test("Codex error codes map to stable translation keys", () => {
   );
 });
 
-test("Codex sign-in opens its browser window before awaiting the API", () => {
+function componentBlock(
+  source: string,
+  startMarker: string,
+  endMarker: string,
+): string {
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start);
+  assert.notEqual(start, -1, `missing ${startMarker}`);
+  assert.notEqual(end, -1, `missing ${endMarker}`);
+  return source.slice(start, end);
+}
+
+test("Local Codex sign-in opens its browser window before awaiting the API", () => {
   const source = readFileSync(CODEX_CARD, "utf8");
-  const signIn = source.slice(
-    source.indexOf("const signIn"),
-    source.indexOf("const cancel"),
+  const localSignIn = componentBlock(
+    source,
+    "const localSignIn",
+    "const remoteSignIn",
   );
 
   assert.ok(
-    signIn.indexOf("window.open(") < signIn.indexOf("await startCodexLogin()"),
+    localSignIn.indexOf('window.open("about:blank"') <
+      localSignIn.indexOf("await startCodexLogin()"),
   );
+  assert.match(localSignIn, /authWindow\.location\.replace\(started\.authorize_url\)/);
+  assert.match(localSignIn, /window\.location\.assign\(started\.authorize_url\)/);
+});
+
+test("Codex sign-in detects remote browsers and retains the login start", () => {
+  const source = readFileSync(CODEX_CARD, "utf8");
+
+  assert.match(
+    source,
+    /isLoopbackHostname\(window\.location\.hostname\)/,
+  );
+  assert.match(
+    source,
+    /useState<CodexLoginStart \| null>\(null\)/,
+  );
+
+  const remoteSignIn = componentBlock(
+    source,
+    "const remoteSignIn",
+    "const signIn",
+  );
+  assert.ok(
+    remoteSignIn.indexOf("await startCodexLogin()") <
+      remoteSignIn.indexOf("setLoginStart(started)"),
+  );
+  assert.ok(
+    remoteSignIn.indexOf("setLoginStart(started)") <
+      remoteSignIn.indexOf("await getCodexStatus()"),
+  );
+});
+
+test("Remote Codex sign-in never opens or redirects the browser automatically", () => {
+  const source = readFileSync(CODEX_CARD, "utf8");
+  const remoteSignIn = componentBlock(
+    source,
+    "const remoteSignIn",
+    "const signIn",
+  );
+
+  assert.equal(remoteSignIn.includes("window.open("), false);
+  assert.equal(remoteSignIn.includes("window.location.assign("), false);
+});
+
+test("Remote Codex guidance uses the real callback port and explicit user actions", () => {
+  const source = readFileSync(CODEX_CARD, "utf8");
+
+  assert.match(
+    source,
+    /buildSshForwardCommand\(\s*loginStart\.callback_port,\s*window\.location\.hostname,\s*\)/,
+  );
+  assert.match(source, /\{loginStart\.redirect_uri\}/);
+
+  const copyCommand = componentBlock(
+    source,
+    "const copyCommand",
+    "const openAuthorization",
+  );
+  assert.match(copyCommand, /navigator\.clipboard\.writeText\(sshCommand\)/);
+  assert.match(copyCommand, /setToast\(t\("codex\.oauth\.commandCopied"\)\)/);
+  assert.match(copyCommand, /setToast\(t\("codex\.oauth\.copyFailed"\)\)/);
+
+  const openAuthorization = componentBlock(
+    source,
+    "const openAuthorization",
+    "const cancel",
+  );
+  assert.match(
+    openAuthorization,
+    /window\.open\(loginStart\.authorize_url,\s*"_blank",\s*"noopener"\)/,
+  );
+});
+
+test("Cancelling Codex sign-in clears remote guidance", () => {
+  const source = readFileSync(CODEX_CARD, "utf8");
+  const cancel = componentBlock(source, "const cancel", "const refresh");
+
+  assert.match(cancel, /setLoginStart\(null\)/);
 });

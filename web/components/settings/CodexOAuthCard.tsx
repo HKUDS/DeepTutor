@@ -6,15 +6,18 @@ import { useTranslation } from "react-i18next";
 
 import Button from "@/components/ui/Button";
 import {
+  buildSshForwardCommand,
   cancelCodexLogin,
   CodexOAuthApiError,
   codexErrorMessageKey,
   codexStatusMessageKey,
   getCodexStatus,
+  isLoopbackHostname,
   logoutCodex,
   refreshCodexModels,
   shouldPollCodexStatus,
   startCodexLogin,
+  type CodexLoginStart,
   type CodexOAuthStatus,
 } from "@/lib/codex-oauth";
 
@@ -27,7 +30,11 @@ export function CodexOAuthCard() {
   const [pending, setPending] = useState(false);
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const [pollTick, setPollTick] = useState(0);
+  const [loginStart, setLoginStart] = useState<CodexLoginStart | null>(null);
   const reloadedOperation = useRef<string | null>(null);
+  const remoteAccess =
+    typeof window !== "undefined" &&
+    !isLoopbackHostname(window.location.hostname);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -83,7 +90,7 @@ export function CodexOAuthCard() {
     void syncCatalog();
   }, [syncCatalog, status]);
 
-  const signIn = async () => {
+  const localSignIn = async () => {
     const authWindow = window.open("about:blank", "_blank", "popup");
     if (authWindow) authWindow.opener = null;
     setPending(true);
@@ -108,6 +115,48 @@ export function CodexOAuthCard() {
     }
   };
 
+  const remoteSignIn = async () => {
+    setPending(true);
+    setErrorKey(null);
+    try {
+      const started = await startCodexLogin();
+      setLoginStart(started);
+      setStatus(await getCodexStatus());
+    } catch (error) {
+      setErrorKey(
+        codexErrorMessageKey(
+          error instanceof CodexOAuthApiError ? error.code : null,
+        ),
+      );
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const signIn = remoteAccess ? remoteSignIn : localSignIn;
+
+  const sshCommand = loginStart
+    ? buildSshForwardCommand(
+        loginStart.callback_port,
+        window.location.hostname,
+      )
+    : "";
+
+  const copyCommand = async () => {
+    if (!sshCommand) return;
+    try {
+      await navigator.clipboard.writeText(sshCommand);
+      setToast(t("codex.oauth.commandCopied"));
+    } catch {
+      setToast(t("codex.oauth.copyFailed"));
+    }
+  };
+
+  const openAuthorization = () => {
+    if (!loginStart) return;
+    window.open(loginStart.authorize_url, "_blank", "noopener");
+  };
+
   const cancel = async () => {
     setPending(true);
     try {
@@ -119,6 +168,7 @@ export function CodexOAuthCard() {
         ),
       );
     } finally {
+      setLoginStart(null);
       setPending(false);
     }
   };
@@ -192,6 +242,52 @@ export function CodexOAuthCard() {
               {t("codex.oauth.modelCount", { count: status.model_count })}
             </p>
           )}
+          {remoteAccess && loginStart && (
+            <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
+              <p className="text-sm font-medium">
+                {t("codex.oauth.remoteTitle")}
+              </p>
+              <p className="mt-2 text-xs text-[var(--muted-foreground)]">
+                {t("codex.oauth.remoteSteps")}
+              </p>
+              <p className="mt-3 text-xs font-medium">
+                {t("codex.oauth.callbackAddress")}
+              </p>
+              <code className="mt-1 block break-all text-xs">
+                {loginStart.redirect_uri}
+              </code>
+              <pre className="mt-3 overflow-x-auto rounded-md bg-[var(--muted)] p-2 text-xs">
+                <code>{sshCommand}</code>
+              </pre>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void copyCommand()}
+                >
+                  {t("codex.oauth.copyCommand")}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={openAuthorization}
+                  icon={<ExternalLink className="h-4 w-4" />}
+                >
+                  {t("codex.oauth.openAuthorization")}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={pending}
+                  onClick={() => void cancel()}
+                >
+                  {t("codex.oauth.cancel")}
+                </Button>
+              </div>
+            </div>
+          )}
           <div className="mt-4 flex flex-wrap gap-2">
             {!connected && !polling && (
               <Button
@@ -204,7 +300,7 @@ export function CodexOAuthCard() {
                 {t("codex.oauth.signIn")}
               </Button>
             )}
-            {polling && (
+            {polling && !(remoteAccess && loginStart) && (
               <Button
                 type="button"
                 size="sm"
