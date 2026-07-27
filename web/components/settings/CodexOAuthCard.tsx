@@ -36,10 +36,25 @@ export function CodexOAuthCard() {
     typeof window !== "undefined" &&
     !isLoopbackHostname(window.location.hostname);
 
+  const recordStatus = useCallback((nextStatus: CodexOAuthStatus) => {
+    setStatus(nextStatus);
+    const terminalOperation =
+      nextStatus.operation_state === "completed" ||
+      nextStatus.operation_state === "cancelled" ||
+      nextStatus.operation_state === "expired" ||
+      nextStatus.operation_state === "failed";
+    if (!terminalOperation) return;
+    setLoginStart((loginStart) =>
+      loginStart && nextStatus.operation_id === loginStart.operation_id
+        ? null
+        : loginStart,
+    );
+  }, []);
+
   const loadStatus = useCallback(async () => {
     try {
       const next = await getCodexStatus();
-      setStatus(next);
+      recordStatus(next);
       setErrorKey(null);
       return next;
     } catch (error) {
@@ -50,7 +65,7 @@ export function CodexOAuthCard() {
       );
       return null;
     }
-  }, []);
+  }, [recordStatus]);
 
   useEffect(() => {
     void loadStatus();
@@ -102,7 +117,7 @@ export function CodexOAuthCard() {
       } else {
         window.location.assign(started.authorize_url);
       }
-      setStatus(await getCodexStatus());
+      recordStatus(await getCodexStatus());
     } catch (error) {
       authWindow?.close();
       setErrorKey(
@@ -121,7 +136,7 @@ export function CodexOAuthCard() {
     try {
       const started = await startCodexLogin();
       setLoginStart(started);
-      setStatus(await getCodexStatus());
+      recordStatus(await getCodexStatus());
     } catch (error) {
       setErrorKey(
         codexErrorMessageKey(
@@ -160,7 +175,7 @@ export function CodexOAuthCard() {
   const cancel = async () => {
     setPending(true);
     try {
-      setStatus(await cancelCodexLogin());
+      recordStatus(await cancelCodexLogin());
     } catch (error) {
       setErrorKey(
         codexErrorMessageKey(
@@ -176,7 +191,7 @@ export function CodexOAuthCard() {
   const refresh = async () => {
     setPending(true);
     try {
-      setStatus(await refreshCodexModels());
+      recordStatus(await refreshCodexModels());
       await syncCatalog();
       setErrorKey(null);
     } catch (error) {
@@ -193,7 +208,8 @@ export function CodexOAuthCard() {
   const logout = async () => {
     setPending(true);
     try {
-      setStatus(await logoutCodex());
+      recordStatus(await logoutCodex());
+      setLoginStart(null);
       await syncCatalog();
       setErrorKey(null);
     } catch (error) {

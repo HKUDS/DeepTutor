@@ -320,3 +320,39 @@ test("Cancelling Codex sign-in clears remote guidance", () => {
 
   assert.match(cancel, /setLoginStart\(null\)/);
 });
+
+test("Terminal Codex status clears guidance only for the matching operation", () => {
+  const source = readFileSync(CODEX_CARD, "utf8");
+  const recordStatus = componentBlock(
+    source,
+    "const recordStatus",
+    "const loadStatus",
+  );
+
+  for (const operationState of [
+    "completed",
+    "cancelled",
+    "expired",
+    "failed",
+  ]) {
+    assert.match(
+      recordStatus,
+      new RegExp(`nextStatus\\.operation_state === "${operationState}"`),
+    );
+  }
+  assert.match(
+    recordStatus,
+    /nextStatus\.operation_id === loginStart\.operation_id/,
+  );
+  assert.match(recordStatus, /\? null\s*: loginStart/);
+});
+
+test("Logging out clears remote authorization guidance after success", () => {
+  const source = readFileSync(CODEX_CARD, "utf8");
+  const logout = componentBlock(source, "const logout", "const polling");
+
+  assert.ok(
+    logout.indexOf("recordStatus(await logoutCodex())") <
+      logout.indexOf("setLoginStart(null)"),
+  );
+});
