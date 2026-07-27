@@ -132,6 +132,8 @@ async def test_loopback_timeout_and_cancel_are_public_errors() -> None:
     with pytest.raises(CodexAuthError) as timeout_error:
         await timed_out.wait(timeout=0.01)
     assert timeout_error.value.code == "login_timeout"
+    assert f"localhost:{timed_out.port}" in timeout_error.value.public_message
+    assert "did not receive" in timeout_error.value.public_message
 
     cancelled = await LoopbackCallback.start(ports=(0,))
     waiter = asyncio.create_task(cancelled.wait(timeout=1))

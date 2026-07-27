@@ -450,7 +450,62 @@ async def test_successful_live_login_keeps_the_existing_model_selection(
     assert status["active_model"] is None
     assert status["activated"] is False
     assert _selection(model_catalog.load()) == original_selection
-    assert set(started) == {"operation_id", "authorize_url", "expires_in"}
+    assert started["callback_port"] == 1455
+    assert started["redirect_uri"] == "http://localhost:1455/auth/callback"
+    assert (
+        started["ssh_forward_command"]
+        == "ssh -N -L 1455:127.0.0.1:1455 <ssh-user>@<server-host>"
+    )
+    assert set(started) == {
+        "operation_id",
+        "authorize_url",
+        "expires_in",
+        "callback_port",
+        "redirect_uri",
+        "ssh_forward_command",
+    }
+
+
+@pytest.mark.asyncio
+async def test_login_status_keeps_callback_metadata_without_exposing_secrets(
+    tmp_path: Path,
+) -> None:
+    service, _callback, _oauth, _catalog, _store, _models = await _oauth_service(
+        tmp_path,
+        callback_error=CodexAuthError(
+            "login_timeout",
+            "Codex sign-in timed out.",
+            408,
+        ),
+    )
+
+    started = await service.start_login()
+    waiting = service.public_status()
+    timed_out = await _wait_until_terminal(service)
+
+    assert waiting["operation_state"] == "waiting"
+    assert timed_out["operation_state"] == "expired"
+    for status in (waiting, timed_out):
+        assert status["callback_port"] == started["callback_port"] == 1455
+        assert (
+            status["redirect_uri"]
+            == started["redirect_uri"]
+            == "http://localhost:1455/auth/callback"
+        )
+        assert "authorize_url" not in status
+
+    forbidden_fields = {
+        "state_secret",
+        "pkce",
+        "verifier",
+        "access_token",
+        "refresh_token",
+        "account_id",
+        "email",
+    }
+    for payload in (started, waiting, timed_out):
+        serialized = json.loads(json.dumps(payload))
+        assert forbidden_fields.isdisjoint(serialized)
 
 
 @pytest.mark.asyncio
@@ -693,6 +748,8 @@ async def test_restarted_service_restores_connection_without_operation_or_secret
     assert status["connection"] == "connected"
     assert status["operation_id"] is None
     assert status["operation_state"] is None
+    assert status["callback_port"] is None
+    assert status["redirect_uri"] is None
     assert "top-secret" not in serialized
     assert "full-account-secret" not in serialized
 

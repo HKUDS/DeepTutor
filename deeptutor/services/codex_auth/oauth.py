@@ -179,7 +179,11 @@ class LoopbackCallback:
             await self._close()
             raise CodexAuthError(
                 "login_timeout",
-                "Codex sign-in timed out.",
+                (
+                    "The DeepTutor server did not receive the Codex OAuth callback "
+                    f"on localhost:{self.port}. For a remote deployment, keep the "
+                    "SSH port-forwarding tunnel open and try again."
+                ),
                 408,
             ) from exc
         except asyncio.CancelledError as exc:

@@ -70,6 +70,10 @@ class _LoginOperation:
     task: asyncio.Task[None] | None = None
 
 
+def ssh_forward_command(port: int) -> str:
+    return f"ssh -N -L {port}:127.0.0.1:{port} <ssh-user>@<server-host>"
+
+
 def codex_model_id(slug: str) -> str:
     digest = hashlib.sha256(slug.encode("utf-8")).hexdigest()[:16]
     return f"llm-model-openai-codex-{digest}"
@@ -246,10 +250,14 @@ class CodexOAuthService:
                 "Codex sign-in has not been started.",
                 409,
             )
+        callback_port = operation.callback.port
         return {
             "operation_id": operation.operation_id,
             "authorize_url": operation.authorize_url,
             "expires_in": max(0, int(operation.deadline - self._clock())),
+            "callback_port": callback_port,
+            "redirect_uri": operation.redirect_uri,
+            "ssh_forward_command": ssh_forward_command(callback_port),
         }
 
     def _operation_is_active(self) -> bool:
@@ -485,6 +493,10 @@ class CodexOAuthService:
             "connection": connection,
             "operation_id": operation.operation_id if operation is not None else None,
             "operation_state": (operation.operation_state if operation is not None else None),
+            "callback_port": (
+                operation.callback.port if operation is not None else None
+            ),
+            "redirect_uri": operation.redirect_uri if operation is not None else None,
             "model_count": len(snapshot.models) if snapshot is not None else 0,
             "catalog_source": snapshot.source if snapshot is not None else None,
             "catalog_fetched_at": (snapshot.fetched_at if snapshot is not None else None),
@@ -656,5 +668,6 @@ __all__ = [
     "codex_model_id",
     "get_codex_oauth_service",
     "remove_codex_catalog",
+    "ssh_forward_command",
     "sync_codex_catalog",
 ]
