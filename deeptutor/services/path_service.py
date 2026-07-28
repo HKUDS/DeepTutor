@@ -53,6 +53,7 @@ WorkspaceFeature = Literal[
     "co-writer",
     "chat",
     "book",
+    "immersive_reading",
 ]
 
 
@@ -226,7 +227,7 @@ class PathService:
             "_detached_code_execution",
         }:
             return self.get_chat_feature_dir(cast(ChatWorkspaceFeature, feature))
-        if feature in {"memory", "notebook", "co-writer", "book"}:
+        if feature in {"memory", "notebook", "co-writer", "book", "immersive_reading"}:
             return self.get_workspace_feature_dir(cast(WorkspaceFeature, feature))
         raise ValueError(f"Unknown workspace feature: {feature}")
 
@@ -360,6 +361,21 @@ class PathService:
         (root / "assets").mkdir(parents=True, exist_ok=True)
         return root
 
+    # ── Immersive Reading paths ─────────────────────────────────────────
+
+    def get_immersive_reading_dir(self) -> Path:
+        """Root directory for imported, source-faithful reading documents."""
+        return self.get_workspace_feature_dir("immersive_reading")
+
+    def get_immersive_reading_document_root(self, document_id: str) -> Path:
+        return self.get_immersive_reading_dir() / f"document_{document_id}"
+
+    def ensure_immersive_reading_document_root(self, document_id: str) -> Path:
+        root = self.get_immersive_reading_document_root(document_id)
+        (root / "sections").mkdir(parents=True, exist_ok=True)
+        (root / "assets").mkdir(parents=True, exist_ok=True)
+        return root
+
     def get_run_code_workspace_dir(self) -> Path:
         return self.get_chat_feature_dir("_detached_code_execution")
 
@@ -402,7 +418,10 @@ class PathService:
         self.ensure_memory_dir()
         self.ensure_notebook_dir()
         self.get_logs_dir().mkdir(parents=True, exist_ok=True)
-        for workspace_feature in cast(tuple[WorkspaceFeature, ...], ("co-writer", "book")):
+        for workspace_feature in cast(
+            tuple[WorkspaceFeature, ...],
+            ("co-writer", "book", "immersive_reading"),
+        ):
             self.get_workspace_feature_dir(workspace_feature).mkdir(parents=True, exist_ok=True)
         for chat_feature in cast(
             tuple[ChatWorkspaceFeature, ...],

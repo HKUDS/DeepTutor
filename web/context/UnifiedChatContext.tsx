@@ -44,6 +44,10 @@ import {
   normalizeBookReferences,
   type BookReferencePayload,
 } from "@/lib/book-references";
+import {
+  normalizeReadingReferences,
+  type ReadingReferencePayload,
+} from "@/lib/reading-references";
 
 type SessionRuntimeStatus =
   | "idle"
@@ -77,6 +81,7 @@ export interface SendMessageOptions {
   persistUserMessage?: boolean;
   requestSnapshotOverride?: MessageRequestSnapshot;
   bookReferences?: BookReferencePayload[];
+  readingReferences?: ReadingReferencePayload[];
   /** Edit-branching: when set, the new user message is inserted as a
    *  sibling under this parent rather than appended to the session tail.
    *  ``null`` means "explicitly attach to the session root". */
@@ -140,6 +145,7 @@ export interface MessageRequestSnapshot {
   historyReferences?: HistoryReferencePayload;
   questionNotebookReferences?: QuestionNotebookReferencePayload;
   bookReferences?: BookReferencePayload[];
+  readingReferences?: ReadingReferencePayload[];
   persona?: string;
   memoryReferences?: MemoryReferencePayload;
   llmSelection?: LLMSelection | null;
@@ -932,6 +938,7 @@ function hydrateRequestSnapshot(
       : "";
   const memoryReferences = asMemoryReferences(stored.memoryReferences);
   const bookReferences = normalizeBookReferences(stored.bookReferences);
+  const readingReferences = normalizeReadingReferences(stored.readingReferences);
   const llmSelection = asLLMSelection(stored.llmSelection);
 
   if (config && Object.keys(config).length) snapshot.config = config;
@@ -942,6 +949,7 @@ function hydrateRequestSnapshot(
     snapshot.questionNotebookReferences = questionNotebookReferences;
   }
   if (bookReferences.length) snapshot.bookReferences = bookReferences;
+  if (readingReferences.length) snapshot.readingReferences = readingReferences;
   if (persona) snapshot.persona = persona;
   if (memoryReferences.length) snapshot.memoryReferences = memoryReferences;
   if (llmSelection) snapshot.llmSelection = llmSelection;
@@ -1457,6 +1465,8 @@ export function UnifiedChatProvider({
         replaySnapshot?.memoryReferences ?? memoryReferences;
       const effectiveBookReferences =
         replaySnapshot?.bookReferences ?? options?.bookReferences;
+      const effectiveReadingReferences =
+        replaySnapshot?.readingReferences ?? options?.readingReferences;
       const effectiveAttachments =
         replaySnapshot?.attachments?.map((a) => ({
           type: a.type,
@@ -1500,6 +1510,9 @@ export function UnifiedChatProvider({
           : {}),
         ...(effectiveBookReferences?.length
           ? { bookReferences: effectiveBookReferences }
+          : {}),
+        ...(effectiveReadingReferences?.length
+          ? { readingReferences: effectiveReadingReferences }
           : {}),
         ...(effectivePersona ? { persona: effectivePersona } : {}),
         ...(effectiveMemoryReferences?.length
@@ -1568,6 +1581,9 @@ export function UnifiedChatProvider({
           : {}),
         ...(effectiveBookReferences?.length
           ? { book_references: effectiveBookReferences }
+          : {}),
+        ...(effectiveReadingReferences?.length
+          ? { reading_references: effectiveReadingReferences }
           : {}),
         // Always sent (possibly ""): an explicit key is the backend's signal
         // to persist the value into session.preferences — "" clears back to

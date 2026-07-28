@@ -13,6 +13,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowUp,
   BookOpen,
+  BookMarked,
   Bot,
   Brain,
   Check,
@@ -45,6 +46,7 @@ import type { LLMOption } from "@/lib/llm-options";
 import ChatSpaceMenu from "@/components/chat/space/ChatSpaceMenu";
 import type { SpaceMemoryFile } from "@/lib/space-items";
 import type { SelectedBookReference } from "@/lib/book-references";
+import type { SelectedReadingReference } from "@/lib/reading-references";
 import AgentSelector from "./AgentSelector";
 import KnowledgeSelector from "./KnowledgeSelector";
 import ModelSelector from "./ModelSelector";
@@ -56,6 +58,7 @@ type SpaceSelectionCounts = {
   chatHistory: number;
   myAgents: number;
   books: number;
+  reading?: number;
   notebooks: number;
   questionBank: number;
   persona: number;
@@ -163,6 +166,7 @@ export default memo(function ChatComposer({
   llmOptionsError,
   selectedNotebookRecords,
   selectedBookReferences,
+  selectedReadingReferences = [],
   selectedHistorySessions,
   selectedAgentSessions,
   selectedQuestionEntries,
@@ -182,6 +186,7 @@ export default memo(function ChatComposer({
   onSelectLLM,
   onSelectNotebookPicker,
   onSelectBookPicker,
+  onSelectReadingPicker,
   onSelectHistoryPicker,
   onSelectAgentsPicker,
   onSelectQuestionBankPicker,
@@ -200,6 +205,7 @@ export default memo(function ChatComposer({
   onRemoveHistory,
   onRemoveAgent,
   onRemoveBookReference,
+  onRemoveReadingReference,
   onRemoveNotebook,
   onRemoveQuestion,
   onDragEnter,
@@ -242,6 +248,7 @@ export default memo(function ChatComposer({
   llmOptionsError: boolean;
   selectedNotebookRecords: SelectedRecord[];
   selectedBookReferences: SelectedBookReference[];
+  selectedReadingReferences?: SelectedReadingReference[];
   selectedHistorySessions: SelectedHistorySession[];
   selectedAgentSessions: SelectedHistorySession[];
   selectedQuestionEntries: SelectedQuestionEntry[];
@@ -275,6 +282,7 @@ export default memo(function ChatComposer({
   onSelectLLM: (selection: LLMSelection | null) => void;
   onSelectNotebookPicker: () => void;
   onSelectBookPicker: () => void;
+  onSelectReadingPicker?: () => void;
   onSelectHistoryPicker: () => void;
   onSelectAgentsPicker: () => void;
   onSelectQuestionBankPicker: () => void;
@@ -300,6 +308,7 @@ export default memo(function ChatComposer({
   onRemoveHistory: (sessionId: string) => void;
   onRemoveAgent: (sessionId: string) => void;
   onRemoveBookReference: (bookId: string) => void;
+  onRemoveReadingReference?: (documentId: string) => void;
   onRemoveNotebook: (notebookId: string) => void;
   onRemoveQuestion: (entryId: number) => void;
   onDragEnter: (event: React.DragEvent) => void;
@@ -398,7 +407,7 @@ export default memo(function ChatComposer({
       setMoreCapsOpen(false);
       onSelectCapability(value);
     },
-    [onSelectCapability],
+    [onSelectCapability, setMoreCapsOpen],
   );
 
   // Functional-update form keeps `handleInputChange` identity stable across
@@ -421,6 +430,7 @@ export default memo(function ChatComposer({
   const hasReferences =
     !!attachments.length ||
     !!selectedBookReferences.length ||
+    !!selectedReadingReferences.length ||
     !!selectedNotebookRecords.length ||
     !!selectedHistorySessions.length ||
     !!selectedAgentSessions.length ||
@@ -443,6 +453,10 @@ export default memo(function ChatComposer({
     myAgents: selectedAgentSessions.length,
     books: selectedBookReferences.reduce(
       (total, ref) => total + ref.pages.length,
+      0,
+    ),
+    reading: selectedReadingReferences.reduce(
+      (total, reference) => total + reference.sections.length,
       0,
     ),
     notebooks: selectedNotebookRecords.length,
@@ -476,6 +490,15 @@ export default memo(function ChatComposer({
         kind: t("Book"),
         label: `${book.bookTitle} (${book.pages.length})`,
         onRemove: () => onRemoveBookReference(book.bookId),
+      }),
+    ),
+    ...selectedReadingReferences.map(
+      (reference): ContextTreeItem => ({
+        key: `reading-${reference.documentId}`,
+        icon: BookMarked,
+        kind: t("Immersive Reading"),
+        label: `${reference.documentTitle} (${reference.sections.length})`,
+        onRemove: () => onRemoveReadingReference?.(reference.documentId),
       }),
     ),
     ...notebookReferenceGroups.map(
@@ -634,6 +657,7 @@ export default memo(function ChatComposer({
             agentsAvailable={agentsAvailable}
             onSelectNotebookPicker={onSelectNotebookPicker}
             onSelectBookPicker={onSelectBookPicker}
+            onSelectReadingPicker={onSelectReadingPicker}
             onSelectHistoryPicker={onSelectHistoryPicker}
             onSelectAgentsPicker={onSelectAgentsPicker}
             onSelectQuestionBankPicker={onSelectQuestionBankPicker}
@@ -922,6 +946,7 @@ export default memo(function ChatComposer({
                             onSelectHistoryPicker();
                           else if (key === "my_agents") onSelectAgentsPicker();
                           else if (key === "books") onSelectBookPicker();
+                          else if (key === "reading") onSelectReadingPicker?.();
                           else if (key === "notebooks")
                             onSelectNotebookPicker();
                           else if (key === "question_bank")

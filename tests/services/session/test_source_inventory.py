@@ -188,6 +188,42 @@ async def test_build_inventory_fresh_attachments_only() -> None:
 
 
 @pytest.mark.asyncio
+async def test_build_inventory_adds_selected_immersive_reading_sections(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeReadingService:
+        def render_reference(self, document_id: str, section_ids: list[str]) -> tuple[str, str]:
+            assert document_id == "novel-1"
+            assert section_ids == ["chapter-2", "chapter-4"]
+            return "[Chapter 2]\nsource text", "Imported novel"
+
+    monkeypatch.setattr(
+        "deeptutor.immersive_reading.get_immersive_reading_service",
+        lambda: FakeReadingService(),
+    )
+    inv = await build_inventory(
+        FakeStore(),
+        session_id="s1",
+        leaf_message_id=None,
+        current_turn_ordinal=1,
+        fresh_attachment_records=[],
+        fresh_notebook_records=[],
+        fresh_book_context_text="",
+        fresh_book_references=[],
+        fresh_reading_references=[
+            {"document_id": "novel-1", "section_ids": ["chapter-2", "chapter-4"]}
+        ],
+        fresh_history_session_ids=[],
+        fresh_question_entry_ids=[],
+    )
+
+    assert [(entry.sid, entry.kind, entry.name) for entry in inv.entries] == [
+        ("ir-novel-1", "reading", "Imported novel")
+    ]
+    assert inv.entries[0].full_text == "[Chapter 2]\nsource text"
+
+
+@pytest.mark.asyncio
 async def test_build_inventory_historical_attachment_visible_to_next_turn() -> None:
     """Attachment uploaded in turn 1 must appear as 'previously attached
     (turn 1)' in turn 2's manifest, even though turn 2's payload is empty."""
