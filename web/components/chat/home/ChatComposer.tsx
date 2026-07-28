@@ -389,9 +389,13 @@ export default memo(function ChatComposer({
     [onAddFiles],
   );
 
+  const focusTextarea = useCallback(() => {
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, []);
+
   useEffect(() => {
-    if (!hasMessages) textareaRef.current?.focus();
-  }, [hasMessages]);
+    if (!hasMessages) focusTextarea();
+  }, [hasMessages, focusTextarea]);
 
   const handleSelectCapability = useCallback(
     (value: string) => {
@@ -414,8 +418,12 @@ export default memo(function ChatComposer({
       onSend(content);
       setHasContent(false);
       inputHandleRef.current?.clear();
+      // Sending can move focus to the button or rerender the empty-state
+      // composer into the conversation layout. Restore it after that update
+      // so the user can keep typing, including after switching back to the tab.
+      focusTextarea();
     },
-    [onSend],
+    [focusTextarea, onSend],
   );
 
   const hasReferences =
