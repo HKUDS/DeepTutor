@@ -9,6 +9,8 @@ interface AutoScrollOptions {
   messageCount: number;
   lastMessageContent?: string;
   lastEventCount?: number;
+  /** Identity of the transcript whose position should be remembered. */
+  scrollKey?: string | null;
 }
 
 /**
@@ -54,10 +56,24 @@ export function useChatAutoScroll({
   messageCount,
   lastMessageContent,
   lastEventCount,
+  scrollKey,
 }: AutoScrollOptions) {
   const containerRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
+  const scrollPositionsRef = useRef(new Map<string, number>());
+  const activeScrollKeyRef = useRef(scrollKey);
+  const pendingRestoreRef = useRef<{
+    key: string;
+    position: number;
+  } | null>(null);
+
+  const saveScrollPosition = useCallback(() => {
+    const container = containerRef.current;
+    const key = activeScrollKeyRef.current;
+    if (!container || !key) return;
+    scrollPositionsRef.current.set(key, container.scrollTop);
+  }, []);
 
   const pinToBottom = useCallback(() => {
     const container = containerRef.current;
@@ -67,7 +83,44 @@ export function useChatAutoScroll({
     // means the user never sees the in-between frame where new
     // content has rendered but the scroll position is still stale.
     container.scrollTop = container.scrollHeight;
-  }, []);
+    saveScrollPosition();
+  }, [saveScrollPosition]);
+
+  // The scroll container is shared while navigating history. Save the outgoing
+  // session before its content changes, then arrange to restore the returning
+  // session after its transcript has rendered.
+  useLayoutEffect(() => {
+    if (Object.is(activeScrollKeyRef.current, scrollKey)) return;
+    saveScrollPosition();
+    activeScrollKeyRef.current = scrollKey;
+    const position = scrollKey
+      ? scrollPositionsRef.current.get(scrollKey)
+      : undefined;
+    pendingRestoreRef.current =
+      scrollKey && position !== undefined ? { key: scrollKey, position } : null;
+    // A session not seen before keeps the normal live-follow default.
+    shouldAutoScrollRef.current = position === undefined;
+  }, [saveScrollPosition, scrollKey]);
+
+  useLayoutEffect(() => {
+    const pending = pendingRestoreRef.current;
+    const container = containerRef.current;
+    if (!pending || !container || !hasMessages) return;
+    if (pending.key !== activeScrollKeyRef.current) return;
+    container.scrollTop = pending.position;
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    shouldAutoScrollRef.current = distanceFromBottom < 80;
+    saveScrollPosition();
+    pendingRestoreRef.current = null;
+  }, [
+    hasMessages,
+    lastEventCount,
+    lastMessageContent,
+    messageCount,
+    saveScrollPosition,
+    scrollKey,
+  ]);
 
   // Primary pin: runs in layout phase after every render that bumps
   // message count / streaming content / events / composer height /
@@ -135,6 +188,7 @@ export function useChatAutoScroll({
         return;
       }
       container.scrollTop = container.scrollHeight;
+      saveScrollPosition();
       lastPinned = container.scrollTop;
     };
     const schedule = () => {
@@ -163,7 +217,7 @@ export function useChatAutoScroll({
       container.removeEventListener("scroll", onScroll);
       if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [isStreaming, hasMessages]);
+  }, [isStreaming, hasMessages, saveScrollPosition]);
 
   // After streaming ends, capability viewers loaded via ``next/dynamic``
   // (MathAnimatorViewer, QuizViewer, VisualizationViewer, RichCodeBlock,
@@ -219,7 +273,8 @@ export function useChatAutoScroll({
     const distanceFromBottom =
       container.scrollHeight - container.scrollTop - container.clientHeight;
     shouldAutoScrollRef.current = distanceFromBottom < 80;
-  }, []);
+    saveScrollPosition();
+  }, [saveScrollPosition]);
 
   // Intent-based release. During dense streaming the pin above re-snaps to
   // ``scrollHeight`` on every content change, so the position-only

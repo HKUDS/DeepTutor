@@ -250,6 +250,7 @@ export default function PartnerChat({
     messageCount: messages.length + (draft ? 1 : 0),
     lastMessageContent: draft?.content ?? lastMessage?.content,
     lastEventCount: draft?.events.length ?? lastMessage?.events?.length,
+    scrollKey: `${partnerId}:${sessionKey ?? ""}`,
   });
 
   const tryAttach = useCallback(() => {

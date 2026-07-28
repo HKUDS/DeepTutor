@@ -852,6 +852,7 @@ export default function ChatPage() {
     messageCount: state.messages.length,
     lastMessageContent: lastMessage?.content,
     lastEventCount: lastMessage?.events?.length,
+    scrollKey: state.sessionId,
   });
   const copyAssistantMessage = useCallback(async (content: string) => {
     if (!content.trim()) return;
