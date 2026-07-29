@@ -24,6 +24,14 @@ RUNTIME_ENV_KEYS = (
     "AUTH_PASSWORD_HASH",
     "AUTH_TOKEN_EXPIRE_HOURS",
     "AUTH_COOKIE_SECURE",
+    "DEEPTUTOR_SELF_REGISTRATION_ENABLED",
+    "DEEPTUTOR_EMAIL_VERIFICATION_REQUIRED",
+    "DEEPTUTOR_VERIFICATION_CODE_TTL_MINUTES",
+    "DEEPTUTOR_VERIFICATION_RESEND_COOLDOWN_SECONDS",
+    "DEEPTUTOR_VERIFICATION_MAX_ATTEMPTS",
+    "DEEPTUTOR_VERIFICATION_MAX_PER_EMAIL_HOUR",
+    "DEEPTUTOR_VERIFICATION_MAX_PER_IP_HOUR",
+    "DEEPTUTOR_SANDBOX_ALLOW_UNTRUSTED_USERS",
     "POCKETBASE_URL",
     "POCKETBASE_PORT",
     "POCKETBASE_EXTERNAL_URL",
@@ -103,6 +111,7 @@ def test_render_environment_uses_json_backed_runtime_names(monkeypatch, tmp_path
     assert env["FRONTEND_PORT"] == "3790"
     assert env["CORS_ORIGINS"] == "https://app.example"
     assert env["DISABLE_SSL_VERIFY"] == "true"
+    assert env["DEEPTUTOR_SANDBOX_ALLOW_UNTRUSTED_USERS"] == "false"
     assert env["AUTH_ENABLED"] == "true"
     assert env["NEXT_PUBLIC_AUTH_ENABLED"] == "true"
     # Server-side proxy contract consumed by web/proxy.ts (the Next.js
@@ -113,6 +122,9 @@ def test_render_environment_uses_json_backed_runtime_names(monkeypatch, tmp_path
     assert env["DEEPTUTOR_AUTH_ENABLED"] == "true"
     assert env["DEEPTUTOR_API_BASE_URL"] == "http://localhost:8010"
     assert env["AUTH_TOKEN_EXPIRE_HOURS"] == "12"
+    assert env["DEEPTUTOR_SELF_REGISTRATION_ENABLED"] == "true"
+    assert env["DEEPTUTOR_EMAIL_VERIFICATION_REQUIRED"] == "true"
+    assert env["DEEPTUTOR_VERIFICATION_CODE_TTL_MINUTES"] == "10"
     assert env["POCKETBASE_URL"] == "http://pocketbase:8090"
     assert "AUTH_SECRET" not in env
 

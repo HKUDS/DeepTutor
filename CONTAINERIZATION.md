@@ -212,7 +212,9 @@ What `compose.yaml` does, and why:
   least-privileged container. The podman shape does not — the main app
   falls back to `bwrap` (Linux, if installed in the image) or the
   restricted subprocess backend controlled by
-  `sandbox_allow_subprocess` in `system.json`.
+  `sandbox_allow_subprocess` in `system.json`. For public multi-user
+  deployments, `sandbox_allow_untrusted_users` remains `false` unless the
+  chosen backend provides per-user filesystem isolation.
 
 ### Running outside `compose.yaml`
 
@@ -276,7 +278,7 @@ restart, do **not** try to drive these with compose env vars.
 | File | Purpose |
 |:---|:---|
 | `system.json` | Backend/frontend ports, public API base, CORS, SSL verification, attachment directory |
-| `auth.json` | Optional auth toggle, username, password hash, token/cookie settings |
+| `auth.json` | Optional auth toggle, username, password hash, token/cookie settings, and registration policy |
 | `integrations.json` | Optional PocketBase and sidecar integration settings |
 | `model_catalog.json` | LLM, embedding, and search provider profiles; API keys; active models |
 | `interface.json` | UI language / theme / sidebar preferences |
@@ -322,6 +324,56 @@ absolute paths. The earlier `docker-compose.yml` example mounted
 PocketBase stays a single-user integration — keep
 `integrations.pocketbase_url` blank for multi-user deployments unless
 you've wired up an external user store.
+
+## Email registration
+
+Built-in multi-user registration is email-verified. Configure SMTP through the
+deployment environment (do not commit these values or put them in the browser
+bundle):
+
+```dotenv
+DEEPTUTOR_SMTP_HOST=smtp.example.com
+DEEPTUTOR_SMTP_PORT=587
+DEEPTUTOR_SMTP_USERNAME=mailer@example.com
+DEEPTUTOR_SMTP_PASSWORD=<smtp-password>
+DEEPTUTOR_SMTP_FROM=DeepTutor <mailer@example.com>
+DEEPTUTOR_SMTP_USE_TLS=true
+DEEPTUTOR_SMTP_USE_SSL=false
+```
+
+`POST /api/v1/auth/register/request-code` is rate-limited and returns a generic
+success message; `POST /api/v1/auth/register` consumes a one-time six-digit code.
+Pending challenges are stored under `data/system/auth/` and are not user
+accounts until verification succeeds. If SMTP is absent, registration fails
+closed. Existing local accounts are treated as already verified during the
+upgrade.
+
+## LiteLLM + managed PostgreSQL
+
+The repository includes a secret-free LiteLLM overlay. Start it only after
+placing the following values in a deployment-only env file such as
+`/secure/deeptutor/litellm.env`:
+
+```dotenv
+LITELLM_DATABASE_URL=postgresql://<user>:<password>@<managed-host>:5432/<db>?sslmode=require
+LITELLM_MASTER_KEY=<proxy-master-key>
+UPSTREAM_MODEL=openai/gpt-4o-mini
+UPSTREAM_BASE_URL=https://api.openai.com/v1
+UPSTREAM_API_KEY=<provider-key>
+```
+
+```bash
+docker compose --env-file /secure/deeptutor/litellm.env \
+  -f docker-compose.yml -f docker-compose.litellm.yml \
+  --profile litellm up -d
+```
+
+The proxy has no host `ports` mapping, so only DeepTutor can reach it on the
+Compose network. Configure the admin LLM profile with base URL
+`http://litellm:4000/v1`, model `deeptutor-default`, and a LiteLLM virtual key.
+LiteLLM's PostgreSQL database is for virtual keys, USD spend, budgets, and rate
+limits; DeepTutor's local usage ledger remains the source of truth for exact
+token quotas.
 
 ---
 
@@ -379,7 +431,9 @@ renormalized on save.
   with no app secrets, not in the main app. The podman shape trades that
   for the rootless-podman shape; the main app falls back to `bwrap` or
   the restricted subprocess backend controlled by
-  `sandbox_allow_subprocess`.
+  `sandbox_allow_subprocess`. In multi-user Compose deployments it is
+  admin-only by default because the stock runner is shared and mounts only
+  the admin task workspace.
 - Auth (`data/user/settings/auth.json` → `auth_enabled = true`) gates
   `/api/*` and `/ws/*` via the `dt_token` cookie. `web/proxy.ts` reads
   `DEEPTUTOR_AUTH_ENABLED` (exported by the entrypoint on every start)

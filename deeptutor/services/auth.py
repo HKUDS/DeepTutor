@@ -112,6 +112,7 @@ def _make_user_record(hashed: str, role: str = "user", created_at: str = "") -> 
         "created_at": created_at or datetime.now(timezone.utc).isoformat(),
         "disabled": False,
         "avatar": "",
+        "email_verified": True,
     }
 
 
@@ -150,6 +151,26 @@ def add_user(username: str, plain_password: str, role: str = "user") -> None:
 
     record = save_user(username, hash_password(plain_password), role=role)  # type: ignore[arg-type]
     logger.info("User '%s' saved with role=%r", username, record.get("role", "user"))
+
+
+def add_verified_user(
+    username: str,
+    hashed_password: str,
+    *,
+    role: str = "user",
+) -> tuple[bool, dict[str, Any]]:
+    """Create a verified account without exposing plaintext to the store layer."""
+    from deeptutor.multi_user.identity import create_user_if_absent
+
+    created, record = create_user_if_absent(
+        username,
+        hashed_password,
+        role=role,  # type: ignore[arg-type]
+        email_verified=True,
+    )
+    if created:
+        logger.info("Verified user '%s' created with role=%r", username, record.get("role", "user"))
+    return created, record
 
 
 def list_users() -> list[dict]:
@@ -271,11 +292,19 @@ def decode_token(token: str) -> TokenPayload | None:
         username = payload.get("sub")
         if not username:
             return None
-        user_id = str(payload.get("uid") or "")
-        if not user_id:
-            record = _load_users().get(str(username)) or {}
-            user_id = str(record.get("id") or "")
-        return TokenPayload(username=username, role=payload.get("role", "user"), user_id=user_id)
+        canonical_username = str(username)
+        record = _load_users().get(canonical_username)
+        if not isinstance(record, dict):
+            return None
+        # A disabled account or an account whose verification state was
+        # revoked must lose access even if an older JWT has not expired.
+        if bool(record.get("disabled", False)) or not bool(
+            record.get("email_verified", True)
+        ):
+            return None
+        role = str(record.get("role") or payload.get("role", "user"))
+        user_id = str(record.get("id") or payload.get("uid") or "")
+        return TokenPayload(username=canonical_username, role=role, user_id=user_id)
     except JWTError:
         return None
 
@@ -365,8 +394,16 @@ def authenticate(username: str, password: str) -> TokenPayload | None:
         )
         return None
 
-    record = users.get(username)
+    lookup_username = username.strip()
+    if "@" in lookup_username:
+        lookup_username = lookup_username.casefold()
+    record = users.get(lookup_username)
     if not record:
+        return None
+
+    if isinstance(record, dict) and bool(record.get("disabled", False)):
+        return None
+    if isinstance(record, dict) and not bool(record.get("email_verified", True)):
         return None
 
     hashed = record.get("hash", "") if isinstance(record, dict) else record
@@ -375,4 +412,4 @@ def authenticate(username: str, password: str) -> TokenPayload | None:
 
     role = record.get("role", "user") if isinstance(record, dict) else "user"
     user_id = str(record.get("id") or "") if isinstance(record, dict) else ""
-    return TokenPayload(username=username, role=role, user_id=user_id)
+    return TokenPayload(username=lookup_username, role=role, user_id=user_id)

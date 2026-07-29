@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import logging
+import mimetypes
+from pathlib import Path
 from typing import Any
 
 from deeptutor.agents._shared.tool_composition import (
@@ -30,7 +34,7 @@ from deeptutor.core.agentic import (
     dispatch_tool_calls,
 )
 from deeptutor.core.agentic.tool_dispatch import MAX_PARALLEL_TOOL_CALLS
-from deeptutor.core.context import UnifiedContext
+from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.trace import (
     build_trace_metadata,
@@ -94,6 +98,8 @@ def _drop_unconfigured_generation_tools(tools: list[str]) -> list[str]:
 
 KB_SEED_MAX_KBS = 3
 KB_SEED_CHARS_PER_KB = 4000
+RAG_IMAGE_MAX_ATTACHMENTS = 6
+RAG_IMAGE_MAX_BYTES = 8 * 1024 * 1024
 # Exploring-loop budget: max LLM rounds in one turn's loop. A round without
 # tool calls ends the loop early — that is the normal exit.
 DEFAULT_MAX_ROUNDS = 8
@@ -422,13 +428,92 @@ class AgenticChatPipeline:
         self,
         messages: list[dict[str, Any]],
         context: UnifiedContext,
+        attachments: list[Attachment] | None = None,
     ) -> list[dict[str, Any]]:
         return prepare_multimodal_messages(
             messages,
-            context.attachments,
+            context.attachments if attachments is None else attachments,
             binding=self.binding,
             model=self.model,
         ).messages
+
+    def _attach_rag_images(
+        self,
+        context: UnifiedContext,
+        sources: list[dict[str, Any]] | None,
+    ) -> list[Attachment]:
+        """Load images from retrieved KB pages as Vision LLM attachments.
+
+        Image bytes stay out of the vector index and RAG text. They are read
+        only after retrieval, constrained to this runtime's data directory,
+        capped per turn, and deduplicated across seed/tool retrievals.
+        """
+        if not sources:
+            return []
+
+        known_paths = {
+            str(path)
+            for path in (context.metadata.get("_rag_image_paths") or [])
+            if str(path).strip()
+        }
+        runtime_root = None
+        try:
+            from deeptutor.runtime.home import get_runtime_data_root
+
+            runtime_root = get_runtime_data_root().resolve()
+        except Exception:
+            logger.warning("could not resolve runtime data root; skipping RAG images")
+            return []
+
+        added: list[Attachment] = []
+        candidate_paths: list[str] = []
+        for source in sources:
+            if not isinstance(source, dict):
+                continue
+            paths = source.get("image_paths")
+            if not isinstance(paths, list):
+                continue
+            for raw_path in paths:
+                value = str(raw_path or "").strip()
+                if value and value not in candidate_paths:
+                    candidate_paths.append(value)
+
+        for raw_path in candidate_paths:
+            if len(added) >= RAG_IMAGE_MAX_ATTACHMENTS:
+                break
+            try:
+                path = Path(raw_path).expanduser().resolve()
+                if not path.is_relative_to(runtime_root):
+                    logger.warning("skipping RAG image outside runtime data root: %s", path)
+                    continue
+                if path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
+                    continue
+                if not path.is_file() or path.stat().st_size > RAG_IMAGE_MAX_BYTES:
+                    logger.warning("skipping missing or oversized RAG image: %s", path)
+                    continue
+                path_key = str(path)
+                if path_key in known_paths:
+                    continue
+                encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+                mime_type = mimetypes.guess_type(path.name)[0] or "image/png"
+                attachment_id = "rag-image-" + hashlib.sha256(path_key.encode()).hexdigest()[:16]
+                added.append(
+                    Attachment(
+                        type="image",
+                        base64=encoded,
+                        filename=path.name,
+                        mime_type=mime_type,
+                        id=attachment_id,
+                    )
+                )
+                known_paths.add(path_key)
+            except (OSError, ValueError) as exc:
+                logger.warning("failed to load retrieved RAG image %s: %s", raw_path, exc)
+
+        if added:
+            context.attachments.extend(added)
+            context.metadata["_rag_image_paths"] = sorted(known_paths)
+        return added
 
     # ---- deferred tools / tool composition ------------------------------
 
@@ -539,8 +624,19 @@ class AgenticChatPipeline:
 
             level = await get_sandbox_service().isolation_level()
             if level is IsolationLevel.SYSTEM:
-                # Admin can switch exec off per user (grant v2). ``None``
-                # follows the policy: SYSTEM isolation serves everyone.
+                # SYSTEM isolation is not enough when the runner exposes all
+                # user workspaces to one shell namespace. Public users stay
+                # fail-closed until the deployment explicitly confirms
+                # per-user filesystem isolation.
+                if not is_partner:
+                    from deeptutor.multi_user.context import get_current_user
+                    from deeptutor.services.config import load_system_settings
+
+                    user = get_current_user()
+                    if not user.is_admin and not load_system_settings().get(
+                        "sandbox_allow_untrusted_users", False
+                    ):
+                        return False
                 from deeptutor.multi_user.tool_access import exec_override
 
                 return exec_override() is not False
@@ -1075,6 +1171,7 @@ class AgenticChatPipeline:
             text, kb_sources = result
             sections.append(f"## {kb}\n{text}")
             sources.extend(kb_sources)
+            self._attach_rag_images(context, kb_sources)
         if not sections:
             return ""
         if sources:

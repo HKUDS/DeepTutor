@@ -17,6 +17,7 @@ class UserRecord:
     role: Role = "user"
     created_at: str = ""
     disabled: bool = False
+    email_verified: bool = True
     # Avatar marker: "" (deterministic fallback), "icon:<name>:<color>" for a
     # picked icon, or "img:<version>" when the user uploaded an image (the
     # version is bumped on every upload so clients can cache-bust).
@@ -29,6 +30,7 @@ class UserRecord:
             "role": self.role,
             "created_at": self.created_at,
             "disabled": self.disabled,
+            "email_verified": self.email_verified,
             "avatar": self.avatar,
         }
 

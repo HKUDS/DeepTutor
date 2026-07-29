@@ -78,11 +78,34 @@ function extractDetail(detail: unknown): string {
 }
 
 /**
- * Register a new account. The first user to register becomes admin.
+ * Ask the backend to send a mailbox verification code. The backend keeps the
+ * response generic so the browser cannot enumerate existing accounts.
+ */
+export async function requestRegistrationCode(
+  email: string,
+  password: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await apiFetch(apiUrl("/api/v1/auth/register/request-code"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+      skipAuthRedirect: true,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) return { ok: true };
+    return { ok: false, error: extractDetail(data.detail) };
+  } catch {
+    return { ok: false, error: "Could not reach the server" };
+  }
+}
+
+/**
+ * Complete a new account with the one-time email verification code.
  */
 export async function register(
-  username: string,
-  password: string,
+  email: string,
+  code: string,
 ): Promise<{
   ok: boolean;
   role?: string;
@@ -93,7 +116,7 @@ export async function register(
     const res = await apiFetch(apiUrl("/api/v1/auth/register"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ email, code }),
       // Registration validation failures (e.g. 400/401) should surface inline
       // rather than bounce the user through the global login redirect.
       skipAuthRedirect: true,

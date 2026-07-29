@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator, Mapping
 import contextlib
+import json
+import math
 from types import SimpleNamespace
 from typing import Any, TypedDict
 
@@ -272,6 +274,54 @@ def _build_messages(
     ]
 
 
+def _reserve_factory_quota(
+    messages: list[dict[str, Any]],
+    *,
+    max_tokens: int,
+) -> tuple[Any, int]:
+    """Reserve a bounded user's tokens for the services-layer factory path."""
+    from deeptutor.multi_user.token_quota import (
+        TokenQuotaExceeded,
+        TokenQuotaUnavailable,
+        reserve_current_user_tokens,
+    )
+    from .exceptions import LLMProviderError, LLMRateLimitError
+
+    try:
+        prompt_estimate = max(
+            1,
+            math.ceil(
+                len(json.dumps(messages, ensure_ascii=False, default=str, separators=(",", ":")))
+                / 3.5
+            ),
+        )
+    except (TypeError, ValueError):
+        prompt_estimate = max(1, math.ceil(len(str(messages)) / 3.5))
+    output_estimate = max(1, int(max_tokens))
+    requested = prompt_estimate + output_estimate
+    try:
+        lease = reserve_current_user_tokens(
+            requested_tokens=requested,
+            prompt_tokens_estimate=prompt_estimate,
+            output_tokens_estimate=output_estimate,
+        )
+    except TokenQuotaExceeded as exc:
+        raise LLMRateLimitError(str(exc), provider="deeptutor") from exc
+    except TokenQuotaUnavailable as exc:
+        raise LLMProviderError(str(exc), provider="deeptutor") from exc
+    return lease, requested
+
+
+def _configured_max_tokens(config: LLMConfig, extra_kwargs: dict[str, Any]) -> int:
+    raw = extra_kwargs.get("max_completion_tokens", extra_kwargs.get("max_tokens"))
+    if raw is None:
+        raw = getattr(config, "max_tokens", 4096)
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError):
+        return 4096
+
+
 def _coerce_stream_coalesce_chars(value: Any) -> int:
     try:
         return max(1, int(value))
@@ -378,6 +428,10 @@ async def complete(
     extra_kwargs = _sanitize_call_kwargs(
         binding=capability_binding, model=config.model, kwargs=kwargs
     )
+    quota_lease, quota_reservation = _reserve_factory_quota(
+        request_messages,
+        max_tokens=_configured_max_tokens(config, extra_kwargs),
+    )
 
     try:
         response = await provider.chat_with_retry(
@@ -389,8 +443,13 @@ async def complete(
             **extra_kwargs,
         )
     except Exception as exc:
+        if quota_lease is not None:
+            quota_lease.release()
         raise map_error(exc, provider=config.provider_name) from exc
 
+    if quota_lease is not None:
+        actual = int((response.usage or {}).get("total_tokens") or 0)
+        quota_lease.finalize(actual or quota_reservation)
     if response.finish_reason == "error":
         raise map_error(
             RuntimeError(response.content or "LLM request failed"), provider=config.provider_name
@@ -448,6 +507,10 @@ async def stream(
     extra_kwargs = _sanitize_call_kwargs(
         binding=capability_binding, model=config.model, kwargs=kwargs
     )
+    quota_lease, quota_reservation = _reserve_factory_quota(
+        request_messages,
+        max_tokens=_configured_max_tokens(config, extra_kwargs),
+    )
 
     queue: asyncio.Queue[str | BaseException | None] = asyncio.Queue()
     saw_output = False
@@ -477,6 +540,7 @@ async def stream(
 
     async def _runner() -> None:
         nonlocal in_think_block
+        response = None
         try:
             response = await provider.chat_stream_with_retry(
                 messages=request_messages,
@@ -508,8 +572,14 @@ async def stream(
                     )
                 )
         except Exception as exc:
+            if quota_lease is not None:
+                quota_lease.release()
             await queue.put(map_error(exc, provider=config.provider_name))
         finally:
+            if quota_lease is not None:
+                usage = getattr(response, "usage", None) or {}
+                usage_total = int(usage.get("total_tokens") or 0)
+                quota_lease.finalize(usage_total or quota_reservation)
             await queue.put(None)
 
     task = asyncio.create_task(_runner())

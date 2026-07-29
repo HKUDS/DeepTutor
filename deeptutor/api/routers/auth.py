@@ -1,6 +1,7 @@
 """Auth router — login, logout, status, registration, profile, and user-management endpoints."""
 
 from contextvars import Token as _CtxToken
+import asyncio
 import logging
 import re
 
@@ -37,13 +38,14 @@ from deeptutor.services.auth import (
     TOKEN_EXPIRE_HOURS,
     TokenPayload,
     add_user,
+    add_verified_user,
     authenticate,
     authenticate_pb,
     create_token,
     decode_token,
     delete_user,
     get_user_info,
-    is_first_user,
+    hash_password,
     list_users,
     register_pb,
     set_avatar,
@@ -51,6 +53,7 @@ from deeptutor.services.auth import (
 )
 from deeptutor.services.codex_auth.contracts import CodexAuthError
 from deeptutor.services.codex_auth.service import deliver_codex_oauth_callback
+from deeptutor.services import email_verification
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +123,50 @@ class RegisterRequest(BaseModel):
         return v
 
 
+class EmailRegistrationRequest(BaseModel):
+    """Start a public registration by requesting a mailbox verification code."""
+
+    email: str
+    password: str
+
+    @field_validator("email")
+    @classmethod
+    def email_valid(cls, v: str) -> str:
+        v = email_verification.normalize_email(v)
+        if len(v) > 254 or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", v):
+            raise ValueError("Enter a valid email address")
+        return v
+
+    @field_validator("password")
+    @classmethod
+    def password_valid(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        return v
+
+
+class VerifyRegistrationRequest(BaseModel):
+    """Complete public registration with the one-time email code."""
+
+    email: str
+    code: str
+
+    @field_validator("email")
+    @classmethod
+    def email_valid(cls, v: str) -> str:
+        v = email_verification.normalize_email(v)
+        if len(v) > 254 or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", v):
+            raise ValueError("Enter a valid email address")
+        return v
+
+    @field_validator("code")
+    @classmethod
+    def code_valid(cls, v: str) -> str:
+        v = v.strip()
+        if not re.fullmatch(r"\d{6}", v):
+            raise ValueError("Verification code must be 6 digits")
+        return v
+
 class SetRoleRequest(BaseModel):
     """Payload for the PUT /users/{username}/role endpoint."""
 
@@ -154,6 +201,7 @@ class UserInfo(BaseModel):
     created_at: str
     disabled: bool = False
     avatar: str = ""
+    email_verified: bool = True
 
 
 # Markers settable through PUT /profile. Image markers ("img:<version>") are
@@ -491,84 +539,147 @@ async def logout(response: Response) -> dict:
     return {"ok": True}
 
 
-@router.post("/register", status_code=status.HTTP_201_CREATED)
-async def register(body: RegisterRequest) -> dict:
-    """
-    Bootstrap-only registration.
-
-    Public endpoint that creates the *first* admin account when the user store
-    is empty. Once an admin exists, this endpoint is closed; further accounts
-    must be created by an admin via ``POST /api/v1/auth/users``.
-
-    Only available when AUTH_ENABLED=true.
-    """
+@router.post("/register/request-code", status_code=status.HTTP_202_ACCEPTED)
+async def request_registration_code(body: EmailRegistrationRequest, request: Request) -> dict:
+    """Request a one-time code without revealing whether an account exists."""
     if not AUTH_ENABLED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Auth is disabled — registration is not available.",
         )
-
-    if POCKETBASE_ENABLED:
-        # PocketBase deployments are documented as single-user. Keep registration
-        # closed and require admins to provision users in the PocketBase admin UI.
-        if not is_first_user():
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Self-registration is closed. Ask an administrator to create your account.",
-            )
-        result = register_pb(username=body.username, email=body.username, password=body.password)
-        if not result:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Registration failed — username or email may already be taken.",
-            )
-        logger.info(f"First user registered via PocketBase: '{body.username}'")
-        return {
-            "ok": True,
-            "user_id": result.get("id", ""),
-            "username": body.username,
-            "role": "user",
-            "is_first_user": True,
-            "is_admin": False,
-        }
-
-    # Standard mode — only allowed before the first admin exists.
-    if not is_first_user():
+    auth_settings = load_auth_settings()
+    if not bool(auth_settings.get("self_registration_enabled", True)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Self-registration is closed. Ask an administrator to create your account.",
+            detail="Self-registration is currently unavailable.",
+        )
+    if not bool(auth_settings.get("email_verification_required", True)):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email verification is required for public registration.",
+        )
+    if POCKETBASE_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email registration is not available in PocketBase mode.",
+        )
+    if not email_verification.email_delivery_configured():
+        logger.error("Public registration requested but SMTP delivery is not configured")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email verification is temporarily unavailable.",
         )
 
-    existing = {u["username"] for u in list_users()}
-    if body.username in existing:
+    email = body.email
+    # Keep the public response identical for an existing account. Do not spend
+    # a bcrypt hash or send mail for an address that already owns an account.
+    if get_user_info(email) is not None:
+        return {
+            "ok": True,
+            "verification_required": True,
+            "message": "If this address can register, a verification code has been sent.",
+        }
+
+    client_ip = request.client.host if request.client else "unknown"
+    try:
+        # Do the cheap persistent limiter check before bcrypt, which is
+        # intentionally expensive and must not become an unauthenticated DoS
+        # primitive.
+        email_verification.check_registration_rate_limit(email, client_ip)
+        password_hash = hash_password(body.password)
+        challenge = email_verification.issue_challenge(email, password_hash, client_ip)
+        await asyncio.to_thread(email_verification.send_verification_email, challenge)
+    except (
+        email_verification.VerificationRateLimited,
+        email_verification.VerificationCooldown,
+    ) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Please wait before requesting another verification code.",
+            headers={"Retry-After": "60"},
+        ) from exc
+    except email_verification.EmailVerificationError as exc:
+        email_verification.discard_challenge(email)
+        logger.warning("Registration email delivery failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not send the verification email. Please try again later.",
+        ) from exc
+
+    return {
+        "ok": True,
+        "verification_required": True,
+        "message": "If this address can register, a verification code has been sent.",
+    }
+
+
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+async def register(body: VerifyRegistrationRequest, response: Response) -> dict:
+    """Consume a code and create the verified account exactly once."""
+    if not AUTH_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Auth is disabled — registration is not available.",
+        )
+    auth_settings = load_auth_settings()
+    if not bool(auth_settings.get("self_registration_enabled", True)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Self-registration is currently unavailable.",
+        )
+    if not bool(auth_settings.get("email_verification_required", True)):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email verification is required for public registration.",
+        )
+    if POCKETBASE_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email registration is not available in PocketBase mode.",
+        )
+    password_hash = email_verification.consume_challenge(body.email, body.code)
+    if not password_hash:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification code.",
+        )
+
+    created, record = add_verified_user(body.email, password_hash)
+    if not created:
+        # The challenge is already consumed; never overwrite an existing
+        # password when two verification requests race.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Username already taken",
+            detail="This email address is already registered.",
         )
 
-    add_user(body.username, body.password)
-    user_id = ""
-    role = "user"
-    for item in list_users():
-        if item.get("username") == body.username:
-            user_id = str(item.get("id") or "")
-            role = str(item.get("role") or "user")
-            break
-    logger.info(f"First user (admin) registered: '{body.username}'")
+    username = body.email
+    role = str(record.get("role") or "user")
+    user_id = str(record.get("id") or "")
+    token = create_token(username, role, user_id)
+    response.set_cookie(value=token, max_age=_COOKIE_MAX_AGE, **_cookie_attrs())
+    logger.info(
+        "Verified account created for email domain=%s role=%s",
+        username.rsplit("@", 1)[-1],
+        role,
+    )
     return {
         "ok": True,
         "user_id": user_id,
-        "username": body.username,
+        "username": username,
         "role": role,
-        "is_first_user": True,
+        "is_first_user": role == "admin",
         "is_admin": role == "admin",
     }
 
 
 @router.get("/is_first_user")
 async def check_is_first_user() -> dict:
-    """Return whether the user store is empty (used by the register UI)."""
-    return {"is_first_user": is_first_user() if AUTH_ENABLED else False}
+    """Legacy compatibility endpoint without exposing deployment state."""
+    # The registration UI no longer calls this endpoint. Keeping a constant
+    # response avoids breaking older clients while preventing public account
+    # enumeration of whether an admin has already registered.
+    return {"is_first_user": False}
 
 
 # ---------------------------------------------------------------------------

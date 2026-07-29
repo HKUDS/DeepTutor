@@ -316,6 +316,18 @@ class AgentLoop:
             )
             state.tool_steps += 1
             state.sources.extend(dispatch.sources)
+            # A rag call may discover page images after the initial seed. Add
+            # only the newly loaded attachments to the next LLM request; the
+            # initial user message already contains any seed images.
+            new_rag_images = self.pipeline._attach_rag_images(
+                self.context, dispatch.sources
+            )
+            if new_rag_images:
+                messages = self.pipeline._prepare_messages_with_attachments(
+                    messages,
+                    self.context,
+                    attachments=new_rag_images,
+                )
             messages.extend(dispatch.tool_messages)
 
             if dispatch.pause:

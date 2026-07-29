@@ -82,11 +82,24 @@ class SandboxService:
         # directly still answers to the same policy.
         try:
             from deeptutor.multi_user.tool_access import exec_override
+            from deeptutor.multi_user.context import get_current_user
+            from deeptutor.services.config import load_system_settings
+            from deeptutor.services.partners.scope import is_partner_user_id
 
+            current_user = get_current_user()
+            is_partner = is_partner_user_id(current_user.id)
+            if not current_user.is_admin and not is_partner and (
+                self._backend.level is not IsolationLevel.SYSTEM
+                or not load_system_settings().get("sandbox_allow_untrusted_users", False)
+            ):
+                return ExecResult(error=t("sandbox.disabled_for_account"))
             if exec_override() is False:
                 return ExecResult(error=t("sandbox.disabled_for_account"))
         except Exception:
-            logger.warning("per-user exec policy check failed; continuing", exc_info=True)
+            # Authorization/configuration failures must fail closed. Continuing
+            # here would turn a broken policy read into an exec bypass.
+            logger.warning("per-user exec policy check failed; denying", exc_info=True)
+            return ExecResult(error=t("sandbox.disabled_for_account"))
         try:
             lease = await self._quota.acquire(user_id)
         except QuotaExceeded as exc:

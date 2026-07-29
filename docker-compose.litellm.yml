@@ -1,0 +1,44 @@
+# Optional LiteLLM gateway overlay.
+#
+# Use with either docker-compose.yml or docker-compose.ghcr.yml:
+#   docker compose --env-file /secure/deeptutor/litellm.env \
+#     -f docker-compose.yml -f docker-compose.litellm.yml \
+#     --profile litellm up -d
+#
+# The service is internal-only. The browser and untrusted users never receive
+# the LiteLLM master key or the upstream provider key.
+
+services:
+  litellm:
+    image: ${LITELLM_IMAGE:-docker.litellm.ai/berriai/litellm:main-latest}
+    profiles: ["litellm"]
+    restart: unless-stopped
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "2"]
+    volumes:
+      - ./ops/litellm/config.yaml:/app/config.yaml:ro
+    environment:
+      # These must be provided by the deployment host, not committed here.
+      LITELLM_DATABASE_URL: ${LITELLM_DATABASE_URL:-}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
+      UPSTREAM_MODEL: ${UPSTREAM_MODEL:-openai/gpt-4o-mini}
+      UPSTREAM_BASE_URL: ${UPSTREAM_BASE_URL:-https://api.openai.com/v1}
+      UPSTREAM_API_KEY: ${UPSTREAM_API_KEY:-}
+    expose:
+      - "4000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - deeptutor-network
+
+  deeptutor:
+    depends_on:
+      litellm:
+        condition: service_healthy
+
+networks:
+  deeptutor-network:
+    driver: bridge

@@ -14,6 +14,11 @@ export type GrantPayload = {
   mcp_tools: string[] | null;
   /** null = follow deployment exec policy, false = always disabled. */
   exec_enabled: boolean | null;
+  /** 0 = unlimited for that period; fresh users receive bounded defaults. */
+  token_quota: {
+    daily_tokens: number;
+    monthly_tokens: number;
+  };
 };
 
 export type ToolOption = { name: string; description?: string };

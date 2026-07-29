@@ -1,0 +1,36 @@
+# Podman Compose variant of docker-compose.litellm.yml.
+# Use with compose.yaml and the same deployment-only env file.
+
+services:
+  litellm:
+    image: ${LITELLM_IMAGE:-docker.litellm.ai/berriai/litellm:main-latest}
+    profiles: ["litellm"]
+    restart: unless-stopped
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "2"]
+    volumes:
+      - ./ops/litellm/config.yaml:/app/config.yaml:ro
+    environment:
+      LITELLM_DATABASE_URL: ${LITELLM_DATABASE_URL:-}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
+      UPSTREAM_MODEL: ${UPSTREAM_MODEL:-openai/gpt-4o-mini}
+      UPSTREAM_BASE_URL: ${UPSTREAM_BASE_URL:-https://api.openai.com/v1}
+      UPSTREAM_API_KEY: ${UPSTREAM_API_KEY:-}
+    expose:
+      - "4000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - deeptutor
+
+  deeptutor:
+    depends_on:
+      litellm:
+        condition: service_healthy
+
+networks:
+  deeptutor:
+    driver: bridge

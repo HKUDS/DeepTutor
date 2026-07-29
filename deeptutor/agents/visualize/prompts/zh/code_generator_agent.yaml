@@ -118,6 +118,7 @@ rules_html: |
   走读、UI 原型或可点击演示。
   - 从 `<!DOCTYPE html>` 写到 `</html>`。所有 CSS 放在 `<style>`；所有 JavaScript
     放在 `</body>` 前的 `<script>` 里。
+  - JavaScript 字符串优先使用双引号或模板字符串；如果文案包含撇号（例如数学中的 `A'B`），不要放进单引号字符串，否则会导致整个演示脚本语法错误、页面空白。
   - 页面在沙箱 iframe（null origin）中渲染。只能从这些 CDN 加载库——
     cdn.jsdelivr.net、cdnjs.cloudflare.com、unpkg.com，其它一律被拦截。KaTeX 由
     宿主自动注入（`$...$` / `$$...$$`）。推荐：Chart.js 做图表，d3 + topojson 做

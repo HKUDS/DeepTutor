@@ -202,16 +202,20 @@ class LlamaIndexPipeline:
         for i, node in enumerate(nodes):
             context_parts.append(node.node.text)
             meta = node.node.metadata or {}
-            sources.append(
-                {
-                    "title": meta.get("file_name", meta.get("title", f"Document {i + 1}")),
-                    "content": node.node.text[:200],
-                    "source": meta.get("file_path", meta.get("file_name", "")),
-                    "page": meta.get("page_label", meta.get("page", "")),
-                    "chunk_id": node.node.node_id or str(i),
-                    "score": round(node.score, 4) if node.score is not None else "",
-                }
-            )
+            source = {
+                "title": meta.get("file_name", meta.get("title", f"Document {i + 1}")),
+                "content": node.node.text[:200],
+                "source": meta.get("file_path", meta.get("file_name", "")),
+                "page": meta.get("page_label", meta.get("page", "")),
+                "chunk_id": node.node.node_id or str(i),
+                "score": round(node.score, 4) if node.score is not None else "",
+            }
+            image_paths = meta.get("image_paths")
+            if isinstance(image_paths, list):
+                image_paths = [str(path).strip() for path in image_paths if str(path).strip()]
+                if image_paths:
+                    source["image_paths"] = image_paths
+            sources.append(source)
 
         content = "\n\n".join(context_parts) if context_parts else ""
         return {

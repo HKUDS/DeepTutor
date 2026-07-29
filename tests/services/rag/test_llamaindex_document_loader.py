@@ -68,6 +68,114 @@ def test_loader_routes_parser_files_through_active_parse_engine(
     assert "Block two" in by_name["paper.pdf"]
 
 
+def test_loader_splits_structured_blocks_by_page_for_citations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("llama_index.core")
+    from deeptutor.services.parsing.types import ParsedDocument
+    from deeptutor.services.rag.pipelines.llamaindex.document_loader import (
+        LlamaIndexDocumentLoader,
+    )
+
+    pdf_path = tmp_path / "workbook.pdf"
+    pdf_path.write_bytes(b"stub")
+    _install_stub_parse_service(
+        monkeypatch,
+        {
+            "workbook.pdf": ParsedDocument(
+                markdown="Complete document markdown",
+                blocks=[
+                    {"type": "text", "text": "Question on page one", "page_idx": 0},
+                    {"type": "header", "text": "Repeated header", "page_idx": 1},
+                    {
+                        "type": "equation",
+                        "text": "$$\\frac{1}{2}+\\frac{1}{3}$$",
+                        "page_idx": 1,
+                    },
+                    {
+                        "type": "table",
+                        "table_caption": ["Answer key"],
+                        "table_body": "<table><tr><td>Answer</td><td>12</td></tr></table>",
+                        "table_footnote": ["Check the source scan."],
+                        "page_idx": 1,
+                    },
+                    {
+                        "type": "image",
+                        "img_path": "images/figure-1.png",
+                        "image_caption": ["Question 17 diagram"],
+                        "image_footnote": ["Not drawn to scale."],
+                        "page_idx": 1,
+                    },
+                    {
+                        "type": "table",
+                        "table_body": "",
+                        "img_path": "images/visual-table.png",
+                        "page_idx": 1,
+                    },
+                ],
+            )
+        },
+    )
+
+    documents = asyncio.run(LlamaIndexDocumentLoader().load([str(pdf_path)]))
+
+    assert [doc.metadata["page_label"] for doc in documents] == ["1", "2"]
+    assert [doc.metadata["page"] for doc in documents] == ["1", "2"]
+    assert all(doc.metadata["file_name"] == "workbook.pdf" for doc in documents)
+    assert documents[0].text == "Question on page one"
+    assert "$$\\frac{1}{2}+\\frac{1}{3}$$" in documents[1].text
+    assert "Answer key" in documents[1].text
+    assert "<td>Answer</td><td>12</td>" in documents[1].text
+    assert "Check the source scan." in documents[1].text
+    assert "[Image on source page: figure-1.png]" in documents[1].text
+    assert "Question 17 diagram" in documents[1].text
+    assert "Not drawn to scale." in documents[1].text
+    assert "[Table image on source page: visual-table.png]" in documents[1].text
+    assert all("Repeated header" not in doc.text for doc in documents)
+
+
+def test_loader_keeps_page_image_paths_in_text_document_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("llama_index.core")
+    from deeptutor.services.parsing.types import ParsedDocument
+    from deeptutor.services.rag.pipelines.llamaindex import document_loader as loader_module
+
+    pdf_path = tmp_path / "geometry.pdf"
+    pdf_path.write_bytes(b"stub")
+    asset_dir = tmp_path / "assets"
+    asset_dir.mkdir()
+    figure_path = asset_dir / "figure-1.png"
+    figure_path.write_bytes(b"\x89PNG\r\n")
+
+    _install_stub_parse_service(
+        monkeypatch,
+        {
+            "geometry.pdf": ParsedDocument(
+                markdown="Geometry page",
+                asset_dir=asset_dir,
+                blocks=[
+                    {
+                        "type": "image",
+                        "img_path": "images/figure-1.png",
+                        "page_idx": 0,
+                    }
+                ],
+            )
+        },
+    )
+
+    async def _skip_image_nodes(self, _sources):
+        return []
+
+    monkeypatch.setattr(loader_module.LlamaIndexDocumentLoader, "_load_image_nodes", _skip_image_nodes)
+    documents = asyncio.run(loader_module.LlamaIndexDocumentLoader().load([str(pdf_path)]))
+
+    assert len(documents) == 1
+    assert documents[0].metadata["page_label"] == "1"
+    assert documents[0].metadata["image_paths"] == [str(figure_path.resolve())]
+
+
 def test_loader_skips_document_when_active_engine_cannot_parse(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

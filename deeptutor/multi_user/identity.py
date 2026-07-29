@@ -5,9 +5,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import logging
+import os
 from pathlib import Path
 import secrets
 import threading
+import tempfile
 from typing import Any
 from uuid import uuid4
 
@@ -52,6 +54,9 @@ def _canonical_record(
             "created_at": utc_now(),
             "disabled": False,
             "avatar": "",
+            # Existing records are trusted legacy accounts. New public
+            # registrations are only written after email verification.
+            "email_verified": True,
         }
     if not isinstance(value, dict):
         return None
@@ -68,6 +73,7 @@ def _canonical_record(
         "created_at": str(value.get("created_at") or utc_now()),
         "disabled": bool(value.get("disabled", False)),
         "avatar": str(value.get("avatar") or ""),
+        "email_verified": bool(value.get("email_verified", True)),
     }
 
 
@@ -82,7 +88,21 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _write_users(users: dict[str, dict[str, Any]]) -> None:
     USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    USERS_FILE.write_text(json.dumps(users, indent=2, ensure_ascii=False), encoding="utf-8")
+    # A truncated users.json can lock every account out after a crash. Write
+    # and fsync a sibling temp file, then atomically replace the live store.
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{USERS_FILE.name}.", suffix=".tmp", dir=USERS_FILE.parent
+    )
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(users, handle, indent=2, ensure_ascii=False)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, USERS_FILE)
+    finally:
+        temp_path.unlink(missing_ok=True)
 
 
 def _migrate_legacy_users() -> dict[str, dict[str, Any]] | None:
@@ -184,6 +204,7 @@ def save_user(username: str, hashed_password: str, role: Role = "user") -> dict[
             "created_at": str(existing.get("created_at") or utc_now()),
             "disabled": bool(existing.get("disabled", False)),
             "avatar": str(existing.get("avatar") or ""),
+            "email_verified": True,
         }
         users[username] = record
         _write_users(users)
@@ -202,6 +223,7 @@ def list_user_info(  # nosec B107 - empty defaults mean "no env fallback supplie
             "created_at": record.get("created_at", ""),
             "disabled": bool(record.get("disabled", False)),
             "avatar": str(record.get("avatar") or ""),
+            "email_verified": bool(record.get("email_verified", True)),
         }
         for username, record in load_users(env_username, env_password_hash).items()
     ]
@@ -219,14 +241,15 @@ def get_user_by_id(user_id: str) -> tuple[str, dict[str, Any]] | None:
 
 
 def delete_user(username: str) -> bool:
-    if not USERS_FILE.exists():
-        return False
-    users = load_users()
-    if username not in users:
-        return False
-    users.pop(username, None)
-    _write_users(users)
-    return True
+    with _USERS_WRITE_LOCK:
+        if not USERS_FILE.exists():
+            return False
+        users = load_users()
+        if username not in users:
+            return False
+        users.pop(username, None)
+        _write_users(users)
+        return True
 
 
 def set_avatar(username: str, avatar: str) -> bool:
@@ -292,12 +315,45 @@ def set_role(username: str, role: Role) -> bool:
         raise ValueError("role must be 'admin' or 'user'")
     if not USERS_FILE.exists():
         return False
-    users = load_users()
-    if username not in users:
-        return False
-    users[username]["role"] = role
-    _write_users(users)
-    return True
+    with _USERS_WRITE_LOCK:
+        users = load_users()
+        if username not in users:
+            return False
+        users[username]["role"] = role
+        _write_users(users)
+        return True
+
+
+def create_user_if_absent(
+    username: str,
+    hashed_password: str,
+    *,
+    role: Role = "user",
+    email_verified: bool = True,
+) -> tuple[bool, dict[str, Any]]:
+    """Create a user exactly once and return ``(created, record)``.
+
+    The first successful account is promoted to admin under the same lock as
+    the uniqueness check. This is the commit point used by email verification.
+    """
+    with _USERS_WRITE_LOCK:
+        users = load_users()
+        existing = users.get(username)
+        if existing is not None:
+            return False, existing
+        effective_role: Role = "admin" if not users else role
+        record = {
+            "id": new_user_id(),
+            "hash": hashed_password,
+            "role": effective_role,
+            "created_at": utc_now(),
+            "disabled": False,
+            "avatar": "",
+            "email_verified": bool(email_verified),
+        }
+        users[username] = record
+        _write_users(users)
+        return True, record
 
 
 def load_or_create_auth_secret() -> str:

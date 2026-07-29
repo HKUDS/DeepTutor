@@ -11,6 +11,7 @@ import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
 import json
+import math
 from types import SimpleNamespace
 from typing import Any
 
@@ -23,6 +24,10 @@ from deeptutor.services.llm.reasoning_params import (
     build_openai_compatible_reasoning_kwargs,
 )
 from deeptutor.services.provider_registry import find_by_name
+from deeptutor.services.llm.exceptions import (
+    LLMProviderError,
+    LLMRateLimitError,
+)
 
 # Providers that don't reliably support OpenAI function-calling. The loop
 # still runs without tool schemas — the model just produces prose.
@@ -60,25 +65,211 @@ def build_openai_client(config: LLMClientConfig) -> Any:
     if spec:
         native_adapter = _build_native_provider_adapter(config, spec)
         if native_adapter is not None:
-            return native_adapter
+            return _wrap_token_quota(native_adapter)
 
     http_client = None
     if load_system_settings()["disable_ssl_verify"]:
         http_client = httpx.AsyncClient(verify=False)  # nosec B501
     if config.binding == "azure_openai" or (config.binding == "openai" and config.api_version):
-        return AsyncAzureOpenAI(
+        client = AsyncAzureOpenAI(
             api_key=config.api_key or "sk-no-key-required",
             azure_endpoint=config.base_url,
             api_version=config.api_version,
             http_client=http_client,
             default_headers=default_headers,
         )
-    return AsyncOpenAI(
-        api_key=config.api_key or "sk-no-key-required",
-        base_url=config.base_url or None,
-        http_client=http_client,
-        default_headers=default_headers,
+        return _wrap_token_quota(client)
+    return _wrap_token_quota(
+        AsyncOpenAI(
+            api_key=config.api_key or "sk-no-key-required",
+            base_url=config.base_url or None,
+            http_client=http_client,
+            default_headers=default_headers,
+        )
     )
+
+
+def _estimate_tokens(value: Any) -> int:
+    """Conservative, provider-neutral estimate used for pre-call reservation."""
+    try:
+        serialized = json.dumps(value, ensure_ascii=False, default=str, separators=(",", ":"))
+    except (TypeError, ValueError):
+        serialized = str(value)
+    return max(1, math.ceil(len(serialized) / 3.5))
+
+
+def _request_token_estimate(kwargs: dict[str, Any]) -> tuple[int, int, int]:
+    prompt_tokens = _estimate_tokens(
+        {
+            "messages": kwargs.get("messages") or [],
+            "tools": kwargs.get("tools") or [],
+        }
+    )
+    raw_output = kwargs.get("max_completion_tokens", kwargs.get("max_tokens", 4096))
+    try:
+        output_tokens = max(1, int(raw_output or 4096))
+    except (TypeError, ValueError):
+        output_tokens = 4096
+    return prompt_tokens + output_tokens, prompt_tokens, output_tokens
+
+
+def _usage_total(value: Any) -> int:
+    usage = value
+    if usage is None:
+        return 0
+    if isinstance(usage, dict):
+        try:
+            return max(0, int(usage.get("total_tokens") or 0))
+        except (TypeError, ValueError):
+            return 0
+    try:
+        return max(0, int(getattr(usage, "total_tokens", 0) or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _stream_chunk_text(chunk: Any) -> str:
+    choices = getattr(chunk, "choices", None) or []
+    if not choices:
+        return ""
+    delta = getattr(choices[0], "delta", None)
+    return str(getattr(delta, "content", "") or "") if delta is not None else ""
+
+
+def _wrap_token_quota(client: Any) -> Any:
+    """Wrap every generated client so all capability calls share one gate."""
+    from deeptutor.multi_user.token_quota import current_user_quota_policy
+
+    # Preserve the native SDK/adapter shape for the single-user and admin
+    # paths. Only a bounded non-admin grant needs the interception layer.
+    if current_user_quota_policy() is None:
+        return client
+    return _TokenQuotaClient(client)
+
+
+class _TokenQuotaClient:
+    def __init__(self, client: Any) -> None:
+        self._client = client
+        self.chat = SimpleNamespace(
+            completions=_TokenQuotaCompletions(client.chat.completions),
+        )
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._client, name)
+
+
+class _TokenQuotaCompletions:
+    def __init__(self, completions: Any) -> None:
+        self._completions = completions
+
+    async def create(self, **kwargs: Any) -> Any:
+        from deeptutor.multi_user.token_quota import (
+            TokenQuotaExceeded,
+            TokenQuotaUnavailable,
+            reserve_current_user_tokens,
+        )
+
+        requested, prompt_estimate, output_estimate = _request_token_estimate(kwargs)
+        try:
+            lease = reserve_current_user_tokens(
+                requested_tokens=requested,
+                prompt_tokens_estimate=prompt_estimate,
+                output_tokens_estimate=output_estimate,
+            )
+        except TokenQuotaExceeded as exc:
+            raise LLMRateLimitError(str(exc), provider="deeptutor") from exc
+        except TokenQuotaUnavailable as exc:
+            raise LLMProviderError(str(exc), provider="deeptutor") from exc
+
+        try:
+            response = await self._completions.create(**kwargs)
+        except BaseException:
+            if lease is not None:
+                lease.release()
+            raise
+
+        if not kwargs.get("stream"):
+            if lease is not None:
+                actual = _usage_total(getattr(response, "usage", None))
+                if actual <= 0:
+                    # Providers that omit usage are charged the reservation
+                    # upper bound; otherwise a user could bypass quota by
+                    # selecting a backend that does not report token counts.
+                    actual = requested
+                lease.finalize(actual)
+            return response
+        if lease is None:
+            return response
+        return _TokenQuotaStream(
+            response,
+            lease=lease,
+            requested_tokens=requested,
+            prompt_estimate=prompt_estimate,
+            output_estimate=output_estimate,
+        )
+
+
+class _TokenQuotaStream:
+    def __init__(
+        self,
+        stream: Any,
+        *,
+        lease: Any,
+        requested_tokens: int,
+        prompt_estimate: int,
+        output_estimate: int,
+    ) -> None:
+        self._stream = stream
+        self._lease = lease
+        self._requested_tokens = requested_tokens
+        self._prompt_estimate = prompt_estimate
+        self._output_estimate = output_estimate
+        self._usage_total = 0
+        self._output_chars = 0
+        self._finalized = False
+
+    def __aiter__(self) -> "_TokenQuotaStream":
+        return self
+
+    async def __anext__(self) -> Any:
+        try:
+            chunk = await self._stream.__anext__()
+        except StopAsyncIteration:
+            self._finalize()
+            raise
+        except BaseException:
+            self._finalize()
+            raise
+        self._usage_total = max(self._usage_total, _usage_total(getattr(chunk, "usage", None)))
+        self._output_chars += len(_stream_chunk_text(chunk))
+        return chunk
+
+    def _finalize(self) -> None:
+        if self._finalized:
+            return
+        self._finalized = True
+        actual = self._usage_total
+        if actual <= 0:
+            estimated_output = max(
+                math.ceil(self._output_chars / 3.5),
+                min(self._output_estimate, 256) if self._output_chars else 0,
+            )
+            actual = max(self._requested_tokens, self._prompt_estimate + estimated_output)
+        self._lease.finalize(actual)
+
+    async def close(self) -> None:
+        self._finalize()
+        close = getattr(self._stream, "close", None)
+        if callable(close):
+            result = close()
+            if hasattr(result, "__await__"):
+                await result
+            return
+        aclose = getattr(self._stream, "aclose", None)
+        if callable(aclose):
+            result = aclose()
+            if hasattr(result, "__await__"):
+                await result
 
 
 def _build_anthropic_adapter(config: LLMClientConfig, spec: Any) -> Any:

@@ -80,6 +80,16 @@ services:
       # this unset: the app degrades to bwrap (Linux, if installed) or, only when
       # DEEPTUTOR_SANDBOX_ALLOW_SUBPROCESS=1, a restricted subprocess.
       - DEEPTUTOR_SANDBOX_RUNNER_URL=http://sandbox-runner:8900
+      # SMTP is passed through from a deployment-only env file for public
+      # email registration. Empty values keep local single-user runs inert.
+      - DEEPTUTOR_SMTP_HOST=${DEEPTUTOR_SMTP_HOST:-}
+      - DEEPTUTOR_SMTP_PORT=${DEEPTUTOR_SMTP_PORT:-587}
+      - DEEPTUTOR_SMTP_USERNAME=${DEEPTUTOR_SMTP_USERNAME:-}
+      - DEEPTUTOR_SMTP_PASSWORD=${DEEPTUTOR_SMTP_PASSWORD:-}
+      - DEEPTUTOR_SMTP_FROM=${DEEPTUTOR_SMTP_FROM:-}
+      - DEEPTUTOR_SMTP_USE_TLS=${DEEPTUTOR_SMTP_USE_TLS:-true}
+      - DEEPTUTOR_SMTP_USE_SSL=${DEEPTUTOR_SMTP_USE_SSL:-false}
+      - DEEPTUTOR_SMTP_TIMEOUT_SECONDS=${DEEPTUTOR_SMTP_TIMEOUT_SECONDS:-10}
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${DEEPTUTOR_DOCKER_BACKEND_PORT:-8001}/"]
@@ -115,19 +125,13 @@ services:
     container_name: deeptutor-sandbox-runner
     restart: unless-stopped
 
-    # Share the task workspaces at the SAME paths as the main app so the mount
-    # contract holds: a request with host_path == sandbox_path under
-    # /app/data/user/workspace (admin) or /app/data/users/<uid> (per-user)
-    # is already visible here, no per-command mounting needed.
-    # Scope note: every command in this container shares one filesystem view
-    # (per-command isolation is a roadmap item), so the mounts are kept as
-    # narrow as the exec feature allows — workspace subtrees only. Secrets
-    # (data/system, data/user/settings) never enter this container; the
-    # residual exposure is cross-user visibility *between user workspaces*,
-    # acceptable for the invite-only trust posture and enforced no further.
+    # Share only the admin task workspace at the SAME path as the main app.
+    # The runner is a shared process namespace; mounting ./data/users here
+    # would let one shell enumerate another user's workspace even when its
+    # workdir is scoped correctly. Non-admin exec is therefore fail-closed by
+    # default until a per-user runner isolation implementation is deployed.
     volumes:
       - ./data/user/workspace:/app/data/user/workspace
-      - ./data/users:/app/data/users
 
     # No `ports:` — intentionally not published to the host.
 

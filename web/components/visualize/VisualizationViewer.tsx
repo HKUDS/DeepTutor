@@ -111,14 +111,9 @@ function HtmlRenderer({ html }: { html: string }) {
   const { t } = useTranslation();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(560);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const prepared = useMemo(() => prepareIframeHtml(html || ""), [html]);
-
-  useEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-    iframe.srcdoc = prepared;
-  }, [prepared]);
 
   // Listen for the iframe bridge: a sendPrompt() call (mirror into the composer
   // via the shared window event) or a height report (grow to fit, no clipping).
@@ -174,12 +169,24 @@ function HtmlRenderer({ html }: { html: string }) {
         {t("Open")}
       </button>
       <iframe
+        key={prepared}
         ref={iframeRef}
         title={t("HTML visualization")}
         sandbox="allow-scripts"
         className="w-full rounded-lg border border-[var(--border)] bg-[var(--card)]"
         style={{ minHeight: 320, height }}
+        srcDoc={prepared}
+        onLoad={() => {
+          setLoadError(null);
+          setHeight(560);
+        }}
+        onError={() => setLoadError(t("Failed to load visualization"))}
       />
+      {loadError && (
+        <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-600 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-400">
+          {loadError}
+        </div>
+      )}
     </div>
   );
 }

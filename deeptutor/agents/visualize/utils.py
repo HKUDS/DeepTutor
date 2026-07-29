@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 
 import defusedxml.ElementTree as ET
 
@@ -55,6 +57,33 @@ def is_valid_html_document(html: str) -> bool:
         return False
     lowered = html.lower()
     return "<html" in lowered or "<!doctype" in lowered or "<body" in lowered or "<div" in lowered
+
+
+def _validate_inline_javascript(html: str) -> tuple[bool, str]:
+    """Catch syntax errors that otherwise leave an HTML visualization blank."""
+    node = shutil.which("node")
+    if not node:
+        return True, ""
+
+    scripts = re.findall(r"<script(?:\s[^>]*)?>([\s\S]*?)</script>", html, re.IGNORECASE)
+    for script in scripts:
+        if not script.strip():
+            continue
+        try:
+            result = subprocess.run(
+                [node, "--check"],
+                input=script,
+                text=True,
+                capture_output=True,
+                timeout=3,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return True, ""
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "JavaScript syntax error").strip()
+            return False, f"Inline JavaScript syntax error: {detail[-500:]}"
+    return True, ""
 
 
 def build_fallback_html(*, title: str, summary: str = "", note: str = "") -> str:
@@ -175,7 +204,7 @@ def validate_visualization(code: str, render_type: str) -> tuple[bool, str]:
 
     if render_type == "html":
         if is_valid_html_document(text):
-            return True, ""
+            return _validate_inline_javascript(text)
         return False, "Output does not look like a renderable HTML document."
 
     # Unknown render types are not gated.

@@ -141,6 +141,7 @@ rules_html: |
   for an interactive explainer, stepper, mockup, or clickable demo.
   - Include everything from `<!DOCTYPE html>` to `</html>`. Put CSS in `<style>`
     and JavaScript in `<script>`.
+  - Prefer double-quoted strings or template literals in JavaScript. If text contains an apostrophe (for example the geometry notation `A'B`), do not place it inside a single-quoted string, or the whole demo script may fail before rendering.
   - Renders inside a sandboxed iframe (null origin). You MAY load libraries from
     these CDNs only — cdn.jsdelivr.net, cdnjs.cloudflare.com, unpkg.com — anything
     else is blocked. KaTeX is auto-injected (`$...$` / `$$...$$`). Good picks:

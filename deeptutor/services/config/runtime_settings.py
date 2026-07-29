@@ -28,6 +28,11 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, Any] = {
     # deployment shapes; a stronger backend (runner sidecar / bwrap) still
     # takes precedence when available. Set false to disable host-side exec.
     "sandbox_allow_subprocess": True,
+    # Public/non-admin users stay fail-closed until the runner provides
+    # per-user filesystem isolation. The stock Docker Compose runner only
+    # mounts the admin workspace, so enabling this requires an explicit,
+    # deployment-specific isolation review.
+    "sandbox_allow_untrusted_users": False,
     # Chat attachment policy. Size caps gate what the composer accepts and
     # what the turn runtime / partner upload endpoints extract; the char
     # budgets bound how much extracted text is inlined into the LLM context
@@ -55,6 +60,16 @@ DEFAULT_AUTH_SETTINGS: dict[str, Any] = {
     "password_hash": "",
     "token_expire_hours": 24,
     "cookie_secure": False,
+    # Public self-registration is protected by email verification. It remains
+    # fail-closed when SMTP is not configured, so enabling auth alone never
+    # creates an account-creation path that cannot verify ownership.
+    "self_registration_enabled": True,
+    "email_verification_required": True,
+    "verification_code_ttl_minutes": 10,
+    "verification_resend_cooldown_seconds": 60,
+    "verification_max_attempts": 5,
+    "verification_max_per_email_hour": 5,
+    "verification_max_per_ip_hour": 30,
 }
 
 DEFAULT_INTEGRATIONS_SETTINGS: dict[str, Any] = {
@@ -512,11 +527,33 @@ class RuntimeSettingsService:
             "DISABLE_SSL_VERIFY": _bool_env(system["disable_ssl_verify"]),
             "CHAT_ATTACHMENT_DIR": system["chat_attachment_dir"],
             "DEEPTUTOR_SANDBOX_ALLOW_SUBPROCESS": _bool_env(system["sandbox_allow_subprocess"]),
+            "DEEPTUTOR_SANDBOX_ALLOW_UNTRUSTED_USERS": _bool_env(
+                system["sandbox_allow_untrusted_users"]
+            ),
             "AUTH_ENABLED": _bool_env(auth["enabled"]),
             "AUTH_USERNAME": auth["username"],
             "AUTH_PASSWORD_HASH": auth["password_hash"],
             "AUTH_TOKEN_EXPIRE_HOURS": str(auth["token_expire_hours"]),
             "AUTH_COOKIE_SECURE": _bool_env(auth["cookie_secure"]),
+            "DEEPTUTOR_SELF_REGISTRATION_ENABLED": _bool_env(
+                auth["self_registration_enabled"]
+            ),
+            "DEEPTUTOR_EMAIL_VERIFICATION_REQUIRED": _bool_env(
+                auth["email_verification_required"]
+            ),
+            "DEEPTUTOR_VERIFICATION_CODE_TTL_MINUTES": str(
+                auth["verification_code_ttl_minutes"]
+            ),
+            "DEEPTUTOR_VERIFICATION_RESEND_COOLDOWN_SECONDS": str(
+                auth["verification_resend_cooldown_seconds"]
+            ),
+            "DEEPTUTOR_VERIFICATION_MAX_ATTEMPTS": str(auth["verification_max_attempts"]),
+            "DEEPTUTOR_VERIFICATION_MAX_PER_EMAIL_HOUR": str(
+                auth["verification_max_per_email_hour"]
+            ),
+            "DEEPTUTOR_VERIFICATION_MAX_PER_IP_HOUR": str(
+                auth["verification_max_per_ip_hour"]
+            ),
             "NEXT_PUBLIC_AUTH_ENABLED": _bool_env(auth["enabled"]),
             # Consumed server-side by the Next.js middleware (web/proxy.ts) at
             # request time — NOT inlined into the browser bundle. The proxy
@@ -625,6 +662,8 @@ class RuntimeSettingsService:
             payload["chat_attachment_dir"] = value
         if value := self._process_env_value("DEEPTUTOR_SANDBOX_ALLOW_SUBPROCESS"):
             payload["sandbox_allow_subprocess"] = value
+        if value := self._process_env_value("DEEPTUTOR_SANDBOX_ALLOW_UNTRUSTED_USERS"):
+            payload["sandbox_allow_untrusted_users"] = value
         if value := self._process_env_value("CHAT_ATTACHMENT_MAX_FILE_MB"):
             payload["chat_attachment_max_file_mb"] = value
         if value := self._process_env_value("CHAT_ATTACHMENT_MAX_TOTAL_MB"):
@@ -650,6 +689,20 @@ class RuntimeSettingsService:
             payload["token_expire_hours"] = value
         if value := self._process_env_value("AUTH_COOKIE_SECURE"):
             payload["cookie_secure"] = value
+        if value := self._process_env_value("DEEPTUTOR_SELF_REGISTRATION_ENABLED"):
+            payload["self_registration_enabled"] = value
+        if value := self._process_env_value("DEEPTUTOR_EMAIL_VERIFICATION_REQUIRED"):
+            payload["email_verification_required"] = value
+        if value := self._process_env_value("DEEPTUTOR_VERIFICATION_CODE_TTL_MINUTES"):
+            payload["verification_code_ttl_minutes"] = value
+        if value := self._process_env_value("DEEPTUTOR_VERIFICATION_RESEND_COOLDOWN_SECONDS"):
+            payload["verification_resend_cooldown_seconds"] = value
+        if value := self._process_env_value("DEEPTUTOR_VERIFICATION_MAX_ATTEMPTS"):
+            payload["verification_max_attempts"] = value
+        if value := self._process_env_value("DEEPTUTOR_VERIFICATION_MAX_PER_EMAIL_HOUR"):
+            payload["verification_max_per_email_hour"] = value
+        if value := self._process_env_value("DEEPTUTOR_VERIFICATION_MAX_PER_IP_HOUR"):
+            payload["verification_max_per_ip_hour"] = value
         return self._normalize_auth(payload)
 
     def _apply_integrations_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
@@ -892,6 +945,9 @@ class RuntimeSettingsService:
             "sandbox_allow_subprocess": _coerce_bool(
                 settings.get("sandbox_allow_subprocess"), True
             ),
+            "sandbox_allow_untrusted_users": _coerce_bool(
+                settings.get("sandbox_allow_untrusted_users"), False
+            ),
             "chat_attachment_max_file_mb": max_file_mb,
             "chat_attachment_max_total_mb": max_total_mb,
             "chat_attachment_max_chars_per_doc": _coerce_clamped_int(
@@ -914,6 +970,36 @@ class RuntimeSettingsService:
             "password_hash": _string(settings.get("password_hash")),
             "token_expire_hours": max(1, _coerce_int(settings.get("token_expire_hours"), 24)),
             "cookie_secure": _coerce_bool(settings.get("cookie_secure"), False),
+            "self_registration_enabled": _coerce_bool(
+                settings.get("self_registration_enabled"), True
+            ),
+            "email_verification_required": _coerce_bool(
+                settings.get("email_verification_required"), True
+            ),
+            "verification_code_ttl_minutes": max(
+                5, min(60, _coerce_int(settings.get("verification_code_ttl_minutes"), 10))
+            ),
+            "verification_resend_cooldown_seconds": max(
+                30,
+                min(
+                    3600,
+                    _coerce_int(settings.get("verification_resend_cooldown_seconds"), 60),
+                ),
+            ),
+            "verification_max_attempts": max(
+                3, min(10, _coerce_int(settings.get("verification_max_attempts"), 5))
+            ),
+            "verification_max_per_email_hour": max(
+                1,
+                min(
+                    50,
+                    _coerce_int(settings.get("verification_max_per_email_hour"), 5),
+                ),
+            ),
+            "verification_max_per_ip_hour": max(
+                5,
+                min(200, _coerce_int(settings.get("verification_max_per_ip_hour"), 30)),
+            ),
         }
 
     def _normalize_integrations(self, settings: dict[str, Any]) -> dict[str, Any]:

@@ -89,9 +89,9 @@ WORKDIR /app
 # not resolve. Direct-file execution is the simple, dependency-free choice.
 COPY deeptutor/services/sandbox/runner/server.py /app/server.py
 
-# The workspace shared with the main app is mounted here at runtime by
-# docker-compose (./data/user:/app/data/user), at the *same* path in both
-# containers so the mount contract (host_path == sandbox_path) holds.
+# The admin task workspace is mounted here at runtime by docker-compose at the
+# same path in both containers. Per-user workspaces are intentionally absent;
+# this image is a shared runner namespace, not a per-user isolation boundary.
 
 ENV RUNNER_PORT=8900 \
     PYTHONUNBUFFERED=1

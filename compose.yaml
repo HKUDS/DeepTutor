@@ -158,6 +158,16 @@ services:
     environment:
       # Time zone — picked up by Python (time.tzset) and Next.js at boot.
       - TZ=${TZ:-UTC}
+      # SMTP values come from a deployment-only env file; empty defaults keep
+      # local single-user runs inert.
+      - DEEPTUTOR_SMTP_HOST=${DEEPTUTOR_SMTP_HOST:-}
+      - DEEPTUTOR_SMTP_PORT=${DEEPTUTOR_SMTP_PORT:-587}
+      - DEEPTUTOR_SMTP_USERNAME=${DEEPTUTOR_SMTP_USERNAME:-}
+      - DEEPTUTOR_SMTP_PASSWORD=${DEEPTUTOR_SMTP_PASSWORD:-}
+      - DEEPTUTOR_SMTP_FROM=${DEEPTUTOR_SMTP_FROM:-}
+      - DEEPTUTOR_SMTP_USE_TLS=${DEEPTUTOR_SMTP_USE_TLS:-true}
+      - DEEPTUTOR_SMTP_USE_SSL=${DEEPTUTOR_SMTP_USE_SSL:-false}
+      - DEEPTUTOR_SMTP_TIMEOUT_SECONDS=${DEEPTUTOR_SMTP_TIMEOUT_SECONDS:-10}
       # Local LLM (LM Studio / Ollama / vLLM) base URLs in
       # data/user/settings/model_catalog.json should use
       # `http://host.containers.internal:PORT` (podman) — NOT localhost,

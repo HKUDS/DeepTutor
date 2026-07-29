@@ -402,21 +402,25 @@ The local `deeptutor-cli` install ships no Web assets or server dependencies. Ke
 The built-in office skills — **docx / pdf / pptx / xlsx** — work by having the
 model write a short Python script (`python-docx`, `reportlab`, `openpyxl`, …),
 run it through the `exec` / `code_execution` tools, and hand back a download URL.
-Those tools mount whenever a sandbox backend is active, which it is **by default**
-in every deployment shape:
+Those tools mount only when the current account and deployment sandbox policy
+allow them:
 
 - **Local (Option 1 / 2) and Docker (Option 3, single container):** a restricted
   subprocess sandbox runs the model's code (on the host locally, or inside the
   container under Docker — the container being its own isolation boundary).
-- **docker-compose:** routed instead to a hardened, least-privileged **runner
-  sidecar** (`Dockerfile.runner`) via `DEEPTUTOR_SANDBOX_RUNNER_URL` — the
-  strongest posture, and preferred automatically when present.
+- **docker-compose:** admin execution is routed to a hardened,
+  least-privileged **runner sidecar** (`Dockerfile.runner`) via
+  `DEEPTUTOR_SANDBOX_RUNNER_URL`. Non-admin execution stays disabled by
+  default because this shared runner is not a per-user filesystem boundary.
 
 The subprocess sandbox is controlled by the `sandbox_allow_subprocess` setting in
 `data/user/settings/system.json` (default `true`). Running model-generated code
 on your host is a real trust decision — set it to `false` (or export
 `DEEPTUTOR_SANDBOX_ALLOW_SUBPROCESS=0`) to disable host-side execution, at the
-cost of the office skills no longer being able to produce files.
+cost of the office skills no longer being able to produce files. For a
+multi-user public deployment also leave
+`sandbox_allow_untrusted_users=false`; setting it to `true` requires a runner
+with per-user filesystem isolation, not only a workdir allowlist.
 
 </details>
 
@@ -658,9 +662,64 @@ data/
 └── system/                  # auth/users.json · grants/<uid>.json · audit/usage.jsonl
 ```
 
-The **first registered user becomes admin** and owns model catalogs, provider credentials, shared knowledge bases, skills, and per-user grants. Everyone else gets an isolated workspace and a redacted Settings page — admin-assigned models, KBs, and skills show up as scoped, read-only options, never as raw API keys.
+The **first email-verified user becomes admin** and owns model catalogs, provider credentials, shared knowledge bases, skills, and per-user grants. Everyone else gets an isolated workspace and a redacted Settings page — admin-assigned models, KBs, and skills show up as scoped, read-only options, never as raw API keys.
 
-**Enable it:** turn auth on in `data/user/settings/auth.json`, restart `deeptutor start`, register the first admin at `/register`, then add users from `/admin/users` and assign models, KBs, skills, partners, tool/MCP policy, and code-execution access through grants.
+**Enable it:** turn auth on in `data/user/settings/auth.json`, configure SMTP on the deployment host, restart `deeptutor start`, then register at `/register`. The browser requests a 6-digit email code; only a verified address gets an account and session. The first verified account becomes admin. Admins can then add trusted accounts from `/admin/users` and assign models, KBs, skills, partners, tool/MCP policy, and token quotas through grants.
+
+The built-in registration flow uses standard SMTP and never stores the plaintext
+verification code. Set these deployment environment variables (prefer a secret
+manager or an environment file outside the repository):
+
+```dotenv
+DEEPTUTOR_SMTP_HOST=smtp.example.com
+DEEPTUTOR_SMTP_PORT=587
+DEEPTUTOR_SMTP_USERNAME=mailer@example.com
+DEEPTUTOR_SMTP_PASSWORD=<smtp-password>
+DEEPTUTOR_SMTP_FROM=DeepTutor <mailer@example.com>
+DEEPTUTOR_SMTP_USE_TLS=true
+DEEPTUTOR_SMTP_USE_SSL=false
+DEEPTUTOR_SMTP_TIMEOUT_SECONDS=10
+```
+
+`DEEPTUTOR_SELF_REGISTRATION_ENABLED=true` is the default when auth is enabled.
+Without a complete SMTP configuration, the public registration endpoint fails
+closed. Codes expire after 10 minutes, allow 5 attempts, and are rate-limited
+per email and client IP. Existing local accounts remain usable after upgrading.
+
+Each non-admin grant defaults to `100,000` LLM tokens per day and `1,000,000`
+per month. The quota is reserved atomically before every LLM call and
+reconciled from provider usage afterward; the ledger lives at
+`data/system/usage.sqlite3`. An admin can change either limit in
+`/admin/users`; `0` means unlimited for that period. Provider dollars are not
+silently treated as tokens: for a lightweight upstream usage/budget layer,
+put [LiteLLM Proxy](https://docs.litellm.ai/docs/proxy/users) in front of the
+configured model endpoint. LiteLLM provides virtual keys, spend tracking,
+budgets, and TPM/RPM controls; its persistent key/budget store uses Postgres.
+DeepTutor does not require InsForge — a managed Postgres such as InsForge,
+Supabase, or Neon is optional infrastructure for LiteLLM, not an application
+security dependency.
+
+For public or otherwise untrusted users, code execution is fail-closed by
+default. Keep `sandbox_allow_untrusted_users` false unless the deployment has
+per-user runner isolation; the stock Docker Compose runner mounts only the
+admin task workspace and never mounts the whole `data/users` tree.
+
+To add persistent LiteLLM virtual keys, USD budgets, and spend tracking, use the
+optional `docker-compose.litellm.yml` overlay with a managed PostgreSQL URL:
+
+```bash
+docker compose --env-file /secure/deeptutor/litellm.env \
+  -f docker-compose.yml -f docker-compose.litellm.yml \
+  --profile litellm up -d
+```
+
+The deployment env must provide `LITELLM_DATABASE_URL`, `LITELLM_MASTER_KEY`,
+`UPSTREAM_MODEL`, `UPSTREAM_BASE_URL`, and `UPSTREAM_API_KEY`. The LiteLLM
+service is internal-only; point DeepTutor's admin LLM profile at
+`http://litellm:4000/v1`, use model `deeptutor-default`, and use a LiteLLM
+virtual key. Keep DeepTutor's exact token quota as the hard user limit; LiteLLM
+is the upstream USD budget/spend layer. See `ops/litellm/config.yaml` for the
+secret-free gateway configuration.
 
 > PocketBase stays a single-user integration — keep `integrations.pocketbase_url` blank for multi-user deployments unless you've wired up an external user store.
 

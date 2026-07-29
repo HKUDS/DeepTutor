@@ -48,6 +48,7 @@ def test_normalize_migrates_v1_to_v2():
     assert grant["enabled_tools"] is None
     assert grant["mcp_tools"] is None
     assert grant["exec_enabled"] is None
+    assert grant["token_quota"] == {"daily_tokens": 100_000, "monthly_tokens": 1_000_000}
 
 
 def test_normalize_tool_lists_and_exec():
@@ -64,6 +65,14 @@ def test_normalize_tool_lists_and_exec():
     assert grant["exec_enabled"] is False
     # Non-bool exec values fall back to "follow policy".
     assert normalize_grant("u_alice", {"exec_enabled": "yes"})["exec_enabled"] is None
+
+
+def test_normalize_token_quota_clamps_invalid_values():
+    grant = normalize_grant(
+        "u_alice",
+        {"token_quota": {"daily_tokens": -1, "monthly_tokens": "250000"}},
+    )
+    assert grant["token_quota"] == {"daily_tokens": 0, "monthly_tokens": 250_000}
 
 
 def test_admin_is_never_restricted(as_user):

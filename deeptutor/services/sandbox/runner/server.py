@@ -40,13 +40,12 @@ Wire contract (must match ``RunnerSidecarBackend``):
 
 Mounts note:
   This server does **not** perform any mounting. The runner container shares
-  the task-workspace subtrees with the main app at the *same* paths
-  (``/app/data/user/workspace`` for the admin scope, ``/app/data/users`` for
-  per-user scopes — via docker-compose). So when ``host_path == sandbox_path``
-  the directory is already visible here and no action is needed. We only
-  read/record the ``mounts`` field; what is visible is decided by the compose
-  volume layout, and ``workdir`` is validated against the same roots
-  (``DEEPTUTOR_RUNNER_ALLOWED_WORKDIRS``) as defence in depth.
+  the admin task-workspace with the main app at the *same* path
+  (``/app/data/user/workspace`` via docker-compose). Per-user workspaces are
+  deliberately not mounted into the stock runner: the runner is a shared
+  process namespace, so a workdir check alone would not stop a command from
+  reading another user's directory. Per-user execution requires a separately
+  isolated runner deployment and an explicit policy opt-in.
 """
 
 from __future__ import annotations
@@ -147,7 +146,7 @@ _ALLOWED_WORKDIR_ROOTS = [
     root
     for root in os.environ.get(
         "DEEPTUTOR_RUNNER_ALLOWED_WORKDIRS",
-        "/app/data/user/workspace:/app/data/users",
+        "/app/data/user/workspace",
     ).split(":")
     if root
 ]

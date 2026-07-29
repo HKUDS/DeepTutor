@@ -67,8 +67,28 @@ class LlamaIndexDocumentLoader:
         for file_path_str in classification.parser_files:
             file_path = Path(file_path_str)
             self.logger.info(f"Parsing document: {file_path.name}")
-            text, extracted_images = self._parse_document(file_path)
-            self._append_if_nonempty(documents, file_path, text)
+            text, extracted_images, page_texts, page_image_paths = self._parse_document(file_path)
+            if page_texts:
+                for page_label, page_text in page_texts:
+                    self._append_if_nonempty(
+                        documents,
+                        file_path,
+                        page_text,
+                        extra_metadata={
+                            "page_label": page_label,
+                            "page": page_label,
+                            "image_paths": page_image_paths.get(page_label, []),
+                        },
+                    )
+            else:
+                self._append_if_nonempty(
+                    documents,
+                    file_path,
+                    text,
+                    extra_metadata={
+                        "image_paths": [str(source.path) for source in extracted_images],
+                    },
+                )
             image_sources.extend(extracted_images)
 
         for file_path_str in classification.text_files:
@@ -89,10 +109,15 @@ class LlamaIndexDocumentLoader:
 
         return documents
 
-    def _parse_document(self, file_path: Path) -> tuple[str, list[_ImageSource]]:
+    def _parse_document(
+        self, file_path: Path
+    ) -> tuple[str, list[_ImageSource], list[tuple[str, str]], dict[str, list[str]]]:
         """Parse a document through the shared, engine-pluggable parse layer.
 
-        Returns ``(text, extracted_images)``. A parse failure (engine
+        Returns ``(text, extracted_images, page_texts, page_image_paths)``. ``page_texts`` is
+        populated when the parser emits structured blocks with zero-based
+        ``page_idx`` values, allowing retrieval results to retain page-level
+        citation metadata. A parse failure (engine
         unavailable, unsupported format for the active engine, or models not
         ready) is logged and the file is skipped — matching the sibling
         LightRAG/GraphRAG pipelines — rather than aborting the whole batch.
@@ -106,11 +131,64 @@ class LlamaIndexDocumentLoader:
                 f"Skipped {file_path.name}: the active document-parsing engine could "
                 f"not handle it ({exc}). Change the engine in Settings → Document Parsing."
             )
-            return "", []
+            return "", [], [], {}
 
         text = parsed.markdown.strip() or self._text_from_blocks(parsed.blocks)
+        page_texts = self._page_texts_from_blocks(parsed.blocks)
         images = self._collect_asset_images(parsed.asset_dir, origin=file_path)
-        return text, images
+        page_image_paths = self._page_image_paths_from_blocks(parsed.blocks, parsed.asset_dir)
+        return text, images, page_texts, page_image_paths
+
+    @staticmethod
+    def _page_image_paths_from_blocks(
+        blocks: list[dict] | None,
+        asset_dir: Path | None,
+    ) -> dict[str, list[str]]:
+        """Map parser image blocks to safe, real asset paths by source page.
+
+        MinerU stores ``img_path`` as a relative path such as
+        ``images/figure-1.jpg``. The RAG index only needs the local path as
+        provenance; the bytes are loaded later, when a Vision-capable answer
+        is actually requested. Paths are constrained to ``asset_dir`` so a
+        malformed parser block cannot make the chat layer read an arbitrary
+        file.
+        """
+        if not blocks or not asset_dir or not Path(asset_dir).is_dir():
+            return {}
+
+        root = Path(asset_dir).resolve()
+        grouped: dict[str, list[str]] = {}
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            raw_img_path = str(block.get("img_path") or "").strip()
+            if not raw_img_path:
+                continue
+            try:
+                page_idx = int(block.get("page_idx"))
+            except (TypeError, ValueError):
+                continue
+            if page_idx < 0:
+                continue
+
+            candidate = Path(raw_img_path)
+            if not candidate.is_absolute():
+                candidate = root / candidate.name
+            try:
+                resolved = candidate.resolve()
+                if not resolved.is_relative_to(root):
+                    continue
+            except OSError:
+                continue
+            if not resolved.is_file() or resolved.suffix.lower() not in FileTypeRouter.IMAGE_EXTENSIONS:
+                continue
+
+            page_label = str(page_idx + 1)
+            paths = grouped.setdefault(page_label, [])
+            value = str(resolved)
+            if value not in paths:
+                paths.append(value)
+        return grouped
 
     @staticmethod
     def _text_from_blocks(blocks: list[dict] | None) -> str:
@@ -118,11 +196,100 @@ class LlamaIndexDocumentLoader:
         if not blocks:
             return ""
         parts = [
-            str(block.get("text") or block.get("content") or "").strip()
+            LlamaIndexDocumentLoader._block_text(block)
             for block in blocks
             if isinstance(block, dict)
         ]
         return "\n\n".join(part for part in parts if part)
+
+    @staticmethod
+    def _block_text(block: dict) -> str:
+        """Return indexable Markdown for one structured parser block."""
+        parts: list[str] = []
+        seen: set[str] = set()
+
+        def append_values(value: Any) -> None:
+            values = value if isinstance(value, list) else [value]
+            for item in values:
+                text = str(item or "").strip()
+                if text and text not in seen:
+                    parts.append(text)
+                    seen.add(text)
+
+        append_values(block.get("text"))
+        append_values(block.get("content"))
+
+        block_type = str(block.get("type") or "").lower()
+        img_path = str(block.get("img_path") or "").strip()
+        if block_type == "table":
+            append_values(block.get("table_caption"))
+            append_values(block.get("table_body"))
+            if not block.get("table_body") and img_path:
+                append_values(f"[Table image on source page: {Path(img_path).name}]")
+            append_values(block.get("table_footnote"))
+        elif block_type == "image":
+            # Preserve the fact that a source page contains a visual even when
+            # the active text-only models cannot describe or embed it.
+            if img_path:
+                append_values(f"[Image on source page: {Path(img_path).name}]")
+            append_values(block.get("image_caption"))
+            append_values(block.get("image_footnote"))
+        else:
+            # Keep parser-added captions even if a future engine attaches them
+            # to a non-standard block type.
+            append_values(block.get("image_caption"))
+            append_values(block.get("image_footnote"))
+            append_values(block.get("table_caption"))
+            append_values(block.get("table_body"))
+            append_values(block.get("table_footnote"))
+
+        return "\n\n".join(parts)
+
+    @staticmethod
+    def _page_texts_from_blocks(blocks: list[dict] | None) -> list[tuple[str, str]]:
+        """Group structured parser text into one document per source page.
+
+        MinerU emits zero-based ``page_idx`` values on content-list blocks.
+        If any meaningful text block lacks a valid page index, return an empty
+        list so callers safely fall back to the parser's complete markdown.
+        Repeated headers, footers, and printed page numbers are omitted because
+        they add retrieval noise without useful teaching content.
+        """
+        if not blocks:
+            return []
+
+        grouped: dict[int, list[str]] = {}
+        noise_types = {"header", "footer", "page_number"}
+        saw_indexable_content = False
+
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            if str(block.get("type") or "").lower() in noise_types:
+                continue
+
+            part = LlamaIndexDocumentLoader._block_text(block)
+            if not part:
+                continue
+            saw_indexable_content = True
+
+            raw_page_idx = block.get("page_idx")
+            try:
+                page_idx = int(raw_page_idx)
+            except (TypeError, ValueError):
+                return []
+            if page_idx < 0:
+                return []
+            grouped.setdefault(page_idx, []).append(part)
+
+        if not saw_indexable_content:
+            return []
+
+        return [
+            (str(page_idx + 1), "\n\n".join(parts))
+            for page_idx, parts in sorted(grouped.items())
+            if parts
+        ]
 
     def _collect_asset_images(self, asset_dir: Path | None, *, origin: Path) -> list[_ImageSource]:
         """Gather images the parse engine extracted into ``asset_dir``.
@@ -262,15 +429,33 @@ class LlamaIndexDocumentLoader:
             "mimetype": mimetype,
         }
 
-    def _append_if_nonempty(self, documents: list[Any], file_path: Path, text: str) -> None:
+    def _append_if_nonempty(
+        self,
+        documents: list[Any],
+        file_path: Path,
+        text: str,
+        *,
+        extra_metadata: dict[str, Any] | None = None,
+    ) -> None:
         if text.strip():
+            metadata = {
+                "file_name": file_path.name,
+                "file_path": str(file_path),
+            }
+            if extra_metadata:
+                metadata.update(extra_metadata)
+            excluded_metadata_keys = []
+            if metadata.get("image_paths"):
+                # Keep paths available for post-retrieval Vision attachments,
+                # but do not serialize long cache paths into the text used by
+                # LlamaIndex's embed/LLM metadata token budget.
+                excluded_metadata_keys.append("image_paths")
             documents.append(
                 Document(
                     text=text,
-                    metadata={
-                        "file_name": file_path.name,
-                        "file_path": str(file_path),
-                    },
+                    metadata=metadata,
+                    excluded_embed_metadata_keys=excluded_metadata_keys,
+                    excluded_llm_metadata_keys=excluded_metadata_keys,
                 )
             )
             self.logger.info(f"Loaded: {file_path.name} ({len(text)} chars)")

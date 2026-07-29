@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
@@ -98,6 +99,65 @@ async def test_service_runs_with_subprocess() -> None:
 
 
 @pytest.mark.asyncio
+async def test_non_admin_exec_is_fail_closed_without_per_user_isolation(
+    monkeypatch,
+) -> None:
+    from deeptutor.services import config as config_module
+    from deeptutor.multi_user.context import reset_current_user, set_current_user
+    from deeptutor.multi_user.models import CurrentUser, UserScope
+
+    monkeypatch.setattr(
+        config_module,
+        "load_system_settings",
+        lambda: {"sandbox_allow_untrusted_users": False},
+    )
+    svc = SandboxService(SandboxSettings(allow_subprocess=True))
+    svc._backend = RestrictedSubprocessBackend()
+    user_token = set_current_user(
+        CurrentUser(
+            id="u_alice",
+            username="alice",
+            role="user",
+            scope=UserScope(kind="user", user_id="u_alice", root=Path("/tmp/u_alice")),
+        )
+    )
+    try:
+        result = await svc.run(ExecRequest(command="echo should-not-run"), user_id="u_alice")
+    finally:
+        reset_current_user(user_token)
+    assert "disabled" in result.error.lower()
+    assert result.stdout == ""
+
+
+@pytest.mark.asyncio
+async def test_non_admin_cannot_use_application_sandbox_even_when_opted_in(monkeypatch) -> None:
+    from deeptutor.services import config as config_module
+    from deeptutor.multi_user.context import reset_current_user, set_current_user
+    from deeptutor.multi_user.models import CurrentUser, UserScope
+
+    monkeypatch.setattr(
+        config_module,
+        "load_system_settings",
+        lambda: {"sandbox_allow_untrusted_users": True},
+    )
+    svc = SandboxService(SandboxSettings(allow_subprocess=True))
+    svc._backend = RestrictedSubprocessBackend()
+    user_token = set_current_user(
+        CurrentUser(
+            id="u_alice",
+            username="alice",
+            role="user",
+            scope=UserScope(kind="user", user_id="u_alice", root=Path("/tmp/u_alice")),
+        )
+    )
+    try:
+        result = await svc.run(ExecRequest(command="echo should-not-run"), user_id="u_alice")
+    finally:
+        reset_current_user(user_token)
+    assert "disabled" in result.error.lower()
+
+
+@pytest.mark.asyncio
 async def test_quota_rate_limit() -> None:
     quota = UserExecQuota(max_concurrent=5, max_per_minute=2)
     async with await quota.acquire("u1"):
@@ -183,3 +243,10 @@ def test_runner_server_rejects_workdir_outside_allowed_roots(
     )
     assert inside["error"] == ""
     assert inside["exit_code"] == 0
+
+
+def test_compose_runner_does_not_mount_all_user_workspaces() -> None:
+    compose = Path(__file__).resolve().parents[3] / "docker-compose.yml"
+    content = compose.read_text(encoding="utf-8")
+    assert "./data/users:/app/data/users" not in content
+    assert "sandbox_allow_untrusted_users" not in content

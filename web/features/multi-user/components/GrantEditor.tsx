@@ -18,6 +18,10 @@ function emptyGrant(userId: string): GrantPayload {
     enabled_tools: null,
     mcp_tools: null,
     exec_enabled: null,
+    token_quota: {
+      daily_tokens: 100000,
+      monthly_tokens: 1000000,
+    },
   };
 }
 
@@ -281,6 +285,18 @@ export function GrantEditor({ userId }: { userId: string }) {
         : [...list, name];
       return { ...current, [key]: next };
     });
+  }
+
+  function setTokenQuota(
+    key: "daily_tokens" | "monthly_tokens",
+    value: string,
+  ) {
+    const parsed = Number(value);
+    const nextValue = Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
+    setGrant((current) => ({
+      ...current,
+      token_quota: { ...current.token_quota, [key]: nextValue },
+    }));
   }
 
   async function save() {
@@ -561,17 +577,44 @@ export function GrantEditor({ userId }: { userId: string }) {
               <div className="space-y-1.5 text-xs">
                 <CheckRow
                   label="Allow code execution"
-                  description="Follows the deployment sandbox policy. Uncheck to disable exec for this user."
-                  checked={grant.exec_enabled !== false}
+                  description="Requires an isolated sandbox deployment; public users stay denied by default."
+                  checked={grant.exec_enabled === true}
                   disabled={controlsDisabled}
                   onToggle={() =>
                     setGrant((current) => ({
                       ...current,
-                      exec_enabled:
-                        current.exec_enabled === false ? null : false,
+                      exec_enabled: current.exec_enabled === true ? null : true,
                     }))
                   }
                 />
+              </div>
+            </section>
+            <section className="min-w-0">
+              <SectionTitle>Token quota</SectionTitle>
+              <p className="mb-2 px-1 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+                Hard LLM token credits. Set 0 for unlimited; usage is reserved
+                before each provider call and reconciled after it finishes.
+              </p>
+              <div className="space-y-2 text-xs">
+                {([
+                  ["daily_tokens", "Daily tokens"],
+                  ["monthly_tokens", "Monthly tokens"],
+                ] as const).map(([key, label]) => (
+                  <label key={key} className="block">
+                    <span className="mb-1 block text-[var(--muted-foreground)]">
+                      {label}
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1000}
+                      value={grant.token_quota[key]}
+                      disabled={controlsDisabled}
+                      onChange={(event) => setTokenQuota(key, event.target.value)}
+                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-xs text-[var(--foreground)]"
+                    />
+                  </label>
+                ))}
               </div>
             </section>
           </div>

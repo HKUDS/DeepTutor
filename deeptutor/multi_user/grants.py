@@ -9,6 +9,7 @@ from typing import Any
 
 from .identity import get_user_by_id
 from .paths import SYSTEM_ROOT, ensure_system_dirs
+from .token_quota import default_token_quota
 
 GRANTS_DIR = SYSTEM_ROOT / "grants"
 
@@ -37,6 +38,9 @@ def empty_grant(user_id: str) -> dict[str, Any]:
         "enabled_tools": None,
         "mcp_tools": None,
         "exec_enabled": None,
+        # Per-user LLM credit limits. Zero means unlimited for that period;
+        # fresh public users receive bounded defaults.
+        "token_quota": default_token_quota(),
     }
 
 
@@ -76,6 +80,17 @@ def normalize_grant(user_id: str, payload: dict[str, Any] | None) -> dict[str, A
         base[key] = _normalize_tool_list(payload.get(key))
     exec_enabled = payload.get("exec_enabled")
     base["exec_enabled"] = bool(exec_enabled) if isinstance(exec_enabled, bool) else None
+    raw_quota = payload.get("token_quota")
+    if isinstance(raw_quota, dict):
+        quota_defaults = default_token_quota()
+        normalized_quota: dict[str, int] = {}
+        for key, default in quota_defaults.items():
+            try:
+                value = int(raw_quota.get(key, default))
+            except (TypeError, ValueError):
+                value = default
+            normalized_quota[key] = max(0, min(value, 10_000_000_000))
+        base["token_quota"] = normalized_quota
     return base
 
 

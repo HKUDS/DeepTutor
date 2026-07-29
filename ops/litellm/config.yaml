@@ -1,0 +1,24 @@
+# LiteLLM Proxy configuration for DeepTutor.
+#
+# All credentials and the managed PostgreSQL URL are injected at runtime by
+# docker-compose.litellm.yml. Do not replace the os.environ/* references with
+# real values or commit a deployment .env file.
+
+model_list:
+  - model_name: deeptutor-default
+    litellm_params:
+      # Set UPSTREAM_MODEL to the provider-qualified model name, for example
+      # openai/gpt-4o-mini or openai/glm-5-air for an OpenAI-compatible API.
+      model: os.environ/UPSTREAM_MODEL
+      api_base: os.environ/UPSTREAM_BASE_URL
+      api_key: os.environ/UPSTREAM_API_KEY
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/LITELLM_DATABASE_URL
+
+litellm_settings:
+  # Public users should not have their prompts/responses copied into the
+  # LiteLLM spend database. DeepTutor keeps its own session data policy.
+  turn_off_message_logging: true
+  json_logs: true
