@@ -51,7 +51,7 @@ class SourceEntry:
     """One row in the per-turn Attached Sources manifest."""
 
     sid: str
-    kind: str  # "notebook" | "book" | "history" | "question" | "attachment"
+    kind: str  # "notebook" | "book" | "reading" | "history" | "question" | "attachment"
     name: str
     full_text: str
     fresh: bool
@@ -117,6 +117,7 @@ async def build_inventory(
     fresh_book_references: Sequence[dict[str, Any]],
     fresh_history_session_ids: Sequence[Any],
     fresh_question_entry_ids: Sequence[Any],
+    fresh_reading_references: Sequence[dict[str, Any]] = (),
     language: str = "en",
 ) -> SourceInventory:
     """Compose the session-cumulative inventory for one chat turn.
@@ -136,6 +137,7 @@ async def build_inventory(
         notebook_records=fresh_notebook_records,
         book_context_text=fresh_book_context_text,
         book_references=fresh_book_references,
+        reading_references=fresh_reading_references,
     )
     # History + question entries are async (per-id store fetches), keep them
     # in a separate phase so the sync fresh additions don't block.
@@ -239,6 +241,7 @@ def _add_fresh(
     notebook_records: Sequence[dict[str, Any]],
     book_context_text: str,
     book_references: Sequence[dict[str, Any]],
+    reading_references: Sequence[dict[str, Any]],
 ) -> None:
     """Add the synchronously-available fresh sources (notebook records,
     book pages, attachments)."""
@@ -277,6 +280,33 @@ def _add_fresh(
                 first_seen_turn=current_turn_ordinal,
             )
         )
+
+    # Immersive-reading documents are source-faithful imports. Keep one source
+    # per document, containing only the chapters selected in the picker.
+    if reading_references:
+        from deeptutor.immersive_reading import get_immersive_reading_service
+
+        reading_service = get_immersive_reading_service()
+        for ref in reading_references:
+            document_id = str((ref or {}).get("document_id") or "").strip()
+            section_ids = [
+                str(item) for item in ((ref or {}).get("section_ids") or []) if str(item).strip()
+            ]
+            if not document_id:
+                continue
+            text, name = reading_service.render_reference(document_id, section_ids)
+            if not text.strip():
+                continue
+            inv.add(
+                SourceEntry(
+                    sid=f"ir-{document_id}",
+                    kind="reading",
+                    name=name or f"Reading document {document_id}",
+                    full_text=text,
+                    fresh=True,
+                    first_seen_turn=current_turn_ordinal,
+                )
+            )
 
     for record in attachment_records:
         if str(record.get("type", "")).lower() == "image":
@@ -479,6 +509,37 @@ async def _collect_from_user_message(
                 first_seen_turn=turn_ordinal,
             )
         )
+
+    # Immersive-reading references — re-resolve the selected source chapters
+    # so later turns can still call read_source without reattaching the file.
+    reading_refs = snap.get("readingReferences") or []
+    if reading_refs:
+        from deeptutor.immersive_reading import get_immersive_reading_service
+
+        reading_service = get_immersive_reading_service()
+        for ref in reading_refs:
+            document_id = str((ref or {}).get("document_id") or "").strip()
+            if not document_id:
+                continue
+            sid = f"ir-{document_id}"
+            if sid in inv:
+                continue
+            section_ids = [
+                str(item) for item in ((ref or {}).get("section_ids") or []) if str(item).strip()
+            ]
+            text, name = reading_service.render_reference(document_id, section_ids)
+            if not text.strip():
+                continue
+            inv.add(
+                SourceEntry(
+                    sid=sid,
+                    kind="reading",
+                    name=name or f"Reading document {document_id}",
+                    full_text=text,
+                    fresh=False,
+                    first_seen_turn=turn_ordinal,
+                )
+            )
 
     # History sessions — async, one store fetch per id.
     for raw in snap.get("historyReferences") or []:

@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
+  BookMarked,
   Bot,
   Brain,
   Check,
@@ -965,6 +966,14 @@ const UserMessage = memo(function UserMessage({
         icon: BookOpen,
         kind: t("Book"),
         label: `${ref.page_ids.length} ${t("chapters")}`,
+      }),
+    ),
+    ...(snap?.readingReferences ?? []).map(
+      (ref): ContextTreeItem => ({
+        key: `reading-${ref.document_id}`,
+        icon: BookMarked,
+        kind: t("Immersive Reading"),
+        label: `${ref.section_ids.length} ${t("chapters")}`,
       }),
     ),
     ...(snap?.notebookReferences ?? []).map(

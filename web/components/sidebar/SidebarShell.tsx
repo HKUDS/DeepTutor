@@ -7,6 +7,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useAppShell } from "@/context/AppShellContext";
 import {
   BookOpen,
+  BookMarked,
   BookText,
   Bot,
   Brain,
@@ -77,6 +78,13 @@ const PRIMARY_NAV: NavEntry[] = [
     label: "Book",
     icon: Library,
     tooltipKey: "Book tooltip",
+    requires: "llm",
+  },
+  {
+    href: "/immersive-reading",
+    label: "Immersive Reading",
+    icon: BookMarked,
+    tooltipKey: "Immersive Reading tooltip",
     requires: "llm",
   },
   {

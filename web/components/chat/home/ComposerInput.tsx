@@ -53,6 +53,7 @@ interface ComposerInputProps {
   onSelectKnowledge?: () => void;
   onSelectNotebookPicker: () => void;
   onSelectBookPicker: () => void;
+  onSelectReadingPicker?: () => void;
   onSelectHistoryPicker: () => void;
   onSelectAgentsPicker?: () => void;
   /** Hide the My Agents entry (e.g. the quiz follow-up surface). */
@@ -144,6 +145,7 @@ export const ComposerInput = memo(
       onSelectKnowledge,
       onSelectNotebookPicker,
       onSelectBookPicker,
+      onSelectReadingPicker,
       onSelectHistoryPicker,
       onSelectAgentsPicker,
       agentsAvailable = true,
@@ -338,6 +340,7 @@ export const ComposerInput = memo(
           | "chat_history"
           | "my_agents"
           | "books"
+          | "reading"
           | "notebooks"
           | "question_bank"
           | "persona"
@@ -350,6 +353,7 @@ export const ComposerInput = memo(
         else if (key === "chat_history") onSelectHistoryPicker();
         else if (key === "my_agents") onSelectAgentsPicker?.();
         else if (key === "books") onSelectBookPicker();
+        else if (key === "reading") onSelectReadingPicker?.();
         else if (key === "notebooks") onSelectNotebookPicker();
         else if (key === "question_bank") onSelectQuestionBankPicker();
         else if (key === "persona") onSelectPersonaPicker();
@@ -362,6 +366,7 @@ export const ComposerInput = memo(
         onSelectHistoryPicker,
         onSelectAgentsPicker,
         onSelectBookPicker,
+        onSelectReadingPicker,
         onSelectNotebookPicker,
         onSelectQuestionBankPicker,
         onSelectPersonaPicker,

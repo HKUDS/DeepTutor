@@ -166,6 +166,7 @@ def _request_snapshot_metadata(
     history_references: list[Any],
     question_notebook_references: list[Any],
     book_references: list[Any],
+    reading_references: list[Any],
     persona: str,
     memory_references: Sequence[str],
     llm_selection: dict[str, str] | None,
@@ -190,6 +191,8 @@ def _request_snapshot_metadata(
         snapshot["questionNotebookReferences"] = question_notebook_references
     if book_references:
         snapshot["bookReferences"] = book_references
+    if reading_references:
+        snapshot["readingReferences"] = reading_references
     if persona:
         snapshot["persona"] = persona
     if memory_references:
@@ -899,6 +902,11 @@ class TurnRuntimeManager:
                 if overrides.get("book_references") is not None
                 else snapshot.get("bookReferences") or []
             ),
+            "reading_references": list(
+                overrides.get("reading_references")
+                if overrides.get("reading_references") is not None
+                else snapshot.get("readingReferences") or []
+            ),
             "config": config,
         }
         if llm_selection:
@@ -1205,6 +1213,11 @@ class TurnRuntimeManager:
             question_notebook_references = payload.get("question_notebook_references", []) or []
             book_context_result = build_book_context(payload.get("book_references", []) or [])
             book_references = book_context_result.references
+            reading_references = [
+                ref
+                for ref in (payload.get("reading_references", []) or [])
+                if isinstance(ref, dict)
+            ]
             memory_references = _extract_memory_references(payload)
             notebook_context = ""
             history_context = ""
@@ -1409,6 +1422,7 @@ class TurnRuntimeManager:
                     fresh_notebook_records=resolved_notebook_records,
                     fresh_book_context_text=book_context,
                     fresh_book_references=book_references,
+                    fresh_reading_references=reading_references,
                     fresh_history_session_ids=history_references,
                     fresh_question_entry_ids=question_notebook_references,
                     language=str(payload.get("language", "en") or "en"),
@@ -1526,6 +1540,22 @@ class TurnRuntimeManager:
                     context_parts.append("[Attached Documents]\n" + "\n\n".join(document_texts))
                 if book_context:
                     context_parts.append(f"[Book Context]\n{book_context}")
+                if reading_references:
+                    from deeptutor.immersive_reading import get_immersive_reading_service
+
+                    reading_blocks: list[str] = []
+                    reading_service = get_immersive_reading_service()
+                    for ref in reading_references:
+                        rendered, _title = reading_service.render_reference(
+                            str(ref.get("document_id") or ""),
+                            [str(item) for item in (ref.get("section_ids") or [])],
+                        )
+                        if rendered:
+                            reading_blocks.append(rendered)
+                    if reading_blocks:
+                        context_parts.append(
+                            "[Immersive Reading Context]\n" + "\n\n---\n\n".join(reading_blocks)
+                        )
                 if notebook_context:
                     context_parts.append(f"[Notebook Context]\n{notebook_context}")
                 if history_context:
@@ -1566,6 +1596,7 @@ class TurnRuntimeManager:
                         history_references=history_references,
                         question_notebook_references=question_notebook_references,
                         book_references=book_references,
+                        reading_references=reading_references,
                         persona=active_persona,
                         memory_references=memory_references,
                         llm_selection=payload.get("llm_selection"),
@@ -1598,6 +1629,7 @@ class TurnRuntimeManager:
                     "history_references": history_references,
                     "question_notebook_references": question_notebook_references,
                     "book_references": book_references,
+                    "reading_references": reading_references,
                     "book_context": book_context,
                     "book_context_warnings": book_context_result.warnings,
                     "memory_references": memory_references,
