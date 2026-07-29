@@ -26,6 +26,7 @@ Multi-user setup (recommended):
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import logging
+import time
 from typing import Any
 
 from deeptutor.services.config import load_auth_settings, load_integrations_settings
@@ -44,6 +45,14 @@ AUTH_USERNAME: str = str(_AUTH_SETTINGS["username"])
 AUTH_PASSWORD_HASH: str = str(_AUTH_SETTINGS["password_hash"])
 AUTH_SECRET: str = ""
 TOKEN_EXPIRE_HOURS: int = int(_AUTH_SETTINGS["token_expire_hours"])
+
+# External SSO bridge — a trusted partner app (e.g. an LMS) signs short-lived
+# login assertions with this dedicated shared secret, deliberately distinct
+# from AUTH_SECRET so the partner can never mint DeepTutor session tokens.
+# Empty means the /sso endpoint stays disabled. Overridable via the
+# DEEPTUTOR_SSO_SECRET / DEEPTUTOR_SSO_GRANT_TEMPLATE environment variables.
+SSO_SECRET: str = str(_AUTH_SETTINGS.get("sso_secret") or "")
+SSO_GRANT_TEMPLATE: str = str(_AUTH_SETTINGS.get("sso_grant_template") or "")
 
 # PocketBase auth mode — active when integrations.pocketbase_url is set and auth is enabled.
 # When enabled, login/register proxy to PocketBase and token validation uses
@@ -278,6 +287,68 @@ def decode_token(token: str) -> TokenPayload | None:
         return TokenPayload(username=username, role=payload.get("role", "user"), user_id=user_id)
     except JWTError:
         return None
+
+
+# ---------------------------------------------------------------------------
+# External SSO bridge
+# ---------------------------------------------------------------------------
+
+# Replay guard: jti → epoch seconds after which the entry may be dropped.
+# In-memory is sufficient — assertions live for a couple of minutes, and the
+# single-process deployment model (see _USERS_WRITE_LOCK in multi_user/identity)
+# means there is one cache per server. A restart clears it, but a restart
+# also happens within the assertion lifetime only in pathological cases.
+_SSO_SEEN_JTIS: dict[str, float] = {}
+
+
+def sso_enabled() -> bool:
+    """Whether the external SSO login endpoint is active.
+
+    Requires auth to be enabled, the local user store (PocketBase identities
+    cannot be JIT-provisioned), and a configured shared secret.
+    """
+    return AUTH_ENABLED and not POCKETBASE_ENABLED and bool(SSO_SECRET)
+
+
+def consume_sso_assertion(token: str) -> dict[str, Any] | None:
+    """Verify and consume (one-time use) an external SSO assertion.
+
+    The assertion is a short-lived HS256 JWT minted by the partner app and
+    signed with the dedicated ``sso_secret`` — never DeepTutor's own
+    AUTH_SECRET. Required claims: ``sub`` (stable external username),
+    ``exp``, and ``jti`` (single-use nonce).
+
+    Returns the claims dict, or None when the token is invalid, expired,
+    or has already been used.
+    """
+    if not token or not sso_enabled():
+        return None
+
+    from jose import JWTError, jwt
+
+    try:
+        claims = jwt.decode(
+            token,
+            SSO_SECRET,
+            algorithms=[_ALGORITHM],
+            options={"require_exp": True, "require_sub": True, "require_jti": True},
+        )
+    except JWTError as exc:
+        logger.warning("Rejected SSO assertion: %s", exc)
+        return None
+
+    now = time.time()
+    for seen, drop_after in list(_SSO_SEEN_JTIS.items()):
+        if drop_after <= now:
+            _SSO_SEEN_JTIS.pop(seen, None)
+
+    jti = str(claims.get("jti") or "")
+    if jti in _SSO_SEEN_JTIS:
+        logger.warning("Rejected replayed SSO assertion (jti=%s)", jti)
+        return None
+    # Keep the nonce until the token itself can no longer verify.
+    _SSO_SEEN_JTIS[jti] = max(float(claims.get("exp") or now), now) + 60.0
+    return claims
 
 
 # ---------------------------------------------------------------------------

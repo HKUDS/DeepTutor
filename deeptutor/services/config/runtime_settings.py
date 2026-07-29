@@ -55,6 +55,15 @@ DEFAULT_AUTH_SETTINGS: dict[str, Any] = {
     "password_hash": "",
     "token_expire_hours": 24,
     "cookie_secure": False,
+    # External SSO bridge (GET /api/v1/auth/sso). ``sso_secret`` is the
+    # dedicated shared secret partner apps sign short-lived login assertions
+    # with — deliberately distinct from the internal AUTH_SECRET used for
+    # session JWTs. Empty means the endpoint is disabled (404).
+    "sso_secret": "",
+    # Optional path to a grants JSON file cloned onto users provisioned
+    # just-in-time by the SSO endpoint (typically a copy of a hand-configured
+    # reference user's data/system/grants/<uid>.json).
+    "sso_grant_template": "",
 }
 
 DEFAULT_INTEGRATIONS_SETTINGS: dict[str, Any] = {
@@ -650,6 +659,16 @@ class RuntimeSettingsService:
             payload["token_expire_hours"] = value
         if value := self._process_env_value("AUTH_COOKIE_SECURE"):
             payload["cookie_secure"] = value
+        if value := (
+            self._process_env_value("AUTH_SSO_SECRET")
+            or self._process_env_value("DEEPTUTOR_SSO_SECRET")
+        ):
+            payload["sso_secret"] = value
+        if value := (
+            self._process_env_value("AUTH_SSO_GRANT_TEMPLATE")
+            or self._process_env_value("DEEPTUTOR_SSO_GRANT_TEMPLATE")
+        ):
+            payload["sso_grant_template"] = value
         return self._normalize_auth(payload)
 
     def _apply_integrations_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
@@ -914,6 +933,8 @@ class RuntimeSettingsService:
             "password_hash": _string(settings.get("password_hash")),
             "token_expire_hours": max(1, _coerce_int(settings.get("token_expire_hours"), 24)),
             "cookie_secure": _coerce_bool(settings.get("cookie_secure"), False),
+            "sso_secret": _string(settings.get("sso_secret")),
+            "sso_grant_template": _string(settings.get("sso_grant_template")),
         }
 
     def _normalize_integrations(self, settings: dict[str, Any]) -> dict[str, Any]:

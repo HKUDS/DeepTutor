@@ -3,6 +3,7 @@
 from contextvars import Token as _CtxToken
 import logging
 import re
+import secrets
 
 from fastapi import (
     APIRouter,
@@ -17,7 +18,7 @@ from fastapi import (
     WebSocket,
     status,
 )
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel, field_validator
 
 from deeptutor.services.config import load_auth_settings
@@ -34,11 +35,13 @@ from deeptutor.multi_user.paths import local_admin_user
 from deeptutor.services.auth import (
     AUTH_ENABLED,
     POCKETBASE_ENABLED,
+    SSO_GRANT_TEMPLATE,
     TOKEN_EXPIRE_HOURS,
     TokenPayload,
     add_user,
     authenticate,
     authenticate_pb,
+    consume_sso_assertion,
     create_token,
     decode_token,
     delete_user,
@@ -48,6 +51,7 @@ from deeptutor.services.auth import (
     register_pb,
     set_avatar,
     set_role,
+    sso_enabled,
 )
 from deeptutor.services.codex_auth.contracts import CodexAuthError
 from deeptutor.services.codex_auth.service import deliver_codex_oauth_callback
@@ -478,6 +482,106 @@ async def login(body: LoginRequest, response: Response) -> dict:
         "role": result.role,
         "is_admin": result.role == "admin",
     }
+
+
+# Usernames asserted by the SSO peer must fit the same shape the register
+# endpoint accepts for plain (non-email) usernames.
+_SSO_USERNAME_RE = re.compile(r"^[A-Za-z0-9_\-.]{3,64}$")
+
+
+def _apply_sso_grant_template(user_id: str) -> None:
+    """Seed a freshly SSO-provisioned user with the configured grant template.
+
+    ``auth.sso_grant_template`` points at a grants JSON file — typically a
+    copy of ``data/system/grants/<uid>.json`` taken from a hand-configured
+    reference user. Failures are logged, not raised: the user still gets a
+    working session, just an empty workspace an admin can fix from
+    ``/admin/users``.
+    """
+    if not SSO_GRANT_TEMPLATE or not user_id:
+        return
+    import json
+    from pathlib import Path
+
+    from deeptutor.multi_user.grants import save_grant
+
+    try:
+        payload = json.loads(Path(SSO_GRANT_TEMPLATE).read_text(encoding="utf-8"))
+        save_grant(user_id, payload)
+        logger.info(f"Applied SSO grant template to user id '{user_id}'")
+    except Exception as exc:
+        logger.warning(f"Failed to apply SSO grant template {SSO_GRANT_TEMPLATE!r}: {exc}")
+
+
+@router.get("/sso")
+async def sso_login(token: str) -> RedirectResponse:
+    """Log in a user asserted by a trusted external app (SSO bridge).
+
+    The partner app redirects the browser here with a short-lived,
+    single-use HS256 assertion signed with the dedicated ``sso_secret``
+    from the auth settings (see ``consume_sso_assertion``). On first
+    visit the user is provisioned just-in-time with an unusable random
+    password (the account is SSO-only) and the configured grant template.
+    On success a normal ``dt_token`` session cookie is set and the
+    browser is redirected to the app root.
+    """
+    if not sso_enabled():
+        # Hide the endpoint entirely while the bridge is not configured.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+
+    claims = consume_sso_assertion(token)
+    if claims is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid, expired or already-used SSO token",
+        )
+
+    username = str(claims.get("sub") or "")
+    if not _SSO_USERNAME_RE.match(username):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="SSO subject is not a valid username",
+        )
+
+    if is_first_user():
+        # The first account saved into an empty store is auto-promoted to
+        # admin (see identity.save_user). An SSO-provisioned user must never
+        # win that promotion — a human admin has to register first.
+        logger.warning(
+            f"SSO login rejected: user store is empty (jti={claims.get('jti')}). "
+            "Register the admin account before using SSO."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No admin account exists yet — register one before using SSO.",
+        )
+
+    info = get_user_info(username)
+    if info is None:
+        # JIT provisioning with a random unusable password: the account can
+        # only ever be entered through this endpoint.
+        add_user(username, secrets.token_urlsafe(32), role="user")
+        info = get_user_info(username)
+        if info is None:  # pragma: no cover — store write just succeeded
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="User provisioning failed",
+            )
+        _apply_sso_grant_template(str(info.get("id") or ""))
+        logger.info(f"SSO auto-provisioned user '{username}'")
+
+    if bool(info.get("disabled")):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is disabled",
+        )
+
+    role = str(info.get("role") or "user")
+    dt_token = create_token(username, role, str(info.get("id") or ""))
+    response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    response.set_cookie(value=dt_token, max_age=_COOKIE_MAX_AGE, **_cookie_attrs())
+    logger.info(f"User '{username}' logged in via SSO (role={role!r}, jti={claims.get('jti')})")
+    return response
 
 
 @router.post("/logout")
