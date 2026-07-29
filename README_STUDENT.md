@@ -42,8 +42,13 @@ LLM_API_KEY=sk-你的DeepSeekKey
 EMBEDDING_API_KEY=sk-你的SiliconFlowKey
 ```
 
+安装完成后，把 `MathTutor.app` 拖到 `/Applications` 即可双击启动。
+
 ## 启动
 
+**macOS 用户**（推荐）：Finder 里双击 `MathTutor.app`，等待进度条走完，浏览器自动打开。
+
+**命令行用户**：
 ```bash
 bash scripts/start.sh
 ```
