@@ -2844,7 +2844,8 @@ async def sync_mathnet_knowledge_base(
         import httpx
 
         logger.info(f"正在从云端下载 Markdown 数据: {zip_url}")
-        async with httpx.AsyncClient(timeout=120) as client:
+        transport = httpx.AsyncHTTPTransport(retries=0, http2=False)
+        async with httpx.AsyncClient(transport=transport, timeout=120) as client:
             response = await client.get(zip_url)
             if response.status_code != 200:
                 raise HTTPException(
