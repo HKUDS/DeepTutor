@@ -24,6 +24,10 @@ RUNTIME_ENV_KEYS = (
     "AUTH_PASSWORD_HASH",
     "AUTH_TOKEN_EXPIRE_HOURS",
     "AUTH_COOKIE_SECURE",
+    "AUTH_SSO_SECRET",
+    "DEEPTUTOR_SSO_SECRET",
+    "AUTH_SSO_GRANT_TEMPLATE",
+    "DEEPTUTOR_SSO_GRANT_TEMPLATE",
     "POCKETBASE_URL",
     "POCKETBASE_PORT",
     "POCKETBASE_EXTERNAL_URL",
@@ -76,6 +80,23 @@ def test_runtime_process_env_is_explicit_override(tmp_path: Path) -> None:
     assert _read_json(service.path_for("system"))["backend_port"] == 8001
     assert _read_json(service.path_for("auth"))["enabled"] is False
     assert _read_json(service.path_for("integrations"))["pocketbase_port"] == 8090
+
+
+def test_auth_sso_settings_roundtrip_and_env_override(tmp_path: Path) -> None:
+    service = RuntimeSettingsService(
+        tmp_path / "settings",
+        process_env={"DEEPTUTOR_SSO_SECRET": "env-secret"},
+    )
+    service.save_auth({"enabled": True, "sso_grant_template": "/etc/deeptutor/grant.json"})
+
+    # File keeps what was saved; the env var wins as a process override.
+    on_disk = service.load_auth(include_process_overrides=False)
+    assert on_disk["sso_secret"] == ""
+    assert on_disk["sso_grant_template"] == "/etc/deeptutor/grant.json"
+
+    effective = service.load_auth()
+    assert effective["sso_secret"] == "env-secret"
+    assert effective["sso_grant_template"] == "/etc/deeptutor/grant.json"
 
 
 def test_render_environment_uses_json_backed_runtime_names(monkeypatch, tmp_path: Path) -> None:
