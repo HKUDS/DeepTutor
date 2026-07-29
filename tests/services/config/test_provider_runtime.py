@@ -235,7 +235,7 @@ def test_llm_local_fallback() -> None:
     assert resolved.api_key == "sk-no-key-required"
 
 
-def test_llm_minimax_binding_uses_minimaxi_endpoint() -> None:
+def test_llm_minimax_binding_uses_global_endpoint() -> None:
     catalog = _build_catalog(
         llm_profile={
             "id": "llm-p",
@@ -251,7 +251,7 @@ def test_llm_minimax_binding_uses_minimaxi_endpoint() -> None:
     resolved = resolve_llm_runtime_config(catalog=catalog)
     assert resolved.provider_name == "minimax"
     assert resolved.provider_mode == "standard"
-    assert resolved.effective_url == "https://api.minimaxi.com/v1"
+    assert resolved.effective_url == "https://api.minimax.io/v1"
 
 
 def test_llm_minimax_anthropic_binding_uses_anthropic_endpoint() -> None:
@@ -270,7 +270,7 @@ def test_llm_minimax_anthropic_binding_uses_anthropic_endpoint() -> None:
     resolved = resolve_llm_runtime_config(catalog=catalog)
     assert resolved.provider_name == "minimax_anthropic"
     assert resolved.provider_mode == "standard"
-    assert resolved.effective_url == "https://api.minimaxi.com/anthropic"
+    assert resolved.effective_url == "https://api.minimax.io/anthropic"
 
 
 def test_llm_custom_anthropic_binding_stays_direct() -> None:
