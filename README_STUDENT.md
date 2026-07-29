@@ -33,16 +33,7 @@ bash scripts/setup.sh
 
 脚本自动完成：检查 Python/Node → 创建虚拟环境 → 安装 Python 包 → 构建前端。
 
-### 3. 配置 API Key
-
-编辑项目根目录的 `.env` 文件（setup.sh 已从 `.env.student` 自动复制）：
-
-```
-LLM_API_KEY=sk-你的DeepSeekKey
-EMBEDDING_API_KEY=sk-你的SiliconFlowKey
-```
-
-安装完成后，把 `MathTutor.app` 拖到 `/Applications` 即可双击启动。
+安装完成后，把 `MathTutor.app` 拖到 `/Applications` 即可双击启动。所有配置（API Key 等）在浏览器 Settings 页面完成，不需要编辑任何文件。
 
 ## 启动
 
@@ -118,7 +109,7 @@ FRONTEND_PORT=3783
 
 ### Q: DeepSeek API 返回 401
 
-检查 `.env` 中 `LLM_API_KEY` 是否正确，以及 DeepSeek 账户余额是否充足。
+打开 Settings → Models，检查 API Key 是否正确，以及 DeepSeek 账户余额是否充足。
 
 ### Q: 同步题库很慢
 
