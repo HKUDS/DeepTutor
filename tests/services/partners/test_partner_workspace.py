@@ -199,4 +199,3 @@ class TestStripFrontmatter:
     def test_strips_empty_frontmatter_block(self):
         """Treat adjacent full-line fences as valid empty frontmatter."""
         assert strip_frontmatter("---\n---\nbody") == "body"
-
