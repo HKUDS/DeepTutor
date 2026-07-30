@@ -33,4 +33,3 @@ def test_extract_json_rejects_non_object() -> None:
     """Reject payloads that contain no JSON object."""
     with pytest.raises(json.JSONDecodeError):
         VisionSolverAgent._extract_json("[1, 2, 3]")
-
