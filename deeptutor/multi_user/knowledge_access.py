@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from deeptutor.knowledge.manager import KnowledgeBaseManager
+from deeptutor.knowledge.manifest import MANIFEST_NOTE_LIMIT, KbManifest, build_manifest
 
 from .context import get_current_user
 from .grants import load_grant
@@ -245,3 +246,36 @@ def resolve_kb_metadata(kb_ref: str | None) -> dict[str, Any] | None:
         return None
     manager = _manager_for(str(resource.base_dir.resolve()))
     return manager.get_metadata(resource.name)
+
+
+def resolve_kb_manifest(
+    kb_ref: str | None,
+    *,
+    limit: int = MANIFEST_NOTE_LIMIT,
+    pattern: str = "",
+) -> KbManifest | None:
+    """Access-checked document inventory for ``kb_ref`` (``None`` if inaccessible).
+
+    The one seam through which the chat manifest and the ``kb_files`` tool read
+    a KB's document set, so neither can bypass the per-user visibility rules
+    :func:`resolve_kb` enforces. A pure read with no usage audit, mirroring
+    :func:`resolve_kb_metadata`; it touches the filesystem, so async callers
+    should hand it to a worker thread.
+    """
+    if not kb_ref:
+        return None
+    try:
+        resource = resolve_kb(str(kb_ref), require_write=False)
+    except HTTPException:
+        return None
+    manager = _manager_for(str(resource.base_dir.resolve()))
+    entry = manager.get_kb_entry(resource.name)
+    if entry is None:
+        return None
+    return build_manifest(
+        name=resource.name,
+        kb_dir=resource.base_dir / resource.name,
+        entry=entry,
+        limit=limit,
+        pattern=pattern,
+    )

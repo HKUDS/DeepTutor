@@ -9,11 +9,15 @@ import {
   GraduationCap,
   History,
   NotebookPen,
+  Plug,
+  Terminal,
   UserRound,
   Wand2,
   type LucideIcon,
 } from "lucide-react";
 
+import { SPACE_MCP_SURFACE, loadMcpSurface } from "@/components/mcp/surface";
+import { getCliApps } from "@/lib/cli-apps-api";
 import { listSessions } from "@/lib/session-api";
 import { listNotebooks, listNotebookEntries } from "@/lib/notebook-api";
 import { listPersonas } from "@/lib/personas-api";
@@ -37,6 +41,8 @@ type DashKey =
   | "question_bank"
   | "personas"
   | "skills"
+  | "mcp"
+  | "cli_apps"
   | "mastery_path";
 
 interface DashboardItem {
@@ -145,6 +151,39 @@ const GROUPS: DashboardGroup[] = [
         unit: { zh: "个技能", en: "skills" },
         tile: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
         load: async () => (await listSkills()).length,
+      },
+      {
+        key: "mcp",
+        href: "/space/mcp",
+        icon: Plug,
+        title: { zh: "MCP 服务", en: "MCP Services" },
+        blurb: {
+          zh: "连接托管 MCP 服务，把它们的工具带进对话。",
+          en: "Connect hosted MCP services and bring their tools into chat.",
+        },
+        unit: { zh: "个服务", en: "services" },
+        tile: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+        // The account's own servers only: the deployment's are shown on the page
+        // but are not this reader's to count.
+        load: async () =>
+          Object.keys((await loadMcpSurface(SPACE_MCP_SURFACE)).servers).length,
+      },
+      {
+        key: "cli_apps",
+        href: "/space/cli-apps",
+        icon: Terminal,
+        title: { zh: "CLI 应用", en: "CLI Apps" },
+        blurb: {
+          zh: "来自 CLI-Anything 目录的命令行工具，启用后对话可直接调用。",
+          en: "Command-line tools from the CLI-Anything catalog, callable from chat.",
+        },
+        unit: { zh: "个应用", en: "apps" },
+        tile: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+        // What this reader can actually use, not what the deployment installed:
+        // an app they were not granted is visible on the page but is not theirs.
+        load: async () =>
+          (await getCliApps()).apps.filter((app) => app.granted && app.enabled)
+            .length,
       },
     ],
   },

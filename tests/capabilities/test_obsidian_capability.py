@@ -178,8 +178,9 @@ async def test_read_missing_note_is_graceful(tmp_path: Path) -> None:
 
 def test_exclusive_compose_drops_builtins_but_keeps_coexisting_rag() -> None:
     # Issue #650: an exclusive capability drops chat built-ins / composer
-    # toggles, but rag coexists when has_kb is set (co-selected LlamaIndex KBs
-    # the capability does not own). Other flags (code/memory) stay dropped.
+    # toggles, but the KB built-ins coexist when has_kb is set — co-selected
+    # LlamaIndex KBs the capability does not own stay both searchable (rag) and
+    # enumerable (kb_files). Other flags (code/memory) stay dropped.
     composed = compose_enabled_tools(
         registry=get_tool_registry(),
         requested_tools=["web_search", "reason"],
@@ -188,7 +189,13 @@ def test_exclusive_compose_drops_builtins_but_keeps_coexisting_rag() -> None:
         capability_owned=["obsidian_search", "obsidian_read"],
         exclusive=True,
     )
-    assert set(composed) == {"obsidian_search", "obsidian_read", "rag", "ask_user"}
+    assert set(composed) == {
+        "obsidian_search",
+        "obsidian_read",
+        "rag",
+        "kb_files",
+        "ask_user",
+    }
 
 
 def test_exclusive_compose_pure_vault_mounts_no_rag() -> None:

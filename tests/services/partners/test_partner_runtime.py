@@ -359,7 +359,21 @@ class TestContextAssembly:
         await runner.process_message(_msg())
         context = fake_orchestrator.seen_contexts[0]
         assert context.enabled_tools == default_optional_tools()
-        assert "mcp_tools_filter" not in context.metadata
+        # MCP is the exception to "default = fully equipped": these tools reach
+        # host-side capabilities, so an untouched partner ships an empty filter
+        # (deny) rather than no filter (unrestricted).
+        assert context.metadata["mcp_tools_filter"] == []
+
+    @pytest.mark.asyncio
+    async def test_owner_can_opt_partner_into_all_mcp_tools(self, partners_root, fake_orchestrator):
+        """``mcp_tools=None`` is still the deliberate unrestricted state: it
+        emits no filter, which the chat pipeline reads as no MCP narrowing."""
+        fake_orchestrator.script = _finish("ok")
+        runner = _runner(partners_root, PartnerConfig(name="Ada", mcp_tools=None))
+
+        await runner.process_message(_msg())
+
+        assert "mcp_tools_filter" not in fake_orchestrator.seen_contexts[0].metadata
 
     @pytest.mark.asyncio
     async def test_history_feeds_next_turn(self, partners_root, fake_orchestrator):

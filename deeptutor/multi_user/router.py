@@ -17,6 +17,7 @@ from .audit import log_admin_action
 from .grants import load_grant, save_grant
 from .identity import get_user_by_id, list_user_info
 from .knowledge_access import admin_kb_base_dir
+from .model_access import is_owner_bound
 from .paths import get_admin_path_service
 
 router = APIRouter()
@@ -42,6 +43,10 @@ def _admin_catalog_summary() -> dict[str, list[dict[str, Any]]]:
         if service not in out:
             continue
         for profile in state.get("profiles", []) or []:
+            if is_owner_bound(profile):
+                # Bound to one person's OAuth identity, so it is not assignable.
+                # Listing it here would offer admins a grant the server drops.
+                continue
             profile_id = str(profile.get("id") or "")
             models = []
             for model in profile.get("models", []) or []:

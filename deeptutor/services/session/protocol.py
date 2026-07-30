@@ -52,8 +52,8 @@ class SessionStoreProtocol(Protocol):
         events: list[dict[str, Any]] | None = None,
         attachments: list[dict[str, Any]] | None = None,
         metadata: dict[str, Any] | None = None,
-        parent_message_id: int | None = None,
-    ) -> int: ...
+        parent_message_id: int | str | None = None,
+    ) -> int | str: ...
 
     async def delete_message(self, message_id: int | str) -> bool: ...
 

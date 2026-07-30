@@ -16,6 +16,10 @@ from typing import TYPE_CHECKING, Any, Literal
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.services.llm.utils import clean_thinking_tags
 from deeptutor.services.path_service import get_path_service
+from deeptutor.services.session.artifact_attachments import (
+    artifact_attachments,
+    fill_preview_text,
+)
 from deeptutor.services.session.protocol import SessionStoreProtocol
 
 if TYPE_CHECKING:
@@ -56,50 +60,6 @@ def _narration_marker_call_id(event: StreamEvent) -> str | None:
         call_id = metadata.get("call_id")
         return str(call_id) if call_id else None
     return None
-
-
-def _artifact_attachments(event: StreamEvent) -> list[dict[str, Any]]:
-    """Generated-file attachments carried by a stream event.
-
-    The ``exec`` / ``code_execution`` tools surface files written to the turn
-    workspace ({filename, url, mime_type, size_bytes}) in two places: each
-    ``tool_result`` event carries them in ``metadata.tool_metadata.artifacts``
-    the moment the tool finishes (the source that survives cancelled turns),
-    and the loop's final SOURCES event aggregates them as ``type=="artifact"``
-    sources. Both are read — the caller dedupes by URL. Persisting them as
-    assistant-message attachments lets the chat UI render openable cards —
-    same Viewer path as user uploads — instead of relying on the model
-    pasting a raw ``/api/outputs`` URL.
-    """
-    metadata = event.metadata or {}
-    raw: list[Any] = []
-    if event.type == StreamEventType.SOURCES:
-        raw = [
-            entry
-            for entry in metadata.get("sources") or []
-            if isinstance(entry, dict) and entry.get("type") == "artifact"
-        ]
-    elif event.type == StreamEventType.TOOL_RESULT:
-        tool_meta = metadata.get("tool_metadata")
-        if isinstance(tool_meta, dict):
-            raw = [e for e in tool_meta.get("artifacts") or [] if isinstance(e, dict)]
-    attachments: list[dict[str, Any]] = []
-    for entry in raw:
-        url = str(entry.get("url") or "")
-        if not url:
-            continue
-        mime = str(entry.get("mime_type") or "")
-        attachments.append(
-            {
-                "type": "image" if mime.startswith("image/") else "document",
-                "filename": str(entry.get("filename") or "file"),
-                "mime_type": mime,
-                "url": url,
-                "size_bytes": entry.get("size_bytes"),
-                "generated": True,
-            }
-        )
-    return attachments
 
 
 def _clip_text(value: str, limit: int = 4000) -> str:
@@ -1579,7 +1539,10 @@ class TurnRuntimeManager:
             conversation_history = list(history_result.conversation_history)
             conversation_context_text = history_result.context_text
 
-            new_user_message_id: int | None = None
+            # SQLite returns integer rowids; PocketBase returns its string
+            # record ids. Both are opaque to this layer — they only flow into
+            # ``parent_message_id`` chaining and the DONE reconcile metadata.
+            new_user_message_id: int | str | None = None
             if persist_user_message:
                 # Pass parent explicitly only when the FE pinned it (covers
                 # both branched edits with a positive id and root edits
@@ -1675,10 +1638,16 @@ class TurnRuntimeManager:
                 narration_call_id = _narration_marker_call_id(event)
                 if narration_call_id:
                     narration_call_ids.add(narration_call_id)
-                for attachment in _artifact_attachments(event):
+                for attachment in artifact_attachments(event):
                     if attachment["url"] not in seen_artifact_urls:
                         seen_artifact_urls.add(attachment["url"])
                         generated_attachments.append(attachment)
+
+            # Office binaries the browser cannot render need their text pulled
+            # out now, while the files are still on disk, or their preview card
+            # opens empty. Skipped on the cancelled path below: that one is
+            # already unwinding and must not start new blocking work.
+            await fill_preview_text(generated_attachments)
 
             # The persisted answer is the captured content minus any narration
             # rounds (their text stayed in the trace, never the answer).
@@ -1690,7 +1659,7 @@ class TurnRuntimeManager:
             # parent, we use it; otherwise we let the store auto-append
             # (legacy behavior).
             if new_user_message_id is not None:
-                await self.store.add_message(
+                assistant_message_id = await self.store.add_message(
                     session_id=session_id,
                     role="assistant",
                     content=assistant_content,
@@ -1700,7 +1669,7 @@ class TurnRuntimeManager:
                     parent_message_id=new_user_message_id,
                 )
             elif branch_parent_explicit:
-                await self.store.add_message(
+                assistant_message_id = await self.store.add_message(
                     session_id=session_id,
                     role="assistant",
                     content=assistant_content,
@@ -1710,7 +1679,7 @@ class TurnRuntimeManager:
                     parent_message_id=branch_parent_id,
                 )
             else:
-                await self.store.add_message(
+                assistant_message_id = await self.store.add_message(
                     session_id=session_id,
                     role="assistant",
                     content=assistant_content,
@@ -1726,6 +1695,19 @@ class TurnRuntimeManager:
                     source=capability_name,
                     metadata={"status": "completed"},
                 )
+            # Attach the persisted row ids so the frontend can reconcile its
+            # optimistic (negative) message ids with a targeted in-place swap
+            # instead of refetching and re-rendering the whole session.
+            persisted_ids = {
+                key: value
+                for key, value in (
+                    ("user_message_id", new_user_message_id),
+                    ("assistant_message_id", assistant_message_id),
+                )
+                if value
+            }
+            if persisted_ids:
+                pending_done_event.metadata = {**pending_done_event.metadata, **persisted_ids}
             await self._publish_live_event(execution, pending_done_event)
             stream_done_sent = True
             if not is_regenerate:
@@ -1992,34 +1974,85 @@ class TurnRuntimeManager:
             execution.events_flushed = True
             events = list(execution.events)
 
-        for payload in events:
+        # Prefer the store's batch append (single transaction) when available:
+        # per-event commits fsync once per event, which on slow storage (NAS
+        # spinning disks) stretches this flush — and the visible spinner — to
+        # minutes for a long turn.
+        append_batch = getattr(self.store, "append_turn_events", None)
+        if callable(append_batch):
             try:
-                persisted = await self.store.append_turn_event(execution.turn_id, payload)
+                persisted_batch = await append_batch(execution.turn_id, events)
             except ValueError as exc:
-                # A turn can disappear when the session is deleted while the turn task
-                # is draining post-stream persistence. Avoid cascading failures.
+                # A turn can disappear when the session is deleted while the
+                # turn task is draining post-stream persistence.
                 if "Turn not found:" not in str(exc):
                     raise
                 logger.warning(
-                    "Skip persisting event for missing turn %s (%s)",
+                    "Skip persisting %d buffered event(s) for missing turn %s",
+                    len(events),
                     execution.turn_id,
-                    payload.get("type", ""),
                 )
-                continue
-            self._mirror_event_to_workspace(execution, persisted)
+                return
+            await self._mirror_events_to_workspace(execution, persisted_batch)
+            return
+
+        persisted_events: list[dict[str, Any]] = []
+        try:
+            for index, payload in enumerate(events):
+                try:
+                    persisted = await self.store.append_turn_event(execution.turn_id, payload)
+                except ValueError as exc:
+                    # A turn can disappear when the session is deleted while the turn
+                    # task is draining post-stream persistence. Avoid cascading
+                    # failures. The turn will not come back, so drop the whole
+                    # remaining batch with one summary line instead of logging once
+                    # per buffered event.
+                    if "Turn not found:" not in str(exc):
+                        raise
+                    logger.warning(
+                        "Skip persisting %d buffered event(s) for missing turn %s (first: %s)",
+                        len(events) - index,
+                        execution.turn_id,
+                        payload.get("type", ""),
+                    )
+                    break
+                persisted_events.append(persisted)
+        finally:
+            # Mirror whatever actually persisted, even when the loop broke or
+            # raised part-way — matches the previous per-event behaviour.
+            await self._mirror_events_to_workspace(execution, persisted_events)
+
+    async def _mirror_events_to_workspace(
+        self, execution: _TurnExecution, payloads: list[dict[str, Any]]
+    ) -> None:
+        """Mirror turn events to the task-local ``events.jsonl`` under ``data/user/workspace``.
+
+        One open/write for the whole batch, off the event loop: the previous
+        per-event ``open()+append`` ran synchronously on the loop thread and
+        stretched turn finalisation (and every other connection) on slow
+        storage. ``to_thread`` copies contextvars, so the per-user path scope
+        resolves the same as on the loop.
+        """
+        if not payloads:
+            return
+        await asyncio.to_thread(self._mirror_events_to_workspace_sync, execution, payloads)
 
     @staticmethod
-    def _mirror_event_to_workspace(execution: _TurnExecution, payload: dict[str, Any]) -> None:
-        """Mirror turn events to task-local ``events.jsonl`` files under ``data/user/workspace``."""
+    def _mirror_events_to_workspace_sync(
+        execution: _TurnExecution, payloads: list[dict[str, Any]]
+    ) -> None:
         try:
             path_service = get_path_service()
             task_dir = path_service.get_task_workspace(execution.capability, execution.turn_id)
             task_dir.mkdir(parents=True, exist_ok=True)
             event_file = task_dir / "events.jsonl"
+            lines = "".join(
+                json.dumps(payload, ensure_ascii=False, default=str) + "\n" for payload in payloads
+            )
             with open(event_file, "a", encoding="utf-8") as f:
-                f.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
+                f.write(lines)
         except Exception:
-            logger.debug("Failed to mirror turn event to workspace", exc_info=True)
+            logger.debug("Failed to mirror turn events to workspace", exc_info=True)
 
 
 import threading

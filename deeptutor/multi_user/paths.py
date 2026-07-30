@@ -6,8 +6,9 @@ one tree to mount and back up:
 * ``data/user``           — the admin workspace (admin scope root is ``data/``)
 * ``data/users/<uid>``    — one workspace per non-admin user
 * ``data/partners/<id>``  — partner (synthetic-user) workspaces
-* ``data/system``         — deployment state: accounts, grants, audit. Never
-  mounted into the sandbox runner — see ``docker-compose.yml``.
+* ``data/system``         — deployment state: accounts, grants, audit, and the
+  per-owner secrets of :func:`get_owner_secrets_dir`. Never mounted into the
+  sandbox runner — see ``docker-compose.yml``.
 
 Deployments upgraded from the sibling ``multi-user/`` layout are migrated
 in place by :func:`migrate_legacy_multi_user_tree`.
@@ -17,8 +18,10 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import logging
+import os
 from pathlib import Path
 import shutil
+import stat
 import threading
 from typing import Iterator
 
@@ -34,6 +37,7 @@ ADMIN_WORKSPACE_ROOT = PROJECT_ROOT / "data"
 USERS_ROOT = ADMIN_WORKSPACE_ROOT / "users"
 SYSTEM_ROOT = ADMIN_WORKSPACE_ROOT / "system"
 LEGACY_MULTI_USER_ROOT = PROJECT_ROOT / "multi-user"
+USER_SECRETS_DIRNAME = "user-secrets"
 
 _path_services: dict[str, PathService] = {}
 
@@ -125,6 +129,12 @@ def ensure_system_dirs() -> None:
     migrate_legacy_multi_user_tree()
     for child in ("auth", "grants", "audit", "indexes"):
         (SYSTEM_ROOT / child).mkdir(parents=True, exist_ok=True)
+    # Per-owner secrets (see ``get_owner_secrets_dir``). Declared here, and its
+    # mode set once at startup, so the per-request path only has to create the
+    # one owner directory below it.
+    secrets_root = SYSTEM_ROOT / USER_SECRETS_DIRNAME
+    secrets_root.mkdir(parents=True, exist_ok=True)
+    os.chmod(secrets_root, stat.S_IRWXU)
 
 
 def get_path_service_for_scope(scope: UserScope) -> PathService:
@@ -149,6 +159,95 @@ def get_current_path_service() -> PathService:
     if user.scope.kind == "user":
         ensure_scope_workspace(user.scope)
     return get_path_service_for_scope(user.scope)
+
+
+def _resolve_owner() -> tuple[str, PathService]:
+    """The owning account's id and its workspace, from one decision.
+
+    Owner-keyed assets are addressed two ways — by directory (a workspace root)
+    and by name (a secrets directory) — and the two must never disagree: keying
+    a secret by one identity while writing it under another is exactly how one
+    account's credentials end up in another's directory. So both come from here,
+    and neither is recovered from the other afterwards (a path cannot be
+    reversed back into an identity: symlinked roots resolve elsewhere, and a
+    "give up and assume admin" fallback fails open onto the most privileged
+    account there is).
+    """
+    from deeptutor.services.partners.scope import is_partner_user_id
+
+    from .context import get_current_user_or_none
+
+    user = get_current_user_or_none()
+    if user is None:
+        # No request scope: CLI runs and background jobs act as the deployment.
+        return LOCAL_ADMIN_ID, PathService.get_instance()
+    if is_partner_user_id(user.id):
+        # A partner is a synthetic user, not a person: it has a workspace but no
+        # account, so an asset keyed to an account belongs to its owner.
+        return LOCAL_ADMIN_ID, get_admin_path_service()
+    if user.scope.kind == "user":
+        ensure_scope_workspace(user.scope)
+        return user.id, get_path_service_for_scope(user.scope)
+    return LOCAL_ADMIN_ID, get_path_service_for_scope(user.scope)
+
+
+def get_owner_path_service() -> PathService:
+    """Resolve to the root of the human account that owns the current scope.
+
+    A partner is a *synthetic* user, not a person: it has a workspace under
+    ``data/partners/<id>`` but no account of its own, and that workspace is
+    created by — and lives inside — the admin tree. Assets keyed to a real
+    account rather than to a workspace (OAuth credentials, above all) must
+    therefore resolve to the owner, or a partner turn would look for a login
+    that can never exist there. Every other scope owns itself.
+
+    Use this only for owner-keyed assets; workspace-keyed ones (rag, skills,
+    notebooks, memory) belong to the partner and go through
+    :func:`get_current_path_service`.
+    """
+    return _resolve_owner()[1]
+
+
+def owner_secrets_dir(owner_id: str) -> Path:
+    """Secrets directory of a *named* owner, independent of the request scope.
+
+    Needed because not every reader runs inside a request: an MCP connection
+    task resolves its own server's credentials long after the turn that created
+    it, and must address them by the owner it was opened for rather than by
+    whoever happens to be current.
+    """
+    # SYSTEM_ROOT is read per call so a monkey-patched root (tests) is honored.
+    secrets_root = SYSTEM_ROOT / USER_SECRETS_DIRNAME
+    owner_dir = secrets_root / (owner_id or LOCAL_ADMIN_ID)
+    owner_dir.mkdir(parents=True, exist_ok=True)
+    # Re-asserted rather than assumed from ``ensure_system_dirs``: this is the
+    # only guarantee that holds when a directory was created by something else
+    # (an operator, a restore, a caller that skipped startup), and the cost of
+    # being wrong is a world-readable refresh token.
+    for path in (secrets_root, owner_dir):
+        os.chmod(path, stat.S_IRWXU)
+    return owner_dir.resolve()
+
+
+def get_owner_secrets_dir() -> Path:
+    """Owner-private directory for secrets the sandbox must never see.
+
+    ``data/system`` is the one branch of the tree the sandbox runner does not
+    mount, so credentials that authorize a *person* — OAuth refresh tokens above
+    all — belong here rather than inside a workspace subtree that every
+    account's ``exec`` shares. The owner is resolved by :func:`_resolve_owner`,
+    the same decision :func:`get_owner_path_service` uses, so a partner turn
+    lands on the directory of the human who owns it.
+
+    Laid out like a user root (``private/<asset>/``) so a store written against
+    one can be pointed here without changing what it knows about its own files.
+    """
+    return owner_secrets_dir(current_owner_id())
+
+
+def current_owner_id() -> str:
+    """Id of the account owning the current scope (a partner's is its owner's)."""
+    return _resolve_owner()[0]
 
 
 @contextmanager

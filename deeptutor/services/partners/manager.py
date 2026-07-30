@@ -137,6 +137,35 @@ def _optional_str_list(value: Any) -> list[str] | None:
     return None
 
 
+#: On-disk spelling of "no restriction" for ``mcp_tools``. Deliberately *not*
+#: YAML null: a bare ``mcp_tools:`` key parses as null, and a hand-edit that
+#: writes it almost certainly means "none" — the one reading it must not be
+#: allowed to grant everything. Mirrors the ``["*"]`` convention
+#: ``MCPServerConfig.enabled_tools`` already uses.
+MCP_TOOLS_UNRESTRICTED = "*"
+
+
+def _mcp_tools_setting(data: dict[str, Any]) -> list[str] | None:
+    """Stored ``mcp_tools`` → whitelist, defaulting to deny.
+
+    MCP tools proxy host-side capabilities an admin configured deployment-wide,
+    so no partner may inherit them without an owner decision. Everything
+    ambiguous therefore denies: a config written before that default (no
+    ``mcp_tools`` key), a bare key (YAML null), and a malformed value all read
+    as ``[]`` — MCP off. Unrestricted has exactly one on-disk spelling,
+    ``["*"]``, which :meth:`PartnerManager.save_config` writes for it.
+    """
+    if "mcp_tools" not in data:
+        return []
+    value = data["mcp_tools"]
+    if value is None:
+        return []
+    names = _optional_str_list(value)
+    if names is None:
+        return []
+    return None if MCP_TOOLS_UNRESTRICTED in names else names
+
+
 @dataclass
 class PartnerConfig:
     """Configuration for a single partner."""
@@ -166,8 +195,17 @@ class PartnerConfig:
     # built-in; list = whitelist. Lets an owner deny e.g. memory to an
     # IM-facing partner.
     builtin_tools: list[str] | None = None
-    # Configured MCP tools the partner may load. None = all; [] = MCP off.
-    mcp_tools: list[str] | None = None
+    # Configured MCP tools the partner may load. Defaults to ``[]`` — MCP off —
+    # because these tools reach host-side capabilities configured
+    # deployment-wide, and a partner exposed on an IM channel must not inherit
+    # them just because an admin added a server. ``None`` still means
+    # unrestricted, reachable only when an owner opts in explicitly (on disk:
+    # ``["*"]``, see ``MCP_TOOLS_UNRESTRICTED``).
+    # NOTE the polarity here is the inverse of the *user grant* of the same name:
+    # ``grant.mcp_tools=None`` denies (``multi_user.tool_access``), because a
+    # missing grant must not hand a real account the deployment's servers, while
+    # a partner's ``None`` is an owner's deliberate "allow everything".
+    mcp_tools: list[str] | None = field(default_factory=list)
 
 
 @dataclass
@@ -350,7 +388,7 @@ class PartnerManager:
                 soul_origin=dict(data.get("soul_origin", {}) or {}),
                 enabled_tools=_optional_str_list(data.get("enabled_tools")),
                 builtin_tools=_optional_str_list(data.get("builtin_tools")),
-                mcp_tools=_optional_str_list(data.get("mcp_tools")),
+                mcp_tools=_mcp_tools_setting(data),
             )
         except Exception:
             logger.exception("Failed to load partner config %s", partner_id)
@@ -391,8 +429,12 @@ class PartnerManager:
             data["enabled_tools"] = list(config.enabled_tools)
         if config.builtin_tools is not None:
             data["builtin_tools"] = list(config.builtin_tools)
-        if config.mcp_tools is not None:
-            data["mcp_tools"] = list(config.mcp_tools)
+        # Written unconditionally: an absent key reads as deny (see
+        # :func:`_mcp_tools_setting`), so the unrestricted opt-in only survives a
+        # round-trip when it lands on disk as its own explicit spelling.
+        data["mcp_tools"] = (
+            [MCP_TOOLS_UNRESTRICTED] if config.mcp_tools is None else list(config.mcp_tools)
+        )
 
         tmp_path = path.with_suffix(path.suffix + ".tmp")
         tmp_path.write_text(yaml.dump(data, allow_unicode=True), encoding="utf-8")

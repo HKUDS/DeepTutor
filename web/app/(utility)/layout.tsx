@@ -1,4 +1,5 @@
 import UtilitySidebar from "@/components/sidebar/UtilitySidebar";
+import AppShell from "@/components/layout/AppShell";
 import { CapabilityAccessProvider } from "@/components/access/CapabilityAccessContext";
 import CapabilityGate from "@/components/access/CapabilityGate";
 
@@ -9,12 +10,9 @@ export default function UtilityLayout({
 }>) {
   return (
     <CapabilityAccessProvider>
-      <div className="flex h-screen overflow-hidden">
-        <UtilitySidebar />
-        <main className="flex-1 overflow-hidden bg-[var(--background)]">
-          <CapabilityGate>{children}</CapabilityGate>
-        </main>
-      </div>
+      <AppShell sidebar={<UtilitySidebar />}>
+        <CapabilityGate>{children}</CapabilityGate>
+      </AppShell>
     </CapabilityAccessProvider>
   );
 }

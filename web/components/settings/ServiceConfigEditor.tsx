@@ -16,6 +16,8 @@ import {
 import { useTranslation } from "react-i18next";
 
 import ProviderIcon from "@/components/common/ProviderIcon";
+import { CodexOAuthCard } from "./CodexOAuthCard";
+import { isCodexOAuthProfile, isManagedCodexProfile } from "./codex-profile";
 import {
   type CatalogModel,
   type CatalogProfile,
@@ -77,6 +79,20 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
 
   const activeProfile = getActiveProfile(draft, service);
   const activeModel = getActiveModel(draft, service);
+  const activeProviderValue =
+    service === "search"
+      ? activeProfile?.provider || ""
+      : activeProfile?.binding || "";
+  const activeProviderOption = (providers[service] || []).find(
+    (option) => option.value === activeProviderValue,
+  );
+  const isManagedCodex = isManagedCodexProfile(activeProfile);
+  const isCodexOAuth = isCodexOAuthProfile(
+    service,
+    activeProviderValue,
+    activeProviderOption,
+    activeProfile,
+  );
 
   const [showApiKey, setShowApiKey] = useState(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
@@ -202,7 +218,9 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                 const isActive =
                   profile.id === draft.services[service].active_profile_id;
                 const profileDetail = activeProfileDetail(profile, service, t);
-                const isEditing = editingProfileId === profile.id;
+                const isManagedProfile = isManagedCodexProfile(profile);
+                const isEditing =
+                  editingProfileId === profile.id && !isManagedProfile;
                 return (
                   <div
                     key={profile.id}
@@ -218,7 +236,9 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                         }
                       });
                     }}
-                    onDoubleClick={() => startProfileRename(profile)}
+                    onDoubleClick={() => {
+                      if (!isManagedProfile) startProfileRename(profile);
+                    }}
                     onKeyDown={(e) => {
                       if (isEditing) return;
                       if (e.key === "Enter" || e.key === " ") {
@@ -232,7 +252,11 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                         });
                       }
                     }}
-                    title={isEditing ? undefined : t("Double-click to rename")}
+                    title={
+                      isEditing || isManagedProfile
+                        ? undefined
+                        : t("Double-click to rename")
+                    }
                     className={`group relative cursor-pointer rounded-lg px-3 py-2 text-left transition-colors ${
                       isActive
                         ? "bg-[var(--muted)]/70 text-[var(--foreground)]"
@@ -278,18 +302,20 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                         >
                           {profile.name}
                         </div>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            startProfileRename(profile);
-                          }}
-                          className="-mr-1 shrink-0 rounded-md p-1 text-[var(--muted-foreground)]/60 transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-                          aria-label={t("Rename profile")}
-                          title={t("Rename profile")}
-                        >
-                          <Pencil className="h-3 w-3" />
-                        </button>
+                        {!isManagedProfile && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              startProfileRename(profile);
+                            }}
+                            className="-mr-1 shrink-0 rounded-md p-1 text-[var(--muted-foreground)]/60 transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                            aria-label={t("Rename profile")}
+                            title={t("Rename profile")}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                        )}
                       </div>
                     )}
                     <div className="mt-0.5 truncate text-[11px] leading-tight text-[var(--muted-foreground)]/70">
@@ -302,10 +328,10 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
             <div className="mt-2 border-t border-[var(--border)]/40 pt-2">
               <button
                 onClick={() => removeActiveProfile(service)}
-                disabled={!activeProfile}
+                disabled={!activeProfile || isManagedCodex}
                 className="flex w-full items-center gap-1.5 rounded-lg px-3 py-1.5 text-left text-[11px] text-[var(--muted-foreground)]/60 transition-colors hover:bg-red-500/5 hover:text-red-500 disabled:opacity-30"
                 title={
-                  activeProfile
+                  activeProfile && !isManagedCodex
                     ? t("Permanently remove the currently selected profile.")
                     : undefined
                 }
@@ -354,24 +380,26 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                   <div className="text-[13px] font-medium text-[var(--foreground)]">
                     {t("Models")}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => addModel(service)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)]/50 px-2.5 py-1 text-[12px] text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
-                    >
-                      <Plus className="h-3 w-3" />
-                      {t("Model")}
-                    </button>
-                    <button
-                      onClick={() => removeActiveModel(service)}
-                      disabled={!activeModel}
-                      className="inline-flex items-center gap-1 text-[11px] text-[var(--muted-foreground)]/40 transition-colors hover:text-red-500 disabled:opacity-30"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                      {t("Delete")}
-                    </button>
-                  </div>
+                  {!isCodexOAuth && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => addModel(service)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)]/50 px-2.5 py-1 text-[12px] text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
+                      >
+                        <Plus className="h-3 w-3" />
+                        {t("Model")}
+                      </button>
+                      <button
+                        onClick={() => removeActiveModel(service)}
+                        disabled={!activeModel}
+                        className="inline-flex items-center gap-1 text-[11px] text-[var(--muted-foreground)]/40 transition-colors hover:text-red-500 disabled:opacity-30"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        {t("Delete")}
+                      </button>
+                    </div>
+                  )}
                 </div>
                 {activeProfile.models.length > 0 && (
                   <div className="mb-4 flex flex-wrap items-center gap-1.5">
@@ -391,7 +419,7 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                               : "";
                       return (
                         <div key={model.id} className="min-w-0">
-                          {editingModelId === model.id ? (
+                          {editingModelId === model.id && !isCodexOAuth ? (
                             <input
                               autoFocus
                               className="h-8 w-60 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 text-[12.5px] text-[var(--foreground)] outline-none focus:border-[var(--ring)]"
@@ -420,8 +448,14 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                                     model.id;
                                 })
                               }
-                              onDoubleClick={() => startModelRename(model)}
-                              title={t("Double-click to rename")}
+                              onDoubleClick={() => {
+                                if (!isCodexOAuth) startModelRename(model);
+                              }}
+                              title={
+                                isCodexOAuth
+                                  ? undefined
+                                  : t("Double-click to rename")
+                              }
                               className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] transition-colors ${
                                 isActive
                                   ? "bg-[var(--muted)] text-[var(--foreground)]"
@@ -450,7 +484,7 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                     })}
                   </div>
                 )}
-                {activeModel && (
+                {activeModel && !isCodexOAuth && (
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
                       <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
@@ -945,11 +979,20 @@ function ProfileFields({
 
   const providerValue =
     service === "search" ? profile.provider || "" : profile.binding || "";
+  const providerOption = (providers[service] || []).find(
+    (option) => option.value === providerValue,
+  );
+  const isManagedCodex = isManagedCodexProfile(profile);
+  const isCodexOAuth = isCodexOAuthProfile(
+    service,
+    providerValue,
+    providerOption,
+    profile,
+  );
 
-  // Only the search service hides fields by provider. LLM/embedding always
-  // expose Base URL and API Key, so default both to shown for them.
-  const fields =
-    service === "search"
+  const fields = isCodexOAuth
+    ? { apiKey: false, baseUrl: false, baseUrlRequired: false }
+    : service === "search"
       ? searchProviderFields(profile.provider)
       : { apiKey: true, baseUrl: true, baseUrlRequired: false };
   const searxngMissingBaseUrl =
@@ -972,6 +1015,7 @@ function ProfileFields({
           <select
             className={`${selectClass} ${providerValue ? "pl-9" : ""}`}
             value={providerValue}
+            disabled={isManagedCodex}
             onChange={(e) => {
               const val = e.target.value;
               const field = service === "search" ? "provider" : "binding";
@@ -1050,6 +1094,11 @@ function ProfileFields({
           </p>
         )}
       </div>
+      {isCodexOAuth && (
+        <div className="sm:col-span-2">
+          <CodexOAuthCard />
+        </div>
+      )}
       {fields.baseUrl && (
         <div className="sm:col-span-2">
           <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
@@ -1116,76 +1165,82 @@ function ProfileFields({
           </div>
         </div>
       )}
-      <div className="sm:col-span-2 rounded-xl border border-[var(--border)]/60 bg-[var(--muted)]/20">
-        <button
-          type="button"
-          onClick={() => setExtraOpen((value) => !value)}
-          className="flex w-full items-center justify-between gap-3 px-3.5 py-3 text-left"
-          aria-expanded={extraOpen}
-        >
-          <span>
-            <span className="block text-[12px] font-medium text-[var(--foreground)]">
-              {t("Extra (optional)")}
+      {!isCodexOAuth && (
+        <div className="sm:col-span-2 rounded-xl border border-[var(--border)]/60 bg-[var(--muted)]/20">
+          <button
+            type="button"
+            onClick={() => setExtraOpen((value) => !value)}
+            className="flex w-full items-center justify-between gap-3 px-3.5 py-3 text-left"
+            aria-expanded={extraOpen}
+          >
+            <span>
+              <span className="block text-[12px] font-medium text-[var(--foreground)]">
+                {t("Extra (optional)")}
+              </span>
+              <span className="mt-0.5 block text-[11px] text-[var(--muted-foreground)]">
+                {service === "search"
+                  ? t("API version and proxy")
+                  : t("API version and extra request headers")}
+              </span>
             </span>
-            <span className="mt-0.5 block text-[11px] text-[var(--muted-foreground)]">
-              {service === "search"
-                ? t("API version and proxy")
-                : t("API version and extra request headers")}
-            </span>
-          </span>
-          <ChevronDown
-            className={`h-4 w-4 text-[var(--muted-foreground)] transition-transform ${
-              extraOpen ? "rotate-180" : ""
-            }`}
-          />
-        </button>
-        {extraOpen && (
-          <div className="grid gap-4 border-t border-[var(--border)]/60 px-3.5 py-4 sm:grid-cols-2">
-            <div>
-              <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                {t("API Version")}
-              </div>
-              <input
-                className={inputClass}
-                value={profile.api_version}
-                onChange={(e) =>
-                  updateProfileField(service, "api_version", e.target.value)
-                }
-                placeholder={t("Optional")}
-              />
-            </div>
-            {service === "search" ? (
+            <ChevronDown
+              className={`h-4 w-4 text-[var(--muted-foreground)] transition-transform ${
+                extraOpen ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+          {extraOpen && (
+            <div className="grid gap-4 border-t border-[var(--border)]/60 px-3.5 py-4 sm:grid-cols-2">
               <div>
                 <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                  {t("Proxy")}
+                  {t("API Version")}
                 </div>
                 <input
                   className={inputClass}
-                  value={profile.proxy || ""}
+                  value={profile.api_version}
                   onChange={(e) =>
-                    updateProfileField(service, "proxy", e.target.value)
+                    updateProfileField(service, "api_version", e.target.value)
                   }
-                  placeholder={t("http://127.0.0.1:7890 (optional)")}
+                  placeholder={t("Optional")}
                 />
               </div>
-            ) : (
-              <div className="sm:col-span-2">
-                <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                  {t("Extra Headers (JSON)")}
+              {service === "search" ? (
+                <div>
+                  <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                    {t("Proxy")}
+                  </div>
+                  <input
+                    className={inputClass}
+                    value={profile.proxy || ""}
+                    onChange={(e) =>
+                      updateProfileField(service, "proxy", e.target.value)
+                    }
+                    placeholder={t("http://127.0.0.1:7890 (optional)")}
+                  />
                 </div>
-                <textarea
-                  className={`${inputClass} min-h-[84px] resize-y`}
-                  value={stringifyExtraHeaders(profile.extra_headers)}
-                  onChange={(e) =>
-                    updateProfileField(service, "extra_headers", e.target.value)
-                  }
-                  placeholder='{"APP-Code":"your-app-code"}'
-                />
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+              ) : (
+                <div className="sm:col-span-2">
+                  <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                    {t("Extra Headers (JSON)")}
+                  </div>
+                  <textarea
+                    className={`${inputClass} min-h-[84px] resize-y`}
+                    value={stringifyExtraHeaders(profile.extra_headers)}
+                    onChange={(e) =>
+                      updateProfileField(
+                        service,
+                        "extra_headers",
+                        e.target.value,
+                      )
+                    }
+                    placeholder='{"APP-Code":"your-app-code"}'
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

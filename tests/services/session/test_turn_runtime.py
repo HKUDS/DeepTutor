@@ -6,7 +6,6 @@ import pytest
 
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.services.session.turn_runtime import (
-    _artifact_attachments,
     _clip_text,
     _extract_followup_question_context,
     _extract_memory_references,
@@ -98,91 +97,6 @@ class TestNarrationMarkerCallId:
             },
         )
         assert _narration_marker_call_id(event) is None
-
-
-class TestArtifactAttachments:
-    def _sources_event(self, sources: list[dict]) -> StreamEvent:
-        return StreamEvent(type=StreamEventType.SOURCES, metadata={"sources": sources})
-
-    def test_artifact_source_becomes_generated_attachment(self) -> None:
-        event = self._sources_event(
-            [
-                {
-                    "type": "artifact",
-                    "filename": "report.pdf",
-                    "url": "/api/outputs/workspace/chat/chat/t1/exec/report.pdf",
-                    "mime_type": "application/pdf",
-                    "size_bytes": 2048,
-                }
-            ]
-        )
-        atts = _artifact_attachments(event)
-        assert len(atts) == 1
-        a = atts[0]
-        assert a["type"] == "document"
-        assert a["filename"] == "report.pdf"
-        assert a["url"].endswith("report.pdf")
-        assert a["mime_type"] == "application/pdf"
-        assert a["generated"] is True
-
-    def test_image_artifact_typed_as_image(self) -> None:
-        event = self._sources_event(
-            [
-                {
-                    "type": "artifact",
-                    "filename": "chart.png",
-                    "url": "/api/outputs/x/chart.png",
-                    "mime_type": "image/png",
-                }
-            ]
-        )
-        assert _artifact_attachments(event)[0]["type"] == "image"
-
-    def test_non_artifact_sources_ignored(self) -> None:
-        event = self._sources_event([{"type": "rag", "query": "q", "kb_name": "kb"}])
-        assert _artifact_attachments(event) == []
-
-    def test_tool_result_artifacts_extracted(self) -> None:
-        # tool_result events carry artifacts the moment exec finishes — the
-        # durable source for cancelled turns (the aggregate SOURCES event
-        # only fires when the loop completes).
-        event = StreamEvent(
-            type=StreamEventType.TOOL_RESULT,
-            content="Exit code: 0",
-            metadata={
-                "tool_metadata": {
-                    "exit_code": 0,
-                    "artifacts": [
-                        {
-                            "filename": "notes.pdf",
-                            "url": "/api/outputs/workspace/chat/chat/t2/exec/notes.pdf",
-                            "mime_type": "application/pdf",
-                            "size_bytes": 1024,
-                        }
-                    ],
-                }
-            },
-        )
-        atts = _artifact_attachments(event)
-        assert len(atts) == 1
-        assert atts[0]["filename"] == "notes.pdf"
-        assert atts[0]["generated"] is True
-
-    def test_tool_result_without_artifacts_ignored(self) -> None:
-        event = StreamEvent(
-            type=StreamEventType.TOOL_RESULT,
-            content="rag result",
-            metadata={"tool_metadata": {"kb_name": "kb"}},
-        )
-        assert _artifact_attachments(event) == []
-
-    def test_non_sources_event_ignored(self) -> None:
-        event = StreamEvent(type=StreamEventType.CONTENT, content="hello")
-        assert _artifact_attachments(event) == []
-
-    def test_artifact_without_url_skipped(self) -> None:
-        event = self._sources_event([{"type": "artifact", "filename": "x.pdf"}])
-        assert _artifact_attachments(event) == []
 
 
 # ---------------------------------------------------------------------------

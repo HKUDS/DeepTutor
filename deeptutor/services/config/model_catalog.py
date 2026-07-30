@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from copy import deepcopy
 import json
+import os
 from pathlib import Path
+import tempfile
+import threading
 from typing import Any
 from uuid import uuid4
 
@@ -51,6 +55,7 @@ class ModelCatalogService:
 
     def __init__(self, path: Path | None = None):
         self.path = path or CATALOG_PATH
+        self._lock = threading.RLock()
 
     @classmethod
     def get_instance(cls, path: Path | None = None) -> "ModelCatalogService":
@@ -88,12 +93,32 @@ class ModelCatalogService:
         return loaded if isinstance(loaded, dict) else {}
 
     def save(self, catalog: dict[str, Any]) -> dict[str, Any]:
-        normalized = deepcopy(catalog)
-        self._normalize(normalized)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.path, "w", encoding="utf-8") as handle:
-            json.dump(normalized, handle, indent=2, ensure_ascii=False)
-        return normalized
+        with self._lock:
+            normalized = deepcopy(catalog)
+            self._normalize(normalized)
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            fd, temp_name = tempfile.mkstemp(
+                prefix=f".{self.path.name}.",
+                suffix=".tmp",
+                dir=self.path.parent,
+            )
+            temp_path = Path(temp_name)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+                    json.dump(normalized, handle, indent=2, ensure_ascii=False)
+                    handle.write("\n")
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temp_path, self.path)
+            finally:
+                temp_path.unlink(missing_ok=True)
+            return normalized
+
+    def update(self, mutator: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
+        with self._lock:
+            catalog = self.load()
+            mutator(catalog)
+            return self.save(catalog)
 
     def apply(self, catalog: dict[str, Any] | None = None) -> dict[str, Any]:
         current = self.save(catalog or self.load())

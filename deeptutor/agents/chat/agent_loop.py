@@ -31,6 +31,7 @@ import re
 from typing import TYPE_CHECKING, Any
 
 from deeptutor.agents._shared.capability_result import emit_capability_result
+from deeptutor.agents.chat.context_budget import LLMRequestSnapshot
 from deeptutor.agents.chat.dsml_tool_calls import extract_dsml_tool_calls, has_dsml_tool_calls
 from deeptutor.core.agentic.messages import assistant_message_with_tool_calls
 from deeptutor.core.agentic.tool_dispatch import DispatchOutcome
@@ -166,6 +167,7 @@ class AgentLoop:
         self.client = client
         self.enabled_tools = enabled_tools
         self.tool_schemas = tool_schemas
+        self._last_request: LLMRequestSnapshot | None = None
 
     async def run(self) -> None:
         state = AgentLoopState()
@@ -206,15 +208,20 @@ class AgentLoop:
                 stage=LOOP_STAGE,
                 metadata={"trace_kind": "sources"},
             )
+        payload: dict[str, Any] = {
+            "response": outcome.final_text,
+            "completed": outcome.completed,
+            "engine": "agent_loop",
+            "rounds": state.rounds,
+            "tool_steps": state.tool_steps,
+        }
+        if self._last_request is not None:
+            budget = self.pipeline.measure_context_budget(self._last_request)
+            if budget is not None:
+                payload["metadata"] = {"context_budget": budget}
         await emit_capability_result(
             self.stream,
-            {
-                "response": outcome.final_text,
-                "completed": outcome.completed,
-                "engine": "agent_loop",
-                "rounds": state.rounds,
-                "tool_steps": state.tool_steps,
-            },
+            payload,
             source="chat",
             usage=self.pipeline.usage,
         )
@@ -471,6 +478,20 @@ class AgentLoop:
         if tool_schemas:
             kwargs["tools"] = tool_schemas
             kwargs["tool_choice"] = "auto"
+        # What this request actually carried, pinned now: the loop keeps
+        # appending to ``messages`` and the deferred loader keeps appending to
+        # ``tool_schemas``, so the turn's context budget is read off the last
+        # snapshot rather than off the lists' end state.
+        #
+        # The forced-finish round deliberately ships no ``tools`` so the model
+        # must answer. That absence is a loop mechanic, not a turn that ran
+        # without tools, so the last non-empty schema list stands — otherwise a
+        # turn that spent eight rounds calling tools would report zero tokens
+        # for the schemas that sat in its window the whole time.
+        carried = list(tool_schemas or [])
+        if not carried and self._last_request is not None:
+            carried = self._last_request.tool_schemas
+        self._last_request = LLMRequestSnapshot(messages=list(messages), tool_schemas=carried)
 
         # Providers (esp. Gemini OpenAI-compat) may attach ``usage`` to more
         # than one stream chunk. Keep the latest frame; it is recorded once

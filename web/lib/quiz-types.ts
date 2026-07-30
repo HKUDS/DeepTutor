@@ -130,6 +130,32 @@ export function extractStreamingQuizQuestions(
 }
 
 /**
+ * Resolve the turn identity of a quiz message from its event stream.
+ *
+ * Quiz answer state is scoped per turn: the notebook unique key is
+ * ``(session_id, turn_id, question_id)`` and positional question ids
+ * (``q_1``..``q_N``) repeat across quizzes in one session. During
+ * generation the final ``result`` event hasn't landed yet, so the turn id
+ * must come from the streamed events themselves — every unified-WS event
+ * carries ``turn_id``. The ``result`` event stays authoritative when
+ * present so the settled/persisted path is unchanged (issues #487 / #677).
+ *
+ * Returns ``null`` only for legacy persisted turns whose events predate
+ * ``turn_id``; QuizViewer renders those cards local-only (no notebook
+ * reads or writes), so they can never inherit another turn's answers.
+ */
+export function extractQuizTurnId(
+  events: Array<{ type?: string; turn_id?: string }> | undefined,
+): string | null {
+  if (!Array.isArray(events)) return null;
+  const result = events.find(
+    (event) => event.type === "result" && event.turn_id,
+  );
+  if (result?.turn_id) return result.turn_id;
+  return events.find((event) => event.turn_id)?.turn_id ?? null;
+}
+
+/**
  * Extract QuizQuestion[] from the raw `result` event metadata returned by
  * the deep_question capability.
  */

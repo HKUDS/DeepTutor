@@ -1,0 +1,1305 @@
+{
+  "version": 1,
+  "note": "Remote-transport-first curated MCP catalog. Every endpoint below was verified by sending an MCP `initialize` request to it, and every credential target was taken from the server's own auth challenge or from the vendor's documentation. stdio entries carry self_service:false because a command is host execution as the app user. logo_url is intentionally empty everywhere: a third-party logo CDN would receive every user's installed-service list on each render.",
+  "entries": [
+    {
+      "id": "airtable",
+      "display_name": "Airtable",
+      "category": "business",
+      "tier": "curated",
+      "trust": "unverified",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Read and update Airtable bases, tables, and records.",
+        "zh": "读取并更新 Airtable 的 base、数据表与记录。"
+      },
+      "requires": {
+        "en": "Airtable personal access token.",
+        "zh": "需要 Airtable 个人访问令牌。"
+      },
+      "server": {
+        "url": "https://mcp.airtable.com/mcp",
+        "tool_timeout": 60
+      },
+      "fields": [
+        {
+          "key": "token",
+          "label": {
+            "en": "Airtable access token",
+            "zh": "Airtable 访问令牌"
+          },
+          "target": [
+            "header",
+            "Authorization"
+          ],
+          "placeholder": "pat...",
+          "value_template": "Bearer {value}"
+        }
+      ],
+      "homepage": "https://airtable.com",
+      "docs_url": "https://airtable.com/developers/web/api/introduction"
+    },
+    {
+      "id": "amap",
+      "display_name": "Amap",
+      "category": "maps",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "docs_url": "https://lbs.amap.com/api/mcp-server/gettingstarted",
+      "description": {
+        "en": "Geocoding, place search, routing, and weather across China via Amap.",
+        "zh": "高德地图的地理编码、POI 搜索、路径规划与天气查询。"
+      },
+      "requires": {
+        "en": "Amap web service key.",
+        "zh": "需要高德开放平台 Web 服务 key。"
+      },
+      "server": {
+        "url": "https://mcp.amap.com/mcp",
+        "tool_timeout": 45
+      },
+      "fields": [
+        {
+          "key": "key",
+          "label": {
+            "en": "Amap key",
+            "zh": "高德 key"
+          },
+          "target": [
+            "url_param",
+            "key"
+          ]
+        }
+      ],
+      "homepage": "https://lbs.amap.com"
+    },
+    {
+      "id": "apify",
+      "display_name": "Apify",
+      "category": "browser",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Run Apify Actors to scrape sites and pull structured datasets.",
+        "zh": "运行 Apify Actor 抓取网站并获取结构化数据集。"
+      },
+      "requires": {
+        "en": "Apify API token.",
+        "zh": "需要 Apify API 令牌。"
+      },
+      "server": {
+        "url": "https://mcp.apify.com",
+        "tool_timeout": 120
+      },
+      "fields": [
+        {
+          "key": "token",
+          "label": {
+            "en": "Apify API token",
+            "zh": "Apify API 令牌"
+          },
+          "target": [
+            "header",
+            "Authorization"
+          ],
+          "placeholder": "apify_api_...",
+          "value_template": "Bearer {value}"
+        }
+      ],
+      "homepage": "https://apify.com",
+      "docs_url": "https://docs.apify.com/platform/integrations/mcp"
+    },
+    {
+      "id": "asana",
+      "display_name": "Asana",
+      "category": "business",
+      "tier": "curated",
+      "transport": "sse",
+      "description": {
+        "en": "Read and update Asana tasks, projects and workspaces.",
+        "zh": "读取并更新 Asana 的任务、项目与工作区。"
+      },
+      "requires": {
+        "en": "Your own account — you approve access in a browser, no key to paste.",
+        "zh": "使用你自己的账号，在浏览器中授权即可，无需粘贴密钥。"
+      },
+      "server": {
+        "url": "https://mcp.asana.com/sse",
+        "auth": "oauth",
+        "tool_timeout": 60
+      },
+      "homepage": "https://asana.com",
+      "docs_url": "https://developers.asana.com/docs/mcp-server"
+    },
+    {
+      "id": "astro-docs",
+      "display_name": "Astro Docs",
+      "category": "docs",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Search the Astro web-framework documentation.",
+        "zh": "检索 Astro 前端框架的官方文档。"
+      },
+      "requires": {
+        "en": "No credentials.",
+        "zh": "无需凭据。"
+      },
+      "server": {
+        "url": "https://mcp.docs.astro.build/mcp",
+        "tool_timeout": 60
+      },
+      "homepage": "https://astro.build",
+      "docs_url": "https://docs.astro.build"
+    },
+    {
+      "id": "aws-docs",
+      "display_name": "AWS Documentation",
+      "category": "docs",
+      "tier": "curated",
+      "transport": "stdio",
+      "self_service": false,
+      "docs_url": "https://pypi.org/project/awslabs.aws-documentation-mcp-server/",
+      "description": {
+        "en": "AWS Labs' local documentation server for AWS service guides.",
+        "zh": "AWS Labs 官方的本地文档服务器，提供 AWS 服务指南。"
+      },
+      "requires": {
+        "en": "uvx on the host.",
+        "zh": "宿主机需有 uvx。"
+      },
+      "server": {
+        "command": "uvx",
+        "args": [
+          "awslabs.aws-documentation-mcp-server@latest"
+        ],
+        "env": {
+          "FASTMCP_LOG_LEVEL": "ERROR",
+          "AWS_DOCUMENTATION_PARTITION": "aws"
+        },
+        "tool_timeout": 60
+      },
+      "homepage": "https://aws.amazon.com"
+    },
+    {
+      "id": "aws-knowledge",
+      "display_name": "AWS Knowledge",
+      "category": "docs",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Search AWS documentation, API references, and architectural guidance.",
+        "zh": "检索 AWS 文档、API 参考与架构指南。"
+      },
+      "requires": {
+        "en": "No credentials.",
+        "zh": "无需凭据。"
+      },
+      "server": {
+        "url": "https://knowledge-mcp.global.api.aws",
+        "tool_timeout": 45
+      },
+      "homepage": "https://aws.amazon.com",
+      "docs_url": "https://awslabs.github.io/mcp/"
+    },
+    {
+      "id": "baidu-maps",
+      "display_name": "Baidu Maps",
+      "category": "maps",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Baidu Maps geocoding, place search, directions, and traffic.",
+        "zh": "百度地图的地理编码、地点检索、路线规划与路况。"
+      },
+      "requires": {
+        "en": "Baidu Maps AK.",
+        "zh": "需要百度地图开放平台 AK。"
+      },
+      "server": {
+        "url": "https://mcp.map.baidu.com/mcp",
+        "tool_timeout": 45
+      },
+      "fields": [
+        {
+          "key": "ak",
+          "label": {
+            "en": "Baidu Maps AK",
+            "zh": "百度地图 AK"
+          },
+          "target": [
+            "url_param",
+            "ak"
+          ]
+        }
+      ],
+      "homepage": "https://lbsyun.baidu.com",
+      "docs_url": "https://lbsyun.baidu.com/faq/api?title=mcpserver"
+    },
+    {
+      "id": "brave-search",
+      "display_name": "Brave Search",
+      "category": "search",
+      "tier": "curated",
+      "transport": "stdio",
+      "self_service": false,
+      "docs_url": "https://www.npmjs.com/package/@brave/brave-search-mcp-server",
+      "description": {
+        "en": "Web, news, image, video, and local search through the Brave Search API.",
+        "zh": "通过 Brave Search API 进行网页、新闻、图片、视频与本地搜索。"
+      },
+      "requires": {
+        "en": "Node.js with npx on the host, plus a Brave Search API key.",
+        "zh": "宿主机需有 Node.js 与 npx，并填入 Brave Search 密钥。"
+      },
+      "server": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@brave/brave-search-mcp-server@latest",
+          "--transport",
+          "stdio"
+        ],
+        "tool_timeout": 45
+      },
+      "fields": [
+        {
+          "key": "api_key",
+          "label": {
+            "en": "Brave Search API key",
+            "zh": "Brave Search 密钥"
+          },
+          "target": [
+            "env",
+            "BRAVE_API_KEY"
+          ],
+          "placeholder": "BSA..."
+        }
+      ],
+      "homepage": "https://brave.com/search/api/"
+    },
+    {
+      "id": "browserbase",
+      "display_name": "Browserbase",
+      "category": "browser",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "docs_url": "https://docs.browserbase.com/integrations/mcp/setup",
+      "description": {
+        "en": "Drive a cloud browser to navigate, act on, and extract from live pages.",
+        "zh": "驱动云端浏览器访问页面、执行操作并抽取内容。"
+      },
+      "requires": {
+        "en": "Browserbase API key.",
+        "zh": "需要 Browserbase 密钥。"
+      },
+      "server": {
+        "url": "https://mcp.browserbase.com/mcp",
+        "tool_timeout": 120
+      },
+      "fields": [
+        {
+          "key": "api_key",
+          "label": {
+            "en": "Browserbase API key",
+            "zh": "Browserbase 密钥"
+          },
+          "target": [
+            "url_param",
+            "browserbaseApiKey"
+          ],
+          "placeholder": "bb_live_..."
+        }
+      ],
+      "homepage": "https://browserbase.com"
+    },
+    {
+      "id": "chakra-ui",
+      "display_name": "Chakra UI",
+      "category": "code",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Component APIs, props, and usage examples for Chakra UI.",
+        "zh": "Chakra UI 的组件 API、属性与用法示例。"
+      },
+      "requires": {
+        "en": "No credentials.",
+        "zh": "无需凭据。"
+      },
+      "server": {
+        "url": "https://mcp.chakra-ui.com/mcp",
+        "tool_timeout": 45
+      },
+      "homepage": "https://chakra-ui.com",
+      "docs_url": "https://chakra-ui.com/docs/get-started/mcp"
+    },
+    {
+      "id": "clerk",
+      "display_name": "Clerk",
+      "category": "code",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Reference for Clerk's authentication SDKs and integration steps.",
+        "zh": "Clerk 身份认证 SDK 与接入步骤的参考资料。"
+      },
+      "requires": {
+        "en": "No credentials.",
+        "zh": "无需凭据。"
+      },
+      "server": {
+        "url": "https://mcp.clerk.com/mcp",
+        "tool_timeout": 45
+      },
+      "homepage": "https://clerk.com",
+      "docs_url": "https://clerk.com/docs"
+    },
+    {
+      "id": "cloudflare-docs",
+      "display_name": "Cloudflare Docs",
+      "category": "docs",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Search Cloudflare's developer documentation for Workers and the rest of the platform.",
+        "zh": "检索 Cloudflare 开发者文档，涵盖 Workers 等全平台内容。"
+      },
+      "requires": {
+        "en": "No credentials.",
+        "zh": "无需凭据。"
+      },
+      "server": {
+        "url": "https://docs.mcp.cloudflare.com/mcp",
+        "tool_timeout": 45
+      },
+      "homepage": "https://developers.cloudflare.com",
+      "docs_url": "https://developers.cloudflare.com/agents/model-context-protocol/"
+    },
+    {
+      "id": "context7",
+      "display_name": "Context7",
+      "category": "docs",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "homepage": "https://context7.com",
+      "docs_url": "https://github.com/upstash/context7",
+      "description": {
+        "en": "Up-to-date documentation and code examples for thousands of libraries.",
+        "zh": "为数千个库提供最新文档与代码示例。"
+      },
+      "requires": {
+        "en": "Works without a key; a Context7 key raises rate limits.",
+        "zh": "无需密钥即可使用；填入 Context7 密钥可提高配额。"
+      },
+      "server": {
+        "url": "https://mcp.context7.com/mcp",
+        "tool_timeout": 45
+      },
+      "fields": [
+        {
+          "key": "api_key",
+          "label": {
+            "en": "Context7 API key",
+            "zh": "Context7 密钥"
+          },
+          "target": [
+            "header",
+            "CONTEXT7_API_KEY"
+          ],
+          "required": false,
+          "placeholder": "ctx7sk-..."
+        }
+      ]
+    },
+    {
+      "id": "convex",
+      "display_name": "Convex",
+      "category": "code",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Guidance and reference for building applications on the Convex backend.",
+        "zh": "在 Convex 后端上开发应用的指导与参考资料。"
+      },
+      "requires": {
+        "en": "No credentials.",
+        "zh": "无需凭据。"
+      },
+      "server": {
+        "url": "https://mcp.convex.dev/mcp",
+        "tool_timeout": 45
+      },
+      "homepage": "https://convex.dev",
+      "docs_url": "https://docs.convex.dev"
+    },
+    {
+      "id": "deepwiki",
+      "display_name": "DeepWiki",
+      "category": "docs",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Ask questions about any public GitHub repository's generated wiki.",
+        "zh": "针对任意公开 GitHub 仓库自动生成的 wiki 提问。"
+      },
+      "requires": {
+        "en": "No credentials.",
+        "zh": "无需凭据。"
+      },
+      "server": {
+        "url": "https://mcp.deepwiki.com/mcp",
+        "tool_timeout": 60
+      },
+      "homepage": "https://deepwiki.com",
+      "docs_url": "https://docs.devin.ai/work-with-devin/deepwiki-mcp"
+    },
+    {
+      "id": "exa",
+      "display_name": "Exa",
+      "category": "search",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "homepage": "https://exa.ai",
+      "description": {
+        "en": "Neural web search that returns clean, ready-to-read page content.",
+        "zh": "语义网页搜索，直接返回整理好的页面正文。"
+      },
+      "requires": {
+        "en": "Works without a key; an Exa API key can be added.",
+        "zh": "无需密钥即可使用；也可填入 Exa API 密钥。"
+      },
+      "server": {
+        "url": "https://mcp.exa.ai/mcp",
+        "tool_timeout": 45
+      },
+      "fields": [
+        {
+          "key": "api_key",
+          "label": {
+            "en": "Exa API key",
+            "zh": "Exa API 密钥"
+          },
+          "target": [
+            "url_param",
+            "exaApiKey"
+          ],
+          "required": false,
+          "placeholder": "exa_..."
+        }
+      ]
+    },
+    {
+      "id": "fastmcp",
+      "display_name": "FastMCP",
+      "category": "code",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Search the FastMCP framework documentation for building MCP servers.",
+        "zh": "检索 FastMCP 框架文档，用于构建 MCP 服务器。"
+      },
+      "requires": {
+        "en": "No credentials.",
+        "zh": "无需凭据。"
+      },
+      "server": {
+        "url": "https://gofastmcp.com/mcp",
+        "tool_timeout": 45
+      },
+      "homepage": "https://gofastmcp.com",
+      "docs_url": "https://gofastmcp.com/getting-started/welcome"
+    },
+    {
+      "id": "fetch",
+      "display_name": "Fetch",
+      "category": "utility",
+      "tier": "curated",
+      "transport": "stdio",
+      "self_service": false,
+      "docs_url": "https://pypi.org/project/mcp-server-fetch/",
+      "description": {
+        "en": "Fetch a URL and convert it to markdown for the model to read.",
+        "zh": "抓取网址并转换为 Markdown 供模型阅读。"
+      },
+      "requires": {
+        "en": "uvx on the host.",
+        "zh": "宿主机需有 uvx。"
+      },
+      "server": {
+        "command": "uvx",
+        "args": [
+          "mcp-server-fetch"
+        ],
+        "tool_timeout": 45
+      },
+      "homepage": "https://modelcontextprotocol.io"
+    },
+    {
+      "id": "firecrawl",
+      "display_name": "Firecrawl",
+      "category": "search",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "docs_url": "https://docs.firecrawl.dev/mcp-server",
+      "description": {
+        "en": "Scrape, crawl, and search web pages into markdown with Firecrawl.",
+        "zh": "用 Firecrawl 抓取、爬取并搜索网页，输出 Markdown。"
+      },
+      "requires": {
+        "en": "Search, scrape, and parse work unauthenticated; account tools need a Firecrawl API key.",
+        "zh": "搜索、抓取、解析免密钥可用；账号类工具需填 Firecrawl 密钥。"
+      },
+      "server": {
+        "url": "https://mcp.firecrawl.dev/mcp",
+        "tool_timeout": 90
+      },
+      "fields": [
+        {
+          "key": "api_key",
+          "label": {
+            "en": "Firecrawl API key",
+            "zh": "Firecrawl API 密钥"
+          },
+          "target": [
+            "header",
+            "Authorization"
+          ],
+          "required": false,
+          "placeholder": "fc-...",
+          "value_template": "Bearer {value}"
+        }
+      ],
+      "homepage": "https://firecrawl.dev"
+    },
+    {
+      "id": "github",
+      "display_name": "GitHub",
+      "category": "code",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "docs_url": "https://github.com/github/github-mcp-server",
+      "description": {
+        "en": "Repositories, issues, pull requests, and code search on GitHub's hosted server.",
+        "zh": "在 GitHub 官方托管服务上操作仓库、issue、PR 与代码搜索。"
+      },
+      "requires": {
+        "en": "GitHub personal access token.",
+        "zh": "需要 GitHub personal access token。"
+      },
+      "server": {
+        "url": "https://api.githubcopilot.com/mcp/",
+        "tool_timeout": 60
+      },
+      "fields": [
+        {
+          "key": "token",
+          "label": {
+            "en": "GitHub personal access token",
+            "zh": "GitHub 访问令牌"
+          },
+          "target": [
+            "header",
+            "Authorization"
+          ],
+          "placeholder": "ghp_...",
+          "value_template": "Bearer {value}"
+        }
+      ],
+      "homepage": "https://github.com"
+    },
+    {
+      "id": "gitmcp",
+      "display_name": "GitMCP",
+      "category": "docs",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Fetch and search documentation from any public GitHub repository.",
+        "zh": "抓取并检索任意公开 GitHub 仓库中的文档。"
+      },
+      "requires": {
+        "en": "No credentials.",
+        "zh": "无需凭据。"
+      },
+      "server": {
+        "url": "https://gitmcp.io/docs",
+        "tool_timeout": 60
+      },
+      "homepage": "https://gitmcp.io",
+      "docs_url": "https://gitmcp.io"
+    },
+    {
+      "id": "google-maps",
+      "display_name": "Google Maps",
+      "category": "maps",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Find places, addresses, and points of interest through Google Maps tools.",
+        "zh": "通过 Google Maps 工具查找地点、地址与兴趣点。"
+      },
+      "requires": {
+        "en": "No credentials.",
+        "zh": "无需凭据。"
+      },
+      "server": {
+        "url": "https://mapstools.googleapis.com/mcp",
+        "tool_timeout": 45
+      },
+      "homepage": "https://developers.google.com/maps",
+      "docs_url": "https://developers.google.com/maps/documentation"
+    },
+    {
+      "id": "huggingface",
+      "display_name": "Hugging Face",
+      "category": "ai",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "homepage": "https://huggingface.co/mcp",
+      "description": {
+        "en": "Search models, datasets, papers, and Spaces on the Hugging Face Hub.",
+        "zh": "在 Hugging Face Hub 上检索模型、数据集、论文与 Spaces。"
+      },
+      "requires": {
+        "en": "Works anonymously; a Hugging Face token unlocks private content.",
+        "zh": "匿名即可使用；填入 Hugging Face 令牌可访问私有内容。"
+      },
+      "server": {
+        "url": "https://huggingface.co/mcp",
+        "tool_timeout": 60
+      },
+      "fields": [
+        {
+          "key": "token",
+          "label": {
+            "en": "Hugging Face access token",
+            "zh": "Hugging Face 访问令牌"
+          },
+          "target": [
+            "header",
+            "Authorization"
+          ],
+          "required": false,
+          "placeholder": "hf_...",
+          "value_template": "Bearer {value}"
+        }
+      ],
+      "docs_url": "https://huggingface.co/docs"
+    },
+    {
+      "id": "hyperbrowser",
+      "display_name": "Hyperbrowser",
+      "category": "browser",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Cloud browser sessions for scraping, crawling, and structured extraction.",
+        "zh": "云端浏览器会话，用于抓取、爬取与结构化抽取。"
+      },
+      "requires": {
+        "en": "Hyperbrowser API key.",
+        "zh": "需要 Hyperbrowser 密钥。"
+      },
+      "server": {
+        "url": "https://mcp.hyperbrowser.ai/mcp",
+        "tool_timeout": 120
+      },
+      "fields": [
+        {
+          "key": "api_key",
+          "label": {
+            "en": "Hyperbrowser API key",
+            "zh": "Hyperbrowser 密钥"
+          },
+          "target": [
+            "header",
+            "x-api-key"
+          ],
+          "placeholder": "hb_..."
+        }
+      ],
+      "homepage": "https://hyperbrowser.ai",
+      "docs_url": "https://docs.hyperbrowser.ai"
+    },
+    {
+      "id": "inference-sh",
+      "display_name": "inference.sh",
+      "category": "ai",
+      "tier": "registry",
+      "trust": "unverified",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Run hosted image, video, audio, and language models from one endpoint.",
+        "zh": "在单一端点上调用托管的图像、视频、音频与语言模型。"
+      },
+      "requires": {
+        "en": "Anonymous browsing works; running models needs an account.",
+        "zh": "匿名可浏览；实际运行模型需要账号。"
+      },
+      "server": {
+        "url": "https://api.inference.sh/mcp",
+        "tool_timeout": 120
+      },
+      "homepage": "https://inference.sh",
+      "docs_url": "https://docs.inference.sh"
+    },
+    {
+      "id": "jina-ai",
+      "display_name": "Jina AI",
+      "category": "search",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Read any URL as clean text and search the web with Jina AI.",
+        "zh": "用 Jina AI 把任意网址读成干净正文，并进行网页搜索。"
+      },
+      "requires": {
+        "en": "Optional Jina AI API key for authenticated limits.",
+        "zh": "可选填 Jina AI 密钥以获得更高配额。"
+      },
+      "server": {
+        "url": "https://mcp.jina.ai/v1",
+        "tool_timeout": 60
+      },
+      "fields": [
+        {
+          "key": "api_key",
+          "label": {
+            "en": "Jina AI API key",
+            "zh": "Jina AI 密钥"
+          },
+          "target": [
+            "header",
+            "Authorization"
+          ],
+          "required": false,
+          "placeholder": "jina_...",
+          "value_template": "Bearer {value}"
+        }
+      ],
+      "homepage": "https://jina.ai",
+      "docs_url": "https://docs.jina.ai"
+    },
+    {
+      "id": "linear",
+      "display_name": "Linear",
+      "category": "business",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Read and file Linear issues, projects and cycles.",
+        "zh": "读取并创建 Linear 的 issue、项目与迭代。"
+      },
+      "requires": {
+        "en": "Your own account — you approve access in a browser, no key to paste.",
+        "zh": "使用你自己的账号，在浏览器中授权即可，无需粘贴密钥。"
+      },
+      "server": {
+        "url": "https://mcp.linear.app/mcp",
+        "auth": "oauth",
+        "tool_timeout": 60
+      },
+      "homepage": "https://linear.app",
+      "docs_url": "https://linear.app/docs/mcp"
+    },
+    {
+      "id": "linkup",
+      "display_name": "Linkup",
+      "category": "search",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Web search with sourced answers from Linkup's hosted server.",
+        "zh": "Linkup 托管的网页搜索，返回带来源的答案。"
+      },
+      "requires": {
+        "en": "Linkup API key.",
+        "zh": "需要 Linkup API 密钥。"
+      },
+      "server": {
+        "url": "https://mcp.linkup.so/mcp",
+        "tool_timeout": 45
+      },
+      "fields": [
+        {
+          "key": "api_key",
+          "label": {
+            "en": "Linkup API key",
+            "zh": "Linkup API 密钥"
+          },
+          "target": [
+            "url_param",
+            "apiKey"
+          ]
+        }
+      ],
+      "homepage": "https://linkup.so",
+      "docs_url": "https://docs.linkup.so"
+    },
+    {
+      "id": "memory",
+      "display_name": "Knowledge Graph Memory",
+      "category": "utility",
+      "tier": "curated",
+      "transport": "stdio",
+      "self_service": false,
+      "docs_url": "https://www.npmjs.com/package/@modelcontextprotocol/server-memory",
+      "description": {
+        "en": "A local knowledge graph of entities and relations that persists across sessions.",
+        "zh": "本地实体—关系知识图谱，可跨会话持久保存。"
+      },
+      "requires": {
+        "en": "Node.js with npx on the host.",
+        "zh": "宿主机需有 Node.js 与 npx。"
+      },
+      "server": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-memory"
+        ],
+        "tool_timeout": 45
+      },
+      "homepage": "https://modelcontextprotocol.io"
+    },
+    {
+      "id": "microsoft-learn",
+      "display_name": "Microsoft Learn",
+      "category": "docs",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Search and fetch official Microsoft and Azure documentation.",
+        "zh": "检索并获取微软与 Azure 官方文档。"
+      },
+      "requires": {
+        "en": "No credentials.",
+        "zh": "无需凭据。"
+      },
+      "server": {
+        "url": "https://learn.microsoft.com/api/mcp",
+        "tool_timeout": 45
+      },
+      "homepage": "https://learn.microsoft.com",
+      "docs_url": "https://learn.microsoft.com/en-us/training/support/mcp"
+    },
+    {
+      "id": "neon",
+      "display_name": "Neon",
+      "category": "data",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "docs_url": "https://neon.com/docs/ai/neon-mcp-server",
+      "description": {
+        "en": "Manage Neon Postgres projects, branches, and queries.",
+        "zh": "管理 Neon Postgres 的项目、分支与查询。"
+      },
+      "requires": {
+        "en": "Neon API key.",
+        "zh": "需要 Neon API 密钥。"
+      },
+      "server": {
+        "url": "https://mcp.neon.tech/mcp",
+        "tool_timeout": 60
+      },
+      "fields": [
+        {
+          "key": "api_key",
+          "label": {
+            "en": "Neon API key",
+            "zh": "Neon API 密钥"
+          },
+          "target": [
+            "header",
+            "Authorization"
+          ],
+          "placeholder": "napi_...",
+          "value_template": "Bearer {value}"
+        }
+      ],
+      "homepage": "https://neon.tech"
+    },
+    {
+      "id": "notion",
+      "display_name": "Notion",
+      "category": "docs",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Search and update Notion pages, databases and comments.",
+        "zh": "检索与更新 Notion 页面、数据库和评论。"
+      },
+      "requires": {
+        "en": "Your own account — you approve access in a browser, no key to paste.",
+        "zh": "使用你自己的账号，在浏览器中授权即可，无需粘贴密钥。"
+      },
+      "server": {
+        "url": "https://mcp.notion.com/mcp",
+        "auth": "oauth",
+        "tool_timeout": 60
+      },
+      "homepage": "https://notion.so",
+      "docs_url": "https://developers.notion.com/docs/mcp"
+    },
+    {
+      "id": "playwright",
+      "display_name": "Playwright",
+      "category": "browser",
+      "tier": "curated",
+      "transport": "stdio",
+      "self_service": false,
+      "docs_url": "https://www.npmjs.com/package/@playwright/mcp",
+      "description": {
+        "en": "Drive a local browser through Playwright's accessibility-tree automation.",
+        "zh": "通过 Playwright 的可访问性树自动化驱动本地浏览器。"
+      },
+      "requires": {
+        "en": "Node.js with npx on the host, plus browser binaries.",
+        "zh": "宿主机需有 Node.js、npx 与浏览器二进制文件。"
+      },
+      "server": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@playwright/mcp@latest"
+        ],
+        "tool_timeout": 120
+      },
+      "homepage": "https://playwright.dev"
+    },
+    {
+      "id": "postman",
+      "display_name": "Postman",
+      "category": "code",
+      "tier": "curated",
+      "transport": "stdio",
+      "self_service": false,
+      "docs_url": "https://www.npmjs.com/package/@postman/postman-mcp-server",
+      "description": {
+        "en": "Inspect and manage Postman collections, APIs, and workspaces.",
+        "zh": "查看与管理 Postman 的集合、API 与工作区。"
+      },
+      "requires": {
+        "en": "Node.js with npx on the host, plus a Postman API key.",
+        "zh": "宿主机需有 Node.js 与 npx，并填入 Postman 密钥。"
+      },
+      "server": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@postman/postman-mcp-server@latest",
+          "--full"
+        ],
+        "tool_timeout": 60
+      },
+      "fields": [
+        {
+          "key": "api_key",
+          "label": {
+            "en": "Postman API key",
+            "zh": "Postman 密钥"
+          },
+          "target": [
+            "env",
+            "POSTMAN_API_KEY"
+          ],
+          "placeholder": "PMAK-..."
+        }
+      ],
+      "homepage": "https://postman.com"
+    },
+    {
+      "id": "pubmed",
+      "display_name": "PubMed",
+      "category": "science",
+      "tier": "registry",
+      "trust": "unverified",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Community-operated PubMed and MEDLINE literature search.",
+        "zh": "社区运营的 PubMed / MEDLINE 文献检索服务。"
+      },
+      "requires": {
+        "en": "No credentials; operated by a third party, not by NIH.",
+        "zh": "无需凭据；由第三方运营，非 NIH 官方服务。"
+      },
+      "server": {
+        "url": "https://mcp.olyport.com/pubmed/mcp",
+        "tool_timeout": 60
+      },
+      "homepage": "https://pubmed.ncbi.nlm.nih.gov",
+      "requires_i18n": {
+        "en": "Nothing — open access. Note the endpoint is run by a third party, not by NCBI.",
+        "zh": "无需凭据，开放访问。注意该端点由第三方运行，并非 NCBI 官方。"
+      }
+    },
+    {
+      "id": "sentry",
+      "display_name": "Sentry",
+      "category": "code",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Inspect Sentry issues, events and releases.",
+        "zh": "查看 Sentry 的问题、事件与发布记录。"
+      },
+      "requires": {
+        "en": "Your own account — you approve access in a browser, no key to paste.",
+        "zh": "使用你自己的账号，在浏览器中授权即可，无需粘贴密钥。"
+      },
+      "server": {
+        "url": "https://mcp.sentry.dev/mcp",
+        "auth": "oauth",
+        "tool_timeout": 60
+      },
+      "homepage": "https://sentry.io",
+      "docs_url": "https://docs.sentry.io/product/sentry-mcp/"
+    },
+    {
+      "id": "sequential-thinking",
+      "display_name": "Sequential Thinking",
+      "category": "utility",
+      "tier": "curated",
+      "transport": "stdio",
+      "self_service": false,
+      "docs_url": "https://www.npmjs.com/package/@modelcontextprotocol/server-sequential-thinking",
+      "description": {
+        "en": "A scratchpad for stepwise reasoning that can revise and branch its own steps.",
+        "zh": "用于分步推理的草稿板，可回溯修改并派生分支。"
+      },
+      "requires": {
+        "en": "Node.js with npx on the host.",
+        "zh": "宿主机需有 Node.js 与 npx。"
+      },
+      "server": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-sequential-thinking"
+        ],
+        "tool_timeout": 60
+      },
+      "homepage": "https://modelcontextprotocol.io"
+    },
+    {
+      "id": "stripe",
+      "display_name": "Stripe",
+      "category": "business",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "docs_url": "https://docs.stripe.com/mcp",
+      "description": {
+        "en": "Query and manage Stripe customers, products, and payments.",
+        "zh": "查询与管理 Stripe 的客户、商品与支付。"
+      },
+      "requires": {
+        "en": "Stripe restricted API key, scoped to only what the agent needs.",
+        "zh": "需要 Stripe 受限密钥，权限只给智能体所需范围。"
+      },
+      "server": {
+        "url": "https://mcp.stripe.com",
+        "tool_timeout": 60
+      },
+      "fields": [
+        {
+          "key": "api_key",
+          "label": {
+            "en": "Stripe restricted key",
+            "zh": "Stripe 受限密钥"
+          },
+          "target": [
+            "header",
+            "Authorization"
+          ],
+          "placeholder": "rk_live_...",
+          "value_template": "Bearer {value}"
+        }
+      ],
+      "homepage": "https://stripe.com"
+    },
+    {
+      "id": "supabase",
+      "display_name": "Supabase",
+      "category": "data",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "docs_url": "https://supabase.com/docs/guides/getting-started/mcp",
+      "description": {
+        "en": "Inspect Supabase projects, tables, and logs from the hosted server.",
+        "zh": "通过托管服务查看 Supabase 的项目、数据表与日志。"
+      },
+      "requires": {
+        "en": "Supabase personal access token.",
+        "zh": "需要 Supabase 个人访问令牌。"
+      },
+      "server": {
+        "url": "https://mcp.supabase.com/mcp",
+        "tool_timeout": 60
+      },
+      "fields": [
+        {
+          "key": "access_token",
+          "label": {
+            "en": "Supabase access token",
+            "zh": "Supabase 访问令牌"
+          },
+          "target": [
+            "header",
+            "Authorization"
+          ],
+          "placeholder": "sbp_...",
+          "value_template": "Bearer {value}"
+        }
+      ],
+      "homepage": "https://supabase.com"
+    },
+    {
+      "id": "svelte",
+      "display_name": "Svelte",
+      "category": "code",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "homepage": "https://mcp.svelte.dev",
+      "description": {
+        "en": "Official Svelte documentation, code examples, and component review.",
+        "zh": "Svelte 官方文档、代码示例与组件审阅。"
+      },
+      "requires": {
+        "en": "No credentials.",
+        "zh": "无需凭据。"
+      },
+      "server": {
+        "url": "https://mcp.svelte.dev/mcp",
+        "tool_timeout": 45
+      },
+      "docs_url": "https://svelte.dev/docs"
+    },
+    {
+      "id": "tavily",
+      "display_name": "Tavily",
+      "category": "search",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "docs_url": "https://docs.tavily.com/documentation/mcp",
+      "description": {
+        "en": "Search, extract, and crawl the web through Tavily's hosted server.",
+        "zh": "通过 Tavily 托管服务完成网页搜索、抽取与抓取。"
+      },
+      "requires": {
+        "en": "Tavily API key.",
+        "zh": "需要 Tavily API 密钥。"
+      },
+      "server": {
+        "url": "https://mcp.tavily.com/mcp/",
+        "tool_timeout": 45
+      },
+      "fields": [
+        {
+          "key": "api_key",
+          "label": {
+            "en": "Tavily API key",
+            "zh": "Tavily API 密钥"
+          },
+          "target": [
+            "url_param",
+            "tavilyApiKey"
+          ],
+          "placeholder": "tvly-..."
+        }
+      ],
+      "homepage": "https://tavily.com"
+    },
+    {
+      "id": "tencent-maps",
+      "display_name": "Tencent Maps",
+      "category": "maps",
+      "tier": "curated",
+      "trust": "unverified",
+      "transport": "streamableHttp",
+      "homepage": "https://lbs.qq.com",
+      "description": {
+        "en": "Tencent Location Service geocoding, nearby search, and driving directions.",
+        "zh": "腾讯位置服务的地理编码、周边检索与驾车路线。"
+      },
+      "requires": {
+        "en": "Tencent Location Service key.",
+        "zh": "需要腾讯位置服务 key。"
+      },
+      "server": {
+        "url": "https://mcp.map.qq.com/mcp",
+        "tool_timeout": 45
+      },
+      "fields": [
+        {
+          "key": "key",
+          "label": {
+            "en": "Tencent Location Service key",
+            "zh": "腾讯位置服务 key"
+          },
+          "target": [
+            "url_param",
+            "key"
+          ]
+        }
+      ],
+      "docs_url": "https://lbs.qq.com/service/MCP/MCP_Guide/MCP_Server"
+    },
+    {
+      "id": "wolfram",
+      "display_name": "Wolfram",
+      "category": "science",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Symbolic math, step-by-step solutions, unit conversion, and curated science data.",
+        "zh": "符号计算、分步解题、单位换算与整理过的科学数据。"
+      },
+      "requires": {
+        "en": "No credentials.",
+        "zh": "无需凭据。"
+      },
+      "server": {
+        "url": "https://agenttools.wolfram.com/mcp",
+        "tool_timeout": 90
+      },
+      "homepage": "https://wolfram.com",
+      "docs_url": "https://reference.wolfram.com/language/"
+    },
+    {
+      "id": "zapier",
+      "display_name": "Zapier",
+      "category": "business",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Run actions in thousands of connected business apps through Zapier.",
+        "zh": "通过 Zapier 在数千个已连接的业务应用中执行操作。"
+      },
+      "requires": {
+        "en": "Zapier MCP token.",
+        "zh": "需要 Zapier MCP 令牌。"
+      },
+      "server": {
+        "url": "https://mcp.zapier.com/api/mcp/mcp",
+        "tool_timeout": 90
+      },
+      "fields": [
+        {
+          "key": "token",
+          "label": {
+            "en": "Zapier MCP token",
+            "zh": "Zapier MCP 令牌"
+          },
+          "target": [
+            "header",
+            "Authorization"
+          ],
+          "value_template": "Bearer {value}"
+        }
+      ],
+      "homepage": "https://zapier.com",
+      "docs_url": "https://zapier.com/mcp"
+    }
+  ]
+}

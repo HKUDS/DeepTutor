@@ -19,6 +19,10 @@ Enforcement points:
   loader, so a granted-away MCP tool can be neither listed nor loaded. For
   real non-admin users, missing ``mcp_tools`` means no MCP tools are listed
   or loadable until an admin grants specific names.
+* ``allowed_cli_apps`` — the provider that turns installed CLI apps into
+  deferred tools intersects this with the account's own enable/disable
+  preference. Same deny-by-default posture as MCP, for the same reason: an
+  installed app runs third-party code inside the sandbox.
 * ``exec_override`` — layered on top of the deployment exec policy in the
   chat pipeline's exec gate and in the exec tool itself.
 """
@@ -65,6 +69,23 @@ def allowed_mcp_tools() -> set[str] | None:
     return {str(name) for name in value}
 
 
+def allowed_cli_apps() -> set[str] | None:
+    """Whitelist of installed CLI app ids this caller may invoke.
+
+    ``None`` means unrestricted and is reserved for administrators. Every other
+    account fails closed when the grant omits ``cli_apps``: an installed app is
+    third-party code, and the deployment installing one is not the same decision
+    as every account being able to run it.
+    """
+    grant = _current_grant()
+    if grant is None:
+        return None
+    value = grant.get("cli_apps")
+    if value is None:
+        return set()
+    return {str(name) for name in value}
+
+
 def exec_override() -> bool | None:
     """Per-user exec override: ``None`` follows the deployment policy."""
     grant = _current_grant()
@@ -84,6 +105,7 @@ def combine_whitelists(caller: set[str] | None, user: set[str] | None) -> set[st
 
 
 __all__ = [
+    "allowed_cli_apps",
     "allowed_mcp_tools",
     "allowed_optional_tools",
     "combine_whitelists",

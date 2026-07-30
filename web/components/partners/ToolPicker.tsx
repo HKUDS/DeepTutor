@@ -4,12 +4,15 @@
  * Tool surface configuration: the user-toggleable system tools (same pool as
  * the chat composer) plus configured MCP tools, grouped by server.
  *
- * Semantics mirror the backend config: `null` = everything allowed (default),
- * an explicit array = whitelist. The picker materialises `null` into "all
- * selected" for editing and hands back an array.
+ * Semantics mirror the backend config: `null` = everything allowed, an
+ * explicit array = whitelist. The picker always hands back an array. System
+ * and built-in tools default to `null`, so callers materialise those into "all
+ * selected" for editing; MCP tools default to `[]` (off) and are never
+ * materialised that way — granting them is an explicit pick.
  */
 
 import { useTranslation } from "react-i18next";
+import McpToolGroups from "@/components/common/McpToolGroups";
 import type { ToolOptions } from "@/lib/partners-api";
 
 function ToggleRow({
@@ -80,12 +83,6 @@ export default function ToolPicker({
       list.includes(name) ? list.filter((n) => n !== name) : [...list, name],
     );
   };
-
-  const mcpByServer = new Map<string, typeof options.mcp_tools>();
-  for (const tool of options.mcp_tools) {
-    const key = tool.server || "other";
-    mcpByServer.set(key, [...(mcpByServer.get(key) ?? []), tool]);
-  }
 
   return (
     <div className="space-y-4">
@@ -212,26 +209,21 @@ export default function ToolPicker({
               </button>
             </div>
           </div>
-          {[...mcpByServer.entries()].map(([server, tools]) => (
-            <div key={server} className="mb-2">
-              <p className="mb-0.5 px-2 font-mono text-[11.5px] text-[var(--muted-foreground)]">
-                {server}
-              </p>
-              <div className="grid grid-cols-1 gap-0.5 sm:grid-cols-2">
-                {tools.map((tool) => (
-                  <ToggleRow
-                    key={tool.name}
-                    name={tool.name}
-                    description={tool.description}
-                    checked={mcpTools.includes(tool.name)}
-                    onToggle={() =>
-                      toggle(mcpTools, tool.name, onChangeMcpTools)
-                    }
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
+          <McpToolGroups
+            tools={options.mcp_tools}
+            selected={mcpTools}
+            onChange={onChangeMcpTools}
+            rowsClassName="grid grid-cols-1 gap-0.5 sm:grid-cols-2"
+            renderTool={({ tool, checked, onToggle }) => (
+              <ToggleRow
+                key={tool.name}
+                name={tool.name}
+                description={tool.description}
+                checked={checked}
+                onToggle={onToggle}
+              />
+            )}
+          />
         </div>
       )}
     </div>

@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 
@@ -158,3 +159,31 @@ def test_load_persists_normalized_active_ids(tmp_path: Path):
     assert llm["active_model_id"] == "llm-model-a"
     assert saved["services"]["embedding"]["profiles"] == []
     assert saved["services"]["search"]["profiles"] == []
+
+
+def test_update_serializes_concurrent_catalog_mutations(tmp_path: Path):
+    service = ModelCatalogService(path=tmp_path / "model_catalog.json")
+    initial = service.load()
+    initial["mutation_count"] = 0
+    service.save(initial)
+
+    def increment(_index: int) -> None:
+        def mutate(catalog: dict) -> None:
+            catalog["mutation_count"] = int(catalog.get("mutation_count", 0)) + 1
+
+        service.update(mutate)
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        list(executor.map(increment, range(40)))
+
+    assert service.load()["mutation_count"] == 40
+
+
+def test_atomic_save_leaves_no_temporary_file(tmp_path: Path):
+    catalog_path = tmp_path / "model_catalog.json"
+    service = ModelCatalogService(path=catalog_path)
+
+    service.save({"version": 1, "services": {}})
+
+    assert catalog_path.exists()
+    assert not list(tmp_path.glob(".model_catalog.json.*"))

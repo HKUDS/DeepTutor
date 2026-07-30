@@ -178,6 +178,13 @@ class PathService:
         if len(parts) >= 5 and parts[:3] == ("workspace", "chat", "chat") and parts[4] == "exec":
             return True
 
+        # Files a CLI app produced. One directory per turn shared by every app,
+        # not one per app, so a model can render with one and post-process with
+        # another. Listed explicitly rather than folded into the ``exec`` branch:
+        # what is publicly linkable is worth being able to read off this function.
+        if len(parts) >= 5 and parts[:3] == ("workspace", "chat", "chat") and parts[4] == "cli":
+            return True
+
         if len(parts) >= 4 and parts[:3] == ("workspace", "chat", "_detached_code_execution"):
             return True
 
