@@ -25,4 +25,3 @@ def test_extract_code_block_language_miss_is_empty_for_or_fallback() -> None:
     assert extract_code_block(raw, "javascript") == ""
     extracted = extract_code_block(raw, "javascript") or extract_code_block(raw)
     assert extracted == cfg
-
