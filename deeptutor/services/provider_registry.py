@@ -185,6 +185,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_api_base="https://api.siliconflow.cn/v1",
     ),
     ProviderSpec(
+        name="novita",
+        keywords=("novita",),
+        env_key="NOVITA_API_KEY",
+        display_name="Novita",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_base_keyword="novita",
+        default_api_base="https://api.novita.ai/v3/openai",
+    ),
+    ProviderSpec(
         name="atlascloud",
         keywords=("atlascloud", "atlas-cloud", "atlas cloud"),
         env_key="ATLASCLOUD_API_KEY",
