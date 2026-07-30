@@ -43,6 +43,7 @@ import {
 } from "@/lib/quiz-judge";
 import { type QuizQuestion } from "@/lib/quiz-types";
 import CategoryMenu from "@/components/space/question-bank/CategoryMenu";
+import { normalizeLanguage } from "@/i18n/languages";
 import {
   addEntryToCategory,
   createCategory,
@@ -640,7 +641,7 @@ export default function QuizViewer({
     }));
     setAnswerViews((prev) => ({ ...prev, [idx]: "judgment" }));
 
-    const judgeLanguage: "zh" | "en" = language === "zh" ? "zh" : "en";
+    const judgeLanguage = normalizeLanguage(language);
 
     const handle = startQuizJudge(
       {
