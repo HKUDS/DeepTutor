@@ -107,6 +107,9 @@ web/build/
 !.yarn/releases
 !.yarn/versions
 
+# Electron build assets (keep in version control)
+!electron/build/
+
 # TypeScript build info
 *.tsbuildinfo
 

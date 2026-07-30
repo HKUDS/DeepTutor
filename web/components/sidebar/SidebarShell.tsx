@@ -3,7 +3,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { useAppShell } from "@/context/AppShellContext";
 import {
   BookOpen,
@@ -111,6 +117,8 @@ const SECONDARY_NAV: NavEntry[] = [
 const GITHUB_REPO_URL = "https://github.com/HKUDS/DeepTutor";
 const DOCS_URL = "https://deeptutor.info/";
 const RECENTS_COLLAPSED_KEY = "deeptutor.sidebar.recentsCollapsed";
+const DESKTOP_CHROME_KEY = "deeptutor.desktop";
+const DESKTOP_PLATFORM_KEY = "deeptutor.platform";
 
 interface SidebarShellProps {
   sessions?: SessionSummary[];
@@ -154,6 +162,8 @@ export function SidebarShell({
   const renderedFooter =
     typeof footerSlot === "function" ? footerSlot(collapsed) : footerSlot;
   const [recentsCollapsed, setRecentsCollapsed] = useState(false);
+  const [isMacDesktop, setIsMacDesktop] = useState(false);
+  const desktopDragStyle = { WebkitAppRegion: "drag" } as CSSProperties;
 
   // Hydrate Recents collapse from localStorage after first render to stay SSR-safe.
   useEffect(() => {
@@ -162,6 +172,54 @@ export function SidebarShell({
     setRecentsCollapsed(
       window.localStorage.getItem(RECENTS_COLLAPSED_KEY) === "1",
     );
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const detectDesktopChrome = () => {
+      const desktopWindow = window as Window & {
+        __DEEPTUTOR_DESKTOP__?: boolean;
+        __DEEPTUTOR_PLATFORM__?: string;
+      };
+      const desktopParam = new URLSearchParams(window.location.search).get(
+        "desktop",
+      );
+      let storedDesktop = false;
+      let storedPlatform = "";
+
+      try {
+        storedDesktop =
+          window.localStorage.getItem(DESKTOP_CHROME_KEY) === "1";
+        storedPlatform =
+          window.localStorage.getItem(DESKTOP_PLATFORM_KEY) ?? "";
+      } catch (_error) {
+        // The preload globals and URL flag are enough when storage is blocked.
+      }
+
+      const isDesktop =
+        desktopWindow.__DEEPTUTOR_DESKTOP__ === true ||
+        desktopParam === "1" ||
+        desktopParam === "true" ||
+        storedDesktop;
+      const platform = (
+        desktopWindow.__DEEPTUTOR_PLATFORM__ ||
+        storedPlatform ||
+        window.navigator.platform ||
+        ""
+      ).toLowerCase();
+
+      setIsMacDesktop(isDesktop && platform.includes("mac"));
+    };
+
+    detectDesktopChrome();
+    const raf = window.requestAnimationFrame(detectDesktopChrome);
+    const timeout = window.setTimeout(detectDesktopChrome, 250);
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.clearTimeout(timeout);
+    };
   }, []);
 
   const toggleRecents = () => {
@@ -174,7 +232,14 @@ export function SidebarShell({
     });
   };
 
-  const handleHomeClick = (event: React.MouseEvent) => {
+  const handleDesktopTitlebarDoubleClick = () => {
+    const desktopWindow = window as Window & {
+      __DEEPTUTOR_MAXIMIZE__?: () => void;
+    };
+    desktopWindow.__DEEPTUTOR_MAXIMIZE__?.();
+  };
+
+  const handleHomeClick = (event: MouseEvent) => {
     // Always reset to a fresh session (mirrors the old "New Chat" affordance);
     // let modifier-clicks fall through to default Link behavior so middle-click
     // open-in-new-tab still works.
@@ -188,7 +253,19 @@ export function SidebarShell({
   /* ---- Collapsed state ---- */
   if (collapsed) {
     return (
-      <aside className="group/sb relative flex h-screen w-[60px] shrink-0 flex-col items-center bg-[var(--secondary)] py-3 transition-all duration-200">
+      <aside
+        className={`group/sb relative flex h-screen w-[60px] shrink-0 flex-col items-center bg-[var(--secondary)] pb-3 transition-all duration-200 ${
+          isMacDesktop ? "" : "pt-3"
+        }`}
+      >
+        {isMacDesktop ? (
+          <div
+            data-desktop-drag-region
+            className="h-[40px] w-full shrink-0"
+            style={desktopDragStyle}
+            onDoubleClick={handleDesktopTitlebarDoubleClick}
+          />
+        ) : null}
         {/* Header: logo + collapse toggle (toggle replaces logo on hover) */}
         <div className="relative mb-2 flex h-9 w-9 items-center justify-center">
           <Link
@@ -322,6 +399,14 @@ export function SidebarShell({
   /* ---- Expanded state ---- */
   return (
     <aside className="flex w-[220px] h-screen shrink-0 flex-col bg-[var(--secondary)] transition-all duration-200">
+      {isMacDesktop ? (
+        <div
+          data-desktop-drag-region
+          className="h-[40px] shrink-0"
+          style={desktopDragStyle}
+          onDoubleClick={handleDesktopTitlebarDoubleClick}
+        />
+      ) : null}
       {/* Header: logo + collapse toggle */}
       <div className="flex h-14 items-center justify-between px-4">
         <Link href="/" className="group flex items-center gap-1.5">

@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <clipPath id="rounded">
+      <rect x="0" y="0" width="1024" height="1024" rx="180" ry="180"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#rounded)">
+    <!-- Background -->
+    <rect x="0" y="0" width="1024" height="1024" fill="#fafafa" stroke="#e0e0e0" stroke-width="2"/>
+  </g>
+  <!-- Owl silhouette representing DeepTutor's intelligent learning companion -->
+  <!-- Head -->
+  <ellipse cx="512" cy="380" rx="180" ry="160" fill="#E2E8F0"/>
+  <!-- Left ear tuft -->
+  <polygon points="360,290 340,180 400,270" fill="#E2E8F0"/>
+  <!-- Right ear tuft -->
+  <polygon points="664,290 684,180 624,270" fill="#E2E8F0"/>
+  <!-- Left eye -->
+  <circle cx="440" cy="370" r="50" fill="#0F172A"/>
+  <circle cx="450" cy="358" r="16" fill="white"/>
+  <!-- Right eye -->
+  <circle cx="584" cy="370" r="50" fill="#0F172A"/>
+  <circle cx="594" cy="358" r="16" fill="white"/>
+  <!-- Beak -->
+  <polygon points="490,420 534,420 512,460" fill="#F59E0B"/>
+  <!-- Body -->
+  <ellipse cx="512" cy="620" rx="200" ry="180" fill="#1E293B"/>
+  <!-- Left wing (book open) -->
+  <path d="M312,520 Q280,600 300,680 L340,670 Q320,600 340,530 Z" fill="#3B82F6"/>
+  <!-- Right wing (book open) -->
+  <path d="M712,520 Q744,600 724,680 L684,670 Q704,600 684,530 Z" fill="#3B82F6"/>
+  <!-- Pen/quill in right wing -->
+  <line x1="684" y1="530" x2="740" y2="440" stroke="#F59E0B" stroke-width="8" stroke-linecap="round"/>
+  <!-- Text underneath -->
+  <text x="512" y="870" font-family="'Inter', 'SF Pro Display', sans-serif" font-size="80" font-weight="700" fill="#E2E8F0" text-anchor="middle" letter-spacing="4">DeepTutor</text>
+</svg>

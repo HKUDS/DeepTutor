@@ -442,6 +442,11 @@ app.include_router(unified_ws.router, prefix="/api/v1", tags=["unified-ws"])
 app.include_router(quiz_judge.router, prefix="/api/v1", tags=["quiz-judge"])
 
 
+@app.get("/api/v1/health")
+async def health_check():
+    return {"status": "ok", "service": "deeptutor"}
+
+
 @app.get("/")
 async def root():
     return {"message": "Welcome to DeepTutor API"}

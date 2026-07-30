@@ -517,7 +517,7 @@ function BookPageInner() {
           {view === "creator" && (
             <div className="h-full overflow-y-auto [scrollbar-gutter:stable]">
               {(confirmingProposal || progressHasActivity(progress)) && (
-                <div className="mx-auto mt-4 max-w-4xl px-4">
+                <div className="mx-auto mt-4 w-full px-4">
                   <BookProgressTimeline progress={progress} />
                 </div>
               )}
