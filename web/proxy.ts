@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseAuthEnabled } from "./lib/api";
 import {
+  CODEX_CALLBACK_API_PATH,
   COOKIE_NAME,
   LOGIN_PATH,
   classifyToken,
   isAuthExempt,
   isBackendPath,
+  isCodexCallbackPath,
 } from "./lib/proxy-policy";
 
 // Backend base URL for `/api/*` and `/ws/*` rewrites. The container entrypoint
@@ -35,6 +37,12 @@ function redirectToLogin(
 
 export function proxy(req: NextRequest): NextResponse {
   const { pathname, search } = req.nextUrl;
+
+  if (isCodexCallbackPath(pathname)) {
+    return NextResponse.rewrite(
+      new URL(CODEX_CALLBACK_API_PATH + search, API_BASE_URL),
+    );
+  }
 
   // 1. Bridge the origin gap: forward backend-relative paths to the API server.
   //    This keeps the URL knowledge in one place (the entrypoint + system.json)

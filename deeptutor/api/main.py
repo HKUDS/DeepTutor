@@ -205,6 +205,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to stop partners: {e}")
 
+    # Close MCP server connections. Each one owns an AsyncExitStack inside its
+    # own task, so they must be torn down here rather than left to interpreter
+    # exit (stdio servers would otherwise leak child processes).
+    try:
+        from deeptutor.services.mcp import get_mcp_manager
+
+        await get_mcp_manager().shutdown()
+        logger.info("MCP connections closed")
+    except Exception as e:
+        logger.warning(f"Failed to close MCP connections: {e}")
+
     # Stop EventBus
     try:
         from deeptutor.events.event_bus import get_event_bus
@@ -328,6 +339,8 @@ from deeptutor.api.routers import (
     sessions,
     settings,
     skills,
+    space_cli_apps,
+    space_mcp,
     subagents,
     system,
     unified_ws,
@@ -405,6 +418,26 @@ app.include_router(
     mcp_settings.router,
     prefix="/api/v1/settings/mcp",
     tags=["mcp-settings"],
+    dependencies=_auth,
+)
+# Per-user MCP servers. Deliberately only ``_auth``: the router's own routes
+# resolve the owner server-side, and everything a non-admin can reach through it
+# is remote-transport-only (see the module docstring). The admin registry above
+# keeps its own ``require_admin``.
+app.include_router(
+    space_mcp.router,
+    prefix="/api/v1/space/mcp",
+    tags=["space-mcp"],
+    dependencies=_auth,
+)
+# CLI apps. Only ``_auth`` here as well, but for a different reason: the two
+# routes that install or remove an app carry their own ``require_admin``, and
+# what is left for an ordinary account is reading the catalog and toggling its
+# own preference among apps an administrator already granted it.
+app.include_router(
+    space_cli_apps.router,
+    prefix="/api/v1/space/cli-apps",
+    tags=["space-cli-apps"],
     dependencies=_auth,
 )
 app.include_router(skills.router, prefix="/api/v1/skills", tags=["skills"], dependencies=_auth)

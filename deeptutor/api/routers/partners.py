@@ -128,7 +128,9 @@ class CreatePartnerRequest(BaseModel):
     avatar: str | None = None
     enabled_tools: list[str] | None = None
     builtin_tools: list[str] | None = None
-    mcp_tools: list[str] | None = None
+    # Omitting ``mcp_tools`` creates the partner with MCP off (the config
+    # default); ``null`` is the deliberate opt-in to every configured MCP tool.
+    mcp_tools: list[str] | None = []
     assets: AssetSpec | None = None
     start: bool = True
 

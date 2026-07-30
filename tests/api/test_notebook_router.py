@@ -290,12 +290,13 @@ def test_quiz_state_isolated_per_turn(store: SQLiteSessionStore) -> None:
         assert scoped_b.json()["turn_id"] == "turn_B"
 
 
-def test_lookup_without_turn_id_falls_back_to_latest(
+def test_lookup_without_turn_id_only_matches_legacy_namespace(
     store: SQLiteSessionStore,
 ) -> None:
-    """Callers that don't pass turn_id (legacy entries / external API) get the
-    most recently updated matching entry — deterministic even when multiple
-    turns share a question_id."""
+    """Regression test for #677 — a lookup that doesn't pass turn_id must
+    never see turn-scoped rows (positional ids like ``q_1`` repeat across
+    quizzes, so a cross-turn fallback leaks the previous quiz's answers into
+    a new quiz). It only matches the legacy namespace (turn_id='')."""
     session = asyncio.run(store.create_session())
     sid = session["id"]
 
@@ -304,7 +305,7 @@ def test_lookup_without_turn_id_falls_back_to_latest(
             sid,
             [
                 {
-                    "turn_id": "turn_old",
+                    "turn_id": "turn_A",
                     "question_id": "q1",
                     "question": "Q?",
                     "user_answer": "A",
@@ -313,30 +314,37 @@ def test_lookup_without_turn_id_falls_back_to_latest(
             ],
         )
     )
-    asyncio.run(
-        store.upsert_notebook_entries(
-            sid,
-            [
-                {
-                    "turn_id": "turn_new",
-                    "question_id": "q1",
-                    "question": "Q?",
-                    "user_answer": "B",
-                    "is_correct": True,
-                }
-            ],
-        )
-    )
 
     with TestClient(_build_app(store)) as client:
+        # Turn-scoped rows are invisible without their turn_id.
         resp = client.get(
             "/api/v1/question-notebook/entries/lookup/by-question",
             params={"session_id": sid, "question_id": "q1"},
         )
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["turn_id"] == "turn_new"
-        assert body["user_answer"] == "B"
+        assert resp.status_code == 404
+
+        # Pre-turn-scoping rows (migrated with turn_id='') stay reachable.
+        asyncio.run(
+            store.upsert_notebook_entries(
+                sid,
+                [
+                    {
+                        "turn_id": "",
+                        "question_id": "q1",
+                        "question": "Q?",
+                        "user_answer": "B",
+                        "is_correct": True,
+                    }
+                ],
+            )
+        )
+        legacy = client.get(
+            "/api/v1/question-notebook/entries/lookup/by-question",
+            params={"session_id": sid, "question_id": "q1"},
+        )
+        assert legacy.status_code == 200
+        assert legacy.json()["turn_id"] == ""
+        assert legacy.json()["user_answer"] == "B"
 
 
 def test_lookup_missing_entry_returns_404_by_default(store: SQLiteSessionStore) -> None:

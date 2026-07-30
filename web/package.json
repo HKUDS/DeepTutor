@@ -17,7 +17,8 @@
     "i18n:check": "npm run i18n:parity && npm run i18n:audit",
     "audit": "playwright test --project=ui-audit",
     "audit:ui": "playwright test --ui --project=ui-audit",
-    "audit:report": "playwright show-report"
+    "audit:report": "playwright show-report",
+    "build:brand-icons": "tsx ./scripts/build-brand-icons.mts"
   },
   "dependencies": {
     "chart.js": "^4.5.1",
@@ -54,6 +55,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
     "postcss": "^8",
+    "simple-icons": "^16.27.1",
     "tailwindcss": "^3.4.17",
     "typescript": "^5"
   }

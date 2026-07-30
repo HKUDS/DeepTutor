@@ -140,6 +140,7 @@ def test_rag_providers_lists_llamaindex_and_pageindex() -> None:
         "graphrag",
         "lightrag",
         "lightrag-server",
+        "ima",
     }
     # LlamaIndex works out of the box; PageIndex needs an API key; GraphRAG and
     # LightRAG are optional local engines (no API key, configured = installed).
@@ -151,10 +152,16 @@ def test_rag_providers_lists_llamaindex_and_pageindex() -> None:
     # (the per-KB endpoint is configured at connect time).
     assert by_id["lightrag-server"]["requires_api_key"] is False
     assert by_id["lightrag-server"]["configured"] is True
+    # Same for IMA: a thin HTTPS client, credentials bound per-KB at connect
+    # time rather than gated by one global key.
+    assert by_id["ima"]["requires_api_key"] is False
+    assert by_id["ima"]["configured"] is True
     # Mode-aware engines advertise their retrieval modes; vector engines don't.
     assert "hybrid" in by_id["lightrag"]["modes"]
     assert "mix" in by_id["lightrag-server"]["modes"]
     assert not by_id["llamaindex"].get("modes")
+    # IMA exposes a single retrieval call, so it advertises no modes.
+    assert not by_id["ima"].get("modes")
 
 
 def test_set_rag_provider_mode_persists_validates_and_reflects() -> None:

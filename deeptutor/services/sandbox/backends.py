@@ -55,7 +55,12 @@ class RunnerSidecarBackend(SandboxBackend):
 
     async def exec(self, request: ExecRequest) -> ExecResult:
         payload = {
+            # Both spellings travel. A runner that understands ``argv`` prefers
+            # it and runs without a shell; an older image ignores the unknown
+            # field and executes the equivalent shell string. That keeps a
+            # rolling deploy correct in either order, with no version handshake.
             "command": request.command,
+            "argv": list(request.argv),
             "workdir": request.workdir,
             "env": request.env,
             "mounts": [
@@ -137,7 +142,11 @@ class BwrapBackend(SandboxBackend):
             argv += ["--chdir", request.workdir]
         for key, value in request.env.items():
             argv += ["--setenv", key, value]
-        argv += ["/bin/sh", "-c", request.command]
+        if request.argv:
+            # No shell in between: bwrap execs the vector directly.
+            argv += ["--", *request.argv]
+        else:
+            argv += ["/bin/sh", "-c", request.command]
         return argv
 
     async def exec(self, request: ExecRequest) -> ExecResult:
@@ -176,13 +185,22 @@ class RestrictedSubprocessBackend(SandboxBackend):
         env.update(request.env)
         cwd = request.workdir or None
         try:
-            process = await asyncio.create_subprocess_shell(
-                request.command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=cwd,
-                env=env,
-            )
+            if request.argv:
+                process = await asyncio.create_subprocess_exec(
+                    *request.argv,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=cwd,
+                    env=env,
+                )
+            else:
+                process = await asyncio.create_subprocess_shell(
+                    request.command,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=cwd,
+                    env=env,
+                )
         except Exception as exc:
             return ExecResult(error=f"{type(exc).__name__}: {exc}")
         return await _communicate(process, request.limits.timeout_s)

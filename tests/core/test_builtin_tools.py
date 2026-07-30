@@ -151,6 +151,43 @@ async def test_rag_tool_forwards_query_and_extra_kwargs(monkeypatch: pytest.Monk
 
 
 @pytest.mark.asyncio
+async def test_rag_tool_cites_retrieved_sources(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The retrieval's own provenance must reach the citation stream — echoing
+    the query back was all a grounded answer used to carry (issue #694)."""
+
+    async def fake_rag_search(**_kwargs: Any) -> dict[str, Any]:
+        return {
+            "answer": "grounded answer",
+            "sources": [
+                {"title": "Chapter 3", "chunk_id": "chunk-7", "content": "…tensors…"},
+                {"title": "tensor", "chunk_id": "entity-2", "content": "…rank…"},
+            ],
+        }
+
+    _install_module(monkeypatch, "deeptutor.tools.rag_tool", rag_search=fake_rag_search)
+
+    result = await RAGTool().execute(query="what is a tensor", kb_name="demo-kb")
+
+    assert [s["chunk_id"] for s in result.sources] == ["chunk-7", "entity-2"]
+    assert [s["title"] for s in result.sources] == ["Chapter 3", "tensor"]
+    assert all(s["type"] == "rag" and s["kb_name"] == "demo-kb" for s in result.sources)
+
+
+@pytest.mark.asyncio
+async def test_rag_tool_falls_back_to_query_echo(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An engine that surfaces no provenance still names the KB it consulted."""
+
+    async def fake_rag_search(**_kwargs: Any) -> dict[str, Any]:
+        return {"answer": "grounded answer", "sources": []}
+
+    _install_module(monkeypatch, "deeptutor.tools.rag_tool", rag_search=fake_rag_search)
+
+    result = await RAGTool().execute(query="what is a tensor", kb_name="demo-kb")
+
+    assert result.sources == [{"type": "rag", "query": "what is a tensor", "kb_name": "demo-kb"}]
+
+
+@pytest.mark.asyncio
 async def test_rag_tool_rejects_empty_query(monkeypatch: pytest.MonkeyPatch) -> None:
     called = False
 

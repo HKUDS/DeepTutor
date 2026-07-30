@@ -72,8 +72,9 @@ class AnalysisAgent(BaseAgent):
 
         user_prompt = user_template.format(**format_kwargs)
 
-        chunks: list[str] = []
-        async for chunk in self.stream_llm(
+        # Blocking rather than streamed: nothing consumes the partial JSON, and
+        # a reasoning model's <think> prelude never reaches the parser this way.
+        raw = await self.call_llm(
             user_prompt=user_prompt,
             system_prompt=system_prompt,
             response_format={"type": "json_object"},
@@ -87,10 +88,8 @@ class AnalysisAgent(BaseAgent):
                 trace_role="analyze",
                 trace_kind="llm_output",
             ),
-        ):
-            chunks.append(chunk)
-        response = "".join(chunks)
-        result = VisualizationAnalysis.model_validate(extract_json_object(response))
+        )
+        result = VisualizationAnalysis.model_validate(extract_json_object(raw))
         if render_mode in ("svg", "chartjs", "mermaid", "html"):
             result.render_type = render_mode  # type: ignore[assignment]
         elif render_mode == "figure" and result.render_type not in (

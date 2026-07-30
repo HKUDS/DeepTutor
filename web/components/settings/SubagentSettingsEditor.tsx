@@ -272,7 +272,8 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
     try {
       const [opts, settings] = await Promise.all([
         fetchOptions(),
-        getSubagentSettings(),
+        // An editor must show what is stored, never a cached copy.
+        getSubagentSettings({ force: true }),
       ]);
       setOptions(opts);
       const stored = settings.backends?.[kind] ?? {};

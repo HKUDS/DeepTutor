@@ -39,6 +39,16 @@ def _model_by_id(profile: dict[str, Any], model_id: str) -> dict[str, Any] | Non
     return None
 
 
+def is_owner_bound(profile: dict[str, Any]) -> bool:
+    """Whether a profile is tied to the identity of the operator who set it up.
+
+    OAuth providers such as Codex authenticate one individual's plan rather than
+    a billable team key, so those profiles are never lent to other accounts
+    through grants — each user signs in for themselves or goes without.
+    """
+    return bool(profile.get("owner_bound"))
+
+
 def redacted_model_access(user_id: str | None = None) -> dict[str, list[dict[str, Any]]]:
     user = get_current_user()
     if user_id is None:
@@ -49,6 +59,11 @@ def redacted_model_access(user_id: str | None = None) -> dict[str, list[dict[str
     for item in grant.get("models", {}).get("llm", []) or []:
         profile_id = str(item.get("profile_id") or item.get("id") or "")
         profile = _profile_by_id(catalog, "llm", profile_id)
+        if profile is not None and is_owner_bound(profile):
+            # A grant may predate the profile becoming owner-bound. Drop it here,
+            # the one place every caller resolves grants through, so the option
+            # list, the capability gate, and selection validation all agree.
+            continue
         if not profile:
             result["llm"].append(
                 {
