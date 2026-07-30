@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { ChevronRight, Rocket, type LucideIcon } from "lucide-react";
 
 import { apiFetch, apiUrl } from "@/lib/api";
+import { LanguageSwitcher } from "@/components/settings/LanguageSwitcher";
 import {
   serviceReadiness,
   useSettings,
@@ -37,8 +38,14 @@ export default function SettingsHub() {
   const zh = i18n.language?.toLowerCase().startsWith("zh");
   const tr = useCallback((l: Lang) => (zh ? l.zh : l.en), [zh]);
 
-  const { catalog, catalogEditable, diagnosticsResults, startTour } =
-    useSettings();
+  const {
+    catalog,
+    catalogEditable,
+    diagnosticsResults,
+    language,
+    startTour,
+    updateLanguage,
+  } = useSettings();
 
   // Model preview: how many of the model-service leaves are configured.
   const modelStats = useMemo(() => {
@@ -90,7 +97,7 @@ export default function SettingsHub() {
 
   return (
     <div>
-      <header className="mb-7 flex items-start justify-between gap-4">
+      <header className="mb-7 flex flex-col items-start justify-between gap-4 sm:flex-row">
         <div className="min-w-0">
           <h1 className="font-serif text-[24px] font-semibold leading-tight tracking-tight text-[var(--foreground)]">
             {tr({ zh: "设置", en: "Settings" })}
@@ -102,14 +109,21 @@ export default function SettingsHub() {
             })}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={startTour}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)]/60 px-3 py-1.5 text-[12.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
-        >
-          <Rocket size={13} />
-          {tr({ zh: "引导", en: "Tour" })}
-        </button>
+        <div className="flex w-full shrink-0 items-center justify-between gap-2 sm:w-auto sm:justify-end">
+          <LanguageSwitcher
+            language={language}
+            onChange={(next) => void updateLanguage(next)}
+            tr={tr}
+          />
+          <button
+            type="button"
+            onClick={startTour}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)]/60 px-3 py-1.5 text-[12.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--border)] hover:text-[var(--foreground)]"
+          >
+            <Rocket size={13} />
+            {tr({ zh: "引导", en: "Tour" })}
+          </button>
+        </div>
       </header>
 
       <SettingsStatusPanel />
