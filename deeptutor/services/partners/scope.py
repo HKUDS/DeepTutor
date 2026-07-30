@@ -20,6 +20,11 @@ def partner_user_id(partner_id: str) -> str:
     return f"{PARTNER_USER_PREFIX}{partner_id}"
 
 
+def is_partner_user_id(user_id: str) -> bool:
+    """Whether *user_id* names a synthetic partner scope rather than a person."""
+    return user_id.startswith(PARTNER_USER_PREFIX)
+
+
 def partner_scope(partner_id: str) -> UserScope:
     workspace = get_partner_workspace(partner_id)
     return UserScope(
@@ -39,4 +44,10 @@ def partner_user(partner_id: str, *, name: str = "") -> CurrentUser:
     )
 
 
-__all__ = ["PARTNER_USER_PREFIX", "partner_scope", "partner_user", "partner_user_id"]
+__all__ = [
+    "PARTNER_USER_PREFIX",
+    "is_partner_user_id",
+    "partner_scope",
+    "partner_user",
+    "partner_user_id",
+]

@@ -257,15 +257,16 @@ class SpineSynthesizer(BaseAgent):
 
         system_prompt = system_prompt.rstrip() + language_directive(self.language)
         try:
-            buf: list[str] = []
-            async for piece in self.stream_llm(
+            # Blocking rather than streamed: nothing consumes the partial JSON,
+            # and a reasoning model's <think> prelude never reaches the parser
+            # this way, so a truncated spine cannot collapse to one placeholder
+            # chapter (#707).
+            raw = await self.call_llm(
                 user_prompt=user_prompt,
                 system_prompt=system_prompt,
                 response_format={"type": "json_object"},
                 stage=stage,
-            ):
-                buf.append(piece)
-            raw = "".join(buf)
+            )
         except Exception as exc:
             logger.warning(f"SpineSynthesizer LLM call ({stage}) failed: {exc}")
             return {}

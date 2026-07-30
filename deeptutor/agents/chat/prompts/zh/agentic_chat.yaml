@@ -74,6 +74,7 @@ notices:
   ask_user_resolved_directive: "[ask_user 已解决。请使用这些回答继续处理用户的原始请求。不要只回复确认。]"
   too_many_tool_calls: "模型请求了 {requested} 个工具，单轮最多并行执行 {limit} 个，已截断。"
   tool_unknown_error: "执行工具 {tool} 时发生未知错误。"
+  tool_not_available: "该工具在本次对话中不可用，只能调用提示中列出的工具。"
   start_retrieval: "开始检索"
   empty_tool_result: "工具执行完成，但没有返回文本内容。"
   loop_budget_exhausted: "探索轮次预算已用尽，将基于已收集的材料作答。"

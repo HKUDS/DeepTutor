@@ -67,9 +67,10 @@ services:
       # and back up: admin workspace + runtime settings (data/user), per-user
       # workspaces (data/users), partners (data/partners), accounts/grants/
       # audit (data/system), knowledge bases, memory.
-      # The sandbox-runner deliberately gets only the *workspace* subtrees of
-      # this volume (the mount contract below) — never data/system or
-      # data/user/settings, which hold auth state and provider API keys.
+      # The sandbox-runner gets a narrower slice of this volume: never
+      # data/system, which holds auth state, provider API keys, and per-owner
+      # secrets. What it *does* carry for non-admin accounts is wider than
+      # workspace subtrees — see the scope note on that service's own volumes.
       - ./data:/app/data
 
     environment:
@@ -120,14 +121,27 @@ services:
     # /app/data/user/workspace (admin) or /app/data/users/<uid> (per-user)
     # is already visible here, no per-command mounting needed.
     # Scope note: every command in this container shares one filesystem view
-    # (per-command isolation is a roadmap item), so the mounts are kept as
-    # narrow as the exec feature allows — workspace subtrees only. Secrets
-    # (data/system, data/user/settings) never enter this container; the
-    # residual exposure is cross-user visibility *between user workspaces*,
-    # acceptable for the invite-only trust posture and enforced no further.
+    # (per-command isolation is a roadmap item). The admin mount is narrowed to
+    # its workspace subtree, but the per-user mount is a whole user root, so for
+    # non-admin accounts it also carries data/users/<uid>/user/settings,
+    # user/chat_history.db, and knowledge_bases — every account's exec can read
+    # every other account's copy of those. That cross-user visibility is
+    # accepted for the invite-only trust posture and enforced no further.
+    # data/system is never mounted here, which is why credentials that authorize
+    # a person (Codex OAuth tokens) live under data/system/user-secrets/<owner>
+    # instead of inside a user root — and why installed CLI apps live in a third
+    # place, data/cli-apps, rather than in either: the runner has to *execute*
+    # them, so data/system is out; it must not be able to *modify* them, so a
+    # workspace subtree is out too.
     volumes:
       - ./data/user/workspace:/app/data/user/workspace
       - ./data/users:/app/data/users
+      # Installed CLI apps, READ-ONLY. This is the one directory the runner
+      # executes code from that it did not receive in a request, so it must not
+      # be writable here: an escaped command that could overwrite an app's entry
+      # point would run as that app in every later turn, for every account.
+      # Installing writes it from the main container instead (services/cli_apps).
+      - ./data/cli-apps:/app/data/cli-apps:ro
 
     # No `ports:` — intentionally not published to the host.
 

@@ -95,10 +95,11 @@ def _build_anthropic_adapter(config: LLMClientConfig, spec: Any) -> Any:
 
 
 def _build_codex_adapter(config: LLMClientConfig, spec: Any) -> Any:
+    from deeptutor.services.codex_auth.constants import CODEX_DEFAULT_MODEL_ID
     from deeptutor.services.llm.provider_core import OpenAICodexProvider
 
     oauth_provider = OpenAICodexProvider(
-        default_model=config.model or "openai-codex/gpt-5.1-codex",
+        default_model=config.model or CODEX_DEFAULT_MODEL_ID,
     )
     return _ProviderOpenAIAdapter(oauth_provider)
 

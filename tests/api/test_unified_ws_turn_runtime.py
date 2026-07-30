@@ -200,6 +200,11 @@ async def test_turn_runtime_replays_events_and_materializes_messages(
     detail = await store.get_session_with_messages(session["id"])
     assert detail is not None
     assert [message["role"] for message in detail["messages"]] == ["user", "assistant"]
+    # DONE carries the persisted row ids so the frontend can reconcile its
+    # optimistic negative ids in place instead of refetching the session.
+    user_row, assistant_row = detail["messages"]
+    assert done_event["metadata"]["user_message_id"] == user_row["id"]
+    assert done_event["metadata"]["assistant_message_id"] == assistant_row["id"]
     assert detail["messages"][0]["metadata"]["request_snapshot"]["persona"] == "socratic"
     assert detail["messages"][0]["metadata"]["request_snapshot"]["memoryReferences"] == ["summary"]
     assert detail["messages"][0]["metadata"]["request_snapshot"]["bookReferences"] == [

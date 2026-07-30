@@ -4,16 +4,20 @@ PocketBase-backed session store.
 Implements SessionStoreProtocol using PocketBase collections for all durable
 storage.  The key performance design:
 
-- All methods except ``append_turn_event`` make direct PocketBase HTTP calls.
-  These are called at most a handful of times per turn (create, get, update
-  status, add message) and the ~5–10 ms overhead is acceptable.
+- Most methods make direct PocketBase HTTP calls. These are called at most a
+  handful of times per turn (create, get, update status, add message) and the
+  ~5–10 ms overhead is acceptable.
 
-- ``append_turn_event`` returns immediately without writing to PocketBase.
-  The existing ``_mirror_event_to_workspace`` in turn_runtime.py already
-  appends every event to a local ``events.jsonl`` file.  When
-  ``update_turn_status`` finalises a turn it reads that file and batch-posts
-  all events to PocketBase ``turn_events`` in a single request, trading
-  real-time durability for ~40× lower per-event latency during streaming.
+- Turn events are the exception: they arrive hundreds at a time when the turn
+  runtime flushes its in-memory buffer after the stream ends.
+  ``append_turn_events`` therefore annotates the payloads and returns
+  immediately, uploading the records to the ``turn_events`` collection in a
+  background task — the turn's DONE event (and the client's spinner) must not
+  wait on one HTTP round-trip per event. Durability is anchored elsewhere: the
+  assistant message row already carries the full event list in
+  ``events_json``, and turn_runtime mirrors the batch to a task-local
+  ``events.jsonl``. The ``turn_events`` collection only serves post-turn trace
+  replay, so eventual consistency is acceptable.
 """
 
 from __future__ import annotations
@@ -21,13 +25,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from pathlib import Path
 import re
 import time
 from typing import Any
 import uuid
-
-from deeptutor.services.path_service import get_path_service
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,13 @@ def _find_session_record(pb: Any, session_id: str, user_id: str) -> Any | None:
 
 class PocketBaseSessionStore:
     """PocketBase-backed implementation of SessionStoreProtocol."""
+
+    def __init__(self) -> None:
+        # Strong refs to in-flight turn-event upload tasks: ``create_task``
+        # results are weakly referenced by the loop, so without this a GC
+        # could cancel an upload mid-flight. Tasks discard themselves on
+        # completion.
+        self._event_upload_tasks: set[asyncio.Task[None]] = set()
 
     # ------------------------------------------------------------------
     # Sessions
@@ -321,8 +329,8 @@ class PocketBaseSessionStore:
         events: list[dict[str, Any]] | None = None,
         attachments: list[dict[str, Any]] | None = None,
         metadata: dict[str, Any] | None = None,
-        parent_message_id: int | None = None,
-    ) -> int:
+        parent_message_id: int | str | None = None,
+    ) -> int | str:
         # ``parent_message_id`` is accepted to match the protocol shape but is
         # not yet wired through PocketBase storage — branching only works on
         # the SQLite backend today.
@@ -349,8 +357,11 @@ class PocketBaseSessionStore:
 
         try:
             record = await asyncio.to_thread(_add)
-            # Return a synthetic integer id using epoch ms
-            return int(now * 1000)
+            # Return the real PocketBase record id — the same id
+            # ``get_messages`` serves — so callers (e.g. the DONE-event
+            # reconcile metadata) hand the frontend ids that match what a
+            # later session fetch would return.
+            return str(getattr(record, "id", "") or "")
         except Exception as exc:
             logger.warning(f"add_message failed: {exc}")
             return 0
@@ -576,66 +587,7 @@ class PocketBaseSessionStore:
             logger.warning(f"update_turn_status failed: {exc}")
             return False
 
-        # Batch-flush turn events from local JSONL buffer to PocketBase on finalisation
-        if updated and finished_at is not None:
-            await self._flush_turn_events(tid)
-
         return updated
-
-    async def _flush_turn_events(self, turn_id: str) -> None:
-        """
-        Read the local events.jsonl write-ahead buffer and batch-POST all
-        events to PocketBase turn_events collection in a single background call.
-        """
-        tid = _validate_id(turn_id, "turn_id")
-        try:
-            path_service = get_path_service()
-            # The JSONL file is written by _mirror_event_to_workspace; we look
-            # across all capability workspaces since we only have the turn_id.
-            workspace_root = path_service.get_user_root()
-            jsonl_files: list[Path] = list(workspace_root.rglob(f"{tid}/events.jsonl"))
-
-            if not jsonl_files:
-                return
-
-            events: list[dict[str, Any]] = []
-            for jsonl_path in jsonl_files:
-                try:
-                    for line in jsonl_path.read_text(encoding="utf-8").splitlines():
-                        line = line.strip()
-                        if line:
-                            events.append(json.loads(line))
-                except Exception as exc:
-                    logger.debug(f"Could not read events.jsonl at {jsonl_path}: {exc}")
-
-            if not events:
-                return
-
-            def _batch_create():
-                pb = _pb()
-                for event in events:
-                    try:
-                        pb.collection("turn_events").create(
-                            {
-                                "turn_id": tid,
-                                "session_id": event.get("session_id", ""),
-                                "seq": int(event.get("seq", 0)),
-                                "type": event.get("type", ""),
-                                "source": event.get("source", ""),
-                                "stage": event.get("stage", ""),
-                                "content": str(event.get("content", ""))[:10000],
-                                "metadata_json": event.get("metadata", {}),
-                                "event_timestamp": float(event.get("timestamp", 0)),
-                            }
-                        )
-                    except Exception as exc:
-                        logger.debug(f"turn_events batch item failed: {exc}")
-
-            await asyncio.to_thread(_batch_create)
-            logger.debug(f"Flushed {len(events)} turn events for {tid} to PocketBase")
-
-        except Exception as exc:
-            logger.warning(f"_flush_turn_events failed for {turn_id}: {exc}")
 
     def _turn_record_to_dict(self, record: Any) -> dict[str, Any]:
         turn_id = getattr(record, "turn_id", getattr(record, "id", ""))
@@ -653,23 +605,72 @@ class PocketBaseSessionStore:
         }
 
     # ------------------------------------------------------------------
-    # Turn events — write-ahead only; batch flush handled in update_turn_status
+    # Turn events — annotated synchronously, uploaded in the background
     # ------------------------------------------------------------------
 
     async def append_turn_event(self, turn_id: str, event: dict[str, Any]) -> dict[str, Any]:
-        """
-        Assign a monotonic seq number and return the annotated payload.
+        """Single-event convenience wrapper over ``append_turn_events``."""
+        persisted = await self.append_turn_events(turn_id, [event])
+        return persisted[0]
 
-        Does NOT write to PocketBase immediately — the caller's
-        _mirror_event_to_workspace already appends to events.jsonl, which
-        is flushed to PocketBase in bulk when the turn is finalised.
+    async def append_turn_events(
+        self, turn_id: str, events: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Annotate a turn's buffered events and upload them in the background.
+
+        Returns the annotated payloads immediately: the caller (turn runtime)
+        publishes DONE right after this flush, and one HTTP round-trip per
+        event must not sit between the last streamed token and the client's
+        spinner clearing. The upload task keeps running past DONE — see the
+        module docstring for why eventual consistency is fine here.
         """
-        payload = dict(event)
-        payload.setdefault("turn_id", turn_id)
-        # Assign seq if not provided; use timestamp-based counter as fallback.
-        if not payload.get("seq"):
-            payload["seq"] = int(time.time() * 1000) % 1_000_000
-        return payload
+        tid = _validate_id(turn_id, "turn_id")
+        base_seq = int(time.time() * 1000) % 1_000_000
+        payloads: list[dict[str, Any]] = []
+        for offset, event in enumerate(events):
+            payload = dict(event)
+            payload.setdefault("turn_id", tid)
+            # The runtime assigns live seqs in _publish_live_event; the
+            # timestamp fallback only covers payloads that never went
+            # through it.
+            if not payload.get("seq"):
+                payload["seq"] = base_seq + offset
+            payloads.append(payload)
+        if payloads:
+            task = asyncio.create_task(self._upload_turn_events(tid, payloads))
+            self._event_upload_tasks.add(task)
+            task.add_done_callback(self._event_upload_tasks.discard)
+        return payloads
+
+    async def _upload_turn_events(self, turn_id: str, payloads: list[dict[str, Any]]) -> None:
+        def _create_all() -> int:
+            pb = _pb()
+            created = 0
+            for event in payloads:
+                try:
+                    pb.collection("turn_events").create(
+                        {
+                            "turn_id": turn_id,
+                            "session_id": event.get("session_id", ""),
+                            "seq": int(event.get("seq", 0)),
+                            "type": event.get("type", ""),
+                            "source": event.get("source", ""),
+                            "stage": event.get("stage", ""),
+                            "content": str(event.get("content", ""))[:10000],
+                            "metadata_json": event.get("metadata", {}),
+                            "event_timestamp": float(event.get("timestamp", 0)),
+                        }
+                    )
+                    created += 1
+                except Exception as exc:
+                    logger.debug(f"turn_events upload item failed: {exc}")
+            return created
+
+        try:
+            created = await asyncio.to_thread(_create_all)
+            logger.debug(f"Uploaded {created}/{len(payloads)} turn events for {turn_id}")
+        except Exception as exc:
+            logger.warning(f"Turn-event upload failed for {turn_id}: {exc}")
 
     async def get_turn_events(self, turn_id: str, after_seq: int = 0) -> list[dict[str, Any]]:
         """Retrieve persisted turn events from PocketBase (post-turn replay)."""

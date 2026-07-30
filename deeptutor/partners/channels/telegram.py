@@ -21,7 +21,11 @@ from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.partners.channels.base import BaseChannel
 from deeptutor.partners.config.paths import get_media_dir
 from deeptutor.partners.config.schema import DeliveryOverrides, StreamingSupport
-from deeptutor.partners.helpers import split_message
+from deeptutor.partners.helpers import (
+    is_markdown_table_separator_row,
+    split_markdown_table_row,
+    split_message,
+)
 from deeptutor.services.partners.commands import build_partner_help_text, partner_command_palette
 
 TELEGRAM_MAX_MESSAGE_LEN = 4000  # Telegram message character limit
@@ -80,8 +84,8 @@ def _render_table_box(table_lines: list[str]) -> str:
     rows: list[list[str]] = []
     has_sep = False
     for line in table_lines:
-        cells = [_strip_md(c) for c in line.strip().strip("|").split("|")]
-        if all(re.match(r"^:?-+:?$", c) for c in cells if c):
+        cells = [_strip_md(c) for c in split_markdown_table_row(line)]
+        if is_markdown_table_separator_row(cells):
             has_sep = True
             continue
         rows.append(cells)

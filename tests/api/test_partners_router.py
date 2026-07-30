@@ -80,6 +80,14 @@ class TestCreate:
         assert body["soul_origin"] == {"type": "custom", "id": ""}
         assert body["provisioning"]["errors"] == []
 
+    def test_omitted_mcp_tools_defaults_to_deny(self, client):
+        # A create that says nothing about MCP must not inherit the deployment's
+        # configured MCP tools; ``null`` stays the deliberate opt-in to all.
+        assert _create(client).status_code == 200
+        assert client.get("/api/v1/partners/ada").json()["mcp_tools"] == []
+        assert _create(client, partner_id="bob", name="Bob", mcp_tools=None).status_code == 200
+        assert client.get("/api/v1/partners/bob").json()["mcp_tools"] is None
+
     def test_duplicate_id_conflicts(self, client):
         assert _create(client).status_code == 200
         assert _create(client).status_code == 409
