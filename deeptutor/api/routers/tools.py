@@ -11,7 +11,7 @@ can show authoritative copy without duplicating the catalog.
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -62,9 +62,9 @@ class ToolHintsPayload(BaseModel):
 class BuiltinToolPayload(BaseModel):
     name: str
     description: str
-    description_i18n: dict[Literal["en", "zh"], str] = {}
+    description_i18n: dict[str, str] = {}
     parameters: list[ToolParameterPayload]
-    hints: dict[Literal["en", "zh"], ToolHintsPayload]
+    hints: dict[str, ToolHintsPayload]
     aliases: list[str] = []
     # True iff the user is allowed to switch this tool on/off from the
     # /settings/tools UI. Locked-on tools (auto-mounted by the chat
