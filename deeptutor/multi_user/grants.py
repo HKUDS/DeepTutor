@@ -7,14 +7,29 @@ import json
 from pathlib import Path
 from typing import Any
 
+from deeptutor.services.file_io import atomic_create_json as _atomic_create_json
+from deeptutor.services.file_io import atomic_write_json as _atomic_write_json
+
 from .identity import get_user_by_id
 from .paths import SYSTEM_ROOT, ensure_system_dirs
-from .token_quota import default_token_quota
+from .quota_config import normalize_quotas
+from .token_quota import default_quota
 
 GRANTS_DIR = SYSTEM_ROOT / "grants"
 
 
-def empty_grant(user_id: str) -> dict[str, Any]:
+def empty_grant(
+    user_id: str,
+    *,
+    token_quota: dict[str, Any] | None = None,
+    quota: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    defaults = default_quota()
+    normalized_quota = normalize_quotas(
+        quota,
+        fallback=defaults,
+        legacy_token_quota=token_quota,
+    )
     return {
         "version": 2,
         "user_id": user_id,
@@ -38,9 +53,10 @@ def empty_grant(user_id: str) -> dict[str, Any]:
         "enabled_tools": None,
         "mcp_tools": None,
         "exec_enabled": None,
-        # Per-user LLM credit limits. Zero means unlimited for that period;
-        # fresh public users receive bounded defaults.
-        "token_quota": default_token_quota(),
+        # Resource-specific credit limits. Zero means unlimited. Keep the
+        # legacy LLM alias so old clients and grants remain readable.
+        "quota": normalized_quota,
+        "token_quota": dict(normalized_quota["llm"]),
     }
 
 
@@ -80,17 +96,14 @@ def normalize_grant(user_id: str, payload: dict[str, Any] | None) -> dict[str, A
         base[key] = _normalize_tool_list(payload.get(key))
     exec_enabled = payload.get("exec_enabled")
     base["exec_enabled"] = bool(exec_enabled) if isinstance(exec_enabled, bool) else None
-    raw_quota = payload.get("token_quota")
-    if isinstance(raw_quota, dict):
-        quota_defaults = default_token_quota()
-        normalized_quota: dict[str, int] = {}
-        for key, default in quota_defaults.items():
-            try:
-                value = int(raw_quota.get(key, default))
-            except (TypeError, ValueError):
-                value = default
-            normalized_quota[key] = max(0, min(value, 10_000_000_000))
-        base["token_quota"] = normalized_quota
+    raw_quota = payload.get("quota")
+    legacy_token_quota = payload.get("token_quota")
+    base["quota"] = normalize_quotas(
+        raw_quota,
+        fallback=default_quota(),
+        legacy_token_quota=legacy_token_quota,
+    )
+    base["token_quota"] = dict(base["quota"]["llm"])
     return base
 
 
@@ -104,6 +117,43 @@ def load_grant(user_id: str) -> dict[str, Any]:
         return empty_grant(user_id)
 
 
+def initialize_grant(
+    user_id: str,
+    *,
+    token_quota: dict[str, Any] | None = None,
+    quota: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create a new user's grant snapshot without replacing an existing grant.
+
+    User creation and grant creation are separate durable files. The target is
+    therefore create-only: a concurrent admin edit or retry can never be
+    replaced by a late default snapshot. A failed create remains repairable by
+    the existing admin grant endpoint.
+    """
+    user_record = get_user_by_id(user_id)
+    if user_record is None:
+        raise ValueError(f"Unknown user id: {user_id}")
+    _username, record = user_record
+    if str(record.get("role") or "user") == "admin":
+        raise ValueError("Admin users use the main workspace and cannot receive assignments.")
+
+    path = grant_path(user_id)
+    if path.exists():
+        return load_grant(user_id)
+
+    grant = normalize_grant(
+        user_id,
+        (
+            {"quota": quota, "token_quota": token_quota}
+            if quota is not None or token_quota is not None
+            else None
+        ),
+    )
+    validate_grant(grant)
+    _atomic_create_json(path, grant)
+    return load_grant(user_id)
+
+
 def save_grant(user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     user_record = get_user_by_id(user_id)
     if user_record is None:
@@ -115,7 +165,7 @@ def save_grant(user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     validate_grant(grant)
     path = grant_path(user_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(grant, indent=2, ensure_ascii=False), encoding="utf-8")
+    _atomic_write_json(path, grant)
     return grant
 
 

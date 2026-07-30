@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from deeptutor.api.routers.auth import require_admin
 from deeptutor.knowledge.manager import KnowledgeBaseManager
+from deeptutor.services.config import get_runtime_settings_service
 from deeptutor.services.config.model_catalog import ModelCatalogService
 from deeptutor.services.skill.service import SkillService
 
@@ -19,6 +20,7 @@ from .identity import get_user_by_id, list_user_info
 from .knowledge_access import admin_kb_base_dir
 from .model_access import is_owner_bound
 from .paths import get_admin_path_service
+from .quota_config import DEFAULT_QUOTA, normalize_quotas
 
 router = APIRouter()
 
@@ -32,6 +34,44 @@ class SkillInstallPayload(BaseModel):
     name: str | None = None
     force: bool = False
     allow_unverified: bool = False
+
+
+class DefaultTokenQuotaPayload(BaseModel):
+    """Accept the new resource shape plus legacy LLM-only fields."""
+
+    daily_tokens: Any | None = None
+    monthly_tokens: Any | None = None
+    default_token_quota: dict[str, Any] | None = None
+    default_quota: dict[str, Any] | None = None
+
+
+def _read_default_quota() -> dict[str, dict[str, int]]:
+    settings = get_runtime_settings_service().load_auth(include_process_overrides=False)
+    return normalize_quotas(
+        settings.get("default_quota"),
+        fallback=DEFAULT_QUOTA,
+        legacy_token_quota=settings.get("default_token_quota"),
+    )
+
+
+def _read_default_token_quota() -> dict[str, int]:
+    """Backward-compatible read helper for old callers/tests."""
+    return dict(_read_default_quota()["llm"])
+
+
+def _quota_payload_values(payload: DefaultTokenQuotaPayload) -> dict[str, Any]:
+    values = dict(payload.default_quota or {})
+    if not values and payload.default_token_quota is not None:
+        values["llm"] = dict(payload.default_token_quota)
+    llm = values.get("llm")
+    if not isinstance(llm, dict):
+        llm = {}
+        values["llm"] = llm
+    if payload.daily_tokens is not None:
+        llm["daily_tokens"] = payload.daily_tokens
+    if payload.monthly_tokens is not None:
+        llm["monthly_tokens"] = payload.monthly_tokens
+    return values
 
 
 def _admin_catalog_summary() -> dict[str, list[dict[str, Any]]]:
@@ -132,6 +172,54 @@ async def admin_resources(_: object = Depends(require_admin)) -> dict[str, Any]:
     }
 
 
+@router.get("/admin/default-quota")
+async def get_default_token_quota(_: object = Depends(require_admin)) -> dict[str, Any]:
+    """Return resource defaults plus the legacy LLM-only alias."""
+    quota = _read_default_quota()
+    return {
+        "default_quota": quota,
+        "default_token_quota": dict(quota["llm"]),
+    }
+
+
+@router.put("/admin/default-quota")
+async def put_default_token_quota(
+    payload: DefaultTokenQuotaPayload,
+    _: object = Depends(require_admin),
+) -> dict[str, Any]:
+    """Persist new-user defaults while preserving the rest of auth.json."""
+    service = get_runtime_settings_service()
+    settings = service.load_auth(include_process_overrides=False)
+    current_quota = normalize_quotas(
+        settings.get("default_quota"),
+        fallback=DEFAULT_QUOTA,
+        legacy_token_quota=settings.get("default_token_quota"),
+    )
+    quota = normalize_quotas(
+        _quota_payload_values(payload),
+        fallback=current_quota,
+        legacy_token_quota=current_quota["llm"],
+    )
+    settings["default_quota"] = quota
+    settings["default_token_quota"] = dict(quota["llm"])
+    saved = service.save_auth(settings)
+    saved_quota = normalize_quotas(
+        saved.get("default_quota"),
+        fallback=DEFAULT_QUOTA,
+        legacy_token_quota=saved.get("default_token_quota"),
+    )
+    log_admin_action(
+        "default_token_quota_set",
+        summary={
+            "quota": saved_quota,
+        },
+    )
+    return {
+        "default_quota": saved_quota,
+        "default_token_quota": dict(saved_quota["llm"]),
+    }
+
+
 @router.get("/users/{user_id}/grants")
 async def get_user_grants(user_id: str, _: object = Depends(require_admin)) -> dict[str, Any]:
     _require_assignable_user(user_id)
@@ -162,6 +250,7 @@ async def put_user_grants(
                 None if grant.get("mcp_tools") is None else len(grant.get("mcp_tools") or [])
             ),
             "exec_enabled": grant.get("exec_enabled"),
+            "quota": grant.get("quota"),
         },
     )
     return {"grant": grant}

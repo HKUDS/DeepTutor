@@ -14,7 +14,23 @@ export type GrantPayload = {
   mcp_tools: string[] | null;
   /** null = follow deployment exec policy, false = always disabled. */
   exec_enabled: boolean | null;
-  /** 0 = unlimited for that period; fresh users receive bounded defaults. */
+  /** Resource-specific limits; 0 = unlimited for that period. */
+  quota: {
+    llm: {
+      daily_tokens: number;
+      monthly_tokens: number;
+    };
+    embedding: {
+      daily_tokens: number;
+      monthly_tokens: number;
+    };
+    mineru: {
+      daily_pages: number;
+      monthly_pages: number;
+      max_pages_per_file: number;
+    };
+  };
+  /** @deprecated Compatibility alias for quota.llm. */
   token_quota: {
     daily_tokens: number;
     monthly_tokens: number;

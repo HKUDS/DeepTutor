@@ -30,6 +30,40 @@ logger = logging.getLogger(__name__)
 _LOCAL_CLI_COMMANDS = ("magic-pdf", "mineru")
 
 
+def _pdf_page_count(pdf_path: Path) -> int:
+    """Read the page count before a MinerU request so quota is pre-reserved."""
+    try:
+        from pypdf import PdfReader
+
+        count = len(PdfReader(str(pdf_path), strict=False).pages)
+    except Exception as exc:
+        raise MinerUError(
+            "MinerU cannot determine the PDF page count, so the request was "
+            "blocked before parsing. Ensure the PDF is readable."
+        ) from exc
+    if count < 1:
+        raise MinerUError("MinerU requires a PDF with at least one page.")
+    return count
+
+
+def _reserve_mineru_pages(pdf_path: Path):
+    """Reserve this user's MinerU page allowance, if the user is bounded."""
+    from deeptutor.multi_user.token_quota import (
+        QuotaExceeded,
+        TokenQuotaUnavailable,
+        current_user_resource_quota_policy,
+        reserve_current_user_units,
+    )
+
+    if current_user_resource_quota_policy("mineru") is None:
+        return None, 0
+    pages = _pdf_page_count(pdf_path)
+    try:
+        return reserve_current_user_units(resource="mineru", requested_units=pages), pages
+    except (QuotaExceeded, TokenQuotaUnavailable) as exc:
+        raise MinerUError(str(exc)) from exc
+
+
 def parse_pdf_to_workdir(
     pdf_path: str | Path,
     output_base: str | Path,
@@ -51,13 +85,22 @@ def parse_pdf_to_workdir(
     output_base = Path(output_base)
     output_base.mkdir(parents=True, exist_ok=True)
 
-    if cfg.is_cloud:
-        from .cloud import parse_cloud
+    lease, page_count = _reserve_mineru_pages(pdf_path)
+    try:
+        if cfg.is_cloud:
+            from .cloud import parse_cloud
 
-        logger.info("Parsing %s via MinerU cloud API", pdf_path.name)
-        return parse_cloud(pdf_path, output_base, cfg, on_progress=on_output)
-
-    return _parse_local(pdf_path, output_base, config=cfg, on_output=on_output)
+            logger.info("Parsing %s via MinerU cloud API", pdf_path.name)
+            result = parse_cloud(pdf_path, output_base, cfg, on_progress=on_output)
+        else:
+            result = _parse_local(pdf_path, output_base, config=cfg, on_output=on_output)
+    except Exception:
+        if lease is not None:
+            lease.release()
+        raise
+    if lease is not None:
+        lease.finalize(page_count)
+    return result
 
 
 def local_cli_probe(configured_path: str = "") -> dict[str, Any]:

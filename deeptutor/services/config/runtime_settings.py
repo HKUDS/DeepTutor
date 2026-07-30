@@ -7,6 +7,12 @@ import os
 from pathlib import Path
 from typing import Any, Callable
 
+from deeptutor.multi_user.quota_config import (
+    DEFAULT_QUOTA,
+    DEFAULT_TOKEN_QUOTA,
+    default_quotas,
+    normalize_quotas,
+)
 from deeptutor.services.file_io import atomic_write_json as _atomic_write_json
 from deeptutor.services.path_service import get_path_service
 
@@ -60,6 +66,11 @@ DEFAULT_AUTH_SETTINGS: dict[str, Any] = {
     "password_hash": "",
     "token_expire_hours": 24,
     "cookie_secure": False,
+    # Per-user LLM credit defaults. Zero means unlimited; these values are
+    # snapshotted into a regular user's grant when the account is created.
+    "default_quota": default_quotas(),
+    # Deprecated compatibility alias for the LLM block above.
+    "default_token_quota": dict(DEFAULT_TOKEN_QUOTA),
     # Public self-registration is protected by email verification. It remains
     # fail-closed when SMTP is not configured, so enabling auth alone never
     # creates an account-creation path that cannot verify ownership.
@@ -378,17 +389,23 @@ class RuntimeSettingsService:
         return payload
 
     def load_auth(self, *, include_process_overrides: bool = True) -> dict[str, Any]:
-        payload = self._load_or_create(
-            "auth",
-            DEFAULT_AUTH_SETTINGS,
-            self._normalize_auth,
-        )
+        # ``default_token_quota`` predates the resource-oriented
+        # ``default_quota`` shape. Do not let the new default object injected
+        # here mask a legacy file that still contains a customized LLM quota.
+        loaded = _json_object(self.path_for("auth"))
+        defaults = _deepcopy_default(DEFAULT_AUTH_SETTINGS)
+        if loaded and "default_quota" not in loaded and "default_token_quota" in loaded:
+            defaults.pop("default_quota", None)
+        payload = self._load_or_create("auth", defaults, self._normalize_auth)
         if include_process_overrides:
             payload = self._apply_auth_process_overrides(payload)
         return payload
 
     def save_auth(self, settings: dict[str, Any]) -> dict[str, Any]:
-        payload = self._normalize_auth({**DEFAULT_AUTH_SETTINGS, **settings})
+        merged = {**DEFAULT_AUTH_SETTINGS, **settings}
+        if "default_quota" not in settings and "default_token_quota" in settings:
+            merged.pop("default_quota", None)
+        payload = self._normalize_auth(merged)
         _atomic_write_json(self.path_for("auth"), payload)
         return payload
 
@@ -963,6 +980,11 @@ class RuntimeSettingsService:
         }
 
     def _normalize_auth(self, settings: dict[str, Any]) -> dict[str, Any]:
+        default_quota = normalize_quotas(
+            settings.get("default_quota"),
+            fallback=DEFAULT_QUOTA,
+            legacy_token_quota=settings.get("default_token_quota"),
+        )
         return {
             "version": 1,
             "enabled": _coerce_bool(settings.get("enabled"), False),
@@ -970,6 +992,10 @@ class RuntimeSettingsService:
             "password_hash": _string(settings.get("password_hash")),
             "token_expire_hours": max(1, _coerce_int(settings.get("token_expire_hours"), 24)),
             "cookie_secure": _coerce_bool(settings.get("cookie_secure"), False),
+            "default_quota": default_quota,
+            # Keep old readers and deployments working while the LLM block is
+            # migrated to the resource-oriented shape.
+            "default_token_quota": dict(default_quota["llm"]),
             "self_registration_enabled": _coerce_bool(
                 settings.get("self_registration_enabled"), True
             ),

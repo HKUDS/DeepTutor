@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "backend_port": 18001,
+  "frontend_port": 13782,
+  "next_public_api_base": "",
+  "next_public_api_base_external": "",
+  "cors_origins": ["https://study.aipopot.com"],
+  "sandbox_allow_subprocess": false,
+  "sandbox_allow_untrusted_users": false
+}

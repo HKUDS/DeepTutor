@@ -1,0 +1,67 @@
+services:
+  deeptutor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: deeptutor:usa
+    container_name: deeptutor
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18001:18001"
+      - "127.0.0.1:13782:13782"
+    volumes:
+      - ./data:/app/data
+    environment:
+      DEEPTUTOR_SANDBOX_RUNNER_URL: http://deeptutor-sandbox-runner:8900
+      DEEPTUTOR_SMTP_HOST: ${DEEPTUTOR_SMTP_HOST:-}
+      DEEPTUTOR_SMTP_PORT: ${DEEPTUTOR_SMTP_PORT:-587}
+      DEEPTUTOR_SMTP_USERNAME: ${DEEPTUTOR_SMTP_USERNAME:-}
+      DEEPTUTOR_SMTP_PASSWORD: ${DEEPTUTOR_SMTP_PASSWORD:-}
+      DEEPTUTOR_SMTP_FROM: ${DEEPTUTOR_SMTP_FROM:-}
+      DEEPTUTOR_SMTP_USE_TLS: ${DEEPTUTOR_SMTP_USE_TLS:-true}
+      DEEPTUTOR_SMTP_USE_SSL: ${DEEPTUTOR_SMTP_USE_SSL:-false}
+      DEEPTUTOR_SMTP_TIMEOUT_SECONDS: ${DEEPTUTOR_SMTP_TIMEOUT_SECONDS:-10}
+    depends_on:
+      deeptutor-sandbox-runner:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18001/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - deeptutor-network
+
+  deeptutor-sandbox-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner
+    image: deeptutor-sandbox-runner:usa
+    container_name: deeptutor-sandbox-runner
+    restart: unless-stopped
+    volumes:
+      - ./data/user/workspace:/app/data/user/workspace
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /home/runner
+    pids_limit: 256
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8900/health',timeout=3).status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - deeptutor-network
+
+networks:
+  deeptutor-network:
+    driver: bridge

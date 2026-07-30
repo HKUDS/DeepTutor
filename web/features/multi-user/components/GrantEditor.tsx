@@ -4,6 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, Loader2, Save } from "lucide-react";
 import { fetchAdminResources, fetchUserGrant, saveUserGrant } from "../api";
 import type { GrantPayload, McpToolOption, MultiUserResources } from "../types";
+import {
+  EMBEDDING_TOKEN_UNIT,
+  LLM_TOKEN_UNIT,
+  formatQuotaRaw,
+  parseQuotaInput,
+  quotaInputValue,
+} from "../quota-ui";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -18,6 +25,21 @@ function emptyGrant(userId: string): GrantPayload {
     enabled_tools: null,
     mcp_tools: null,
     exec_enabled: null,
+    quota: {
+      llm: {
+        daily_tokens: 100000,
+        monthly_tokens: 1000000,
+      },
+      embedding: {
+        daily_tokens: 1000000,
+        monthly_tokens: 10000000,
+      },
+      mineru: {
+        daily_pages: 50,
+        monthly_pages: 500,
+        max_pages_per_file: 50,
+      },
+    },
     token_quota: {
       daily_tokens: 100000,
       monthly_tokens: 1000000,
@@ -42,6 +64,48 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
     <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
       {children}
     </h3>
+  );
+}
+
+function QuotaInput({
+  label,
+  rawValue,
+  unit,
+  suffix,
+  rawSuffix = "tokens",
+  disabled,
+  onChange,
+}: {
+  label: string;
+  rawValue: number;
+  unit: number;
+  suffix: string;
+  rawSuffix?: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[var(--muted-foreground)]">{label}</span>
+      <div className="flex items-center gap-1.5">
+        <input
+          type="number"
+          min={0}
+          step={unit === 1 ? 1 : 0.1}
+          inputMode={unit === 1 ? "numeric" : "decimal"}
+          value={quotaInputValue(rawValue, unit)}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.value)}
+          className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-xs text-[var(--foreground)]"
+        />
+        <span className="shrink-0 text-[11px] text-[var(--muted-foreground)]">
+          {suffix}
+        </span>
+      </div>
+      <span className="mt-1 block text-[10px] text-[var(--muted-foreground)]">
+        {rawValue === 0 ? "Unlimited" : formatQuotaRaw(rawValue, rawSuffix)}
+      </span>
+    </label>
   );
 }
 
@@ -287,15 +351,29 @@ export function GrantEditor({ userId }: { userId: string }) {
     });
   }
 
-  function setTokenQuota(
-    key: "daily_tokens" | "monthly_tokens",
+  function setQuota(
+    resource: "llm" | "embedding" | "mineru",
+    key:
+      | "daily_tokens"
+      | "monthly_tokens"
+      | "daily_pages"
+      | "monthly_pages"
+      | "max_pages_per_file",
     value: string,
+    unit = 1,
   ) {
-    const parsed = Number(value);
-    const nextValue = Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
+    const parsed = parseQuotaInput(value, unit);
+    const nextValue = parsed === null ? 0 : parsed;
     setGrant((current) => ({
       ...current,
-      token_quota: { ...current.token_quota, [key]: nextValue },
+      quota: {
+        ...current.quota,
+        [resource]: { ...current.quota[resource], [key]: nextValue },
+      },
+      token_quota:
+        resource === "llm" && (key === "daily_tokens" || key === "monthly_tokens")
+          ? { ...current.token_quota, [key]: nextValue }
+          : current.token_quota,
     }));
   }
 
@@ -589,32 +667,117 @@ export function GrantEditor({ userId }: { userId: string }) {
                 />
               </div>
             </section>
-            <section className="min-w-0">
-              <SectionTitle>Token quota</SectionTitle>
-              <p className="mb-2 px-1 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
-                Hard LLM token credits. Set 0 for unlimited; usage is reserved
-                before each provider call and reconciled after it finishes.
+            <section className="min-w-0 md:col-span-3">
+              <SectionTitle>Usage quotas</SectionTitle>
+              <p className="mb-3 px-1 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+                These limits override the new-user defaults for this user. Set
+                any period to 0 for unlimited usage.
               </p>
-              <div className="space-y-2 text-xs">
-                {([
-                  ["daily_tokens", "Daily tokens"],
-                  ["monthly_tokens", "Monthly tokens"],
-                ] as const).map(([key, label]) => (
-                  <label key={key} className="block">
-                    <span className="mb-1 block text-[var(--muted-foreground)]">
-                      {label}
-                    </span>
-                    <input
-                      type="number"
-                      min={0}
-                      step={1000}
-                      value={grant.token_quota[key]}
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-[var(--border)]/60 p-3">
+                  <p className="mb-2 text-xs font-medium text-[var(--foreground)]">
+                    LLM
+                  </p>
+                  <div className="space-y-2">
+                    <QuotaInput
+                      label="Daily"
+                      rawValue={grant.quota.llm.daily_tokens}
+                      unit={LLM_TOKEN_UNIT}
+                      suffix="10k tokens"
                       disabled={controlsDisabled}
-                      onChange={(event) => setTokenQuota(key, event.target.value)}
-                      className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-xs text-[var(--foreground)]"
+                      onChange={(value) =>
+                        setQuota("llm", "daily_tokens", value, LLM_TOKEN_UNIT)
+                      }
                     />
-                  </label>
-                ))}
+                    <QuotaInput
+                      label="Monthly"
+                      rawValue={grant.quota.llm.monthly_tokens}
+                      unit={LLM_TOKEN_UNIT}
+                      suffix="10k tokens"
+                      disabled={controlsDisabled}
+                      onChange={(value) =>
+                        setQuota("llm", "monthly_tokens", value, LLM_TOKEN_UNIT)
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="rounded-lg border border-[var(--border)]/60 p-3">
+                  <p className="mb-2 text-xs font-medium text-[var(--foreground)]">
+                    Embedding
+                  </p>
+                  <div className="space-y-2">
+                    <QuotaInput
+                      label="Daily"
+                      rawValue={grant.quota.embedding.daily_tokens}
+                      unit={EMBEDDING_TOKEN_UNIT}
+                      suffix="million tokens"
+                      disabled={controlsDisabled}
+                      onChange={(value) =>
+                        setQuota(
+                          "embedding",
+                          "daily_tokens",
+                          value,
+                          EMBEDDING_TOKEN_UNIT,
+                        )
+                      }
+                    />
+                    <QuotaInput
+                      label="Monthly"
+                      rawValue={grant.quota.embedding.monthly_tokens}
+                      unit={EMBEDDING_TOKEN_UNIT}
+                      suffix="million tokens"
+                      disabled={controlsDisabled}
+                      onChange={(value) =>
+                        setQuota(
+                          "embedding",
+                          "monthly_tokens",
+                          value,
+                          EMBEDDING_TOKEN_UNIT,
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="rounded-lg border border-[var(--border)]/60 p-3">
+                  <p className="mb-2 text-xs font-medium text-[var(--foreground)]">
+                    MinerU
+                  </p>
+                  <div className="space-y-2">
+                    <QuotaInput
+                      label="Daily pages"
+                      rawValue={grant.quota.mineru.daily_pages}
+                      unit={1}
+                      suffix="pages"
+                      rawSuffix="pages"
+                      disabled={controlsDisabled}
+                      onChange={(value) =>
+                        setQuota("mineru", "daily_pages", value)
+                      }
+                    />
+                    <QuotaInput
+                      label="Monthly pages"
+                      rawValue={grant.quota.mineru.monthly_pages}
+                      unit={1}
+                      suffix="pages"
+                      rawSuffix="pages"
+                      disabled={controlsDisabled}
+                      onChange={(value) =>
+                        setQuota("mineru", "monthly_pages", value)
+                      }
+                    />
+                    <QuotaInput
+                      label="Max pages / file"
+                      rawValue={grant.quota.mineru.max_pages_per_file}
+                      unit={1}
+                      suffix="pages"
+                      rawSuffix="pages"
+                      disabled={controlsDisabled}
+                      onChange={(value) =>
+                        setQuota("mineru", "max_pages_per_file", value)
+                      }
+                    />
+                  </div>
+                </div>
               </div>
             </section>
           </div>

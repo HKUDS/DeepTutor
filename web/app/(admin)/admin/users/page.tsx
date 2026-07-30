@@ -9,6 +9,9 @@ import {
   deleteUser,
   setUserRole,
   createUser,
+  fetchDefaultQuota,
+  saveDefaultQuota,
+  type ResourceQuota,
   type UserRecord,
 } from "@/lib/admin-api";
 import { GrantEditor } from "@/features/multi-user/components/GrantEditor";
@@ -30,6 +33,133 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { formatDate as formatLocaleDate, type Language } from "@/lib/datetime";
+import {
+  EMBEDDING_TOKEN_UNIT,
+  LLM_TOKEN_UNIT,
+  formatQuotaRaw,
+  parseQuotaInput,
+  quotaInputValue,
+} from "@/features/multi-user/quota-ui";
+
+type QuotaDraft = {
+  llm: { daily: string; monthly: string };
+  embedding: { daily: string; monthly: string };
+  mineru: { daily: string; monthly: string; perFile: string };
+};
+
+const FALLBACK_DEFAULT_QUOTA: ResourceQuota = {
+  llm: { daily_tokens: 100_000, monthly_tokens: 1_000_000 },
+  embedding: { daily_tokens: 1_000_000, monthly_tokens: 10_000_000 },
+  mineru: { daily_pages: 50, monthly_pages: 500, max_pages_per_file: 50 },
+};
+
+function quotaToDraft(quota: ResourceQuota): QuotaDraft {
+  return {
+    llm: {
+      daily: quotaInputValue(quota.llm.daily_tokens, LLM_TOKEN_UNIT),
+      monthly: quotaInputValue(quota.llm.monthly_tokens, LLM_TOKEN_UNIT),
+    },
+    embedding: {
+      daily: quotaInputValue(
+        quota.embedding.daily_tokens,
+        EMBEDDING_TOKEN_UNIT,
+      ),
+      monthly: quotaInputValue(
+        quota.embedding.monthly_tokens,
+        EMBEDDING_TOKEN_UNIT,
+      ),
+    },
+    mineru: {
+      daily: quotaInputValue(quota.mineru.daily_pages, 1),
+      monthly: quotaInputValue(quota.mineru.monthly_pages, 1),
+      perFile: quotaInputValue(quota.mineru.max_pages_per_file, 1),
+    },
+  };
+}
+
+function draftToQuota(draft: QuotaDraft): ResourceQuota | null {
+  const llmDaily = parseQuotaInput(draft.llm.daily, LLM_TOKEN_UNIT);
+  const llmMonthly = parseQuotaInput(draft.llm.monthly, LLM_TOKEN_UNIT);
+  const embeddingDaily = parseQuotaInput(
+    draft.embedding.daily,
+    EMBEDDING_TOKEN_UNIT,
+  );
+  const embeddingMonthly = parseQuotaInput(
+    draft.embedding.monthly,
+    EMBEDDING_TOKEN_UNIT,
+  );
+  const mineruDaily = parseQuotaInput(draft.mineru.daily, 1);
+  const mineruMonthly = parseQuotaInput(draft.mineru.monthly, 1);
+  const mineruPerFile = parseQuotaInput(draft.mineru.perFile, 1);
+  if (
+    llmDaily === null ||
+    llmMonthly === null ||
+    embeddingDaily === null ||
+    embeddingMonthly === null ||
+    mineruDaily === null ||
+    mineruMonthly === null ||
+    mineruPerFile === null
+  ) {
+    return null;
+  }
+  return {
+    llm: { daily_tokens: llmDaily, monthly_tokens: llmMonthly },
+    embedding: {
+      daily_tokens: embeddingDaily,
+      monthly_tokens: embeddingMonthly,
+    },
+    mineru: {
+      daily_pages: mineruDaily,
+      monthly_pages: mineruMonthly,
+      max_pages_per_file: mineruPerFile,
+    },
+  };
+}
+
+function DefaultQuotaField({
+  label,
+  value,
+  unit,
+  suffix,
+  rawSuffix,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  unit: number;
+  suffix: string;
+  rawSuffix: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  const raw = parseQuotaInput(value, unit);
+  return (
+    <label className="block text-xs text-[var(--muted-foreground)]">
+      {label}
+      <div className="mt-1 flex items-center gap-2">
+        <input
+          type="number"
+          min={0}
+          step={unit === 1 ? 1 : 0.1}
+          inputMode={unit === 1 ? "numeric" : "decimal"}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          disabled={disabled}
+          className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] disabled:opacity-50"
+        />
+        <span className="shrink-0 text-[11px]">{suffix}</span>
+      </div>
+      <span className="mt-1 block text-[10px]">
+        {raw === null
+          ? "请输入有效数字"
+          : raw === 0
+            ? "0 = 不限"
+            : `实际 ${formatQuotaRaw(raw, rawSuffix)}`}
+      </span>
+    </label>
+  );
+}
 
 // Delegates to the shared locale mapping so a new UI language only has to be
 // taught to lib/datetime; the guard here is for the empty or unparseable
@@ -64,6 +194,13 @@ export default function AdminUsersPage() {
   const [createPassword, setCreatePassword] = useState("");
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState("");
+  const [defaultQuotaDraft, setDefaultQuotaDraft] = useState<QuotaDraft>(() =>
+    quotaToDraft(FALLBACK_DEFAULT_QUOTA),
+  );
+  const [defaultQuotaLoading, setDefaultQuotaLoading] = useState(true);
+  const [defaultQuotaSaving, setDefaultQuotaSaving] = useState(false);
+  const [defaultQuotaError, setDefaultQuotaError] = useState("");
+  const [defaultQuotaSaved, setDefaultQuotaSaved] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -75,6 +212,21 @@ export default function AdminUsersPage() {
       setError(e instanceof Error ? e.message : t("Failed to load users"));
     } finally {
       setLoading(false);
+    }
+  }, [t]);
+
+  const loadDefaultQuota = useCallback(async () => {
+    setDefaultQuotaLoading(true);
+    setDefaultQuotaError("");
+    try {
+      const quota = await fetchDefaultQuota();
+      setDefaultQuotaDraft(quotaToDraft(quota));
+    } catch (e) {
+      setDefaultQuotaError(
+        e instanceof Error ? e.message : t("Failed to load default quota"),
+      );
+    } finally {
+      setDefaultQuotaLoading(false);
     }
   }, [t]);
 
@@ -90,8 +242,35 @@ export default function AdminUsersPage() {
       }
       setCurrentUser(status.username ?? null);
       void load();
+      void loadDefaultQuota();
     });
-  }, [router, load]);
+  }, [router, load, loadDefaultQuota]);
+
+  async function handleDefaultQuotaSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (defaultQuotaSaving) return;
+    setDefaultQuotaError("");
+    setDefaultQuotaSaved(false);
+
+    const quota = draftToQuota(defaultQuotaDraft);
+    if (!quota) {
+      setDefaultQuotaError(t("Quota must be a valid number from 0 to 10 billion."));
+      return;
+    }
+
+    setDefaultQuotaSaving(true);
+    try {
+      const saved = await saveDefaultQuota(quota);
+      setDefaultQuotaDraft(quotaToDraft(saved));
+      setDefaultQuotaSaved(true);
+    } catch (e) {
+      setDefaultQuotaError(
+        e instanceof Error ? e.message : t("Failed to save default quota"),
+      );
+    } finally {
+      setDefaultQuotaSaving(false);
+    }
+  }
 
   function openCreateDialog() {
     setCreateUsername("");
@@ -235,6 +414,182 @@ export default function AdminUsersPage() {
             {actionError}
           </div>
         )}
+
+        <form
+          onSubmit={handleDefaultQuotaSubmit}
+          className="mb-6 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-5 shadow-sm"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-[var(--foreground)]">
+                {t("New-user default quota")}
+              </h2>
+              <p className="mt-1 max-w-2xl text-xs leading-relaxed text-[var(--muted-foreground)]">
+                {t(
+                  "These limits are snapshotted when a new regular user is created. Existing users keep their current grant.",
+                )}
+              </p>
+            </div>
+            <Link
+              href="/admin/users"
+              className="shrink-0 text-xs font-medium text-[var(--primary)] hover:underline"
+            >
+              {t("Open user management")}
+            </Link>
+          </div>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <div className="rounded-xl border border-[var(--border)]/60 p-3">
+              <h3 className="mb-3 text-xs font-semibold text-[var(--foreground)]">
+                LLM
+              </h3>
+              <div className="space-y-3">
+                <DefaultQuotaField
+                  label="每日额度"
+                  value={defaultQuotaDraft.llm.daily}
+                  unit={LLM_TOKEN_UNIT}
+                  suffix="万 tokens"
+                  rawSuffix="tokens"
+                  disabled={defaultQuotaLoading || defaultQuotaSaving}
+                  onChange={(value) => {
+                    setDefaultQuotaDraft((current) => ({
+                      ...current,
+                      llm: { ...current.llm, daily: value },
+                    }));
+                    setDefaultQuotaSaved(false);
+                  }}
+                />
+                <DefaultQuotaField
+                  label="每月额度"
+                  value={defaultQuotaDraft.llm.monthly}
+                  unit={LLM_TOKEN_UNIT}
+                  suffix="万 tokens"
+                  rawSuffix="tokens"
+                  disabled={defaultQuotaLoading || defaultQuotaSaving}
+                  onChange={(value) => {
+                    setDefaultQuotaDraft((current) => ({
+                      ...current,
+                      llm: { ...current.llm, monthly: value },
+                    }));
+                    setDefaultQuotaSaved(false);
+                  }}
+                />
+              </div>
+            </div>
+            <div className="rounded-xl border border-[var(--border)]/60 p-3">
+              <h3 className="mb-3 text-xs font-semibold text-[var(--foreground)]">
+                Embedding
+              </h3>
+              <div className="space-y-3">
+                <DefaultQuotaField
+                  label="每日额度"
+                  value={defaultQuotaDraft.embedding.daily}
+                  unit={EMBEDDING_TOKEN_UNIT}
+                  suffix="百万 tokens"
+                  rawSuffix="tokens"
+                  disabled={defaultQuotaLoading || defaultQuotaSaving}
+                  onChange={(value) => {
+                    setDefaultQuotaDraft((current) => ({
+                      ...current,
+                      embedding: { ...current.embedding, daily: value },
+                    }));
+                    setDefaultQuotaSaved(false);
+                  }}
+                />
+                <DefaultQuotaField
+                  label="每月额度"
+                  value={defaultQuotaDraft.embedding.monthly}
+                  unit={EMBEDDING_TOKEN_UNIT}
+                  suffix="百万 tokens"
+                  rawSuffix="tokens"
+                  disabled={defaultQuotaLoading || defaultQuotaSaving}
+                  onChange={(value) => {
+                    setDefaultQuotaDraft((current) => ({
+                      ...current,
+                      embedding: { ...current.embedding, monthly: value },
+                    }));
+                    setDefaultQuotaSaved(false);
+                  }}
+                />
+              </div>
+            </div>
+            <div className="rounded-xl border border-[var(--border)]/60 p-3">
+              <h3 className="mb-3 text-xs font-semibold text-[var(--foreground)]">
+                MinerU
+              </h3>
+              <div className="space-y-3">
+                <DefaultQuotaField
+                  label="每日页数"
+                  value={defaultQuotaDraft.mineru.daily}
+                  unit={1}
+                  suffix="页"
+                  rawSuffix="pages"
+                  disabled={defaultQuotaLoading || defaultQuotaSaving}
+                  onChange={(value) => {
+                    setDefaultQuotaDraft((current) => ({
+                      ...current,
+                      mineru: { ...current.mineru, daily: value },
+                    }));
+                    setDefaultQuotaSaved(false);
+                  }}
+                />
+                <DefaultQuotaField
+                  label="每月页数"
+                  value={defaultQuotaDraft.mineru.monthly}
+                  unit={1}
+                  suffix="页"
+                  rawSuffix="pages"
+                  disabled={defaultQuotaLoading || defaultQuotaSaving}
+                  onChange={(value) => {
+                    setDefaultQuotaDraft((current) => ({
+                      ...current,
+                      mineru: { ...current.mineru, monthly: value },
+                    }));
+                    setDefaultQuotaSaved(false);
+                  }}
+                />
+                <DefaultQuotaField
+                  label="单文件最大页数"
+                  value={defaultQuotaDraft.mineru.perFile}
+                  unit={1}
+                  suffix="页"
+                  rawSuffix="pages"
+                  disabled={defaultQuotaLoading || defaultQuotaSaving}
+                  onChange={(value) => {
+                    setDefaultQuotaDraft((current) => ({
+                      ...current,
+                      mineru: { ...current.mineru, perFile: value },
+                    }));
+                    setDefaultQuotaSaved(false);
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-[var(--muted-foreground)]">
+              {t("Set a period to 0 for unlimited usage.")}
+            </p>
+            <button
+              type="submit"
+              disabled={
+                defaultQuotaLoading ||
+                defaultQuotaSaving
+              }
+              className="rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-sm font-medium text-[var(--background)] hover:opacity-90 disabled:opacity-40"
+            >
+              {defaultQuotaSaving
+                ? t("Saving…")
+                : defaultQuotaSaved
+                  ? t("Saved")
+                  : t("Save default quota")}
+            </button>
+          </div>
+          {defaultQuotaError && (
+            <p className="mt-3 text-xs text-red-500">{defaultQuotaError}</p>
+          )}
+        </form>
 
         {!loading && !error && users.length > 0 && (
           <div className="mb-4 flex items-center gap-3">

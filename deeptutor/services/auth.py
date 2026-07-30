@@ -150,6 +150,7 @@ def add_user(username: str, plain_password: str, role: str = "user") -> None:
     from deeptutor.multi_user.identity import save_user
 
     record = save_user(username, hash_password(plain_password), role=role)  # type: ignore[arg-type]
+    _initialize_user_grant(record)
     logger.info("User '%s' saved with role=%r", username, record.get("role", "user"))
 
 
@@ -169,8 +170,30 @@ def add_verified_user(
         email_verified=True,
     )
     if created:
+        _initialize_user_grant(record)
         logger.info("Verified user '%s' created with role=%r", username, record.get("role", "user"))
     return created, record
+
+
+def _initialize_user_grant(record: dict[str, Any]) -> None:
+    """Persist a create-time quota snapshot for a newly created regular user."""
+    if str(record.get("role") or "user") == "admin":
+        return
+    user_id = str(record.get("id") or "")
+    if not user_id:
+        logger.error("Cannot initialize grant: newly created user has no id")
+        return
+
+    try:
+        from deeptutor.multi_user.grants import initialize_grant
+        from deeptutor.multi_user.token_quota import default_quota
+
+        initialize_grant(user_id, quota=default_quota())
+    except Exception:
+        # The account store is already committed at this point. Keep account
+        # creation usable, but make the repairable grant failure explicit; the
+        # admin grant endpoint can create the missing file on the next save.
+        logger.exception("Failed to initialize grant for newly created user %s", user_id)
 
 
 def list_users() -> list[dict]:

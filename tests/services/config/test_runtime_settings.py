@@ -457,3 +457,53 @@ def test_compute_ws_max_size_floor_and_inflation() -> None:
     derived = compute_ws_max_size(total)
     assert derived > (total * 4) // 3
     assert derived == (total * 4) // 3 + 8 * 1024 * 1024
+
+
+def test_auth_settings_persist_and_normalize_default_token_quota(tmp_path: Path) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+
+    defaults = service.load_auth(include_process_overrides=False)
+    assert defaults["default_quota"] == {
+        "llm": {"daily_tokens": 100_000, "monthly_tokens": 1_000_000},
+        "embedding": {"daily_tokens": 1_000_000, "monthly_tokens": 10_000_000},
+        "mineru": {
+            "daily_pages": 50,
+            "monthly_pages": 500,
+            "max_pages_per_file": 50,
+        },
+    }
+    assert defaults["default_token_quota"] == {
+        "daily_tokens": 100_000,
+        "monthly_tokens": 1_000_000,
+    }
+
+    saved = service.save_auth(
+        {
+            "default_token_quota": {
+                "daily_tokens": -1,
+                "monthly_tokens": 20_000_000_000,
+            }
+        }
+    )
+    assert saved["default_quota"]["llm"] == {
+        "daily_tokens": 0,
+        "monthly_tokens": 10_000_000_000,
+    }
+    assert saved["default_token_quota"] == {
+        "daily_tokens": 0,
+        "monthly_tokens": 10_000_000_000,
+    }
+
+    # A malformed value falls back to the configured default for that period,
+    # rather than silently becoming unlimited.
+    saved = service.save_auth(
+        {"default_token_quota": {"daily_tokens": "not-a-number"}}
+    )
+    assert saved["default_quota"]["llm"] == {
+        "daily_tokens": 100_000,
+        "monthly_tokens": 1_000_000,
+    }
+    assert saved["default_token_quota"] == {
+        "daily_tokens": 100_000,
+        "monthly_tokens": 1_000_000,
+    }

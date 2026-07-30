@@ -686,13 +686,20 @@ Without a complete SMTP configuration, the public registration endpoint fails
 closed. Codes expire after 10 minutes, allow 5 attempts, and are rate-limited
 per email and client IP. Existing local accounts remain usable after upgrading.
 
-Each non-admin grant defaults to `100,000` LLM tokens per day and `1,000,000`
-per month. The quota is reserved atomically before every LLM call and
-reconciled from provider usage afterward; the ledger lives at
-`data/system/usage.sqlite3`. An admin can change either limit in
-`/admin/users`; `0` means unlimited for that period. Provider dollars are not
-silently treated as tokens: for a lightweight upstream usage/budget layer,
-put [LiteLLM Proxy](https://docs.litellm.ai/docs/proxy/users) in front of the
+Each new non-admin grant receives three independent resource quotas: LLM tokens
+(`100,000` per day / `1,000,000` per month), Embedding input tokens (`1,000,000`
+per day / `10,000,000` per month), and MinerU pages (`50` per day / `500` per
+month, with a `50`-page single-file cap). An admin can change these new-user
+defaults in the **New-user default quota** panel at `/admin/users`; they are
+persisted in `data/user/settings/auth.json` and snapshotted when a new regular
+account is created. Existing users keep their current grant and can be given
+special per-resource overrides in the same page; `0` means unlimited for that
+period. LLM and Embedding reservations are reconciled from provider usage when
+available; MinerU is reserved by PDF page count before parsing. The shared
+ledger lives at `data/system/usage.sqlite3`, with old `token_quota` grants
+automatically treated as the LLM block. Provider dollars are not silently
+treated as tokens: for a lightweight upstream usage/budget layer, put
+[LiteLLM Proxy](https://docs.litellm.ai/docs/proxy/users) in front of the
 configured model endpoint. LiteLLM provides virtual keys, spend tracking,
 budgets, and TPM/RPM controls; its persistent key/budget store uses Postgres.
 DeepTutor does not require InsForge — a managed Postgres such as InsForge,

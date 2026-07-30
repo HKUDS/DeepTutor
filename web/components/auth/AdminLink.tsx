@@ -13,9 +13,9 @@ interface AdminLinkProps {
 export function AdminLink({ collapsed = false }: AdminLinkProps) {
   const pathname = usePathname();
   const { t } = useTranslation();
-  const { enabled, isAdmin } = useAuthStatus();
+  const { isAdmin } = useAuthStatus();
 
-  if (!enabled || !isAdmin) return null;
+  if (!isAdmin) return null;
 
   const active = pathname.startsWith("/admin");
 
@@ -29,7 +29,7 @@ export function AdminLink({ collapsed = false }: AdminLinkProps) {
               ? "bg-[var(--primary)]/10 text-[var(--primary)]"
               : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
           }`}
-        aria-label={t("Admin")}
+        aria-label={t("User Management")}
         title={t("Admin — User Management")}
       >
         <ShieldCheck size={16} strokeWidth={1.5} />
@@ -48,7 +48,7 @@ export function AdminLink({ collapsed = false }: AdminLinkProps) {
         }`}
     >
       <ShieldCheck size={16} strokeWidth={1.5} />
-      <span>{t("Admin")}</span>
+      <span>{t("User Management")}</span>
     </Link>
   );
 }

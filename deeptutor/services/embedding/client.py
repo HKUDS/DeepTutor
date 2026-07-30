@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import logging
+import math
 from typing import Any, Dict, List, Optional
 
 from deeptutor.services.config.provider_runtime import (
@@ -13,6 +15,44 @@ from deeptutor.services.config.provider_runtime import (
 from .adapters import ADAPTER_BACKENDS, BaseEmbeddingAdapter, EmbeddingRequest
 from .config import EmbeddingConfig, get_embedding_config
 from .validation import validate_embedding_batch
+
+
+def _estimate_text_tokens(texts: List[str]) -> int:
+    """Estimate provider input tokens before an embedding request.
+
+    Embedding providers do not share a response usage schema, so the hard
+    preflight reservation uses a conservative character-based estimate and
+    reconciles with provider usage when available.
+    """
+    chars = sum(len(text or "") for text in texts)
+    return max(1, math.ceil(chars / 3.5))
+
+
+def _estimate_content_tokens(contents: List[Dict[str, Any]]) -> int:
+    text_items = [str(item.get("text") or "") for item in contents]
+    estimated = _estimate_text_tokens(text_items)
+    # Image/video-only embedding requests still consume provider work but may
+    # expose no token count. Count each such item minimally for quota purposes.
+    return max(estimated, sum(1 for item in contents if not item.get("text")))
+
+
+def _usage_tokens(usage: Any) -> int:
+    if isinstance(usage, Mapping):
+        for key in ("total_tokens", "prompt_tokens", "input_tokens", "tokens"):
+            value = usage.get(key)
+            try:
+                if value is not None and int(value) > 0:
+                    return int(value)
+            except (TypeError, ValueError):
+                continue
+    for key in ("total_tokens", "prompt_tokens", "input_tokens", "tokens"):
+        value = getattr(usage, key, None)
+        try:
+            if value is not None and int(value) > 0:
+                return int(value)
+        except (TypeError, ValueError):
+            continue
+    return 0
 
 
 def _resolve_adapter_class(binding: str) -> type[BaseEmbeddingAdapter]:
@@ -63,6 +103,20 @@ class EmbeddingClient:
             f"(model: {self.config.model}, dimensions: {self.config.dim})"
         )
 
+    @staticmethod
+    def _reserve_quota(estimated_tokens: int):
+        from deeptutor.multi_user.token_quota import reserve_current_user_units
+
+        return reserve_current_user_units(
+            resource="embedding",
+            requested_units=estimated_tokens,
+        )
+
+    @staticmethod
+    def _finalize_quota(lease: Any, usage: Any, estimated_tokens: int) -> None:
+        if lease is not None:
+            lease.finalize(_usage_tokens(usage) or estimated_tokens)
+
     async def embed(self, texts: List[str], progress_callback=None) -> List[List[float]]:
         if not texts:
             return []
@@ -93,9 +147,13 @@ class EmbeddingClient:
                 model=self.config.model,
                 dimensions=self.config.dim or None,
             )
+            estimated_tokens = _estimate_text_tokens(batch)
+            lease = self._reserve_quota(estimated_tokens)
             try:
                 response = await self.adapter.embed(request)
             except Exception as exc:
+                if lease is not None:
+                    lease.release()
                 # Capture batch context so the task log stream / KB diagnostics
                 # show actionable info instead of a bare exception string.
                 import traceback
@@ -111,15 +169,21 @@ class EmbeddingClient:
                     f"{traceback.format_exc()}"
                 )
                 raise
-            validated = validate_embedding_batch(
-                response.embeddings,
-                expected_count=len(batch),
-                binding=self.config.binding,
-                model=self.config.model,
-                batch_index=i + 1,
-                total_batches=total_batches,
-                start_index=start,
-            )
+            try:
+                validated = validate_embedding_batch(
+                    response.embeddings,
+                    expected_count=len(batch),
+                    binding=self.config.binding,
+                    model=self.config.model,
+                    batch_index=i + 1,
+                    total_batches=total_batches,
+                    start_index=start,
+                )
+            except Exception:
+                if lease is not None:
+                    lease.release()
+                raise
+            self._finalize_quota(lease, getattr(response, "usage", None), estimated_tokens)
             batch_dim = len(validated[0]) if validated else 0
             if expected_dim is None:
                 expected_dim = batch_dim
@@ -198,16 +262,24 @@ class EmbeddingClient:
                 contents=batch,
                 enable_fusion=False,
             )
-            response = await self.adapter.embed(request)
-            validated = validate_embedding_batch(
-                response.embeddings,
-                expected_count=len(batch),
-                binding=self.config.binding,
-                model=self.config.model,
-                batch_index=i + 1,
-                total_batches=total_batches,
-                start_index=start,
-            )
+            estimated_tokens = _estimate_content_tokens(batch)
+            lease = self._reserve_quota(estimated_tokens)
+            try:
+                response = await self.adapter.embed(request)
+                validated = validate_embedding_batch(
+                    response.embeddings,
+                    expected_count=len(batch),
+                    binding=self.config.binding,
+                    model=self.config.model,
+                    batch_index=i + 1,
+                    total_batches=total_batches,
+                    start_index=start,
+                )
+            except Exception:
+                if lease is not None:
+                    lease.release()
+                raise
+            self._finalize_quota(lease, getattr(response, "usage", None), estimated_tokens)
             all_embeddings.extend(validated)
 
             if progress_callback:
