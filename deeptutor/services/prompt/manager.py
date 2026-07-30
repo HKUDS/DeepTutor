@@ -100,7 +100,7 @@ class PromptManager:
     ) -> dict[str, Any]:
         """Load prompt file with language fallback."""
         prompt_dirs = self._candidate_prompt_dirs(module_name)
-        fallback_chain = self.LANGUAGE_FALLBACKS.get(lang_code, ["en"])
+        fallback_chain = self._fallback_chain(lang_code)
 
         for prompts_dir in prompt_dirs:
             for lang in fallback_chain:
@@ -115,6 +115,19 @@ class PromptManager:
 
         print(f"Warning: No prompt file found for {module_name}/{agent_name}")
         return {}
+
+    def _fallback_chain(self, lang_code: str) -> list[str]:
+        """Prompt-file lookup order for *lang_code*.
+
+        A regional code reuses its base locale's files ("zh-tw" -> "zh"), and a
+        language that ships none of its own lands on English rather than on
+        Chinese (#712) — the language directive, not the prompt file, is what
+        makes the model answer in the requested language.
+        """
+        base_chain = self.LANGUAGE_FALLBACKS.get(lang_code) or self.LANGUAGE_FALLBACKS.get(
+            lang_code.split("-", 1)[0], []
+        )
+        return list(dict.fromkeys([lang_code, *base_chain, "en"]))
 
     def _candidate_prompt_dirs(self, module_name: str) -> list[Path]:
         """Return legacy and current prompt roots for a module."""

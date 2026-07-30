@@ -130,11 +130,13 @@ story = [
 data = [["Product", "Q1", "Q2"], ["Widgets", "120", "135"]]
 tbl = Table(data)
 tbl.setStyle(
-    TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
-    ])
+    TableStyle(
+        [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+        ]
+    )
 )
 story += [Spacer(1, 12), tbl]
 SimpleDocTemplate("out.pdf", pagesize=letter).build(story)

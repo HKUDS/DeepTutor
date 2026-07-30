@@ -6,8 +6,9 @@ Lifted from chat's pipeline. Capability-agnostic: the caller supplies:
   server-side context (e.g. chat injects ``source_index`` for ``read_source``;
   solve will do the same for its own tools).
 * a ``RetrieveMetaFactory`` — how to derive a "retrieve" trace variant for
-  rag-flavored tools (so their internal progress events stay grouped under
-  the same sub-trace icon).
+  rag-flavored tools. This is a LABEL concern only: every tool call streams
+  its running/terminal state and its intermediate progress into its own
+  sub-trace regardless of flavor.
 * labels for the trace UI rows (``tool_call``, ``retrieve``) plus the
   capability-specific copy for empty results / over-quota / unknown errors.
 
@@ -27,13 +28,14 @@ from typing import Any
 
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream_bus import StreamBus
+from deeptutor.core.tool_protocol import ToolLookup, provider_identity
 from deeptutor.core.trace import (
     build_trace_metadata,
     derive_trace_metadata,
     merge_trace_metadata,
     new_call_id,
 )
-from deeptutor.runtime.registry.tool_registry import ToolRegistry, get_tool_registry
+from deeptutor.runtime.registry.tool_registry import get_tool_registry
 from deeptutor.utils.json_parser import parse_json_response
 
 logger = logging.getLogger(__name__)
@@ -77,7 +79,7 @@ async def dispatch_tool_calls(
     source: str,
     stage: str,
     iteration_index: int,
-    registry: ToolRegistry | None = None,
+    registry: ToolLookup | None = None,
     kwarg_augmenter: KwargAugmenter | None = None,
     retrieve_meta_factory: RetrieveMetaFactory | None = None,
     tool_call_label: str = "Tool call",
@@ -123,6 +125,7 @@ async def dispatch_tool_calls(
         stage=stage,
         tool_call_label=tool_call_label,
         trace_id_prefix=trace_id_prefix,
+        registry=registry,
     )
 
     for tool_index, (_tcid, tool_name, exec_args) in enumerate(prepared):
@@ -160,6 +163,7 @@ async def dispatch_tool_calls(
             stream=stream,
             source=source,
             stage=stage,
+            trace_meta=per_tool_trace_meta[tool_index],
             retrieve_meta=(
                 retrieve_meta_factory(
                     per_tool_trace_meta[tool_index],
@@ -290,11 +294,17 @@ def _build_per_tool_trace_meta(
     stage: str,
     tool_call_label: str,
     trace_id_prefix: str,
+    registry: ToolLookup | None = None,
 ) -> list[dict[str, Any]]:
     """Allocate a fresh trace ``call_id`` for each tool so each appears as its
     own sub-trace row in the frontend's CallTracePanel."""
     metas: list[dict[str, Any]] = []
     for tool_index, (tool_call_id, tool_name, _exec_args) in enumerate(prepared):
+        # Which external provider is about to run, if any. Resolved here, from
+        # the tool object, because it is the only place that knows — the UI would
+        # otherwise have to recover it by parsing ``mcp_<server>_<tool>``, which
+        # is ambiguous as soon as a server's own name contains an underscore.
+        source, provider = _provider_of(registry, tool_name)
         trace_call_id = new_call_id(f"{trace_id_prefix}-{iteration_index}-tool-{tool_index}")
         base_meta = build_trace_metadata(
             call_id=trace_call_id,
@@ -315,60 +325,99 @@ def _build_per_tool_trace_meta(
                     "iteration_index": iteration_index,
                     "session_id": context.session_id,
                     "turn_id": str(context.metadata.get("turn_id", "")),
+                    # Omitted entirely for a built-in, so a row without them is
+                    # unambiguously "not an external provider" rather than
+                    # "an external provider we failed to identify".
+                    **({"tool_source": source} if source else {}),
+                    **({"tool_provider": provider} if provider else {}),
                 },
             )
         )
     return metas
 
 
+def _provider_of(registry: ToolLookup | None, tool_name: str) -> tuple[str, str]:
+    """``(kind, provider_id)`` for *tool_name*, or two empty strings.
+
+    Never raises: a name the registry cannot resolve is the normal case for a
+    hallucinated tool call, and the trace row for it must still be built.
+    """
+    if registry is None:
+        return "", ""
+    try:
+        tool = registry.get(tool_name)
+    except Exception:
+        return "", ""
+    return provider_identity(tool) if tool is not None else ("", "")
+
+
 async def execute_tool_call(
     *,
-    registry: ToolRegistry,
+    registry: ToolLookup,
     tool_name: str,
     tool_args: dict[str, Any],
     stream: StreamBus,
     source: str,
     stage: str,
     retrieve_meta: dict[str, Any] | None,
+    trace_meta: dict[str, Any] | None = None,
     empty_tool_result_message: str = "",
     start_retrieval_message: str = "Starting retrieval",
     retrieve_label: str = "Retrieve",
     unknown_error_message_factory: UnknownErrorMessageFactory | None = None,
 ) -> dict[str, Any]:
-    """Run one tool, emitting retrieve-flavored progress events when relevant.
+    """Run one tool, streaming its state (and any intermediate progress) into
+    the tool's own sub-trace.
+
+    ``trace_meta`` is that sub-trace (the dispatcher's ``per_tool_trace_meta``
+    row); ``retrieve_meta`` is the optional retrieve-flavored *variant* of it.
+    Status rides the variant when there is one and the plain sub-trace
+    otherwise — flavor picks the label, never whether the frontend gets a
+    ``call_state`` to key its running/failed rendering on. With neither (a bare
+    call from outside the dispatcher) there is no ``call_id`` for events to
+    group under, so status stays silent.
 
     Returns a structured ``{result_text, success, sources, metadata,
     terminate_turn, pause_for_user}`` dict (same shape the dispatcher uses
     internally). Capabilities that want to invoke a single tool outside the
     parallel-dispatch path call this directly.
     """
+    status_meta = retrieve_meta if retrieve_meta is not None else trace_meta
 
     async def _event_sink(
         event_type: str,
         message: str = "",
         metadata: dict[str, Any] | None = None,
     ) -> None:
-        if retrieve_meta is None or not message:
+        if status_meta is None or not message:
             return
         await stream.progress(
             message,
             source=source,
             stage=stage,
             metadata=derive_trace_metadata(
-                retrieve_meta,
+                status_meta,
                 trace_kind=str(event_type or "tool_log"),
                 **(metadata or {}),
             ),
         )
 
-    if retrieve_meta is not None:
-        query = str(retrieve_meta.get("query") or tool_args.get("query") or "").strip()
+    # Retrieve keeps its narrated copy; a plain tool call opens and closes its
+    # sub-trace with an empty message (as labeled_step does): the state lives in
+    # the metadata, the web trace never renders call_status text, and the CLI
+    # renderer — which does print non-empty status lines — already headers the
+    # call from the ``tool_call`` event.
+    if status_meta is not None:
+        running_message = ""
+        if retrieve_meta is not None:
+            query = str(retrieve_meta.get("query") or tool_args.get("query") or "").strip()
+            running_message = f"Query: {query}" if query else start_retrieval_message
         await stream.progress(
-            f"Query: {query}" if query else start_retrieval_message,
+            running_message,
             source=source,
             stage=stage,
             metadata=derive_trace_metadata(
-                retrieve_meta,
+                status_meta,
                 trace_kind="call_status",
                 call_state="running",
             ),
@@ -376,18 +425,32 @@ async def execute_tool_call(
     try:
         result = await registry.execute(
             tool_name,
-            event_sink=_event_sink if retrieve_meta is not None else None,
+            # Withheld when there is nowhere to publish (a bare call with
+            # neither meta): tools branch on the sink being present to decide
+            # whether to do the work at all — ``rag`` installs a log-capture
+            # handler for it — so handing over one that discards everything is
+            # strictly worse than handing over none.
+            event_sink=_event_sink if status_meta is not None else None,
             **tool_args,
         )
-        if retrieve_meta is not None:
+        if status_meta is not None:
             await stream.progress(
-                f"Retrieve complete ({len(result.content)} chars)",
+                (
+                    f"Retrieve complete ({len(result.content or '')} chars)"
+                    if retrieve_meta is not None
+                    else ""
+                ),
                 source=source,
                 stage=stage,
                 metadata=derive_trace_metadata(
-                    retrieve_meta,
+                    status_meta,
                     trace_kind="call_status",
-                    call_state="complete",
+                    # A tool that reports failure in its result is the common
+                    # failure idiom in this codebase (far more common than
+                    # raising), so the terminal state has to read it. Claiming
+                    # "complete" for a failed read_file would make the metadata
+                    # confidently wrong exactly where it is now relied on.
+                    call_state="complete" if result.success else "error",
                 ),
             )
         return {
@@ -399,14 +462,30 @@ async def execute_tool_call(
             "pause_for_user": getattr(result, "pause_for_user", None),
         }
     except Exception as exc:
+        # Unknown tool names arrive here too (the registry raises KeyError), so
+        # every failure mode — raise, missing tool — closes the sub-trace with a
+        # terminal state instead of leaving a row that reads as completed.
         logger.error("Tool %s failed", tool_name, exc_info=True)
-        if retrieve_meta is not None:
-            await stream.error(
-                f"Retrieve failed: {exc}",
+        if status_meta is not None:
+            # A raising tool closes its sub-trace with a terminal *progress*
+            # event, not a stream ERROR. The frontend keys terminality off
+            # ``call_state`` alone, while an ERROR event means "the turn is in
+            # trouble" to other consumers — a partner turn collects them and
+            # re-runs the whole turn on its backup model, which would re-execute
+            # side-effecting tools (exec, file and notebook writes) that one
+            # failed call never used to trigger. Retrieval keeps its ERROR event:
+            # that path predates this and has no side effects to repeat.
+            emit = stream.error if retrieve_meta is not None else stream.progress
+            await emit(
+                (
+                    f"Retrieve failed: {exc}"
+                    if retrieve_meta is not None
+                    else f"{tool_name} failed: {exc}"
+                ),
                 source=source,
                 stage=stage,
                 metadata=derive_trace_metadata(
-                    retrieve_meta,
+                    status_meta,
                     trace_kind="call_status",
                     call_state="error",
                     error=str(exc),

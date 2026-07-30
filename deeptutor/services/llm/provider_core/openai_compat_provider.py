@@ -290,7 +290,13 @@ class OpenAICompatProvider(LLMProvider):
             model_lower = model_name.lower()
             for pattern, overrides in spec.model_overrides:
                 if pattern in model_lower:
-                    kwargs.update(overrides)
+                    for key, value in overrides.items():
+                        # None means "drop this parameter" — e.g. Kimi models
+                        # reject any explicit temperature and must be sent none.
+                        if value is None:
+                            kwargs.pop(key, None)
+                        else:
+                            kwargs[key] = value
                     break
 
         kwargs.update(

@@ -93,9 +93,14 @@ export function useKnowledgeBases() {
         const typedKbs = kbList as KnowledgeBase[];
         setKbs(typedKbs);
         setUploadPolicy(policy);
-        setProviders(
-          providerList.length ? providerList : DEFAULT_PROVIDER_FALLBACK,
-        );
+        // Keep the array reference stable across the 4s indexing poll when
+        // nothing changed, so consumers keyed on `providers` don't re-fire.
+        setProviders((prev) => {
+          const next = providerList.length
+            ? providerList
+            : DEFAULT_PROVIDER_FALLBACK;
+          return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+        });
 
         // Auto-resubscribe to progress for KBs that are still live
         // (e.g. user navigated away and came back mid-indexing).

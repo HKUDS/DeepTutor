@@ -515,11 +515,17 @@ function SessionViewerPanelInner(
     [openFileTab],
   );
 
+  /* Below the drawer breakpoint the panel is a full-screen sheet, not a side
+     panel: there is no chat column left to sit beside, and VIEWER_WIDTH_MIN is
+     wider than the phone it would overlay. That override lives in CSS
+     (`max-md:!w-full`) rather than `useDevice()` so it is right on the first
+     paint and follows an orientation change for free — the var-driven width
+     and its drag handle stay desktop-only machinery. */
   return (
     <div
       role="dialog"
       aria-hidden={!visible}
-      className={`fixed right-0 top-0 z-[30] flex h-full max-w-[92vw] flex-col border-l border-[var(--border)] bg-[var(--card)] transition-transform ease-out ${
+      className={`fixed right-0 top-0 z-[30] flex h-dvh flex-col border-l border-[var(--border)] bg-[var(--card)] transition-transform ease-out max-md:!w-full md:max-w-[92vw] ${
         // shadow-2xl only while visible — when closed, translate-x-full moves
         // the box off-screen but its blurred shadow still bleeds ~38px back
         // onto the viewport's right edge. Dropping the shadow off-screen kills
@@ -542,7 +548,7 @@ function SessionViewerPanelInner(
         role="separator"
         aria-orientation="vertical"
         aria-label={t("Resize viewer")}
-        className="group/resize absolute left-0 top-0 z-10 h-full w-2 -translate-x-1/2 cursor-col-resize"
+        className="group/resize absolute left-0 top-0 z-10 h-full w-2 -translate-x-1/2 cursor-col-resize max-md:hidden"
       >
         <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover/resize:bg-[var(--primary)]/40" />
       </div>

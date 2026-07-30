@@ -28,6 +28,7 @@ _ALNUM = string.ascii_letters + string.digits
 _EFFORT_BASED_FAMILIES: tuple[str, ...] = (
     "opus-4-7",
     "opus-4-8",
+    "opus-5",
     "sonnet-5",
     "fable-5",
     "mythos-5",

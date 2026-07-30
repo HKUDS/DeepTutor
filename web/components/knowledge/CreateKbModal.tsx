@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
@@ -118,8 +118,14 @@ export default function CreateKbModal({
 
   const firstLinkable = providers.find((p) => p.linkable)?.id;
 
+  // Reset the form only on the closed → open transition. While the modal is
+  // open, background indexing polls replace `providers` (and friends) every
+  // few seconds, and a data refresh must never wipe user input (#691).
+  const wasOpenRef = useRef(false);
   useEffect(() => {
-    if (!isOpen) return;
+    const justOpened = isOpen && !wasOpenRef.current;
+    wasOpenRef.current = isOpen;
+    if (!justOpened) return;
     setMode(initialMode);
     setName("");
     setFiles([]);

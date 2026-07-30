@@ -1,0 +1,6 @@
+short_description: "List the documents an attached knowledge base holds, with the total count."
+when_to_use: "Use for questions about the knowledge base itself rather than its content — how many files it holds, what they are called, whether a particular document is in it, or what was uploaded."
+input_format: "{\"kb_name\": \"one of the attached knowledge base names\", \"pattern\": \"optional glob like '*.pdf' or a substring\", \"limit\": \"optional maximum to list\"}."
+guideline: "Never answer a counting or file-existence question from rag passages — retrieval only shows what a search matched and says nothing about the size of the collection. The system prompt's knowledge base inventory already covers the counts; call this tool for the full list or to filter by name."
+note: "Counts come from the files stored in the knowledge base. A knowledge base whose index is not ready still lists its documents, and a knowledge base hosted on a remote server cannot list them at all — report either fact as given."
+phase: "exploration"

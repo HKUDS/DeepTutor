@@ -48,7 +48,13 @@ def _kwargs(provider: AnthropicProvider, model: str) -> dict[str, Any]:
 
 def test_temperature_omitted_for_effort_based_models() -> None:
     provider = _provider()
-    for model in ("claude-opus-4-8", "claude-sonnet-5", "claude-opus-4-7", "claude-fable-5"):
+    for model in (
+        "claude-opus-4-8",
+        "claude-opus-5",
+        "claude-sonnet-5",
+        "claude-opus-4-7",
+        "claude-fable-5",
+    ):
         assert "temperature" not in _kwargs(provider, model), model
 
 
@@ -104,10 +110,16 @@ def _kwargs_with_effort(provider: AnthropicProvider, model: str, effort: str) ->
 
 
 def test_effort_based_families_map_real_effort_to_adaptive_thinking() -> None:
-    """Opus 4.7+/Sonnet 5/Fable 5 reject enabled+budget_tokens with a 400 —
-    a configured effort level must become adaptive thinking there."""
+    """Opus 4.7+/Opus 5/Sonnet 5/Fable 5 reject enabled+budget_tokens with a
+    400 — a configured effort level must become adaptive thinking there."""
     provider = _provider()
-    for model in ("claude-opus-4-8", "claude-sonnet-5", "claude-opus-4-7", "claude-fable-5"):
+    for model in (
+        "claude-opus-4-8",
+        "claude-opus-5",
+        "claude-sonnet-5",
+        "claude-opus-4-7",
+        "claude-fable-5",
+    ):
         kwargs = _kwargs_with_effort(provider, model, "high")
         assert kwargs["thinking"] == {"type": "adaptive"}, model
         assert "temperature" not in kwargs, model

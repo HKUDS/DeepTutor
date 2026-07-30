@@ -58,8 +58,8 @@ class CodeGeneratorAgent(BaseAgent):
             analysis_json=json.dumps(analysis.model_dump(), ensure_ascii=False, indent=2),
         )
 
-        chunks: list[str] = []
-        async for chunk in self.stream_llm(
+        # Blocking rather than streamed: the fenced block is only usable whole.
+        response = await self.call_llm(
             user_prompt=user_prompt,
             system_prompt=system_prompt,
             stage="generating",
@@ -71,9 +71,7 @@ class CodeGeneratorAgent(BaseAgent):
                 trace_role="generate",
                 trace_kind="llm_output",
             ),
-        ):
-            chunks.append(chunk)
-        response = "".join(chunks)
+        )
 
         if analysis.render_type == "svg":
             lang_hint = "svg"

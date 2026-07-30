@@ -23,6 +23,7 @@ import {
 } from "@/context/app-shell-storage";
 import { useAppShell } from "@/context/AppShellContext";
 import { apiFetch, apiUrl } from "@/lib/api";
+import { invalidateLLMOptionsCache } from "@/lib/llm-options";
 import { setTheme as applyThemePreference } from "@/lib/theme";
 
 // ─── Domain types ─────────────────────────────────────────────────────────
@@ -40,6 +41,7 @@ export type CatalogModel = {
   id: string;
   name: string;
   model: string;
+  managed_by?: string;
   dimension?: string;
   send_dimensions?: boolean;
   supported_dimensions?: string;
@@ -75,6 +77,8 @@ export type LlmContextWindowDetection = {
 export type CatalogProfile = {
   id: string;
   name: string;
+  managed_by?: string;
+  read_only?: boolean;
   binding?: string;
   provider?: string;
   base_url: string;
@@ -160,6 +164,7 @@ export type ProviderOption = {
   default_dim?: string;
   default_model?: string;
   default_voice?: string;
+  auth_mode?: "api_key" | "oauth";
 };
 
 export type SystemStatus = {
@@ -971,6 +976,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       const payload = await response.json();
       setCatalog(payload.catalog);
       setDraft(cloneCatalog(payload.catalog));
+      // The model list the chat composer shows is derived from this catalog.
+      invalidateLLMOptionsCache();
       setToast(t("Draft saved"));
     } finally {
       setSaving(false);
@@ -998,6 +1005,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         const payload = await response.json();
         setCatalog(payload.catalog);
         setDraft(cloneCatalog(payload.catalog));
+        invalidateLLMOptionsCache();
         const statusResponse = await apiFetch(apiUrl("/api/v1/system/status"));
         setStatus((await statusResponse.json()) as SystemStatus);
       }

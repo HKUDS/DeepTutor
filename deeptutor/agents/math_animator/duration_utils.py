@@ -9,7 +9,7 @@ _SECOND_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _MINUTE_PATTERN = re.compile(
-    r"(?P<value>\d+(?:\.\d+)?)\s*(?:m|min|mins|minute|minutes|分钟)",
+    r"(?P<value>\d+(?:\.\d+)?)\s*(?:min(?:ute)?s?|分钟|m(?![sS]))",
     re.IGNORECASE,
 )
 

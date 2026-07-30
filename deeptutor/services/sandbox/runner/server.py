@@ -20,7 +20,8 @@ Wire contract (must match ``RunnerSidecarBackend``):
                       :mod:`deeptutor.services.sandbox.spec`. Request::
 
       {
-        "command": "str",
+        "command": "str",                 # shell string; used when argv is absent
+        "argv": ["str", ...],             # optional; when present, run WITHOUT a shell
         "workdir": "str | null",          # path inside the container
         "env": {"K": "V"},
         "mounts": [{"host_path": "...",     # informational only (see below)
@@ -37,6 +38,14 @@ Wire contract (must match ``RunnerSidecarBackend``):
 
   ``error`` is non-empty *only* when the runner itself failed (bad JSON,
   spawn error, ...), never merely because the command exited non-zero.
+
+Argv note:
+  The app sends ``command`` and ``argv`` together and they describe the same
+  execution (``command == shlex.join(argv)``). ``argv`` wins here, so a caller
+  that assembles arguments from model output runs with no shell in the path and
+  shell metacharacters cannot matter. A runner image predating this field simply
+  ignores it and runs the shell string, which is why both are sent — during a
+  rolling deploy either image may be the one serving the request.
 
 Mounts note:
   This server does **not** perform any mounting. The runner container shares
@@ -176,6 +185,13 @@ def execute(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(command, str) or not command:
         return _error_result("missing or empty 'command'")
 
+    raw_argv = payload.get("argv") or []
+    if not isinstance(raw_argv, list):
+        return _error_result("'argv' must be a list of strings")
+    if any(not isinstance(item, str) for item in raw_argv):
+        return _error_result("'argv' must be a list of strings")
+    argv: list[str] = list(raw_argv)
+
     workdir = payload.get("workdir") or None
     if workdir is not None and not isinstance(workdir, str):
         return _error_result("'workdir' must be a string or null")
@@ -213,8 +229,10 @@ def execute(payload: dict[str, Any]) -> dict[str, Any]:
 
     try:
         completed = subprocess.run(  # noqa: S602 - shell=True is the contract
-            command,
-            shell=True,  # nosec B602 — the runner exists to execute shell commands in-sandbox
+            argv or command,
+            # An argv request is exec'd directly; only the shell-string form gets
+            # a shell. See the "Argv note" in the module docstring.
+            shell=not argv,  # nosec B602 — the runner exists to execute shell commands in-sandbox
             cwd=workdir,
             env=env,
             timeout=timeout_s,
