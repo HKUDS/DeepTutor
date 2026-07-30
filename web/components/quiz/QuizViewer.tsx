@@ -43,6 +43,7 @@ import {
   type QuizJudgeHandle,
 } from "@/lib/quiz-judge";
 import { type QuizQuestion } from "@/lib/quiz-types";
+import { normalizeLanguage } from "@/i18n/languages";
 import {
   addEntryToCategory,
   createCategory,
@@ -644,7 +645,7 @@ export default function QuizViewer({
     }));
     setAnswerViews((prev) => ({ ...prev, [idx]: "judgment" }));
 
-    const judgeLanguage: "zh" | "en" = language === "zh" ? "zh" : "en";
+    const judgeLanguage = normalizeLanguage(language);
 
     const handle = startQuizJudge(
       {
@@ -1344,9 +1345,7 @@ export default function QuizViewer({
                     >
                       <ChevronDown
                         size={13}
-                        className={`transition-transform ${
-                          collapsed ? "-rotate-90" : ""
-                        }`}
+                        className={`transition-transform ${collapsed ? "-rotate-90" : ""}`}
                       />
                     </button>
                   </div>

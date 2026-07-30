@@ -85,8 +85,7 @@ const DEPTH_OPTIONS: Array<{ value: BookDepth; label: string; hint: string }> =
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 type ParentSelection<TChild extends string | number> =
-  | { mode: "all" }
-  | { mode: "subset"; ids: Set<TChild> };
+  { mode: "all" } | { mode: "subset"; ids: Set<TChild> };
 
 type ParentMap<
   TParent extends string | number,
@@ -435,7 +434,9 @@ export default function BookCreator({
         nbCount === 1
           ? "{{count}} notebook record"
           : "{{count}} notebook records",
-        { count: nbCount },
+        {
+          count: nbCount,
+        },
       ),
     });
   }
@@ -452,7 +453,9 @@ export default function BookCreator({
       icon: MessagesSquare,
       label: t(
         chatCount === 1 ? "{{count}} chat item" : "{{count}} chat items",
-        { count: chatCount },
+        {
+          count: chatCount,
+        },
       ),
     });
   }

@@ -15,6 +15,7 @@ import {
   selectClass,
   selectOptionClass,
 } from "@/components/settings/shared";
+import { APP_LANGUAGE_DEFINITIONS } from "@/i18n/languages";
 
 const CODE_BLOCK_PREVIEW_SNIPPET = `def fibonacci(n):
     """Generate the first n Fibonacci numbers."""
@@ -33,7 +34,9 @@ print(summary)
 
 const RichCodeBlockPreview = dynamic(
   () => import("@/components/common/RichCodeBlock"),
-  { ssr: false },
+  {
+    ssr: false,
+  },
 );
 
 export default function AppearanceSettingsPage() {
@@ -84,17 +87,17 @@ export default function AppearanceSettingsPage() {
           )}
           control={
             <div className="flex gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
-              {(["en", "zh"] as const).map((v) => (
+              {APP_LANGUAGE_DEFINITIONS.map(({ code, labelKey }) => (
                 <button
-                  key={v}
-                  onClick={() => updateLanguage(v)}
+                  key={code}
+                  onClick={() => updateLanguage(code)}
                   className={`rounded-md px-2.5 py-1 text-[12px] transition-all ${
-                    language === v
+                    language === code
                       ? "bg-[var(--card)] font-medium text-[var(--foreground)] shadow-sm"
                       : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
                   }`}
                 >
-                  {v === "en" ? t("language.english") : t("language.chinese")}
+                  {t(labelKey)}
                 </button>
               ))}
             </div>
