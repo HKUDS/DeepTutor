@@ -2,6 +2,7 @@
 
 import { useEffect, type ReactNode } from "react";
 import { X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -30,13 +31,16 @@ export function ConfirmDialog({
   title,
   children,
   confirmLabel,
-  cancelLabel = "Cancel",
+  cancelLabel,
   tone = "default",
   busy = false,
   busyLabel,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const { t } = useTranslation();
+  const resolvedCancelLabel = cancelLabel ?? t("Cancel");
+
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -71,7 +75,7 @@ export function ConfirmDialog({
             onClick={onCancel}
             disabled={busy}
             className="rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--background)] hover:text-[var(--foreground)] disabled:opacity-40"
-            aria-label="Close"
+            aria-label={t("Close")}
           >
             <X size={16} />
           </button>
@@ -91,7 +95,7 @@ export function ConfirmDialog({
             autoFocus
             className="rounded-lg px-3 py-1.5 text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-40"
           >
-            {cancelLabel}
+            {resolvedCancelLabel}
           </button>
           <button
             type="button"

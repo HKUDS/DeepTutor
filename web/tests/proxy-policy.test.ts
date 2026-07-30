@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 // Unit tests for the pure middleware routing policy (web/lib/proxy-policy.ts).
 // The policy is deliberately decoupled from `next/server`, so it can be
@@ -7,9 +9,12 @@ import assert from "node:assert/strict";
 // adapter that maps these decisions onto NextResponse.
 
 import {
+  CODEX_CALLBACK_API_PATH,
+  CODEX_CALLBACK_PATH,
   classifyToken,
   isAuthExempt,
   isBackendPath,
+  isCodexCallbackPath,
 } from "../lib/proxy-policy";
 
 function makeToken(payload: Record<string, unknown>): string {
@@ -24,6 +29,33 @@ test("isBackendPath matches /api and /ws paths only", () => {
   assert.equal(isBackendPath("/home"), false);
   assert.equal(isBackendPath("/apidocs"), false); // no trailing slash → not backend
   assert.equal(isBackendPath("/logo.png"), false);
+});
+
+test("isCodexCallbackPath matches only the exact public callback path", () => {
+  assert.equal(CODEX_CALLBACK_PATH, "/auth/callback");
+  assert.equal(CODEX_CALLBACK_API_PATH, "/api/v1/auth/openai-codex/callback");
+  assert.equal(isCodexCallbackPath("/auth/callback"), true);
+  assert.equal(isCodexCallbackPath("/auth/callback/"), false);
+  assert.equal(isCodexCallbackPath("/auth/callback/extra"), false);
+  assert.equal(isCodexCallbackPath("/auth/callback-near"), false);
+  assert.equal(isCodexCallbackPath("/Auth/callback"), false);
+});
+
+test("proxy rewrites the exact callback before backend routing and auth gating", () => {
+  const source = readFileSync(path.resolve(process.cwd(), "proxy.ts"), "utf8");
+  const callbackBranch = source.indexOf("if (isCodexCallbackPath(pathname))");
+  const backendBranch = source.indexOf("if (isBackendPath(pathname))");
+  const authGate = source.indexOf("if (!AUTH_ENABLED");
+
+  assert.notEqual(callbackBranch, -1);
+  assert.notEqual(backendBranch, -1);
+  assert.notEqual(authGate, -1);
+  assert.ok(callbackBranch < backendBranch);
+  assert.ok(callbackBranch < authGate);
+  assert.match(
+    source,
+    /NextResponse\.rewrite\(\s*new URL\(\s*CODEX_CALLBACK_API_PATH \+ search,\s*API_BASE_URL,?\s*\),?\s*\)/,
+  );
 });
 
 test("isAuthExempt allows public static assets through the auth gate (issue #599)", () => {

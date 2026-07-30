@@ -47,6 +47,7 @@ class TestPipelineFactory:
             "graphrag",
             "lightrag",
             "lightrag-server",
+            "ima",
         }
 
     def test_get_pipeline_returns_singleton(self) -> None:
@@ -82,6 +83,7 @@ class TestRAGServiceClassHelpers:
             "graphrag",
             "lightrag",
             "lightrag-server",
+            "ima",
         }
 
     def test_has_provider_default_true(self) -> None:

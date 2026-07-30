@@ -144,6 +144,28 @@ def _terminate(proc: ManagedProcess | None) -> None:
             pass
 
 
+def _relax_console_encoding(streams: tuple[object, ...] | None = None) -> None:
+    """Make the launcher's own console output lossy instead of fatal.
+
+    Child pipes are already decoded with ``errors="replace"`` (see ``_spawn``)
+    and the children themselves get ``PYTHONIOENCODING=utf-8:replace``, but the
+    parent process re-encodes every relayed line with the console's own codec.
+    On a legacy Windows code page (cp950/cp936/cp932) an ordinary Next.js
+    banner character like ``✓`` then raises ``UnicodeEncodeError`` inside
+    ``_stream_output``, killing the relay thread — the app keeps running but
+    goes silent for the rest of the session (issue #702).
+    """
+    for stream in streams if streams is not None else (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(errors="replace")
+        except (ValueError, OSError):
+            # Already-detached or non-reconfigurable stream: nothing to relax.
+            continue
+
+
 def _stream_output(prefix: str, process: subprocess.Popen[str]) -> None:
     assert process.stdout is not None
     for line in process.stdout:
@@ -529,6 +551,28 @@ def _source_web_dir(home: Path) -> Path | None:
     return None
 
 
+def _ensure_web_dependencies(source: Path, npm: str) -> None:
+    """Install ``web/node_modules`` on a source checkout that has none.
+
+    ``pip install -e ".[cli]"`` never touches npm, so a fresh clone would hand
+    the dev server a missing ``next`` binary and die on Node's MODULE_NOT_FOUND
+    (#709). Prefer ``npm ci`` — reproducible and faster — and fall back to
+    ``npm install`` when the checkout has no lockfile. Output is left on the
+    terminal so a failing install explains itself. No-op once installed, which
+    keeps it cheap on the launcher's repeated resolve path.
+    """
+    if (source / "node_modules").exists():
+        return
+    action = "ci" if (source / "package-lock.json").exists() else "install"
+    _log(f"web/node_modules not found — running `npm {action}` in {source} ...")
+    result = subprocess.run([npm, action], cwd=source)
+    if result.returncode != 0:
+        raise SystemExit(
+            f"`npm {action}` failed (exit {result.returncode}). "
+            "Fix the error above, then retry `deeptutor start`."
+        )
+
+
 def _resolve_frontend(
     home: Path,
     frontend_port: int,
@@ -556,6 +600,7 @@ def _resolve_frontend(
             raise SystemExit(
                 "npm not found. Source installs require Node.js/npm and `cd web && npm install`."
             )
+        _ensure_web_dependencies(source, npm)
         return FrontendRuntime(
             "source", [npm, "run", "dev", "--", "--port", str(frontend_port)], source
         )
@@ -720,6 +765,7 @@ def _install_signal_handlers(request_shutdown: Callable[[str | None], None]) -> 
 
 
 def start(home: str | Path | None = None) -> None:
+    _relax_console_encoding()
     runtime_home = get_runtime_home(home)
     runtime_home.mkdir(parents=True, exist_ok=True)
     os.environ[DEEPTUTOR_HOME_ENV] = str(runtime_home)

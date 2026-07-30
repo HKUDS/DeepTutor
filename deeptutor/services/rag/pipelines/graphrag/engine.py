@@ -11,9 +11,11 @@ used — DeepTutor runs fine without the optional dependency installed.
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Callable
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from .config import DEFAULT_MODE, normalize_mode, query_config_from_settings
 
@@ -40,10 +42,43 @@ _OUTPUTS_BY_MODE: dict[str, tuple[list[str], list[str]]] = {
 }
 
 
+_T = TypeVar("_T")
+
+
 def _load_config(root_dir: Path):
     from graphrag.config.load_config import load_config
 
     return load_config(root_dir=Path(root_dir))
+
+
+async def _run_isolated(work: Callable[[], Awaitable[_T]]) -> _T:
+    """Run one GraphRAG entry point on a private, plain-asyncio event loop.
+
+    ``graphrag_llm`` calls ``nest_asyncio2.apply()`` at import time, and that
+    patch refuses uvloop ("Can't patch loop of type <class 'uvloop.Loop'>") —
+    which is precisely the loop ``uvicorn[standard]`` gives the backend, so on
+    macOS/Linux the first GraphRAG import aborted indexing before it started
+    (issue #695). Importing and driving GraphRAG from a worker thread that owns
+    a stock asyncio loop hands that patch — and GraphRAG's own nested
+    ``run_until_complete`` calls — the reentrant loop they expect, and leaves
+    the server's uvloop loop untouched.
+
+    Every ``graphrag`` import therefore has to happen inside ``work``, which is
+    why the entry points below keep their imports function-local.
+    """
+
+    def _runner() -> _T:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(work())
+        finally:
+            try:
+                loop.close()
+            finally:
+                asyncio.set_event_loop(None)
+
+    return await asyncio.to_thread(_runner)
 
 
 async def build(root_dir: Path, *, is_update: bool = False) -> None:
@@ -52,6 +87,10 @@ async def build(root_dir: Path, *, is_update: bool = False) -> None:
     Raises on any failed workflow so the caller can surface an error and clean
     up the (incomplete) version directory.
     """
+    await _run_isolated(lambda: _build_impl(root_dir, is_update=is_update))
+
+
+async def _build_impl(root_dir: Path, *, is_update: bool) -> None:
     from graphrag.api import build_index
     from graphrag.config.enums import IndexingMethod
 
@@ -92,6 +131,10 @@ async def search(root_dir: Path, query: str, mode: str | None = None) -> tuple[s
     ``context_data`` is normalised to a dict of record lists
     (reports/entities/relationships/claims/sources) via GraphRAG's own helper.
     """
+    return await _run_isolated(lambda: _search_impl(root_dir, query, mode))
+
+
+async def _search_impl(root_dir: Path, query: str, mode: str | None) -> tuple[str, dict]:
     import graphrag.api as api
     from graphrag.utils.api import reformat_context_data
 

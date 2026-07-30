@@ -27,140 +27,35 @@ import {
   History,
   NotebookPen,
   Paperclip,
+  Sparkles,
   UserRound,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { docIconFor, isSvgFilename } from "@/lib/doc-attachments";
-import type {
-  MessageAttachment,
-  MessageItem,
-  MessageRequestSnapshot,
-} from "@/context/UnifiedChatContext";
-import type { StreamEvent } from "@/lib/unified-ws";
+import { docIconFor, formatBytes, isSvgFilename } from "@/lib/doc-attachments";
+import type { MessageAttachment } from "@/context/UnifiedChatContext";
 import { listSessions, type SessionSummary } from "@/lib/session-api";
 import { listNotebooks, type NotebookSummary } from "@/lib/notebook-api";
 import { bookApi } from "@/lib/book-api";
 import type { Book } from "@/lib/book-types";
 
-/* ------------------------------------------------------------------ */
-/*  Aggregator                                                         */
-/* ------------------------------------------------------------------ */
+import {
+  artifactDiskPath,
+  type AttachmentWithOrigin,
+  type SessionActivity,
+  type SpaceReferenceSummary,
+} from "@/lib/session-activity";
 
-export interface ToolUsage {
-  name: string;
-  count: number;
-}
-
-export interface AttachmentWithOrigin {
-  messageIndex: number;
-  attachment: MessageAttachment;
-}
-
-export interface SpaceReferenceSummary {
-  historySessionIds: string[];
-  bookPageCount: number;
-  bookIds: string[];
-  bookPages: Map<string, string[]>;
-  notebookRecordCount: number;
-  notebookIds: string[];
-  questionEntryIds: number[];
-  personas: string[];
-  memoryKinds: Array<"summary" | "profile">;
-}
-
-export interface SessionActivity {
-  tools: ToolUsage[];
-  knowledgeBases: string[];
-  space: SpaceReferenceSummary;
-  attachments: AttachmentWithOrigin[];
-  isEmpty: boolean;
-}
-
-export function buildSessionActivity(messages: MessageItem[]): SessionActivity {
-  const toolCounts = new Map<string, number>();
-  const kbs = new Set<string>();
-  const historySessionIds = new Set<string>();
-  const bookIds = new Set<string>();
-  const bookPages = new Map<string, string[]>();
-  let bookPageCount = 0;
-  const notebookIds = new Set<string>();
-  let notebookRecordCount = 0;
-  const questionEntryIds = new Set<number>();
-  const personas = new Set<string>();
-  const memoryKinds = new Set<"summary" | "profile">();
-  const attachments: AttachmentWithOrigin[] = [];
-
-  messages.forEach((msg, idx) => {
-    msg.events?.forEach((event: StreamEvent) => {
-      if (event.type !== "tool_call") return;
-      const name =
-        String((event.metadata as { tool?: string } | undefined)?.tool || "") ||
-        event.content?.trim() ||
-        "tool";
-      toolCounts.set(name, (toolCounts.get(name) ?? 0) + 1);
-    });
-
-    msg.attachments?.forEach((a) => {
-      attachments.push({ messageIndex: idx, attachment: a });
-    });
-
-    const snap: MessageRequestSnapshot | undefined = msg.requestSnapshot;
-    if (snap) {
-      snap.knowledgeBases?.forEach((k) => kbs.add(k));
-      snap.historyReferences?.forEach((s) => historySessionIds.add(s));
-      snap.bookReferences?.forEach((b) => {
-        bookIds.add(b.book_id);
-        bookPageCount += b.page_ids?.length ?? 0;
-        const existing = bookPages.get(b.book_id) ?? [];
-        bookPages.set(b.book_id, [...existing, ...(b.page_ids ?? [])]);
-      });
-      snap.notebookReferences?.forEach((n) => {
-        notebookIds.add(n.notebook_id);
-        notebookRecordCount += n.record_ids?.length ?? 0;
-      });
-      snap.questionNotebookReferences?.forEach((q) => questionEntryIds.add(q));
-      if (snap.persona) personas.add(snap.persona);
-      snap.memoryReferences?.forEach((k) => memoryKinds.add(k));
-    }
-  });
-
-  const tools = Array.from(toolCounts.entries())
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-
-  const space: SpaceReferenceSummary = {
-    historySessionIds: Array.from(historySessionIds),
-    bookPageCount,
-    bookIds: Array.from(bookIds),
-    bookPages,
-    notebookRecordCount,
-    notebookIds: Array.from(notebookIds),
-    questionEntryIds: Array.from(questionEntryIds),
-    personas: Array.from(personas),
-    memoryKinds: Array.from(memoryKinds),
-  };
-
-  const isEmpty =
-    tools.length === 0 &&
-    kbs.size === 0 &&
-    attachments.length === 0 &&
-    space.historySessionIds.length === 0 &&
-    space.bookIds.length === 0 &&
-    space.notebookIds.length === 0 &&
-    space.questionEntryIds.length === 0 &&
-    space.personas.length === 0 &&
-    space.memoryKinds.length === 0;
-
-  return {
-    tools,
-    knowledgeBases: Array.from(kbs),
-    space,
-    attachments,
-    isEmpty,
-  };
-}
+// Re-exported so existing importers (page.tsx, SessionViewerPanel) keep reaching
+// the panel for its own contract while the fold itself lives in lib/.
+export type {
+  AttachmentWithOrigin,
+  SessionActivity,
+  SpaceReferenceSummary,
+  ToolUsage,
+} from "@/lib/session-activity";
+export { buildSessionActivity } from "@/lib/session-activity";
 
 /* ------------------------------------------------------------------ */
 /*  Title resolver — lazy id -> title for Space items                  */
@@ -303,7 +198,7 @@ export function ActivityBody({
   configSection?: ReactNode;
 }) {
   const { t } = useTranslation();
-  const { tools, knowledgeBases, space, attachments } = activity;
+  const { tools, knowledgeBases, space, attachments, artifacts } = activity;
   const { sessions, notebooks, books } = useResolvedTitles(activity, open);
 
   const spaceSubsections: ReactNode[] = [];
@@ -402,7 +297,7 @@ export function ActivityBody({
       <SectionCard icon={Wrench} title={t("Session activity")}>
         <div className="px-3.5 py-5 text-center text-[12px] italic text-[var(--muted-foreground)]/80">
           {t(
-            "As you chat, the tools, references and attachments you use will appear here.",
+            "As you chat, the tools and references you use — and the files the tutor generates — will appear here.",
           )}
         </div>
       </SectionCard>
@@ -451,6 +346,26 @@ export function ActivityBody({
       {spaceSubsections.length > 0 ? (
         <SectionCard icon={AtSign} title={t("Space")}>
           <div className="space-y-1.5 p-1.5">{spaceSubsections}</div>
+        </SectionCard>
+      ) : null}
+
+      {/* Above Attachments: what this conversation produced is what you come
+          back for, more often than a file you uploaded and already have. */}
+      {artifacts.length > 0 ? (
+        <SectionCard
+          icon={Sparkles}
+          title={t("Generated files")}
+          count={artifacts.length}
+        >
+          <ul className="space-y-0.5 p-1.5">
+            {artifacts.map(({ attachment, messageIndex }, i) => (
+              <AttachmentRow
+                key={`${attachment.id ?? attachment.filename ?? i}-${messageIndex}`}
+                attachment={attachment}
+                onOpen={() => onOpenAttachment(attachment)}
+              />
+            ))}
+          </ul>
         </SectionCard>
       ) : null}
 
@@ -584,12 +499,23 @@ function AttachmentRow({
   const spec = docIconFor(filename);
   const Icon = spec.Icon;
   const isImage = attachment.type === "image" || isSvgFilename(filename);
+  // Generated files carry a size; showing it distinguishes a real deliverable
+  // from an empty stub without opening it. The hover title answers "where did
+  // this land on disk?" — the question the transcript cannot.
+  const size = attachment.generated
+    ? formatBytes(attachment.size_bytes ?? -1)
+    : "";
+  const detail = [spec.label, size].filter(Boolean).join(" · ");
+  const diskPath = attachment.generated
+    ? artifactDiskPath(attachment.url)
+    : null;
 
   return (
     <li>
       <button
         type="button"
         onClick={onOpen}
+        title={diskPath ?? undefined}
         className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--muted)]/35"
       >
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--muted)]/55">
@@ -604,7 +530,7 @@ function AttachmentRow({
             {filename}
           </span>
           <span className="block truncate text-[10px] uppercase tracking-wide text-[var(--muted-foreground)]">
-            {spec.label}
+            {detail}
           </span>
         </span>
       </button>

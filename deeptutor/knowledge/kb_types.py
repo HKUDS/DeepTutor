@@ -3,7 +3,7 @@
 A KB entry's ``type`` field tells the rest of the system how to treat it.
 Most KBs are the default *indexed* kind (chunk → embed → retrieve via an RAG
 provider) and carry no ``type``. *Connected* KBs are pointers: their content
-lives outside ``data/knowledge_bases`` and we never copy or re-index it. Two
+lives outside ``data/knowledge_bases`` and we never copy or re-index it. These
 flavours exist today:
 
 * ``obsidian`` — a pointer (``vault_path``) to a folder of Markdown the user
@@ -24,15 +24,20 @@ flavours exist today:
   ``/query`` endpoint and the bound ``rag_provider`` (``lightrag-server``) shapes
   the result for the ``rag`` tool. One server instance = one workspace = one KB.
   See ``services/rag/pipelines/lightrag_server``.
+* ``ima`` — a pointer (``client_id`` + ``api_key`` + ``knowledge_base_id``) to a
+  knowledge base the user keeps in Tencent IMA. Same shape as
+  ``lightrag_server``: nothing indexed or stored locally, retrieval offloaded to
+  IMA's ``search_knowledge`` OpenAPI by the bound ``ima`` provider, and one IMA
+  library = one KB. See ``services/rag/pipelines/ima``.
 
 All connected flavours share the same lifecycle quirks: no on-disk folder under
 ``base_dir``, no embedding reconcile, and deletion must never touch the
 external resource. The :func:`is_connected_kb` / :func:`external_root_of` helpers
 let the manager treat them uniformly without sprinkling ``type`` literals
-across the codebase. ``subagent`` and ``lightrag_server`` are connected but point
-at no folder, so :func:`external_root_of` returns ``None`` for them — a subagent
-is driven by its capability and a LightRAG server is reached over HTTP; neither
-resolves to a local path.
+across the codebase. ``subagent``, ``lightrag_server`` and ``ima`` are connected
+but point at no folder, so :func:`external_root_of` returns ``None`` for them — a
+subagent is driven by its capability and the two server-backed kinds are reached
+over HTTP; none resolves to a local path.
 
 Kept in its own low-level module so both :mod:`deeptutor.knowledge.manager`
 and the capability layer can import it without a cycle.
@@ -63,10 +68,22 @@ SUBAGENT_KB_TYPE = "subagent"
 # ``/query`` endpoint by the ``lightrag-server`` provider.
 LIGHTRAG_SERVER_KB_TYPE = "lightrag_server"
 
+# A connected Tencent IMA knowledge base: a pointer (``client_id`` + ``api_key``
+# + ``knowledge_base_id``) to a library the user curates in IMA. No path on disk
+# and no local index — retrieval is offloaded over HTTPS to IMA's
+# ``search_knowledge`` OpenAPI by the ``ima`` provider.
+IMA_KB_TYPE = "ima"
+
 # Every pointer/connected KB type. Membership here is what makes the manager
 # skip the index pipeline, the orphan prune and the embedding reconcile.
 CONNECTED_KB_TYPES = frozenset(
-    {OBSIDIAN_KB_TYPE, LINKED_KB_TYPE, SUBAGENT_KB_TYPE, LIGHTRAG_SERVER_KB_TYPE}
+    {
+        OBSIDIAN_KB_TYPE,
+        LINKED_KB_TYPE,
+        SUBAGENT_KB_TYPE,
+        LIGHTRAG_SERVER_KB_TYPE,
+        IMA_KB_TYPE,
+    }
 )
 
 
@@ -91,6 +108,7 @@ __all__ = [
     "LINKED_KB_TYPE",
     "SUBAGENT_KB_TYPE",
     "LIGHTRAG_SERVER_KB_TYPE",
+    "IMA_KB_TYPE",
     "CONNECTED_KB_TYPES",
     "is_connected_kb",
     "external_root_of",

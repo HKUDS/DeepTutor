@@ -114,8 +114,9 @@ def test_binding_cached(monkeypatch) -> None:
 
 
 def test_exclusive_compose_drops_builtins_but_keeps_coexisting_rag() -> None:
-    # Issue #650: rag coexists when has_kb is set (a co-selected real KB the
-    # capability does not own); other built-ins/toggles stay dropped.
+    # Issue #650: the KB built-ins coexist when has_kb is set (a co-selected
+    # real KB the capability does not own is both searchable and enumerable);
+    # other built-ins/toggles stay dropped.
     composed = compose_enabled_tools(
         registry=get_tool_registry(),
         requested_tools=["web_search", "rag"],
@@ -124,7 +125,7 @@ def test_exclusive_compose_drops_builtins_but_keeps_coexisting_rag() -> None:
         capability_owned=["consult_subagent"],
         exclusive=True,
     )
-    assert set(composed) == {"consult_subagent", "rag", "ask_user"}
+    assert set(composed) == {"consult_subagent", "rag", "kb_files", "ask_user"}
 
 
 def test_exclusive_compose_pure_subagent_mounts_no_rag() -> None:

@@ -45,6 +45,7 @@ AUTO_MOUNTED_TOOLS: frozenset[str] = frozenset(CONFIGURABLE_BUILTIN_TOOL_NAMES)
 # Insertion order fixes the default surface's conditional-tool order.
 _CONDITIONAL_MOUNT_FLAGS: dict[str, str] = {
     "rag": "has_kb",
+    "kb_files": "has_kb",
     "read_source": "has_sources",
     "read_memory": "has_memory",
     "list_notebook": "has_notebooks",
@@ -54,6 +55,10 @@ _CONDITIONAL_MOUNT_FLAGS: dict[str, str] = {
     "exec": "has_exec",
     "code_execution": "has_code",
 }
+
+# Built-ins that survive an exclusive knowledge capability when other KBs are
+# co-selected: retrieval over them, and enumeration of what they hold.
+_KB_COEXISTING_TOOLS: tuple[str, ...] = ("rag", "kb_files")
 
 
 def default_optional_tools(excluded: Iterable[str] = ()) -> list[str]:
@@ -154,14 +159,18 @@ def compose_enabled_tools(
     """
     if exclusive:
         owned = [str(name) for name in capability_owned if str(name).strip()]
-        # ``rag`` is the one built-in that coexists with an exclusive knowledge
-        # capability: it serves co-selected KBs the capability's own tools don't
+        # The KB built-ins are the ones that coexist with an exclusive knowledge
+        # capability: they serve co-selected KBs the capability's own tools don't
         # touch (e.g. LlamaIndex KBs alongside an Obsidian vault). The caller
         # sets ``has_kb`` only for those coexisting KBs, so a pure-capability
         # turn still mounts nothing but ``owned`` + the ``ask_user`` floor (#650).
         extra = (
-            ["rag"]
-            if mount_flags.has_kb and (builtin_whitelist is None or "rag" in builtin_whitelist)
+            [
+                name
+                for name in _KB_COEXISTING_TOOLS
+                if builtin_whitelist is None or name in builtin_whitelist
+            ]
+            if mount_flags.has_kb
             else []
         )
         return _finalize([*owned, *extra, "ask_user"], forced, suppressed)

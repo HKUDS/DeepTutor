@@ -28,6 +28,23 @@ def test_extracts_issue_payload_into_tool_call() -> None:
     assert cleaned == ""
 
 
+def test_extracts_mastery_grade_payload_from_issue_672() -> None:
+    # Verbatim markup from issue #672 — DeepSeek grading a Mastery Path
+    # answer as DSML text instead of a native tool call.
+    text = (
+        "<｜｜DSML｜｜tool_calls>\n"
+        '<｜｜DSML｜｜invoke name="mastery_grade">\n'
+        '<｜｜DSML｜｜parameter name="answer" string="true">C</｜｜DSML｜｜parameter>\n'
+        "</｜｜DSML｜｜invoke>\n"
+        "</｜｜DSML｜｜tool_calls>"
+    )
+    calls, cleaned = extract_dsml_tool_calls(text)
+    assert len(calls) == 1
+    assert calls[0]["name"] == "mastery_grade"
+    assert json.loads(calls[0]["arguments"]) == {"answer": "C"}
+    assert cleaned == ""
+
+
 def test_multiple_invokes_and_leading_prose() -> None:
     text = (
         "Let me run two steps.\n"

@@ -1657,6 +1657,87 @@ async def connect_lightrag_server_route(payload: ConnectLightRagServerRequest):
     }
 
 
+class ProbeImaRequest(BaseModel):
+    client_id: str
+    api_key: str
+    knowledge_base_id: str
+
+
+class ConnectImaRequest(BaseModel):
+    name: str
+    client_id: str
+    api_key: str
+    knowledge_base_id: str
+
+
+@router.post("/probe-ima")
+async def probe_ima_route(payload: ProbeImaRequest):
+    """Test-connect to a Tencent IMA knowledge base before binding a KB to it.
+
+    Returns the verdict (credentials accepted? does the library id resolve, and
+    what is it called?) so the UI can confirm before any registration happens.
+    Creates nothing.
+    """
+    from deeptutor.services.rag.pipelines.ima.probe import probe_knowledge_base
+
+    result = await probe_knowledge_base(
+        payload.client_id,
+        payload.api_key,
+        payload.knowledge_base_id,
+    )
+    return result.to_dict()
+
+
+@router.post("/connect-ima")
+async def connect_ima_route(payload: ConnectImaRequest):
+    """Connect a Tencent IMA knowledge base as a retrieval-only knowledge base.
+
+    Re-probes server-side (never trusts the client's verdict), then registers a
+    pointer (``type: ima``). Retrieval is offloaded to IMA's ``search_knowledge``
+    OpenAPI — no copy, no local index.
+    """
+    from deeptutor.services.rag.pipelines.ima.probe import probe_knowledge_base
+
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Knowledge base name is required.")
+
+    result = await probe_knowledge_base(
+        payload.client_id,
+        payload.api_key,
+        payload.knowledge_base_id,
+    )
+    if not result.ok:
+        raise HTTPException(
+            status_code=400,
+            detail=result.error or "Could not connect to the IMA knowledge base.",
+        )
+
+    try:
+        manager = get_kb_manager()
+        entry = manager.register_ima_kb(
+            name,
+            payload.client_id,
+            payload.api_key,
+            payload.knowledge_base_id,
+            description=result.description or "",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error connecting IMA knowledge base: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {
+        "status": "connected",
+        "name": name,
+        "knowledge_base_id": entry["knowledge_base_id"],
+        "rag_provider": entry["rag_provider"],
+    }
+
+
 @router.get("/list", response_model=list[KnowledgeBaseInfo])
 async def list_knowledge_bases():
     """List all available knowledge bases with their details."""

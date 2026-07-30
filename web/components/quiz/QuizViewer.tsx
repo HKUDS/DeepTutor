@@ -69,9 +69,11 @@ interface QuizViewerProps {
   /**
    * The ``turn_id`` of the assistant turn that produced this quiz. Scopes
    * notebook lookups/upserts so two quizzes generated in the same chat
-   * session don't share answer state (see issue #487). When absent, the
-   * component falls back to legacy session-wide scoping for backward
-   * compatibility with already-persisted entries.
+   * session don't share answer state — positional question ids
+   * (``q_1``..``q_N``) repeat across quizzes (issues #487 / #677). When
+   * absent (only legacy turns persisted before turn ids existed), the card
+   * is local-only: answers grade client-side but the notebook is never
+   * read or written, so state can't leak across quizzes.
    */
   turnId?: string | null;
   language?: string;
@@ -260,6 +262,10 @@ export default function QuizViewer({
 
   const refreshEntryId = useCallback(
     async (qKey: string, sId: string, questionIndex?: number) => {
+      // No turn identity → no notebook reads. A turn-less lookup can only
+      // resolve against another turn's rows (question ids are positional),
+      // which is exactly the cross-quiz answer inheritance of #677.
+      if (!turnId) return;
       try {
         const entry = await lookupNotebookEntry(sId, qKey, turnId);
         if (entry) {
@@ -438,7 +444,11 @@ export default function QuizViewer({
   );
 
   useEffect(() => {
-    if (!sessionId || total === 0 || completedCount !== total) return;
+    // Reporting requires a turn identity: an empty ``turn_id`` write lands
+    // in the shared legacy namespace, where the next quiz's identically
+    // numbered questions would pick it up as their own answers (#677).
+    if (!sessionId || !turnId || total === 0 || completedCount !== total)
+      return;
     const signature = JSON.stringify(submittedResults);
     if (!signature || signature === lastReportedSignatureRef.current) return;
     lastReportedSignatureRef.current = signature;
@@ -470,7 +480,7 @@ export default function QuizViewer({
       answer: AnswerState,
       questionIndex: number,
     ) => {
-      if (!sessionId) return;
+      if (!sessionId || !turnId) return;
       const key = getQuestionKey(question, questionIndex);
       try {
         const imagePayload = answer.images.map((image) => ({
@@ -482,7 +492,7 @@ export default function QuizViewer({
         }));
         const entry = await upsertNotebookEntry({
           session_id: sessionId,
-          turn_id: turnId || "",
+          turn_id: turnId,
           question_id: question.question_id,
           question: question.question,
           question_type: question.question_type,

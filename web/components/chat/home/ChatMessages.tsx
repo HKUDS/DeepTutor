@@ -44,6 +44,7 @@ import { useVoiceAutoplay } from "@/hooks/useVoiceAutoplay";
 import { extractMathAnimatorResult } from "@/lib/math-animator-types";
 import {
   extractQuizQuestions,
+  extractQuizTurnId,
   extractStreamingQuizQuestions,
 } from "@/lib/quiz-types";
 import { extractVisualizeResult } from "@/lib/visualize-types";
@@ -51,6 +52,7 @@ import type { StreamEvent } from "@/lib/unified-ws";
 import { hasVisibleMarkdownContent } from "@/lib/markdown-display";
 import type { SelectedBookReference } from "@/lib/book-references";
 import { buildVisiblePath, type SiblingInfo } from "@/lib/message-branches";
+import { turnAnchorKey } from "@/lib/chat-outline";
 import { shouldSubmitOnEnter } from "@/lib/composer-keyboard";
 import { useImeComposing } from "@/lib/use-ime-composing";
 import type { SpaceMemoryFile } from "@/lib/space-items";
@@ -101,7 +103,9 @@ interface NotebookReferenceGroup {
 
 // Returns the i18n key (and a sensible fallback) for the capability badge
 // shown above the user's message. Callers must run `t(...)` on the result.
-function getModeBadgeLabel(capability?: string | null): string {
+// Exported so the turn navigator's hover card labels a turn with exactly
+// the same wording the bubble carries.
+export function getModeBadgeLabel(capability?: string | null): string {
   if (!capability || capability === "chat") return "Chat";
   if (capability === "deep_solve") return "Deep Solve";
   if (capability === "deep_question") return "Quiz Generation";
@@ -346,6 +350,15 @@ const AssistantMessage = memo(function AssistantMessage({
     return extractStreamingQuizQuestions(msg.events ?? []);
   }, [msg.capability, msg.events, resultEvent]);
 
+  // Turn identity for the quiz card. Derived from the streamed events, not
+  // just the final result event — during generation the result hasn't landed
+  // yet, and a null turn id would let the QuizViewer fall back to
+  // session-wide notebook state from a previous quiz (issue #677).
+  const quizTurnId = useMemo(() => {
+    if (msg.capability !== "deep_question") return null;
+    return extractQuizTurnId(msg.events);
+  }, [msg.capability, msg.events]);
+
   const mathAnimatorResult = useMemo(() => {
     if (msg.capability !== "math_animator" || !resultEvent) return null;
     return extractMathAnimatorResult(resultEvent.metadata);
@@ -465,7 +478,7 @@ const AssistantMessage = memo(function AssistantMessage({
           <QuizViewer
             questions={quizQuestions}
             sessionId={sessionId}
-            turnId={resultEvent?.turn_id ?? null}
+            turnId={quizTurnId}
             language={language}
           />
         </>
@@ -1020,7 +1033,14 @@ const UserMessage = memo(function UserMessage({
 
   return (
     <div key={`${msg.role}-${index}`} className="group flex justify-end">
-      <div className="flex max-w-[75%] flex-col items-end gap-1.5">
+      {/* ``data-turn-key`` is the scroll target the turn navigator jumps
+          to; ``data-turn-bubble`` is what it flashes on arrival. Both keys
+          come from ``turnAnchorKey`` so the rail and the transcript can
+          never disagree about which bubble a tick means. */}
+      <div
+        data-turn-key={turnAnchorKey(msg, index)}
+        className="flex max-w-[75%] flex-col items-end gap-1.5"
+      >
         <div className="flex justify-end pr-1">
           <span className="text-[10px] tracking-wide text-[var(--muted-foreground)]">
             {t(getModeBadgeLabel(msg.capability))}
@@ -1073,7 +1093,10 @@ const UserMessage = memo(function UserMessage({
             </div>
           </div>
         ) : (
-          <div className="rounded-2xl bg-[var(--secondary)] px-4 py-2.5 text-[14px] leading-relaxed text-[var(--foreground)] shadow-sm">
+          <div
+            data-turn-bubble="true"
+            className="rounded-2xl bg-[var(--secondary)] px-4 py-2.5 text-[14px] leading-relaxed text-[var(--foreground)] shadow-sm"
+          >
             <div className="whitespace-pre-wrap">{msg.content}</div>
           </div>
         )}

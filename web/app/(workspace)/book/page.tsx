@@ -269,7 +269,7 @@ function BookPageInner() {
   }) => {
     setCreating(true);
     try {
-      const result = await bookApi.create(payload);
+      const result = await bookApi.create(payload, handleBookOperationEvent);
       setPendingBook(result.book);
       setPendingProposal(result.proposal);
       setSelectedBookId(result.book.id);
@@ -351,7 +351,13 @@ function BookPageInner() {
   const handleRegenerateBlock = async (block: Block) => {
     if (!detail || !selectedPage) return;
     try {
-      await bookApi.regenerateBlock(detail.book.id, selectedPage.id, block.id);
+      await bookApi.regenerateBlock(
+        detail.book.id,
+        selectedPage.id,
+        block.id,
+        undefined,
+        handleBookOperationEvent,
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       notify(`Regenerate block failed: ${msg}`, {
