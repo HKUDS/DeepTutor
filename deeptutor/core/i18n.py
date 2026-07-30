@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from deeptutor.i18n.languages import normalize_supported_language
+
 
 def _parse_language(language: str | None) -> str:
-    raw = (language or "en").strip().lower()
-    if raw.startswith("zh") or raw in {"cn", "chinese"}:
-        return "zh"
-    return "en"
+    return normalize_supported_language(language)
 
 
 _MESSAGES: dict[str, dict[str, str]] = {
@@ -106,6 +105,62 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "sandbox.command_blocked": "错误：命令被安全防护拦截（匹配危险模式）。",
         "sandbox.disabled_for_account": "你的账号已禁用代码执行。",
         "sandbox.no_backend": "没有可用的沙箱后端",
+    },
+    "es": {
+        "api.content_required": "el contenido es obligatorio",
+        "api.invalid_channels_config": "La configuración de canales no es válida",
+        "api.partner_already_exists": "El compañero '{name}' ya existe",
+        "api.partner_not_found": "No se ha encontrado el compañero",
+        "api.partner_not_found_or_not_running": "No se ha encontrado el compañero o no está en ejecución",
+        "api.partner_not_running": "El compañero no está en ejecución",
+        "api.partner_stopped_start_required": "El compañero está detenido. Inícialo antes de chatear.",
+        "api.persona_already_exists": "La persona ya existe: {name}",
+        "api.persona_name_required": "El nombre de la persona es obligatorio",
+        "api.persona_not_found": "No se ha encontrado la persona: {name}",
+        "api.soul_already_exists": "El perfil '{name}' ya existe",
+        "api.soul_content_empty": "El contenido del perfil personalizado está vacío",
+        "api.soul_library_not_found": "No se ha encontrado el perfil '{name}' en la biblioteca",
+        "api.soul_not_found": "No se ha encontrado el perfil",
+        "api.tool_not_found": "No se ha encontrado la herramienta '{name}'",
+        "cli_apps.abi_mismatch": (
+            "La aplicación CLI {app!r} se instaló para {installed}, pero este entorno "
+            "usa {current}. Un administrador debe reinstalarla."
+        ),
+        "cli_apps.args_required": (
+            "{tool} necesita un array 'args', con un argumento de la línea de comandos "
+            "por elemento."
+        ),
+        "cli_apps.entry_admin_only": (
+            "Las aplicaciones CLI las instala un administrador; pídele que añada esta."
+        ),
+        "cli_apps.install_in_progress": "Esa aplicación ya se está instalando.",
+        "cli_apps.not_in_catalog": "No hay ninguna aplicación CLI llamada {id!r} en el catálogo.",
+        "cli_apps.not_installed": (
+            "La aplicación CLI {app!r} ya no está instalada en este despliegue."
+        ),
+        "cli_apps.still_running": "{app} sigue en ejecución ({seconds} s)",
+        "mcp.configure_command_or_url": "Servidor {name!r}: configura un comando (stdio) o una URL.",
+        "mcp.configure_before_testing": "Configura un comando (stdio) o una URL antes de probar.",
+        "mcp.server_error": "Servidor {name!r}: {error}",
+        "mcp.server_missing": "No hay ningún servidor llamado {name!r} en tu lista.",
+        "mcp.not_oauth": "Este servidor no usa OAuth; proporciona una credencial.",
+        "mcp.oauth_callback_incomplete": "La respuesta de autorización estaba incompleta.",
+        "mcp.oauth_callback_unknown": (
+            "Esa autorización ha caducado o ya se ha completado. Iníciala de nuevo."
+        ),
+        "mcp.oauth_done": "Autorización completada. Ya puedes cerrar esta pestaña.",
+        "mcp.oauth_failed": "La autorización ha fallado.",
+        "mcp.catalog_entry_missing": "No hay ningún servicio MCP llamado {id!r} en el catálogo.",
+        "mcp.entry_admin_only": (
+            "Este servicio se ejecuta como un comando local y solo puede añadirlo un administrador."
+        ),
+        "mcp.tool_not_available": (
+            "Esta herramienta no está disponible en esta conversación. "
+            "Solo se pueden usar las herramientas incluidas en el prompt."
+        ),
+        "sandbox.command_blocked": "Error: el comando ha sido bloqueado por la protección de seguridad.",
+        "sandbox.disabled_for_account": "La ejecución de código está desactivada para tu cuenta.",
+        "sandbox.no_backend": "no hay ningún entorno aislado disponible",
     },
 }
 

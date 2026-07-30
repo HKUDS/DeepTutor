@@ -11,6 +11,7 @@ import logging
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from deeptutor.agents.chat import ChatAgent, SessionManager
+from deeptutor.i18n.languages import normalize_supported_language
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
 from deeptutor.services.llm.config import get_llm_config
 from deeptutor.services.settings.interface_settings import get_response_language
@@ -71,12 +72,9 @@ async def websocket_chat(websocket: WebSocket):
         while True:
             data = await websocket.receive_json()
             requested_language = str(data.get("language") or "").lower().strip()
-            language = (
-                "zh"
-                if requested_language.startswith("zh")
-                else "en"
-                if requested_language.startswith("en")
-                else get_response_language(default=config.get("system", {}).get("language", "en"))
+            language = normalize_supported_language(
+                requested_language
+                or get_response_language(default=config.get("system", {}).get("language", "en"))
             )
             message = data.get("message", "").strip()
             session_id = data.get("session_id")
