@@ -8,7 +8,7 @@
 #   python scripts/docker_compose.py -f docker-compose.ghcr.yml up -d
 #
 # To pin a specific version:
-#   Edit the image tag below, e.g. ghcr.io/hkuds/deeptutor:1.0.0
+#   Edit the image tag below, e.g. ghcr.io/hubo1989/deeptutor:1.0.0
 #
 # Prerequisites:
 #   1. Configure providers in data/user/settings/model_catalog.json or the UI
@@ -38,7 +38,7 @@
 
 services:
   deeptutor:
-    image: ghcr.io/hkuds/deeptutor:latest
+    image: ghcr.io/hubo1989/deeptutor:latest
     pull_policy: always
     container_name: deeptutor
     restart: unless-stopped

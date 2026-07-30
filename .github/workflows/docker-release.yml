@@ -3,7 +3,7 @@ name: Docker Release
 # Triggered when a GitHub Release is published.
 # Builds a multi-platform Docker image and pushes it to GitHub Container Registry (GHCR).
 #
-# Image: ghcr.io/hkuds/deeptutor
+# Image: ghcr.io/${{ github.repository_owner }}/deeptutor
 # Tags:
 #   - Version tag stripped of 'v' prefix (e.g. release v1.2.3 → image tag 1.2.3)
 #   - latest (always points to the most recently published release)
@@ -49,7 +49,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/hkuds/deeptutor
+          images: ghcr.io/${{ github.repository_owner }}/deeptutor
           tags: |
             type=semver,pattern={{version}}
             type=raw,value=latest
