@@ -236,7 +236,7 @@ def _install_current_user(payload: TokenPayload | None) -> _CtxToken:
 
 async def require_auth(
     authorization: str | None = Header(default=None, alias="Authorization"),
-    dt_token: str | None = Cookie(default=None),
+    dt_token: str | None = Cookie(default=None, alias=_COOKIE_NAME),
 ) -> TokenPayload | None:
     """
     FastAPI dependency that enforces authentication when AUTH_ENABLED=true.
