@@ -6,8 +6,10 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
+import { usePathname } from "next/navigation";
 import {
   getStoredTheme,
   getSystemTheme,
@@ -44,6 +46,11 @@ import {
   writeStoredSidebarCollapsed,
   type AppLanguage,
 } from "@/context/app-shell-storage";
+import { fetchBackendLanguage } from "@/context/app-shell-ui-settings";
+
+function isAuthPath(pathname: string): boolean {
+  return pathname === "/login" || pathname === "/register";
+}
 
 interface AppShellContextValue {
   theme: Theme;
@@ -65,6 +72,9 @@ interface AppShellContextValue {
 const AppShellContext = createContext<AppShellContextValue | null>(null);
 
 export function AppShellProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const previousPathnameRef = useRef<string | null>(null);
+  const languageRevisionRef = useRef(0);
   const [theme, setThemeState] = useState<Theme>(() => {
     return getStoredTheme() ?? getSystemTheme();
   });
@@ -95,6 +105,39 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const previousPathname = previousPathnameRef.current;
+    previousPathnameRef.current = pathname;
+
+    // Sync once when the app first opens, and once after client-side login.
+    // The backend setting is per user and must win over a new browser's empty
+    // localStorage. Avoid refetching on every normal route transition.
+    const shouldSync =
+      (previousPathname === null && !isAuthPath(pathname)) ||
+      (previousPathname !== null &&
+        isAuthPath(previousPathname) &&
+        !isAuthPath(pathname));
+    if (!shouldSync) return;
+
+    let cancelled = false;
+    const revisionAtStart = languageRevisionRef.current;
+    void fetchBackendLanguage().then((nextLanguage) => {
+      if (
+        cancelled ||
+        nextLanguage === null ||
+        revisionAtStart !== languageRevisionRef.current
+      ) {
+        return;
+      }
+      writeStoredLanguage(nextLanguage);
+      setLanguageState(nextLanguage);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
+
+  useEffect(() => {
     return subscribeToThemeChanges((nextTheme) => {
       setThemeState(nextTheme);
     });
@@ -105,6 +148,7 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
 
     const onStorage = (event: StorageEvent) => {
       if (event.key === LANGUAGE_STORAGE_KEY) {
+        languageRevisionRef.current += 1;
         setLanguageState(normalizeLanguage(event.newValue));
       }
       if (event.key === ACTIVE_SESSION_STORAGE_KEY) {
@@ -130,6 +174,7 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
 
     const onLanguage = (event: Event) => {
       const detail = (event as CustomEvent<{ language?: AppLanguage }>).detail;
+      languageRevisionRef.current += 1;
       setLanguageState(normalizeLanguage(detail?.language));
     };
 
@@ -190,6 +235,7 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setLanguage = useCallback((nextLanguage: AppLanguage) => {
+    languageRevisionRef.current += 1;
     writeStoredLanguage(nextLanguage);
     setLanguageState(nextLanguage);
   }, []);
