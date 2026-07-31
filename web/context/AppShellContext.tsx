@@ -15,7 +15,6 @@ import {
   subscribeToThemeChanges,
   type Theme,
 } from "@/lib/theme";
-import { apiFetch, apiUrl } from "@/lib/api";
 import {
   ACTIVE_SESSION_EVENT,
   ACTIVE_SESSION_STORAGE_KEY,
@@ -65,27 +64,18 @@ interface AppShellContextValue {
 
 const AppShellContext = createContext<AppShellContextValue | null>(null);
 
-export async function loadBackendLanguage(
-  fetcher: typeof apiFetch = apiFetch,
-): Promise<AppLanguage | null> {
-  try {
-    const response = await fetcher(apiUrl("/api/v1/settings/ui"));
-    if (!response.ok) return null;
-    const payload = (await response.json()) as { language?: unknown };
-    return payload.language === "zh" || payload.language === "en"
-      ? payload.language
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-export function AppShellProvider({ children }: { children: React.ReactNode }) {
+export function AppShellProvider({
+  children,
+  initialLanguage,
+}: React.PropsWithChildren<{
+  initialLanguage?: AppLanguage | null;
+}>) {
   const [theme, setThemeState] = useState<Theme>(() => {
     return getStoredTheme() ?? getSystemTheme();
   });
-  // Always start with "en" to match SSR; hydrate from localStorage after mount
-  const [language, setLanguageState] = useState<AppLanguage>("en");
+  const [language, setLanguageState] = useState<AppLanguage>(
+    initialLanguage ?? "en",
+  );
   const [activeSessionId, setActiveSessionIdState] = useState<string | null>(
     () => readStoredActiveSessionId(),
   );
@@ -102,26 +92,19 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Hydrate client-only preferences after SSR-safe first render.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLanguageState(readStoredLanguage());
+    if (initialLanguage) {
+      writeStoredLanguage(initialLanguage);
+    } else {
+      // The backend may be briefly unavailable during startup. Preserve the
+      // previous local cache as a client-only fallback in that case.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLanguageState(readStoredLanguage());
+    }
     setSidebarCollapsedState(readStoredSidebarCollapsed());
     setCodeBlockThemeState(readStoredCodeBlockTheme());
     setCodeBlockShowLineNumbersState(readStoredCodeBlockShowLineNumbers());
     setCodeBlockWrapLongLinesState(readStoredCodeBlockWrapLongLines());
-
-    // localStorage is only a startup cache. On a first visit it is empty, while
-    // the persisted backend preference may already be `zh`; reconcile the
-    // authoritative value before leaving the app shell in its English fallback.
-    let cancelled = false;
-    void loadBackendLanguage().then((backendLanguage) => {
-      if (cancelled || backendLanguage === null) return;
-      writeStoredLanguage(backendLanguage);
-      setLanguageState(backendLanguage);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  }, [initialLanguage]);
 
   useEffect(() => {
     return subscribeToThemeChanges((nextTheme) => {

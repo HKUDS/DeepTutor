@@ -1,7 +1,12 @@
-import i18n, { type Resource } from "i18next";
+import i18n, {
+  createInstance,
+  type i18n as I18nInstance,
+  type Resource,
+} from "i18next";
 import { initReactI18next } from "react-i18next";
 
 import enApp from "@/locales/en/app.json";
+import zhApp from "@/locales/zh/app.json";
 
 export type AppLanguage = "en" | "zh";
 
@@ -14,14 +19,16 @@ export function normalizeLanguage(lang: unknown): AppLanguage {
 
 let _initialized = false;
 
-export function initI18n(language?: unknown) {
-  if (_initialized) return i18n;
+const resources: Resource = {
+  en: { app: enApp },
+  zh: { app: zhApp },
+};
 
-  const resources: Resource = {
-    en: { app: enApp },
-  };
-
-  i18n.use(initReactI18next).init({
+function initializeInstance(
+  instance: I18nInstance,
+  language?: unknown,
+): I18nInstance {
+  void instance.use(initReactI18next).init({
     resources,
     lng: normalizeLanguage(language),
     fallbackLng: "en",
@@ -35,16 +42,20 @@ export function initI18n(language?: unknown) {
     },
     returnEmptyString: false,
     returnNull: false,
+    initImmediate: false,
   });
 
-  _initialized = true;
-  return i18n;
+  return instance;
 }
 
-export async function ensureLanguage(language: AppLanguage) {
-  if (i18n.hasResourceBundle(language, "app")) return;
-  if (language === "zh") {
-    const zhApp = (await import("@/locales/zh/app.json")).default;
-    i18n.addResourceBundle("zh", "app", zhApp, true, true);
-  }
+export function createI18nInstance(language?: unknown): I18nInstance {
+  return initializeInstance(createInstance(), language);
+}
+
+export function initI18n(language?: unknown) {
+  if (_initialized) return i18n;
+
+  initializeInstance(i18n, language);
+  _initialized = true;
+  return i18n;
 }
