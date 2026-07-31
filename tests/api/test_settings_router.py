@@ -767,6 +767,26 @@ async def test_update_ui_settings_preserves_theme_and_language_when_code_block_u
     assert persisted["code_block_theme"] == "dracula"
 
 
+@pytest.mark.asyncio
+async def test_get_ui_settings_returns_persisted_interface_preferences(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    settings_router.save_ui_settings(
+        {
+            **settings_router.DEFAULT_UI_SETTINGS,
+            "theme": "dark",
+            "language": "zh",
+        }
+    )
+
+    response = await settings_router.get_ui_settings()
+
+    assert response["theme"] == "dark"
+    assert response["language"] == "zh"
+
+
 def test_codex_provider_choice_is_advertised_as_oauth() -> None:
     llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
 

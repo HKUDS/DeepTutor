@@ -520,6 +520,12 @@ async def get_settings():
     }
 
 
+@router.get("/ui")
+async def get_ui_settings():
+    """Return lightweight interface preferences needed during app bootstrap."""
+    return load_ui_settings()
+
+
 @router.post("/providers/openai-codex/oauth/start")
 async def start_openai_codex_oauth() -> dict[str, Any]:
     _require_settings_admin()

@@ -15,6 +15,7 @@ import {
   subscribeToThemeChanges,
   type Theme,
 } from "@/lib/theme";
+import { apiFetch, apiUrl } from "@/lib/api";
 import {
   ACTIVE_SESSION_EVENT,
   ACTIVE_SESSION_STORAGE_KEY,
@@ -64,6 +65,21 @@ interface AppShellContextValue {
 
 const AppShellContext = createContext<AppShellContextValue | null>(null);
 
+export async function loadBackendLanguage(
+  fetcher: typeof apiFetch = apiFetch,
+): Promise<AppLanguage | null> {
+  try {
+    const response = await fetcher(apiUrl("/api/v1/settings/ui"));
+    if (!response.ok) return null;
+    const payload = (await response.json()) as { language?: unknown };
+    return payload.language === "zh" || payload.language === "en"
+      ? payload.language
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function AppShellProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
     return getStoredTheme() ?? getSystemTheme();
@@ -92,6 +108,19 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
     setCodeBlockThemeState(readStoredCodeBlockTheme());
     setCodeBlockShowLineNumbersState(readStoredCodeBlockShowLineNumbers());
     setCodeBlockWrapLongLinesState(readStoredCodeBlockWrapLongLines());
+
+    // localStorage is only a startup cache. On a first visit it is empty, while
+    // the persisted backend preference may already be `zh`; reconcile the
+    // authoritative value before leaving the app shell in its English fallback.
+    let cancelled = false;
+    void loadBackendLanguage().then((backendLanguage) => {
+      if (cancelled || backendLanguage === null) return;
+      writeStoredLanguage(backendLanguage);
+      setLanguageState(backendLanguage);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
