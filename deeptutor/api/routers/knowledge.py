@@ -35,7 +35,7 @@ from deeptutor.api.utils.task_id_manager import TaskIDManager
 from deeptutor.api.utils.task_log_stream import capture_task_logs, get_task_stream_manager
 from deeptutor.knowledge.add_documents import DocumentAdder, remove_raw_document
 from deeptutor.knowledge.initializer import KnowledgeBaseInitializer
-from deeptutor.knowledge.kb_types import is_connected_kb
+from deeptutor.knowledge.kb_types import LIGHTRAG_SERVER_KB_TYPE, is_connected_kb
 from deeptutor.knowledge.manager import KnowledgeBaseManager
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
@@ -1963,6 +1963,14 @@ async def list_kb_raw_files(kb_name: str):
     before it holds any files. Folders are purely organizational and have no
     effect on indexing or retrieval.
     """
+    resource = resolve_kb(kb_name)
+    manager = manager_for_resource(resource)
+    entry = manager._load_config().get("knowledge_bases", {}).get(resource.name, {})
+    # A LightRAG Server KB is only a remote connection pointer. Its documents
+    # live in the external server and cannot be listed from this filesystem.
+    if entry.get("type") == LIGHTRAG_SERVER_KB_TYPE:
+        return {"files": []}
+
     raw_dir = _resolve_kb_raw_dir(kb_name)
     if not raw_dir.exists() or not raw_dir.is_dir():
         return {"files": []}
