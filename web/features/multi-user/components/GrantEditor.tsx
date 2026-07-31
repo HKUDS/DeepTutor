@@ -749,7 +749,7 @@ export function GrantEditor({ userId }: { userId: string }) {
                 any period to 0 for unlimited platform usage. BYOK does not
                 consume these credits but still follows BYOK safety limits.
               </p>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 lg:grid-cols-3">
                 <div className="rounded-lg border border-[var(--border)]/60 p-3">
                   <p className="mb-2 text-xs font-medium text-[var(--foreground)]">
                     LLM

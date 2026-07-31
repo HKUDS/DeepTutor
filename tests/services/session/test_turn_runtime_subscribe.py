@@ -64,6 +64,7 @@ async def test_subscribe_turn_marks_orphan_running_turn_failed(tmp_path) -> None
     assert persisted["status"] == "failed"
     assert "restart" in persisted["error"].lower()
     assert [event["type"] for event in events] == ["error", "done"]
+    assert events[0]["metadata"]["turn_terminal"] is True
     assert events[-1]["metadata"]["status"] == "failed"
 
 

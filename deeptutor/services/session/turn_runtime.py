@@ -1085,7 +1085,11 @@ class TurnRuntimeManager:
             "source": "turn_runtime",
             "stage": "",
             "content": error,
-            "metadata": {"status": "failed", "synthesized": True},
+            "metadata": {
+                "turn_terminal": True,
+                "status": "failed",
+                "synthesized": True,
+            },
             "session_id": str((turn or {}).get("session_id") or ""),
             "turn_id": turn_id,
             "seq": 0,
