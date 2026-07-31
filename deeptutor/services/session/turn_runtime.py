@@ -35,6 +35,7 @@ MemoryReference = Literal["recent", "profile", "scope", "preferences", "summary"
 # finish round (and forced-finish) are the answer, narration rounds are
 # filtered back out via their ``call_role`` marker (see _narration_marker_call_id).
 _ANSWER_CONTENT_CALL_KINDS = frozenset({"llm_final_response", "agent_loop_round"})
+_FINAL_TURN_STATUSES = frozenset({"completed", "failed", "cancelled", "rejected"})
 
 
 def _should_capture_assistant_content(event: StreamEvent) -> bool:
@@ -45,6 +46,32 @@ def _should_capture_assistant_content(event: StreamEvent) -> bool:
     if not call_id:
         return True
     return metadata.get("call_kind") in _ANSWER_CONTENT_CALL_KINDS
+
+
+def _resolve_turn_outcome(
+    assistant_events: Sequence[dict[str, Any]],
+    done_event: StreamEvent | None,
+) -> tuple[str, str]:
+    """Resolve the persisted turn status and error from the terminal protocol."""
+    done_metadata = (done_event.metadata or {}) if done_event is not None else {}
+    status = str(done_metadata.get("status") or "completed")
+    if status not in _FINAL_TURN_STATUSES:
+        status = "completed"
+
+    error = ""
+    for event in reversed(assistant_events):
+        metadata = event.get("metadata")
+        metadata = metadata if isinstance(metadata, dict) else {}
+        if event.get("type") != StreamEventType.ERROR.value or not metadata.get("turn_terminal"):
+            continue
+        terminal_status = str(metadata.get("status") or "failed")
+        status = terminal_status if terminal_status in _FINAL_TURN_STATUSES else "failed"
+        if status == "completed":
+            status = "failed"
+        error = str(event.get("content") or "")
+        break
+
+    return status, error
 
 
 def _narration_marker_call_id(event: StreamEvent) -> str | None:
@@ -1688,13 +1715,22 @@ class TurnRuntimeManager:
                     attachments=generated_attachments or None,
                 )
             await self._flush_buffered_events(execution)
-            await self.store.update_turn_status(turn_id, "completed")
+            turn_status, turn_error = _resolve_turn_outcome(
+                assistant_events,
+                pending_done_event,
+            )
+            await self.store.update_turn_status(turn_id, turn_status, turn_error)
             if pending_done_event is None:
                 pending_done_event = StreamEvent(
                     type=StreamEventType.DONE,
                     source=capability_name,
-                    metadata={"status": "completed"},
+                    metadata={"status": turn_status},
                 )
+            else:
+                pending_done_event.metadata = {
+                    **pending_done_event.metadata,
+                    "status": turn_status,
+                }
             # Attach the persisted row ids so the frontend can reconcile its
             # optimistic (negative) message ids with a targeted in-place swap
             # instead of refetching and re-rendering the whole session.
@@ -1710,7 +1746,7 @@ class TurnRuntimeManager:
                 pending_done_event.metadata = {**pending_done_event.metadata, **persisted_ids}
             await self._publish_live_event(execution, pending_done_event)
             stream_done_sent = True
-            if not is_regenerate:
+            if not is_regenerate and turn_status == "completed":
                 # Title generation is post-turn metadata. Keep it after DONE
                 # so the composer and duration clock stop as soon as the
                 # assistant answer is saved; the frontend keeps this socket
