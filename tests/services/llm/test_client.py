@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from _pytest.monkeypatch import MonkeyPatch
 import pytest
+from types import SimpleNamespace
 
 from deeptutor.services.llm.client import LLMClient
 from deeptutor.services.llm.config import LLMConfig
+from deeptutor.core.agentic import client as agentic_client
 
 
 @pytest.mark.asyncio
@@ -56,6 +58,38 @@ def test_client_reports_multimodal_image_support() -> None:
         ).supports_multimodal_images()
         is False
     )
+
+
+def test_agentic_client_wraps_byok_calls_with_safety_accounting_not_platform_quota(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "deeptutor.multi_user.execution_source.current_source_is_platform",
+        lambda _service=None: False,
+    )
+    monkeypatch.setattr(
+        "deeptutor.multi_user.token_quota.current_user_quota_policy",
+        lambda: object(),
+    )
+    client = SimpleNamespace(chat=SimpleNamespace(completions=object()))
+    wrapped = agentic_client._wrap_token_quota(client)
+    assert isinstance(wrapped, agentic_client._TokenQuotaClient)
+    assert wrapped._client is client
+
+
+def test_llm_client_does_not_write_byok_key_to_process_environment(monkeypatch):
+    monkeypatch.setattr(
+        "deeptutor.multi_user.execution_source.current_source_is_platform",
+        lambda _service=None: False,
+    )
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    client = LLMClient(
+        LLMConfig(
+            model="gpt-user",
+            api_key="sk-user-secret",
+            base_url="https://api.openai.com/v1",
+        )
+    )
+    assert client.config.api_key == "sk-user-secret"
+    assert "OPENAI_API_KEY" not in __import__("os").environ
 
 
 @pytest.mark.asyncio

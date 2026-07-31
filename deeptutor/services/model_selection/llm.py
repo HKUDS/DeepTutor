@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from deeptutor.services.provider_registry import find_by_name
 
@@ -18,7 +18,9 @@ class LLMSelection:
     """
 
     profile_id: str
-    model_id: str
+    model_id: str | None
+    source: Literal["platform", "byok"] = "platform"
+    generation: int | None = None
 
     @classmethod
     def from_payload(cls, value: Any) -> "LLMSelection | None":
@@ -29,16 +31,45 @@ class LLMSelection:
         if not isinstance(value, dict):
             raise ValueError("Invalid LLM selection: expected an object.")
 
+        source = str(value.get("source") or "platform").strip().lower()
+        if source not in {"platform", "byok"}:
+            raise ValueError("Invalid LLM selection: source must be platform or byok.")
+
         profile_id = str(value.get("profile_id") or "").strip()
-        model_id = str(value.get("model_id") or "").strip()
+        model_id = str(value.get("model_id") or "").strip() or None
         if not profile_id and not model_id:
             return None
-        if not profile_id or not model_id:
-            raise ValueError("Invalid LLM selection: profile_id and model_id are required.")
-        return cls(profile_id=profile_id, model_id=model_id)
+        if not profile_id:
+            raise ValueError("Invalid LLM selection: profile_id is required.")
+        if source == "platform" and not model_id:
+            raise ValueError("Invalid LLM selection: model_id is required for platform.")
 
-    def to_dict(self) -> dict[str, str]:
-        return {"profile_id": self.profile_id, "model_id": self.model_id}
+        raw_generation = value.get("generation", value.get("profile_generation"))
+        generation: int | None = None
+        if raw_generation is not None and raw_generation != "":
+            try:
+                generation = int(raw_generation)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Invalid LLM selection: generation must be an integer.") from exc
+            if generation <= 0:
+                raise ValueError("Invalid LLM selection: generation must be positive.")
+        return cls(
+            source=source,  # type: ignore[arg-type]
+            profile_id=profile_id,
+            model_id=model_id,
+            generation=generation,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "source": self.source,
+            "profile_id": self.profile_id,
+        }
+        if self.model_id is not None:
+            payload["model_id"] = self.model_id
+        if self.generation is not None:
+            payload["generation"] = self.generation
+        return payload
 
 
 def _coerce_int(value: Any) -> int | None:
@@ -119,6 +150,10 @@ def apply_llm_selection_to_catalog(
     resolved = LLMSelection.from_payload(selection)
     selected = deepcopy(catalog)
     if resolved is None:
+        return selected
+    if resolved.source == "byok":
+        # BYOK selections are references into the user's Vault, not entries in
+        # the administrator's platform catalog.
         return selected
 
     service = _llm_service(selected)

@@ -25,10 +25,98 @@ class EmbeddingConfig:
     request_timeout: int = 60
     batch_size: int = 10
     batch_delay: float = 0.0
+    # Accounting/source metadata is public reference data only. The API key
+    # remains in the adapter instance and is never serialized with this object.
+    source: str = "platform"
+    profile_id: str | None = None
+    profile_generation: int | None = None
+
+
+def _get_byok_embedding_config() -> EmbeddingConfig | None:
+    """Resolve the current user's BYOK embedding profile when applicable."""
+    from deeptutor.multi_user.byok_policy import (
+        allowed_binding,
+        byok_runtime_enabled,
+        validate_endpoint,
+    )
+    from deeptutor.multi_user.byok_vault import UserByokCredentialVault
+    from deeptutor.multi_user.context import get_current_user
+    from deeptutor.multi_user.execution_source import (
+        get_execution_source,
+        resolve_execution_source,
+    )
+    from deeptutor.multi_user.grants import load_grant
+    from deeptutor.multi_user.byok_policy import grant_service_enabled
+    from deeptutor.services.config.provider_runtime import EMBEDDING_PROVIDERS
+    from deeptutor.services.provider_registry import canonical_provider_name
+
+    current = get_current_user()
+    source = get_execution_source()
+    vault = UserByokCredentialVault()
+    profiles = vault.list_profiles(current.id, service="embedding")
+    if not profiles:
+        if not current.is_admin and not grant_service_enabled(
+            load_grant(current.id), "platform", "embedding"
+        ):
+            raise ValueError(
+                "No embedding source is enabled for your account. Configure BYOK or contact an administrator."
+            )
+        return None
+    preferences = vault.get_preferences(current.id)
+    try:
+        resolved_source = source
+        if resolved_source is None or resolved_source.service != "embedding":
+            resolved_source = resolve_execution_source(
+                "embedding",
+                grant=load_grant(current.id),
+                preferences=preferences,
+                byok_profiles=profiles,
+            )
+        if not resolved_source.is_byok:
+            if not current.is_admin and not grant_service_enabled(
+                load_grant(current.id), "platform", "embedding"
+            ):
+                raise ValueError(
+                    "Platform embedding access is not enabled for your account."
+                )
+            return None
+        profile, secret = vault.load_secret(current.id, str(resolved_source.profile_id))
+    except PermissionError:
+        raise
+
+    raw_provider = str(profile.get("provider") or "").strip().lower()
+    provider = canonical_provider_name(raw_provider) or raw_provider
+    if not byok_runtime_enabled("embedding") or not allowed_binding("embedding", provider):
+        raise ValueError("Embedding BYOK is not enabled for this provider")
+    model = str(profile.get("model") or "").strip()
+    if not model:
+        raise ValueError("Embedding BYOK profile must specify a model")
+    spec = EMBEDDING_PROVIDERS.get(provider)
+    if spec is None:
+        raise ValueError("Unsupported embedding BYOK provider")
+    endpoint = str(profile.get("base_url") or "").strip() or spec.default_api_base
+    validate_endpoint(endpoint, service="embedding", binding=provider)
+    dimension = int(profile.get("dimension") or 0)
+    return EmbeddingConfig(
+        model=model,
+        api_key=secret,
+        base_url=endpoint,
+        effective_url=endpoint,
+        binding=provider,
+        provider_name=provider,
+        provider_mode=spec.mode,
+        dim=max(0, dimension),
+        source="byok",
+        profile_id=str(profile.get("id") or ""),
+        profile_generation=int(profile.get("generation") or 0),
+    )
 
 
 def get_embedding_config() -> EmbeddingConfig:
     """Load embedding config from provider runtime resolver."""
+    byok = _get_byok_embedding_config()
+    if byok is not None:
+        return byok
     resolved = resolve_embedding_runtime_config()
 
     if not resolved.model:

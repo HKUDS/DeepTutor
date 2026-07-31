@@ -13,7 +13,7 @@ import logging
 from typing import Any, cast
 
 from .capabilities import supports_vision
-from .config import LLMConfig, get_llm_config
+from .config import LLMConfig, get_llm_config, get_scoped_llm_config
 from .utils import sanitize_url
 
 
@@ -44,6 +44,14 @@ class LLMClient:
         Set OpenAI environment variables for compatibility with OpenAI-style SDKs.
         """
         import os
+
+        # A BYOK config is request-scoped. Writing it to process-global
+        # OPENAI_* variables would let concurrent users race and leak one
+        # user's credential into another user's request.
+        from deeptutor.multi_user.execution_source import current_source_is_platform
+
+        if not current_source_is_platform("llm"):
+            return
 
         binding = getattr(self.config, "binding", "openai")
 
@@ -227,6 +235,10 @@ def get_llm_client(config: LLMConfig | None = None) -> LLMClient:
     Returns:
         LLMClient instance
     """
+    scoped = get_scoped_llm_config() if config is None else None
+    if scoped is not None:
+        return LLMClient(scoped)
+
     global _client
     if _client is None:
         _client = LLMClient(config)

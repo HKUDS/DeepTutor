@@ -4,6 +4,17 @@ export type GrantPayload = {
   models: {
     llm: Array<Record<string, unknown>>;
   };
+  /** Explicit platform spend permissions for non-LLM services. */
+  platform: {
+    embedding: { enabled: boolean };
+    mineru: { enabled: boolean };
+  };
+  /** Per-user permission to use their own encrypted BYOK profiles. */
+  byok: {
+    llm: { enabled: boolean };
+    embedding: { enabled: boolean };
+    mineru: { enabled: boolean };
+  };
   knowledge_bases: Array<Record<string, unknown>>;
   skills: Array<Record<string, unknown>>;
   /** Admin-assigned partners the user may see & consult ([{ partner_id }]). */

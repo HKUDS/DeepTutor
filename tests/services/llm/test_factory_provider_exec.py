@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from deeptutor.services.llm.config import LLMConfig
-from deeptutor.services.llm.factory import complete, stream
+from deeptutor.services.llm.factory import _reserve_factory_quota, complete, stream
 from deeptutor.services.llm.provider_core.base import LLMResponse
 
 
@@ -55,6 +55,15 @@ def _make_cfg(**overrides: Any) -> LLMConfig:
     )
     defaults.update(overrides)
     return LLMConfig(**defaults)
+
+
+def test_factory_does_not_reserve_platform_quota_for_byok(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "deeptutor.multi_user.execution_source.current_source_is_platform",
+        lambda _service=None: False,
+    )
+
+    assert _reserve_factory_quota([], max_tokens=128) == (None, 0)
 
 
 @pytest.mark.asyncio

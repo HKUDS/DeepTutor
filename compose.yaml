@@ -168,6 +168,12 @@ services:
       - DEEPTUTOR_SMTP_USE_TLS=${DEEPTUTOR_SMTP_USE_TLS:-true}
       - DEEPTUTOR_SMTP_USE_SSL=${DEEPTUTOR_SMTP_USE_SSL:-false}
       - DEEPTUTOR_SMTP_TIMEOUT_SECONDS=${DEEPTUTOR_SMTP_TIMEOUT_SECONDS:-10}
+      # BYOK credentials are encrypted at rest. Supply the master key through
+      # a deployment-only env file or a mounted Docker secret.
+      - DEEPTUTOR_BYOK_ENABLED=${DEEPTUTOR_BYOK_ENABLED:-true}
+      - DEEPTUTOR_BYOK_MASTER_KEY=${DEEPTUTOR_BYOK_MASTER_KEY:-}
+      - DEEPTUTOR_BYOK_MASTER_KEY_FILE=${DEEPTUTOR_BYOK_MASTER_KEY_FILE:-}
+      - DEEPTUTOR_BYOK_USAGE_DB_PATH=${DEEPTUTOR_BYOK_USAGE_DB_PATH:-/app/data/system/byok_usage.sqlite3}
       # Local LLM (LM Studio / Ollama / vLLM) base URLs in
       # data/user/settings/model_catalog.json should use
       # `http://host.containers.internal:PORT` (podman) — NOT localhost,

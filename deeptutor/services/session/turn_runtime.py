@@ -148,11 +148,17 @@ def _string_list(value: Any) -> list[str]:
     return [item for item in value if isinstance(item, str) and item]
 
 
-def _llm_selection_dict(value: Any) -> dict[str, str] | None:
+def _llm_selection_dict(value: Any) -> dict[str, Any] | None:
     from deeptutor.services.model_selection import LLMSelection
 
     selection = LLMSelection.from_payload(value)
-    return selection.to_dict() if selection else None
+    if selection is None:
+        return None
+    # Preserve the legacy wire shape for old platform payloads while all new
+    # BYOK references carry an explicit source and generation.
+    if isinstance(value, dict) and "source" not in value and selection.source == "platform":
+        return {"profile_id": selection.profile_id, "model_id": selection.model_id}
+    return selection.to_dict()
 
 
 def _request_snapshot_metadata(
@@ -168,7 +174,7 @@ def _request_snapshot_metadata(
     book_references: list[Any],
     persona: str,
     memory_references: Sequence[str],
-    llm_selection: dict[str, str] | None,
+    llm_selection: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """Persist the front-end context chips with the user message."""
     snapshot: dict[str, Any] = {
@@ -686,30 +692,14 @@ class TurnRuntimeManager:
             # configured from admin runtime settings). Admin keeps the existing behavior
             # (None llm_selection → default config from admin scope).
             from deeptutor.multi_user.context import get_current_user
-            from deeptutor.multi_user.model_access import (
-                has_capability_access,
-                redacted_model_access,
-            )
+            from deeptutor.multi_user.model_access import default_llm_selection
 
             current_user = get_current_user()
             if not current_user.is_admin:
-                # Single gate, shared with the frontend lock and any HTTP
-                # surface: no usable LLM grant → a clear terminal error here
-                # instead of a silent fall-through to the global client.
-                if not has_capability_access("llm"):
-                    raise RuntimeError(
-                        "No LLM model is assigned to your account. Please contact an administrator."
-                    )
-                # Pin the first granted-and-available model as the selection.
-                assigned_llms = [
-                    item
-                    for item in redacted_model_access(current_user.id).get("llm", [])
-                    if item.get("available")
-                ]
-                llm_selection = {
-                    "profile_id": assigned_llms[0].get("profile_id"),
-                    "model_id": assigned_llms[0].get("model_id"),
-                }
+                try:
+                    llm_selection = default_llm_selection()
+                except PermissionError as exc:
+                    raise RuntimeError(str(exc)) from exc
         if llm_selection:
             from deeptutor.services.config import get_model_catalog_service
             from deeptutor.services.model_selection import (
@@ -718,10 +708,11 @@ class TurnRuntimeManager:
             )
 
             try:
-                apply_llm_selection_to_catalog(
-                    get_model_catalog_service().load(),
-                    LLMSelection.from_payload(llm_selection),
-                )
+                normalized_selection = LLMSelection.from_payload(llm_selection)
+                if normalized_selection is not None and normalized_selection.source == "platform":
+                    apply_llm_selection_to_catalog(
+                        get_model_catalog_service().load(), normalized_selection
+                    )
             except ValueError as exc:
                 raise RuntimeError(str(exc)) from exc
         # If the caller didn't pin a per-turn tool list (e.g. non-web

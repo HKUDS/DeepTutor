@@ -348,6 +348,34 @@ accounts until verification succeeds. If SMTP is absent, registration fails
 closed. Existing local accounts are treated as already verified during the
 upgrade.
 
+## BYOK for public multi-user deployments
+
+BYOK supports LLM, Embedding, and MinerU Cloud credentials. First enable
+authenticated multi-user mode in the Web Settings page (`auth.json`), then
+configure a deployment-only encryption key:
+
+```dotenv
+DEEPTUTOR_BYOK_ENABLED=true
+DEEPTUTOR_BYOK_MASTER_KEY_FILE=/run/secrets/deeptutor_byok_master_key
+# Or use DEEPTUTOR_BYOK_MASTER_KEY with a deployment-only secret value.
+DEEPTUTOR_BYOK_USAGE_DB_PATH=/app/data/system/byok_usage.sqlite3
+```
+
+Generate the master key once with `openssl rand -hex 32` and keep it stable;
+changing or losing it makes existing ciphertext unreadable. If a secret file is
+used, mount it read-only at the same path inside the container.
+
+The master key encrypts provider credentials with AES-GCM. Keep it outside Git,
+the browser bundle, and ordinary application backups; losing it means users
+must enter their credentials again. The Web UI is available at
+`/settings/byok`; administrators configure global policy at `/admin/byok` and
+per-user access at `/admin/users`. BYOK changes only the provider credential
+source: sandbox, MCP, tool, knowledge-base, file, and workspace permissions
+remain governed by the existing grants and sandbox policy. BYOK requests do
+not consume platform-funded quota, but still pass the global BYOK rate,
+single-request, page, and queue safety limits. There is no silent fallback from
+a user's BYOK credential to a platform credential.
+
 ## LiteLLM + managed PostgreSQL
 
 The repository includes a secret-free LiteLLM overlay. Start it only after

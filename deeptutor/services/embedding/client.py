@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from contextvars import ContextVar
 import logging
 import math
 from typing import Any, Dict, List, Optional
@@ -103,8 +104,26 @@ class EmbeddingClient:
             f"(model: {self.config.model}, dimensions: {self.config.dim})"
         )
 
-    @staticmethod
-    def _reserve_quota(estimated_tokens: int):
+    def _reserve_quota(self, estimated_tokens: int):
+        if self.config.source == "byok":
+            from deeptutor.multi_user.byok_usage import start_byok_usage
+            from deeptutor.multi_user.execution_source import get_execution_source
+            from deeptutor.multi_user.context import get_current_user
+
+            source = get_execution_source()
+            source_for_service = source if source and source.service == "embedding" else None
+            return start_byok_usage(
+                service="embedding",
+                user_id=source_for_service.user_id if source_for_service else get_current_user().id,
+                profile_id=(
+                    source_for_service.profile_id
+                    if source_for_service and source_for_service.profile_id
+                    else self.config.profile_id or "unknown"
+                ),
+                provider=self.config.provider_name or self.config.binding,
+                model=self.config.model,
+                estimated_units=estimated_tokens,
+            )
         from deeptutor.multi_user.token_quota import reserve_current_user_units
 
         return reserve_current_user_units(
@@ -314,17 +333,19 @@ class EmbeddingClient:
         return embedding_wrapper
 
 
-_client: Optional[EmbeddingClient] = None
+_SCOPED_CLIENT: ContextVar[EmbeddingClient | None] = ContextVar(
+    "deeptutor_scoped_embedding_client", default=None
+)
 
 
 def get_embedding_client(config: Optional[EmbeddingConfig] = None) -> EmbeddingClient:
-    global _client
     resolved_config = config or get_embedding_config()
-    if _client is None or _client.config != resolved_config:
-        _client = EmbeddingClient(resolved_config)
-    return _client
+    client = _SCOPED_CLIENT.get()
+    if client is None or client.config != resolved_config:
+        client = EmbeddingClient(resolved_config)
+        _SCOPED_CLIENT.set(client)
+    return client
 
 
 def reset_embedding_client() -> None:
-    global _client
-    _client = None
+    _SCOPED_CLIENT.set(None)

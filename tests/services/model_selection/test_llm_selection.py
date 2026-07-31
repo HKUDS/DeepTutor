@@ -86,3 +86,29 @@ def test_apply_llm_selection_rejects_model_not_in_profile():
         assert "Invalid LLM selection" in str(exc)
     else:
         raise AssertionError("expected invalid selection to fail")
+
+
+def test_selection_defaults_legacy_payload_to_platform_and_supports_byok_generation():
+    legacy = LLMSelection.from_payload({"profile_id": "p1", "model_id": "m1"})
+    assert legacy is not None
+    assert legacy.source == "platform"
+    assert legacy.generation is None
+
+    byok = LLMSelection.from_payload(
+        {"source": "byok", "profile_id": "vault-profile", "generation": 3}
+    )
+    assert byok is not None
+    assert byok.to_dict() == {
+        "source": "byok",
+        "profile_id": "vault-profile",
+        "generation": 3,
+    }
+
+
+def test_apply_byok_selection_does_not_read_or_mutate_platform_catalog():
+    catalog = _catalog()
+    selected = apply_llm_selection_to_catalog(
+        catalog,
+        LLMSelection(profile_id="vault-profile", model_id=None, source="byok", generation=1),
+    )
+    assert selected == catalog

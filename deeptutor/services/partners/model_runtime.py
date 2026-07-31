@@ -9,7 +9,7 @@ from deeptutor.services.model_selection import LLMSelection
 from deeptutor.services.model_selection.runtime import resolve_llm_config_for_selection
 
 
-def normalize_partner_llm_selection(value: Any) -> dict[str, str] | None:
+def normalize_partner_llm_selection(value: Any) -> dict[str, Any] | None:
     """Return a validated selection dict, or ``None`` for system default."""
     selection = LLMSelection.from_payload(value)
     return selection.to_dict() if selection else None

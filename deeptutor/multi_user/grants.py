@@ -1,4 +1,8 @@
-"""Logical resource grants for non-admin users."""
+"""Logical resource grants for non-admin users.
+
+Grants contain IDs, source permissions, and quota policy only. Provider
+credentials remain in the owner-scoped BYOK vault and are never copied here.
+"""
 
 from __future__ import annotations
 
@@ -31,9 +35,20 @@ def empty_grant(
         legacy_token_quota=token_quota,
     )
     return {
-        "version": 2,
+        "version": 3,
         "user_id": user_id,
         "models": {"llm": []},
+        # Platform Embedding/MinerU access is explicit. New users start with
+        # BYOK permission enabled, but no platform spend permission.
+        "platform": {
+            "embedding": {"enabled": False},
+            "mineru": {"enabled": False},
+        },
+        "byok": {
+            "llm": {"enabled": True},
+            "embedding": {"enabled": True},
+            "mineru": {"enabled": True},
+        },
         "knowledge_bases": [],
         "skills": [],
         # Partners an admin has assigned to this user. Partners stay
@@ -74,7 +89,7 @@ def grant_path(user_id: str) -> Path:
 
 
 def normalize_grant(user_id: str, payload: dict[str, Any] | None) -> dict[str, Any]:
-    """Coerce any stored/submitted grant payload into the v2 shape.
+    """Coerce any stored/submitted grant payload into the v3 shape.
 
     v1 grants normalize losslessly for everything that was ever enforced:
     ``models.embedding`` / ``models.search`` / ``spaces`` had no runtime
@@ -84,11 +99,35 @@ def normalize_grant(user_id: str, payload: dict[str, Any] | None) -> dict[str, A
     if not isinstance(payload, dict):
         return base
     base["user_id"] = user_id
+    try:
+        version = int(payload.get("version", 2))
+    except (TypeError, ValueError):
+        version = 2
+    # Existing users already consuming the globally configured Embedding and
+    # MinerU services retain access after migration. New grants use the safer
+    # explicit platform defaults from ``empty_grant``.
+    if version < 3:
+        base["platform"] = {
+            "embedding": {"enabled": True},
+            "mineru": {"enabled": True},
+        }
     models = payload.get("models") if isinstance(payload.get("models"), dict) else {}
     items = models.get("llm") if isinstance(models, dict) else []
     if not isinstance(items, list):
         items = []
     base["models"]["llm"] = [dict(item) for item in items if isinstance(item, dict)]
+    raw_platform = payload.get("platform")
+    if isinstance(raw_platform, dict):
+        for service in ("embedding", "mineru"):
+            value = raw_platform.get(service)
+            if isinstance(value, dict):
+                base["platform"][service] = {"enabled": bool(value.get("enabled", False))}
+    raw_byok = payload.get("byok")
+    if isinstance(raw_byok, dict):
+        for service in ("llm", "embedding", "mineru"):
+            value = raw_byok.get(service)
+            if isinstance(value, dict):
+                base["byok"][service] = {"enabled": bool(value.get("enabled", True))}
     for key in ("knowledge_bases", "skills", "partners"):
         values = payload.get(key) if isinstance(payload.get(key), list) else []
         base[key] = [dict(item) for item in values if isinstance(item, dict)]
@@ -161,6 +200,9 @@ def save_grant(user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     _username, record = user_record
     if str(record.get("role") or "user") == "admin":
         raise ValueError("Admin users use the main workspace and cannot receive assignments.")
+    # Validate the submitted object before normalization so a client cannot
+    # smuggle a secret under a field that the normalizer would otherwise drop.
+    validate_grant(payload)
     grant = normalize_grant(user_id, payload)
     validate_grant(grant)
     path = grant_path(user_id)
@@ -174,7 +216,17 @@ def validate_grant(grant: dict[str, Any]) -> None:
 
     Grants carry logical ids only. Runtime resolution happens server-side.
     """
-    forbidden = {"api_key", "secret", "password", "token", "path", "base_url"}
+    forbidden = {
+        "api_key",
+        "api_token",
+        "secret",
+        "password",
+        "token",
+        "path",
+        "base_url",
+        "endpoint",
+        "extra_headers",
+    }
 
     def walk(value: Any, trail: str = "grant") -> None:
         if isinstance(value, dict):

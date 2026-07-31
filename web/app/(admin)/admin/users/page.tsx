@@ -20,6 +20,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { filterUsersByQuery } from "@/lib/admin-users";
 import {
   Search,
+  KeyRound,
   Shield,
   ShieldCheck,
   ShieldOff,
@@ -382,6 +383,13 @@ export default function AdminUsersPage() {
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              <Link
+                href="/admin/byok"
+                className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-sm text-[var(--muted-foreground)] transition-colors hover:bg-[var(--card)] hover:text-[var(--foreground)]"
+              >
+                <KeyRound size={14} />
+                BYOK
+              </Link>
               <button
                 onClick={openCreateDialog}
                 className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm
@@ -430,12 +438,6 @@ export default function AdminUsersPage() {
                 )}
               </p>
             </div>
-            <Link
-              href="/admin/users"
-              className="shrink-0 text-xs font-medium text-[var(--primary)] hover:underline"
-            >
-              {t("Open user management")}
-            </Link>
           </div>
 
           <div className="mt-4 grid gap-4 md:grid-cols-3">

@@ -308,6 +308,7 @@ from deeptutor.api.routers import (
     agent_config,
     attachments,
     auth,
+    byok,
     book,
     capabilities_settings,
     chat,
@@ -357,6 +358,7 @@ app.include_router(
     tags=["multi-user"],
     dependencies=_auth,
 )
+app.include_router(byok.router, prefix="/api/v1", tags=["byok"], dependencies=_auth)
 
 app.include_router(chat.router, prefix="/api/v1", tags=["chat"], dependencies=_auth)
 app.include_router(

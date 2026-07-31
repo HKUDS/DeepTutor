@@ -16,9 +16,18 @@ type SaveState = "idle" | "saving" | "saved" | "error";
 
 function emptyGrant(userId: string): GrantPayload {
   return {
-    version: 2,
+    version: 3,
     user_id: userId,
     models: { llm: [] },
+    platform: {
+      embedding: { enabled: false },
+      mineru: { enabled: false },
+    },
+    byok: {
+      llm: { enabled: true },
+      embedding: { enabled: true },
+      mineru: { enabled: true },
+    },
     knowledge_bases: [],
     skills: [],
     partners: [],
@@ -340,6 +349,37 @@ export function GrantEditor({ userId }: { userId: string }) {
     setGrant((current) => ({ ...current, [key]: value }));
   }
 
+  function toggleSourcePermission(
+    source: "platform" | "byok",
+    service: "llm" | "embedding" | "mineru",
+  ) {
+    setGrant((current) => {
+      if (source === "byok") {
+        return {
+          ...current,
+          byok: {
+            ...current.byok,
+            [service]: {
+              ...current.byok[service],
+              enabled: !current.byok[service].enabled,
+            },
+          },
+        };
+      }
+      if (service === "llm") return current;
+      return {
+        ...current,
+        platform: {
+          ...current.platform,
+          [service]: {
+            ...current.platform[service],
+            enabled: !current.platform[service].enabled,
+          },
+        },
+      };
+    });
+  }
+
   function toggleToolName(key: "enabled_tools" | "mcp_tools", name: string) {
     setGrant((current) => {
       const list = current[key];
@@ -514,6 +554,39 @@ export function GrantEditor({ userId }: { userId: string }) {
                 ))}
               </div>
             </section>
+            <section className="min-w-0 md:col-span-2">
+              <SectionTitle>Provider access</SectionTitle>
+              <p className="mb-2 px-1 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+                BYOK permissions only allow the user to use their own encrypted
+                profile. Platform permissions control administrator-provided
+                spend. Sandbox and tool permissions are unchanged.
+              </p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {(["llm", "embedding", "mineru"] as const).map((service) => (
+                  <div key={service} className="rounded-lg border border-[var(--border)]/60 p-2">
+                    <p className="mb-2 text-xs font-medium text-[var(--foreground)]">{service === "mineru" ? "MinerU" : service === "embedding" ? "Embedding" : "LLM"}</p>
+                    <div className="space-y-1.5">
+                      <CheckRow
+                        label="Allow BYOK"
+                        description="User's own key"
+                        checked={grant.byok[service].enabled}
+                        disabled={controlsDisabled}
+                        onToggle={() => toggleSourcePermission("byok", service)}
+                      />
+                      {service !== "llm" ? (
+                        <CheckRow
+                          label="Allow platform"
+                          description="Admin-provided resource"
+                          checked={grant.platform[service].enabled}
+                          disabled={controlsDisabled}
+                          onToggle={() => toggleSourcePermission("platform", service)}
+                        />
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
             <section className="min-w-0">
               <SectionTitle>Knowledge</SectionTitle>
               <div className="space-y-1.5 text-xs">
@@ -668,10 +741,11 @@ export function GrantEditor({ userId }: { userId: string }) {
               </div>
             </section>
             <section className="min-w-0 md:col-span-3">
-              <SectionTitle>Usage quotas</SectionTitle>
+              <SectionTitle>Platform resource quotas</SectionTitle>
               <p className="mb-3 px-1 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
                 These limits override the new-user defaults for this user. Set
-                any period to 0 for unlimited usage.
+                any period to 0 for unlimited platform usage. BYOK does not
+                consume these credits but still follows BYOK safety limits.
               </p>
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="rounded-lg border border-[var(--border)]/60 p-3">

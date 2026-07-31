@@ -224,7 +224,9 @@ async def reset_doc(layer: str, key: str):
 
 class LLMSelectionPayload(BaseModel):
     profile_id: str
-    model_id: str
+    model_id: str | None = None
+    source: Literal["platform", "byok"] = "platform"
+    generation: int | None = None
 
 
 class RunStartRequest(BaseModel):
@@ -246,11 +248,7 @@ def _runner_for(req: RunStartRequest):
         run_update,
     )
 
-    selection = (
-        {"profile_id": req.llm_selection.profile_id, "model_id": req.llm_selection.model_id}
-        if req.llm_selection
-        else None
-    )
+    selection = req.llm_selection.model_dump(exclude_none=True) if req.llm_selection else None
 
     if req.mode == "update":
 
@@ -326,11 +324,7 @@ async def start_run(req: RunStartRequest):
 
     manager = get_run_manager()
     runner = _runner_for(req)
-    selection = (
-        {"profile_id": req.llm_selection.profile_id, "model_id": req.llm_selection.model_id}
-        if req.llm_selection
-        else None
-    )
+    selection = req.llm_selection.model_dump(exclude_none=True) if req.llm_selection else None
     try:
         run = await manager.start(
             layer=lyr,
@@ -466,11 +460,7 @@ def _legacy_run_stream(req: RunStartRequest) -> StreamingResponse:
     async def producer():
         manager = get_run_manager()
         runner = _runner_for(req)
-        selection = (
-            {"profile_id": req.llm_selection.profile_id, "model_id": req.llm_selection.model_id}
-            if req.llm_selection
-            else None
-        )
+        selection = req.llm_selection.model_dump(exclude_none=True) if req.llm_selection else None
         try:
             run = await manager.start(
                 layer=req.layer,

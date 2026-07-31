@@ -10,6 +10,7 @@ import {
   Database,
   FileScan,
   Image as ImageIcon,
+  KeyRound,
   Library,
   MessagesSquare,
   Mic,
@@ -76,6 +77,17 @@ export interface SettingsCategory {
 }
 
 const MODEL_CHILDREN: SettingsLeaf[] = [
+  {
+    key: "byok",
+    href: "/settings/byok",
+    label: { zh: "我的 Key", en: "My Keys" },
+    blurb: {
+      zh: "配置自己的 LLM、Embedding 和 MinerU Cloud 凭据。",
+      en: "Configure your own LLM, embedding, and MinerU Cloud credentials.",
+    },
+    icon: KeyRound,
+    tile: "bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400",
+  },
   {
     key: "llm",
     href: "/settings/llm",
@@ -374,6 +386,7 @@ const STORAGE_PATHS: Record<string, string> = {
   "/settings/appearance": "data/user/settings/interface.json",
   "/settings/network": "data/user/settings/system.json",
   "/settings/llm": "data/user/settings/model_catalog.json",
+  "/settings/byok": "data/system/byok (encrypted)",
   "/settings/embedding": "data/user/settings/model_catalog.json",
   "/settings/search": "data/user/settings/model_catalog.json",
   "/settings/tts": "data/user/settings/model_catalog.json",

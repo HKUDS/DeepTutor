@@ -137,12 +137,13 @@ def _stream_chunk_text(chunk: Any) -> str:
 
 
 def _wrap_token_quota(client: Any) -> Any:
-    """Wrap every generated client so all capability calls share one gate."""
+    """Wrap generated clients with platform quota or BYOK safety accounting."""
+    from deeptutor.multi_user.execution_source import current_source_is_platform
     from deeptutor.multi_user.token_quota import current_user_quota_policy
 
-    # Preserve the native SDK/adapter shape for the single-user and admin
-    # paths. Only a bounded non-admin grant needs the interception layer.
-    if current_user_quota_policy() is None:
+    # BYOK calls still need the request-rate/token safety gate; only the
+    # platform path may skip wrapping when no user quota is configured.
+    if current_source_is_platform("llm") and current_user_quota_policy() is None:
         return client
     return _TokenQuotaClient(client)
 
@@ -163,13 +164,54 @@ class _TokenQuotaCompletions:
         self._completions = completions
 
     async def create(self, **kwargs: Any) -> Any:
+        from deeptutor.multi_user.execution_source import current_source_is_platform
+
+        requested, prompt_estimate, output_estimate = _request_token_estimate(kwargs)
+        if not current_source_is_platform("llm"):
+            from deeptutor.multi_user.byok_usage import (
+                ByokUsageLimitExceeded,
+                ByokUsageUnavailable,
+                start_byok_usage,
+            )
+            from deeptutor.multi_user.execution_source import get_execution_source
+
+            source = get_execution_source()
+            try:
+                byok_lease = start_byok_usage(
+                    service="llm",
+                    user_id=source.user_id if source else "unknown",
+                    profile_id=source.profile_id if source and source.profile_id else "unknown",
+                    provider="openai-compatible",
+                    model=str(kwargs.get("model") or "unknown"),
+                    estimated_units=requested,
+                )
+            except ByokUsageLimitExceeded as exc:
+                raise LLMRateLimitError(str(exc), provider="deeptutor") from exc
+            except ByokUsageUnavailable as exc:
+                raise LLMProviderError(str(exc), provider="deeptutor") from exc
+            try:
+                response = await self._completions.create(**kwargs)
+            except BaseException:
+                byok_lease.release()
+                raise
+            if not kwargs.get("stream"):
+                actual = _usage_total(getattr(response, "usage", None)) or requested
+                byok_lease.finalize(actual)
+                return response
+            return _TokenQuotaStream(
+                response,
+                lease=None,
+                byok_lease=byok_lease,
+                requested_tokens=requested,
+                prompt_estimate=prompt_estimate,
+                output_estimate=output_estimate,
+            )
         from deeptutor.multi_user.token_quota import (
             TokenQuotaExceeded,
             TokenQuotaUnavailable,
             reserve_current_user_tokens,
         )
 
-        requested, prompt_estimate, output_estimate = _request_token_estimate(kwargs)
         try:
             lease = reserve_current_user_tokens(
                 requested_tokens=requested,
@@ -215,12 +257,14 @@ class _TokenQuotaStream:
         stream: Any,
         *,
         lease: Any,
+        byok_lease: Any = None,
         requested_tokens: int,
         prompt_estimate: int,
         output_estimate: int,
     ) -> None:
         self._stream = stream
         self._lease = lease
+        self._byok_lease = byok_lease
         self._requested_tokens = requested_tokens
         self._prompt_estimate = prompt_estimate
         self._output_estimate = output_estimate
@@ -235,16 +279,16 @@ class _TokenQuotaStream:
         try:
             chunk = await self._stream.__anext__()
         except StopAsyncIteration:
-            self._finalize()
+            self._finalize(status="success")
             raise
         except BaseException:
-            self._finalize()
+            self._finalize(status="failed")
             raise
         self._usage_total = max(self._usage_total, _usage_total(getattr(chunk, "usage", None)))
         self._output_chars += len(_stream_chunk_text(chunk))
         return chunk
 
-    def _finalize(self) -> None:
+    def _finalize(self, *, status: str = "success") -> None:
         if self._finalized:
             return
         self._finalized = True
@@ -255,10 +299,13 @@ class _TokenQuotaStream:
                 min(self._output_estimate, 256) if self._output_chars else 0,
             )
             actual = max(self._requested_tokens, self._prompt_estimate + estimated_output)
-        self._lease.finalize(actual)
+        if self._lease is not None:
+            self._lease.finalize(actual)
+        if self._byok_lease is not None:
+            self._byok_lease.finalize(actual, status=status)
 
     async def close(self) -> None:
-        self._finalize()
+        self._finalize(status="cancelled")
         close = getattr(self._stream, "close", None)
         if callable(close):
             result = close()

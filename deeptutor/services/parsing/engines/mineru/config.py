@@ -54,6 +54,11 @@ class MinerUConfig:
     # opts in explicitly (Settings → Document Parsing) or via the one-click
     # download button. Cloud mode ignores this (no local models).
     allow_local_model_download: bool = False
+    # Platform/BYOK source metadata; the token itself remains only in the
+    # request-scoped config and is never emitted by ``repr``/JSON APIs.
+    source: str = "platform"
+    profile_id: str | None = None
+    profile_generation: int | None = None
 
     @property
     def is_cloud(self) -> bool:
@@ -72,6 +77,57 @@ class MinerUConfig:
 
 def resolve_mineru_config() -> MinerUConfig:
     """Load the effective MinerU config from ``document_parsing.json`` (+ env overrides)."""
+    from deeptutor.multi_user.byok_policy import (
+        allowed_binding,
+        byok_runtime_enabled,
+        validate_endpoint,
+    )
+    from deeptutor.multi_user.byok_vault import UserByokCredentialVault
+    from deeptutor.multi_user.context import get_current_user
+    from deeptutor.multi_user.execution_source import (
+        get_execution_source,
+        resolve_execution_source,
+    )
+    from deeptutor.multi_user.grants import load_grant
+
+    user = get_current_user()
+    vault = UserByokCredentialVault()
+    profiles = vault.list_profiles(user.id, service="mineru")
+    if profiles:
+        source = get_execution_source()
+        preferences = vault.get_preferences(user.id)
+        resolved_source = source
+        if resolved_source is None or resolved_source.service != "mineru":
+            resolved_source = resolve_execution_source(
+                "mineru",
+                grant=load_grant(user.id),
+                preferences=preferences,
+                byok_profiles=profiles,
+            )
+        if resolved_source.is_byok:
+            profile, secret = vault.load_secret(user.id, str(resolved_source.profile_id))
+            provider = str(profile.get("provider") or "mineru").strip().lower()
+            if provider != "mineru" or not byok_runtime_enabled("mineru") or not allowed_binding("mineru", provider):
+                raise MinerUError("MinerU BYOK is not enabled for this provider")
+            endpoint = str(profile.get("base_url") or "https://mineru.net").strip().rstrip("/")
+            try:
+                validate_endpoint(endpoint, service="mineru", binding="mineru")
+            except ValueError as exc:
+                raise MinerUError(str(exc)) from exc
+            return MinerUConfig(
+                mode=MINERU_MODE_CLOUD,
+                api_base_url=endpoint,
+                api_token=secret,
+                model_version=str(profile.get("model") or "pipeline"),
+                source="byok",
+                profile_id=str(profile.get("id") or ""),
+                profile_generation=int(profile.get("generation") or 0),
+            )
+        if not user.is_admin and not (load_grant(user.id).get("platform") or {}).get("mineru", {}).get("enabled", False):
+            raise MinerUError("Platform MinerU access is not enabled for your account")
+    elif not user.is_admin and not (load_grant(user.id).get("platform") or {}).get("mineru", {}).get("enabled", False):
+        raise MinerUError("No MinerU source is enabled for your account")
+
     settings = load_mineru_settings()
     return MinerUConfig(
         mode=str(settings.get("mode") or MINERU_MODE_LOCAL),

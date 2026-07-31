@@ -208,6 +208,11 @@ def get_llm_config() -> LLMConfig:
     return _LLM_CONFIG_CACHE
 
 
+def get_scoped_llm_config() -> LLMConfig | None:
+    """Return the request-local config without falling back to the catalog."""
+    return _SCOPED_LLM_CONFIG.get()
+
+
 async def get_llm_config_async() -> LLMConfig:
     """
     Async wrapper for get_llm_config.
@@ -285,6 +290,7 @@ def get_token_limit_kwargs(model: str, max_tokens: int) -> dict[str, int]:
 __all__ = [
     "LLMConfig",
     "get_llm_config",
+    "get_scoped_llm_config",
     "get_llm_config_async",
     "clear_llm_config_cache",
     "reload_config",

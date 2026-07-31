@@ -1,4 +1,4 @@
-"""Grant v2 tool/exec whitelists: normalization and runtime resolution."""
+"""Grant v3 tool/exec whitelists: normalization and runtime resolution."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def grantable_alice(mu_isolated_root, monkeypatch):
     return "u_alice"
 
 
-def test_normalize_migrates_v1_to_v2():
+def test_normalize_migrates_v1_to_v3():
     v1 = {
         "version": 1,
         "models": {
@@ -39,7 +39,7 @@ def test_normalize_migrates_v1_to_v2():
         "spaces": [{"space_id": "old"}],
     }
     grant = normalize_grant("u_alice", v1)
-    assert grant["version"] == 2
+    assert grant["version"] == 3
     assert grant["models"] == {"llm": [{"profile_id": "p", "model_ids": ["m"]}]}
     assert "spaces" not in grant
     assert grant["knowledge_bases"] == [{"resource_id": "admin:kb:demo"}]
@@ -104,10 +104,10 @@ def test_user_whitelists_resolve_from_grant(as_user, grantable_alice):
         assert exec_override() is False
 
 
-def test_saved_grant_round_trips_v2(grantable_alice):
+def test_saved_grant_round_trips_v3(grantable_alice):
     save_grant(grantable_alice, {"enabled_tools": ["reason"], "exec_enabled": False})
     loaded = load_grant(grantable_alice)
-    assert loaded["version"] == 2
+    assert loaded["version"] == 3
     assert loaded["enabled_tools"] == ["reason"]
     assert loaded["mcp_tools"] is None
     assert loaded["exec_enabled"] is False
