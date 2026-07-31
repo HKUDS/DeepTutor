@@ -54,8 +54,11 @@ test("settings hub: keeps language controls usable on narrow layouts", () => {
 
   assert.match(
     hubSource,
-    /flex-col items-start justify-between gap-4 sm:flex-row/,
+    /flex-col items-start justify-between gap-4 lg:flex-row/,
   );
-  assert.match(hubSource, /w-full shrink-0 items-center justify-between/);
+  assert.match(
+    hubSource,
+    /w-full shrink-0 flex-wrap items-center justify-between/,
+  );
   assert.match(switcherSource, /type="button"/);
 });

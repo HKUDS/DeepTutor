@@ -7,6 +7,7 @@ import { ChevronRight, Rocket, type LucideIcon } from "lucide-react";
 
 import { apiFetch, apiUrl } from "@/lib/api";
 import { LanguageSwitcher } from "@/components/settings/LanguageSwitcher";
+import { ThemeSwitcher } from "@/components/settings/ThemeSwitcher";
 import {
   serviceReadiness,
   useSettings,
@@ -44,7 +45,9 @@ export default function SettingsHub() {
     diagnosticsResults,
     language,
     startTour,
+    theme,
     updateLanguage,
+    updateTheme,
   } = useSettings();
 
   // Model preview: how many of the model-service leaves are configured.
@@ -97,7 +100,7 @@ export default function SettingsHub() {
 
   return (
     <div>
-      <header className="mb-7 flex flex-col items-start justify-between gap-4 sm:flex-row">
+      <header className="mb-7 flex flex-col items-start justify-between gap-4 lg:flex-row">
         <div className="min-w-0">
           <h1 className="font-serif text-[24px] font-semibold leading-tight tracking-tight text-[var(--foreground)]">
             {tr({ zh: "设置", en: "Settings" })}
@@ -109,7 +112,12 @@ export default function SettingsHub() {
             })}
           </p>
         </div>
-        <div className="flex w-full shrink-0 items-center justify-between gap-2 sm:w-auto sm:justify-end">
+        <div className="flex w-full shrink-0 flex-wrap items-center justify-between gap-2 lg:w-auto lg:justify-end">
+          <ThemeSwitcher
+            theme={theme}
+            onChange={(next) => void updateTheme(next)}
+            tr={tr}
+          />
           <LanguageSwitcher
             language={language}
             onChange={(next) => void updateLanguage(next)}

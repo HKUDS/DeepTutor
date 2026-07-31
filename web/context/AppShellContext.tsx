@@ -46,7 +46,7 @@ import {
   writeStoredSidebarCollapsed,
   type AppLanguage,
 } from "@/context/app-shell-storage";
-import { fetchBackendLanguage } from "@/context/app-shell-ui-settings";
+import { fetchBackendUiPreferences } from "@/context/app-shell-ui-settings";
 
 function isAuthPath(pathname: string): boolean {
   return pathname === "/login" || pathname === "/register";
@@ -75,6 +75,7 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const previousPathnameRef = useRef<string | null>(null);
   const languageRevisionRef = useRef(0);
+  const themeRevisionRef = useRef(0);
   const [theme, setThemeState] = useState<Theme>(() => {
     return getStoredTheme() ?? getSystemTheme();
   });
@@ -119,17 +120,25 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
     if (!shouldSync) return;
 
     let cancelled = false;
-    const revisionAtStart = languageRevisionRef.current;
-    void fetchBackendLanguage().then((nextLanguage) => {
+    const languageRevisionAtStart = languageRevisionRef.current;
+    const themeRevisionAtStart = themeRevisionRef.current;
+    void fetchBackendUiPreferences().then((preferences) => {
+      if (cancelled || preferences === null) return;
+
       if (
-        cancelled ||
-        nextLanguage === null ||
-        revisionAtStart !== languageRevisionRef.current
+        preferences.language !== undefined &&
+        languageRevisionAtStart === languageRevisionRef.current
       ) {
-        return;
+        writeStoredLanguage(preferences.language);
+        setLanguageState(preferences.language);
       }
-      writeStoredLanguage(nextLanguage);
-      setLanguageState(nextLanguage);
+      if (
+        preferences.theme !== undefined &&
+        themeRevisionAtStart === themeRevisionRef.current
+      ) {
+        applyThemePreference(preferences.theme);
+        setThemeState(preferences.theme);
+      }
     });
 
     return () => {
@@ -139,6 +148,7 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     return subscribeToThemeChanges((nextTheme) => {
+      themeRevisionRef.current += 1;
       setThemeState(nextTheme);
     });
   }, []);
@@ -230,6 +240,7 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setTheme = useCallback((nextTheme: Theme) => {
+    themeRevisionRef.current += 1;
     applyThemePreference(nextTheme);
     setThemeState(nextTheme);
   }, []);
