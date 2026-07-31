@@ -93,7 +93,7 @@ def test_policy_blocks_private_addresses_and_requires_custom_allowlist(monkeypat
         )
 
 
-def test_old_grant_migrates_platform_access_and_new_grant_defaults_byok():
+def test_old_grant_migrates_platform_access_and_byok_defaults_deny():
     from deeptutor.multi_user.grants import normalize_grant, validate_grant
 
     migrated = normalize_grant("u_old", {"version": 2, "models": {"llm": []}})
@@ -102,6 +102,12 @@ def test_old_grant_migrates_platform_access_and_new_grant_defaults_byok():
     assert migrated["platform"]["embedding"]["enabled"] is True
     assert migrated["platform"]["mineru"]["enabled"] is True
     assert fresh["platform"]["embedding"]["enabled"] is False
-    assert fresh["byok"]["llm"]["enabled"] is True
+    assert migrated["byok"]["llm"]["enabled"] is False
+    assert fresh["byok"] == {
+        "llm": {"enabled": False},
+        "embedding": {"enabled": False},
+        "mineru": {"enabled": False},
+    }
+    assert normalize_grant("u_partial", {"byok": {"llm": {}}})["byok"]["llm"]["enabled"] is False
     with pytest.raises(ValueError):
         validate_grant({"byok": {"llm": {"api_key": "sk-secret"}}})

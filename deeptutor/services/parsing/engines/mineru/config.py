@@ -80,6 +80,7 @@ def resolve_mineru_config() -> MinerUConfig:
     from deeptutor.multi_user.byok_policy import (
         allowed_binding,
         byok_runtime_enabled,
+        grant_service_enabled,
         validate_endpoint,
     )
     from deeptutor.multi_user.byok_vault import UserByokCredentialVault
@@ -91,6 +92,7 @@ def resolve_mineru_config() -> MinerUConfig:
     from deeptutor.multi_user.grants import load_grant
 
     user = get_current_user()
+    grant = load_grant(user.id)
     vault = UserByokCredentialVault()
     profiles = vault.list_profiles(user.id, service="mineru")
     if profiles:
@@ -100,7 +102,7 @@ def resolve_mineru_config() -> MinerUConfig:
         if resolved_source is None or resolved_source.service != "mineru":
             resolved_source = resolve_execution_source(
                 "mineru",
-                grant=load_grant(user.id),
+                grant=grant,
                 preferences=preferences,
                 byok_profiles=profiles,
             )
@@ -111,9 +113,12 @@ def resolve_mineru_config() -> MinerUConfig:
                 raise MinerUError("MinerU BYOK is not enabled for this provider")
             endpoint = str(profile.get("base_url") or "https://mineru.net").strip().rstrip("/")
             try:
-                validate_endpoint(endpoint, service="mineru", binding="mineru")
+                validated_endpoint = validate_endpoint(endpoint, service="mineru", binding="mineru")
             except ValueError as exc:
                 raise MinerUError(str(exc)) from exc
+            if not validated_endpoint:
+                raise MinerUError("MinerU BYOK profile has no usable endpoint")
+            endpoint = validated_endpoint
             return MinerUConfig(
                 mode=MINERU_MODE_CLOUD,
                 api_base_url=endpoint,
@@ -123,9 +128,9 @@ def resolve_mineru_config() -> MinerUConfig:
                 profile_id=str(profile.get("id") or ""),
                 profile_generation=int(profile.get("generation") or 0),
             )
-        if not user.is_admin and not (load_grant(user.id).get("platform") or {}).get("mineru", {}).get("enabled", False):
+        if not user.is_admin and not grant_service_enabled(grant, "platform", "mineru"):
             raise MinerUError("Platform MinerU access is not enabled for your account")
-    elif not user.is_admin and not (load_grant(user.id).get("platform") or {}).get("mineru", {}).get("enabled", False):
+    elif not user.is_admin and not grant_service_enabled(grant, "platform", "mineru"):
         raise MinerUError("No MinerU source is enabled for your account")
 
     settings = load_mineru_settings()

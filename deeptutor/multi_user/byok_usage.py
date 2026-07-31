@@ -77,6 +77,7 @@ class ByokUsageLease:
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
+    connection: sqlite3.Connection | None = None
     try:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(db_path, timeout=30, isolation_level=None)
@@ -100,10 +101,17 @@ def _connect(db_path: Path) -> sqlite3.Connection:
                 );
                 CREATE INDEX IF NOT EXISTS idx_byok_usage_rate
                     ON byok_usage (user_id, service, created_at);
+                CREATE INDEX IF NOT EXISTS idx_byok_usage_created_at
+                    ON byok_usage (created_at);
                 """
             )
         return connection
     except (OSError, sqlite3.Error) as exc:
+        if connection is not None:
+            try:
+                connection.close()
+            except (OSError, sqlite3.Error):
+                pass
         raise ByokUsageUnavailable("BYOK usage ledger is unavailable") from exc
 
 

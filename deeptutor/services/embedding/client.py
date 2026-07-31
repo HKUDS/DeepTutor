@@ -107,8 +107,8 @@ class EmbeddingClient:
     def _reserve_quota(self, estimated_tokens: int):
         if self.config.source == "byok":
             from deeptutor.multi_user.byok_usage import start_byok_usage
-            from deeptutor.multi_user.execution_source import get_execution_source
             from deeptutor.multi_user.context import get_current_user
+            from deeptutor.multi_user.execution_source import get_execution_source
 
             source = get_execution_source()
             source_for_service = source if source and source.service == "embedding" else None
@@ -333,19 +333,24 @@ class EmbeddingClient:
         return embedding_wrapper
 
 
-_SCOPED_CLIENT: ContextVar[EmbeddingClient | None] = ContextVar(
+_SCOPED_CLIENT: ContextVar[tuple[int, EmbeddingClient] | None] = ContextVar(
     "deeptutor_scoped_embedding_client", default=None
 )
+_CLIENT_EPOCH = 0
 
 
 def get_embedding_client(config: Optional[EmbeddingConfig] = None) -> EmbeddingClient:
     resolved_config = config or get_embedding_config()
-    client = _SCOPED_CLIENT.get()
+    scoped = _SCOPED_CLIENT.get()
+    client = scoped[1] if scoped is not None and scoped[0] == _CLIENT_EPOCH else None
     if client is None or client.config != resolved_config:
         client = EmbeddingClient(resolved_config)
-        _SCOPED_CLIENT.set(client)
+        _SCOPED_CLIENT.set((_CLIENT_EPOCH, client))
     return client
 
 
 def reset_embedding_client() -> None:
+    """Invalidate embedding clients across all async-context-local caches."""
+    global _CLIENT_EPOCH
+    _CLIENT_EPOCH += 1
     _SCOPED_CLIENT.set(None)

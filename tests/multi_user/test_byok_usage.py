@@ -80,3 +80,35 @@ def test_byok_usage_enforces_request_and_token_limits(tmp_path, monkeypatch):
             estimated_units=1,
         )
     lease.release()
+
+
+def test_byok_usage_schema_indexes_expiration_cleanup(tmp_path):
+    connection = byok_usage._connect(tmp_path / "usage.sqlite3")
+    try:
+        indexes = {row[1] for row in connection.execute("PRAGMA index_list('byok_usage')")}
+    finally:
+        connection.close()
+
+    assert "idx_byok_usage_created_at" in indexes
+
+
+def test_byok_usage_connect_closes_connection_when_setup_fails(tmp_path, monkeypatch):
+    class FailingConnection:
+        row_factory = None
+
+        def __init__(self) -> None:
+            self.closed = False
+
+        def execute(self, _statement: str) -> None:
+            raise sqlite3.OperationalError("broken connection")
+
+        def close(self) -> None:
+            self.closed = True
+
+    connection = FailingConnection()
+    monkeypatch.setattr(byok_usage.sqlite3, "connect", lambda *_args, **_kwargs: connection)
+
+    with pytest.raises(byok_usage.ByokUsageUnavailable, match="ledger is unavailable"):
+        byok_usage._connect(tmp_path / "usage.sqlite3")
+
+    assert connection.closed is True

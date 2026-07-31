@@ -1,4 +1,5 @@
 import { apiFetch, apiUrl } from "@/lib/api";
+import { readApiError } from "./helpers";
 
 export type AdminByokService = {
   enabled: boolean;
@@ -20,22 +21,13 @@ export type AdminByokPolicy = {
   };
 };
 
-async function readError(response: Response, fallback: string): Promise<string> {
-  try {
-    const body = await response.json();
-    return String(body?.detail || fallback);
-  } catch {
-    return fallback;
-  }
-}
-
 export async function fetchAdminByokPolicy(): Promise<{
   policy: AdminByokPolicy;
   auth_enabled: boolean;
   vault_available: boolean;
 }> {
   const response = await apiFetch(apiUrl("/api/v1/admin/byok/policy"));
-  if (!response.ok) throw new Error(await readError(response, "无法读取 BYOK 策略"));
+  if (!response.ok) throw new Error(await readApiError(response, "无法读取 BYOK 策略"));
   return response.json();
 }
 
@@ -45,7 +37,7 @@ export async function saveAdminByokPolicy(policy: AdminByokPolicy): Promise<Admi
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ policy }),
   });
-  if (!response.ok) throw new Error(await readError(response, "无法保存 BYOK 策略"));
+  if (!response.ok) throw new Error(await readApiError(response, "无法保存 BYOK 策略"));
   const data = await response.json();
   return data.policy as AdminByokPolicy;
 }

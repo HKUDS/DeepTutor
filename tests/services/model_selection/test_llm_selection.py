@@ -104,6 +104,17 @@ def test_selection_defaults_legacy_payload_to_platform_and_supports_byok_generat
         "generation": 3,
     }
 
+    fallback_generation = LLMSelection.from_payload(
+        {
+            "source": "byok",
+            "profile_id": "vault-profile",
+            "generation": None,
+            "profile_generation": 4,
+        }
+    )
+    assert fallback_generation is not None
+    assert fallback_generation.generation == 4
+
 
 def test_apply_byok_selection_does_not_read_or_mutate_platform_catalog():
     catalog = _catalog()

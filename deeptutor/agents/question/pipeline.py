@@ -412,6 +412,7 @@ class QuestionPipeline:
             api_version=getattr(self.llm_config, "api_version", None),
             extra_headers=getattr(self.llm_config, "extra_headers", None) or None,
             reasoning_effort=self.reasoning_effort,
+            source=getattr(self.llm_config, "source", "platform"),
         )
 
         self.registry = get_tool_registry()

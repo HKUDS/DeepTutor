@@ -44,7 +44,9 @@ class LLMSelection:
         if source == "platform" and not model_id:
             raise ValueError("Invalid LLM selection: model_id is required for platform.")
 
-        raw_generation = value.get("generation", value.get("profile_generation"))
+        raw_generation = value.get("generation")
+        if raw_generation is None:
+            raw_generation = value.get("profile_generation")
         generation: int | None = None
         if raw_generation is not None and raw_generation != "":
             try:

@@ -2,22 +2,22 @@
 
 from __future__ import annotations
 
-from contextvars import ContextVar, Token
-from typing import Any
-
-from deeptutor.services.config.provider_runtime import ResolvedLLMConfig, resolve_llm_runtime_config
-from deeptutor.services.llm import config as llm_config_module
-from deeptutor.services.llm.config import LLMConfig
+from contextvars import Token
+from typing import Any, TypeAlias
 
 from deeptutor.multi_user.execution_source import (
     ExecutionSource,
     reset_execution_source,
     set_execution_source,
 )
+from deeptutor.services.config.provider_runtime import ResolvedLLMConfig, resolve_llm_runtime_config
+from deeptutor.services.llm import config as llm_config_module
+from deeptutor.services.llm.config import LLMConfig
 
-_ACTIVE_SOURCE_TOKEN: ContextVar[Token[Any] | None] = ContextVar(
-    "deeptutor_llm_source_token", default=None
-)
+LLMSelectionScopeToken: TypeAlias = tuple[
+    Token[LLMConfig | None],
+    Token[ExecutionSource | None],
+]
 
 
 def llm_config_from_resolved(resolved: ResolvedLLMConfig) -> LLMConfig:
@@ -34,6 +34,7 @@ def llm_config_from_resolved(resolved: ResolvedLLMConfig) -> LLMConfig:
         extra_headers=resolved.extra_headers,
         reasoning_effort=resolved.reasoning_effort,
         context_window=resolved.context_window,
+        source=getattr(resolved, "source", "platform"),
     )
 
 
@@ -51,7 +52,7 @@ def resolve_llm_config_for_selection(selection: Any) -> LLMConfig:
     return llm_config_from_resolved(resolve_llm_runtime_config(llm_selection=selection))
 
 
-def activate_llm_selection(selection: Any) -> tuple[LLMConfig, Token[LLMConfig | None]]:
+def activate_llm_selection(selection: Any) -> tuple[LLMConfig, LLMSelectionScopeToken]:
     """Resolve and install a scoped LLM config for the current async context."""
     from deeptutor.multi_user.context import get_current_user
     from deeptutor.multi_user.model_access import apply_allowed_llm_selection
@@ -67,7 +68,7 @@ def activate_llm_selection(selection: Any) -> tuple[LLMConfig, Token[LLMConfig |
 
         normalized = LLMSelection.from_payload(default_llm_selection())
     config = resolve_llm_config_for_selection(normalized)
-    token = llm_config_module.set_scoped_llm_config(config)
+    config_token = llm_config_module.set_scoped_llm_config(config)
     source = normalized or LLMSelection(profile_id="", model_id=None)
     source_token = set_execution_source(
         ExecutionSource(
@@ -79,21 +80,21 @@ def activate_llm_selection(selection: Any) -> tuple[LLMConfig, Token[LLMConfig |
             usage_origin=source.source,
         )
     )
-    _ACTIVE_SOURCE_TOKEN.set(source_token)
-    return config, token
+    return config, (config_token, source_token)
 
 
-def reset_llm_selection(token: Token[LLMConfig | None] | None) -> None:
-    if token is not None:
-        llm_config_module.reset_scoped_llm_config(token)
-    source_token = _ACTIVE_SOURCE_TOKEN.get()
-    if source_token is not None:
-        reset_execution_source(source_token)
-        _ACTIVE_SOURCE_TOKEN.set(None)
+def reset_llm_selection(token: LLMSelectionScopeToken | None) -> None:
+    """Restore the exact config/source pair installed by one activation."""
+    if token is None:
+        return
+    config_token, source_token = token
+    llm_config_module.reset_scoped_llm_config(config_token)
+    reset_execution_source(source_token)
 
 
 __all__ = [
     "activate_llm_selection",
+    "LLMSelectionScopeToken",
     "llm_config_from_resolved",
     "reset_llm_selection",
     "resolve_llm_config_for_selection",

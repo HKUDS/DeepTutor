@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, Header
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.testclient import TestClient
 import pytest
 
@@ -65,11 +65,20 @@ def byok_client(mu_isolated_root, make_user, seed_user, monkeypatch):
     import deeptutor.api.routers.byok as byok_router
     import deeptutor.multi_user.byok_policy as policy_module
     from deeptutor.multi_user.context import set_current_user
+    from deeptutor.multi_user.grants import load_grant, save_grant
     from deeptutor.services.auth import TokenPayload
 
+    # The first stored account is intentionally promoted to administrator by
+    # the identity layer. Seed it separately so Alice and Bob exercise normal
+    # user grants.
+    seed_user("admin@example.com")
     alice = seed_user("alice@example.com")
     bob = seed_user("bob@example.com")
     users = {"alice": make_user(alice["id"], username="alice@example.com"), "bob": make_user(bob["id"], username="bob@example.com")}
+    for user in users.values():
+        grant = load_grant(user.id)
+        grant["byok"] = {service: {"enabled": True} for service in ("llm", "embedding", "mineru")}
+        save_grant(user.id, grant)
 
     monkeypatch.setenv("DEEPTUTOR_BYOK_MASTER_KEY", "test-master-key")
     monkeypatch.setattr(byok_router, "auth_is_enabled", lambda: True)
@@ -83,7 +92,9 @@ def byok_client(mu_isolated_root, make_user, seed_user, monkeypatch):
     app = FastAPI()
     app.include_router(byok_router.router, prefix="/api/v1")
     app.dependency_overrides[byok_router.require_auth] = auth_override
-    return TestClient(app)
+    client = TestClient(app)
+    client.app.state.byok_test_users = users
+    return client
 
 
 def _headers(user: str) -> dict[str, str]:
@@ -152,3 +163,67 @@ def test_byok_profile_update_requires_current_generation(byok_client: TestClient
         },
     )
     assert stale.status_code == 409
+
+
+def test_byok_profile_writes_require_user_grant(byok_client: TestClient):
+    from deeptutor.multi_user.grants import load_grant, save_grant
+
+    created = byok_client.post(
+        "/api/v1/byok/profiles",
+        headers=_headers("alice"),
+        json={
+            "service": "llm",
+            "provider": "openai",
+            "model": "gpt-test",
+            "secret": "sk-before-revoke",
+        },
+    )
+    assert created.status_code == 200
+    profile = created.json()["profile"]
+
+    alice = byok_client.app.state.byok_test_users["alice"]
+    grant = load_grant(alice.id)
+    grant["byok"]["llm"]["enabled"] = False
+    save_grant(alice.id, grant)
+
+    blocked_create = byok_client.post(
+        "/api/v1/byok/profiles",
+        headers=_headers("alice"),
+        json={
+            "service": "llm",
+            "provider": "openai",
+            "model": "gpt-blocked",
+            "secret": "sk-blocked",
+        },
+    )
+    assert blocked_create.status_code == 403
+    assert blocked_create.json()["detail"] == "BYOK is not enabled for your account"
+
+    blocked_update = byok_client.patch(
+        f"/api/v1/byok/profiles/{profile['id']}",
+        headers=_headers("alice"),
+        json={
+            "service": "llm",
+            "provider": "openai",
+            "model": "gpt-blocked",
+            "generation": profile["generation"],
+        },
+    )
+    assert blocked_update.status_code == 403
+    assert blocked_update.json()["detail"] == "BYOK is not enabled for your account"
+
+
+def test_byok_current_user_checks_auth_before_loading_context(monkeypatch):
+    import deeptutor.api.routers.byok as byok_router
+
+    monkeypatch.setattr(byok_router, "auth_is_enabled", lambda: False)
+    monkeypatch.setattr(
+        byok_router,
+        "get_current_user",
+        lambda: pytest.fail("current user must not be loaded while auth is disabled"),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        byok_router._current_user()
+
+    assert exc_info.value.status_code == 400

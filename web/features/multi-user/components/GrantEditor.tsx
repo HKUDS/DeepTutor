@@ -24,9 +24,11 @@ function emptyGrant(userId: string): GrantPayload {
       mineru: { enabled: false },
     },
     byok: {
-      llm: { enabled: true },
-      embedding: { enabled: true },
-      mineru: { enabled: true },
+      // Match the safer server-side new-user default: BYOK access is an
+      // explicit admin grant, never something a newly created grant enables.
+      llm: { enabled: false },
+      embedding: { enabled: false },
+      mineru: { enabled: false },
     },
     knowledge_bases: [],
     skills: [],

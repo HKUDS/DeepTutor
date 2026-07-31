@@ -70,11 +70,10 @@ def _vault() -> UserByokCredentialVault:
     return UserByokCredentialVault()
 
 
-def _current_user_id() -> str:
-    user = get_current_user()
+def _current_user() -> Any:
     if not auth_is_enabled():
         raise HTTPException(status_code=400, detail="Auth must be enabled before using BYOK")
-    return user.id
+    return get_current_user()
 
 
 def _profile_metadata(payload: ByokProfileRequest) -> dict[str, Any]:
@@ -89,10 +88,17 @@ def _profile_metadata(payload: ByokProfileRequest) -> dict[str, Any]:
     }
 
 
-def _validate_profile_request(payload: ByokProfileRequest) -> None:
+def _validate_profile_request(
+    payload: ByokProfileRequest,
+    *,
+    user: Any,
+    grant: dict[str, Any],
+) -> None:
     policy = load_policy()
     if not byok_runtime_enabled(payload.service, policy):
         raise HTTPException(status_code=403, detail=f"BYOK is disabled for {payload.service}")
+    if not user.is_admin and not grant_service_enabled(grant, "byok", payload.service):
+        raise HTTPException(status_code=403, detail="BYOK is not enabled for your account")
     if not allowed_binding(payload.service, payload.provider, policy):
         raise HTTPException(status_code=400, detail="This provider is not allowed by the administrator")
     if payload.service == "mineru" and payload.mode not in {"", "cloud"}:
@@ -120,8 +126,8 @@ def _translate_vault_error(exc: ByokVaultError) -> HTTPException:
 
 @router.get("/byok/status")
 async def get_byok_status(_: object = Depends(require_auth)) -> dict[str, Any]:
-    user_id = _current_user_id()
-    user = get_current_user()
+    user = _current_user()
+    user_id = user.id
     grant = load_grant(user_id)
     policy = load_policy()
     vault = _vault()
@@ -153,8 +159,9 @@ async def create_byok_profile(
     payload: ByokProfileRequest,
     _: object = Depends(require_auth),
 ) -> dict[str, Any]:
-    user_id = _current_user_id()
-    _validate_profile_request(payload)
+    user = _current_user()
+    user_id = user.id
+    _validate_profile_request(payload, user=user, grant=load_grant(user_id))
     if payload.secret is None or not payload.secret.get_secret_value():
         raise HTTPException(status_code=400, detail="A BYOK secret is required")
     vault = _vault()
@@ -175,8 +182,9 @@ async def update_byok_profile(
     payload: ByokProfileRequest,
     _: object = Depends(require_auth),
 ) -> dict[str, Any]:
-    user_id = _current_user_id()
-    _validate_profile_request(payload)
+    user = _current_user()
+    user_id = user.id
+    _validate_profile_request(payload, user=user, grant=load_grant(user_id))
     vault = _vault()
     try:
         result = vault.save_profile(
@@ -201,7 +209,7 @@ async def validate_byok_profile(
     Provider-specific probes are added by each service adapter; this endpoint
     deliberately never returns the provider's raw response or secret.
     """
-    user_id = _current_user_id()
+    user_id = _current_user().id
     vault = _vault()
     try:
         metadata, _secret = vault.load_secret(user_id, profile_id)
@@ -229,7 +237,7 @@ async def delete_byok_profile(
     profile_id: str,
     _: object = Depends(require_auth),
 ) -> dict[str, Any]:
-    user_id = _current_user_id()
+    user_id = _current_user().id
     vault = _vault()
     try:
         deleted = vault.delete_profile(user_id, profile_id)
@@ -255,8 +263,8 @@ async def set_byok_preference(
     payload: ByokPreferenceRequest,
     _: object = Depends(require_auth),
 ) -> dict[str, Any]:
-    user_id = _current_user_id()
-    user = get_current_user()
+    user = _current_user()
+    user_id = user.id
     grant = load_grant(user_id)
     vault = _vault()
     if not user.is_admin and not grant_service_enabled(grant, payload.source, payload.service):

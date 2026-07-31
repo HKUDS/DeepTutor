@@ -7,7 +7,9 @@ import ipaddress
 import json
 import os
 from pathlib import Path
+import queue
 import socket
+import threading
 from typing import Any
 from urllib.parse import urlparse
 
@@ -19,6 +21,8 @@ from . import paths
 
 POLICY_FILENAME = "byok_policy.v1.json"
 SERVICES = ("llm", "embedding", "mineru")
+DNS_RESOLUTION_TIMEOUT_SECONDS = 2.0
+_DNS_RESOLUTION_SLOTS = threading.BoundedSemaphore(value=4)
 
 DEFAULT_POLICY: dict[str, Any] = {
     "version": 1,
@@ -123,8 +127,11 @@ def load_policy() -> dict[str, Any]:
             raw = None
     policy = normalize_policy(raw)
     env_enabled = os.getenv("DEEPTUTOR_BYOK_ENABLED")
-    if env_enabled is not None:
-        policy["enabled"] = env_enabled.strip().lower() in {"1", "true", "yes", "on"}
+    # Environment configuration is intentionally a one-way emergency switch.
+    # A deployment may force BYOK off, but true/empty/unknown values must not
+    # override the policy an administrator persisted through the UI.
+    if env_enabled is not None and env_enabled.strip().lower() in {"0", "false", "no", "off"}:
+        policy["enabled"] = False
     return policy
 
 
@@ -201,6 +208,44 @@ def _is_blocked_address(address: str) -> bool:
     )
 
 
+def _resolve_dns_addresses(hostname: str, port: int) -> set[str]:
+    """Resolve a hostname with a bounded wait and no process-wide socket mutation."""
+    if not _DNS_RESOLUTION_SLOTS.acquire(blocking=False):
+        raise ValueError("BYOK endpoint DNS resolution is temporarily unavailable")
+
+    outcome: queue.Queue[tuple[set[str] | None, OSError | None]] = queue.Queue(maxsize=1)
+
+    def resolve() -> None:
+        try:
+            outcome.put(
+                (
+                    {
+                        item[4][0]
+                        for item in socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+                    },
+                    None,
+                )
+            )
+        except OSError as exc:
+            outcome.put((None, exc))
+        finally:
+            _DNS_RESOLUTION_SLOTS.release()
+
+    try:
+        threading.Thread(target=resolve, name="deeptutor-byok-dns", daemon=True).start()
+    except RuntimeError as exc:
+        _DNS_RESOLUTION_SLOTS.release()
+        raise ValueError("BYOK endpoint DNS resolution failed") from exc
+
+    try:
+        addresses, error = outcome.get(timeout=DNS_RESOLUTION_TIMEOUT_SECONDS)
+    except queue.Empty as exc:
+        raise ValueError("BYOK endpoint DNS resolution timed out") from exc
+    if error is not None:
+        raise ValueError("BYOK endpoint DNS resolution failed") from error
+    return addresses or set()
+
+
 def validate_endpoint(
     endpoint: str | None,
     *,
@@ -227,13 +272,7 @@ def validate_endpoint(
     if _is_blocked_address(hostname):
         raise ValueError("BYOK endpoint resolves to a blocked network address")
     if resolve_dns:
-        try:
-            addresses = {
-                item[4][0]
-                for item in socket.getaddrinfo(hostname, parsed.port or 443, type=socket.SOCK_STREAM)
-            }
-        except OSError as exc:
-            raise ValueError("BYOK endpoint DNS resolution failed") from exc
+        addresses = _resolve_dns_addresses(hostname, parsed.port or 443)
         if not addresses or any(_is_blocked_address(address) for address in addresses):
             raise ValueError("BYOK endpoint resolves to a blocked network address")
     current = normalize_policy(policy if policy is not None else load_policy())

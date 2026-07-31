@@ -13,21 +13,21 @@ from dataclasses import dataclass
 import json
 import math
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from openai import AsyncAzureOpenAI, AsyncOpenAI
 
 from deeptutor.services.config import load_system_settings
 from deeptutor.services.llm import get_token_limit_kwargs, supports_tools
-from deeptutor.services.llm.reasoning_params import (
-    build_openai_compatible_reasoning_kwargs,
-)
-from deeptutor.services.provider_registry import find_by_name
 from deeptutor.services.llm.exceptions import (
     LLMProviderError,
     LLMRateLimitError,
 )
+from deeptutor.services.llm.reasoning_params import (
+    build_openai_compatible_reasoning_kwargs,
+)
+from deeptutor.services.provider_registry import find_by_name
 
 # Providers that don't reliably support OpenAI function-calling. The loop
 # still runs without tool schemas — the model just produces prose.
@@ -56,6 +56,7 @@ class LLMClientConfig:
     api_version: str | None = None
     extra_headers: dict[str, str] | None = None
     reasoning_effort: str | None = None
+    source: Literal["platform", "byok"] = "platform"
 
 
 def build_openai_client(config: LLMClientConfig) -> Any:
@@ -65,7 +66,7 @@ def build_openai_client(config: LLMClientConfig) -> Any:
     if spec:
         native_adapter = _build_native_provider_adapter(config, spec)
         if native_adapter is not None:
-            return _wrap_token_quota(native_adapter)
+            return _wrap_token_quota(native_adapter, source=config.source)
 
     http_client = None
     if load_system_settings()["disable_ssl_verify"]:
@@ -78,14 +79,15 @@ def build_openai_client(config: LLMClientConfig) -> Any:
             http_client=http_client,
             default_headers=default_headers,
         )
-        return _wrap_token_quota(client)
+        return _wrap_token_quota(client, source=config.source)
     return _wrap_token_quota(
         AsyncOpenAI(
             api_key=config.api_key or "sk-no-key-required",
             base_url=config.base_url or None,
             http_client=http_client,
             default_headers=default_headers,
-        )
+        ),
+        source=config.source,
     )
 
 
@@ -136,23 +138,25 @@ def _stream_chunk_text(chunk: Any) -> str:
     return str(getattr(delta, "content", "") or "") if delta is not None else ""
 
 
-def _wrap_token_quota(client: Any) -> Any:
+def _wrap_token_quota(client: Any, *, source: str = "platform") -> Any:
     """Wrap generated clients with platform quota or BYOK safety accounting."""
-    from deeptutor.multi_user.execution_source import current_source_is_platform
     from deeptutor.multi_user.token_quota import current_user_quota_policy
 
     # BYOK calls still need the request-rate/token safety gate; only the
-    # platform path may skip wrapping when no user quota is configured.
-    if current_source_is_platform("llm") and current_user_quota_policy() is None:
+    # platform path may skip wrapping when no user quota is configured.  The
+    # source is carried by LLMClientConfig so this remains correct when the
+    # request ContextVar does not survive a thread/async boundary.
+    normalized_source: Literal["platform", "byok"] = "byok" if source == "byok" else "platform"
+    if normalized_source == "platform" and current_user_quota_policy() is None:
         return client
-    return _TokenQuotaClient(client)
+    return _TokenQuotaClient(client, source=normalized_source)
 
 
 class _TokenQuotaClient:
-    def __init__(self, client: Any) -> None:
+    def __init__(self, client: Any, *, source: Literal["platform", "byok"] = "platform") -> None:
         self._client = client
         self.chat = SimpleNamespace(
-            completions=_TokenQuotaCompletions(client.chat.completions),
+            completions=_TokenQuotaCompletions(client.chat.completions, source=source),
         )
 
     def __getattr__(self, name: str) -> Any:
@@ -160,14 +164,18 @@ class _TokenQuotaClient:
 
 
 class _TokenQuotaCompletions:
-    def __init__(self, completions: Any) -> None:
+    def __init__(
+        self,
+        completions: Any,
+        *,
+        source: Literal["platform", "byok"] = "platform",
+    ) -> None:
         self._completions = completions
+        self._source = source
 
     async def create(self, **kwargs: Any) -> Any:
-        from deeptutor.multi_user.execution_source import current_source_is_platform
-
         requested, prompt_estimate, output_estimate = _request_token_estimate(kwargs)
-        if not current_source_is_platform("llm"):
+        if self._source == "byok":
             from deeptutor.multi_user.byok_usage import (
                 ByokUsageLimitExceeded,
                 ByokUsageUnavailable,
@@ -175,12 +183,20 @@ class _TokenQuotaCompletions:
             )
             from deeptutor.multi_user.execution_source import get_execution_source
 
-            source = get_execution_source()
+            execution_source = get_execution_source()
+            if execution_source is None:
+                from deeptutor.multi_user.context import get_current_user
+
+                user_id = get_current_user().id
+                profile_id = "unknown"
+            else:
+                user_id = execution_source.user_id
+                profile_id = execution_source.profile_id or "unknown"
             try:
                 byok_lease = start_byok_usage(
                     service="llm",
-                    user_id=source.user_id if source else "unknown",
-                    profile_id=source.profile_id if source and source.profile_id else "unknown",
+                    user_id=user_id,
+                    profile_id=profile_id,
                     provider="openai-compatible",
                     model=str(kwargs.get("model") or "unknown"),
                     estimated_units=requested,

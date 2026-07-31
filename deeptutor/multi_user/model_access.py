@@ -88,7 +88,9 @@ def redacted_model_access(user_id: str | None = None) -> dict[str, list[dict[str
                 }
             )
     policy = load_policy()
-    byok_granted = user.is_admin or grant_service_enabled(grant, "byok", "llm")
+    # ``user_id`` may name a user an administrator is inspecting.  Availability
+    # must always reflect that target user's grant, never the viewer's role.
+    byok_granted = grant_service_enabled(grant, "byok", "llm")
     byok_enabled = byok_runtime_enabled("llm", policy) and byok_granted
     for profile in get_user_byok_vault().list_profiles(user_id, service="llm"):
         provider = str(profile.get("provider") or "").strip()
@@ -112,6 +114,7 @@ def allowed_llm_options() -> dict[str, Any]:
     user = get_current_user()
     if user.is_admin:
         return list_llm_options(admin_catalog())
+    access = redacted_model_access(user.id).get("llm", [])
     options = [
         {
             "profile_id": item.get("profile_id"),
@@ -124,8 +127,8 @@ def allowed_llm_options() -> dict[str, Any]:
             "source": "admin",
             "is_active_default": False,
         }
-        for item in redacted_model_access(user.id).get("llm", [])
-        if item.get("available")
+        for item in access
+        if item.get("source") != "byok" and item.get("available")
     ]
     options.extend(
         {
@@ -139,7 +142,7 @@ def allowed_llm_options() -> dict[str, Any]:
             "provider": item.get("provider") or "",
             "is_active_default": False,
         }
-        for item in redacted_model_access(user.id).get("llm", [])
+        for item in access
         if item.get("source") == "byok" and item.get("available")
     )
     return {"active": None, "options": options}
@@ -188,7 +191,9 @@ def apply_allowed_llm_selection(selection: dict[str, Any] | None) -> dict[str, A
             "llm", str(profile.get("provider") or ""), policy
         ):
             raise PermissionError("This BYOK profile is not available to your account")
-        raw_generation = selection.get("generation", selection.get("profile_generation"))
+        raw_generation = selection.get("generation")
+        if raw_generation is None:
+            raw_generation = selection.get("profile_generation")
         if raw_generation not in (None, ""):
             try:
                 generation = int(raw_generation)
@@ -224,10 +229,8 @@ def default_llm_selection() -> dict[str, Any] | None:
     from .execution_source import resolve_execution_source
 
     vault = get_user_byok_vault()
-    all_profiles = [
-        item
-        for item in vault.list_profiles(user.id, service="llm")
-        if item.get("configured")
+    profiles = [
+        item for item in vault.list_profiles(user.id, service="llm") if item.get("configured")
     ]
     preferences = vault.get_preferences(user.id)
     preference = preferences.get("llm") if isinstance(preferences.get("llm"), dict) else {}
@@ -235,7 +238,7 @@ def default_llm_selection() -> dict[str, Any] | None:
     policy = load_policy()
     valid_profiles = [
         item
-        for item in all_profiles
+        for item in profiles
         if allowed_binding("llm", str(item.get("provider") or ""), policy)
     ]
     if requested_source == "byok" or (
@@ -247,7 +250,7 @@ def default_llm_selection() -> dict[str, Any] | None:
         source = resolve_execution_source(
             "llm",
             preferences=preferences,
-            byok_profiles=all_profiles if requested_source == "byok" else valid_profiles,
+            byok_profiles=valid_profiles,
         )
         if source.is_byok:
             return {

@@ -48,32 +48,26 @@ def _pdf_page_count(pdf_path: Path) -> int:
 
 def _reserve_mineru_pages(pdf_path: Path, config: MinerUConfig):
     """Reserve this user's MinerU page allowance, if the user is bounded."""
+    from deeptutor.multi_user.byok_policy import load_policy
     from deeptutor.multi_user.token_quota import (
         QuotaExceeded,
         TokenQuotaUnavailable,
-        current_user_resource_quota_policy,
         reserve_current_user_units,
     )
-    from deeptutor.multi_user.byok_policy import load_policy
 
-    policy = current_user_resource_quota_policy("mineru")
     policy_limits = load_policy().get("limits") or {}
     global_max_pages = max(1, int(policy_limits.get("max_pages_per_file", 50)))
     if config.source == "byok":
         # BYOK does not consume platform page credits, but the administrator's
         # per-file safety ceiling remains mandatory for untrusted users.
         pages = _pdf_page_count(pdf_path)
-        # BYOK does not consume the platform page grant, so a user's platform
-        # quota must not shrink the BYOK request. The deployment-wide safety
-        # ceiling still applies to every untrusted upload.
-        configured_max = global_max_pages
-        if pages > configured_max:
+        if pages > global_max_pages:
             raise MinerUError(
-                f"MinerU file exceeds the per-file safety limit of {configured_max} pages."
+                f"MinerU file exceeds the per-file safety limit of {global_max_pages} pages."
             )
         from deeptutor.multi_user.byok_usage import start_byok_usage
-        from deeptutor.multi_user.execution_source import get_execution_source
         from deeptutor.multi_user.context import get_current_user
+        from deeptutor.multi_user.execution_source import get_execution_source
 
         source = get_execution_source()
         source_for_service = source if source and source.service == "mineru" else None
@@ -90,6 +84,9 @@ def _reserve_mineru_pages(pdf_path: Path, config: MinerUConfig):
             estimated_units=pages,
         )
         return lease, pages
+    from deeptutor.multi_user.token_quota import current_user_resource_quota_policy
+
+    policy = current_user_resource_quota_policy("mineru")
     if policy is None:
         return None, 0
     pages = _pdf_page_count(pdf_path)

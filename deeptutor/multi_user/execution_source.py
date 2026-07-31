@@ -10,7 +10,7 @@ from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from .byok_policy import grant_service_enabled, byok_runtime_enabled
+from .byok_policy import byok_runtime_enabled, grant_service_enabled
 from .context import get_current_user
 from .grants import load_grant
 
@@ -62,7 +62,20 @@ def get_execution_source() -> ExecutionSource | None:
     return _CURRENT_SOURCE.get()
 
 
-def current_source_is_platform(service: str | None = None) -> bool:
+def current_source_is_platform(
+    service: str | None = None,
+    *,
+    config_source: str | None = None,
+) -> bool:
+    """Return whether a service uses platform billing/source semantics.
+
+    Runtime clients should pass their explicit ``config_source`` whenever it is
+    available.  The ContextVar fallback is retained only for legacy callers;
+    an absent ContextVar has historically meant platform and must not be used
+    to classify a config that already identifies itself as BYOK.
+    """
+    if config_source is not None:
+        return config_source != "byok"
     source = get_execution_source()
     if source is None:
         return True

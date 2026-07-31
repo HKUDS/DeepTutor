@@ -7,6 +7,17 @@ import json
 from typing import Any
 from urllib.parse import urlparse
 
+from deeptutor.multi_user.byok_policy import (
+    allowed_binding,
+    byok_runtime_enabled,
+    grant_service_enabled,
+    load_policy,
+    official_endpoint,
+    validate_endpoint,
+)
+from deeptutor.multi_user.byok_vault import get_user_byok_vault
+from deeptutor.multi_user.context import get_current_user
+from deeptutor.multi_user.grants import load_grant
 from deeptutor.services.imagegen.config import ImagegenConfig
 from deeptutor.services.model_selection import LLMSelection, apply_llm_selection_to_catalog
 from deeptutor.services.provider_registry import (
@@ -27,17 +38,6 @@ from deeptutor.services.voice.config import (
     STTConfig,
     TTSConfig,
 )
-from deeptutor.multi_user.byok_policy import (
-    allowed_binding,
-    byok_runtime_enabled,
-    grant_service_enabled,
-    load_policy,
-    official_endpoint,
-    validate_endpoint,
-)
-from deeptutor.multi_user.byok_vault import get_user_byok_vault
-from deeptutor.multi_user.context import get_current_user
-from deeptutor.multi_user.grants import load_grant
 
 from .embedding_endpoint import (
     EMBEDDING_PROVIDER_ALIASES,
@@ -465,6 +465,7 @@ class ResolvedLLMConfig:
     extra_headers: dict[str, str] = field(default_factory=dict)
     reasoning_effort: str | None = None
     context_window: int | None = None
+    source: str = "platform"
 
 
 @dataclass(slots=True)
@@ -665,6 +666,9 @@ def _resolve_byok_llm_runtime_config(selection: LLMSelection) -> ResolvedLLMConf
         service="llm",
         binding=binding_hint,
         policy=policy,
+        # Profile creation validates DNS synchronously before persistence. Keep
+        # runtime resolution off that path so it cannot block the event loop.
+        resolve_dns=False,
     )
     if not endpoint:
         raise ValueError("The selected BYOK profile has no usable endpoint")
@@ -682,6 +686,7 @@ def _resolve_byok_llm_runtime_config(selection: LLMSelection) -> ResolvedLLMConf
         extra_headers={},
         reasoning_effort=None,
         context_window=None,
+        source="byok",
     )
 
 
@@ -706,7 +711,10 @@ def resolve_llm_runtime_config(
         # do not pass through TurnRuntimeManager.
         from deeptutor.multi_user.model_access import apply_allowed_llm_selection
 
-        apply_allowed_llm_selection(resolved_selection.to_dict())
+        resolved_selection = (
+            LLMSelection.from_payload(apply_allowed_llm_selection(resolved_selection.to_dict()))
+            or resolved_selection
+        )
 
     catalog_service = service or get_model_catalog_service()
     loaded = _load_catalog(catalog)
@@ -761,6 +769,7 @@ def resolve_llm_runtime_config(
         extra_headers=extra_headers,
         reasoning_effort=reasoning_effort,
         context_window=context_window,
+        source="platform",
     )
 
 

@@ -1,18 +1,10 @@
 import { apiFetch, apiUrl } from "@/lib/api";
+import { readApiError } from "./helpers";
 import type { ByokProfile, ByokService, ByokSource, ByokStatus } from "./types";
-
-async function readError(response: Response, fallback: string): Promise<string> {
-  try {
-    const body = await response.json();
-    return String(body?.detail || fallback);
-  } catch {
-    return fallback;
-  }
-}
 
 export async function fetchByokStatus(): Promise<ByokStatus> {
   const response = await apiFetch(apiUrl("/api/v1/byok/status"));
-  if (!response.ok) throw new Error(await readError(response, "无法读取 BYOK 配置"));
+  if (!response.ok) throw new Error(await readApiError(response, "无法读取 BYOK 配置"));
   return (await response.json()) as ByokStatus;
 }
 
@@ -36,7 +28,9 @@ export async function saveByokProfile(payload: {
     base_url: payload.baseUrl || null,
     dimension: payload.dimension || 0,
     mode: payload.mode || "",
-    ...(payload.generation ? { generation: payload.generation } : {}),
+    // PATCH uses this as an optimistic-concurrency token. Include the field
+    // even for a zero-like value so callers never silently bypass it.
+    generation: payload.generation ?? null,
     ...(payload.secret ? { secret: payload.secret } : {}),
   };
   const endpoint = payload.profileId
@@ -47,7 +41,7 @@ export async function saveByokProfile(payload: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(await readError(response, "无法保存 BYOK 配置"));
+  if (!response.ok) throw new Error(await readApiError(response, "无法保存 BYOK 配置"));
   const data = await response.json();
   return data.profile as ByokProfile;
 }
@@ -57,7 +51,7 @@ export async function deleteByokProfile(profileId: string): Promise<void> {
     apiUrl(`/api/v1/byok/profiles/${encodeURIComponent(profileId)}`),
     { method: "DELETE" },
   );
-  if (!response.ok) throw new Error(await readError(response, "无法删除 BYOK 配置"));
+  if (!response.ok) throw new Error(await readApiError(response, "无法删除 BYOK 配置"));
 }
 
 export async function setByokPreference(
@@ -70,5 +64,5 @@ export async function setByokPreference(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ service, source, profile_id: profileId || null }),
   });
-  if (!response.ok) throw new Error(await readError(response, "无法切换资源来源"));
+  if (!response.ok) throw new Error(await readApiError(response, "无法切换资源来源"));
 }

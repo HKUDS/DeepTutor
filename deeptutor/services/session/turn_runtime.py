@@ -7,7 +7,6 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Callable, Sequence
 import contextlib
-from contextvars import Token
 from dataclasses import dataclass, field
 import json
 import logging
@@ -23,7 +22,7 @@ from deeptutor.services.session.artifact_attachments import (
 from deeptutor.services.session.protocol import SessionStoreProtocol
 
 if TYPE_CHECKING:
-    from deeptutor.services.llm.config import LLMConfig
+    from deeptutor.services.model_selection.runtime import LLMSelectionScopeToken
 
 logger = logging.getLogger(__name__)
 
@@ -1137,8 +1136,8 @@ class TurnRuntimeManager:
         generated_attachments: list[dict[str, Any]] = []
         seen_artifact_urls: set[str] = set()
         stream_done_sent = False
-        llm_scope_token: Token[LLMConfig | None] | None = None
-        reset_active_llm_selection: Callable[[Token[LLMConfig | None] | None], None] | None = None
+        llm_scope_token: LLMSelectionScopeToken | None = None
+        reset_active_llm_selection: Callable[[LLMSelectionScopeToken | None], None] | None = None
         # One queue per turn for ``ask_user`` style pause-resume.
         # Created here (BEFORE the orchestrator runs) so the pipeline can
         # await on the awaitable we publish into ``context.metadata``.

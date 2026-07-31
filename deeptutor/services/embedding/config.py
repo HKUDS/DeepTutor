@@ -37,26 +37,27 @@ def _get_byok_embedding_config() -> EmbeddingConfig | None:
     from deeptutor.multi_user.byok_policy import (
         allowed_binding,
         byok_runtime_enabled,
+        grant_service_enabled,
         validate_endpoint,
     )
-    from deeptutor.multi_user.byok_vault import UserByokCredentialVault
+    from deeptutor.multi_user.byok_vault import ByokVaultError, UserByokCredentialVault
     from deeptutor.multi_user.context import get_current_user
     from deeptutor.multi_user.execution_source import (
         get_execution_source,
         resolve_execution_source,
     )
     from deeptutor.multi_user.grants import load_grant
-    from deeptutor.multi_user.byok_policy import grant_service_enabled
     from deeptutor.services.config.provider_runtime import EMBEDDING_PROVIDERS
     from deeptutor.services.provider_registry import canonical_provider_name
 
     current = get_current_user()
+    grant = load_grant(current.id)
     source = get_execution_source()
     vault = UserByokCredentialVault()
     profiles = vault.list_profiles(current.id, service="embedding")
     if not profiles:
         if not current.is_admin and not grant_service_enabled(
-            load_grant(current.id), "platform", "embedding"
+            grant, "platform", "embedding"
         ):
             raise ValueError(
                 "No embedding source is enabled for your account. Configure BYOK or contact an administrator."
@@ -68,21 +69,21 @@ def _get_byok_embedding_config() -> EmbeddingConfig | None:
         if resolved_source is None or resolved_source.service != "embedding":
             resolved_source = resolve_execution_source(
                 "embedding",
-                grant=load_grant(current.id),
+                grant=grant,
                 preferences=preferences,
                 byok_profiles=profiles,
             )
         if not resolved_source.is_byok:
             if not current.is_admin and not grant_service_enabled(
-                load_grant(current.id), "platform", "embedding"
+                grant, "platform", "embedding"
             ):
                 raise ValueError(
                     "Platform embedding access is not enabled for your account."
                 )
             return None
         profile, secret = vault.load_secret(current.id, str(resolved_source.profile_id))
-    except PermissionError:
-        raise
+    except ByokVaultError as exc:
+        raise ValueError("The selected BYOK embedding profile is unavailable; update your BYOK settings.") from exc
 
     raw_provider = str(profile.get("provider") or "").strip().lower()
     provider = canonical_provider_name(raw_provider) or raw_provider
@@ -95,7 +96,10 @@ def _get_byok_embedding_config() -> EmbeddingConfig | None:
     if spec is None:
         raise ValueError("Unsupported embedding BYOK provider")
     endpoint = str(profile.get("base_url") or "").strip() or spec.default_api_base
-    validate_endpoint(endpoint, service="embedding", binding=provider)
+    validated_endpoint = validate_endpoint(endpoint, service="embedding", binding=provider)
+    if not validated_endpoint:
+        raise ValueError("Embedding BYOK profile has no usable endpoint")
+    endpoint = validated_endpoint
     dimension = int(profile.get("dimension") or 0)
     return EmbeddingConfig(
         model=model,

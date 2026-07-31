@@ -50,6 +50,60 @@ def test_grants_reject_admin_users(tmp_path, monkeypatch):
         save_grant("u_admin", {"knowledge_bases": [{"resource_id": "admin:kb:demo"}]})
 
 
+def test_put_user_grants_merges_partial_payload_without_resetting_permissions(monkeypatch):
+    from deeptutor.multi_user import router as multi_user_router
+    from deeptutor.multi_user.grants import normalize_grant
+
+    current = normalize_grant(
+        "u_alice",
+        {
+            "version": 3,
+            "platform": {
+                "embedding": {"enabled": True},
+                "mineru": {"enabled": False},
+            },
+            "byok": {
+                "llm": {"enabled": False},
+                "embedding": {"enabled": True},
+                "mineru": {"enabled": False},
+            },
+            "models": {"llm": [{"profile_id": "p1", "model_ids": ["m1"]}]},
+        },
+    )
+    saved: list[dict] = []
+
+    monkeypatch.setattr(multi_user_router, "_require_assignable_user", lambda _user_id: None)
+    monkeypatch.setattr(multi_user_router, "load_grant", lambda _user_id: current)
+    monkeypatch.setattr(multi_user_router, "log_admin_action", lambda *_args, **_kwargs: None)
+
+    def save(user_id, payload):
+        assert user_id == "u_alice"
+        saved.append(payload)
+        return payload
+
+    monkeypatch.setattr(multi_user_router, "save_grant", save)
+    payload = multi_user_router.GrantPayload(
+        grant={
+            "version": 2,
+            "user_id": "another-user",
+            "byok": {"llm": {"enabled": True}},
+        }
+    )
+
+    result = asyncio.run(multi_user_router.put_user_grants("u_alice", payload, object()))
+
+    assert result["grant"] == saved[0]
+    assert saved[0]["version"] == 3
+    assert saved[0]["user_id"] == "u_alice"
+    assert saved[0]["byok"] == {
+        "llm": {"enabled": True},
+        "embedding": {"enabled": True},
+        "mineru": {"enabled": False},
+    }
+    assert saved[0]["platform"] == current["platform"]
+    assert saved[0]["models"] == current["models"]
+
+
 def test_non_admin_settings_catalog_is_forbidden(tmp_path):
     token = set_current_user(make_user(tmp_path, role="user"))
     try:

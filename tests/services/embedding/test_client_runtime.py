@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 from typing import Any
 
 import pytest
@@ -200,6 +201,26 @@ def test_get_embedding_client_refreshes_when_config_changes(monkeypatch) -> None
     assert first_client is not second_client
     assert second_client is same_second_client
     assert second_client.config.model == "text-embedding-new"
+    reset_embedding_client()
+
+
+def test_reset_embedding_client_invalidates_other_contexts(monkeypatch) -> None:
+    from deeptutor.services.embedding import client as client_module
+
+    _FakeAdapter.instances = []
+    config = _build_config("openai")
+    monkeypatch.setattr(client_module, "_resolve_adapter_class", lambda _binding: _FakeAdapter)
+    monkeypatch.setattr(client_module, "get_embedding_config", lambda: config)
+
+    reset_embedding_client()
+    original = get_embedding_client()
+    copied_context = contextvars.copy_context()
+    assert copied_context.run(get_embedding_client) is original
+
+    reset_embedding_client()
+    refreshed = copied_context.run(get_embedding_client)
+
+    assert refreshed is not original
     reset_embedding_client()
 
 

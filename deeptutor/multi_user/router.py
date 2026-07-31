@@ -15,7 +15,7 @@ from deeptutor.services.config.model_catalog import ModelCatalogService
 from deeptutor.services.skill.service import SkillService
 
 from .audit import log_admin_action
-from .grants import load_grant, save_grant
+from .grants import load_grant, merge_grant_update, save_grant
 from .identity import get_user_by_id, list_user_info
 from .knowledge_access import admin_kb_base_dir
 from .model_access import is_owner_bound
@@ -234,7 +234,10 @@ async def put_user_grants(
 ) -> dict[str, Any]:
     _require_assignable_user(user_id)
     try:
-        grant = save_grant(user_id, payload.grant)
+        grant = save_grant(
+            user_id,
+            merge_grant_update(user_id, load_grant(user_id), payload.grant),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     log_admin_action(

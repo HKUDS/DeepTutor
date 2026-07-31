@@ -38,16 +38,16 @@ def empty_grant(
         "version": 3,
         "user_id": user_id,
         "models": {"llm": []},
-        # Platform Embedding/MinerU access is explicit. New users start with
-        # BYOK permission enabled, but no platform spend permission.
+        # Platform and BYOK access are explicit. New users cannot cause an
+        # outbound request until an administrator grants the relevant service.
         "platform": {
             "embedding": {"enabled": False},
             "mineru": {"enabled": False},
         },
         "byok": {
-            "llm": {"enabled": True},
-            "embedding": {"enabled": True},
-            "mineru": {"enabled": True},
+            "llm": {"enabled": False},
+            "embedding": {"enabled": False},
+            "mineru": {"enabled": False},
         },
         "knowledge_bases": [],
         "skills": [],
@@ -127,7 +127,7 @@ def normalize_grant(user_id: str, payload: dict[str, Any] | None) -> dict[str, A
         for service in ("llm", "embedding", "mineru"):
             value = raw_byok.get(service)
             if isinstance(value, dict):
-                base["byok"][service] = {"enabled": bool(value.get("enabled", True))}
+                base["byok"][service] = {"enabled": bool(value.get("enabled", False))}
     for key in ("knowledge_bases", "skills", "partners"):
         values = payload.get(key) if isinstance(payload.get(key), list) else []
         base[key] = [dict(item) for item in values if isinstance(item, dict)]
@@ -154,6 +154,37 @@ def load_grant(user_id: str) -> dict[str, Any]:
         return normalize_grant(user_id, json.loads(path.read_text(encoding="utf-8")))
     except Exception:
         return empty_grant(user_id)
+
+
+def merge_grant_update(
+    user_id: str,
+    current: dict[str, Any] | None,
+    update: dict[str, Any],
+) -> dict[str, Any]:
+    """Merge a partial admin update onto the user's normalized grant.
+
+    The API accepts a JSON object, so older clients or hand-written requests can
+    omit fields.  Starting from the saved grant prevents those omissions from
+    silently resetting unrelated permissions to new-schema defaults.
+    """
+    merged = deepcopy(normalize_grant(user_id, current))
+
+    def merge_mapping(target: dict[str, Any], incoming: dict[str, Any]) -> None:
+        for key, value in incoming.items():
+            # The route determines the target user and the schema owns its
+            # current version.  Neither is a caller-controlled update field.
+            if key in {"user_id", "version"}:
+                continue
+            existing = target.get(key)
+            if isinstance(existing, dict) and isinstance(value, dict):
+                merge_mapping(existing, value)
+            else:
+                target[key] = deepcopy(value)
+
+    merge_mapping(merged, update)
+    merged["user_id"] = user_id
+    merged["version"] = 3
+    return merged
 
 
 def initialize_grant(
