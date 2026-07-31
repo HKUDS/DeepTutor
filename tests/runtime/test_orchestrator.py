@@ -155,9 +155,11 @@ class TestOrchestratorErrorHandling:
         error_events = [e for e in events if e.type == StreamEventType.ERROR]
         assert len(error_events) == 1
         assert "intentional failure" in error_events[0].content
+        assert error_events[0].metadata == {"turn_terminal": True, "status": "failed"}
 
         done_events = [e for e in events if e.type == StreamEventType.DONE]
         assert len(done_events) == 1
+        assert done_events[0].metadata == {"status": "failed"}
 
 
 # ---------------------------------------------------------------------------
