@@ -119,6 +119,44 @@ def test_load_recovers_invalid_catalog_with_defaults(tmp_path: Path):
     assert set(saved["services"]) == expected_services
 
 
+def test_load_sets_gemini_native_endpoint_from_active_embedding_model(tmp_path: Path):
+    catalog_path = tmp_path / "model_catalog.json"
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "services": {
+                    "embedding": {
+                        "active_profile_id": "gemini-profile",
+                        "active_model_id": "gemini-model",
+                        "profiles": [
+                            {
+                                "id": "gemini-profile",
+                                "name": "Gemini",
+                                "binding": "gemini",
+                                "base_url": "",
+                                "api_key": "test-key",
+                                "models": [
+                                    {
+                                        "id": "gemini-model",
+                                        "name": "Gemini 001",
+                                        "model": "gemini-embedding-001",
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    catalog = ModelCatalogService(path=catalog_path).load()
+
+    profile = catalog["services"]["embedding"]["profiles"][0]
+    assert profile["base_url"].endswith("/models/gemini-embedding-001:batchEmbedContents")
+
+
 def test_load_persists_normalized_active_ids(tmp_path: Path):
     catalog_path = tmp_path / "model_catalog.json"
     catalog_path.write_text(

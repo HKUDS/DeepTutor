@@ -9,6 +9,10 @@ from deeptutor.services.config.provider_runtime import (
     resolve_embedding_runtime_config,
 )
 
+NATIVE_GEMINI2_ENDPOINT = (
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:batchEmbedContents"
+)
+
 
 def _build_catalog(
     *,
@@ -96,7 +100,7 @@ def test_embedding_gemini_default_base_and_profile_key() -> None:
             "id": "embedding-p",
             "name": "Embedding",
             "binding": "gemini",
-            "base_url": "",
+            "base_url": ("https://generativelanguage.googleapis.com/v1beta/openai/embeddings"),
             "api_key": "gemini-test-key",
             "api_version": "",
             "extra_headers": {},
@@ -111,6 +115,40 @@ def test_embedding_gemini_default_base_and_profile_key() -> None:
         resolved.effective_url
         == "https://generativelanguage.googleapis.com/v1beta/openai/embeddings"
     )
+
+
+def test_embedding_gemini_defaults_to_stable_embedding2() -> None:
+    spec = EMBEDDING_PROVIDERS["gemini"]
+
+    assert spec.adapter == "gemini"
+    assert spec.default_model == "gemini-embedding-2"
+    assert spec.default_dim == 3072
+    assert spec.default_api_base == NATIVE_GEMINI2_ENDPOINT
+
+
+def test_embedding_gemini_native_default_tracks_selected_model() -> None:
+    catalog = _build_catalog(
+        embedding_profile={
+            "id": "embedding-p",
+            "name": "Embedding",
+            "binding": "gemini",
+            "base_url": "",
+            "api_key": "gemini-test-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "embedding-m",
+                    "name": "m",
+                    "model": "gemini-embedding-001",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_embedding_runtime_config(catalog=catalog)
+
+    assert resolved.effective_url.endswith("/models/gemini-embedding-001:batchEmbedContents")
 
 
 def test_embedding_local_fallback_from_base_url() -> None:

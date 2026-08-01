@@ -11,6 +11,7 @@ intentionally thin so the order of steps is easy to read top-to-bottom.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 import typer
@@ -187,6 +188,22 @@ def _probe_llm_with_retry(console: Console, strings: dict, choice: wiz.LLMChoice
         )
 
 
+def _embedding_default_endpoint(
+    *,
+    provider: str,
+    current_binding: str,
+    current_profile: dict[str, Any],
+    spec: Any,
+) -> str:
+    """Keep a saved endpoint when rerunning setup for the same provider."""
+    saved = str(current_profile.get("base_url") or "")
+    if provider == current_binding and saved:
+        return saved
+    if spec is not None:
+        return str(spec.default_api_base or "")
+    return saved
+
+
 def _embedding_step(
     console: Console,
     strings: dict,
@@ -198,6 +215,7 @@ def _embedding_step(
     from deeptutor.services.config.embedding_endpoint import (
         EMBEDDING_PROVIDER_LABELS,
         normalize_embedding_endpoint_for_display,
+        redact_embedding_endpoint_for_display,
     )
     from deeptutor.services.config.provider_runtime import EMBEDDING_PROVIDERS
 
@@ -219,7 +237,12 @@ def _embedding_step(
     display_provider = (
         spec.label if spec else EMBEDDING_PROVIDER_LABELS.get(provider, provider.title())
     )
-    default_endpoint = spec.default_api_base if spec else str(current_profile.get("base_url") or "")
+    default_endpoint = _embedding_default_endpoint(
+        provider=provider,
+        current_binding=current_binding,
+        current_profile=current_profile,
+        spec=spec,
+    )
 
     edit_endpoint = typer.confirm(strings["init.edit_base_url"], default=not bool(default_endpoint))
     endpoint = (
@@ -229,7 +252,8 @@ def _embedding_step(
     )
     endpoint = normalize_embedding_endpoint_for_display(provider, endpoint)
     if not edit_endpoint:
-        wiz.info(console, f"Endpoint · {endpoint or '(empty)'}")
+        displayed_endpoint = redact_embedding_endpoint_for_display(endpoint)
+        wiz.info(console, f"Endpoint · {displayed_endpoint or '(empty)'}")
 
     # Reuse the LLM key by default — most users share creds across services.
     masked = wiz._mask_secret(llm_api_key)
@@ -258,6 +282,11 @@ def _embedding_step(
         current=str((current_profile.get("models") or [{}])[0].get("model") or ""),
         custom_prompt_label=strings["init.embedding_model"],
     )
+    endpoint = normalize_embedding_endpoint_for_display(
+        provider,
+        endpoint,
+        model=model,
+    )
     dimension = typer.prompt(strings["init.embedding_dimension"], default="")
 
     choice = wiz.EmbeddingChoice(
@@ -272,7 +301,10 @@ def _embedding_step(
     if typer.confirm(strings["init.probe_offer"], default=True):
         wiz.info(console, strings["init.probe_running"].format(what=display_provider))
         ok_result, elapsed_ms, error = wiz.probe_embedding(
-            base_url=choice.base_url, api_key=choice.api_key, model=choice.model
+            base_url=choice.base_url,
+            api_key=choice.api_key,
+            model=choice.model,
+            provider=choice.binding,
         )
         choice.probed = True
         choice.probe_ok = ok_result

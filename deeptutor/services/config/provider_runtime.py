@@ -33,6 +33,7 @@ from .embedding_endpoint import (
     EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS,
     dashscope_embedding_endpoint,
     embedding_endpoint_validation_error,
+    gemini_embedding_endpoint,
     normalize_embedding_endpoint_for_display,
 )
 from .loader import load_config_with_main
@@ -90,10 +91,11 @@ EMBEDDING_PROVIDERS: dict[str, EmbeddingProviderSpec] = {
     ),
     "gemini": EmbeddingProviderSpec(
         label="Gemini",
+        adapter="gemini",
         default_api_base=EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS["gemini"],
         keywords=("gemini", "gemini-embedding", "text-embedding"),
         is_local=False,
-        default_model="gemini-embedding-001",
+        default_model="gemini-embedding-2",
         default_dim=3072,
     ),
     "azure_openai": EmbeddingProviderSpec(
@@ -837,8 +839,12 @@ def resolve_embedding_runtime_config(
 
     api_key = active_api_key or (mapped.api_key if mapped else "")
     api_base = active_api_base or ((mapped.api_base or "") if mapped else "")
-    if not api_base and spec.default_api_base:
-        api_base = spec.default_api_base
+    if not api_base:
+        if provider_name == "gemini":
+            # Gemini's native endpoint embeds the selected model in the path.
+            api_base = gemini_embedding_endpoint(resolved_model)
+        elif spec.default_api_base:
+            api_base = spec.default_api_base
     if provider_name == "aliyun":
         # DashScope's SDK derives the endpoint from the model id and ignores any
         # configured URL, so a saved multimodal endpoint would mislead the

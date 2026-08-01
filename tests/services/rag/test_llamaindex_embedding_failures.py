@@ -15,7 +15,8 @@ def test_custom_embedding_rejects_null_coordinates(monkeypatch: pytest.MonkeyPat
     class _FakeClient:
         config = SimpleNamespace(binding="openai", model="bad-embed")
 
-        async def embed(self, texts, progress_callback=None):
+        async def embed(self, texts, progress_callback=None, *, input_type=None):
+            del progress_callback, input_type
             return [[0.1, None, 0.3] for _ in texts]
 
     monkeypatch.setattr(embedding_module, "get_embedding_client", lambda: _FakeClient())
@@ -45,7 +46,8 @@ def test_custom_embedding_refreshes_stale_client(monkeypatch: pytest.MonkeyPatch
             self.value = value
             self.calls: list[list[str]] = []
 
-        async def embed(self, texts, progress_callback=None):
+        async def embed(self, texts, progress_callback=None, *, input_type=None):
+            del progress_callback, input_type
             self.calls.append(list(texts))
             return [[self.value] for _ in texts]
 

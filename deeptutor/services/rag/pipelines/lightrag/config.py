@@ -147,19 +147,32 @@ def build_embedding_func():
             "Settings → Catalog before using a LightRAG knowledge base."
         )
 
-    base_embedding_func = get_embedding_client().get_embedding_func()
+    client = get_embedding_client()
 
-    async def embedding_func(texts):
+    async def embedding_func(texts, context="document", **_ignored):
         import numpy as np
 
-        vectors = await base_embedding_func(texts)
+        input_type = {
+            "query": "search_query",
+            "document": "search_document",
+        }.get(str(context or "").strip().lower())
+        vectors = await client.embed(texts, input_type=input_type)
         return np.asarray(vectors, dtype=np.float32)
 
-    return EmbeddingFunc(
-        embedding_dim=dim,
-        max_token_size=int(getattr(cfg, "max_tokens", 0) or _DEFAULT_MAX_TOKEN_SIZE),
-        func=embedding_func,
-    )
+    kwargs = {
+        "embedding_dim": dim,
+        "max_token_size": int(getattr(cfg, "max_tokens", 0) or _DEFAULT_MAX_TOKEN_SIZE),
+        "func": embedding_func,
+    }
+    try:
+        # Current LightRAG forwards context="query" / "document" only when
+        # this flag is set. Retain a constructor fallback for older optional
+        # raganything releases that predate asymmetric-embedding support.
+        return EmbeddingFunc(**kwargs, supports_asymmetric=True)
+    except TypeError as exc:
+        if "supports_asymmetric" not in str(exc):
+            raise
+        return EmbeddingFunc(**kwargs)
 
 
 __all__ = [

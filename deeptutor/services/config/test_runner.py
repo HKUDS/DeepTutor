@@ -10,6 +10,7 @@ from typing import Any
 from uuid import uuid4
 
 from .context_window_detection import detect_context_window
+from .embedding_endpoint import redact_embedding_endpoint_for_display
 from .model_catalog import get_model_catalog_service
 from .provider_runtime import (
     resolve_embedding_runtime_config,
@@ -321,7 +322,8 @@ class ConfigTestRunner:
         )
         run.emit(
             "info",
-            f"Request target (POSTed exactly as shown in Settings): {config.base_url}",
+            "Request target (POSTed exactly as shown in Settings): "
+            f"{redact_embedding_endpoint_for_display(config.base_url)}",
         )
         run.emit(
             "info",

@@ -133,10 +133,18 @@ def test_storage_meta_and_has_output(tmp_path) -> None:
 
 def test_embedding_func_returns_numpy_array(monkeypatch) -> None:
     class _FakeEmbeddingFunc:
-        def __init__(self, *, embedding_dim, max_token_size, func) -> None:
+        def __init__(
+            self,
+            *,
+            embedding_dim,
+            max_token_size,
+            func,
+            supports_asymmetric=False,
+        ) -> None:
             self.embedding_dim = embedding_dim
             self.max_token_size = max_token_size
             self.func = func
+            self.supports_asymmetric = supports_asymmetric
 
     fake_lightrag = types.ModuleType("lightrag")
     fake_utils = types.ModuleType("lightrag.utils")
@@ -149,11 +157,9 @@ def test_embedding_func_returns_numpy_array(monkeypatch) -> None:
         max_tokens = 99
 
     class _Client:
-        def get_embedding_func(self):
-            async def embed(texts):
-                return [[1, 2, 3] for _ in texts]
-
-            return embed
+        async def embed(self, texts, *, input_type=None):
+            del input_type
+            return [[1, 2, 3] for _ in texts]
 
     monkeypatch.setattr("deeptutor.services.embedding.get_embedding_config", lambda: _Config())
     monkeypatch.setattr("deeptutor.services.embedding.get_embedding_client", lambda: _Client())
@@ -162,8 +168,46 @@ def test_embedding_func_returns_numpy_array(monkeypatch) -> None:
     vectors = asyncio.run(embedding.func(["a", "b"]))
     assert embedding.embedding_dim == 3
     assert embedding.max_token_size == 99
+    assert embedding.supports_asymmetric is True
     assert vectors.shape == (2, 3)
     assert hasattr(vectors, "size")
+
+
+def test_embedding_func_maps_lightrag_query_and_document_context(monkeypatch) -> None:
+    calls: list[tuple[list[str], str | None]] = []
+
+    class _FakeEmbeddingFunc:
+        def __init__(self, **kwargs) -> None:
+            self.func = kwargs["func"]
+            self.supports_asymmetric = kwargs.get("supports_asymmetric", False)
+
+    fake_lightrag = types.ModuleType("lightrag")
+    fake_utils = types.ModuleType("lightrag.utils")
+    fake_utils.EmbeddingFunc = _FakeEmbeddingFunc
+    monkeypatch.setitem(sys.modules, "lightrag", fake_lightrag)
+    monkeypatch.setitem(sys.modules, "lightrag.utils", fake_utils)
+
+    class _Config:
+        dim = 3
+        max_tokens = 99
+
+    class _Client:
+        async def embed(self, texts, *, input_type=None):
+            calls.append((list(texts), input_type))
+            return [[1, 2, 3] for _ in texts]
+
+    monkeypatch.setattr("deeptutor.services.embedding.get_embedding_config", lambda: _Config())
+    monkeypatch.setattr("deeptutor.services.embedding.get_embedding_client", lambda: _Client())
+
+    embedding = lr_config.build_embedding_func()
+    asyncio.run(embedding.func(["question"], context="query", _priority=1))
+    asyncio.run(embedding.func(["passage"], context="document"))
+
+    assert embedding.supports_asymmetric is True
+    assert calls == [
+        (["question"], "search_query"),
+        (["passage"], "search_document"),
+    ]
 
 
 def test_lightrag_llm_adapter_preserves_messages_and_drops_extra_kwargs(

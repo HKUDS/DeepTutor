@@ -42,6 +42,7 @@ class EmbeddingRequest:
         input_type: Input type hint for task-aware embeddings (optional)
             - Cohere: Maps to 'input_type' ("search_document", "search_query", "classification", "clustering")
             - Jina: Maps to 'task' ("retrieval.passage", "retrieval.query", etc.)
+            - Gemini Embedding 2: Maps to retrieval-specific text instructions
             - OpenAI/Ollama: Ignored
         encoding_format: Output format ("float" or "base64"). ``None`` (the
             default) lets each adapter decide: OpenAI-compatible gateways omit
