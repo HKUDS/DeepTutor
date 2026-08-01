@@ -55,8 +55,8 @@ The full per-installation guide follows.
 
 ## Docker (default)
 
-The simplest possible deployment. One container, one volume, two port
-mappings.
+The simplest possible deployment. One container, one volume, and one
+published service port.
 
 ```bash
 docker run --rm --name deeptutor \
@@ -89,6 +89,67 @@ Notes:
   `docker stop deeptutor` to stop, `docker rm deeptutor` before reusing
   the name. The `deeptutor-data` volume keeps your settings and workspace
   across restarts.
+
+### Temporary local Codex OAuth bridge
+
+OpenAI Codex redirects the browser to fixed loopback ports `1455` or `1457`.
+For a local container, those browser-side ports and the in-container listener
+are in different network namespaces. Publish both ports to the Web frontend
+only while signing in; its exact `/auth/callback` rewrite forwards the request
+to the state-validating backend broker.
+
+For `docker run`, stop the normal container and temporarily rerun the same
+image and data volume with two extra loopback-only mappings:
+
+```bash
+docker run --rm --name deeptutor \
+  -p 127.0.0.1:3782:3782 \
+  -p 127.0.0.1:1455:3782 \
+  -p 127.0.0.1:1457:3782 \
+  -v deeptutor-data:/app/data \
+  ghcr.io/hkuds/deeptutor:latest
+```
+
+For Compose, add the same temporary overlay to the base file you normally use:
+
+```bash
+# Source build with sidecars
+python scripts/docker_compose.py \
+  -f docker-compose.yml -f compose.codex-oauth.yaml \
+  up -d --force-recreate deeptutor
+
+# Pre-built GHCR image
+python scripts/docker_compose.py \
+  -f docker-compose.ghcr.yml -f compose.codex-oauth.yaml \
+  up -d --force-recreate deeptutor
+
+# Rootless Podman
+podman compose -f compose.yaml -f compose.codex-oauth.yaml \
+  up -d --force-recreate deeptutor
+```
+
+Complete **Settings → Models → OpenAI Codex → Sign in with Codex**. After the
+status changes to **Connected**, stop the temporary `docker run` container and
+rerun the normal command above, or recreate the Compose service from its base
+file only:
+
+```bash
+# Pick the same base file used above.
+python scripts/docker_compose.py -f docker-compose.ghcr.yml \
+  up -d --force-recreate deeptutor
+
+# Podman equivalent
+podman compose -f compose.yaml up -d --force-recreate deeptutor
+```
+
+Recreating without the overlay immediately releases host ports `1455` and
+`1457`. Credentials remain under the persistent `/app/data/system` tree. Keep
+the `127.0.0.1` prefix on every callback mapping; never expose these temporary
+bridges on a LAN or public interface. If the configured Docker container-side
+frontend port is not `3782`, `scripts/docker_compose.py` supplies the matching
+`DEEPTUTOR_DOCKER_FRONTEND_PORT`; for a manual `docker run`, change only the
+right-hand `3782` targets. Remote deployments should use the single SSH tunnel
+for the reported callback port instead of this local overlay.
 
 ### Remote / reverse-proxy deployments
 

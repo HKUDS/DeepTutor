@@ -1,0 +1,9 @@
+# Temporary local OpenAI Codex OAuth callback bridge.
+#
+# Apply this overlay only while signing in, then recreate the service from its
+# base Compose file so ports 1455 and 1457 are returned to other Codex clients.
+services:
+  deeptutor:
+    ports:
+      - "127.0.0.1:1455:${DEEPTUTOR_DOCKER_FRONTEND_PORT:-3782}"
+      - "127.0.0.1:1457:${DEEPTUTOR_DOCKER_FRONTEND_PORT:-3782}"

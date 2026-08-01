@@ -3,7 +3,10 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+import re
 import sys
+
+import yaml
 
 
 def _load_module():
@@ -71,6 +74,54 @@ def test_compose_files_do_not_consume_legacy_env_names() -> None:
         assert "\n      - BACKEND_PORT" not in content
         assert "\n      - AUTH_ENABLED" not in content
         assert "DEEPTUTOR_DOCKER_BACKEND_PORT" in content
+
+
+def _compose_service(root: Path, name: str) -> dict:
+    content = yaml.safe_load((root / name).read_text(encoding="utf-8"))
+    return content["services"]["deeptutor"]
+
+
+def test_default_compose_files_do_not_reserve_codex_callback_ports() -> None:
+    """The fixed Codex callback ports are opt-in because other clients use them."""
+    root = Path(__file__).resolve().parents[2]
+    for name in ("docker-compose.yml", "docker-compose.ghcr.yml", "compose.yaml"):
+        ports = _compose_service(root, name).get("ports", [])
+        assert not any(re.search(r"(^|:)145[57]:", str(port)) for port in ports), name
+
+
+def test_codex_oauth_overlay_forwards_loopback_callbacks_to_frontend() -> None:
+    """The temporary overlay routes browser callbacks through the Web broker."""
+    root = Path(__file__).resolve().parents[2]
+    ports = _compose_service(root, "compose.codex-oauth.yaml")["ports"]
+
+    assert set(ports) == {
+        "127.0.0.1:1455:${DEEPTUTOR_DOCKER_FRONTEND_PORT:-3782}",
+        "127.0.0.1:1457:${DEEPTUTOR_DOCKER_FRONTEND_PORT:-3782}",
+    }
+
+
+def test_official_container_manifests_persist_codex_credentials() -> None:
+    """Container recreation must retain data/system, where Codex tokens live."""
+    root = Path(__file__).resolve().parents[2]
+    for name in ("docker-compose.yml", "docker-compose.ghcr.yml", "compose.yaml"):
+        volumes = _compose_service(root, name).get("volumes", [])
+        targets = {
+            (volume.get("target") if isinstance(volume, dict) else str(volume).split(":")[1])
+            for volume in volumes
+        }
+        assert "/app/data" in targets or "/app/data/system" in targets, name
+
+
+def test_container_docs_use_temporary_codex_oauth_bridge() -> None:
+    """Both public container guides must explain the opt-in bridge lifecycle."""
+    root = Path(__file__).resolve().parents[2]
+    for name in ("README.md", "CONTAINERIZATION.md"):
+        content = (root / name).read_text(encoding="utf-8")
+        assert "compose.codex-oauth.yaml" in content, name
+        assert "127.0.0.1:1455:3782" in content, name
+        assert "127.0.0.1:1457:3782" in content, name
+        assert "temporary" in content.lower(), name
+        assert "python scripts/docker_compose.py" in content, name
 
 
 def test_dockerfile_is_json_driven_without_bundle_sed() -> None:
