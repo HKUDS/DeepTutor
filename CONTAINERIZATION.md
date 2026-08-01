@@ -55,8 +55,8 @@ The full per-installation guide follows.
 
 ## Docker (default)
 
-The simplest possible deployment. One container, one volume, and one
-published service port.
+The simplest possible deployment. One container, one volume, two port
+mappings.
 
 ```bash
 docker run --rm --name deeptutor \
@@ -93,10 +93,9 @@ Notes:
 ### Temporary local Codex OAuth bridge
 
 OpenAI Codex redirects the browser to fixed loopback ports `1455` or `1457`.
-For a local container, those browser-side ports and the in-container listener
-are in different network namespaces. Publish both ports to the Web frontend
-only while signing in; its exact `/auth/callback` rewrite forwards the request
-to the state-validating backend broker.
+The default container network is separate from the host loopback, so publish
+both ports to the Web frontend only while signing in. Both host ports must be
+free before starting the temporary bridge.
 
 For `docker run`, stop the normal container and temporarily rerun the same
 image and data volume with two extra loopback-only mappings:
@@ -130,26 +129,17 @@ podman compose -f compose.yaml -f compose.codex-oauth.yaml \
 
 Complete **Settings → Models → OpenAI Codex → Sign in with Codex**. After the
 status changes to **Connected**, stop the temporary `docker run` container and
-rerun the normal command above, or recreate the Compose service from its base
-file only:
+return to the normal command above. For Compose, rerun the same base command
+without `compose.codex-oauth.yaml`; keep `--force-recreate deeptutor` so the
+temporary port bindings are removed.
 
-```bash
-# Pick the same base file used above.
-python scripts/docker_compose.py -f docker-compose.ghcr.yml \
-  up -d --force-recreate deeptutor
-
-# Podman equivalent
-podman compose -f compose.yaml up -d --force-recreate deeptutor
-```
-
-Recreating without the overlay immediately releases host ports `1455` and
-`1457`. Credentials remain under the persistent `/app/data/system` tree. Keep
-the `127.0.0.1` prefix on every callback mapping; never expose these temporary
-bridges on a LAN or public interface. If the configured Docker container-side
-frontend port is not `3782`, `scripts/docker_compose.py` supplies the matching
-`DEEPTUTOR_DOCKER_FRONTEND_PORT`; for a manual `docker run`, change only the
-right-hand `3782` targets. Remote deployments should use the single SSH tunnel
-for the reported callback port instead of this local overlay.
+This releases host ports `1455` and `1457`; credentials remain in the persistent
+`/app/data/system` tree. Bind every callback mapping to `127.0.0.1` and never
+expose it on a LAN or public interface. For a manual `docker run` whose
+container-side frontend port is not `3782`, change the right-hand `3782`
+targets; `scripts/docker_compose.py` handles configured custom ports. For
+single-container installs, set `sandbox_allow_subprocess` to `false` if
+model-generated code must not share the container trust boundary with secrets.
 
 ### Remote / reverse-proxy deployments
 

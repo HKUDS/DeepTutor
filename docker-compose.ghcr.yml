@@ -47,8 +47,7 @@ services:
       - "${DEEPTUTOR_DOCKER_FRONTEND_PORT:-3782}:${DEEPTUTOR_DOCKER_FRONTEND_PORT:-3782}"
 
     volumes:
-      # Persist the complete data tree, including per-owner OAuth credentials
-      # under data/system/user-secrets.
+      # Persist every workspace and deployment secret across recreation.
       - ./data:/app/data
 
     healthcheck:

@@ -81,6 +81,14 @@ def _compose_service(root: Path, name: str) -> dict:
     return content["services"]["deeptutor"]
 
 
+def _volume_targets(root: Path, name: str) -> set[str | None]:
+    volumes = _compose_service(root, name).get("volumes", [])
+    return {
+        (volume.get("target") if isinstance(volume, dict) else str(volume).split(":")[1])
+        for volume in volumes
+    }
+
+
 def test_default_compose_files_do_not_reserve_codex_callback_ports() -> None:
     """The fixed Codex callback ports are opt-in because other clients use them."""
     root = Path(__file__).resolve().parents[2]
@@ -104,24 +112,37 @@ def test_official_container_manifests_persist_codex_credentials() -> None:
     """Container recreation must retain data/system, where Codex tokens live."""
     root = Path(__file__).resolve().parents[2]
     for name in ("docker-compose.yml", "docker-compose.ghcr.yml", "compose.yaml"):
-        volumes = _compose_service(root, name).get("volumes", [])
-        targets = {
-            (volume.get("target") if isinstance(volume, dict) else str(volume).split(":")[1])
-            for volume in volumes
-        }
+        targets = _volume_targets(root, name)
         assert "/app/data" in targets or "/app/data/system" in targets, name
 
 
-def test_container_docs_use_temporary_codex_oauth_bridge() -> None:
-    """Both public container guides must explain the opt-in bridge lifecycle."""
+def test_ghcr_compose_persists_complete_data_tree() -> None:
+    """Forced recreation must retain every workspace as well as OAuth tokens."""
     root = Path(__file__).resolve().parents[2]
-    for name in ("README.md", "CONTAINERIZATION.md"):
-        content = (root / name).read_text(encoding="utf-8")
-        assert "compose.codex-oauth.yaml" in content, name
-        assert "127.0.0.1:1455:3782" in content, name
-        assert "127.0.0.1:1457:3782" in content, name
-        assert "temporary" in content.lower(), name
-        assert "python scripts/docker_compose.py" in content, name
+    volumes = _compose_service(root, "docker-compose.ghcr.yml")["volumes"]
+
+    assert "./data:/app/data" in volumes
+
+
+def test_container_docs_use_temporary_codex_oauth_bridge() -> None:
+    """README links to the canonical guide, which owns the exact commands."""
+    root = Path(__file__).resolve().parents[2]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    guide = (root / "CONTAINERIZATION.md").read_text(encoding="utf-8")
+    section = guide.split("### Temporary local Codex OAuth bridge", 1)[1].split("\n### ", 1)[0]
+    normalized_section = " ".join(section.replace("\\\n", " ").split())
+
+    assert "CONTAINERIZATION.md#temporary-local-codex-oauth-bridge" in readme
+    assert "127.0.0.1:1455:3782" in section
+    assert "127.0.0.1:1457:3782" in section
+    for base_file in ("docker-compose.yml", "docker-compose.ghcr.yml"):
+        assert (
+            f"-f {base_file} -f compose.codex-oauth.yaml up -d --force-recreate deeptutor"
+        ) in normalized_section
+    assert (
+        "podman compose -f compose.yaml -f compose.codex-oauth.yaml "
+        "up -d --force-recreate deeptutor"
+    ) in normalized_section
 
 
 def test_dockerfile_is_json_driven_without_bundle_sed() -> None:

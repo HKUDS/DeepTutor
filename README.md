@@ -625,34 +625,9 @@ Settings is the operational control plane, with a live status strip (Backend, LL
 
 Most sections use a draft-and-apply flow, so you can test a provider before committing it. Four themes ship in the box — Default, Cream, Dark, and Glass. Project-root `.env` files are intentionally ignored; runtime configuration lives under `data/user/settings/*.json` unless `DEEPTUTOR_HOME` or `deeptutor start --home` points the app elsewhere.
 
-**OpenAI Codex OAuth (experimental).** Picking **OpenAI Codex** under Models → LLM replaces the API-key fields with a browser sign-in that runs against your own ChatGPT plan, so no `OPENAI_API_KEY` is needed. Tokens live only in `data/system/user-secrets/<owner>/private/openai-codex/`, and DeepTutor never reads or modifies your `~/.codex` CLI login. The Docker Compose sandbox runner never mounts that secret tree; a single-container deployment instead treats the app container as its trust boundary, so disable `sandbox_allow_subprocess` if model-generated code should not run alongside persisted credentials. The model list comes from that account's live catalog; signing in publishes the profile but only becomes the active model when no LLM is configured yet. Because a token authorizes one person's plan, the profile is not shareable through user grants — each account signs in for itself.
+**OpenAI Codex OAuth (experimental).** Picking **OpenAI Codex** under Models → LLM replaces the API-key fields with a browser sign-in that runs against your own ChatGPT plan, so no `OPENAI_API_KEY` is needed. Tokens live only in `data/system/user-secrets/<owner>/private/openai-codex/`, and DeepTutor never reads or modifies your `~/.codex` CLI login. The model list comes from that account's live catalog; signing in publishes the profile but only becomes the active model when no LLM is configured yet. Because a token authorizes one person's plan, the profile is not shareable through user grants — each account signs in for itself.
 
-For a local Docker or Podman deployment, the browser and container have different loopback networks. Enable the temporary callback bridge only while signing in, then recreate the service without it so other local Codex clients can use ports `1455` and `1457`:
-
-```bash
-# Docker Compose: choose docker-compose.yml or docker-compose.ghcr.yml.
-# The wrapper keeps custom ports in system.json synchronized with Compose.
-python scripts/docker_compose.py \
-  -f docker-compose.ghcr.yml -f compose.codex-oauth.yaml \
-  up -d --force-recreate deeptutor
-
-# podman compose
-podman compose -f compose.yaml -f compose.codex-oauth.yaml \
-  up -d --force-recreate deeptutor
-```
-
-With `docker run`, stop the normal container and temporarily rerun it with the same data volume plus the two loopback-only mappings:
-
-```bash
-docker run --rm --name deeptutor \
-  -p 127.0.0.1:3782:3782 \
-  -p 127.0.0.1:1455:3782 \
-  -p 127.0.0.1:1457:3782 \
-  -v deeptutor-data:/app/data \
-  ghcr.io/hkuds/deeptutor:latest
-```
-
-After Settings reports **Connected**, stop the temporary container or recreate the Compose service with only its base file. The complete `/app/data` volume preserves the credentials. See [CONTAINERIZATION.md](./CONTAINERIZATION.md#temporary-local-codex-oauth-bridge) for exact teardown commands and custom-port notes.
+Default local Docker and Podman deployments use separate loopback networks and need a temporary bridge during sign-in. Follow the [temporary local Codex OAuth bridge guide](./CONTAINERIZATION.md#temporary-local-codex-oauth-bridge) for the exact Docker, Compose, Podman, and teardown commands.
 
 For a remote deployment, the browser's `localhost` and the server's `localhost` are different machines, so an ordinary reverse proxy alone cannot carry the browser's localhost callback to the server. Use an SSH tunnel as the callback bridge. The tunnel reaches the already-published Web port; Next.js rewrites only the exact callback path to the public callback broker, and the broker validates `state` before routing to the original OAuth operation. The callback listener remains on the backend loopback, ports `1455` and `1457` are not published, and this path supports the default Docker bridge network.
 
