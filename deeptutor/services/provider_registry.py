@@ -192,7 +192,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         backend="openai_compat",
         is_gateway=True,
         detect_by_base_keyword="novita",
-        default_api_base="https://api.novita.ai/v3/openai",
+        default_api_base="https://api.novita.ai/openai",
     ),
     ProviderSpec(
         name="atlascloud",

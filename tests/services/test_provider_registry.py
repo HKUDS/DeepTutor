@@ -47,8 +47,8 @@ def test_novita_provider_aliases_and_base_detection() -> None:
     assert spec.env_key == "NOVITA_API_KEY"
     assert spec.backend == "openai_compat"
     assert spec.mode == "gateway"
-    assert spec.default_api_base == "https://api.novita.ai/v3/openai"
-    assert find_gateway(api_base="https://api.novita.ai/v3/openai") == spec
+    assert spec.default_api_base == "https://api.novita.ai/openai"
+    assert find_gateway(api_base="https://api.novita.ai/openai") == spec
 
 
 def test_openai_codex_is_not_detected_from_api_base() -> None:
