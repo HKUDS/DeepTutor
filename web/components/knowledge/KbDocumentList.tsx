@@ -28,6 +28,7 @@ import { docIconFor, formatBytes } from "@/lib/doc-attachments";
 
 interface KbDocumentListProps {
   kbName: string;
+  remote?: boolean;
   /** Refresh trigger: bumping this prop forces a re-fetch (e.g. after upload). */
   refreshKey?: number;
   selectedFile: string | null;
@@ -106,6 +107,7 @@ function buildTree(entries: KnowledgeBaseFile[]): {
 
 export default function KbDocumentList({
   kbName,
+  remote = false,
   refreshKey = 0,
   selectedFile,
   onSelect,
@@ -321,8 +323,9 @@ export default function KbDocumentList({
     return (
       <li key={`f:${node.path}`} className="group/row relative">
         <div
-          draggable
+          draggable={!remote}
           onDragStart={(e) => {
+            if (remote) return;
             e.dataTransfer.setData("text/plain", node.path);
             e.dataTransfer.effectAllowed = "move";
             setDragPath(node.path);
@@ -337,7 +340,7 @@ export default function KbDocumentList({
         >
           <button
             type="button"
-            onClick={() => onSelect(file)}
+            onClick={() => !remote && onSelect(file)}
             title={node.path}
             className="flex min-w-0 flex-1 items-center gap-2 text-left"
           >
@@ -353,11 +356,18 @@ export default function KbDocumentList({
               <div className="truncate text-[10px] text-[var(--muted-foreground)]">
                 {file.size ? formatBytes(file.size) : ""}
                 {file.modified ? ` · ${formatRelative(file.modified)}` : ""}
+                {file.status ? ` · ${file.status}` : ""}
               </div>
+              {file.error && (
+                <div className="truncate text-[10px] text-red-600 dark:text-red-400">
+                  {file.error}
+                </div>
+              )}
             </div>
           </button>
-          {confirmDeleteFor === node.path ? (
-            <div className="flex shrink-0 items-center gap-0.5 pr-0.5">
+          {!remote &&
+            (confirmDeleteFor === node.path ? (
+              <div className="flex shrink-0 items-center gap-0.5 pr-0.5">
               <span className="px-0.5 text-[10px] font-medium text-red-600 dark:text-red-400">
                 {t("Delete?")}
               </span>
@@ -380,9 +390,9 @@ export default function KbDocumentList({
               >
                 <X className="h-3.5 w-3.5" />
               </button>
-            </div>
-          ) : (
-            <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover/row:opacity-100">
+              </div>
+            ) : (
+              <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover/row:opacity-100">
               <button
                 type="button"
                 onClick={() => {
@@ -409,11 +419,11 @@ export default function KbDocumentList({
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
-            </div>
-          )}
+              </div>
+            ))}
         </div>
 
-        {moveMenuFor === node.path && (
+        {!remote && moveMenuFor === node.path && (
           <>
             <div
               className="fixed inset-0 z-10"
@@ -468,18 +478,20 @@ export default function KbDocumentList({
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
-          <button
-            type="button"
-            onClick={() => {
-              setNewFolderOpen((v) => !v);
-              setNewFolderName("");
-            }}
-            title={t("New folder")}
-            aria-label={t("New folder")}
-            className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-          >
-            <FolderPlus size={13} strokeWidth={1.7} />
-          </button>
+          {!remote && (
+            <button
+              type="button"
+              onClick={() => {
+                setNewFolderOpen((v) => !v);
+                setNewFolderName("");
+              }}
+              title={t("New folder")}
+              aria-label={t("New folder")}
+              className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+            >
+              <FolderPlus size={13} strokeWidth={1.7} />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => void load(true)}
@@ -506,7 +518,7 @@ export default function KbDocumentList({
         </div>
       </div>
 
-      {newFolderOpen && (
+      {!remote && newFolderOpen && (
         <div className="flex items-center gap-1 px-2.5 pb-1.5">
           <input
             value={newFolderName}

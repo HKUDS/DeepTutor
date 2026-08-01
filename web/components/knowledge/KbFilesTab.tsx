@@ -29,6 +29,7 @@ export default function KbFilesTab({ kb, task }: KbFilesTabProps) {
     null,
   );
   const fileListPanel = useCollapsiblePanel("knowledge-file-list");
+  const remote = kb.metadata?.type === "lightrag_server";
 
   // Bump refreshKey when the active create/upload task settles so newly
   // indexed files appear automatically.
@@ -60,9 +61,10 @@ export default function KbFilesTab({ kb, task }: KbFilesTabProps) {
     <div className="flex h-full min-h-0">
       <KbDocumentList
         kbName={kb.name}
+        remote={remote}
         refreshKey={refreshKey}
         selectedFile={selectedFile?.name ?? null}
-        onSelect={setSelectedFile}
+        onSelect={remote ? () => undefined : setSelectedFile}
         collapsed={fileListPanel.collapsed}
         onToggleCollapsed={fileListPanel.toggle}
       />

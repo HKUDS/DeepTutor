@@ -66,6 +66,11 @@ def _transport(*, auth_configured: bool = True, valid_key: str | None = "secret"
             assert b'filename="notes.md"' in request.content
             assert b"hello markdown" in request.content
             return httpx.Response(200, json={"status": "success", "message": "queued"})
+        if path == "/documents":
+            return httpx.Response(
+                200,
+                json={"statuses": {"processed": [{"file_path": "notes.md"}]}},
+            )
         return httpx.Response(404, json={})
 
     return httpx.MockTransport(handler)
@@ -121,6 +126,15 @@ def test_client_upload_document_uses_multipart_endpoint() -> None:
         client.upload_document("notes.md", b"hello markdown", "text/markdown")
     )
     assert result == {"status": "success", "message": "queued"}
+
+
+def test_client_lists_remote_documents() -> None:
+    client = LightRagServerClient(
+        LightRagServerConfig("http://x", "secret"), transport=_transport()
+    )
+    assert asyncio.run(client.list_documents()) == {
+        "statuses": {"processed": [{"file_path": "notes.md"}]}
+    }
 
 
 # ----- probe -------------------------------------------------------------

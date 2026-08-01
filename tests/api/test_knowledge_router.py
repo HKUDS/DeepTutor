@@ -1136,3 +1136,16 @@ def test_upload_to_lightrag_server_is_forwarded(monkeypatch) -> None:
     )
 
     assert response["results"][0]["status"] == "success"
+
+
+def test_lightrag_document_status_overrides_static_ready() -> None:
+    info = {"status": "ready", "statistics": {"status": "ready", "raw_documents": 0}}
+
+    knowledge_router_module._apply_lightrag_document_status(
+        info,
+        {"statuses": {"processed": [{"id": "ok"}], "failed": [{"id": "bad"}]}},
+    )
+
+    assert info["status"] == "error"
+    assert info["statistics"]["raw_documents"] == 2
+    assert "1 remote document(s) failed" in info["progress"]["message"]

@@ -719,6 +719,54 @@ async def _upload_to_lightrag_server(
     }
 
 
+async def _list_lightrag_documents(kb_entry: dict) -> dict:
+    """Fetch the document inventory owned by a connected LightRAG server."""
+    from deeptutor.services.rag.pipelines.lightrag_server.client import (
+        LightRagServerAPIError,
+        LightRagServerClient,
+    )
+    from deeptutor.services.rag.pipelines.lightrag_server.config import config_from_entry
+
+    try:
+        return await LightRagServerClient(config_from_entry(kb_entry)).list_documents()
+    except (LightRagServerAPIError, httpx.HTTPError, OSError) as exc:
+        raise HTTPException(
+            status_code=502, detail=f"Could not list LightRAG server documents: {exc}"
+        ) from exc
+
+
+def _apply_lightrag_document_status(info: dict, payload: dict) -> None:
+    """Replace static connection readiness with the remote pipeline result."""
+    statuses = payload.get("statuses")
+    if not isinstance(statuses, dict):
+        return
+    counts = {
+        str(status).lower(): len(documents)
+        for status, documents in statuses.items()
+        if isinstance(documents, list)
+    }
+    if counts.get("processing") or counts.get("pending"):
+        status = "processing"
+    elif counts.get("failed"):
+        status = "error"
+    else:
+        status = "ready"
+    info["status"] = status
+    info["progress"] = {
+        "stage": "error" if status == "error" else status,
+        "message": (
+            f"{counts.get('failed', 0)} remote document(s) failed indexing."
+            if status == "error"
+            else f"{sum(counts.values())} remote document(s)."
+        ),
+    }
+    statistics = info.get("statistics")
+    if isinstance(statistics, dict):
+        statistics["status"] = status
+        statistics["progress"] = info["progress"]
+        statistics["raw_documents"] = sum(counts.values())
+
+
 def _assert_kb_writable_or_409(kb_name: str, kb_entry: dict) -> None:
     _assert_not_connected_kb(kb_name, kb_entry)
     if bool(kb_entry.get("needs_reindex", False)):
@@ -1940,6 +1988,9 @@ async def get_knowledge_base_details(kb_name: str):
         resource = resolve_kb(kb_name)
         manager = manager_for_resource(resource)
         info = manager.get_info(resource.name)
+        entry = manager._load_config().get("knowledge_bases", {}).get(resource.name, {})
+        if entry.get("type") == LIGHTRAG_SERVER_KB_TYPE:
+            _apply_lightrag_document_status(info, await _list_lightrag_documents(entry))
         info.update(
             {
                 "id": resource.id,
@@ -2005,10 +2056,41 @@ async def list_kb_raw_files(kb_name: str):
     resource = resolve_kb(kb_name)
     manager = manager_for_resource(resource)
     entry = manager._load_config().get("knowledge_bases", {}).get(resource.name, {})
-    # A LightRAG Server KB is only a remote connection pointer. Its documents
-    # live in the external server and cannot be listed from this filesystem.
     if entry.get("type") == LIGHTRAG_SERVER_KB_TYPE:
-        return {"files": []}
+        payload = await _list_lightrag_documents(entry)
+
+        files = []
+        statuses = payload.get("statuses")
+        if isinstance(statuses, dict):
+            for group_status, documents in statuses.items():
+                if not isinstance(documents, list):
+                    continue
+                for document in documents:
+                    if not isinstance(document, dict):
+                        continue
+                    name = str(document.get("file_path") or "").strip()
+                    if not name:
+                        continue
+                    modified = None
+                    raw_modified = document.get("updated_at") or document.get("created_at")
+                    if raw_modified:
+                        try:
+                            modified = datetime.fromisoformat(str(raw_modified)).timestamp()
+                        except ValueError:
+                            pass
+                    files.append(
+                        {
+                            "name": name,
+                            "type": "file",
+                            "size": document.get("content_length"),
+                            "modified": modified,
+                            "remote": True,
+                            "status": str(document.get("status") or group_status).lower(),
+                            "document_id": document.get("id"),
+                            "error": document.get("error"),
+                        }
+                    )
+        return {"files": sorted(files, key=lambda item: item["name"].lower())}
 
     raw_dir = _resolve_kb_raw_dir(kb_name)
     if not raw_dir.exists() or not raw_dir.is_dir():

@@ -11,6 +11,7 @@ We talk to the documented endpoints directly (``httpx`` only):
   only to validate that a configured API key is accepted.
 * ``POST /documents/upload`` — forward an uploaded document to the server-owned
   workspace and let LightRAG index it in the background.
+* ``GET /documents`` — list the server-owned documents and their pipeline state.
 
 Mirrors :class:`PageIndexClient`: a fresh :class:`httpx.AsyncClient` per call so
 the object is safe to construct once and reuse, and an injectable ``transport``
@@ -110,6 +111,12 @@ class LightRagServerClient:
                 "/documents/upload",
                 files={"file": (filename, content, content_type or "application/octet-stream")},
             )
+        return self._json(resp)
+
+    async def list_documents(self) -> dict[str, Any]:
+        """Return LightRAG's document groups keyed by pipeline status."""
+        async with self._open() as client:
+            resp = await client.get("/documents")
         return self._json(resp)
 
     # ----- probing --------------------------------------------------------
