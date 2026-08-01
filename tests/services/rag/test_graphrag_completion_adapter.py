@@ -28,6 +28,7 @@ class _Cfg:
         *,
         binding: str = "openai",
         dim: int = 3072,
+        reasoning_effort: str | None = None,
     ) -> None:
         self.model = model
         self.effective_url = url
@@ -37,6 +38,7 @@ class _Cfg:
         self.extra_headers: dict[str, str] = {}
         self.binding = binding
         self.provider_name = binding
+        self.reasoning_effort = reasoning_effort
         self.dim = dim
 
 
@@ -110,6 +112,25 @@ def test_settings_route_deepseek_completion_without_changing_embedding() -> None
     assert completion["model_provider"] == "deepseek"
     assert embedding.get("type", "litellm") == "litellm"
     assert embedding["model_provider"] == "openai"
+
+
+def test_probe_completion_uses_same_reasoning_options_as_persisted_settings() -> None:
+    pytest.importorskip("graphrag")
+    cfg = _Cfg(
+        "deepseek-v4-pro",
+        "https://api.deepseek.com",
+        "sk-test",
+        binding="deepseek",
+    )
+
+    completion, _response_model = engine._create_probe_completion(cfg)
+    settings = gr_config.build_settings(
+        llm_cfg=cfg,
+        embedding_cfg=_Cfg("embedding-model", "https://embedding.test/v1", "sk-test"),
+    )
+
+    expected = settings["completion_models"][gr_config.COMPLETION_MODEL_ID]["call_args"]
+    assert completion._model_config.call_args == expected
 
 
 def test_real_graphrag_completion_falls_back_when_schema_type_is_unavailable(

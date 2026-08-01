@@ -10,6 +10,7 @@ import time
 from typing import Any
 
 from deeptutor.logging import (
+    PROCESS_LOG_PRIVATE_ATTR,
     ProcessLogEvent,
     bind_log_context,
     capture_process_logs,
@@ -148,6 +149,8 @@ class _TaskScopedLogHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
+            if getattr(record, PROCESS_LOG_PRIVATE_ATTR, False):
+                return
             context = current_log_context()
             record_task_id = context.get("task_id")
             if record_task_id and record_task_id != self._task_id:

@@ -6,6 +6,7 @@ from typing import Any, Dict
 
 import httpx
 
+from deeptutor.services.embedding.request_options import should_send_embedding_dimensions
 from deeptutor.services.llm.openai_http_client import disable_ssl_verify_enabled
 
 from .base import (
@@ -117,7 +118,11 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
     _RETRY_BACKOFF = 1.0
     _RATE_LIMIT_BACKOFF = 5.0
 
-    def _should_send_dimensions(self, model_name: str | None) -> bool:
+    def _should_send_dimensions(
+        self,
+        model_name: str | None,
+        dimension: int | None = None,
+    ) -> bool:
         """Decide whether to attach `dimensions` to the request payload.
 
         Tri-state semantics driven by `self.send_dimensions`:
@@ -127,18 +132,12 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
           OpenAI-style ``dimensions`` parameter — OpenAI ``text-embedding-3*``,
           Qwen3-Embedding, Qwen3-VL-Embedding.
         """
-        if self.send_dimensions is True:
-            return True
-        if self.send_dimensions is False:
-            return False
-        if not model_name:
-            return False
-        lname = model_name.lower()
-        if lname.startswith("text-embedding-3"):
-            return True
-        if "qwen3-embedding" in lname or "qwen3-vl-embedding" in lname:
-            return True
-        return False
+        return should_send_embedding_dimensions(
+            binding=None,
+            model=model_name,
+            dimension=dimension or self.dimensions,
+            send_dimensions=self.send_dimensions,
+        )
 
     async def embed(self, request: EmbeddingRequest) -> EmbeddingResponse:
         import asyncio
@@ -180,7 +179,7 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
         # supports the param — other providers (e.g. Qwen text-embedding-v4 via
         # litellm gateway) return HTTP 400 if we send it.
         dim_value = request.dimensions or self.dimensions
-        if dim_value and self._should_send_dimensions(model):
+        if dim_value and self._should_send_dimensions(model, dim_value):
             payload["dimensions"] = dim_value
 
         # URL transparency: hit `base_url` verbatim. Azure's `?api-version=...`

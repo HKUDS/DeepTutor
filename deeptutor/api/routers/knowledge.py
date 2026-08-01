@@ -39,6 +39,7 @@ from deeptutor.knowledge.kb_types import is_connected_kb
 from deeptutor.knowledge.manager import KnowledgeBaseManager
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
+from deeptutor.logging import PROCESS_LOG_PRIVATE_ATTR
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.knowledge_access import (
     assert_writable,
@@ -559,6 +560,16 @@ def _task_log(task_id: str, message: str, level: str = "info") -> None:
         logger.info(f"[{task_id}] {message}")
 
 
+def _server_task_trace(task_id: str, trace: str) -> None:
+    """Keep a traceback in server logs while excluding it from browser streams."""
+    logger.error(
+        "[%s] Stack trace:\n%s",
+        task_id,
+        trace,
+        extra={PROCESS_LOG_PRIVATE_ATTR: True},
+    )
+
+
 def _exception_failure_metadata(exc: Exception) -> dict:
     """Extract stable, user-facing failure metadata from a typed exception."""
     metadata = {}
@@ -818,7 +829,7 @@ async def run_initialization_task(initializer: KnowledgeBaseInitializer, task_id
             failure_metadata = _exception_failure_metadata(e)
 
             _task_log(task_id, f"Initialization failed: {error_msg}", level="error")
-            _task_log(task_id, f"Stack trace:\n{trace}", level="error")
+            _server_task_trace(task_id, trace)
 
             task_manager.update_task_status(task_id, "error", error=error_msg)
 
@@ -844,7 +855,7 @@ async def run_initialization_task(initializer: KnowledgeBaseInitializer, task_id
                     error=error_msg,
                     **failure_metadata,
                 )
-            task_stream_manager.emit_failed(task_id, error_msg, details=trace, **failure_metadata)
+            task_stream_manager.emit_failed(task_id, error_msg, **failure_metadata)
 
 
 async def run_upload_processing_task(
@@ -981,7 +992,7 @@ async def run_upload_processing_task(
             trace = _tb.format_exc()
             failure_metadata = _exception_failure_metadata(e)
             _task_log(task_id, error_msg, level="error")
-            _task_log(task_id, f"Stack trace:\n{trace}", level="error")
+            _server_task_trace(task_id, trace)
 
             task_manager.update_task_status(task_id, "error", error=error_msg)
 
@@ -991,7 +1002,7 @@ async def run_upload_processing_task(
                 error=error_msg,
                 **failure_metadata,
             )
-            task_stream_manager.emit_failed(task_id, error_msg, details=trace, **failure_metadata)
+            task_stream_manager.emit_failed(task_id, error_msg, **failure_metadata)
 
 
 @router.get("/health")
@@ -2515,7 +2526,7 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
             trace = _tb.format_exc()
             failure_metadata = _exception_failure_metadata(e)
             _task_log(task_id, f"Re-index failed: {error_msg}", level="error")
-            _task_log(task_id, f"Stack trace:\n{trace}", level="error")
+            _server_task_trace(task_id, trace)
             task_manager.update_task_status(task_id, "error", error=error_msg)
             try:
                 ProgressTracker(kb_name, Path(base_dir)).update(
@@ -2526,7 +2537,7 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
                 )
             except Exception:
                 pass
-            task_stream_manager.emit_failed(task_id, error_msg, details=trace, **failure_metadata)
+            task_stream_manager.emit_failed(task_id, error_msg, **failure_metadata)
 
 
 @router.post("/{kb_name}/reindex")

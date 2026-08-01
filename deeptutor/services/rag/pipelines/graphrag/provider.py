@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from deeptutor.services.llm.reasoning_params import build_openai_compatible_reasoning_kwargs
 from deeptutor.services.provider_registry import find_by_name, strip_provider_prefix
 
 from .errors import GraphRagUnsupportedProviderError
@@ -46,6 +47,33 @@ def resolve_completion_model(llm_cfg: Any) -> str:
     model = str(getattr(llm_cfg, "model", "") or "")
     spec = find_by_name(_runtime_binding(llm_cfg))
     return strip_provider_prefix(model, spec)
+
+
+def resolve_completion_call_args(llm_cfg: Any) -> dict[str, Any]:
+    """Return the request options shared by GraphRAG probes and indexing."""
+    call_args: dict[str, Any] = {}
+    extra_headers = getattr(llm_cfg, "extra_headers", None)
+    if isinstance(extra_headers, dict) and extra_headers:
+        call_args["extra_headers"] = dict(extra_headers)
+
+    binding = _runtime_binding(llm_cfg)
+    spec = find_by_name(binding)
+    reasoning_effort = getattr(llm_cfg, "reasoning_effort", None)
+    if spec is not None and spec.backend == "openai_compat":
+        call_args.update(
+            build_openai_compatible_reasoning_kwargs(
+                spec=spec,
+                binding=binding,
+                model=resolve_completion_model(llm_cfg),
+                reasoning_effort=reasoning_effort,
+            )
+        )
+    elif reasoning_effort:
+        # Preserve the existing GraphRAG behavior for Anthropic, Azure, and
+        # unknown transports; the OpenAI-compatible normalizer is not valid for
+        # those backends.
+        call_args["reasoning_effort"] = reasoning_effort
+    return call_args
 
 
 def resolve_persisted_completion_provider(model_config: Any) -> str:
@@ -94,6 +122,7 @@ def resolve_persisted_completion_provider(model_config: Any) -> str:
 
 __all__ = [
     "COMPLETION_TYPE",
+    "resolve_completion_call_args",
     "resolve_completion_model",
     "resolve_completion_provider",
     "resolve_persisted_completion_provider",

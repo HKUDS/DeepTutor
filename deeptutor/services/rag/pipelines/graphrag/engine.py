@@ -19,13 +19,19 @@ from typing import Any, TypeVar
 
 from .config import DEFAULT_MODE, normalize_mode, query_config_from_settings
 from .errors import (
+    EMBEDDING_RESPONSE_MESSAGE,
+    GraphRagEmbeddingDimensionError,
+    GraphRagEmbeddingProbeError,
+    GraphRagEmbeddingResponseError,
     GraphRagModelIncompatibleError,
     GraphRagStructuredOutputError,
     GraphRagUnsupportedProviderError,
+    classify_embedding_error,
     classify_model_error,
 )
 from .provider import (
     COMPLETION_TYPE,
+    resolve_completion_call_args,
     resolve_completion_model,
     resolve_completion_provider,
     resolve_persisted_completion_provider,
@@ -40,6 +46,7 @@ RESPONSE_TYPE = "Multiple Paragraphs"
 DEFAULT_COMMUNITY_LEVEL = 2
 PROBE_MAX_TOKENS = 1024
 PROBE_TIMEOUT_SECONDS = 25
+EMBEDDING_PROBE_TEXT = "DeepTutor GraphRAG embedding compatibility test"
 
 # Per-mode output tables the query API needs (mirrors graphrag.cli.query).
 _OUTPUTS_BY_MODE: dict[str, tuple[list[str], list[str]]] = {
@@ -114,13 +121,7 @@ def _create_probe_completion(llm_cfg: Any):
     from .completion_adapter import register_completion_adapter
 
     api_base = getattr(llm_cfg, "effective_url", None) or getattr(llm_cfg, "base_url", None)
-    call_args: dict[str, Any] = {}
-    extra_headers = getattr(llm_cfg, "extra_headers", None)
-    if isinstance(extra_headers, dict) and extra_headers:
-        call_args["extra_headers"] = dict(extra_headers)
-    reasoning_effort = getattr(llm_cfg, "reasoning_effort", None)
-    if reasoning_effort:
-        call_args["reasoning_effort"] = reasoning_effort
+    call_args = resolve_completion_call_args(llm_cfg)
     register_completion_adapter()
     model_config = ModelConfig(
         type=COMPLETION_TYPE,
@@ -203,14 +204,70 @@ async def probe_completion_model(llm_cfg: Any) -> dict[str, Any]:
     }
 
 
-async def build(root_dir: Path, *, is_update: bool = False) -> None:
+def _create_probe_embedding(config: Any) -> tuple[Any, int]:
+    """Create GraphRAG's configured embedding client and expected vector size."""
+    from graphrag_llm.embedding import create_embedding
+
+    model_id = config.embed_text.embedding_model_id
+    model_config = config.embedding_models[model_id]
+    expected_dimension = int(config.vector_store.vector_size or 0)
+    return create_embedding(model_config), expected_dimension
+
+
+async def _probe_embedding_model_impl(config: Any) -> None:
+    """Run one bounded embedding request through GraphRAG's actual client."""
+    embedding, expected_dimension = _create_probe_embedding(config)
+    try:
+        response = await embedding.embedding_async(
+            input=[EMBEDDING_PROBE_TEXT],
+            timeout=PROBE_TIMEOUT_SECONDS,
+        )
+    except Exception as error:  # noqa: BLE001 - classified into secret-free metadata
+        classified = classify_embedding_error(error)
+        if classified is not None:
+            raise classified from error
+        raise GraphRagEmbeddingProbeError() from error
+
+    vector = getattr(response, "first_embedding", None)
+    if not isinstance(vector, list) or not vector:
+        raise GraphRagEmbeddingResponseError(EMBEDDING_RESPONSE_MESSAGE)
+    if expected_dimension and len(vector) != expected_dimension:
+        raise GraphRagEmbeddingDimensionError(
+            configured=expected_dimension,
+            actual=len(vector),
+        )
+
+
+async def preflight_embedding(root_dir: Path) -> None:
+    """Validate one settings snapshot through GraphRAG's real embedding client."""
+    await _run_isolated(lambda: _preflight_embedding_impl(root_dir))
+
+
+async def _preflight_embedding_impl(root_dir: Path) -> None:
+    config = _load_config(root_dir)
+    logger.info("GraphRAG: validating the active embedding model before indexing")
+    await _probe_embedding_model_impl(config)
+
+
+async def build(
+    root_dir: Path,
+    *,
+    is_update: bool = False,
+    preflight_embedding_model: bool = True,
+) -> None:
     """Run the GraphRAG indexing pipeline rooted at ``root_dir``.
 
     Raises on any failed workflow so the caller can surface an error and clean
     up the (incomplete) version directory.
     """
     try:
-        await _run_isolated(lambda: _build_impl(root_dir, is_update=is_update))
+        await _run_isolated(
+            lambda: _build_impl(
+                root_dir,
+                is_update=is_update,
+                preflight_embedding_model=preflight_embedding_model,
+            )
+        )
     except Exception as error:
         classified = classify_model_error(error)
         if classified is not None and classified is not error:
@@ -218,11 +275,19 @@ async def build(root_dir: Path, *, is_update: bool = False) -> None:
         raise
 
 
-async def _build_impl(root_dir: Path, *, is_update: bool) -> None:
+async def _build_impl(
+    root_dir: Path,
+    *,
+    is_update: bool,
+    preflight_embedding_model: bool,
+) -> None:
     from graphrag.api import build_index
     from graphrag.config.enums import IndexingMethod
 
     config = _load_config(root_dir)
+    if preflight_embedding_model:
+        logger.info("GraphRAG: validating the active embedding model before indexing")
+        await _probe_embedding_model_impl(config)
     logger.info("GraphRAG: building index at %s (update=%s)", root_dir, is_update)
     results = await build_index(
         config=config,
@@ -234,7 +299,12 @@ async def _build_impl(root_dir: Path, *, is_update: bool) -> None:
         for result in errors:
             error = getattr(result, "error", None)
             if isinstance(error, BaseException):
-                classified = classify_model_error(error)
+                workflow = str(getattr(result, "workflow", "") or "").lower()
+                classified = (
+                    classify_embedding_error(error)
+                    if "embed" in workflow
+                    else classify_model_error(error)
+                )
                 if classified is not None:
                     raise classified from error
         detail = "; ".join(f"{r.workflow}: {r.error}" for r in errors[:3])

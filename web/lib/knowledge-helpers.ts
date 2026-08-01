@@ -33,6 +33,7 @@ export interface KnowledgeIndexFailure {
   message?: string;
   retryable?: boolean;
   requiresModelChange: boolean;
+  settingsHref?: string;
 }
 
 export interface IndexVersion {
@@ -186,16 +187,32 @@ export const resolveKnowledgeIndexFailure = (
     storedProgress?.message?.trim() ||
     undefined;
 
+  const embeddingConfigurationCodes = new Set([
+    "graphrag_embedding_authentication_failed",
+    "graphrag_embedding_dimension_mismatch",
+    "graphrag_embedding_endpoint_failed",
+    "graphrag_embedding_incompatible",
+    "graphrag_embedding_provider_unsupported",
+  ]);
+  const completionConfigurationCodes = new Set([
+    "graphrag_model_incompatible",
+    "graphrag_provider_unsupported",
+    "graphrag_model_authentication_failed",
+    "graphrag_model_endpoint_failed",
+  ]);
+  const requiresEmbeddingChange = embeddingConfigurationCodes.has(code ?? "");
+  const requiresCompletionChange = completionConfigurationCodes.has(code ?? "");
+
   return {
     code,
     message,
     retryable: progress?.retryable ?? storedProgress?.retryable,
-    requiresModelChange: new Set([
-      "graphrag_model_incompatible",
-      "graphrag_provider_unsupported",
-      "graphrag_model_authentication_failed",
-      "graphrag_model_endpoint_failed",
-    ]).has(code ?? ""),
+    requiresModelChange: requiresEmbeddingChange || requiresCompletionChange,
+    settingsHref: requiresEmbeddingChange
+      ? "/settings/embedding"
+      : requiresCompletionChange
+        ? "/settings/models"
+        : undefined,
   };
 };
 

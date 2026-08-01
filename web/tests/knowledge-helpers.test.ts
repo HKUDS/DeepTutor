@@ -74,6 +74,7 @@ test("resolveKnowledgeIndexFailure preserves actionable backend metadata", () =>
       message: "Choose a chat model that supports structured output.",
       retryable: false,
       requiresModelChange: true,
+      settingsHref: "/settings/models",
     },
   );
 });
@@ -101,8 +102,26 @@ test("resolveKnowledgeIndexFailure distinguishes configuration from transient fa
   );
 
   assert.equal(authentication?.requiresModelChange, true);
+  assert.equal(authentication?.settingsHref, "/settings/models");
   assert.equal(rateLimit?.requiresModelChange, false);
+  assert.equal(rateLimit?.settingsHref, undefined);
   assert.equal(rateLimit?.retryable, true);
+});
+
+test("resolveKnowledgeIndexFailure routes embedding configuration failures to embedding settings", () => {
+  const endpointFailure = resolveKnowledgeIndexFailure(
+    kb({
+      status: "error",
+      progress: {
+        stage: "error",
+        error_code: "graphrag_embedding_endpoint_failed",
+        retryable: false,
+      },
+    }),
+  );
+
+  assert.equal(endpointFailure?.requiresModelChange, true);
+  assert.equal(endpointFailure?.settingsHref, "/settings/embedding");
 });
 
 test("taskFailureMessage keeps trace details out of the primary error", () => {
