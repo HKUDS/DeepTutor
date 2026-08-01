@@ -559,6 +559,18 @@ def _task_log(task_id: str, message: str, level: str = "info") -> None:
         logger.info(f"[{task_id}] {message}")
 
 
+def _exception_failure_metadata(exc: Exception) -> dict:
+    """Extract stable, user-facing failure metadata from a typed exception."""
+    metadata = {}
+    error_code = getattr(exc, "code", None)
+    retryable = getattr(exc, "retryable", None)
+    if isinstance(error_code, str) and error_code:
+        metadata["error_code"] = error_code
+    if isinstance(retryable, bool):
+        metadata["retryable"] = retryable
+    return metadata
+
+
 def _validate_registered_provider(raw_provider: str | None) -> str:
     """Resolve a requested provider to a known engine.
 
@@ -600,6 +612,24 @@ def _assert_provider_ready(provider: str) -> None:
                     "`pip install 'deeptutor[graphrag]'` on the server before "
                     "creating a GraphRAG knowledge base."
                 ),
+            )
+
+        from deeptutor.services.rag.preflight import engine_preflight
+
+        report = engine_preflight(provider)
+        failed_checks = [
+            check
+            for check in report.get("checks", [])
+            if not check.get("optional") and not check.get("ok")
+        ]
+        if failed_checks:
+            failure_details = "; ".join(
+                str(check.get("detail") or check.get("label") or "Requirement not met")
+                for check in failed_checks
+            )
+            raise HTTPException(
+                status_code=409,
+                detail=f"GraphRAG preflight failed: {failure_details}",
             )
 
     if provider == LIGHTRAG_PROVIDER:
@@ -785,6 +815,7 @@ async def run_initialization_task(initializer: KnowledgeBaseInitializer, task_id
 
             error_msg = str(e)
             trace = _tb.format_exc()
+            failure_metadata = _exception_failure_metadata(e)
 
             _task_log(task_id, f"Initialization failed: {error_msg}", level="error")
             _task_log(task_id, f"Stack trace:\n{trace}", level="error")
@@ -800,6 +831,7 @@ async def run_initialization_task(initializer: KnowledgeBaseInitializer, task_id
                     "message": f"Initialization failed: {error_msg}",
                     "percent": 0,
                     "error": error_msg,
+                    **failure_metadata,
                     "task_id": task_id,
                     "timestamp": datetime.now().isoformat(),
                 },
@@ -807,9 +839,12 @@ async def run_initialization_task(initializer: KnowledgeBaseInitializer, task_id
 
             if initializer.progress_tracker:
                 initializer.progress_tracker.update(
-                    ProgressStage.ERROR, f"Initialization failed: {error_msg}", error=error_msg
+                    ProgressStage.ERROR,
+                    f"Initialization failed: {error_msg}",
+                    error=error_msg,
+                    **failure_metadata,
                 )
-            task_stream_manager.emit_failed(task_id, error_msg, details=trace)
+            task_stream_manager.emit_failed(task_id, error_msg, details=trace, **failure_metadata)
 
 
 async def run_upload_processing_task(
@@ -944,15 +979,19 @@ async def run_upload_processing_task(
 
             error_msg = f"Upload processing failed (KB '{kb_name}'): {e}"
             trace = _tb.format_exc()
+            failure_metadata = _exception_failure_metadata(e)
             _task_log(task_id, error_msg, level="error")
             _task_log(task_id, f"Stack trace:\n{trace}", level="error")
 
             task_manager.update_task_status(task_id, "error", error=error_msg)
 
             progress_tracker.update(
-                ProgressStage.ERROR, f"Processing failed: {error_msg}", error=error_msg
+                ProgressStage.ERROR,
+                f"Processing failed: {error_msg}",
+                error=error_msg,
+                **failure_metadata,
             )
-            task_stream_manager.emit_failed(task_id, error_msg, details=trace)
+            task_stream_manager.emit_failed(task_id, error_msg, details=trace, **failure_metadata)
 
 
 @router.get("/health")
@@ -1280,6 +1319,37 @@ async def get_rag_model_options(kinds: str = "llm,embedding"):
     except Exception as e:
         logger.error(f"Error reading model options: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class GraphRagModelCompatibilityRequest(BaseModel):
+    """Configured chat-model candidate to test without activating it."""
+
+    profile_id: str
+    model_id: str
+
+
+async def _probe_graphrag_model_compatibility(profile_id: str, model_id: str) -> dict:
+    """Resolve and probe a configured GraphRAG chat-model candidate."""
+    from deeptutor.services.rag.pipelines.graphrag.compatibility import (
+        probe_configured_completion_model,
+    )
+
+    return await probe_configured_completion_model(profile_id, model_id)
+
+
+@router.post("/rag-pipelines/graphrag/model-compatibility")
+async def test_graphrag_model_compatibility(payload: GraphRagModelCompatibilityRequest):
+    """Test GraphRAG structured output without changing the active chat model."""
+    try:
+        return await _probe_graphrag_model_compatibility(payload.profile_id, payload.model_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        logger.exception("Unexpected error testing GraphRAG model compatibility")
+        raise HTTPException(
+            status_code=500,
+            detail="GraphRAG compatibility could not be tested because of an internal error.",
+        ) from e
 
 
 class ActiveModelUpdate(BaseModel):
@@ -2443,6 +2513,7 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
 
             error_msg = str(e)
             trace = _tb.format_exc()
+            failure_metadata = _exception_failure_metadata(e)
             _task_log(task_id, f"Re-index failed: {error_msg}", level="error")
             _task_log(task_id, f"Stack trace:\n{trace}", level="error")
             task_manager.update_task_status(task_id, "error", error=error_msg)
@@ -2451,10 +2522,11 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
                     ProgressStage.ERROR,
                     f"Re-index failed: {error_msg}",
                     error=error_msg,
+                    **failure_metadata,
                 )
             except Exception:
                 pass
-            task_stream_manager.emit_failed(task_id, error_msg, details=trace)
+            task_stream_manager.emit_failed(task_id, error_msg, details=trace, **failure_metadata)
 
 
 @router.post("/{kb_name}/reindex")

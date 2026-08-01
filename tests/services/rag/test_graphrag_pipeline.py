@@ -24,6 +24,9 @@ from deeptutor.services.rag.factory import (
 from deeptutor.services.rag.index_versioning import resolve_storage_dir_for_read
 from deeptutor.services.rag.pipelines.graphrag import config as gr_config
 from deeptutor.services.rag.pipelines.graphrag import engine, ingestion, storage
+from deeptutor.services.rag.pipelines.graphrag.errors import (
+    GraphRagStructuredOutputTruncatedError,
+)
 from deeptutor.services.rag.pipelines.graphrag.pipeline import GraphRagPipeline, _context_to_sources
 
 # --------------------------------------------------------------------------- #
@@ -32,17 +35,17 @@ from deeptutor.services.rag.pipelines.graphrag.pipeline import GraphRagPipeline,
 
 
 def test_factory_dispatches_graphrag_lazily(tmp_path) -> None:
+    imported_before = sys.modules.get("graphrag")
     pipe = get_pipeline("graphrag", kb_base_dir=str(tmp_path))
     assert type(pipe).__name__ == "GraphRagPipeline"
     # Building the pipeline must NOT import the heavy optional dependency.
-    assert "graphrag" not in sys.modules
+    assert sys.modules.get("graphrag") is imported_before
 
 
 def test_list_pipelines_includes_graphrag() -> None:
     entry = next(p for p in list_pipelines() if p["id"] == GRAPHRAG_PROVIDER)
     assert entry["requires_api_key"] is False
-    # Not installed in the test env.
-    assert entry["configured"] is False
+    assert entry["configured"] is gr_config.is_graphrag_available()
 
 
 def test_normalize_provider_keeps_graphrag() -> None:
@@ -67,12 +70,13 @@ def test_ragservice_routes_graphrag_from_metadata(tmp_path) -> None:
 
 
 class _Cfg:
-    def __init__(self, model, url, key, dim=3072):
+    def __init__(self, model, url, key, dim=3072, binding="openai"):
         self.model = model
         self.effective_url = url
         self.base_url = None
         self.api_key = key
         self.dim = dim
+        self.binding = binding
 
 
 def test_build_settings_bridges_models() -> None:
@@ -88,6 +92,7 @@ def test_build_settings_bridges_models() -> None:
     chat = settings["completion_models"]["default_completion_model"]
     emb = settings["embedding_models"]["default_embedding_model"]
     assert chat == {
+        "type": "deeptutor_litellm",
         "model_provider": "openai",
         "model": "gpt-4o-mini",
         "auth_method": "api_key",
@@ -114,6 +119,25 @@ def test_build_settings_requires_embedding_dimension() -> None:
             llm_cfg=_Cfg("m", "u", "k"),
             embedding_cfg=_Cfg("e", "u", "k", dim=0),
         )
+
+
+def test_build_settings_does_not_guess_compatibility_from_model_name(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "deeptutor.services.llm.capabilities.supports_response_format",
+        lambda _binding, _model: False,
+    )
+
+    settings = gr_config.build_settings(
+        llm_cfg=_Cfg(
+            "deepseek-v4-flash",
+            "https://gateway.example.com/v1",
+            "sk-test",
+            binding="openrouter",
+        ),
+        embedding_cfg=_Cfg("embedding-model", "https://emb.test/v1", "sk-test"),
+    )
+
+    assert settings["completion_models"]["default_completion_model"]["model"] == "deepseek-v4-flash"
 
 
 def test_local_api_key_placeholder_when_missing() -> None:
@@ -147,6 +171,235 @@ def test_engine_entry_points_run_on_a_private_loop() -> None:
     # ``nest_asyncio2.apply()`` patches whatever ``get_event_loop()`` returns,
     # so the private loop has to be the thread's current one, not just running.
     assert seen["current"] is seen["running"]
+
+
+def test_compatibility_probe_resolves_candidate_without_mutating_active_model(
+    monkeypatch, tmp_path: Path
+) -> None:
+    from deeptutor.services.config.model_catalog import ModelCatalogService
+    from deeptutor.services.rag.pipelines.graphrag import compatibility
+
+    catalog = {
+        "version": 1,
+        "services": {
+            "llm": {
+                "active_profile_id": "profile-a",
+                "active_model_id": "model-a",
+                "profiles": [
+                    {
+                        "id": "profile-a",
+                        "name": "OpenAI",
+                        "binding": "openai",
+                        "base_url": "https://api.openai.com/v1",
+                        "api_key": "sk-test",
+                        "api_version": "",
+                        "extra_headers": {},
+                        "models": [
+                            {"id": "model-a", "name": "A", "model": "gpt-4o-mini"},
+                            {"id": "model-b", "name": "B", "model": "gpt-4.1-mini"},
+                        ],
+                    }
+                ],
+            }
+        },
+    }
+    service = ModelCatalogService(tmp_path / "model_catalog.json")
+    service.save(catalog)
+    monkeypatch.setattr(compatibility, "get_model_catalog_service", lambda: service)
+
+    captured: dict[str, object] = {}
+
+    async def _probe(llm_cfg) -> dict:
+        captured["model"] = llm_cfg.model
+        captured["api_key"] = llm_cfg.api_key
+        return {
+            "status": "compatible",
+            "compatible": True,
+            "code": "graphrag_model_compatible",
+            "message": "The model returned valid GraphRAG structured output.",
+            "model": llm_cfg.model,
+            "binding": llm_cfg.binding,
+            "retryable": False,
+        }
+
+    monkeypatch.setattr(engine, "probe_completion_model", _probe, raising=False)
+
+    result = asyncio.run(compatibility.probe_configured_completion_model("profile-a", "model-b"))
+
+    assert result["compatible"] is True
+    assert captured == {"model": "gpt-4.1-mini", "api_key": "sk-test"}
+    persisted = service.load()
+    assert persisted["services"]["llm"]["active_model_id"] == "model-a"
+
+
+def test_completion_probe_requires_graphrag_structured_response(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class _CommunityReportResponse:
+        pass
+
+    class _Response:
+        formatted_response = _CommunityReportResponse()
+
+    class _Completion:
+        async def completion_async(self, **kwargs):
+            captured.update(kwargs)
+            return _Response()
+
+    monkeypatch.setattr(
+        engine,
+        "_create_probe_completion",
+        lambda _cfg: (_Completion(), _CommunityReportResponse),
+        raising=False,
+    )
+
+    asyncio.run(
+        engine._probe_completion_model_impl(
+            _Cfg("gpt-4o-mini", "https://api.example.com/v1", "sk-test")
+        )
+    )
+
+    assert captured["response_format"] is _CommunityReportResponse
+    assert captured["stream"] is False
+    assert captured["max_tokens"] == 1024
+    assert captured["timeout"] == 25
+    assert "community report" in str(captured["messages"]).lower()
+
+
+def test_completion_probe_reports_compatible_after_isolated_validation(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def _impl(llm_cfg) -> None:
+        captured["model"] = llm_cfg.model
+
+    async def _isolated(work) -> None:
+        captured["isolated"] = True
+        await work()
+
+    monkeypatch.setattr(engine, "_probe_completion_model_impl", _impl)
+    monkeypatch.setattr(engine, "_run_isolated", _isolated)
+
+    result = asyncio.run(
+        engine.probe_completion_model(
+            _Cfg(
+                "gpt-4o-mini",
+                "https://api.openai.com/v1",
+                "sk-test",
+                binding="openai",
+            )
+        )
+    )
+
+    assert captured == {"isolated": True, "model": "gpt-4o-mini"}
+    assert result == {
+        "status": "compatible",
+        "compatible": True,
+        "code": "graphrag_model_compatible",
+        "message": "The model returned valid GraphRAG structured output.",
+        "model": "gpt-4o-mini",
+        "binding": "openai",
+        "retryable": False,
+    }
+
+
+def test_completion_probe_reports_unsupported_schema_as_incompatible(monkeypatch) -> None:
+    class UnsupportedParamsError(Exception):
+        pass
+
+    async def _isolated(_work) -> None:
+        raise UnsupportedParamsError("response_format rejected; sk-secret-must-not-leak")
+
+    monkeypatch.setattr(engine, "_run_isolated", _isolated)
+
+    result = asyncio.run(
+        engine.probe_completion_model(
+            _Cfg(
+                "candidate-model",
+                "https://api.example.com/v1",
+                "sk-secret-must-not-leak",
+                binding="custom",
+            )
+        )
+    )
+
+    assert result["status"] == "incompatible"
+    assert result["compatible"] is False
+    assert result["code"] == "graphrag_model_incompatible"
+    assert result["retryable"] is False
+    assert "sk-secret-must-not-leak" not in result["message"]
+
+
+def test_completion_probe_reports_auth_failure_as_unverifiable(monkeypatch) -> None:
+    class AuthenticationError(Exception):
+        pass
+
+    async def _isolated(_work) -> None:
+        raise AuthenticationError("invalid sk-secret-must-not-leak")
+
+    monkeypatch.setattr(engine, "_run_isolated", _isolated)
+
+    result = asyncio.run(
+        engine.probe_completion_model(
+            _Cfg("candidate-model", "https://api.example.com/v1", "sk-test")
+        )
+    )
+
+    assert result["status"] == "unverifiable"
+    assert result["compatible"] is None
+    assert result["code"] == "graphrag_model_authentication_failed"
+    assert result["retryable"] is False
+    assert "credentials" in result["message"].lower()
+    assert "sk-secret-must-not-leak" not in result["message"]
+
+
+def test_completion_probe_reports_truncated_output_as_unverifiable(monkeypatch) -> None:
+    async def _isolated(_work) -> None:
+        raise GraphRagStructuredOutputTruncatedError("secret response content")
+
+    monkeypatch.setattr(engine, "_run_isolated", _isolated)
+
+    result = asyncio.run(
+        engine.probe_completion_model(
+            _Cfg("candidate-model", "https://api.example.com/v1", "sk-test")
+        )
+    )
+
+    assert result["status"] == "unverifiable"
+    assert result["compatible"] is None
+    assert result["code"] == "graphrag_model_output_truncated"
+    assert result["retryable"] is True
+    assert "secret response content" not in result["message"]
+
+
+@pytest.mark.parametrize(
+    ("error_name", "code"),
+    [
+        ("RateLimitError", "graphrag_model_rate_limited"),
+        ("APIConnectionError", "graphrag_model_connection_failed"),
+        ("Timeout", "graphrag_model_connection_failed"),
+        ("ServiceUnavailableError", "graphrag_model_connection_failed"),
+    ],
+)
+def test_completion_probe_marks_transient_failures_retryable(
+    monkeypatch, error_name: str, code: str
+) -> None:
+    error_type = type(error_name, (Exception,), {})
+
+    async def _isolated(_work) -> None:
+        raise error_type("temporary provider failure")
+
+    monkeypatch.setattr(engine, "_run_isolated", _isolated)
+
+    result = asyncio.run(
+        engine.probe_completion_model(
+            _Cfg("candidate-model", "https://api.example.com/v1", "sk-test")
+        )
+    )
+
+    assert result["status"] == "unverifiable"
+    assert result["compatible"] is None
+    assert result["code"] == code
+    assert result["retryable"] is True
 
 
 def test_write_settings_roundtrips(tmp_path) -> None:
@@ -207,7 +460,8 @@ def test_normalize_mode(given, expected) -> None:
     assert gr_config.normalize_mode(given) == expected
 
 
-def test_is_graphrag_available_false_in_ci() -> None:
+def test_is_graphrag_available_reflects_dependency_lookup(monkeypatch) -> None:
+    monkeypatch.setattr("importlib.util.find_spec", lambda _name: None)
     assert gr_config.is_graphrag_available() is False
 
 
@@ -483,6 +737,12 @@ def test_context_to_sources_prefers_concrete_records() -> None:
 # --------------------------------------------------------------------------- #
 
 
+def test_router_provider_preflight_does_not_require_a_model_probe() -> None:
+    from deeptutor.api.routers import knowledge
+
+    assert knowledge._assert_provider_ready("llamaindex") is None
+
+
 def test_router_blocks_graphrag_when_unavailable(monkeypatch) -> None:
     from fastapi import HTTPException
 
@@ -492,3 +752,27 @@ def test_router_blocks_graphrag_when_unavailable(monkeypatch) -> None:
     with pytest.raises(HTTPException) as exc:
         knowledge._assert_provider_ready(GRAPHRAG_PROVIDER)
     assert exc.value.status_code == 400
+
+
+def test_router_graphrag_readiness_does_not_make_a_paid_model_call(monkeypatch) -> None:
+    from deeptutor.api.routers import knowledge
+    from deeptutor.services.rag import preflight
+    from deeptutor.services.rag.pipelines.graphrag import compatibility
+
+    monkeypatch.setattr(gr_config, "is_graphrag_available", lambda: True)
+    monkeypatch.setattr(
+        preflight,
+        "engine_preflight",
+        lambda _provider: {"ok": True, "checks": []},
+    )
+
+    async def _unexpected_probe() -> dict:
+        raise AssertionError("readiness checks must not call the model provider")
+
+    monkeypatch.setattr(
+        compatibility,
+        "probe_active_completion_model",
+        _unexpected_probe,
+    )
+
+    assert knowledge._assert_provider_ready(GRAPHRAG_PROVIDER) is None

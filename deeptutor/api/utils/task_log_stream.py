@@ -73,10 +73,22 @@ class KnowledgeTaskStreamManager:
     def emit_complete(self, task_id: str, detail: str = "Task completed"):
         self.emit(task_id, "complete", {"detail": detail, "task_id": task_id})
 
-    def emit_failed(self, task_id: str, detail: str, *, details: str | None = None):
+    def emit_failed(
+        self,
+        task_id: str,
+        detail: str,
+        *,
+        details: str | None = None,
+        error_code: str | None = None,
+        retryable: bool | None = None,
+    ):
         payload: dict[str, Any] = {"detail": detail, "task_id": task_id}
         if details:
             payload["details"] = details
+        if error_code:
+            payload["error_code"] = error_code
+        if retryable is not None:
+            payload["retryable"] = retryable
         self.emit(task_id, "failed", payload)
 
     def subscribe(

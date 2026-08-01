@@ -23,6 +23,16 @@ export interface ProgressInfo {
   indexed_count?: number;
   index_changed?: boolean;
   index_action?: string;
+  error?: string;
+  error_code?: string;
+  retryable?: boolean;
+}
+
+export interface KnowledgeIndexFailure {
+  code?: string;
+  message?: string;
+  retryable?: boolean;
+  requiresModelChange: boolean;
 }
 
 export interface IndexVersion {
@@ -157,6 +167,42 @@ export const kbDocCount = (kb: KnowledgeBase): number | null => {
 
 export const resolveKbStatus = (kb: KnowledgeBase): string =>
   kb.status ?? kb.statistics?.status ?? "unknown";
+
+export const resolveKnowledgeIndexFailure = (
+  kb: KnowledgeBase,
+): KnowledgeIndexFailure | null => {
+  if (resolveKbStatus(kb) !== "error") return null;
+
+  const progress = kb.progress;
+  const storedProgress = kb.statistics?.progress;
+  const code =
+    progress?.error_code?.trim() ||
+    storedProgress?.error_code?.trim() ||
+    undefined;
+  const message =
+    progress?.error?.trim() ||
+    storedProgress?.error?.trim() ||
+    progress?.message?.trim() ||
+    storedProgress?.message?.trim() ||
+    undefined;
+
+  return {
+    code,
+    message,
+    retryable: progress?.retryable ?? storedProgress?.retryable,
+    requiresModelChange: new Set([
+      "graphrag_model_incompatible",
+      "graphrag_provider_unsupported",
+      "graphrag_model_authentication_failed",
+      "graphrag_model_endpoint_failed",
+    ]).has(code ?? ""),
+  };
+};
+
+export const taskFailureMessage = (payload: {
+  detail?: string;
+  details?: string;
+}): string => payload.detail?.trim() || "Task failed";
 
 export const kbNeedsReindex = (kb: KnowledgeBase): boolean =>
   Boolean(kb.statistics?.needs_reindex) ||

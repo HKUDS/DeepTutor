@@ -14,9 +14,8 @@ Decoupling notes:
   model id, so the workflow/search sections pick it up automatically.
 * Built-in prompts are used (every ``prompt`` field defaults to ``None`` in
   GraphRAG), so we never scaffold prompt files.
-* GraphRAG talks to its models via LiteLLM with ``model_provider: openai`` + a
-  custom ``api_base`` — which is exactly how DeepTutor reaches any
-  OpenAI-compatible endpoint.
+* Completion calls use DeepTutor's registered GraphRAG compatibility adapter,
+  while embeddings retain GraphRAG's stock LiteLLM path.
 
 This is the single spot to touch if GraphRAG's config schema shifts between
 releases; pin the dependency to the 3.x line (see ``pyproject`` extra).
@@ -28,6 +27,12 @@ from dataclasses import dataclass
 import logging
 from pathlib import Path
 from typing import Any
+
+from .provider import (
+    COMPLETION_TYPE,
+    resolve_completion_model,
+    resolve_completion_provider,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -99,9 +104,14 @@ def query_config_from_settings() -> GraphRagQueryConfig:
         return GraphRagQueryConfig()
 
 
-def _model_entry(*, model: str, api_base: str | None, api_key: str | None) -> dict[str, Any]:
+def _embedding_model_entry(
+    *,
+    model: str,
+    api_base: str | None,
+    api_key: str | None,
+) -> dict[str, Any]:
     entry: dict[str, Any] = {
-        "model_provider": "openai",  # LiteLLM provider for any OpenAI-compatible API
+        "model_provider": "openai",
         "model": model,
         "auth_method": "api_key",
     }
@@ -110,6 +120,31 @@ def _model_entry(*, model: str, api_base: str | None, api_key: str | None) -> di
     # GraphRAG validates that a key is present for ``auth_method: api_key``; local
     # OpenAI-compatible servers accept a placeholder.
     entry["api_key"] = api_key or "sk-no-key-required"
+    return entry
+
+
+def _completion_model_entry(llm_cfg: Any, *, api_base: str | None) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "type": COMPLETION_TYPE,
+        "model_provider": resolve_completion_provider(llm_cfg),
+        "model": resolve_completion_model(llm_cfg),
+        "auth_method": "api_key",
+        "api_key": getattr(llm_cfg, "api_key", None) or "sk-no-key-required",
+    }
+    if api_base:
+        entry["api_base"] = api_base
+    api_version = getattr(llm_cfg, "api_version", None)
+    if api_version:
+        entry["api_version"] = api_version
+    call_args: dict[str, Any] = {}
+    extra_headers = getattr(llm_cfg, "extra_headers", None)
+    if isinstance(extra_headers, dict) and extra_headers:
+        call_args["extra_headers"] = dict(extra_headers)
+    reasoning_effort = getattr(llm_cfg, "reasoning_effort", None)
+    if reasoning_effort:
+        call_args["reasoning_effort"] = reasoning_effort
+    if call_args:
+        entry["call_args"] = call_args
     return entry
 
 
@@ -155,14 +190,10 @@ def build_settings(*, llm_cfg: Any = None, embedding_cfg: Any = None) -> dict[st
 
     return {
         "completion_models": {
-            COMPLETION_MODEL_ID: _model_entry(
-                model=chat_model,
-                api_base=llm_base,
-                api_key=getattr(llm_cfg, "api_key", None),
-            ),
+            COMPLETION_MODEL_ID: _completion_model_entry(llm_cfg, api_base=llm_base),
         },
         "embedding_models": {
-            EMBEDDING_MODEL_ID: _model_entry(
+            EMBEDDING_MODEL_ID: _embedding_model_entry(
                 model=embed_model,
                 api_base=embed_base,
                 api_key=getattr(embedding_cfg, "api_key", None),

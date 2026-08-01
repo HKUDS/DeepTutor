@@ -31,6 +31,26 @@ async def test_knowledge_task_stream_emits_process_log_sse_event():
     assert payload["context"]["task_id"] == "task-1"
 
 
+def test_knowledge_task_stream_emits_structured_failure_metadata():
+    manager = KnowledgeTaskStreamManager()
+    manager.ensure_task("task-failed")
+
+    manager.emit_failed(
+        "task-failed",
+        "Choose a compatible chat model.",
+        details="internal traceback",
+        error_code="graphrag_model_incompatible",
+        retryable=False,
+    )
+
+    event = list(manager._buffers["task-failed"])[-1]
+    assert event["event"] == "failed"
+    assert event["payload"]["detail"] == "Choose a compatible chat model."
+    assert event["payload"]["details"] == "internal traceback"
+    assert event["payload"]["error_code"] == "graphrag_model_incompatible"
+    assert event["payload"]["retryable"] is False
+
+
 def test_capture_task_logs_forwards_lightrag_non_propagating_logger():
     original_instance = KnowledgeTaskStreamManager._instance
     lightrag_logger = logging.getLogger("lightrag")

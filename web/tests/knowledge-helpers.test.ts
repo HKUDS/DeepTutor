@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { kbCanReindex, type KnowledgeBase } from "../lib/knowledge-helpers";
+import {
+  kbCanReindex,
+  resolveKnowledgeIndexFailure,
+  taskFailureMessage,
+  type KnowledgeBase,
+} from "../lib/knowledge-helpers";
 
 function kb(overrides: Partial<KnowledgeBase>): KnowledgeBase {
   return {
@@ -48,5 +53,64 @@ test("kbCanReindex preserves mismatch and needs-reindex behavior", () => {
   assert.equal(
     kbCanReindex(kb({ statistics: { raw_documents: 1, active_match: true } })),
     false,
+  );
+});
+
+test("resolveKnowledgeIndexFailure preserves actionable backend metadata", () => {
+  assert.deepEqual(
+    resolveKnowledgeIndexFailure(
+      kb({
+        status: "error",
+        progress: {
+          stage: "error",
+          error: "Choose a chat model that supports structured output.",
+          error_code: "graphrag_model_incompatible",
+          retryable: false,
+        },
+      }),
+    ),
+    {
+      code: "graphrag_model_incompatible",
+      message: "Choose a chat model that supports structured output.",
+      retryable: false,
+      requiresModelChange: true,
+    },
+  );
+});
+
+test("resolveKnowledgeIndexFailure distinguishes configuration from transient failures", () => {
+  const authentication = resolveKnowledgeIndexFailure(
+    kb({
+      status: "error",
+      progress: {
+        stage: "error",
+        error_code: "graphrag_model_authentication_failed",
+        retryable: false,
+      },
+    }),
+  );
+  const rateLimit = resolveKnowledgeIndexFailure(
+    kb({
+      status: "error",
+      progress: {
+        stage: "error",
+        error_code: "graphrag_model_rate_limited",
+        retryable: true,
+      },
+    }),
+  );
+
+  assert.equal(authentication?.requiresModelChange, true);
+  assert.equal(rateLimit?.requiresModelChange, false);
+  assert.equal(rateLimit?.retryable, true);
+});
+
+test("taskFailureMessage keeps trace details out of the primary error", () => {
+  assert.equal(
+    taskFailureMessage({
+      detail: "GraphRAG preflight failed.",
+      details: "Traceback: sensitive internal diagnostics",
+    }),
+    "GraphRAG preflight failed.",
   );
 });

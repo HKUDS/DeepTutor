@@ -95,6 +95,16 @@ export interface ModelKindOptions {
   options: ModelOption[];
 }
 
+export interface GraphRagModelCompatibility {
+  status: "compatible" | "incompatible" | "unverifiable";
+  compatible: boolean | null;
+  code: string;
+  message: string;
+  model: string;
+  binding: string;
+  retryable: boolean;
+}
+
 /** Map of service kind ("llm" | "embedding") → its options + active selection. */
 export type ModelOptionsByKind = Record<string, ModelKindOptions>;
 
@@ -392,6 +402,26 @@ export async function getEngineModelOptions(
     throw new Error(await readErrorDetail(res, "Failed to read model options"));
   }
   return (await res.json()) as ModelOptionsByKind;
+}
+
+export async function testGraphRagModelCompatibility(
+  profileId: string,
+  modelId: string,
+): Promise<GraphRagModelCompatibility> {
+  const res = await apiFetch(
+    apiUrl("/api/v1/knowledge/rag-pipelines/graphrag/model-compatibility"),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile_id: profileId, model_id: modelId }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, "Failed to test GraphRAG compatibility"),
+    );
+  }
+  return (await res.json()) as GraphRagModelCompatibility;
 }
 
 export async function setEngineActiveModel(

@@ -62,6 +62,21 @@ def test_preflight_shape_for_all_engines() -> None:
         assert report["ok"] == required_ok
 
 
+def test_graphrag_static_preflight_does_not_guess_structured_output_support(
+    monkeypatch,
+) -> None:
+    from deeptutor.services.rag import preflight
+    from deeptutor.services.rag.pipelines.graphrag import config as graphrag_config
+
+    monkeypatch.setattr(graphrag_config, "is_graphrag_available", lambda: True)
+    monkeypatch.setattr(preflight, "_active_chat_model", lambda: ("deepseek-v4-flash", "deepseek"))
+    monkeypatch.setattr(preflight, "_active_embedding", lambda: ("text-embedding", 1024))
+
+    report = preflight.engine_preflight("graphrag")
+    assert all(check["key"] != "structured_output" for check in report["checks"])
+    assert report["ok"] is True
+
+
 def test_preflight_unknown_provider_falls_back_to_default() -> None:
     from deeptutor.services.rag.preflight import engine_preflight
 
