@@ -62,6 +62,10 @@ def _transport(*, auth_configured: bool = True, valid_key: str | None = "secret"
             key = request.headers.get("X-API-Key")
             ok = valid_key is None or key == valid_key
             return httpx.Response(200 if ok else 403, json={})
+        if path == "/documents/upload":
+            assert b'filename="notes.md"' in request.content
+            assert b"hello markdown" in request.content
+            return httpx.Response(200, json={"status": "success", "message": "queued"})
         return httpx.Response(404, json={})
 
     return httpx.MockTransport(handler)
@@ -107,6 +111,16 @@ def test_client_verify_key_true_and_false() -> None:
     bad = LightRagServerClient(LightRagServerConfig("http://x", "wrong"), transport=_transport())
     assert asyncio.run(good.verify_key()) is True
     assert asyncio.run(bad.verify_key()) is False
+
+
+def test_client_upload_document_uses_multipart_endpoint() -> None:
+    client = LightRagServerClient(
+        LightRagServerConfig("http://x", "secret"), transport=_transport()
+    )
+    result = asyncio.run(
+        client.upload_document("notes.md", b"hello markdown", "text/markdown")
+    )
+    assert result == {"status": "success", "message": "queued"}
 
 
 # ----- probe -------------------------------------------------------------

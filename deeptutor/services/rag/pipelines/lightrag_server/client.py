@@ -1,7 +1,6 @@
 """Thin async HTTP client for an external LightRAG server's REST API.
 
-We talk to the documented endpoints directly (``httpx`` only) — the calls map
-1:1 onto our retrieval-only contract:
+We talk to the documented endpoints directly (``httpx`` only):
 
 * ``POST /query`` with ``only_need_context=True`` — return the grounded context
   the server retrieved, WITHOUT its own generation. DeepTutor's chat loop keeps
@@ -10,6 +9,8 @@ We talk to the documented endpoints directly (``httpx`` only) — the calls map
   (whitelisted on the server, so it answers without credentials).
 * ``GET /documents/pipeline_status`` — an auth-gated, side-effect-free call used
   only to validate that a configured API key is accepted.
+* ``POST /documents/upload`` — forward an uploaded document to the server-owned
+  workspace and let LightRAG index it in the background.
 
 Mirrors :class:`PageIndexClient`: a fresh :class:`httpx.AsyncClient` per call so
 the object is safe to construct once and reuse, and an injectable ``transport``
@@ -94,6 +95,22 @@ class LightRagServerClient:
         content = str(data.get("response") or "")
         sources = _sources_from_references(data.get("references"))
         return {"content": content, "sources": sources}
+
+    # ----- indexing -------------------------------------------------------
+
+    async def upload_document(
+        self,
+        filename: str,
+        content: bytes,
+        content_type: str | None = None,
+    ) -> dict[str, Any]:
+        """Upload one document to the server-owned LightRAG workspace."""
+        async with self._open() as client:
+            resp = await client.post(
+                "/documents/upload",
+                files={"file": (filename, content, content_type or "application/octet-stream")},
+            )
+        return self._json(resp)
 
     # ----- probing --------------------------------------------------------
 

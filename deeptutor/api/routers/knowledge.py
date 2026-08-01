@@ -17,6 +17,7 @@ import shutil
 import traceback
 from uuid import uuid4
 
+import httpx
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -678,6 +679,44 @@ def _assert_not_connected_kb(kb_name: str, kb_entry: dict) -> None:
                 "read-only. Uploads and re-indexing are not available for it."
             ),
         )
+
+
+async def _upload_to_lightrag_server(
+    kb_entry: dict,
+    files: list[UploadFile],
+) -> dict:
+    """Forward uploads to a connected LightRAG Server knowledge base."""
+    from deeptutor.services.rag.pipelines.lightrag_server.client import (
+        LightRagServerAPIError,
+        LightRagServerClient,
+    )
+    from deeptutor.services.rag.pipelines.lightrag_server.config import config_from_entry
+
+    allowed_extensions = FileTypeRouter.get_supported_extensions()
+    validated = _validate_upload_batch(files, allowed_extensions=allowed_extensions)
+    client = LightRagServerClient(config_from_entry(kb_entry), timeout=300.0)
+    results: list[dict] = []
+    try:
+        for upload, metadata in zip(files, validated, strict=True):
+            filename = str(metadata["sanitized_filename"])
+            content = await upload.read()
+            results.append(
+                {
+                    "file": filename,
+                    **await client.upload_document(filename, content, upload.content_type),
+                }
+            )
+    except (LightRagServerAPIError, httpx.HTTPError, OSError) as exc:
+        raise HTTPException(status_code=502, detail=f"LightRAG server upload failed: {exc}") from exc
+
+    failures = [item for item in results if item.get("status") in {"failure", "fail"}]
+    if failures:
+        raise HTTPException(status_code=502, detail=f"LightRAG server rejected upload: {failures}")
+    return {
+        "message": f"Uploaded {len(results)} files to LightRAG Server for background indexing.",
+        "files": [item["file"] for item in results],
+        "results": results,
+    }
 
 
 def _assert_kb_writable_or_409(kb_name: str, kb_entry: dict) -> None:
@@ -2167,6 +2206,8 @@ async def upload_files(
             requested_provider = _validate_registered_provider(rag_provider)
 
         kb_entry = _load_kb_entry_or_404(manager, kb_name)
+        if kb_entry.get("type") == LIGHTRAG_SERVER_KB_TYPE:
+            return await _upload_to_lightrag_server(kb_entry, files)
         _assert_kb_writable_or_409(kb_name, kb_entry)
         kb_provider = _validate_registered_provider(
             kb_entry.get("rag_provider") or DEFAULT_PROVIDER

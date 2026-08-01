@@ -4,6 +4,7 @@ import asyncio
 import importlib
 import json
 from pathlib import Path
+import tempfile
 
 import pytest
 
@@ -1104,3 +1105,34 @@ def test_assert_not_connected_kb_blocks_connected_writes() -> None:
         assert excinfo.value.status_code == 409
     # An ordinary KB is writable — the guard is a no-op.
     guard("kb", {"path": "kb", "status": "ready"})
+
+
+def test_upload_to_lightrag_server_is_forwarded(monkeypatch) -> None:
+    entry = {
+        "type": "lightrag_server",
+        "rag_provider": "lightrag-server",
+        "server_url": "http://x:9621",
+        "status": "ready",
+    }
+
+    async def fake_upload(self, filename, content, content_type=None):
+        assert filename == "demo.txt"
+        assert content == b"hello"
+        return {"status": "success", "message": "queued"}
+
+    from deeptutor.services.rag.pipelines.lightrag_server.client import LightRagServerClient
+
+    monkeypatch.setattr(LightRagServerClient, "upload_document", fake_upload)
+    upload_file = tempfile.SpooledTemporaryFile()
+    upload_file.write(b"hello")
+    upload_file.seek(0)
+    upload = knowledge_router_module.UploadFile(
+        filename="demo.txt",
+        file=upload_file,
+        headers={"content-type": "text/plain"},
+    )
+    response = asyncio.run(
+        knowledge_router_module._upload_to_lightrag_server(entry, [upload])
+    )
+
+    assert response["results"][0]["status"] == "success"
