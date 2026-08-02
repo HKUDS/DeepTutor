@@ -180,6 +180,34 @@ async def test_web_update_persists_a_restart_request(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_web_update_refuses_when_pypi_installation_changes(
+    tmp_path: Path,
+) -> None:
+    store = UpdateJobStore(tmp_path)
+    installation = Installation(
+        mode=InstallMode.SOURCE_WEB,
+        current_version="1.5.4",
+        package_name="deeptutor",
+        source_root=tmp_path / "checkout",
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await system_router.request_web_update(
+            system_router.WebUpdateRequest(confirmation="update-and-restart"),
+            coordinator=_AvailablePypiUpdate(),
+            conversations=_IdleConversations(),
+            store=store,
+            launcher_ready=True,
+            installation=installation,
+            source_preflight=_NoSourcePreflight(),
+        )
+
+    assert exc_info.value.status_code == 409
+    assert "changed" in str(exc_info.value.detail).lower()
+    assert not store.state_path.exists()
+
+
+@pytest.mark.asyncio
 async def test_source_web_update_preflights_and_persists_the_checkout(
     tmp_path: Path,
 ) -> None:
@@ -302,6 +330,7 @@ def test_web_update_http_route_requires_confirmation_and_creates_job(
     app.dependency_overrides[system_router.get_conversation_activity] = _IdleConversations
     app.dependency_overrides[system_router.get_update_job_store] = lambda: UpdateJobStore(tmp_path)
     app.dependency_overrides[system_router.is_launcher_available] = lambda: True
+    app.dependency_overrides[system_router.get_current_installation] = _pypi_installation
     monkeypatch.setattr(auth_router, "AUTH_ENABLED", False)
     client = TestClient(app)
 

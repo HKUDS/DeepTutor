@@ -254,7 +254,13 @@ async def request_web_update(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=str(exc),
             ) from exc
-    elif result.install_mode is not InstallMode.PYPI:
+    elif result.install_mode is InstallMode.PYPI:
+        if installation.mode is not InstallMode.PYPI:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The PyPI installation changed during the update check.",
+            )
+    else:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This installation cannot be updated from the Web app.",
