@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import atexit
 from dataclasses import dataclass
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -27,6 +28,23 @@ FRONTEND_READY_TIMEOUT = 120
 FRONTEND_REUSE_PROBE_TIMEOUT = 2
 KILL_SIGNAL = getattr(signal, "SIGKILL", signal.SIGTERM)
 WEB_CACHE_DIR = Path("data") / "user" / "runtime" / "web"
+SOURCE_PRODUCTION_DIST_DIR = ".next-deeptutor"
+SOURCE_BUILD_MARKER = ".deeptutor-build.json"
+SOURCE_BUILD_EXCLUDED_DIRS = {
+    "node_modules",
+    "dist",
+    "playwright-report",
+    "test-results",
+    "coverage",
+}
+
+
+def _apply_single_user_allocator_env(env: dict[str, str]) -> None:
+    """Reduce glibc arena fragmentation without overriding operator tuning."""
+
+    env.setdefault("MALLOC_ARENA_MAX", "2")
+    env.setdefault("MALLOC_TRIM_THRESHOLD_", "131072")
+
 
 # Mutable holder so module-level helpers can format messages in the active
 # UI language without threading the labels through every function.
@@ -573,12 +591,141 @@ def _ensure_web_dependencies(source: Path, npm: str) -> None:
         )
 
 
+def _source_production_env(*, api_base: str, auth_enabled: bool) -> dict[str, str]:
+    """Environment shared by the source production build and server."""
+
+    env = os.environ.copy()
+    env["DEEPTUTOR_NEXT_DIST_DIR"] = SOURCE_PRODUCTION_DIST_DIR
+    env["NEXT_PUBLIC_API_BASE"] = api_base
+    env["NEXT_PUBLIC_AUTH_ENABLED"] = "true" if auth_enabled else "false"
+    return env
+
+
+def _source_build_fingerprint(source: Path, env: dict[str, str]) -> str:
+    """Hash source inputs and build-time public settings for build reuse."""
+
+    digest = hashlib.sha256()
+    for key in (
+        "DEEPTUTOR_NEXT_DIST_DIR",
+        "NEXT_PUBLIC_API_BASE",
+        "NEXT_PUBLIC_AUTH_ENABLED",
+    ):
+        digest.update(key.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(env.get(key, "").encode("utf-8"))
+        digest.update(b"\0")
+
+    version_file = PACKAGE_ROOT / "deeptutor" / "__version__.py"
+    candidates: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(source):
+        dirnames[:] = sorted(
+            name
+            for name in dirnames
+            if name not in SOURCE_BUILD_EXCLUDED_DIRS and not name.startswith(".next")
+        )
+        root = Path(dirpath)
+        candidates.extend(root / name for name in sorted(filenames))
+    if version_file.is_file():
+        candidates.append(version_file)
+
+    for path in candidates:
+        relative = (
+            path.relative_to(source).as_posix()
+            if path.is_relative_to(source)
+            else f"../deeptutor/{path.name}"
+        )
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _ensure_source_production_build(
+    source: Path,
+    npm: str,
+    *,
+    api_base: str,
+    auth_enabled: bool,
+) -> None:
+    """Build source installs once, then reuse them until an input changes.
+
+    Long-running ``deeptutor start`` processes must not use ``next dev``: its
+    compiler and HMR caches are development machinery, and a v1.5.7 deployment
+    grew past 14 GB before V8 aborted.  A dedicated dist directory lets an
+    explicit ``--dev`` server keep using ``.next`` without either mode erasing
+    the other's output.
+    """
+
+    env = _source_production_env(api_base=api_base, auth_enabled=auth_enabled)
+    dist = source / SOURCE_PRODUCTION_DIST_DIR
+    marker = dist / SOURCE_BUILD_MARKER
+    payload = {"fingerprint": _source_build_fingerprint(source, env)}
+    if (dist / "BUILD_ID").is_file() and (dist / "standalone" / "server.js").is_file():
+        try:
+            if json.loads(marker.read_text(encoding="utf-8")) == payload:
+                _prepare_source_standalone(source)
+                return
+        except Exception:
+            pass
+
+    _log(f"Building the source frontend for production in {source} ...")
+    # Next rewrites these source-controlled files to point at whichever dist
+    # directory was built most recently. Preserve the developer's versions so
+    # a production launch neither dirties the checkout nor breaks the next
+    # explicit ``--dev`` typecheck.
+    generated_config = [source / "next-env.d.ts", source / "tsconfig.json"]
+    snapshots = {path: path.read_bytes() if path.is_file() else None for path in generated_config}
+    try:
+        result = subprocess.run([npm, "run", "build"], cwd=source, env=env)
+    finally:
+        for path, original in snapshots.items():
+            if original is None:
+                path.unlink(missing_ok=True)
+            elif not path.is_file() or path.read_bytes() != original:
+                path.write_bytes(original)
+    if result.returncode != 0:
+        raise SystemExit(
+            f"`npm run build` failed (exit {result.returncode}). "
+            "Fix the error above, then retry `deeptutor start`."
+        )
+    if not (dist / "BUILD_ID").is_file():
+        raise SystemExit(f"`npm run build` completed without creating {dist / 'BUILD_ID'}.")
+    _prepare_source_standalone(source)
+    marker.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _prepare_source_standalone(source: Path) -> Path:
+    """Add static/public assets omitted from Next's standalone directory."""
+
+    dist = source / SOURCE_PRODUCTION_DIST_DIR
+    standalone = dist / "standalone"
+    if not (standalone / "server.js").is_file():
+        raise SystemExit(
+            f"`npm run build` did not create the standalone server at {standalone / 'server.js'}."
+        )
+    static = dist / "static"
+    if static.is_dir():
+        shutil.copytree(
+            static,
+            standalone / SOURCE_PRODUCTION_DIST_DIR / "static",
+            dirs_exist_ok=True,
+        )
+    public = source / "public"
+    if public.is_dir():
+        shutil.copytree(public, standalone / "public", dirs_exist_ok=True)
+    return standalone
+
+
 def _resolve_frontend(
     home: Path,
     frontend_port: int,
     *,
     api_base: str,
     auth_enabled: bool,
+    dev: bool = False,
 ) -> FrontendRuntime:
     packaged = _packaged_web_dir()
     node = shutil.which("node")
@@ -601,6 +748,21 @@ def _resolve_frontend(
                 "npm not found. Source installs require Node.js/npm and `cd web && npm install`."
             )
         _ensure_web_dependencies(source, npm)
+        if not dev:
+            if not node:
+                raise SystemExit("Node.js 20+ is required to run the source production build.")
+            _ensure_source_production_build(
+                source,
+                npm,
+                api_base=api_base,
+                auth_enabled=auth_enabled,
+            )
+            standalone = source / SOURCE_PRODUCTION_DIST_DIR / "standalone"
+            return FrontendRuntime(
+                "source-production",
+                [node, str(standalone / "server.js")],
+                standalone,
+            )
         return FrontendRuntime(
             "source", [npm, "run", "dev", "--", "--port", str(frontend_port)], source
         )
@@ -764,7 +926,7 @@ def _install_signal_handlers(request_shutdown: Callable[[str | None], None]) -> 
             continue
 
 
-def start(home: str | Path | None = None) -> None:
+def start(home: str | Path | None = None, *, dev: bool = False) -> None:
     _relax_console_encoding()
     runtime_home = get_runtime_home(home)
     runtime_home.mkdir(parents=True, exist_ok=True)
@@ -772,6 +934,7 @@ def start(home: str | Path | None = None) -> None:
     _reset_runtime_singletons()
 
     from deeptutor.services.config import (
+        HTTP_KEEP_ALIVE_TIMEOUT,
         ensure_runtime_settings_files,
         export_runtime_settings_to_env,
         get_ws_max_size,
@@ -803,6 +966,7 @@ def start(home: str | Path | None = None) -> None:
         frontend_port,
         api_base=api_base,
         auth_enabled=auth_enabled,
+        dev=dev,
     )
     existing_frontend = _detect_existing_source_frontend(frontend)
     if existing_frontend is not None and not _http_ready(
@@ -838,6 +1002,7 @@ def start(home: str | Path | None = None) -> None:
             frontend_port,
             api_base=api_base,
             auth_enabled=auth_enabled,
+            dev=dev,
         )
 
     frontend_url = (
@@ -873,6 +1038,9 @@ def start(home: str | Path | None = None) -> None:
     common_env["DEEPTUTOR_AUTH_ENABLED"] = "true" if auth_enabled else "false"
     common_env["PYTHONUNBUFFERED"] = "1"
     common_env["PYTHONIOENCODING"] = "utf-8:replace"
+    _apply_single_user_allocator_env(common_env)
+    if frontend.kind == "source-production":
+        common_env["DEEPTUTOR_NEXT_DIST_DIR"] = SOURCE_PRODUCTION_DIST_DIR
 
     backend_cmd = [
         sys.executable,
@@ -896,6 +1064,13 @@ def start(home: str | Path | None = None) -> None:
         # the attachment limits therefore takes a restart to fully apply.
         "--ws-max-size",
         str(get_ws_max_size()),
+        # Outlast the frontend proxy's idle socket pool. web/proxy.ts forwards
+        # over Node's http.globalAgent, which reaps idle sockets on its own 5s
+        # timer — the same value as uvicorn's default, so both ends raced to
+        # close the same socket and a FIN landing on a reuse surfaced as
+        # ECONNRESET ("Failed to proxy ... socket hang up" -> 500).
+        "--timeout-keep-alive",
+        str(HTTP_KEEP_ALIVE_TIMEOUT),
     ]
 
     processes: list[ManagedProcess] = []

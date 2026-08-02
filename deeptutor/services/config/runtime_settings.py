@@ -1010,6 +1010,21 @@ def get_ws_max_size() -> int:
     return compute_ws_max_size(get_chat_attachment_limits().max_total_bytes)
 
 
+# Idle keep-alive window for backend HTTP connections — wire into every uvicorn
+# launch. The browser never reaches the backend directly: `web/proxy.ts` rewrites
+# `/api/*` and Next.js forwards over Node's `http.globalAgent`, which pools idle
+# sockets and reaps them on its own 5s `timeout`. uvicorn's `timeout_keep_alive`
+# also defaults to 5s, so both ends armed an identical idle timer on the same
+# socket and raced to close it: when the server's FIN landed on a socket the pool
+# was simultaneously handing to a new request, the request died with `ECONNRESET`
+# and the proxy turned it into a 500 ("Failed to proxy ... socket hang up" ->
+# "Failed to load sessions" in the UI). Any value comfortably above the proxy's
+# 5s reaper leaves the client as the only side that closes an idle connection,
+# which is the safe direction — a pool retiring its own socket removes it before
+# any request can be assigned to it, so the collision cannot happen at all.
+HTTP_KEEP_ALIVE_TIMEOUT = 300
+
+
 def load_auth_settings() -> dict[str, Any]:
     return get_runtime_settings_service().load_auth()
 

@@ -172,7 +172,14 @@ export default function McpServerForm({
     }
     setFormError(null);
     await onSave(originalName, name.trim(), cfg);
-  }, [validateName, buildConfig, missingTargetMessage, onSave, originalName, name]);
+  }, [
+    validateName,
+    buildConfig,
+    missingTargetMessage,
+    onSave,
+    originalName,
+    name,
+  ]);
 
   return (
     <div className="space-y-5">

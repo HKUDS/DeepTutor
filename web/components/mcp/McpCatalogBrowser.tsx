@@ -333,9 +333,7 @@ export default function McpCatalogBrowser({
                 disabled={loadingMore}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:opacity-60"
               >
-                {loadingMore && (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                )}
+                {loadingMore && <Loader2 className="h-3 w-3 animate-spin" />}
                 {t("Load more")}
               </button>
             )}
@@ -505,7 +503,12 @@ function EntryDetail({
       </button>
 
       <div className="flex items-start gap-3.5">
-        <BrandIcon namespace="mcp" id={entry.id} name={entry.display_name} size="lg" />
+        <BrandIcon
+          namespace="mcp"
+          id={entry.id}
+          name={entry.display_name}
+          size="lg"
+        />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-[18px] font-semibold tracking-tight text-[var(--foreground)]">
@@ -685,7 +688,9 @@ function EntryDetail({
             // At capacity, only a write that replaces an existing server is
             // still possible — keyed on the target name, because renaming in the
             // box above turns a reinstall into a new server the store refuses.
-            disabled={installing || probing || !ready || (atCapacity && !savedConfig)}
+            disabled={
+              installing || probing || !ready || (atCapacity && !savedConfig)
+            }
             className="inline-flex items-center gap-2 rounded-lg bg-[var(--primary)] px-3.5 py-2 text-[12.5px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {installing ? (
@@ -711,7 +716,6 @@ function EntryDetail({
 }
 
 // ── small parts ──────────────────────────────────────────────────────────
-
 
 function FilterChip({
   label,

@@ -183,7 +183,8 @@ export function useMcpServers(surface: McpSurface) {
       try {
         const url = await authorizeSpaceMcpServer(surface.basePath, name);
         if (!url) throw new Error("no authorization URL");
-        if (typeof window !== "undefined") window.open(url, "_blank", "noopener");
+        if (typeof window !== "undefined")
+          window.open(url, "_blank", "noopener");
       } catch (err) {
         setSaveError(describeMcpError(err, t));
       } finally {

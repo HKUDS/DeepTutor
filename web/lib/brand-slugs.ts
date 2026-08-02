@@ -117,6 +117,9 @@ export const CLI_BRAND_SLUGS: Readonly<Record<string, string>> = {
 /** Every slug the generated file has to contain, deduplicated. */
 export function referencedSlugs(): string[] {
   return [
-    ...new Set([...Object.values(MCP_BRAND_SLUGS), ...Object.values(CLI_BRAND_SLUGS)]),
+    ...new Set([
+      ...Object.values(MCP_BRAND_SLUGS),
+      ...Object.values(CLI_BRAND_SLUGS),
+    ]),
   ].sort();
 }

@@ -1819,6 +1819,12 @@ class TurnRuntimeManager:
                         with contextlib.suppress(asyncio.QueueFull):
                             subscriber.queue.put_nowait(None)
                     self._executions.pop(turn_id, None)
+            # A turn may have parsed large attachments or built substantial
+            # temporary prompts/results. Reclaim after this coroutine returns,
+            # outside the user-visible streaming path.
+            from deeptutor.runtime.memory_reclaim import schedule_memory_reclaim
+
+            schedule_memory_reclaim()
 
     async def _publish_live_event(
         self,

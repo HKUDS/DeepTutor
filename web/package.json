@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "node --max-old-space-size=4096 ./node_modules/next/dist/bin/next dev",
-    "dev:turbo": "node --max-old-space-size=6144 ./node_modules/next/dist/bin/next dev --turbopack",
+    "dev": "node ./scripts/dev.mjs",
+    "dev:turbo": "node ./scripts/dev.mjs --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",

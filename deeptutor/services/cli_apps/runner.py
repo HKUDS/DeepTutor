@@ -113,7 +113,7 @@ def _env_for(app: InstalledApp) -> dict[str, str]:
     """
     return {
         "PATH": _path_for(app),
-        "HOME": "/tmp",  # noqa: S108 - tmpfs inside the sandbox, not a host path
+        "HOME": "/tmp",  # noqa: S108  # nosec B108 - tmpfs inside the sandbox, not a host path
         "LANG": "C.UTF-8",
         "PYTHONUNBUFFERED": "1",
         "PYTHONDONTWRITEBYTECODE": "1",

@@ -91,6 +91,12 @@ const APP_VERSION = (() => {
 })();
 
 const nextConfig = {
+  // Keep the production build used by `deeptutor start` separate from the
+  // `.next` development cache used by the explicit `deeptutor start --dev`.
+  // Without separate directories either command can invalidate the other
+  // process while it is running.
+  distDir: process.env.DEEPTUTOR_NEXT_DIST_DIR || ".next",
+
   // Expose the build-time version to the browser so the sidebar badge
   // can compare it against GitHub's latest release.
   env: {

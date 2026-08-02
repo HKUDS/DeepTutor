@@ -292,3 +292,112 @@ def test_ensure_web_dependencies_surfaces_a_failed_install(
         launcher._ensure_web_dependencies(source, "npm")
 
     assert "npm ci" in str(excinfo.value)
+
+
+def test_source_frontend_defaults_to_cached_production_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "web"
+    (source / "node_modules").mkdir(parents=True)
+    builds: list[tuple[Path, str, str, bool]] = []
+
+    monkeypatch.setattr(launcher, "_packaged_web_dir", lambda: None)
+    monkeypatch.setattr(launcher, "_source_web_dir", lambda _home: source)
+    monkeypatch.setattr(launcher.shutil, "which", lambda name: f"/bin/{name}")
+    monkeypatch.setattr(
+        launcher,
+        "_ensure_source_production_build",
+        lambda path, npm, *, api_base, auth_enabled: builds.append(
+            (path, npm, api_base, auth_enabled)
+        ),
+    )
+
+    runtime = launcher._resolve_frontend(
+        tmp_path,
+        3782,
+        api_base="http://localhost:8001",
+        auth_enabled=True,
+    )
+
+    assert runtime.kind == "source-production"
+    standalone = source / launcher.SOURCE_PRODUCTION_DIST_DIR / "standalone"
+    assert runtime.command == ["/bin/node", str(standalone / "server.js")]
+    assert runtime.cwd == standalone
+    assert builds == [(source, "/bin/npm", "http://localhost:8001", True)]
+
+
+def test_source_frontend_dev_mode_is_explicit_and_skips_production_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "web"
+    (source / "node_modules").mkdir(parents=True)
+
+    monkeypatch.setattr(launcher, "_packaged_web_dir", lambda: None)
+    monkeypatch.setattr(launcher, "_source_web_dir", lambda _home: source)
+    monkeypatch.setattr(launcher.shutil, "which", lambda name: f"/bin/{name}")
+    monkeypatch.setattr(
+        launcher,
+        "_ensure_source_production_build",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("--dev must not build the production frontend")
+        ),
+    )
+
+    runtime = launcher._resolve_frontend(
+        tmp_path,
+        3782,
+        api_base="http://localhost:8001",
+        auth_enabled=False,
+        dev=True,
+    )
+
+    assert runtime.kind == "source"
+    assert runtime.command == ["/bin/npm", "run", "dev", "--", "--port", "3782"]
+
+
+def test_source_production_build_is_reused_until_an_input_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "web"
+    source.mkdir()
+    (source / "package.json").write_text('{"scripts":{"build":"next build"}}', encoding="utf-8")
+    next_env = source / "next-env.d.ts"
+    next_env.write_text("// developer dist types\n", encoding="utf-8")
+    app = source / "app"
+    app.mkdir()
+    page = app / "page.tsx"
+    page.write_text("export default function Page() { return null; }", encoding="utf-8")
+    calls: list[tuple[list[str], Path, str]] = []
+
+    def _run(command, cwd, env, **_kwargs):
+        calls.append((list(command), Path(cwd), env["DEEPTUTOR_NEXT_DIST_DIR"]))
+        next_env.write_text("// production dist types\n", encoding="utf-8")
+        dist = source / launcher.SOURCE_PRODUCTION_DIST_DIR
+        (dist / "standalone").mkdir(parents=True, exist_ok=True)
+        (dist / "BUILD_ID").write_text(f"build-{len(calls)}", encoding="utf-8")
+        (dist / "standalone" / "server.js").write_text("", encoding="utf-8")
+        return _CompletedProcess(0)
+
+    monkeypatch.setattr(launcher.subprocess, "run", _run)
+
+    for _ in range(2):
+        launcher._ensure_source_production_build(
+            source,
+            "npm",
+            api_base="http://localhost:8001",
+            auth_enabled=False,
+        )
+
+    page.write_text("export default function Page() { return <main />; }", encoding="utf-8")
+    launcher._ensure_source_production_build(
+        source,
+        "npm",
+        api_base="http://localhost:8001",
+        auth_enabled=False,
+    )
+
+    assert calls == [
+        (["npm", "run", "build"], source, launcher.SOURCE_PRODUCTION_DIST_DIR),
+        (["npm", "run", "build"], source, launcher.SOURCE_PRODUCTION_DIST_DIR),
+    ]
+    assert next_env.read_text(encoding="utf-8") == "// developer dist types\n"

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from deeptutor.core.agentic import client as agentic_client
 from deeptutor.core.agentic.client import (
     _NATIVE_ADAPTER_BUILDERS,
     _NATIVE_TOOL_BACKENDS,
@@ -320,3 +321,53 @@ async def test_anthropic_adapter_emits_final_tool_call_delta() -> None:
     assert tool_delta.function.name == "read_file"
     assert '"SOUL.md"' in tool_delta.function.arguments
     assert chunks[-1].choices[0].finish_reason == "tool_calls"
+
+
+@pytest.mark.asyncio
+async def test_agentic_client_pool_reuses_and_bounds_clients(monkeypatch) -> None:
+    await agentic_client.close_agentic_client_pool()
+    built = []
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.closed = 0
+
+        async def close(self) -> None:
+            self.closed += 1
+
+    def _build(config, *, disable_ssl_verify):
+        client = FakeClient()
+        built.append(client)
+        return client
+
+    monkeypatch.setattr(agentic_client, "_build_openai_client", _build)
+    monkeypatch.setattr(
+        agentic_client, "load_system_settings", lambda: {"disable_ssl_verify": False}
+    )
+    base = LLMClientConfig(
+        binding="openai",
+        model="model-0",
+        api_key="secret",
+        base_url="https://example.test/v1",
+    )
+
+    first = build_openai_client(base)
+    assert build_openai_client(base) is first
+    for index in range(1, agentic_client._AGENTIC_CLIENT_POOL_MAXSIZE + 1):
+        build_openai_client(
+            LLMClientConfig(
+                binding="openai",
+                model=f"model-{index}",
+                api_key="secret",
+                base_url="https://example.test/v1",
+            )
+        )
+
+    import asyncio
+
+    await asyncio.sleep(0)
+    assert agentic_client.agentic_client_pool_size() == (
+        agentic_client._AGENTIC_CLIENT_POOL_MAXSIZE
+    )
+    assert built[0].closed == 1
+    await agentic_client.close_agentic_client_pool()

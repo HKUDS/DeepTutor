@@ -109,10 +109,10 @@ python -m pip install -e .
 ( cd web && npm ci --legacy-peer-deps )
 
 deeptutor init
-deeptutor start
+deeptutor start --dev
 ```
 
-ソースインストールはローカルの`web/`ディレクトリに対してNext.jsをdevモードで実行します。その他（設定レイアウト、ポート、`Ctrl+C`での停止）はオプション1と同じです。
+`deeptutor start`はローカルの`web/`フロントエンドを一度だけ本番用にビルドして再利用し、`--dev`はNext.jsをHMR（ホットリロード）付きで実行します。その他（設定レイアウト、ポート、`Ctrl+C`での停止）はオプション1と同じです。
 
 <details>
 <summary><b>Conda環境</b>（<code>venv</code>の代わり）</summary>
@@ -143,11 +143,11 @@ pip install -e ".[math-animator]"   # Maninアドオン; LaTeX/ffmpeg/システ�
 
 **フロントエンド依存関係の変更：** `npm install --legacy-peer-deps`を実行して`web/package-lock.json`を更新し、`web/package.json`と`web/package-lock.json`の両方をコミットしてください。
 
-**devサーバーが動かない場合：** `deeptutor start`が応答しない既存のフロントエンドを報告する場合は、表示されたPIDを停止してください。実際にNext.jsプロセスが実行されていない場合、ロックファイルが古くなっています — それらを削除して再試行してください：
+**devサーバーが動かない場合：** `deeptutor start --dev`が応答しない既存のフロントエンドを報告する場合は、表示されたPIDを停止してください。実際にNext.jsプロセスが実行されていない場合、ロックファイルが古くなっています — それらを削除して再試行してください：
 
 ```bash
 rm -f web/.next/dev/lock web/.next/lock
-deeptutor start
+deeptutor start --dev
 ```
 
 </details>
@@ -569,7 +569,7 @@ deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format j
 | コマンド | 説明 |
 |:---|:---|
 | `deeptutor init` | 現在のワークスペースの`data/user/settings`を作成または更新 |
-| `deeptutor start [--home PATH]` | バックエンド + フロントエンドを一緒に起動 |
+| `deeptutor start [--home PATH] [--dev]` | バックエンド + フロントエンドを一緒に起動 |
 | `deeptutor serve [--port PORT]` | FastAPIバックエンドのみ起動 |
 | `deeptutor run <capability> <message>` | 単一機能ターンを実行（`chat`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`）；`--format json`でNDJSON出力 |
 | `deeptutor chat` | 機能、ツール、KB、ノートブック、履歴コントロール付きインタラクティブREPL |

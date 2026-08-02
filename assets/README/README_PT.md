@@ -109,10 +109,10 @@ python -m pip install -e .
 ( cd web && npm ci --legacy-peer-deps )
 
 deeptutor init
-deeptutor start
+deeptutor start --dev
 ```
 
-As instalações a partir de fonte executam o Next.js em modo de desenvolvimento contra o diretório `web/` local; todo o resto (layout de configuração, portas, parar com `Ctrl+C`) corresponde à Opção 1.
+`deeptutor start` compila o frontend `web/` local para produção uma vez e reutiliza-o; `--dev` executa o Next.js com HMR. O layout de configuração, as portas e o `Ctrl+C` correspondem à Opção 1.
 
 <details>
 <summary><b>Ambiente Conda</b> (em vez de <code>venv</code>)</summary>
@@ -143,11 +143,11 @@ pip install -e ".[math-animator]"   # add-on Manim; requer LaTeX/ffmpeg/libs do 
 
 **Alterar dependências do frontend:** execute `npm install --legacy-peer-deps` para atualizar `web/package-lock.json`, depois confirme tanto `web/package.json` como `web/package-lock.json`.
 
-**Servidor de desenvolvimento bloqueado:** se `deeptutor start` reportar um frontend existente que não responde, pare o PID que imprime. Se não houver nenhum processo Next.js em execução, os ficheiros de bloqueio estão desatualizados — remova-os e tente novamente:
+**Servidor de desenvolvimento bloqueado:** se `deeptutor start --dev` reportar um frontend existente que não responde, pare o PID que imprime. Se não houver nenhum processo Next.js em execução, os ficheiros de bloqueio estão desatualizados — remova-os e tente novamente:
 
 ```bash
 rm -f web/.next/dev/lock web/.next/lock
-deeptutor start
+deeptutor start --dev
 ```
 
 </details>
@@ -581,7 +581,7 @@ O repositório inclui um [`SKILL.md`](../../SKILL.md) raiz — um documento de t
 | Comando | Descrição |
 |:---|:---|
 | `deeptutor init` | Criar ou atualizar `data/user/settings` para o espaço de trabalho atual |
-| `deeptutor start [--home PATH]` | Lançar backend + frontend juntos |
+| `deeptutor start [--home PATH] [--dev]` | Lançar backend + frontend juntos |
 | `deeptutor serve [--port PORT]` | Iniciar apenas o backend FastAPI |
 | `deeptutor run <capability> <message>` | Executar um turno de capacidade único (`chat`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`); adicionar `--format json` para saída NDJSON |
 | `deeptutor chat` | REPL interativo com controlos de capacidade, ferramenta, KB, notebook e histórico |

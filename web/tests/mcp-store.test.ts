@@ -2,7 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { isStoredCredential } from "@/components/mcp/KeyValueEditor";
-import { McpApiError, getMcpCatalog, type McpCatalogField } from "../lib/mcp-api";
+import {
+  McpApiError,
+  getMcpCatalog,
+  type McpCatalogField,
+} from "../lib/mcp-api";
 import {
   appendCatalogPage,
   canInstallEntry,
@@ -93,7 +97,10 @@ test("a blocked URL keeps the backend's diagnosis after the translated sentence"
   // which happened.
   assert.equal(
     describeMcpError(
-      new McpApiError("Cannot resolve hostname: mcp.typo.example", "mcp.blocked_url"),
+      new McpApiError(
+        "Cannot resolve hostname: mcp.typo.example",
+        "mcp.blocked_url",
+      ),
       fakeT,
     ),
     "T:mcp.refusal.blockedUrl Cannot resolve hostname: mcp.typo.example",
@@ -103,7 +110,10 @@ test("a blocked URL keeps the backend's diagnosis after the translated sentence"
 test("a refusal whose cause is already in the copy does not repeat the raw text", () => {
   assert.equal(
     describeMcpError(
-      new McpApiError("At most 8 MCP servers per account", "mcp.too_many_servers"),
+      new McpApiError(
+        "At most 8 MCP servers per account",
+        "mcp.too_many_servers",
+      ),
       fakeT,
     ),
     "T:mcp.refusal.tooManyServers",
@@ -116,13 +126,19 @@ test("an unmapped refusal keeps the backend's own message", () => {
   assert.equal(mcpRefusalKey("mcp.no_transport"), null);
   assert.equal(
     describeMcpError(
-      new McpApiError("Provide an http(s) URL for the server", "mcp.no_transport"),
+      new McpApiError(
+        "Provide an http(s) URL for the server",
+        "mcp.no_transport",
+      ),
       fakeT,
     ),
     "Provide an http(s) URL for the server",
   );
   // A transport failure is not a refusal at all.
-  assert.equal(describeMcpError(new Error("Failed to fetch"), fakeT), "Failed to fetch");
+  assert.equal(
+    describeMcpError(new Error("Failed to fetch"), fakeT),
+    "Failed to fetch",
+  );
   assert.equal(describeMcpError("boom", fakeT), "boom");
 });
 
@@ -163,7 +179,10 @@ test("a category the frontend has not heard of still gets a chip", () => {
 // ── credential form ──────────────────────────────────────────────────────
 
 test("a required credential left blank blocks Install", () => {
-  const fields = [field({ key: "api_key" }), field({ key: "team", required: false })];
+  const fields = [
+    field({ key: "api_key" }),
+    field({ key: "team", required: false }),
+  ];
 
   assert.equal(canInstallEntry(fields, {}), false);
   assert.deepEqual(missingRequiredFields(fields, {}), ["api_key"]);
@@ -183,15 +202,21 @@ test("an entry with no credentials is installable immediately", () => {
 test("blank optional values are dropped instead of clearing a stored field", () => {
   // An empty string is the backend's "clear this credential", so sending one for
   // a field the reader simply left alone would wipe it on a reinstall.
-  assert.deepEqual(filledCredentials({ api_key: "sk-1", team: "  ", plan: "" }), {
-    api_key: "sk-1",
-  });
+  assert.deepEqual(
+    filledCredentials({ api_key: "sk-1", team: "  ", plan: "" }),
+    {
+      api_key: "sk-1",
+    },
+  );
 });
 
 // ── pagination ───────────────────────────────────────────────────────────
 
 test("Load more accumulates pages and stops at the last cursor", () => {
-  const first = appendCatalogPage(null, page(["exa", "tavily"], "2", 5, { search: 5 }));
+  const first = appendCatalogPage(
+    null,
+    page(["exa", "tavily"], "2", 5, { search: 5 }),
+  );
   assert.deepEqual(
     first.entries.map((entry) => entry.id),
     ["exa", "tavily"],
@@ -225,7 +250,10 @@ test("re-serving a cursor cannot double a row", () => {
 });
 
 test("a new query restarts the list rather than appending to the old one", () => {
-  const previous: McpCatalogList = appendCatalogPage(null, page(["exa"], "1", 9));
+  const previous: McpCatalogList = appendCatalogPage(
+    null,
+    page(["exa"], "1", 9),
+  );
   const fresh = appendCatalogPage(null, page(["maps-co"], "", 1, { maps: 1 }));
   assert.deepEqual(
     fresh.entries.map((entry) => entry.id),
@@ -240,7 +268,9 @@ test("a new query restarts the list rather than appending to the old one", () =>
 test("the catalog request carries the filters and the cursor", async () => {
   const calls: string[] = [];
   const original = globalThis.fetch;
-  (globalThis as { fetch: typeof fetch }).fetch = async (input: RequestInfo | URL) => {
+  (globalThis as { fetch: typeof fetch }).fetch = async (
+    input: RequestInfo | URL,
+  ) => {
     calls.push(String(input));
     return new Response(JSON.stringify(page(["exa"], "1", 2, { search: 2 })), {
       status: 200,
@@ -275,7 +305,11 @@ test("the catalog request carries the filters and the cursor", async () => {
     assert.equal(first.get("category"), "search");
     assert.equal(first.get("tier"), "curated");
     assert.equal(first.get("limit"), "12");
-    assert.equal(first.get("cursor"), null, "the first page must not send a cursor");
+    assert.equal(
+      first.get("cursor"),
+      null,
+      "the first page must not send a cursor",
+    );
     // Page two asks for the offset page one handed back.
     assert.equal(new URL(calls[1], "http://x").searchParams.get("cursor"), "1");
   } finally {

@@ -10,10 +10,25 @@ type Msg = Parameters<typeof buildChatOutline>[0][number];
 
 function conversation(): Msg[] {
   return [
-    { id: 1, role: "user", content: "What is gradient descent?", parentMessageId: null },
-    { id: 2, role: "assistant", content: "It **walks** downhill.", parentMessageId: 1 },
+    {
+      id: 1,
+      role: "user",
+      content: "What is gradient descent?",
+      parentMessageId: null,
+    },
+    {
+      id: 2,
+      role: "assistant",
+      content: "It **walks** downhill.",
+      parentMessageId: 1,
+    },
     { id: 3, role: "user", content: "And momentum?", parentMessageId: 2 },
-    { id: 4, role: "assistant", content: "It smooths the path.", parentMessageId: 3 },
+    {
+      id: 4,
+      role: "assistant",
+      content: "It smooths the path.",
+      parentMessageId: 3,
+    },
   ];
 }
 
@@ -85,7 +100,12 @@ test("system grounding rows never break the question/reply pairing", () => {
   const messages: Msg[] = [
     { id: 1, role: "user", content: "Explain entropy", parentMessageId: null },
     { id: 2, role: "system", content: "context blob", parentMessageId: 1 },
-    { id: 3, role: "assistant", content: "Disorder, measured.", parentMessageId: 2 },
+    {
+      id: 3,
+      role: "assistant",
+      content: "Disorder, measured.",
+      parentMessageId: 2,
+    },
   ];
   const outline = buildChatOutline(messages, {});
   assert.equal(outline[0].reply, "Disorder, measured.");
@@ -93,9 +113,19 @@ test("system grounding rows never break the question/reply pairing", () => {
 
 test("a content-free planning turn does not hide the real answer", () => {
   const messages: Msg[] = [
-    { id: 1, role: "user", content: "Research LLM routing", parentMessageId: null },
+    {
+      id: 1,
+      role: "user",
+      content: "Research LLM routing",
+      parentMessageId: null,
+    },
     { id: 2, role: "assistant", content: "", parentMessageId: 1 },
-    { id: 3, role: "assistant", content: "Here is the report.", parentMessageId: 2 },
+    {
+      id: 3,
+      role: "assistant",
+      content: "Here is the report.",
+      parentMessageId: 2,
+    },
   ];
   assert.equal(buildChatOutline(messages, {})[0].reply, "Here is the report.");
 });

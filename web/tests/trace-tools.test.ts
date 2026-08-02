@@ -14,7 +14,10 @@ const t = (key: string, opts?: Record<string, unknown>) =>
   key.replace(/\{\{(\w+)\}\}/g, (_m, name) => String(opts?.[name] ?? ""));
 
 test("an MCP tool is named without its generated prefix", () => {
-  assert.equal(mcpToolLabel("mcp_wolfram_WolframAlpha", "wolfram"), "WolframAlpha");
+  assert.equal(
+    mcpToolLabel("mcp_wolfram_WolframAlpha", "wolfram"),
+    "WolframAlpha",
+  );
 });
 
 test("a server whose own name contains an underscore is still stripped correctly", () => {
@@ -38,7 +41,10 @@ test("a missing server id does not produce a bogus prefix", () => {
 });
 
 test("CLI arguments join for display and nothing re-splits them", () => {
-  assert.equal(cliArgvLabel(["diagram", "render", "--out", "a.png"]), "diagram render --out a.png");
+  assert.equal(
+    cliArgvLabel(["diagram", "render", "--out", "a.png"]),
+    "diagram render --out a.png",
+  );
 });
 
 test("an argument containing a space is shown as it is", () => {
@@ -58,7 +64,10 @@ test("a short label is untouched", () => {
 });
 
 test("a long label is clipped on a word boundary when one is near the cut", () => {
-  const clipped = clipLabel("fetching page seventeen of two hundred and twelve", 20);
+  const clipped = clipLabel(
+    "fetching page seventeen of two hundred and twelve",
+    20,
+  );
   assert.ok(clipped.endsWith("…"));
   assert.ok(!clipped.includes("seventee…"), `mid-word cut: ${clipped}`);
   assert.ok(clipped.length <= 21);
@@ -108,7 +117,12 @@ test("a CLI call names the app, with its arguments trailing", () => {
 });
 
 test("a CLI call with no arguments still reads as a row", () => {
-  const row = describeProviderTool("cli_blender", {}, { source: "cli", id: "blender" }, t);
+  const row = describeProviderTool(
+    "cli_blender",
+    {},
+    { source: "cli", id: "blender" },
+    t,
+  );
   assert.equal(row?.verb, "Running blender");
   assert.equal(row?.chip, null);
 });
@@ -126,14 +140,25 @@ test("a long argument list is clipped rather than pushing the row wide", () => {
 test("a built-in tool is not a provider row", () => {
   // Returning something here would take over the hand-written descriptor for
   // every built-in and label them all generically.
-  assert.equal(describeProviderTool("read_file", { path: "a.txt" }, null, t), null);
-  assert.equal(describeProviderTool("read_file", {}, { source: "", id: "" }, t), null);
+  assert.equal(
+    describeProviderTool("read_file", { path: "a.txt" }, null, t),
+    null,
+  );
+  assert.equal(
+    describeProviderTool("read_file", {}, { source: "", id: "" }, t),
+    null,
+  );
 });
 
 test("a provider kind this build does not know falls through to the generic row", () => {
   // Honest generic beats a confident wrong label.
   assert.equal(
-    describeProviderTool("xyz_thing", {}, { source: "future-provider", id: "thing" }, t),
+    describeProviderTool(
+      "xyz_thing",
+      {},
+      { source: "future-provider", id: "thing" },
+      t,
+    ),
     null,
   );
 });

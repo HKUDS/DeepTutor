@@ -3,13 +3,20 @@ import assert from "node:assert/strict";
 
 import { brandIconFor, brandInitials } from "../lib/brand-icons";
 import { BRAND_ICONS } from "../lib/brand-icons.generated";
-import { CLI_BRAND_SLUGS, MCP_BRAND_SLUGS, referencedSlugs } from "../lib/brand-slugs";
+import {
+  CLI_BRAND_SLUGS,
+  MCP_BRAND_SLUGS,
+  referencedSlugs,
+} from "../lib/brand-slugs";
 
 test("every curated slug is present in the generated data", () => {
   // The generator fails on a missing slug, so this catches the other drift: a
   // curation edit committed without re-running `npm run build:brand-icons`.
   for (const slug of referencedSlugs()) {
-    assert.ok(BRAND_ICONS[slug], `${slug} is curated but not generated — re-run the build`);
+    assert.ok(
+      BRAND_ICONS[slug],
+      `${slug} is curated but not generated — re-run the build`,
+    );
   }
 });
 
@@ -52,7 +59,10 @@ test("a renamed install still finds its mark", () => {
   assert.ok(brandIconFor("mcp", "GitHub"));
   assert.ok(brandIconFor("mcp", "google_maps"));
   assert.ok(brandIconFor("cli", "OBS_Studio"));
-  assert.ok(brandIconFor("cli", "blender-cli"), "a -cli suffix is not part of the brand");
+  assert.ok(
+    brandIconFor("cli", "blender-cli"),
+    "a -cli suffix is not part of the brand",
+  );
 });
 
 test("resolution never throws on junk", () => {
@@ -67,7 +77,10 @@ test("the two namespaces stay in sync with what is generated", () => {
     ["cli", CLI_BRAND_SLUGS],
   ] as const) {
     for (const id of Object.keys(table)) {
-      assert.ok(brandIconFor(namespace, id), `${namespace}:${id} resolves to nothing`);
+      assert.ok(
+        brandIconFor(namespace, id),
+        `${namespace}:${id} resolves to nothing`,
+      );
     }
   }
 });

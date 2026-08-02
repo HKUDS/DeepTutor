@@ -80,7 +80,9 @@ export async function deleteMcpSurfaceServer(
   name: string,
 ): Promise<McpStoreState> {
   if (surface.writes !== "per-server") {
-    throw new Error("Direct deletion is only available on a per-server surface");
+    throw new Error(
+      "Direct deletion is only available on a per-server surface",
+    );
   }
   return deleteSpaceMcpServer(surface.basePath, name);
 }
@@ -165,5 +167,7 @@ function isSameServer(
   previous: McpServerConfig | undefined,
   next: McpServerConfig,
 ): boolean {
-  return previous !== undefined && JSON.stringify(previous) === JSON.stringify(next);
+  return (
+    previous !== undefined && JSON.stringify(previous) === JSON.stringify(next)
+  );
 }

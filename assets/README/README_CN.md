@@ -109,10 +109,10 @@ python -m pip install -e .
 ( cd web && npm ci --legacy-peer-deps )
 
 deeptutor init
-deeptutor start
+deeptutor start --dev
 ```
 
-源码安装会以开发模式运行 Next.js，指向本地 `web/` 目录；其他所有内容（配置布局、端口、`Ctrl+C` 停止）与方式一相同。
+`deeptutor start` 会为本地 `web/` 前端构建一次生产版本并复用；`--dev` 则以热更新（HMR）方式运行 Next.js。配置布局、端口和 `Ctrl+C` 停止均与方式一相同。
 
 <details>
 <summary><b>Conda 环境</b>（替代 <code>venv</code>）</summary>
@@ -143,11 +143,11 @@ pip install -e ".[math-animator]"   # Manim 插件；需要 LaTeX/ffmpeg/系统�
 
 **修改前端依赖：** 运行 `npm install --legacy-peer-deps` 以刷新 `web/package-lock.json`，然后同时提交 `web/package.json` 和 `web/package-lock.json`。
 
-**开发服务器卡住：** 如果 `deeptutor start` 报告有已存在但无响应的前端进程，停止它打印的 PID。如果实际上没有 Next.js 进程在运行，则锁文件已过时 — 删除后重试：
+**开发服务器卡住：** 如果 `deeptutor start --dev` 报告有已存在但无响应的前端进程，停止它打印的 PID。如果实际上没有 Next.js 进程在运行，则锁文件已过时 — 删除后重试：
 
 ```bash
 rm -f web/.next/dev/lock web/.next/lock
-deeptutor start
+deeptutor start --dev
 ```
 
 </details>
@@ -569,7 +569,7 @@ deeptutor run deep_question "就那篇调研测验我" --session "$SID" --format
 | 命令 | 说明 |
 |:---|:---|
 | `deeptutor init` | 为当前工作区创建或更新 `data/user/settings` |
-| `deeptutor start [--home PATH]` | 同时启动后端 + 前端 |
+| `deeptutor start [--home PATH] [--dev]` | 同时启动后端 + 前端；`--dev` 启用前端热更新 |
 | `deeptutor serve [--port PORT]` | 仅启动 FastAPI 后端 |
 | `deeptutor run <capability> <message>` | 运行单次能力对话（`chat`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`）；添加 `--format json` 可获得 NDJSON 输出 |
 | `deeptutor chat` | 交互式 REPL，支持能力、工具、知识库、笔记本和历史控制 |

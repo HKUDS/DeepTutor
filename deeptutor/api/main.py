@@ -216,6 +216,24 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to close MCP connections: {e}")
 
+    # Close pooled LLM SDK clients so their keep-alive sockets and transports
+    # are released deterministically instead of waiting for interpreter GC.
+    try:
+        from deeptutor.services.llm.provider_factory import close_runtime_provider_pool
+
+        await close_runtime_provider_pool()
+        logger.info("LLM provider pool closed")
+    except Exception as e:
+        logger.warning(f"Failed to close LLM provider pool: {e}")
+
+    try:
+        from deeptutor.core.agentic.client import close_agentic_client_pool
+
+        await close_agentic_client_pool()
+        logger.info("Agentic LLM client pool closed")
+    except Exception as e:
+        logger.warning(f"Failed to close agentic LLM client pool: {e}")
+
     # Stop EventBus
     try:
         from deeptutor.events.event_bus import get_event_bus

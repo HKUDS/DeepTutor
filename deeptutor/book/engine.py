@@ -842,6 +842,13 @@ class BookEngine:
                 async with runtime.lock:
                     if runtime.queue.empty():
                         runtime.worker = None
+                        runtime.stream = None
+                        async with self._global_lock:
+                            if self._runtimes.get(book_id) is runtime:
+                                self._runtimes.pop(book_id, None)
+                        from deeptutor.runtime.memory_reclaim import schedule_memory_reclaim
+
+                        schedule_memory_reclaim()
                         return
                 continue
 

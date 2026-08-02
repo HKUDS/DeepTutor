@@ -31,35 +31,18 @@ from defusedxml.common import DefusedXmlException
 
 from deeptutor.services.rag.file_routing import FileTypeRouter
 
-try:
-    import fitz  # pymupdf
-except ImportError:  # pragma: no cover
-    fitz = None  # type: ignore[assignment]
-
-try:
-    from pypdf import PdfReader
-    from pypdf.errors import FileNotDecryptedError as _PypdfNotDecryptedError
-except ImportError:  # pragma: no cover
-    PdfReader = None  # type: ignore[assignment]
-    _PypdfNotDecryptedError = Exception  # type: ignore[assignment,misc]
-
-try:
-    from docx import Document as DocxDocument
-except ImportError:  # pragma: no cover
-    DocxDocument = None  # type: ignore[assignment]
-
-try:
-    from openpyxl import load_workbook
-except ImportError:  # pragma: no cover
-    load_workbook = None  # type: ignore[assignment]
-
-try:
-    from pptx import Presentation as PptxPresentation
-except ImportError:  # pragma: no cover
-    PptxPresentation = None  # type: ignore[assignment]
-
-
 logger = logging.getLogger(__name__)
+
+# Optional parser libraries are resolved on first use.  The public-ish module
+# names remain overrideable because downstream deployments and tests use
+# ``None`` to force the pure-OOXML fallback.
+_NOT_LOADED = object()
+fitz: Any = _NOT_LOADED
+PdfReader: Any = _NOT_LOADED
+_PypdfNotDecryptedError: Any = _NOT_LOADED
+DocxDocument: Any = _NOT_LOADED
+load_workbook: Any = _NOT_LOADED
+PptxPresentation: Any = _NOT_LOADED
 
 
 _OFFICE_EXTENSIONS: frozenset[str] = frozenset(FileTypeRouter.PARSER_EXTENSIONS)
@@ -231,6 +214,15 @@ def extract_text_from_path(
 
 
 def _extract_pdf(data: bytes, filename: str) -> str:
+    global fitz, PdfReader, _PypdfNotDecryptedError
+    if fitz is _NOT_LOADED:
+        try:
+            import fitz as fitz_module  # pymupdf
+
+            fitz = fitz_module
+        except ImportError:  # pragma: no cover
+            fitz = None
+
     if fitz is not None:
         try:
             with fitz.open(stream=data, filetype="pdf") as doc:
@@ -246,6 +238,17 @@ def _extract_pdf(data: bytes, filename: str) -> str:
             raise
         except Exception as exc:
             logger.warning("pymupdf failed on %s: %s — falling back to pypdf", filename, exc)
+
+    if PdfReader is _NOT_LOADED:
+        try:
+            from pypdf import PdfReader as reader_type
+            from pypdf.errors import FileNotDecryptedError
+
+            PdfReader = reader_type
+            _PypdfNotDecryptedError = FileNotDecryptedError
+        except ImportError:  # pragma: no cover
+            PdfReader = None
+            _PypdfNotDecryptedError = Exception
 
     if PdfReader is None:
         raise CorruptDocumentError(
@@ -276,6 +279,15 @@ def _extract_pdf(data: bytes, filename: str) -> str:
 
 
 def _extract_docx(data: bytes, filename: str) -> str:
+    global DocxDocument
+    if DocxDocument is _NOT_LOADED:
+        try:
+            from docx import Document as document_type
+
+            DocxDocument = document_type
+        except ImportError:  # pragma: no cover
+            DocxDocument = None
+
     primary_error: Exception | None = None
     primary_text = ""
     if DocxDocument is not None:
@@ -306,6 +318,15 @@ def _extract_docx(data: bytes, filename: str) -> str:
 
 
 def _extract_xlsx(data: bytes, filename: str) -> str:
+    global load_workbook
+    if load_workbook is _NOT_LOADED:
+        try:
+            from openpyxl import load_workbook as workbook_loader
+
+            load_workbook = workbook_loader
+        except ImportError:  # pragma: no cover
+            load_workbook = None
+
     if load_workbook is None:
         return _extract_xlsx_ooxml(data, filename)
     try:
@@ -335,6 +356,15 @@ def _extract_xlsx(data: bytes, filename: str) -> str:
 
 
 def _extract_pptx(data: bytes, filename: str) -> str:
+    global PptxPresentation
+    if PptxPresentation is _NOT_LOADED:
+        try:
+            from pptx import Presentation as presentation_type
+
+            PptxPresentation = presentation_type
+        except ImportError:  # pragma: no cover
+            PptxPresentation = None
+
     if PptxPresentation is None:
         return _extract_pptx_ooxml(data, filename)
     try:

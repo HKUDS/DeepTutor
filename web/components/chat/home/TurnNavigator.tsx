@@ -227,28 +227,21 @@ export function TurnNavigator({
   // mid-transition when the hover fires, so a ``getBoundingClientRect``
   // here would anchor to the collapsed layout and then look misplaced.
   // Clamped so the card can never hang off the ends of a long rail.
-  const parkCardAt = useCallback(
-    (index: number, count: number) => {
-      const row = rowHeight(count, true);
-      const trackHeight = Math.min(
-        count * row + TRACK_PAD_PX * 2,
-        (typeof window === "undefined" ? 800 : window.innerHeight) *
-          TRACK_MAX_VH,
-      );
-      const raw =
-        TRACK_PAD_PX +
-        index * row +
-        row / 2 -
-        (trackRef.current?.scrollTop ?? 0);
-      setCardY(
-        Math.min(
-          Math.max(raw, CARD_HALF_PX),
-          Math.max(trackHeight - CARD_HALF_PX, CARD_HALF_PX),
-        ),
-      );
-    },
-    [],
-  );
+  const parkCardAt = useCallback((index: number, count: number) => {
+    const row = rowHeight(count, true);
+    const trackHeight = Math.min(
+      count * row + TRACK_PAD_PX * 2,
+      (typeof window === "undefined" ? 800 : window.innerHeight) * TRACK_MAX_VH,
+    );
+    const raw =
+      TRACK_PAD_PX + index * row + row / 2 - (trackRef.current?.scrollTop ?? 0);
+    setCardY(
+      Math.min(
+        Math.max(raw, CARD_HALF_PX),
+        Math.max(trackHeight - CARD_HALF_PX, CARD_HALF_PX),
+      ),
+    );
+  }, []);
 
   // Below three questions the rail is noise: everything is one flick away.
   if (entries.length < 3) return null;

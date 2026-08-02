@@ -117,11 +117,16 @@ def run_capability(
 @app.command()
 def start(
     home: Path | None = typer.Option(None, "--home", help="Runtime workspace root."),
+    dev: bool = typer.Option(
+        False,
+        "--dev",
+        help="Use the Next.js development server for frontend work.",
+    ),
 ) -> None:
-    """Launch backend + frontend together. Press Ctrl+C to stop."""
+    """Launch backend + frontend together. Source installs default to production."""
     from deeptutor.runtime.launcher import start as start_web
 
-    start_web(home=home)
+    start_web(home=home, dev=dev)
 
 
 @app.command()
@@ -155,7 +160,7 @@ def serve(
         )
         raise typer.Exit(code=1)
 
-    from deeptutor.services.config import get_ws_max_size
+    from deeptutor.services.config import HTTP_KEEP_ALIVE_TIMEOUT, get_ws_max_size
 
     # ws_max_size tracks the configured chat-attachment total so base64
     # uploads fit in one WS frame (uvicorn defaults to 16MB).
@@ -166,6 +171,7 @@ def serve(
         reload=reload,
         reload_excludes=["web/*", "data/*"] if reload else None,
         ws_max_size=get_ws_max_size(),
+        timeout_keep_alive=HTTP_KEEP_ALIVE_TIMEOUT,
     )
 
 
