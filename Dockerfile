@@ -126,10 +126,15 @@ WORKDIR /app
 
 # Install system dependencies
 # Note: libgl1 and libglib2.0-0 are required for OpenCV (used by mineru)
+# Note: git is required to install CLI apps — most of the CLI-Anything catalog
+#       installs with `pip install git+…`, which shells out to git. It is needed
+#       in *this* image and not in the runner: installing is a privileged
+#       main-app action, running is the runner's (Dockerfile.runner).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     bash \
+    git \
     supervisor \
     libgl1 \
     libglib2.0-0 \

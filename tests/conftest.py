@@ -18,6 +18,58 @@ from deeptutor.core.stream_bus import StreamBus
 # ---------------------------------------------------------------------------
 
 
+def _tree_snapshot(root: Path) -> frozenset[str]:
+    if not root.is_dir():
+        return frozenset()
+    return frozenset(str(path) for path in root.rglob("*") if path.is_file())
+
+
+#: Captured at import time — before any test can monkeypatch the roots — so the
+#: guard below always watches the developer's real tree, whatever a test does.
+_REAL_OWNER_SECRET_TREES: tuple[Path, ...] = ()
+try:  # pragma: no cover - import-time wiring
+    from deeptutor.multi_user.paths import ADMIN_WORKSPACE_ROOT as _REAL_ADMIN_ROOT
+    from deeptutor.multi_user.paths import SYSTEM_ROOT as _REAL_SYSTEM_ROOT
+
+    _REAL_OWNER_SECRET_TREES = (
+        _REAL_SYSTEM_ROOT / "user-secrets",
+        _REAL_SYSTEM_ROOT / "user-mcp",
+        _REAL_SYSTEM_ROOT / "user-cli-apps",
+        # Not per-owner, but the same failure: a test that forgets to redirect
+        # the roots would record installs the developer's running instance then
+        # offers to a chat turn, for apps that are not on disk.
+        _REAL_ADMIN_ROOT / "cli-apps",
+    )
+except Exception:  # pragma: no cover
+    pass
+
+
+@pytest.fixture(autouse=True)
+def _guard_real_owner_secrets():
+    """A test must never write into the real per-account state trees.
+
+    These hold OAuth refresh tokens, MCP credentials, and which CLI apps are
+    installed. A test that redirects ``ADMIN_WORKSPACE_ROOT`` but forgets
+    ``SYSTEM_ROOT`` — or that calls ``monkeypatch.undo()`` and so reverts a
+    fixture's redirection — lands here, and without this guard the failure is
+    silent: the test passes while the developer's tree quietly grows files named
+    after fixture users.
+    """
+    before = {root: _tree_snapshot(root) for root in _REAL_OWNER_SECRET_TREES}
+    yield
+    for root, snapshot in before.items():
+        added = _tree_snapshot(root) - snapshot
+        if added:
+            for path in added:
+                Path(path).unlink(missing_ok=True)
+            pytest.fail(
+                "test wrote into the real per-account state tree "
+                f"{root}: {sorted(added)}. Redirect paths.SYSTEM_ROOT and "
+                "paths.ADMIN_WORKSPACE_ROOT (see "
+                "tests/services/codex_auth/test_credential_location.py)."
+            )
+
+
 @pytest.fixture(autouse=True)
 def _guard_legacy_multi_user_migration(monkeypatch):
     """Tests must never migrate the developer's real ``multi-user/`` tree.

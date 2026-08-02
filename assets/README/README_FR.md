@@ -63,7 +63,7 @@ DeepTutor est un espace de travail d'apprentissage natif à l'agent qui connecte
 - **Contexte d'apprentissage connecté** — Les bases de connaissances, les livres, les brouillons Co-Writer, les carnets, les banques de questions, les personas et la Memory restent disponibles dans tous les flux de travail au lieu de vivre dans des outils isolés.
 - **Sous-agents et Partners** — consultez une CLI de codage en direct (Claude Code, Codex, Gemini, Kimi, opencode ou MiMo) ou un Partner depuis n'importe quel tour (ou importez leurs conversations passées), et exécutez des compagnons IM persistants sur le même cerveau.
 - **Connaissances multi-moteur** — bibliothèques RAG versionnées via LlamaIndex, PageIndex, GraphRAG, LightRAG, ou un vault Obsidian lié, avec une analyse de documents enfichable.
-- **Outils et compétences extensibles** — outils intégrés, serveurs MCP, modèles de génération d'images / vidéos / voix, et compétences communautaires installables depuis EduHub.
+- **Outils et compétences extensibles** — outils intégrés, serveurs MCP, applications CLI, modèles de génération d'images / vidéos / voix, et compétences communautaires installables depuis EduHub.
 - **Mémoire inspectable** — les traces L1, les résumés de surface L2 et la synthèse L3 rendent la personnalisation visible et modifiable, avec un Memory Graph qui retrace chaque affirmation jusqu'à son evidence.
 
 ---
@@ -458,7 +458,7 @@ En créant une KB, vous choisissez soit de **créer nouvelle** (uploadez des doc
 <img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="Hub Learning Space de DeepTutor" width="900">
 </div>
 
-Learning Space est la couche de bibliothèque et de personnalisation — là où vivent les choses qui persistent. **Conversations & Matériaux** contient votre historique de chat, vos carnets et une banque de questions (chaque question sauvegardée conserve votre réponse, la réponse de référence et une explication). **Personnalisation** contient les parcours de maîtrise, les personas (préréglages de comportement comme *pair*, *assistant de recherche*, *enseignant*) et les compétences (livrets de jeu `SKILL.md` que le modèle lit à la demande). Tout ici peut être réutilisé depuis Chat, Partners, Co-Writer et Book.
+Learning Space est la couche de bibliothèque et de personnalisation — là où vivent les choses qui persistent. **Conversations & Matériaux** contient votre historique de chat, vos carnets et une banque de questions (chaque question sauvegardée conserve votre réponse, la réponse de référence et une explication). **Personnalisation** contient les parcours de maîtrise, les personas (préréglages de comportement comme *pair*, *assistant de recherche*, *enseignant*), les compétences (livrets de jeu `SKILL.md` que le modèle lit à la demande), les **Services MCP** — une boutique organisée de serveurs MCP hébergés que vous installez pour vous-même en un clic, plus tout serveur distant que vous configurez par URL — et les **Applications CLI**, des outils en ligne de commande du catalogue [CLI-Anything](https://github.com/HKUDS/CLI-Anything) que l'agent de chat appelle directement, chaque application chargeant son propre guide d'utilisation à la demande. Tout ici peut être réutilisé depuis Chat, Partners, Co-Writer et Book.
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="Importer des compétences depuis EduHub" width="900">
@@ -492,7 +492,7 @@ Le Memory Graph montre toute la pyramide — la synthèse L3 au centre, L2 dans 
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="Hub Settings de DeepTutor" width="900">
 </div>
 
-Settings est le plan de contrôle opérationnel, avec une bande de statut en direct (Backend, LLM, Embedding, Recherche) et une carte par zone : **Apparence** (thème, langue de l'interface, style des blocs de code), **Réseau** (base d'API, ports, CORS), **Modèles** (LLM, Embedding, Recherche, Texte-à-Parole, Parole-à-Texte, Génération d'Images, Génération de Vidéos), **Base de Connaissances** (moteur d'analyse de documents), **Chat** (outils, serveurs MCP, paramètres par capacité, limites des pièces jointes), **Partners & Agents** (les sous-agents que vous pouvez consulter depuis un tour), et **Memory** (les budgets du consolidateur).
+Settings est le plan de contrôle opérationnel, avec une bande de statut en direct (Backend, LLM, Embedding, Recherche) et une carte par zone : **Apparence** (thème, langue de l'interface, style des blocs de code), **Réseau** (base d'API, ports, CORS), **Modèles** (LLM, Embedding, Recherche, Texte-à-Parole, Parole-à-Texte, Génération d'Images, Génération de Vidéos), **Base de Connaissances** (moteur d'analyse de documents), **Chat** (outils, paramètres par capacité, limites des pièces jointes), **Partners & Agents** (les sous-agents que vous pouvez consulter depuis un tour), et **Memory** (les budgets du consolidateur).
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="Paramètres d'apparence et thèmes DeepTutor" width="900">
@@ -500,7 +500,7 @@ Settings est le plan de contrôle opérationnel, avec une bande de statut en dir
 
 La plupart des sections utilisent un flux brouillon-et-application, vous pouvez donc tester un fournisseur avant de vous y engager. Quatre thèmes sont livrés dans la boîte — Default, Cream, Dark et Glass. Les fichiers `.env` à la racine du projet sont intentionnellement ignorés ; la configuration d'exécution vit sous `data/user/settings/*.json` sauf si `DEEPTUTOR_HOME` ou `deeptutor start --home` pointe l'application ailleurs.
 
-**OAuth OpenAI Codex (expérimental).** Choisir **OpenAI Codex** sous Modèles → LLM remplace les champs de clé API par une connexion navigateur qui s'exécute contre votre propre forfait ChatGPT, donc aucune `OPENAI_API_KEY` n'est nécessaire. Les jetons résident uniquement dans `<user-root>/private/openai-codex/` et DeepTutor ne lit ni ne modifie jamais votre connexion CLI `~/.codex`. La liste de modèles provient du catalogue en direct de ce compte ; se connecter publie le profil, mais celui-ci ne devient le modèle actif que si aucun LLM n'est encore configuré, donc cela ne redirige jamais un déploiement à votre insu. Parce qu'un jeton autorise le forfait d'une seule personne, le profil n'est pas partageable via les attributions utilisateur — chaque compte doit se connecter pour lui-même, et le navigateur doit pouvoir atteindre la machine qui exécute le backend (sur un serveur distant, exécutez plutôt `deeptutor provider login openai-codex` là-bas). Les erreurs de quota et les échecs de catalogue sont rapportés tels quels et ne basculent jamais vers un fournisseur payant. Ce chemin de compatibilité est expérimental : l'interface en amont peut changer.
+**OAuth OpenAI Codex (expérimental).** Choisir **OpenAI Codex** sous Modèles → LLM remplace les champs de clé API par une connexion navigateur qui s'exécute contre votre propre forfait ChatGPT, donc aucune `OPENAI_API_KEY` n'est nécessaire. Les jetons résident uniquement dans `data/system/user-secrets/<owner>/private/openai-codex/` — en dehors de tout arbre que le sandbox d'exécution peut atteindre — et DeepTutor ne lit ni ne modifie jamais votre connexion CLI `~/.codex`. La liste de modèles provient du catalogue en direct de ce compte ; se connecter publie le profil, mais celui-ci ne devient le modèle actif que si aucun LLM n'est encore configuré, donc cela ne redirige jamais un déploiement à votre insu. Parce qu'un jeton autorise le forfait d'une seule personne, le profil n'est pas partageable via les attributions utilisateur — chaque compte doit se connecter pour lui-même, et le navigateur doit pouvoir atteindre la machine qui exécute le backend (sur un serveur distant, exécutez plutôt `deeptutor provider login openai-codex` là-bas). Les erreurs de quota et les échecs de catalogue sont rapportés tels quels et ne basculent jamais vers un fournisseur payant. Ce chemin de compatibilité est expérimental : l'interface en amont peut changer.
 
 Pour un déploiement distant, le `localhost` du navigateur et le `localhost` du serveur sont deux machines différentes, donc un simple proxy inverse ne peut pas à lui seul acheminer le callback localhost du navigateur jusqu'au serveur. Utilisez un tunnel SSH comme pont de callback. Le tunnel atteint le port Web déjà publié ; Next.js ne réécrit que le chemin de callback exact vers le courtier de callback public, et ce courtier valide `state` avant de router vers l'opération OAuth d'origine. L'écouteur de callback reste sur le loopback du backend, les ports `1455` et `1457` ne sont pas publiés, et ce chemin prend en charge le réseau bridge Docker par défaut.
 
@@ -532,12 +532,13 @@ data/
 ├── user/                    # Espace de travail Admin + paramètres globaux
 ├── users/<uid>/             # Portée par utilisateur : historique de chat, mémoire, carnets, KB
 ├── partners/<id>/workspace/ # Portée partner (utilisateur synthétique)
-└── system/                  # auth/users.json · grants/<uid>.json · audit/usage.jsonl
+├── cli-apps/                # Applications CLI installées, montées en lecture seule dans le sandbox
+└── system/                  # auth · grants · audit · user-secrets/<owner> (jetons OAuth)
 ```
 
 Le **premier utilisateur enregistré devient admin** et possède les catalogues de modèles, les identifiants de fournisseur, les bases de connaissances partagées, les compétences et les attributions per-utilisateur. Tous les autres obtiennent un espace de travail isolé et une page Settings expurgée — les modèles, KB et compétences assignés par l'admin apparaissent comme des options à portée, en lecture seule, jamais comme des clés d'API brutes.
 
-**Activer :** activez l'auth dans `data/user/settings/auth.json`, redémarrez `deeptutor start`, enregistrez le premier admin sur `/register`, puis ajoutez des utilisateurs depuis `/admin/users` et assignez des modèles, KB, compétences, Partners, politique d'outils/MCP et accès à l'exécution de code via des attributions.
+**Activer :** activez l'auth dans `data/user/settings/auth.json`, redémarrez `deeptutor start`, enregistrez le premier admin sur `/register`, puis ajoutez des utilisateurs depuis `/admin/users` et assignez des modèles, KB, compétences, Partners, politique d'outils/MCP/applications CLI et accès à l'exécution de code via des attributions.
 
 > PocketBase reste une intégration mono-utilisateur — gardez `integrations.pocketbase_url` vide pour les déploiements multi-utilisateur sauf si vous avez configuré un store utilisateur externe.
 
@@ -712,18 +713,6 @@ Nous espérons que DeepTutor deviendra un cadeau pour la communauté. 🎁
 
 <a href="https://github.com/HKUDS/DeepTutor/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=HKUDS/DeepTutor&max=999" alt="Contributeurs" />
-</a>
-
-</div>
-
-<div align="center">
-
-<a href="https://www.star-history.com/#HKUDS/DeepTutor&type=timeline&legend=top-left">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=timeline&theme=dark&legend=top-left" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=timeline&legend=top-left" />
-    <img alt="Graphique d'historique des étoiles" src="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=timeline&legend=top-left" />
-  </picture>
 </a>
 
 </div>

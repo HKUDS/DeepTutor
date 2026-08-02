@@ -23,6 +23,7 @@ import {
 } from "@/context/app-shell-storage";
 import { useAppShell } from "@/context/AppShellContext";
 import { apiFetch, apiUrl } from "@/lib/api";
+import { invalidateLLMOptionsCache } from "@/lib/llm-options";
 import { setTheme as applyThemePreference } from "@/lib/theme";
 
 // ─── Domain types ─────────────────────────────────────────────────────────
@@ -975,6 +976,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       const payload = await response.json();
       setCatalog(payload.catalog);
       setDraft(cloneCatalog(payload.catalog));
+      // The model list the chat composer shows is derived from this catalog.
+      invalidateLLMOptionsCache();
       setToast(t("Draft saved"));
     } finally {
       setSaving(false);
@@ -1002,6 +1005,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         const payload = await response.json();
         setCatalog(payload.catalog);
         setDraft(cloneCatalog(payload.catalog));
+        invalidateLLMOptionsCache();
         const statusResponse = await apiFetch(apiUrl("/api/v1/system/status"));
         setStatus((await statusResponse.json()) as SystemStatus);
       }

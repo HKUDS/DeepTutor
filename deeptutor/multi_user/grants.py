@@ -61,12 +61,16 @@ def empty_grant(
         # ``[]`` means none, a list is an explicit whitelist. MCP tools can
         # proxy host-side capabilities, so non-admin runtime access treats
         # ``mcp_tools=None`` as deny-by-default until an admin grants explicit
-        # names. ``exec_enabled`` is a tri-state override on top of the
+        # names. ``cli_apps`` is the same posture for installed CLI apps, keyed
+        # by app id: each one is third-party code executing in the sandbox, so
+        # an absent grant is no access rather than all of them.
+        # ``exec_enabled`` is a tri-state override on top of the
         # deployment exec policy: ``None`` follows the policy, ``False`` always
         # denies, ``True`` is only honored where the sandbox can actually
         # isolate users (SYSTEM isolation).
         "enabled_tools": None,
         "mcp_tools": None,
+        "cli_apps": None,
         "exec_enabled": None,
         # Resource-specific credit limits. Zero means unlimited. Keep the
         # legacy LLM alias so old clients and grants remain readable.
@@ -129,9 +133,13 @@ def normalize_grant(user_id: str, payload: dict[str, Any] | None) -> dict[str, A
             if isinstance(value, dict):
                 base["byok"][service] = {"enabled": bool(value.get("enabled", False))}
     for key in ("knowledge_bases", "skills", "partners"):
-        values = payload.get(key) if isinstance(payload.get(key), list) else []
+        # Read once, then narrow. Two separate ``.get`` calls cannot be narrowed
+        # together — nothing promises they return the same object — so the
+        # inline-conditional form left this iterating a possible ``None``.
+        raw = payload.get(key)
+        values = raw if isinstance(raw, list) else []
         base[key] = [dict(item) for item in values if isinstance(item, dict)]
-    for key in ("enabled_tools", "mcp_tools"):
+    for key in ("enabled_tools", "mcp_tools", "cli_apps"):
         base[key] = _normalize_tool_list(payload.get(key))
     exec_enabled = payload.get("exec_enabled")
     base["exec_enabled"] = bool(exec_enabled) if isinstance(exec_enabled, bool) else None

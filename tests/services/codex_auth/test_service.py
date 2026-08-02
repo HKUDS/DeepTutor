@@ -36,24 +36,35 @@ def test_each_user_gets_their_own_codex_credential_root(
 ) -> None:
     """A Codex token authorizes one person's ChatGPT plan, so it is never pooled.
 
-    Resolving other accounts to the administrator's root would run an entire
-    deployment on a single subscription.
+    Resolving other accounts to the administrator's directory would run an
+    entire deployment on a single subscription. Asserted on the *live* seam
+    (``_codex_secrets_root``): ``_codex_user_root`` is now only the location a
+    pre-existing login is relocated from, so pinning it would leave this
+    guarantee unguarded.
     """
     from deeptutor.multi_user import paths as paths_module
+    from deeptutor.multi_user.context import reset_current_user, set_current_user
+    from deeptutor.multi_user.models import CurrentUser, UserScope
 
-    roots = {"admin": tmp_path / "admin-user", "learner": tmp_path / "regular-user"}
-    signed_in = {"who": "admin"}
-    monkeypatch.setattr(
-        paths_module,
-        "get_owner_path_service",
-        lambda: type("Paths", (), {"get_user_root": lambda self: roots[signed_in["who"]]})(),
-    )
+    admin_root = (tmp_path / "data").resolve()
+    monkeypatch.setattr(paths_module, "ADMIN_WORKSPACE_ROOT", admin_root)
+    monkeypatch.setattr(paths_module, "USERS_ROOT", admin_root / "users")
+    monkeypatch.setattr(paths_module, "SYSTEM_ROOT", admin_root / "system")
+    monkeypatch.setattr(paths_module, "_path_services", {})
+    monkeypatch.setattr(service_module, "_RELOCATED_SECRET_ROOTS", set())
 
-    assert service_module._codex_user_root() == roots["admin"]
-    signed_in["who"] = "learner"
-    assert service_module._codex_user_root() == roots["learner"]
-    # Who owns a scope is decided by get_owner_path_service, not here: codex_auth
-    # must never reach for the admin root — or learn what a partner is — itself.
+    as_admin = service_module._codex_secrets_root()
+    scope = UserScope(kind="user", user_id="u_ada", root=admin_root / "users" / "u_ada")
+    token = set_current_user(CurrentUser(id="u_ada", username="ada", role="user", scope=scope))
+    try:
+        as_learner = service_module._codex_secrets_root()
+    finally:
+        reset_current_user(token)
+
+    assert as_admin != as_learner
+    assert as_learner.name == "u_ada"
+    # Who owns a scope is decided in multi_user.paths, not here: codex_auth must
+    # never reach for the admin root — or learn what a partner is — itself.
     assert not hasattr(service_module, "get_admin_path_service")
     assert not hasattr(service_module, "PARTNER_USER_PREFIX")
 
@@ -73,10 +84,15 @@ def test_partner_turn_inherits_its_owner_codex_login(
 
     admin_root = (tmp_path / "data").resolve()
     monkeypatch.setattr(paths_module, "ADMIN_WORKSPACE_ROOT", admin_root)
+    monkeypatch.setattr(paths_module, "USERS_ROOT", admin_root / "users")
+    monkeypatch.setattr(paths_module, "SYSTEM_ROOT", admin_root / "system")
     monkeypatch.setattr(paths_module, "_path_services", {})
+    monkeypatch.setattr(service_module, "_RELOCATED_SECRET_ROOTS", set())
 
+    as_admin = service_module._codex_secrets_root()
     token = set_current_user(partner_user("ada"))
     try:
+        assert service_module._codex_secrets_root() == as_admin
         assert service_module._codex_user_root() == admin_root / "user"
     finally:
         reset_current_user(token)
@@ -123,7 +139,7 @@ def test_service_singleton_reads_frontend_port_only_when_created(
             captured.update(kwargs)
 
     monkeypatch.setattr(service_module, "_SERVICE_INSTANCES", {})
-    monkeypatch.setattr(service_module, "_codex_user_root", lambda: tmp_path)
+    monkeypatch.setattr(service_module, "_codex_secrets_root", lambda: tmp_path)
     monkeypatch.setattr(service_module, "load_system_settings", load_settings)
     monkeypatch.setattr(service_module, "CodexCredentialStore", lambda _root: object())
     monkeypatch.setattr(

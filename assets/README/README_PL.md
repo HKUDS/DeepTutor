@@ -63,7 +63,7 @@ DeepTutor to natywne dla agentów środowisko nauki, które łączy korepetycje,
 - **Połączony kontekst uczenia się** — bazy wiedzy, książki, szkice Co-Writer, notatniki, banki pytań, persony i Memory są dostępne we wszystkich przepływach pracy zamiast żyć w izolowanych narzędziach.
 - **Subagenty i Partners** — konsultuj działający CLI kodowania (Claude Code, Codex, Gemini, Kimi, opencode lub MiMo) lub Partner z dowolnej tury (lub importuj ich poprzednie konwersacje) i uruchamiaj stałych towarzyszy IM na tym samym mózgu.
 - **Wielosilnikowa wiedza** — wersjonowane biblioteki RAG z LlamaIndex, PageIndex, GraphRAG, LightRAG lub podłączonym vault Obsidian, z podłączalnym parsowaniem dokumentów.
-- **Rozszerzalne narzędzia i umiejętności** — wbudowane narzędzia, serwery MCP, modele generowania obrazów / wideo / głosu oraz instalowalne umiejętności społecznościowe z EduHub.
+- **Rozszerzalne narzędzia i umiejętności** — wbudowane narzędzia, serwery MCP, aplikacje CLI, modele generowania obrazów / wideo / głosu oraz instalowalne umiejętności społecznościowe z EduHub.
 - **Inspektowalna pamięć** — ślady L1, podsumowania powierzchni L2 i synteza L3 sprawiają, że personalizacja jest widoczna i edytowalna, a Memory Graph śledzi każde twierdzenie z powrotem do jego dowodów.
 
 ---
@@ -436,7 +436,7 @@ Tworząc KB, albo **tworzysz nową** (przesyłasz dokumenty i budujesz świeży 
 <img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="Centrum Learning Space DeepTutor" width="900">
 </div>
 
-Learning Space to biblioteka i warstwa personalizacji — miejsce gdzie żyją rzeczy, które się zachowują. **Conversations & Materials** przechowuje historię czatu, notatniki i bank pytań (każde zapisane pytanie zachowuje twoją odpowiedź, odpowiedź referencyjną i wyjaśnienie). **Personalization** przechowuje ścieżki opanowania, persony (presety zachowań takie jak *peer*, *research-assistant*, *teacher*) i umiejętności (podręczniki `SKILL.md` które model czyta na żądanie). Wszystko tutaj można ponownie używać z Chat, Partners, Co-Writer i Book.
+Learning Space to biblioteka i warstwa personalizacji — miejsce gdzie żyją rzeczy, które się zachowują. **Conversations & Materials** przechowuje historię czatu, notatniki i bank pytań (każde zapisane pytanie zachowuje twoją odpowiedź, odpowiedź referencyjną i wyjaśnienie). **Personalization** przechowuje ścieżki opanowania, persony (presety zachowań takie jak *peer*, *research-assistant*, *teacher*), umiejętności (podręczniki `SKILL.md` które model czyta na żądanie), **Usługi MCP** — kuratorowany magazyn hostowanych serwerów MCP, które instalujesz dla siebie jednym kliknięciem, plus dowolny zdalny serwer, który skonfigurujesz przez URL — oraz **Aplikacje CLI**, narzędzia wiersza poleceń z katalogu [CLI-Anything](https://github.com/HKUDS/CLI-Anything), które agent czatu wywołuje bezpośrednio, z własnym przewodnikiem użycia każdej aplikacji wczytywanym na żądanie. Wszystko tutaj można ponownie używać z Chat, Partners, Co-Writer i Book.
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="Importowanie umiejętności z EduHub" width="900">
@@ -470,7 +470,7 @@ Memory Graph pokazuje całą piramidę — synteza L3 w centrum, L2 w środkowym
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="Centrum ustawień DeepTutor" width="900">
 </div>
 
-Settings to operacyjna płaszczyzna kontroli z paskiem statusu na żywo (Backend, LLM, Embedding, Search) i jedną kartą na obszar: **Appearance** (motyw, język UI, stylizacja bloków kodu), **Network** (baza API, porty, CORS), **Models** (LLM, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (silnik parsowania dokumentów), **Chat** (narzędzia, serwery MCP, parametry per-możliwość, limity załączników), **Partners & Agents** (subagenty które możesz konsultować z tury) i **Memory** (budżety konsolidatora).
+Settings to operacyjna płaszczyzna kontroli z paskiem statusu na żywo (Backend, LLM, Embedding, Search) i jedną kartą na obszar: **Appearance** (motyw, język UI, stylizacja bloków kodu), **Network** (baza API, porty, CORS), **Models** (LLM, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (silnik parsowania dokumentów), **Chat** (narzędzia, parametry per-możliwość, limity załączników), **Partners & Agents** (subagenty które możesz konsultować z tury) i **Memory** (budżety konsolidatora).
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="Ustawienia wyglądu DeepTutor i motywy" width="900">
@@ -478,7 +478,7 @@ Settings to operacyjna płaszczyzna kontroli z paskiem statusu na żywo (Backend
 
 Większość sekcji używa przepływu szkic-i-zastosuj, więc możesz testować dostawcę przed jego zatwierdzeniem. Cztery motywy dostarczane w zestawie — Default, Cream, Dark i Glass. Pliki `.env` katalogu głównego projektu są celowo ignorowane; konfiguracja środowiska uruchomieniowego żyje pod `data/user/settings/*.json` chyba że `DEEPTUTOR_HOME` lub `deeptutor start --home` wskaże aplikację gdzie indziej.
 
-**OpenAI Codex OAuth (eksperymentalne).** Wybranie **OpenAI Codex** w Models → LLM zastępuje pola klucza API logowaniem przez przeglądarkę, które działa względem twojego własnego planu ChatGPT, więc `OPENAI_API_KEY` nie jest potrzebny. Tokeny żyją wyłącznie w `<user-root>/private/openai-codex/`, a DeepTutor nigdy nie czyta ani nie modyfikuje twojego logowania CLI `~/.codex`. Lista modeli pochodzi z aktualnego katalogu tego konta; zalogowanie się publikuje profil, ale staje się aktywnym modelem tylko gdy żaden LLM nie jest jeszcze skonfigurowany, więc nigdy nie przekierowuje wdrożenia bez twojej wiedzy. Ponieważ token autoryzuje plan jednej osoby, profilu nie da się współdzielić przez uprawnienia użytkowników — każde konto loguje się osobno, a przeglądarka musi dotrzeć do maszyny, na której działa backend (na zdalnym serwerze uruchom tam zamiast tego `deeptutor provider login openai-codex`). Błędy limitu i awarie katalogu są zgłaszane wprost i nigdy nie powodują przełączenia na płatnego dostawcę. Ta ścieżka kompatybilności jest eksperymentalna: interfejs projektu nadrzędnego może się zmienić.
+**OpenAI Codex OAuth (eksperymentalne).** Wybranie **OpenAI Codex** w Models → LLM zastępuje pola klucza API logowaniem przez przeglądarkę, które działa względem twojego własnego planu ChatGPT, więc `OPENAI_API_KEY` nie jest potrzebny. Tokeny żyją wyłącznie w `data/system/user-secrets/<owner>/private/openai-codex/` — poza każdym drzewem, do którego ma dostęp piaskownica wykonania kodu — a DeepTutor nigdy nie czyta ani nie modyfikuje twojego logowania CLI `~/.codex`. Lista modeli pochodzi z aktualnego katalogu tego konta; zalogowanie się publikuje profil, ale staje się aktywnym modelem tylko gdy żaden LLM nie jest jeszcze skonfigurowany, więc nigdy nie przekierowuje wdrożenia bez twojej wiedzy. Ponieważ token autoryzuje plan jednej osoby, profilu nie da się współdzielić przez uprawnienia użytkowników — każde konto loguje się osobno, a przeglądarka musi dotrzeć do maszyny, na której działa backend (na zdalnym serwerze uruchom tam zamiast tego `deeptutor provider login openai-codex`). Błędy limitu i awarie katalogu są zgłaszane wprost i nigdy nie powodują przełączenia na płatnego dostawcę. Ta ścieżka kompatybilności jest eksperymentalna: interfejs projektu nadrzędnego może się zmienić.
 
 Dla zdalnego wdrożenia `localhost` przeglądarki i `localhost` serwera to dwie różne maszyny, więc sam zwykły reverse proxy nie może przenieść callbacku localhost przeglądarki do serwera. Użyj tunelu SSH jako mostu callback. Tunel dociera do już opublikowanego portu Web; Next.js przepisuje wyłącznie dokładną ścieżkę callback do publicznego brokera callback, a broker waliduje `state` przed przekierowaniem do pierwotnej operacji OAuth. Nasłuch callback pozostaje na loopbacku backendu, porty `1455` i `1457` nie są publikowane, a ta ścieżka obsługuje domyślną sieć bridge Dockera.
 
@@ -510,12 +510,13 @@ data/
 ├── user/                    # Obszar roboczy administratora + globalne ustawienia
 ├── users/<uid>/             # Zakres per-użytkownik: historia czatu, pamięć, notatniki, KB
 ├── partners/<id>/workspace/ # Zakres partnera (użytkownika syntetycznego)
-└── system/                  # auth/users.json · grants/<uid>.json · audit/usage.jsonl
+├── cli-apps/                # Zainstalowane aplikacje CLI, zamontowane tylko do odczytu w piaskownicy
+└── system/                  # auth · grants · audit · user-secrets/<owner> (tokeny OAuth)
 ```
 
 **Pierwszy zarejestrowany użytkownik staje się administratorem** i jest właścicielem katalogów modeli, danych uwierzytelniających dostawców, współdzielonych baz wiedzy, umiejętności i uprawnień per-użytkownik. Wszyscy pozostali otrzymują izolowany obszar roboczy i zredagowaną stronę Settings — przypisane przez administratora modele, KB i umiejętności pojawiają się jako ograniczone, tylko do odczytu opcje, nigdy jako surowe klucze API.
 
-**Włącz:** włącz uwierzytelnianie w `data/user/settings/auth.json`, uruchom ponownie `deeptutor start`, zarejestruj pierwszego administratora pod `/register`, następnie dodaj użytkowników z `/admin/users` i przypisz modele, KB, umiejętności, Partners, politykę narzędzi/MCP i dostęp do wykonania kodu przez uprawnienia.
+**Włącz:** włącz uwierzytelnianie w `data/user/settings/auth.json`, uruchom ponownie `deeptutor start`, zarejestruj pierwszego administratora pod `/register`, następnie dodaj użytkowników z `/admin/users` i przypisz modele, KB, umiejętności, Partners, politykę narzędzi/MCP/aplikacji CLI i dostęp do wykonania kodu przez uprawnienia.
 
 > PocketBase pozostaje integracją jednoosobową — zostaw `integrations.pocketbase_url` puste dla wdrożeń wieloużytkownikowych chyba że podłączyłeś zewnętrzny magazyn użytkowników.
 
@@ -690,18 +691,6 @@ Mamy nadzieję, że DeepTutor stanie się prezentem dla społeczności. 🎁
 
 <a href="https://github.com/HKUDS/DeepTutor/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=HKUDS/DeepTutor&max=999" alt="Współtwórcy" />
-</a>
-
-</div>
-
-<div align="center">
-
-<a href="https://www.star-history.com/#HKUDS/DeepTutor&type=timeline&legend=top-left">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=timeline&theme=dark&legend=top-left" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=timeline&legend=top-left" />
-    <img alt="Wykres historii gwiazdek" src="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=timeline&legend=top-left" />
-  </picture>
 </a>
 
 </div>

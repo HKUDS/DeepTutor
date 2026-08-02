@@ -113,6 +113,18 @@ class CodexCredentialStore:
         self.lock_path = self.root / "auth.lock"
         self._thread_lock = threading.Lock()
 
+    def assert_safe_location(self) -> None:
+        """Raise :class:`CodexAuthError` unless this store sits on plain dirs.
+
+        Both levels are checked, and the parent is the one that matters: a
+        store's own ``private/`` lives inside a workspace subtree that other
+        accounts' sandboxed ``exec`` can write, so a symlink *there* silently
+        redirects the whole store — reading, and worse, relocating — to
+        someone else's credentials.
+        """
+        _assert_safe_directory(self.root.parent)
+        _assert_safe_directory(self.root)
+
     def _ensure_root(self) -> None:
         private_root = self.root.parent
         private_root.mkdir(parents=True, exist_ok=True)

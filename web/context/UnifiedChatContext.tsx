@@ -174,6 +174,25 @@ interface ProviderState {
   sidebarRefreshToken: number;
 }
 
+/** A session as the server describes it. ``LOAD_SESSION`` applies it and
+ *  selects the session; ``REVALIDATE_SESSION`` applies it in the background
+ *  to a session the user is already reading. */
+interface SessionSnapshot {
+  key: string;
+  sessionId: string;
+  title?: string;
+  messages: MessageItem[];
+  activeTurnId?: string | null;
+  status?: SessionRuntimeStatus;
+  tools?: string[];
+  capability?: string | null;
+  knowledgeBases?: string[];
+  llmSelection?: LLMSelection | null;
+  personaSelection?: string;
+  language?: string;
+  selectedBranches?: Record<string, number>;
+}
+
 type Action =
   | { type: "SET_TOOLS"; tools: string[] }
   | { type: "SET_CAPABILITY"; cap: string | null }
@@ -206,22 +225,9 @@ type Action =
       sessionId: string;
       turnId?: string | null;
     }
-  | {
-      type: "LOAD_SESSION";
-      key: string;
-      sessionId: string;
-      title?: string;
-      messages: MessageItem[];
-      activeTurnId?: string | null;
-      status?: SessionRuntimeStatus;
-      tools?: string[];
-      capability?: string | null;
-      knowledgeBases?: string[];
-      llmSelection?: LLMSelection | null;
-      personaSelection?: string;
-      language?: string;
-      selectedBranches?: Record<string, number>;
-    }
+  | ({ type: "LOAD_SESSION" } & SessionSnapshot)
+  | ({ type: "REVALIDATE_SESSION" } & SessionSnapshot)
+  | { type: "SELECT_SESSION"; key: string }
   | { type: "SET_SESSION_TITLE"; key: string; title: string }
   | {
       type: "RECONCILE_TURN";
@@ -558,13 +564,31 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         sidebarRefreshToken: state.sidebarRefreshToken + 1,
       };
     }
-    case "LOAD_SESSION": {
+    case "SELECT_SESSION": {
+      // Show a session we already hold in memory. No fetch, no spinner —
+      // the pair to ``REVALIDATE_SESSION``, which refreshes it afterwards.
+      if (!state.sessions[action.key]) return state;
+      if (state.selectedKey === action.key) return state;
+      return { ...state, selectedKey: action.key };
+    }
+    case "LOAD_SESSION":
+    case "REVALIDATE_SESSION": {
+      if (action.type === "REVALIDATE_SESSION") {
+        // Second line of defence: ``loadSession`` already drops a revalidate
+        // whose session went live, but the check belongs here too so no
+        // background snapshot can ever clobber a streaming turn.
+        const local = state.sessions[action.key];
+        if (!local || local.isStreaming || local.status === "running") {
+          return state;
+        }
+      }
       const existing =
         state.sessions[action.key] ??
         createSessionEntry(action.key, action.sessionId);
       return {
         ...state,
-        selectedKey: action.key,
+        selectedKey:
+          action.type === "LOAD_SESSION" ? action.key : state.selectedKey,
         sessions: {
           ...state.sessions,
           [action.key]: {
@@ -806,7 +830,16 @@ interface ChatContextValue {
   switchBranch: (parentMessageId: number | null, childId: number) => void;
   renameSessionTitle: (title: string) => Promise<void>;
   newSession: () => void;
-  loadSession: (sessionId: string, signal?: AbortSignal) => Promise<void>;
+  /** Fetch a session and apply it. Pass ``revalidate`` when the session is
+   *  already on screen (see ``showCachedSession``): the snapshot is then
+   *  dropped rather than applied if a turn started meanwhile. */
+  loadSession: (
+    sessionId: string,
+    options?: { signal?: AbortSignal; revalidate?: boolean },
+  ) => Promise<void>;
+  /** Select an already-loaded session without fetching. Returns false when
+   *  it isn't in memory, i.e. the caller must load it. */
+  showCachedSession: (sessionId: string) => boolean;
   selectedSessionId: string | null;
   sessionStatuses: Record<string, SessionStatusSnapshot>;
   sidebarRefreshToken: number;
@@ -1273,16 +1306,42 @@ export function UnifiedChatProvider({
     [ensureRunner],
   );
 
+  /** Select a session we already hold in memory, if we do.
+   *
+   *  Lets a caller paint a previously-opened conversation immediately and
+   *  refresh it in the background (``loadSession`` with ``revalidate``),
+   *  rather than blanking the view behind a spinner for a round-trip whose
+   *  result it usually already has. */
+  const showCachedSession = useCallback((sessionId: string) => {
+    const cached = stateRef.current.sessions[sessionId];
+    if (!cached?.messages.length) return false;
+    dispatch({ type: "SELECT_SESSION", key: sessionId });
+    return true;
+  }, []);
+
   const loadSession = useCallback(
-    async (sessionId: string, signal?: AbortSignal) => {
-      const session = await getSession(sessionId, signal);
+    async (
+      sessionId: string,
+      options?: { signal?: AbortSignal; revalidate?: boolean },
+    ) => {
+      const session = await getSession(sessionId, options?.signal);
+      const key = session.session_id || session.id;
       const activeTurn = Array.isArray(session.active_turns)
         ? session.active_turns[0]
         : undefined;
+      if (options?.revalidate) {
+        // Background refresh of a session already on screen. Drop the whole
+        // snapshot — data *and* the re-subscribe below — once a turn is live
+        // locally: this tab is already receiving that turn's events, so
+        // re-subscribing from ``after_seq: 0`` would replay them on top of
+        // what we have, and the snapshot predates the turn anyway.
+        const local = stateRef.current.sessions[key];
+        if (!local || local.isStreaming || local.status === "running") return;
+      }
       dispatch({
-        type: "LOAD_SESSION",
-        key: session.session_id || session.id,
-        sessionId: session.session_id || session.id,
+        type: options?.revalidate ? "REVALIDATE_SESSION" : "LOAD_SESSION",
+        key,
+        sessionId: key,
         title: session.title || "",
         messages: hydrateMessages(session.messages ?? []),
         activeTurnId: activeTurn?.turn_id || activeTurn?.id || null,
@@ -1310,7 +1369,9 @@ export function UnifiedChatProvider({
         ),
       });
       if (activeTurn?.turn_id || activeTurn?.id) {
-        const key = session.session_id || session.id;
+        // Reached on a revalidate too, when the turn is live on the server but
+        // not in this tab (started in another tab, or our socket dropped) —
+        // that is exactly the case that still needs a subscribe.
         sendThroughRunner(key, {
           type: "subscribe_turn",
           turn_id: activeTurn.turn_id || activeTurn.id,
@@ -1909,6 +1970,7 @@ export function UnifiedChatProvider({
       renameSessionTitle,
       newSession,
       loadSession,
+      showCachedSession,
       selectedSessionId: derivedState.sessionId,
       sessionStatuses,
       sidebarRefreshToken: state.sidebarRefreshToken,
@@ -1931,6 +1993,7 @@ export function UnifiedChatProvider({
       renameSessionTitle,
       newSession,
       loadSession,
+      showCachedSession,
       sessionStatuses,
       state.sidebarRefreshToken,
     ],
