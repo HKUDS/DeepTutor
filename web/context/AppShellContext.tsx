@@ -28,9 +28,11 @@ import {
   readStoredSidebarCollapsed,
   writeStoredActiveSessionId,
   writeStoredLanguage,
+  writeStoredResponseLanguage,
   writeStoredSidebarCollapsed,
   type AppLanguage,
 } from "@/context/app-shell-storage";
+import { apiFetch, apiUrl } from "@/lib/api";
 
 interface AppShellContextValue {
   theme: Theme;
@@ -62,6 +64,27 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLanguageState(readStoredLanguage());
     setSidebarCollapsedState(readStoredSidebarCollapsed());
+
+    // The backend is the account-level source of truth; localStorage is only
+    // the synchronous cache used by the app shell and chat request builder.
+    void apiFetch(apiUrl("/api/v1/settings/ui"))
+      .then(async (response) => {
+        if (!response.ok) return;
+        const settings = (await response.json()) as {
+          language?: AppLanguage;
+          response_language?: AppLanguage;
+        };
+        const uiLanguage = normalizeLanguage(settings.language);
+        const responseLanguage = normalizeLanguage(
+          settings.response_language ?? uiLanguage,
+        );
+        writeStoredLanguage(uiLanguage);
+        writeStoredResponseLanguage(responseLanguage);
+        setLanguageState(uiLanguage);
+      })
+      .catch(() => {
+        // Keep the last cached preferences when the backend is unavailable.
+      });
   }, []);
 
   useEffect(() => {

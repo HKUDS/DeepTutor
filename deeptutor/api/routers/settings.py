@@ -58,6 +58,10 @@ DEFAULT_UI_SETTINGS = {
     # "snow" is the pure-white neutral theme, shown as "Default" in the UI.
     "theme": "snow",
     "language": "en",
+    # Reader-facing model output language. Kept separate from UI locale so a
+    # user can run an English interface while asking every capability to reply
+    # in Chinese (or vice versa).
+    "response_language": "en",
     "sidebar_description": "✨ Data Intelligence Lab @ HKU",
     "sidebar_nav_order": DEFAULT_SIDEBAR_NAV_ORDER,
     # User-toggleable chat tools. Default = all on; the /settings/tools page
@@ -89,6 +93,7 @@ class SidebarNavOrder(BaseModel):
 class UISettings(BaseModel):
     theme: Literal["light", "dark", "glass", "snow"] = "snow"
     language: Literal["zh", "en"] = "en"
+    response_language: Literal["zh", "en"] = "en"
     sidebar_description: Optional[str] = None
     sidebar_nav_order: Optional[SidebarNavOrder] = None
 
@@ -222,6 +227,11 @@ def load_ui_settings() -> dict[str, Any]:
             with open(settings_file, encoding="utf-8") as handle:
                 saved = json.load(handle)
                 merged = {**DEFAULT_UI_SETTINGS, **saved}
+                # Before response_language existed, the interface language was
+                # also sent to the model. Preserve that behavior during the
+                # migration, then persist both fields on the next update.
+                if "response_language" not in saved:
+                    merged["response_language"] = merged["language"]
                 # Filter persisted enabled_optional_tools to current
                 # toggleable set so retired tool names can't leak into
                 # the per-turn payload.
@@ -453,6 +463,12 @@ async def get_settings():
         "catalog": get_model_catalog_service().load(),
         "providers": _provider_choices(),
     }
+
+
+@router.get("/ui")
+async def get_ui_settings():
+    """Return only per-user appearance and language preferences."""
+    return load_ui_settings()
 
 
 @router.get("/catalog")

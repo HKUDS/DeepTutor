@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 from typing import Any
 
 import pytest
@@ -42,6 +43,41 @@ class _FakeCatalogService:
             "catalog_path": "memory://model_catalog.json",
             "services": list(current["services"]),
         }
+
+
+def test_load_ui_settings_migrates_legacy_language_to_response_language(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    settings_file = tmp_path / "interface.json"
+    settings_file.write_text(
+        '{"theme": "snow", "language": "zh"}', encoding="utf-8"
+    )
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+
+    settings = settings_router.load_ui_settings()
+
+    assert settings["language"] == "zh"
+    assert settings["response_language"] == "zh"
+
+
+@pytest.mark.asyncio
+async def test_ui_languages_are_persisted_independently(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettings(
+            theme="snow", language="en", response_language="zh"
+        )
+    )
+
+    assert response["language"] == "en"
+    assert response["response_language"] == "zh"
+    persisted = json.loads(settings_file.read_text(encoding="utf-8"))
+    assert persisted["language"] == "en"
+    assert persisted["response_language"] == "zh"
 
 
 def _build_catalog(

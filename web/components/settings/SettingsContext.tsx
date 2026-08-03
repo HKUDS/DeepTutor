@@ -13,7 +13,10 @@ import {
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 
-import { writeStoredLanguage } from "@/context/app-shell-storage";
+import {
+  writeStoredLanguage,
+  writeStoredResponseLanguage,
+} from "@/context/app-shell-storage";
 import { apiFetch, apiUrl } from "@/lib/api";
 import { setTheme as applyThemePreference } from "@/lib/theme";
 
@@ -100,6 +103,7 @@ export type Catalog = {
 export type UiSettings = {
   theme: "light" | "dark" | "glass" | "snow";
   language: "en" | "zh";
+  response_language: "en" | "zh";
 };
 
 export type ProviderOption = {
@@ -389,12 +393,16 @@ type SettingsContextValue = {
   hasUnsavedChanges: boolean;
   theme: UiSettings["theme"];
   language: UiSettings["language"];
+  responseLanguage: UiSettings["response_language"];
   toast: string;
   setToast: (value: string) => void;
 
   // UI prefs
   updateTheme: (next: UiSettings["theme"]) => Promise<void>;
   updateLanguage: (next: UiSettings["language"]) => Promise<void>;
+  updateResponseLanguage: (
+    next: UiSettings["response_language"],
+  ) => Promise<void>;
 
   // Catalog mutation
   mutateCatalog: (mutator: (next: Catalog) => void) => void;
@@ -470,6 +478,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [theme, setTheme] = useState<UiSettings["theme"]>("snow");
   const [language, setLanguage] = useState<UiSettings["language"]>("en");
+  const [responseLanguage, setResponseLanguage] =
+    useState<UiSettings["response_language"]>("en");
   const [catalog, setCatalog] = useState<Catalog>(defaultCatalog());
   const [draft, setDraft] = useState<Catalog>(defaultCatalog());
   const [catalogEditable, setCatalogEditable] = useState<boolean | null>(null);
@@ -553,6 +563,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       }
       setTheme(payload.ui.theme);
       setLanguage(payload.ui.language);
+      setResponseLanguage(
+        payload.ui.response_language ?? payload.ui.language,
+      );
       if (payload.providers) setProviders(payload.providers);
       settingsLoaded = true;
     } catch (err) {
@@ -617,11 +630,16 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     async (
       nextTheme: UiSettings["theme"],
       nextLanguage: UiSettings["language"],
+      nextResponseLanguage: UiSettings["response_language"],
     ) => {
       await apiFetch(apiUrl("/api/v1/settings/ui"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theme: nextTheme, language: nextLanguage }),
+        body: JSON.stringify({
+          theme: nextTheme,
+          language: nextLanguage,
+          response_language: nextResponseLanguage,
+        }),
       });
     },
     [],
@@ -631,18 +649,27 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     async (next: UiSettings["theme"]) => {
       setTheme(next);
       applyThemePreference(next);
-      await persistUi(next, language);
+      await persistUi(next, language, responseLanguage);
     },
-    [language, persistUi],
+    [language, persistUi, responseLanguage],
   );
 
   const updateLanguage = useCallback(
     async (next: UiSettings["language"]) => {
       setLanguage(next);
       writeStoredLanguage(next);
-      await persistUi(theme, next);
+      await persistUi(theme, next, responseLanguage);
     },
-    [persistUi, theme],
+    [persistUi, responseLanguage, theme],
+  );
+
+  const updateResponseLanguage = useCallback(
+    async (next: UiSettings["response_language"]) => {
+      setResponseLanguage(next);
+      writeStoredResponseLanguage(next);
+      await persistUi(theme, language, next);
+    },
+    [language, persistUi, theme],
   );
 
   // ── Catalog mutators ────────────────────────────────────────────────────
@@ -1165,10 +1192,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       hasUnsavedChanges,
       theme,
       language,
+      responseLanguage,
       toast,
       setToast,
       updateTheme,
       updateLanguage,
+      updateResponseLanguage,
       mutateCatalog,
       addProfile,
       removeActiveProfile,
@@ -1211,6 +1240,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       embeddingDefaultDim,
       hasUnsavedChanges,
       language,
+      responseLanguage,
       llmContextDetection,
       logs,
       mutateCatalog,
@@ -1235,6 +1265,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       tourStepIndex,
       updateContextWindowField,
       updateLanguage,
+      updateResponseLanguage,
       updateModelBoolField,
       updateModelField,
       updateProfileField,

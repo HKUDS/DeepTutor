@@ -16,6 +16,7 @@ DEFAULT_UI_SETTINGS: dict[str, Any] = {
     # "snow" is the pure-white neutral theme, shown as "Default" in the UI.
     "theme": "snow",
     "language": "en",
+    "response_language": "en",
 }
 
 
@@ -61,8 +62,13 @@ def get_ui_settings() -> dict[str, Any]:
             with open(settings_file, encoding="utf-8") as f:
                 saved = json.load(f) or {}
             merged = {**DEFAULT_UI_SETTINGS, **saved}
+            if "response_language" not in saved:
+                merged["response_language"] = merged["language"]
             merged["language"] = _normalize_language(
                 merged.get("language"), DEFAULT_UI_SETTINGS["language"]
+            )
+            merged["response_language"] = _normalize_language(
+                merged.get("response_language"), merged["language"]
             )
             return merged
         except Exception:
@@ -83,3 +89,9 @@ def get_ui_language(default: str = "en") -> str:
     """
     settings = get_ui_settings()
     return _normalize_language(settings.get("language"), default)
+
+
+def get_response_language(default: str = "en") -> str:
+    """Get the preferred reader-facing model output language."""
+    settings = get_ui_settings()
+    return _normalize_language(settings.get("response_language"), default)

@@ -21,7 +21,7 @@ from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream import StreamEvent
 from deeptutor.core.stream_bus import StreamBus
 from deeptutor.services.path_service import get_path_service
-from deeptutor.services.settings.interface_settings import get_ui_language
+from deeptutor.services.settings.interface_settings import get_response_language
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ class AgentCoordinator:
         self.api_version = api_version
         self.kb_name = (kb_name or "").strip() or None
         self.enable_idea_rag = True if enable_idea_rag is None else bool(enable_idea_rag)
-        self.language = language or get_ui_language(default="en")
+        self.language = language or get_response_language(default="en")
         self.output_dir = output_dir
         self.enabled_tools = list(enabled_tools or [])
         self._ws_callback: WsCallback | None = None
