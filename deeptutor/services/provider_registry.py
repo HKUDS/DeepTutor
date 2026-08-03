@@ -330,11 +330,12 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         # not contain "kimi" and keeps the caller's temperature.
         model_overrides=(("kimi", {"temperature": None}),),
     ),
-    # MiniMax exposes two current regional endpoints that share one API key:
-    # the global endpoint (api.minimax.io) and the mainland-China endpoint
-    # (api.minimaxi.com). The global endpoint is the default here; users on the
-    # China platform can override base_url to https://api.minimaxi.com/v1 (or
-    # https://api.minimaxi.com/anthropic for the Anthropic-compatible backend).
+    # MiniMax runs two separate platforms: global (platform.minimax.io /
+    # api.minimax.io) and mainland China (platform.minimaxi.com /
+    # api.minimaxi.com). Keys are issued per platform and are NOT
+    # interchangeable. The global endpoint is the default here; China-platform
+    # users must override base_url to https://api.minimaxi.com/v1 (or
+    # https://api.minimaxi.com/anthropic) *and* use a China-platform key.
     ProviderSpec(
         name="minimax",
         keywords=("minimax",),
