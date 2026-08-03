@@ -42,6 +42,7 @@ dependencies = [
     "dashscope>=1.14.0",
     "perplexityai>=0.1.0",
     "oauth-cli-kit>=0.1.1",
+    "codebuddy-agent-sdk>=0.1.24",
     "llama-index>=0.14.12",
     "llama-index-retrievers-bm25>=0.7.1,<0.8.0",
     # FAISS vector store: vectorized ANN retrieval that replaces SimpleVectorStore's
@@ -103,6 +104,8 @@ cli = [
     "reportlab>=4.0.0",
     "defusedxml>=0.7.1",
 ]
+
+codebuddy = ["codebuddy-agent-sdk>=0.1.24"]
 
 # Compatibility extra for source installs and older docs. These packages are
 # already included in the public `deeptutor` wheel.
@@ -229,6 +232,7 @@ dev = [
 # Everything: server + partners + non-E2EE matrix + math-animator + dev tools.
 all = [
     "deeptutor[partners]",
+    "deeptutor[codebuddy]",
     "deeptutor[matrix]",
     "deeptutor[math-animator]",
     "deeptutor[dev]",

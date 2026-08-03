@@ -6,6 +6,7 @@ import asyncio
 import webbrowser
 
 import typer
+import webbrowser
 
 from deeptutor.services.codex_auth import CodexAuthError, get_codex_oauth_service
 
@@ -17,7 +18,10 @@ def register(app: typer.Typer) -> None:
     def provider_login(
         provider: str = typer.Argument(
             ...,
-            help="Provider: openai-codex (OAuth login) | github-copilot (validate existing Copilot auth)",
+            help=(
+                "Provider: openai-codex (OAuth login) | github-copilot "
+                "(validate existing Copilot auth) | codebuddy (validate CodeBuddy SDK auth)"
+            ),
         ),
     ) -> None:
         """Authenticate or validate provider access."""
@@ -28,8 +32,11 @@ def register(app: typer.Typer) -> None:
         if key == "github_copilot":
             maybe_run(_login_github_copilot())
             return
+        if key in {"codebuddy", "codebuddy_code", "workbuddy"}:
+            maybe_run(_login_codebuddy())
+            return
         raise typer.BadParameter(
-            f"Unknown provider `{provider}`. Supported: openai-codex, github-copilot"
+            f"Unknown provider `{provider}`. Supported: openai-codex, github-copilot, codebuddy"
         )
 
 
@@ -101,3 +108,52 @@ async def _login_github_copilot() -> None:
         typer.echo(f"GitHub Copilot auth validation failed: {exc}")
         raise typer.Exit(code=1) from exc
     typer.echo("GitHub Copilot auth validation succeeded.")
+
+
+async def _login_codebuddy() -> None:
+    """Validate CodeBuddy Agent SDK auth, starting login when needed."""
+    try:
+        from codebuddy_agent_sdk import authenticate, query
+    except ImportError:
+        typer.echo(
+            "codebuddy-agent-sdk is not installed. Install it with "
+            "`python -m pip install codebuddy-agent-sdk` or `pip install -e .[codebuddy]`."
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        saw_message = False
+        async for _message in query(prompt="Reply with only OK."):
+            saw_message = True
+        if not saw_message:
+            raise RuntimeError("CodeBuddy SDK returned no messages.")
+    except Exception as exc:
+        if "Authentication required" not in str(exc):
+            typer.echo(f"CodeBuddy auth validation failed: {exc}")
+            raise typer.Exit(code=1) from exc
+        typer.echo("CodeBuddy is not logged in. Starting CodeBuddy login flow ...")
+        try:
+            auth = await authenticate(timeout=300.0)
+            if getattr(auth, "auth_url", ""):
+                typer.echo(f"Open this URL to sign in: {auth.auth_url}")
+                try:
+                    webbrowser.open(auth.auth_url)
+                except Exception:
+                    pass
+            result = await auth
+        except Exception as login_exc:
+            typer.echo(f"CodeBuddy login failed: {login_exc}")
+            typer.echo(
+                "You can also run `codebuddy`, enter `/login`, or set CODEBUDDY_API_KEY."
+            )
+            raise typer.Exit(code=1) from login_exc
+        userinfo = getattr(result, "userinfo", None)
+        label = (
+            getattr(userinfo, "user_nickname", None)
+            or getattr(userinfo, "user_name", None)
+            or getattr(userinfo, "user_id", None)
+            or "current account"
+        )
+        typer.echo(f"CodeBuddy auth validation succeeded for {label}.")
+        return
+    typer.echo("CodeBuddy auth validation succeeded.")

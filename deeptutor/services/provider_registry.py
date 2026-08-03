@@ -30,7 +30,7 @@ class ProviderSpec:
     display_name: str = ""
 
     # Which provider implementation to use:
-    # "openai_compat" | "anthropic" | "azure_openai" | "openai_codex" | "github_copilot"
+    # "openai_compat" | "anthropic" | "azure_openai" | "openai_codex" | "github_copilot" | "codebuddy"
     backend: str = "openai_compat"
 
     env_extras: tuple[tuple[str, str], ...] = ()
@@ -91,6 +91,9 @@ PROVIDER_ALIASES = {
     "byteplusCodingPlan": "byteplus_coding_plan",
     "github-copilot": "github_copilot",
     "openai-codex": "openai_codex",
+    "codebuddy-code": "codebuddy",
+    "codebuddy_code": "codebuddy",
+    "workbuddy": "codebuddy",
     "lm-studio": "lm_studio",
     "atlas": "atlascloud",
     "atlas_cloud": "atlascloud",
@@ -277,6 +280,15 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_api_base="https://api.githubcopilot.com",
         strip_model_prefix=True,
         supports_max_completion_tokens=True,
+    ),
+    ProviderSpec(
+        name="codebuddy",
+        keywords=("codebuddy", "workbuddy"),
+        env_key="CODEBUDDY_API_KEY",
+        display_name="CodeBuddy",
+        backend="codebuddy",
+        strip_model_prefix=True,
+        supports_stream_options=False,
     ),
     ProviderSpec(
         name="deepseek",

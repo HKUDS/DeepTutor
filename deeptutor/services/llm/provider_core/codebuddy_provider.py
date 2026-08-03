@@ -1,0 +1,341 @@
+"""CodeBuddy Agent SDK provider."""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Awaitable, Callable
+from contextlib import asynccontextmanager
+import os
+from types import ModuleType
+from typing import Any
+
+from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse
+
+DEFAULT_CODEBUDDY_MODEL = "codebuddy/default"
+_CODEBUDDY_API_KEY_ENV = "CODEBUDDY_API_KEY"
+_API_KEY_ENV_LOCK = asyncio.Lock()
+
+
+class CodeBuddyProvider(LLMProvider):
+    """Provider backed by the CodeBuddy Agent SDK.
+
+    CodeBuddy is exposed as an agent SDK instead of an OpenAI-compatible chat
+    endpoint, so this adapter flattens chat messages into one prompt and
+    returns text deltas only. DeepTutor-native tool calls stay disabled for this
+    backend until CodeBuddy tool events are mapped end to end.
+    """
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        default_model: str | None = DEFAULT_CODEBUDDY_MODEL,
+    ):
+        super().__init__(api_key=api_key, api_base=None)
+        self.default_model = default_model or DEFAULT_CODEBUDDY_MODEL
+
+    async def chat(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        model: str | None = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+        reasoning_effort: str | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> LLMResponse:
+        del temperature, reasoning_effort, tool_choice, kwargs
+        return await self._run_codebuddy(messages, tools, model, max_tokens)
+
+    async def chat_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        model: str | None = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+        reasoning_effort: str | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
+        on_content_delta: Callable[[str], Awaitable[None]] | None = None,
+        on_reasoning_delta: Callable[[str], Awaitable[None]] | None = None,
+        **kwargs: Any,
+    ) -> LLMResponse:
+        del temperature, reasoning_effort, tool_choice, on_reasoning_delta, kwargs
+        return await self._run_codebuddy(
+            messages,
+            tools,
+            model,
+            max_tokens,
+            on_content_delta=on_content_delta,
+        )
+
+    async def _run_codebuddy(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        model: str | None,
+        max_tokens: int,
+        on_content_delta: Callable[[str], Awaitable[None]] | None = None,
+    ) -> LLMResponse:
+        try:
+            sdk = _load_sdk()
+            prompt = _messages_to_prompt(messages, tools)
+            options = _build_options(sdk, model or self.default_model, max_tokens, self.api_key)
+            chunks: list[str] = []
+            pending_result_text = ""
+
+            env_api_key = None if _options_has_api_key_env(options) else self.api_key
+            async with _temporary_codebuddy_api_key(env_api_key):
+                kwargs: dict[str, Any] = {"prompt": prompt}
+                if options is not None:
+                    kwargs["options"] = options
+                async for message in sdk.query(**kwargs):
+                    if _is_error_result(message):
+                        return LLMResponse(
+                            content=f"Error calling CodeBuddy: {_result_text(message)}",
+                            finish_reason="error",
+                        )
+                    if _is_result_message(message):
+                        pending_result_text = _result_text(message)
+                        continue
+
+                    text = _assistant_text(message)
+                    if not text:
+                        continue
+                    chunks.append(text)
+                    if on_content_delta:
+                        await on_content_delta(text)
+
+            if not chunks and pending_result_text:
+                chunks.append(pending_result_text)
+                if on_content_delta:
+                    await on_content_delta(pending_result_text)
+            return LLMResponse(content="".join(chunks), finish_reason="stop")
+        except Exception as exc:
+            return LLMResponse(content=_friendly_error(exc), finish_reason="error")
+
+    def get_default_model(self) -> str:
+        return self.default_model
+
+
+def _load_sdk() -> ModuleType:
+    try:
+        import codebuddy_agent_sdk
+    except ImportError as exc:  # pragma: no cover - optional dependency
+        raise RuntimeError(
+            "codebuddy-agent-sdk is not installed. Install it with "
+            "`python -m pip install codebuddy-agent-sdk` or `pip install -e .[codebuddy]`."
+        ) from exc
+    if not hasattr(codebuddy_agent_sdk, "query"):
+        raise RuntimeError("Installed codebuddy-agent-sdk does not expose query().")
+    return codebuddy_agent_sdk
+
+
+def _strip_model_prefix(model: str | None) -> str | None:
+    if not model:
+        return None
+    if "/" not in model:
+        return model
+    prefix, value = model.split("/", 1)
+    if prefix.lower().replace("-", "_") in {"codebuddy", "codebuddy_code", "workbuddy"}:
+        return value
+    return model
+
+
+def _build_options(
+    sdk: ModuleType,
+    model: str | None,
+    max_tokens: int,
+    api_key: str | None = None,
+) -> Any | None:
+    options_cls = getattr(sdk, "CodeBuddyAgentOptions", None)
+    if options_cls is None:
+        return None
+
+    stripped_model = _strip_model_prefix(model)
+    model_kwargs = {} if not stripped_model or stripped_model == "default" else {"model": stripped_model}
+    env_kwargs = {"env": {_CODEBUDDY_API_KEY_ENV: api_key}} if api_key else {}
+    candidates = [
+        {**model_kwargs, **env_kwargs, "max_turns": 1, "permission_mode": "plan"},
+        {**model_kwargs, "max_turns": 1},
+        {**model_kwargs, **env_kwargs, "maxTurns": 1, "permissionMode": "plan"},
+        {**model_kwargs, "maxTurns": 1},
+        model_kwargs,
+    ]
+    if max_tokens > 0:
+        candidates.insert(
+            0,
+            {
+                **model_kwargs,
+                **env_kwargs,
+                "max_turns": 1,
+                "permission_mode": "plan",
+                "max_tokens": max_tokens,
+            },
+        )
+
+    for kwargs in candidates:
+        try:
+            return options_cls(**kwargs)
+        except TypeError:
+            continue
+    return None
+
+
+def _options_has_api_key_env(options: Any | None) -> bool:
+    if options is None:
+        return False
+    env = getattr(options, "env", None)
+    if isinstance(env, dict) and env.get(_CODEBUDDY_API_KEY_ENV):
+        return True
+    kwargs = getattr(options, "kwargs", None)
+    if isinstance(kwargs, dict):
+        option_env = kwargs.get("env")
+        return isinstance(option_env, dict) and bool(option_env.get(_CODEBUDDY_API_KEY_ENV))
+    return False
+
+
+def _messages_to_prompt(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None) -> str:
+    sections: list[str] = []
+    for message in messages:
+        role = str(message.get("role") or "user").strip() or "user"
+        content = _content_text(message.get("content"))
+        if not content:
+            continue
+        if role == "system":
+            heading = "System instructions"
+        elif role == "assistant":
+            heading = "Assistant"
+        elif role == "tool":
+            name = message.get("name") or message.get("tool_call_id") or "tool"
+            heading = f"Tool result ({name})"
+        else:
+            heading = "User"
+        sections.append(f"{heading}:\n{content}")
+
+    if tools:
+        sections.append(
+            "DeepTutor tool schemas were available for this turn, but the CodeBuddy "
+            "provider currently returns text only. Answer directly when possible."
+        )
+    return "\n\n".join(sections) if sections else ""
+
+
+def _content_text(content: Any) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, dict):
+        return _content_part_text(content)
+    if isinstance(content, list):
+        parts = [_content_part_text(part) for part in content]
+        return "\n".join(part for part in parts if part)
+    return str(content)
+
+
+def _content_part_text(part: Any) -> str:
+    if isinstance(part, str):
+        return part
+    if not isinstance(part, dict):
+        return str(part)
+    part_type = part.get("type")
+    if part_type in {"text", "input_text", "output_text"}:
+        return str(part.get("text") or "")
+    if "text" in part and isinstance(part.get("text"), str):
+        return str(part["text"])
+    if part_type in {"image_url", "input_image"}:
+        return "[image input omitted]"
+    return ""
+
+
+def _assistant_text(message: Any) -> str:
+    content = getattr(message, "content", None)
+    if content is None and isinstance(message, dict):
+        content = message.get("content")
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        content = [content]
+
+    chunks: list[str] = []
+    for block in content:
+        text = _block_text(block)
+        if text:
+            chunks.append(text)
+    return "".join(chunks)
+
+
+def _block_text(block: Any) -> str:
+    if isinstance(block, str):
+        return block
+    if isinstance(block, dict):
+        block_type = block.get("type")
+        if block_type in {"text", "assistant_text"} or "text" in block:
+            return str(block.get("text") or "")
+        return ""
+    block_type = type(block).__name__
+    if block_type == "TextBlock" or hasattr(block, "text"):
+        return str(getattr(block, "text") or "")
+    return ""
+
+
+def _is_result_message(message: Any) -> bool:
+    message_type = type(message).__name__
+    if message_type == "ResultMessage" or message_type.endswith("ResultMessage"):
+        return True
+    if hasattr(message, "result") and hasattr(message, "is_error"):
+        return True
+    return isinstance(message, dict) and str(message.get("type") or "").lower() == "result"
+
+
+def _is_error_result(message: Any) -> bool:
+    if not _is_result_message(message):
+        return False
+    if isinstance(message, dict):
+        return bool(message.get("is_error") or message.get("error"))
+    return bool(getattr(message, "is_error", False) or getattr(message, "error", None))
+
+
+def _result_text(message: Any) -> str:
+    if isinstance(message, dict):
+        value = message.get("result") or message.get("error") or message.get("content")
+    else:
+        value = getattr(message, "result", None) or getattr(message, "error", None)
+    return "" if value is None else str(value)
+
+
+def _friendly_error(exc: Exception) -> str:
+    message = str(exc)
+    if "Authentication required" in message:
+        return (
+            "Error calling CodeBuddy: authentication required. Run "
+            "`deeptutor provider login codebuddy`, run `codebuddy` and enter `/login`, "
+            "or set CODEBUDDY_API_KEY."
+        )
+    return f"Error calling CodeBuddy: {message}"
+
+
+@asynccontextmanager
+async def _temporary_codebuddy_api_key(api_key: str | None):
+    if not api_key:
+        yield
+        return
+    async with _API_KEY_ENV_LOCK:
+        previous = os.environ.get(_CODEBUDDY_API_KEY_ENV)
+        os.environ[_CODEBUDDY_API_KEY_ENV] = api_key
+        try:
+            yield
+        finally:
+            if previous is None:
+                os.environ.pop(_CODEBUDDY_API_KEY_ENV, None)
+            else:
+                os.environ[_CODEBUDDY_API_KEY_ENV] = previous
+
+
+__all__ = [
+    "CodeBuddyProvider",
+    "DEFAULT_CODEBUDDY_MODEL",
+]

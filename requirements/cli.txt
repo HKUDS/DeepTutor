@@ -21,6 +21,7 @@ anthropic>=0.30.0
 dashscope>=1.14.0
 perplexityai>=0.1.0
 oauth-cli-kit>=0.1.1; python_version >= "3.11"
+codebuddy-agent-sdk>=0.1.24
 
 # --- HTTP clients ---
 aiohttp>=3.9.4

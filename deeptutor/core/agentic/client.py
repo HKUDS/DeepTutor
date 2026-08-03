@@ -32,7 +32,7 @@ from deeptutor.services.provider_registry import find_by_name
 # Providers that don't reliably support OpenAI function-calling. The loop
 # still runs without tool schemas — the model just produces prose.
 _NATIVE_TOOL_BLOCKED_BINDINGS: frozenset[str] = frozenset(
-    {"anthropic", "claude", "ollama", "lm_studio", "vllm", "llama_cpp"}
+    {"anthropic", "claude", "codebuddy", "ollama", "lm_studio", "vllm", "llama_cpp"}
 )
 
 # Native provider adapters whose backends speak OpenAI-style function calling
@@ -214,10 +214,21 @@ def _build_copilot_adapter(config: LLMClientConfig, spec: Any) -> Any:
     return _ProviderOpenAIAdapter(copilot_provider)
 
 
+def _build_codebuddy_adapter(config: LLMClientConfig, spec: Any) -> Any:
+    from deeptutor.services.llm.provider_core import CodeBuddyProvider
+
+    codebuddy_provider = CodeBuddyProvider(
+        api_key=config.api_key,
+        default_model=config.model or "codebuddy/default",
+    )
+    return _ProviderOpenAIAdapter(codebuddy_provider)
+
+
 _NATIVE_ADAPTER_BUILDERS: dict[str, Callable[[LLMClientConfig, Any], Any]] = {
     "anthropic": _build_anthropic_adapter,
     "openai_codex": _build_codex_adapter,
     "github_copilot": _build_copilot_adapter,
+    "codebuddy": _build_codebuddy_adapter,
 }
 
 
