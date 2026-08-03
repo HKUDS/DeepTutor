@@ -6,6 +6,9 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 import os
+import re
+import shutil
+import subprocess
 from types import ModuleType
 from typing import Any
 
@@ -335,7 +338,59 @@ async def _temporary_codebuddy_api_key(api_key: str | None):
                 os.environ[_CODEBUDDY_API_KEY_ENV] = previous
 
 
+async def fetch_codebuddy_models(api_key: str | None = None) -> list[str]:
+    """Return the model catalog currently available to the logged-in account."""
+    _load_sdk()
+    cli_path = shutil.which("codebuddy") or shutil.which("cbc")
+    if not cli_path:
+        raise RuntimeError("CodeBuddy CLI is required to sync account models.")
+
+    cli_args = [
+        cli_path,
+        "--print",
+        ".",
+        "--model",
+        "__deeptutor_list_models__",
+        "--output-format",
+        "json",
+        "--max-turns",
+        "1",
+    ]
+    process_kwargs: dict[str, Any] = {}
+    if os.name == "nt":
+        command = ["cmd.exe", "/d", "/s", "/c", subprocess.list2cmdline(cli_args)]
+        process_kwargs["creationflags"] = (
+            subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+        )
+    else:
+        command = cli_args
+        process_kwargs["start_new_session"] = True
+
+    env = os.environ.copy()
+    if api_key:
+        env[_CODEBUDDY_API_KEY_ENV] = api_key
+    process = await asyncio.create_subprocess_exec(
+        *command,
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=env,
+        **process_kwargs,
+    )
+    stdout, stderr = await process.communicate()
+    output = (stdout + b"\n" + stderr).decode("utf-8", errors="replace")
+    marker = "supported models for your account:"
+    catalog = output.lower().split(marker, 1)[-1] if marker in output.lower() else ""
+    models = re.findall(r"(?m)^\s*-\s+([A-Za-z0-9][A-Za-z0-9._-]*)\s*$", catalog)
+    if not models:
+        raise RuntimeError(
+            output.strip() or "CodeBuddy did not return an account model catalog."
+        )
+    return list(dict.fromkeys(models))
+
+
 __all__ = [
     "CodeBuddyProvider",
     "DEFAULT_CODEBUDDY_MODEL",
+    "fetch_codebuddy_models",
 ]

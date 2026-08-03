@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import os
+import shutil
 import sys
 from types import SimpleNamespace
 
@@ -8,6 +10,7 @@ import pytest
 
 from deeptutor.services.llm.config import LLMConfig
 from deeptutor.services.llm.provider_core import CodeBuddyProvider
+from deeptutor.services.llm.provider_core.codebuddy_provider import fetch_codebuddy_models
 from deeptutor.services.llm.provider_factory import get_runtime_provider
 from deeptutor.services.provider_registry import find_by_name
 
@@ -86,6 +89,40 @@ async def test_codebuddy_provider_uses_result_when_no_assistant_text(monkeypatch
 
     assert response.content == "final"
     assert response.finish_reason == "stop"
+
+
+@pytest.mark.asyncio
+async def test_fetch_codebuddy_models_uses_account_catalog(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeProcess:
+        async def communicate(self):
+            return (
+                b"Currently supported models for your account:\n"
+                b"  - hy3\n  - glm-5.2\n  - hy3\n",
+                b"",
+            )
+
+    async def fake_subprocess(*args, **kwargs):
+        captured["args"] = args
+        captured["env"] = kwargs["env"]
+        return FakeProcess()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_subprocess)
+    monkeypatch.setattr(
+        shutil,
+        "which",
+        lambda name: "codebuddy.cmd" if name == "codebuddy" else None,
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "codebuddy_agent_sdk",
+        SimpleNamespace(query=lambda: None),
+    )
+
+    assert await fetch_codebuddy_models("secret") == ["hy3", "glm-5.2"]
+    assert isinstance(captured["env"], dict)
+    assert captured["env"]["CODEBUDDY_API_KEY"] == "secret"
 
 
 def test_codebuddy_registry_aliases_and_factory() -> None:

@@ -159,7 +159,7 @@ class CatalogPayload(BaseModel):
 
 class FetchModelsPayload(BaseModel):
     binding: str = ""
-    base_url: str
+    base_url: str = ""
     api_key: Optional[str] = None
 
 
@@ -1043,10 +1043,10 @@ async def fetch_models_from_provider(payload: FetchModelsPayload):
 
     base_url = (payload.base_url or "").strip()
     binding = (payload.binding or "").strip().lower() or "openai"
-    if not base_url:
+    if not base_url and binding != "codebuddy":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="base_url is required.",
+            detail="base_url is required for this provider.",
         )
 
     try:

@@ -723,6 +723,30 @@ async def test_fetch_models_requires_base_url() -> None:
 
 
 @pytest.mark.asyncio
+async def test_fetch_models_allows_codebuddy_without_base_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import deeptutor.services.llm.factory as factory_module
+
+    async def _fake_fetch(binding: str, base_url: str, api_key: str | None = None):
+        assert (binding, base_url, api_key) == ("codebuddy", "", None)
+        return ["hy3", "glm-5.2"]
+
+    monkeypatch.setattr(factory_module, "fetch_models", _fake_fetch)
+
+    response = await settings_router.fetch_models_from_provider(
+        settings_router.FetchModelsPayload(binding="codebuddy")
+    )
+
+    assert response == {
+        "models": [
+            {"id": "hy3", "name": "hy3"},
+            {"id": "glm-5.2", "name": "glm-5.2"},
+        ]
+    }
+
+
+@pytest.mark.asyncio
 async def test_fetch_models_maps_provider_error_to_502(monkeypatch: pytest.MonkeyPatch) -> None:
     from fastapi import HTTPException
 
