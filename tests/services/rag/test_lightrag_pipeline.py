@@ -310,6 +310,108 @@ def test_lightrag_query_surfaces_raganything_initialization_failure() -> None:
         asyncio.run(engine.query(_Rag(), "hello", "hybrid"))
 
 
+def test_lightrag_query_with_sources_keeps_answer_and_exposes_provenance(monkeypatch) -> None:
+    """The answer path remains RAG-Anything while citations use LightRAG data."""
+    captured: dict[str, object] = {}
+
+    class _QueryParam:
+        def __init__(self, **kwargs) -> None:
+            captured["query_param"] = kwargs
+
+    fake_lightrag = types.ModuleType("lightrag")
+    fake_lightrag.QueryParam = _QueryParam
+    monkeypatch.setitem(sys.modules, "lightrag", fake_lightrag)
+    monkeypatch.setattr(engine, "query_kwargs_from_settings", lambda: {"top_k": 3})
+
+    class _LightRag:
+        async def aquery_data(self, question, *, param):
+            captured["provenance_query"] = question
+            captured["provenance_param"] = param
+            return {
+                "status": "success",
+                "data": {
+                    "references": [{"reference_id": "ref-1", "file_path": "/kb/book.pdf"}],
+                    "chunks": [
+                        {
+                            "chunk_id": "chunk-1",
+                            "content": "The retrieved passage.",
+                            "reference_id": "ref-1",
+                        }
+                    ],
+                    "entities": [
+                        {
+                            "entity_name": "Newton's laws",
+                            "entity_type": "concept",
+                            "description": "A mechanics foundation.",
+                            "source_id": "chunk-1",
+                            "reference_id": "ref-1",
+                        }
+                    ],
+                    "relationships": [
+                        {
+                            "src_id": "force",
+                            "tgt_id": "acceleration",
+                            "description": "Force produces acceleration.",
+                            "source_id": "chunk-1",
+                            "reference_id": "ref-1",
+                        }
+                    ],
+                },
+            }
+
+    class _Rag:
+        lightrag = _LightRag()
+
+        async def aquery(self, question, mode=None, **kwargs):
+            captured["answer_query"] = (question, mode, kwargs)
+            return "Grounded answer"
+
+    answer, sources = asyncio.run(engine.query_with_sources(_Rag(), "What is force?", "hybrid"))
+
+    assert answer == "Grounded answer"
+    assert captured["answer_query"] == ("What is force?", "hybrid", {"top_k": 3})
+    assert captured["provenance_query"] == "What is force?"
+    assert captured["query_param"] == {"mode": "hybrid", "top_k": 3}
+    assert sources == [
+        {
+            "title": "book.pdf",
+            "content": "The retrieved passage.",
+            "source": "/kb/book.pdf",
+            "page": "",
+            "chunk_id": "chunk-1",
+            "reference_id": "ref-1",
+        },
+        {
+            "title": "Newton's laws",
+            "content": "A mechanics foundation.",
+            "source": "/kb/book.pdf",
+            "page": "",
+            "entity_id": "Newton's laws",
+            "entity_type": "concept",
+            "source_id": "chunk-1",
+            "reference_id": "ref-1",
+        },
+        {
+            "title": "force->acceleration",
+            "content": "Force produces acceleration.",
+            "source": "/kb/book.pdf",
+            "page": "",
+            "relation_id": "force->acceleration",
+            "source_entity_id": "force",
+            "target_entity_id": "acceleration",
+            "source_id": "chunk-1",
+            "reference_id": "ref-1",
+        },
+    ]
+
+
+def test_lightrag_query_sources_falls_back_when_structured_api_is_unavailable() -> None:
+    class _Rag:
+        lightrag = object()
+
+    assert asyncio.run(engine.query_sources(_Rag(), "hello", "hybrid")) == []
+
+
 # --------------------------------------------------------------------------- #
 # pipeline lifecycle (engine + parse service stubbed)
 # --------------------------------------------------------------------------- #
@@ -347,11 +449,11 @@ def _stub_engine(monkeypatch, answer: str = "ANSWER") -> list[dict]:
             encoding="utf-8",
         )
 
-    async def fake_query(rag, question, mode):
-        return f"{answer}|{mode}"
+    async def fake_query_with_sources(rag, question, mode):
+        return f"{answer}|{mode}", []
 
     monkeypatch.setattr(engine, "insert", fake_insert)
-    monkeypatch.setattr(engine, "query", fake_query)
+    monkeypatch.setattr(engine, "query_with_sources", fake_query_with_sources)
     return inserts
 
 
@@ -491,6 +593,26 @@ def test_search_happy_path_resolves_mode(tmp_path, monkeypatch) -> None:
     assert res["answer"] == "GROUNDED|local"
     assert res["mode"] == "local"
     assert res["provider"] == "lightrag"
+
+
+def test_search_returns_lightrag_provenance_sources(tmp_path, monkeypatch) -> None:
+    _force_available(monkeypatch, True)
+    _stub_engine(monkeypatch)
+    _stub_parse(monkeypatch, blocks=[{"type": "text", "text": "x", "page_idx": 0}])
+    pipe = LightRagPipeline(kb_base_dir=str(tmp_path))
+    pdf = tmp_path / "a.pdf"
+    pdf.write_bytes(b"%PDF")
+    asyncio.run(pipe.initialize("kb", [str(pdf)]))
+
+    async def fake_query_with_sources(rag, question, mode):
+        return "Grounded", [{"title": "a.pdf", "chunk_id": "chunk-1"}]
+
+    monkeypatch.setattr(engine, "query_with_sources", fake_query_with_sources)
+
+    res = asyncio.run(pipe.search("question?", "kb"))
+
+    assert res["answer"] == "Grounded"
+    assert res["sources"] == [{"title": "a.pdf", "chunk_id": "chunk-1"}]
 
 
 def test_explicit_mode_overrides_kb_config(tmp_path, monkeypatch) -> None:
