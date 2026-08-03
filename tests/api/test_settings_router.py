@@ -482,6 +482,13 @@ def test_llm_provider_choices_include_atlascloud() -> None:
     assert llm["atlascloud"]["base_url"] == "https://api.atlascloud.ai/v1"
 
 
+def test_llm_provider_choices_include_novita() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["novita"]["label"] == "Novita AI"
+    assert llm["novita"]["base_url"] == "https://api.novita.ai/openai"
+
+
 def test_llm_provider_choices_include_edenai() -> None:
     llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
 

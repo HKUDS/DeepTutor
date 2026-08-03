@@ -85,6 +85,20 @@ def test_detect_context_window_uses_known_minimax_m3_window(
     assert result.source == "known_model"
 
 
+def test_extract_context_window_reads_novita_context_size_key() -> None:
+    """Novita's /openai/models advertises the window as ``context_size``."""
+    payload = {
+        "data": [
+            {"id": "deepseek/deepseek-v3.2", "context_size": 1_000_000},
+        ]
+    }
+
+    assert (
+        detection_module._extract_context_window_from_payload(payload, "deepseek/deepseek-v3.2")
+        == 1_000_000
+    )
+
+
 def test_models_endpoint_probe_honors_disable_ssl_verify(monkeypatch) -> None:
     captured: dict[str, object] = {}
 

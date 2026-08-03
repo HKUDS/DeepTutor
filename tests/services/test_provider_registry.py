@@ -43,11 +43,13 @@ def test_novita_provider_aliases_and_base_detection() -> None:
     spec = find_by_name("novita")
 
     assert spec is not None
-    assert spec.display_name == "Novita"
+    assert spec.display_name == "Novita AI"
     assert spec.env_key == "NOVITA_API_KEY"
     assert spec.backend == "openai_compat"
     assert spec.mode == "gateway"
     assert spec.default_api_base == "https://api.novita.ai/openai"
+    assert find_by_name("novita-ai") == spec
+    assert find_by_name("novita_ai") == spec
     assert find_gateway(api_base="https://api.novita.ai/openai") == spec
 
 

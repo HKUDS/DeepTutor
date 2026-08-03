@@ -24,6 +24,7 @@ _CONTEXT_WINDOW_KEYS = (
     "context_window",
     "context_window_tokens",
     "context_length",
+    "context_size",
     "max_context_tokens",
     "max_input_tokens",
     "input_token_limit",
