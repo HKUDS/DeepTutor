@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import signal
 import sys
-from typing import Any, Callable
+from typing import Any, Callable, Iterator, TextIO
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -32,6 +32,57 @@ tool_results = ToolResultBuffer()
 # Content call_kinds whose ``call_status: running`` marker drives the
 # spinner instead of printing a progress line (one LLM round each).
 _LLM_ROUND_CALL_KINDS = frozenset({"agent_loop_round", "llm_final_response"})
+
+
+@contextlib.contextmanager
+def _utf8_aware_terminal_input(stream: TextIO) -> Iterator[None]:
+    """Make canonical-mode erase treat UTF-8 input as complete characters."""
+
+    try:
+        import termios
+    except ImportError:
+        yield
+        return
+
+    encoding = (stream.encoding or "").lower().replace("_", "-")
+    if encoding not in {"utf-8", "utf8"} or not hasattr(termios, "IUTF8"):
+        yield
+        return
+
+    try:
+        if not stream.isatty():
+            yield
+            return
+        file_descriptor = stream.fileno()
+        original_attributes = termios.tcgetattr(file_descriptor)
+    except (AttributeError, OSError, ValueError):
+        yield
+        return
+
+    if original_attributes[0] & termios.IUTF8:
+        yield
+        return
+
+    updated_attributes = original_attributes.copy()
+    updated_attributes[0] |= termios.IUTF8
+    try:
+        termios.tcsetattr(file_descriptor, termios.TCSANOW, updated_attributes)
+    except OSError:
+        yield
+        return
+
+    try:
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            termios.tcsetattr(file_descriptor, termios.TCSANOW, original_attributes)
+
+
+def read_console_input(prompt: str) -> str:
+    """Read from the shared console with UTF-8-aware terminal editing."""
+
+    with _utf8_aware_terminal_input(sys.stdin):
+        return console.input(prompt)
 
 
 class TurnInterrupted(Exception):
@@ -545,7 +596,7 @@ class TurnStreamRenderer:
         if self._sigint is not None:
             self._sigint.suspend()
         try:
-            return console.input(prompt)
+            return read_console_input(prompt)
         except (KeyboardInterrupt, EOFError):
             return None
         finally:

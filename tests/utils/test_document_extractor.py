@@ -374,3 +374,75 @@ class TestExtractDocumentsFromRecords:
         # paths end up as an error marker since resulting bytes won't pass magic check
         assert len(doc_texts) == 1
         assert "bad.docx" in doc_texts[0]
+
+    def test_limits_come_from_settings_layer(self, monkeypatch) -> None:
+        """extract_documents_from_records honors the configured policy."""
+        from deeptutor.services.config import runtime_settings as rs
+
+        # Tiny caps prove the configured values flow through (defaults would
+        # accept everything here).
+        def set_limits(max_file: int, max_total: int) -> None:
+            monkeypatch.setattr(
+                rs,
+                "get_chat_attachment_limits",
+                lambda: rs.ChatAttachmentLimits(
+                    max_file_bytes=max_file,
+                    max_total_bytes=max_total,
+                    max_chars_per_doc=100_000,
+                    max_chars_total=100_000,
+                ),
+            )
+
+        def record(name: str, payload: bytes) -> dict:
+            return {
+                "type": "file",
+                "filename": name,
+                "base64": base64.b64encode(payload).decode(),
+                "mime_type": "",
+                "url": "",
+            }
+
+        # Per-file cap: 5 bytes, generous total.
+        set_limits(max_file=5, max_total=1000)
+        doc_texts, updated = extract_documents_from_records(
+            [record("big.txt", b"0123456789"), record("ok.txt", b"hello")]
+        )
+        assert "per-file limit" in doc_texts[0]
+        assert doc_texts[1] == "[File: ok.txt]\nhello"
+        assert updated[1]["extracted_chars"] == 5
+
+        # Per-turn total: 8 bytes — the second 5-byte file blows it.
+        set_limits(max_file=1000, max_total=8)
+        doc_texts, _ = extract_documents_from_records(
+            [record("a.txt", b"hello"), record("b.txt", b"world")]
+        )
+        assert doc_texts[0] == "[File: a.txt]\nhello"
+        assert "quota exceeded" in doc_texts[1]
+
+    def test_char_budget_comes_from_settings_layer(self, monkeypatch) -> None:
+        from deeptutor.services.config import runtime_settings as rs
+
+        monkeypatch.setattr(
+            rs,
+            "get_chat_attachment_limits",
+            lambda: rs.ChatAttachmentLimits(
+                max_file_bytes=10 * 1024 * 1024,
+                max_total_bytes=25 * 1024 * 1024,
+                max_chars_per_doc=100_000,
+                max_chars_total=10,
+            ),
+        )
+        records = [
+            {
+                "type": "file",
+                "filename": "long.txt",
+                "base64": base64.b64encode(b"a" * 40).decode(),
+                "mime_type": "",
+                "url": "",
+            }
+        ]
+        doc_texts, updated = extract_documents_from_records(records)
+        assert "truncated" in doc_texts[0]
+        assert updated[0]["extracted_chars"] <= 10 + len(
+            "... (truncated, 40 chars total; turn quota hit)"
+        )

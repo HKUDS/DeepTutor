@@ -34,18 +34,26 @@ class _FakeResponse:
 
 
 def _install_fake_sdk(monkeypatch: pytest.MonkeyPatch, response: _FakeResponse) -> dict[str, Any]:
+    """Stub both DashScope embedding surfaces and record which one is called."""
     captured: dict[str, Any] = {}
 
-    def fake_call(*, api_key: str, model: str, input: dict, **kwargs: Any) -> _FakeResponse:  # noqa: A002
-        captured.update(
-            api_key=api_key,
-            model=model,
-            input=input,
-            kwargs=kwargs,
-        )
-        return response
+    def _surface(name: str):
+        def fake_call(*, api_key: str, model: str, input: Any, **kwargs: Any) -> _FakeResponse:  # noqa: A002
+            captured.update(
+                surface=name,
+                api_key=api_key,
+                model=model,
+                input=input,
+                kwargs=kwargs,
+            )
+            return response
 
-    fake_module = types.SimpleNamespace(MultiModalEmbedding=types.SimpleNamespace(call=fake_call))
+        return fake_call
+
+    fake_module = types.SimpleNamespace(
+        MultiModalEmbedding=types.SimpleNamespace(call=_surface("multimodal")),
+        TextEmbedding=types.SimpleNamespace(call=_surface("text")),
+    )
     monkeypatch.setitem(sys.modules, "dashscope", fake_module)
     return captured
 
@@ -71,12 +79,44 @@ async def test_text_only_translates_texts_to_contents(monkeypatch: pytest.Monkey
     )
 
     # SDK takes a flat list — it wraps as {"contents": ...} internally.
+    assert captured["surface"] == "multimodal"
     assert captured["input"] == [{"text": "hello"}, {"text": "world"}]
     assert captured["model"] == "qwen3-vl-embedding"
     assert captured["api_key"] == "sk-dashscope"
     assert captured["kwargs"].get("dimension") == 1024
     assert "enable_fusion" not in captured["kwargs"]
     assert resp.embeddings == [[0.1, 0.2, 0.3]]
+
+
+@pytest.mark.asyncio
+async def test_text_model_uses_text_embedding_surface(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression for issue #660: a text model (text-embedding-v4) must go to the
+    # TextEmbedding surface with a flat string list, NOT the multimodal endpoint
+    # (which returns HTTP 400 "url error").
+    response = _FakeResponse(
+        output={"embeddings": [{"text_index": 0, "embedding": [0.1, 0.2]}]},
+    )
+    captured = _install_fake_sdk(monkeypatch, response)
+
+    adapter = DashScopeMultiModalEmbeddingAdapter(
+        {
+            "api_key": "sk-dashscope",
+            "base_url": "https://dashscope.aliyuncs.com/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding",
+            "model": "text-embedding-v4",
+            "dimensions": 1024,
+            "request_timeout": 5,
+        }
+    )
+    resp = await adapter.embed(
+        EmbeddingRequest(texts=["hello", "world"], model="text-embedding-v4")
+    )
+
+    assert captured["surface"] == "text"
+    assert captured["input"] == ["hello", "world"]  # flat strings, not {"text": ...}
+    assert captured["model"] == "text-embedding-v4"
+    assert captured["kwargs"].get("dimension") == 1024
+    assert "enable_fusion" not in captured["kwargs"]
+    assert resp.embeddings == [[0.1, 0.2]]
 
 
 @pytest.mark.asyncio
@@ -145,3 +185,25 @@ def test_get_model_info_reports_multimodal_capability() -> None:
     assert info["multimodal"] is True
     assert info["provider"] == "aliyun"
     assert 2560 in info["supported_dimensions"]
+
+
+@pytest.mark.parametrize(
+    ("model", "multimodal", "endpoint_tail"),
+    [
+        ("text-embedding-v4", False, "/text-embedding/text-embedding"),
+        ("text-embedding-v3", False, "/text-embedding/text-embedding"),
+        ("some-unknown-model", False, "/text-embedding/text-embedding"),
+        ("qwen3-vl-embedding", True, "/multimodal-embedding/multimodal-embedding"),
+        ("multimodal-embedding-v1", True, "/multimodal-embedding/multimodal-embedding"),
+    ],
+)
+def test_dashscope_endpoint_routing(model: str, multimodal: bool, endpoint_tail: str) -> None:
+    # Issue #660: the single source of truth that decides text vs multimodal
+    # DashScope endpoint per model.
+    from deeptutor.services.config.embedding_endpoint import (
+        dashscope_embedding_endpoint,
+        is_dashscope_multimodal_embedding_model,
+    )
+
+    assert is_dashscope_multimodal_embedding_model(model) is multimodal
+    assert dashscope_embedding_endpoint(model).endswith(endpoint_tail)

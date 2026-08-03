@@ -112,3 +112,22 @@ def test_migrate_is_idempotent(tmp_path: Path) -> None:
     assert service.migrate_legacy_skills(skills_root) == ["teacher"]
     # second run finds nothing new
     assert service.migrate_legacy_skills(skills_root) == []
+
+
+def test_seed_presets_creates_defaults(service: PersonaService) -> None:
+    # Issue #659: fresh installs must expose peer / teacher / research-assistant.
+    seeded = service.seed_presets()
+    assert set(seeded) == {"peer", "teacher", "research-assistant"}
+    names = {p.name for p in service.list_personas()}
+    assert {"peer", "teacher", "research-assistant"} <= names
+    teacher = service.get_detail("teacher")
+    assert teacher.description  # frontmatter description survived
+    assert "Teacher Mode" in teacher.content
+
+
+def test_seed_presets_is_idempotent_and_non_destructive(service: PersonaService) -> None:
+    service.seed_presets()
+    # A user edit to a seeded persona must not be clobbered by a later seed.
+    service.update("peer", content="---\nname: peer\ndescription: mine\n---\n\nCustom body.")
+    assert service.seed_presets() == []  # nothing re-seeded
+    assert "Custom body." in service.get_detail("peer").content

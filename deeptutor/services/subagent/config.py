@@ -59,8 +59,16 @@ class BackendConfig:
     network_access: bool = False
     # Codex: --ephemeral — don't persist the session under ~/.codex/sessions.
     ephemeral: bool = False
+    # Kimi / opencode / MiMo: answer the CLI's permission asks affirmatively so
+    # a headless run never stalls (kimi --yolo; the opencode family's
+    # permission.asked replies). Same trust model as CC's bypassPermissions.
+    auto_approve: bool = True
+    # Kimi: stream the model's thinking (--thinking / --no-thinking). The
+    # opencode family always streams reasoning over its event bus.
+    thinking: bool = True
     # Forward image attachments from the chat turn to the agent (CC image input
-    # / Codex -i). Off by default — the user opts in per backend.
+    # / Codex -i / Gemini @path / opencode-family file parts). Off by default —
+    # the user opts in per backend. Kimi has no headless image input.
     forward_images: bool = False
     extra_args: list[str] = field(default_factory=list)
 
@@ -91,6 +99,8 @@ def _backend_to_dict(cfg: BackendConfig) -> dict[str, Any]:
         "approval": cfg.approval,
         "network_access": cfg.network_access,
         "ephemeral": cfg.ephemeral,
+        "auto_approve": cfg.auto_approve,
+        "thinking": cfg.thinking,
         "forward_images": cfg.forward_images,
         "extra_args": list(cfg.extra_args),
     }
@@ -119,6 +129,8 @@ def _coerce_backend(raw: Any) -> BackendConfig:
         approval=str(raw.get("approval") or base.approval),
         network_access=bool(raw.get("network_access", base.network_access)),
         ephemeral=bool(raw.get("ephemeral", base.ephemeral)),
+        auto_approve=bool(raw.get("auto_approve", base.auto_approve)),
+        thinking=bool(raw.get("thinking", base.thinking)),
         forward_images=bool(raw.get("forward_images", base.forward_images)),
         extra_args=[str(a) for a in extra] if isinstance(extra, list) else [],
     )

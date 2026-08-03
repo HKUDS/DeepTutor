@@ -45,6 +45,30 @@ def _resolve(context: UnifiedContext) -> dict[str, str] | None:
     return None
 
 
+def obsidian_vault_refs(context: UnifiedContext) -> set[str]:
+    """Return every selected KB ref that resolves to a connected Obsidian vault.
+
+    The capability only *operates* on the first vault (see :func:`vault_for_turn`),
+    but all vault refs are reported here so the chat pipeline can exclude them
+    from the ``rag`` surface — ``rag`` has no index for a live vault (issue #650).
+    """
+    from deeptutor.multi_user.knowledge_access import resolve_kb_metadata
+
+    refs: set[str] = set()
+    for ref in context.knowledge_bases or []:
+        ref = str(ref).strip()
+        if not ref:
+            continue
+        meta = resolve_kb_metadata(ref)
+        if (
+            meta
+            and meta.get("type") == OBSIDIAN_KB_TYPE
+            and str(meta.get("vault_path") or "").strip()
+        ):
+            refs.add(ref)
+    return refs
+
+
 _UNSET = object()
 
-__all__ = ["vault_for_turn"]
+__all__ = ["obsidian_vault_refs", "vault_for_turn"]

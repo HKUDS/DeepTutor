@@ -51,6 +51,35 @@ EMBEDDING_PROVIDERS_REQUIRING_EMBEDDINGS_PATH = {
     "siliconflow",
 }
 
+# DashScope (Aliyun) serves text and multimodal embeddings from DIFFERENT native
+# endpoints, and the `dashscope` SDK derives the URL from the model id. A text
+# model (text-embedding-v1..v4) sent to the multimodal endpoint fails with HTTP
+# 400 "url error" (issue #660). These constants + predicate are the single
+# source of truth for which DashScope endpoint a given model uses, shared by the
+# runtime resolver (endpoint display) and the DashScope adapter (SDK routing).
+DASHSCOPE_MULTIMODAL_EMBEDDING_ENDPOINT = EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS["aliyun"]
+DASHSCOPE_TEXT_EMBEDDING_ENDPOINT = (
+    "https://dashscope.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding"
+)
+
+
+def is_dashscope_multimodal_embedding_model(model: str | None) -> bool:
+    """Whether a DashScope embedding model uses the multimodal endpoint.
+
+    Multimodal models (``qwen3-vl-embedding``, ``multimodal-embedding-v1``) use
+    the MultiModalEmbedding surface; text models (``text-embedding-v1..v4``) and
+    any unrecognised id fall through to the text-embedding surface.
+    """
+    name = str(model or "").strip().lower()
+    return "multimodal" in name or "vl-embedding" in name or name.endswith("-vl")
+
+
+def dashscope_embedding_endpoint(model: str | None) -> str:
+    """Return the native DashScope embedding endpoint the SDK will POST to."""
+    if is_dashscope_multimodal_embedding_model(model):
+        return DASHSCOPE_MULTIMODAL_EMBEDDING_ENDPOINT
+    return DASHSCOPE_TEXT_EMBEDDING_ENDPOINT
+
 
 def canonical_embedding_provider_name(name: str | None) -> str:
     value = str(name or "").strip().lower().replace("-", "_")

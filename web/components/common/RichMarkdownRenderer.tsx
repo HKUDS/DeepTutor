@@ -11,11 +11,13 @@ import {
   convertSequenceFenceToMermaid,
   processMarkdownContent,
 } from "@/lib/latex";
+import { findCitationAnchor } from "@/lib/markdown-anchors";
 import {
   citationAnchorIdFor,
   escapeUnknownHtmlTagsForDisplay,
   markdownUrlTransform,
   normalizeMarkdownForDisplay,
+  safeDecodeURIComponent,
 } from "@/lib/markdown-display";
 import {
   InlineFileCard,
@@ -542,6 +544,9 @@ export default function RichMarkdownRenderer({
       }
 
       if (isMultiline) {
+        // Code-block appearance settings apply only when rich code rendering is enabled.
+        // This static fallback keeps disabled-code surfaces readable without
+        // silently applying syntax theme, line-number, or wrapping preferences.
         return (
           <div
             className={`md-code-block ${gap} overflow-hidden rounded-xl border border-[var(--border)] bg-[#1f2937]`}
@@ -580,19 +585,7 @@ export default function RichMarkdownRenderer({
         const ids = label.split(/\s*,\s*/);
         const scrollToRef = (event: React.MouseEvent, id?: string) => {
           event.preventDefault();
-          const hashTarget =
-            id && citationAnchorIdFor(id)
-              ? citationAnchorIdFor(id)
-              : href?.startsWith("#")
-                ? decodeURIComponent(href.slice(1))
-                : "references";
-          const target =
-            document.getElementById(hashTarget || "") ??
-            document.getElementById("references");
-          const parentDetails = target?.closest("details");
-          if (parentDetails instanceof HTMLDetailsElement) {
-            parentDetails.open = true;
-          }
+          const target = findCitationAnchor(href, id);
           if (target) scrollAnchorIntoView(target);
         };
         return (
@@ -644,7 +637,7 @@ export default function RichMarkdownRenderer({
             if (!isHashLink || !href) return;
 
             event.preventDefault();
-            const targetId = decodeURIComponent(href.slice(1));
+            const targetId = safeDecodeURIComponent(href.slice(1));
             const target = document.getElementById(targetId);
             if (target) scrollAnchorIntoView(target);
           }}

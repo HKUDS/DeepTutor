@@ -36,6 +36,7 @@ from deeptutor.core.agentic import (
     can_use_native_tool_calling,
     dispatch_tool_calls,
 )
+from deeptutor.core.agentic.messages import assistant_message_with_tool_calls
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.trace import build_trace_metadata, merge_trace_metadata, new_call_id
@@ -213,7 +214,7 @@ class ContextExplorer:
                 if not result.tool_calls:
                     investigation = result.text
                     break
-                messages.append(_assistant_with_tool_calls(result.text, result.tool_calls))
+                messages.append(assistant_message_with_tool_calls(result.text, result.tool_calls))
                 dispatch = await dispatch_tool_calls(
                     tool_calls=result.tool_calls,
                     context=context,
@@ -525,21 +526,6 @@ def _content_chars(message: dict[str, Any]) -> int:
     if isinstance(content, list):
         return sum(len(str(part.get("text") or "")) for part in content if isinstance(part, dict))
     return 0
-
-
-def _assistant_with_tool_calls(content: str, tool_calls: list[dict[str, Any]]) -> dict[str, Any]:
-    return {
-        "role": "assistant",
-        "content": content or None,
-        "tool_calls": [
-            {
-                "id": tc["id"],
-                "type": "function",
-                "function": {"name": tc["name"], "arguments": tc.get("arguments") or "{}"},
-            }
-            for tc in tool_calls
-        ],
-    }
 
 
 __all__ = ["ContextExplorer", "EXPLORE_STAGE"]

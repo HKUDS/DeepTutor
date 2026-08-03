@@ -49,7 +49,11 @@ export interface ToolOption {
 }
 
 export interface McpToolOption extends ToolOption {
+  /** Provider grouping key; `server` is its pre-provider spelling. */
+  provider_id: string;
   server: string;
+  /** `"mcp"` today, `"cli"` once CLI-app providers land. */
+  kind: string;
 }
 
 export interface ToolOptions {

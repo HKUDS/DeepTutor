@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from deeptutor.api.routers import settings as settings_router
+from deeptutor.services.codex_auth.contracts import CodexAuthError
 from deeptutor.services.config.provider_runtime import (
     ResolvedEmbeddingConfig,
     ResolvedLLMConfig,
@@ -16,6 +18,38 @@ from deeptutor.services.embedding import client as embedding_client_module
 from deeptutor.services.embedding import config as embedding_config_module
 from deeptutor.services.llm import client as llm_client_module
 from deeptutor.services.llm import config as llm_config_module
+
+
+def test_load_ui_settings_migrates_legacy_language_to_response_language(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    settings_file = tmp_path / "interface.json"
+    settings_file.write_text(
+        '{"theme": "snow", "language": "zh"}', encoding="utf-8"
+    )
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+
+    settings = settings_router.load_ui_settings()
+
+    assert settings["language"] == "zh"
+    assert settings["response_language"] == "zh"
+
+
+@pytest.mark.asyncio
+async def test_ui_languages_are_persisted_independently(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(
+            theme="snow", language="en", response_language="zh"
+        )
+    )
+
+    assert response["language"] == "en"
+    assert response["response_language"] == "zh"
 
 
 class _FakeEmbeddingAdapter:
@@ -45,39 +79,43 @@ class _FakeCatalogService:
         }
 
 
-def test_load_ui_settings_migrates_legacy_language_to_response_language(
-    monkeypatch: pytest.MonkeyPatch, tmp_path
-) -> None:
-    settings_file = tmp_path / "interface.json"
-    settings_file.write_text(
-        '{"theme": "snow", "language": "zh"}', encoding="utf-8"
-    )
-    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+class _FakeCodexOAuthService:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
 
-    settings = settings_router.load_ui_settings()
+    async def start_login(self) -> dict[str, Any]:
+        self.calls.append("start")
+        return {
+            "operation_id": "operation-1",
+            "authorize_url": "https://auth.openai.com/oauth/authorize?state=opaque",
+            "expires_in": 300,
+        }
 
-    assert settings["language"] == "zh"
-    assert settings["response_language"] == "zh"
+    def public_status(self) -> dict[str, Any]:
+        self.calls.append("status")
+        return {
+            "connection": "connected",
+            "operation_id": None,
+            "operation_state": None,
+            "model_count": 1,
+            "catalog_source": "live",
+            "catalog_fetched_at": 1_000,
+            "active_model": "gpt-5.6-sol",
+            "activated": False,
+            "error_code": None,
+        }
 
+    async def cancel_login(self) -> dict[str, Any]:
+        self.calls.append("cancel")
+        return self.public_status()
 
-@pytest.mark.asyncio
-async def test_ui_languages_are_persisted_independently(
-    monkeypatch: pytest.MonkeyPatch, tmp_path
-) -> None:
-    settings_file = tmp_path / "interface.json"
-    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    async def logout(self) -> dict[str, Any]:
+        self.calls.append("logout")
+        return self.public_status()
 
-    response = await settings_router.update_ui_settings(
-        settings_router.UISettings(
-            theme="snow", language="en", response_language="zh"
-        )
-    )
-
-    assert response["language"] == "en"
-    assert response["response_language"] == "zh"
-    persisted = json.loads(settings_file.read_text(encoding="utf-8"))
-    assert persisted["language"] == "en"
-    assert persisted["response_language"] == "zh"
+    async def refresh_models(self) -> dict[str, Any]:
+        self.calls.append("refresh")
+        return self.public_status()
 
 
 def _build_catalog(
@@ -232,6 +270,37 @@ async def test_network_settings_roundtrip_normalizes_cors_origins(
     ]
     assert response["effective"]["cors_mode"] == "explicit"
     assert response["auth"]["cross_site_cookie_ready"] is True
+
+
+@pytest.mark.asyncio
+async def test_chat_attachment_settings_roundtrip(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    service = RuntimeSettingsService(tmp_path / "settings", process_env={})
+    service.save_system({"backend_port": 8001, "frontend_port": 3782})
+    monkeypatch.setattr(settings_router, "get_runtime_settings_service", lambda: service)
+
+    initial = await settings_router.get_chat_attachment_settings()
+    assert initial["settings"]["max_file_mb"] == 20
+    assert initial["effective"]["max_file_bytes"] == 20 * 1024 * 1024
+
+    payload = settings_router.ChatAttachmentSettingsUpdate(
+        max_file_mb=100,
+        max_total_mb=200,
+        max_chars_per_doc=400_000,
+        max_chars_total=300_000,
+    )
+    response = await settings_router.update_chat_attachment_settings(payload)
+
+    assert response["settings"]["max_file_mb"] == 100
+    assert response["settings"]["max_total_mb"] == 200
+    assert response["effective"]["max_total_bytes"] == 200 * 1024 * 1024
+    # WS frame ceiling covers the base64-inflated total.
+    assert response["effective"]["ws_max_size"] > (200 * 1024 * 1024 * 4) // 3
+    # Other system.json keys survive the partial update.
+    stored = service.load_system(include_process_overrides=False)
+    assert stored["backend_port"] == 8001
+    assert stored["chat_attachment_max_chars_per_doc"] == 400_000
 
 
 @pytest.mark.asyncio
@@ -436,6 +505,20 @@ def test_embedding_provider_choices_use_full_endpoint_urls() -> None:
     assert embedding["ollama"]["base_url"] == "http://localhost:11434/api/embed"
     assert embedding["openai"]["base_url"] == "https://api.openai.com/v1/embeddings"
     assert "custom_openai_sdk" not in embedding
+
+
+def test_llm_provider_choices_include_atlascloud() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["atlascloud"]["label"] == "Atlas Cloud"
+    assert llm["atlascloud"]["base_url"] == "https://api.atlascloud.ai/v1"
+
+
+def test_llm_provider_choices_include_edenai() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["edenai"]["label"] == "Eden AI"
+    assert llm["edenai"]["base_url"] == "https://api.edenai.run/v3"
 
 
 @pytest.mark.asyncio
@@ -687,3 +770,170 @@ async def test_fetch_models_maps_provider_error_to_502(monkeypatch: pytest.Monke
             settings_router.FetchModelsPayload(binding="custom", base_url="https://x/v1")
         )
     assert exc_info.value.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_update_ui_settings_preserves_theme_and_language_when_code_block_update_omits_them(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    # Given: stored appearance settings differ from the UI defaults.
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    settings_router.save_ui_settings(
+        {
+            **settings_router.DEFAULT_UI_SETTINGS,
+            "theme": "dark",
+            "language": "zh",
+        }
+    )
+
+    # When: a code-block-only partial update arrives.
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(code_block_theme="dracula")
+    )
+
+    # Then: omitted appearance settings remain unchanged while the patch persists.
+    persisted = settings_router.load_ui_settings()
+    assert response["theme"] == "dark"
+    assert response["language"] == "zh"
+    assert persisted["code_block_theme"] == "dracula"
+
+
+def test_codex_provider_choice_is_advertised_as_oauth() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["openai_codex"] == {
+        "value": "openai_codex",
+        "label": "OpenAI Codex",
+        "base_url": "https://chatgpt.com/backend-api",
+        "auth_mode": "oauth",
+    }
+    # API-key providers keep the same shape, so the frontend never special-cases
+    # a missing field.
+    assert llm["openai"]["auth_mode"] == "api_key"
+
+
+@pytest.mark.asyncio
+async def test_codex_oauth_status_is_admin_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(
+        settings_router,
+        "get_current_user",
+        lambda: SimpleNamespace(is_admin=False),
+    )
+    monkeypatch.setattr(
+        settings_router,
+        "get_codex_oauth_service",
+        lambda: (_ for _ in ()).throw(AssertionError("service must not be accessed")),
+        raising=False,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await settings_router.get_openai_codex_oauth_status()
+
+    assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_codex_oauth_routes_return_only_public_service_payloads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = _FakeCodexOAuthService()
+    monkeypatch.setattr(
+        settings_router,
+        "get_current_user",
+        lambda: SimpleNamespace(is_admin=True),
+    )
+    monkeypatch.setattr(
+        settings_router,
+        "get_codex_oauth_service",
+        lambda: fake,
+        raising=False,
+    )
+
+    started = await settings_router.start_openai_codex_oauth()
+    status_payload = await settings_router.get_openai_codex_oauth_status()
+    cancelled = await settings_router.cancel_openai_codex_oauth()
+    refreshed = await settings_router.refresh_openai_codex_models()
+    logged_out = await settings_router.logout_openai_codex_oauth()
+
+    assert set(started) == {"operation_id", "authorize_url", "expires_in"}
+    assert (
+        "token"
+        not in json.dumps([started, status_payload, cancelled, refreshed, logged_out]).lower()
+    )
+    assert fake.calls == [
+        "start",
+        "status",
+        "cancel",
+        "status",
+        "refresh",
+        "status",
+        "logout",
+        "status",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_codex_oauth_error_maps_to_sanitized_http_detail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi import HTTPException
+
+    class FailingService:
+        async def start_login(self) -> dict[str, Any]:
+            raise CodexAuthError(
+                "token_exchange_failed",
+                "Codex sign-in could not be completed.",
+                502,
+            )
+
+    monkeypatch.setattr(
+        settings_router,
+        "get_current_user",
+        lambda: SimpleNamespace(is_admin=True),
+    )
+    monkeypatch.setattr(
+        settings_router,
+        "get_codex_oauth_service",
+        lambda: FailingService(),
+        raising=False,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await settings_router.start_openai_codex_oauth()
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail == {
+        "code": "token_exchange_failed",
+        "message": "Codex sign-in could not be completed.",
+    }
+
+
+@pytest.mark.asyncio
+async def test_update_ui_settings_persists_explicit_theme_and_language_defaults(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    # Given: stored appearance settings differ from the values being reset.
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    settings_router.save_ui_settings(
+        {
+            **settings_router.DEFAULT_UI_SETTINGS,
+            "theme": "dark",
+            "language": "zh",
+        }
+    )
+
+    # When: the frontend explicitly provides the full-model default values.
+    await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(theme="snow", language="en")
+    )
+
+    # Then: explicit values persist instead of being mistaken for omitted fields.
+    persisted = settings_router.load_ui_settings()
+    assert persisted["theme"] == "snow"
+    assert persisted["language"] == "en"

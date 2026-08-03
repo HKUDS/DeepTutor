@@ -11,10 +11,21 @@ page's "sync" button just re-reads it:
 * **Claude Code** has no model-list CLI; its ``--model`` takes stable aliases
   (opus / sonnet / haiku) plus any full name, and ``--effort`` a fixed set — so
   we offer those as suggestions and the UI also allows a free-text model.
+* **Gemini CLI** models are stable aliases (auto / pro / flash / flash-lite)
+  plus any concrete name — curated suggestions, free text allowed.
+* **Kimi CLI** has no model-list surface — free text only.
+* **opencode / MiMo Code** enumerate ``provider/model`` slugs via their own
+  ``<cli> models`` command (models.dev catalog); syncing re-runs it with
+  ``--refresh``. Reasoning effort is their ``--variant`` scale.
+
+Each backend kind maps to one options provider in ``_PROVIDERS`` — adding a
+backend means adding a provider here, nothing else changes.
 """
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 import json
 import logging
@@ -38,6 +49,18 @@ _CLAUDE_MODELS = (
     ("haiku", "Haiku 4.5"),
 )
 _CLAUDE_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+
+# Gemini CLI: ``--model`` takes stable aliases plus any concrete model name.
+# There is no reasoning-effort flag (thinking is a settings.json concern).
+_GEMINI_MODELS = (
+    ("auto", "Auto (recommended)"),
+    ("pro", "Gemini Pro"),
+    ("flash", "Gemini Flash"),
+    ("flash-lite", "Gemini Flash-Lite"),
+)
+
+# opencode family: ``--variant`` — provider-relative reasoning effort.
+_OPENCODE_EFFORTS = ("minimal", "high", "max")
 
 
 @dataclass(slots=True)
@@ -178,9 +201,113 @@ async def _codex_options() -> BackendOptions:
     )
 
 
+async def _probe(kind: str) -> tuple[bool, str]:
+    backend = get_backend(kind)
+    if backend is None:
+        return False, ""
+    return await probe_version([backend.cli_command, "--version"])
+
+
+async def _gemini_options() -> BackendOptions:
+    ok, version = await _probe("gemini")
+    return BackendOptions(
+        kind="gemini",
+        display_name="Gemini CLI",
+        available=ok,
+        version=version if ok else "",
+        models=[ModelOption(slug=slug, display_name=name) for slug, name in _GEMINI_MODELS],
+        efforts=[],  # no reasoning-effort flag
+        allow_custom_model=True,
+        detail="" if ok else (version or "gemini CLI not found on PATH"),
+    )
+
+
+async def _kimi_options() -> BackendOptions:
+    ok, version = await _probe("kimi")
+    return BackendOptions(
+        kind="kimi",
+        display_name="Kimi CLI",
+        available=ok,
+        version=version if ok else "",
+        models=[],  # no model-list surface; free text only
+        efforts=[],
+        allow_custom_model=True,
+        detail="" if ok else (version or "kimi CLI not found on PATH"),
+    )
+
+
+async def _list_cli_models(cli_command: str, *, refresh: bool = False) -> list[ModelOption]:
+    """Parse ``<cli> models`` output — one ``provider/model`` slug per line."""
+    cmd = [cli_command, "models"]
+    if refresh:
+        cmd.append("--refresh")
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await asyncio.wait_for(process.communicate(), timeout=60.0 if refresh else 20.0)
+    except FileNotFoundError:
+        return []
+    except (TimeoutError, asyncio.TimeoutError):
+        return []
+    except Exception:  # pragma: no cover - defensive
+        logger.warning("failed to enumerate %s models", cli_command, exc_info=True)
+        return []
+    models: list[ModelOption] = []
+    for raw in (out or b"").decode("utf-8", "replace").splitlines():
+        slug = raw.strip()
+        # Slugs are provider/model tokens; anything with spaces is decoration.
+        if not slug or "/" not in slug or " " in slug:
+            continue
+        models.append(ModelOption(slug=slug, display_name=slug, efforts=list(_OPENCODE_EFFORTS)))
+    return models
+
+
+async def _opencode_family_options(
+    kind: str, display_name: str, *, refresh: bool = False
+) -> BackendOptions:
+    backend = get_backend(kind)
+    cli = backend.cli_command if backend else kind
+    ok, version = await _probe(kind)
+    models = await _list_cli_models(cli, refresh=refresh) if ok else []
+    return BackendOptions(
+        kind=kind,
+        display_name=display_name,
+        available=ok,
+        version=version if ok else "",
+        models=models,
+        efforts=list(_OPENCODE_EFFORTS),
+        allow_custom_model=True,
+        detail="" if ok else (version or f"{cli} CLI not found on PATH"),
+    )
+
+
+async def _opencode_options(*, refresh: bool = False) -> BackendOptions:
+    return await _opencode_family_options("opencode", "opencode", refresh=refresh)
+
+
+async def _mimo_options(*, refresh: bool = False) -> BackendOptions:
+    return await _opencode_family_options("mimo", "MiMo Code", refresh=refresh)
+
+
+# One provider per backend kind — the discovery order is the settings order.
+_PROVIDERS: dict[str, Callable[..., Awaitable[BackendOptions]]] = {
+    "claude_code": _claude_options,
+    "codex": _codex_options,
+    "gemini": _gemini_options,
+    "kimi": _kimi_options,
+    "opencode": _opencode_options,
+    "mimo": _mimo_options,
+}
+
+
 async def list_backend_options() -> list[BackendOptions]:
     """Synced model/effort options for every backend (the /settings sync source)."""
-    return [await _claude_options(), await _codex_options()]
+    results = await asyncio.gather(*(provider() for provider in _PROVIDERS.values()))
+    return list(results)
 
 
 async def sync_backend_options(kind: str) -> BackendOptions:
@@ -188,14 +315,18 @@ async def sync_backend_options(kind: str) -> BackendOptions:
 
     Claude Code has no machine-readable catalog, so we actively scrape its
     ``/model`` TUI and cache the result. Codex's cache is maintained by its own
-    CLI, so syncing is just a fresh read.
+    CLI (a fresh read suffices), and the opencode family re-runs ``models
+    --refresh``. The rest have nothing external to refresh.
     """
     if kind == "claude_code":
         from deeptutor.services.subagent.claude_models import sync_claude_models
 
         await sync_claude_models()  # writes the cache that _claude_options reads
         return await _claude_options()
-    return await _codex_options()
+    if kind in ("opencode", "mimo"):
+        return await _PROVIDERS[kind](refresh=True)
+    provider = _PROVIDERS.get(kind, _codex_options)
+    return await provider()
 
 
 __all__ = [

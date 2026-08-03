@@ -984,3 +984,14 @@ def test_parse_exam_paper_to_templates_happy_path(monkeypatch, tmp_path: Path) -
     assert templates[1].question_type == "choice"
     assert trace["template_count"] == "2"
     assert trace["question_file"].endswith("exam_questions.json")
+
+
+def test_parse_quiz_payload_tolerates_trailing_brace_prose() -> None:
+    raw = (
+        '{"question":"What is 2+2?","correct_answer":"4",'
+        '"explanation":"basic arithmetic"} note: see {docs}'
+    )
+    parsed = QuestionPipeline._parse_quiz_payload(raw)
+    assert parsed["question"] == "What is 2+2?"
+    assert parsed["correct_answer"] == "4"
+    assert parsed["explanation"] == "basic arithmetic"

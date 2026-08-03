@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
   type RefObject,
@@ -18,10 +19,12 @@ import ChatSpaceMenu, {
 import { agentGlyph } from "@/components/agents/agent-icons";
 import { shouldSubmitOnEnter } from "@/lib/composer-keyboard";
 import { useAutoSizedTextarea } from "@/lib/use-auto-sized-textarea";
+import { useImeComposing } from "@/lib/use-ime-composing";
 
 interface ComposerInputProps {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   isVisualizeMode: boolean;
+  isStreaming?: boolean;
   // When true, parent has attachments/references queued and will accept a
   // send even if the text body is empty. Without this, Enter would silently
   // do nothing for an attachment-only message.
@@ -126,6 +129,7 @@ export const ComposerInput = memo(
     {
       textareaRef,
       isVisualizeMode,
+      isStreaming = false,
       canSendEmpty,
       onSend,
       onInputChange,
@@ -161,11 +165,15 @@ export const ComposerInput = memo(
     // Main chat passes ``onSelectAgent`` → ``@`` picks a connected agent. Other
     // surfaces (quiz follow-up) omit it and keep the @ Space menu.
     const agentMentionMode = Boolean(onSelectAgent);
-    const filteredAgents = agentMentionMode
-      ? connectedAgents.filter((a) =>
-          a.name.toLowerCase().includes(atQuery.toLowerCase()),
-        )
-      : [];
+    const filteredAgents = useMemo(
+      () =>
+        agentMentionMode
+          ? connectedAgents.filter((agent) =>
+              agent.name.toLowerCase().includes(atQuery.toLowerCase()),
+            )
+          : [],
+      [agentMentionMode, atQuery, connectedAgents],
+    );
 
     // Latest text mirrored into a ref by the change handlers (never updated
     // during render). The @space handlers and the imperative handle read
@@ -173,7 +181,8 @@ export const ComposerInput = memo(
     // letting `memo` on ChatSpaceMenu actually skip re-renders when
     // `showAtPopup` doesn't change.
     const inputRef = useRef("");
-    const isComposingRef = useRef(false);
+    const { isComposingRef, onCompositionStart, onCompositionEnd } =
+      useImeComposing();
     // Helper that always updates state and ref together so they can't drift.
     const setInputBoth = useCallback((value: string) => {
       inputRef.current = value;
@@ -302,7 +311,7 @@ export const ComposerInput = memo(
         }
         if (shouldSubmitOnEnter(e, isComposingRef.current)) {
           e.preventDefault();
-          doSend();
+          if (!isStreaming) doSend();
         } else if (e.key === "Escape") {
           setShowAtPopup(false);
           setShowSlashPopup(false);
@@ -310,26 +319,16 @@ export const ComposerInput = memo(
       },
       [
         doSend,
+        isStreaming,
         showSlashPopup,
         handleSelectSlashPersona,
         showAtPopup,
         agentMentionMode,
         filteredAgents,
         handleSelectAgentMention,
+        isComposingRef,
       ],
     );
-
-    const handleCompositionStart = useCallback(() => {
-      isComposingRef.current = true;
-    }, []);
-
-    const handleCompositionEnd = useCallback(() => {
-      // Some IMEs fire compositionend before the Enter keydown that confirms
-      // a candidate, so keep the guard through the current event turn.
-      setTimeout(() => {
-        isComposingRef.current = false;
-      }, 0);
-    }, []);
 
     const handleSelectSpaceItem = useCallback(
       (
@@ -504,8 +503,8 @@ export const ComposerInput = memo(
           value={input}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
-          onCompositionStart={handleCompositionStart}
-          onCompositionEnd={handleCompositionEnd}
+          onCompositionStart={onCompositionStart}
+          onCompositionEnd={onCompositionEnd}
           onClick={handleTextareaClick}
           onPaste={onPaste}
           rows={1}

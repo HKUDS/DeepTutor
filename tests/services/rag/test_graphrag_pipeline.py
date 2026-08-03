@@ -126,6 +126,29 @@ def test_local_api_key_placeholder_when_missing() -> None:
     )
 
 
+def test_engine_entry_points_run_on_a_private_loop() -> None:
+    """GraphRAG's LLM layer patches the *current* loop at import time and
+    refuses uvloop — the loop uvicorn[standard] runs the backend on. Every
+    entry point must therefore execute on its own plain-asyncio loop, off the
+    caller's (issue #695)."""
+    seen: dict[str, object] = {}
+
+    async def work() -> str:
+        seen["running"] = asyncio.get_running_loop()
+        seen["current"] = asyncio.get_event_loop()
+        return "done"
+
+    async def caller() -> str:
+        seen["outer"] = asyncio.get_running_loop()
+        return await engine._run_isolated(work)
+
+    assert asyncio.run(caller()) == "done"
+    assert seen["running"] is not seen["outer"]
+    # ``nest_asyncio2.apply()`` patches whatever ``get_event_loop()`` returns,
+    # so the private loop has to be the thread's current one, not just running.
+    assert seen["current"] is seen["running"]
+
+
 def test_write_settings_roundtrips(tmp_path) -> None:
     import yaml
 
@@ -137,6 +160,35 @@ def test_write_settings_roundtrips(tmp_path) -> None:
     assert path.exists()
     loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert "completion_models" in loaded and "embedding_models" in loaded
+
+
+def test_write_settings_loads_and_builds_cache_via_real_graphrag(tmp_path) -> None:
+    """The generated settings.yaml must survive GraphRAG's own config loader and
+    cache factory, not just our own yaml.safe_load roundtrip above.
+
+    GraphRAG's loader treats the config text as a ``string.Template`` and
+    substitutes env vars into it before parsing YAML, so a literal ``$`` in a
+    value (our ``file_pattern`` regex) must be escaped as ``$$`` or
+    ``load_config`` raises ``ValueError: Invalid placeholder``. And GraphRAG's
+    ``CacheFactory`` only registers ``json``/``memory``/``none`` cache types;
+    ``cache.type`` must be ``"json"``, not the ``"file"`` *storage* type.
+    This is not installed in CI (see the module docstring), so it is skipped
+    there; run locally with the ``graphrag`` extra installed to exercise it.
+    """
+    pytest.importorskip("graphrag")
+    from graphrag.config.load_config import load_config
+    from graphrag_cache.cache_factory import create_cache
+
+    gr_config.write_settings(
+        tmp_path,
+        llm_cfg=_Cfg("m", "u", "k"),
+        embedding_cfg=_Cfg("e", "u", "k"),
+    )
+    config = load_config(root_dir=tmp_path)
+    assert config.cache.type == "json"
+
+    cache = create_cache(config.cache)
+    assert type(cache).__name__ == "JsonCache"
 
 
 @pytest.mark.parametrize(

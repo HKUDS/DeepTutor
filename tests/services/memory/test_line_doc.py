@@ -214,3 +214,14 @@ def test_serialize_roundtrip_after_edits_keeps_footnotes_consistent() -> None:
     assert "notebook:r1-new" in md
     # The old ref text is gone from footnotes (replaced, not appended).
     assert "notebook:r1," not in md and "notebook:r1\n" not in md
+
+
+def test_parse_edits_payload_tolerates_trailing_brace_prose() -> None:
+    raw = (
+        '{"edits":[{"op":"replace","line":1,"new_text":"ok",'
+        '"refs":["a:b"],"reason":"y"}]} trailing {brace}'
+    )
+    edits = parse_edits_payload(raw)
+    assert len(edits) == 1
+    assert isinstance(edits[0], ReplaceLineOp)
+    assert edits[0].new_text == "ok"

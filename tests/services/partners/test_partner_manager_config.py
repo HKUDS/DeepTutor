@@ -44,7 +44,66 @@ class TestConfigRoundTrip:
         loaded = mgr.load_config("p1")
         assert loaded.enabled_tools is None
         assert loaded.builtin_tools is None
-        assert loaded.mcp_tools is None
+        # MCP is the exception — deny-by-default (see TestMcpToolsDefault).
+        assert loaded.mcp_tools == []
+
+
+class TestMcpToolsDefault:
+    """MCP tools reach host-side capabilities configured deployment-wide, so no
+    partner may inherit them without an explicit owner decision."""
+
+    def test_new_config_denies_mcp(self):
+        assert PartnerConfig(name="P1").mcp_tools == []
+
+    def test_stored_config_without_mcp_key_denies(self, partners_root):
+        # Configs written before the deny default carry no ``mcp_tools`` key;
+        # reading absence as "unrestricted" would hand every configured MCP
+        # tool to an existing partner, so it resolves to deny instead.
+        partner_dir = partners_root / "legacy"
+        partner_dir.mkdir(parents=True)
+        (partner_dir / "config.yaml").write_text(
+            yaml.dump({"name": "Legacy", "enabled_tools": ["web_search"]}),
+            encoding="utf-8",
+        )
+
+        loaded = _mgr().load_config("legacy")
+        assert loaded is not None
+        assert loaded.mcp_tools == []
+        assert loaded.enabled_tools == ["web_search"]
+
+    def test_unrestricted_round_trips_through_its_own_spelling(self, partners_root):
+        mgr = _mgr()
+        mgr.save_config("p1", PartnerConfig(name="P1", mcp_tools=None))
+        # The opt-in has to land on disk as something a typo cannot produce, or
+        # the reload below would read it as deny.
+        stored = yaml.safe_load((partners_root / "p1" / "config.yaml").read_text(encoding="utf-8"))
+        assert stored["mcp_tools"] == ["*"]
+        assert mgr.load_config("p1").mcp_tools is None
+
+    def test_a_bare_yaml_key_denies_rather_than_granting_everything(self, partners_root):
+        """``mcp_tools:`` with no value parses as null.
+
+        A hand-edit that writes it almost certainly means "none", so null must
+        not be the spelling that unlocks every configured MCP tool.
+        """
+        partner_dir = partners_root / "bare"
+        partner_dir.mkdir(parents=True)
+        (partner_dir / "config.yaml").write_text(
+            "name: Bare\nmcp_tools:\n",
+            encoding="utf-8",
+        )
+
+        assert _mgr().load_config("bare").mcp_tools == []
+
+    def test_malformed_value_fails_closed(self, partners_root):
+        partner_dir = partners_root / "broken"
+        partner_dir.mkdir(parents=True)
+        (partner_dir / "config.yaml").write_text(
+            yaml.dump({"name": "Broken", "mcp_tools": "mcp_x_y"}),
+            encoding="utf-8",
+        )
+
+        assert _mgr().load_config("broken").mcp_tools == []
 
 
 class TestMergeSemantics:

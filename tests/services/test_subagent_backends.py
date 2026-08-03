@@ -636,7 +636,7 @@ async def test_detect_all_excludes_partner_backend() -> None:
 
     kinds = {d.kind for d in await detect_all()}
     assert "partner" not in kinds
-    assert kinds <= {"claude_code", "codex"}
+    assert kinds <= {"claude_code", "codex", "gemini", "kimi", "opencode", "mimo"}
 
 
 # ---- partner backend: drive a partner as a subagent --------------------------
@@ -898,3 +898,462 @@ def test_partner_content_accumulates_cumulatively() -> None:
     )
     assert a[0].text == "The " and b[0].text == "The answer"
     assert a[0].meta["merge_id"] == b[0].meta["merge_id"] == "text:f1"
+
+
+# ---- Gemini CLI: command building + event parsing -----------------------------
+
+
+def test_gemini_command_build_fresh_resume_and_approval_mapping() -> None:
+    from deeptutor.services.subagent.gemini import GeminiBackend
+
+    backend = GeminiBackend()
+    fresh = backend._build_command(
+        "hi", session_id=None, config=BackendConfig(system_prompt="be brief")
+    )
+    assert fresh[:3] == ["gemini", "-p", "be brief\n\nhi"]  # instruction only on fresh
+    assert "--output-format" in fresh and "stream-json" in fresh
+    # Canonical CC spelling maps onto gemini's approval modes (default → yolo).
+    assert fresh[fresh.index("--approval-mode") + 1] == "yolo"
+    assert "--resume" not in fresh
+
+    resumed = backend._build_command(
+        "again",
+        session_id="s1",
+        config=BackendConfig(
+            system_prompt="be brief", permission_mode="acceptEdits", model="flash"
+        ),
+    )
+    assert resumed[1:3] == ["-p", "again"]  # no instruction prefix on resume
+    assert resumed[resumed.index("--approval-mode") + 1] == "auto_edit"
+    assert "--resume" in resumed and "s1" in resumed
+    assert resumed[resumed.index("--model") + 1] == "flash"
+
+
+def test_gemini_command_attaches_images_via_at_syntax() -> None:
+    from deeptutor.services.subagent.gemini import GeminiBackend
+
+    backend = GeminiBackend()
+    cmd = backend._build_command(
+        "look", session_id=None, config=BackendConfig(), images=["/tmp/stage/a.png"]
+    )
+    assert "@/tmp/stage/a.png" in cmd[2]  # rides inside the prompt text
+    assert cmd[cmd.index("--include-directories") + 1] == "/tmp/stage"
+
+
+async def _drive_gemini(events):
+    from deeptutor.services.subagent.gemini import GeminiBackend
+
+    backend = GeminiBackend()
+    result = ConsultResult()
+    stream: dict = {"blocks": [], "open": False}
+    emitted: list[tuple[str, str, dict]] = []
+
+    async def emit(kind, text, raw, meta=None):
+        emitted.append((kind, text, meta or {}))
+
+    for ev in events:
+        await backend._handle_event(ev, result, stream, emit)
+    if not result.final_text:
+        result.final_text = "\n\n".join(b for b in stream["blocks"] if b.strip()).strip()
+    return result, emitted
+
+
+@pytest.mark.asyncio
+async def test_gemini_deltas_accumulate_and_tools_split_blocks() -> None:
+    events = [
+        {"type": "init", "timestamp": "t", "session_id": "g1", "model": "gemini-pro"},
+        {"type": "message", "role": "user", "content": "the echoed prompt"},
+        {"type": "message", "role": "assistant", "content": "Let me ", "delta": True},
+        {"type": "message", "role": "assistant", "content": "check.", "delta": True},
+        {
+            "type": "tool_use",
+            "tool_name": "Shell",
+            "tool_id": "c1",
+            "parameters": {"command": "ls"},
+        },
+        {"type": "tool_result", "tool_id": "c1", "status": "success", "output": "a.py"},
+        {"type": "message", "role": "assistant", "content": "Found it.", "delta": True},
+        {"type": "result", "timestamp": "t", "status": "success"},
+    ]
+    result, emitted = await _drive_gemini(events)
+
+    assert result.session_id == "g1"
+    # The user echo is dropped; deltas grow one row per block.
+    texts = [(t, m.get("merge_id")) for k, t, m in emitted if k == "text"]
+    assert texts == [
+        ("Let me", "txt:0"),
+        ("Let me check.", "txt:0"),
+        ("Found it.", "txt:1"),  # the tool_use closed block 0
+    ]
+    assert ("tool", "Shell(ls)") in [(k, t) for k, t, _ in emitted]
+    assert ("tool_result", "a.py") in [(k, t) for k, t, _ in emitted]
+    # No aggregated message event exists — the final answer is the joined blocks.
+    assert result.final_text == "Let me check.\n\nFound it."
+    assert result.success is True
+
+
+@pytest.mark.asyncio
+async def test_gemini_warning_is_log_and_error_result_fails() -> None:
+    events = [
+        {"type": "error", "severity": "warning", "message": "slow network"},
+        {"type": "error", "severity": "error", "message": "quota exhausted"},
+        {"type": "result", "status": "error", "error": {"type": "x", "message": "quota exhausted"}},
+    ]
+    result, emitted = await _drive_gemini(events)
+    kinds = [k for k, _, _ in emitted]
+    assert kinds == ["log", "error"]
+    assert result.success is False
+    assert "quota" in result.error
+
+
+# ---- Kimi CLI: command building + line parsing --------------------------------
+
+
+def test_kimi_command_build_session_yolo_and_thinking() -> None:
+    from deeptutor.services.subagent.kimi import KimiBackend
+
+    backend = KimiBackend()
+    cmd = backend._build_command(
+        "hi",
+        session_id="u-1",
+        fresh_session=True,
+        config=BackendConfig(system_prompt="sp", model="kimi-k2", thinking=False),
+    )
+    assert cmd[:4] == ["kimi", "--print", "--output-format", "stream-json"]
+    assert cmd[cmd.index("--session") + 1] == "u-1"
+    assert "--yolo" in cmd and "--no-thinking" in cmd
+    assert cmd[cmd.index("--model") + 1] == "kimi-k2"
+    assert cmd[-2:] == ["--prompt", "sp\n\nhi"]  # instruction prefixed on fresh session
+
+    resumed = backend._build_command(
+        "again",
+        session_id="u-1",
+        fresh_session=False,
+        config=BackendConfig(system_prompt="sp", auto_approve=False),
+    )
+    assert resumed[-1] == "again" and "--yolo" not in resumed
+    assert "--thinking" in resumed
+
+
+@pytest.mark.asyncio
+async def test_kimi_consult_mints_session_id_upfront() -> None:
+    """A fresh consult pre-generates the session id (never parsed from output)."""
+    import uuid as uuid_mod
+
+    from deeptutor.services.subagent.kimi import KimiBackend
+
+    backend = KimiBackend()
+
+    captured: dict = {}
+
+    def fake_build(question, *, session_id, fresh_session, config):
+        captured["sid"] = session_id
+        captured["fresh"] = fresh_session
+        return [sys.executable, "-c", "pass"]  # exits 0 with no output
+
+    backend._build_command = fake_build  # type: ignore[method-assign]
+
+    async def on_event(event):
+        pass
+
+    result = await backend.consult("q", on_event=on_event)
+    assert captured["fresh"] is True
+    assert result.session_id == captured["sid"]
+    assert uuid_mod.UUID(result.session_id)  # a well-formed UUID
+
+
+@pytest.mark.asyncio
+async def test_kimi_line_parsing_roles_parts_and_tools() -> None:
+    from deeptutor.services.subagent.kimi import KimiBackend
+
+    backend = KimiBackend()
+    events = [
+        # content as a plain string (single text part shorthand)
+        {"role": "assistant", "content": "Working on it."},
+        # content as a part array with thinking + a tool call
+        {
+            "role": "assistant",
+            "content": [{"type": "think", "think": "planning"}],
+            "tool_calls": [
+                {
+                    "type": "function",
+                    "id": "t1",
+                    "function": {"name": "shell", "arguments": '{"command": "ls -la"}'},
+                }
+            ],
+        },
+        {"role": "tool", "content": "<system>OK</system>", "tool_call_id": "t1"},
+        {"role": "assistant", "content": [{"type": "text", "text": "The answer."}]},
+        # role-less service lines
+        {"id": "n1", "category": "task", "title": "background", "body": "done", "severity": "info"},
+        {"content": "# plan", "file_path": "/tmp/plan.md"},
+    ]
+    result, emitted = await _drive(backend, events)
+
+    kinds = [k for k, _ in emitted]
+    assert kinds == ["text", "reasoning", "tool", "tool_result", "text", "log", "log"]
+    assert ("tool", "shell(ls -la)") in emitted  # JSON-string arguments are decoded
+    assert result.final_text == "The answer."  # the latest assistant text wins
+
+
+@pytest.mark.asyncio
+async def test_kimi_echoed_user_lines_are_dropped() -> None:
+    from deeptutor.services.subagent.kimi import KimiBackend
+
+    _, emitted = await _drive(KimiBackend(), [{"role": "user", "content": "echo"}])
+    assert emitted == []
+
+
+# ---- opencode family: bus event mapping + prompt body -------------------------
+
+
+async def _drive_opencode(events, *, auto_approve=True):
+    from deeptutor.services.subagent.opencode_family import OpencodeBackend
+
+    backend = OpencodeBackend()
+    state: dict = {"parts": {}, "kinds": {}, "error": ""}
+    emitted: list[tuple[str, str, dict]] = []
+
+    async def emit(kind, text, raw, meta=None):
+        emitted.append((kind, text, meta or {}))
+
+    config = BackendConfig(auto_approve=auto_approve)
+    for ev in events:
+        await backend._handle_bus_event(ev, "ses_1", state, emit, None, config)
+    return state, emitted
+
+
+@pytest.mark.asyncio
+async def test_opencode_deltas_type_out_and_updated_finalizes() -> None:
+    events = [
+        # the part is created empty, then token deltas grow it
+        {
+            "type": "message.part.updated",
+            "properties": {"part": {"id": "p1", "sessionID": "ses_1", "type": "text", "text": ""}},
+        },
+        {
+            "type": "message.part.delta",
+            "properties": {
+                "sessionID": "ses_1",
+                "messageID": "m1",
+                "partID": "p1",
+                "field": "text",
+                "delta": "Hel",
+            },
+        },
+        {
+            "type": "message.part.delta",
+            "properties": {
+                "sessionID": "ses_1",
+                "messageID": "m1",
+                "partID": "p1",
+                "field": "text",
+                "delta": "lo.",
+            },
+        },
+        # the completed part carries the authoritative cumulative text
+        {
+            "type": "message.part.updated",
+            "properties": {
+                "part": {
+                    "id": "p1",
+                    "sessionID": "ses_1",
+                    "type": "text",
+                    "text": "Hello.",
+                    "time": {"start": 1, "end": 2},
+                },
+            },
+        },
+    ]
+    state, emitted = await _drive_opencode(events)
+    texts = [(t, m.get("merge_id")) for k, t, m in emitted if k == "text"]
+    assert texts == [("Hel", "txt:p1"), ("Hello.", "txt:p1"), ("Hello.", "txt:p1")]
+    assert state["parts"]["p1"] == "Hello."
+
+
+@pytest.mark.asyncio
+async def test_opencode_reasoning_deltas_use_reasoning_channel() -> None:
+    events = [
+        {
+            "type": "message.part.updated",
+            "properties": {
+                "part": {"id": "r1", "sessionID": "ses_1", "type": "reasoning", "text": ""}
+            },
+        },
+        {
+            "type": "message.part.delta",
+            "properties": {
+                "sessionID": "ses_1",
+                "messageID": "m1",
+                "partID": "r1",
+                "field": "text",
+                "delta": "hmm",
+            },
+        },
+    ]
+    _, emitted = await _drive_opencode(events)
+    assert [(k, t, m.get("merge_id")) for k, t, m in emitted] == [("reasoning", "hmm", "rsn:r1")]
+
+
+@pytest.mark.asyncio
+async def test_opencode_tool_lifecycle_running_completed_error() -> None:
+    def tool_event(status, **extra):
+        return {
+            "type": "message.part.updated",
+            "properties": {
+                "part": {
+                    "id": "tp1",
+                    "sessionID": "ses_1",
+                    "type": "tool",
+                    "callID": "c1",
+                    "tool": "bash",
+                    "state": {"status": status, **extra},
+                }
+            },
+        }
+
+    _, emitted = await _drive_opencode(
+        [
+            tool_event("pending", input={"command": "ls"}),
+            tool_event("running", input={"command": "ls"}),
+            tool_event("completed", input={"command": "ls"}, output="a.py", title="List files"),
+            tool_event("error", input={"command": "rm"}, error="denied"),
+        ]
+    )
+    assert [(k, t) for k, t, _ in emitted] == [
+        ("tool", "bash(ls)"),  # pending is silent; running opens the row
+        ("tool", "List files(ls)"),  # completion finalizes the same row (same merge id)
+        ("tool_result", "a.py"),
+        ("tool_result", "denied"),
+    ]
+    tool_merges = [m.get("merge_id") for k, _, m in emitted if k == "tool"]
+    assert tool_merges == ["tool:tp1", "tool:tp1"]
+
+
+@pytest.mark.asyncio
+async def test_opencode_permission_asked_is_answered_and_logged() -> None:
+    ask = {
+        "type": "permission.asked",
+        "properties": {"id": "perm1", "sessionID": "ses_1", "title": "Run bash"},
+    }
+    _, approved = await _drive_opencode([ask], auto_approve=True)
+    assert approved[0][0] == "log" and "auto-approved" in approved[0][1]
+
+    _, rejected = await _drive_opencode([ask], auto_approve=False)
+    assert "rejected" in rejected[0][1]
+
+
+@pytest.mark.asyncio
+async def test_opencode_session_error_and_foreign_session_filtering() -> None:
+    events = [
+        # another session's traffic must not leak into this consult's trace
+        {
+            "type": "message.part.updated",
+            "properties": {
+                "part": {"id": "x", "sessionID": "ses_OTHER", "type": "text", "text": "hi"}
+            },
+        },
+        {
+            "type": "session.error",
+            "properties": {
+                "sessionID": "ses_1",
+                "error": {"name": "ProviderError", "data": {"message": "boom"}},
+            },
+        },
+    ]
+    state, emitted = await _drive_opencode(events)
+    assert [(k, t) for k, t, _ in emitted] == [("error", "boom")]
+    assert state["error"] == "boom"
+
+
+def test_opencode_prompt_body_model_variant_system_and_images(tmp_path) -> None:
+    from deeptutor.services.subagent.opencode_family import OpencodeBackend
+
+    img = tmp_path / "shot.png"
+    img.write_bytes(b"\x89PNG fake")
+    backend = OpencodeBackend()
+    body = backend._prompt_body(
+        "q",
+        config=BackendConfig(model="anthropic/claude-x", effort="high", system_prompt="sys"),
+        images=[str(img)],
+        fresh_session=True,
+    )
+    assert body["model"] == {"providerID": "anthropic", "modelID": "claude-x"}
+    assert body["variant"] == "high"
+    assert body["system"] == "sys"
+    assert body["parts"][0] == {"type": "text", "text": "q"}
+    file_part = body["parts"][1]
+    assert file_part["type"] == "file" and file_part["mime"] == "image/png"
+    assert file_part["url"].startswith("data:image/png;base64,")
+
+    resumed = backend._prompt_body(
+        "q2", config=BackendConfig(system_prompt="sys"), images=None, fresh_session=False
+    )
+    assert "system" not in resumed and "model" not in resumed
+
+
+def test_opencode_final_text_skips_synthetic_parts() -> None:
+    from deeptutor.services.subagent.opencode_family import _text_from_parts
+
+    parts = [
+        {"type": "text", "text": "real answer"},
+        {"type": "text", "text": "injected", "synthetic": True},
+        {"type": "tool", "text": "not text"},
+    ]
+    assert _text_from_parts(parts) == "real answer"
+
+
+# ---- opencode family: managed server registry ---------------------------------
+
+
+class _FakeServerProc:
+    def __init__(self):
+        self.returncode: int | None = None
+        self.terminated = False
+
+    def terminate(self):
+        self.terminated = True
+        self.returncode = -15
+
+    def kill(self):
+        self.returncode = -9
+
+    async def wait(self):
+        return self.returncode
+
+
+def test_server_registry_reaps_idle_and_dead_handles() -> None:
+    from deeptutor.services.subagent import opencode_server as srv
+
+    fresh_proc, stale_proc, dead_proc = _FakeServerProc(), _FakeServerProc(), _FakeServerProc()
+    dead_proc.returncode = 1
+    fresh = srv.ServerHandle(base_url="http://x", username="u", password="p", process=fresh_proc)
+    stale = srv.ServerHandle(base_url="http://y", username="u", password="p", process=stale_proc)
+    stale.last_used -= srv._IDLE_TTL_SECONDS + 1
+    dead = srv.ServerHandle(base_url="http://z", username="u", password="p", process=dead_proc)
+
+    srv._servers.clear()
+    srv._servers[("cli", "a")] = fresh
+    srv._servers[("cli", "b")] = stale
+    srv._servers[("cli", "c")] = dead
+    try:
+        srv._reap_stale()
+        assert set(srv._servers) == {("cli", "a")}
+        assert stale_proc.terminated is True
+        assert fresh_proc.terminated is False
+    finally:
+        srv._servers.clear()
+
+
+@pytest.mark.asyncio
+async def test_server_registry_shutdown_terminates_everything() -> None:
+    from deeptutor.services.subagent import opencode_server as srv
+
+    proc = _FakeServerProc()
+    srv._servers.clear()
+    srv._servers[("cli", "a")] = srv.ServerHandle(
+        base_url="http://x", username="u", password="p", process=proc
+    )
+    await srv.shutdown_servers()
+    assert srv._servers == {}
+    assert proc.terminated is True

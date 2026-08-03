@@ -72,6 +72,108 @@ export function CodexGlyph({ size = 16, ...props }: GlyphProps) {
   );
 }
 
+// Gemini's four-point spark, in the brand blue→violet gradient.
+export function GeminiGlyph({ size = 16, ...props }: GlyphProps) {
+  const gradientId = useId();
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      {...props}
+    >
+      <path
+        d="M12 24A14.3 14.3 0 0 0 0 12 14.3 14.3 0 0 0 12 0a14.3 14.3 0 0 0 12 12 14.3 14.3 0 0 0-12 12z"
+        fill={`url(#${gradientId})`}
+      />
+      <defs>
+        <linearGradient
+          gradientUnits="userSpaceOnUse"
+          id={gradientId}
+          x1="0"
+          x2="24"
+          y1="24"
+          y2="0"
+        >
+          <stop stopColor="#217BFE" />
+          <stop offset="1" stopColor="#AC87EB" />
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+// Kimi (Moonshot AI): dark tile with a white K.
+export function KimiGlyph({ size = 16, ...props }: GlyphProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      {...props}
+    >
+      <rect width="24" height="24" rx="5.4" fill="#16161D" />
+      <path
+        d="M8 5.6h2.6v5.1l4.5-5.1h3.3l-5 5.6 5.2 7.2h-3.2l-3.7-5.3-1.1 1.2v4.1H8z"
+        fill="#fff"
+      />
+    </svg>
+  );
+}
+
+// opencode: dark terminal tile with a prompt chevron + cursor underscore.
+export function OpencodeGlyph({ size = 16, ...props }: GlyphProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      {...props}
+    >
+      <rect width="24" height="24" rx="5.4" fill="#0A0A0A" />
+      <path
+        d="M7.2 8.4 11 11.9l-3.8 3.5"
+        stroke="#fff"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M12.9 15.6h4.3"
+        stroke="#fff"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+// MiMo Code (Xiaomi): the brand-orange tile with a white M.
+export function MimoGlyph({ size = 16, ...props }: GlyphProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      {...props}
+    >
+      <rect width="24" height="24" rx="5.4" fill="#FF6900" />
+      <path
+        d="M6.4 17.2V6.8h2.5l3.1 5.4 3.1-5.4h2.5v10.4h-2.4v-6l-2.6 4.4h-1.2l-2.6-4.4v6z"
+        fill="#fff"
+      />
+    </svg>
+  );
+}
+
 // A connected partner: a filled heart in the Partners accent, so a consulted
 // partner reads as a companion (not a CLI) everywhere a connected agent appears.
 export function PartnerGlyph({ size = 16, ...props }: GlyphProps) {
@@ -94,6 +196,10 @@ export type AgentGlyph = ComponentType<GlyphProps>;
 export function agentGlyph(kind: string | undefined): AgentGlyph | null {
   if (kind === "claude_code") return ClaudeGlyph;
   if (kind === "codex") return CodexGlyph;
+  if (kind === "gemini") return GeminiGlyph;
+  if (kind === "kimi") return KimiGlyph;
+  if (kind === "opencode") return OpencodeGlyph;
+  if (kind === "mimo") return MimoGlyph;
   if (kind === "partner") return PartnerGlyph;
   return null;
 }

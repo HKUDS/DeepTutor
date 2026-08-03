@@ -101,5 +101,16 @@ class KnowledgeCapability:
 
     exclusive_tools: bool = True
 
+    def owned_kbs(self, context: UnifiedContext) -> set[str]:
+        """Selected KB refs this capability consumes through its own tools.
+
+        Returned refs are excluded from the ``rag`` surface so that co-selected
+        KBs the capability does NOT own (e.g. plain LlamaIndex KBs alongside an
+        Obsidian vault) stay reachable via ``rag`` instead of being silently
+        dropped when the capability owns the turn (issue #650). Default: none.
+        """
+        _ = context
+        return set()
+
 
 __all__ = ["KnowledgeCapability", "LoopCapability", "PromptBlock"]

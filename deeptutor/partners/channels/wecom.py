@@ -61,10 +61,9 @@ class WecomChannel(BaseChannel):
         self.config: WecomConfig = config
         self._client: Any = None
         self._processed_message_ids: OrderedDict[str, None] = OrderedDict()
-        self._loop: asyncio.AbstractEventLoop | None = None
         self._generate_req_id = None
-        # Store frame headers for each chat to enable replies
-        self._chat_frames: dict[str, Any] = {}
+        # Store frame headers for each chat to enable replies (LRU-bounded)
+        self._chat_frames: OrderedDict[str, Any] = OrderedDict()
 
     async def start(self) -> None:
         """Start the WeCom bot with WebSocket long connection."""
@@ -79,18 +78,15 @@ class WecomChannel(BaseChannel):
         from wecom_aibot_sdk import WSClient, generate_req_id
 
         self._running = True
-        self._loop = asyncio.get_running_loop()
         self._generate_req_id = generate_req_id
 
         # Create WebSocket client
         self._client = WSClient(
-            {
-                "bot_id": self.config.bot_id,
-                "secret": self.config.secret,
-                "reconnect_interval": 1000,
-                "max_reconnect_attempts": -1,  # Infinite reconnect
-                "heartbeat_interval": 30000,
-            }
+            self.config.bot_id,
+            self.config.secret,
+            reconnect_interval=1000,
+            max_reconnect_attempts=-1,  # Infinite reconnect
+            heartbeat_interval=30000,
         )
 
         # Register event handlers
@@ -109,7 +105,7 @@ class WecomChannel(BaseChannel):
         logger.info("No public IP required - using WebSocket to receive events")
 
         # Connect
-        await self._client.connect_async()
+        await self._client.connect()
 
         # Keep running until stopped
         while self._running:
@@ -122,11 +118,11 @@ class WecomChannel(BaseChannel):
             await self._client.disconnect()
         logger.info("WeCom bot stopped")
 
-    async def _on_connected(self, frame: Any) -> None:
+    async def _on_connected(self, frame: Any = None) -> None:
         """Handle WebSocket connected event."""
         logger.info("WeCom WebSocket connected")
 
-    async def _on_authenticated(self, frame: Any) -> None:
+    async def _on_authenticated(self, frame: Any = None) -> None:
         """Handle authentication success event."""
         logger.info("WeCom authenticated successfully")
 
@@ -159,18 +155,25 @@ class WecomChannel(BaseChannel):
         """Handle mixed content message."""
         await self._process_message(frame, "mixed")
 
+    @staticmethod
+    def _frame_body(frame: Any) -> dict[str, Any]:
+        """Extract the body dict from a WsFrame dataclass or dict frame."""
+        if hasattr(frame, "body"):
+            body = frame.body or {}
+        elif isinstance(frame, dict):
+            body = frame.get("body", frame)
+        else:
+            body = {}
+        if not isinstance(body, dict):
+            logger.warning("Invalid body type: {}", type(body))
+            return {}
+        return body
+
     async def _on_enter_chat(self, frame: Any) -> None:
         """Handle enter_chat event (user opens chat with bot)."""
         try:
-            # Extract body from WsFrame dataclass or dict
-            if hasattr(frame, "body"):
-                body = frame.body or {}
-            elif isinstance(frame, dict):
-                body = frame.get("body", frame)
-            else:
-                body = {}
-
-            chat_id = body.get("chatid", "") if isinstance(body, dict) else ""
+            body = self._frame_body(frame)
+            chat_id = body.get("chatid", "")
 
             if chat_id and self.config.welcome_message:
                 await self._client.reply_welcome(
@@ -186,17 +189,8 @@ class WecomChannel(BaseChannel):
     async def _process_message(self, frame: Any, msg_type: str) -> None:
         """Process incoming message and forward to bus."""
         try:
-            # Extract body from WsFrame dataclass or dict
-            if hasattr(frame, "body"):
-                body = frame.body or {}
-            elif isinstance(frame, dict):
-                body = frame.get("body", frame)
-            else:
-                body = {}
-
-            # Ensure body is a dict
-            if not isinstance(body, dict):
-                logger.warning("Invalid body type: {}", type(body))
+            body = self._frame_body(frame)
+            if not body:
                 return
 
             # Extract message info
@@ -294,6 +288,11 @@ class WecomChannel(BaseChannel):
 
             # Store frame for this chat to enable replies
             self._chat_frames[chat_id] = frame
+            self._chat_frames.move_to_end(chat_id)
+
+            # Trim cache
+            while len(self._chat_frames) > 1000:
+                self._chat_frames.popitem(last=False)
 
             # Forward to message bus
             # Note: media paths are included in content for broader model compatibility

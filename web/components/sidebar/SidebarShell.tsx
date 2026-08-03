@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import SessionList from "@/components/SessionList";
+import { useSidebarDrawer } from "@/components/layout/AppShell";
+import { useDevice } from "@/hooks/useDevice";
 import { VersionBadge } from "@/components/sidebar/VersionBadge";
 import type { SessionSummary } from "@/lib/session-api";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -145,8 +147,21 @@ export function SidebarShell({
   const router = useRouter();
   const { t } = useTranslation();
   const { has } = useCapabilityAccess();
-  const { sidebarCollapsed: collapsed, setSidebarCollapsed: setCollapsed } =
-    useAppShell();
+  const { sidebarCollapsed, setSidebarCollapsed: setCollapsed } = useAppShell();
+  const { isMobile } = useDevice();
+  const drawer = useSidebarDrawer();
+
+  // Inside the mobile drawer the icon-only rail is pointless — the panel is
+  // already hidden when you don't want it, so it always opens fully expanded
+  // regardless of the persisted desktop preference.
+  const collapsed = sidebarCollapsed && !isMobile;
+
+  /** Dismiss the drawer on nav clicks that actually navigate in-place. */
+  const closeDrawerOnNav = (event: React.MouseEvent) => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1)
+      return;
+    drawer?.close();
+  };
 
   const navLocked = (item: NavEntry) =>
     item.requires ? !has(item.requires) : false;
@@ -181,6 +196,7 @@ export function SidebarShell({
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1)
       return;
     event.preventDefault();
+    drawer?.close();
     onNewChat?.();
     router.push("/home");
   };
@@ -188,7 +204,7 @@ export function SidebarShell({
   /* ---- Collapsed state ---- */
   if (collapsed) {
     return (
-      <aside className="group/sb relative flex h-screen w-[60px] shrink-0 flex-col items-center bg-[var(--secondary)] py-3 transition-all duration-200">
+      <aside className="group/sb relative flex h-dvh w-[60px] shrink-0 flex-col items-center bg-[var(--secondary)] py-3 transition-all duration-200">
         {/* Header: logo + collapse toggle (toggle replaces logo on hover) */}
         <div className="relative mb-2 flex h-9 w-9 items-center justify-center">
           <Link
@@ -321,7 +337,7 @@ export function SidebarShell({
 
   /* ---- Expanded state ---- */
   return (
-    <aside className="flex w-[220px] h-screen shrink-0 flex-col bg-[var(--secondary)] transition-all duration-200">
+    <aside className="flex w-[220px] h-dvh shrink-0 flex-col bg-[var(--secondary)] transition-all duration-200">
       {/* Header: logo + collapse toggle */}
       <div className="flex h-14 items-center justify-between px-4">
         <Link href="/" className="group flex items-center gap-1.5">
@@ -341,9 +357,11 @@ export function SidebarShell({
             className="h-[22px] w-auto transition-transform duration-200 group-hover:scale-105"
           />
         </Link>
+        {/* The rail is a desktop affordance; in the drawer the scrim and the
+            top-bar toggle already own "make this go away". */}
         <button
           onClick={() => setCollapsed(true)}
-          className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+          className="rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] max-md:hidden"
           aria-label={t("Collapse sidebar")}
         >
           <PanelLeftClose size={15} />
@@ -380,7 +398,9 @@ export function SidebarShell({
               <Link
                 key={item.href}
                 href={item.href}
-                onClick={item.href === "/home" ? handleHomeClick : undefined}
+                onClick={
+                  item.href === "/home" ? handleHomeClick : closeDrawerOnNav
+                }
                 className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
                   active
                     ? "bg-[var(--accent)] font-medium text-[var(--foreground)]"
@@ -430,7 +450,10 @@ export function SidebarShell({
                 sessions={sessions}
                 activeSessionId={activeSessionId}
                 loading={loadingSessions}
-                onSelect={onSelectSession}
+                onSelect={(sessionId) => {
+                  drawer?.close();
+                  return onSelectSession(sessionId);
+                }}
                 onRename={onRenameSession}
                 onDelete={onDeleteSession}
                 compact
@@ -455,6 +478,7 @@ export function SidebarShell({
             <Link
               key={item.href}
               href={item.href}
+              onClick={closeDrawerOnNav}
               className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
                 active
                   ? "bg-[var(--accent)] font-medium text-[var(--foreground)]"

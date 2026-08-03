@@ -176,12 +176,35 @@ async def test_read_missing_note_is_graceful(tmp_path: Path) -> None:
 # ---- exclusivity & registry --------------------------------------------------
 
 
-def test_exclusive_compose_drops_everything_but_owned_and_ask_user() -> None:
+def test_exclusive_compose_drops_builtins_but_keeps_coexisting_rag() -> None:
+    # Issue #650: an exclusive capability drops chat built-ins / composer
+    # toggles, but the KB built-ins coexist when has_kb is set — co-selected
+    # LlamaIndex KBs the capability does not own stay both searchable (rag) and
+    # enumerable (kb_files). Other flags (code/memory) stay dropped.
     composed = compose_enabled_tools(
         registry=get_tool_registry(),
         requested_tools=["web_search", "reason"],
         optional_whitelist=["web_search", "reason"],
         mount_flags=ToolMountFlags(has_kb=True, has_code=True, has_memory=True),
+        capability_owned=["obsidian_search", "obsidian_read"],
+        exclusive=True,
+    )
+    assert set(composed) == {
+        "obsidian_search",
+        "obsidian_read",
+        "rag",
+        "kb_files",
+        "ask_user",
+    }
+
+
+def test_exclusive_compose_pure_vault_mounts_no_rag() -> None:
+    # No coexisting KBs (has_kb=False) → pure vault turn, rag stays off.
+    composed = compose_enabled_tools(
+        registry=get_tool_registry(),
+        requested_tools=["web_search"],
+        optional_whitelist=["web_search"],
+        mount_flags=ToolMountFlags(has_kb=False),
         capability_owned=["obsidian_search", "obsidian_read"],
         exclusive=True,
     )
@@ -194,3 +217,23 @@ def test_registry_flags_obsidian_turn_as_exclusive(monkeypatch, tmp_path: Path) 
     plain_turn = UnifiedContext(user_message="hi", knowledge_bases=["plain-kb"])
     assert any_exclusive_capability_active(obsidian_turn) is True
     assert any_exclusive_capability_active(plain_turn) is False
+
+
+def test_owned_kbs_reports_only_vault_refs(monkeypatch, tmp_path: Path) -> None:
+    # Issue #650: the capability owns only the vault; a co-selected LlamaIndex KB
+    # must NOT be reported as owned (so it keeps its rag surface).
+    _bind(monkeypatch, str(tmp_path))  # only "myvault" resolves as obsidian
+    cap = ObsidianCapability()
+    ctx = UnifiedContext(user_message="hi", knowledge_bases=["myvault", "kb-plain"])
+    assert cap.owned_kbs(ctx) == {"myvault"}
+
+
+def test_obsidian_vault_refs_enumerates_every_selected_vault(monkeypatch, tmp_path: Path) -> None:
+    def fake(ref):
+        if ref in {"vaultA", "vaultB"}:
+            return {"name": ref, "type": "obsidian", "vault_path": str(tmp_path)}
+        return {"name": ref, "type": None}
+
+    monkeypatch.setattr("deeptutor.multi_user.knowledge_access.resolve_kb_metadata", fake)
+    ctx = UnifiedContext(user_message="hi", knowledge_bases=["vaultA", "kb1", "vaultB"])
+    assert obsidian_binding.obsidian_vault_refs(ctx) == {"vaultA", "vaultB"}

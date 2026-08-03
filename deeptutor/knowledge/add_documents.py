@@ -15,6 +15,7 @@ import shutil
 from typing import List, Optional
 
 from deeptutor.services.config import resolve_llm_runtime_config
+from deeptutor.services.file_io import atomic_write_json
 from deeptutor.services.rag.factory import (
     DEFAULT_PROVIDER,
     has_ready_provider_index,
@@ -91,9 +92,8 @@ def _read_metadata(metadata_file: Path) -> dict:
 
 
 def _write_metadata(metadata_file: Path, metadata: dict) -> None:
-    """Persist a KB's metadata.json (pretty-printed, non-ASCII preserved)."""
-    with open(metadata_file, "w", encoding="utf-8") as f:
-        json.dump(metadata, f, indent=2, ensure_ascii=False)
+    """Persist a KB's metadata.json atomically (pretty-printed, non-ASCII preserved)."""
+    atomic_write_json(metadata_file, metadata)
 
 
 def _raw_hash_key(file_path: Path, raw_dir: Path) -> str:
@@ -329,8 +329,7 @@ class DocumentAdder:
         )
         metadata["update_history"] = history
 
-        with open(self.metadata_file, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, indent=2, ensure_ascii=False)
+        _write_metadata(self.metadata_file, metadata)
 
 
 async def add_documents(

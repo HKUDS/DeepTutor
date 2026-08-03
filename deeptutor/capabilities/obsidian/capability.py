@@ -15,7 +15,7 @@ from __future__ import annotations
 from importlib import resources
 from typing import Any
 
-from deeptutor.capabilities.obsidian.binding import vault_for_turn
+from deeptutor.capabilities.obsidian.binding import obsidian_vault_refs, vault_for_turn
 from deeptutor.capabilities.obsidian.tools import OBSIDIAN_TOOL_NAMES
 from deeptutor.capabilities.protocol import KnowledgeCapability, PromptBlock
 from deeptutor.core.context import UnifiedContext
@@ -29,6 +29,12 @@ class ObsidianCapability(KnowledgeCapability):
 
     def is_active(self, context: UnifiedContext) -> bool:
         return vault_for_turn(context) is not None
+
+    def owned_kbs(self, context: UnifiedContext) -> set[str]:
+        # The selected vault KB(s) are read/authored through the Obsidian tools,
+        # never through rag — exclude them so co-selected LlamaIndex KBs keep
+        # their rag surface (issue #650).
+        return obsidian_vault_refs(context)
 
     def system_block(
         self,

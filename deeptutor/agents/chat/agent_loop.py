@@ -31,12 +31,21 @@ import re
 from typing import TYPE_CHECKING, Any
 
 from deeptutor.agents._shared.capability_result import emit_capability_result
+from deeptutor.agents.chat.context_budget import LLMRequestSnapshot
+from deeptutor.agents.chat.dsml_tool_calls import extract_dsml_tool_calls, has_dsml_tool_calls
+from deeptutor.core.agentic.messages import assistant_message_with_tool_calls
 from deeptutor.core.agentic.tool_dispatch import DispatchOutcome
+from deeptutor.core.agentic.usage import message_content_chars, record_streamed_usage
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.trace import build_trace_metadata, merge_trace_metadata, new_call_id
 from deeptutor.services.llm import clean_thinking_tags
 from deeptutor.services.llm.multimodal import should_degrade_to_text, strip_image_parts_inplace
+from deeptutor.services.llm.request_compat import (
+    is_image_input_unsupported,
+    is_stream_options_unsupported,
+    is_tool_schema_unsupported,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
@@ -158,6 +167,7 @@ class AgentLoop:
         self.client = client
         self.enabled_tools = enabled_tools
         self.tool_schemas = tool_schemas
+        self._last_request: LLMRequestSnapshot | None = None
 
     async def run(self) -> None:
         state = AgentLoopState()
@@ -198,15 +208,20 @@ class AgentLoop:
                 stage=LOOP_STAGE,
                 metadata={"trace_kind": "sources"},
             )
+        payload: dict[str, Any] = {
+            "response": outcome.final_text,
+            "completed": outcome.completed,
+            "engine": "agent_loop",
+            "rounds": state.rounds,
+            "tool_steps": state.tool_steps,
+        }
+        if self._last_request is not None:
+            budget = self.pipeline.measure_context_budget(self._last_request)
+            if budget is not None:
+                payload["metadata"] = {"context_budget": budget}
         await emit_capability_result(
             self.stream,
-            {
-                "response": outcome.final_text,
-                "completed": outcome.completed,
-                "engine": "agent_loop",
-                "rounds": state.rounds,
-                "tool_steps": state.tool_steps,
-            },
+            payload,
             source="chat",
             usage=self.pipeline.usage,
         )
@@ -298,7 +313,7 @@ class AgentLoop:
                 # Finish: the text streamed live this round IS the answer.
                 return await self._finalize_finish(final_text)
 
-            messages.append(_assistant_message_with_tool_calls(result.text, result.tool_calls))
+            messages.append(assistant_message_with_tool_calls(result.text, result.tool_calls))
             dispatch = await self.pipeline._dispatch_tool_calls(
                 tool_calls=result.tool_calls,
                 context=self.context,
@@ -463,13 +478,35 @@ class AgentLoop:
         if tool_schemas:
             kwargs["tools"] = tool_schemas
             kwargs["tool_choice"] = "auto"
+        # What this request actually carried, pinned now: the loop keeps
+        # appending to ``messages`` and the deferred loader keeps appending to
+        # ``tool_schemas``, so the turn's context budget is read off the last
+        # snapshot rather than off the lists' end state.
+        #
+        # The forced-finish round deliberately ships no ``tools`` so the model
+        # must answer. That absence is a loop mechanic, not a turn that ran
+        # without tools, so the last non-empty schema list stands — otherwise a
+        # turn that spent eight rounds calling tools would report zero tokens
+        # for the schemas that sat in its window the whole time.
+        carried = list(tool_schemas or [])
+        if not carried and self._last_request is not None:
+            carried = self._last_request.tool_schemas
+        self._last_request = LLMRequestSnapshot(messages=list(messages), tool_schemas=carried)
 
-        before_usage_calls = self.pipeline.usage.calls
+        # Providers (esp. Gemini OpenAI-compat) may attach ``usage`` to more
+        # than one stream chunk. Keep the latest frame; it is recorded once
+        # after the stream via ``record_streamed_usage``.
+        usage_seen: Any = None
         text_parts: list[str] = []
         tool_acc: dict[int, dict[str, str]] = {}
         output_chars = 0
         finish_reason = ""
         think_filter = InlineThinkFilter()
+        # Once a round's content channel starts carrying DeepSeek DSML tool-call
+        # markup (issue #666), divert the rest of it to the thinking channel so
+        # the raw markup never streams as the user-facing answer. It is parsed
+        # into real tool calls after the stream completes.
+        dsml_stream_active = False
         chunk_meta = merge_trace_metadata(trace_meta, {"trace_kind": "llm_chunk"})
 
         async def _emit_segments(segments: list[tuple[str, str]]) -> None:
@@ -488,7 +525,7 @@ class AgentLoop:
             async for chunk in response_stream:
                 usage = getattr(chunk, "usage", None)
                 if usage is not None:
-                    self.pipeline.usage.add_from_response(usage)
+                    usage_seen = usage
                 choices = getattr(chunk, "choices", None) or []
                 if not choices:
                     continue
@@ -519,7 +556,12 @@ class AgentLoop:
                     # whether to render it as narration or as the answer.
                     # Inline <think> segments are split off to the thinking
                     # channel so the content stream stays user-facing.
-                    await _emit_segments(think_filter.feed(content))
+                    if not dsml_stream_active and has_dsml_tool_calls("".join(text_parts)):
+                        dsml_stream_active = True
+                    segments = think_filter.feed(content)
+                    if dsml_stream_active:
+                        segments = [("thinking", seg) for _, seg in segments]
+                    await _emit_segments(segments)
 
                 for tc_delta in getattr(delta, "tool_calls", None) or []:
                     index = int(getattr(tc_delta, "index", 0) or 0)
@@ -544,13 +586,17 @@ class AgentLoop:
                 with suppress(Exception):
                     await close()
 
-        await _emit_segments(think_filter.flush())
+        flushed = think_filter.flush()
+        if dsml_stream_active:
+            flushed = [("thinking", seg) for _, seg in flushed]
+        await _emit_segments(flushed)
         text = "".join(text_parts)
-        if self.pipeline.usage.calls == before_usage_calls:
-            self.pipeline.usage.add_estimated(
-                input_chars=sum(_message_content_chars(message) for message in messages),
-                output_chars=output_chars,
-            )
+        record_streamed_usage(
+            self.pipeline.usage,
+            usage_seen,
+            input_chars=sum(message_content_chars(message) for message in messages),
+            output_chars=output_chars,
+        )
 
         tool_calls = [
             {
@@ -561,6 +607,17 @@ class AgentLoop:
             for idx, data in sorted(tool_acc.items())
             if data.get("name")
         ]
+
+        # Fallback: a DeepSeek deployment without native function calling emits
+        # its tool calls as DSML markup in the content channel instead of as
+        # structured ``tool_calls`` (issue #666). Parse them out so the normal
+        # dispatch path runs the tools, and drop the markup from ``text`` so it
+        # can't leak into the conversation / answer.
+        if not tool_calls:
+            dsml_calls, cleaned_text = extract_dsml_tool_calls(text)
+            if dsml_calls:
+                tool_calls = dsml_calls
+                text = cleaned_text
 
         await self.stream.progress(
             "",
@@ -588,11 +645,11 @@ class AgentLoop:
         try:
             return await self.client.chat.completions.create(**kwargs)
         except Exception as exc:
-            if "stream_options" in kwargs and _is_stream_options_unsupported(exc):
+            if "stream_options" in kwargs and is_stream_options_unsupported(exc):
                 retry_kwargs = dict(kwargs)
                 retry_kwargs.pop("stream_options", None)
                 return await self.client.chat.completions.create(**retry_kwargs)
-            if kwargs.get("tools") and _is_tool_schema_unsupported(exc):
+            if kwargs.get("tools") and is_tool_schema_unsupported(exc):
                 await self.stream.progress(
                     self.pipeline._t(
                         "notices.tool_schema_fallback",
@@ -610,7 +667,7 @@ class AgentLoop:
                 retry_kwargs.pop("tool_choice", None)
                 self.tool_schemas = None
                 return await self.client.chat.completions.create(**retry_kwargs)
-            if _is_image_input_unsupported(exc) and should_degrade_to_text(
+            if is_image_input_unsupported(exc) and should_degrade_to_text(
                 self.pipeline.binding,
                 self.pipeline.model,
                 kwargs.get("messages") or [],
@@ -632,42 +689,6 @@ class AgentLoop:
             raise
 
 
-def _assistant_message_with_tool_calls(
-    content: str,
-    tool_calls: list[dict[str, Any]],
-) -> dict[str, Any]:
-    return {
-        "role": "assistant",
-        "content": content or None,
-        "tool_calls": [
-            {
-                "id": tc["id"],
-                "type": "function",
-                "function": {
-                    "name": tc["name"],
-                    "arguments": tc.get("arguments") or "{}",
-                },
-            }
-            for tc in tool_calls
-        ],
-    }
-
-
-def _message_content_chars(message: dict[str, Any]) -> int:
-    content = message.get("content")
-    if isinstance(content, str):
-        return len(content)
-    if isinstance(content, list):
-        total = 0
-        for part in content:
-            if isinstance(part, dict):
-                total += len(str(part.get("text") or ""))
-            elif isinstance(part, str):
-                total += len(part)
-        return total
-    return 0
-
-
 def _last_context_checkpoint_summary(dispatch: DispatchOutcome) -> str:
     summary = ""
     for tool_message in dispatch.tool_messages:
@@ -680,69 +701,6 @@ def _last_context_checkpoint_summary(dispatch: DispatchOutcome) -> str:
         if candidate:
             summary = candidate
     return summary
-
-
-def _error_text(exc: Exception) -> str:
-    response = getattr(exc, "response", None)
-    body = (
-        getattr(exc, "body", None)
-        or getattr(exc, "doc", None)
-        or getattr(response, "text", None)
-        or getattr(exc, "message", None)
-        or str(exc)
-    )
-    return str(body).lower()
-
-
-def _is_stream_options_unsupported(exc: Exception) -> bool:
-    text = _error_text(exc)
-    return any(
-        marker in text
-        for marker in (
-            "stream_options",
-            "stream options",
-            "unknown parameter",
-            "unrecognized request argument",
-            "unsupported parameter",
-            "extra inputs are not permitted",
-            "unexpected keyword",
-        )
-    )
-
-
-def _is_tool_schema_unsupported(exc: Exception) -> bool:
-    text = _error_text(exc)
-    return any(
-        marker in text
-        for marker in (
-            "tool",
-            "function_declaration",
-            "function declaration",
-            "function_declarations",
-            "tool_choice",
-            "parameters.properties",
-            "404_not_found",
-            "404 not_found",
-        )
-    )
-
-
-def _is_image_input_unsupported(exc: Exception) -> bool:
-    text = _error_text(exc)
-    return any(
-        marker in text
-        for marker in (
-            "image",
-            "vision",
-            "multimodal",
-            "image_url",
-            "content type",
-            "must be a string",
-            "expected a string",
-            "expected string",
-            "invalid type for 'messages",
-        )
-    )
 
 
 __all__ = [

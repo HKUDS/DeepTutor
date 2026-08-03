@@ -40,7 +40,8 @@ function collectTests(dir) {
 
 rmSync(distRoot, { recursive: true, force: true });
 
-run(path.join(webRoot, "node_modules", ".bin", "tsc"), [
+run(process.execPath, [
+  path.join(webRoot, "node_modules", "typescript", "bin", "tsc"),
   "-p",
   "tsconfig.node-tests.json",
 ]);
@@ -51,4 +52,9 @@ if (testFiles.length === 0) {
   process.exit(1);
 }
 
-run(process.execPath, ["--test", ...testFiles]);
+run(process.execPath, [
+  "-r",
+  "./scripts/register-node-test-aliases.cjs",
+  "--test",
+  ...testFiles,
+]);

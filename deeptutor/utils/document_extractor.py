@@ -31,35 +31,18 @@ from defusedxml.common import DefusedXmlException
 
 from deeptutor.services.rag.file_routing import FileTypeRouter
 
-try:
-    import fitz  # pymupdf
-except ImportError:  # pragma: no cover
-    fitz = None  # type: ignore[assignment]
-
-try:
-    from pypdf import PdfReader
-    from pypdf.errors import FileNotDecryptedError as _PypdfNotDecryptedError
-except ImportError:  # pragma: no cover
-    PdfReader = None  # type: ignore[assignment]
-    _PypdfNotDecryptedError = Exception  # type: ignore[assignment,misc]
-
-try:
-    from docx import Document as DocxDocument
-except ImportError:  # pragma: no cover
-    DocxDocument = None  # type: ignore[assignment]
-
-try:
-    from openpyxl import load_workbook
-except ImportError:  # pragma: no cover
-    load_workbook = None  # type: ignore[assignment]
-
-try:
-    from pptx import Presentation as PptxPresentation
-except ImportError:  # pragma: no cover
-    PptxPresentation = None  # type: ignore[assignment]
-
-
 logger = logging.getLogger(__name__)
+
+# Optional parser libraries are resolved on first use.  The public-ish module
+# names remain overrideable because downstream deployments and tests use
+# ``None`` to force the pure-OOXML fallback.
+_NOT_LOADED = object()
+fitz: Any = _NOT_LOADED
+PdfReader: Any = _NOT_LOADED
+_PypdfNotDecryptedError: Any = _NOT_LOADED
+DocxDocument: Any = _NOT_LOADED
+load_workbook: Any = _NOT_LOADED
+PptxPresentation: Any = _NOT_LOADED
 
 
 _OFFICE_EXTENSIONS: frozenset[str] = frozenset(FileTypeRouter.PARSER_EXTENSIONS)
@@ -68,10 +51,40 @@ _OFFICE_EXTENSIONS: frozenset[str] = frozenset(FileTypeRouter.PARSER_EXTENSIONS)
 TEXT_LIKE_EXTENSIONS: frozenset[str] = frozenset(FileTypeRouter.TEXT_EXTENSIONS)
 SUPPORTED_DOC_EXTENSIONS: frozenset[str] = _OFFICE_EXTENSIONS | TEXT_LIKE_EXTENSIONS
 
-MAX_DOC_BYTES = 10 * 1024 * 1024
+# Built-in defaults, kept as module constants for callers that pass explicit
+# budgets (the KB text_only engine, tests). The chat turn path resolves the
+# effective values from system.json via ``_current_limits()`` on every call,
+# so the /settings/attachments page applies without a restart.
+MAX_DOC_BYTES = 20 * 1024 * 1024
 MAX_TOTAL_DOC_BYTES = 25 * 1024 * 1024
 MAX_EXTRACTED_CHARS_PER_DOC = 200_000
 MAX_EXTRACTED_CHARS_TOTAL = 150_000
+
+
+def _current_limits() -> tuple[int, int, int, int]:
+    """(max_file_bytes, max_total_bytes, max_chars_per_doc, max_chars_total).
+
+    Falls back to the module defaults when the settings layer is unavailable
+    (e.g. unit tests running without a data directory).
+    """
+    try:
+        from deeptutor.services.config.runtime_settings import get_chat_attachment_limits
+
+        limits = get_chat_attachment_limits()
+        return (
+            limits.max_file_bytes,
+            limits.max_total_bytes,
+            limits.max_chars_per_doc,
+            limits.max_chars_total,
+        )
+    except Exception:  # pragma: no cover - defensive fallback
+        return (
+            MAX_DOC_BYTES,
+            MAX_TOTAL_DOC_BYTES,
+            MAX_EXTRACTED_CHARS_PER_DOC,
+            MAX_EXTRACTED_CHARS_TOTAL,
+        )
+
 
 _PDF_MAGIC = b"%PDF-"
 _OOXML_MAGIC = b"PK\x03\x04"
@@ -201,6 +214,15 @@ def extract_text_from_path(
 
 
 def _extract_pdf(data: bytes, filename: str) -> str:
+    global fitz, PdfReader, _PypdfNotDecryptedError
+    if fitz is _NOT_LOADED:
+        try:
+            import fitz as fitz_module  # pymupdf
+
+            fitz = fitz_module
+        except ImportError:  # pragma: no cover
+            fitz = None
+
     if fitz is not None:
         try:
             with fitz.open(stream=data, filetype="pdf") as doc:
@@ -216,6 +238,17 @@ def _extract_pdf(data: bytes, filename: str) -> str:
             raise
         except Exception as exc:
             logger.warning("pymupdf failed on %s: %s — falling back to pypdf", filename, exc)
+
+    if PdfReader is _NOT_LOADED:
+        try:
+            from pypdf import PdfReader as reader_type
+            from pypdf.errors import FileNotDecryptedError
+
+            PdfReader = reader_type
+            _PypdfNotDecryptedError = FileNotDecryptedError
+        except ImportError:  # pragma: no cover
+            PdfReader = None
+            _PypdfNotDecryptedError = Exception
 
     if PdfReader is None:
         raise CorruptDocumentError(
@@ -246,6 +279,15 @@ def _extract_pdf(data: bytes, filename: str) -> str:
 
 
 def _extract_docx(data: bytes, filename: str) -> str:
+    global DocxDocument
+    if DocxDocument is _NOT_LOADED:
+        try:
+            from docx import Document as document_type
+
+            DocxDocument = document_type
+        except ImportError:  # pragma: no cover
+            DocxDocument = None
+
     primary_error: Exception | None = None
     primary_text = ""
     if DocxDocument is not None:
@@ -276,6 +318,15 @@ def _extract_docx(data: bytes, filename: str) -> str:
 
 
 def _extract_xlsx(data: bytes, filename: str) -> str:
+    global load_workbook
+    if load_workbook is _NOT_LOADED:
+        try:
+            from openpyxl import load_workbook as workbook_loader
+
+            load_workbook = workbook_loader
+        except ImportError:  # pragma: no cover
+            load_workbook = None
+
     if load_workbook is None:
         return _extract_xlsx_ooxml(data, filename)
     try:
@@ -305,6 +356,15 @@ def _extract_xlsx(data: bytes, filename: str) -> str:
 
 
 def _extract_pptx(data: bytes, filename: str) -> str:
+    global PptxPresentation
+    if PptxPresentation is _NOT_LOADED:
+        try:
+            from pptx import Presentation as presentation_type
+
+            PptxPresentation = presentation_type
+        except ImportError:  # pragma: no cover
+            PptxPresentation = None
+
     if PptxPresentation is None:
         return _extract_pptx_ooxml(data, filename)
     try:
@@ -562,6 +622,7 @@ def extract_documents_from_records(
     """
     doc_texts: list[str] = []
     updated: list[dict] = []
+    max_file_bytes, max_total_bytes, max_chars_per_doc, max_chars_total = _current_limits()
     total_bytes = 0
     total_chars = 0
     over_quota = False
@@ -594,7 +655,7 @@ def extract_documents_from_records(
             updated.append(record)
             continue
 
-        if total_bytes + len(data) > MAX_TOTAL_DOC_BYTES:
+        if total_bytes + len(data) > max_total_bytes:
             over_quota = True
             doc_texts.append(f"[File: {filename} — skipped: total attachment quota exceeded]")
             record["base64"] = ""
@@ -605,7 +666,12 @@ def extract_documents_from_records(
         total_bytes += len(data)
 
         try:
-            text = extract_text_from_bytes(filename, data)
+            text = extract_text_from_bytes(
+                filename,
+                data,
+                max_bytes=max_file_bytes,
+                max_chars=max_chars_per_doc,
+            )
         except DocumentExtractionError as exc:
             logger.info("Document extraction failed for %s: %s", filename, exc)
             doc_texts.append(f"[File: {filename} — could not be read: {exc}]")
@@ -614,7 +680,7 @@ def extract_documents_from_records(
             updated.append(record)
             continue
 
-        remaining_budget = MAX_EXTRACTED_CHARS_TOTAL - total_chars
+        remaining_budget = max_chars_total - total_chars
         if remaining_budget <= 0:
             doc_texts.append(f"[File: {filename} — skipped: total extracted-text quota exceeded]")
             record["base64"] = ""

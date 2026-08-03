@@ -16,18 +16,18 @@ import {
 } from "@/lib/partners-api";
 import {
   ATTACHMENT_ACCEPT,
-  MAX_ATTACHMENT_BYTES,
-  MAX_TOTAL_ATTACHMENT_BYTES,
   classifyFile,
   docIconFor,
   formatBytes,
   isSvgFilename,
 } from "@/lib/doc-attachments";
+import { useAttachmentLimits } from "@/lib/attachment-limits";
 import {
   extractBase64FromDataUrl,
   readFileAsDataUrl,
 } from "@/lib/file-attachments";
 import { useAutoSizedTextarea } from "@/lib/use-auto-sized-textarea";
+import { useImeComposing } from "@/lib/use-ime-composing";
 
 export interface PartnerPendingAttachment {
   type: "image" | "file";
@@ -56,6 +56,7 @@ export const PartnerComposer = memo(function PartnerComposer({
   const [attachments, setAttachments] = useState<PartnerPendingAttachment[]>(
     [],
   );
+  const attachmentLimits = useAttachmentLimits();
   const [dragging, setDragging] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [commands, setCommands] = useState<PartnerCommandInfo[]>([]);
@@ -66,7 +67,8 @@ export const PartnerComposer = memo(function PartnerComposer({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragCounterRef = useRef(0);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isComposingRef = useRef(false);
+  const { isComposingRef, onCompositionStart, onCompositionEnd } =
+    useImeComposing();
 
   useAutoSizedTextarea(textareaRef, input, { min: 24, max: 180 });
 
@@ -131,11 +133,11 @@ export const PartnerComposer = memo(function PartnerComposer({
           rejected.push({ name: file.name, reason: "unsupported" });
           continue;
         }
-        if (file.size > MAX_ATTACHMENT_BYTES) {
+        if (file.size > attachmentLimits.maxFileBytes) {
           rejected.push({ name: file.name, reason: "too_large" });
           continue;
         }
-        if (runningTotal + file.size > MAX_TOTAL_ATTACHMENT_BYTES) {
+        if (runningTotal + file.size > attachmentLimits.maxTotalBytes) {
           rejected.push({ name: file.name, reason: "quota" });
           break;
         }
@@ -160,7 +162,7 @@ export const PartnerComposer = memo(function PartnerComposer({
 
       return accepted;
     },
-    [attachments, showAttachmentError, t],
+    [attachments, attachmentLimits, showAttachmentError, t],
   );
 
   const fileToAttachment = useCallback(
@@ -230,7 +232,14 @@ export const PartnerComposer = memo(function PartnerComposer({
         submit();
       }
     },
-    [acceptCommand, boundedSlashIndex, slashMatches, slashOpen, submit],
+    [
+      acceptCommand,
+      boundedSlashIndex,
+      slashMatches,
+      slashOpen,
+      submit,
+      isComposingRef,
+    ],
   );
 
   const handleInputChange = useCallback(
@@ -390,14 +399,8 @@ export const PartnerComposer = memo(function PartnerComposer({
         onChange={handleInputChange}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
-        onCompositionStart={() => {
-          isComposingRef.current = true;
-        }}
-        onCompositionEnd={() => {
-          setTimeout(() => {
-            isComposingRef.current = false;
-          }, 0);
-        }}
+        onCompositionStart={onCompositionStart}
+        onCompositionEnd={onCompositionEnd}
         placeholder={placeholder ?? t("Type a message...")}
         rows={1}
         maxLength={32000}

@@ -33,6 +33,8 @@ def _llm_chunk(
     *,
     content: str | None = None,
     tool_calls: list[dict[str, Any]] | None = None,
+    usage: Any = None,
+    finish_reason: str | None = None,
 ) -> SimpleNamespace:
     delta_fields: dict[str, Any] = {"content": content}
     if tool_calls is not None:
@@ -49,7 +51,26 @@ def _llm_chunk(
         ]
     else:
         delta_fields["tool_calls"] = None
-    return SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(**delta_fields))])
+    return SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                delta=SimpleNamespace(**delta_fields),
+                finish_reason=finish_reason,
+            )
+        ],
+        usage=usage,
+    )
+
+
+def _usage_only_chunk(*, prompt: int, completion: int, total: int) -> SimpleNamespace:
+    return SimpleNamespace(
+        choices=[],
+        usage=SimpleNamespace(
+            prompt_tokens=prompt,
+            completion_tokens=completion,
+            total_tokens=total,
+        ),
+    )
 
 
 async def _async_llm_stream(chunks: list[SimpleNamespace]):
@@ -254,6 +275,52 @@ async def test_inline_think_streams_to_trace_not_bubble(
     result = _result(events)
     assert result.metadata["response"] == "The answer."
     assert result.metadata["completed"] is True
+
+
+@pytest.mark.asyncio
+async def test_multi_chunk_usage_counts_as_one_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Gemini OpenAI-compat (and similar) may attach usage to several stream
+    chunks. Each completion must still count as one call with the final
+    token totals — not N× inflated ``total_calls`` / tokens."""
+    usage_partial = SimpleNamespace(prompt_tokens=100, completion_tokens=2, total_tokens=102)
+    usage_final = SimpleNamespace(prompt_tokens=100, completion_tokens=5, total_tokens=105)
+    registry = _Registry()
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(content="Hello", usage=usage_partial),
+                _llm_chunk(content=" world", usage=usage_partial),
+                _llm_chunk(content=".", finish_reason="stop", usage=usage_partial),
+                _usage_only_chunk(prompt=100, completion=5, total=105),
+            ]
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(pipeline, UnifiedContext(session_id="s1", user_message="Hi"))
+
+    assert "".join(_contents(events)) == "Hello world."
+    assert client.call_count == 1
+    summary = pipeline.usage.summary()
+    assert summary is not None
+    assert summary["total_calls"] == 1
+    assert summary["prompt_tokens"] == 100
+    assert summary["completion_tokens"] == 5
+    assert summary["total_tokens"] == 105
+    # Final usage frame wins over earlier partials.
+    assert usage_final.total_tokens == summary["total_tokens"]
+    result = _result(events)
+    cost = (result.metadata.get("metadata") or {}).get("cost_summary") or result.metadata.get(
+        "cost_summary"
+    )
+    if cost is not None:
+        assert cost["total_calls"] == 1
+        assert cost["total_tokens"] == 105
 
 
 @pytest.mark.asyncio

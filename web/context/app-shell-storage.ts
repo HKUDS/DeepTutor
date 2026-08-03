@@ -8,6 +8,11 @@ export const RESPONSE_LANGUAGE_STORAGE_KEY = "deeptutor-response-language";
 export const SIDEBAR_COLLAPSED_STORAGE_KEY = "deeptutor.sidebarCollapsed";
 export const CHAT_RESPONSE_TIMEOUT_STORAGE_KEY =
   "deeptutor.chatResponseTimeout";
+export const CODE_BLOCK_THEME_STORAGE_KEY = "deeptutor.code-block-theme";
+export const CODE_BLOCK_SHOW_LINE_NUMBERS_STORAGE_KEY =
+  "deeptutor.code-block-show-line-numbers";
+export const CODE_BLOCK_WRAP_LONG_LINES_STORAGE_KEY =
+  "deeptutor.code-block-wrap-long-lines";
 
 // Mirror of the per-user ``chat_response_timeout`` UI preference. Cached in
 // localStorage so the chat watchdog (a separate provider from Settings) can
@@ -54,6 +59,7 @@ export const ACTIVE_SESSION_EVENT = "deeptutor:active-session";
 export const LANGUAGE_EVENT = "deeptutor:language";
 export const RESPONSE_LANGUAGE_EVENT = "deeptutor:response-language";
 export const SIDEBAR_COLLAPSED_EVENT = "deeptutor:sidebar-collapsed";
+export const CODE_BLOCK_SETTINGS_EVENT = "deeptutor:code-block-settings";
 
 export function normalizeLanguage(
   value: string | null | undefined,
@@ -165,6 +171,120 @@ export function writeStoredSidebarCollapsed(collapsed: boolean): void {
     window.dispatchEvent(
       new CustomEvent(SIDEBAR_COLLAPSED_EVENT, {
         detail: { collapsed },
+      }),
+    );
+  } catch {
+    // localStorage may be unavailable
+  }
+}
+
+// Code block settings defaults
+export const DEFAULT_CODE_BLOCK_THEME = "oneDark";
+export const DEFAULT_CODE_BLOCK_SHOW_LINE_NUMBERS = false;
+export const DEFAULT_CODE_BLOCK_WRAP_LONG_LINES = false;
+
+export function normalizeCodeBlockTheme(
+  value: string | null | undefined,
+): string {
+  if (!value || value.trim() === "") return DEFAULT_CODE_BLOCK_THEME;
+  return value.trim();
+}
+
+export function readStoredCodeBlockTheme(): string {
+  if (typeof window === "undefined") return DEFAULT_CODE_BLOCK_THEME;
+  try {
+    const raw = window.localStorage.getItem(CODE_BLOCK_THEME_STORAGE_KEY);
+    return normalizeCodeBlockTheme(raw);
+  } catch {
+    return DEFAULT_CODE_BLOCK_THEME;
+  }
+}
+
+export function writeStoredCodeBlockTheme(theme: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      CODE_BLOCK_THEME_STORAGE_KEY,
+      normalizeCodeBlockTheme(theme),
+    );
+    window.dispatchEvent(
+      new CustomEvent(CODE_BLOCK_SETTINGS_EVENT, {
+        detail: { codeBlockTheme: normalizeCodeBlockTheme(theme) },
+      }),
+    );
+  } catch {
+    // localStorage may be unavailable
+  }
+}
+
+export function normalizeCodeBlockShowLineNumbers(
+  value: string | null | undefined,
+): boolean {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return DEFAULT_CODE_BLOCK_SHOW_LINE_NUMBERS;
+}
+
+export function readStoredCodeBlockShowLineNumbers(): boolean {
+  if (typeof window === "undefined")
+    return DEFAULT_CODE_BLOCK_SHOW_LINE_NUMBERS;
+  try {
+    const raw = window.localStorage.getItem(
+      CODE_BLOCK_SHOW_LINE_NUMBERS_STORAGE_KEY,
+    );
+    return normalizeCodeBlockShowLineNumbers(raw);
+  } catch {
+    return DEFAULT_CODE_BLOCK_SHOW_LINE_NUMBERS;
+  }
+}
+
+export function writeStoredCodeBlockShowLineNumbers(show: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      CODE_BLOCK_SHOW_LINE_NUMBERS_STORAGE_KEY,
+      String(show),
+    );
+    window.dispatchEvent(
+      new CustomEvent(CODE_BLOCK_SETTINGS_EVENT, {
+        detail: { codeBlockShowLineNumbers: show },
+      }),
+    );
+  } catch {
+    // localStorage may be unavailable
+  }
+}
+
+export function normalizeCodeBlockWrapLongLines(
+  value: string | null | undefined,
+): boolean {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return DEFAULT_CODE_BLOCK_WRAP_LONG_LINES;
+}
+
+export function readStoredCodeBlockWrapLongLines(): boolean {
+  if (typeof window === "undefined") return DEFAULT_CODE_BLOCK_WRAP_LONG_LINES;
+  try {
+    const raw = window.localStorage.getItem(
+      CODE_BLOCK_WRAP_LONG_LINES_STORAGE_KEY,
+    );
+    return normalizeCodeBlockWrapLongLines(raw);
+  } catch {
+    return DEFAULT_CODE_BLOCK_WRAP_LONG_LINES;
+  }
+}
+
+export function writeStoredCodeBlockWrapLongLines(wrap: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      CODE_BLOCK_WRAP_LONG_LINES_STORAGE_KEY,
+      String(wrap),
+    );
+    window.dispatchEvent(
+      new CustomEvent(CODE_BLOCK_SETTINGS_EVENT, {
+        detail: { codeBlockWrapLongLines: wrap },
       }),
     );
   } catch {

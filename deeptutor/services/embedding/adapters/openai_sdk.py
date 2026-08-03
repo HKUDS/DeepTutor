@@ -73,6 +73,9 @@ class OpenAISDKEmbeddingAdapter(BaseEmbeddingAdapter):
         kwargs: Dict[str, Any] = {
             "model": model,
             "input": request.texts,
+            # Unlike the gateway adapter (which omits `encoding_format` to avoid
+            # HTTP 400s), the official OpenAI/Azure API accepts it and callers
+            # expect float vectors, so pin "float" when none is set explicitly.
             "encoding_format": request.encoding_format or "float",
         }
         dim_value = request.dimensions or self.dimensions

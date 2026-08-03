@@ -24,11 +24,11 @@ import asyncio
 from datetime import datetime, timezone
 import json
 import logging
-import os
 from pathlib import Path
 import shutil
 from typing import Any
 
+from deeptutor.services.file_io import atomic_write_text as _atomic_write_text
 from deeptutor.services.path_service import get_path_service
 
 from .models import Book, BookInputs, ExplorationReport, Page, Progress, Spine
@@ -39,20 +39,6 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 # Atomic JSON helpers
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-def _atomic_write_text(path: Path, text: str) -> None:
-    """Write *text* to *path* atomically (write-temp + rename)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        f.write(text)
-        f.flush()
-        try:
-            os.fsync(f.fileno())
-        except OSError:
-            pass
-    os.replace(tmp, path)
 
 
 def _atomic_write_json(path: Path, payload: Any) -> None:

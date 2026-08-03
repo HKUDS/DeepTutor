@@ -45,6 +45,7 @@ AUTO_MOUNTED_TOOLS: frozenset[str] = frozenset(CONFIGURABLE_BUILTIN_TOOL_NAMES)
 # Insertion order fixes the default surface's conditional-tool order.
 _CONDITIONAL_MOUNT_FLAGS: dict[str, str] = {
     "rag": "has_kb",
+    "kb_files": "has_kb",
     "read_source": "has_sources",
     "read_memory": "has_memory",
     "list_notebook": "has_notebooks",
@@ -54,6 +55,10 @@ _CONDITIONAL_MOUNT_FLAGS: dict[str, str] = {
     "exec": "has_exec",
     "code_execution": "has_code",
 }
+
+# Built-ins that survive an exclusive knowledge capability when other KBs are
+# co-selected: retrieval over them, and enumeration of what they hold.
+_KB_COEXISTING_TOOLS: tuple[str, ...] = ("rag", "kb_files")
 
 
 def default_optional_tools(excluded: Iterable[str] = ()) -> list[str]:
@@ -125,8 +130,12 @@ def compose_enabled_tools(
 
     ``exclusive=True`` flips that for the *knowledge* category (an active
     :class:`~deeptutor.capabilities.protocol.KnowledgeCapability`): the turn
-    runs only on ``capability_owned`` plus the ``ask_user`` floor — no built-ins,
-    no composer toggles, no conditional mounts. The capability owns the surface.
+    runs on ``capability_owned`` plus the ``ask_user`` floor — no other
+    built-ins, no composer toggles. The one exception is ``rag`` when
+    ``mount_flags.has_kb`` is set: it serves co-selected KBs the capability does
+    not own (e.g. LlamaIndex KBs alongside an Obsidian vault), so it coexists
+    with the owned surface instead of being dropped (issue #650). The capability
+    otherwise owns the surface.
 
     ``builtin_whitelist`` gates the *built-in* auto-mounts (steps 2 and 4 —
     the :data:`AUTO_MOUNTED_TOOLS` members). ``None`` (the product-chat default)
@@ -150,7 +159,21 @@ def compose_enabled_tools(
     """
     if exclusive:
         owned = [str(name) for name in capability_owned if str(name).strip()]
-        return _finalize([*owned, "ask_user"], forced, suppressed)
+        # The KB built-ins are the ones that coexist with an exclusive knowledge
+        # capability: they serve co-selected KBs the capability's own tools don't
+        # touch (e.g. LlamaIndex KBs alongside an Obsidian vault). The caller
+        # sets ``has_kb`` only for those coexisting KBs, so a pure-capability
+        # turn still mounts nothing but ``owned`` + the ``ask_user`` floor (#650).
+        extra = (
+            [
+                name
+                for name in _KB_COEXISTING_TOOLS
+                if builtin_whitelist is None or name in builtin_whitelist
+            ]
+            if mount_flags.has_kb
+            else []
+        )
+        return _finalize([*owned, *extra, "ask_user"], forced, suppressed)
 
     def _builtin_allowed(name: str) -> bool:
         return builtin_whitelist is None or name in builtin_whitelist

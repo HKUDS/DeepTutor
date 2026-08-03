@@ -2,6 +2,7 @@
 
 import { LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useTranslation } from "react-i18next";
 import { logout } from "@/lib/auth";
 import { useAuthStatus } from "@/hooks/useAuthStatus";
 
@@ -11,6 +12,7 @@ interface LogoutButtonProps {
 
 export function LogoutButton({ collapsed = false }: LogoutButtonProps) {
   const router = useRouter();
+  const { t } = useTranslation();
   const { enabled } = useAuthStatus();
 
   if (!enabled) return null;
@@ -25,8 +27,8 @@ export function LogoutButton({ collapsed = false }: LogoutButtonProps) {
       <button
         onClick={handleLogout}
         className="rounded-lg p-2 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)]/50 hover:text-red-500"
-        aria-label="Sign out"
-        title="Sign out"
+        aria-label={t("Sign out")}
+        title={t("Sign out")}
       >
         <LogOut size={16} strokeWidth={1.5} />
       </button>
@@ -39,7 +41,7 @@ export function LogoutButton({ collapsed = false }: LogoutButtonProps) {
       className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--background)]/50 hover:text-red-500"
     >
       <LogOut size={16} strokeWidth={1.5} />
-      <span>Sign out</span>
+      <span>{t("Sign out")}</span>
     </button>
   );
 }

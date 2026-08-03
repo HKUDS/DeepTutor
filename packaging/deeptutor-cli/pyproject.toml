@@ -6,7 +6,10 @@ build-backend = "setuptools.build_meta"
 name = "deeptutor-cli"
 dynamic = ["version"]
 description = "CLI-only distribution for DeepTutor"
-requires-python = ">=3.11"
+# Capped below 3.14 to match the main `deeptutor` package (issue #664): 3.14
+# lacks wheels for some compiled base deps (e.g. faiss-cpu), so pip falls back
+# to a source build that fails. Refuse 3.14 cleanly instead.
+requires-python = ">=3.11,<3.14"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 dependencies = [

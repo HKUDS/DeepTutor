@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -199,4 +200,31 @@ class ToolPromptComposer:
         return "\n\n".join(sections)
 
 
-__all__ = ["ToolPromptComposer", "load_prompt_hints"]
+def compose_prompt_text(
+    hints: list[ToolHintEntry],
+    *,
+    format: str = "list",
+    language: str = "en",
+    **opts: Any,
+) -> str:
+    """Render *hints* in the named format.
+
+    Lives here rather than on a registry so every registry — the process-wide
+    one and any scoped view over it — renders a tool list identically instead
+    of each owning a copy of the format dispatch.
+    """
+    composer = ToolPromptComposer(language=language)
+    if format == "list":
+        return composer.format_list(hints)
+    if format == "list_with_usage":
+        return composer.format_list_with_usage(hints)
+    if format == "table":
+        return composer.format_table(hints, control_actions=opts.get("control_actions"))
+    if format == "aliases":
+        return composer.format_aliases(hints)
+    if format == "phased":
+        return composer.format_phased(hints)
+    raise ValueError(f"Unsupported prompt format: {format}")
+
+
+__all__ = ["ToolPromptComposer", "compose_prompt_text", "load_prompt_hints"]

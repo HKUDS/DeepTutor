@@ -1,0 +1,134 @@
+{
+  "cli": [
+    {
+      "type": "tool_call",
+      "content": "cli_mermaid",
+      "metadata": {
+        "tool_name": "cli_mermaid",
+        "tool_source": "cli",
+        "tool_provider": "mermaid",
+        "trace_kind": "tool_call",
+        "call_kind": "tool_planning",
+        "trace_role": "tool",
+        "trace_group": "tool_call",
+        "args": {
+          "args": ["--help"]
+        }
+      }
+    },
+    {
+      "type": "progress",
+      "content": "",
+      "metadata": {
+        "tool_name": "cli_mermaid",
+        "tool_source": "cli",
+        "tool_provider": "mermaid",
+        "trace_kind": "call_status",
+        "call_state": "running",
+        "call_kind": "tool_planning",
+        "trace_role": "tool",
+        "trace_group": "tool_call"
+      }
+    },
+    {
+      "type": "progress",
+      "content": "",
+      "metadata": {
+        "tool_name": "cli_mermaid",
+        "tool_source": "cli",
+        "tool_provider": "mermaid",
+        "trace_kind": "call_status",
+        "call_state": "complete",
+        "call_kind": "tool_planning",
+        "trace_role": "tool",
+        "trace_group": "tool_call"
+      }
+    },
+    {
+      "type": "tool_result",
+      "content": "Usage: cli-anything-mermaid [OPTIONS] [COMMAND] [ARGS]...\n\n  CLI harness for Mermaid Live Editor state files and renderer URLs.\n\nOptions:\n  --json          Emit machine-readable JSON\n  --project TEXT ",
+      "metadata": {
+        "tool_name": "cli_mermaid",
+        "tool_source": "cli",
+        "tool_provider": "mermaid",
+        "trace_kind": "tool_result",
+        "call_kind": "tool_planning",
+        "trace_role": "tool",
+        "trace_group": "tool_call",
+        "tool": "cli_mermaid",
+        "tool_metadata": {
+          "cli_app": "mermaid",
+          "cli_argv": ["--help"],
+          "exit_code": 0,
+          "timed_out": false,
+          "sandbox_error": "",
+          "artifacts": []
+        }
+      }
+    }
+  ],
+  "mcp": [
+    {
+      "type": "tool_call",
+      "content": "mcp_wolfram_WolframAlpha",
+      "metadata": {
+        "tool_name": "mcp_wolfram_WolframAlpha",
+        "tool_source": "mcp",
+        "tool_provider": "wolfram",
+        "trace_kind": "tool_call",
+        "call_kind": "tool_planning",
+        "trace_role": "tool",
+        "trace_group": "tool_call",
+        "args": {
+          "query": "distance from Earth to Mars today"
+        }
+      }
+    },
+    {
+      "type": "progress",
+      "content": "",
+      "metadata": {
+        "tool_name": "mcp_wolfram_WolframAlpha",
+        "tool_source": "mcp",
+        "tool_provider": "wolfram",
+        "trace_kind": "call_status",
+        "call_state": "running",
+        "call_kind": "tool_planning",
+        "trace_role": "tool",
+        "trace_group": "tool_call"
+      }
+    },
+    {
+      "type": "progress",
+      "content": "",
+      "metadata": {
+        "tool_name": "mcp_wolfram_WolframAlpha",
+        "tool_source": "mcp",
+        "tool_provider": "wolfram",
+        "trace_kind": "call_status",
+        "call_state": "complete",
+        "call_kind": "tool_planning",
+        "trace_role": "tool",
+        "trace_group": "tool_call"
+      }
+    },
+    {
+      "type": "tool_result",
+      "content": "<result query='distance from Earth to Mars today' url='https://www.wolframalpha.com/input?i=distance+from+Earth+to+Mars+today'>\n\n# Input interpretation\n\nMars \\| distance from Earth \\| today\n\n# Result ",
+      "metadata": {
+        "tool_name": "mcp_wolfram_WolframAlpha",
+        "tool_source": "mcp",
+        "tool_provider": "wolfram",
+        "trace_kind": "tool_result",
+        "call_kind": "tool_planning",
+        "trace_role": "tool",
+        "trace_group": "tool_call",
+        "tool": "mcp_wolfram_WolframAlpha",
+        "tool_metadata": {
+          "mcp_server": "wolfram",
+          "mcp_tool": "WolframAlpha"
+        }
+      }
+    }
+  ]
+}

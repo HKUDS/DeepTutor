@@ -11,12 +11,13 @@ from fastapi import (
     File,
     Header,
     HTTPException,
+    Request,
     Response,
     UploadFile,
     WebSocket,
     status,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, field_validator
 
 from deeptutor.services.config import load_auth_settings
@@ -48,6 +49,8 @@ from deeptutor.services.auth import (
     set_avatar,
     set_role,
 )
+from deeptutor.services.codex_auth.contracts import CodexAuthError
+from deeptutor.services.codex_auth.service import deliver_codex_oauth_callback
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +58,24 @@ router = APIRouter()
 
 _COOKIE_NAME = "dt_token"
 _COOKIE_MAX_AGE = TOKEN_EXPIRE_HOURS * 3600
+
+
+def _cookie_attrs() -> dict:
+    """Attribute set shared by ``login``'s ``set_cookie`` and ``logout``'s
+    ``delete_cookie``.
+
+    The deletion ``Set-Cookie`` must carry the same attributes as the one
+    that created the cookie — ``delete_cookie`` defaults ``secure=False``,
+    which browsers reject when paired with ``SameSite=None``, silently
+    keeping the old cookie. See #623. Reads the module globals at call time
+    so tests can monkeypatch ``_SECURE``/``_SAMESITE``.
+    """
+    return {
+        "key": _COOKIE_NAME,
+        "httponly": True,
+        "samesite": _SAMESITE,
+        "secure": _SECURE,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -294,7 +315,7 @@ async def ws_require_auth(ws: WebSocket) -> _CtxToken | _WsAuthFailed:
     if not AUTH_ENABLED:
         return _install_current_user(None)
 
-    token = ws.query_params.get("token") or ws.cookies.get("dt_token")
+    token = ws.query_params.get("token") or ws.cookies.get(_COOKIE_NAME)
     payload = decode_token(token) if token else None
     if not payload:
         await ws.close(code=4001)
@@ -349,6 +370,35 @@ def _local_admin_token_payload() -> TokenPayload:
 # ---------------------------------------------------------------------------
 
 
+@router.get("/openai-codex/callback")
+async def receive_codex_oauth_callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+) -> HTMLResponse:
+    headers = {"Cache-Control": "no-store"}
+    try:
+        callback_state = state if len(request.query_params.getlist("state")) == 1 else None
+        await deliver_codex_oauth_callback(code, callback_state, error)
+    except CodexAuthError as exc:
+        return HTMLResponse(
+            (
+                "<!doctype html><title>DeepTutor Codex</title>"
+                "<p>Authentication could not be received. Return to DeepTutor and try again.</p>"
+            ),
+            status_code=exc.http_status,
+            headers=headers,
+        )
+    return HTMLResponse(
+        (
+            "<!doctype html><title>DeepTutor Codex</title>"
+            "<p>Authentication received. You can return to DeepTutor.</p>"
+        ),
+        headers=headers,
+    )
+
+
 @router.get("/status", response_model=AuthStatusResponse)
 async def auth_status(
     authorization: str | None = Header(default=None, alias="Authorization"),
@@ -399,14 +449,7 @@ async def login(body: LoginRequest, response: Response) -> dict:
                 detail="Incorrect email or password",
             )
         payload, pb_token = pb_result
-        response.set_cookie(
-            key=_COOKIE_NAME,
-            value=pb_token,
-            httponly=True,
-            samesite=_SAMESITE,
-            max_age=_COOKIE_MAX_AGE,
-            secure=_SECURE,
-        )
+        response.set_cookie(value=pb_token, max_age=_COOKIE_MAX_AGE, **_cookie_attrs())
         logger.info(f"User '{payload.username}' logged in via PocketBase (role={payload.role!r})")
         return {
             "ok": True,
@@ -425,14 +468,7 @@ async def login(body: LoginRequest, response: Response) -> dict:
         )
 
     token = create_token(result.username, result.role, result.user_id)
-    response.set_cookie(
-        key=_COOKIE_NAME,
-        value=token,
-        httponly=True,
-        samesite=_SAMESITE,
-        max_age=_COOKIE_MAX_AGE,
-        secure=_SECURE,
-    )
+    response.set_cookie(value=token, max_age=_COOKIE_MAX_AGE, **_cookie_attrs())
 
     logger.info(f"User '{result.username}' logged in (role={result.role!r})")
     return {
@@ -446,8 +482,12 @@ async def login(body: LoginRequest, response: Response) -> dict:
 
 @router.post("/logout")
 async def logout(response: Response) -> dict:
-    """Clear the JWT cookie."""
-    response.delete_cookie(key=_COOKIE_NAME, samesite=_SAMESITE)
+    """Clear the JWT cookie.
+
+    Deletion attributes mirror ``login`` structurally via ``_cookie_attrs()``
+    (see the rationale there and #623).
+    """
+    response.delete_cookie(**_cookie_attrs())
     return {"ok": True}
 
 

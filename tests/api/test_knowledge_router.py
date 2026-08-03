@@ -140,6 +140,7 @@ def test_rag_providers_lists_llamaindex_and_pageindex() -> None:
         "graphrag",
         "lightrag",
         "lightrag-server",
+        "ima",
     }
     # LlamaIndex works out of the box; PageIndex needs an API key; GraphRAG and
     # LightRAG are optional local engines (no API key, configured = installed).
@@ -151,10 +152,16 @@ def test_rag_providers_lists_llamaindex_and_pageindex() -> None:
     # (the per-KB endpoint is configured at connect time).
     assert by_id["lightrag-server"]["requires_api_key"] is False
     assert by_id["lightrag-server"]["configured"] is True
+    # Same for IMA: a thin HTTPS client, credentials bound per-KB at connect
+    # time rather than gated by one global key.
+    assert by_id["ima"]["requires_api_key"] is False
+    assert by_id["ima"]["configured"] is True
     # Mode-aware engines advertise their retrieval modes; vector engines don't.
     assert "hybrid" in by_id["lightrag"]["modes"]
     assert "mix" in by_id["lightrag-server"]["modes"]
     assert not by_id["llamaindex"].get("modes")
+    # IMA exposes a single retrieval call, so it advertises no modes.
+    assert not by_id["ima"].get("modes")
 
 
 def test_set_rag_provider_mode_persists_validates_and_reflects() -> None:
@@ -377,6 +384,35 @@ def test_upload_ready_kb_returns_task_id(monkeypatch, tmp_path: Path) -> None:
     assert response.status_code == 200
     body = response.json()
     assert isinstance(body.get("task_id"), str) and body["task_id"]
+
+
+def test_upload_flips_ready_kb_to_processing_before_dispatch(monkeypatch, tmp_path: Path) -> None:
+    """An existing ready KB must not keep reporting ``ready`` between the
+    accepted upload response and the background task's first progress write."""
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    manager.config["knowledge_bases"]["ready-kb"] = {
+        "path": "ready-kb",
+        "rag_provider": "llamaindex",
+        "needs_reindex": False,
+        "status": "ready",
+    }
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", tmp_path / "knowledge_bases")
+
+    async def _noop_upload_task(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(knowledge_router_module, "run_upload_processing_task", _noop_upload_task)
+
+    with TestClient(_build_app()) as client:
+        response = client.post("/api/v1/knowledge/ready-kb/upload", files=_upload_payload())
+
+    assert response.status_code == 200
+    entry = manager.config["knowledge_bases"]["ready-kb"]
+    assert entry["status"] == "processing"
+    # Stage must be a member of the frontend's LIVE_PROGRESS_STAGES set.
+    assert entry["progress"]["stage"] == "starting"
+    assert entry["progress"]["task_id"] == response.json()["task_id"]
 
 
 def test_upload_task_marks_provider_failures_as_error(monkeypatch, tmp_path: Path) -> None:

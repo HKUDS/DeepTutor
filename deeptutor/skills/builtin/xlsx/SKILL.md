@@ -57,9 +57,10 @@ Pick by what the deliverable needs:
 
 ```python
 import pandas as pd
-df = pd.read_excel("in.xlsx")                          # first sheet
-sheets = pd.read_excel("in.xlsx", sheet_name=None)     # dict of all sheets
-df = pd.read_excel("in.xlsx", dtype={"id": str})       # stop id->float coercion
+
+df = pd.read_excel("in.xlsx")  # first sheet
+sheets = pd.read_excel("in.xlsx", sheet_name=None)  # dict of all sheets
+df = pd.read_excel("in.xlsx", dtype={"id": str})  # stop id->float coercion
 ```
 
 To read **computed results** of formulas (not the formula text), use openpyxl
@@ -67,8 +68,9 @@ with `data_only=True` — returns the value Excel last cached:
 
 ```python
 from openpyxl import load_workbook
+
 wb = load_workbook("in.xlsx", data_only=True)
-val = wb["Sheet1"]["B10"].value     # None if Excel never opened/saved the file
+val = wb["Sheet1"]["B10"].value  # None if Excel never opened/saved the file
 ```
 
 Gotcha: never `save()` a workbook loaded with `data_only=True` — that discards
@@ -83,19 +85,21 @@ Large file: `load_workbook(path, read_only=True)` streams rows cheaply.
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 
-wb = Workbook(); ws = wb.active; ws.title = "Summary"
-ws.append(["Region", "Sales"])              # header row
+wb = Workbook()
+ws = wb.active
+ws.title = "Summary"
+ws.append(["Region", "Sales"])  # header row
 for r in [("West", 120), ("East", 95)]:
     ws.append(r)
-ws["B4"] = "=SUM(B2:B3)"                     # see formula gotcha above
+ws["B4"] = "=SUM(B2:B3)"  # see formula gotcha above
 
 ws["A1"].font = Font(bold=True)
 ws["A1"].fill = PatternFill("solid", fgColor="DDDDDD")
 ws["A1"].alignment = Alignment(horizontal="center")
-ws["B2"].number_format = "#,##0"            # thousands separator
+ws["B2"].number_format = "#,##0"  # thousands separator
 ws.column_dimensions["A"].width = 18
-ws.freeze_panes = "A2"                       # freeze header
-wb.create_sheet("Detail")                    # second sheet
+ws.freeze_panes = "A2"  # freeze header
+wb.create_sheet("Detail")  # second sheet
 wb.save("out.xlsx")
 ```
 
@@ -112,7 +116,8 @@ rewrites the whole sheet, losing styles).
 
 ```python
 from openpyxl import load_workbook
-wb = load_workbook("in.xlsx")               # keep formulas (data_only=False)
+
+wb = load_workbook("in.xlsx")  # keep formulas (data_only=False)
 ws = wb["Sheet1"]
 ws["C2"] = "Updated"
 wb.save("in.xlsx")
@@ -129,10 +134,13 @@ affected formulas yourself, or avoid structural shifts in formula-heavy sheets.
 
 ```python
 from openpyxl.chart import BarChart, Reference
-ch = BarChart(); ch.title = "Sales"
-data = Reference(ws, min_col=2, min_row=1, max_row=3)   # include header for title
+
+ch = BarChart()
+ch.title = "Sales"
+data = Reference(ws, min_col=2, min_row=1, max_row=3)  # include header for title
 cats = Reference(ws, min_col=1, min_row=2, max_row=3)
-ch.add_data(data, titles_from_data=True); ch.set_categories(cats)
+ch.add_data(data, titles_from_data=True)
+ch.set_categories(cats)
 ws.add_chart(ch, "E2")
 ```
 LineChart / PieChart / ScatterChart follow the same shape.
@@ -145,10 +153,15 @@ that recalc surfaced (`#REF!` bad reference, `#DIV/0!` zero denominator,
 
 ```python
 from openpyxl import load_workbook
+
 wb = load_workbook("out.xlsx", data_only=True)
-errs = [f"{s}!{c.coordinate}={c.value}"
-        for s in wb.sheetnames for row in wb[s].iter_rows() for c in row
-        if isinstance(c.value, str) and c.value.startswith("#")]
+errs = [
+    f"{s}!{c.coordinate}={c.value}"
+    for s in wb.sheetnames
+    for row in wb[s].iter_rows()
+    for c in row
+    if isinstance(c.value, str) and c.value.startswith("#")
+]
 print(errs or "clean")
 ```
 This only catches errors in *cached* values. If you wrote formulas and couldn't
@@ -159,7 +172,7 @@ sidesteps this.
 ## CSV / TSV
 
 ```python
-df = pd.read_csv("in.csv")                   # sep="\t" for TSV
+df = pd.read_csv("in.csv")  # sep="\t" for TSV
 df.to_csv("out.csv", index=False)
 ```
 For messy input (junk rows, header not on row 1, ragged columns): inspect raw

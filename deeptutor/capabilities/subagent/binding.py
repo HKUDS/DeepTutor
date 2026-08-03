@@ -52,4 +52,28 @@ def _resolve(context: UnifiedContext) -> dict[str, str] | None:
     return None
 
 
-__all__ = ["connection_for_turn"]
+def subagent_refs(context: UnifiedContext) -> set[str]:
+    """Return every selected KB ref that resolves to a connected subagent.
+
+    A subagent "KB" is a delegate consulted via ``consult_subagent``, not a rag
+    index — exclude these refs from the rag surface so a co-selected real KB
+    stays reachable (issue #650) and the agent ref never appears as a rag choice.
+    """
+    from deeptutor.multi_user.knowledge_access import resolve_kb_metadata
+
+    refs: set[str] = set()
+    for ref in context.knowledge_bases or []:
+        ref = str(ref).strip()
+        if not ref:
+            continue
+        meta = resolve_kb_metadata(ref)
+        if (
+            meta
+            and meta.get("type") == SUBAGENT_KB_TYPE
+            and str(meta.get("agent_kind") or "").strip()
+        ):
+            refs.add(ref)
+    return refs
+
+
+__all__ = ["connection_for_turn", "subagent_refs"]

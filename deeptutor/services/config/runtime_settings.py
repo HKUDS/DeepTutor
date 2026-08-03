@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
-import tempfile
 from typing import Any, Callable
 
+from deeptutor.services.file_io import atomic_write_json as _atomic_write_json
 from deeptutor.services.path_service import get_path_service
 
 from .origins import normalize_origins
@@ -27,7 +28,25 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, Any] = {
     # deployment shapes; a stronger backend (runner sidecar / bwrap) still
     # takes precedence when available. Set false to disable host-side exec.
     "sandbox_allow_subprocess": True,
+    # Chat attachment policy. Size caps gate what the composer accepts and
+    # what the turn runtime / partner upload endpoints extract; the char
+    # budgets bound how much extracted text is inlined into the LLM context
+    # per document / per turn. Enforcement reads these at call time, so
+    # changes apply to the next message — but uploads whose base64 payload
+    # exceeds the WebSocket frame ceiling need a restart (see
+    # ``compute_ws_max_size``, wired at every uvicorn launch point).
+    "chat_attachment_max_file_mb": 20,
+    "chat_attachment_max_total_mb": 25,
+    "chat_attachment_max_chars_per_doc": 200_000,
+    "chat_attachment_max_chars_total": 150_000,
 }
+
+# Clamp bounds for the chat attachment knobs. The MB ceilings are deliberately
+# generous (local deployments parse in-process; the WS frame cap is derived
+# from the total) while still refusing nonsense like 0 or 10^9.
+CHAT_ATTACHMENT_MAX_FILE_MB_RANGE = (1, 1024)
+CHAT_ATTACHMENT_MAX_TOTAL_MB_RANGE = (1, 2048)
+CHAT_ATTACHMENT_CHARS_RANGE = (10_000, 5_000_000)
 
 DEFAULT_AUTH_SETTINGS: dict[str, Any] = {
     "version": 1,
@@ -281,20 +300,6 @@ def _json_object(path: Path) -> dict[str, Any]:
     except Exception:
         return {}
     return loaded if isinstance(loaded, dict) else {}
-
-
-def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        "w",
-        encoding="utf-8",
-        dir=str(path.parent),
-        delete=False,
-    ) as handle:
-        json.dump(payload, handle, indent=2, ensure_ascii=False)
-        handle.write("\n")
-        tmp_path = Path(handle.name)
-    tmp_path.replace(path)
 
 
 def _string(value: Any) -> str:
@@ -620,6 +625,14 @@ class RuntimeSettingsService:
             payload["chat_attachment_dir"] = value
         if value := self._process_env_value("DEEPTUTOR_SANDBOX_ALLOW_SUBPROCESS"):
             payload["sandbox_allow_subprocess"] = value
+        if value := self._process_env_value("CHAT_ATTACHMENT_MAX_FILE_MB"):
+            payload["chat_attachment_max_file_mb"] = value
+        if value := self._process_env_value("CHAT_ATTACHMENT_MAX_TOTAL_MB"):
+            payload["chat_attachment_max_total_mb"] = value
+        if value := self._process_env_value("CHAT_ATTACHMENT_MAX_CHARS_PER_DOC"):
+            payload["chat_attachment_max_chars_per_doc"] = value
+        if value := self._process_env_value("CHAT_ATTACHMENT_MAX_CHARS_TOTAL"):
+            payload["chat_attachment_max_chars_total"] = value
         return self._normalize_system(payload)
 
     def _apply_auth_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
@@ -854,6 +867,18 @@ class RuntimeSettingsService:
         public_api_base = _string(settings.get("next_public_api_base_external")) or _string(
             settings.get("public_api_base")
         )
+        max_file_mb = _coerce_clamped_int(
+            settings.get("chat_attachment_max_file_mb"),
+            DEFAULT_SYSTEM_SETTINGS["chat_attachment_max_file_mb"],
+            *CHAT_ATTACHMENT_MAX_FILE_MB_RANGE,
+        )
+        max_total_mb = _coerce_clamped_int(
+            settings.get("chat_attachment_max_total_mb"),
+            DEFAULT_SYSTEM_SETTINGS["chat_attachment_max_total_mb"],
+            *CHAT_ATTACHMENT_MAX_TOTAL_MB_RANGE,
+        )
+        # A per-message total below the per-file cap is contradictory; lift it.
+        max_total_mb = max(max_total_mb, max_file_mb)
         return {
             "version": 1,
             "backend_port": _coerce_port(settings.get("backend_port"), 8001),
@@ -866,6 +891,18 @@ class RuntimeSettingsService:
             "chat_attachment_dir": _string(settings.get("chat_attachment_dir")),
             "sandbox_allow_subprocess": _coerce_bool(
                 settings.get("sandbox_allow_subprocess"), True
+            ),
+            "chat_attachment_max_file_mb": max_file_mb,
+            "chat_attachment_max_total_mb": max_total_mb,
+            "chat_attachment_max_chars_per_doc": _coerce_clamped_int(
+                settings.get("chat_attachment_max_chars_per_doc"),
+                DEFAULT_SYSTEM_SETTINGS["chat_attachment_max_chars_per_doc"],
+                *CHAT_ATTACHMENT_CHARS_RANGE,
+            ),
+            "chat_attachment_max_chars_total": _coerce_clamped_int(
+                settings.get("chat_attachment_max_chars_total"),
+                DEFAULT_SYSTEM_SETTINGS["chat_attachment_max_chars_total"],
+                *CHAT_ATTACHMENT_CHARS_RANGE,
             ),
         }
 
@@ -925,6 +962,69 @@ def load_system_settings() -> dict[str, Any]:
     return get_runtime_settings_service().load_system()
 
 
+@dataclass(frozen=True)
+class ChatAttachmentLimits:
+    """Effective chat-attachment policy, in enforcement-ready units."""
+
+    max_file_bytes: int
+    max_total_bytes: int
+    max_chars_per_doc: int
+    max_chars_total: int
+
+
+def get_chat_attachment_limits() -> ChatAttachmentLimits:
+    """Resolve the chat attachment policy from system.json (+ env overrides).
+
+    Read at call time by every enforcement site (turn runtime extraction,
+    partner uploads, the composer via the settings API) so edits apply to the
+    next message without a restart.
+    """
+    system = load_system_settings()
+    return ChatAttachmentLimits(
+        max_file_bytes=int(system["chat_attachment_max_file_mb"]) * 1024 * 1024,
+        max_total_bytes=int(system["chat_attachment_max_total_mb"]) * 1024 * 1024,
+        max_chars_per_doc=int(system["chat_attachment_max_chars_per_doc"]),
+        max_chars_total=int(system["chat_attachment_max_chars_total"]),
+    )
+
+
+# uvicorn's default WebSocket frame ceiling. Never derive below it so chat
+# behaves identically to older builds even if the configured totals are tiny.
+_WS_MAX_SIZE_FLOOR = 16 * 1024 * 1024
+
+
+def compute_ws_max_size(max_total_bytes: int) -> int:
+    """WebSocket message ceiling that fits a full attachment batch.
+
+    Chat attachments ride the unified WS as base64 inside one JSON message
+    (×4/3 inflation), so uvicorn's frame cap — not the policy above — is the
+    binding constraint for large uploads. Add slack for the JSON envelope
+    (message text, metadata, quoting) on top of the inflated payload.
+    """
+    inflated = (max_total_bytes * 4) // 3
+    return max(_WS_MAX_SIZE_FLOOR, inflated + 8 * 1024 * 1024)
+
+
+def get_ws_max_size() -> int:
+    """Frame ceiling for the current settings — wire into every uvicorn launch."""
+    return compute_ws_max_size(get_chat_attachment_limits().max_total_bytes)
+
+
+# Idle keep-alive window for backend HTTP connections — wire into every uvicorn
+# launch. The browser never reaches the backend directly: `web/proxy.ts` rewrites
+# `/api/*` and Next.js forwards over Node's `http.globalAgent`, which pools idle
+# sockets and reaps them on its own 5s `timeout`. uvicorn's `timeout_keep_alive`
+# also defaults to 5s, so both ends armed an identical idle timer on the same
+# socket and raced to close it: when the server's FIN landed on a socket the pool
+# was simultaneously handing to a new request, the request died with `ECONNRESET`
+# and the proxy turned it into a 500 ("Failed to proxy ... socket hang up" ->
+# "Failed to load sessions" in the UI). Any value comfortably above the proxy's
+# 5s reaper leaves the client as the only side that closes an idle connection,
+# which is the safe direction — a pool retiring its own socket removes it before
+# any request can be assigned to it, so the collision cannot happen at all.
+HTTP_KEEP_ALIVE_TIMEOUT = 300
+
+
 def load_auth_settings() -> dict[str, Any]:
     return get_runtime_settings_service().load_auth()
 
@@ -958,6 +1058,9 @@ def export_runtime_settings_to_env(*, overwrite: bool = True) -> dict[str, str]:
 
 
 __all__ = [
+    "CHAT_ATTACHMENT_CHARS_RANGE",
+    "CHAT_ATTACHMENT_MAX_FILE_MB_RANGE",
+    "CHAT_ATTACHMENT_MAX_TOTAL_MB_RANGE",
     "DEFAULT_AUTH_SETTINGS",
     "DEFAULT_DOCUMENT_PARSING_SETTINGS",
     "DEFAULT_GRAPHRAG_SETTINGS",
@@ -974,10 +1077,14 @@ __all__ = [
     "DOCUMENT_PARSING_ENGINE_TEXT_ONLY",
     "MINERU_MODE_CLOUD",
     "MINERU_MODE_LOCAL",
+    "ChatAttachmentLimits",
     "RuntimeSettingsService",
+    "compute_ws_max_size",
     "ensure_runtime_settings_files",
     "export_runtime_settings_to_env",
+    "get_chat_attachment_limits",
     "get_runtime_settings_service",
+    "get_ws_max_size",
     "load_auth_settings",
     "load_document_parsing_settings",
     "load_graphrag_settings",

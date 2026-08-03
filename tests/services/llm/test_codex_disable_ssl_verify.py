@@ -8,6 +8,7 @@ fallback.
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
@@ -25,12 +26,27 @@ def _clean_ssl_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _stub_token_loader(monkeypatch: pytest.MonkeyPatch) -> None:
     class _Token:
-        access = "test-token"
+        access_token = "test-token"
         account_id = "test-account"
+        generation = 1
 
     async def _fake_load_token(self: Any) -> _Token:
         return _Token()
 
+    class _Service:
+        @asynccontextmanager
+        async def inference_guard(self):
+            yield
+
+        async def recover_after_unauthorized(self, generation: int) -> None:
+            del generation
+
+    monkeypatch.setattr(
+        openai_codex_provider,
+        "get_codex_oauth_service",
+        lambda: _Service(),
+        raising=False,
+    )
     monkeypatch.setattr(openai_codex_provider.OpenAICodexProvider, "_load_token", _fake_load_token)
 
 

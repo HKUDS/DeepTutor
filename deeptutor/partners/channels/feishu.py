@@ -20,6 +20,7 @@ from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.partners.channels.base import BaseChannel
 from deeptutor.partners.config.paths import get_media_dir
 from deeptutor.partners.config.schema import DeliveryOverrides, StreamingSupport
+from deeptutor.partners.helpers import split_markdown_table_row
 
 FEISHU_AVAILABLE = importlib.util.find_spec("lark_oapi") is not None
 
@@ -484,11 +485,8 @@ class FeishuChannel(BaseChannel):
         if len(lines) < 3:
             return None
 
-        def split(_line: str) -> list[str]:
-            return [c.strip() for c in _line.strip("|").split("|")]
-
-        headers = split(lines[0])
-        rows = [split(_line) for _line in lines[2:]]
+        headers = split_markdown_table_row(lines[0])
+        rows = [split_markdown_table_row(_line) for _line in lines[2:]]
         columns = [
             {"tag": "column", "name": f"c{i}", "display_name": h, "width": "auto"}
             for i, h in enumerate(headers)

@@ -20,11 +20,10 @@ manager about GraphRAG internals.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import json
 import logging
 from pathlib import Path
-import tempfile
-from typing import Any
+
+from deeptutor.services.file_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
@@ -43,17 +42,6 @@ OUTPUT_TABLES = (
     "text_units",
     "relationships",
 )
-
-
-def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        "w", encoding="utf-8", dir=str(path.parent), delete=False
-    ) as handle:
-        json.dump(payload, handle, indent=2, ensure_ascii=False)
-        handle.write("\n")
-        tmp_path = Path(handle.name)
-    tmp_path.replace(path)
 
 
 def input_dir(root_dir: Path) -> Path:
@@ -94,7 +82,7 @@ def write_meta(root_dir: Path) -> None:
         "created_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z",
         **embedding_meta_fields(),
     }
-    _atomic_write_json(target / META_FILENAME, payload)
+    atomic_write_json(target / META_FILENAME, payload)
 
 
 __all__ = [

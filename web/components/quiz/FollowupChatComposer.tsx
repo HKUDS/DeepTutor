@@ -23,12 +23,8 @@ import {
   useQuizFollowupController,
 } from "@/context/QuizFollowupContext";
 import { buildQuizFollowupConfig } from "@/lib/quiz-types";
-import {
-  classifyFile,
-  isSvgFilename,
-  MAX_ATTACHMENT_BYTES,
-  MAX_TOTAL_ATTACHMENT_BYTES,
-} from "@/lib/doc-attachments";
+import { classifyFile, isSvgFilename } from "@/lib/doc-attachments";
+import { useAttachmentLimits } from "@/lib/attachment-limits";
 import {
   extractBase64FromDataUrl,
   readFileAsDataUrl,
@@ -111,6 +107,7 @@ function FollowupChatComposerImpl({ context }: FollowupChatComposerProps) {
 
   // ── Composer local state ──────────────────────────────────────
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const attachmentLimits = useAttachmentLimits();
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const attachmentErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -281,11 +278,11 @@ function FollowupChatComposerImpl({ context }: FollowupChatComposerProps) {
           rejected.push({ name: f.name, reason: "unsupported" });
           continue;
         }
-        if (f.size > MAX_ATTACHMENT_BYTES) {
+        if (f.size > attachmentLimits.maxFileBytes) {
           rejected.push({ name: f.name, reason: "too_large" });
           continue;
         }
-        if (runningTotal + f.size > MAX_TOTAL_ATTACHMENT_BYTES) {
+        if (runningTotal + f.size > attachmentLimits.maxTotalBytes) {
           rejected.push({ name: f.name, reason: "quota" });
           break;
         }
@@ -306,7 +303,7 @@ function FollowupChatComposerImpl({ context }: FollowupChatComposerProps) {
       }
       return accepted;
     },
-    [attachments, showAttachmentError, t],
+    [attachments, attachmentLimits, showAttachmentError, t],
   );
 
   const handleAddFiles = useCallback(

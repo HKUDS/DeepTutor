@@ -46,8 +46,9 @@ class ConsultSubagentTool(BaseTool):
         return ToolDefinition(
             name="consult_subagent",
             description=(
-                "Ask the connected external agent (the user's local Claude Code / "
-                "Codex, or one of their partners) a focused question and get its "
+                "Ask the connected external agent (a local agent CLI on the user's "
+                "machine — Claude Code, Codex, Gemini CLI, Kimi CLI, opencode, MiMo "
+                "Code — or one of their partners) a focused question and get its "
                 "answer. A local agent runs on the user's machine with access to their "
                 "files and tools; a partner answers with its own persona, library and "
                 "skills. Either way its full step-by-step run is shown to the user "

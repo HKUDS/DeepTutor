@@ -211,6 +211,39 @@ async def test_run_seeds_each_attached_kb(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 @pytest.mark.asyncio
+async def test_run_seeds_coexisting_kb_but_not_owned_vault(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Issue #650: an Obsidian vault owning the turn must NOT suppress seeding of
+    # a co-selected LlamaIndex KB. The vault itself is read via its own tools,
+    # so it is excluded from rag seeding.
+    def _fake_meta(ref: str):
+        if ref == "myvault":
+            return {"name": ref, "type": "obsidian", "vault_path": "/tmp/vault"}
+        return {"name": ref, "type": None}
+
+    monkeypatch.setattr("deeptutor.multi_user.knowledge_access.resolve_kb_metadata", _fake_meta)
+    registry = _SeedRegistry()
+    client = _ScriptedChatClient([[_llm_chunk(content="Done.")]])
+    pipeline = _make_pipeline(monkeypatch, registry, client)
+
+    context = UnifiedContext(
+        session_id="s1",
+        user_message="Intended Audience",
+        knowledge_bases=["myvault", "kb-plain"],
+        language="en",
+        metadata={"turn_id": "t1"},
+    )
+    await _run(pipeline, context)
+
+    seeded = {e["kwargs"]["kb_name"] for e in registry.executed if e["name"] == "rag"}
+    assert seeded == {"kb-plain"}  # vault excluded, LlamaIndex KB seeded
+    turn_context = client.calls[0]["messages"][-1]["content"]
+    assert "## kb-plain" in turn_context
+    assert "## myvault" not in turn_context
+
+
+@pytest.mark.asyncio
 async def test_run_skips_seed_without_kb(monkeypatch: pytest.MonkeyPatch) -> None:
     registry = _SeedRegistry()
     client = _ScriptedChatClient([[_llm_chunk(content="Plain answer.")]])

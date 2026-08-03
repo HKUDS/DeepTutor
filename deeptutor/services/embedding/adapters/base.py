@@ -43,7 +43,10 @@ class EmbeddingRequest:
             - Cohere: Maps to 'input_type' ("search_document", "search_query", "classification", "clustering")
             - Jina: Maps to 'task' ("retrieval.passage", "retrieval.query", etc.)
             - OpenAI/Ollama: Ignored
-        encoding_format: Output format ("float" or "base64", default: "float")
+        encoding_format: Output format ("float" or "base64"). ``None`` (the
+            default) lets each adapter decide: OpenAI-compatible gateways omit
+            the param entirely (several, e.g. SiliconFlow, return HTTP 400 when
+            it is present), while the official OpenAI SDK path pins "float".
         truncate: Whether to truncate texts that exceed max tokens (default: True)
         normalized: Whether to return L2-normalized embeddings (Jina/Ollama only)
         late_chunking: Enable late chunking for long context (Jina v3 only)
@@ -61,7 +64,7 @@ class EmbeddingRequest:
     model: str
     dimensions: Optional[int] = None
     input_type: Optional[str] = None
-    encoding_format: Optional[str] = "float"
+    encoding_format: Optional[str] = None
     truncate: Optional[bool] = True
     normalized: Optional[bool] = True
     late_chunking: Optional[bool] = False

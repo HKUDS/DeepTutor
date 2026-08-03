@@ -4,25 +4,13 @@ import json
 from pathlib import Path
 import threading
 import time
-import uuid
 
 from deeptutor.learning.models import LearningProgress
+from deeptutor.services.file_io import atomic_write_text as _atomic_write_text
 from deeptutor.services.path_service import get_path_service
 
 # Module-level lock so CAS semantics hold across all store instances.
 _cas_lock = threading.Lock()
-
-
-def _atomic_write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + f".tmp.{uuid.uuid4().hex}")
-    try:
-        tmp.write_text(text, encoding="utf-8")
-        tmp.replace(path)
-    except BaseException:
-        # Don't leave an orphaned temp file behind on write/replace failure.
-        tmp.unlink(missing_ok=True)
-        raise
 
 
 class LearningStore:

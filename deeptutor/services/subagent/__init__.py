@@ -1,11 +1,13 @@
 """Subagent driver layer — drive a user's local agent CLI as a subagent.
 
-DeepTutor runs on the same machine as the user's configured Claude Code / Codex,
-so the backend can spawn those CLIs directly and stream back every native event.
-This package is the decoupled core of that: backends that know one CLI each, a
-shared streaming-subprocess primitive, and the value types that cross into the
-chat capability. It knows nothing about the chat loop, KBs, or HTTP — those wire
-in through the consult tool and the API.
+DeepTutor runs on the same machine as the user's configured agent CLIs — Claude
+Code, Codex, Gemini CLI, Kimi CLI, opencode, MiMo Code — so the backend can
+drive them directly (spawned in print mode, or via a managed local server for
+the opencode family) and stream back every native event. This package is the
+decoupled core of that: backends that know one CLI each, a shared
+streaming-subprocess primitive, and the value types that cross into the chat
+capability. It knows nothing about the chat loop, KBs, or HTTP — those wire in
+through the consult tool and the API.
 """
 
 from __future__ import annotations

@@ -128,7 +128,9 @@ class CreatePartnerRequest(BaseModel):
     avatar: str | None = None
     enabled_tools: list[str] | None = None
     builtin_tools: list[str] | None = None
-    mcp_tools: list[str] | None = None
+    # Omitting ``mcp_tools`` creates the partner with MCP off (the config
+    # default); ``null`` is the deliberate opt-in to every configured MCP tool.
+    mcp_tools: list[str] | None = []
     assets: AssetSpec | None = None
     start: bool = True
 
@@ -816,8 +818,21 @@ def _resolve_http_session(payload: ChatMessageRequest) -> tuple[str, str]:
     return session_id, session_id
 
 
-_PARTNER_UPLOAD_MAX_BYTES = 10 * 1024 * 1024
+# Fallback caps when the settings layer is unavailable; the effective values
+# come from the shared chat-attachment policy (data/user/settings/system.json,
+# editable at /settings/attachments).
+_PARTNER_UPLOAD_MAX_BYTES = 20 * 1024 * 1024
 _PARTNER_UPLOAD_MAX_TOTAL_BYTES = 25 * 1024 * 1024
+
+
+def _partner_upload_caps() -> tuple[int, int]:
+    try:
+        from deeptutor.services.config.runtime_settings import get_chat_attachment_limits
+
+        limits = get_chat_attachment_limits()
+        return limits.max_file_bytes, limits.max_total_bytes
+    except Exception:  # pragma: no cover - defensive fallback
+        return _PARTNER_UPLOAD_MAX_BYTES, _PARTNER_UPLOAD_MAX_TOTAL_BYTES
 
 
 def _clean_attachment_base64(value: str) -> str:
@@ -842,6 +857,7 @@ def _materialize_partner_attachments(
         return []
 
     media_dir = get_partner_media_dir(partner_id, "web")
+    max_file_bytes, max_total_bytes = _partner_upload_caps()
     total_bytes = 0
     media_paths: list[str] = []
     for item in attachments:
@@ -857,12 +873,12 @@ def _materialize_partner_attachments(
                 status_code=422,
                 detail=f"Invalid attachment data for {item.filename or 'file'}",
             ) from exc
-        if len(data) > _PARTNER_UPLOAD_MAX_BYTES:
+        if len(data) > max_file_bytes:
             raise HTTPException(
                 status_code=413,
                 detail=f"Attachment too large: {item.filename or 'file'}",
             )
-        if total_bytes + len(data) > _PARTNER_UPLOAD_MAX_TOTAL_BYTES:
+        if total_bytes + len(data) > max_total_bytes:
             raise HTTPException(status_code=413, detail="Attachment batch too large")
         total_bytes += len(data)
 

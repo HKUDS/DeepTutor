@@ -15,14 +15,21 @@ import {
   Mic,
   Network,
   Palette,
-  Plug,
+  Paperclip,
   Search,
   SlidersHorizontal,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
 
-import { ClaudeGlyph, CodexGlyph } from "@/components/agents/agent-icons";
+import {
+  ClaudeGlyph,
+  CodexGlyph,
+  GeminiGlyph,
+  KimiGlyph,
+  MimoGlyph,
+  OpencodeGlyph,
+} from "@/components/agents/agent-icons";
 import type { ServiceName } from "@/components/settings/SettingsContext";
 
 /**
@@ -164,18 +171,6 @@ const CHAT_CHILDREN: SettingsLeaf[] = [
     tile: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
   },
   {
-    key: "mcp",
-    href: "/settings/mcp",
-    label: { zh: "MCP 服务器", en: "MCP servers" },
-    blurb: {
-      zh: "部署共享的外部 MCP 服务器。",
-      en: "External MCP servers shared by the deployment.",
-    },
-    icon: Plug,
-    tile: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-    adminOnly: true,
-  },
-  {
     key: "capabilities",
     href: "/settings/capabilities",
     label: { zh: "能力", en: "Capabilities" },
@@ -185,6 +180,18 @@ const CHAT_CHILDREN: SettingsLeaf[] = [
     },
     icon: SlidersHorizontal,
     tile: "bg-lime-500/10 text-lime-600 dark:text-lime-400",
+  },
+  {
+    key: "attachments",
+    href: "/settings/attachments",
+    label: { zh: "附件", en: "Attachments" },
+    blurb: {
+      zh: "聊天附件的大小上限与文本提取预算。",
+      en: "Upload caps and extraction budgets for chat attachments.",
+    },
+    icon: Paperclip,
+    tile: "bg-teal-500/10 text-teal-600 dark:text-teal-400",
+    adminOnly: true,
   },
 ];
 
@@ -212,6 +219,54 @@ const AGENT_CHILDREN: SettingsLeaf[] = [
     },
     icon: CodexGlyph as unknown as LucideIcon,
     tile: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+    adminOnly: true,
+  },
+  {
+    key: "agent-gemini",
+    href: "/settings/agents/gemini",
+    label: { zh: "Gemini CLI", en: "Gemini CLI" },
+    blurb: {
+      zh: "DeepTutor 调用本机 Gemini CLI 时的模型与运行参数。",
+      en: "Model and run params for the local Gemini CLI.",
+    },
+    icon: GeminiGlyph as unknown as LucideIcon,
+    tile: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
+    adminOnly: true,
+  },
+  {
+    key: "agent-kimi",
+    href: "/settings/agents/kimi",
+    label: { zh: "Kimi CLI", en: "Kimi CLI" },
+    blurb: {
+      zh: "DeepTutor 调用本机 Kimi CLI 时的模型与运行参数。",
+      en: "Model and run params for the local Kimi CLI.",
+    },
+    icon: KimiGlyph as unknown as LucideIcon,
+    tile: "bg-zinc-500/10 text-zinc-700 dark:text-zinc-300",
+    adminOnly: true,
+  },
+  {
+    key: "agent-opencode",
+    href: "/settings/agents/opencode",
+    label: { zh: "opencode", en: "opencode" },
+    blurb: {
+      zh: "DeepTutor 调用本机 opencode 时的模型、推理强度与运行参数。",
+      en: "Model, reasoning effort, and run params for the local opencode.",
+    },
+    icon: OpencodeGlyph as unknown as LucideIcon,
+    tile: "bg-neutral-500/10 text-neutral-700 dark:text-neutral-300",
+    adminOnly: true,
+  },
+  {
+    key: "agent-mimo",
+    href: "/settings/agents/mimo",
+    label: { zh: "MiMo Code", en: "MiMo Code" },
+    blurb: {
+      zh: "DeepTutor 调用本机 MiMo Code 时的模型、推理强度与运行参数。",
+      en: "Model, reasoning effort, and run params for the local MiMo Code.",
+    },
+    icon: MimoGlyph as unknown as LucideIcon,
+    tile: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
     adminOnly: true,
   },
 ];
@@ -256,8 +311,8 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
     key: "chat",
     label: { zh: "聊天", en: "Chat" },
     blurb: {
-      zh: "工具、MCP 服务器与能力",
-      en: "Tools, MCP servers, and capabilities",
+      zh: "工具、能力与附件",
+      en: "Tools, capabilities, and attachments",
     },
     icon: MessagesSquare,
     href: "/settings/chat",
@@ -314,11 +369,15 @@ const STORAGE_PATHS: Record<string, string> = {
   "/settings/video": "data/user/settings/model_catalog.json",
   "/settings/document-parsing": "data/user/settings/document_parsing.json",
   "/settings/tools": "data/user/settings/interface.json",
-  "/settings/mcp": "data/user/settings/mcp.json",
+  "/settings/attachments": "data/user/settings/system.json",
   "/settings/capabilities": "data/user/settings/main.yaml · agents.yaml",
   "/settings/memory": "data/user/settings/main.yaml",
   "/settings/agents/claude-code": "data/user/settings/subagent.json",
   "/settings/agents/codex": "data/user/settings/subagent.json",
+  "/settings/agents/gemini": "data/user/settings/subagent.json",
+  "/settings/agents/kimi": "data/user/settings/subagent.json",
+  "/settings/agents/opencode": "data/user/settings/subagent.json",
+  "/settings/agents/mimo": "data/user/settings/subagent.json",
 };
 
 export function storagePathFor(pathname: string): string | null {

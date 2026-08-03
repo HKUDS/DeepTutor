@@ -33,6 +33,7 @@ import {
   recomputeAnswerContent,
   shouldAppendEventContent,
 } from "@/lib/stream";
+import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { AssistantActivity } from "@/components/chat/home/TracePanels";
 import {
   PartnerComposer,
@@ -224,7 +225,6 @@ export default function PartnerChat({
     content: string;
   } | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
   // Mirror the active session into a ref so the socket's onopen (which closes
   // over the effect's first render) attaches to the CURRENT session.
   const sessionKeyRef = useRef(sessionKey);
@@ -234,6 +234,23 @@ export default function PartnerChat({
   // once per socket connection.
   const historyReadyRef = useRef(false);
   const attachedRef = useRef(false);
+  const lastMessage = messages[messages.length - 1];
+  const {
+    containerRef: scrollRef,
+    shouldAutoScrollRef,
+    scrollToBottom,
+    handleScroll,
+  } = useChatAutoScroll({
+    hasMessages: messages.length > 0 || draft !== null,
+    isStreaming: streaming,
+    // PartnerComposer sits outside the scrollport and currently exposes no
+    // measured-height callback. Sending explicitly re-arms the shared hook
+    // below, while streamed content changes drive its normal pin logic.
+    composerHeight: 0,
+    messageCount: messages.length + (draft ? 1 : 0),
+    lastMessageContent: draft?.content ?? lastMessage?.content,
+    lastEventCount: draft?.events.length ?? lastMessage?.events?.length,
+  });
 
   const tryAttach = useCallback(() => {
     if (attachedRef.current) return;
@@ -243,15 +260,6 @@ export default function PartnerChat({
     wsRef.current.send(
       JSON.stringify({ action: "attach", session_key: sessionKeyRef.current }),
     );
-  }, []);
-
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior,
-      });
-    });
   }, []);
 
   // Restore the active session's history (scoped to it — the cross-channel
@@ -268,6 +276,7 @@ export default function PartnerChat({
     })
       .then((history) => {
         if (cancelled) return;
+        shouldAutoScrollRef.current = true;
         setMessages(
           history
             .filter((m) => m.role === "user" || m.role === "assistant")
@@ -293,7 +302,7 @@ export default function PartnerChat({
     return () => {
       cancelled = true;
     };
-  }, [partnerId, sessionKey, scrollToBottom, tryAttach]);
+  }, [partnerId, sessionKey, scrollToBottom, shouldAutoScrollRef, tryAttach]);
 
   useEffect(() => {
     if (!running) {
@@ -345,7 +354,6 @@ export default function PartnerChat({
           ...msgs,
           { role: "user", content: data.content ?? "" },
         ]);
-        scrollToBottom();
         return;
       }
       if (data.type === "stream_event" && data.event) {
@@ -360,7 +368,6 @@ export default function PartnerChat({
           live.content = recomputeAnswerContent(live.events);
         }
         publish();
-        scrollToBottom();
       } else if (data.type === "content") {
         // Authoritative final text from the runner (covers terminator /
         // ask_user fallbacks the client-side recompute can't know about).
@@ -375,7 +382,6 @@ export default function PartnerChat({
           },
         ]);
         publish();
-        scrollToBottom();
       } else if (data.type === "done") {
         setStreaming(false);
         live = null;
@@ -402,7 +408,6 @@ export default function PartnerChat({
           ...msgs,
           { role: "assistant", content: data.content ?? "" },
         ]);
-        scrollToBottom();
       } else if (data.type === "error") {
         setMessages((msgs) => [
           ...msgs,
@@ -423,7 +428,7 @@ export default function PartnerChat({
       ws.close();
       wsRef.current = null;
     };
-  }, [partnerId, running, scrollToBottom, tryAttach]);
+  }, [partnerId, running, tryAttach]);
 
   // Report the settled transcript to the parent for header export controls.
   useEffect(() => {
@@ -527,7 +532,7 @@ export default function PartnerChat({
                 )}`,
               },
             ]);
-            scrollToBottom();
+            scrollToBottom("instant");
           } catch {
             onToast?.(t("Load failed"));
           }
@@ -554,6 +559,10 @@ export default function PartnerChat({
     (content: string, attachments: PartnerPendingAttachment[]) => {
       if (streaming || !running) return;
 
+      // A new user-authored turn explicitly returns to live-follow mode.
+      // During the answer, the shared hook releases that mode as soon as the
+      // user scrolls upward and only re-arms near the bottom.
+      shouldAutoScrollRef.current = true;
       const command =
         attachments.length === 0 ? parseClientCommand(content) : null;
       if (command) {
@@ -589,14 +598,27 @@ export default function PartnerChat({
       ]);
       setDraft({ events: [], content: "" });
       setStreaming(true);
-      scrollToBottom();
+      scrollToBottom("instant");
     },
-    [sessionKey, running, streaming, scrollToBottom, runClientCommand, t],
+    [
+      sessionKey,
+      running,
+      streaming,
+      scrollToBottom,
+      runClientCommand,
+      shouldAutoScrollRef,
+      t,
+    ],
   );
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-1 py-4">
+      <div
+        ref={scrollRef}
+        data-chat-scroll-root="true"
+        onScroll={handleScroll}
+        className="min-h-0 flex-1 overflow-y-auto px-1 py-4"
+      >
         {messages.length === 0 && !draft ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <PartnerAvatar

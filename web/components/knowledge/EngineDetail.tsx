@@ -135,7 +135,7 @@ const ENGINE_PREREQUISITES: Record<string, string> = {
   llamaindex:
     "Local vector engine — works out of the box. Retrieval uses your active embedding model; install the optional BM25 package to enable hybrid retrieval.",
   pageindex:
-    "Hosted engine: documents are uploaded to PageIndex's servers for processing. Requires an API key; PDF / Markdown only.",
+    "Hosted engine: documents are uploaded to PageIndex's servers and the chat agent reads them through the PageIndex MCP tools. Requires an API key; PDF, Office, text and Markdown formats.",
   graphrag:
     "Local knowledge-graph retrieval. Needs the optional dependency installed; indexing is LLM-heavy. Requires an active chat model and embedding model.",
   lightrag:

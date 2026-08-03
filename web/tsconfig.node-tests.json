@@ -4,10 +4,13 @@
     "noEmit": false,
     "outDir": "./dist/node-tests",
     "rootDir": ".",
+    "baseUrl": ".",
     "module": "commonjs",
     "moduleResolution": "node",
     "incremental": false,
-    "paths": {}
+    "paths": {
+      "@/*": ["./*"]
+    }
   },
   "include": ["tests/**/*.ts"]
 }

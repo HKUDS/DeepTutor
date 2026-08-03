@@ -41,6 +41,8 @@ const DEFAULTS: Required<
     | "approval"
     | "network_access"
     | "ephemeral"
+    | "auto_approve"
+    | "thinking"
     | "forward_images"
   >
 > = {
@@ -53,7 +55,118 @@ const DEFAULTS: Required<
   approval: "never",
   network_access: false,
   ephemeral: false,
+  auto_approve: true,
+  thinking: true,
   forward_images: false,
+};
+
+/**
+ * Which knobs each backend kind actually honors — the editor renders from this
+ * table instead of per-kind branches. Mirrors what the Python backend reads:
+ * e.g. only Claude Code / Gemini use `permission_mode`, only Codex has its
+ * sandbox family, kimi/opencode/mimo take the `auto_approve` reply switch.
+ */
+type KindFeatures = {
+  effort: boolean;
+  systemPrompt: boolean;
+  permissionMode: boolean;
+  codexSandbox: boolean;
+  autoApprove: boolean;
+  thinking: boolean;
+  forwardImages: boolean;
+};
+
+const KIND_FEATURES: Record<string, KindFeatures> = {
+  claude_code: {
+    effort: true,
+    systemPrompt: true,
+    permissionMode: true,
+    codexSandbox: false,
+    autoApprove: false,
+    thinking: false,
+    forwardImages: true,
+  },
+  codex: {
+    effort: true,
+    systemPrompt: false,
+    permissionMode: false,
+    codexSandbox: true,
+    autoApprove: false,
+    thinking: false,
+    forwardImages: true,
+  },
+  gemini: {
+    effort: false, // no reasoning-effort flag
+    systemPrompt: true,
+    permissionMode: true, // canonical values map onto --approval-mode
+    codexSandbox: false,
+    autoApprove: false,
+    thinking: false,
+    forwardImages: true, // @path syntax
+  },
+  kimi: {
+    effort: false,
+    systemPrompt: true,
+    permissionMode: false,
+    codexSandbox: false,
+    autoApprove: true, // --yolo
+    thinking: true, // --thinking / --no-thinking
+    forwardImages: false, // no headless image input
+  },
+  opencode: {
+    effort: true, // --variant
+    systemPrompt: true,
+    permissionMode: false,
+    codexSandbox: false,
+    autoApprove: true, // permission.asked replies
+    thinking: false, // the event bus always streams reasoning
+    forwardImages: true, // file parts on the server API
+  },
+  mimo: {
+    effort: true,
+    systemPrompt: true,
+    permissionMode: false,
+    codexSandbox: false,
+    autoApprove: true,
+    thinking: false,
+    forwardImages: true,
+  },
+};
+
+const FALLBACK_FEATURES: KindFeatures = KIND_FEATURES.claude_code;
+
+const DISPLAY_NAMES: Record<string, string> = {
+  claude_code: "Claude Code",
+  codex: "Codex",
+  gemini: "Gemini CLI",
+  kimi: "Kimi CLI",
+  opencode: "opencode",
+  mimo: "MiMo Code",
+};
+
+// Per-kind flavor for the system-prompt section: how the instruction reaches
+// the agent (a real flag, a native prompt field, or a first-message prefix).
+const SYSTEM_PROMPT_HINT: Record<string, Lang> = {
+  claude_code: {
+    zh: "追加到该智能体的系统提示（--append-system-prompt）。",
+    en: "Appended to the agent's system prompt (--append-system-prompt).",
+  },
+  gemini: {
+    zh: "Gemini CLI 没有系统提示 flag——该指令会前缀在每个新会话的第一条消息上。",
+    en: "Gemini CLI has no system-prompt flag — the instruction is prefixed to each new session's first message.",
+  },
+  kimi: {
+    zh: "Kimi CLI 没有系统提示 flag——该指令会前缀在每个新会话的第一条消息上。",
+    en: "Kimi CLI has no system-prompt flag — the instruction is prefixed to each new session's first message.",
+  },
+  opencode: {
+    zh: "通过服务器 API 的 system 字段注入到每个新会话。",
+    en: "Injected into each new session via the server API's system field.",
+  },
+  mimo: {
+    zh: "通过服务器 API 的 system 字段注入到每个新会话。",
+    en: "Injected into each new session via the server API's system field.",
+  },
 };
 
 const PERMISSION_MODES: { value: string; label: Lang }[] = [
@@ -104,6 +217,36 @@ const APPROVALS: { value: string; label: Lang }[] = [
   },
 ];
 
+// Gemini stores the same canonical permission values (the two CLIs' modes are
+// semantically parallel); the labels name its native --approval-mode spellings.
+const GEMINI_PERMISSION_MODES: { value: string; label: Lang }[] = [
+  {
+    value: "bypassPermissions",
+    label: {
+      zh: "YOLO · 全自主（推荐）",
+      en: "YOLO · autonomous (recommended)",
+    },
+  },
+  {
+    value: "acceptEdits",
+    label: {
+      zh: "自动接受编辑（auto_edit）",
+      en: "Auto-accept edits (auto_edit)",
+    },
+  },
+  {
+    value: "default",
+    label: {
+      zh: "默认 · 无人值守下改动会被拒绝",
+      en: "Default · mutating tools are denied headless",
+    },
+  },
+  {
+    value: "plan",
+    label: { zh: "计划模式 · 只读", en: "Plan mode · read-only" },
+  },
+];
+
 export function SubagentSettingsEditor({ kind }: { kind: string }) {
   const { i18n } = useTranslation();
   const zh = i18n.language?.toLowerCase().startsWith("zh");
@@ -129,7 +272,8 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
     try {
       const [opts, settings] = await Promise.all([
         fetchOptions(),
-        getSubagentSettings(),
+        // An editor must show what is stored, never a cached copy.
+        getSubagentSettings({ force: true }),
       ]);
       setOptions(opts);
       const stored = settings.backends?.[kind] ?? {};
@@ -176,7 +320,7 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
     [kind],
   );
 
-  const isCodex = kind === "codex";
+  const features = KIND_FEATURES[kind] ?? FALLBACK_FEATURES;
   const knownSlugs = useMemo(
     () => new Set((options?.models ?? []).map((m) => m.slug)),
     [options],
@@ -184,16 +328,16 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
   const showCustomModel =
     customModel || (config.model !== "" && !knownSlugs.has(config.model ?? ""));
 
-  // Effort choices: per-model for Codex (its cache carries each model's levels),
-  // global for Claude Code. Falls back to the backend's union when the chosen
-  // model isn't a known slug (custom / default).
+  // Effort choices: per-model when the catalog carries each model's levels
+  // (Codex, opencode family), else the backend's union (Claude Code). Falls
+  // back to the union when the chosen model isn't a known slug.
   const effortChoices = useMemo(() => {
-    if (isCodex && config.model && knownSlugs.has(config.model)) {
+    if (config.model && knownSlugs.has(config.model)) {
       const m = options?.models.find((x) => x.slug === config.model);
       if (m?.efforts?.length) return m.efforts;
     }
     return options?.efforts ?? [];
-  }, [isCodex, config.model, knownSlugs, options]);
+  }, [config.model, knownSlugs, options]);
 
   const onModelSelect = useCallback(
     (value: string) => {
@@ -202,11 +346,10 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
         return;
       }
       setCustomModel(false);
-      // Reset an effort the newly chosen model doesn't support (Codex).
+      // Reset an effort the newly chosen model doesn't support.
       const m = options?.models.find((x) => x.slug === value);
       const patch: Partial<SubagentBackendConfig> = { model: value };
       if (
-        isCodex &&
         config.effort &&
         m?.efforts?.length &&
         !m.efforts.includes(config.effort)
@@ -215,11 +358,10 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
       }
       void save(patch);
     },
-    [options, isCodex, config.effort, save],
+    [options, config.effort, save],
   );
 
-  const displayName =
-    options?.display_name ?? (isCodex ? "Codex" : "Claude Code");
+  const displayName = options?.display_name ?? DISPLAY_NAMES[kind] ?? kind;
 
   return (
     <div>
@@ -380,35 +522,39 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
                 </div>
               }
             />
-            <SettingRow
-              title={tr({ zh: "推理强度", en: "Reasoning effort" })}
-              control={
-                <select
-                  className={`${selectClass} w-[260px]`}
-                  disabled={busy || effortChoices.length === 0}
-                  value={config.effort ?? ""}
-                  onChange={(e) => void save({ effort: e.target.value })}
-                >
-                  <option value="">
-                    {tr({ zh: "CLI 默认", en: "CLI default" })}
-                  </option>
-                  {effortChoices.map((eff) => (
-                    <option key={eff} value={eff}>
-                      {eff}
+            {features.effort && (
+              <SettingRow
+                title={tr({ zh: "推理强度", en: "Reasoning effort" })}
+                control={
+                  <select
+                    className={`${selectClass} w-[260px]`}
+                    disabled={busy || effortChoices.length === 0}
+                    value={config.effort ?? ""}
+                    onChange={(e) => void save({ effort: e.target.value })}
+                  >
+                    <option value="">
+                      {tr({ zh: "CLI 默认", en: "CLI default" })}
                     </option>
-                  ))}
-                </select>
-              }
-            />
+                    {effortChoices.map((eff) => (
+                      <option key={eff} value={eff}>
+                        {eff}
+                      </option>
+                    ))}
+                  </select>
+                }
+              />
+            )}
           </SettingSection>
 
-          {!isCodex && (
+          {features.systemPrompt && (
             <SettingSection
               title={tr({ zh: "系统提示", en: "System prompt" })}
-              description={tr({
-                zh: "追加到该智能体的系统提示（--append-system-prompt）。留空则使用 DeepTutor 的默认委派提示。",
-                en: "Appended to the agent's system prompt (--append-system-prompt). Blank uses DeepTutor's default delegate instruction.",
-              })}
+              description={`${tr(
+                SYSTEM_PROMPT_HINT[kind] ?? SYSTEM_PROMPT_HINT.claude_code,
+              )} ${tr({
+                zh: "留空则使用 DeepTutor 的默认委派提示。",
+                en: "Blank uses DeepTutor's default delegate instruction.",
+              })}`}
             >
               <div className="py-4">
                 <textarea
@@ -435,7 +581,7 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
               en: "DeepTutor drives the agent unattended — the defaults ensure it never stalls waiting for an approval prompt.",
             })}
           >
-            {!isCodex && (
+            {features.permissionMode && (
               <SettingRow
                 title={tr({ zh: "权限模式", en: "Permission mode" })}
                 description={tr({
@@ -451,7 +597,10 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
                       void save({ permission_mode: e.target.value })
                     }
                   >
-                    {PERMISSION_MODES.map((o) => (
+                    {(kind === "gemini"
+                      ? GEMINI_PERMISSION_MODES
+                      : PERMISSION_MODES
+                    ).map((o) => (
                       <option key={o.value} value={o.value}>
                         {tr(o.label)}
                       </option>
@@ -461,7 +610,41 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
               />
             )}
 
-            {isCodex && (
+            {features.autoApprove && (
+              <SettingRow
+                title={tr({ zh: "自动批准", en: "Auto-approve" })}
+                description={tr({
+                  zh: "自动批准该智能体的权限请求。关闭后请求将被拒绝——无人值守运行无法交互确认。",
+                  en: "Approve the agent's permission asks automatically. When off they are rejected — an unattended run can't confirm interactively.",
+                })}
+                control={
+                  <Toggle
+                    checked={config.auto_approve !== false}
+                    disabled={busy}
+                    onChange={(v) => void save({ auto_approve: v })}
+                  />
+                }
+              />
+            )}
+
+            {features.thinking && (
+              <SettingRow
+                title={tr({ zh: "思考过程", en: "Thinking" })}
+                description={tr({
+                  zh: "流式展示模型的思考过程（--thinking）。",
+                  en: "Stream the model's thinking (--thinking).",
+                })}
+                control={
+                  <Toggle
+                    checked={config.thinking !== false}
+                    disabled={busy}
+                    onChange={(v) => void save({ thinking: v })}
+                  />
+                }
+              />
+            )}
+
+            {features.codexSandbox && (
               <>
                 <SettingRow
                   title={tr({ zh: "沙箱", en: "Sandbox" })}
@@ -532,20 +715,22 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
               </>
             )}
 
-            <SettingRow
-              title={tr({ zh: "转发图片", en: "Forward images" })}
-              description={tr({
-                zh: "允许 DeepTutor 把本轮对话中的图片附件转发给该智能体。",
-                en: "Let DeepTutor forward image attachments from the chat turn to this agent.",
-              })}
-              control={
-                <Toggle
-                  checked={Boolean(config.forward_images)}
-                  disabled={busy}
-                  onChange={(v) => void save({ forward_images: v })}
-                />
-              }
-            />
+            {features.forwardImages && (
+              <SettingRow
+                title={tr({ zh: "转发图片", en: "Forward images" })}
+                description={tr({
+                  zh: "允许 DeepTutor 把本轮对话中的图片附件转发给该智能体。",
+                  en: "Let DeepTutor forward image attachments from the chat turn to this agent.",
+                })}
+                control={
+                  <Toggle
+                    checked={Boolean(config.forward_images)}
+                    disabled={busy}
+                    onChange={(v) => void save({ forward_images: v })}
+                  />
+                }
+              />
+            )}
           </SettingSection>
         </>
       )}

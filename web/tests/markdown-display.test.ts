@@ -5,6 +5,7 @@ import {
   hasVisibleMarkdownContent,
   markdownUrlTransform,
   normalizeMarkdownForDisplay,
+  safeDecodeURIComponent,
 } from "../lib/markdown-display";
 
 test("normalizeMarkdownForDisplay removes empty details blocks", () => {
@@ -195,6 +196,15 @@ test("markdownUrlTransform only allows data images on img src", () => {
     }),
     "",
   );
+});
+
+test("safeDecodeURIComponent decodes valid hash components", () => {
+  assert.equal(safeDecodeURIComponent("section%201"), "section 1");
+});
+
+test("safeDecodeURIComponent keeps malformed hash components intact", () => {
+  assert.doesNotThrow(() => safeDecodeURIComponent("%E0%A4%A"));
+  assert.equal(safeDecodeURIComponent("%E0%A4%A"), "%E0%A4%A");
 });
 
 test("hasVisibleMarkdownContent rejects empty raw-html placeholders", () => {

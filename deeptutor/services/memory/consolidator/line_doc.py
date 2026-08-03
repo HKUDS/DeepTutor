@@ -448,7 +448,8 @@ _FENCE_RE = re.compile(r"^```[a-zA-Z]*\s*|\s*```$")
 
 def _extract_json(raw: str) -> str | None:
     text = _FENCE_RE.sub("", raw.strip())
-    # Find the outermost {...} or [...].
+    # First {...} or [...] via raw_decode so trailing prose braces cannot
+    # extend the slice past the real JSON value.
     obj_start = text.find("{")
     arr_start = text.find("[")
     if obj_start == -1 and arr_start == -1:
@@ -459,12 +460,11 @@ def _extract_json(raw: str) -> str | None:
         start = obj_start
     else:
         start = min(obj_start, arr_start)
-    end_obj = text.rfind("}")
-    end_arr = text.rfind("]")
-    end = max(end_obj, end_arr)
-    if end <= start:
+    try:
+        _parsed, end = json.JSONDecoder().raw_decode(text[start:])
+    except json.JSONDecodeError:
         return None
-    return text[start : end + 1]
+    return text[start : start + end]
 
 
 __all__ = [

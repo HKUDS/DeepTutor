@@ -9,7 +9,13 @@ build-backend = "setuptools.build_meta"
 name = "deeptutor"
 dynamic = ["version"]
 description = "An agent-native intelligent learning companion with multi-agent collaboration and RAG"
-requires-python = ">=3.11"
+# Capped below 3.14 on purpose (issue #664): on 3.14 pip can't find wheels for
+# some compiled base deps (e.g. faiss-cpu) and silently backtracks into a
+# doomed source build that dies with "subprocess-exited-with-error". The heavy
+# RAG extras (graphrag, rag-lightrag) already carry a `python_version < '3.14'`
+# marker for the same reason; capping here makes pip refuse 3.14 with a
+# readable "Requires a different Python" message instead of a build failure.
+requires-python = ">=3.11,<3.14"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 dependencies = [

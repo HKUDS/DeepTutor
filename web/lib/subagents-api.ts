@@ -1,4 +1,7 @@
 import { apiFetch, apiUrl } from "@/lib/api";
+import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
+
+const SUBAGENT_SETTINGS_CACHE_KEY = "subagents:settings";
 
 /** One agent CLI backend's installability on this machine. */
 export interface SubagentBackendInfo {
@@ -149,6 +152,10 @@ export interface SubagentBackendConfig {
   approval?: string;
   network_access?: boolean;
   ephemeral?: boolean;
+  /** Kimi / opencode / MiMo: answer permission asks affirmatively. */
+  auto_approve?: boolean;
+  /** Kimi: stream the model's thinking (--thinking / --no-thinking). */
+  thinking?: boolean;
   forward_images?: boolean;
   extra_args?: string[];
 }
@@ -209,12 +216,26 @@ export async function* streamSubagentMessage(
   if (tail) yield JSON.parse(tail) as SubagentStreamLine;
 }
 
-export async function getSubagentSettings(): Promise<SubagentSettings> {
-  const res = await apiFetch(apiUrl("/api/v1/subagents/settings"), {
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-  return (await res.json()) as SubagentSettings;
+/** Read the subagent settings (backends + consult budget).
+ *
+ *  Cached because the chat page only needs the default consult budget, and
+ *  re-reading it on every session switch is pure overhead. Writes through
+ *  ``updateSubagentSettings`` drop the cache; pass ``force`` for editors that
+ *  must show the stored values. */
+export async function getSubagentSettings(options?: {
+  force?: boolean;
+}): Promise<SubagentSettings> {
+  return withClientCache<SubagentSettings>(
+    SUBAGENT_SETTINGS_CACHE_KEY,
+    async () => {
+      const res = await apiFetch(apiUrl("/api/v1/subagents/settings"), {
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+      return (await res.json()) as SubagentSettings;
+    },
+    { force: options?.force },
+  );
 }
 
 export async function updateSubagentSettings(
@@ -226,5 +247,6 @@ export async function updateSubagentSettings(
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error(`Update failed: ${res.status}`);
+  invalidateClientCache(SUBAGENT_SETTINGS_CACHE_KEY);
   return (await res.json()) as SubagentSettings;
 }

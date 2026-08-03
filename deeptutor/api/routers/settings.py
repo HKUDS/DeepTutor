@@ -21,12 +21,19 @@ logger = logging.getLogger(__name__)
 
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.model_access import allowed_llm_options
+from deeptutor.services.codex_auth import CodexAuthError, get_codex_oauth_service
 from deeptutor.services.config import (
     get_config_test_runner,
     get_model_catalog_service,
     get_runtime_settings_service,
 )
 from deeptutor.services.config.origins import normalize_origins
+from deeptutor.services.config.runtime_settings import (
+    CHAT_ATTACHMENT_CHARS_RANGE,
+    CHAT_ATTACHMENT_MAX_FILE_MB_RANGE,
+    CHAT_ATTACHMENT_MAX_TOTAL_MB_RANGE,
+    compute_ws_max_size,
+)
 from deeptutor.services.embedding.client import reset_embedding_client
 from deeptutor.services.llm.client import reset_llm_client
 from deeptutor.services.llm.config import clear_llm_config_cache
@@ -58,9 +65,6 @@ DEFAULT_UI_SETTINGS = {
     # "snow" is the pure-white neutral theme, shown as "Default" in the UI.
     "theme": "snow",
     "language": "en",
-    # Reader-facing model output language. Kept separate from UI locale so a
-    # user can run an English interface while asking every capability to reply
-    # in Chinese (or vice versa).
     "response_language": "en",
     "sidebar_description": "✨ Data Intelligence Lab @ HKU",
     "sidebar_nav_order": DEFAULT_SIDEBAR_NAV_ORDER,
@@ -96,6 +100,32 @@ class UISettings(BaseModel):
     response_language: Literal["zh", "en"] = "en"
     sidebar_description: Optional[str] = None
     sidebar_nav_order: Optional[SidebarNavOrder] = None
+    code_block_theme: Optional[str] = None
+    code_block_show_line_numbers: Optional[bool] = None
+    code_block_wrap_long_lines: Optional[bool] = None
+
+
+class UISettingsUpdate(BaseModel):
+    """Partial UI settings for user-initiated PATCH/PUT updates via /api/v1/settings/ui.
+
+    All fields have None defaults so `model_dump(exclude_unset=True)` naturally
+    excludes fields not provided in the frontend payload, while explicitly provided
+    defaults (e.g., `theme: "snow"`) still update the backend. This separates
+    the semantic contract: `/ui` endpoint only merges whatever explicitly arrives
+    from the frontend.
+    """
+
+    # Same Literal domains as UISettings — a None default keeps them optional
+    # for exclude_unset partial merges, but an explicit value is still validated
+    # so PUT /ui cannot persist a theme/language the app can't render.
+    theme: Literal["light", "dark", "glass", "snow"] | None = None
+    language: Literal["zh", "en"] | None = None
+    response_language: Literal["zh", "en"] | None = None
+    sidebar_description: str | None = None
+    sidebar_nav_order: SidebarNavOrder | None = None
+    code_block_theme: str | None = None
+    code_block_show_line_numbers: bool | None = None
+    code_block_wrap_long_lines: bool | None = None
 
 
 class VoiceAutoplayUpdate(BaseModel):
@@ -141,6 +171,28 @@ class NetworkSettingsUpdate(BaseModel):
     frontend_port: int = Field(ge=1, le=65535)
     public_api_base: str = ""
     cors_origins: list[str] = Field(default_factory=list)
+
+
+class ChatAttachmentSettingsUpdate(BaseModel):
+    """Chat attachment policy (size caps + extraction budgets).
+
+    Bounds mirror the normalization clamps in
+    ``runtime_settings.CHAT_ATTACHMENT_*_RANGE`` so the API rejects loudly
+    what the file layer would silently clamp.
+    """
+
+    max_file_mb: int = Field(
+        ge=CHAT_ATTACHMENT_MAX_FILE_MB_RANGE[0], le=CHAT_ATTACHMENT_MAX_FILE_MB_RANGE[1]
+    )
+    max_total_mb: int = Field(
+        ge=CHAT_ATTACHMENT_MAX_TOTAL_MB_RANGE[0], le=CHAT_ATTACHMENT_MAX_TOTAL_MB_RANGE[1]
+    )
+    max_chars_per_doc: int = Field(
+        ge=CHAT_ATTACHMENT_CHARS_RANGE[0], le=CHAT_ATTACHMENT_CHARS_RANGE[1]
+    )
+    max_chars_total: int = Field(
+        ge=CHAT_ATTACHMENT_CHARS_RANGE[0], le=CHAT_ATTACHMENT_CHARS_RANGE[1]
+    )
 
 
 class MinerUSettingsUpdate(BaseModel):
@@ -227,9 +279,6 @@ def load_ui_settings() -> dict[str, Any]:
             with open(settings_file, encoding="utf-8") as handle:
                 saved = json.load(handle)
                 merged = {**DEFAULT_UI_SETTINGS, **saved}
-                # Before response_language existed, the interface language was
-                # also sent to the model. Preserve that behavior during the
-                # migration, then persist both fields on the next update.
                 if "response_language" not in saved:
                     merged["response_language"] = merged["language"]
                 # Filter persisted enabled_optional_tools to current
@@ -288,7 +337,17 @@ def _require_settings_admin() -> None:
         )
 
 
-def _provider_choices() -> dict[str, list[dict[str, str]]]:
+def _codex_http_exception(error: CodexAuthError) -> HTTPException:
+    return HTTPException(
+        status_code=error.http_status,
+        detail={
+            "code": error.code,
+            "message": error.public_message,
+        },
+    )
+
+
+def _provider_choices() -> dict[str, list[dict[str, Any]]]:
     """Build dropdown options for provider selection, keyed by service type."""
     from deeptutor.services.config.provider_runtime import (
         EMBEDDING_PROVIDERS,
@@ -311,6 +370,7 @@ def _provider_choices() -> dict[str, list[dict[str, str]]]:
                     else s.label
                 ),
                 "base_url": s.default_api_base,
+                "auth_mode": s.auth_mode,
             }
             for s in PROVIDERS
         ],
@@ -465,10 +525,49 @@ async def get_settings():
     }
 
 
-@router.get("/ui")
-async def get_ui_settings():
-    """Return only per-user appearance and language preferences."""
-    return load_ui_settings()
+@router.post("/providers/openai-codex/oauth/start")
+async def start_openai_codex_oauth() -> dict[str, Any]:
+    _require_settings_admin()
+    try:
+        return await get_codex_oauth_service().start_login()
+    except CodexAuthError as exc:
+        raise _codex_http_exception(exc) from None
+
+
+@router.get("/providers/openai-codex/oauth/status")
+async def get_openai_codex_oauth_status() -> dict[str, Any]:
+    _require_settings_admin()
+    try:
+        return get_codex_oauth_service().public_status()
+    except CodexAuthError as exc:
+        raise _codex_http_exception(exc) from None
+
+
+@router.post("/providers/openai-codex/oauth/cancel")
+async def cancel_openai_codex_oauth() -> dict[str, Any]:
+    _require_settings_admin()
+    try:
+        return await get_codex_oauth_service().cancel_login()
+    except CodexAuthError as exc:
+        raise _codex_http_exception(exc) from None
+
+
+@router.post("/providers/openai-codex/oauth/logout")
+async def logout_openai_codex_oauth() -> dict[str, Any]:
+    _require_settings_admin()
+    try:
+        return await get_codex_oauth_service().logout()
+    except CodexAuthError as exc:
+        raise _codex_http_exception(exc) from None
+
+
+@router.post("/providers/openai-codex/models/refresh")
+async def refresh_openai_codex_models() -> dict[str, Any]:
+    _require_settings_admin()
+    try:
+        return await get_codex_oauth_service().refresh_models()
+    except CodexAuthError as exc:
+        raise _codex_http_exception(exc) from None
 
 
 @router.get("/catalog")
@@ -499,6 +598,61 @@ async def update_network_settings(payload: NetworkSettingsUpdate):
         }
     )
     return _network_settings_payload()
+
+
+def _chat_attachments_payload() -> dict[str, Any]:
+    service = get_runtime_settings_service()
+    stored = service.load_system(include_process_overrides=False)
+    effective = service.load_system(include_process_overrides=True)
+    max_total_bytes = int(effective["chat_attachment_max_total_mb"]) * 1024 * 1024
+    return {
+        "settings": {
+            "max_file_mb": stored["chat_attachment_max_file_mb"],
+            "max_total_mb": stored["chat_attachment_max_total_mb"],
+            "max_chars_per_doc": stored["chat_attachment_max_chars_per_doc"],
+            "max_chars_total": stored["chat_attachment_max_chars_total"],
+        },
+        "effective": {
+            "max_file_bytes": int(effective["chat_attachment_max_file_mb"]) * 1024 * 1024,
+            "max_total_bytes": max_total_bytes,
+            "max_chars_per_doc": effective["chat_attachment_max_chars_per_doc"],
+            "max_chars_total": effective["chat_attachment_max_chars_total"],
+            "ws_max_size": compute_ws_max_size(max_total_bytes),
+        },
+        "bounds": {
+            "max_file_mb": list(CHAT_ATTACHMENT_MAX_FILE_MB_RANGE),
+            "max_total_mb": list(CHAT_ATTACHMENT_MAX_TOTAL_MB_RANGE),
+            "chars": list(CHAT_ATTACHMENT_CHARS_RANGE),
+        },
+        # Size caps and char budgets are re-read on every message, but the WS
+        # frame ceiling is fixed at process start — uploads bigger than the
+        # old ceiling need a backend restart to actually go through.
+        "restart_required_for_larger_uploads": True,
+    }
+
+
+@router.get("/chat-attachments")
+async def get_chat_attachment_settings():
+    """Chat attachment policy. Readable by any user — the composer needs the
+    caps to gate file picks client-side; only the PUT is admin-gated."""
+    return _chat_attachments_payload()
+
+
+@router.put("/chat-attachments")
+async def update_chat_attachment_settings(payload: ChatAttachmentSettingsUpdate):
+    _require_settings_admin()
+    service = get_runtime_settings_service()
+    current = service.load_system(include_process_overrides=False)
+    service.save_system(
+        {
+            **current,
+            "chat_attachment_max_file_mb": payload.max_file_mb,
+            "chat_attachment_max_total_mb": payload.max_total_mb,
+            "chat_attachment_max_chars_per_doc": payload.max_chars_per_doc,
+            "chat_attachment_max_chars_total": payload.max_chars_total,
+        }
+    )
+    return _chat_attachments_payload()
 
 
 def _mineru_settings_payload() -> dict[str, Any]:
@@ -956,9 +1110,16 @@ async def update_chat_response_timeout(update: ChatResponseTimeoutUpdate):
 
 
 @router.put("/ui")
-async def update_ui_settings(update: UISettings):
+async def update_ui_settings(update: UISettingsUpdate):
+    """Merge frontend partial update into current UI settings.
+
+    Uses exclude_unset=True semantics so that only fields explicitly provided
+    by the frontend override saved values. Fields not in the frontend payload
+    (even if they equal the model defaults) are omitted from the merge.
+    """
     current_ui = load_ui_settings()
-    current_ui.update(update.model_dump(exclude_none=True))
+    dump = update.model_dump(exclude_unset=True)  # Only merge explicitly provided fields
+    current_ui.update(dump)
     save_ui_settings(current_ui)
     return current_ui
 

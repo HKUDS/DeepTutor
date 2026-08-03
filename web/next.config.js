@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 function readJsonFile(filePath) {
@@ -27,6 +28,20 @@ function normalizeBoolean(value) {
   return ["1", "true", "yes", "on"].includes(String(value).trim().toLowerCase())
     ? "true"
     : "false";
+}
+
+/** This machine's non-loopback IPv4 addresses — the hosts `next dev` prints
+ *  as "Network:", i.e. the ones a phone on the same WiFi actually types. */
+function localNetworkHosts() {
+  const hosts = [];
+  for (const addresses of Object.values(os.networkInterfaces())) {
+    for (const address of addresses ?? []) {
+      if (address.family === "IPv4" && !address.internal) {
+        hosts.push(address.address);
+      }
+    }
+  }
+  return hosts;
 }
 
 const SETTINGS_DIR = path.resolve(__dirname, "..", "data", "user", "settings");
@@ -76,6 +91,12 @@ const APP_VERSION = (() => {
 })();
 
 const nextConfig = {
+  // Keep the production build used by `deeptutor start` separate from the
+  // `.next` development cache used by the explicit `deeptutor start --dev`.
+  // Without separate directories either command can invalidate the other
+  // process while it is running.
+  distDir: process.env.DEEPTUTOR_NEXT_DIST_DIR || ".next",
+
   // Expose the build-time version to the browser so the sidebar badge
   // can compare it against GitHub's latest release.
   env: {
@@ -105,6 +126,20 @@ const nextConfig = {
 
   // Transpile mermaid and related packages for proper ESM handling
   transpilePackages: ["mermaid"],
+
+  // Next.js 16 blocks cross-origin access to /_next/* dev resources (HMR
+  // WebSocket, fonts, dev-only scripts) unless the request host is on this
+  // allow-list. Without it, browsing http://127.0.0.1:<port>/ against a dev
+  // server bound to localhost silently breaks client hydration — the SSR HTML
+  // renders, but no React event handlers or effects ever attach.
+  // The same applies to a phone or tablet on the LAN: `next dev` advertises a
+  // "Network: http://<lan-ip>:<port>" address, and that host has to be on the
+  // list too or the device gets the identical hydrated-nothing shell — a
+  // top bar with an empty page under it. Detected rather than hard-coded so it
+  // follows whatever network this machine is on. Dev-only: `allowedDevOrigins`
+  // has no effect on `next build`/`next start`, and anyone who can reach the
+  // dev server on these addresses is already inside the LAN.
+  allowedDevOrigins: ["127.0.0.1", ...localNetworkHosts()],
 
   // Turbopack configuration (used when running `npm run dev:turbo`)
   turbopack: {

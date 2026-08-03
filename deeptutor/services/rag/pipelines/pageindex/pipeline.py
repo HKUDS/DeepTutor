@@ -1,10 +1,12 @@
 """PageIndex cloud-backed RAG pipeline orchestration.
 
 Implements the same contract as :class:`LlamaIndexPipeline` (see
-``..base.RAGPipeline``) but delegates indexing and retrieval to the hosted
-PageIndex service. Documents are uploaded for tree building; retrieval is
-doc-scoped and reasoning-based (no embeddings). DeepTutor's own chat LLM still
-writes the final answer from the returned context.
+``..base.RAGPipeline``) but delegates indexing to the hosted PageIndex
+service (tree building, no embeddings). PageIndex's REST retrieval endpoint
+is deprecated: deep retrieval is agentic — the chat agent reads documents
+through the PageIndex MCP server — while ``search()`` serves programmatic
+callers with each document's real tree outline (titles / pages / summaries)
+fetched over REST.
 """
 
 from __future__ import annotations
@@ -23,16 +25,29 @@ from deeptutor.services.rag.index_versioning import (
 from deeptutor.services.rag.kb_paths import resolve_kb_dir
 
 from . import storage
-from .client import PageIndexAPIError, PageIndexClient
-from .config import get_pageindex_config
+from .client import PageIndexClient
+from .config import PageIndexNotConfiguredError, get_pageindex_config
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_KB_BASE_DIR = str(get_runtime_data_root() / "knowledge_bases")
 
-# PageIndex ingests PDFs and Markdown; other formats are rejected upstream and
-# skipped defensively here.
-SUPPORTED_EXTENSIONS = {".pdf", ".md", ".markdown"}
+# Mirrors what PageIndex ``POST /doc/`` accepts (ZIP is handled upstream as a
+# container: members are extracted and validated individually). Other formats
+# are rejected upstream and skipped defensively here.
+SUPPORTED_EXTENSIONS = {
+    ".pdf",
+    ".md",
+    ".markdown",
+    ".txt",
+    ".docx",
+    ".doc",
+    ".pptx",
+    ".ppt",
+    ".xlsx",
+    ".xls",
+    ".csv",
+}
 
 
 def is_supported_file(path: str | Path) -> bool:
@@ -121,9 +136,7 @@ class PageIndexPipeline:
         supported = [fp for fp in file_paths if is_supported_file(fp)]
         skipped = [fp for fp in file_paths if not is_supported_file(fp)]
         for fp in skipped:
-            self.logger.warning(
-                "PageIndex skips unsupported file (PDF/Markdown only): %s", Path(fp).name
-            )
+            self.logger.warning("PageIndex skips unsupported file type: %s", Path(fp).name)
         if not supported:
             return 0
 
@@ -142,15 +155,21 @@ class PageIndexPipeline:
 
     # ----- retrieval ------------------------------------------------------
 
-    async def search(self, query: str, kb_name: str, **kwargs) -> Dict[str, Any]:
-        kwargs.pop("mode", None)
-        top_k = int(kwargs.get("top_k", 5) or 5)
-        kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
-        storage_dir = resolve_storage_dir_for_read(kb_dir, None)
-        manifest = storage.read_manifest(storage_dir)
-        ids = storage.doc_ids(manifest)
+    # ponytail: flat per-doc cap on the formatted outline; per-consumer
+    # budgets if a real need shows up.
+    TREE_CHARS_PER_DOC = 6000
 
-        if storage_dir is None or not ids:
+    async def search(self, query: str, kb_name: str, **_kwargs) -> Dict[str, Any]:
+        """Return each document's tree outline (titles / pages / summaries).
+
+        The deprecated REST retrieval endpoint is gone; deep, query-driven
+        retrieval is agentic via the PageIndex MCP tools in chat. For
+        programmatic callers this returns the documents' real structure as
+        context — shallow but honest grounding.
+        """
+        docs = self.document_map(kb_name)
+
+        if not docs:
             return {
                 "query": query,
                 "answer": (
@@ -163,41 +182,46 @@ class PageIndexPipeline:
                 "needs_reindex": True,
             }
 
-        # doc_id -> file_name for provenance labelling.
-        id_to_name = {
-            str(entry["doc_id"]): name
-            for name, entry in storage.doc_entries(manifest).items()
-            if isinstance(entry, dict) and entry.get("doc_id")
-        }
-
-        client = self._get_client()
         try:
+            client = self._get_client()
             results = await asyncio.gather(
-                *(client.retrieve(doc_id, query) for doc_id in ids),
+                *(client.get_document(doc_id, summary=True) for doc_id in docs.values()),
                 return_exceptions=True,
             )
-        except Exception as exc:  # pragma: no cover - gather itself rarely raises
-            return self._error_result(query, exc)
+        except PageIndexNotConfiguredError as exc:
+            return {
+                "query": query,
+                "answer": str(exc),
+                "content": "",
+                "sources": [],
+                "provider": storage.PROVIDER,
+                "error_type": "not_configured",
+            }
 
+        parts: list[str] = []
         sources: list[dict[str, Any]] = []
-        context_parts: list[str] = []
         errors: list[str] = []
-        for doc_id, result in zip(ids, results):
-            if isinstance(result, Exception):
+        for (file_name, doc_id), result in zip(docs.items(), results):
+            if isinstance(result, BaseException):
                 errors.append(str(result))
-                self.logger.warning("PageIndex retrieval failed for %s: %s", doc_id, result)
+                self.logger.warning("PageIndex tree fetch failed for %s: %s", doc_id, result)
                 continue
-            doc_name = id_to_name.get(doc_id, doc_id)
-            for node in result[:top_k]:
-                text, source = self._node_to_source(doc_name, node)
-                if text:
-                    context_parts.append(text)
-                sources.append(source)
+            outline, doc_sources = self._format_tree(file_name, doc_id, result.get("result"))
+            if outline:
+                parts.append(f"## {file_name}\n{outline}")
+            sources.extend(doc_sources)
 
-        if not sources and errors:
-            return self._error_result(query, PageIndexAPIError("; ".join(errors[:3])))
+        if not parts and errors:
+            return {
+                "query": query,
+                "answer": "; ".join(errors[:3]),
+                "content": "",
+                "sources": [],
+                "provider": storage.PROVIDER,
+                "error_type": "retrieval_error",
+            }
 
-        content = "\n\n".join(context_parts)
+        content = "\n\n".join(parts)
         return {
             "query": query,
             "answer": content,
@@ -206,60 +230,66 @@ class PageIndexPipeline:
             "provider": storage.PROVIDER,
         }
 
-    @staticmethod
-    def _node_to_source(doc_name: str, node: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-        if not isinstance(node, dict):
-            text = str(node)
-            return text, {
-                "title": doc_name,
-                "content": text[:200],
-                "source": doc_name,
-                "page": "",
-                "chunk_id": "",
-                "score": "",
-            }
-        title = node.get("title") or doc_name
-        texts: list[str] = []
-        pages: list[Any] = []
-        for chunk in node.get("relevant_contents") or []:
-            if isinstance(chunk, dict):
-                piece = chunk.get("content") or chunk.get("text") or ""
-                if piece:
-                    texts.append(str(piece))
-                if chunk.get("page_index") is not None:
-                    pages.append(chunk.get("page_index"))
-            elif chunk:
-                texts.append(str(chunk))
-        text = "\n".join(texts) or str(node.get("text") or node.get("content") or "")
-        page = pages[0] if pages else node.get("page_index", "")
-        source = {
-            "title": title,
-            "content": text[:200],
-            "source": doc_name,
-            "page": page if page is not None else "",
-            "chunk_id": node.get("node_id") or "",
-            "score": node.get("score", ""),
-        }
-        return text, source
+    @classmethod
+    def _format_tree(
+        cls, file_name: str, doc_id: str, tree: Any
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """Render a PageIndex tree as an indented outline + per-section sources."""
+        lines: list[str] = []
+        sources: list[dict[str, Any]] = []
 
-    def _error_result(self, query: str, exc: Exception) -> Dict[str, Any]:
-        from deeptutor.services.rag.pipelines.pageindex.config import (
-            PageIndexNotConfiguredError,
-        )
+        def walk(node: Any, depth: int) -> None:
+            if isinstance(node, list):
+                for item in node:
+                    walk(item, depth)
+                return
+            if not isinstance(node, dict):
+                return
+            title = str(node.get("title") or "").strip()
+            page = node.get("page_index")
+            summary = str(node.get("summary") or node.get("prefix_summary") or "").strip()
+            if title:
+                line = f"{'  ' * depth}- {title}"
+                if page not in (None, ""):
+                    line += f" (p.{page})"
+                if summary:
+                    line += f": {summary}"
+                lines.append(line)
+                if depth == 0:
+                    sources.append(
+                        {
+                            "title": title,
+                            "content": summary[:200],
+                            "source": file_name,
+                            "page": page if page is not None else "",
+                            "chunk_id": node.get("node_id") or doc_id,
+                            "score": "",
+                        }
+                    )
+            walk(node.get("nodes") or [], depth + 1)
 
-        needs_config = isinstance(exc, PageIndexNotConfiguredError)
+        walk(tree, 0)
+        text = "\n".join(lines)
+        if len(text) > cls.TREE_CHARS_PER_DOC:
+            text = text[: cls.TREE_CHARS_PER_DOC] + "\n… (outline truncated)"
+        return text, sources
+
+    def document_map(self, kb_name: str) -> dict[str, str]:
+        """file name -> cloud doc_id for the KB's current manifest.
+
+        Used by the chat layer to inject the doc list into the system prompt.
+        """
+        kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
+        manifest = storage.read_manifest(resolve_storage_dir_for_read(kb_dir, None))
         return {
-            "query": query,
-            "answer": str(exc),
-            "content": "",
-            "sources": [],
-            "provider": storage.PROVIDER,
-            "error_type": "not_configured" if needs_config else "retrieval_error",
+            name: str(entry["doc_id"])
+            for name, entry in storage.doc_entries(manifest).items()
+            if isinstance(entry, dict) and entry.get("doc_id")
         }
 
     # ----- lifecycle ------------------------------------------------------
 
-    async def delete(self, kb_name: str, **kwargs) -> bool:
+    async def delete(self, kb_name: str, **_kwargs) -> bool:
         import shutil
 
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)

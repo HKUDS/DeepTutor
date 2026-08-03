@@ -13,11 +13,18 @@ import {
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 
+import type { CodeBlockThemeId } from "@/components/common/code-block-themes";
 import {
+  normalizeCodeBlockTheme,
+  writeStoredCodeBlockShowLineNumbers,
+  writeStoredCodeBlockTheme,
+  writeStoredCodeBlockWrapLongLines,
   writeStoredLanguage,
   writeStoredResponseLanguage,
 } from "@/context/app-shell-storage";
+import { useAppShell } from "@/context/AppShellContext";
 import { apiFetch, apiUrl } from "@/lib/api";
+import { invalidateLLMOptionsCache } from "@/lib/llm-options";
 import { setTheme as applyThemePreference } from "@/lib/theme";
 
 // ─── Domain types ─────────────────────────────────────────────────────────
@@ -35,6 +42,7 @@ export type CatalogModel = {
   id: string;
   name: string;
   model: string;
+  managed_by?: string;
   dimension?: string;
   send_dimensions?: boolean;
   supported_dimensions?: string;
@@ -70,6 +78,8 @@ export type LlmContextWindowDetection = {
 export type CatalogProfile = {
   id: string;
   name: string;
+  managed_by?: string;
+  read_only?: boolean;
   binding?: string;
   provider?: string;
   base_url: string;
@@ -104,7 +114,50 @@ export type UiSettings = {
   theme: "light" | "dark" | "glass" | "snow";
   language: "en" | "zh";
   response_language: "en" | "zh";
+  code_block_theme: string;
+  code_block_show_line_numbers: boolean;
+  code_block_wrap_long_lines: boolean;
 };
+
+type CodeBlockUiSettings = Pick<
+  UiSettings,
+  | "code_block_theme"
+  | "code_block_show_line_numbers"
+  | "code_block_wrap_long_lines"
+>;
+
+type UiSettingsPatch = Partial<UiSettings>;
+
+export function syncLoadedCodeBlockSettingsToAppShell(
+  ui: Partial<CodeBlockUiSettings>,
+): CodeBlockUiSettings {
+  const normalized = {
+    code_block_theme: normalizeCodeBlockTheme(ui.code_block_theme),
+    code_block_show_line_numbers:
+      ui.code_block_show_line_numbers === true ||
+      String(ui.code_block_show_line_numbers).toLowerCase() === "true",
+    code_block_wrap_long_lines:
+      ui.code_block_wrap_long_lines === true ||
+      String(ui.code_block_wrap_long_lines).toLowerCase() === "true",
+  };
+
+  writeStoredCodeBlockTheme(normalized.code_block_theme);
+  writeStoredCodeBlockShowLineNumbers(normalized.code_block_show_line_numbers);
+  writeStoredCodeBlockWrapLongLines(normalized.code_block_wrap_long_lines);
+
+  return normalized;
+}
+
+export async function persistUiSettingsPatch(
+  patch: UiSettingsPatch,
+  fetcher: typeof apiFetch = apiFetch,
+): Promise<void> {
+  await fetcher(apiUrl("/api/v1/settings/ui"), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
 
 export type ProviderOption = {
   value: string;
@@ -113,6 +166,7 @@ export type ProviderOption = {
   default_dim?: string;
   default_model?: string;
   default_voice?: string;
+  auth_mode?: "api_key" | "oauth";
 };
 
 export type SystemStatus = {
@@ -394,6 +448,9 @@ type SettingsContextValue = {
   theme: UiSettings["theme"];
   language: UiSettings["language"];
   responseLanguage: UiSettings["response_language"];
+  codeBlockTheme: UiSettings["code_block_theme"];
+  codeBlockShowLineNumbers: UiSettings["code_block_show_line_numbers"];
+  codeBlockWrapLongLines: UiSettings["code_block_wrap_long_lines"];
   toast: string;
   setToast: (value: string) => void;
 
@@ -403,6 +460,9 @@ type SettingsContextValue = {
   updateResponseLanguage: (
     next: UiSettings["response_language"],
   ) => Promise<void>;
+  updateCodeBlockTheme: (next: CodeBlockThemeId) => Promise<void>;
+  updateCodeBlockShowLineNumbers: (next: boolean) => Promise<void>;
+  updateCodeBlockWrapLongLines: (next: boolean) => Promise<void>;
 
   // Catalog mutation
   mutateCatalog: (mutator: (next: Catalog) => void) => void;
@@ -474,6 +534,17 @@ export function useSettings(): SettingsContextValue {
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const router = useRouter();
+  // Code-block appearance lives in AppShellContext (the single source of truth,
+  // also consumed by RichCodeBlock). Read the values from there and delegate
+  // writes to its setters; this provider only adds backend persistence on top.
+  const {
+    codeBlockTheme,
+    codeBlockShowLineNumbers,
+    codeBlockWrapLongLines,
+    setCodeBlockTheme: setAppShellCodeBlockTheme,
+    setCodeBlockShowLineNumbers: setAppShellCodeBlockShowLineNumbers,
+    setCodeBlockWrapLongLines: setAppShellCodeBlockWrapLongLines,
+  } = useAppShell();
 
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [theme, setTheme] = useState<UiSettings["theme"]>("snow");
@@ -511,11 +582,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     useState<EmbeddingCapabilities | null>(null);
   const [tourStepIndex, setTourStepIndex] = useState(-1);
   const eventSourceRef = useRef<EventSource | null>(null);
-  // Extensions register their latest dirty/save on each render. We track
-  // a "version" counter to trigger re-renders for `hasUnsavedChanges`
-  // when an extension's dirty flag flips.
+  // Extensions register their latest dirty/save on each render. Keep the
+  // derived dirty state explicit instead of using an indirect version counter.
   const extensionsRef = useRef<Map<string, SettingsExtension>>(new Map());
-  const [extensionsVersion, setExtensionsVersion] = useState(0);
+  const [hasDirtyExtension, setHasDirtyExtension] = useState(false);
   const registerExtension = useCallback(
     (key: string, ext: SettingsExtension | null) => {
       const map = extensionsRef.current;
@@ -523,17 +593,21 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       if (ext === null) {
         if (prev === undefined) return;
         map.delete(key);
-        setExtensionsVersion((n) => n + 1);
+        setHasDirtyExtension(
+          Array.from(map.values()).some((extension) => extension.dirty),
+        );
         return;
       }
       if (prev && prev.dirty === ext.dirty && prev.save === ext.save) {
         return;
       }
       map.set(key, ext);
-      // Only bump version when dirty flips — save fn changes every render
-      // are common and should not re-render the toolbar.
+      // Only recompute the dirty summary when dirty flips — save fn changes
+      // every render are common and should not re-render the toolbar.
       if (prev?.dirty !== ext.dirty) {
-        setExtensionsVersion((n) => n + 1);
+        setHasDirtyExtension(
+          Array.from(map.values()).some((extension) => extension.dirty),
+        );
       }
     },
     [],
@@ -566,6 +640,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       setResponseLanguage(
         payload.ui.response_language ?? payload.ui.language,
       );
+      // Writes the backend-loaded values into app-shell storage and dispatches
+      // the code-block settings event; AppShellContext (the single source) picks
+      // them up, so no separate copy needs seeding here.
+      syncLoadedCodeBlockSettingsToAppShell(payload.ui);
       if (payload.providers) setProviders(payload.providers);
       settingsLoaded = true;
     } catch (err) {
@@ -601,6 +679,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   // Load settings + status once on mount. Subsequent navigations between
   // settings sub-pages share this state via the layout-level provider.
+  // Code-block switch hydration lives in AppShellContext (the single source),
+  // so no separate post-mount re-read is needed here.
   useEffect(() => {
     loadSettings();
     return () => {
@@ -626,50 +706,52 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [diagnosticsResults]);
 
   // ── UI preferences ──────────────────────────────────────────────────────
-  const persistUi = useCallback(
-    async (
-      nextTheme: UiSettings["theme"],
-      nextLanguage: UiSettings["language"],
-      nextResponseLanguage: UiSettings["response_language"],
-    ) => {
-      await apiFetch(apiUrl("/api/v1/settings/ui"), {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          theme: nextTheme,
-          language: nextLanguage,
-          response_language: nextResponseLanguage,
-        }),
-      });
-    },
-    [],
-  );
+  const updateTheme = useCallback(async (next: UiSettings["theme"]) => {
+    setTheme(next);
+    applyThemePreference(next);
+    await persistUiSettingsPatch({ theme: next });
+  }, []);
 
-  const updateTheme = useCallback(
-    async (next: UiSettings["theme"]) => {
-      setTheme(next);
-      applyThemePreference(next);
-      await persistUi(next, language, responseLanguage);
-    },
-    [language, persistUi, responseLanguage],
-  );
-
-  const updateLanguage = useCallback(
-    async (next: UiSettings["language"]) => {
-      setLanguage(next);
-      writeStoredLanguage(next);
-      await persistUi(theme, next, responseLanguage);
-    },
-    [persistUi, responseLanguage, theme],
-  );
+  const updateLanguage = useCallback(async (next: UiSettings["language"]) => {
+    setLanguage(next);
+    writeStoredLanguage(next);
+    await persistUiSettingsPatch({ language: next });
+  }, []);
 
   const updateResponseLanguage = useCallback(
     async (next: UiSettings["response_language"]) => {
       setResponseLanguage(next);
       writeStoredResponseLanguage(next);
-      await persistUi(theme, language, next);
+      await persistUiSettingsPatch({ response_language: next });
     },
-    [language, persistUi, theme],
+    [],
+  );
+
+  // Each setter updates the app-shell source of truth (which normalizes,
+  // persists to localStorage, and notifies consumers) then mirrors the change
+  // to the backend.
+  const updateCodeBlockTheme = useCallback(
+    async (next: CodeBlockThemeId) => {
+      setAppShellCodeBlockTheme(next);
+      await persistUiSettingsPatch({ code_block_theme: next });
+    },
+    [setAppShellCodeBlockTheme],
+  );
+
+  const updateCodeBlockShowLineNumbers = useCallback(
+    async (next: boolean) => {
+      setAppShellCodeBlockShowLineNumbers(next);
+      await persistUiSettingsPatch({ code_block_show_line_numbers: next });
+    },
+    [setAppShellCodeBlockShowLineNumbers],
+  );
+
+  const updateCodeBlockWrapLongLines = useCallback(
+    async (next: boolean) => {
+      setAppShellCodeBlockWrapLongLines(next);
+      await persistUiSettingsPatch({ code_block_wrap_long_lines: next });
+    },
+    [setAppShellCodeBlockWrapLongLines],
   );
 
   // ── Catalog mutators ────────────────────────────────────────────────────
@@ -914,6 +996,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       const payload = await response.json();
       setCatalog(payload.catalog);
       setDraft(cloneCatalog(payload.catalog));
+      // The model list the chat composer shows is derived from this catalog.
+      invalidateLLMOptionsCache();
       setToast(t("Draft saved"));
     } finally {
       setSaving(false);
@@ -941,6 +1025,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         const payload = await response.json();
         setCatalog(payload.catalog);
         setDraft(cloneCatalog(payload.catalog));
+        invalidateLLMOptionsCache();
         const statusResponse = await apiFetch(apiUrl("/api/v1/system/status"));
         setStatus((await statusResponse.json()) as SystemStatus);
       }
@@ -960,22 +1045,20 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     draft.services.embedding.active_model_id,
   ]);
 
+  const llmActiveProfileId = draft.services.llm.active_profile_id;
+  const llmActiveModelId = draft.services.llm.active_model_id;
   useEffect(() => {
     setLlmContextDetection((current) => {
       if (!current) return null;
-      const llm = draft.services.llm;
       if (
-        current.profileId === llm.active_profile_id &&
-        current.modelId === llm.active_model_id
+        current.profileId === llmActiveProfileId &&
+        current.modelId === llmActiveModelId
       ) {
         return current;
       }
       return null;
     });
-  }, [
-    draft.services.llm.active_profile_id,
-    draft.services.llm.active_model_id,
-  ]);
+  }, [llmActiveProfileId, llmActiveModelId]);
 
   const runDetailedTest = useCallback(
     async (service: ServiceName) => {
@@ -1165,17 +1248,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   // ── Derived ─────────────────────────────────────────────────────────────
   const hasUnsavedChanges = useMemo(() => {
-    const catalogDirty =
-      catalogEditable === true &&
-      JSON.stringify(catalog) !== JSON.stringify(draft);
-    if (catalogDirty) return true;
-    // Any registered extension dirty also counts. Reading from the ref is
-    // safe because `extensionsVersion` invalidates this memo on flip.
-    for (const ext of extensionsRef.current.values()) {
-      if (ext.dirty) return true;
-    }
-    return false;
-  }, [catalog, catalogEditable, draft, extensionsVersion]);
+    return (
+      hasDirtyExtension ||
+      (catalogEditable === true &&
+        JSON.stringify(catalog) !== JSON.stringify(draft))
+    );
+  }, [catalog, catalogEditable, draft, hasDirtyExtension]);
 
   const settingsLoading = catalogEditable === null;
 
@@ -1193,11 +1271,17 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       theme,
       language,
       responseLanguage,
+      codeBlockTheme,
+      codeBlockShowLineNumbers,
+      codeBlockWrapLongLines,
       toast,
       setToast,
       updateTheme,
       updateLanguage,
       updateResponseLanguage,
+      updateCodeBlockTheme,
+      updateCodeBlockShowLineNumbers,
+      updateCodeBlockWrapLongLines,
       mutateCatalog,
       addProfile,
       removeActiveProfile,
@@ -1234,6 +1318,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       applying,
       catalog,
       catalogEditable,
+      codeBlockShowLineNumbers,
+      codeBlockTheme,
+      codeBlockWrapLongLines,
       diagnosticsResults,
       draft,
       embeddingCapabilities,
@@ -1263,6 +1350,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       theme,
       toast,
       tourStepIndex,
+      updateCodeBlockShowLineNumbers,
+      updateCodeBlockTheme,
+      updateCodeBlockWrapLongLines,
       updateContextWindowField,
       updateLanguage,
       updateResponseLanguage,

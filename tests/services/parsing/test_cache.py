@@ -55,6 +55,39 @@ def test_load_ir_reads_markdown_blocks_images(tmp_path: Path) -> None:
     assert asset_dir == workdir / "images"
 
 
+def test_load_ir_absolutizes_relative_img_paths(tmp_path: Path) -> None:
+    workdir = tmp_path / "wd"
+    workdir.mkdir()
+    (workdir / "doc.md").write_text("# title", encoding="utf-8")
+    (workdir / "doc_content_list.json").write_text(
+        json.dumps(
+            [
+                {"type": "image", "img_path": "images/fig1.png"},
+                {"type": "table", "img_path": "images/tbl1.png"},
+                {"type": "image", "img_path": "/abs/already.png"},
+                {"type": "image", "img_path": ""},
+                {"type": "image", "img_path": "../../etc/x.png"},
+                {"type": "image", "img_path": 42},
+                {"type": "text", "text": "t"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (workdir / "images").mkdir()
+
+    _markdown, blocks, _asset_dir = cache.load_ir(workdir)
+    assert blocks is not None
+    assert blocks[0]["img_path"] == str(workdir / "images" / "fig1.png")
+    assert blocks[1]["img_path"] == str(workdir / "images" / "tbl1.png")
+    assert blocks[2]["img_path"] == "/abs/already.png"
+    assert blocks[3]["img_path"] == ""
+    # Traversal paths are never anchored into the cache dir.
+    assert blocks[4]["img_path"] == "../../etc/x.png"
+    # Non-str entries are skipped instead of exploding the whole list.
+    assert blocks[5]["img_path"] == 42
+    assert blocks[6] == {"type": "text", "text": "t"}
+
+
 def test_load_ir_markdown_only(tmp_path: Path) -> None:
     workdir = tmp_path / "wd"
     workdir.mkdir()

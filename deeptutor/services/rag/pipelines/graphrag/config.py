@@ -170,11 +170,17 @@ def build_settings(*, llm_cfg: Any = None, embedding_cfg: Any = None) -> dict[st
         },
         # Plain-text input: DeepTutor's ingestion writes parsed ``.txt`` files
         # into ``input/`` (see ``ingestion.py``) so GraphRAG never parses
-        # documents itself.
-        "input": {"type": "text", "file_pattern": r".*\.txt$"},
+        # documents itself. The ``$`` is escaped as ``$$`` because GraphRAG's
+        # loader treats the whole config text as a ``string.Template`` and does
+        # env-var substitution on it before parsing the YAML; a bare ``$`` is
+        # an "Invalid placeholder" to that pass.
+        "input": {"type": "text", "file_pattern": r".*\.txt$$"},
         "input_storage": {"type": "file", "base_dir": "input"},
         "output_storage": {"type": "file", "base_dir": "output"},
-        "cache": {"type": "file", "storage": {"type": "file", "base_dir": "cache"}},
+        # "json" is GraphRAG's on-disk cache backend id (registered in
+        # graphrag_cache.CacheFactory); "file" is a *storage* type, not a cache
+        # type, and is rejected the first time the pipeline builds a cache.
+        "cache": {"type": "json", "storage": {"type": "file", "base_dir": "cache"}},
         "reporting": {"type": "file", "base_dir": "logs"},
         # GraphRAG/LanceDB defaults to 3072 dimensions; DeepTutor must stamp the
         # active embedding dimension so Qwen-4096 and other non-default models work.

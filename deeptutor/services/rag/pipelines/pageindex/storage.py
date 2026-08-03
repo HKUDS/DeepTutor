@@ -14,8 +14,9 @@ from datetime import datetime, timezone
 import json
 import logging
 from pathlib import Path
-import tempfile
 from typing import Any
+
+from deeptutor.services.file_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
@@ -26,17 +27,6 @@ PROVIDER = "pageindex"
 
 def _empty_manifest() -> dict[str, Any]:
     return {"provider": PROVIDER, "docs": {}}
-
-
-def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        "w", encoding="utf-8", dir=str(path.parent), delete=False
-    ) as handle:
-        json.dump(payload, handle, indent=2, ensure_ascii=False)
-        handle.write("\n")
-        tmp_path = Path(handle.name)
-    tmp_path.replace(path)
 
 
 def manifest_path(storage_dir: Path) -> Path:
@@ -63,7 +53,7 @@ def read_manifest(storage_dir: Path | None) -> dict[str, Any]:
 
 
 def write_manifest(storage_dir: Path, manifest: dict[str, Any]) -> None:
-    _atomic_write_json(manifest_path(storage_dir), manifest)
+    atomic_write_json(manifest_path(storage_dir), manifest)
 
 
 def write_meta(storage_dir: Path) -> None:
@@ -80,7 +70,7 @@ def write_meta(storage_dir: Path) -> None:
         "layout": "flat",
         "created_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z",
     }
-    _atomic_write_json(target / META_FILENAME, payload)
+    atomic_write_json(target / META_FILENAME, payload)
 
 
 def doc_entries(manifest: dict[str, Any]) -> dict[str, Any]:

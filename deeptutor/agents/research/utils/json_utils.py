@@ -36,20 +36,17 @@ def extract_json_from_text(text: str) -> Union[Dict[str, Any], List[Any], None]:
     except json.JSONDecodeError:
         pass
 
-    # 3) Fragment parsing
-    obj_match = re.search(r"\{[\s\S]*\}", text)
-    if obj_match:
+    # 3) First JSON value in surrounding prose / adjacent values
+    decoder = json.JSONDecoder()
+    for i, ch in enumerate(text):
+        if ch not in "{[":
+            continue
         try:
-            return json.loads(obj_match.group(0))
+            parsed, _end = decoder.raw_decode(text[i:])
         except json.JSONDecodeError:
-            pass
-
-    arr_match = re.search(r"\[[\s\S]*\]", text)
-    if arr_match:
-        try:
-            return json.loads(arr_match.group(0))
-        except json.JSONDecodeError:
-            pass
+            continue
+        if isinstance(parsed, (dict, list)):
+            return parsed
 
     return None
 

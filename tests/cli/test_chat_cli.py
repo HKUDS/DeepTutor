@@ -170,6 +170,28 @@ def test_chat_repl_backslash_continuation_sends_single_message(monkeypatch) -> N
     assert captured_requests[0].content == "Please review this code:\ndef fib(n): return n"
 
 
+def test_chat_repl_survives_invalid_utf8_input(monkeypatch) -> None:
+    inputs = iter(
+        [
+            UnicodeDecodeError("utf-8", b"\xe8\x83", 0, 2, "unexpected end of data"),
+            "/quit",
+        ]
+    )
+
+    def _read_input() -> str:
+        value = next(inputs)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr("deeptutor_cli.chat._read_repl_input", _read_input)
+
+    result = runner.invoke(app, ["chat"])
+
+    assert result.exit_code == 0, result.output
+    assert "Unable to decode terminal input" in result.output
+
+
 def test_plugin_info_includes_capability_aliases_and_availability() -> None:
     result = runner.invoke(app, ["plugin", "info", "deep_solve"])
 
@@ -204,12 +226,17 @@ def test_session_list_command_uses_shared_store(monkeypatch) -> None:
 def test_start_command_delegates_to_runtime_launcher(monkeypatch) -> None:
     calls: list[object] = []
 
-    def _fake_start(home=None):  # noqa: ANN001
-        calls.append(home)
+    def _fake_start(home=None, *, dev=False):  # noqa: ANN001
+        calls.append((home, dev))
 
     monkeypatch.setattr("deeptutor.runtime.launcher.start", _fake_start)
 
     result = runner.invoke(app, ["start"])
 
     assert result.exit_code == 0, result.output
-    assert calls == [None]
+    assert calls == [(None, False)]
+
+    result = runner.invoke(app, ["start", "--dev"])
+
+    assert result.exit_code == 0, result.output
+    assert calls[-1] == (None, True)

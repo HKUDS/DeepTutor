@@ -213,6 +213,14 @@ export function markdownUrlTransform(
   return "";
 }
 
+export function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function sanitizeAllowedHtmlTag(tag: string): string {
   return tag
     .replace(HTML_EVENT_ATTR_REGEX, "")

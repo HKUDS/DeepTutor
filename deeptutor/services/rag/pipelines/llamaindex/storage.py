@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import shutil
 import threading
+import time
 from typing import Any
 
 from deeptutor.services.embedding.validation import validate_embedding_batch
@@ -200,9 +201,26 @@ def validate_storage_embeddings(storage_dir: Path) -> None:
 # re-validate the (potentially large) persisted store. Entries are keyed by a
 # freshness token derived from the store files' mtimes, so a re-index or
 # incremental insert naturally invalidates the stale entry.
-_INDEX_CACHE: "OrderedDict[tuple[str, tuple[int, ...]], Any]" = OrderedDict()
+@dataclass
+class _CachedIndex:
+    index: Any
+    last_used: float
+
+
+_INDEX_CACHE: "OrderedDict[tuple[str, tuple[int, ...]], _CachedIndex]" = OrderedDict()
 _INDEX_CACHE_LOCK = threading.Lock()
-_INDEX_CACHE_MAXSIZE = 8
+_INDEX_CACHE_MAXSIZE = 2
+_INDEX_CACHE_IDLE_SECONDS = 10 * 60
+
+
+def _prune_index_cache_locked(now: float) -> None:
+    stale = [
+        key
+        for key, entry in _INDEX_CACHE.items()
+        if now - entry.last_used >= _INDEX_CACHE_IDLE_SECONDS
+    ]
+    for key in stale:
+        _INDEX_CACHE.pop(key, None)
 
 
 def _freshness_token(storage_dir: Path) -> tuple[int, ...]:
@@ -224,11 +242,14 @@ def _load_validated_index(storage_dir: Path) -> Any:
 
 def _cached_index(storage_dir: Path) -> Any:
     key = (str(storage_dir.resolve()), _freshness_token(storage_dir))
+    now = time.monotonic()
     with _INDEX_CACHE_LOCK:
-        cached = _INDEX_CACHE.get(key)
-        if cached is not None:
+        _prune_index_cache_locked(now)
+        entry = _INDEX_CACHE.get(key)
+        if entry is not None:
+            entry.last_used = now
             _INDEX_CACHE.move_to_end(key)
-            return cached
+            return entry.index
 
     # Load outside the lock so a slow first load of one KB does not block other
     # KBs' queries. A concurrent duplicate load is harmless (idempotent).
@@ -237,7 +258,7 @@ def _cached_index(storage_dir: Path) -> Any:
         # Drop any superseded entry for the same storage dir (older token).
         for stale in [existing for existing in _INDEX_CACHE if existing[0] == key[0]]:
             _INDEX_CACHE.pop(stale, None)
-        _INDEX_CACHE[key] = index
+        _INDEX_CACHE[key] = _CachedIndex(index=index, last_used=time.monotonic())
         _INDEX_CACHE.move_to_end(key)
         while len(_INDEX_CACHE) > _INDEX_CACHE_MAXSIZE:
             _INDEX_CACHE.popitem(last=False)
@@ -248,6 +269,14 @@ def clear_index_cache() -> None:
     """Drop all cached indexes (used by tests and after destructive edits)."""
     with _INDEX_CACHE_LOCK:
         _INDEX_CACHE.clear()
+
+
+def prune_index_cache() -> int:
+    """Drop indexes idle past the single-user warm window."""
+    with _INDEX_CACHE_LOCK:
+        before = len(_INDEX_CACHE)
+        _prune_index_cache_locked(time.monotonic())
+        return before - len(_INDEX_CACHE)
 
 
 def retrieve_nodes(storage_dir: Path, query: str, *, top_k: int = 5) -> list[Any]:

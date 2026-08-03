@@ -26,11 +26,12 @@ After `exec` completes, use the Generated artifacts URL from the tool result in 
 
 ```python
 import pdfplumber
+
 with pdfplumber.open("in.pdf") as pdf:
     for i, page in enumerate(pdf.pages, 1):
         print(f"--- page {i} ---")
-        print(page.extract_text() or "")        # layout-aware text
-        for t in page.extract_tables():          # list of tables; each is list[row]
+        print(page.extract_text() or "")  # layout-aware text
+        for t in page.extract_tables():  # list of tables; each is list[row]
             for row in t:
                 print(row)
 ```
@@ -38,6 +39,7 @@ with pdfplumber.open("in.pdf") as pdf:
 Tables → DataFrame/Excel:
 ```python
 import pdfplumber, pandas as pd
+
 frames = []
 with pdfplumber.open("in.pdf") as pdf:
     for page in pdf.pages:
@@ -50,8 +52,12 @@ if frames:
 
 Messy tables: pass strategies, or crop a region with `page.within_bbox((x0, top, x1, bottom))` first:
 ```python
-ts = {"vertical_strategy": "lines", "horizontal_strategy": "lines",
-      "snap_tolerance": 3, "intersection_tolerance": 15}
+ts = {
+    "vertical_strategy": "lines",
+    "horizontal_strategy": "lines",
+    "snap_tolerance": 3,
+    "intersection_tolerance": 15,
+}
 page.extract_tables(ts)
 ```
 
@@ -76,11 +82,16 @@ w.write("merged.pdf")
 # Split: one file per page
 r = PdfReader("in.pdf")
 for i, p in enumerate(r.pages, 1):
-    w = PdfWriter(); w.add_page(p); w.write(f"page_{i}.pdf")
+    w = PdfWriter()
+    w.add_page(p)
+    w.write(f"page_{i}.pdf")
 
 # Rotate page 0 by 90 degrees clockwise
-r = PdfReader("in.pdf"); w = PdfWriter()
-r.pages[0].rotate(90); w.add_page(r.pages[0]); w.write("rotated.pdf")
+r = PdfReader("in.pdf")
+w = PdfWriter()
+r.pages[0].rotate(90)
+w.add_page(r.pages[0])
+w.write("rotated.pdf")
 ```
 
 - **Metadata**: `PdfReader("in.pdf").metadata` (`.title`, `.author`, ...).
@@ -91,10 +102,13 @@ r.pages[0].rotate(90); w.add_page(r.pages[0]); w.write("rotated.pdf")
 Watermark (stamp one page over every page):
 ```python
 from pypdf import PdfReader, PdfWriter
+
 wm = PdfReader("stamp.pdf").pages[0]
-r = PdfReader("in.pdf"); w = PdfWriter()
+r = PdfReader("in.pdf")
+w = PdfWriter()
 for p in r.pages:
-    p.merge_page(wm); w.add_page(p)
+    p.merge_page(wm)
+    w.add_page(p)
 w.write("stamped.pdf")
 ```
 
@@ -108,15 +122,22 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
 styles = getSampleStyleSheet()
-story = [Paragraph("Report Title", styles["Title"]), Spacer(1, 12),
-         Paragraph("Body text. " * 20, styles["Normal"])]
+story = [
+    Paragraph("Report Title", styles["Title"]),
+    Spacer(1, 12),
+    Paragraph("Body text. " * 20, styles["Normal"]),
+]
 data = [["Product", "Q1", "Q2"], ["Widgets", "120", "135"]]
 tbl = Table(data)
-tbl.setStyle(TableStyle([
-    ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
-    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-    ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
-]))
+tbl.setStyle(
+    TableStyle(
+        [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+        ]
+    )
+)
 story += [Spacer(1, 12), tbl]
 SimpleDocTemplate("out.pdf", pagesize=letter).build(story)
 ```
@@ -132,17 +153,18 @@ import os
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
+
 def register_cjk_font(name="CJK"):
     # TrueType ONLY — reportlab cannot embed CFF/OpenType outlines, so a .otf
     # like Noto Sans CJK fails with "postscript outlines are not supported".
     for path in [
-        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",        # Linux sandbox (fonts-wqy-zenhei)
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",  # Linux sandbox (fonts-wqy-zenhei)
         "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-        "/System/Library/Fonts/STHeiti Light.ttc",             # macOS
+        "/System/Library/Fonts/STHeiti Light.ttc",  # macOS
         "/System/Library/Fonts/Hiragino Sans GB.ttc",
         "/System/Library/Fonts/Supplemental/Songti.ttc",
         "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
-        "C:/Windows/Fonts/msyh.ttc",                           # Windows
+        "C:/Windows/Fonts/msyh.ttc",  # Windows
     ]:
         if os.path.exists(path):
             try:
@@ -152,9 +174,10 @@ def register_cjk_font(name="CJK"):
                 continue
     raise RuntimeError("No CJK-capable TrueType font found — do not emit tofu; say so.")
 
+
 font = register_cjk_font()
 styles = getSampleStyleSheet()
-for s in styles.byName.values():                 # make the CJK font the default everywhere
+for s in styles.byName.values():  # make the CJK font the default everywhere
     s.fontName = font
 # Tables don't read the stylesheet — set the font in the TableStyle too:
 #   ("FONTNAME", (0, 0), (-1, -1), font)
@@ -172,6 +195,7 @@ Markdown/HTML → PDF needs an external converter (`soffice`/`pandoc`) that is u
 First detect whether the PDF has real fillable (AcroForm) fields:
 ```python
 from pypdf import PdfReader
+
 fields = PdfReader("form.pdf").get_fields()
 print("fillable" if fields else "flat (no fields)")
 ```
@@ -179,15 +203,16 @@ print("fillable" if fields else "flat (no fields)")
 **Fillable** — inspect field names/types, then fill and write:
 ```python
 from pypdf import PdfReader, PdfWriter
+
 r = PdfReader("form.pdf")
 for name, f in r.get_fields().items():
-    print(name, f.get("/FT"), f.get("/_States_"))   # /Tx text, /Btn checkbox/radio, /Ch choice
+    print(name, f.get("/FT"), f.get("/_States_"))  # /Tx text, /Btn checkbox/radio, /Ch choice
 
 w = PdfWriter(clone_from=r)
-values = {"first_name": "Bart", "agree": "/Yes"}     # checkbox/radio: use its on-state, NOT True/False
+values = {"first_name": "Bart", "agree": "/Yes"}  # checkbox/radio: use its on-state, NOT True/False
 for page in w.pages:
     w.update_page_form_field_values(page, values, auto_regenerate=False)
-w.set_need_appearances_writer(True)                  # force viewers to render the values
+w.set_need_appearances_writer(True)  # force viewers to render the values
 w.write("filled.pdf")
 ```
 Checkbox/radio values are on-state strings, not booleans — read the field's `/_States_` (e.g. `/Yes`, `/On`); `/Off` clears it.
@@ -195,24 +220,36 @@ Checkbox/radio values are on-state strings, not booleans — read the field's `/
 **Flat form (no fields)** — overlay text with `FreeText` annotations at PDF coordinates. Get real coordinates from the layout with pdfplumber instead of guessing:
 ```python
 import pdfplumber
+
 with pdfplumber.open("form.pdf") as pdf:
     pg = pdf.pages[0]
-    for wd in pg.extract_words():     # each has x0, top, x1, bottom (TOP-left origin!)
+    for wd in pg.extract_words():  # each has x0, top, x1, bottom (TOP-left origin!)
         print(wd["text"], wd["x0"], wd["top"])
-    for rc in pg.rects:               # small squares are likely checkboxes
+    for rc in pg.rects:  # small squares are likely checkboxes
         print("rect", rc["x0"], rc["top"], rc["x1"], rc["bottom"])
 ```
 pdfplumber `top` is measured from the page top; pypdf rects are bottom-left, so convert: `pdf_y = page_height - top`. Place text just right of the matching label:
 ```python
 from pypdf import PdfReader, PdfWriter
 from pypdf.annotations import FreeText
-r = PdfReader("form.pdf"); w = PdfWriter(); w.append(r)
+
+r = PdfReader("form.pdf")
+w = PdfWriter()
+w.append(r)
 h = float(r.pages[0].mediabox.height)
 top = 700  # pdfplumber 'top' of the label's row
-w.add_annotation(page_number=0, annotation=FreeText(
-    text="Smith", rect=(255, h - top - 14, 720, h - top),   # (x0, y0, x1, y1)
-    font="Helvetica", font_size="10pt", font_color="000000",
-    border_color=None, background_color=None))
+w.add_annotation(
+    page_number=0,
+    annotation=FreeText(
+        text="Smith",
+        rect=(255, h - top - 14, 720, h - top),  # (x0, y0, x1, y1)
+        font="Helvetica",
+        font_size="10pt",
+        font_color="000000",
+        border_color=None,
+        background_color=None,
+    ),
+)
 w.write("filled.pdf")
 ```
 Verify: re-open the output and re-read `get_fields()` values (fillable) or re-extract text (overlay) to confirm the values landed.
@@ -223,9 +260,10 @@ Verify: re-open the output and re-read `get_fields()` values (fillable) or re-ex
 
 ```python
 import fitz  # PyMuPDF
+
 doc = fitz.open("in.pdf")
 for i, page in enumerate(doc, 1):
-    page.get_pixmap(dpi=150).save(f"page_{i}.png")   # higher dpi = sharper + larger
+    page.get_pixmap(dpi=150).save(f"page_{i}.png")  # higher dpi = sharper + larger
 ```
 
 `fitz` also extracts text (`page.get_text()`) and can render a sub-region via `page.get_pixmap(clip=fitz.Rect(x0, y0, x1, y1))`. It does **not** OCR — a rendered scanned page is still just pixels (see Scanned PDFs above).

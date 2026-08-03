@@ -17,15 +17,6 @@ from .exceptions import (
     ProviderContextWindowError,
 )
 
-try:
-    import openai
-
-    _HAS_OPENAI = True
-except ImportError:  # pragma: no cover
-    openai = None  # type: ignore
-    _HAS_OPENAI = False
-
-
 logger = logging.getLogger(__name__)
 
 
@@ -50,7 +41,25 @@ def _message_contains(*needles: str) -> ErrorClassifier:
     return _classifier
 
 
+def _class_named(*names: str) -> ErrorClassifier:
+    """Match optional SDK exceptions without importing the SDK at startup."""
+    expected = set(names)
+
+    def _classifier(exc: Exception) -> bool:
+        return any(cls.__name__ in expected for cls in type(exc).__mro__)
+
+    return _classifier
+
+
 _GLOBAL_RULES: list[MappingRule] = [
+    MappingRule(
+        classifier=_class_named("AuthenticationError", "AuthenticationStatusError"),
+        factory=lambda exc, provider: LLMAuthenticationError(str(exc), provider=provider),
+    ),
+    MappingRule(
+        classifier=_class_named("RateLimitError"),
+        factory=lambda exc, provider: LLMRateLimitError(str(exc), provider=provider),
+    ),
     MappingRule(
         classifier=_message_contains("rate limit", "429", "quota"),
         factory=lambda exc, provider: LLMRateLimitError(str(exc), provider=provider),
@@ -60,31 +69,6 @@ _GLOBAL_RULES: list[MappingRule] = [
         factory=lambda exc, provider: ProviderContextWindowError(str(exc), provider=provider),
     ),
 ]
-
-if _HAS_OPENAI and openai is not None:
-    _GLOBAL_RULES[:0] = [
-        MappingRule(
-            classifier=_instance_of(openai.AuthenticationError),
-            factory=lambda exc, provider: LLMAuthenticationError(str(exc), provider=provider),
-        ),
-        MappingRule(
-            classifier=_instance_of(openai.RateLimitError),
-            factory=lambda exc, provider: LLMRateLimitError(str(exc), provider=provider),
-        ),
-    ]
-
-# Attempt to load Anthropic and Google rules if SDKs are present
-try:
-    import anthropic
-
-    _GLOBAL_RULES.append(
-        MappingRule(
-            classifier=_instance_of(anthropic.RateLimitError),
-            factory=lambda exc, provider: LLMRateLimitError(str(exc), provider=provider),
-        )
-    )
-except ImportError:
-    pass
 
 
 def map_error(exc: Exception, provider: str | None = None) -> LLMError:

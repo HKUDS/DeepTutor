@@ -46,6 +46,10 @@ _TOOL_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "en": "Run shell commands inside an isolated sandbox workspace.",
         "zh": "在隔离沙箱工作区中运行 shell 命令。",
     },
+    "kb_files": {
+        "en": "List the documents a knowledge base holds, with the total count.",
+        "zh": "列出知识库中的文档清单与总数。",
+    },
     "paper_search": {
         "en": "Search arXiv preprints and return paper metadata.",
         "zh": "搜索 arXiv 预印本并返回论文元数据。",

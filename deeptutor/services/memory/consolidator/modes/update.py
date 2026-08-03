@@ -624,10 +624,13 @@ def _extract_json_object(raw: str) -> str | None:
         if text.rstrip().endswith("```"):
             text = text.rstrip()[:-3]
     start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end <= start:
+    if start == -1:
         return None
-    return text[start : end + 1]
+    try:
+        _parsed, end = json.JSONDecoder().raw_decode(text[start:])
+    except json.JSONDecodeError:
+        return None
+    return text[start : start + end]
 
 
 def _append_facts_to_doc(

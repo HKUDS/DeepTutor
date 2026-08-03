@@ -18,6 +18,7 @@ from .common import (
     maybe_run,
     parse_config_items,
     parse_json_object,
+    read_console_input,
     regenerate_and_render,
     render_tool_result_entry,
     run_turn_and_render,
@@ -129,6 +130,12 @@ async def _chat_repl(state: ChatState) -> None:
             except (EOFError, KeyboardInterrupt):
                 console.print()
                 break
+            except UnicodeDecodeError:
+                console.print(
+                    "[yellow]Unable to decode terminal input. "
+                    "Check the terminal encoding and try again.[/]"
+                )
+                continue
 
             if not user_input:
                 continue
@@ -267,7 +274,7 @@ def _read_repl_input() -> str:
     lines: list[str] = []
     prompt = "[bold green]You>[/] "
     while True:
-        line = console.input(prompt)
+        line = read_console_input(prompt)
         if line.endswith("\\"):
             lines.append(line[:-1])
             prompt = "[dim]...[/] "

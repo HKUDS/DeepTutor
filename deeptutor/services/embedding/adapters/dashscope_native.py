@@ -1,10 +1,20 @@
-"""Aliyun DashScope MultiModalEmbedding adapter.
+"""Aliyun DashScope embedding adapter (text + multimodal).
 
-Uses the ``dashscope`` Python SDK (``dashscope.MultiModalEmbedding.call``)
-because DashScope's native API shape (`input.contents=[{text|image|video}]` +
-`parameters={dimension, enable_fusion}`) does not match the OpenAI contract.
-The SDK call is synchronous, so we run it in a thread pool to keep the rest
-of the embedding stack non-blocking.
+Uses the ``dashscope`` Python SDK rather than the OpenAI contract because
+DashScope's native API shape does not match it. DashScope splits embeddings
+across two surfaces served from different endpoints, and the SDK derives the
+endpoint from the model id:
+
+* multimodal models (``qwen3-vl-embedding``, ``multimodal-embedding-v1``) use
+  ``dashscope.MultiModalEmbedding.call`` (``input=[{text|image|video}]`` +
+  ``parameters={dimension, enable_fusion}``);
+* text models (``text-embedding-v1..v4``) use ``dashscope.TextEmbedding.call``
+  (``input=[str, ...]``).
+
+Routing a text model through the multimodal call sends it to the multimodal
+endpoint and fails with HTTP 400 "url error" (issue #660), so ``embed`` picks
+the surface from the model id. Both calls are synchronous, so we run them in a
+thread pool to keep the embedding stack non-blocking.
 """
 
 from __future__ import annotations
@@ -14,13 +24,17 @@ from http import HTTPStatus
 import logging
 from typing import Any, Dict, List
 
+from deeptutor.services.config.embedding_endpoint import (
+    is_dashscope_multimodal_embedding_model,
+)
+
 from .base import BaseEmbeddingAdapter, EmbeddingRequest, EmbeddingResponse
 
 logger = logging.getLogger(__name__)
 
 
 class DashScopeMultiModalEmbeddingAdapter(BaseEmbeddingAdapter):
-    """Adapter for Aliyun DashScope (Bailian) multimodal embedding."""
+    """Adapter for Aliyun DashScope (Bailian) text + multimodal embedding."""
 
     MODELS_INFO = {
         "qwen3-vl-embedding": {
@@ -59,7 +73,34 @@ class DashScopeMultiModalEmbeddingAdapter(BaseEmbeddingAdapter):
             params["enable_fusion"] = bool(request.enable_fusion)
         return params
 
+    def _build_text_inputs(self, request: EmbeddingRequest) -> List[str]:
+        """Flatten the request to the plain string list TextEmbedding expects."""
+        if request.texts:
+            return list(request.texts)
+        return [
+            item["text"]
+            for item in (request.contents or [])
+            if isinstance(item, dict) and item.get("text")
+        ]
+
+    def _build_text_parameters(self, request: EmbeddingRequest) -> Dict[str, Any]:
+        # TextEmbedding takes `dimension` (v3/v4 support it) but has no
+        # `enable_fusion` — that is a multimodal-only knob.
+        params: Dict[str, Any] = {}
+        dim_value = request.dimensions or self.dimensions
+        if dim_value:
+            params["dimension"] = dim_value
+        return params
+
     async def embed(self, request: EmbeddingRequest) -> EmbeddingResponse:
+        model_name = request.model or self.model
+        if is_dashscope_multimodal_embedding_model(model_name):
+            return await self._embed_multimodal(request, model_name)
+        return await self._embed_text(request, model_name)
+
+    async def _embed_multimodal(
+        self, request: EmbeddingRequest, model_name: str
+    ) -> EmbeddingResponse:
         try:
             from dashscope import MultiModalEmbedding
         except ImportError as exc:
@@ -70,7 +111,6 @@ class DashScopeMultiModalEmbeddingAdapter(BaseEmbeddingAdapter):
 
         contents = self._build_contents(request)
         parameters = self._build_parameters(request)
-        model_name = request.model or self.model
 
         logger.debug(
             "Calling dashscope.MultiModalEmbedding.call "
@@ -88,6 +128,37 @@ class DashScopeMultiModalEmbeddingAdapter(BaseEmbeddingAdapter):
             api_key=self.api_key,
             model=model_name,
             input=contents,
+            **parameters,
+        )
+
+        self._raise_on_error(resp, model_name)
+        return self._parse_response(resp, model_name, request)
+
+    async def _embed_text(self, request: EmbeddingRequest, model_name: str) -> EmbeddingResponse:
+        try:
+            from dashscope import TextEmbedding
+        except ImportError as exc:
+            raise ImportError(
+                "dashscope SDK not installed. Run `pip install dashscope` "
+                "(or add to your project deps) to enable Aliyun DashScope."
+            ) from exc
+
+        inputs = self._build_text_inputs(request)
+        parameters = self._build_text_parameters(request)
+
+        logger.debug(
+            "Calling dashscope.TextEmbedding.call "
+            f"(model={model_name}, items={len(inputs)}, params={parameters})"
+        )
+
+        # TextEmbedding.call POSTs to the DashScope text-embedding endpoint and
+        # accepts a flat list of strings for `input`. Response/usage/error shape
+        # matches MultiModalEmbedding, so we reuse the shared parsers below.
+        resp = await asyncio.to_thread(
+            TextEmbedding.call,
+            api_key=self.api_key,
+            model=model_name,
+            input=inputs,
             **parameters,
         )
 

@@ -51,6 +51,7 @@ from deeptutor.multi_user.knowledge_access import (
     list_visible_knowledge_bases as list_visible_kb_access,
 )
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
+from deeptutor.services.file_io import atomic_write_json
 from deeptutor.services.rag.factory import (
     DEFAULT_PROVIDER,
     GRAPHRAG_PROVIDER,
@@ -194,6 +195,36 @@ def _build_unique_task_id(task_type: str, task_key_prefix: str) -> str:
     task_manager = TaskIDManager.get_instance()
     task_key = f"{task_key_prefix}_{datetime.now().isoformat()}_{uuid4().hex[:8]}"
     return task_manager.generate_task_id(task_type, task_key)
+
+
+def _mark_kb_queued_for_processing(
+    manager: KnowledgeBaseManager,
+    kb_name: str,
+    task_id: str,
+    message: str,
+    *,
+    status: str = "processing",
+) -> None:
+    """Flip an existing KB to a live processing status before its background task is dispatched.
+
+    ``run_upload_processing_task`` only writes status once it starts running;
+    without this pre-dispatch update the KB keeps reporting ``ready`` between
+    the accepted upload/sync response and the task's first progress write.
+    Mirrors the pre-dispatch update ``create_knowledge_base`` already does.
+    ``stage`` must be a member of the frontend's ``LIVE_PROGRESS_STAGES`` set
+    (web/lib/knowledge-helpers.ts).
+    """
+    manager.update_kb_status(
+        name=kb_name,
+        status=status,
+        progress={
+            "stage": "starting",
+            "message": message,
+            "percent": 0,
+            "task_id": task_id,
+            "timestamp": datetime.now().isoformat(),
+        },
+    )
 
 
 def _save_zip_archive(
@@ -586,7 +617,7 @@ def _assert_provider_ready(provider: str) -> None:
 
 
 def _enforce_provider_formats(provider: str, files: list[UploadFile]) -> None:
-    """PageIndex ingests PDF/Markdown only — reject other formats up front."""
+    """Reject files PageIndex's document endpoint does not accept, up front."""
     if provider != PAGEINDEX_PROVIDER:
         return
     from deeptutor.services.rag.pipelines.pageindex.pipeline import SUPPORTED_EXTENSIONS
@@ -599,10 +630,11 @@ def _enforce_provider_formats(provider: str, files: list[UploadFile]) -> None:
         and Path(f.filename).suffix.lower() not in SUPPORTED_EXTENSIONS
     ]
     if unsupported:
+        supported = ", ".join(sorted(SUPPORTED_EXTENSIONS))
         raise HTTPException(
             status_code=400,
             detail=(
-                "PageIndex knowledge bases accept PDF and Markdown only. "
+                f"PageIndex knowledge bases accept: {supported}. "
                 f"Unsupported: {', '.join(unsupported[:5])}."
             ),
         )
@@ -1046,6 +1078,16 @@ async def update_pageindex_pipeline_config(payload: PageIndexConfigUpdate):
             api_base_url = payload.api_base_url.strip()
 
         service.save_pageindex({"api_key": api_key, "api_base_url": api_base_url})
+
+        # The built-in pageindex MCP server derives its URL/Bearer header from
+        # these settings — resync connections so key changes apply immediately.
+        try:
+            from deeptutor.services.mcp import get_mcp_manager
+
+            await get_mcp_manager().reload()
+        except Exception:
+            logger.warning("MCP reload after PageIndex config change failed", exc_info=True)
+
         return _pageindex_config_payload()
     except Exception as e:
         logger.error(f"Error updating PageIndex config: {e}")
@@ -1615,6 +1657,87 @@ async def connect_lightrag_server_route(payload: ConnectLightRagServerRequest):
     }
 
 
+class ProbeImaRequest(BaseModel):
+    client_id: str
+    api_key: str
+    knowledge_base_id: str
+
+
+class ConnectImaRequest(BaseModel):
+    name: str
+    client_id: str
+    api_key: str
+    knowledge_base_id: str
+
+
+@router.post("/probe-ima")
+async def probe_ima_route(payload: ProbeImaRequest):
+    """Test-connect to a Tencent IMA knowledge base before binding a KB to it.
+
+    Returns the verdict (credentials accepted? does the library id resolve, and
+    what is it called?) so the UI can confirm before any registration happens.
+    Creates nothing.
+    """
+    from deeptutor.services.rag.pipelines.ima.probe import probe_knowledge_base
+
+    result = await probe_knowledge_base(
+        payload.client_id,
+        payload.api_key,
+        payload.knowledge_base_id,
+    )
+    return result.to_dict()
+
+
+@router.post("/connect-ima")
+async def connect_ima_route(payload: ConnectImaRequest):
+    """Connect a Tencent IMA knowledge base as a retrieval-only knowledge base.
+
+    Re-probes server-side (never trusts the client's verdict), then registers a
+    pointer (``type: ima``). Retrieval is offloaded to IMA's ``search_knowledge``
+    OpenAPI — no copy, no local index.
+    """
+    from deeptutor.services.rag.pipelines.ima.probe import probe_knowledge_base
+
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Knowledge base name is required.")
+
+    result = await probe_knowledge_base(
+        payload.client_id,
+        payload.api_key,
+        payload.knowledge_base_id,
+    )
+    if not result.ok:
+        raise HTTPException(
+            status_code=400,
+            detail=result.error or "Could not connect to the IMA knowledge base.",
+        )
+
+    try:
+        manager = get_kb_manager()
+        entry = manager.register_ima_kb(
+            name,
+            payload.client_id,
+            payload.api_key,
+            payload.knowledge_base_id,
+            description=result.description or "",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error connecting IMA knowledge base: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {
+        "status": "connected",
+        "name": name,
+        "knowledge_base_id": entry["knowledge_base_id"],
+        "rag_provider": entry["rag_provider"],
+    }
+
+
 @router.get("/list", response_model=list[KnowledgeBaseInfo])
 async def list_knowledge_bases():
     """List all available knowledge bases with their details."""
@@ -2064,6 +2187,13 @@ async def upload_files(
 
         logger.info(f"Uploading {len(uploaded_files)} files to KB '{kb_name}'")
 
+        _mark_kb_queued_for_processing(
+            manager,
+            kb_name,
+            task_id,
+            f"Processing {len(uploaded_files)} uploaded file(s)...",
+        )
+
         background_tasks.add_task(
             run_upload_processing_task,
             kb_name=kb_name,
@@ -2267,8 +2397,7 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
                 metadata["last_indexed_at"] = completed_at
                 metadata["last_indexed_count"] = len(file_paths)
                 metadata["last_indexed_action"] = "reindex"
-                with open(metadata_file, "w", encoding="utf-8") as handle:
-                    json.dump(metadata, handle, indent=2, ensure_ascii=False)
+                atomic_write_json(metadata_file, metadata)
             except Exception as meta_err:
                 logger.warning(
                     "Failed to update re-index metadata for '%s': %s",
@@ -2389,16 +2518,8 @@ async def reindex_knowledge_base(
         task_id = _build_unique_task_id("kb_reindex", kb_name)
         get_task_stream_manager().ensure_task(task_id)
 
-        manager.update_kb_status(
-            name=kb_name,
-            status="initializing",
-            progress={
-                "stage": "starting",
-                "message": "Queueing re-index...",
-                "percent": 0,
-                "task_id": task_id,
-                "timestamp": datetime.now().isoformat(),
-            },
+        _mark_kb_queued_for_processing(
+            manager, kb_name, task_id, "Queueing re-index...", status="initializing"
         )
 
         background_tasks.add_task(
@@ -2733,6 +2854,13 @@ async def sync_folder(kb_name: str, folder_id: str, background_tasks: Background
         # NOTE: We DO NOT update sync state here anymore.
         # It is updated in run_upload_processing_task only after successful processing.
         # This prevents marking files as synced if processing fails (race condition fix).
+
+        _mark_kb_queued_for_processing(
+            manager,
+            kb_name,
+            task_id,
+            f"Syncing {len(files_to_process)} file(s) from linked folder...",
+        )
 
         # Add background task to process files
         background_tasks.add_task(

@@ -15,6 +15,7 @@ from typing import Optional
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
 from deeptutor.services.config import resolve_llm_runtime_config
+from deeptutor.services.file_io import atomic_write_json
 from deeptutor.services.rag.factory import normalize_provider_name
 from deeptutor.services.rag.file_routing import FileTypeRouter
 from deeptutor.services.rag.service import RAGService
@@ -94,8 +95,7 @@ class KnowledgeBaseInitializer:
         )
         metadata["last_indexed_action"] = "create"
 
-        with open(metadata_file, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, indent=2, ensure_ascii=False)
+        atomic_write_json(metadata_file, metadata)
 
         try:
             from deeptutor.services.config import get_kb_config_service
@@ -124,8 +124,7 @@ class KnowledgeBaseInitializer:
             "needs_reindex": False,
         }
 
-        with open(self.kb_dir / "metadata.json", "w", encoding="utf-8") as f:
-            json.dump(metadata, indent=2, ensure_ascii=False, fp=f)
+        atomic_write_json(self.kb_dir / "metadata.json", metadata)
 
         self._register_to_config()
 

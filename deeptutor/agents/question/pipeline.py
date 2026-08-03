@@ -56,6 +56,7 @@ from deeptutor.core.agentic import (
 )
 from deeptutor.core.agentic.labels import find_inline_labels
 from deeptutor.core.agentic.tool_dispatch import MAX_PARALLEL_TOOL_CALLS
+from deeptutor.core.agentic.usage import record_streamed_usage
 from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.trace import (
@@ -1026,23 +1027,18 @@ class QuestionPipeline:
                 reasoning_effort=self.reasoning_effort,
             ),
         }
-        try:
-            kwargs["stream_options"] = {"include_usage": True}
-        except Exception:
-            pass
+        kwargs["stream_options"] = {"include_usage": True}
 
         chunks: list[str] = []
+        # Keep the latest usage frame only — some providers emit usage on
+        # multiple stream chunks; recording each one would N× inflate calls.
+        usage_seen = None
         try:
             response_stream = await client.chat.completions.create(**kwargs)
             async for chunk in response_stream:
-                # Usage frames have no choices; surface them to the usage
-                # tracker so the cost summary reflects the summarizer too.
                 usage_frame = getattr(chunk, "usage", None)
-                if usage_frame and self.usage is not None:
-                    try:
-                        self.usage.add_from_response(usage_frame)
-                    except Exception:
-                        logger.debug("usage recording failed for summarizer", exc_info=True)
+                if usage_frame is not None:
+                    usage_seen = usage_frame
                 if not getattr(chunk, "choices", None):
                     continue
                 delta = chunk.choices[0].delta
@@ -1058,6 +1054,8 @@ class QuestionPipeline:
                     stage=STAGE_EXPLORING,
                     metadata=merge_trace_metadata(meta, {"trace_kind": "llm_chunk"}),
                 )
+            # Zero-char defaults: the summarizer has no estimate fallback.
+            record_streamed_usage(self.usage, usage_seen)
         except Exception as exc:
             logger.warning("Tool summarizer failed for %s: %s", tool_name, exc)
             await stream.progress(
@@ -1301,11 +1299,12 @@ class QuestionPipeline:
         try:
             parsed = json.loads(text)
         except json.JSONDecodeError:
-            obj = re.search(r"\{[\s\S]*\}", text)
-            if obj is None:
+            # First JSON object only; trailing brace-prose must not extend the slice.
+            start = text.find("{")
+            if start == -1:
                 return {}
             try:
-                parsed = json.loads(obj.group(0))
+                parsed, _end = json.JSONDecoder().raw_decode(text[start:])
             except json.JSONDecodeError:
                 return {}
         return parsed if isinstance(parsed, dict) else {}
@@ -1955,28 +1954,6 @@ class _BaseLoopHost:
     async def emit_terminator(self, payload: dict[str, Any] | None) -> None:
         # No quiz tool is wired to terminate the loop with content.
         return
-
-    def assistant_message_with_tool_calls(
-        self,
-        *,
-        content: str,
-        tool_calls: list[dict[str, Any]],
-    ) -> dict[str, Any]:
-        return {
-            "role": "assistant",
-            "content": content or None,
-            "tool_calls": [
-                {
-                    "id": tc["id"],
-                    "type": "function",
-                    "function": {
-                        "name": tc["name"],
-                        "arguments": tc.get("arguments") or "{}",
-                    },
-                }
-                for tc in tool_calls
-            ],
-        }
 
     def protocol_retry_notice(self) -> str:
         return self._pipeline._t(

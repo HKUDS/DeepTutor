@@ -69,6 +69,18 @@ def test_compute_mastery_partial_correctness_scales():
     assert one_of_five < two_of_five < three_of_five
 
 
+def test_compute_mastery_weighs_recent_attempts_more_heavily():
+    """Regression test for #618: recency weighting must actually distinguish
+    a recovering history from a declining one, even with the same correct
+    count. A miss-then-two-hits history should score higher than a
+    two-hits-then-miss history."""
+    recovering = compute_mastery([False, True, True])
+    declining = compute_mastery([True, True, False])
+    assert recovering > declining
+    assert recovering == pytest.approx(0.696, abs=1e-3)
+    assert declining == pytest.approx(0.643, abs=1e-3)
+
+
 # ── grade_and_record: the unified post-answer pipeline ─────────────────────
 
 

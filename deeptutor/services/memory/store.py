@@ -19,7 +19,7 @@ from typing import Literal
 from deeptutor.services.memory import consolidator, paths, trace
 from deeptutor.services.memory.consolidator import ConsolidateResult, OnEvent
 from deeptutor.services.memory.document import Document, parse, serialize
-from deeptutor.services.memory.ops import AddOp, ApplyReport, EditOp
+from deeptutor.services.memory.ops import AddOp, ApplyReport, EditOp, OpResult
 from deeptutor.services.memory.ops import apply as ops_apply
 from deeptutor.services.memory.paths import L3Slot, Surface
 from deeptutor.services.memory.trace import TraceEvent
@@ -29,6 +29,27 @@ logger = logging.getLogger(__name__)
 Layer = Literal["L2", "L3"]
 
 _V1_FILES = ("PROFILE.md", "SUMMARY.md")
+
+
+def _normalize_pref_text(text: str) -> str:
+    """Whitespace/case-insensitive key for duplicate-preference detection."""
+    return " ".join(str(text or "").split()).casefold()
+
+
+def _find_duplicate_preference(doc: Document, section: str, text: str):
+    """Return an existing entry in ``section`` whose text matches ``text``.
+
+    Read-only — does not create the section if it is absent.
+    """
+    target = _normalize_pref_text(text)
+    if not target:
+        return None
+    for entry in doc.all_entries():
+        if entry.section == section and _normalize_pref_text(entry.text) == target:
+            return entry
+    return None
+
+
 _NO_MEMORY = (
     "(No memory available — interact with DeepTutor and update from the Memory page to build one.)"
 )
@@ -191,6 +212,26 @@ class MemoryStore:
             )
             section = "Preferences"
             if op == "add":
+                # Idempotent add: preferences.md is never auto-consolidated
+                # (see update_l3), so an identical bullet added again would
+                # persist forever as a duplicate. Guided-learning turns are
+                # highly tool-driven and long-running, so the model tends to
+                # re-issue the same write_memory across turns (issue #647).
+                # Short-circuit to a no-op that reports the existing entry as
+                # already saved instead of appending a duplicate.
+                duplicate = _find_duplicate_preference(doc, section, text)
+                if duplicate is not None:
+                    return ApplyReport(
+                        accepted=True,
+                        results=[
+                            OpResult(
+                                op=AddOp(section=section, text=text, refs=[trace_id]),
+                                status="applied",
+                                entry_id=duplicate.id,
+                                detail="duplicate",
+                            )
+                        ],
+                    )
                 report = ops_apply(
                     doc,
                     [AddOp(section=section, text=text, refs=[trace_id])],

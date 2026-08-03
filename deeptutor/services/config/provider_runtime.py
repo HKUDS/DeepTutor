@@ -31,6 +31,7 @@ from deeptutor.services.voice.config import (
 from .embedding_endpoint import (
     EMBEDDING_PROVIDER_ALIASES,
     EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS,
+    dashscope_embedding_endpoint,
     embedding_endpoint_validation_error,
     normalize_embedding_endpoint_for_display,
 )
@@ -838,6 +839,12 @@ def resolve_embedding_runtime_config(
     api_base = active_api_base or ((mapped.api_base or "") if mapped else "")
     if not api_base and spec.default_api_base:
         api_base = spec.default_api_base
+    if provider_name == "aliyun":
+        # DashScope's SDK derives the endpoint from the model id and ignores any
+        # configured URL, so a saved multimodal endpoint would mislead the
+        # diagnostic for a text model (issue #660). Surface the true per-model
+        # endpoint the SDK will actually POST to.
+        api_base = dashscope_embedding_endpoint(resolved_model)
     api_version = active_api_version or ((mapped.api_version or "") if mapped else "")
     extra_headers = active_extra_headers or ((mapped.extra_headers or {}) if mapped else {})
 

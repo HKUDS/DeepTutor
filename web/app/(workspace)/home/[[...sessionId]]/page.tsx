@@ -34,7 +34,9 @@ import type { SelectedRecord } from "@/lib/notebook-selection-types";
 import type { SelectedHistorySession } from "@/components/chat/HistorySessionPicker";
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
 import ChatComposer from "@/components/chat/home/ChatComposer";
+import type { ContextBudget } from "@/components/chat/home/ContextBudgetChip";
 import { ChatMessageList } from "@/components/chat/home/ChatMessages";
+import { TurnNavigator } from "@/components/chat/home/TurnNavigator";
 import SessionLoadingView from "@/components/chat/home/SessionLoadingView";
 // Imported eagerly so the drawer shell is always mounted off-screen —
 // clicking a chip becomes a single CSS class flip, no chunk fetch + double
@@ -66,12 +68,8 @@ import {
   extractBase64FromDataUrl,
   readFileAsDataUrl,
 } from "@/lib/file-attachments";
-import {
-  classifyFile,
-  isSvgFilename,
-  MAX_ATTACHMENT_BYTES,
-  MAX_TOTAL_ATTACHMENT_BYTES,
-} from "@/lib/doc-attachments";
+import { classifyFile, isSvgFilename } from "@/lib/doc-attachments";
+import { useAttachmentLimits } from "@/lib/attachment-limits";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
 import {
@@ -104,6 +102,7 @@ import {
   invalidateEnabledOptionalToolsCache,
 } from "@/lib/tools-settings";
 import { downloadChatMarkdown } from "@/lib/chat-export";
+import { buildChatOutline } from "@/lib/chat-outline";
 import type { SpaceMemoryFile } from "@/lib/space-items";
 import {
   selectedBooksToPayload,
@@ -308,6 +307,34 @@ function getCapability(value: string | null): CapabilityDef {
   return CAPABILITIES.find((c) => c.value === (value || "")) ?? CAPABILITIES[0];
 }
 
+/**
+ * Read the context-window measurement a finished turn attached to its
+ * `result` event. Scanned newest-first because one turn can emit several
+ * results (a consulted subagent emits its own) and only the chat loop's
+ * closing one carries the budget; older backends emit none at all, and the
+ * measurement is allowed to degrade to "absent" rather than fail a turn.
+ */
+function readContextBudget(
+  events: StreamEvent[] | undefined,
+): ContextBudget | null {
+  if (!events) return null;
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const ev = events[i];
+    if (ev.type !== "result") continue;
+    const meta = ev.metadata?.metadata as Record<string, unknown> | undefined;
+    const budget = meta?.context_budget as ContextBudget | undefined;
+    if (
+      budget &&
+      typeof budget.window === "number" &&
+      typeof budget.used_tokens === "number" &&
+      Array.isArray(budget.segments)
+    ) {
+      return budget;
+    }
+  }
+  return null;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Chat page                                                         */
 /* ------------------------------------------------------------------ */
@@ -335,6 +362,7 @@ export default function ChatPage() {
     switchBranch,
     newSession,
     loadSession,
+    showCachedSession,
     renameSessionTitle,
   } = useUnifiedChat();
 
@@ -367,6 +395,7 @@ export default function ChatPage() {
     null,
   );
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const attachmentLimits = useAttachmentLimits();
   const [dragging, setDragging] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [previewSource, setPreviewSource] = useState<FilePreviewSource | null>(
@@ -847,6 +876,7 @@ export default function ChatPage() {
     containerRef: messagesContainerRef,
     endRef: messagesEndRef,
     shouldAutoScrollRef,
+    scrollToBottom,
     handleScroll: handleMessagesScroll,
   } = useChatAutoScroll({
     hasMessages,
@@ -856,6 +886,54 @@ export default function ChatPage() {
     lastMessageContent: lastMessage?.content,
     lastEventCount: lastMessage?.events?.length,
   });
+
+  // ─── Turn navigator ───
+  // One tick per question the user asked, rendered in the transcript's
+  // left gutter (see ``TurnNavigator``). The outline is derived from the
+  // same visible-path walk the message list uses, so switching an edit
+  // branch reshapes both together.
+  const chatOutline = useMemo(
+    () => buildChatOutline(state.messages, state.selectedBranches),
+    [state.messages, state.selectedBranches],
+  );
+  /** Bring a question back on screen and mark where the user landed. */
+  const jumpToTurn = useCallback(
+    (key: string) => {
+      const container = messagesContainerRef.current;
+      const target = container?.querySelector<HTMLElement>(
+        `[data-turn-key="${key}"]`,
+      );
+      if (!container || !target) return;
+      // Release the streaming pin first: without this, a jump made while
+      // a turn is generating would be snapped straight back to the bottom
+      // by ``useChatAutoScroll``'s next content-growth pin.
+      shouldAutoScrollRef.current = false;
+      const offset =
+        target.getBoundingClientRect().top -
+        container.getBoundingClientRect().top;
+      // 56 px clears the scrollport's top fade so the bubble lands fully
+      // opaque rather than half-dissolved under the mask.
+      container.scrollTo({
+        top: container.scrollTop + offset - 56,
+        behavior: "smooth",
+      });
+      const bubble =
+        target.querySelector<HTMLElement>("[data-turn-bubble]") ?? target;
+      bubble.classList.remove("turn-flash");
+      // Force a reflow so clicking the same tick twice replays the flash
+      // instead of silently re-adding a class that is already settled.
+      void bubble.offsetWidth;
+      bubble.classList.add("turn-flash");
+      window.setTimeout(() => bubble.classList.remove("turn-flash"), 1300);
+    },
+    [messagesContainerRef, shouldAutoScrollRef],
+  );
+  /** Leave history and start following the live end of the turn again. */
+  const resumeFollowingLatest = useCallback(() => {
+    shouldAutoScrollRef.current = true;
+    scrollToBottom("instant");
+  }, [scrollToBottom, shouldAutoScrollRef]);
+
   const copyAssistantMessage = useCallback(async (content: string) => {
     if (!content.trim()) return;
     try {
@@ -881,15 +959,21 @@ export default function ChatPage() {
   /**
    * Shared helper: kick off a load. The user can cancel via the ✕ button;
    * otherwise the loading overlay stays until the API responds (no timeout).
+   *
+   * A session we already hold in memory is painted right away and refreshed
+   * in the background — switching back to a conversation read earlier in this
+   * visit costs nothing, and the overlay is reserved for the case where we
+   * genuinely have nothing to show.
    */
   const startSessionLoad = useCallback(
     (sid: string) => {
       loadAbortRef.current?.abort();
       const ctrl = new AbortController();
       loadAbortRef.current = ctrl;
-      setSessionLoading(true);
+      const cached = showCachedSession(sid);
+      setSessionLoading(!cached);
 
-      void loadSession(sid, ctrl.signal)
+      void loadSession(sid, { signal: ctrl.signal, revalidate: cached })
         .then(() => {
           if (!ctrl.signal.aborted) {
             loadAbortRef.current = null;
@@ -900,11 +984,13 @@ export default function ChatPage() {
           if (!ctrl.signal.aborted) {
             loadAbortRef.current = null;
             setSessionLoading(false);
-            navigateToHome();
+            // A background refresh that fails leaves the cached copy on
+            // screen; only a cold open has nothing to fall back to.
+            if (!cached) navigateToHome();
           }
         });
     },
-    [loadSession, navigateToHome],
+    [loadSession, navigateToHome, showCachedSession],
   );
 
   // Initial mount — load the session from the URL.
@@ -969,9 +1055,18 @@ export default function ChatPage() {
     [],
   );
 
-  /* Load KBs */
+  /* Load KBs.
+   *
+   * Switching sessions remounts this page (the session id is a route
+   * segment), so these mount-time loads run again on every switch. They read
+   * through the shared client cache rather than forcing a refetch: forcing
+   * would put a handful of session-independent requests on the wire in
+   * parallel with the session fetch itself, and they'd compete for the same
+   * six connections — that, not the conversation's length, is what used to
+   * make opening a chat feel slow. The focus/visibility listener below is
+   * what keeps these values fresh. */
   useEffect(() => {
-    void refreshKnowledgeBases({ force: true });
+    void refreshKnowledgeBases();
   }, [refreshKnowledgeBases]);
 
   const refreshUserEnabledTools = useCallback(
@@ -988,24 +1083,27 @@ export default function ChatPage() {
 
   /* Load user tool prefs */
   useEffect(() => {
-    void refreshUserEnabledTools({ force: true });
+    void refreshUserEnabledTools();
   }, [refreshUserEnabledTools]);
 
-  const refreshLLMOptions = useCallback(async () => {
-    setLLMOptionsLoading(true);
-    try {
-      const payload = await listLLMOptions();
-      setLLMOptions(payload.options);
-      setActiveLLMDefault(payload.active);
-      setLLMOptionsError(false);
-    } catch {
-      setLLMOptionsError(true);
-      setLLMOptions([]);
-      setActiveLLMDefault(null);
-    } finally {
-      setLLMOptionsLoading(false);
-    }
-  }, []);
+  const refreshLLMOptions = useCallback(
+    async (options?: { force?: boolean }) => {
+      setLLMOptionsLoading(true);
+      try {
+        const payload = await listLLMOptions({ force: options?.force });
+        setLLMOptions(payload.options);
+        setActiveLLMDefault(payload.active);
+        setLLMOptionsError(false);
+      } catch {
+        setLLMOptionsError(true);
+        setLLMOptions([]);
+        setActiveLLMDefault(null);
+      } finally {
+        setLLMOptionsLoading(false);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     void refreshLLMOptions();
@@ -1020,7 +1118,7 @@ export default function ChatPage() {
     if (typeof window === "undefined") return;
     const refresh = () => {
       void refreshKnowledgeBases({ force: true });
-      void refreshLLMOptions();
+      void refreshLLMOptions({ force: true });
       // Picks up toggles the user changed in another tab (/settings/tools).
       invalidateEnabledOptionalToolsCache();
       void refreshUserEnabledTools({ force: true });
@@ -1181,11 +1279,11 @@ export default function ChatPage() {
           rejected.push({ name: f.name, reason: "unsupported" });
           continue;
         }
-        if (f.size > MAX_ATTACHMENT_BYTES) {
+        if (f.size > attachmentLimits.maxFileBytes) {
           rejected.push({ name: f.name, reason: "too_large" });
           continue;
         }
-        if (runningTotal + f.size > MAX_TOTAL_ATTACHMENT_BYTES) {
+        if (runningTotal + f.size > attachmentLimits.maxTotalBytes) {
           rejected.push({ name: f.name, reason: "quota" });
           break;
         }
@@ -1206,7 +1304,7 @@ export default function ChatPage() {
       }
       return accepted;
     },
-    [attachments, showAttachmentError, t],
+    [attachments, attachmentLimits, showAttachmentError, t],
   );
 
   const handlePaste = useCallback(
@@ -1250,6 +1348,21 @@ export default function ChatPage() {
     () => buildSessionActivity(state.messages),
     [state.messages],
   );
+
+  // Context-window readout for the composer chip: the newest turn that was
+  // actually measured. Walking newest-first is what keeps the number steady
+  // while a new turn streams — the in-flight assistant message has no result
+  // event yet, so the walk falls through to the last completed turn and the
+  // chip flips exactly once, when the new measurement lands.
+  const contextBudget = useMemo(() => {
+    for (let i = state.messages.length - 1; i >= 0; i -= 1) {
+      const msg = state.messages[i];
+      if (msg.role !== "assistant") continue;
+      const budget = readContextBudget(msg.events);
+      if (budget) return budget;
+    }
+    return null;
+  }, [state.messages]);
 
   /**
    * Capability-config card rendered at the bottom of the Activity panel.
@@ -1407,6 +1520,31 @@ export default function ChatPage() {
     [fileToAttachment, filterAndReportFiles],
   );
 
+  // Connected subagents are stored as ``type: subagent`` KBs. Derive the
+  // selected one before the send callback so the callback can depend on the
+  // current selection instead of capturing an undeclared-later value.
+  const agentNameSet = useMemo(
+    () =>
+      new Set(
+        knowledgeBases
+          .filter((kb) => kb.metadata?.type === "subagent")
+          .map((kb) => kb.name),
+      ),
+    [knowledgeBases],
+  );
+  const selectedAgent = useMemo(
+    () => state.knowledgeBases.find((name) => agentNameSet.has(name)) ?? null,
+    [state.knowledgeBases, agentNameSet],
+  );
+  // How many times DeepTutor may consult the selected agent this turn. Seeded
+  // from the configured default; the composer's stepper overrides it per turn.
+  const [subagentBudget, setSubagentBudget] = useState<number | null>(null);
+  useEffect(() => {
+    void getSubagentSettings()
+      .then((settings) => setSubagentBudget(settings.consult_budget))
+      .catch(() => undefined);
+  }, []);
+
   const handleSend = useCallback(
     async (content: string) => {
       if (
@@ -1508,6 +1646,7 @@ export default function ChatPage() {
       quizPdf,
       researchConfig,
       researchValidation,
+      selectedAgent,
       selectedHistorySessions.length,
       selectedAgentSessions.length,
       selectedMemoryFiles.length,
@@ -1517,6 +1656,7 @@ export default function ChatPage() {
       sendMessage,
       shouldAutoScrollRef,
       state.isStreaming,
+      subagentBudget,
       t,
       visualizeConfig,
     ],
@@ -1582,18 +1722,8 @@ export default function ChatPage() {
     [setKBs, state.knowledgeBases],
   );
 
-  // Connected subagents are stored as ``type: subagent`` KBs (so selection
-  // rides the same knowledge_bases path), but in the composer they get their
-  // own single-select Bot chip — distinct from real knowledge bases.
-  const agentNameSet = useMemo(
-    () =>
-      new Set(
-        knowledgeBases
-          .filter((kb) => kb.metadata?.type === "subagent")
-          .map((kb) => kb.name),
-      ),
-    [knowledgeBases],
-  );
+  // Real knowledge bases and connected subagents render as separate composer
+  // controls even though both travel through the knowledge_bases request path.
   const kbOptions = useMemo(
     () => knowledgeBases.filter((kb) => kb.metadata?.type !== "subagent"),
     [knowledgeBases],
@@ -1607,10 +1737,6 @@ export default function ChatPage() {
   );
   const selectedKbOnly = useMemo(
     () => state.knowledgeBases.filter((n) => !agentNameSet.has(n)),
-    [state.knowledgeBases, agentNameSet],
-  );
-  const selectedAgent = useMemo(
-    () => state.knowledgeBases.find((n) => agentNameSet.has(n)) ?? null,
     [state.knowledgeBases, agentNameSet],
   );
   const handleSelectAgent = useCallback(
@@ -1632,15 +1758,6 @@ export default function ChatPage() {
     agentPreselectDoneRef.current = true;
     handleSelectAgent(name);
   }, [agentNameSet, handleSelectAgent]);
-  // How many times DeepTutor may consult the selected agent this turn. Seeded
-  // from the configured default; the composer's stepper overrides it per turn
-  // (sent in the request config, read by the subagent capability).
-  const [subagentBudget, setSubagentBudget] = useState<number | null>(null);
-  useEffect(() => {
-    void getSubagentSettings()
-      .then((s) => setSubagentBudget(s.consult_budget))
-      .catch(() => undefined);
-  }, []);
   const handleSelectNotebookPicker = useCallback(() => {
     setShowNotebookPicker(true);
   }, []);
@@ -1852,12 +1969,16 @@ export default function ChatPage() {
               />
             </div>
           </div>
-          <div className="mx-auto flex w-full max-w-[960px] flex-1 min-h-0 flex-col overflow-hidden px-6">
+          <div className="flex w-full flex-1 min-h-0 flex-col">
             {sessionLoading ? (
-              <SessionLoadingView onCancel={cancelSessionLoad} />
+              <div className="flex w-full flex-1 min-h-0 justify-center px-6">
+                <div className="h-full w-full max-w-[960px]">
+                  <SessionLoadingView onCancel={cancelSessionLoad} />
+                </div>
+              </div>
             ) : !hasMessages ? (
-              <div className="flex flex-1 min-h-0 flex-col items-center justify-end pb-14 animate-fade-in">
-                <div className="flex items-center justify-center gap-4">
+              <div className="flex w-full flex-1 min-h-0 items-end justify-center pb-14 animate-fade-in px-6">
+                <div className="w-full max-w-[960px] flex items-center justify-center gap-4">
                   <img
                     src="/logo_black.png"
                     alt="DeepTutor"
@@ -1872,49 +1993,74 @@ export default function ChatPage() {
                 </div>
               </div>
             ) : (
-              <div
-                ref={messagesContainerRef}
-                data-chat-scroll-root="true"
-                onScroll={handleMessagesScroll}
-                onClick={handleMessagesClick}
-                className={`mx-auto w-full flex-1 min-h-0 space-y-9 overflow-y-auto pr-4 [scrollbar-gutter:stable] ${hasMessages ? "pt-6" : "pt-2 pb-6"}`}
-                style={
-                  hasMessages
-                    ? (() => {
-                        // The bottom 40 px of the messages area fades to
-                        // transparent so content "dissolves" into the composer
-                        // gutter. Without enough bottom padding, the fade
-                        // overlaps the last assistant paragraph and looks like
-                        // a stuck scroll — the user reaches scrollHeight but
-                        // can still see only a faded sliver of text. paddingBottom
-                        // is sized so the fade falls over empty space.
-                        const maskImage =
-                          "linear-gradient(to bottom, transparent 0px, #000 32px, #000 calc(100% - 40px), transparent 100%)";
-                        return {
-                          paddingBottom: "48px",
-                          WebkitMaskImage: maskImage,
-                          maskImage,
-                        };
-                      })()
-                    : undefined
-                }
-              >
-                <ChatMessageList
-                  messages={state.messages}
-                  isStreaming={state.isStreaming}
-                  sessionId={state.sessionId}
-                  language={state.language}
-                  onCopyAssistantMessage={copyAssistantMessage}
-                  onRegenerateMessage={handleRegenerateMessage}
-                  onConfirmOutline={handleConfirmOutline}
-                  onPreviewAttachment={handlePreviewMessageAttachment}
-                  onDeleteTurn={deleteTurn}
-                  selectedBranches={state.selectedBranches}
-                  onEditMessage={editMessage}
-                  onSwitchBranch={switchBranch}
-                  onSubmitUserReply={submitUserReply}
+              // Positioned wrapper spanning exactly the scrollport, so the
+              // turn navigator can overlay the left gutter without living
+              // inside the masked scroll container (its top/bottom fade
+              // would clip the rail's ends).
+              <div className="relative flex w-full flex-1 min-h-0 flex-col">
+                <div
+                  ref={messagesContainerRef}
+                  data-chat-scroll-root="true"
+                  onScroll={handleMessagesScroll}
+                  onClick={handleMessagesClick}
+                  // `both-edges` reserves the scrollbar gutter on both sides so
+                  // the inner mx-auto column centers on the same axis as the
+                  // header and composer (siblings outside this scrollport) on
+                  // classic-scrollbar platforms; plain `stable` would shift it
+                  // ~half a scrollbar-width left of them.
+                  className={`w-full flex-1 min-h-0 overflow-y-auto [scrollbar-gutter:stable_both-edges] ${hasMessages ? "pt-6" : "pt-2 pb-6"}`}
+                  style={
+                    hasMessages
+                      ? (() => {
+                          // The bottom 40 px of the messages area fades to
+                          // transparent so content "dissolves" into the composer
+                          // gutter. Without enough bottom padding, the fade
+                          // overlaps the last assistant paragraph and looks like
+                          // a stuck scroll — the user reaches scrollHeight but
+                          // can still see only a faded sliver of text. paddingBottom
+                          // is sized so the fade falls over empty space.
+                          const maskImage =
+                            "linear-gradient(to bottom, transparent 0px, #000 32px, #000 calc(100% - 40px), transparent 100%)";
+                          return {
+                            paddingBottom: "48px",
+                            WebkitMaskImage: maskImage,
+                            maskImage,
+                          };
+                        })()
+                      : undefined
+                  }
+                >
+                  <div
+                    data-chat-column="true"
+                    className="mx-auto w-full max-w-[960px] space-y-9 px-6"
+                  >
+                    <ChatMessageList
+                      messages={state.messages}
+                      isStreaming={state.isStreaming}
+                      sessionId={state.sessionId}
+                      language={state.language}
+                      onCopyAssistantMessage={copyAssistantMessage}
+                      onRegenerateMessage={handleRegenerateMessage}
+                      onConfirmOutline={handleConfirmOutline}
+                      onPreviewAttachment={handlePreviewMessageAttachment}
+                      onDeleteTurn={deleteTurn}
+                      selectedBranches={state.selectedBranches}
+                      onEditMessage={editMessage}
+                      onSwitchBranch={switchBranch}
+                      onSubmitUserReply={submitUserReply}
+                    />
+                    <div
+                      ref={messagesEndRef}
+                      className="h-px w-full shrink-0"
+                    />
+                  </div>
+                </div>
+                <TurnNavigator
+                  entries={chatOutline}
+                  scrollRootRef={messagesContainerRef}
+                  onJump={jumpToTurn}
+                  onJumpToBottom={resumeFollowingLatest}
                 />
-                <div ref={messagesEndRef} className="h-px w-full shrink-0" />
               </div>
             )}
 
@@ -1943,6 +2089,7 @@ export default function ChatPage() {
               llmSelection={state.llmSelection}
               llmOptionsLoading={llmOptionsLoading}
               llmOptionsError={llmOptionsError}
+              contextBudget={contextBudget}
               selectedBookReferences={selectedBookReferences}
               selectedNotebookRecords={selectedNotebookRecords}
               selectedHistorySessions={selectedHistorySessions}

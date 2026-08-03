@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 from deeptutor.capabilities.protocol import KnowledgeCapability, PromptBlock
-from deeptutor.capabilities.subagent.binding import connection_for_turn
+from deeptutor.capabilities.subagent.binding import connection_for_turn, subagent_refs
 from deeptutor.capabilities.subagent.tools import SUBAGENT_TOOL_NAMES
 from deeptutor.core.context import UnifiedContext
 
@@ -37,6 +37,11 @@ class SubagentCapability(KnowledgeCapability):
 
     def is_active(self, context: UnifiedContext) -> bool:
         return connection_for_turn(context) is not None
+
+    def owned_kbs(self, context: UnifiedContext) -> set[str]:
+        # The selected subagent ref(s) are consulted via consult_subagent, never
+        # rag — exclude them so co-selected LlamaIndex KBs keep rag (issue #650).
+        return subagent_refs(context)
 
     def system_block(
         self,

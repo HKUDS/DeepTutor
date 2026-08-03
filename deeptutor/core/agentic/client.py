@@ -8,8 +8,14 @@ provider gating, Azure detection, SSL bypass, or per-model token caps.
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
+from collections.abc import Callable
+import contextlib
 from dataclasses import dataclass
+import hashlib
+import inspect
 import json
+import threading
 from types import SimpleNamespace
 from typing import Any
 
@@ -29,6 +35,18 @@ _NATIVE_TOOL_BLOCKED_BINDINGS: frozenset[str] = frozenset(
     {"anthropic", "claude", "ollama", "lm_studio", "vllm", "llama_cpp"}
 )
 
+# Native provider adapters whose backends speak OpenAI-style function calling
+# end to end (schema serialization + tool-call parsing). Backends validated
+# here get tools attached regardless of the binding blocklist above.
+# Invariant: must be a subset of _NATIVE_ADAPTER_BUILDERS — every tool-gated
+# backend needs an adapter branch, or tool schemas would be attached to a plain
+# AsyncOpenAI client pointed at a non-OpenAI wire format. github_copilot is
+# adapter-routed but deliberately excluded from this set.
+_NATIVE_TOOL_BACKENDS: frozenset[str] = frozenset({"anthropic", "openai_codex"})
+_AGENTIC_CLIENT_POOL_MAXSIZE = 2
+_agentic_client_pool: "OrderedDict[tuple[Any, ...], Any]" = OrderedDict()
+_agentic_client_pool_lock = threading.RLock()
+
 
 @dataclass(frozen=True)
 class LLMClientConfig:
@@ -43,8 +61,26 @@ class LLMClientConfig:
     reasoning_effort: str | None = None
 
 
-def build_openai_client(config: LLMClientConfig) -> Any:
-    """Construct an ``AsyncOpenAI`` / ``AsyncAzureOpenAI`` client."""
+def _client_cache_key(
+    config: LLMClientConfig,
+    loop: asyncio.AbstractEventLoop,
+    disable_ssl_verify: bool,
+) -> tuple[Any, ...]:
+    secret = hashlib.sha256((config.api_key or "").encode("utf-8")).hexdigest()[:16]
+    headers = json.dumps(config.extra_headers or {}, sort_keys=True, separators=(",", ":"))
+    return (
+        loop,
+        config.binding,
+        config.model or "",
+        secret,
+        config.base_url or "",
+        config.api_version or "",
+        headers,
+        disable_ssl_verify,
+    )
+
+
+def _build_openai_client(config: LLMClientConfig, *, disable_ssl_verify: bool) -> Any:
     default_headers = config.extra_headers or None
     spec = find_by_name(config.binding)
     if spec:
@@ -53,7 +89,7 @@ def build_openai_client(config: LLMClientConfig) -> Any:
             return native_adapter
 
     http_client = None
-    if load_system_settings()["disable_ssl_verify"]:
+    if disable_ssl_verify:
         http_client = httpx.AsyncClient(verify=False)  # nosec B501
     if config.binding == "azure_openai" or (config.binding == "openai" and config.api_version):
         return AsyncAzureOpenAI(
@@ -71,33 +107,123 @@ def build_openai_client(config: LLMClientConfig) -> Any:
     )
 
 
+async def _close_client(client: Any) -> None:
+    close = getattr(client, "aclose", None) or getattr(client, "close", None)
+    if not callable(close):
+        return
+    result = close()
+    if inspect.isawaitable(result):
+        await result
+
+
+def _schedule_client_close(client: Any, loop: asyncio.AbstractEventLoop) -> None:
+    async def _close() -> None:
+        with contextlib.suppress(Exception):
+            await _close_client(client)
+
+    loop.create_task(_close())
+
+
+def build_openai_client(config: LLMClientConfig) -> Any:
+    """Return a bounded, event-loop-local OpenAI-compatible client.
+
+    The chat, research and question pipelines build this handle per turn.  The
+    handle itself owns an HTTP connection pool, so reusing it is both faster
+    and prevents a new allocator/socket high-water mark on every turn.
+    """
+    disable_ssl_verify = bool(load_system_settings()["disable_ssl_verify"])
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return _build_openai_client(config, disable_ssl_verify=disable_ssl_verify)
+
+    key = _client_cache_key(config, loop, disable_ssl_verify)
+    with _agentic_client_pool_lock:
+        cached = _agentic_client_pool.get(key)
+        if cached is not None:
+            _agentic_client_pool.move_to_end(key)
+            return cached
+        client = _build_openai_client(config, disable_ssl_verify=disable_ssl_verify)
+        _agentic_client_pool[key] = client
+        _agentic_client_pool.move_to_end(key)
+        while len(_agentic_client_pool) > _AGENTIC_CLIENT_POOL_MAXSIZE:
+            _, evicted = _agentic_client_pool.popitem(last=False)
+            _schedule_client_close(evicted, loop)
+        return client
+
+
+async def close_agentic_client_pool() -> None:
+    with _agentic_client_pool_lock:
+        clients = list(_agentic_client_pool.values())
+        _agentic_client_pool.clear()
+    if clients:
+        await asyncio.gather(*(_close_client(client) for client in clients), return_exceptions=True)
+
+
+def reset_agentic_client_pool() -> None:
+    with _agentic_client_pool_lock:
+        clients = list(_agentic_client_pool.values())
+        _agentic_client_pool.clear()
+    if not clients:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        for client in clients:
+            with contextlib.suppress(Exception):
+                asyncio.run(_close_client(client))
+        return
+    for client in clients:
+        _schedule_client_close(client, loop)
+
+
+def agentic_client_pool_size() -> int:
+    with _agentic_client_pool_lock:
+        return len(_agentic_client_pool)
+
+
+def _build_anthropic_adapter(config: LLMClientConfig, spec: Any) -> Any:
+    from deeptutor.services.llm.provider_core import AnthropicProvider
+
+    anthropic_provider = AnthropicProvider(
+        api_key=config.api_key,
+        api_base=config.base_url or spec.default_api_base or None,
+        default_model=config.model or "claude-sonnet-4-20250514",
+        extra_headers=config.extra_headers,
+        supports_prompt_caching=spec.supports_prompt_caching,
+    )
+    return _ProviderOpenAIAdapter(anthropic_provider)
+
+
+def _build_codex_adapter(config: LLMClientConfig, spec: Any) -> Any:
+    from deeptutor.services.codex_auth.constants import CODEX_DEFAULT_MODEL_ID
+    from deeptutor.services.llm.provider_core import OpenAICodexProvider
+
+    oauth_provider = OpenAICodexProvider(
+        default_model=config.model or CODEX_DEFAULT_MODEL_ID,
+    )
+    return _ProviderOpenAIAdapter(oauth_provider)
+
+
+def _build_copilot_adapter(config: LLMClientConfig, spec: Any) -> Any:
+    from deeptutor.services.llm.provider_core import GitHubCopilotProvider
+
+    copilot_provider = GitHubCopilotProvider(
+        default_model=config.model or "github-copilot/gpt-4.1",
+    )
+    return _ProviderOpenAIAdapter(copilot_provider)
+
+
+_NATIVE_ADAPTER_BUILDERS: dict[str, Callable[[LLMClientConfig, Any], Any]] = {
+    "anthropic": _build_anthropic_adapter,
+    "openai_codex": _build_codex_adapter,
+    "github_copilot": _build_copilot_adapter,
+}
+
+
 def _build_native_provider_adapter(config: LLMClientConfig, spec: Any) -> Any | None:
-    if spec.backend == "anthropic":
-        from deeptutor.services.llm.provider_core import AnthropicProvider
-
-        anthropic_provider = AnthropicProvider(
-            api_key=config.api_key,
-            api_base=config.base_url or spec.default_api_base or None,
-            default_model=config.model or "claude-sonnet-4-20250514",
-            extra_headers=config.extra_headers,
-            supports_prompt_caching=spec.supports_prompt_caching,
-        )
-        return _ProviderOpenAIAdapter(anthropic_provider)
-    if spec.backend == "openai_codex":
-        from deeptutor.services.llm.provider_core import OpenAICodexProvider
-
-        oauth_provider = OpenAICodexProvider(
-            default_model=config.model or "openai-codex/gpt-5.1-codex",
-        )
-        return _ProviderOpenAIAdapter(oauth_provider)
-    if spec.backend == "github_copilot":
-        from deeptutor.services.llm.provider_core import GitHubCopilotProvider
-
-        copilot_provider = GitHubCopilotProvider(
-            default_model=config.model or "github-copilot/gpt-4.1",
-        )
-        return _ProviderOpenAIAdapter(copilot_provider)
-    return None
+    builder = _NATIVE_ADAPTER_BUILDERS.get(spec.backend)
+    return builder(config, spec) if builder else None
 
 
 class _ProviderOpenAIAdapter:
@@ -106,6 +232,11 @@ class _ProviderOpenAIAdapter:
     def __init__(self, provider: Any):
         self._provider = provider
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create_completion))
+
+    async def close(self) -> None:
+        close = getattr(self._provider, "aclose", None)
+        if callable(close):
+            await close()
 
     async def _create_completion(self, **kwargs: Any) -> Any:
         stream = bool(kwargs.pop("stream", False))
@@ -332,7 +463,7 @@ def can_use_native_tool_calling(*, binding: str, model: str | None) -> bool:
 
     Resolution order:
 
-    1. Anthropic-backed providers always support tool use (native Messages API).
+    1. Native provider adapters backed by Anthropic or OpenAI Codex support tools.
     2. Local OpenAI-compatible servers (Ollama, vLLM, LM Studio, llama.cpp,
        Lemonade, OVMS, …) and anything in ``_NATIVE_TOOL_BLOCKED_BINDINGS`` are
        opted out — tool support there depends on the loaded model and is
@@ -348,7 +479,7 @@ def can_use_native_tool_calling(*, binding: str, model: str | None) -> bool:
        ``_NATIVE_TOOL_BLOCKED_BINDINGS``.
     """
     spec = find_by_name(binding)
-    if spec and spec.backend == "anthropic":
+    if spec and spec.backend in _NATIVE_TOOL_BACKENDS:
         return True
     if binding in _NATIVE_TOOL_BLOCKED_BINDINGS or (spec and spec.is_local):
         return False
