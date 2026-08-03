@@ -33,7 +33,10 @@ class CodeBuddyProvider(LLMProvider):
         api_key: str | None = None,
         default_model: str | None = DEFAULT_CODEBUDDY_MODEL,
     ):
-        super().__init__(api_key=api_key, api_base=None)
+        normalized_api_key = (
+            None if api_key in {None, "", "sk-no-key-required"} else api_key
+        )
+        super().__init__(api_key=normalized_api_key, api_base=None)
         self.default_model = default_model or DEFAULT_CODEBUDDY_MODEL
 
     async def chat(

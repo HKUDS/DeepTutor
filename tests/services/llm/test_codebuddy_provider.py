@@ -144,5 +144,11 @@ def test_codebuddy_registry_aliases_and_factory() -> None:
     assert isinstance(provider, CodeBuddyProvider)
 
 
+def test_codebuddy_ignores_deeptutor_no_key_placeholder() -> None:
+    provider = CodeBuddyProvider(api_key="sk-no-key-required")
+
+    assert provider.api_key is None
+
+
 async def _append_async(items: list[str], text: str) -> None:
     items.append(text)
