@@ -89,14 +89,7 @@ class AnalysisAgent(BaseAgent):
                 trace_kind="llm_output",
             ),
         )
-        data = extract_json_object(raw)
-        try:
-            result = VisualizationAnalysis.model_validate(data)
-        except Exception:
-            # LLM may produce an illegal visual_genre (e.g. "simulation").
-            # Fall back to empty string so generation doesn't hard-fail.
-            data["visual_genre"] = ""
-            result = VisualizationAnalysis.model_validate(data)
+        result = VisualizationAnalysis.model_validate(extract_json_object(raw))
         if render_mode in ("svg", "chartjs", "mermaid", "html"):
             result.render_type = render_mode  # type: ignore[assignment]
         elif render_mode == "figure" and result.render_type not in (

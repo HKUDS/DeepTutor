@@ -1,5 +1,5 @@
-"""The analysis agent must not crash when the LLM returns an illegal
-visual_genre — it should degrade to "" and recover gracefully."""
+"""The analysis stage must not crash when the LLM invents an enum value —
+an unknown visual_genre degrades to "" and an unknown render_type to svg."""
 
 from __future__ import annotations
 
@@ -13,11 +13,11 @@ from deeptutor.agents.visualize.agents.analysis_agent import AnalysisAgent
 from deeptutor.agents.visualize.models import VisualizationAnalysis
 
 
-def _llm_reply(visual_genre: str) -> str:
-    """A well-formed analysis JSON with a caller-controlled visual_genre."""
+def _llm_reply(visual_genre: str, render_type: str = "svg") -> str:
+    """A well-formed analysis JSON with caller-controlled enum fields."""
     return json.dumps(
         {
-            "render_type": "svg",
+            "render_type": render_type,
             "description": "a diagram",
             "data_description": "",
             "chart_type": "",
@@ -44,12 +44,12 @@ def _install_agent_stubs(
     monkeypatch: pytest.MonkeyPatch,
     prompts: dict[str, str],
     llm_reply: str,
-) -> dict[str, Any]:
+) -> None:
     """Mock the three things ``AnalysisAgent`` needs for a local test run:
 
     1. ``get_agent_params`` — returns a dummy dict (avoids agents.yaml).
     2. ``self.prompts`` — pre-populated after ``__init__`` finishes.
-    3. ``BaseAgent.call_llm`` — returns *llm_reply*, captures kwargs.
+    3. ``BaseAgent.call_llm`` — returns *llm_reply*.
     """
     # (1) Avoid FileNotFoundError in BaseAgent.__init__
     monkeypatch.setattr(
@@ -67,14 +67,10 @@ def _install_agent_stubs(
     monkeypatch.setattr(AnalysisAgent, "__init__", _patched_init)
 
     # (3) Replace the LLM call.
-    captured: dict[str, Any] = {}
-
-    async def _fake_call(self: BaseAgent, **kwargs: Any) -> str:
-        captured.update(kwargs)
+    async def _fake_call(self: BaseAgent, **_kwargs: Any) -> str:
         return llm_reply
 
     monkeypatch.setattr(BaseAgent, "call_llm", _fake_call)
-    return captured
 
 
 # ── tests ───────────────────────────────────────────────────────────────────
@@ -143,3 +139,39 @@ async def test_auto_mode_survives_bad_genre(
 
     assert isinstance(result, VisualizationAnalysis)
     assert result.visual_genre == ""
+
+
+@pytest.mark.asyncio
+async def test_auto_mode_survives_bad_render_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An invented render_type is the same failure — it has no default, so in
+    auto mode a value like "diagram" used to abort the whole render."""
+    _install_agent_stubs(monkeypatch, _AUTO_PROMPTS, _llm_reply("flowchart", render_type="diagram"))
+
+    result = await AnalysisAgent().process(
+        user_input="show me the request lifecycle",
+        history_context="",
+    )
+
+    assert result.render_type == "svg"
+    assert result.visual_genre == "flowchart"
+
+
+def test_off_enum_values_are_coerced_on_the_model() -> None:
+    """The coercion lives on the model, so every parse site inherits it."""
+    result = VisualizationAnalysis.model_validate(
+        {"render_type": "diagram", "visual_genre": "simulation"}
+    )
+
+    assert result.render_type == "svg"
+    assert result.visual_genre == ""
+
+
+def test_known_enum_values_are_left_alone() -> None:
+    result = VisualizationAnalysis.model_validate(
+        {"render_type": "mermaid", "visual_genre": "structural"}
+    )
+
+    assert result.render_type == "mermaid"
+    assert result.visual_genre == "structural"
