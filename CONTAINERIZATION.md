@@ -135,11 +135,38 @@ temporary port bindings are removed.
 
 This releases host ports `1455` and `1457`; credentials remain in the persistent
 `/app/data/system` tree. Bind every callback mapping to `127.0.0.1` and never
-expose it on a LAN or public interface. For a manual `docker run` whose
-container-side frontend port is not `3782`, change the right-hand `3782`
-targets; `scripts/docker_compose.py` handles configured custom ports. For
-single-container installs, set `sandbox_allow_subprocess` to `false` if
-model-generated code must not share the container trust boundary with secrets.
+expose it on a LAN or public interface — the overlay publishes the **whole**
+frontend on those two ports, not just `/auth/callback`. For a manual
+`docker run` whose container-side frontend port is not `3782`, change the
+right-hand `3782` targets; `scripts/docker_compose.py` handles configured
+custom ports. For single-container installs, set `sandbox_allow_subprocess`
+to `false` if model-generated code must not share the container trust
+boundary with secrets.
+
+### One-time migration: `docker-compose.ghcr.yml` now mounts all of `./data`
+
+`docker-compose.ghcr.yml` used to bind-mount only three subtrees
+(`data/user`, `data/memory`, `data/knowledge_bases`), so everything else —
+`data/system` (the JWT signing secret, accounts, grants, audit log, per-owner
+Codex tokens), `data/users` (per-user workspaces), `data/partners`,
+`data/cli-apps` — lived in the container's writable layer and was discarded
+on every recreate. It now mounts the whole tree, matching
+`docker-compose.yml` and `compose.yaml`.
+
+**Before your first `up -d` after upgrading**, copy that state out of the
+running container, or the empty host directories shadow it and DeepTutor
+regenerates the auth secret (logging everyone out) and starts with no
+non-admin accounts:
+
+```bash
+for tree in system users partners cli-apps; do
+  docker cp "deeptutor:/app/data/$tree" "./data/$tree" 2>/dev/null || true
+done
+```
+
+Deployments using a named volume (`-v deeptutor-data:/app/data`) or the
+source-build Compose file were never affected — they already persisted the
+whole tree.
 
 ### Remote / reverse-proxy deployments
 

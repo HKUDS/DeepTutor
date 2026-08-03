@@ -129,7 +129,9 @@ def test_container_docs_use_temporary_codex_oauth_bridge() -> None:
     root = Path(__file__).resolve().parents[2]
     readme = (root / "README.md").read_text(encoding="utf-8")
     guide = (root / "CONTAINERIZATION.md").read_text(encoding="utf-8")
-    section = guide.split("### Temporary local Codex OAuth bridge", 1)[1].split("\n### ", 1)[0]
+    heading = "### Temporary local Codex OAuth bridge"
+    assert heading in guide, f"{heading} was renamed; update this test with it"
+    section = guide.split(heading, 1)[1].split("\n### ", 1)[0]
     normalized_section = " ".join(section.replace("\\\n", " ").split())
 
     assert "CONTAINERIZATION.md#temporary-local-codex-oauth-bridge" in readme
