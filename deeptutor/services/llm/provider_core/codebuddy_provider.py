@@ -50,8 +50,14 @@ class CodeBuddyProvider(LLMProvider):
         tool_choice: str | dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
-        del temperature, reasoning_effort, tool_choice, kwargs
-        return await self._run_codebuddy(messages, tools, model, max_tokens)
+        del temperature, tool_choice, kwargs
+        return await self._run_codebuddy(
+            messages,
+            tools,
+            model,
+            max_tokens,
+            reasoning_effort=reasoning_effort,
+        )
 
     async def chat_stream(
         self,
@@ -66,12 +72,13 @@ class CodeBuddyProvider(LLMProvider):
         on_reasoning_delta: Callable[[str], Awaitable[None]] | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
-        del temperature, reasoning_effort, tool_choice, on_reasoning_delta, kwargs
+        del temperature, tool_choice, on_reasoning_delta, kwargs
         return await self._run_codebuddy(
             messages,
             tools,
             model,
             max_tokens,
+            reasoning_effort=reasoning_effort,
             on_content_delta=on_content_delta,
         )
 
@@ -81,12 +88,19 @@ class CodeBuddyProvider(LLMProvider):
         tools: list[dict[str, Any]] | None,
         model: str | None,
         max_tokens: int,
+        reasoning_effort: str | None = None,
         on_content_delta: Callable[[str], Awaitable[None]] | None = None,
     ) -> LLMResponse:
         try:
             sdk = _load_sdk()
             prompt = _messages_to_prompt(messages, tools)
-            options = _build_options(sdk, model or self.default_model, max_tokens, self.api_key)
+            options = _build_options(
+                sdk,
+                model or self.default_model,
+                max_tokens,
+                self.api_key,
+                reasoning_effort,
+            )
             chunks: list[str] = []
             pending_result_text = ""
 
@@ -153,6 +167,7 @@ def _build_options(
     model: str | None,
     max_tokens: int,
     api_key: str | None = None,
+    reasoning_effort: str | None = None,
 ) -> Any | None:
     options_cls = getattr(sdk, "CodeBuddyAgentOptions", None)
     if options_cls is None:
@@ -161,7 +176,28 @@ def _build_options(
     stripped_model = _strip_model_prefix(model)
     model_kwargs = {} if not stripped_model or stripped_model == "default" else {"model": stripped_model}
     env_kwargs = {"env": {_CODEBUDDY_API_KEY_ENV: api_key}} if api_key else {}
+    reasoning_kwargs = _reasoning_options(reasoning_effort)
+    text_only_kwargs = {"tools": []}
     candidates = [
+        {
+            **model_kwargs,
+            **env_kwargs,
+            **reasoning_kwargs,
+            **text_only_kwargs,
+            "max_turns": 1,
+            "permission_mode": "plan",
+        },
+        {**model_kwargs, **reasoning_kwargs, **text_only_kwargs, "max_turns": 1},
+        {
+            **model_kwargs,
+            **env_kwargs,
+            **reasoning_kwargs,
+            **text_only_kwargs,
+            "maxTurns": 1,
+            "permissionMode": "plan",
+        },
+        {**model_kwargs, **reasoning_kwargs, **text_only_kwargs, "maxTurns": 1},
+        {**model_kwargs, **reasoning_kwargs, **text_only_kwargs},
         {**model_kwargs, **env_kwargs, "max_turns": 1, "permission_mode": "plan"},
         {**model_kwargs, "max_turns": 1},
         {**model_kwargs, **env_kwargs, "maxTurns": 1, "permissionMode": "plan"},
@@ -174,6 +210,8 @@ def _build_options(
             {
                 **model_kwargs,
                 **env_kwargs,
+                **reasoning_kwargs,
+                **text_only_kwargs,
                 "max_turns": 1,
                 "permission_mode": "plan",
                 "max_tokens": max_tokens,
@@ -186,6 +224,21 @@ def _build_options(
         except TypeError:
             continue
     return None
+
+
+def _reasoning_options(reasoning_effort: str | None) -> dict[str, Any]:
+    """Map DeepTutor reasoning levels to CodeBuddy SDK thinking controls.
+
+    The SDK enables adaptive thinking when the field is omitted, unlike the
+    local CodeBuddy CLI configuration. Defaulting to disabled keeps ordinary
+    chat latency aligned with the CLI; an explicit effort turns it back on.
+    """
+    effort = (reasoning_effort or "").strip().lower()
+    if effort in {"low", "medium", "high", "xhigh"}:
+        return {"thinking": {"type": "adaptive"}, "effort": effort}
+    if effort == "adaptive":
+        return {"thinking": {"type": "adaptive"}}
+    return {"thinking": {"type": "disabled"}}
 
 
 def _options_has_api_key_env(options: Any | None) -> bool:

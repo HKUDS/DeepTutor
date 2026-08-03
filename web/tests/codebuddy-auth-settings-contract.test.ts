@@ -22,6 +22,8 @@ test("CodeBuddy renders a login card without changing other OAuth cards", () => 
   assert.match(editor, /providerValue === "codebuddy"/);
   assert.match(editor, /<CodeBuddyAuthCard/);
   assert.match(editor, /<CodexOAuthCard/);
+  assert.match(editor, /isCodexOAuth \|\| isCodeBuddyAuth/);
+  assert.match(editor, /!isCodexOAuth && !isCodeBuddyAuth/);
   assert.match(readFileSync(CARD, "utf8"), /startCodeBuddyLogin/);
 });
 

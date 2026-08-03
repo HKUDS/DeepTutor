@@ -1115,8 +1115,10 @@ function ProfileFields({
     providerOption,
     profile,
   );
+  const isCodeBuddyAuth =
+    service === "llm" && providerValue === "codebuddy";
 
-  const fields = isCodexOAuth
+  const fields = isCodexOAuth || isCodeBuddyAuth
     ? { apiKey: false, baseUrl: false, baseUrlRequired: false }
     : service === "search"
       ? searchProviderFields(profile.provider)
@@ -1231,7 +1233,7 @@ function ProfileFields({
           <CodexOAuthCard />
         </div>
       )}
-      {service === "llm" && providerValue === "codebuddy" && (
+      {isCodeBuddyAuth && (
         <div className="sm:col-span-2">
           <CodeBuddyAuthCard />
         </div>
@@ -1302,7 +1304,7 @@ function ProfileFields({
           </div>
         </div>
       )}
-      {!isCodexOAuth && (
+      {!isCodexOAuth && !isCodeBuddyAuth && (
         <div className="sm:col-span-2 rounded-xl border border-[var(--border)]/60 bg-[var(--muted)]/20">
           <button
             type="button"

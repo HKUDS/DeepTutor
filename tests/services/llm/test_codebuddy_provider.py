@@ -71,7 +71,33 @@ async def test_codebuddy_provider_streams_sdk_text_blocks(monkeypatch) -> None:
     assert captured["options"].kwargs["model"] == "claude-sonnet-4"
     assert captured["options"].kwargs["permission_mode"] == "plan"
     assert captured["options"].kwargs["env"]["CODEBUDDY_API_KEY"] == "secret"
+    assert captured["options"].kwargs["tools"] == []
+    assert captured["options"].kwargs["thinking"] == {"type": "disabled"}
     assert "CODEBUDDY_API_KEY" not in os.environ
+
+
+@pytest.mark.asyncio
+async def test_codebuddy_explicit_reasoning_effort_enables_sdk_thinking(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_query(**kwargs):
+        captured.update(kwargs)
+        yield FakeResultMessage("done")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "codebuddy_agent_sdk",
+        SimpleNamespace(query=fake_query, CodeBuddyAgentOptions=FakeOptions),
+    )
+
+    response = await CodeBuddyProvider().chat(
+        [{"role": "user", "content": "think"}],
+        reasoning_effort="high",
+    )
+
+    assert response.content == "done"
+    assert captured["options"].kwargs["thinking"] == {"type": "adaptive"}
+    assert captured["options"].kwargs["effort"] == "high"
 
 
 @pytest.mark.asyncio
