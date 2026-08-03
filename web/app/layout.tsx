@@ -5,7 +5,6 @@ import ThemeScript from "@/components/ThemeScript";
 import ToastViewport from "@/components/common/ToastViewport";
 import { AppShellProvider } from "@/context/AppShellContext";
 import { I18nClientBridge } from "@/i18n/I18nClientBridge";
-import { loadInitialLanguage } from "@/lib/server-ui-settings";
 
 // Geist matches the public site (deeptutor.info) and stays crisp at the
 // small UI sizes the composer/toolbars use, unlike the rounder Jakarta.
@@ -33,16 +32,14 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const initialLanguage = await loadInitialLanguage();
-
   return (
     <html
-      lang={initialLanguage ?? "en"}
+      lang="en"
       suppressHydrationWarning
       data-scroll-behavior="smooth"
       className={`${fontSans.variable} ${fontSerif.variable}`}
@@ -54,7 +51,7 @@ export default async function RootLayout({
         className="font-sans bg-[var(--background)] text-[var(--foreground)]"
         suppressHydrationWarning
       >
-        <AppShellProvider initialLanguage={initialLanguage}>
+        <AppShellProvider>
           <I18nClientBridge>{children}</I18nClientBridge>
           <ToastViewport />
         </AppShellProvider>

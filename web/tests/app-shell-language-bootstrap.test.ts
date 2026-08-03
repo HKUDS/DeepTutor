@@ -1,69 +1,65 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { useTranslation } from "react-i18next";
 
-import { AppShellProvider } from "../context/AppShellContext";
-import { I18nClientBridge } from "../i18n/I18nClientBridge";
-import { loadInitialLanguage } from "../lib/server-ui-settings";
+import {
+  LANGUAGE_STORAGE_KEY,
+  hasStoredLanguage,
+  readStoredLanguage,
+} from "../context/app-shell-storage";
 
-test("server bootstrap loads the persisted language before rendering", async () => {
-  let capturedInput: RequestInfo | URL | undefined;
-  let capturedInit: RequestInit | undefined;
-
-  const language = await loadInitialLanguage(async (input, init) => {
-    capturedInput = input;
-    capturedInit = init;
-    return {
-      ok: true,
-      json: async () => ({ language: "zh" }),
-    } as Response;
-  }, "http://backend.test:8001");
-
-  assert.equal(
-    capturedInput?.toString(),
-    "http://backend.test:8001/api/v1/settings/ui",
-  );
-  assert.equal(capturedInit?.cache, "no-store");
-  assert.equal(language, "zh");
-});
-
-test("server bootstrap ignores failed or malformed language responses", async () => {
-  assert.equal(
-    await loadInitialLanguage(
-      async () => ({ ok: false, json: async () => ({}) }) as Response,
-      "http://backend.test:8001",
-    ),
-    null,
-  );
-  assert.equal(
-    await loadInitialLanguage(
-      async () =>
-        ({ ok: true, json: async () => ({ language: "fr" }) }) as Response,
-      "http://backend.test:8001",
-    ),
-    null,
-  );
-});
-
-test("app shell server-renders translations with the injected language", () => {
-  function TranslationProbe() {
-    const { t } = useTranslation();
-    return React.createElement("span", null, t("Home"));
+/** Minimal localStorage stand-in — the helpers only need get/set. */
+function withLocalStorage(entries: Record<string, string>, run: () => void) {
+  const store = new Map(Object.entries(entries));
+  const original = (globalThis as { window?: unknown }).window;
+  (globalThis as { window?: unknown }).window = {
+    localStorage: {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => void store.set(key, value),
+    },
+    dispatchEvent: () => true,
+  };
+  try {
+    run();
+  } finally {
+    (globalThis as { window?: unknown }).window = original;
   }
+}
 
-  const html = renderToStaticMarkup(
-    React.createElement(
-      AppShellProvider,
-      { initialLanguage: "zh" },
-      React.createElement(
-        I18nClientBridge,
-        null,
-        React.createElement(TranslationProbe),
-      ),
-    ),
-  );
+test("an absent choice is distinguishable from an explicit English one", () => {
+  // readStoredLanguage normalizes both to "en", so the bootstrap cannot use it
+  // to decide whether the server-side preference may be adopted.
+  withLocalStorage({}, () => {
+    assert.equal(hasStoredLanguage(), false);
+    assert.equal(readStoredLanguage(), "en");
+  });
 
-  assert.equal(html, "<span>主页</span>");
+  withLocalStorage({ [LANGUAGE_STORAGE_KEY]: "en" }, () => {
+    assert.equal(hasStoredLanguage(), true);
+    assert.equal(readStoredLanguage(), "en");
+  });
+});
+
+test("a stored choice is reported for either language", () => {
+  withLocalStorage({ [LANGUAGE_STORAGE_KEY]: "zh" }, () => {
+    assert.equal(hasStoredLanguage(), true);
+    assert.equal(readStoredLanguage(), "zh");
+  });
+});
+
+test("an unusable value still counts as a choice and normalizes to English", () => {
+  withLocalStorage({ [LANGUAGE_STORAGE_KEY]: "fr" }, () => {
+    assert.equal(hasStoredLanguage(), true);
+    assert.equal(readStoredLanguage(), "en");
+  });
+});
+
+test("server-side rendering reports no stored choice instead of throwing", () => {
+  const original = (globalThis as { window?: unknown }).window;
+  (globalThis as { window?: unknown }).window = undefined;
+  try {
+    assert.equal(hasStoredLanguage(), false);
+    assert.equal(readStoredLanguage(), "en");
+  } finally {
+    (globalThis as { window?: unknown }).window = original;
+  }
 });
