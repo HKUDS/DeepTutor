@@ -141,6 +141,20 @@ def test_init_resolves_obsidian_metadata(monkeypatch: pytest.MonkeyPatch) -> Non
     assert pipeline._vault_path == "/srv/vault/a"
 
 
+def test_init_keeps_obsidian_type_without_vault_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _bind_kb(monkeypatch, obsidian={"vault"}, obsidian_path="")
+    pipeline = _make_pipeline(
+        monkeypatch,
+        registry=_ToolRegistry(ALL_TOOLS),
+        enabled_tools=[],
+        kb_name="vault",
+    )
+    assert pipeline._is_obsidian_kb is True
+    assert pipeline._vault_path is None
+
+
 def test_init_resolves_indexed_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
     _bind_kb(monkeypatch, obsidian=None)
     pipeline = _make_pipeline(
@@ -273,6 +287,22 @@ def test_obsidian_kb_missing_registry_tool_is_filtered(monkeypatch: pytest.Monke
     assert "rag" not in names
 
 
+def test_obsidian_kb_without_vault_path_mounts_no_kb_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _bind_kb(monkeypatch, obsidian={"vault"}, obsidian_path="")
+    pipeline = _make_pipeline(
+        monkeypatch,
+        registry=_ToolRegistry(set(ALL_TOOLS)),
+        enabled_tools=[],
+        kb_name="vault",
+    )
+    names = pipeline._block_tool_names()
+    assert "rag" not in names
+    for tool in OBSIDIAN_TOOLS:
+        assert tool not in names
+
+
 # ---------------------------------------------------------------------------
 # 4. Server-side vault path injection
 # ---------------------------------------------------------------------------
@@ -323,12 +353,12 @@ def test_augment_without_vault_path_keeps_safe_failure(monkeypatch: pytest.Monke
     """A vault path missing from metadata means the tools are simply not
     mounted; if augment is still reached the kwargs stay untouched and the
     Obsidian tool's own guard returns its standard safe failure."""
-    _bind_kb(monkeypatch, obsidian=None)
+    _bind_kb(monkeypatch, obsidian={"vault"}, obsidian_path="")
     pipeline = _make_pipeline(
         monkeypatch,
         registry=_ToolRegistry(ALL_TOOLS),
         enabled_tools=[],
-        kb_name="kb-main",
+        kb_name="vault",
     )
     ctx = UnifiedContext(session_id="s1", user_message="m")
     kwargs = pipeline._augment_tool_kwargs("obsidian_search", {"query": "x"}, ctx)
@@ -341,11 +371,21 @@ def test_augment_without_vault_path_keeps_safe_failure(monkeypatch: pytest.Monke
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("tool_name", OBSIDIAN_TOOLS)
+@pytest.mark.parametrize(
+    ("tool_name", "arguments", "expected_query"),
+    (
+        ("obsidian_search", {"query": "evidence"}, "evidence"),
+        ("obsidian_read", {"note": "Research Notes.md"}, "Research Notes.md"),
+        ("obsidian_list", {"folder": "research"}, "research"),
+        ("obsidian_list", {}, "/"),
+    ),
+)
 async def test_obsidian_tool_results_enter_citation_pipeline(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
     tool_name: str,
+    arguments: dict[str, str],
+    expected_query: str,
 ) -> None:
     _bind_kb(monkeypatch, obsidian={"vault"}, obsidian_path="/srv/vault")
     registry = _ToolRegistry({tool_name})
@@ -386,7 +426,7 @@ async def test_obsidian_tool_results_enter_citation_pipeline(
         ]
     )
     await host._summarise_and_record(
-        [{"id": "call-1", "name": tool_name, "arguments": {"query": "evidence"}}],
+        [{"id": "call-1", "name": tool_name, "arguments": arguments}],
         outcome,
     )
 
@@ -394,10 +434,12 @@ async def test_obsidian_tool_results_enter_citation_pipeline(
     trace = block.tool_traces[0]
     assert trace.tool_type == tool_name
     assert trace.citation_id == "CIT-1-01"
+    assert trace.query == expected_query
     assert outcome.tool_messages[0]["content"].startswith("[CIT-1-01]")
     assert "CIT-1-01" in citations.get_all_citations()
     references = pipeline._render_reference_list(citations)
     assert '<li id="ref-cit-1-01" data-citation-id="CIT-1-01">' in references
+    assert expected_query in references
 
 
 @pytest.mark.asyncio

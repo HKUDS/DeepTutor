@@ -317,9 +317,9 @@ class ResearchPipeline:
 
                 meta = resolve_kb_metadata(self.kb_name)
                 if meta and meta.get("type") == OBSIDIAN_KB_TYPE:
+                    self._is_obsidian_kb = True
                     vault_path = str(meta.get("vault_path") or "").strip()
                     if vault_path:
-                        self._is_obsidian_kb = True
                         self._vault_path = vault_path
             except Exception:
                 logger.warning(
@@ -1818,7 +1818,7 @@ class ResearchPipeline:
             for name in composed
             if name in RESEARCH_BLOCK_TOOL_ALLOWLIST and self._tool_in_registry(name)
         ]
-        if self._is_obsidian_kb:
+        if self._vault_path:
             names.extend(
                 name
                 for name in RESEARCH_OBSIDIAN_READ_TOOLS
@@ -2446,7 +2446,13 @@ class _BlockLoopHost:
             if not raw_answer.strip():
                 continue
             try:
-                query = str(tool_args.get("query") or "")
+                query_key = {
+                    "obsidian_read": "note",
+                    "obsidian_list": "folder",
+                }.get(tool_name, "query")
+                query = str(tool_args.get(query_key) or "")
+                if tool_name == "obsidian_list" and not query:
+                    query = "/"
                 summary = await self._pipeline._summarise_tool_result(
                     tool_name=tool_name,
                     query=query,
