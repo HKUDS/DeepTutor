@@ -287,6 +287,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         env_key="CODEBUDDY_API_KEY",
         display_name="CodeBuddy",
         backend="codebuddy",
+        is_oauth=True,
         strip_model_prefix=True,
         supports_stream_options=False,
     ),
