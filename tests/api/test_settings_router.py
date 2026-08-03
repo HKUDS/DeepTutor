@@ -747,6 +747,34 @@ async def test_fetch_models_allows_codebuddy_without_base_url(
 
 
 @pytest.mark.asyncio
+async def test_codebuddy_auth_routes_use_admin_scoped_service(monkeypatch) -> None:
+    class FakeService:
+        async def status(self):
+            return {"connection": "connected"}
+
+        async def start_login(self):
+            return {"connection": "authorizing"}
+
+        async def cancel_login(self):
+            return {"connection": "disconnected"}
+
+    monkeypatch.setattr(settings_router, "_require_settings_admin", lambda: None)
+    monkeypatch.setattr(
+        settings_router, "get_codebuddy_auth_service", lambda: FakeService()
+    )
+
+    assert await settings_router.get_codebuddy_auth_status() == {
+        "connection": "connected"
+    }
+    assert await settings_router.start_codebuddy_auth() == {
+        "connection": "authorizing"
+    }
+    assert await settings_router.cancel_codebuddy_auth() == {
+        "connection": "disconnected"
+    }
+
+
+@pytest.mark.asyncio
 async def test_fetch_models_maps_provider_error_to_502(monkeypatch: pytest.MonkeyPatch) -> None:
     from fastapi import HTTPException
 

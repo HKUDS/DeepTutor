@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.model_access import allowed_llm_options
 from deeptutor.services.codex_auth import CodexAuthError, get_codex_oauth_service
+from deeptutor.services.codebuddy_auth import get_codebuddy_auth_service
 from deeptutor.services.config import (
     get_config_test_runner,
     get_model_catalog_service,
@@ -563,6 +564,24 @@ async def refresh_openai_codex_models() -> dict[str, Any]:
         return await get_codex_oauth_service().refresh_models()
     except CodexAuthError as exc:
         raise _codex_http_exception(exc) from None
+
+
+@router.get("/providers/codebuddy/auth/status")
+async def get_codebuddy_auth_status() -> dict[str, Any]:
+    _require_settings_admin()
+    return await get_codebuddy_auth_service().status()
+
+
+@router.post("/providers/codebuddy/auth/start")
+async def start_codebuddy_auth() -> dict[str, Any]:
+    _require_settings_admin()
+    return await get_codebuddy_auth_service().start_login()
+
+
+@router.post("/providers/codebuddy/auth/cancel")
+async def cancel_codebuddy_auth() -> dict[str, Any]:
+    _require_settings_admin()
+    return await get_codebuddy_auth_service().cancel_login()
 
 
 @router.get("/catalog")

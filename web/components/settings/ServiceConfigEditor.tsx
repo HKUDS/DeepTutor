@@ -19,6 +19,7 @@ import { useTranslation } from "react-i18next";
 import ProviderIcon from "@/components/common/ProviderIcon";
 import { apiFetch, apiUrl } from "@/lib/api";
 import { CodexOAuthCard } from "./CodexOAuthCard";
+import { CodeBuddyAuthCard } from "./CodeBuddyAuthCard";
 import { isCodexOAuthProfile, isManagedCodexProfile } from "./codex-profile";
 import {
   type CatalogModel,
@@ -175,7 +176,7 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
       mutateCatalog((next) => {
         const target = next.services.llm;
         const profile = target.profiles.find((item) => item.id === profileId);
-        if (!profile) return;
+        if (!profile || profile.binding !== binding) return;
         const existing = new Map(
           profile.models.map((model) => [model.model, model]),
         );
@@ -440,8 +441,36 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                 isSupportedSearchProvider={isSupportedSearchProvider}
                 isDeprecatedSearchProvider={isDeprecatedSearchProvider}
                 isPerplexityMissingKey={isPerplexityMissingKey}
-                onProviderChanged={(provider) => {
-                  if (service === "llm" && provider.value === "codebuddy") {
+                onProviderChanged={(provider, previousProvider) => {
+                  if (service !== "llm" || !activeProfile) return;
+                  const crossesCodeBuddyBoundary =
+                    provider.value === "codebuddy" ||
+                    previousProvider === "codebuddy";
+                  if (crossesCodeBuddyBoundary) {
+                    const profileId = activeProfile.id;
+                    mutateCatalog((next) => {
+                      const target = next.services.llm;
+                      const profile = target.profiles.find(
+                        (item) => item.id === profileId,
+                      );
+                      if (!profile || profile.binding !== provider.value) return;
+                      if (provider.value === "codebuddy") {
+                        profile.models = [];
+                        target.active_model_id = null;
+                        return;
+                      }
+                      const modelId = `llm-model-${Date.now()}`;
+                      profile.models = [
+                        {
+                          id: modelId,
+                          name: defaultModelLabel(language, 1),
+                          model: "",
+                        },
+                      ];
+                      target.active_model_id = modelId;
+                    });
+                  }
+                  if (provider.value === "codebuddy") {
                     void syncProviderModels({
                       binding: provider.value,
                       base_url: provider.base_url || "",
@@ -1065,7 +1094,10 @@ function ProfileFields({
   isSupportedSearchProvider: boolean;
   isDeprecatedSearchProvider: boolean;
   isPerplexityMissingKey: boolean;
-  onProviderChanged: (provider: ProviderOption) => void;
+  onProviderChanged: (
+    provider: ProviderOption,
+    previousProvider: string,
+  ) => void;
 }) {
   const { t } = useTranslation();
   const { providers, updateProfileField, updateModelField } = useSettings();
@@ -1134,7 +1166,7 @@ function ProfileFields({
                 updateProfileField(service, "base_url", match.base_url);
               }
               if (match) {
-                onProviderChanged(match);
+                onProviderChanged(match, providerValue);
               }
               if (service === "embedding" && match?.default_dim) {
                 updateModelField(service, "dimension", match.default_dim);
@@ -1197,6 +1229,11 @@ function ProfileFields({
       {isCodexOAuth && (
         <div className="sm:col-span-2">
           <CodexOAuthCard />
+        </div>
+      )}
+      {service === "llm" && providerValue === "codebuddy" && (
+        <div className="sm:col-span-2">
+          <CodeBuddyAuthCard />
         </div>
       )}
       {fields.baseUrl && (
