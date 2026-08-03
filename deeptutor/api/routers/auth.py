@@ -402,7 +402,7 @@ async def receive_codex_oauth_callback(
 @router.get("/status", response_model=AuthStatusResponse)
 async def auth_status(
     authorization: str | None = Header(default=None, alias="Authorization"),
-    dt_token: str | None = Cookie(default=None),
+    dt_token: str | None = Cookie(default=None, alias=_COOKIE_NAME),
 ) -> AuthStatusResponse:
     """Return whether auth is enabled and whether the current request is authenticated."""
     if not AUTH_ENABLED:

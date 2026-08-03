@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/(utility)/layout,_N_T_/(utility)/space/layout,_N_T_/(utility)/space/mcp/layout,_N_T_/(utility)/space/mcp/page,_N_T_/space/mcp"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/!KHV0aWxpdHkp/space/mcp/__PAGE__",
+    "/!KHV0aWxpdHkp/space/mcp",
+    "/!KHV0aWxpdHkp/space",
+    "/!KHV0aWxpdHkp",
+    "/_index",
+    "/_head"
+  ]
+}

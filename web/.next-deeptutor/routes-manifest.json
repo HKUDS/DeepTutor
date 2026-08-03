@@ -1,0 +1,428 @@
+{
+  "version": 3,
+  "pages404": true,
+  "appType": "app",
+  "caseSensitive": false,
+  "basePath": "",
+  "redirects": [
+    {
+      "source": "/:path+/",
+      "destination": "/:path+",
+      "internal": true,
+      "priority": true,
+      "statusCode": 308,
+      "regex": "^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))/$"
+    }
+  ],
+  "headers": [],
+  "onMatchHeaders": [],
+  "rewrites": {
+    "beforeFiles": [],
+    "afterFiles": [],
+    "fallback": []
+  },
+  "dynamicRoutes": [
+    {
+      "page": "/co-writer/[docId]",
+      "regex": "^/co\\-writer/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPdocId": "nxtPdocId"
+      },
+      "namedRegex": "^/co\\-writer/(?<nxtPdocId>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/home/[[...sessionId]]",
+      "regex": "^/home(?:/(.+?))?(?:/)?$",
+      "routeKeys": {
+        "nxtPsessionId": "nxtPsessionId"
+      },
+      "namedRegex": "^/home(?:/(?<nxtPsessionId>.+?))?(?:/)?$"
+    },
+    {
+      "page": "/memory/l2/[surface]",
+      "regex": "^/memory/l2/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPsurface": "nxtPsurface"
+      },
+      "namedRegex": "^/memory/l2/(?<nxtPsurface>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/memory/l3/[slot]",
+      "regex": "^/memory/l3/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPslot": "nxtPslot"
+      },
+      "namedRegex": "^/memory/l3/(?<nxtPslot>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/partners/[partnerId]",
+      "regex": "^/partners/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPpartnerId": "nxtPpartnerId"
+      },
+      "namedRegex": "^/partners/(?<nxtPpartnerId>[^/]+?)(?:/)?$"
+    }
+  ],
+  "staticRoutes": [
+    {
+      "page": "/",
+      "regex": "^/(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/(?:/)?$"
+    },
+    {
+      "page": "/_global-error",
+      "regex": "^/_global\\-error(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_global\\-error(?:/)?$"
+    },
+    {
+      "page": "/_not-found",
+      "regex": "^/_not\\-found(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_not\\-found(?:/)?$"
+    },
+    {
+      "page": "/admin/users",
+      "regex": "^/admin/users(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/users(?:/)?$"
+    },
+    {
+      "page": "/agents",
+      "regex": "^/agents(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/agents(?:/)?$"
+    },
+    {
+      "page": "/book",
+      "regex": "^/book(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/book(?:/)?$"
+    },
+    {
+      "page": "/co-writer",
+      "regex": "^/co\\-writer(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/co\\-writer(?:/)?$"
+    },
+    {
+      "page": "/knowledge",
+      "regex": "^/knowledge(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/knowledge(?:/)?$"
+    },
+    {
+      "page": "/login",
+      "regex": "^/login(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/login(?:/)?$"
+    },
+    {
+      "page": "/memory",
+      "regex": "^/memory(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/memory(?:/)?$"
+    },
+    {
+      "page": "/memory/graph",
+      "regex": "^/memory/graph(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/memory/graph(?:/)?$"
+    },
+    {
+      "page": "/memory/l1",
+      "regex": "^/memory/l1(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/memory/l1(?:/)?$"
+    },
+    {
+      "page": "/memory/l2",
+      "regex": "^/memory/l2(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/memory/l2(?:/)?$"
+    },
+    {
+      "page": "/memory/l3",
+      "regex": "^/memory/l3(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/memory/l3(?:/)?$"
+    },
+    {
+      "page": "/memory/resolve",
+      "regex": "^/memory/resolve(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/memory/resolve(?:/)?$"
+    },
+    {
+      "page": "/notebook",
+      "regex": "^/notebook(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/notebook(?:/)?$"
+    },
+    {
+      "page": "/partners",
+      "regex": "^/partners(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/partners(?:/)?$"
+    },
+    {
+      "page": "/partners/new",
+      "regex": "^/partners/new(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/partners/new(?:/)?$"
+    },
+    {
+      "page": "/playground",
+      "regex": "^/playground(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/playground(?:/)?$"
+    },
+    {
+      "page": "/profile",
+      "regex": "^/profile(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/profile(?:/)?$"
+    },
+    {
+      "page": "/register",
+      "regex": "^/register(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/register(?:/)?$"
+    },
+    {
+      "page": "/settings",
+      "regex": "^/settings(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings(?:/)?$"
+    },
+    {
+      "page": "/settings/agents",
+      "regex": "^/settings/agents(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/agents(?:/)?$"
+    },
+    {
+      "page": "/settings/agents/claude-code",
+      "regex": "^/settings/agents/claude\\-code(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/agents/claude\\-code(?:/)?$"
+    },
+    {
+      "page": "/settings/agents/codex",
+      "regex": "^/settings/agents/codex(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/agents/codex(?:/)?$"
+    },
+    {
+      "page": "/settings/agents/gemini",
+      "regex": "^/settings/agents/gemini(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/agents/gemini(?:/)?$"
+    },
+    {
+      "page": "/settings/agents/kimi",
+      "regex": "^/settings/agents/kimi(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/agents/kimi(?:/)?$"
+    },
+    {
+      "page": "/settings/agents/mimo",
+      "regex": "^/settings/agents/mimo(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/agents/mimo(?:/)?$"
+    },
+    {
+      "page": "/settings/agents/opencode",
+      "regex": "^/settings/agents/opencode(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/agents/opencode(?:/)?$"
+    },
+    {
+      "page": "/settings/appearance",
+      "regex": "^/settings/appearance(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/appearance(?:/)?$"
+    },
+    {
+      "page": "/settings/attachments",
+      "regex": "^/settings/attachments(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/attachments(?:/)?$"
+    },
+    {
+      "page": "/settings/capabilities",
+      "regex": "^/settings/capabilities(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/capabilities(?:/)?$"
+    },
+    {
+      "page": "/settings/chat",
+      "regex": "^/settings/chat(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/chat(?:/)?$"
+    },
+    {
+      "page": "/settings/document-parsing",
+      "regex": "^/settings/document\\-parsing(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/document\\-parsing(?:/)?$"
+    },
+    {
+      "page": "/settings/embedding",
+      "regex": "^/settings/embedding(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/embedding(?:/)?$"
+    },
+    {
+      "page": "/settings/image",
+      "regex": "^/settings/image(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/image(?:/)?$"
+    },
+    {
+      "page": "/settings/llm",
+      "regex": "^/settings/llm(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/llm(?:/)?$"
+    },
+    {
+      "page": "/settings/mcp",
+      "regex": "^/settings/mcp(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/mcp(?:/)?$"
+    },
+    {
+      "page": "/settings/memory",
+      "regex": "^/settings/memory(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/memory(?:/)?$"
+    },
+    {
+      "page": "/settings/mineru",
+      "regex": "^/settings/mineru(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/mineru(?:/)?$"
+    },
+    {
+      "page": "/settings/models",
+      "regex": "^/settings/models(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/models(?:/)?$"
+    },
+    {
+      "page": "/settings/network",
+      "regex": "^/settings/network(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/network(?:/)?$"
+    },
+    {
+      "page": "/settings/search",
+      "regex": "^/settings/search(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/search(?:/)?$"
+    },
+    {
+      "page": "/settings/status",
+      "regex": "^/settings/status(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/status(?:/)?$"
+    },
+    {
+      "page": "/settings/stt",
+      "regex": "^/settings/stt(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/stt(?:/)?$"
+    },
+    {
+      "page": "/settings/tools",
+      "regex": "^/settings/tools(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/tools(?:/)?$"
+    },
+    {
+      "page": "/settings/tts",
+      "regex": "^/settings/tts(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/tts(?:/)?$"
+    },
+    {
+      "page": "/settings/video",
+      "regex": "^/settings/video(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings/video(?:/)?$"
+    },
+    {
+      "page": "/space",
+      "regex": "^/space(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/space(?:/)?$"
+    },
+    {
+      "page": "/space/chat-history",
+      "regex": "^/space/chat\\-history(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/space/chat\\-history(?:/)?$"
+    },
+    {
+      "page": "/space/cli-apps",
+      "regex": "^/space/cli\\-apps(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/space/cli\\-apps(?:/)?$"
+    },
+    {
+      "page": "/space/learning",
+      "regex": "^/space/learning(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/space/learning(?:/)?$"
+    },
+    {
+      "page": "/space/mcp",
+      "regex": "^/space/mcp(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/space/mcp(?:/)?$"
+    },
+    {
+      "page": "/space/notebooks",
+      "regex": "^/space/notebooks(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/space/notebooks(?:/)?$"
+    },
+    {
+      "page": "/space/personas",
+      "regex": "^/space/personas(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/space/personas(?:/)?$"
+    },
+    {
+      "page": "/space/questions",
+      "regex": "^/space/questions(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/space/questions(?:/)?$"
+    },
+    {
+      "page": "/space/skills",
+      "regex": "^/space/skills(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/space/skills(?:/)?$"
+    }
+  ],
+  "dataRoutes": [],
+  "rsc": {
+    "header": "rsc",
+    "varyHeader": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+    "prefetchHeader": "next-router-prefetch",
+    "didPostponeHeader": "x-nextjs-postponed",
+    "contentTypeHeader": "text/x-component",
+    "suffix": ".rsc",
+    "prefetchSegmentHeader": "next-router-segment-prefetch",
+    "prefetchSegmentSuffix": ".segment.rsc",
+    "prefetchSegmentDirSuffix": ".segments",
+    "clientParamParsing": false,
+    "dynamicRSCPrerender": false
+  },
+  "rewriteHeaders": {
+    "pathHeader": "x-nextjs-rewritten-path",
+    "queryHeader": "x-nextjs-rewritten-query"
+  }
+}
