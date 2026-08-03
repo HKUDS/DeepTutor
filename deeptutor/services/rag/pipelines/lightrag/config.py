@@ -149,9 +149,11 @@ def build_embedding_func():
 
     client = get_embedding_client()
 
-    async def embedding_func(texts, context="document", **_ignored):
+    async def embedding_func(texts, context=None, **_ignored):
         import numpy as np
 
+        # No context means no role, which is what the pinned LightRAG always
+        # passes — defaulting to "document" would label queries as passages.
         input_type = {
             "query": "search_query",
             "document": "search_document",
@@ -159,20 +161,11 @@ def build_embedding_func():
         vectors = await client.embed(texts, input_type=input_type)
         return np.asarray(vectors, dtype=np.float32)
 
-    kwargs = {
-        "embedding_dim": dim,
-        "max_token_size": int(getattr(cfg, "max_tokens", 0) or _DEFAULT_MAX_TOKEN_SIZE),
-        "func": embedding_func,
-    }
-    try:
-        # Current LightRAG forwards context="query" / "document" only when
-        # this flag is set. Retain a constructor fallback for older optional
-        # raganything releases that predate asymmetric-embedding support.
-        return EmbeddingFunc(**kwargs, supports_asymmetric=True)
-    except TypeError as exc:
-        if "supports_asymmetric" not in str(exc):
-            raise
-        return EmbeddingFunc(**kwargs)
+    return EmbeddingFunc(
+        embedding_dim=dim,
+        max_token_size=int(getattr(cfg, "max_tokens", 0) or _DEFAULT_MAX_TOKEN_SIZE),
+        func=embedding_func,
+    )
 
 
 __all__ = [

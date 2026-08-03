@@ -78,6 +78,11 @@ class EmbeddingClient:
         if not texts:
             return []
 
+        # Only adapters that opted in receive the role. Forwarding it to every
+        # backend would change the request Jina has always sent (no `task`) and
+        # silently invalidate the indexes built from it.
+        role = input_type if getattr(self.adapter, "SUPPORTS_INPUT_TYPE", False) else None
+
         import asyncio
 
         # Clamp configured batch size against the provider's per-request item
@@ -103,7 +108,7 @@ class EmbeddingClient:
                 texts=batch,
                 model=self.config.model,
                 dimensions=self.config.dim or None,
-                input_type=input_type,
+                input_type=role,
             )
             try:
                 response = await self.adapter.embed(request)
@@ -246,12 +251,6 @@ class EmbeddingClient:
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future = executor.submit(asyncio.run, self.embed(texts))
             return future.result()
-
-    def get_embedding_func(self):
-        async def embedding_wrapper(texts: List[str]) -> List[List[float]]:
-            return await self.embed(texts)
-
-        return embedding_wrapper
 
 
 _client: Optional[EmbeddingClient] = None

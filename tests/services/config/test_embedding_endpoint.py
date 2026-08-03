@@ -34,6 +34,19 @@ def test_blank_gemini_endpoint_defaults_to_native_stable_model() -> None:
     )
 
 
+def test_blank_gemini_endpoint_keeps_older_models_on_the_openai_path() -> None:
+    """Only Embedding 2 defaults to the native route: the native one sends a
+    taskType and L2-normalizes, so defaulting an existing 001 profile there
+    would change its document vectors and invalidate its index."""
+    endpoint = normalize_embedding_endpoint_for_display(
+        "gemini",
+        "",
+        model="gemini-embedding-001",
+    )
+
+    assert endpoint == "https://generativelanguage.googleapis.com/v1beta/openai/embeddings"
+
+
 def test_official_gemini_native_endpoint_tracks_model_selection() -> None:
     endpoint = normalize_embedding_endpoint_for_display(
         "gemini",

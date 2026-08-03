@@ -132,6 +132,12 @@ class BaseEmbeddingAdapter(ABC):
     (OpenAI, Cohere, Ollama, etc.) while exposing a unified interface.
     """
 
+    # Whether this adapter turns ``EmbeddingRequest.input_type`` into a
+    # provider parameter. Opt-in, because doing so changes the vectors a
+    # provider returns for the same text: switching it on for a backend that
+    # previously sent no role invalidates every index already built with it.
+    SUPPORTS_INPUT_TYPE: bool = False
+
     def __init__(self, config: Dict[str, Any]):
         """
         Initialize the adapter with configuration.

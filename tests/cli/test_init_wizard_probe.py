@@ -9,7 +9,12 @@ from rich.console import Console
 def test_gemini_embedding_fallback_prefers_stable_embedding2() -> None:
     from deeptutor_cli.init_wizard import EMBEDDING_FALLBACK_MODELS
 
-    assert EMBEDDING_FALLBACK_MODELS["gemini"] == ("gemini-embedding-2",)
+    # Embedding 2 leads, but 001 stays offered: it is still a current model and
+    # dropping it left the offline wizard with a single choice.
+    assert EMBEDDING_FALLBACK_MODELS["gemini"] == (
+        "gemini-embedding-2",
+        "gemini-embedding-001",
+    )
 
 
 def test_embedding_setup_preserves_saved_endpoint_for_same_provider() -> None:

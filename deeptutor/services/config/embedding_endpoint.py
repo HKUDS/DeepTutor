@@ -10,6 +10,9 @@ from urllib.parse import parse_qsl, quote, urlencode, urlparse
 
 GEMINI_DEFAULT_EMBEDDING_MODEL = "gemini-embedding-2"
 GEMINI_EMBEDDING_API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models"
+GEMINI_OPENAI_COMPAT_EMBEDDING_ENDPOINT = (
+    "https://generativelanguage.googleapis.com/v1beta/openai/embeddings"
+)
 GEMINI_API_HOST = "generativelanguage.googleapis.com"
 SENSITIVE_ENDPOINT_QUERY_KEYS = frozenset({"access_token", "api_key", "key", "token"})
 
@@ -44,6 +47,26 @@ def gemini_embedding_endpoint(model: str | None) -> str:
     """Return Gemini's exact native synchronous batch embedding endpoint."""
     model_id = quote(_gemini_model_id(model), safe="")
     return f"{GEMINI_EMBEDDING_API_ROOT}/{model_id}:batchEmbedContents"
+
+
+def is_gemini_embedding2_model(model: str | None) -> bool:
+    """Return whether a model belongs to the Gemini Embedding 2 family."""
+    return _gemini_model_id(model).lower().startswith("gemini-embedding-2")
+
+
+def gemini_default_embedding_endpoint(model: str | None) -> str:
+    """Return the endpoint a Gemini profile should default to for *model*.
+
+    Only Embedding 2 defaults to the native batch endpoint. Older models stay
+    on the OpenAI-compatible path they have always used: the native route sends
+    a ``taskType`` and L2-normalizes the response, so moving an existing
+    ``gemini-embedding-001`` profile there would change its document vectors
+    and silently invalidate the index built from them. Pointing base_url at the
+    native URL explicitly still opts any model in.
+    """
+    if is_gemini_embedding2_model(model):
+        return gemini_embedding_endpoint(model)
+    return GEMINI_OPENAI_COMPAT_EMBEDDING_ENDPOINT
 
 
 def is_gemini_native_embedding_endpoint(endpoint: str | None) -> bool:
@@ -169,7 +192,7 @@ def normalize_embedding_endpoint_for_display(
     url = str(base_url or "").strip()
     if not url:
         if provider_name == "gemini":
-            return gemini_embedding_endpoint(model)
+            return gemini_default_embedding_endpoint(model)
         return EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS.get(provider_name, "")
 
     trimmed = url.rstrip("/")

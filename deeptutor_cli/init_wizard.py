@@ -99,7 +99,7 @@ FEATURED_EMBEDDING_PROVIDERS: tuple[str, ...] = (
 # preferred and these are extras.
 EMBEDDING_FALLBACK_MODELS: dict[str, tuple[str, ...]] = {
     "openai": ("text-embedding-3-large", "text-embedding-3-small"),
-    "gemini": ("gemini-embedding-2",),
+    "gemini": ("gemini-embedding-2", "gemini-embedding-001"),
     "aliyun": ("qwen3-vl-embedding", "text-embedding-v3", "text-embedding-v2"),
     "siliconflow": (
         "Qwen/Qwen3-Embedding-8B",

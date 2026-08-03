@@ -17,6 +17,7 @@ from deeptutor.services.embedding.config import EmbeddingConfig
 
 class _FakeAdapter:
     instances: list["_FakeAdapter"] = []
+    SUPPORTS_INPUT_TYPE = False
 
     def __init__(self, config: dict[str, Any]):
         self.config = config
@@ -76,9 +77,12 @@ async def test_embedding_client_batches_requests(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_embedding_client_forwards_input_type_to_every_batch(monkeypatch) -> None:
+    class _RoleAwareAdapter(_FakeAdapter):
+        SUPPORTS_INPUT_TYPE = True
+
     _FakeAdapter.instances = []
     monkeypatch.setattr(
-        "deeptutor.services.embedding.client._resolve_adapter_class", lambda _b: _FakeAdapter
+        "deeptutor.services.embedding.client._resolve_adapter_class", lambda _b: _RoleAwareAdapter
     )
     client = EmbeddingClient(_build_config("openai"))
 
@@ -89,6 +93,24 @@ async def test_embedding_client_forwards_input_type_to_every_batch(monkeypatch) 
         "search_query",
         "search_query",
     ]
+
+
+@pytest.mark.asyncio
+async def test_embedding_client_withholds_input_type_from_opted_out_adapters(
+    monkeypatch,
+) -> None:
+    """Sending a role to a backend that never received one changes the vectors
+    it returns, which would invalidate every index already built with it."""
+    _FakeAdapter.instances = []
+    monkeypatch.setattr(
+        "deeptutor.services.embedding.client._resolve_adapter_class", lambda _b: _FakeAdapter
+    )
+    client = EmbeddingClient(_build_config("jina"))
+
+    await client.embed(["a"], input_type="search_document")
+
+    adapter = _FakeAdapter.instances[0]
+    assert [request.input_type for request in adapter.calls] == [None]
 
 
 @pytest.mark.asyncio

@@ -33,7 +33,7 @@ from .embedding_endpoint import (
     EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS,
     dashscope_embedding_endpoint,
     embedding_endpoint_validation_error,
-    gemini_embedding_endpoint,
+    gemini_default_embedding_endpoint,
     normalize_embedding_endpoint_for_display,
 )
 from .loader import load_config_with_main
@@ -841,8 +841,10 @@ def resolve_embedding_runtime_config(
     api_base = active_api_base or ((mapped.api_base or "") if mapped else "")
     if not api_base:
         if provider_name == "gemini":
-            # Gemini's native endpoint embeds the selected model in the path.
-            api_base = gemini_embedding_endpoint(resolved_model)
+            # Gemini's native endpoint embeds the selected model in the path,
+            # and only Embedding 2 defaults to it — see
+            # gemini_default_embedding_endpoint for why 001 stays where it was.
+            api_base = gemini_default_embedding_endpoint(resolved_model)
         elif spec.default_api_base:
             api_base = spec.default_api_base
     if provider_name == "aliyun":

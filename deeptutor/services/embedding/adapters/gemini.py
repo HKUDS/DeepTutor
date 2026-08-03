@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 class GeminiEmbeddingAdapter(OpenAICompatibleEmbeddingAdapter):
     """Use Gemini's native API while preserving saved OpenAI-compatible setups."""
 
+    SUPPORTS_INPUT_TYPE = True
+
     MODELS_INFO: dict[str, object] = {
         "gemini-embedding-2": {
             "default": 3072,
