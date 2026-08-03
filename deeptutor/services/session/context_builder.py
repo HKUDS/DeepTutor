@@ -45,6 +45,64 @@ def trim_incomplete_tail(text: str) -> str:
     return text.rstrip()
 
 
+def extract_ask_user_clarifications(message: dict[str, Any]) -> str:
+    """Recover resolved ask_user exchanges from a persisted assistant row.
+
+    Card replies resume the same backend turn, so they are stored in the
+    assistant message's event trace rather than as standalone user messages.
+    Rehydrate them into future model context or later turns would forget the
+    answers and could ask the same questions again.
+    """
+
+    pending_questions: dict[str, str] = {}
+    exchanges: list[tuple[str, str]] = []
+    for event in message.get("events") or []:
+        if not isinstance(event, dict):
+            continue
+        metadata = event.get("metadata") or {}
+        if not isinstance(metadata, dict):
+            continue
+        if event.get("type") == "tool_result":
+            tool_metadata = metadata.get("tool_metadata") or {}
+            ask_user = (
+                tool_metadata.get("ask_user") if isinstance(tool_metadata, dict) else None
+            ) or metadata.get("ask_user")
+            if not isinstance(ask_user, dict):
+                continue
+            pending_questions = {
+                str(question.get("id") or ""): str(question.get("prompt") or "").strip()
+                for question in ask_user.get("questions") or []
+                if isinstance(question, dict) and str(question.get("prompt") or "").strip()
+            }
+            continue
+        if not metadata.get("ask_user_resolved"):
+            continue
+        answers = metadata.get("answers") or []
+        resolved = False
+        for answer in answers:
+            if not isinstance(answer, dict):
+                continue
+            question_id = str(answer.get("questionId") or answer.get("question_id") or "")
+            answer_text = str(answer.get("text") or "").strip()
+            question_text = pending_questions.get(question_id, question_id).strip()
+            if question_text and answer_text:
+                exchanges.append((question_text, answer_text))
+                resolved = True
+        if not resolved:
+            preview = str(metadata.get("reply_preview") or "").strip()
+            if preview:
+                question_text = next(iter(pending_questions.values()), "User clarification")
+                exchanges.append((question_text, preview))
+        pending_questions = {}
+
+    if not exchanges:
+        return ""
+    lines = ["[Earlier ask_user clarification — treat these answers as user-provided context]"]
+    for question, answer in exchanges:
+        lines.extend((f"- Question: {question}", f"  User answer: {answer}"))
+    return "\n".join(lines)
+
+
 def format_messages_as_transcript(messages: list[dict[str, Any]]) -> str:
     lines: list[str] = []
     role_map = {
@@ -54,10 +112,12 @@ def format_messages_as_transcript(messages: list[dict[str, Any]]) -> str:
     }
     for item in messages:
         content = str(item.get("content", "") or "").strip()
-        if not content:
-            continue
-        role = role_map.get(str(item.get("role", "user")), "User")
-        lines.append(f"{role}: {content}")
+        if content:
+            role = role_map.get(str(item.get("role", "user")), "User")
+            lines.append(f"{role}: {content}")
+        clarification = extract_ask_user_clarifications(item)
+        if clarification:
+            lines.append(f"User: {clarification}")
     return "\n\n".join(lines)
 
 
@@ -141,15 +201,14 @@ class ContextBuilder:
         cleaned_summary = summary.strip()
         if cleaned_summary:
             history.append({"role": "system", "content": cleaned_summary})
-        history.extend(
-            {
-                "role": item.get("role", "user"),
-                "content": str(item.get("content", "") or ""),
-            }
-            for item in messages
-            if item.get("role") in {"user", "assistant"}
-            and str(item.get("content", "") or "").strip()
-        )
+        for item in messages:
+            role = item.get("role")
+            content = str(item.get("content", "") or "")
+            if role in {"user", "assistant"} and content.strip():
+                history.append({"role": role, "content": content})
+            clarification = extract_ask_user_clarifications(item)
+            if clarification:
+                history.append({"role": "user", "content": clarification})
         return history
 
     async def _append_event(
@@ -171,7 +230,8 @@ class ContextBuilder:
         total = 0
         for item in reversed(messages):
             content = str(item.get("content", "") or "")
-            tokens = count_tokens(content)
+            clarification = extract_ask_user_clarifications(item)
+            tokens = count_tokens(f"{content}\n{clarification}" if clarification else content)
             if selected and total + tokens > recent_budget:
                 break
             selected.insert(0, item)
@@ -474,5 +534,6 @@ __all__ = [
     "build_history_text",
     "count_tokens",
     "format_messages_as_transcript",
+    "extract_ask_user_clarifications",
     "trim_incomplete_tail",
 ]

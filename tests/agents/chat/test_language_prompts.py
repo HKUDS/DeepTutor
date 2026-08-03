@@ -77,6 +77,34 @@ def test_mastery_plugin_system_prompt_uses_localized_fallback(
     assert "Mastery Tutor mode" in en_prompt
 
 
+def test_ask_questions_plugin_system_prompt_uses_localized_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeRegistry:
+        def build_prompt_text(self, *_args, **_kwargs) -> str:
+            return "- tool"
+
+    monkeypatch.setattr(
+        "deeptutor.agents.chat.agentic_pipeline.get_tool_registry",
+        lambda: FakeRegistry(),
+    )
+
+    from deeptutor.core.context import UnifiedContext
+
+    ctx = UnifiedContext(metadata={"ask_questions_mode": True})
+    zh_prompt = AgenticChatPipeline(language="zh")._build_system_prompt([], ctx)
+    en_prompt = AgenticChatPipeline(language="en")._build_system_prompt([], ctx)
+
+    assert "## ask_questions" in zh_prompt
+    assert "主动提问模式" in zh_prompt
+    assert "不要求你在每个请求开头提问" in zh_prompt
+    assert "第 2、3、10 个对话轮次" in zh_prompt
+    assert "第一轮必须" not in zh_prompt
+    assert "## ask_questions" in en_prompt
+    assert "Ask Questions mode" in en_prompt
+    assert "second, third, tenth" in en_prompt
+
+
 def test_legacy_chat_agent_system_prompt_uses_selected_language() -> None:
     zh_messages = ChatAgent(language="zh", config={}).build_messages(
         message="解释梯度下降",
