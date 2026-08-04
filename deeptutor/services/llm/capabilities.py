@@ -314,6 +314,7 @@ MODEL_OVERRIDES: dict[str, dict[str, object]] = {
     "moonshot-v1-128k-vision": {"supports_vision": True},
     "kimi-k2.5": {"supports_vision": True},
     "kimi-k2.6": {"supports_vision": True},
+    "kimi-k3": {"supports_vision": True},
 }
 
 

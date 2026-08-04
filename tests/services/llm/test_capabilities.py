@@ -91,3 +91,9 @@ def test_qwen_model_override_enables_vision() -> None:
     assert supports_vision("openai", "Qwen/Qwen3-VL-235B-A22B-Instruct") is True
     assert supports_vision("openai", "qwen-plus") is False
     assert supports_vision("openai", "Qwen/Qwen3-235B-A22B-Instruct") is False
+
+
+def test_kimi_k3_is_vision_capable() -> None:
+    """Kimi K3 is natively multimodal, like the K2.5/K2.6 entries above it."""
+    assert supports_vision("moonshot", "kimi-k3") is True
+    assert supports_vision("custom", "kimi-k3") is True
