@@ -30,6 +30,8 @@ import time
 from typing import Any
 import uuid
 
+from .ask_user_trace import filter_ask_user_events
+
 logger = logging.getLogger(__name__)
 
 _VALID_ID = re.compile(r"^[a-zA-Z0-9_-]+$")
@@ -436,7 +438,12 @@ class PocketBaseSessionStore:
         _ = leaf_message_id
         messages = await self.get_messages(session_id)
         return [
-            {"id": m["id"], "role": m["role"], "content": m["content"] or ""}
+            {
+                "id": m["id"],
+                "role": m["role"],
+                "content": m["content"] or "",
+                "events": filter_ask_user_events(m.get("events")),
+            }
             for m in messages
             if m["role"] in ("user", "assistant", "system")
         ]
