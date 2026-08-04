@@ -36,6 +36,25 @@ class FakeResultMessage:
         self.is_error = is_error
 
 
+class FakeToolUseBlock:
+    def __init__(self, call_id: str, name: str, arguments: dict[str, object]):
+        self.id = call_id
+        self.name = name
+        self.input = arguments
+
+
+def fake_tool(name, description, parameters):
+    def decorate(func):
+        func.tool_definition = (name, description, parameters)
+        return func
+
+    return decorate
+
+
+def fake_mcp_server(name, tools):
+    return {"name": name, "tools": tools}
+
+
 @pytest.mark.asyncio
 async def test_codebuddy_provider_streams_sdk_text_blocks(monkeypatch) -> None:
     captured: dict[str, object] = {}
@@ -118,14 +137,216 @@ async def test_codebuddy_provider_uses_result_when_no_assistant_text(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_codebuddy_provider_maps_sdk_mcp_tool_calls(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_query(**kwargs):
+        captured.update(kwargs)
+        yield FakeAssistantMessage(
+            [
+                FakeToolUseBlock(
+                    "tool-1",
+                    "mcp__deeptutor__web_search",
+                    {"query": "latest news"},
+                )
+            ]
+        )
+
+    monkeypatch.setitem(
+        sys.modules,
+        "codebuddy_agent_sdk",
+        SimpleNamespace(
+            query=fake_query,
+            CodeBuddyAgentOptions=FakeOptions,
+            tool=fake_tool,
+            create_sdk_mcp_server=fake_mcp_server,
+        ),
+    )
+
+    response = await CodeBuddyProvider().chat(
+        [{"role": "user", "content": "Search the web"}],
+        tools=[
+            {
+                "type": "function",
+                "function": {
+                    "name": "web_search",
+                    "description": "Search the web",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                        "required": ["query"],
+                    },
+                },
+            }
+        ],
+    )
+
+    assert response.finish_reason == "tool_calls"
+    assert len(response.tool_calls) == 1
+    assert response.tool_calls[0].id == "tool-1"
+    assert response.tool_calls[0].name == "web_search"
+    assert response.tool_calls[0].arguments == {"query": "latest news"}
+    option_kwargs = captured["options"].kwargs
+    assert option_kwargs["tools"] == ["mcp__deeptutor__web_search"]
+    assert "deeptutor" in option_kwargs["mcp_servers"]
+
+
+@pytest.mark.asyncio
+async def test_codebuddy_provider_reuses_session_and_sends_message_delta(monkeypatch) -> None:
+    clients = []
+
+    class FakeClient:
+        def __init__(self, options):
+            self.options = options
+            self.prompts = []
+            self.connected = 0
+            self.disconnected = 0
+            self.response_index = 0
+            clients.append(self)
+
+        async def connect(self):
+            self.connected += 1
+
+        async def query(self, prompt):
+            self.prompts.append(prompt)
+
+        async def receive_response(self):
+            self.response_index += 1
+            yield FakeResultMessage("first" if self.response_index == 1 else "second")
+
+        async def interrupt(self):
+            pass
+
+        async def disconnect(self):
+            self.disconnected += 1
+
+    monkeypatch.setitem(
+        sys.modules,
+        "codebuddy_agent_sdk",
+        SimpleNamespace(
+            query=lambda **_kwargs: None,
+            CodeBuddyAgentOptions=FakeOptions,
+            CodeBuddySDKClient=FakeClient,
+        ),
+    )
+    provider = CodeBuddyProvider()
+    initial = [{"role": "user", "content": "first question"}]
+    first = await provider.chat(initial, deeptutor_session_id="chat-1")
+    second = await provider.chat(
+        [
+            *initial,
+            {"role": "assistant", "content": "first"},
+            {"role": "user", "content": "second question"},
+        ],
+        deeptutor_session_id="chat-1",
+    )
+
+    assert first.content == "first"
+    assert second.content == "second"
+    assert len(clients) == 1
+    assert clients[0].connected == 1
+    assert clients[0].prompts == ["User:\nfirst question", "User:\nsecond question"]
+    await provider.aclose()
+    assert clients[0].disconnected == 1
+
+
+@pytest.mark.asyncio
+async def test_codebuddy_session_drains_interrupt_before_tool_result_round(monkeypatch) -> None:
+    class FakeClient:
+        def __init__(self, options):
+            self.options = options
+            self.response_index = 0
+            self.interrupted = 0
+
+        async def connect(self):
+            pass
+
+        async def query(self, _prompt):
+            self.response_index += 1
+
+        async def receive_response(self):
+            if self.response_index == 1:
+                yield FakeAssistantMessage(
+                    [
+                        FakeToolUseBlock(
+                            "tool-1",
+                            "mcp__deeptutor__web_search",
+                            {"query": "latest news"},
+                        )
+                    ]
+                )
+                yield FakeResultMessage("Interrupted by user")
+            else:
+                yield FakeResultMessage("final answer")
+
+        async def interrupt(self):
+            self.interrupted += 1
+
+        async def disconnect(self):
+            pass
+
+    monkeypatch.setitem(
+        sys.modules,
+        "codebuddy_agent_sdk",
+        SimpleNamespace(
+            query=lambda **_kwargs: None,
+            CodeBuddyAgentOptions=FakeOptions,
+            CodeBuddySDKClient=FakeClient,
+            tool=fake_tool,
+            create_sdk_mcp_server=fake_mcp_server,
+        ),
+    )
+    provider = CodeBuddyProvider()
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": "Search the web",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    ]
+    initial = [{"role": "user", "content": "Search"}]
+
+    tool_response = await provider.chat(
+        initial,
+        tools=tools,
+        deeptutor_session_id="chat-tools",
+    )
+    final_response = await provider.chat(
+        [
+            *initial,
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [tool_response.tool_calls[0].to_openai_tool_call()],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "tool-1",
+                "content": "real search result",
+            },
+        ],
+        tools=tools,
+        deeptutor_session_id="chat-tools",
+    )
+
+    assert tool_response.finish_reason == "tool_calls"
+    assert final_response.content == "final answer"
+    session = provider._sessions["chat-tools"]
+    assert session.client.interrupted == 1
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
 async def test_fetch_codebuddy_models_uses_account_catalog(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class FakeProcess:
         async def communicate(self):
             return (
-                b"Currently supported models for your account:\n"
-                b"  - hy3\n  - glm-5.2\n  - hy3\n",
+                b"Currently supported models for your account:\n  - hy3\n  - glm-5.2\n  - hy3\n",
                 b"",
             )
 

@@ -208,7 +208,12 @@ class ContextExplorer:
                     messages.append({"role": "user", "content": self._forced_finish_instruction()})
                 total_in += sum(_content_chars(m) for m in messages)
                 result = await self._call_llm(
-                    client, messages, tool_schemas if not is_last else None, chunk_meta, stream
+                    client,
+                    messages,
+                    tool_schemas if not is_last else None,
+                    chunk_meta,
+                    stream,
+                    context.session_id,
                 )
                 total_out += result.output_chars
                 if not result.tool_calls:
@@ -247,6 +252,7 @@ class ContextExplorer:
         tool_schemas: list[dict[str, Any]] | None,
         chunk_meta: dict[str, Any],
         stream: StreamBus,
+        session_id: str,
     ) -> _CallResult:
         """One streamed LLM call. All output streams to the *thinking* channel
         (never CONTENT — that is the answer loop's channel); the returned text
@@ -263,6 +269,8 @@ class ContextExplorer:
                 reasoning_effort=self.reasoning_effort,
             ),
         }
+        if self.binding == "codebuddy":
+            kwargs["deeptutor_session_id"] = f"{session_id}:explore"
         if tool_schemas:
             kwargs["tools"] = tool_schemas
             kwargs["tool_choice"] = "auto"

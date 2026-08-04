@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
+from copy import deepcopy
+from dataclasses import dataclass, field
+import json
 import os
 import re
 import shutil
@@ -12,20 +16,36 @@ import subprocess
 from types import ModuleType
 from typing import Any
 
-from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse
+from deeptutor.services.llm.provider_core.base import (
+    LLMProvider,
+    LLMResponse,
+    ToolCallRequest,
+)
 
 DEFAULT_CODEBUDDY_MODEL = "codebuddy/default"
 _CODEBUDDY_API_KEY_ENV = "CODEBUDDY_API_KEY"
 _API_KEY_ENV_LOCK = asyncio.Lock()
+_SESSION_POOL_MAXSIZE = 4
+_MCP_SERVER_NAME = "deeptutor"
+_MCP_TOOL_PREFIX = f"mcp__{_MCP_SERVER_NAME}__"
+
+
+@dataclass
+class _CodeBuddySession:
+    client: Any
+    signature: str
+    messages: list[dict[str, Any]] = field(default_factory=list)
+    last_response: str = ""
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 class CodeBuddyProvider(LLMProvider):
     """Provider backed by the CodeBuddy Agent SDK.
 
     CodeBuddy is exposed as an agent SDK instead of an OpenAI-compatible chat
-    endpoint, so this adapter flattens chat messages into one prompt and
-    returns text deltas only. DeepTutor-native tool calls stay disabled for this
-    backend until CodeBuddy tool events are mapped end to end.
+    endpoint. This adapter keeps one stateful CLI process per DeepTutor session
+    and exposes DeepTutor's tool schemas through an in-process SDK MCP server.
+    Tool execution remains owned by DeepTutor's existing dispatcher.
     """
 
     def __init__(
@@ -33,11 +53,11 @@ class CodeBuddyProvider(LLMProvider):
         api_key: str | None = None,
         default_model: str | None = DEFAULT_CODEBUDDY_MODEL,
     ):
-        normalized_api_key = (
-            None if api_key in {None, "", "sk-no-key-required"} else api_key
-        )
+        normalized_api_key = None if api_key in {None, "", "sk-no-key-required"} else api_key
         super().__init__(api_key=normalized_api_key, api_base=None)
         self.default_model = default_model or DEFAULT_CODEBUDDY_MODEL
+        self._sessions: OrderedDict[str, _CodeBuddySession] = OrderedDict()
+        self._sessions_lock = asyncio.Lock()
 
     async def chat(
         self,
@@ -50,6 +70,7 @@ class CodeBuddyProvider(LLMProvider):
         tool_choice: str | dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
+        session_id = str(kwargs.pop("deeptutor_session_id", "") or "").strip()
         del temperature, tool_choice, kwargs
         return await self._run_codebuddy(
             messages,
@@ -57,6 +78,7 @@ class CodeBuddyProvider(LLMProvider):
             model,
             max_tokens,
             reasoning_effort=reasoning_effort,
+            session_id=session_id,
         )
 
     async def chat_stream(
@@ -72,6 +94,7 @@ class CodeBuddyProvider(LLMProvider):
         on_reasoning_delta: Callable[[str], Awaitable[None]] | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
+        session_id = str(kwargs.pop("deeptutor_session_id", "") or "").strip()
         del temperature, tool_choice, on_reasoning_delta, kwargs
         return await self._run_codebuddy(
             messages,
@@ -80,6 +103,7 @@ class CodeBuddyProvider(LLMProvider):
             max_tokens,
             reasoning_effort=reasoning_effort,
             on_content_delta=on_content_delta,
+            session_id=session_id,
         )
 
     async def _run_codebuddy(
@@ -90,49 +114,142 @@ class CodeBuddyProvider(LLMProvider):
         max_tokens: int,
         reasoning_effort: str | None = None,
         on_content_delta: Callable[[str], Awaitable[None]] | None = None,
+        session_id: str = "",
     ) -> LLMResponse:
         try:
             sdk = _load_sdk()
-            prompt = _messages_to_prompt(messages, tools)
-            options = _build_options(
+            if session_id and hasattr(sdk, "CodeBuddySDKClient"):
+                return await self._run_session(
+                    sdk,
+                    session_id,
+                    messages,
+                    tools,
+                    model or self.default_model,
+                    max_tokens,
+                    reasoning_effort,
+                    on_content_delta,
+                )
+            return await self._run_one_shot(
                 sdk,
+                messages,
+                tools,
                 model or self.default_model,
                 max_tokens,
-                self.api_key,
                 reasoning_effort,
+                on_content_delta,
             )
-            chunks: list[str] = []
-            pending_result_text = ""
-
-            env_api_key = None if _options_has_api_key_env(options) else self.api_key
-            async with _temporary_codebuddy_api_key(env_api_key):
-                kwargs: dict[str, Any] = {"prompt": prompt}
-                if options is not None:
-                    kwargs["options"] = options
-                async for message in sdk.query(**kwargs):
-                    if _is_error_result(message):
-                        return LLMResponse(
-                            content=f"Error calling CodeBuddy: {_result_text(message)}",
-                            finish_reason="error",
-                        )
-                    if _is_result_message(message):
-                        pending_result_text = _result_text(message)
-                        continue
-
-                    text = _assistant_text(message)
-                    if not text:
-                        continue
-                    chunks.append(text)
-                    if on_content_delta:
-                        await on_content_delta(text)
-
-            if not chunks and pending_result_text:
-                chunks.append(pending_result_text)
-                if on_content_delta:
-                    await on_content_delta(pending_result_text)
-            return LLMResponse(content="".join(chunks), finish_reason="stop")
         except Exception as exc:
             return LLMResponse(content=_friendly_error(exc), finish_reason="error")
+
+    async def _run_one_shot(
+        self,
+        sdk: ModuleType,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        model: str,
+        max_tokens: int,
+        reasoning_effort: str | None,
+        on_content_delta: Callable[[str], Awaitable[None]] | None,
+    ) -> LLMResponse:
+        options = _build_options(sdk, model, max_tokens, self.api_key, reasoning_effort, tools)
+        env_api_key = None if _options_has_api_key_env(options) else self.api_key
+        stream: Any | None = None
+        async with _temporary_codebuddy_api_key(env_api_key):
+            kwargs: dict[str, Any] = {"prompt": _messages_to_prompt(messages)}
+            if options is not None:
+                kwargs["options"] = options
+            stream = sdk.query(**kwargs)
+            try:
+                return await _consume_messages(stream, on_content_delta=on_content_delta)
+            finally:
+                close = getattr(stream, "aclose", None)
+                if callable(close):
+                    await close()
+
+    async def _run_session(
+        self,
+        sdk: ModuleType,
+        session_id: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        model: str,
+        max_tokens: int,
+        reasoning_effort: str | None,
+        on_content_delta: Callable[[str], Awaitable[None]] | None,
+    ) -> LLMResponse:
+        signature = _session_signature(model, reasoning_effort, tools)
+        session = await self._get_session(
+            sdk, session_id, signature, model, max_tokens, reasoning_effort, tools
+        )
+        try:
+            async with session.lock:
+                prompt = _incremental_prompt(session, messages)
+                session.messages = deepcopy(messages)
+                await session.client.query(prompt)
+                response = await _consume_messages(
+                    session.client.receive_response(),
+                    on_content_delta=on_content_delta,
+                    interrupt=session.client.interrupt,
+                )
+                session.last_response = response.content or ""
+                return response
+        except BaseException:
+            await self._drop_session(session_id, session)
+            raise
+
+    async def _get_session(
+        self,
+        sdk: ModuleType,
+        session_id: str,
+        signature: str,
+        model: str,
+        max_tokens: int,
+        reasoning_effort: str | None,
+        tools: list[dict[str, Any]] | None,
+    ) -> _CodeBuddySession:
+        async with self._sessions_lock:
+            existing = self._sessions.get(session_id)
+            if existing and existing.signature == signature:
+                self._sessions.move_to_end(session_id)
+                return existing
+            if existing:
+                self._sessions.pop(session_id, None)
+                await existing.client.disconnect()
+
+            options = _build_options(sdk, model, max_tokens, self.api_key, reasoning_effort, tools)
+            client = sdk.CodeBuddySDKClient(options=options)
+            env_api_key = None if _options_has_api_key_env(options) else self.api_key
+            async with _temporary_codebuddy_api_key(env_api_key):
+                await client.connect()
+            session = _CodeBuddySession(client=client, signature=signature)
+            self._sessions[session_id] = session
+            while len(self._sessions) > _SESSION_POOL_MAXSIZE:
+                _, evicted = self._sessions.popitem(last=False)
+                await evicted.client.disconnect()
+            return session
+
+    async def _drop_session(self, session_id: str, session: _CodeBuddySession) -> None:
+        async with self._sessions_lock:
+            if self._sessions.get(session_id) is session:
+                self._sessions.pop(session_id, None)
+        try:
+            await session.client.disconnect()
+        except BaseException:
+            pass
+
+    async def aclose(self) -> None:
+        async with self._sessions_lock:
+            sessions = list(self._sessions.values())
+            self._sessions.clear()
+        for session in sessions:
+            try:
+                await session.client.disconnect()
+            except asyncio.CancelledError:
+                task = asyncio.current_task()
+                if task is not None:
+                    task.uncancel()
+            except Exception:
+                pass
 
     def get_default_model(self) -> str:
         return self.default_model
@@ -168,36 +285,39 @@ def _build_options(
     max_tokens: int,
     api_key: str | None = None,
     reasoning_effort: str | None = None,
+    tools: list[dict[str, Any]] | None = None,
 ) -> Any | None:
     options_cls = getattr(sdk, "CodeBuddyAgentOptions", None)
     if options_cls is None:
         return None
 
     stripped_model = _strip_model_prefix(model)
-    model_kwargs = {} if not stripped_model or stripped_model == "default" else {"model": stripped_model}
+    model_kwargs = (
+        {} if not stripped_model or stripped_model == "default" else {"model": stripped_model}
+    )
     env_kwargs = {"env": {_CODEBUDDY_API_KEY_ENV: api_key}} if api_key else {}
     reasoning_kwargs = _reasoning_options(reasoning_effort)
-    text_only_kwargs = {"tools": []}
+    tool_kwargs = _build_tool_options(sdk, tools)
     candidates = [
         {
             **model_kwargs,
             **env_kwargs,
             **reasoning_kwargs,
-            **text_only_kwargs,
+            **tool_kwargs,
             "max_turns": 1,
             "permission_mode": "plan",
         },
-        {**model_kwargs, **reasoning_kwargs, **text_only_kwargs, "max_turns": 1},
+        {**model_kwargs, **reasoning_kwargs, **tool_kwargs, "max_turns": 1},
         {
             **model_kwargs,
             **env_kwargs,
             **reasoning_kwargs,
-            **text_only_kwargs,
+            **tool_kwargs,
             "maxTurns": 1,
             "permissionMode": "plan",
         },
-        {**model_kwargs, **reasoning_kwargs, **text_only_kwargs, "maxTurns": 1},
-        {**model_kwargs, **reasoning_kwargs, **text_only_kwargs},
+        {**model_kwargs, **reasoning_kwargs, **tool_kwargs, "maxTurns": 1},
+        {**model_kwargs, **reasoning_kwargs, **tool_kwargs},
         {**model_kwargs, **env_kwargs, "max_turns": 1, "permission_mode": "plan"},
         {**model_kwargs, "max_turns": 1},
         {**model_kwargs, **env_kwargs, "maxTurns": 1, "permissionMode": "plan"},
@@ -211,7 +331,7 @@ def _build_options(
                 **model_kwargs,
                 **env_kwargs,
                 **reasoning_kwargs,
-                **text_only_kwargs,
+                **tool_kwargs,
                 "max_turns": 1,
                 "permission_mode": "plan",
                 "max_tokens": max_tokens,
@@ -224,6 +344,173 @@ def _build_options(
         except TypeError:
             continue
     return None
+
+
+def _build_tool_options(sdk: ModuleType, tools: list[dict[str, Any]] | None) -> dict[str, Any]:
+    if not tools:
+        return {"tools": []}
+    decorate = getattr(sdk, "tool", None)
+    create_server = getattr(sdk, "create_sdk_mcp_server", None)
+    if not callable(decorate) or not callable(create_server):
+        return {"tools": []}
+
+    sdk_tools: list[Callable[..., Any]] = []
+    allowed: list[str] = []
+    for schema in tools:
+        function = schema.get("function") if isinstance(schema, dict) else None
+        if not isinstance(function, dict):
+            continue
+        name = str(function.get("name") or "").strip()
+        if not name:
+            continue
+        description = str(function.get("description") or name)
+        parameters = function.get("parameters")
+        if not isinstance(parameters, dict):
+            parameters = {"type": "object", "properties": {}}
+
+        async def pending_result(_args: dict[str, Any]) -> dict[str, Any]:
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "DeepTutor accepted this tool call and will provide its result next."
+                        ),
+                    }
+                ]
+            }
+
+        pending_result.__name__ = f"deeptutor_{name}"
+        sdk_tools.append(decorate(name, description, parameters)(pending_result))
+        allowed.append(f"{_MCP_TOOL_PREFIX}{name}")
+
+    if not sdk_tools:
+        return {"tools": []}
+    server = create_server(_MCP_SERVER_NAME, tools=sdk_tools)
+    return {
+        "tools": allowed,
+        "allowed_tools": allowed,
+        "mcp_servers": {_MCP_SERVER_NAME: server},
+    }
+
+
+def _session_signature(
+    model: str,
+    reasoning_effort: str | None,
+    tools: list[dict[str, Any]] | None,
+) -> str:
+    payload = {
+        "model": _strip_model_prefix(model),
+        "reasoning_effort": reasoning_effort or "",
+        "tools": tools or [],
+    }
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def _incremental_prompt(
+    session: _CodeBuddySession,
+    messages: list[dict[str, Any]],
+) -> str:
+    previous = session.messages
+    if previous and len(messages) >= len(previous) and messages[: len(previous)] == previous:
+        delta = list(messages[len(previous) :])
+        if delta and session.last_response and delta[0].get("role") == "assistant":
+            if _content_text(delta[0].get("content")) == session.last_response:
+                delta.pop(0)
+        prompt = _messages_to_prompt(delta)
+        if prompt:
+            return prompt
+    return _messages_to_prompt(messages)
+
+
+async def _consume_messages(
+    messages: Any,
+    *,
+    on_content_delta: Callable[[str], Awaitable[None]] | None,
+    interrupt: Callable[[], Awaitable[None]] | None = None,
+) -> LLMResponse:
+    chunks: list[str] = []
+    pending_result_text = ""
+    async for message in messages:
+        if _is_error_result(message):
+            return LLMResponse(
+                content=f"Error calling CodeBuddy: {_result_text(message)}",
+                finish_reason="error",
+            )
+        if _is_result_message(message):
+            pending_result_text = _result_text(message)
+            continue
+
+        tool_calls = _assistant_tool_calls(message)
+        text = _assistant_text(message)
+        if text:
+            chunks.append(text)
+            if on_content_delta:
+                await on_content_delta(text)
+        if tool_calls:
+            if interrupt is not None:
+                try:
+                    await interrupt()
+                    await _drain_interrupted_response(messages)
+                except Exception:
+                    pass
+            return LLMResponse(
+                content="".join(chunks),
+                tool_calls=tool_calls,
+                finish_reason="tool_calls",
+            )
+
+    if not chunks and pending_result_text:
+        chunks.append(pending_result_text)
+        if on_content_delta:
+            await on_content_delta(pending_result_text)
+    return LLMResponse(content="".join(chunks), finish_reason="stop")
+
+
+async def _drain_interrupted_response(messages: Any) -> None:
+    """Consume the SDK's interrupt result so it cannot leak into the next turn."""
+    try:
+        async for message in messages:
+            if _is_result_message(message) or type(message).__name__ == "ErrorMessage":
+                return
+    except Exception:
+        return
+
+
+def _assistant_tool_calls(message: Any) -> list[ToolCallRequest]:
+    content = getattr(message, "content", None)
+    if content is None and isinstance(message, dict):
+        content = message.get("content")
+    if not isinstance(content, list):
+        return []
+
+    calls: list[ToolCallRequest] = []
+    for block in content:
+        if isinstance(block, dict):
+            block_type = str(block.get("type") or "").lower()
+            name = str(block.get("name") or "")
+            call_id = str(block.get("id") or "")
+            arguments = block.get("input")
+        else:
+            block_type = type(block).__name__.lower()
+            name = str(getattr(block, "name", "") or "")
+            call_id = str(getattr(block, "id", "") or "")
+            arguments = getattr(block, "input", None)
+        if block_type not in {"tool_use", "tooluse"} and not block_type.endswith("tooluseblock"):
+            continue
+        if not name.startswith(_MCP_TOOL_PREFIX):
+            continue
+        tool_name = name[len(_MCP_TOOL_PREFIX) :]
+        if not tool_name:
+            continue
+        calls.append(
+            ToolCallRequest(
+                id=call_id or f"codebuddy_tool_{len(calls)}",
+                name=tool_name,
+                arguments=arguments if isinstance(arguments, dict) else {},
+            )
+        )
+    return calls
 
 
 def _reasoning_options(reasoning_effort: str | None) -> dict[str, Any]:
@@ -254,7 +541,7 @@ def _options_has_api_key_env(options: Any | None) -> bool:
     return False
 
 
-def _messages_to_prompt(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None) -> str:
+def _messages_to_prompt(messages: list[dict[str, Any]]) -> str:
     sections: list[str] = []
     for message in messages:
         role = str(message.get("role") or "user").strip() or "user"
@@ -272,11 +559,6 @@ def _messages_to_prompt(messages: list[dict[str, Any]], tools: list[dict[str, An
             heading = "User"
         sections.append(f"{heading}:\n{content}")
 
-    if tools:
-        sections.append(
-            "DeepTutor tool schemas were available for this turn, but the CodeBuddy "
-            "provider currently returns text only. Answer directly when possible."
-        )
     return "\n\n".join(sections) if sections else ""
 
 
@@ -439,9 +721,7 @@ async def fetch_codebuddy_models(api_key: str | None = None) -> list[str]:
     catalog = output.lower().split(marker, 1)[-1] if marker in output.lower() else ""
     models = re.findall(r"(?m)^\s*-\s+([A-Za-z0-9][A-Za-z0-9._-]*)\s*$", catalog)
     if not models:
-        raise RuntimeError(
-            output.strip() or "CodeBuddy did not return an account model catalog."
-        )
+        raise RuntimeError(output.strip() or "CodeBuddy did not return an account model catalog.")
     return list(dict.fromkeys(models))
 
 

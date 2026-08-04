@@ -32,7 +32,7 @@ from deeptutor.services.provider_registry import find_by_name
 # Providers that don't reliably support OpenAI function-calling. The loop
 # still runs without tool schemas — the model just produces prose.
 _NATIVE_TOOL_BLOCKED_BINDINGS: frozenset[str] = frozenset(
-    {"anthropic", "claude", "codebuddy", "ollama", "lm_studio", "vllm", "llama_cpp"}
+    {"anthropic", "claude", "ollama", "lm_studio", "vllm", "llama_cpp"}
 )
 
 # Native provider adapters whose backends speak OpenAI-style function calling
@@ -42,7 +42,7 @@ _NATIVE_TOOL_BLOCKED_BINDINGS: frozenset[str] = frozenset(
 # backend needs an adapter branch, or tool schemas would be attached to a plain
 # AsyncOpenAI client pointed at a non-OpenAI wire format. github_copilot is
 # adapter-routed but deliberately excluded from this set.
-_NATIVE_TOOL_BACKENDS: frozenset[str] = frozenset({"anthropic", "openai_codex"})
+_NATIVE_TOOL_BACKENDS: frozenset[str] = frozenset({"anthropic", "openai_codex", "codebuddy"})
 _AGENTIC_CLIENT_POOL_MAXSIZE = 2
 _agentic_client_pool: "OrderedDict[tuple[Any, ...], Any]" = OrderedDict()
 _agentic_client_pool_lock = threading.RLock()

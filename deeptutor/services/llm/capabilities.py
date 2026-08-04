@@ -88,7 +88,7 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
     "codebuddy": {
         "supports_response_format": False,
         "supports_streaming": True,
-        "supports_tools": False,
+        "supports_tools": True,
         "supports_vision": False,
         "system_in_messages": True,
         "has_thinking_tags": False,

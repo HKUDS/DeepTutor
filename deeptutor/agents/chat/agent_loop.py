@@ -473,6 +473,8 @@ class AgentLoop:
             "stream": True,
             **self.pipeline._completion_kwargs(max_tokens=max_tokens),
         }
+        if self.pipeline.binding == "codebuddy":
+            kwargs["deeptutor_session_id"] = self.context.session_id
         if self.pipeline.usage is not None:
             kwargs["stream_options"] = {"include_usage": True}
         if tool_schemas:

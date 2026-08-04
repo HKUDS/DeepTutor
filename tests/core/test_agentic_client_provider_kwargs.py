@@ -252,6 +252,10 @@ def test_openai_codex_backend_can_use_native_tool_calling() -> None:
     )
 
 
+def test_codebuddy_backend_can_use_native_tool_calling() -> None:
+    assert can_use_native_tool_calling(binding="codebuddy", model="codebuddy/hy3") is True
+
+
 def test_local_and_github_copilot_backends_stay_opted_out_of_native_tools() -> None:
     # Local OpenAI-compatible servers have model-dependent, unreliable tool support.
     # GitHub Copilot remains opted out until its native tool path is validated.
@@ -263,7 +267,6 @@ def test_local_and_github_copilot_backends_stay_opted_out_of_native_tools() -> N
         "lemonade",
         "ovms",
         "github_copilot",
-        "codebuddy",
     ):
         assert can_use_native_tool_calling(binding=binding, model=None) is False, binding
 

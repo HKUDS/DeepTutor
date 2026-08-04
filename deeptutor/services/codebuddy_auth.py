@@ -95,6 +95,9 @@ class CodeBuddyAuthService:
 
         try:
             await _sdk_logout()
+            from deeptutor.core.agentic.client import reset_agentic_client_pool
+
+            reset_agentic_client_pool()
         except Exception as exc:  # noqa: BLE001 - converted to stable public state
             async with self._lock:
                 self._mark_error(exc)
