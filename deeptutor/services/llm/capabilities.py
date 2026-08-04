@@ -259,6 +259,11 @@ MODEL_OVERRIDES: dict[str, dict[str, object]] = {
     # Qwen text models often share the same provider/gateway as Qwen-VL.
     # Keep thinking-tag handling broad, but only mark explicit VL/vision model
     # names as image-capable so RAG image indexing can fail closed.
+    # Qwen3.8-Max is natively multimodal despite not using the historical
+    # ``-vl`` suffix. Keep this override narrow so other Qwen text models remain
+    # fail-closed.
+    # https://help.aliyun.com/zh/model-studio/vision-model
+    "qwen3.8-max": {"supports_vision": True},
     "qwen/qwen2.5-vl": {"has_thinking_tags": True, "supports_vision": True},
     "qwen/qwen3-vl": {"has_thinking_tags": True, "supports_vision": True},
     "qwen/qwen2-vl": {"has_thinking_tags": True, "supports_vision": True},

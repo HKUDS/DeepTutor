@@ -91,3 +91,8 @@ def test_qwen_model_override_enables_vision() -> None:
     assert supports_vision("openai", "Qwen/Qwen3-VL-235B-A22B-Instruct") is True
     assert supports_vision("openai", "qwen-plus") is False
     assert supports_vision("openai", "Qwen/Qwen3-235B-A22B-Instruct") is False
+
+
+def test_qwen38_max_enables_vision_without_legacy_vl_suffix() -> None:
+    """Qwen3.8-Max is multimodal despite not carrying the legacy ``-vl`` suffix."""
+    assert supports_vision("dashscope", "qwen3.8-max") is True
