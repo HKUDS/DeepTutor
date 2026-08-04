@@ -298,8 +298,12 @@ MODEL_OVERRIDES: dict[str, dict[str, object]] = {
     "gpt-4o": {"supports_vision": True},
     "gpt-4-turbo": {"supports_vision": True},
     "gpt-4-vision": {"supports_vision": True},
-    "claude-3": {"supports_vision": True},
-    "claude-4": {"supports_vision": True},
+    # Anthropic moved to `claude-<family>-<version>` after Claude 3, so no model id
+    # begins with "claude-4" and that prefix matched nothing. Every Claude model from
+    # 3 onward is multimodal, so match the vendor prefix rather than enumerating
+    # versions that go stale. A future text-only model can be excluded by adding a
+    # longer, more specific key (longest prefix wins in get_capability).
+    "claude-": {"supports_vision": True},
     "gemini": {"supports_vision": True},
     "gemma": {"supports_vision": False, "supports_response_format": False},
     "llava": {"supports_vision": True},
