@@ -932,3 +932,55 @@ async def test_update_ui_settings_persists_explicit_theme_and_language_defaults(
     persisted = settings_router.load_ui_settings()
     assert persisted["theme"] == "snow"
     assert persisted["language"] == "en"
+
+
+def test_get_ui_settings_is_public_without_auth(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Auth pages bootstrap the interface language *before* a session exists.
+
+    Regression for #760: the app shell fetches GET /api/v1/settings/ui on the
+    /register and /login pages, which have no session. When the endpoint sat
+    behind the ``_auth`` dependency it returned 401, the bootstrap silently
+    bailed out, and the auth pages stayed English even with the persisted
+    language set to zh. The read lives on ``public_router`` so it is reachable
+    anonymously (it only exposes non-sensitive UI preferences).
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    settings_router.save_ui_settings(
+        {
+            **settings_router.DEFAULT_UI_SETTINGS,
+            "theme": "dark",
+            "language": "zh",
+        }
+    )
+
+    app = FastAPI()
+    app.include_router(settings_router.public_router, prefix="/api/v1/settings")
+
+    client = TestClient(app)
+    response = client.get("/api/v1/settings/ui")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["language"] == "zh"
+    assert payload["theme"] == "dark"
+
+
+def test_get_ui_settings_not_registered_on_gated_router() -> None:
+    """The public read is not duplicated on the auth-gated settings router.
+
+    The write (PUT /ui) stays admin/auth-gated; only the anonymous read moved
+    to ``public_router``.
+    """
+    gated_methods = [
+        getattr(r, "methods", None)
+        for r in settings_router.router.routes
+        if getattr(r, "path", "") == "/ui"
+    ]
+    assert "GET" not in gated_methods, f"GET /ui must not be on the gated router: {gated_methods}"
+    assert any({"PUT"} == m or {"PUT", "PATCH"} == m for m in gated_methods)

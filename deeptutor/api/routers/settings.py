@@ -42,6 +42,13 @@ from deeptutor.services.path_service import get_path_service
 from deeptutor.tools.builtin import USER_TOGGLEABLE_TOOL_NAMES
 
 router = APIRouter()
+# Public UI-settings router. The app shell bootstraps the interface language
+# from GET /api/v1/settings/ui, and auth pages (/register, /login) must be
+# able to do the same *before* a session exists — so this one read endpoint
+# is intentionally mounted outside the ``_auth`` dependency (see main.py).
+# It only exposes non-sensitive UI preferences (theme/language), never the
+# model catalog, provider credentials, or runtime configuration.
+public_router = APIRouter()
 
 TOUR_CACHE = None
 
@@ -1104,7 +1111,7 @@ async def update_chat_response_timeout(update: ChatResponseTimeoutUpdate):
     return {"chat_response_timeout": update.chat_response_timeout}
 
 
-@router.get("/ui")
+@public_router.get("/ui")
 async def get_ui_settings():
     """Return the saved UI settings blob.
 
@@ -1112,6 +1119,9 @@ async def get_ui_settings():
     voice_autoplay, …), same as the ``ui`` key of GET /settings. The app shell
     reads it during bootstrap for the interface language, which nothing outside
     the settings route used to see.
+
+    Public by design: auth pages bootstrap the language *before* a session
+    exists, and this payload contains no sensitive data.
     """
     return load_ui_settings()
 
