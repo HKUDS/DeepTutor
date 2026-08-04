@@ -78,6 +78,36 @@ class CodeBuddyAuthService:
                 pass
         return self.public_status()
 
+    async def logout(self) -> dict[str, Any]:
+        """Clear the CLI/SDK credential so a different account can sign in."""
+        async with self._lock:
+            flow = self._flow
+            task = self._task
+            self._flow = None
+            self._task = None
+        if task and not task.done():
+            task.cancel()
+        if flow is not None:
+            try:
+                await flow.cancel()
+            except Exception:
+                pass
+
+        try:
+            await _sdk_logout()
+        except Exception as exc:  # noqa: BLE001 - converted to stable public state
+            async with self._lock:
+                self._mark_error(exc)
+                return self.public_status()
+
+        async with self._lock:
+            self._connection = "disconnected"
+            self._operation_state = None
+            self._authorize_url = None
+            self._user_label = None
+            self._error_code = None
+            return self.public_status()
+
     async def _probe_locked(self) -> None:
         try:
             flow = await _start_sdk_authenticate()
@@ -144,6 +174,14 @@ async def _start_sdk_authenticate() -> Any:
     except ImportError as exc:
         raise ImportError("codebuddy-agent-sdk is not installed") from exc
     return await authenticate(timeout=300.0)
+
+
+async def _sdk_logout() -> None:
+    try:
+        from codebuddy_agent_sdk import logout
+    except ImportError as exc:
+        raise ImportError("codebuddy-agent-sdk is not installed") from exc
+    await logout()
 
 
 def _userinfo_label(userinfo: Any) -> str | None:

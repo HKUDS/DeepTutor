@@ -5,6 +5,7 @@ import {
   ExternalLink,
   Loader2,
   LogIn,
+  LogOut,
   RefreshCw,
   X,
 } from "lucide-react";
@@ -14,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import {
   cancelCodeBuddyLogin,
   getCodeBuddyAuthStatus,
+  logoutCodeBuddy,
   shouldPollCodeBuddyAuth,
   startCodeBuddyLogin,
   type CodeBuddyAuthStatus,
@@ -78,6 +80,18 @@ export function CodeBuddyAuthCard() {
     }
   };
 
+  const logout = async () => {
+    setWorking(true);
+    setRequestError("");
+    try {
+      setStatus(await logoutCodeBuddy());
+    } catch (error) {
+      setRequestError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setWorking(false);
+    }
+  };
+
   const errorKey =
     status?.error_code === "sdk_missing"
       ? "codebuddy.auth.sdkMissing"
@@ -117,12 +131,27 @@ export function CodeBuddyAuthCard() {
             {t("codebuddy.auth.checking")}
           </span>
         ) : status?.connection === "connected" ? (
-          <span className="inline-flex items-center gap-1.5 text-[12px] text-emerald-600 dark:text-emerald-400">
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            {status.user_label
-              ? t("codebuddy.auth.loggedInAs", { user: status.user_label })
-              : t("codebuddy.auth.loggedIn")}
-          </span>
+          <>
+            <span className="inline-flex items-center gap-1.5 text-[12px] text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              {status.user_label
+                ? t("codebuddy.auth.loggedInAs", { user: status.user_label })
+                : t("codebuddy.auth.loggedIn")}
+            </span>
+            <button
+              type="button"
+              onClick={() => void logout()}
+              disabled={working}
+              className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-[12px] hover:bg-[var(--muted)] disabled:opacity-50"
+            >
+              {working ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <LogOut className="h-3.5 w-3.5" />
+              )}
+              {t("codebuddy.auth.logout")}
+            </button>
+          </>
         ) : status && shouldPollCodeBuddyAuth(status) ? (
           <>
             <span className="inline-flex items-center gap-1.5 text-[12px] text-[var(--muted-foreground)]">

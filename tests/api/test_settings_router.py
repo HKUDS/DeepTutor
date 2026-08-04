@@ -758,6 +758,9 @@ async def test_codebuddy_auth_routes_use_admin_scoped_service(monkeypatch) -> No
         async def cancel_login(self):
             return {"connection": "disconnected"}
 
+        async def logout(self):
+            return {"connection": "disconnected", "user_label": None}
+
     monkeypatch.setattr(settings_router, "_require_settings_admin", lambda: None)
     monkeypatch.setattr(
         settings_router, "get_codebuddy_auth_service", lambda: FakeService()
@@ -771,6 +774,10 @@ async def test_codebuddy_auth_routes_use_admin_scoped_service(monkeypatch) -> No
     }
     assert await settings_router.cancel_codebuddy_auth() == {
         "connection": "disconnected"
+    }
+    assert await settings_router.logout_codebuddy_auth() == {
+        "connection": "disconnected",
+        "user_label": None,
     }
 
 

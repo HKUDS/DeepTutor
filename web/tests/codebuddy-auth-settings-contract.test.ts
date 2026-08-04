@@ -25,6 +25,7 @@ test("CodeBuddy renders a login card without changing other OAuth cards", () => 
   assert.match(editor, /isCodexOAuth \|\| isCodeBuddyAuth/);
   assert.match(editor, /!isCodexOAuth && !isCodeBuddyAuth/);
   assert.match(readFileSync(CARD, "utf8"), /startCodeBuddyLogin/);
+  assert.match(readFileSync(CARD, "utf8"), /logoutCodeBuddy/);
 });
 
 test("CodeBuddy model sync cannot write into a profile after provider switch", () => {

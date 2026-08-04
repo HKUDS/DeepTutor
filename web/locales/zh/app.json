@@ -2746,6 +2746,7 @@
   "codebuddy.auth.openAuthorization": "打开授权页面",
   "codebuddy.auth.cancel": "取消",
   "codebuddy.auth.signIn": "登录 CodeBuddy",
+  "codebuddy.auth.logout": "退出登录",
   "codebuddy.auth.sdkMissing": "请先安装 codebuddy-agent-sdk。",
   "codebuddy.auth.cliMissing": "请先安装 CodeBuddy CLI。",
   "codebuddy.auth.timeout": "CodeBuddy 登录已超时，请重试。",

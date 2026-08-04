@@ -36,6 +36,10 @@ export function cancelCodeBuddyLogin(): Promise<CodeBuddyAuthStatus> {
   return request("/cancel", "POST");
 }
 
+export function logoutCodeBuddy(): Promise<CodeBuddyAuthStatus> {
+  return request("/logout", "POST");
+}
+
 export function shouldPollCodeBuddyAuth(
   status: CodeBuddyAuthStatus,
 ): boolean {

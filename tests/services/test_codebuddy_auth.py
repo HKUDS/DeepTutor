@@ -99,5 +99,31 @@ async def test_start_login_reports_missing_sdk(monkeypatch) -> None:
     assert status["error_code"] == "sdk_missing"
 
 
+@pytest.mark.asyncio
+async def test_logout_clears_existing_local_login(monkeypatch) -> None:
+    logged_out = False
+
+    async def fake_logout() -> None:
+        nonlocal logged_out
+        logged_out = True
+
+    monkeypatch.setattr(codebuddy_auth, "_sdk_logout", fake_logout)
+    service = CodeBuddyAuthService()
+    service._connection = "connected"
+    service._operation_state = "completed"
+    service._user_label = "Old Account"
+
+    status = await service.logout()
+
+    assert logged_out is True
+    assert status == {
+        "connection": "disconnected",
+        "operation_state": None,
+        "authorize_url": None,
+        "user_label": None,
+        "error_code": None,
+    }
+
+
 async def _value(value):
     return value

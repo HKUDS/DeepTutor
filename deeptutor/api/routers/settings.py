@@ -584,6 +584,12 @@ async def cancel_codebuddy_auth() -> dict[str, Any]:
     return await get_codebuddy_auth_service().cancel_login()
 
 
+@router.post("/providers/codebuddy/auth/logout")
+async def logout_codebuddy_auth() -> dict[str, Any]:
+    _require_settings_admin()
+    return await get_codebuddy_auth_service().logout()
+
+
 @router.get("/catalog")
 async def get_catalog():
     _require_settings_admin()

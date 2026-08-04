@@ -2746,6 +2746,7 @@
   "codebuddy.auth.openAuthorization": "Open authorization",
   "codebuddy.auth.cancel": "Cancel",
   "codebuddy.auth.signIn": "Sign in with CodeBuddy",
+  "codebuddy.auth.logout": "Sign out",
   "codebuddy.auth.sdkMissing": "Install codebuddy-agent-sdk before signing in.",
   "codebuddy.auth.cliMissing": "Install the CodeBuddy CLI before signing in.",
   "codebuddy.auth.timeout": "CodeBuddy login timed out. Try again.",
