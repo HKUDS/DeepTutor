@@ -50,3 +50,28 @@ test("kbCanReindex preserves mismatch and needs-reindex behavior", () => {
     false,
   );
 });
+
+test("kbCanReindex disables reindex for connected knowledge bases", () => {
+  assert.equal(
+    kbCanReindex(
+      kb({
+        metadata: {
+          type: "lightrag_server",
+          rag_provider: "lightrag-server",
+        },
+        statistics: { raw_documents: 1, active_match: false },
+      }),
+    ),
+    false,
+  );
+  assert.equal(
+    kbCanReindex(
+      kb({
+        status: "error",
+        metadata: { type: "linked" },
+        statistics: { raw_documents: 1, needs_reindex: true },
+      }),
+    ),
+    false,
+  );
+});

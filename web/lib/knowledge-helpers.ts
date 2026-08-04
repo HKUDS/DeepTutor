@@ -166,6 +166,11 @@ export const kbIsUploadable = (kb: KnowledgeBase): boolean =>
   resolveKbStatus(kb) === "ready" && !kbNeedsReindex(kb);
 
 export const kbCanReindex = (kb: KnowledgeBase): boolean => {
+  // Connected KBs are pointers to externally managed data. Their
+  // active_match value is not a local embedding-version comparison, and the
+  // backend intentionally rejects local re-index requests for these types.
+  if (kb.metadata?.type) return false;
+
   const status = resolveKbStatus(kb);
   const hasSourceFiles =
     typeof kb.statistics?.raw_documents === "number"
