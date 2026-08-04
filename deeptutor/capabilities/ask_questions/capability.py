@@ -10,7 +10,7 @@ from deeptutor.runtime.request_contracts import get_capability_request_schema
 
 
 class AskQuestionsCapability(BaseCapability):
-    """Let the model ask context-aware questions whenever they become useful."""
+    """Start the selected turn with a context-aware question card."""
 
     manifest = CapabilityManifest(
         name="ask_questions",
@@ -26,10 +26,13 @@ class AskQuestionsCapability(BaseCapability):
 
     async def run(self, context: UnifiedContext, stream: StreamBus) -> None:
         context.metadata["ask_questions_mode"] = True
-        # Tool selection stays model-directed.  The capability's system block
-        # changes *when* ask_user is appropriate; it must not force a question
-        # at the beginning of every user turn.
-        pipeline = AgenticChatPipeline(language=context.language)
+        # This is the first *agent-loop round of the selected turn*, not the
+        # first turn in the conversation.  The prompt still receives the full
+        # history, so a turn selected much later asks a new, contextual question.
+        pipeline = AgenticChatPipeline(
+            language=context.language,
+            initial_tool_choice="ask_user",
+        )
         await pipeline.run(context, stream)
 
 

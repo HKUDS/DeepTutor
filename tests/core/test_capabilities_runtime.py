@@ -81,7 +81,7 @@ def test_builtin_capability_registry_covers_documented_capabilities() -> None:
 
 
 @pytest.mark.asyncio
-async def test_ask_questions_capability_keeps_tool_selection_model_directed(
+async def test_ask_questions_capability_forces_card_on_selected_turn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: dict[str, Any] = {}
@@ -91,8 +91,10 @@ async def test_ask_questions_capability_keeps_tool_selection_model_directed(
             self,
             *,
             language: str = "en",
+            initial_tool_choice: str | None = None,
         ) -> None:
             captured["language"] = language
+            captured["initial_tool_choice"] = initial_tool_choice
 
         async def run(self, context: UnifiedContext, stream: StreamBus) -> None:
             captured["ask_questions_mode"] = context.metadata.get("ask_questions_mode")
@@ -109,6 +111,7 @@ async def test_ask_questions_capability_keeps_tool_selection_model_directed(
 
     assert captured == {
         "language": "zh",
+        "initial_tool_choice": "ask_user",
         "ask_questions_mode": True,
     }
     assert any(event.type == StreamEventType.CONTENT for event in events)

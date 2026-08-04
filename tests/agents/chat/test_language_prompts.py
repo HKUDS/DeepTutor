@@ -97,12 +97,13 @@ def test_ask_questions_plugin_system_prompt_uses_localized_fallback(
 
     assert "## ask_questions" in zh_prompt
     assert "主动提问模式" in zh_prompt
-    assert "不要求你在每个请求开头提问" in zh_prompt
-    assert "第 2、3、10 个对话轮次" in zh_prompt
-    assert "第一轮必须" not in zh_prompt
+    assert "必须以一次 `ask_user` 调用开始" in zh_prompt
+    assert "第 2、3、10 轮" in zh_prompt
+    assert "此前所有对话" in zh_prompt
     assert "## ask_questions" in en_prompt
     assert "Ask Questions mode" in en_prompt
     assert "second, third, tenth" in en_prompt
+    assert "calling `ask_user` exactly once" in en_prompt
 
 
 def test_legacy_chat_agent_system_prompt_uses_selected_language() -> None:
