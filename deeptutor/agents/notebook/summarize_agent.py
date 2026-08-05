@@ -7,6 +7,7 @@ from typing import AsyncGenerator
 from deeptutor.agents.notebook._text import clip_text as _clip_text
 from deeptutor.services.llm import clean_thinking_tags, get_llm_config, get_token_limit_kwargs
 from deeptutor.services.llm import stream as llm_stream
+from deeptutor.services.prompt.language import append_language_directive, normalize_language
 from deeptutor.services.prompt.manager import get_prompt_manager
 
 
@@ -14,7 +15,7 @@ class NotebookSummarizeAgent:
     """Generate concise summaries for notebook records."""
 
     def __init__(self, language: str = "en") -> None:
-        self.language = "zh" if str(language or "en").lower().startswith("zh") else "en"
+        self.language = normalize_language(language)
         self.llm_config = get_llm_config()
         self.model = getattr(self.llm_config, "model", None)
         self.api_key = getattr(self.llm_config, "api_key", None)
@@ -87,7 +88,9 @@ class NotebookSummarizeAgent:
                 yield chunk
 
     def _system_prompt(self) -> str:
-        return str(self._prompts.get("system", "")).strip()
+        return append_language_directive(
+            str(self._prompts.get("system", "")).strip(), self.language
+        )
 
     def _build_user_prompt(
         self,
