@@ -135,6 +135,33 @@ async def test_non_numeric_catalog_dim_does_not_block_probe() -> None:
 
 
 @pytest.mark.asyncio
+async def test_probe_event_redacts_endpoint_query_credentials() -> None:
+    runner = ConfigTestRunner()
+    run = _make_run()
+    catalog: dict[str, Any] = {}
+    model: dict[str, Any] = {"dimension": ""}
+    resolved = _resolved_stub(dim=0)
+    resolved.base_url = "https://api.example.test/v1/embeddings?key=secret"
+    resolved.effective_url = resolved.base_url
+    fake_client = MagicMock()
+    fake_client.embed = AsyncMock(return_value=[[0.5] * 8, [0.6] * 8])
+
+    with (
+        patch(
+            "deeptutor.services.config.test_runner.resolve_embedding_runtime_config",
+            return_value=resolved,
+        ),
+        patch("deeptutor.services.embedding.client.EmbeddingClient", return_value=fake_client),
+        patch.object(runner, "_persist_embedding_dimension", return_value=catalog),
+    ):
+        await runner._test_embedding(run, model, catalog)
+
+    messages = "\n".join(str(event.get("message", "")) for event in run.events)
+    assert "secret" not in messages
+    assert "%5BREDACTED%5D" in messages
+
+
+@pytest.mark.asyncio
 async def test_empty_vector_still_fatal() -> None:
     runner = ConfigTestRunner()
     run = _make_run()

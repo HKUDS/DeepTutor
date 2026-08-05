@@ -1,0 +1,3 @@
+module.exports=[325882,a=>{"use strict";var b=a.i(187924);a.s(["default",0,function({url:a,filename:c}){return(0,b.jsx)("div",{className:"flex h-full w-full items-center justify-center bg-[var(--muted)]/30 p-6",children:(0,b.jsx)("img",{src:a,alt:c,className:"max-h-full max-w-full object-contain"})})}])},28842,a=>{a.n(a.i(325882))}];
+
+//# sourceMappingURL=components_chat_preview_previewers_SvgPreview_tsx_003lsp-._.js.map

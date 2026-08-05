@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/(utility)/layout,_N_T_/(utility)/memory/layout,_N_T_/(utility)/memory/l1/layout,_N_T_/(utility)/memory/l1/page,_N_T_/memory/l1"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/!KHV0aWxpdHkp/memory/l1/__PAGE__",
+    "/!KHV0aWxpdHkp/memory/l1",
+    "/!KHV0aWxpdHkp/memory",
+    "/!KHV0aWxpdHkp",
+    "/_index",
+    "/_head"
+  ]
+}

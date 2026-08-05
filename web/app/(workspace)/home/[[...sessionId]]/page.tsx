@@ -103,6 +103,7 @@ import {
 } from "@/lib/tools-settings";
 import { downloadChatMarkdown } from "@/lib/chat-export";
 import { buildChatOutline } from "@/lib/chat-outline";
+import { isPlaceholderSessionTitle } from "@/lib/session-title";
 import type { SpaceMemoryFile } from "@/lib/space-items";
 import {
   selectedBooksToPayload,
@@ -694,8 +695,9 @@ export default function ChatPage() {
     [state.messages],
   );
   const persistedSessionTitle = state.sessionTitle.trim();
-  const displaySessionTitle =
-    persistedSessionTitle || firstUserTitle || t("New chat");
+  const displaySessionTitle = isPlaceholderSessionTitle(persistedSessionTitle)
+    ? firstUserTitle || t("New chat")
+    : persistedSessionTitle;
   const canRenameSession = Boolean(state.sessionId);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const skipTitleCommitRef = useRef(false);

@@ -162,7 +162,7 @@ deeptutor start --dev
 - `ghcr.io/hkuds/deeptutor:latest` — 稳定版本
 - `ghcr.io/hkuds/deeptutor:pre` — 预发布版本（如有）
 
-> 有关 podman / 无根容器 / 只读根文件系统部署及完整的每种安装指南，请参阅 [CONTAINERIZATION.md](./CONTAINERIZATION.md)。
+> 有关 podman / 无根容器 / 只读根文件系统部署及完整的每种安装指南，请参阅 [CONTAINERIZATION.md](../../CONTAINERIZATION.md)。
 
 ```bash
 docker run --rm --name deeptutor \
@@ -217,7 +217,7 @@ docker run --rm --name deeptutor \
 
 Docker Desktop（macOS/Windows）通常无需 `--add-host` 即可解析 `host.docker.internal`。在 Linux 上，该标志是在现代 Docker Engine 上创建该主机名的便携方式。
 
-**Linux 替代方案 — 宿主机网络：** 添加 `--network=host` 并去掉 `-p` 标志。容器直接共享宿主机网络，打开 [http://127.0.0.1:3782](http://127.0.0.1:3782)（或 `system.json` 中的 `frontend_port`），宿主机服务可通过普通 localhost URL（如 `http://127.0.0.1:11434/v1`）访问。注意宿主机网络会将容器端口直接暴露在宿主机上，可能与现有服务冲突 — 若需保持在回环地址上，可设置 `BACKEND_HOST=127.0.0.1` 和 `FRONTEND_HOST=127.0.0.1`（详见 [CONTAINERIZATION.md](./CONTAINERIZATION.md)）。
+**Linux 替代方案 — 宿主机网络：** 添加 `--network=host` 并去掉 `-p` 标志。容器直接共享宿主机网络，打开 [http://127.0.0.1:3782](http://127.0.0.1:3782)（或 `system.json` 中的 `frontend_port`），宿主机服务可通过普通 localhost URL（如 `http://127.0.0.1:11434/v1`）访问。注意宿主机网络会将容器端口直接暴露在宿主机上，可能与现有服务冲突 — 若需保持在回环地址上，可设置 `BACKEND_HOST=127.0.0.1` 和 `FRONTEND_HOST=127.0.0.1`（详见 [CONTAINERIZATION.md](../../CONTAINERIZATION.md)）。
 
 </details>
 
@@ -478,7 +478,9 @@ Settings 是操作控制面板，带有实时状态条（后端、LLM、嵌入�
 
 大多数部分采用草稿-应用流程，因此你可以在提交前测试提供商配置。开箱即提供四种主题 — Default、Cream、Dark 和 Glass。项目根目录的 `.env` 文件被刻意忽略；运行时配置存储在 `data/user/settings/*.json` 下，除非 `DEEPTUTOR_HOME` 或 `deeptutor start --home` 将应用指向其他位置。
 
-**OpenAI Codex OAuth（实验性）。** 在 **模型 → LLM** 下选择 **OpenAI Codex**，会用基于你自己 ChatGPT 订阅运行的浏览器登录取代 API Key 输入框，因此无需 `OPENAI_API_KEY`。令牌仅保存在 `data/system/user-secrets/<owner>/private/openai-codex/` 中 — 位于 exec 沙箱可触及的所有目录树之外 — DeepTutor 绝不会读取或修改你的 `~/.codex` CLI 登录状态。模型列表来自该账号的实时目录；只有尚未配置任何 LLM 时，登录后的 Codex 才会成为活跃模型。令牌只授权一个人的订阅，无法通过用户授权共享，因此每个账号都需自行登录。
+**OpenAI Codex OAuth（实验性）。** 在 **模型 → LLM** 下选择 **OpenAI Codex**，会用基于你自己 ChatGPT 订阅运行的浏览器登录取代 API Key 输入框，因此无需 `OPENAI_API_KEY`。令牌仅保存在 `data/system/user-secrets/<owner>/private/openai-codex/` 中 — 在多容器 Compose 部署中，位于 exec 沙箱可触及的所有目录树之外 — DeepTutor 绝不会读取或修改你的 `~/.codex` CLI 登录状态。模型列表来自该账号的实时目录；只有尚未配置任何 LLM 时，登录后的 Codex 才会成为活跃模型。令牌只授权一个人的订阅，无法通过用户授权共享，因此每个账号都需自行登录。
+
+默认的本地 Docker 和 Podman 部署各自使用独立的回环网络，登录时需要一个临时桥接。具体的 Docker、Compose、Podman 及拆除命令请参阅[临时本地 Codex OAuth 桥接指南](../../CONTAINERIZATION.md#temporary-local-codex-oauth-bridge)。
 
 远程部署时，浏览器的 `localhost` 和服务器的 `localhost` 不是同一台机器，仅有普通反向代理无法把浏览器的 localhost callback 送到服务器，必须用 SSH 隧道建立 callback 桥。隧道通向已发布的 Web 端口；Next.js 只把精确的 callback 路径改写到 public callback broker，broker 校验 `state` 后才路由到原 OAuth operation。callback listener 仍位于后端 loopback，不发布 `1455`/`1457`，并支持默认 Docker bridge 网络。
 

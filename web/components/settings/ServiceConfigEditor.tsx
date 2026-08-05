@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 
 import ProviderIcon from "@/components/common/ProviderIcon";
 import { apiFetch, apiUrl } from "@/lib/api";
+import { reasoningEffortOptions } from "@/lib/reasoning-effort";
 import { CodexOAuthCard } from "./CodexOAuthCard";
 import { CodeBuddyAuthCard } from "./CodeBuddyAuthCard";
 import { isCodexOAuthProfile, isManagedCodexProfile } from "./codex-profile";
@@ -76,6 +77,7 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
     updateModelField,
     updateModelBoolField,
     updateContextWindowField,
+    updateReasoningEffort,
     llmContextDetection,
     applyDetectedContextWindow,
     runDetailedTest,
@@ -139,6 +141,14 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
     llmContextDetection?.modelId === draft.services.llm.active_model_id
       ? llmContextDetection
       : null;
+  const reasoningOptions =
+    service === "llm" && activeModel
+      ? reasoningEffortOptions(
+          activeProfile?.binding,
+          activeModel.model,
+          activeModel.reasoning_effort,
+        )
+      : [];
 
   const syncProviderModels = async (
     connection?: Pick<CatalogProfile, "binding" | "base_url" | "api_key">,
@@ -642,6 +652,38 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                           detection={activeLlmDetection}
                           onApply={applyDetectedContextWindow}
                         />
+                        {reasoningOptions.length > 0 && (
+                          <div>
+                            <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                              {t("Reasoning effort")}
+                            </div>
+                            <div className="relative">
+                              <select
+                                className={selectClass}
+                                value={activeModel.reasoning_effort || ""}
+                                onChange={(event) =>
+                                  updateReasoningEffort(event.target.value)
+                                }
+                              >
+                                {reasoningOptions.map((option) => (
+                                  <option
+                                    className={selectOptionClass}
+                                    key={option.value || "auto"}
+                                    value={option.value}
+                                  >
+                                    {t(option.label)}
+                                  </option>
+                                ))}
+                              </select>
+                              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
+                            </div>
+                            <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+                              {t(
+                                "Sets this model's default reasoning depth. Auto leaves the choice to the provider.",
+                              )}
+                            </p>
+                          </div>
+                        )}
                       </>
                     )}
                     {service === "embedding" && (

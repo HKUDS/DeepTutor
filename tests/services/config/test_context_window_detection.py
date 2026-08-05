@@ -72,6 +72,33 @@ def test_detect_context_window_uses_known_model_metadata_when_provider_omits_win
     assert result.source == "known_model"
 
 
+def test_detect_context_window_uses_known_minimax_m3_window(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "deeptutor.services.config.context_window_detection._detect_from_models_endpoint",
+        _metadata_none,
+    )
+    result = asyncio.run(detect_context_window(_config(model="MiniMax-M3")))
+
+    assert result.context_window == 1_000_000
+    assert result.source == "known_model"
+
+
+def test_extract_context_window_reads_novita_context_size_key() -> None:
+    """Novita's /openai/models advertises the window as ``context_size``."""
+    payload = {
+        "data": [
+            {"id": "deepseek/deepseek-v3.2", "context_size": 1_000_000},
+        ]
+    }
+
+    assert (
+        detection_module._extract_context_window_from_payload(payload, "deepseek/deepseek-v3.2")
+        == 1_000_000
+    )
+
+
 def test_models_endpoint_probe_honors_disable_ssl_verify(monkeypatch) -> None:
     captured: dict[str, object] = {}
 

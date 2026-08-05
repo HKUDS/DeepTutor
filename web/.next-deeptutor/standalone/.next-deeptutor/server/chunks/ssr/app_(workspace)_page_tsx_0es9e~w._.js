@@ -1,0 +1,3 @@
+module.exports=[789707,a=>{"use strict";var b=a.i(572131),c=a.i(50944);a.s(["default",0,function(){let a=(0,c.useRouter)();return(0,b.useEffect)(()=>{let b=new URLSearchParams(window.location.search),c=b.get("session"),d=b.get("capability"),e=b.getAll("tool"),f=c?`/home/${c}`:"/home",g=[];d&&g.push(`capability=${encodeURIComponent(d)}`),e.forEach(a=>g.push(`tool=${encodeURIComponent(a)}`)),g.length&&(f+=`?${g.join("&")}`),a.replace(f)},[a]),null}])}];
+
+//# sourceMappingURL=app_%28workspace%29_page_tsx_0es9e~w._.js.map

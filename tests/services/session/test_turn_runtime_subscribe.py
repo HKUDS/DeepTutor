@@ -4,8 +4,54 @@ import asyncio
 
 import pytest
 
+from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
-from deeptutor.services.session.turn_runtime import TurnRuntimeManager, _TurnExecution
+from deeptutor.services.session.turn_runtime import (
+    TurnRuntimeManager,
+    _resolve_turn_outcome,
+    _TurnExecution,
+)
+
+
+def test_terminal_error_marks_turn_failed() -> None:
+    error_message = "provider authentication failed"
+    status, error = _resolve_turn_outcome(
+        [
+            {
+                "type": "error",
+                "content": error_message,
+                "metadata": {"turn_terminal": True, "status": "failed"},
+            }
+        ],
+        StreamEvent(
+            type=StreamEventType.DONE,
+            source="chat",
+            metadata={"status": "failed"},
+        ),
+    )
+
+    assert status == "failed"
+    assert error == error_message
+
+
+def test_non_terminal_error_keeps_completed_done_status() -> None:
+    status, error = _resolve_turn_outcome(
+        [
+            {
+                "type": "error",
+                "content": "recoverable tool error",
+                "metadata": {},
+            }
+        ],
+        StreamEvent(
+            type=StreamEventType.DONE,
+            source="chat",
+            metadata={"status": "completed"},
+        ),
+    )
+
+    assert status == "completed"
+    assert error == ""
 
 
 @pytest.mark.asyncio

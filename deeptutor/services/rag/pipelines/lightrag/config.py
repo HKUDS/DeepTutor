@@ -147,12 +147,18 @@ def build_embedding_func():
             "Settings → Catalog before using a LightRAG knowledge base."
         )
 
-    base_embedding_func = get_embedding_client().get_embedding_func()
+    client = get_embedding_client()
 
-    async def embedding_func(texts):
+    async def embedding_func(texts, context=None, **_ignored):
         import numpy as np
 
-        vectors = await base_embedding_func(texts)
+        # No context means no role, which is what the pinned LightRAG always
+        # passes — defaulting to "document" would label queries as passages.
+        input_type = {
+            "query": "search_query",
+            "document": "search_document",
+        }.get(str(context or "").strip().lower())
+        vectors = await client.embed(texts, input_type=input_type)
         return np.asarray(vectors, dtype=np.float32)
 
     return EmbeddingFunc(

@@ -8,6 +8,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { apiFetch, apiUrl } from "@/lib/api";
 import {
   getStoredTheme,
   getSystemTheme,
@@ -24,6 +25,7 @@ import {
   CODE_BLOCK_WRAP_LONG_LINES_STORAGE_KEY,
   LANGUAGE_EVENT,
   LANGUAGE_STORAGE_KEY,
+  hasStoredLanguage,
   SIDEBAR_COLLAPSED_EVENT,
   SIDEBAR_COLLAPSED_STORAGE_KEY,
   normalizeCodeBlockShowLineNumbers,
@@ -92,6 +94,32 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
     setCodeBlockThemeState(readStoredCodeBlockTheme());
     setCodeBlockShowLineNumbersState(readStoredCodeBlockShowLineNumbers());
     setCodeBlockWrapLongLinesState(readStoredCodeBlockWrapLongLines());
+  }, []);
+
+  useEffect(() => {
+    // The saved interface language lives in the backend's ui settings, but
+    // only the settings route ever read it, so every other page started in
+    // English until the user changed it again in this browser. Adopt it once,
+    // and only when this browser has made no choice of its own — a local
+    // selection is the more specific signal and must win.
+    if (hasStoredLanguage()) return;
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const response = await apiFetch(apiUrl("/api/v1/settings/ui"), {
+          signal: controller.signal,
+          skipAuthRedirect: true,
+        });
+        if (!response.ok) return;
+        const payload = (await response.json()) as { language?: unknown };
+        if (payload.language !== "zh" && payload.language !== "en") return;
+        writeStoredLanguage(payload.language);
+        setLanguageState(payload.language);
+      } catch {
+        // Offline or unauthenticated: keep the local default.
+      }
+    })();
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {

@@ -151,15 +151,23 @@ class ModelCatalogService:
                     profile.setdefault("binding", "openai")
                     profile.setdefault("extra_headers", {})
                     if service_name == "embedding":
+                        models = profile.setdefault("models", [])
+                        active_model_id = service.get("active_model_id")
+                        active_model = next(
+                            (item for item in models if item.get("id") == active_model_id),
+                            models[0] if models else {},
+                        )
                         before = str(profile.get("base_url") or "")
                         after = normalize_embedding_endpoint_for_display(
                             profile.get("binding"),
                             before,
+                            model=active_model.get("model"),
                         )
                         if after != before:
                             profile["base_url"] = after
                             changed = True
-                    models = profile.setdefault("models", [])
+                    else:
+                        models = profile.setdefault("models", [])
                     for model in models:
                         model.setdefault("id", f"{service_name}-model-{uuid4().hex[:8]}")
                         model.setdefault("name", model.get("model") or "Untitled Model")

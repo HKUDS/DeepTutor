@@ -42,6 +42,7 @@ class EmbeddingRequest:
         input_type: Input type hint for task-aware embeddings (optional)
             - Cohere: Maps to 'input_type' ("search_document", "search_query", "classification", "clustering")
             - Jina: Maps to 'task' ("retrieval.passage", "retrieval.query", etc.)
+            - Gemini Embedding 2: Maps to retrieval-specific text instructions
             - OpenAI/Ollama: Ignored
         encoding_format: Output format ("float" or "base64"). ``None`` (the
             default) lets each adapter decide: OpenAI-compatible gateways omit
@@ -130,6 +131,12 @@ class BaseEmbeddingAdapter(ABC):
     Each adapter implements the specific API interface for a provider
     (OpenAI, Cohere, Ollama, etc.) while exposing a unified interface.
     """
+
+    # Whether this adapter turns ``EmbeddingRequest.input_type`` into a
+    # provider parameter. Opt-in, because doing so changes the vectors a
+    # provider returns for the same text: switching it on for a backend that
+    # previously sent no role invalidates every index already built with it.
+    SUPPORTS_INPUT_TYPE: bool = False
 
     def __init__(self, config: Dict[str, Any]):
         """
