@@ -86,8 +86,7 @@ export default function BlockRenderer({
   }
   if (block.status === "error") {
     const failure = block.metadata?.failure as
-      | { kind?: string; message?: string; retryable?: boolean }
-      | undefined;
+      { kind?: string; message?: string; retryable?: boolean } | undefined;
     return (
       <div className="rounded-2xl border border-rose-300/60 bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-100">
         <div className="mb-1 flex items-center gap-2 font-medium">

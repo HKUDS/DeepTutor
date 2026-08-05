@@ -22,13 +22,7 @@ import { apiFetch, apiUrl } from "@/lib/api";
 import { L1View } from "@/components/memory/MemorySection";
 
 type Surface =
-  | "chat"
-  | "notebook"
-  | "quiz"
-  | "kb"
-  | "book"
-  | "partner"
-  | "cowriter";
+  "chat" | "notebook" | "quiz" | "kb" | "book" | "partner" | "cowriter";
 
 interface NavEntry {
   key: Surface;

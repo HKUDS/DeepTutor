@@ -14,12 +14,7 @@ import {
 import { isPlaceholderSessionTitle } from "@/lib/session-title";
 
 type SessionRuntimeStatus =
-  | "idle"
-  | "running"
-  | "completed"
-  | "failed"
-  | "cancelled"
-  | "rejected";
+  "idle" | "running" | "completed" | "failed" | "cancelled" | "rejected";
 
 interface SessionListProps {
   sessions: SessionSummary[];

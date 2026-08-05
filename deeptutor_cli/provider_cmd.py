@@ -152,9 +152,7 @@ async def _login_codebuddy() -> None:
             result = await auth
         except Exception as login_exc:
             typer.echo(f"CodeBuddy login failed: {login_exc}")
-            typer.echo(
-                "You can also run `codebuddy`, enter `/login`, or set CODEBUDDY_API_KEY."
-            )
+            typer.echo("You can also run `codebuddy`, enter `/login`, or set CODEBUDDY_API_KEY.")
             raise typer.Exit(code=1) from login_exc
         userinfo = getattr(result, "userinfo", None)
         label = (

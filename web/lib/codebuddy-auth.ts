@@ -40,8 +40,6 @@ export function logoutCodeBuddy(): Promise<CodeBuddyAuthStatus> {
   return request("/logout", "POST");
 }
 
-export function shouldPollCodeBuddyAuth(
-  status: CodeBuddyAuthStatus,
-): boolean {
+export function shouldPollCodeBuddyAuth(status: CodeBuddyAuthStatus): boolean {
   return status.operation_state === "waiting";
 }

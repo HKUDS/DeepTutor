@@ -19,11 +19,7 @@ export type CodexOAuthStatus = {
   redirect_uri: string | null;
   model_count: number;
   catalog_source:
-    | "live"
-    | "fresh-cache"
-    | "revalidated-cache"
-    | "stale-cache"
-    | null;
+    "live" | "fresh-cache" | "revalidated-cache" | "stale-cache" | null;
   catalog_fetched_at: number | null;
   active_model: string | null;
   activated: boolean;

@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.model_access import allowed_llm_options
-from deeptutor.services.codex_auth import CodexAuthError, get_codex_oauth_service
 from deeptutor.services.codebuddy_auth import get_codebuddy_auth_service
+from deeptutor.services.codex_auth import CodexAuthError, get_codex_oauth_service
 from deeptutor.services.config import (
     get_config_test_runner,
     get_model_catalog_service,

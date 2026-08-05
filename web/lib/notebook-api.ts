@@ -8,12 +8,7 @@ import { apiFetch, apiUrl } from "@/lib/api";
 // "Question Notebook" categories below which only track quiz entries.
 
 export type NotebookRecordType =
-  | "solve"
-  | "question"
-  | "research"
-  | "chat"
-  | "co_writer"
-  | "tutorbot";
+  "solve" | "question" | "research" | "chat" | "co_writer" | "tutorbot";
 
 export interface NotebookSummary {
   id: string;

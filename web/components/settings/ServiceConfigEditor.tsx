@@ -463,7 +463,8 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                       const profile = target.profiles.find(
                         (item) => item.id === profileId,
                       );
-                      if (!profile || profile.binding !== provider.value) return;
+                      if (!profile || profile.binding !== provider.value)
+                        return;
                       if (provider.value === "codebuddy") {
                         profile.models = [];
                         target.active_model_id = null;
@@ -1157,14 +1158,14 @@ function ProfileFields({
     providerOption,
     profile,
   );
-  const isCodeBuddyAuth =
-    service === "llm" && providerValue === "codebuddy";
+  const isCodeBuddyAuth = service === "llm" && providerValue === "codebuddy";
 
-  const fields = isCodexOAuth || isCodeBuddyAuth
-    ? { apiKey: false, baseUrl: false, baseUrlRequired: false }
-    : service === "search"
-      ? searchProviderFields(profile.provider)
-      : { apiKey: true, baseUrl: true, baseUrlRequired: false };
+  const fields =
+    isCodexOAuth || isCodeBuddyAuth
+      ? { apiKey: false, baseUrl: false, baseUrlRequired: false }
+      : service === "search"
+        ? searchProviderFields(profile.provider)
+        : { apiKey: true, baseUrl: true, baseUrlRequired: false };
   const searxngMissingBaseUrl =
     fields.baseUrlRequired && !String(profile.base_url || "").trim();
 

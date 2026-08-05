@@ -111,8 +111,7 @@ export function MinerUEngineSettings() {
       try {
         const response = await apiFetch(apiUrl("/api/v1/settings/mineru"));
         const data = (await response.json().catch(() => ({}))) as
-          | MinerUPayload
-          | { detail?: string };
+          MinerUPayload | { detail?: string };
         if (!response.ok) {
           throw new Error(
             "detail" in data && data.detail
@@ -179,8 +178,7 @@ export function MinerUEngineSettings() {
         body: JSON.stringify(body),
       });
       const data = (await response.json().catch(() => ({}))) as
-        | MinerUPayload
-        | { detail?: string };
+        MinerUPayload | { detail?: string };
       if (!response.ok) {
         throw new Error(
           "detail" in data && data.detail

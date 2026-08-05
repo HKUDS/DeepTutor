@@ -14,8 +14,7 @@ export default function InteractiveBlock({ block }: InteractiveBlockProps) {
   const { t } = useTranslation();
   const code =
     (block.payload?.code as
-      | { language?: string; content?: string }
-      | undefined) || {};
+      { language?: string; content?: string } | undefined) || {};
   const content = String(code.content || "");
   const description = block.payload?.description
     ? String(block.payload.description)

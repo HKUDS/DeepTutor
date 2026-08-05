@@ -133,8 +133,7 @@ export function useVoiceAutoplay(scopeKey?: string) {
       setGlobalDefault(Boolean((e as CustomEvent).detail?.value));
     const onSession = (e: Event) => {
       const detail = (e as CustomEvent).detail as
-        | { scopeKey?: string; value?: boolean }
-        | undefined;
+        { scopeKey?: string; value?: boolean } | undefined;
       if ((detail?.scopeKey || undefined) !== normalizedScopeKey) return;
       setSessionOverride(Boolean(detail?.value));
     };

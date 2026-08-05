@@ -769,19 +769,11 @@ async def test_codebuddy_auth_routes_use_admin_scoped_service(monkeypatch) -> No
             return {"connection": "disconnected", "user_label": None}
 
     monkeypatch.setattr(settings_router, "_require_settings_admin", lambda: None)
-    monkeypatch.setattr(
-        settings_router, "get_codebuddy_auth_service", lambda: FakeService()
-    )
+    monkeypatch.setattr(settings_router, "get_codebuddy_auth_service", lambda: FakeService())
 
-    assert await settings_router.get_codebuddy_auth_status() == {
-        "connection": "connected"
-    }
-    assert await settings_router.start_codebuddy_auth() == {
-        "connection": "authorizing"
-    }
-    assert await settings_router.cancel_codebuddy_auth() == {
-        "connection": "disconnected"
-    }
+    assert await settings_router.get_codebuddy_auth_status() == {"connection": "connected"}
+    assert await settings_router.start_codebuddy_auth() == {"connection": "authorizing"}
+    assert await settings_router.cancel_codebuddy_auth() == {"connection": "disconnected"}
     assert await settings_router.logout_codebuddy_auth() == {
         "connection": "disconnected",
         "user_label": None,

@@ -133,9 +133,7 @@ async def test_status_accepts_ide_session_without_the_sdk(tmp_path, monkeypatch)
         raise AssertionError("the SDK must not be probed when a session file exists")
 
     monkeypatch.setattr(codebuddy_auth, "_start_sdk_authenticate", unused_sdk)
-    monkeypatch.setattr(
-        "deeptutor.services.codebuddy_credentials.probe_account", _account_label
-    )
+    monkeypatch.setattr("deeptutor.services.codebuddy_credentials.probe_account", _account_label)
 
     status = await CodeBuddyAuthService().status()
 
@@ -145,9 +143,7 @@ async def test_status_accepts_ide_session_without_the_sdk(tmp_path, monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_logout_explains_that_an_ide_session_ends_in_the_ide(
-    tmp_path, monkeypatch
-) -> None:
+async def test_logout_explains_that_an_ide_session_ends_in_the_ide(tmp_path, monkeypatch) -> None:
     _write_ide_session(tmp_path, monkeypatch)
 
     async def missing_sdk() -> None:

@@ -5,13 +5,7 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 
 export type Surface =
-  | "chat"
-  | "notebook"
-  | "quiz"
-  | "kb"
-  | "book"
-  | "partner"
-  | "cowriter";
+  "chat" | "notebook" | "quiz" | "kb" | "book" | "partner" | "cowriter";
 
 export const SURFACES: Surface[] = [
   "chat",

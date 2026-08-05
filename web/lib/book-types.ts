@@ -3,27 +3,13 @@
 // specific so we don't have to keep these in lock-step.
 
 export type BookStatus =
-  | "draft"
-  | "spine_ready"
-  | "compiling"
-  | "ready"
-  | "error"
-  | "archived";
+  "draft" | "spine_ready" | "compiling" | "ready" | "error" | "archived";
 
 export type PageStatus =
-  | "pending"
-  | "planning"
-  | "generating"
-  | "ready"
-  | "partial"
-  | "error";
+  "pending" | "planning" | "generating" | "ready" | "partial" | "error";
 
 export type BlockStatus =
-  | "pending"
-  | "generating"
-  | "ready"
-  | "error"
-  | "hidden";
+  "pending" | "generating" | "ready" | "error" | "hidden";
 
 export type BlockType =
   | "text"
@@ -41,12 +27,7 @@ export type BlockType =
   | "concept_graph";
 
 export type ContentType =
-  | "theory"
-  | "derivation"
-  | "history"
-  | "practice"
-  | "concept"
-  | "overview";
+  "theory" | "derivation" | "history" | "practice" | "concept" | "overview";
 
 export interface ConceptNode {
   id: string;

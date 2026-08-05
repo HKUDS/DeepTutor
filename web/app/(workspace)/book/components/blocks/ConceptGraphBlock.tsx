@@ -62,8 +62,7 @@ export default function ConceptGraphBlock({
   const { t } = useTranslation();
   const code =
     (block.payload?.code as
-      | { language?: string; content?: string }
-      | undefined) || {};
+      { language?: string; content?: string } | undefined) || {};
   const mermaidSrc = String(code.content || "").trim();
   const graph = asGraph(block.payload?.graph);
   const index = asIndex(block.payload?.index);
