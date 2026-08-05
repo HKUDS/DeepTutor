@@ -54,13 +54,15 @@ def format_messages_as_transcript(messages: list[dict[str, Any]]) -> str:
         "system": "System",
     }
     for item in messages:
+        # User clarifications answered an ask_user card *before* the assistant
+        # answer was produced, so render them before the row's own content.
+        clarification = extract_ask_user_clarifications(item)
+        if clarification:
+            lines.append(f"User: {clarification}")
         content = str(item.get("content", "") or "").strip()
         if content:
             role = role_map.get(str(item.get("role", "user")), "User")
             lines.append(f"{role}: {content}")
-        clarification = extract_ask_user_clarifications(item)
-        if clarification:
-            lines.append(f"User: {clarification}")
     return "\n\n".join(lines)
 
 
@@ -147,11 +149,16 @@ class ContextBuilder:
         for item in messages:
             role = item.get("role")
             content = str(item.get("content", "") or "")
-            if role in {"user", "assistant"} and content.strip():
-                history.append({"role": role, "content": content})
+            # Resolved ask_user clarifications happened *before* the assistant
+            # produced this row's answer, so they must precede the row's own
+            # content in history. Otherwise later turns see the answer first
+            # and the user's clarification second, and the model wrongly
+            # assumes the answer came before the user supplied the context.
             clarification = extract_ask_user_clarifications(item)
             if clarification:
                 history.append({"role": "user", "content": clarification})
+            if role in {"user", "assistant"} and content.strip():
+                history.append({"role": role, "content": content})
         return history
 
     async def _append_event(
