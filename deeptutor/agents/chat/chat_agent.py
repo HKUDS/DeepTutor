@@ -43,7 +43,7 @@ class ChatAgent(BaseAgent):
         Initialize ChatAgent.
 
         Args:
-            language: Language setting ('zh' | 'en')
+            language: Language setting (for example ``"en"``, ``"zh"``, or ``"es"``)
             config: Optional configuration dictionary
             max_history_tokens: Maximum tokens for conversation history
             **kwargs: Additional arguments passed to BaseAgent

@@ -110,19 +110,17 @@ export default function AppearanceSettingsPage() {
           )}
           control={
             <div className="flex gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
-              {(["en", "zh"] as const).map((value) => (
+              {APP_LANGUAGE_DEFINITIONS.map(({ code, labelKey }) => (
                 <button
-                  key={value}
-                  onClick={() => updateResponseLanguage(value)}
+                  key={code}
+                  onClick={() => updateResponseLanguage(code)}
                   className={`rounded-md px-2.5 py-1 text-[12px] transition-all ${
-                    responseLanguage === value
+                    responseLanguage === code
                       ? "bg-[var(--card)] font-medium text-[var(--foreground)] shadow-sm"
                       : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
                   }`}
                 >
-                  {value === "en"
-                    ? t("language.english")
-                    : t("language.chinese")}
+                  {t(labelKey)}
                 </button>
               ))}
             </div>

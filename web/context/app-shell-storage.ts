@@ -132,6 +132,15 @@ export function readStoredResponseLanguage(): AppLanguage {
   }
 }
 
+export function hasStoredResponseLanguage(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(RESPONSE_LANGUAGE_STORAGE_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
 export function writeStoredResponseLanguage(language: AppLanguage): void {
   if (typeof window === "undefined") return;
   try {

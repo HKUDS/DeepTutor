@@ -56,6 +56,7 @@ from deeptutor.services.llm import (
 )
 from deeptutor.services.llm.context_window import resolve_effective_context_window
 from deeptutor.services.prompt import get_prompt_manager
+from deeptutor.services.prompt.language import normalize_language
 from deeptutor.tools.builtin import PARTNER_BUILTIN_TOOL_NAMES
 
 logger = logging.getLogger(__name__)
@@ -193,7 +194,7 @@ class AgenticChatPipeline:
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> None:
-        self.language = "zh" if language.lower().startswith("zh") else "en"
+        self.language = normalize_language(language)
         self.llm_config = get_llm_config()
         self.binding = getattr(self.llm_config, "binding", None) or "openai"
         self.model = getattr(self.llm_config, "model", None)
