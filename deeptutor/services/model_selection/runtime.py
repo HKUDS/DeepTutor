@@ -11,7 +11,13 @@ from deeptutor.services.llm.config import LLMConfig
 
 
 def llm_config_from_resolved(resolved: ResolvedLLMConfig) -> LLMConfig:
-    """Convert provider-runtime output into the LLM service config shape."""
+    """Convert provider-runtime output into the LLM service config shape.
+
+    The strict-protocol contract is propagated verbatim: ``api_protocol``,
+    ``strict_protocol`` and ``resolved_api_protocol`` come from the resolved
+    request-scoped selection so a consumer of this config never silently drops
+    to the default (auto / non-strict) protocol.
+    """
     return LLMConfig(
         model=resolved.model,
         api_key=resolved.api_key,
@@ -24,6 +30,9 @@ def llm_config_from_resolved(resolved: ResolvedLLMConfig) -> LLMConfig:
         extra_headers=resolved.extra_headers,
         reasoning_effort=resolved.reasoning_effort,
         context_window=resolved.context_window,
+        api_protocol=resolved.api_protocol,
+        strict_protocol=resolved.strict_protocol,
+        resolved_api_protocol=resolved.resolved_api_protocol,
     )
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator, Mapping
 import contextlib
+import logging
 from types import SimpleNamespace
 from typing import Any, TypedDict
 
@@ -32,6 +33,12 @@ DEFAULT_STREAM_COALESCE_SECONDS = 0.04
 STREAM_CONTROL_TOKENS = {"<think>", "</think>"}
 
 CallKwargs = dict[str, Any]
+
+logger = logging.getLogger(__name__)
+
+#: Kwarg key callers use to pass an explicit audit context to the shared LLM
+#: boundary. Absent for legacy calls → provider behaviour is unchanged.
+MODEL_INVOCATION_AUDIT_KWARG = "model_invocation_audit"
 
 
 class ApiProviderPreset(TypedDict, total=False):
@@ -334,6 +341,79 @@ def _sanitize_call_kwargs(
     return extra_kwargs
 
 
+def _audit_start(audit: Any) -> str | None:
+    """Start an audited invocation (persist ``pending`` before the provider call).
+
+    Best-effort: an audit failure is logged and the caller continues with
+    legacy provider behaviour — audit must never break an LLM request.
+    """
+    if audit is None:
+        return None
+    try:
+        from deeptutor.services.model_selection import start_audited_invocation
+
+        return start_audited_invocation(audit)
+    except Exception:
+        logger.warning(
+            "model invocation audit start failed; continuing without audit", exc_info=True
+        )
+        return None
+
+
+def _audit_finish_completed(audit: Any, record_id: str | None, response: Any = None) -> None:
+    if audit is None or record_id is None:
+        return
+    reported_model: str | None = None
+    usage: dict[str, int] | None = None
+    if response is not None:
+        reported_model = str(getattr(response, "model", "") or "") or None
+        raw_usage = getattr(response, "usage", None)
+        if isinstance(raw_usage, dict):
+            usage = {
+                str(k): int(v or 0)
+                for k, v in raw_usage.items()
+                if str(k) in {"prompt_tokens", "completion_tokens", "total_tokens"}
+            }
+    try:
+        from deeptutor.learning.models import ModelInvocationStatus
+        from deeptutor.services.model_selection import finish_audited_invocation
+
+        finish_audited_invocation(
+            audit,
+            record_id,
+            status=ModelInvocationStatus.COMPLETED,
+            reported_model=reported_model,
+            usage=usage,
+        )
+    except Exception:
+        logger.warning("model invocation audit finish (completed) failed", exc_info=True)
+
+
+def _audit_finish_failed(audit: Any, record_id: str | None, exc: BaseException) -> None:
+    if audit is None or record_id is None:
+        return
+    try:
+        from deeptutor.learning.models import ModelInvocationStatus
+        from deeptutor.services.model_selection import finish_audited_invocation
+
+        finish_audited_invocation(
+            audit,
+            record_id,
+            status=ModelInvocationStatus.FAILED,
+            sanitized_error=str(exc),
+            error_code=_audit_error_code(exc),
+        )
+    except Exception:
+        logger.warning("model invocation audit finish (failed) failed", exc_info=True)
+
+
+def _audit_error_code(exc: BaseException) -> str:
+    name = type(exc).__name__
+    if name.endswith("Error"):
+        name = name[: -len("Error")]
+    return (name or "unknown").lower()
+
+
 async def complete(
     prompt: str,
     system_prompt: str = "You are a helpful assistant.",
@@ -348,6 +428,7 @@ async def complete(
     exponential_backoff: bool = DEFAULT_EXPONENTIAL_BACKOFF,
     **kwargs: Any,
 ) -> str:
+    audit = kwargs.pop(MODEL_INVOCATION_AUDIT_KWARG, None)
     caller_extra_headers = kwargs.pop("extra_headers", None)
     reasoning_effort = kwargs.pop("reasoning_effort", None)
     image_data = kwargs.pop("image_data", None)
@@ -379,6 +460,7 @@ async def complete(
         binding=capability_binding, model=config.model, kwargs=kwargs
     )
 
+    record_id = _audit_start(audit)
     try:
         response = await provider.chat_with_retry(
             messages=request_messages,
@@ -389,12 +471,17 @@ async def complete(
             **extra_kwargs,
         )
     except Exception as exc:
+        _audit_finish_failed(audit, record_id, exc)
         raise map_error(exc, provider=config.provider_name) from exc
 
     if response.finish_reason == "error":
+        _audit_finish_failed(
+            audit, record_id, RuntimeError(response.content or "LLM request failed")
+        )
         raise map_error(
             RuntimeError(response.content or "LLM request failed"), provider=config.provider_name
         )
+    _audit_finish_completed(audit, record_id, response)
     return response.content or ""
 
 
@@ -412,6 +499,7 @@ async def stream(
     exponential_backoff: bool = DEFAULT_EXPONENTIAL_BACKOFF,
     **kwargs: Any,
 ) -> AsyncGenerator[str, None]:
+    audit = kwargs.pop(MODEL_INVOCATION_AUDIT_KWARG, None)
     caller_extra_headers = kwargs.pop("extra_headers", None)
     reasoning_effort = kwargs.pop("reasoning_effort", None)
     image_data = kwargs.pop("image_data", None)
@@ -448,6 +536,10 @@ async def stream(
     extra_kwargs = _sanitize_call_kwargs(
         binding=capability_binding, model=config.model, kwargs=kwargs
     )
+
+    # Persist-before-call: the ``pending`` audit record is saved here, before
+    # the runner task starts the provider request.
+    record_id = _audit_start(audit)
 
     queue: asyncio.Queue[str | BaseException | None] = asyncio.Queue()
     saw_output = False
@@ -513,6 +605,7 @@ async def stream(
             await queue.put(None)
 
     task = asyncio.create_task(_runner())
+    finalized = record_id is None
     try:
         sent_first_text_chunk = False
         buffered_chunks: list[str] = []
@@ -530,6 +623,7 @@ async def stream(
                 return await queue.get()
             return await asyncio.wait_for(queue.get(), timeout=timeout)
 
+        stream_finished = False
         while True:
             item = await queue.get()
             if item is None:
@@ -564,7 +658,8 @@ async def stream(
                     if buffered_chunks:
                         yield _flush_buffer()
                     await task
-                    return
+                    stream_finished = True
+                    break
                 if isinstance(next_item, BaseException):
                     if buffered_chunks:
                         yield _flush_buffer()
@@ -576,10 +671,26 @@ async def stream(
                     break
                 buffered_chunks.append(next_item)
                 buffered_chars += len(next_item)
+            if stream_finished:
+                break
             if buffered_chunks:
                 yield _flush_buffer()
         await task
+        if not finalized:
+            _audit_finish_completed(audit, record_id)
+            finalized = True
+    except BaseException as exc:
+        if not finalized:
+            _audit_finish_failed(audit, record_id, exc)
+            finalized = True
+        raise
     finally:
+        if not finalized:
+            _audit_finish_failed(
+                audit,
+                record_id,
+                RuntimeError("stream closed before completion"),
+            )
         if not task.done():
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

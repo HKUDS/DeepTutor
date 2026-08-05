@@ -47,6 +47,13 @@ class MasteryLoopCapability:
             updated["_mastery_path_id"] = str(context.metadata.get("mastery_path_id") or "").strip()
             updated["_session_id"] = str(context.session_id or "").strip()
             updated["_turn_id"] = str(context.metadata.get("turn_id") or "").strip()
+            updated["_message_id"] = str(context.metadata.get("message_id") or "").strip()
+            try:
+                from deeptutor.multi_user.context import get_current_user
+
+                updated["_user_id"] = str(get_current_user().id or "")
+            except Exception:
+                updated["_user_id"] = ""
             return updated
         return kwargs
 

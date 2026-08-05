@@ -73,6 +73,10 @@ _GLOBAL_RULES: list[MappingRule] = [
 
 def map_error(exc: Exception, provider: str | None = None) -> LLMError:
     """Map provider-specific errors to unified internal exceptions."""
+    # Already-normalized internal errors (e.g. UnifiedProtocolError) pass
+    # through unchanged so their stable error code survives upstream callers.
+    if isinstance(exc, LLMError):
+        return exc
     # Heuristic check for status codes before rules
     status_code = getattr(exc, "status_code", None)
     if status_code == 401:

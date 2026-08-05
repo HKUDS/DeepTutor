@@ -183,10 +183,59 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"v1 memory migration failed: {e}")
 
+    # Start the persistent media runtime: recover durable image jobs first, then
+    # begin advancing queued/polling/cancel_requested jobs in the background
+    # (§11.3).  A failure to start the media scheduler is logged and must never
+    # block the rest of the app from coming up.
+    try:
+        from deeptutor.services.media.runtime import get_media_runtime
+
+        runtime = get_media_runtime()
+        runtime.recover()
+        runtime.start()
+        logger.info("Media runtime started (%d roots)", len(runtime.roots))
+    except Exception as e:
+        logger.warning(f"Failed to start media runtime: {e}")
+
+    # Start the knowledge-card generation runtime: recover deterministic
+    # nonterminal attempts, then advance queued runnable generation attempts in
+    # the background (§7.9.1, ASM-01). The executor is resolved lazily per
+    # attempt from its frozen evaluator snapshot, so an unconfigured provider
+    # never prevents app startup and no provider request occurs merely at
+    # startup.
+    try:
+        from deeptutor.learning.knowledge_cards.runtime import get_knowledge_card_runtime
+
+        kc_runtime = get_knowledge_card_runtime()
+        kc_runtime.recover()
+        kc_runtime.start()
+        logger.info("Knowledge-card runtime started (%d roots)", len(kc_runtime.roots))
+    except Exception as e:
+        logger.warning(f"Failed to start knowledge-card runtime: {e}")
+
     yield
 
     # Execute on shutdown
     logger.info("Application shutdown")
+
+    # Stop the media scheduler and release provider executors (HTTP clients).
+    try:
+        from deeptutor.services.media.runtime import get_media_runtime
+
+        await get_media_runtime().stop()
+        logger.info("Media runtime stopped")
+    except Exception as e:
+        logger.warning(f"Failed to stop media runtime: {e}")
+
+    # Stop the knowledge-card generation runtime and release its provider
+    # executors (bounded; interrupted attempts reconcile on next start).
+    try:
+        from deeptutor.learning.knowledge_cards.runtime import get_knowledge_card_runtime
+
+        await get_knowledge_card_runtime().stop()
+        logger.info("Knowledge-card runtime stopped")
+    except Exception as e:
+        logger.warning(f"Failed to stop knowledge-card runtime: {e}")
 
     # Stop cron scheduler
     try:
@@ -346,6 +395,7 @@ from deeptutor.api.routers import (
     knowledge,
     mastery_path,
     mcp_settings,
+    media,
     memory,
     notebook,
     partners,
@@ -483,6 +533,7 @@ app.include_router(
     tags=["attachments"],
     dependencies=_auth,
 )
+app.include_router(media.router, prefix="/api/v1", tags=["media"], dependencies=_auth)
 
 # Unified WebSocket endpoint — auth is checked inside the handler (WebSockets
 # cannot use FastAPI dependencies in the standard way)

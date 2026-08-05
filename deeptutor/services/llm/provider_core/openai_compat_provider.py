@@ -28,6 +28,7 @@ from deeptutor.services.llm.provider_core.openai_responses import (
     convert_tools,
     parse_response_output,
 )
+from deeptutor.services.llm.provider_core.unified.types import UnifiedProtocolError
 from deeptutor.services.llm.reasoning_params import (
     build_openai_compatible_reasoning_kwargs,
 )
@@ -118,12 +119,16 @@ class OpenAICompatProvider(LLMProvider):
         extra_headers: dict[str, str] | None = None,
         spec: Any = None,
         provider_name: str | None = None,
+        api_protocol: str = "auto",
+        strict_protocol: bool = False,
     ):
         super().__init__(api_key, api_base)
         self.default_model = default_model
         self.extra_headers = extra_headers or {}
         self._spec = spec
         self._provider_name = provider_name
+        self.api_protocol = api_protocol or "auto"
+        self.strict_protocol = strict_protocol
 
         if api_key and spec and spec.env_key:
             self._setup_env(api_key, api_base)
@@ -674,7 +679,13 @@ class OpenAICompatProvider(LLMProvider):
         **extra_kwargs: Any,
     ) -> LLMResponse:
         try:
-            if self._should_use_responses_api(model, reasoning_effort):
+            self._enforce_explicit_protocol()
+            use_responses = self._should_use_responses_api(model, reasoning_effort)
+            if self.api_protocol == "openai_chat_completions":
+                use_responses = False
+            elif self.api_protocol == "openai_responses":
+                use_responses = True
+            if use_responses:
                 try:
                     body = self._build_responses_body(
                         messages,
@@ -690,6 +701,8 @@ class OpenAICompatProvider(LLMProvider):
                     self._record_responses_success(model, reasoning_effort)
                     return result
                 except Exception as responses_error:
+                    if self.api_protocol == "openai_responses" and self.strict_protocol:
+                        raise self._protocol_error(responses_error) from responses_error
                     if self._spec and self._spec.name == "github_copilot":
                         raise
                     if not self._should_fallback_from_responses_error(responses_error):
@@ -719,6 +732,10 @@ class OpenAICompatProvider(LLMProvider):
                     return self._parse(await self._client.chat.completions.create(**retry_kwargs))
                 raise
         except Exception as e:
+            if isinstance(e, UnifiedProtocolError):
+                raise
+            if self.strict_protocol and self.api_protocol != "auto":
+                raise self._protocol_error(e) from e
             if tools and self._is_tool_format_error(e):
                 return await self.chat_stream(
                     messages,
@@ -757,7 +774,13 @@ class OpenAICompatProvider(LLMProvider):
         request_kwargs.update({k: v for k, v in extra_kwargs.items() if v is not None})
         idle_timeout_s = 90
         try:
-            if self._should_use_responses_api(model, reasoning_effort):
+            self._enforce_explicit_protocol()
+            use_responses = self._should_use_responses_api(model, reasoning_effort)
+            if self.api_protocol == "openai_chat_completions":
+                use_responses = False
+            elif self.api_protocol == "openai_responses":
+                use_responses = True
+            if use_responses:
                 try:
                     body = self._build_responses_body(
                         messages,
@@ -803,6 +826,8 @@ class OpenAICompatProvider(LLMProvider):
                         reasoning_content=reasoning_content,
                     )
                 except Exception as responses_error:
+                    if self.api_protocol == "openai_responses" and self.strict_protocol:
+                        raise self._protocol_error(responses_error) from responses_error
                     if self._spec and self._spec.name == "github_copilot":
                         raise
                     if not self._should_fallback_from_responses_error(responses_error):
@@ -856,7 +881,34 @@ class OpenAICompatProvider(LLMProvider):
                 finish_reason="error",
             )
         except Exception as e:
+            if isinstance(e, UnifiedProtocolError):
+                raise
+            if self.strict_protocol and self.api_protocol != "auto":
+                raise self._protocol_error(e) from e
             return self._handle_error(e)
+
+    def _enforce_explicit_protocol(self) -> None:
+        """Reject protocols this provider cannot speak.
+
+        With ``strict_protocol=true`` this prevents silently calling a
+        different protocol (e.g. a Chat Completions request when the profile
+        explicitly requested Anthropic Messages).
+        """
+        if self.api_protocol == "anthropic_messages":
+            raise UnifiedProtocolError(
+                "This OpenAI-compatible provider cannot speak anthropic_messages",
+                code="protocol_unsupported",
+                protocol=self.api_protocol,
+                provider=self._provider_name,
+            )
+
+    def _protocol_error(self, exc: Exception) -> UnifiedProtocolError:
+        return UnifiedProtocolError(
+            str(exc)[:500],
+            code="protocol_call_failed",
+            protocol=self.api_protocol,
+            provider=self._provider_name,
+        )
 
     def get_default_model(self) -> str:
         return self.default_model

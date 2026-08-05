@@ -39,6 +39,14 @@ from deeptutor.knowledge.kb_types import is_connected_kb
 from deeptutor.knowledge.manager import KnowledgeBaseManager
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
+from deeptutor.knowledge.write_coordinator import (
+    KbBusyError,
+    KbLeaseError,
+    KbLedgerError,
+    KbWriteCoordinator,
+    LeaseHeartbeat,
+    heartbeat_interval_seconds,
+)
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.knowledge_access import (
     assert_writable,
@@ -138,6 +146,48 @@ def _writable_kb(kb_name: str) -> tuple[KnowledgeBaseManager, str, Path]:
         return manager, resolved_name, Path(manager.base_dir)
     resource = assert_writable(kb_name)
     return manager_for_resource(resource), resource.name, resource.base_dir
+
+
+def _kb_mutation_owner() -> str:
+    """A unique lease owner token for one mutation request."""
+    return f"kb:{uuid4().hex[:12]}"
+
+
+def _current_user_id() -> str | None:
+    try:
+        user = get_current_user()
+        return getattr(user, "id", None)
+    except Exception:
+        return None
+
+
+def _raise_kb_busy(exc: KbBusyError) -> None:
+    """Map a recoverable coordinator refusal to a retryable HTTP 409."""
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            f"Knowledge base '{exc.kb_name}' is busy (kb_busy): a "
+            f"{exc.operation_type} operation is {exc.status}. Retry after it "
+            "completes or is reconciled."
+        ),
+    ) from exc
+
+
+def _raise_kb_ledger_error(exc: KbLedgerError) -> None:
+    """Map a corrupt/unreadable write-operation ledger to a fail-closed 503.
+
+    The coordinator cannot know which KB owns a lease, so no new mutation may
+    start until the ledger is repaired. The response carries the stable error
+    code only; the sanitized diagnostic stays server-side.
+    """
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            "Knowledge base write coordination state is unavailable "
+            f"({exc.error_code}). No new mutations can start until the "
+            "write-operation ledger is repaired."
+        ),
+    ) from exc
 
 
 class KnowledgeBaseInfo(BaseModel):
@@ -819,6 +869,8 @@ async def run_upload_processing_task(
     task_id: str,
     rag_provider: str = None,
     folder_id: str = None,
+    operation_id: str = None,
+    lease_owner: str = None,
 ):
     """Background task for processing uploaded files.
 
@@ -828,6 +880,8 @@ async def run_upload_processing_task(
         uploaded_file_paths: List of file paths to process
         rag_provider: RAG provider already matched against the KB binding
         folder_id: Optional folder ID for sync state update
+        operation_id: KbWriteCoordinator operation id (renewed/closed here)
+        lease_owner: Lease owner token from the request that acquired the op
     """
     task_manager = TaskIDManager.get_instance()
     task_stream_manager = get_task_stream_manager()
@@ -836,8 +890,56 @@ async def run_upload_processing_task(
     progress_tracker = ProgressTracker(kb_name, Path(base_dir))
     progress_tracker.task_id = task_id
 
+    coordinator = None
+    heartbeat = None
+    if operation_id and lease_owner:
+        coordinator = KbWriteCoordinator(base_dir=base_dir, owner=lease_owner)
+
+    def _renew() -> None:
+        if coordinator is not None:
+            coordinator.verify_lease(kb_name, operation_id, owner=lease_owner)
+
+    def _verify_lease() -> None:
+        """Fail closed at a write checkpoint when the lease was lost / unknown."""
+        if heartbeat is not None:
+            heartbeat.check()
+        _renew()
+
+    def _lease_check() -> None:
+        # Cooperative staging checkpoint: per-file renew keeps the lease alive
+        # during staging and aborts the thread at the next file once the lease
+        # is lost / unknown (cancelling the ``asyncio.to_thread`` await would
+        # not stop the underlying staging thread).
+        _verify_lease()
+
+    def _finish(status: str, *, error_code: str | None = None, error: str | None = None) -> None:
+        if coordinator is not None:
+            coordinator.complete(
+                kb_name,
+                operation_id,
+                status,
+                owner=lease_owner,
+                error_code=error_code,
+                error=error,
+                index_task_id=task_id,
+            )
+
     with capture_task_logs(task_id):
         try:
+            if coordinator is not None:
+                # If the lease was already taken over (or the ledger is
+                # unreadable) before this task started, stop immediately instead
+                # of writing under the new holder / unknown ownership.
+                coordinator.verify_lease(kb_name, operation_id, owner=lease_owner)
+                heartbeat = LeaseHeartbeat(
+                    coordinator,
+                    kb_name,
+                    operation_id,
+                    owner=lease_owner,
+                    interval=heartbeat_interval_seconds(coordinator),
+                )
+                heartbeat.start()
+
             _task_log(task_id, f"Processing {len(uploaded_file_paths)} file(s) for KB '{kb_name}'")
             progress_tracker.update(
                 ProgressStage.PROCESSING_DOCUMENTS,
@@ -853,11 +955,23 @@ async def run_upload_processing_task(
                 rag_provider=rag_provider,
             )
 
-            staged_files = adder.add_documents(uploaded_file_paths, allow_duplicates=False)
+            # Staging runs in a worker thread so the heartbeat keeps the lease
+            # alive even while many/large files are copied into raw/. The thread
+            # is cooperatively lease-aware via ``_lease_check`` at per-file
+            # checkpoints, so a lost/unknown lease aborts staging at the next
+            # file instead of mutating under the new holder.
+            staged_files = await asyncio.to_thread(
+                adder.add_documents,
+                uploaded_file_paths,
+                allow_duplicates=False,
+                lease_check=_lease_check,
+            )
             _task_log(task_id, f"Staged {len(staged_files)} new file(s)")
+            _verify_lease()
 
             if not staged_files:
                 _task_log(task_id, "No new files to process (all duplicates or invalid)")
+                _verify_lease()
                 progress_tracker.update(
                     ProgressStage.COMPLETED,
                     "No new files to process (all duplicates or invalid)",
@@ -868,11 +982,18 @@ async def run_upload_processing_task(
                 task_stream_manager.emit_complete(
                     task_id, "No new files to process (all duplicates or invalid)"
                 )
+                _finish("succeeded")
                 return
 
-            index_result = await adder.process_new_documents(staged_files)
+            if heartbeat is not None:
+                index_result = await heartbeat.run_guarded(
+                    adder.process_new_documents(staged_files)
+                )
+            else:
+                index_result = await adder.process_new_documents(staged_files)
             processed_files = index_result.processed_files
             _task_log(task_id, f"Indexed {index_result.processed_count} file(s)")
+            _verify_lease()
 
             if index_result.has_failures:
                 failure_summary = index_result.failure_summary()
@@ -905,8 +1026,14 @@ async def run_upload_processing_task(
                         f"{failure.file_path}: {failure.error}" for failure in index_result.failures
                     ),
                 )
+                _finish(
+                    "failed",
+                    error_code="upload_index_failed",
+                    error=f"{index_result.failed_count}/{len(staged_files)} file(s) failed to index",
+                )
                 return
 
+            _verify_lease()
             adder.update_metadata(index_result.processed_count)
 
             if folder_id and processed_files:
@@ -921,6 +1048,7 @@ async def run_upload_processing_task(
                         task_id, f"Folder sync state update failed: {sync_err}", level="warning"
                     )
 
+            _verify_lease()
             num_processed = index_result.processed_count
             progress_tracker.update(
                 ProgressStage.COMPLETED,
@@ -939,6 +1067,20 @@ async def run_upload_processing_task(
             task_stream_manager.emit_complete(
                 task_id, f"Successfully processed {num_processed} files for '{kb_name}'"
             )
+            _finish("succeeded")
+        except KbLeaseError as exc:
+            _task_log(
+                task_id,
+                f"KB '{kb_name}' write lease lost or unknown; stopping stale task: {exc}",
+                level="error",
+            )
+            task_manager.update_task_status(task_id, "error", error="kb_ownership_lost")
+            task_stream_manager.emit_failed(
+                task_id,
+                f"Ownership of KB '{kb_name}' write lease was lost or became unknown; "
+                "stale task stopped.",
+            )
+            # Deliberately no _finish: the ledger belongs to the new holder now.
         except Exception as e:
             import traceback as _tb
 
@@ -953,6 +1095,17 @@ async def run_upload_processing_task(
                 ProgressStage.ERROR, f"Processing failed: {error_msg}", error=error_msg
             )
             task_stream_manager.emit_failed(task_id, error_msg, details=trace)
+            try:
+                _finish("failed", error_code="upload_failed", error=format_exception_message(e))
+            except Exception as finish_exc:
+                _task_log(
+                    task_id,
+                    f"Could not persist failure record: {finish_exc}",
+                    level="warning",
+                )
+        finally:
+            if heartbeat is not None:
+                await heartbeat.stop()
 
 
 @router.get("/health")
@@ -2098,31 +2251,97 @@ async def delete_kb_file(kb_name: str, filename: str):
     rejected. Vectors are not pruned here; ``was_indexed`` tells the caller
     whether a re-index is needed to purge the file from retrieval.
     """
-    manager, kb_name, _ = _writable_kb(kb_name)
-    _assert_kb_writable_or_409(kb_name, _load_kb_entry_or_404(manager, kb_name))
-    target = _resolve_kb_raw_file_or_404(kb_name, filename)
+    try:
+        manager, kb_name, kb_base_dir = _writable_kb(kb_name)
+        _assert_kb_writable_or_409(kb_name, _load_kb_entry_or_404(manager, kb_name))
+        target = _resolve_kb_raw_file_or_404(kb_name, filename)
 
-    kb_dir = manager.get_knowledge_base_path(kb_name)
-    removal = remove_raw_document(Path(kb_dir), target)
-    return {
-        "status": "ok",
-        "path": removal.rel_path,
-        "was_indexed": removal.was_indexed,
-    }
+        kb_dir = manager.get_knowledge_base_path(kb_name)
+        raw_dir = kb_dir / "raw"
+        try:
+            rel_path = target.resolve().relative_to(raw_dir.resolve()).as_posix()
+        except ValueError:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        # Per-KB lease: one mutation at a time; expired leases reconcile first.
+        coordinator = KbWriteCoordinator(base_dir=kb_base_dir)
+        owner = _kb_mutation_owner()
+        op = coordinator.acquire(
+            kb_name, "delete", owner=owner, user_id=_current_user_id(), subject_id=rel_path
+        )
+        try:
+            removal = remove_raw_document(Path(kb_dir), target)
+            coordinator.complete(kb_name, op.id, "succeeded", owner=owner)
+            return {
+                "status": "ok",
+                "path": removal.rel_path,
+                "was_indexed": removal.was_indexed,
+            }
+        except Exception as exc:
+            coordinator.complete(
+                kb_name,
+                op.id,
+                "failed",
+                owner=owner,
+                error_code="delete_failed",
+                error=format_exception_message(exc),
+            )
+            raise
+    except KbBusyError as exc:
+        _raise_kb_busy(exc)
+    except KbLedgerError as exc:
+        _raise_kb_ledger_error(exc)
+    except HTTPException:
+        raise
 
 
 @router.delete("/{kb_name}")
 async def delete_knowledge_base(kb_name: str):
     """Delete a knowledge base."""
     try:
-        manager, resolved_name, _ = _writable_kb(kb_name)
-        success = manager.delete_knowledge_base(resolved_name, confirm=True)
+        manager, resolved_name, kb_base_dir = _writable_kb(kb_name)
+        kb_entry = manager.get_kb_entry(resolved_name) or {}
+        # Connected KBs are read-only pointers: removing the pointer entry is
+        # not a write path into the external resource, and it must not create
+        # coordinator write records either. Local indexed KBs are coordinated.
+        if is_connected_kb(kb_entry):
+            success = manager.delete_knowledge_base(resolved_name, confirm=True)
+        else:
+            coordinator = KbWriteCoordinator(base_dir=kb_base_dir)
+            owner = _kb_mutation_owner()
+            op = coordinator.acquire(
+                resolved_name, "delete", owner=owner, user_id=_current_user_id()
+            )
+            try:
+                success = manager.delete_knowledge_base(resolved_name, confirm=True)
+                coordinator.complete(
+                    resolved_name,
+                    op.id,
+                    "succeeded" if success else "failed",
+                    owner=owner,
+                )
+            except Exception as exc:
+                coordinator.complete(
+                    resolved_name,
+                    op.id,
+                    "failed",
+                    owner=owner,
+                    error_code="delete_failed",
+                    error=format_exception_message(exc),
+                )
+                raise
         if not success:
             raise HTTPException(status_code=400, detail="Failed to delete knowledge base")
         logger.info(f"KB '{kb_name}' deleted")
         return {"message": f"Knowledge base '{kb_name}' deleted successfully"}
+    except KbBusyError as exc:
+        _raise_kb_busy(exc)
+    except KbLedgerError as exc:
+        _raise_kb_ledger_error(exc)
     except ValueError:
         raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -2150,6 +2369,10 @@ async def upload_files(
     """Upload files to a knowledge base and process them in background."""
     try:
         manager, kb_name, kb_base_dir = _writable_kb(kb_name)
+        kb_entry = _load_kb_entry_or_404(manager, kb_name)
+        # Read-only connected KBs are rejected before any path resolution or
+        # directory creation, so a rejected upload never touches their content.
+        _assert_kb_writable_or_409(kb_name, kb_entry)
         kb_path = manager.get_knowledge_base_path(kb_name)
         raw_dir = kb_path / "raw"
         raw_dir.mkdir(parents=True, exist_ok=True)
@@ -2158,8 +2381,6 @@ async def upload_files(
         if rag_provider is not None and str(rag_provider).strip():
             requested_provider = _validate_registered_provider(rag_provider)
 
-        kb_entry = _load_kb_entry_or_404(manager, kb_name)
-        _assert_kb_writable_or_409(kb_name, kb_entry)
         kb_provider = _validate_registered_provider(
             kb_entry.get("rag_provider") or DEFAULT_PROVIDER
         )
@@ -2179,35 +2400,57 @@ async def upload_files(
         # archive itself is never indexed (``safe_extract_zip`` skips ``.zip``).
         upload_extensions = allowed_extensions | {".zip"}
         _validate_upload_batch(files, allowed_extensions=upload_extensions, rel_paths=rel_paths)
-        uploaded_files, uploaded_file_paths = _save_uploaded_files(
-            files, raw_dir, allowed_extensions=upload_extensions, rel_paths=rel_paths
-        )
-        task_id = _build_unique_task_id("kb_upload", kb_name)
-        get_task_stream_manager().ensure_task(task_id)
 
-        logger.info(f"Uploading {len(uploaded_files)} files to KB '{kb_name}'")
+        # Per-KB lease: one mutation at a time; expired leases reconcile first.
+        coordinator = KbWriteCoordinator(base_dir=kb_base_dir)
+        owner = _kb_mutation_owner()
+        op = coordinator.acquire(kb_name, "upload", owner=owner, user_id=_current_user_id())
+        try:
+            uploaded_files, uploaded_file_paths = _save_uploaded_files(
+                files, raw_dir, allowed_extensions=upload_extensions, rel_paths=rel_paths
+            )
+            task_id = _build_unique_task_id("kb_upload", kb_name)
+            get_task_stream_manager().ensure_task(task_id)
 
-        _mark_kb_queued_for_processing(
-            manager,
-            kb_name,
-            task_id,
-            f"Processing {len(uploaded_files)} uploaded file(s)...",
-        )
+            logger.info(f"Uploading {len(uploaded_files)} files to KB '{kb_name}'")
 
-        background_tasks.add_task(
-            run_upload_processing_task,
-            kb_name=kb_name,
-            base_dir=str(kb_base_dir),
-            uploaded_file_paths=uploaded_file_paths,
-            task_id=task_id,
-            rag_provider=kb_provider,
-        )
+            _mark_kb_queued_for_processing(
+                manager,
+                kb_name,
+                task_id,
+                f"Processing {len(uploaded_files)} uploaded file(s)...",
+            )
 
-        return {
-            "message": f"Uploaded {len(uploaded_files)} files. Processing in background.",
-            "files": uploaded_files,
-            "task_id": task_id,
-        }
+            background_tasks.add_task(
+                run_upload_processing_task,
+                kb_name=kb_name,
+                base_dir=str(kb_base_dir),
+                uploaded_file_paths=uploaded_file_paths,
+                task_id=task_id,
+                rag_provider=kb_provider,
+                operation_id=op.id,
+                lease_owner=owner,
+            )
+
+            return {
+                "message": f"Uploaded {len(uploaded_files)} files. Processing in background.",
+                "files": uploaded_files,
+                "task_id": task_id,
+            }
+        except Exception as exc:
+            coordinator.complete(
+                kb_name,
+                op.id,
+                "failed",
+                owner=owner,
+                error_code="upload_failed",
+                error=format_exception_message(exc),
+            )
+            raise
+    except KbBusyError as exc:
+        _raise_kb_busy(exc)
+    except KbLedgerError as exc:
+        _raise_kb_ledger_error(exc)
     except HTTPException:
         raise
     except ValueError:
@@ -2316,20 +2559,71 @@ async def create_knowledge_base(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_hash: str) -> None:
+async def run_reindex_task(
+    kb_name: str,
+    base_dir: str,
+    task_id: str,
+    signature_hash: str,
+    operation_id: str = None,
+    lease_owner: str = None,
+) -> None:
     """Re-index a KB's raw documents against the currently-active embedding config.
 
     Each ``(profile, model, dimension, base_url)`` combination gets its own
     flat ``<kb>/version-N/`` storage directory. Prior versions are preserved
     untouched so switching the active embedding model back to a
     previously-indexed one reuses the existing version with no extra work.
+
+    ``operation_id`` / ``lease_owner`` let this task renew and close the
+    ``KbWriteCoordinator`` lease acquired by the reindex route.
     """
     task_manager = TaskIDManager.get_instance()
     task_stream_manager = get_task_stream_manager()
     task_stream_manager.ensure_task(task_id)
 
+    coordinator = None
+    heartbeat = None
+    if operation_id and lease_owner:
+        coordinator = KbWriteCoordinator(base_dir=base_dir, owner=lease_owner)
+
+    def _renew() -> None:
+        if coordinator is not None:
+            coordinator.verify_lease(kb_name, operation_id, owner=lease_owner)
+
+    def _verify_lease() -> None:
+        """Fail closed at a write checkpoint when the lease was lost / unknown."""
+        if heartbeat is not None:
+            heartbeat.check()
+        _renew()
+
+    def _finish(status: str, *, error_code: str | None = None, error: str | None = None) -> None:
+        if coordinator is not None:
+            coordinator.complete(
+                kb_name,
+                operation_id,
+                status,
+                owner=lease_owner,
+                error_code=error_code,
+                error=error,
+                index_task_id=task_id,
+            )
+
     with capture_task_logs(task_id):
         try:
+            if coordinator is not None:
+                # If the lease was already taken over (or the ledger is
+                # unreadable) before this task started, stop immediately instead
+                # of writing under the new holder / unknown ownership.
+                coordinator.verify_lease(kb_name, operation_id, owner=lease_owner)
+                heartbeat = LeaseHeartbeat(
+                    coordinator,
+                    kb_name,
+                    operation_id,
+                    owner=lease_owner,
+                    interval=heartbeat_interval_seconds(coordinator),
+                )
+                heartbeat.start()
+
             base_path = Path(base_dir)
             kb_dir = base_path / kb_name
             raw_dir = kb_dir / "raw"
@@ -2364,6 +2658,7 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
             rag_service = RAGService(kb_base_dir=str(base_path), provider=None)
 
             def _on_progress(batch_num: int, total_batches: int) -> None:
+                _verify_lease()
                 progress_tracker.update(
                     ProgressStage.PROCESSING_DOCUMENTS,
                     f"Embedding batches: {batch_num}/{total_batches}",
@@ -2375,15 +2670,26 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
             # failure, parse error, etc.) so it surfaces in the task log
             # rather than being swallowed into a generic wrapper. A False
             # return is reserved for "no documents to index" — surface that
-            # specifically too.
-            success = await rag_service.initialize(
-                kb_name=kb_name,
-                file_paths=file_paths,
-                progress_callback=_on_progress,
-            )
+            # specifically too. The heartbeat aborts the indexing if another
+            # holder takes over the lease mid-run.
+            if heartbeat is not None:
+                success = await heartbeat.run_guarded(
+                    rag_service.initialize(
+                        kb_name=kb_name,
+                        file_paths=file_paths,
+                        progress_callback=_on_progress,
+                    )
+                )
+            else:
+                success = await rag_service.initialize(
+                    kb_name=kb_name,
+                    file_paths=file_paths,
+                    progress_callback=_on_progress,
+                )
             if not success:
                 raise RuntimeError(f"Re-index found no valid documents to index in '{kb_name}'.")
 
+            _verify_lease()
             completed_at = datetime.now().isoformat()
             metadata_file = kb_dir / "metadata.json"
             try:
@@ -2405,6 +2711,7 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
                     meta_err,
                 )
 
+            _verify_lease()
             manager = get_kb_manager()
             manager.update_kb_status(
                 name=kb_name,
@@ -2435,9 +2742,24 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
             if mutated:
                 manager._save_config()
 
+            _verify_lease()
             _task_log(task_id, f"Re-index of '{kb_name}' complete", level="success")
             task_manager.update_task_status(task_id, "completed")
             task_stream_manager.emit_complete(task_id, f"Re-index of '{kb_name}' complete")
+            _finish("succeeded")
+        except KbLeaseError as exc:
+            _task_log(
+                task_id,
+                f"KB '{kb_name}' write lease lost or unknown; stopping stale task: {exc}",
+                level="error",
+            )
+            task_manager.update_task_status(task_id, "error", error="kb_ownership_lost")
+            task_stream_manager.emit_failed(
+                task_id,
+                f"Ownership of KB '{kb_name}' write lease was lost or became unknown; "
+                "stale task stopped.",
+            )
+            # Deliberately no _finish: the ledger belongs to the new holder now.
         except Exception as e:
             import traceback as _tb
 
@@ -2455,6 +2777,17 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
             except Exception:
                 pass
             task_stream_manager.emit_failed(task_id, error_msg, details=trace)
+            try:
+                _finish("failed", error_code="reindex_failed", error=format_exception_message(e))
+            except Exception as finish_exc:
+                _task_log(
+                    task_id,
+                    f"Could not persist failure record: {finish_exc}",
+                    level="warning",
+                )
+        finally:
+            if heartbeat is not None:
+                await heartbeat.stop()
 
 
 @router.post("/{kb_name}/reindex")
@@ -2518,24 +2851,51 @@ async def reindex_knowledge_base(
         task_id = _build_unique_task_id("kb_reindex", kb_name)
         get_task_stream_manager().ensure_task(task_id)
 
-        _mark_kb_queued_for_processing(
-            manager, kb_name, task_id, "Queueing re-index...", status="initializing"
+        # Per-KB lease: one mutation at a time; expired leases reconcile first.
+        coordinator = KbWriteCoordinator(base_dir=kb_base_dir)
+        owner = _kb_mutation_owner()
+        op = coordinator.acquire(
+            kb_name,
+            "reindex",
+            owner=owner,
+            user_id=_current_user_id(),
+            input_snapshot_hash=signature_hash,
         )
+        try:
+            _mark_kb_queued_for_processing(
+                manager, kb_name, task_id, "Queueing re-index...", status="initializing"
+            )
 
-        background_tasks.add_task(
-            run_reindex_task,
-            kb_name=kb_name,
-            base_dir=str(kb_base_dir),
-            task_id=task_id,
-            signature_hash=signature_hash,
-        )
+            background_tasks.add_task(
+                run_reindex_task,
+                kb_name=kb_name,
+                base_dir=str(kb_base_dir),
+                task_id=task_id,
+                signature_hash=signature_hash,
+                operation_id=op.id,
+                lease_owner=owner,
+            )
 
-        return {
-            "message": f"Re-indexing '{kb_name}' in the background.",
-            "task_id": task_id,
-            "signature": signature_hash,
-            "noop": False,
-        }
+            return {
+                "message": f"Re-indexing '{kb_name}' in the background.",
+                "task_id": task_id,
+                "signature": signature_hash,
+                "noop": False,
+            }
+        except Exception as exc:
+            coordinator.complete(
+                kb_name,
+                op.id,
+                "failed",
+                owner=owner,
+                error_code="reindex_failed",
+                error=format_exception_message(exc),
+            )
+            raise
+    except KbBusyError as exc:
+        _raise_kb_busy(exc)
+    except KbLedgerError as exc:
+        _raise_kb_ledger_error(exc)
     except HTTPException:
         raise
     except Exception as e:
@@ -2851,36 +3211,57 @@ async def sync_folder(kb_name: str, folder_id: str, background_tasks: Background
         task_id = _build_unique_task_id("kb_upload", f"{kb_name}_folder_{folder_id}")
         get_task_stream_manager().ensure_task(task_id)
 
-        # NOTE: We DO NOT update sync state here anymore.
-        # It is updated in run_upload_processing_task only after successful processing.
-        # This prevents marking files as synced if processing fails (race condition fix).
+        # Per-KB lease: folder sync is an upload mutation.
+        coordinator = KbWriteCoordinator(base_dir=kb_base_dir)
+        owner = _kb_mutation_owner()
+        op = coordinator.acquire(kb_name, "upload", owner=owner, user_id=_current_user_id())
+        try:
+            # NOTE: We DO NOT update sync state here anymore.
+            # It is updated in run_upload_processing_task only after successful processing.
+            # This prevents marking files as synced if processing fails (race condition fix).
 
-        _mark_kb_queued_for_processing(
-            manager,
-            kb_name,
-            task_id,
-            f"Syncing {len(files_to_process)} file(s) from linked folder...",
-        )
+            _mark_kb_queued_for_processing(
+                manager,
+                kb_name,
+                task_id,
+                f"Syncing {len(files_to_process)} file(s) from linked folder...",
+            )
 
-        # Add background task to process files
-        background_tasks.add_task(
-            run_upload_processing_task,
-            kb_name=kb_name,
-            base_dir=str(kb_base_dir),
-            uploaded_file_paths=files_to_process,
-            task_id=task_id,
-            rag_provider=kb_provider,
-            folder_id=folder_id,  # Pass folder_id to update state on success
-        )
+            # Add background task to process files
+            background_tasks.add_task(
+                run_upload_processing_task,
+                kb_name=kb_name,
+                base_dir=str(kb_base_dir),
+                uploaded_file_paths=files_to_process,
+                task_id=task_id,
+                rag_provider=kb_provider,
+                folder_id=folder_id,  # Pass folder_id to update state on success
+                operation_id=op.id,
+                lease_owner=owner,
+            )
 
-        return {
-            "message": f"Syncing {len(files_to_process)} files from linked folder",
-            "folder_path": folder_path,
-            "new_files": changes["new_count"],
-            "modified_files": changes["modified_count"],
-            "file_count": len(files_to_process),
-            "task_id": task_id,
-        }
+            return {
+                "message": f"Syncing {len(files_to_process)} files from linked folder",
+                "folder_path": folder_path,
+                "new_files": changes["new_count"],
+                "modified_files": changes["modified_count"],
+                "file_count": len(files_to_process),
+                "task_id": task_id,
+            }
+        except Exception as exc:
+            coordinator.complete(
+                kb_name,
+                op.id,
+                "failed",
+                owner=owner,
+                error_code="upload_failed",
+                error=format_exception_message(exc),
+            )
+            raise
+    except KbBusyError as exc:
+        _raise_kb_busy(exc)
+    except KbLedgerError as exc:
+        _raise_kb_ledger_error(exc)
     except HTTPException:
         raise
     except ValueError:

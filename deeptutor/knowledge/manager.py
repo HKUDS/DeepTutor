@@ -488,6 +488,28 @@ class KnowledgeBaseManager:
         self._save_config()
         self._sync_kb_to_pb(name, kb_config)
 
+    def mark_needs_reindex(self, name: str, *, reason: str = "") -> None:
+        """Mark a KB as needing reindex and persist the config entry.
+
+        Used by the knowledge-card publication failure path (§7.9.2
+        requirement 9): when a partial provider mutation cannot be ruled out,
+        the KB is marked ``needs_reindex`` and its status flips to
+        ``needs_reindex`` so the writable-KB policy blocks new publication
+        until the KB is repaired.
+        """
+        self.config = self._load_config()
+        kb_config = self.config.get("knowledge_bases", {}).get(name)
+        if not isinstance(kb_config, dict):
+            return
+        kb_config["needs_reindex"] = True
+        kb_config["status"] = "needs_reindex"
+        kb_config["updated_at"] = datetime.now().isoformat()
+        if reason:
+            kb_config["last_error"] = reason
+            kb_config["last_error_at"] = datetime.now().isoformat()
+        self._save_config()
+        self._sync_kb_to_pb(name, kb_config)
+
     def get_kb_entry(self, name: str) -> dict | None:
         """The KB's raw ``kb_config.json`` record, or ``None`` if unregistered.
 

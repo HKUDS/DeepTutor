@@ -18,6 +18,7 @@ from deeptutor.services.llm.provider_core.openai_responses import (
     convert_tools,
     parse_response_output,
 )
+from deeptutor.services.llm.provider_core.unified.types import UnifiedProtocolError
 
 
 class AzureOpenAIProvider(LLMProvider):
@@ -29,10 +30,14 @@ class AzureOpenAIProvider(LLMProvider):
         api_base: str = "",
         default_model: str = "gpt-5.2-chat",
         extra_headers: dict[str, str] | None = None,
+        api_protocol: str = "auto",
+        strict_protocol: bool = False,
     ):
         super().__init__(api_key, api_base)
         self.default_model = default_model
         self.extra_headers = extra_headers or {}
+        self.api_protocol = api_protocol or "auto"
+        self.strict_protocol = strict_protocol
 
         if not api_key:
             raise ValueError("Azure OpenAI api_key is required")
@@ -105,6 +110,31 @@ class AzureOpenAIProvider(LLMProvider):
         message = f"Error: {body_text[:500]}" if body_text else f"Error calling Azure OpenAI: {exc}"
         return LLMResponse(content=message, finish_reason="error")
 
+    def _enforce_explicit_protocol(self) -> None:
+        """Reject explicit protocols this Azure provider cannot speak.
+
+        The Azure OpenAI provider is a Responses-only backend: ``auto`` and
+        ``openai_responses`` are the only supported values.  Any other
+        explicit protocol raises the stable :class:`UnifiedProtocolError`
+        before an SDK request is issued, so the profile can never silently
+        fall back to a different wire protocol.
+        """
+        if self.api_protocol not in ("auto", "openai_responses"):
+            raise UnifiedProtocolError(
+                f"This Azure OpenAI provider cannot speak {self.api_protocol}",
+                code="protocol_unsupported",
+                protocol=self.api_protocol,
+                provider="azure_openai",
+            )
+
+    def _protocol_error(self, exc: Exception) -> UnifiedProtocolError:
+        return UnifiedProtocolError(
+            str(exc)[:500],
+            code="protocol_call_failed",
+            protocol=self.api_protocol,
+            provider="azure_openai",
+        )
+
     async def chat(
         self,
         messages: list[dict[str, Any]],
@@ -127,8 +157,13 @@ class AzureOpenAIProvider(LLMProvider):
         )
         body.update(adapt_chat_kwargs_to_responses(extra_kwargs))
         try:
+            self._enforce_explicit_protocol()
             return parse_response_output(await self._client.responses.create(**body))
+        except UnifiedProtocolError:
+            raise
         except Exception as exc:
+            if self.strict_protocol and self.api_protocol != "auto":
+                raise self._protocol_error(exc) from exc
             return self._handle_error(exc)
 
     async def chat_stream(
@@ -158,6 +193,7 @@ class AzureOpenAIProvider(LLMProvider):
         idle_timeout_s = 90
 
         try:
+            self._enforce_explicit_protocol()
             stream = await self._client.responses.create(**body)
 
             async def _timed_stream():
@@ -182,12 +218,16 @@ class AzureOpenAIProvider(LLMProvider):
                 usage=usage,
                 reasoning_content=reasoning_content,
             )
+        except UnifiedProtocolError:
+            raise
         except asyncio.TimeoutError:
             return LLMResponse(
                 content=f"Error calling Azure OpenAI: stream stalled for more than {idle_timeout_s} seconds",
                 finish_reason="error",
             )
         except Exception as exc:
+            if self.strict_protocol and self.api_protocol != "auto":
+                raise self._protocol_error(exc) from exc
             return self._handle_error(exc)
 
     def get_default_model(self) -> str:

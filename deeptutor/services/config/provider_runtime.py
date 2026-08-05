@@ -37,7 +37,11 @@ from .embedding_endpoint import (
     normalize_embedding_endpoint_for_display,
 )
 from .loader import load_config_with_main
-from .model_catalog import ModelCatalogService, get_model_catalog_service
+from .model_catalog import (
+    LLM_API_PROTOCOLS,
+    ModelCatalogService,
+    get_model_catalog_service,
+)
 
 SUPPORTED_SEARCH_PROVIDERS = {
     "brave",
@@ -440,6 +444,28 @@ class NormalizedProviderConfig:
     extra_headers: dict[str, str] | None = None
 
 
+def resolve_api_protocol(binding: str | None, api_protocol: str | None) -> tuple[str, str]:
+    """Resolve the effective API protocol for an LLM profile.
+
+    Returns ``(resolved_protocol, resolution_reason)``. Explicit values are
+    honored verbatim. ``auto`` (the legacy-migration value) preserves the
+    pre-protocol heuristic: Anthropic bindings resolve to
+    ``anthropic_messages``, everything else stays ``openai_chat_completions``.
+    The runtime's deeper Responses-vs-Chat heuristic continues to live in the
+    provider adapters; this is the profile-level contract the UI audits.
+    """
+    requested = (api_protocol or "auto").strip().lower()
+    if requested not in LLM_API_PROTOCOLS:
+        requested = "auto"
+    if requested != "auto":
+        return requested, f"explicit:{requested}"
+    canonical = canonical_provider_name(binding)
+    spec = find_by_name(canonical)
+    if spec is not None and spec.backend == "anthropic":
+        return "anthropic_messages", "auto:anthropic_binding"
+    return "openai_chat_completions", "auto:default_chat_completions"
+
+
 @dataclass(slots=True)
 class ResolvedLLMConfig:
     """Resolved runtime LLM config used by get_llm_config/factory."""
@@ -456,6 +482,10 @@ class ResolvedLLMConfig:
     extra_headers: dict[str, str] = field(default_factory=dict)
     reasoning_effort: str | None = None
     context_window: int | None = None
+    api_protocol: str = "auto"
+    strict_protocol: bool = False
+    resolved_api_protocol: str = ""
+    protocol_resolution_reason: str = ""
 
 
 @dataclass(slots=True)
@@ -665,6 +695,13 @@ def resolve_llm_runtime_config(
         api_key = "sk-no-key-required"
     extra_headers = active_extra_headers or ((mapped.extra_headers or {}) if mapped else {})
 
+    api_protocol = _as_str((profile or {}).get("api_protocol")) or "auto"
+    strict_protocol = bool(_coerce_optional_bool((profile or {}).get("strict_protocol")))
+    resolved_api_protocol, protocol_resolution_reason = resolve_api_protocol(
+        binding_hint_raw,
+        api_protocol,
+    )
+
     return ResolvedLLMConfig(
         model=resolved_model,
         provider_name=spec.name,
@@ -678,6 +715,10 @@ def resolve_llm_runtime_config(
         extra_headers=extra_headers,
         reasoning_effort=reasoning_effort,
         context_window=context_window,
+        api_protocol=api_protocol,
+        strict_protocol=strict_protocol,
+        resolved_api_protocol=resolved_api_protocol,
+        protocol_resolution_reason=protocol_resolution_reason,
     )
 
 
@@ -1182,4 +1223,5 @@ __all__ = [
     "resolve_embedding_runtime_config",
     "resolve_search_runtime_config",
     "search_provider_state",
+    "resolve_api_protocol",
 ]

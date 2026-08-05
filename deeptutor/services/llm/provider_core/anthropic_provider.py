@@ -16,6 +16,7 @@ from typing import Any
 import json_repair
 
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, ToolCallRequest
+from deeptutor.services.llm.provider_core.unified.types import UnifiedProtocolError
 
 _ALNUM = string.ascii_letters + string.digits
 
@@ -55,11 +56,15 @@ class AnthropicProvider(LLMProvider):
         default_model: str = "claude-sonnet-4-20250514",
         extra_headers: dict[str, str] | None = None,
         supports_prompt_caching: bool = True,
+        api_protocol: str = "auto",
+        strict_protocol: bool = False,
     ):
         super().__init__(api_key, api_base)
         self.default_model = default_model
         self.extra_headers = extra_headers or {}
         self._supports_prompt_caching = supports_prompt_caching
+        self.api_protocol = api_protocol or "auto"
+        self.strict_protocol = strict_protocol
 
         from anthropic import AsyncAnthropic
 
@@ -508,9 +513,14 @@ class AnthropicProvider(LLMProvider):
             extra_kwargs.pop(key, None)
         kwargs.update({k: v for k, v in extra_kwargs.items() if v is not None})
         try:
+            self._enforce_explicit_protocol()
             response = await self._client.messages.create(**kwargs)
             return self._parse_response(response)
+        except UnifiedProtocolError:
+            raise
         except Exception as e:
+            if self.strict_protocol and self.api_protocol != "auto":
+                raise self._protocol_error(e) from e
             return self._handle_error(e)
 
     async def chat_stream(
@@ -540,6 +550,7 @@ class AnthropicProvider(LLMProvider):
         kwargs.update({k: v for k, v in extra_kwargs.items() if v is not None})
         idle_timeout_s = 90
         try:
+            self._enforce_explicit_protocol()
             async with self._client.messages.stream(**kwargs) as stream:
                 if on_content_delta:
                     stream_iter = stream.text_stream.__aiter__()
@@ -557,13 +568,35 @@ class AnthropicProvider(LLMProvider):
                     timeout=idle_timeout_s,
                 )
             return self._parse_response(response)
+        except UnifiedProtocolError:
+            raise
         except asyncio.TimeoutError:
             return LLMResponse(
                 content=f"Error calling LLM: stream stalled for more than {idle_timeout_s} seconds",
                 finish_reason="error",
             )
         except Exception as e:
+            if self.strict_protocol and self.api_protocol != "auto":
+                raise self._protocol_error(e) from e
             return self._handle_error(e)
+
+    def _enforce_explicit_protocol(self) -> None:
+        """Reject explicit protocols this Anthropic provider cannot speak."""
+        if self.api_protocol not in ("auto", "anthropic_messages"):
+            raise UnifiedProtocolError(
+                f"This Anthropic provider cannot speak {self.api_protocol}",
+                code="protocol_unsupported",
+                protocol=self.api_protocol,
+                provider="anthropic",
+            )
+
+    def _protocol_error(self, exc: Exception) -> UnifiedProtocolError:
+        return UnifiedProtocolError(
+            str(exc)[:500],
+            code="protocol_call_failed",
+            protocol=self.api_protocol,
+            provider="anthropic",
+        )
 
     def get_default_model(self) -> str:
         return self.default_model

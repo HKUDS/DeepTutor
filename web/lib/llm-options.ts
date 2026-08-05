@@ -13,6 +13,10 @@ export interface LLMOption extends LLMSelection {
   provider_label?: string;
   context_window?: number;
   is_active_default: boolean;
+  /** FT-05: profile API-protocol contract and last capability probe result. */
+  api_protocol?: string;
+  strict_protocol?: boolean;
+  capability_probe_status?: string;
 }
 
 export interface LLMOptionsResponse {

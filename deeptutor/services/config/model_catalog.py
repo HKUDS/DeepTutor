@@ -5,6 +5,7 @@ from copy import deepcopy
 import json
 import os
 from pathlib import Path
+import re
 import tempfile
 import threading
 from typing import Any
@@ -18,6 +19,27 @@ from .embedding_endpoint import normalize_embedding_endpoint_for_display
 # enter through ``get_model_catalog_service()`` so the path is resolved from the
 # current user's PathService on every call.
 CATALOG_PATH = get_path_service().get_settings_file("model_catalog")
+
+# LLM profile API-protocol contract (FT-05). ``auto`` is the compatibility value
+# migrated from legacy profiles that predate the field; the three explicit values
+# are the selectable protocols the Models UI offers. ``strict_protocol=true``
+# means the runtime must never silently fall back to another protocol.
+LLM_API_PROTOCOLS = (
+    "auto",
+    "openai_chat_completions",
+    "openai_responses",
+    "anthropic_messages",
+)
+EXPLICIT_LLM_API_PROTOCOLS = (
+    "openai_chat_completions",
+    "openai_responses",
+    "anthropic_messages",
+)
+
+# Capability-probe states written onto the active LLM profile by the config test
+# runner (Settings > Diagnostics > Run test). ``unknown`` is the default until
+# the first probe completes; the UI renders passed/failed badges.
+CAPABILITY_PROBE_STATUSES = ("unknown", "probing", "passed", "failed")
 
 
 def _service_shell() -> dict[str, Any]:
@@ -143,6 +165,25 @@ class ModelCatalogService:
                 profile.setdefault("api_version", "")
                 profile.setdefault("base_url", "")
                 profile.setdefault("api_key", "")
+                if service_name == "llm":
+                    # Legacy profiles lack the protocol fields; they migrate to
+                    # ``auto`` to preserve the pre-protocol heuristic. Newly
+                    # created profiles always carry an explicit value.
+                    profile.setdefault("api_protocol", "auto")
+                    profile.setdefault("strict_protocol", False)
+                    profile.setdefault("capability_probe_status", "unknown")
+                    profile.setdefault("capability_probe_at", "")
+                    profile.setdefault("capability_probe_message", "")
+                    if profile.get("api_protocol") not in LLM_API_PROTOCOLS:
+                        profile["api_protocol"] = "auto"
+                        changed = True
+                    if not isinstance(profile.get("strict_protocol"), bool):
+                        raw = str(profile.get("strict_protocol") or "").strip().lower()
+                        profile["strict_protocol"] = raw in {"true", "1", "yes", "on"}
+                        changed = True
+                    if profile.get("capability_probe_status") not in CAPABILITY_PROBE_STATUSES:
+                        profile["capability_probe_status"] = "unknown"
+                        changed = True
                 if service_name == "search":
                     profile.setdefault("provider", "brave")
                     profile.setdefault("proxy", "")
@@ -249,4 +290,121 @@ def get_model_catalog_service() -> ModelCatalogService:
     return ModelCatalogService.get_instance(get_path_service().get_settings_file("model_catalog"))
 
 
-__all__ = ["CATALOG_PATH", "ModelCatalogService", "get_model_catalog_service"]
+# Credential-looking material that provider backends sometimes echo back in
+# probe/connection error text (the failing request headers, an invalid token,
+# an API key). Applied to ``capability_probe_message`` and LLM test events so a
+# failure can never leak a secret to the stored catalog or the browser.
+_PROBE_SECRET_PATTERNS = (
+    # OpenAI / Anthropic style keys: sk-..., sk-ant-api03-...
+    re.compile(r"\bsk-[A-Za-z0-9_\-]{6,}\b"),
+    # Authorization header values (optionally with a Bearer scheme).
+    re.compile(
+        r"\bAuthorization\s*[:=]\s*(?:Bearer\s+)?[A-Za-z0-9._~+\-/=]{6,}",
+        re.IGNORECASE,
+    ),
+    # Standalone Bearer tokens.
+    re.compile(r"\bBearer\s+[A-Za-z0-9._~+\-/=]{6,}", re.IGNORECASE),
+    # Explicit API-key header values: api-key / x-api-key / x-goog-api-key.
+    re.compile(
+        r"\b[a-z0-9\-_]*api[-_]?key[a-z0-9\-_]*\s*[:=]\s*[A-Za-z0-9._~+\-/=]{4,}",
+        re.IGNORECASE,
+    ),
+)
+
+
+def sanitize_probe_message(message: str) -> str:
+    """Redact credential material from a provider error message.
+
+    Provider backends sometimes echo the failing request — the Authorization
+    header, the Bearer token, an API key — back in the exception text. This is
+    the single scrub point for probe messages before they are persisted to the
+    catalog or emitted to the browser via SSE.
+    """
+    if not message:
+        return message or ""
+    safe = message
+    for pattern in _PROBE_SECRET_PATTERNS:
+        safe = pattern.sub("[REDACTED]", safe)
+    return safe
+
+
+def redact_catalog(catalog: dict[str, Any]) -> dict[str, Any]:
+    """Return a browser-safe copy of the catalog.
+
+    Profile ``api_key`` values never leave the server. Each profile carries an
+    ``api_key_set`` boolean instead so the UI can show whether credentials are
+    configured, and the tri-state merge on save preserves an untouched key.
+    The LLM capability-probe message is scrubbed for credential material too —
+    a provider failure text must never leak a key/token/header to the browser.
+    """
+    redacted = deepcopy(catalog)
+    for service in redacted.get("services", {}).values():
+        for profile in service.get("profiles", []):
+            if not isinstance(profile, dict):
+                continue
+            profile["api_key_set"] = bool(profile.get("api_key"))
+            profile["api_key"] = ""
+            message = profile.get("capability_probe_message")
+            if message:
+                profile["capability_probe_message"] = sanitize_probe_message(str(message))
+    return redacted
+
+
+def merge_profile_secrets(
+    stored: dict[str, Any],
+    incoming: dict[str, Any],
+) -> dict[str, Any]:
+    """Resolve tri-state ``api_key`` from an incoming (redacted) catalog.
+
+    The browser never holds the raw key, so the PUT payload can only express
+    intent:
+
+    - a non-empty ``api_key`` replaces the stored value;
+    - ``api_key_set=false`` (with an empty ``api_key``) clears it;
+    - otherwise (untouched field) the stored value is preserved.
+
+    ``api_key_set`` is transient and popped before persisting.
+    """
+    incoming_services = incoming.get("services", {})
+    stored_services = stored.get("services", {})
+    for service_name, service in incoming_services.items():
+        if not isinstance(service, dict):
+            continue
+        stored_service = stored_services.get(service_name, {})
+        stored_by_id = {
+            str(profile.get("id")): profile
+            for profile in stored_service.get("profiles", [])
+            if isinstance(profile, dict)
+        }
+        for profile in service.get("profiles", []):
+            if not isinstance(profile, dict):
+                continue
+            stored_profile = stored_by_id.get(str(profile.get("id") or ""))
+            if stored_profile is None:
+                # Brand-new profile from the UI — no stored secret to preserve.
+                profile.pop("api_key_set", None)
+                continue
+            incoming_key = profile.get("api_key")
+            key_set = profile.get("api_key_set")
+            if incoming_key:
+                stored_key = incoming_key
+            elif key_set is False:
+                stored_key = ""
+            else:
+                stored_key = stored_profile.get("api_key", "")
+            profile["api_key"] = stored_key
+            profile.pop("api_key_set", None)
+    return incoming
+
+
+__all__ = [
+    "CATALOG_PATH",
+    "ModelCatalogService",
+    "get_model_catalog_service",
+    "LLM_API_PROTOCOLS",
+    "EXPLICIT_LLM_API_PROTOCOLS",
+    "CAPABILITY_PROBE_STATUSES",
+    "sanitize_probe_message",
+    "redact_catalog",
+    "merge_profile_secrets",
+]

@@ -213,14 +213,30 @@ class DocumentAdder:
                 return {}
         return {}
 
-    def add_documents(self, source_files: List[str], allow_duplicates: bool = False) -> List[Path]:
-        """Validate and stage files into raw/ before indexing."""
+    def add_documents(
+        self,
+        source_files: List[str],
+        allow_duplicates: bool = False,
+        lease_check=None,
+    ) -> List[Path]:
+        """Validate and stage files into raw/ before indexing.
+
+        ``lease_check`` is an optional zero-argument callable invoked at a
+        bounded per-file checkpoint before each file is staged. It lets a
+        background writer make staging cooperatively lease-aware: cancelling an
+        ``asyncio.to_thread`` await does not stop the underlying staging thread,
+        so the callback aborts the thread (by raising) at the next checkpoint
+        once the lease was lost / became unknown, instead of continuing to copy
+        files under a newer holder.
+        """
         logger.info(f"Validating documents for '{self.kb_name}'...")
 
         ingested_hashes = self.get_ingested_hashes()
         files_to_process: list[Path] = []
 
         for source in source_files:
+            if lease_check is not None:
+                lease_check()
             source_path = Path(source)
             if not source_path.exists() or not source_path.is_file():
                 logger.warning(f"Missing file: {source}")
@@ -342,8 +358,47 @@ async def add_documents(
 ) -> int:
     """Convenience function used by CLI wrappers."""
     from deeptutor.knowledge.manager import KnowledgeBaseManager
+    from deeptutor.knowledge.write_coordinator import (
+        KbLeaseError,
+        KbWriteCoordinator,
+        LeaseHeartbeat,
+        heartbeat_interval_seconds,
+    )
 
     manager = KnowledgeBaseManager(base_dir=base_dir)
+    # Per-KB lease, matching the API upload path: one mutation at a time and
+    # expired leases reconcile before any new write.
+    coordinator = KbWriteCoordinator(base_dir=base_dir)
+    op = coordinator.acquire(kb_name, "upload")
+    heartbeat = LeaseHeartbeat(
+        coordinator,
+        kb_name,
+        op.id,
+        owner=op.lease_owner,
+        interval=heartbeat_interval_seconds(coordinator),
+    )
+    heartbeat.start()
+
+    def _finish(status: str, *, error_code: str | None = None, error: str | None = None) -> None:
+        coordinator.complete(
+            kb_name,
+            op.id,
+            status,
+            owner=op.lease_owner,
+            error_code=error_code,
+            error=error,
+        )
+
+    def _verify_lease() -> None:
+        """Fail closed at a write checkpoint when the lease was lost / unknown."""
+        heartbeat.check()
+        coordinator.verify_lease(kb_name, op.id, owner=op.lease_owner)
+
+    def _lease_check() -> None:
+        # Cooperative staging checkpoint: renews the lease per file and aborts
+        # the staging thread at the next file once ownership is lost/unknown.
+        _verify_lease()
+
     try:
         manager.update_kb_status(
             name=kb_name,
@@ -366,8 +421,18 @@ async def add_documents(
             api_key=api_key,
             base_url=base_url,
         )
-        new_files = adder.add_documents(source_files, allow_duplicates=allow_duplicates)
+        # Staging runs in a worker thread so the heartbeat keeps the lease alive
+        # even while many/large files are copied into raw/. The thread is
+        # cooperatively lease-aware via ``_lease_check`` at per-file checkpoints.
+        new_files = await asyncio.to_thread(
+            adder.add_documents,
+            source_files,
+            allow_duplicates=allow_duplicates,
+            lease_check=_lease_check,
+        )
+        heartbeat.check()
         if not new_files:
+            _verify_lease()
             manager.update_kb_status(
                 name=kb_name,
                 status="ready",
@@ -382,14 +447,17 @@ async def add_documents(
                     "timestamp": datetime.now().isoformat(),
                 },
             )
+            _finish("succeeded")
             return 0
-        result = await adder.process_new_documents(new_files)
+        result = await heartbeat.run_guarded(adder.process_new_documents(new_files))
         if result.has_failures:
             raise RuntimeError(
                 f"Failed to index {result.failed_count}/{len(new_files)} file(s): "
                 f"{result.failure_summary()}"
             )
+        _verify_lease()
         adder.update_metadata(result.processed_count)
+        _verify_lease()
 
         manager.update_kb_status(
             name=kb_name,
@@ -408,8 +476,19 @@ async def add_documents(
                 "index_action": "upload",
             },
         )
+        _finish("succeeded")
         return result.processed_count
+    except KbLeaseError:
+        # A newer holder reconciled the lease while we worked, or the lease
+        # state became unknown: stop instead of writing under them. The ledger
+        # belongs to the new holder now.
+        logger.warning("KB '%s' write lease lost/unknown; stale writer stopped", kb_name)
+        raise
     except Exception as exc:
+        try:
+            _finish("failed", error_code="upload_failed", error=str(exc))
+        except Exception as finish_exc:
+            logger.warning("Could not persist failure record for KB '%s': %s", kb_name, finish_exc)
         manager.update_kb_status(
             name=kb_name,
             status="error",
@@ -425,6 +504,8 @@ async def add_documents(
             },
         )
         raise
+    finally:
+        await heartbeat.stop()
 
 
 async def main() -> None:

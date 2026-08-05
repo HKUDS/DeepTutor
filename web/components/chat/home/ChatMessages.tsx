@@ -66,6 +66,7 @@ import ContextReferenceTree, {
 } from "./ContextReferenceTree";
 import { AssistantActivity } from "./TracePanels";
 import { agentGlyph } from "@/components/agents/agent-icons";
+import { InlineImageJobs } from "@/components/media/InlineImageJobs";
 import { useConnectedAgentKinds } from "@/hooks/useConnectedAgentKinds";
 
 const MathAnimatorViewer = dynamic(
@@ -1432,6 +1433,11 @@ export const ChatMessageList = memo(function ChatMessageList({
               attachments={msg.attachments ?? []}
               events={msg.events}
               onOpen={onPreviewAttachment}
+            />
+            {/* MED-03 additive hook: persistent image-generation job cards. */}
+            <InlineImageJobs
+              attachments={msg.attachments ?? []}
+              events={msg.events}
             />
             {(() => {
               // A turn that died (LLM/provider failure, interruption) ends

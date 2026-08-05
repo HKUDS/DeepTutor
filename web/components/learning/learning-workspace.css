@@ -1,0 +1,1390 @@
+/* ────────────────────────────────────────────────────────────────────────
+ * Feynman learning workspace (UI-01) — approved r9 color-separated
+ * hierarchy. Map/source, conversation/stage and evidence/evaluation surfaces
+ * use visibly distinct restrained color blocks paired with labels/icons.
+ *
+ * Semantic blocks:
+ *   blue   — knowledge map, source provenance, existing capability (reuse)
+ *   green  — Feynman conversation / Teach-Back
+ *   amber  — model feedback, progressive help, rubric scoring
+ *   coral  — server gate, gaps, failure states, needs-revision
+ *   violet — external input: source snapshots / ASR transcript boundary
+ *
+ * Theme-aware: ``.dark`` (and glass) re-map the base hues to accessible
+ * light-on-dark variants. Radius is capped at 8px; no marketing/hero
+ * composition; every scrollable surface keeps ``min-width: 0`` so long
+ * identifiers wrap instead of overflowing.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+.feynman-workspace {
+  --fw-blue: #2563eb;
+  --fw-green: #178245;
+  --fw-amber: #b45309;
+  --fw-coral: #c2332d;
+  --fw-violet: #7957b7;
+  --fw-surface: var(--card, #ffffff);
+  --fw-surface-2: var(--muted, #f1ede2);
+  --fw-bg: var(--background, #fdfcf9);
+  --fw-border: var(--border, #e6decc);
+  --fw-text: var(--foreground, #1c1816);
+  --fw-muted: var(--muted-foreground, #6d645a);
+
+  /* Filled chips keep readable foregrounds on their own tint. */
+  --fw-blue-ink: #ffffff;
+  --fw-green-ink: #ffffff;
+  --fw-amber-ink: #ffffff;
+  --fw-coral-ink: #ffffff;
+  --fw-violet-ink: #ffffff;
+
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  /* The delayed-reteach queue and the knowledge-card aggregate sit below the
+     three-column workbench; the workbench keeps a usable height and the lower
+     sections are reached by scrolling this container (UI-02 round-1). */
+  overflow-y: auto;
+  color: var(--fw-text);
+  background: var(--fw-bg);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+}
+
+.dark .feynman-workspace,
+.feynman-workspace.dark {
+  --fw-blue: #60a5fa;
+  --fw-green: #4ade80;
+  --fw-amber: #fbbf24;
+  --fw-coral: #f87171;
+  --fw-violet: #b69be8;
+  --fw-blue-ink: #0d0d0d;
+  --fw-green-ink: #0d0d0d;
+  --fw-amber-ink: #0d0d0d;
+  --fw-coral-ink: #0d0d0d;
+  --fw-violet-ink: #0d0d0d;
+}
+
+.feynman-workspace *,
+.feynman-workspace *::before,
+.feynman-workspace *::after {
+  box-sizing: border-box;
+}
+
+.feynman-workspace button,
+.feynman-workspace textarea,
+.feynman-workspace input {
+  font: inherit;
+  color: inherit;
+}
+
+.feynman-workspace .fw-nowrap {
+  white-space: nowrap;
+}
+
+/* ── App bar + legend ──────────────────────────────────────────────────── */
+
+.fw-appbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 9px 14px;
+  border-bottom: 2px solid var(--fw-blue);
+  background: var(--fw-surface);
+}
+
+.fw-appbar-context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--fw-muted);
+}
+
+.fw-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fw-legend-tag {
+  --fw-color: var(--fw-border);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 3px 7px;
+  border-left: 4px solid var(--fw-color);
+  background: color-mix(in srgb, var(--fw-color) 14%, var(--fw-surface));
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+/* ── Three-column workspace ────────────────────────────────────────────── */
+
+.fw-workspace {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.82fr) minmax(430px, 1.75fr) minmax(270px, 1fr);
+  min-width: 0;
+  /* Keep the three-column workbench usable even when the lower aggregate
+     sections would otherwise squeeze it to nothing (UI-02 round-1). */
+  min-height: 600px;
+  flex: 1;
+}
+
+.fw-panel {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--fw-surface);
+}
+
+.fw-panel + .fw-panel {
+  border-left: 1px solid var(--fw-border);
+}
+
+.fw-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--fw-border);
+}
+
+.fw-panel-title {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  overflow-wrap: anywhere;
+}
+
+.fw-panel-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+}
+
+.fw-content {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+/* ── Colour-coded blocks ───────────────────────────────────────────────── */
+
+.fw-block {
+  --fw-color: var(--fw-border);
+  min-width: 0;
+  padding: 9px 10px;
+  border-left: 5px solid var(--fw-color);
+  background: color-mix(in srgb, var(--fw-color) 11%, var(--fw-surface));
+  overflow-wrap: anywhere;
+}
+
+.fw-blue {
+  --fw-color: var(--fw-blue);
+}
+.fw-green {
+  --fw-color: var(--fw-green);
+}
+.fw-amber {
+  --fw-color: var(--fw-amber);
+}
+.fw-coral {
+  --fw-color: var(--fw-coral);
+}
+.fw-violet {
+  --fw-color: var(--fw-violet);
+}
+
+.fw-tag {
+  --fw-color: var(--fw-border);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 3px 7px;
+  border-left: 4px solid var(--fw-color);
+  background: color-mix(in srgb, var(--fw-color) 14%, var(--fw-surface));
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.fw-filled {
+  color: var(--fw-color);
+  border-color: var(--fw-color);
+  background: color-mix(in srgb, var(--fw-color) 12%, var(--fw-surface));
+}
+
+/* ── Knowledge map ─────────────────────────────────────────────────────── */
+
+.fw-map-section {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fw-section-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  color: var(--fw-muted);
+  font-size: 12px;
+}
+
+.fw-node-list {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.fw-node {
+  --fw-color: var(--fw-border);
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  padding: 8px;
+  border-left: 4px solid var(--fw-color);
+  background: color-mix(in srgb, var(--fw-color) 9%, var(--fw-surface));
+  border-radius: 5px;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.fw-node:hover {
+  background: color-mix(in srgb, var(--fw-color) 16%, var(--fw-surface));
+}
+
+.fw-node.current {
+  border-left-width: 7px;
+  background: color-mix(in srgb, var(--fw-green) 16%, var(--fw-surface));
+}
+
+.fw-node-mark {
+  width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  border: 2px solid var(--fw-color);
+  color: var(--fw-color);
+  font-weight: 600;
+  font-size: 11px;
+  border-radius: 4px;
+}
+
+.fw-node-body {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.fw-node-body small {
+  color: var(--fw-muted);
+}
+
+.fw-priority {
+  color: var(--fw-muted);
+  font-size: 11px;
+}
+
+/* ── Stage bar ─────────────────────────────────────────────────────────── */
+
+.fw-concept-head {
+  display: grid;
+  gap: 9px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--fw-border);
+}
+
+.fw-concept-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.fw-stage-track {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  min-width: 0;
+}
+
+.fw-stage {
+  --fw-color: var(--fw-border);
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 6px 7px;
+  border-top: 4px solid var(--fw-color);
+  background: color-mix(in srgb, var(--fw-color) 9%, var(--fw-surface));
+  border-radius: 4px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.fw-stage.active {
+  background: color-mix(in srgb, var(--fw-amber) 20%, var(--fw-surface));
+}
+
+.fw-stage.done {
+  background: color-mix(in srgb, var(--fw-green) 16%, var(--fw-surface));
+}
+
+.fw-stage.blocked {
+  background: color-mix(in srgb, var(--fw-coral) 14%, var(--fw-surface));
+}
+
+.fw-stage small {
+  color: var(--fw-muted);
+}
+
+/* ── Conversation ──────────────────────────────────────────────────────── */
+
+.fw-chat-stream {
+  min-width: 0;
+  /* Allow the stream to shrink below its content so fixed siblings (stage
+     bar, help bar, composer) never get pushed past the panel/viewport. */
+  min-height: 0;
+  flex: 1 1 0%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 13px;
+  background: var(--fw-bg);
+}
+
+.fw-message {
+  --fw-color: var(--fw-border);
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 9px 11px;
+  border-left: 6px solid var(--fw-color);
+  background: color-mix(in srgb, var(--fw-color) 12%, var(--fw-surface));
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+
+.fw-message.user {
+  margin-left: 8%;
+}
+
+.fw-message.assistant {
+  margin-right: 8%;
+}
+
+.fw-message.system {
+  font-size: 12px;
+}
+
+.fw-message-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fw-message-meta {
+  color: var(--fw-muted);
+  font-size: 11px;
+}
+
+.fw-pending-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--fw-amber);
+}
+
+/* ── Help bar ──────────────────────────────────────────────────────────── */
+
+.fw-help-bar {
+  display: grid;
+  gap: 7px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--fw-border);
+  background: var(--fw-surface);
+}
+
+.fw-help-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fw-help-button {
+  min-height: 34px;
+  padding: 6px 9px;
+  border: 1px solid var(--fw-amber);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fw-amber) 10%, var(--fw-surface));
+  color: var(--fw-text);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.fw-help-button:hover {
+  background: color-mix(in srgb, var(--fw-amber) 20%, var(--fw-surface));
+}
+
+.fw-help-button.full {
+  border-color: var(--fw-coral);
+  background: color-mix(in srgb, var(--fw-coral) 10%, var(--fw-surface));
+}
+
+/* ── Composer + ASR transcript boundary ────────────────────────────────── */
+
+.fw-composer {
+  display: grid;
+  gap: 8px;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--fw-border);
+  background: var(--fw-surface);
+}
+
+.fw-asr-review {
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+  border: 2px dotted var(--fw-violet);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fw-violet) 11%, var(--fw-surface));
+}
+
+.fw-asr-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fw-asr-review textarea,
+.fw-compose-row textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  border: 1px solid var(--fw-border);
+  border-radius: 6px;
+  background: var(--fw-bg);
+  color: var(--fw-text);
+  padding: 8px;
+}
+
+.fw-asr-review textarea {
+  min-height: 56px;
+}
+
+.fw-asr-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fw-confirm-button {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--fw-violet);
+  border-radius: 6px;
+  background: var(--fw-violet);
+  color: var(--fw-violet-ink);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.fw-compose-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px 38px;
+  gap: 8px;
+  align-items: end;
+  min-width: 0;
+}
+
+.fw-compose-row textarea {
+  min-height: 44px;
+  max-height: 108px;
+}
+
+.fw-icon-button {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--fw-border);
+  border-radius: 6px;
+  background: var(--fw-surface);
+  color: var(--fw-text);
+  cursor: pointer;
+}
+
+.fw-icon-button.violet {
+  border-color: var(--fw-violet);
+  color: var(--fw-violet);
+}
+
+.fw-icon-button.send {
+  border-color: var(--fw-green);
+  background: var(--fw-green);
+  color: var(--fw-green-ink);
+}
+
+/* ── Evidence panel ────────────────────────────────────────────────────── */
+
+.fw-evidence-content {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.fw-gate-summary {
+  display: grid;
+  gap: 5px;
+  padding: 9px 10px;
+  border-left: 7px solid var(--fw-coral);
+  background: color-mix(in srgb, var(--fw-coral) 12%, var(--fw-surface));
+  border-radius: 5px;
+  overflow-wrap: anywhere;
+}
+
+.fw-rubric {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--fw-border);
+  border-bottom: 1px solid var(--fw-border);
+  min-width: 0;
+}
+
+.fw-rubric-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--fw-border);
+  overflow-wrap: anywhere;
+}
+
+.fw-rubric-row:last-child {
+  border-bottom: 0;
+}
+
+.fw-source-list {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fw-source-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--fw-border);
+  overflow-wrap: anywhere;
+}
+
+.fw-source-mark {
+  flex: 0 0 auto;
+  color: var(--fw-violet);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.fw-note {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border-left: 5px solid var(--fw-green);
+  background: color-mix(in srgb, var(--fw-green) 10%, var(--fw-surface));
+  border-radius: 5px;
+  overflow-wrap: anywhere;
+}
+
+.fw-note.coral {
+  border-left-color: var(--fw-coral);
+  background: color-mix(in srgb, var(--fw-coral) 10%, var(--fw-surface));
+}
+
+.fw-note.amber {
+  border-left-color: var(--fw-amber);
+  background: color-mix(in srgb, var(--fw-amber) 10%, var(--fw-surface));
+}
+
+/* ── Conflict (both sides must stay visible) ───────────────────────────── */
+
+.fw-conflict {
+  display: grid;
+  gap: 7px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--fw-coral) 55%, var(--fw-border));
+  border-left: 6px solid var(--fw-coral);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fw-coral) 7%, var(--fw-surface));
+  min-width: 0;
+}
+
+.fw-conflict-sides {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  min-width: 0;
+}
+
+.fw-conflict-side {
+  min-width: 0;
+  padding: 7px;
+  border-left: 4px solid var(--fw-violet);
+  background: color-mix(in srgb, var(--fw-violet) 9%, var(--fw-surface));
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+}
+
+/* ── Buttons / banners ─────────────────────────────────────────────────── */
+
+.fw-primary-button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--fw-blue);
+  border-radius: 6px;
+  background: var(--fw-blue);
+  color: var(--fw-blue-ink);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.fw-primary-button:hover {
+  opacity: 0.92;
+}
+
+.fw-ghost-button {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--fw-border);
+  border-radius: 6px;
+  background: var(--fw-surface);
+  color: var(--fw-text);
+  cursor: pointer;
+}
+
+.fw-ghost-button:hover {
+  background: color-mix(in srgb, var(--fw-border) 30%, var(--fw-surface));
+}
+
+.fw-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 9px 12px;
+  border-left: 6px solid var(--fw-coral);
+  background: color-mix(in srgb, var(--fw-coral) 11%, var(--fw-surface));
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+
+.fw-banner.blue {
+  border-left-color: var(--fw-blue);
+  background: color-mix(in srgb, var(--fw-blue) 11%, var(--fw-surface));
+}
+
+.fw-empty {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  min-height: 140px;
+  padding: 20px;
+  text-align: center;
+  color: var(--fw-muted);
+  overflow-wrap: anywhere;
+}
+
+/* ── Learning Space (delayed reteach queue) ────────────────────────────── */
+
+.fw-learning-space {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  padding: 13px 16px;
+  border-top: 4px solid var(--fw-blue);
+  border-bottom: 1px solid var(--fw-border);
+  background: var(--fw-surface);
+}
+
+.fw-learning-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.fw-learning-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(220px, 0.8fr);
+  gap: 18px;
+  min-width: 0;
+}
+
+.fw-queue-row {
+  min-width: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(90px, 0.55fr) minmax(115px, 0.7fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--fw-border);
+  background: transparent;
+  color: var(--fw-text);
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.fw-queue-row:hover {
+  background: color-mix(in srgb, var(--fw-border) 30%, var(--fw-surface));
+}
+
+.fw-queue-meta {
+  color: var(--fw-muted);
+  font-size: 12px;
+}
+
+.fw-stable-row {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 9px;
+  border-left: 6px solid var(--fw-green);
+  background: color-mix(in srgb, var(--fw-green) 10%, var(--fw-surface));
+  border-radius: 5px;
+  overflow-wrap: anywhere;
+}
+
+/* ── Mobile tabs ───────────────────────────────────────────────────────── */
+
+.fw-mobile-tabs {
+  display: none;
+}
+
+/* ── Long-id expandable ────────────────────────────────────────────────── */
+
+.fw-long-id {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  overflow-wrap: anywhere;
+}
+
+.fw-long-id-full {
+  overflow-wrap: anywhere;
+}
+
+/* ── Responsive: mobile tabs (r9 §13.1) ────────────────────────────────── */
+
+@media (max-width: 820px) {
+  .fw-legend {
+    display: none;
+  }
+
+  .fw-appbar {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 8px 12px;
+  }
+
+  /* The review queue is a desktop section; mobile keeps exactly the three
+     tabs (知识地图 / 对话 / 证据) so the composer stays inside the viewport. */
+  .fw-learning-space {
+    display: none;
+  }
+
+  .fw-workspace {
+    display: block;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  .fw-workspace .fw-panel {
+    display: none;
+    height: 100%;
+    border-left: 0;
+  }
+
+  .fw-workspace[data-active-tab="map"] .fw-panel.fw-map-panel,
+  .fw-workspace[data-active-tab="chat"] .fw-panel.fw-chat-panel,
+  .fw-workspace[data-active-tab="evidence"] .fw-panel.fw-evidence-panel {
+    display: flex;
+  }
+
+  .fw-mobile-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-bottom: 1px solid var(--fw-border);
+    background: var(--fw-surface);
+    flex: 0 0 auto;
+  }
+
+  .fw-mobile-tab {
+    --fw-color: var(--fw-border);
+    min-width: 0;
+    min-height: 44px;
+    padding: 9px 6px;
+    border: 0;
+    border-top: 4px solid var(--fw-color);
+    background: color-mix(in srgb, var(--fw-color) 8%, var(--fw-surface));
+    color: var(--fw-text);
+    text-align: center;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+  }
+
+  .fw-mobile-tab[aria-selected="true"] {
+    background: color-mix(in srgb, var(--fw-color) 20%, var(--fw-surface));
+    font-weight: 600;
+  }
+
+  .fw-composer {
+    flex: 0 0 auto;
+    border-top: 2px solid var(--fw-border);
+  }
+}
+
+@media (max-width: 520px) {
+  .fw-concept-head {
+    padding: 8px 10px;
+  }
+
+  .fw-stage-track {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fw-stage {
+    padding: 5px 6px;
+  }
+
+  .fw-help-bar {
+    padding: 8px 10px;
+  }
+
+  .fw-composer {
+    padding: 8px 10px 10px;
+  }
+
+  .fw-message.user,
+  .fw-message.assistant {
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .fw-help-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fw-help-button {
+    width: 100%;
+  }
+
+  .fw-conflict-sides {
+    grid-template-columns: 1fr;
+  }
+
+  .fw-compose-row {
+    grid-template-columns: minmax(0, 1fr) 38px 38px;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Knowledge-card review/publication (UI-02, r9) — pending summary in the
+ * Evidence Panel, desktop center editor, mobile full-screen editor, KB
+ * selector with connected/read-only locks, explicit confirmation dialog.
+ * Colors keep the approved hierarchy: amber pending/draft, blue provenance/KB,
+ * green published, coral failures/gates, violet model/media.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* ── Pending summary (Evidence Panel, §13.5) ──────────────────────────── */
+
+.fw-kc-summary {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-left: 5px solid var(--fw-amber);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fw-amber) 10%, var(--fw-surface));
+  overflow-wrap: anywhere;
+}
+
+.fw-kc-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fw-kc-title {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.fw-kc-summary-text {
+  margin: 0;
+  color: color-mix(in srgb, var(--fw-text) 82%, var(--fw-amber));
+  font-size: 11px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.fw-kc-meta {
+  color: var(--fw-muted);
+  font-size: 11px;
+}
+
+.fw-kc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fw-ghost-button.fw-danger {
+  border-color: color-mix(in srgb, var(--fw-coral) 55%, var(--fw-border));
+  color: var(--fw-coral);
+}
+
+.fw-primary-button.fw-danger-button {
+  border-color: var(--fw-coral);
+  background: var(--fw-coral);
+  color: var(--fw-coral-ink);
+}
+
+/* Status/note blocks */
+.fw-kc-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px 10px;
+  border-left: 5px solid var(--fw-amber);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--fw-amber) 10%, var(--fw-surface));
+  overflow-wrap: anywhere;
+}
+
+.fw-kc-note.coral {
+  border-left-color: var(--fw-coral);
+  background: color-mix(in srgb, var(--fw-coral) 10%, var(--fw-surface));
+}
+
+.fw-kc-note .fw-ghost-button {
+  flex: 0 0 auto;
+}
+
+/* ── Desktop center editor ─────────────────────────────────────────────── */
+
+.fw-kc-editor {
+  background: var(--fw-surface);
+}
+
+.fw-kc-editor-head {
+  flex: 0 0 auto;
+}
+
+.fw-kc-editor-scroll {
+  padding: 14px 16px 18px;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.fw-kc-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fw-kc-field-label {
+  font-size: 12px;
+  color: var(--fw-muted);
+}
+
+.fw-kc-input,
+.fw-kc-textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  border: 1px solid var(--fw-border);
+  border-radius: 6px;
+  background: var(--fw-bg);
+  color: var(--fw-text);
+  padding: 8px 10px;
+  font: inherit;
+  overflow-wrap: anywhere;
+}
+
+.fw-kc-textarea {
+  min-height: 140px;
+  line-height: 1.6;
+}
+
+.fw-kc-readonly {
+  padding: 8px 10px;
+  border-left: 4px solid var(--fw-blue);
+  background: color-mix(in srgb, var(--fw-blue) 9%, var(--fw-surface));
+  border-radius: 5px;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+
+.fw-kc-readonly-body {
+  white-space: pre-wrap;
+}
+
+/* Sources (immutable provenance) */
+.fw-kc-source-list {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fw-kc-source-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 8px;
+  border-left: 4px solid var(--fw-violet);
+  background: color-mix(in srgb, var(--fw-violet) 9%, var(--fw-surface));
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+}
+
+/* Artifacts */
+.fw-kc-artifact-list {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fw-kc-artifact-row {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--fw-border);
+  border-left: 4px solid var(--fw-violet);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--fw-violet) 7%, var(--fw-surface));
+  overflow-wrap: anywhere;
+}
+
+.fw-kc-artifact-thumb {
+  width: 42px;
+  height: 42px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--fw-border);
+  background: color-mix(in srgb, var(--fw-violet) 16%, var(--fw-surface));
+}
+
+.fw-kc-artifact-missing {
+  display: grid;
+  place-items: center;
+  color: var(--fw-coral);
+}
+
+.fw-kc-attach-list {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.fw-kc-attach-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--fw-border);
+}
+
+/* KB selector */
+.fw-kb-options {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fw-kb-option {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 9px;
+  border: 1px solid var(--fw-border);
+  border-left: 5px solid var(--fw-blue);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fw-blue) 8%, var(--fw-surface));
+  overflow-wrap: anywhere;
+}
+
+.fw-kb-option.disabled {
+  border-left-color: var(--fw-border);
+  background: color-mix(in srgb, var(--fw-border) 16%, var(--fw-surface));
+  opacity: 0.8;
+}
+
+.fw-kb-option-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.fw-kb-option.disabled .fw-kb-option-label {
+  cursor: not-allowed;
+}
+
+.fw-kb-option input[type="radio"] {
+  flex: 0 0 auto;
+  accent-color: var(--fw-blue);
+}
+
+/* Published provenance + model identity reuse .fw-block */
+.fw-kc-provenance {
+  display: grid;
+  gap: 3px;
+}
+
+/* Editor footer */
+.fw-kc-editor-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 16px;
+  border-top: 1px solid var(--fw-border);
+  background: var(--fw-surface);
+}
+
+.fw-kc-editor-footer small {
+  max-width: 300px;
+  overflow-wrap: anywhere;
+}
+
+.fw-kc-editor-footer .fw-kc-actions {
+  flex: 0 0 auto;
+}
+
+.fw-kc-plus {
+  font-weight: 700;
+}
+
+/* ── Mobile full-screen editor ─────────────────────────────────────────── */
+
+.fw-kc-mobile-editor {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--fw-bg);
+  color: var(--fw-text);
+}
+
+.fw-kc-mobile-top {
+  flex: 0 0 auto;
+  height: 52px;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--fw-border);
+  background: var(--fw-surface);
+}
+
+.fw-kc-mobile-title {
+  margin: 0;
+  font-size: 15px;
+  text-align: center;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fw-kc-mobile-editor .fw-kc-editor-scroll {
+  padding: 12px 12px 16px;
+}
+
+.fw-kc-mobile-editor .fw-kc-editor-footer {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 12px;
+}
+
+.fw-kc-mobile-editor .fw-kc-editor-footer small {
+  max-width: none;
+}
+
+/* ── Confirmation dialog (accessible, never window.confirm) ────────────── */
+
+.fw-kc-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(28, 24, 22, 0.42);
+}
+
+.fw-kc-dialog {
+  width: min(100%, 440px);
+  max-height: 86vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--fw-border);
+  border-radius: 8px;
+  background: var(--fw-surface);
+  color: var(--fw-text);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.18);
+  overflow-wrap: anywhere;
+}
+
+.fw-kc-dialog-head {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fw-kc-dialog-icon {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fw-coral) 14%, var(--fw-surface));
+  color: var(--fw-coral);
+}
+
+.fw-kc-dialog-body {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fw-kc-dialog-kb {
+  padding: 9px 10px;
+  border-left: 5px solid var(--fw-blue);
+  background: color-mix(in srgb, var(--fw-blue) 9%, var(--fw-surface));
+  border-radius: 5px;
+  overflow-wrap: anywhere;
+}
+
+.fw-kc-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Long-id stays inside the editor without overflow */
+.fw-kc-editor .fw-long-id,
+.fw-kc-mobile-editor .fw-long-id {
+  max-width: 100%;
+}
+
+/* Mobile: the full-screen editor and dialog cover the tabs and composer. */
+@media (max-width: 820px) {
+  .fw-kc-editor-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fw-kc-editor-footer small {
+    max-width: none;
+  }
+
+  .fw-kc-artifact-row {
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+  }
+}
+
+/* Learning Space · knowledge-card aggregate (UI-02) */
+.fw-kc-overview-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--fw-border);
+  overflow-wrap: anywhere;
+}
+
+/* Link to the existing KB area when no writable KB exists (§13.5). */
+.fw-kc-link {
+  color: var(--fw-blue);
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}

@@ -5,6 +5,7 @@ import {
   type KeyboardEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -109,6 +110,7 @@ import {
   selectedBooksToPayload,
   type SelectedBookReference,
 } from "@/lib/book-references";
+import { createFeynmanHandoffConsumer } from "@/lib/feynman-handoff-consume";
 
 const NotebookRecordPicker = dynamic(
   () => import("@/components/notebook/NotebookRecordPicker"),
@@ -1230,6 +1232,65 @@ export default function ChatPage() {
     },
     [capabilityConfigs, setCapability, setKBs, setTools, userEnabledTools],
   );
+
+  /**
+   * Feynman learning → chat handoff (UI-01).
+   *
+   * The learning workspace never writes evidence itself: it stashes a draft in
+   * a scoped sessionStorage slot and navigates here. We consume that handoff
+   * exactly once — after the composer's prefill bridge is available — select
+   * the existing `mastery_path` capability and drop the draft into the real
+   * composer for the learner to confirm. Malformed / expired / wrong-session /
+   * unsupported-version handoffs are discarded by the contract.
+   *
+   * The retry lifecycle is route-safe (lib/feynman-handoff-consume.ts): the
+   * pending timer is tracked and cancelled by the effect cleanup, and every
+   * callback is guarded by a generation check. That generation counter alone
+   * is not enough though: it lives *inside* one consumer, so a retry left over
+   * from session A could fire between session B's commit and A's passive-effect
+   * cleanup, observe B's composer bridge and consume A's slot into B. To close
+   * that window we keep a shared active-session marker (`activeHandoffPathRef`)
+   * updated by a layout-phase lifecycle tied to `sessionIdParam` — it invalidates
+   * A and marks B synchronously during commit, before any browser timer can run,
+   * so an orphaned A retry fails `isActive(A)` even before A's passive cleanup.
+   * The consumer itself is created fresh per handoff effect, so every start
+   * binds the current `handleSelectCapability` and composer callbacks rather
+   * than the configuration captured by the first effect run.
+   */
+  const activeHandoffPathRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    activeHandoffPathRef.current = sessionIdParam;
+    return () => {
+      activeHandoffPathRef.current = null;
+    };
+  }, [sessionIdParam]);
+  const handoffConsumedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sid = sessionIdParam;
+    if (!sid || handoffConsumedForRef.current === sid) return;
+    // One consumer per handoff effect, so every start binds the CURRENT
+    // handleSelectCapability / composer callbacks. Retaining a single consumer
+    // across effect runs would permanently capture onHandoff's configuration
+    // from the render that first created it; capability settings and user tool
+    // toggles load asynchronously and change handleSelectCapability, so a later
+    // effect run must be able to hand off with the fresh settings.
+    const consumer = createFeynmanHandoffConsumer(
+      window.sessionStorage,
+      {
+        composerReady: () => Boolean(prefillInputRef.current),
+        isActive: (pathId) => activeHandoffPathRef.current === pathId,
+        onHandoff: (handoff) => {
+          if (activeHandoffPathRef.current !== handoff.pathId) return;
+          handoffConsumedForRef.current = handoff.pathId;
+          handleSelectCapability("mastery_path");
+          prefillInputRef.current?.(handoff.draft);
+        },
+      },
+    );
+    consumer.start(sid);
+    return () => consumer.cancel();
+  }, [sessionIdParam, prefillInputRef, handleSelectCapability]);
 
   const fileToAttachment = useCallback(
     (f: File): Promise<PendingAttachment> =>

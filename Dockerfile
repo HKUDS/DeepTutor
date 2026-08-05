@@ -171,6 +171,19 @@ COPY pyproject.toml ./
 COPY requirements/ ./requirements/
 COPY requirements.txt ./
 
+# Normalize read/traverse bits for the unprivileged runtime user. COPY preserves
+# the host checkout's mode bits; under a restrictive checkout the app code and
+# frontend assets arrive as root-owned 0700 dirs / 0600 files, which the
+# `deeptutor` (UID 1000) backend/frontend processes — the "other" class — cannot
+# read or traverse (PermissionError on deeptutor import, EACCES on web/public).
+# `a+rX` grants read everywhere and execute/search only where a bit already
+# exists (directories and executable files), so code stays root-owned and is
+# never made writable by the runtime user. Writable ownership is preserved only
+# where intended: /app/data and /app/web/.next are chowned below.
+RUN chmod -R a+rX /app/deeptutor /app/deeptutor_cli /app/scripts \
+        /app/web /app/requirements \
+    && chmod a+rX /app/pyproject.toml /app/requirements.txt
+
 # Create necessary directories (these will be overwritten by volume mounts)
 RUN mkdir -p \
     data/user/settings \

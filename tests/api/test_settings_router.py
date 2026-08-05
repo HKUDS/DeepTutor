@@ -110,6 +110,9 @@ def _build_catalog(
                         "api_key": llm_api_key,
                         "api_version": "",
                         "extra_headers": {},
+                        # FT-05: a saved profile carries an explicit protocol;
+                        # `auto` is reserved for untouched legacy migration.
+                        "api_protocol": "openai_chat_completions",
                         "models": [
                             {
                                 "id": "llm-model-default",
@@ -497,13 +500,592 @@ def test_llm_provider_choices_include_edenai() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_settings_redacts_api_keys_and_exposes_protocols(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalog = _build_catalog(
+        llm_model="gpt-4o-mini",
+        llm_base_url="https://api.example.com/v1",
+        llm_api_key="secret-key",
+        embedding_model="text-embedding-3-small",
+        embedding_base_url="https://api.example.com/v1/embeddings",
+        embedding_api_key="emb-key",
+    )
+    service = _FakeCatalogService(catalog)
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+    monkeypatch.setattr(
+        settings_router,
+        "get_current_user",
+        lambda: SimpleNamespace(is_admin=True),
+    )
+
+    payload = await settings_router.get_settings()
+
+    llm_profile = payload["catalog"]["services"]["llm"]["profiles"][0]
+    emb_profile = payload["catalog"]["services"]["embedding"]["profiles"][0]
+    assert llm_profile["api_key"] == ""
+    assert llm_profile["api_key_set"] is True
+    assert emb_profile["api_key"] == ""
+    assert emb_profile["api_key_set"] is True
+    # The three explicit protocols are the selectable new/edit choices; `auto`
+    # is a legacy-compatibility state and is not offered as a normal option.
+    assert [p["value"] for p in payload["protocols"]["llm"]] == [
+        "openai_chat_completions",
+        "openai_responses",
+        "anthropic_messages",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_update_catalog_rejects_invalid_api_protocol(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi import HTTPException
+
+    catalog = _build_catalog(
+        llm_model="gpt-4o-mini",
+        llm_base_url="https://api.example.com/v1",
+        llm_api_key="secret-key",
+        embedding_model="text-embedding-3-small",
+        embedding_base_url="https://api.example.com/v1/embeddings",
+        embedding_api_key="emb-key",
+    )
+    catalog["services"]["llm"]["profiles"][0]["api_protocol"] = "bogus"
+    service = _FakeCatalogService(catalog)
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await settings_router.update_catalog(settings_router.CatalogPayload(catalog=catalog))
+    assert exc_info.value.status_code == 422
+    assert "bogus" in str(exc_info.value.detail)
+
+
+def _add_new_llm_profile(catalog: dict[str, Any]) -> dict[str, Any]:
+    """Append a brand-new LLM profile (no api_protocol) to a catalog copy."""
+    incoming = deepcopy(catalog)
+    incoming["services"]["llm"]["profiles"].append(
+        {
+            "id": "llm-profile-new",
+            "name": "New Endpoint",
+            "binding": "openai",
+            "base_url": "https://new.example.com/v1",
+            "api_key": "",
+            "api_key_set": False,
+            "api_version": "",
+            "extra_headers": {},
+            "models": [{"id": "llm-model-new", "name": "gpt-x", "model": "gpt-x"}],
+        }
+    )
+    return incoming
+
+
+@pytest.mark.asyncio
+async def test_update_catalog_rejects_new_llm_profile_without_protocol(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A newly created profile must select an explicit protocol — a missing
+    api_protocol must not normalize silently to ``auto`` (FT-05)."""
+    from fastapi import HTTPException
+
+    catalog = _build_catalog(
+        llm_model="gpt-4o-mini",
+        llm_base_url="https://api.example.com/v1",
+        llm_api_key="secret-key",
+        embedding_model="text-embedding-3-small",
+        embedding_base_url="https://api.example.com/v1/embeddings",
+        embedding_api_key="emb-key",
+    )
+    service = _FakeCatalogService(catalog)
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+
+    incoming = _add_new_llm_profile(catalog)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await settings_router.update_catalog(settings_router.CatalogPayload(catalog=incoming))
+    assert exc_info.value.status_code == 422
+    assert "explicit API protocol" in str(exc_info.value.detail)
+    # Nothing persisted.
+    assert "llm-profile-new" not in {p["id"] for p in service.load()["services"]["llm"]["profiles"]}
+
+
+@pytest.mark.asyncio
+async def test_apply_catalog_rejects_new_llm_profile_without_protocol(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The apply path enforces the same explicit-protocol contract."""
+    from fastapi import HTTPException
+
+    catalog = _build_catalog(
+        llm_model="gpt-4o-mini",
+        llm_base_url="https://api.example.com/v1",
+        llm_api_key="secret-key",
+        embedding_model="text-embedding-3-small",
+        embedding_base_url="https://api.example.com/v1/embeddings",
+        embedding_api_key="emb-key",
+    )
+    service = _FakeCatalogService(catalog)
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+
+    incoming = _add_new_llm_profile(catalog)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await settings_router.apply_catalog(settings_router.CatalogPayload(catalog=incoming))
+    assert exc_info.value.status_code == 422
+    assert "explicit API protocol" in str(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_update_catalog_rejects_edited_legacy_auto_profile_without_explicit_protocol(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A legacy ``auto`` profile whose connection settings changed must pick an
+    explicit protocol instead of silently staying on ``auto`` (FT-05)."""
+    from fastapi import HTTPException
+
+    catalog = _build_catalog(
+        llm_model="gpt-4o-mini",
+        llm_base_url="https://api.example.com/v1",
+        llm_api_key="secret-key",
+        embedding_model="text-embedding-3-small",
+        embedding_base_url="https://api.example.com/v1/embeddings",
+        embedding_api_key="emb-key",
+    )
+    # The stored profile is a migrated legacy ``auto`` profile.
+    catalog["services"]["llm"]["profiles"][0]["api_protocol"] = "auto"
+    service = _FakeCatalogService(catalog)
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+
+    incoming = deepcopy(catalog)
+    # Substantive connection edit (base_url) while api_protocol stays "auto".
+    incoming["services"]["llm"]["profiles"][0]["base_url"] = "https://changed.example.com/v1"
+    incoming["services"]["llm"]["profiles"][0]["api_key"] = ""
+    incoming["services"]["llm"]["profiles"][0]["api_key_set"] = True
+
+    with pytest.raises(HTTPException) as exc_info:
+        await settings_router.update_catalog(settings_router.CatalogPayload(catalog=incoming))
+    assert exc_info.value.status_code == 422
+    assert "explicit API protocol" in str(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_update_catalog_allows_untouched_legacy_auto_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An untouched legacy ``auto`` profile stays a valid compatibility state:
+    a redacted PUT with no connection changes saves without an explicit
+    protocol."""
+    catalog = _build_catalog(
+        llm_model="gpt-4o-mini",
+        llm_base_url="https://api.example.com/v1",
+        llm_api_key="secret-key",
+        embedding_model="text-embedding-3-small",
+        embedding_base_url="https://api.example.com/v1/embeddings",
+        embedding_api_key="emb-key",
+    )
+    catalog["services"]["llm"]["profiles"][0]["api_protocol"] = "auto"
+    service = _FakeCatalogService(catalog)
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+
+    redacted_incoming = deepcopy(catalog)
+    for profile in redacted_incoming["services"]["llm"]["profiles"]:
+        profile["api_key"] = ""
+        profile["api_key_set"] = True
+
+    response = await settings_router.update_catalog(
+        settings_router.CatalogPayload(catalog=redacted_incoming)
+    )
+
+    assert "catalog" in response
+    # Stored secret survived the redacted PUT.
+    assert service.load()["services"]["llm"]["profiles"][0]["api_key"] == "secret-key"
+    assert service.load()["services"]["llm"]["profiles"][0]["api_protocol"] == "auto"
+
+
+def _legacy_auto_catalog() -> dict[str, Any]:
+    """A migrated legacy LLM profile still on ``auto`` (compatibility state)."""
+    catalog = _build_catalog(
+        llm_model="gpt-4o-mini",
+        llm_base_url="https://api.example.com/v1",
+        llm_api_key="secret-key",
+        embedding_model="text-embedding-3-small",
+        embedding_base_url="https://api.example.com/v1/embeddings",
+        embedding_api_key="emb-key",
+    )
+    catalog["services"]["llm"]["profiles"][0]["api_protocol"] = "auto"
+    return catalog
+
+
+def _redact_llm_draft(catalog: dict[str, Any]) -> dict[str, Any]:
+    """Simulate the UI's redacted draft: LLM api_key emptied + api_key_set flag."""
+    incoming = deepcopy(catalog)
+    for profile in incoming["services"]["llm"]["profiles"]:
+        profile["api_key"] = ""
+        profile["api_key_set"] = True
+    return incoming
+
+
+@pytest.mark.asyncio
+async def test_update_catalog_rejects_api_key_replacement_on_legacy_auto_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replacing the API key is a real edit (FT-05): ``auto`` must be rejected
+    even when every other durable field matches the stored profile."""
+    from fastapi import HTTPException
+
+    service = _FakeCatalogService(_legacy_auto_catalog())
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+
+    incoming = _redact_llm_draft(_legacy_auto_catalog())
+    incoming["services"]["llm"]["profiles"][0]["api_key"] = "sk-replacement"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await settings_router.update_catalog(settings_router.CatalogPayload(catalog=incoming))
+    assert exc_info.value.status_code == 422
+    assert "explicit API protocol" in str(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_update_catalog_rejects_api_key_clear_on_legacy_auto_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicitly clearing the API key (api_key_set=false) is a real edit (FT-05):
+    ``auto`` must be rejected even when every other durable field is untouched."""
+    from fastapi import HTTPException
+
+    service = _FakeCatalogService(_legacy_auto_catalog())
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+
+    incoming = _redact_llm_draft(_legacy_auto_catalog())
+    incoming["services"]["llm"]["profiles"][0]["api_key_set"] = False
+
+    with pytest.raises(HTTPException) as exc_info:
+        await settings_router.update_catalog(settings_router.CatalogPayload(catalog=incoming))
+    assert exc_info.value.status_code == 422
+    assert "explicit API protocol" in str(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_update_catalog_rejects_strict_protocol_only_edit_on_legacy_auto_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Toggling ``strict_protocol`` is a real edit (FT-05): an otherwise untouched
+    legacy ``auto`` profile must pick an explicit protocol."""
+    from fastapi import HTTPException
+
+    service = _FakeCatalogService(_legacy_auto_catalog())
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+
+    incoming = _redact_llm_draft(_legacy_auto_catalog())
+    incoming["services"]["llm"]["profiles"][0]["strict_protocol"] = True
+
+    with pytest.raises(HTTPException) as exc_info:
+        await settings_router.update_catalog(settings_router.CatalogPayload(catalog=incoming))
+    assert exc_info.value.status_code == 422
+    assert "explicit API protocol" in str(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_update_catalog_rejects_any_edit_when_strict_protocol_auto_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A profile already on ``auto`` with ``strict_protocol=true`` must not remain
+    on ``auto`` after any durable edit (FT-05): an unrelated metadata edit still
+    forces an explicit protocol."""
+    from fastapi import HTTPException
+
+    catalog = _legacy_auto_catalog()
+    catalog["services"]["llm"]["profiles"][0]["strict_protocol"] = True
+    service = _FakeCatalogService(catalog)
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+
+    incoming = _redact_llm_draft(catalog)
+    # The edit is metadata-only (name); api_protocol stays "auto" and
+    # strict_protocol stays true — the pair must be rejected together.
+    incoming["services"]["llm"]["profiles"][0]["name"] = "Renamed"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await settings_router.update_catalog(settings_router.CatalogPayload(catalog=incoming))
+    assert exc_info.value.status_code == 422
+    assert "explicit API protocol" in str(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("name", "Renamed Endpoint"),  # display/name metadata
+        ("base_url", "https://changed.example.com/v1"),  # connection edit
+        ("api_version", "2026-01-01"),  # durable metadata
+        ("extra_headers", {"X-Custom": "header"}),  # connection metadata
+    ],
+)
+async def test_update_catalog_rejects_durable_field_edit_on_legacy_auto_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: Any,
+) -> None:
+    """Any durable field edit — metadata included — must reject ``auto`` (FT-05)."""
+    from fastapi import HTTPException
+
+    service = _FakeCatalogService(_legacy_auto_catalog())
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+
+    incoming = _redact_llm_draft(_legacy_auto_catalog())
+    incoming["services"]["llm"]["profiles"][0][field] = value
+
+    with pytest.raises(HTTPException) as exc_info:
+        await settings_router.update_catalog(settings_router.CatalogPayload(catalog=incoming))
+    assert exc_info.value.status_code == 422
+    assert "explicit API protocol" in str(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_update_catalog_allows_untouched_auto_profile_ignoring_probe_badge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Capability-probe fields are probe-derived, not user edits (FT-05): an
+    untouched legacy ``auto`` profile whose draft differs only in its probe badge
+    still saves as ``auto`` and keeps the stored secret."""
+    catalog = _legacy_auto_catalog()
+    catalog["services"]["llm"]["profiles"][0]["capability_probe_status"] = "unknown"
+    service = _FakeCatalogService(catalog)
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+
+    incoming = _redact_llm_draft(catalog)
+    # The in-flight Diagnostics draft carries a fresher probe badge; the badge
+    # is stamped by the test runner and must not count as a substantive edit.
+    incoming["services"]["llm"]["profiles"][0]["capability_probe_status"] = "probing"
+    incoming["services"]["llm"]["profiles"][0]["capability_probe_at"] = "2026-08-04T00:00:00Z"
+    incoming["services"]["llm"]["profiles"][0]["capability_probe_message"] = "probing"
+
+    response = await settings_router.update_catalog(
+        settings_router.CatalogPayload(catalog=incoming)
+    )
+
+    assert "catalog" in response
+    saved = service.load()
+    assert saved["services"]["llm"]["profiles"][0]["api_protocol"] == "auto"
+    assert saved["services"]["llm"]["profiles"][0]["api_key"] == "secret-key"
+
+
+@pytest.mark.asyncio
+async def test_apply_catalog_allows_untouched_legacy_auto_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The apply path preserves the compatibility state for an untouched legacy
+    ``auto`` profile (redacted draft, no durable edits)."""
+    service = _FakeCatalogService(_legacy_auto_catalog())
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+
+    redacted_incoming = _redact_llm_draft(_legacy_auto_catalog())
+
+    response = await settings_router.apply_catalog(
+        settings_router.CatalogPayload(catalog=redacted_incoming)
+    )
+
+    assert "catalog" in response
+    assert response["catalog"]["services"]["llm"]["profiles"][0]["api_protocol"] == "auto"
+    # Stored secret survived the redacted apply.
+    assert service.load()["services"]["llm"]["profiles"][0]["api_key"] == "secret-key"
+
+
+@pytest.mark.asyncio
+async def test_complete_tour_allows_untouched_legacy_auto_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """The tour-complete path preserves the compatibility state for an untouched
+    legacy ``auto`` profile (redacted draft, no durable edits)."""
+    service = _FakeCatalogService(_legacy_auto_catalog())
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+    tour_cache = tmp_path / ".tour_cache.json"
+    tour_cache.write_text('{"status": "running"}', encoding="utf-8")
+    monkeypatch.setattr(settings_router, "TOUR_CACHE", tour_cache)
+
+    redacted_incoming = _redact_llm_draft(_legacy_auto_catalog())
+
+    response = await settings_router.complete_tour(
+        settings_router.TourCompletePayload(catalog=redacted_incoming)
+    )
+
+    assert response["status"] == "completed"
+    assert service.load()["services"]["llm"]["profiles"][0]["api_protocol"] == "auto"
+    assert service.load()["services"]["llm"]["profiles"][0]["api_key"] == "secret-key"
+    assert '"status": "completed"' in tour_cache.read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_update_catalog_preserves_touched_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A redacted PUT (api_key="" + api_key_set=true) keeps the stored key."""
+    catalog = _build_catalog(
+        llm_model="gpt-4o-mini",
+        llm_base_url="https://api.example.com/v1",
+        llm_api_key="secret-key",
+        embedding_model="text-embedding-3-small",
+        embedding_base_url="https://api.example.com/v1/embeddings",
+        embedding_api_key="emb-key",
+    )
+    service = _FakeCatalogService(catalog)
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+
+    redacted_incoming = deepcopy(catalog)
+    for profile in redacted_incoming["services"]["llm"]["profiles"]:
+        profile["api_key"] = ""
+        profile["api_key_set"] = True
+
+    await settings_router.update_catalog(settings_router.CatalogPayload(catalog=redacted_incoming))
+
+    assert service.load()["services"]["llm"]["profiles"][0]["api_key"] == "secret-key"
+
+
+@pytest.mark.asyncio
+async def test_update_catalog_clears_secret_when_explicitly_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    catalog = _build_catalog(
+        llm_model="gpt-4o-mini",
+        llm_base_url="https://api.example.com/v1",
+        llm_api_key="secret-key",
+        embedding_model="text-embedding-3-small",
+        embedding_base_url="https://api.example.com/v1/embeddings",
+        embedding_api_key="emb-key",
+    )
+    service = _FakeCatalogService(catalog)
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+
+    cleared_incoming = deepcopy(catalog)
+    for profile in cleared_incoming["services"]["llm"]["profiles"]:
+        profile["api_key"] = ""
+        profile["api_key_set"] = False
+
+    await settings_router.update_catalog(settings_router.CatalogPayload(catalog=cleared_incoming))
+
+    assert service.load()["services"]["llm"]["profiles"][0]["api_key"] == ""
+
+
+@pytest.mark.asyncio
+async def test_start_service_test_merges_stored_secret_without_returning_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Diagnostics posts a redacted draft; the server must merge the stored
+    tri-state secret before the probe runs and never echo it back."""
+    stored = _build_catalog(
+        llm_model="gpt-4o-mini",
+        llm_base_url="https://api.example.com/v1",
+        llm_api_key="secret-llm-key",
+        embedding_model="text-embedding-3-small",
+        embedding_base_url="https://api.example.com/v1/embeddings",
+        embedding_api_key="secret-emb-key",
+    )
+    service = _FakeCatalogService(stored)
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+
+    captured: dict[str, Any] = {}
+
+    class _FakeRunner:
+        def start(self, service_name: str, catalog: dict[str, Any]):
+            captured["service"] = service_name
+            captured["catalog"] = catalog
+            return SimpleNamespace(id="run-abc123")
+
+    monkeypatch.setattr(settings_router, "get_config_test_runner", lambda: _FakeRunner())
+
+    # Redacted draft, exactly what the UI posts: api_key="" + api_key_set=true.
+    draft = deepcopy(stored)
+    for service_name in ("llm", "embedding"):
+        for profile in draft["services"][service_name]["profiles"]:
+            profile["api_key"] = ""
+            profile["api_key_set"] = True
+
+    response = await settings_router.start_service_test(
+        "llm", settings_router.CatalogPayload(catalog=draft)
+    )
+
+    # The runner received a fully merged catalog with the stored secrets.
+    assert response == {"run_id": "run-abc123"}
+    assert captured["service"] == "llm"
+    merged_llm = captured["catalog"]["services"]["llm"]["profiles"][0]
+    merged_emb = captured["catalog"]["services"]["embedding"]["profiles"][0]
+    assert merged_llm["api_key"] == "secret-llm-key"
+    assert merged_emb["api_key"] == "secret-emb-key"
+    assert "api_key_set" not in merged_llm
+    # The raw secret never appears in the response.
+    assert "secret-llm-key" not in json.dumps(response)
+
+
+@pytest.mark.asyncio
+async def test_start_service_test_rejects_new_profile_without_protocol(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The diagnostics probe is a save-preview: a new LLM profile without an
+    explicit protocol must be rejected before the probe starts."""
+    from fastapi import HTTPException
+
+    stored = _build_catalog(
+        llm_model="gpt-4o-mini",
+        llm_base_url="https://api.example.com/v1",
+        llm_api_key="secret-key",
+        embedding_model="text-embedding-3-small",
+        embedding_base_url="https://api.example.com/v1/embeddings",
+        embedding_api_key="emb-key",
+    )
+    service = _FakeCatalogService(stored)
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+    monkeypatch.setattr(
+        settings_router,
+        "get_config_test_runner",
+        lambda: (_ for _ in ()).throw(AssertionError("runner must not be reached")),
+    )
+
+    draft = _add_new_llm_profile(stored)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await settings_router.start_service_test(
+            "llm", settings_router.CatalogPayload(catalog=draft)
+        )
+    assert exc_info.value.status_code == 422
+    assert "explicit API protocol" in str(exc_info.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_start_service_test_without_payload_uses_stored_catalog(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A bare POST (no draft) tests against the stored catalog as-is."""
+    stored = _build_catalog(
+        llm_model="gpt-4o-mini",
+        llm_base_url="https://api.example.com/v1",
+        llm_api_key="secret-llm-key",
+        embedding_model="text-embedding-3-small",
+        embedding_base_url="https://api.example.com/v1/embeddings",
+        embedding_api_key="secret-emb-key",
+    )
+    service = _FakeCatalogService(stored)
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+
+    captured: dict[str, Any] = {}
+
+    class _FakeRunner:
+        def start(self, service_name: str, catalog: dict[str, Any]):
+            captured["catalog"] = catalog
+            return SimpleNamespace(id="run-xyz789")
+
+    monkeypatch.setattr(settings_router, "get_config_test_runner", lambda: _FakeRunner())
+
+    response = await settings_router.start_service_test("llm", None)
+
+    assert response == {"run_id": "run-xyz789"}
+    assert captured["catalog"]["services"]["llm"]["profiles"][0]["api_key"] == "secret-llm-key"
+
+
+@pytest.mark.asyncio
 async def test_get_llm_options_returns_redacted_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
     catalog = _build_catalog(
         llm_model="gpt-4o-mini",
-        llm_base_url="https://llm.example/v1",
+        llm_base_url="https://api.example.com/v1",
         llm_api_key="secret-key",
         embedding_model="text-embedding-3-small",
-        embedding_base_url="https://emb.example/v1/embeddings",
+        embedding_base_url="https://api.example.com/v1/embeddings",
         embedding_api_key="emb-key",
     )
     service = _FakeCatalogService(catalog)
@@ -564,7 +1146,17 @@ async def test_update_catalog_invalidates_runtime_caches(monkeypatch: pytest.Mon
     new_llm_client = llm_client_module.get_llm_client()
     new_embedding_client = embedding_client_module.get_embedding_client()
 
-    assert response == {"catalog": updated_catalog}
+    # PUT persists the full catalog server-side but echoes a secret-redacted
+    # view: api_key is replaced by an api_key_set flag.
+    saved = service.load()
+    assert saved["services"]["llm"]["profiles"][0]["api_key"] == "new-llm-key"
+    assert saved["services"]["embedding"]["profiles"][0]["api_key"] == "new-embedding-key"
+    response_llm = response["catalog"]["services"]["llm"]["profiles"][0]
+    response_emb = response["catalog"]["services"]["embedding"]["profiles"][0]
+    assert response_llm["api_key"] == ""
+    assert response_llm["api_key_set"] is True
+    assert response_emb["api_key"] == ""
+    assert response_emb["api_key_set"] is True
     assert old_llm_config.model == "gpt-old"
     assert new_llm_config.model == "gpt-new"
     assert new_llm_config.base_url == "https://new-llm.example/v1"
@@ -609,7 +1201,12 @@ async def test_apply_catalog_invalidates_runtime_caches(monkeypatch: pytest.Monk
     new_llm_client = llm_client_module.get_llm_client()
     new_embedding_client = embedding_client_module.get_embedding_client()
 
-    assert response["catalog"] == applied_catalog
+    # The full catalog is persisted server-side; the echoed view is redacted.
+    saved = service.load()
+    assert saved["services"]["llm"]["profiles"][0]["api_key"] == "after-apply-llm-key"
+    assert response["catalog"]["services"]["llm"]["profiles"][0]["api_key"] == ""
+    assert response["catalog"]["services"]["llm"]["profiles"][0]["api_key_set"] is True
+    assert response["catalog"]["services"]["embedding"]["profiles"][0]["api_key"] == ""
     assert response["runtime"]["catalog_path"]
     assert new_llm_config.model == "gpt-after-apply"
     assert new_llm_client is not old_llm_client

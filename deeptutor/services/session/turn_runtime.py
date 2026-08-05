@@ -1620,6 +1620,13 @@ class TurnRuntimeManager:
                     "history_token_count": history_result.token_count,
                     "history_budget": history_result.budget,
                     "turn_id": turn_id,
+                    # The persisted row id of the incoming user message that
+                    # started this turn. The mastery loop capability injects it
+                    # into tool kwargs as the trusted ``message_id`` so
+                    # evidence binds to a real session record, never a
+                    # model-supplied value. None on regenerate/legacy paths
+                    # where no new user row was written this turn.
+                    "message_id": new_user_message_id,
                     "question_followup_context": followup_question_context or {},
                     "notebook_references": notebook_references,
                     "history_references": history_references,

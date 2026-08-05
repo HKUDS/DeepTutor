@@ -85,10 +85,20 @@ export type CatalogProfile = {
   provider?: string;
   base_url: string;
   api_key: string;
+  api_key_set?: boolean;
   api_version: string;
   extra_headers?: Record<string, string> | string;
   proxy?: string;
   max_results?: number;
+  // FT-05: LLM profile API-protocol contract. `api_protocol` is one of
+  // LLM_API_PROTOCOL_VALUES; `strict_protocol` disables cross-protocol
+  // fallback. `api_key_set` is the redacted GET flag — the raw secret never
+  // reaches the browser.
+  api_protocol?: string;
+  strict_protocol?: boolean;
+  capability_probe_status?: string;
+  capability_probe_at?: string;
+  capability_probe_message?: string;
   models: CatalogModel[];
 };
 
@@ -169,6 +179,45 @@ export type ProviderOption = {
   auth_mode?: "api_key" | "oauth";
 };
 
+export type LlmProtocolOption = {
+  value: string;
+  label: string;
+};
+
+// FT-05: the four LLM API protocol states. `auto` is the legacy-migration
+// compatibility state (rendered, never offered as a new/edit choice); the three
+// explicit protocols are the contract values a new or edited profile must pick.
+export const LLM_API_PROTOCOL_VALUES = [
+  "auto",
+  "openai_chat_completions",
+  "openai_responses",
+  "anthropic_messages",
+] as const;
+
+// The selectable choices for the new/edit flow. `auto` is deliberately
+// excluded — it only ever survives as an untouched legacy profile state.
+export const EXPLICIT_LLM_API_PROTOCOL_VALUES = LLM_API_PROTOCOL_VALUES.filter(
+  (value) => value !== "auto",
+);
+
+/** Pick an explicit protocol default for a newly created LLM profile. */
+export function defaultLlmProtocol(
+  providerKey: string | undefined,
+  providerLabel: string | undefined,
+): string {
+  const binding = (providerKey || "").toLowerCase();
+  const label = (providerLabel || "").toLowerCase();
+  if (
+    binding === "anthropic" ||
+    binding === "custom_anthropic" ||
+    binding === "minimax_anthropic" ||
+    label.includes("anthropic")
+  ) {
+    return "anthropic_messages";
+  }
+  return "openai_chat_completions";
+}
+
 export type SystemStatus = {
   backend: { status: string; timestamp: string };
   llm: { status: string; model?: string; error?: string };
@@ -203,6 +252,7 @@ type SettingsPayload = {
   ui: UiSettings;
   catalog?: Catalog;
   providers?: Record<ServiceName, ProviderOption[]>;
+  protocols?: Record<"llm", LlmProtocolOption[]>;
 };
 
 const DIAGNOSTICS_RESULTS_KEY = "deeptutor.settings.diagnosticsResults.v1";
@@ -440,6 +490,7 @@ type SettingsContextValue = {
   draft: Catalog;
   status: SystemStatus | null;
   providers: Record<ServiceName, ProviderOption[]>;
+  protocolOptions: LlmProtocolOption[];
   catalogEditable: boolean | null;
   settingsLoading: boolean;
   settingsError: string | null;
@@ -471,6 +522,12 @@ type SettingsContextValue = {
     field: keyof CatalogProfile,
     value: string,
   ) => void;
+  updateProfileBoolField: (
+    service: ServiceName,
+    field: keyof CatalogProfile,
+    value: boolean,
+  ) => void;
+  updateProfileApiKey: (service: ServiceName, value: string) => void;
   updateModelField: (
     service: ServiceName,
     field: keyof CatalogModel,
@@ -560,6 +617,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     imagegen: [],
     videogen: [],
   });
+  const [protocolOptions, setProtocolOptions] = useState<LlmProtocolOption[]>(
+    [],
+  );
   const [toast, setToast] = useState("");
   const [saving, setSaving] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -637,6 +697,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       // them up, so no separate copy needs seeding here.
       syncLoadedCodeBlockSettingsToAppShell(payload.ui);
       if (payload.providers) setProviders(payload.providers);
+      if (payload.protocols?.llm) setProtocolOptions(payload.protocols.llm);
       settingsLoaded = true;
     } catch (err) {
       console.error("Failed to load settings:", err);
@@ -777,10 +838,25 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           provider: defaultProvider,
           base_url: "",
           api_key: "",
+          api_key_set: false,
           api_version: "",
           extra_headers: service === "search" ? undefined : {},
           proxy: service === "search" ? "" : undefined,
           models: [],
+          ...(service === "llm"
+            ? {
+                // New profiles carry an explicit protocol (auto is reserved
+                // for legacy migration).
+                api_protocol: defaultLlmProtocol(
+                  providerKey,
+                  providerOption?.label,
+                ),
+                strict_protocol: false,
+                capability_probe_status: "unknown",
+                capability_probe_at: "",
+                capability_probe_message: "",
+              }
+            : {}),
         };
         if (service !== "search") {
           const modelId = `${service}-model-${Date.now()}`;
@@ -894,6 +970,29 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         const profile = getActiveProfile(next, service);
         if (!profile) return;
         (profile[field] as string | undefined) = value;
+      });
+    },
+    [mutateCatalog],
+  );
+
+  const updateProfileBoolField = useCallback(
+    (service: ServiceName, field: keyof CatalogProfile, value: boolean) => {
+      mutateCatalog((next) => {
+        const profile = getActiveProfile(next, service);
+        if (!profile) return;
+        (profile[field] as boolean | undefined) = value;
+      });
+    },
+    [mutateCatalog],
+  );
+
+  const updateProfileApiKey = useCallback(
+    (service: ServiceName, value: string) => {
+      mutateCatalog((next) => {
+        const profile = getActiveProfile(next, service);
+        if (!profile) return;
+        profile.api_key = value;
+        profile.api_key_set = Boolean(value.trim());
       });
     },
     [mutateCatalog],
@@ -1257,6 +1356,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       draft,
       status,
       providers,
+      protocolOptions,
       catalogEditable,
       settingsLoading,
       settingsError,
@@ -1280,6 +1380,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       addModel,
       removeActiveModel,
       updateProfileField,
+      updateProfileBoolField,
+      updateProfileApiKey,
       updateModelField,
       updateModelBoolField,
       updateContextWindowField,
@@ -1324,6 +1426,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       logs,
       mutateCatalog,
       providers,
+      protocolOptions,
       registerExtension,
       removeActiveModel,
       removeActiveProfile,
@@ -1350,6 +1453,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       updateLanguage,
       updateModelBoolField,
       updateModelField,
+      updateProfileApiKey,
+      updateProfileBoolField,
       updateProfileField,
       updateTheme,
     ],

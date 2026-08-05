@@ -5,12 +5,22 @@ import pytest
 from deeptutor.learning.models import (
     ErrorRecord,
     ErrorType,
+    KnowledgeStateProjection,
     KnowledgeType,
     LearningProgress,
+    MasteryState,
     RepetitionState,
+    ReviewState,
     ReviewTask,
 )
-from deeptutor.learning.scheduler import INTERVAL_SEQUENCES, SpacedRepetitionScheduler
+from deeptutor.learning.scheduler import (
+    FAILED_REVIEW_RETRY_DELAY_DAYS,
+    INTERVAL_SEQUENCES,
+    PROVISIONAL_RETEACH_DELAY_DAYS,
+    STABLE_MAINTENANCE_DELAY_DAYS,
+    SpacedRepetitionScheduler,
+)
+from deeptutor.learning.tests.feynman_builders import START
 
 
 @pytest.fixture
@@ -279,3 +289,92 @@ class TestBuildReviewQueue:
         assert len(tasks) == 1
         assert tasks[0].knowledge_type == KnowledgeType.MEMORY
         assert tasks[0].priority == 2
+
+
+# ── deterministic time injection (LRN-02 requirement 7) ─────────────────────
+
+
+class TestDeterministicClock:
+    def test_constructor_now_removes_wall_clock_dependence(self):
+        a = SpacedRepetitionScheduler(now=123456.0)
+        b = SpacedRepetitionScheduler(now=123456.0)
+        assert a.get_initial_state(KnowledgeType.MEMORY) == b.get_initial_state(
+            KnowledgeType.MEMORY
+        )
+        assert a.get_initial_state(KnowledgeType.MEMORY).next_review_at == 123456.0
+
+    def test_explicit_now_overrides_constructor_clock(self):
+        scheduler = SpacedRepetitionScheduler(now=100.0)
+        state = scheduler.schedule_provisional_reteach(KnowledgeType.MEMORY, now=200.0)
+        assert state.next_review_at == 200.0 + 86400.0
+
+
+# ── Feynman scheduling (test-out / delayed-reteach, §6.1/§6.5) ─────────────
+
+
+class TestFeynmanScheduling:
+    @pytest.mark.parametrize("kp_type", list(KnowledgeType))
+    def test_provisional_reteach_delay_is_type_specific(self, kp_type):
+        scheduler = SpacedRepetitionScheduler(now=START)
+        state = scheduler.schedule_provisional_reteach(kp_type)
+        days = PROVISIONAL_RETEACH_DELAY_DAYS[kp_type]
+        assert state.next_review_at == START + days * 86400.0
+
+    @pytest.mark.parametrize("kp_type", list(KnowledgeType))
+    def test_stable_maintenance_delay_is_type_specific(self, kp_type):
+        scheduler = SpacedRepetitionScheduler(now=START)
+        state = scheduler.schedule_stable_maintenance(kp_type)
+        days = STABLE_MAINTENANCE_DELAY_DAYS[kp_type]
+        assert state.next_review_at == START + days * 86400.0
+
+    @pytest.mark.parametrize("kp_type", list(KnowledgeType))
+    def test_failed_review_retry_delay_is_type_specific(self, kp_type):
+        scheduler = SpacedRepetitionScheduler(now=START)
+        state = scheduler.schedule_failed_review(kp_type)
+        days = FAILED_REVIEW_RETRY_DELAY_DAYS[kp_type]
+        assert state.next_review_at == START + days * 86400.0
+
+    def test_test_out_uses_provisional_reteach_scheduling(self):
+        """A test-out pass schedules the same delayed reteach as an initial
+        pass — never a direct jump to stable."""
+        scheduler = SpacedRepetitionScheduler(now=START)
+        test_out = scheduler.schedule_provisional_reteach(KnowledgeType.DESIGN)
+        initial = scheduler.schedule_provisional_reteach(KnowledgeType.DESIGN)
+        assert test_out.next_review_at == initial.next_review_at
+        assert test_out.next_review_at > START
+
+    def test_feynman_review_queue_built_from_projections(self):
+        scheduler = SpacedRepetitionScheduler(now=START)
+        lp = LearningProgress(book_id="b1")
+        lp.knowledge_types["kp-mem"] = KnowledgeType.MEMORY
+        lp.knowledge_types["kp-con"] = KnowledgeType.CONCEPT
+        lp.projections["kp-mem"] = KnowledgeStateProjection(
+            knowledge_point_id="kp-mem",
+            mastery_state=MasteryState.NEEDS_REVISION,
+            review_state=ReviewState.SCHEDULED,
+            next_review_at=START + 86400.0,
+        )
+        lp.projections["kp-con"] = KnowledgeStateProjection(
+            knowledge_point_id="kp-con",
+            mastery_state=MasteryState.PROVISIONAL_MASTERY,
+            review_state=ReviewState.SCHEDULED,
+            next_review_at=START + 3 * 86400.0,
+        )
+        tasks = scheduler.build_feynman_review_queue(lp)
+        assert [t.knowledge_point_id for t in tasks] == ["kp-mem", "kp-con"]
+        # needs_revision gets the highest priority regardless of type.
+        assert tasks[0].priority == 1
+        assert tasks[0].due_at == START + 86400.0
+        assert tasks[1].knowledge_type == KnowledgeType.CONCEPT
+        assert tasks[1].priority == 3
+
+    def test_feynman_review_queue_skips_unscheduled(self):
+        scheduler = SpacedRepetitionScheduler(now=START)
+        lp = LearningProgress(book_id="b1")
+        lp.projections["kp1"] = KnowledgeStateProjection(
+            knowledge_point_id="kp1",
+            mastery_state=MasteryState.NEW,
+            review_state=ReviewState.UNSCHEDULED,
+            next_review_at=None,
+        )
+        assert scheduler.build_feynman_review_queue(lp) == []

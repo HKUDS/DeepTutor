@@ -335,6 +335,12 @@ class AgenticChatPipeline:
         if tool_schemas is not None and self._tool_view is not None:
             self._tool_view.attach(tool_schemas)
 
+        # Narrow production hook (§7.8 / §9.4): when the turn runs a learning
+        # path, each LLM round gets a ``pending`` audit record persisted before
+        # the provider request and finalized after. Plain chat without a
+        # learning path has no LearningProgress container, so no audit is
+        # attempted (documented coverage — see MOD-03 envelope).
+        self._invocation_audit, self._invocation_snapshot = self._build_invocation_audit(context)
         loop = AgentLoop(
             pipeline=self,
             context=context,
@@ -344,6 +350,43 @@ class AgenticChatPipeline:
             tool_schemas=tool_schemas,
         )
         await loop.run()
+
+    def _build_invocation_audit(
+        self,
+        context: UnifiedContext,
+    ) -> tuple[Any, Any]:
+        """Resolve an audit context + snapshot for this turn, or ``(None, None)``.
+
+        Only turns with a ``mastery_path_id`` (the mastery / Teach-Back
+        capability) have a persisted LearningProgress to hold audit records; the
+        chat-loop LLM rounds of such a turn are ``teaching`` invocations. The
+        resolution is best-effort: any failure degrades to no audit so the chat
+        loop is never blocked by the audit seam.
+        """
+        path_id = str((context.metadata or {}).get("mastery_path_id") or "").strip()
+        if not path_id:
+            return None, None
+        try:
+            from deeptutor.learning.models import ModelInvocationPurpose
+            from deeptutor.learning.storage import LearningStore
+            from deeptutor.services.model_selection import (
+                ModelInvocationAuditContext,
+                ModelSelector,
+            )
+
+            turn_id = str((context.metadata or {}).get("turn_id") or "").strip()
+            snapshot = ModelSelector().resolve_teaching()
+            ctx = ModelInvocationAuditContext(
+                purpose=ModelInvocationPurpose.TEACHING,
+                book_id=path_id,
+                store=LearningStore(),
+                session_id=context.session_id or "",
+                turn_id=turn_id,
+            )
+            return ctx, snapshot
+        except Exception:
+            logger.warning("model invocation audit context resolution failed", exc_info=True)
+            return None, None
 
     # ---- prompt assembly -------------------------------------------------
 

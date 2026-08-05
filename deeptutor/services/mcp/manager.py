@@ -30,6 +30,7 @@ path executes them.
 from __future__ import annotations
 
 import asyncio
+import base64
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 import logging
@@ -79,6 +80,76 @@ _TRANSIENT_ERRORS = (
     BrokenPipeError,
     ConnectionResetError,
 )
+
+
+@dataclass
+class MCPContentBlock:
+    """One MCP content block with its structured payload preserved (MED-02).
+
+    ``kind`` is one of ``text`` | ``image`` | ``resource`` | ``resource_link``.
+    ``data`` holds *decoded* bytes for ``image`` and blob resources so media
+    adapters never touch base64 text; ``uri``/``resource_text`` are kept for
+    provenance and for materializing remote resources through the safe
+    downloader.  Existing text-only callers keep working through
+    :meth:`MCPStructuredResult.to_text`.
+    """
+
+    kind: str
+    text: str = ""
+    data: bytes = b""
+    mime_type: str = ""
+    uri: str = ""
+    resource_text: str = ""
+    name: str = ""
+    title: str = ""
+    size: int | None = None
+
+    def to_text(self) -> str:
+        if self.kind == "text":
+            return self.text
+        if self.kind == "image":
+            return f"[image: {self.mime_type or 'unknown'} {len(self.data)} bytes]"
+        if self.kind == "resource":
+            if self.resource_text:
+                return self.resource_text
+            return f"[resource: {self.uri} {self.mime_type or 'unknown'} {len(self.data)} bytes]"
+        if self.kind == "resource_link":
+            return f"[resource_link: {self.uri}]"
+        return f"[{self.kind}]"
+
+    def to_media_payload(self) -> bytes | None:
+        """Decoded bytes when this block carries a binary image payload."""
+        if self.kind == "image" or (self.kind == "resource" and self.data):
+            return self.data
+        return None
+
+
+@dataclass
+class MCPStructuredResult:
+    """Structured result of one MCP tool call (MED-02).
+
+    Preserves ``TextContent``, ``ImageContent``, ``EmbeddedResource`` and
+    ``ResourceLink`` so media adapters can materialize images without losing
+    anything.  ``is_error`` mirrors the SDK's ``isError`` flag; progress
+    notifications are *not* part of success — they are emitted separately.
+    """
+
+    blocks: list[MCPContentBlock] = field(default_factory=list)
+    is_error: bool = False
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_text(self) -> str:
+        joined = "\n".join(block.to_text() for block in self.blocks)
+        return joined or "(no output)"
+
+
+def _decode_mcp_base64(value: str) -> bytes:
+    """Decode MCP base64 tolerating missing padding (SDK sends unpadded blob)."""
+    try:
+        return base64.b64decode(value)
+    except Exception:
+        padding = "=" * (-len(value) % 4)
+        return base64.b64decode(value + padding)
 
 
 def wrapped_tool_name(server: str, tool: str) -> str:
@@ -411,10 +482,49 @@ class MCPConnectionManager:
         timeout: int,
         on_progress: "ProgressCallback | None" = None,
     ) -> str:
-        """Invoke a tool on a connected server; one retry on transient errors."""
+        """Invoke a tool and return its text rendering (legacy-compatible).
+
+        Existing text-tool callers are unchanged: images/resources render as
+        compact ``[image: …]`` / ``[resource: …]`` markers.  Media adapters use
+        :meth:`call_tool_structured` for the preserved payloads.
+        """
+        result = await self.call_tool_structured(
+            owner,
+            server_name,
+            tool_name,
+            arguments,
+            timeout=timeout,
+            on_progress=on_progress,
+        )
+        return result.to_text()
+
+    async def call_tool_structured(
+        self,
+        owner: str,
+        server_name: str,
+        tool_name: str,
+        arguments: dict[str, Any],
+        *,
+        timeout: int,
+        on_progress: "ProgressCallback | None" = None,
+    ) -> MCPStructuredResult:
+        """Invoke a tool and return the structured result (MED-02).
+
+        Same connection/retry semantics as :meth:`call_tool`; failures are
+        surfaced as an ``is_error`` result whose text is sanitized for the
+        media layer, never a raw exception body or a server dump.
+        """
         conn = self._connections.get((owner, server_name))
         if conn is None or conn.session is None or conn.status != "connected":
-            return f"(MCP server {server_name!r} is not connected)"
+            return MCPStructuredResult(
+                blocks=[
+                    MCPContentBlock(
+                        kind="text",
+                        text=f"(MCP server {server_name!r} is not connected)",
+                    )
+                ],
+                is_error=True,
+            )
         try:
             return await self._call_once(conn, tool_name, arguments, timeout, on_progress)
         except _TRANSIENT_ERRORS:
@@ -426,19 +536,43 @@ class MCPConnectionManager:
             try:
                 return await self._call_once(conn, tool_name, arguments, timeout, on_progress)
             except Exception as exc:
-                return f"(MCP tool call failed after retry: {type(exc).__name__})"
+                return MCPStructuredResult(
+                    blocks=[
+                        MCPContentBlock(
+                            kind="text",
+                            text=f"(MCP tool call failed after retry: {type(exc).__name__})",
+                        )
+                    ],
+                    is_error=True,
+                )
         except asyncio.TimeoutError:
-            return f"(MCP tool call timed out after {timeout}s)"
+            return MCPStructuredResult(
+                blocks=[
+                    MCPContentBlock(kind="text", text=f"(MCP tool call timed out after {timeout}s)")
+                ],
+                is_error=True,
+            )
         except asyncio.CancelledError:
             # The MCP SDK's anyio scopes can leak CancelledError on internal
             # failures; re-raise only when our own task was cancelled.
             task = asyncio.current_task()
             if task is not None and task.cancelling() > 0:
                 raise
-            return "(MCP tool call was cancelled)"
+            return MCPStructuredResult(
+                blocks=[MCPContentBlock(kind="text", text="(MCP tool call was cancelled)")],
+                is_error=True,
+            )
         except Exception as exc:
             logger.exception("MCP tool %s/%s failed", server_name, tool_name)
-            return f"(MCP tool call failed: {type(exc).__name__}: {exc})"
+            return MCPStructuredResult(
+                blocks=[
+                    MCPContentBlock(
+                        kind="text",
+                        text=f"(MCP tool call failed: {type(exc).__name__})",
+                    )
+                ],
+                is_error=True,
+            )
 
     @staticmethod
     async def _call_once(
@@ -447,7 +581,7 @@ class MCPConnectionManager:
         arguments: dict[str, Any],
         timeout: int,
         on_progress: "ProgressCallback | None" = None,
-    ) -> str:
+    ) -> MCPStructuredResult:
         from mcp import types
 
         result = await asyncio.wait_for(
@@ -461,13 +595,58 @@ class MCPConnectionManager:
             ),
             timeout=timeout,
         )
-        parts: list[str] = []
-        for block in result.content:
+        blocks: list[MCPContentBlock] = []
+        for block in result.content or []:
             if isinstance(block, types.TextContent):
-                parts.append(block.text)
+                blocks.append(MCPContentBlock(kind="text", text=block.text or ""))
+            elif isinstance(block, types.ImageContent):
+                blocks.append(
+                    MCPContentBlock(
+                        kind="image",
+                        data=_decode_mcp_base64(block.data or ""),
+                        mime_type=block.mimeType or "",
+                    )
+                )
+            elif isinstance(block, types.EmbeddedResource):
+                resource = block.resource
+                uri = str(getattr(resource, "uri", "") or "")
+                mime = str(getattr(resource, "mimeType", "") or "")
+                if isinstance(resource, types.TextResourceContents):
+                    blocks.append(
+                        MCPContentBlock(
+                            kind="resource",
+                            uri=uri,
+                            mime_type=mime,
+                            resource_text=str(getattr(resource, "text", "") or ""),
+                        )
+                    )
+                else:
+                    blob = str(getattr(resource, "blob", "") or "")
+                    blocks.append(
+                        MCPContentBlock(
+                            kind="resource",
+                            uri=uri,
+                            mime_type=mime,
+                            data=_decode_mcp_base64(blob),
+                        )
+                    )
+            elif isinstance(block, types.ResourceLink):
+                blocks.append(
+                    MCPContentBlock(
+                        kind="resource_link",
+                        uri=str(block.uri or ""),
+                        name=block.name or "",
+                        title=block.title or "",
+                        mime_type=block.mimeType or "",
+                        size=block.size,
+                    )
+                )
             else:
-                parts.append(str(block))
-        return "\n".join(parts) or "(no output)"
+                blocks.append(MCPContentBlock(kind="text", text=str(block)))
+        return MCPStructuredResult(
+            blocks=blocks,
+            is_error=bool(getattr(result, "isError", False)),
+        )
 
     # ── connection internals ───────────────────────────────────────────
 
@@ -855,6 +1034,8 @@ def get_mcp_manager() -> MCPConnectionManager:
 __all__ = [
     "SHARED_OWNER",
     "MCPConnectionManager",
+    "MCPContentBlock",
+    "MCPStructuredResult",
     "MCPToolAdapter",
     "get_mcp_manager",
     "probe_server",

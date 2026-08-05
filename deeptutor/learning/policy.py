@@ -22,10 +22,20 @@ from dataclasses import dataclass
 import time
 
 from deeptutor.learning.models import (
+    AttemptCycleType,
+    AttemptStatus,
     KnowledgePoint,
+    KnowledgeStateProjection,
     KnowledgeType,
     LearningProgress,
+    MasteryState,
+    ReviewState,
     ReviewTask,
+)
+from deeptutor.learning.scheduler import (
+    FAILED_REVIEW_RETRY_DELAY_DAYS,
+    PROVISIONAL_RETEACH_DELAY_DAYS,
+    STABLE_MAINTENANCE_DELAY_DAYS,
 )
 
 # Quantitative gate for objective knowledge types: the learner must reach this
@@ -60,9 +70,19 @@ def gate_threshold(kp_type: KnowledgeType) -> float:
 def is_mastered(progress: LearningProgress, kp: KnowledgePoint) -> bool:
     """Whether ``kp`` clears its mastery gate.
 
+    * Feynman projection (LRN-02): when a per-KP projection exists it is
+      authoritative — ``provisional_mastery`` / ``stable_mastery`` count as
+      mastered so the map cursor never re-teaches a mastered point.
     * MEMORY / PROCEDURE: recency-weighted accuracy ≥ the type's threshold.
-    * CONCEPT / DESIGN: a recorded qualitative pass (``mastery_assess``).
+    * CONCEPT / DESIGN (no projection yet): a recorded qualitative pass
+      (``mastery_assess``).
     """
+    projection = progress.projections.get(kp.id)
+    if projection is not None:
+        return projection.mastery_state in (
+            MasteryState.PROVISIONAL_MASTERY,
+            MasteryState.STABLE_MASTERY,
+        )
     if kp.type in QUALITATIVE_TYPES:
         return bool(progress.qualitative_mastery.get(kp.id, False))
     return progress.mastery_levels.get(kp.id, 0.0) >= gate_threshold(kp.type)
@@ -274,6 +294,179 @@ def map_summary(progress: LearningProgress, *, now: float | None = None) -> dict
     }
 
 
+# ── Feynman mastery/review projection (spec §6.2, §7.5; LRN-02) ──────────
+#
+# ``mastery_state`` and ``review_state`` are orthogonal projections rebuilt
+# deterministically from the append-only attempts / assessments / review facts.
+# A pass atomically projects mastery plus a scheduled review and next_review_at;
+# due/start transitions change review only; a delayed-reteach pass promotes
+# mastery to stable while scheduling the next maintenance review.
+
+_SECONDS_PER_DAY = 86400.0
+
+#: Attempt statuses that keep an attempt "live" (not yet assessed/closed).
+_ACTIVE_ATTEMPT_STATUSES = frozenset(
+    {
+        AttemptStatus.DRAFT,
+        AttemptStatus.COLLECTING,
+        AttemptStatus.READY_TO_ASSESS,
+    }
+)
+
+#: Attempt cycles that are review attempts (start flips review to in_progress).
+_REVIEW_CYCLES = frozenset({AttemptCycleType.DELAYED_RETEACH, AttemptCycleType.REEVALUATION})
+
+#: Cycles whose pass yields provisional mastery (stable always requires a
+#: delayed-reteach pass, §6.5 / LRN-02 requirement 5).
+_PROVISIONAL_CYCLES = frozenset(
+    {
+        AttemptCycleType.INITIAL,
+        AttemptCycleType.TEST_OUT,
+        AttemptCycleType.LEGACY_IMPORT,
+    }
+)
+
+
+def _anchor_review(
+    anchor: float, kp_type: KnowledgeType, delay_days: dict[KnowledgeType, int]
+) -> float:
+    """next_review_at anchored to the assessment time (deterministic rebuild)."""
+    return anchor + delay_days.get(kp_type, 1) * _SECONDS_PER_DAY
+
+
+def rebuild_projection(
+    progress: LearningProgress, kp_id: str, *, now: float | None = None
+) -> KnowledgeStateProjection:
+    """Rebuild the per-KP projection deterministically from append-only facts.
+
+    The projection is a pure function of the persisted attempts, assessments
+    and review facts — it never mutates ``progress``, so it is idempotent and
+    insensitive to the in-memory ordering of the append-only lists.
+    """
+    moment = now if now is not None else time.time()
+    kp_type = progress.knowledge_types.get(kp_id, KnowledgeType.MEMORY)
+
+    attempts = sorted(
+        (attempt for attempt in progress.attempts if attempt.knowledge_point_id == kp_id),
+        key=lambda attempt: (attempt.created_at, attempt.id),
+    )
+    attempts_by_id = {attempt.id: attempt for attempt in attempts}
+    assessments = sorted(
+        (
+            assessment
+            for assessment in progress.rubric_assessments
+            if assessment.attempt_id in attempts_by_id
+        ),
+        key=lambda assessment: (
+            assessment.assessment_sequence,
+            assessment.created_at,
+            assessment.id,
+        ),
+    )
+
+    mastery = MasteryState.NEW
+    review_state = ReviewState.UNSCHEDULED
+    active_attempt_id = ""
+    latest_assessment_id = ""
+    provisional_since: float | None = None
+    stable_since: float | None = None
+    next_review_at: float | None = None
+
+    # 1. Mastery from server gate results, in assessment-sequence order.
+    # Invalidated attempts (§7.7) contribute no gate facts: their assessments
+    # stay in the append-only history but never become projection input.
+    valid_assessment_seen = False
+    for assessment in assessments:
+        attempt = attempts_by_id[assessment.attempt_id]
+        if attempt.status == AttemptStatus.INVALIDATED:
+            continue
+        valid_assessment_seen = True
+        anchor = assessment.created_at
+        active_attempt_id = attempt.id
+        latest_assessment_id = assessment.id
+
+        if assessment.server_gate_result.passed:
+            if attempt.cycle_type == AttemptCycleType.DELAYED_RETEACH:
+                mastery = MasteryState.STABLE_MASTERY
+                stable_since = anchor
+                review_state = ReviewState.SCHEDULED
+                next_review_at = _anchor_review(anchor, kp_type, STABLE_MAINTENANCE_DELAY_DAYS)
+            elif attempt.cycle_type in _PROVISIONAL_CYCLES:
+                mastery = MasteryState.PROVISIONAL_MASTERY
+                provisional_since = anchor
+                review_state = ReviewState.SCHEDULED
+                next_review_at = _anchor_review(anchor, kp_type, PROVISIONAL_RETEACH_DELAY_DAYS)
+            else:  # REEVALUATION pass: confirms learning, never grants stable.
+                if mastery == MasteryState.STABLE_MASTERY:
+                    # A stable learner stays on stable maintenance policy; the
+                    # review is not shortened to the provisional reteach delay.
+                    review_state = ReviewState.SCHEDULED
+                    next_review_at = _anchor_review(anchor, kp_type, STABLE_MAINTENANCE_DELAY_DAYS)
+                else:
+                    if mastery != MasteryState.PROVISIONAL_MASTERY:
+                        mastery = MasteryState.PROVISIONAL_MASTERY
+                        provisional_since = anchor
+                    review_state = ReviewState.SCHEDULED
+                    next_review_at = _anchor_review(anchor, kp_type, PROVISIONAL_RETEACH_DELAY_DAYS)
+        else:
+            mastery = MasteryState.NEEDS_REVISION
+            review_state = ReviewState.SCHEDULED
+            next_review_at = _anchor_review(anchor, kp_type, FAILED_REVIEW_RETRY_DELAY_DAYS)
+
+    # 2. A live review attempt flips review to in_progress (mastery untouched).
+    open_attempts = [attempt for attempt in attempts if attempt.status in _ACTIVE_ATTEMPT_STATUSES]
+    if open_attempts:
+        active_attempt_id = open_attempts[-1].id
+        if any(attempt.cycle_type in _REVIEW_CYCLES for attempt in open_attempts):
+            review_state = ReviewState.IN_PROGRESS
+
+    # 3. No valid gate facts yet (no assessments, or only invalidated-attempt
+    # ones): an open attempt marks in_progress, otherwise the point is new.
+    if not valid_assessment_seen:
+        if open_attempts:
+            mastery = MasteryState.IN_PROGRESS
+            review_state = (
+                ReviewState.IN_PROGRESS
+                if any(attempt.cycle_type in _REVIEW_CYCLES for attempt in open_attempts)
+                else ReviewState.UNSCHEDULED
+            )
+        else:
+            mastery = MasteryState.NEW
+            review_state = ReviewState.UNSCHEDULED
+        next_review_at = None
+
+    # 4. Time-based view: a scheduled review whose time has come is due.
+    if (
+        review_state == ReviewState.SCHEDULED
+        and next_review_at is not None
+        and next_review_at <= moment
+    ):
+        review_state = ReviewState.DUE
+
+    return KnowledgeStateProjection(
+        knowledge_point_id=kp_id,
+        mastery_state=mastery,
+        review_state=review_state,
+        active_attempt_id=active_attempt_id,
+        latest_assessment_id=latest_assessment_id,
+        provisional_since=provisional_since,
+        stable_since=stable_since,
+        next_review_at=next_review_at,
+        updated_at=moment,
+    )
+
+
+def project_all(
+    progress: LearningProgress, *, now: float | None = None
+) -> dict[str, KnowledgeStateProjection]:
+    """Rebuild every knowledge point's projection (module KPs included)."""
+    kp_ids = set(progress.projections)
+    kp_ids.update(attempt.knowledge_point_id for attempt in progress.attempts)
+    for module in progress.modules:
+        kp_ids.update(kp.id for kp in module.knowledge_points)
+    return {kp_id: rebuild_projection(progress, kp_id, now=now) for kp_id in sorted(kp_ids)}
+
+
 __all__ = [
     "QUANTITATIVE_GATE",
     "QUALITATIVE_TYPES",
@@ -286,4 +479,6 @@ __all__ = [
     "find_knowledge_point",
     "next_objective",
     "map_summary",
+    "rebuild_projection",
+    "project_all",
 ]

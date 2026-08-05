@@ -208,6 +208,9 @@ export default function MasteryPathPage() {
             onContinue={() =>
               selected && router.push(`/home/${encodeURIComponent(selected)}`)
             }
+            onOpenWorkspace={() =>
+              selected && router.push(`/space/learning/${encodeURIComponent(selected)}`)
+            }
             onRedo={() => selected && handleRedo(selected)}
             onDelete={() => selected && handleDelete(selected)}
           />
@@ -254,6 +257,7 @@ function MapView({
   zh,
   tr,
   onContinue,
+  onOpenWorkspace,
   onRedo,
   onDelete,
 }: {
@@ -261,6 +265,7 @@ function MapView({
   zh: boolean;
   tr: (cn: string, en: string) => string;
   onContinue: () => void;
+  onOpenWorkspace: () => void;
   onRedo: () => void;
   onDelete: () => void;
 }) {
@@ -329,6 +334,20 @@ function MapView({
         </div>
         <div className="mt-1 text-xs text-[var(--primary)]">
           {tr("在对话中继续辅导 →", "Continue tutoring in Chat →")}
+        </div>
+      </button>
+      <button
+        onClick={onOpenWorkspace}
+        className="mt-2 w-full text-left rounded-lg border border-[var(--border)] hover:border-[var(--primary)]/40 hover:bg-[var(--accent)] p-3 transition-colors cursor-pointer"
+      >
+        <div className="text-xs text-[var(--muted-foreground)]">
+          {tr("费曼学习工作台", "Feynman workspace")}
+        </div>
+        <div className="mt-0.5 text-sm font-medium text-[var(--foreground)]">
+          {tr("知识地图 · 复教对话 · 证据门禁", "Map · Teach-Back · Evidence")}
+        </div>
+        <div className="mt-1 text-xs text-[var(--primary)]">
+          {tr("打开三栏工作台 →", "Open the three-column workspace →")}
         </div>
       </button>
 

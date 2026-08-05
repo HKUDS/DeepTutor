@@ -1,0 +1,57 @@
+{
+  "book_id": "legacy-book",
+  "current_stage": "pretest",
+  "learning_mode": "mastery",
+  "module_stage": "phase1",
+  "modules": [
+    {
+      "id": "mod-1",
+      "name": "Circuits",
+      "order": 1,
+      "pass_threshold": 0.7,
+      "knowledge_points": [
+        {"id": "kp-mem1", "name": "Ohm's Law definition", "type": "memory", "module_id": "mod-1"},
+        {"id": "kp-con1", "name": "Why voltage drops across resistors", "type": "concept", "module_id": "mod-1"}
+      ]
+    }
+  ],
+  "current_module_id": "mod-1",
+  "current_kp_index": 0,
+  "mastery_levels": {
+    "kp-mem1": 0.9,
+    "kp-con1": 0.4
+  },
+  "qualitative_mastery": {
+    "kp-con1": true
+  },
+  "knowledge_types": {
+    "kp-mem1": "memory",
+    "kp-con1": "concept"
+  },
+  "quiz_attempts": [
+    {
+      "question_id": "q1",
+      "knowledge_point_id": "kp-mem1",
+      "module_id": "mod-1",
+      "is_correct": true,
+      "user_answer": "V = I * R",
+      "error_type": null,
+      "self_attribution": "",
+      "mastery_estimate": 0.9,
+      "timestamp": 1710000001.0
+    }
+  ],
+  "error_records": [],
+  "feynman_retries": {},
+  "feynman_explanations": {
+    "kp-con1": "Because each resistor consumes a share of the potential energy..."
+  },
+  "stage_failure_counts": {},
+  "stage_failure_notes": {},
+  "repetition_states": {},
+  "review_queue": [],
+  "pending_question": null,
+  "version": 3,
+  "created_at": 1710000000.0,
+  "updated_at": 1710000010.0
+}

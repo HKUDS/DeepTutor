@@ -24,6 +24,7 @@ tells the frontend how to render that round's text.
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import suppress
 from dataclasses import dataclass, field
 import logging
@@ -56,6 +57,71 @@ logger = logging.getLogger(__name__)
 # tool-calling rounds before a tool-less finish is forced. The model normally
 # exits earlier by replying without tool calls.
 LOOP_STAGE = "responding"
+
+
+def _audit_usage_dict(usage_seen: Any) -> dict[str, int] | None:
+    """Normalize a provider usage object to the audit's token counters."""
+    if usage_seen is None:
+        return None
+    return {
+        "prompt_tokens": int(getattr(usage_seen, "prompt_tokens", 0) or 0),
+        "completion_tokens": int(getattr(usage_seen, "completion_tokens", 0) or 0),
+        "total_tokens": int(getattr(usage_seen, "total_tokens", 0) or 0),
+    }
+
+
+def _audit_error_code(exc: BaseException) -> str:
+    name = type(exc).__name__
+    if name.endswith("Error"):
+        name = name[: -len("Error")]
+    return (name or "unknown").lower()
+
+
+async def _chat_audit_start(audit: Any, snapshot: Any) -> str | None:
+    """Persist a ``pending`` audit record before the provider call.
+
+    Best-effort: audit failures are logged and the LLM call proceeds with
+    legacy behaviour — the audit seam must never break a chat round.
+    """
+    if audit is None or snapshot is None:
+        return None
+    try:
+        from deeptutor.services.model_selection import start_audited_invocation
+
+        return await asyncio.to_thread(start_audited_invocation, audit, snapshot)
+    except Exception:
+        logger.warning("model invocation audit start failed", exc_info=True)
+        return None
+
+
+async def _chat_audit_finish(
+    audit: Any,
+    record_id: str | None,
+    *,
+    status: str,
+    reported_model: str | None = None,
+    usage: dict[str, int] | None = None,
+    sanitized_error: str = "",
+    error_code: str = "",
+) -> None:
+    if audit is None or record_id is None:
+        return
+    try:
+        from deeptutor.services.model_selection import finish_audited_invocation
+
+        await asyncio.to_thread(
+            finish_audited_invocation,
+            audit,
+            record_id,
+            status=status,
+            reported_model=reported_model,
+            usage=usage,
+            sanitized_error=sanitized_error,
+            error_code=error_code,
+        )
+    except Exception:
+        logger.warning("model invocation audit finish failed", exc_info=True)
+
 
 _THINK_OPEN_RE = re.compile(r"<\s*think(?:ing)?\b[^>]*>", re.IGNORECASE)
 _THINK_CLOSE_RE = re.compile(r"<\s*/\s*think(?:ing)?\s*>", re.IGNORECASE)
@@ -520,71 +586,98 @@ class AgentLoop:
                         segment, source="chat", stage=stage, metadata=chunk_meta
                     )
 
-        response_stream = await self._create_response_stream(kwargs, trace_meta, stage)
+        # Persist-before-call: the ``pending`` audit record is saved here, before
+        # the provider request is made. Best-effort: if no audit context is set
+        # (plain chat) or the store write fails, the round proceeds unchanged.
+        audit = getattr(self.pipeline, "_invocation_audit", None)
+        audit_snapshot = getattr(self.pipeline, "_invocation_snapshot", None)
+        record_id = await _chat_audit_start(audit, audit_snapshot)
+        reported_model: str | None = None
         try:
-            async for chunk in response_stream:
-                usage = getattr(chunk, "usage", None)
-                if usage is not None:
-                    usage_seen = usage
-                choices = getattr(chunk, "choices", None) or []
-                if not choices:
-                    continue
-                choice = choices[0]
-                if getattr(choice, "finish_reason", None):
-                    finish_reason = str(choice.finish_reason)
-                delta = getattr(choice, "delta", None)
-                if delta is None:
-                    continue
-
-                reasoning_text = getattr(delta, "reasoning_content", None) or getattr(
-                    delta,
-                    "reasoning",
-                    None,
-                )
-                if reasoning_text:
-                    output_chars += len(reasoning_text)
-                    await self.stream.thinking(
-                        reasoning_text, source="chat", stage=stage, metadata=chunk_meta
-                    )
-
-                content = getattr(delta, "content", None)
-                if content:
-                    output_chars += len(content)
-                    text_parts.append(content)
-                    # Every round's text streams to the user; the round's
-                    # call_role (emitted at completion) tells the frontend
-                    # whether to render it as narration or as the answer.
-                    # Inline <think> segments are split off to the thinking
-                    # channel so the content stream stays user-facing.
-                    if not dsml_stream_active and has_dsml_tool_calls("".join(text_parts)):
-                        dsml_stream_active = True
-                    segments = think_filter.feed(content)
-                    if dsml_stream_active:
-                        segments = [("thinking", seg) for _, seg in segments]
-                    await _emit_segments(segments)
-
-                for tc_delta in getattr(delta, "tool_calls", None) or []:
-                    index = int(getattr(tc_delta, "index", 0) or 0)
-                    acc = tool_acc.setdefault(index, {"id": "", "name": "", "arguments": ""})
-                    tcid = getattr(tc_delta, "id", None)
-                    if tcid:
-                        acc["id"] += str(tcid)
-                    fn = getattr(tc_delta, "function", None)
-                    if fn is None:
+            response_stream = await self._create_response_stream(kwargs, trace_meta, stage)
+            try:
+                async for chunk in response_stream:
+                    model_name = getattr(chunk, "model", None)
+                    if model_name:
+                        reported_model = str(model_name)
+                    usage = getattr(chunk, "usage", None)
+                    if usage is not None:
+                        usage_seen = usage
+                    choices = getattr(chunk, "choices", None) or []
+                    if not choices:
                         continue
-                    name = getattr(fn, "name", None)
-                    arguments = getattr(fn, "arguments", None)
-                    if name:
-                        acc["name"] += str(name)
-                        output_chars += len(str(name))
-                    if arguments:
-                        acc["arguments"] += str(arguments)
-                        output_chars += len(str(arguments))
-        finally:
-            close = getattr(response_stream, "close", None)
-            if callable(close):
-                with suppress(Exception):
-                    await close()
+                    choice = choices[0]
+                    if getattr(choice, "finish_reason", None):
+                        finish_reason = str(choice.finish_reason)
+                    delta = getattr(choice, "delta", None)
+                    if delta is None:
+                        continue
+
+                    reasoning_text = getattr(delta, "reasoning_content", None) or getattr(
+                        delta,
+                        "reasoning",
+                        None,
+                    )
+                    if reasoning_text:
+                        output_chars += len(reasoning_text)
+                        await self.stream.thinking(
+                            reasoning_text, source="chat", stage=stage, metadata=chunk_meta
+                        )
+
+                    content = getattr(delta, "content", None)
+                    if content:
+                        output_chars += len(content)
+                        text_parts.append(content)
+                        # Every round's text streams to the user; the round's
+                        # call_role (emitted at completion) tells the frontend
+                        # whether to render it as narration or as the answer.
+                        # Inline <think> segments are split off to the thinking
+                        # channel so the content stream stays user-facing.
+                        if not dsml_stream_active and has_dsml_tool_calls("".join(text_parts)):
+                            dsml_stream_active = True
+                        segments = think_filter.feed(content)
+                        if dsml_stream_active:
+                            segments = [("thinking", seg) for _, seg in segments]
+                        await _emit_segments(segments)
+
+                    for tc_delta in getattr(delta, "tool_calls", None) or []:
+                        index = int(getattr(tc_delta, "index", 0) or 0)
+                        acc = tool_acc.setdefault(index, {"id": "", "name": "", "arguments": ""})
+                        tcid = getattr(tc_delta, "id", None)
+                        if tcid:
+                            acc["id"] += str(tcid)
+                        fn = getattr(tc_delta, "function", None)
+                        if fn is None:
+                            continue
+                        name = getattr(fn, "name", None)
+                        arguments = getattr(fn, "arguments", None)
+                        if name:
+                            acc["name"] += str(name)
+                            output_chars += len(str(name))
+                        if arguments:
+                            acc["arguments"] += str(arguments)
+                            output_chars += len(str(arguments))
+            finally:
+                close = getattr(response_stream, "close", None)
+                if callable(close):
+                    with suppress(Exception):
+                        await close()
+        except BaseException as exc:
+            await _chat_audit_finish(
+                audit,
+                record_id,
+                status="failed",
+                sanitized_error=str(exc),
+                error_code=_audit_error_code(exc),
+            )
+            raise
+        await _chat_audit_finish(
+            audit,
+            record_id,
+            status="completed",
+            reported_model=reported_model,
+            usage=_audit_usage_dict(usage_seen),
+        )
 
         flushed = think_filter.flush()
         if dsml_stream_active:

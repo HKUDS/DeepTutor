@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MED-03 media card audit fixture (r9)</title>
+<style>
+  :root {
+    --card: #ffffff;
+    --background: #faf9f7;
+    --foreground: #1c1816;
+    --muted: #f2efe9;
+    --muted-foreground: #6d645a;
+    --border: #e6decc;
+    --destructive: #c53a2c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: system-ui, -apple-system, sans-serif;
+    padding: 16px;
+  }
+  .fixture-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  .fixture-section {
+    grid-column: 1 / -1;
+    margin: 8px 0 2px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted-foreground);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  /* Job card — mirrors web/components/media/ImageJobCard.tsx classes. */
+  .media-job-card {
+    max-width: min(560px, 100%);
+    min-width: 0;
+    border-radius: 12px;
+    border-width: 2px;
+    border-left-width: 4px;
+    border-style: solid;
+    padding: 12px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    background: var(--card);
+  }
+  .tone-blue   { border-color: rgba(14,165,233,0.7);  border-left-color: rgba(14,165,233,0.9); background: rgba(14,165,233,0.08); }
+  .tone-amber  { border-color: rgba(245,158,11,0.7);  border-left-color: rgba(245,158,11,0.9); background: rgba(245,158,11,0.08); }
+  .tone-green  { border-color: rgba(16,185,129,0.7);  border-left-color: rgba(16,185,129,0.9); background: rgba(16,185,129,0.08); }
+  .tone-coral  { border-color: rgba(244,63,94,0.7);   border-left-color: rgba(244,63,94,0.9);  background: rgba(244,63,94,0.08); }
+  .job-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    min-width: 0;
+  }
+  .job-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .status-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    border-radius: 6px; padding: 4px 8px;
+    font-size: 11px; font-weight: 600;
+  }
+  .badge-blue  { background: rgba(14,165,233,0.15); color: #0369a1; }
+  .badge-amber { background: rgba(245,158,11,0.15); color: #b45309; }
+  .badge-green { background: rgba(16,185,129,0.15); color: #047857; }
+  .badge-coral { background: rgba(244,63,94,0.15);  color: #be123c; }
+  .elapsed {
+    width: 56px; flex-shrink: 0; text-align: right;
+    font-size: 11px; font-variant-numeric: tabular-nums; color: var(--muted-foreground);
+  }
+  .job-prompt {
+    margin: 8px 0 0; font-size: 13px; font-weight: 500;
+    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .job-identity {
+    margin: 4px 0 0; font-size: 11px; color: var(--muted-foreground);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .job-error {
+    margin: 4px 0 0; font-size: 11.5px; color: #be123c;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .job-actions { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .action {
+    border: 1px solid var(--border); background: var(--card); color: var(--foreground);
+    border-radius: 6px; padding: 4px 8px; font-size: 11.5px; font-weight: 500;
+  }
+  .artifact {
+    margin-top: 10px; overflow: hidden; border-radius: 8px; border: 1px solid var(--border);
+  }
+  .artifact img {
+    display: block; width: 100%; max-height: 280px; object-fit: contain;
+    background: var(--background);
+  }
+  .artifact-meta {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    border-top: 1px solid var(--border); padding: 6px 10px; font-size: 11px; color: var(--muted-foreground);
+  }
+  /* Generated media manager — mirrors GeneratedMediaManager.tsx. */
+  .media-manager { margin-top: 12px; }
+  .manager-grid {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+  }
+  .artifact-card {
+    display: flex; flex-direction: column; min-width: 0;
+    overflow: hidden; border-radius: 12px; border: 1px solid var(--border); background: var(--card);
+  }
+  .fixture-grid > .media-job-card,
+  .fixture-grid > .media-manager {
+    min-width: 0;
+  }
+  .artifact-card img {
+    display: block; width: 100%; height: 144px; object-fit: contain; background: var(--background);
+  }
+  .artifact-card-body { padding: 10px; font-size: 11px; color: var(--muted-foreground); min-width: 0; }
+  .ref-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    border-radius: 6px; padding: 2px 6px; font-size: 10.5px; font-weight: 500;
+    background: rgba(14,165,233,0.15); color: #0369a1;
+  }
+  @media (max-width: 680px) {
+    .fixture-grid { grid-template-columns: minmax(0, 1fr); }
+    .manager-grid { grid-template-columns: minmax(0, 1fr); }
+  }
+</style>
+</head>
+<body>
+  <main>
+    <h1 style="font-size:16px;font-weight:600">MED-03 media card states</h1>
+    <div class="fixture-grid" id="job-cards">
+
+      <div class="fixture-section">Active states</div>
+
+      <article class="media-job-card tone-blue" data-media-job-card data-status="queued">
+        <div class="job-head"><div class="job-left"><span class="status-badge badge-blue">Queued</span><span class="elapsed">00:00</span></div><span class="job-identity" style="text-transform:uppercase">generate</span></div>
+        <p class="job-prompt">A red fox in the snow at dusk</p>
+        <p class="job-identity">img1 · openai_images · gpt-image-2</p>
+        <div class="job-actions"><button class="action">Cancel</button></div>
+      </article>
+
+      <article class="media-job-card tone-amber" data-media-job-card data-status="running">
+        <div class="job-head"><div class="job-left"><span class="status-badge badge-amber">Generating…</span><span class="elapsed">01:23</span></div><span class="job-identity" style="text-transform:uppercase">generate</span></div>
+        <p class="job-prompt">A red fox in the snow at dusk</p>
+        <p class="job-identity">img1 · openai_responses · gpt-5.6</p>
+        <div class="job-actions"><button class="action">Cancel</button></div>
+      </article>
+
+      <article class="media-job-card tone-amber" data-media-job-card data-status="polling">
+        <div class="job-head"><div class="job-left"><span class="status-badge badge-amber">Polling provider…</span><span class="elapsed">04:05</span></div><span class="job-identity" style="text-transform:uppercase">edit</span></div>
+        <p class="job-prompt">A red fox in the snow at dusk</p>
+        <p class="job-identity">img1 · openai_responses · gpt-5.6</p>
+        <div class="job-actions"><button class="action">Cancel</button></div>
+      </article>
+
+      <article class="media-job-card tone-amber" data-media-job-card data-status="validating">
+        <div class="job-head"><div class="job-left"><span class="status-badge badge-amber">Validating image…</span><span class="elapsed">00:47</span></div><span class="job-identity" style="text-transform:uppercase">generate</span></div>
+        <p class="job-prompt">A red fox in the snow at dusk</p>
+        <p class="job-identity">img1 · openai_images · gpt-image-2</p>
+      </article>
+
+      <article class="media-job-card tone-amber" data-media-job-card data-status="saving">
+        <div class="job-head"><div class="job-left"><span class="status-badge badge-amber">Saving image…</span><span class="elapsed">00:49</span></div><span class="job-identity" style="text-transform:uppercase">generate</span></div>
+        <p class="job-prompt">A red fox in the snow at dusk</p>
+        <p class="job-identity">img1 · openai_images · gpt-image-2</p>
+      </article>
+
+      <div class="fixture-section">Success</div>
+
+      <article class="media-job-card tone-green" data-media-job-card data-status="succeeded">
+        <div class="job-head"><div class="job-left"><span class="status-badge badge-green">Ready</span><span class="elapsed">00:12</span></div><span class="job-identity" style="text-transform:uppercase">generate</span></div>
+        <p class="job-prompt">A red fox in the snow at dusk</p>
+        <p class="job-identity">img1 · openai_images · gpt-image-2</p>
+        <div class="artifact">
+          <img alt="Generated image" class="real-image" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAeklEQVR4nO3PUQkAIBTAwBfHiEY0liH8OITBAtxm7fN1wwUNaEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa0IAWPHYB/6uBS1sKgo0AAAAASUVORK5CYII=" />
+          <div class="artifact-meta"><span>64×64 · img1</span><span>Download</span></div>
+        </div>
+        <div class="job-actions"><span class="action">Cancel</span></div>
+      </article>
+
+      <div class="fixture-section">Terminal / failure / cancel states</div>
+
+      <article class="media-job-card tone-coral" data-media-job-card data-status="failed">
+        <div class="job-head"><div class="job-left"><span class="status-badge badge-coral">Failed</span><span class="elapsed">00:08</span></div><span class="job-identity" style="text-transform:uppercase">generate</span></div>
+        <p class="job-prompt">A red fox in the snow at dusk</p>
+        <p class="job-identity">img1 · openai_images · gpt-image-2</p>
+        <p class="job-error">Provider rejected the request — check the model configuration.</p>
+        <div class="job-actions"><button class="action">Retry</button><button class="action">Retry with profile…</button></div>
+      </article>
+
+      <article class="media-job-card tone-coral" data-media-job-card data-status="timed_out">
+        <div class="job-head"><div class="job-left"><span class="status-badge badge-coral">Timed out</span><span class="elapsed">60:00</span></div><span class="job-identity" style="text-transform:uppercase">generate</span></div>
+        <p class="job-prompt">A red fox in the snow at dusk</p>
+        <p class="job-identity">img1 · openai_responses · gpt-5.6</p>
+        <div class="job-actions"><button class="action">Retry</button><button class="action">Retry with profile…</button></div>
+      </article>
+
+      <article class="media-job-card tone-coral" data-media-job-card data-status="unknown">
+        <div class="job-head"><div class="job-left"><span class="status-badge badge-coral">Outcome unknown</span><span class="elapsed">00:31</span></div><span class="job-identity" style="text-transform:uppercase">generate</span></div>
+        <p class="job-prompt">A red fox in the snow at dusk</p>
+        <p class="job-identity">img1 · openai_images · gpt-image-2</p>
+        <p class="job-error">The provider result could not be confirmed. Retry to create a new job.</p>
+        <div class="job-actions"><button class="action">Retry</button><button class="action">Retry with profile…</button></div>
+      </article>
+
+      <article class="media-job-card tone-coral" data-media-job-card data-status="cancel_requested">
+        <div class="job-head"><div class="job-left"><span class="status-badge badge-coral">Cancelling…</span><span class="elapsed">00:02</span></div><span class="job-identity" style="text-transform:uppercase">generate</span></div>
+        <p class="job-prompt">A red fox in the snow at dusk</p>
+        <p class="job-identity">img1 · openai_images · gpt-image-2</p>
+      </article>
+
+      <article class="media-job-card tone-coral" data-media-job-card data-status="cancelled">
+        <div class="job-head"><div class="job-left"><span class="status-badge badge-coral">Cancelled</span><span class="elapsed">00:03</span></div><span class="job-identity" style="text-transform:uppercase">generate</span></div>
+        <p class="job-prompt">A red fox in the snow at dusk</p>
+        <p class="job-identity">img1 · openai_images · gpt-image-2</p>
+        <div class="job-actions"><button class="action">Retry</button></div>
+      </article>
+
+      <article class="media-job-card tone-coral" data-media-job-card data-status="cancelled_unconfirmed">
+        <div class="job-head"><div class="job-left"><span class="status-badge badge-coral">Cancel unconfirmed</span><span class="elapsed">00:05</span></div><span class="job-identity" style="text-transform:uppercase">generate</span></div>
+        <p class="job-prompt">A red fox in the snow at dusk</p>
+        <p class="job-identity">img1 · openai_images · gpt-image-2</p>
+        <div class="job-actions"><button class="action">Retry</button></div>
+        <p style="margin:6px 0 0;font-size:11px;color:var(--muted-foreground)">The remote task may still be running.</p>
+      </article>
+
+      <div class="fixture-section">Generated media manager (settings surface)</div>
+
+      <div class="media-manager" data-media-manager>
+        <div class="manager-grid" id="manager-grid">
+          <article class="artifact-card" data-artifact-id="art-1">
+            <img alt="Generated image" class="real-image" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAeklEQVR4nO3PUQkAIBTAwBfHiEY0liH8OITBAtxm7fN1wwUNaEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa0IAWPHYB/6uBS1sKgo0AAAAASUVORK5CYII=" />
+            <div class="artifact-card-body">
+              <p style="margin:0;font-weight:500;color:var(--foreground)">Red fox concept</p>
+              <p style="margin:4px 0 0">64×64 · 1.2 KB</p>
+              <p style="margin:2px 0 0">Created Aug 4, 2026</p>
+              <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
+                <span class="ref-chip">2 references</span>
+              </div>
+            </div>
+          </article>
+          <article class="artifact-card" data-artifact-id="art-2">
+            <img alt="Generated image" class="real-image" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAeklEQVR4nO3PUQkAIBTAwBfHiEY0liH8OITBAtxm7fN1wwUNaEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa0IAWPHYB/6uBS1sKgo0AAAAASUVORK5CYII=" />
+            <div class="artifact-card-body">
+              <p style="margin:0;font-weight:500;color:var(--foreground)">Concept diagram</p>
+              <p style="margin:4px 0 0">64×64 · 1.2 KB</p>
+              <p style="margin:2px 0 0">Created Aug 4, 2026</p>
+              <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
+                <span class="ref-chip" style="background:rgba(245,158,11,0.15);color:#b45309">Reclaimable</span>
+              </div>
+            </div>
+          </article>
+          <article class="artifact-card" data-artifact-id="art-3">
+            <img alt="Generated image" class="real-image" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAeklEQVR4nO3PUQkAIBTAwBfHiEY0liH8OITBAtxm7fN1wwUNaEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa0IAWNKAFDWhBA1rQgBY0oAUNaEEDWtCAFjSgBQ1oQQNa0IAWPHYB/6uBS1sKgo0AAAAASUVORK5CYII=" />
+            <div class="artifact-card-body">
+              <p style="margin:0;font-weight:500;color:var(--foreground)">Fox anatomy</p>
+              <p style="margin:4px 0 0">64×64 · 1.2 KB</p>
+              <p style="margin:2px 0 0">Created Aug 4, 2026</p>
+              <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
+                <span class="ref-chip">0 references</span>
+              </div>
+            </div>
+          </article>
+        </div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

@@ -8,6 +8,7 @@ UI preferences, configuration catalog management, and detailed streamed tests.
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 import json
 import logging
 import time
@@ -26,6 +27,12 @@ from deeptutor.services.config import (
     get_config_test_runner,
     get_model_catalog_service,
     get_runtime_settings_service,
+)
+from deeptutor.services.config.model_catalog import (
+    EXPLICIT_LLM_API_PROTOCOLS,
+    LLM_API_PROTOCOLS,
+    merge_profile_secrets,
+    redact_catalog,
 )
 from deeptutor.services.config.origins import normalize_origins
 from deeptutor.services.config.runtime_settings import (
@@ -454,6 +461,123 @@ def _provider_choices() -> dict[str, list[dict[str, Any]]]:
     }
 
 
+def _protocol_options() -> dict[str, list[dict[str, str]]]:
+    """Protocol choices for the LLM profile editor (FT-05).
+
+    ``auto`` is a legacy-compatibility *state*, not a selectable choice: a newly
+    created or substantively edited LLM profile must pick exactly one of the
+    three explicit protocols. The frontend maps each value to localized labels
+    and renders a legacy ``auto`` profile as a disabled compatibility option.
+    """
+    return {"llm": [{"value": value, "label": value} for value in EXPLICIT_LLM_API_PROTOCOLS]}
+
+
+def _llm_profile_durable_signature(profile: dict[str, Any]) -> dict[str, Any]:
+    """Return every durable, user-editable field of an LLM profile.
+
+    This is the deterministic edit comparison for the FT-05 protocol contract:
+    ``auto`` is legal only for an entirely untouched legacy profile, so the
+    signature must cover every persisted user edit — name/metadata, binding,
+    base URL, API version, the merged secret, the strict-protocol toggle, extra
+    headers, and the model list.
+
+    Transport/redaction and probe-derived fields are excluded because they are
+    not durable user edits: ``api_key_set`` is a wire-only flag (popped by the
+    tri-state merge), the capability-probe badge (``capability_probe_status`` /
+    ``capability_probe_at`` / ``capability_probe_message``) is stamped by the
+    test runner rather than edited by the user, and ``api_protocol`` is the value
+    this validation governs and is compared separately. ``api_key`` is included
+    because the tri-state merge has already run by the time this is called: an
+    untouched redacted secret is restored to the stored value (so it compares
+    equal), while a replacement or explicit clear diverges and counts as a
+    substantive edit.
+    """
+    return {
+        "name": profile.get("name", ""),
+        "binding": profile.get("binding") or profile.get("provider"),
+        "base_url": profile.get("base_url", ""),
+        "api_version": profile.get("api_version", ""),
+        "api_key": profile.get("api_key", ""),
+        "strict_protocol": profile.get("strict_protocol", False),
+        "extra_headers": profile.get("extra_headers", {}),
+        "models": profile.get("models", []),
+    }
+
+
+def _validate_llm_protocols(
+    catalog: dict[str, Any],
+    stored: dict[str, Any] | None = None,
+) -> None:
+    """Enforce the FT-05 protocol contract on a PUT/apply/test payload.
+
+    ``auto`` is the compatibility value for an entirely untouched legacy profile.
+    A newly created profile, or an existing profile with any durable edit —
+    including an API-key replacement/clear, a ``strict_protocol`` toggle, or a
+    name/metadata change — must select exactly one explicit protocol. This runs
+    on the payload after the tri-state secret merge so the comparison against
+    the stored catalog is meaningful.
+
+    Unknown values are always rejected so a hand-edited or corrupted catalog
+    cannot silently coerce ``bogus`` to ``auto`` and mask a config mistake.
+    """
+    stored_llm = (((stored or {}).get("services", {}) or {}).get("llm", {})) or {}
+    stored_by_id = {
+        str(profile.get("id")): profile
+        for profile in stored_llm.get("profiles", []) or []
+        if isinstance(profile, dict)
+    }
+    for profile in catalog.get("services", {}).get("llm", {}).get("profiles", []) or []:
+        if not isinstance(profile, dict):
+            continue
+        protocol = profile.get("api_protocol")
+        if protocol is not None and protocol not in LLM_API_PROTOCOLS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Invalid api_protocol {protocol!r} for LLM profile "
+                    f"{profile.get('id') or '(unnamed)'}. Must be one of: "
+                    f"{', '.join(LLM_API_PROTOCOLS)}."
+                ),
+            )
+        profile_id = str(profile.get("id") or "")
+        stored_profile = stored_by_id.get(profile_id)
+        effective = protocol if protocol in LLM_API_PROTOCOLS else "auto"
+        if effective != "auto":
+            # An explicit protocol is always a valid choice (validated above).
+            continue
+        # At ``auto`` (or missing → would normalize to ``auto``): only legal for
+        # an otherwise-untouched legacy profile.
+        if stored_profile is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"New LLM profile {profile_id or '(unnamed)'} must select an "
+                    "explicit API protocol (openai_chat_completions, "
+                    "openai_responses, or anthropic_messages)."
+                ),
+            )
+        stored_protocol = stored_profile.get("api_protocol")
+        if stored_protocol not in (None, "auto"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"LLM profile {profile_id} already has an explicit protocol; "
+                    "it cannot revert to 'auto'."
+                ),
+            )
+        if _llm_profile_durable_signature(stored_profile) != _llm_profile_durable_signature(
+            profile
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Edited LLM profile {profile_id} must select an explicit API "
+                    "protocol (openai_chat_completions, openai_responses, or "
+                    "anthropic_messages) instead of 'auto'."
+                ),
+            )
+
+
 def _api_base_source(system: dict[str, Any]) -> str:
     if system.get("next_public_api_base_external"):
         return "next_public_api_base_external"
@@ -515,8 +639,10 @@ async def get_settings():
         return {"ui": load_ui_settings()}
     return {
         "ui": load_ui_settings(),
-        "catalog": get_model_catalog_service().load(),
+        # Secrets never leave the server — api_key is redacted to a set flag.
+        "catalog": redact_catalog(get_model_catalog_service().load()),
         "providers": _provider_choices(),
+        "protocols": _protocol_options(),
     }
 
 
@@ -568,7 +694,7 @@ async def refresh_openai_codex_models() -> dict[str, Any]:
 @router.get("/catalog")
 async def get_catalog():
     _require_settings_admin()
-    return {"catalog": get_model_catalog_service().load()}
+    return {"catalog": redact_catalog(get_model_catalog_service().load())}
 
 
 @router.get("/network")
@@ -1012,20 +1138,30 @@ async def get_llm_options():
 @router.put("/catalog")
 async def update_catalog(payload: CatalogPayload):
     _require_settings_admin()
-    catalog = get_model_catalog_service().save(payload.catalog)
+    service = get_model_catalog_service()
+    stored = service.load()
+    merged = merge_profile_secrets(stored, deepcopy(payload.catalog))
+    _validate_llm_protocols(merged, stored)
+    saved = service.save(merged)
     _invalidate_runtime_caches()
-    return {"catalog": catalog}
+    return {"catalog": redact_catalog(saved)}
 
 
 @router.post("/apply")
 async def apply_catalog(payload: CatalogPayload | None = None):
     _require_settings_admin()
-    catalog = payload.catalog if payload is not None else get_model_catalog_service().load()
-    applied = get_model_catalog_service().apply(catalog)
+    service = get_model_catalog_service()
+    stored = service.load()
+    if payload is not None:
+        incoming = merge_profile_secrets(stored, deepcopy(payload.catalog))
+        _validate_llm_protocols(incoming, stored)
+    else:
+        incoming = stored
+    applied = service.apply(incoming)
     _invalidate_runtime_caches()
     return {
         "message": "Catalog applied to runtime settings.",
-        "catalog": get_model_catalog_service().load(),
+        "catalog": redact_catalog(service.load()),
         "runtime": applied,
     }
 
@@ -1188,7 +1324,18 @@ async def update_enabled_tools(update: EnabledToolsUpdate):
 @router.post("/tests/{service}/start")
 async def start_service_test(service: str, payload: CatalogPayload | None = None):
     _require_settings_admin()
-    run = get_config_test_runner().start(service, payload.catalog if payload else None)
+    # The UI posts a redacted draft (api_key="", api_key_set=true), so the
+    # tri-state stored secret must be merged server-side or the probe would run
+    # without credentials. The protocol contract is enforced here too — a test
+    # is a save-preview and must obey the same explicit-protocol rule as PUT.
+    service_obj = get_model_catalog_service()
+    stored = service_obj.load()
+    if payload is not None:
+        incoming = merge_profile_secrets(stored, deepcopy(payload.catalog))
+        _validate_llm_protocols(incoming, stored)
+    else:
+        incoming = stored
+    run = get_config_test_runner().start(service, incoming)
     return {"run_id": run.id}
 
 
@@ -1249,8 +1396,14 @@ class TourCompletePayload(BaseModel):
 @router.post("/tour/complete")
 async def complete_tour(payload: TourCompletePayload | None = None):
     _require_settings_admin()
-    catalog = payload.catalog if payload and payload.catalog else get_model_catalog_service().load()
-    applied = get_model_catalog_service().apply(catalog)
+    service = get_model_catalog_service()
+    stored = service.load()
+    if payload and payload.catalog:
+        incoming = merge_profile_secrets(stored, deepcopy(payload.catalog))
+        _validate_llm_protocols(incoming, stored)
+    else:
+        incoming = stored
+    applied = service.apply(incoming)
     _invalidate_runtime_caches()
     now = int(time.time())
     launch_at = now + 3

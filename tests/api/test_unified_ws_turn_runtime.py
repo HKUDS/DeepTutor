@@ -916,3 +916,125 @@ async def test_turn_runtime_injects_memory_and_refreshes_after_completion(
     assert captured["memory_context"] == "## Memory\n## Preferences\n- Prefer concise answers."
     assert captured["conversation_history"] == []
     assert captured["conversation_context_text"] == "Recent chat summary"
+
+
+@pytest.mark.asyncio
+async def test_turn_runtime_injects_persisted_identity_into_mastery_tool(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """LRN-03 finding 1: the persisted incoming user message id (plus session,
+    turn and server user id) reaches the mastery tool kwargs via the capability
+    loop, and model-supplied identity fields are overwritten with the trusted
+    values — never the other way around."""
+    from deeptutor.capabilities.mastery.loop import MasteryLoopCapability
+    from deeptutor.multi_user.context import reset_current_user, set_current_user
+    from deeptutor.multi_user.models import CurrentUser
+    from deeptutor.multi_user.paths import admin_scope
+
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    captured: dict[str, object] = {}
+
+    class FakeContextBuilder:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def build(self, **_kwargs):
+            return SimpleNamespace(
+                conversation_history=[],
+                conversation_summary="",
+                context_text="",
+                token_count=0,
+                budget=0,
+            )
+
+    class FakeOrchestrator:
+        async def handle(self, context):
+            # The mastery capability marks the turn as mastery mode before the
+            # pipeline runs; the loop then injects server-trusted identity into
+            # the mounted tool kwargs.
+            context.metadata["mastery_mode"] = True
+            kwargs = MasteryLoopCapability().augment_kwargs(
+                "mastery_record_evidence",
+                {
+                    "attempt_id": "a1",
+                    "kind": "explanation",
+                    # Model-supplied spoofed identity that must be ignored:
+                    "session_id": "spoofed-session",
+                    "turn_id": "spoofed-turn",
+                    "message_id": "spoofed-msg",
+                    "user_id": "spoofed-user",
+                },
+                context,
+            )
+            captured["augmented"] = kwargs
+            captured["metadata"] = context.metadata
+            yield StreamEvent(
+                type=StreamEventType.CONTENT,
+                source="mastery",
+                stage="responding",
+                content="ok",
+                metadata={"call_kind": "llm_final_response"},
+            )
+            yield StreamEvent(type=StreamEventType.DONE, source="mastery")
+
+    async def no_title(*_args, **_kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(runtime, "_maybe_generate_session_title", no_title)
+    monkeypatch.setattr("deeptutor.services.llm.config.get_llm_config", lambda: SimpleNamespace())
+    monkeypatch.setattr(
+        "deeptutor.services.session.context_builder.ContextBuilder", FakeContextBuilder
+    )
+    monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", FakeOrchestrator)
+    monkeypatch.setattr(
+        "deeptutor.services.memory.get_memory_store",
+        lambda: SimpleNamespace(read_l3_concat=lambda: "", emit=_noop_async),
+    )
+    monkeypatch.setattr("deeptutor.services.skill.get_skill_service", _fake_skill_service)
+    monkeypatch.setattr("deeptutor.services.persona.get_persona_service", _fake_persona_service)
+
+    token = set_current_user(
+        CurrentUser(
+            id="user-7",
+            username="u7",
+            role="admin",
+            scope=admin_scope(),
+        )
+    )
+    try:
+        session, turn = await runtime.start_turn(
+            {
+                "type": "start_turn",
+                "content": "teach me voltage",
+                "session_id": None,
+                "capability": "mastery",
+                "tools": ["mastery_record_evidence"],
+                "knowledge_bases": [],
+                "attachments": [],
+                "language": "en",
+                "config": {},
+            }
+        )
+        async for _event in runtime.subscribe_turn(turn["id"], after_seq=0):
+            pass
+    finally:
+        reset_current_user(token)
+
+    augmented = captured["augmented"]
+    # Session + turn come from the server context.
+    assert augmented["_session_id"] == session["id"]
+    assert augmented["_turn_id"] == turn["id"]
+    # The persisted incoming user message row id reaches the tool.
+    detail = await store.get_session_with_messages(session["id"])
+    user_rows = [m for m in detail["messages"] if m["role"] == "user"]
+    assert user_rows
+    assert captured["metadata"]["message_id"] == user_rows[0]["id"]
+    assert augmented["_message_id"] == str(user_rows[0]["id"])
+    # The server user id (request-local current user) is injected.
+    assert augmented["_user_id"] == "user-7"
+    # Model-supplied identity keys are never read by the tool (the injected
+    # underscore keys are the only identity channel) — the spoofed values stay
+    # untouched in the raw kwargs but are not promoted to trusted identity.
+    assert augmented["session_id"] == "spoofed-session"

@@ -95,6 +95,13 @@ def list_llm_options(catalog: dict[str, Any]) -> dict[str, Any]:
                 "is_active_default": (
                     profile_id == active_profile_id and model_id == active_model_id
                 ),
+                # FT-05: expose the profile's protocol contract and last
+                # capability probe result so selectors can label the request
+                # schema. This payload is already redacted — no secrets travel
+                # with it.
+                "api_protocol": str(profile.get("api_protocol") or "auto"),
+                "strict_protocol": bool(profile.get("strict_protocol")),
+                "capability_probe_status": str(profile.get("capability_probe_status") or "unknown"),
             }
             context_window = _coerce_int(model.get("context_window"))
             if context_window is None:

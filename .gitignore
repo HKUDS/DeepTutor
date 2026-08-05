@@ -89,6 +89,10 @@ web/.env.local
 
 # Frontend build artifacts
 dist/
+
+# Playwright output (screenshots/reports are evidence, not source)
+web/test-results/
+web/playwright-report/
 web/dist/
 build/
 web/build/
@@ -126,6 +130,10 @@ cache/
 .cache/
 .ruff_cache
 .playwright-cli/
+
+# Playwright transient artifacts (screenshots are kept under web/tests/e2e/screenshots/)
+web/test-results/
+web/playwright-report/
 
 # Log files
 *.log

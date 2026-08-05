@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 import json
 import threading
 from threading import Lock
@@ -11,7 +13,11 @@ from uuid import uuid4
 
 from .context_window_detection import detect_context_window
 from .embedding_endpoint import redact_embedding_endpoint_for_display
-from .model_catalog import get_model_catalog_service
+from .model_catalog import (
+    get_model_catalog_service,
+    redact_catalog,
+    sanitize_probe_message,
+)
 from .provider_runtime import (
     resolve_embedding_runtime_config,
     resolve_llm_runtime_config,
@@ -136,7 +142,25 @@ class ConfigTestRunner:
                 run.emit("completed", f"{service.upper()} test completed successfully.")
         except Exception as exc:
             run.status = "failed"
-            run.emit("failed", str(exc))
+            # Scrub the provider text before it reaches the browser. Backends
+            # echo the failing request (Authorization header / Bearer token /
+            # API key) into exception messages; ``sanitize_probe_message`` is
+            # the single redaction point for persisted + SSE surfaces.
+            message = sanitize_probe_message(str(exc))
+            run.emit("failed", message)
+            if run.service == "llm":
+                # Keep the probe badge honest after a failed test. Failure is
+                # surfaced without leaking credentials into the SSE stream.
+                with contextlib.suppress(Exception):
+                    run.emit(
+                        "catalog",
+                        "LLM capability probe failed.",
+                        catalog=self._persist_llm_probe_status(
+                            catalog,
+                            "failed",
+                            message,
+                        ),
+                    )
 
     def _persist_embedding_dimension(
         self,
@@ -160,6 +184,30 @@ class ConfigTestRunner:
         saved = service.save(catalog)
         reset_embedding_client()
         return saved
+
+    def _persist_llm_probe_status(
+        self,
+        catalog: dict[str, Any],
+        status: str,
+        message: str,
+    ) -> dict[str, Any]:
+        """Write the last capability-probe result onto the active LLM profile.
+
+        Called after every LLM "Test connection" so the Models UI can render a
+        probe badge (passed/failed/unknown) that survives page reloads. Returns
+        the browser-safe (secret-redacted) catalog for SSE events.
+        """
+        service = get_model_catalog_service()
+        profile = service.get_active_profile(catalog, "llm")
+        if profile is None:
+            # Nothing to stamp (e.g. an empty/partial probe catalog) — never
+            # write a default catalog over a real one on a failed probe.
+            return redact_catalog(catalog)
+        profile["capability_probe_status"] = status
+        profile["capability_probe_at"] = datetime.now(timezone.utc).isoformat()
+        profile["capability_probe_message"] = sanitize_probe_message(message or "")[:500]
+        saved = service.save(catalog)
+        return redact_catalog(saved)
 
     @staticmethod
     def _capabilities_from_adapter(adapter: Any, model_name: str) -> dict[str, Any]:
@@ -230,6 +278,20 @@ class ConfigTestRunner:
             "info", f"Resolved model `{llm_config.model}` with binding `{llm_config.binding}`."
         )
         run.emit("info", f"Request target: {llm_config.base_url}")
+        # FT-05: surface the profile's protocol contract (requested + resolved)
+        # so the Diagnostics panel can show the actual request schema, including
+        # which protocol an ``auto`` profile resolved to and why.
+        run.emit(
+            "protocol",
+            (
+                f"API protocol: {resolved.api_protocol} → "
+                f"{resolved.resolved_api_protocol} ({resolved.protocol_resolution_reason})."
+            ),
+            api_protocol=resolved.api_protocol,
+            strict_protocol=resolved.strict_protocol,
+            resolved_protocol=resolved.resolved_api_protocol,
+            resolution_reason=resolved.protocol_resolution_reason,
+        )
         # Reasoning models spend part of the budget on internal thinking;
         # too tight a cap makes them return empty content. Configurable
         # via diagnostics.llm_probe.max_tokens in agents.yaml.
@@ -267,6 +329,18 @@ class ConfigTestRunner:
                 "Basic LLM completion succeeded. Chat additionally validates "
                 "streaming and provider tool compatibility at runtime."
             ),
+        )
+
+        # Persist the probe badge so the Models UI can render it after reload.
+        saved_redacted = self._persist_llm_probe_status(
+            catalog,
+            "passed",
+            "Basic completion and protocol resolution succeeded.",
+        )
+        run.emit(
+            "catalog",
+            "Saved LLM capability probe status.",
+            catalog=saved_redacted,
         )
 
         run.emit("info", "Detecting model context window.")
@@ -414,7 +488,7 @@ class ConfigTestRunner:
         run.emit(
             "catalog",
             "Saved detected embedding dimension to model_catalog.json.",
-            catalog=saved_catalog,
+            catalog=redact_catalog(saved_catalog),
         )
 
     def _test_search(self, run: TestRun, catalog: dict[str, Any]) -> None:

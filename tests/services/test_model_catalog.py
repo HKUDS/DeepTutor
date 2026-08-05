@@ -2,7 +2,12 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 
-from deeptutor.services.config.model_catalog import ModelCatalogService
+from deeptutor.services.config.model_catalog import (
+    LLM_API_PROTOCOLS,
+    ModelCatalogService,
+    merge_profile_secrets,
+    redact_catalog,
+)
 
 
 def test_load_creates_empty_catalog_without_dotenv_hydration(tmp_path: Path):
@@ -245,3 +250,143 @@ def test_atomic_save_leaves_no_temporary_file(tmp_path: Path):
 
     assert catalog_path.exists()
     assert not list(tmp_path.glob(".model_catalog.json.*"))
+
+
+# ─── FT-05: LLM profile api_protocol / strict_protocol schema ──────────────
+
+
+def _llm_profile(**overrides) -> dict:
+    profile = {
+        "id": "llm-profile-a",
+        "name": "A",
+        "binding": "openai",
+        "base_url": "https://api.example.com/v1",
+        "api_key": "sk-test",
+        "models": [{"id": "llm-model-a", "name": "m", "model": "gpt-4o"}],
+    }
+    profile.update(overrides)
+    return profile
+
+
+def _catalog_with_llm(profiles: list[dict]) -> dict:
+    return {
+        "version": 1,
+        "services": {
+            "llm": {
+                "active_profile_id": profiles[0]["id"] if profiles else None,
+                "active_model_id": profiles[0]["models"][0]["id"] if profiles else None,
+                "profiles": profiles,
+            }
+        },
+    }
+
+
+def test_legacy_llm_profile_migrates_api_protocol_to_auto(tmp_path: Path):
+    """A legacy profile (no api_protocol) migrates to ``auto`` on load."""
+    catalog_path = tmp_path / "model_catalog.json"
+    catalog_path.write_text(
+        json.dumps(_catalog_with_llm([_llm_profile()])),
+        encoding="utf-8",
+    )
+
+    profile = ModelCatalogService(path=catalog_path).load()["services"]["llm"]["profiles"][0]
+
+    assert profile["api_protocol"] == "auto"
+    assert profile["strict_protocol"] is False
+    assert profile["capability_probe_status"] == "unknown"
+    assert profile["capability_probe_at"] == ""
+    assert profile["capability_probe_message"] == ""
+    saved = json.loads(catalog_path.read_text(encoding="utf-8"))
+    assert saved["services"]["llm"]["profiles"][0]["api_protocol"] == "auto"
+
+
+def test_explicit_protocol_fields_are_preserved(tmp_path: Path):
+    catalog_path = tmp_path / "model_catalog.json"
+    catalog_path.write_text(
+        json.dumps(
+            _catalog_with_llm(
+                [
+                    _llm_profile(
+                        api_protocol="openai_responses",
+                        strict_protocol=True,
+                        capability_probe_status="passed",
+                        capability_probe_at="probe-run-at",
+                        capability_probe_message="ok",
+                    )
+                ]
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    profile = ModelCatalogService(path=catalog_path).load()["services"]["llm"]["profiles"][0]
+
+    assert profile["api_protocol"] == "openai_responses"
+    assert profile["strict_protocol"] is True
+    assert profile["capability_probe_status"] == "passed"
+
+
+def test_invalid_api_protocol_coerces_to_auto(tmp_path: Path):
+    catalog_path = tmp_path / "model_catalog.json"
+    catalog_path.write_text(
+        json.dumps(_catalog_with_llm([_llm_profile(api_protocol="bogus")])),
+        encoding="utf-8",
+    )
+
+    profile = ModelCatalogService(path=catalog_path).load()["services"]["llm"]["profiles"][0]
+
+    assert profile["api_protocol"] == "auto"
+
+
+def test_string_strict_protocol_is_coerced_to_bool(tmp_path: Path):
+    catalog_path = tmp_path / "model_catalog.json"
+    catalog_path.write_text(
+        json.dumps(_catalog_with_llm([_llm_profile(strict_protocol="true")])),
+        encoding="utf-8",
+    )
+
+    profile = ModelCatalogService(path=catalog_path).load()["services"]["llm"]["profiles"][0]
+
+    assert profile["strict_protocol"] is True
+
+
+def test_redact_catalog_strips_api_keys_and_sets_flags():
+    catalog = _catalog_with_llm([_llm_profile(api_key="sk-secret")])
+
+    redacted = redact_catalog(catalog)
+
+    profile = redacted["services"]["llm"]["profiles"][0]
+    assert profile["api_key"] == ""
+    assert profile["api_key_set"] is True
+    # Original catalog is untouched.
+    assert catalog["services"]["llm"]["profiles"][0]["api_key"] == "sk-secret"
+
+
+def test_merge_profile_secrets_tristate():
+    stored = _catalog_with_llm([_llm_profile(api_key="sk-stored")])
+    stored_id = stored["services"]["llm"]["profiles"][0]["id"]
+
+    # Untouched (redacted GET): api_key "" + api_key_set True → keep stored.
+    untouched = _catalog_with_llm([_llm_profile(api_key="", api_key_set=True)])
+    merged = merge_profile_secrets(stored, untouched)
+    assert merged["services"]["llm"]["profiles"][0]["api_key"] == "sk-stored"
+    assert "api_key_set" not in merged["services"]["llm"]["profiles"][0]
+
+    # Explicit replacement.
+    replaced = _catalog_with_llm([_llm_profile(api_key="sk-new")])
+    merged = merge_profile_secrets(stored, replaced)
+    assert merged["services"]["llm"]["profiles"][0]["api_key"] == "sk-new"
+
+    # Explicit clear.
+    cleared = _catalog_with_llm([_llm_profile(api_key="", api_key_set=False)])
+    merged = merge_profile_secrets(stored, cleared)
+    assert merged["services"]["llm"]["profiles"][0]["api_key"] == ""
+
+
+def test_llm_api_protocols_contract_values():
+    assert LLM_API_PROTOCOLS == (
+        "auto",
+        "openai_chat_completions",
+        "openai_responses",
+        "anthropic_messages",
+    )

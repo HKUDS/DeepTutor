@@ -2,6 +2,7 @@
 
 import { useTranslation } from "react-i18next";
 
+import { GeneratedMediaManager } from "@/components/media/GeneratedMediaManager";
 import { ServiceConfigEditor } from "@/components/settings/ServiceConfigEditor";
 import { SettingsPageHeader } from "@/components/settings/shared";
 
@@ -16,6 +17,8 @@ export default function ImageGenSettingsPage() {
         )}
       />
       <ServiceConfigEditor service="imagegen" />
+      {/* MED-03: generated-media management (quota, references, cleanup). */}
+      <GeneratedMediaManager />
     </div>
   );
 }

@@ -39,6 +39,8 @@ def _provider_cache_key(config: LLMConfig, loop: asyncio.AbstractEventLoop) -> t
         config.temperature,
         config.max_tokens,
         config.reasoning_effort,
+        config.api_protocol,
+        config.strict_protocol,
     )
 
 
@@ -47,6 +49,27 @@ def _build_runtime_provider(llm_config: LLMConfig) -> LLMProvider:
     provider_name = llm_config.provider_name or llm_config.binding
     spec = find_by_name(provider_name)
     backend = spec.backend if spec else "openai_compat"
+
+    # Explicit ``api_protocol`` profiles use the deterministic unified adapter
+    # (MOD-02).  Specialized OAuth/backend providers keep their own runtime
+    # and receive the protocol fields so they can still reject mismatches.
+    if llm_config.api_protocol in {
+        "openai_chat_completions",
+        "openai_responses",
+        "anthropic_messages",
+    }:
+        if backend not in {"anthropic", "openai_codex", "github_copilot", "azure_openai"}:
+            from deeptutor.services.llm.provider_core.unified.adapter import (
+                build_unified_adapter,
+            )
+
+            provider = build_unified_adapter(llm_config)
+            provider.generation = GenerationSettings(
+                temperature=llm_config.temperature,
+                max_tokens=llm_config.max_tokens,
+                reasoning_effort=llm_config.reasoning_effort,
+            )
+            return provider
 
     if backend == "openai_codex":
         from deeptutor.services.llm.provider_core.openai_codex_provider import (
@@ -68,6 +91,8 @@ def _build_runtime_provider(llm_config: LLMConfig) -> LLMProvider:
             api_base=llm_config.effective_url or llm_config.base_url or "",
             default_model=llm_config.model,
             extra_headers=llm_config.extra_headers or None,
+            api_protocol=llm_config.api_protocol,
+            strict_protocol=llm_config.strict_protocol,
         )
     elif backend == "anthropic":
         from deeptutor.services.llm.provider_core.anthropic_provider import AnthropicProvider
@@ -78,6 +103,8 @@ def _build_runtime_provider(llm_config: LLMConfig) -> LLMProvider:
             default_model=llm_config.model,
             extra_headers=llm_config.extra_headers or None,
             supports_prompt_caching=bool(spec and spec.supports_prompt_caching),
+            api_protocol=llm_config.api_protocol,
+            strict_protocol=llm_config.strict_protocol,
         )
     else:
         from deeptutor.services.llm.provider_core.openai_compat_provider import OpenAICompatProvider
@@ -89,6 +116,8 @@ def _build_runtime_provider(llm_config: LLMConfig) -> LLMProvider:
             extra_headers=llm_config.extra_headers or None,
             spec=spec,
             provider_name=provider_name,
+            api_protocol=llm_config.api_protocol,
+            strict_protocol=llm_config.strict_protocol,
         )
 
     provider.generation = GenerationSettings(

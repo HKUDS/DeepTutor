@@ -20,6 +20,7 @@ import { reasoningEffortOptions } from "@/lib/reasoning-effort";
 import { CodexOAuthCard } from "./CodexOAuthCard";
 import { isCodexOAuthProfile, isManagedCodexProfile } from "./codex-profile";
 import {
+  EXPLICIT_LLM_API_PROTOCOL_VALUES,
   type CatalogModel,
   type CatalogProfile,
   type LlmContextWindowDetection,
@@ -70,6 +71,8 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
     addModel,
     removeActiveModel,
     updateProfileField,
+    updateProfileBoolField,
+    updateProfileApiKey,
     updateModelField,
     updateModelBoolField,
     updateContextWindowField,
@@ -217,9 +220,11 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
   return (
     <div data-tour={`tour-${service}`} className="space-y-5">
       {activeProfile ? (
-        <div className="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-5">
-          {/* ── Profile list (sticky so it stays put while the editor scrolls) ── */}
-          <aside className="sticky top-4 self-start rounded-xl border border-[var(--border)]/60 bg-[var(--card)]/40 p-2">
+        <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-[200px_minmax(0,1fr)]">
+          {/* ── Profile list (sticky on desktop so it stays put while the
+              editor scrolls; stacked above the editor on narrow screens so
+              both panes stay reachable at 390px without horizontal clipping) ── */}
+          <aside className="self-start rounded-xl border border-[var(--border)]/60 bg-[var(--card)]/40 p-2 md:sticky md:top-4">
             <div className="px-2 pb-2 pt-1 text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]/70">
               {t("Profiles")}
             </div>
@@ -263,9 +268,11 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                       }
                     }}
                     title={
-                      isEditing || isManagedProfile
+                      isEditing
                         ? undefined
-                        : t("Double-click to rename")
+                        : isManagedProfile
+                          ? profile.name
+                          : `${profile.name} — ${t("Double-click to rename")}`
                     }
                     className={`group relative cursor-pointer rounded-lg px-3 py-2 text-left transition-colors ${
                       isActive
@@ -461,10 +468,11 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                               onDoubleClick={() => {
                                 if (!isCodexOAuth) startModelRename(model);
                               }}
+                              aria-label={label}
                               title={
                                 isCodexOAuth
-                                  ? undefined
-                                  : t("Double-click to rename")
+                                  ? label
+                                  : `${label} — ${t("Double-click to rename")}`
                               }
                               className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] transition-colors ${
                                 isActive
@@ -868,6 +876,75 @@ function defaultModelLabel(language: "en" | "zh", index: number): string {
   return language === "zh" ? `模型${safeIndex}` : `Model ${safeIndex}`;
 }
 
+function protocolLabel(
+  value: string,
+  t: (key: string) => string,
+): string {
+  switch (value) {
+    case "openai_chat_completions":
+      return t("OpenAI Chat Completions");
+    case "openai_responses":
+      return t("OpenAI Responses");
+    case "anthropic_messages":
+      return t("Anthropic Messages");
+    case "auto":
+    default:
+      return t("Auto (compatibility)");
+  }
+}
+
+function ProbeStatusBadge({
+  status,
+  at,
+  message,
+  t,
+}: {
+  status: string | undefined;
+  at: string | undefined;
+  message: string | undefined;
+  t: (key: string) => string;
+}) {
+  const state = status || "unknown";
+  const label =
+    state === "passed"
+      ? t("Probe passed")
+      : state === "failed"
+        ? t("Probe failed")
+        : state === "probing"
+          ? t("Probing")
+          : t("Probe not run yet");
+  const dotClass =
+    state === "passed"
+      ? "bg-emerald-500"
+      : state === "failed"
+        ? "bg-red-500"
+        : state === "probing"
+          ? "bg-amber-500"
+          : "bg-[var(--border)]";
+  const textClass =
+    state === "passed"
+      ? "text-emerald-700 dark:text-emerald-400"
+      : state === "failed"
+        ? "text-red-600 dark:text-red-400"
+        : "text-[var(--muted-foreground)]";
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+      <span className={`inline-flex items-center gap-1.5 ${textClass}`}>
+        <span className={`h-2 w-2 rounded-full ${dotClass}`} />
+        <span className="font-medium">{label}</span>
+      </span>
+      {state !== "unknown" && at && (
+        <span className="text-[var(--muted-foreground)]/60">{at}</span>
+      )}
+      {message && state !== "unknown" && (
+        <span className="min-w-0 truncate text-[var(--muted-foreground)]">
+          · {message}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function formatCompactTokens(value: string | number | undefined): string {
   if (value === undefined || value === "") return "";
   const parsed =
@@ -1016,7 +1093,14 @@ function ProfileFields({
   isPerplexityMissingKey: boolean;
 }) {
   const { t } = useTranslation();
-  const { providers, updateProfileField, updateModelField } = useSettings();
+  const {
+    providers,
+    protocolOptions,
+    updateProfileField,
+    updateProfileBoolField,
+    updateProfileApiKey,
+    updateModelField,
+  } = useSettings();
   const [extraOpen, setExtraOpen] = useState(false);
 
   const providerValue =
@@ -1136,6 +1220,26 @@ function ProfileFields({
           </p>
         )}
       </div>
+      {service === "imagegen" && (
+        <div
+          className="sm:col-span-2 rounded-xl border border-[var(--border)]/60 bg-[var(--muted)]/20 px-3.5 py-3"
+          data-protocol-identity="imagegen"
+        >
+          <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+            {t("API Protocol")}
+          </div>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <code className="rounded-md border border-[var(--border)]/60 bg-[var(--muted)]/40 px-2 py-1 font-mono text-[12px] font-medium text-[var(--foreground)]">
+              {"openai_images"}
+            </code>
+            <span className="text-[11px] text-[var(--muted-foreground)]">
+              {t(
+                "Image requests for this profile use the OpenAI Images API protocol. This value is fixed by DeepTutor.",
+              )}
+            </span>
+          </div>
+        </div>
+      )}
       {isCodexOAuth && (
         <div className="sm:col-span-2">
           <CodexOAuthCard />
@@ -1186,10 +1290,12 @@ function ProfileFields({
               spellCheck={false}
               className={`${inputClass} pr-10 font-mono`}
               value={profile.api_key}
-              onChange={(e) =>
-                updateProfileField(service, "api_key", e.target.value)
+              onChange={(e) => updateProfileApiKey(service, e.target.value)}
+              placeholder={
+                profile.api_key_set && !profile.api_key
+                  ? "••••••••••••"
+                  : "sk-..."
               }
-              placeholder="sk-..."
             />
             <button
               type="button"
@@ -1204,6 +1310,102 @@ function ProfileFields({
                 <Eye className="h-4 w-4" />
               )}
             </button>
+          </div>
+          {profile.api_key_set && !profile.api_key && (
+            <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
+              {t(
+                "A secret is configured. Leave empty to keep it, or type a new value to replace it.",
+              )}
+            </p>
+          )}
+        </div>
+      )}
+      {service === "llm" && !isCodexOAuth && (
+        <div className="sm:col-span-2 rounded-xl border border-[var(--border)]/60 bg-[var(--muted)]/20 px-3.5 py-3">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                {t("API Protocol")}
+              </div>
+              <div className="relative">
+                <select
+                  className={selectClass}
+                  value={profile.api_protocol || "auto"}
+                  onChange={(e) =>
+                    updateProfileField(service, "api_protocol", e.target.value)
+                  }
+                  aria-label={t("API Protocol")}
+                >
+                  {/* A legacy profile that never picked a protocol renders
+                      `auto` as a disabled compatibility state — it is not a
+                      normal new/edit choice. Picking one of the explicit
+                      protocols converts the profile. */}
+                  {(profile.api_protocol || "auto") === "auto" && (
+                    <option
+                      className={selectOptionClass}
+                      value="auto"
+                      disabled
+                    >
+                      {t("Auto (compatibility)")}
+                    </option>
+                  )}
+                  {(protocolOptions.length > 0
+                    ? protocolOptions
+                    : EXPLICIT_LLM_API_PROTOCOL_VALUES.map((value) => ({
+                        value,
+                        label: protocolLabel(value, t),
+                      }))
+                  ).map((option) => (
+                    <option
+                      className={selectOptionClass}
+                      key={option.value}
+                      value={option.value}
+                    >
+                      {protocolLabel(option.value, t)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
+              </div>
+              <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
+                {t(
+                  "The API protocol selects which request schema DeepTutor uses for this profile. Auto preserves legacy behavior.",
+                )}
+              </p>
+            </div>
+            <div>
+              <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                {t("Strict protocol")}
+              </div>
+              <label className="inline-flex cursor-pointer items-center gap-1.5 text-[12px] text-[var(--foreground)] select-none">
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5 cursor-pointer accent-[var(--foreground)]"
+                  checked={profile.strict_protocol === true}
+                  onChange={(e) =>
+                    updateProfileBoolField(
+                      service,
+                      "strict_protocol",
+                      e.target.checked,
+                    )
+                  }
+                />
+                <span>{t("Fail instead of falling back")}</span>
+              </label>
+              <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
+                {t(
+                  "When strict protocol is enabled, DeepTutor will not fall back to another protocol if the selected protocol fails.",
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 border-t border-[var(--border)]/50 pt-3">
+            <ProbeStatusBadge
+              status={profile.capability_probe_status}
+              at={profile.capability_probe_at}
+              message={profile.capability_probe_message}
+              t={t}
+            />
           </div>
         </div>
       )}

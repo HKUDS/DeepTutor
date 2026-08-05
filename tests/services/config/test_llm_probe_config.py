@@ -214,9 +214,7 @@ class TestLlmProbeUsesAgentsYaml:
         assert captured_kwargs["reasoning_effort"] == "high"
 
     @pytest.mark.asyncio
-    async def test_probe_reports_detected_context_window_without_persisting_catalog(
-        self, tmp_path, monkeypatch
-    ):
+    async def test_probe_persists_probe_status_but_not_context_window(self, tmp_path, monkeypatch):
         from deeptutor.services import llm as llm_module
         from deeptutor.services.config import test_runner as test_runner_module
         from deeptutor.services.config.model_catalog import ModelCatalogService
@@ -285,15 +283,25 @@ class TestLlmProbeUsesAgentsYaml:
         await runner._test_llm(run, catalog=catalog)
 
         saved = service.load()
-        saved_model = saved["services"]["llm"]["profiles"][0]["models"][0]
+        saved_profile = saved["services"]["llm"]["profiles"][0]
+        saved_model = saved_profile["models"][0]
+        # The context window is detected but deliberately NOT written to the
+        # catalog (the user applies it from the banner). The capability probe
+        # status IS persisted so the Models UI can render a badge after reload.
         assert "context_window" not in saved_model
         assert "context_window_source" not in saved_model
         assert "context_window_detected_at" not in saved_model
+        assert saved_profile["capability_probe_status"] == "passed"
+        assert saved_profile["capability_probe_at"]
         context_event = next(event for event in run.events if event["type"] == "context_window")
         assert context_event["context_window"] == 128000
         assert context_event["source"] == "metadata"
         assert context_event["detected_at"] == "2026-04-24T08:00:00+00:00"
-        assert not any(event["type"] == "catalog" for event in run.events)
+        # The probe-status catalog event must be secret-redacted.
+        catalog_event = next(event for event in run.events if event["type"] == "catalog")
+        echoed_profile = catalog_event["catalog"]["services"]["llm"]["profiles"][0]
+        assert echoed_profile["api_key"] == ""
+        assert echoed_profile["api_key_set"] is True
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,375 @@
+{
+  "book_id": "feynman-book",
+  "current_stage": "review",
+  "current_module_id": "mod-1",
+  "current_kp_index": 0,
+  "diagnostic": null,
+  "modules": [
+    {
+      "id": "mod-1",
+      "name": "Circuits",
+      "order": 1,
+      "pass_threshold": 0.7,
+      "knowledge_points": [
+        {"id": "kp-1", "name": "Voltage divider", "type": "concept", "module_id": "mod-1"},
+        {"id": "kp-2", "name": "Series resistance", "type": "procedure", "module_id": "mod-1"}
+      ]
+    }
+  ],
+  "mastery_levels": {
+    "kp-1": 0.85,
+    "kp-2": 0.4
+  },
+  "knowledge_types": {
+    "kp-1": "concept",
+    "kp-2": "procedure"
+  },
+  "qualitative_mastery": {},
+  "quiz_attempts": [],
+  "error_records": [],
+  "feynman_retries": {},
+  "feynman_explanations": {},
+  "stage_failure_counts": {},
+  "stage_failure_notes": {},
+  "repetition_states": {},
+  "review_queue": [],
+  "pending_question": null,
+  "attempts": [
+    {
+      "id": "a1",
+      "knowledge_point_id": "kp-1",
+      "cycle_type": "initial",
+      "status": "assessed",
+      "invalidated_reason": "",
+      "knowledge_point_version": 1,
+      "map_version_id": "mv1",
+      "source_snapshot_ids": ["s1", "s2"],
+      "supersedes_attempt_id": "",
+      "session_id": "sess-1",
+      "started_turn_id": "t-1",
+      "active_chain_id": "chain-1",
+      "max_help_level": "hint",
+      "evaluator_snapshot": {
+        "profile_id": "p-1",
+        "profile_name": "Default",
+        "profile_revision": "r2",
+        "requested_provider": "openai",
+        "requested_api_protocol": "auto",
+        "requested_model": "gpt-4o-mini",
+        "resolved_provider": "openai",
+        "resolved_api_protocol": "responses",
+        "resolved_model": "gpt-4o-mini",
+        "auto_resolution_reason": "profile defaulted to responses",
+        "base_url_fingerprint": "abc123",
+        "strict_protocol": false,
+        "prompt_version": "feynman-v2",
+        "rubric_version": "v1",
+        "created_at": 1710000001.0
+      },
+      "created_at": 1710000001.0,
+      "updated_at": 1710000010.0,
+      "closed_at": 1710000010.0
+    },
+    {
+      "id": "a2",
+      "knowledge_point_id": "kp-1",
+      "cycle_type": "delayed_reteach",
+      "status": "closed",
+      "invalidated_reason": "",
+      "knowledge_point_version": 1,
+      "map_version_id": "mv1",
+      "source_snapshot_ids": ["s1", "s2"],
+      "supersedes_attempt_id": "a1",
+      "session_id": "sess-2",
+      "started_turn_id": "t-20",
+      "active_chain_id": "chain-2",
+      "max_help_level": "question",
+      "evaluator_snapshot": null,
+      "created_at": 1710001000.0,
+      "updated_at": 1710001100.0,
+      "closed_at": 1710001100.0
+    },
+    {
+      "id": "a3",
+      "knowledge_point_id": "kp-2",
+      "cycle_type": "initial",
+      "status": "collecting",
+      "invalidated_reason": "",
+      "knowledge_point_version": 1,
+      "map_version_id": "mv1",
+      "source_snapshot_ids": ["s1"],
+      "supersedes_attempt_id": "",
+      "session_id": "sess-3",
+      "started_turn_id": "t-30",
+      "active_chain_id": "chain-3",
+      "max_help_level": "question",
+      "evaluator_snapshot": null,
+      "created_at": 1710002000.0,
+      "updated_at": 1710002010.0,
+      "closed_at": null
+    }
+  ],
+  "evidence_items": [
+    {
+      "id": "ev1",
+      "attempt_id": "a1",
+      "chain_id": "chain-1",
+      "kind": "explanation",
+      "session_id": "sess-1",
+      "turn_id": "t-1",
+      "message_id": "m-1",
+      "event_seq": 1,
+      "input_mode": "text",
+      "transcript_confirmed": false,
+      "content_snapshot": "A voltage divider splits the input voltage across resistors...",
+      "content_hash": "sha256:ev1",
+      "question_evidence_id": "",
+      "source_citations": [{"source_snapshot_id": "s1", "anchor": "p.3"}],
+      "help_level": null,
+      "created_at": 1710000002.0
+    },
+    {
+      "id": "ev2",
+      "attempt_id": "a1",
+      "chain_id": "chain-1",
+      "kind": "probe_question",
+      "session_id": "sess-1",
+      "turn_id": "t-2",
+      "message_id": "m-2",
+      "event_seq": 2,
+      "input_mode": "text",
+      "transcript_confirmed": false,
+      "content_snapshot": "What happens to the output voltage if R2 increases?",
+      "content_hash": "sha256:ev2",
+      "question_evidence_id": "",
+      "source_citations": [],
+      "help_level": "question",
+      "created_at": 1710000003.0
+    },
+    {
+      "id": "ev3",
+      "attempt_id": "a1",
+      "chain_id": "chain-1",
+      "kind": "transfer_answer",
+      "session_id": "sess-1",
+      "turn_id": "t-3",
+      "message_id": "m-3",
+      "event_seq": 3,
+      "input_mode": "voice_transcript",
+      "transcript_confirmed": true,
+      "content_snapshot": "The output rises toward the input voltage.",
+      "content_hash": "sha256:ev3",
+      "question_evidence_id": "ev2",
+      "source_citations": [{"source_snapshot_id": "s2", "anchor": "fig.2"}],
+      "help_level": null,
+      "created_at": 1710000004.0
+    },
+    {
+      "id": "ev4",
+      "attempt_id": "a2",
+      "chain_id": "chain-2",
+      "kind": "reteach",
+      "session_id": "sess-2",
+      "turn_id": "t-21",
+      "message_id": "m-21",
+      "event_seq": 1,
+      "input_mode": "text",
+      "transcript_confirmed": false,
+      "content_snapshot": "Re-teaching the voltage divider after delay.",
+      "content_hash": "sha256:ev4",
+      "question_evidence_id": "",
+      "source_citations": [],
+      "help_level": null,
+      "created_at": 1710001005.0
+    }
+  ],
+  "rubric_assessments": [
+    {
+      "id": "ra1",
+      "attempt_id": "a1",
+      "revision": 1,
+      "assessment_sequence": 1,
+      "rubric": {"correctness": 0.9, "completeness": 0.8, "causal_clarity": 0.85, "transfer": 0.9},
+      "critical_errors": [],
+      "strengths": ["clear causal story"],
+      "gap_ids": [],
+      "evidence_ids": ["ev1", "ev2", "ev3"],
+      "source_citations": [{"source_snapshot_id": "s1", "anchor": "p.3"}],
+      "evaluator_snapshot": {
+        "profile_id": "p-1",
+        "profile_name": "Default",
+        "profile_revision": "r2",
+        "requested_provider": "openai",
+        "requested_api_protocol": "auto",
+        "requested_model": "gpt-4o-mini",
+        "resolved_provider": "openai",
+        "resolved_api_protocol": "responses",
+        "resolved_model": "gpt-4o-mini",
+        "auto_resolution_reason": "profile defaulted to responses",
+        "base_url_fingerprint": "abc123",
+        "strict_protocol": false,
+        "prompt_version": "feynman-v2",
+        "rubric_version": "v1",
+        "created_at": 1710000001.0
+      },
+      "model_invocation_id": "inv-1",
+      "supersedes_assessment_id": "",
+      "challenge_id": "",
+      "server_gate_result": {
+        "passed": true,
+        "required_evidence_kinds": ["explanation", "probe_question", "probe_answer", "transfer_question", "transfer_answer"],
+        "missing_evidence_kinds": [],
+        "blocked_by_conflict": [],
+        "used_full_explanation": false,
+        "reasons": ["complete evidence chain"]
+      },
+      "created_at": 1710000010.0
+    }
+  ],
+  "challenge_records": [
+    {
+      "id": "ch1",
+      "knowledge_point_id": "kp-1",
+      "source_attempt_id": "a1",
+      "source_assessment_id": "ra1",
+      "mode": "reassess_existing",
+      "requested_evaluator_snapshot": null,
+      "result_attempt_id": "",
+      "result_assessment_id": "",
+      "status": "pending",
+      "reason": "learner disagrees with gate",
+      "created_at": 1710000050.0,
+      "completed_at": null
+    }
+  ],
+  "gaps": [
+    {
+      "id": "gap1",
+      "knowledge_point_id": "kp-2",
+      "label": "Transfer to new circuit",
+      "description": "Cannot apply series resistance to a new diagram.",
+      "evidence_ids": ["ev4"],
+      "source_citations": [],
+      "status": "active",
+      "priority": 2,
+      "first_seen_at": 1710000100.0,
+      "last_seen_at": 1710000100.0,
+      "resolved_at": null
+    }
+  ],
+  "projections": {
+    "kp-1": {
+      "knowledge_point_id": "kp-1",
+      "mastery_state": "provisional_mastery",
+      "review_state": "scheduled",
+      "active_attempt_id": "a1",
+      "latest_assessment_id": "ra1",
+      "provisional_since": 1710000010.0,
+      "stable_since": null,
+      "next_review_at": 1710086410.0,
+      "updated_at": 1710000010.0
+    },
+    "kp-2": {
+      "knowledge_point_id": "kp-2",
+      "mastery_state": "in_progress",
+      "review_state": "unscheduled",
+      "active_attempt_id": "a3",
+      "latest_assessment_id": "",
+      "provisional_since": null,
+      "stable_since": null,
+      "next_review_at": null,
+      "updated_at": 1710002000.0
+    }
+  },
+  "source_snapshots": [
+    {
+      "id": "s1",
+      "source_type": "user_material",
+      "material_id": "mat-1",
+      "locator": "/notes/voltage-divider.md",
+      "title": "Voltage divider notes",
+      "content_hash": "sha256:s1",
+      "citation_anchors": ["p.3", "eq.4"],
+      "captured_at": 1709999000.0
+    },
+    {
+      "id": "s2",
+      "source_type": "web",
+      "material_id": "",
+      "locator": "https://example.org/divider",
+      "title": "Divider article",
+      "content_hash": "sha256:s2",
+      "citation_anchors": ["fig.2"],
+      "captured_at": 1709999005.0
+    }
+  ],
+  "map_versions": [
+    {
+      "id": "mv1",
+      "path_id": "circuits",
+      "version": 1,
+      "nodes": ["kp-1", "kp-2"],
+      "edges": [{"from": "kp-2", "to": "kp-1", "kind": "prerequisite"}],
+      "priorities": {"kp-1": 1, "kp-2": 2},
+      "source_snapshot_ids": ["s1", "s2"],
+      "confirmed_at": 1709999500.0
+    }
+  ],
+  "source_conflicts": [
+    {
+      "id": "c1",
+      "path_id": "circuits",
+      "knowledge_point_ids": ["kp-1"],
+      "claim": "Divider output differs between sources",
+      "source_snapshot_ids": ["s1", "s2"],
+      "citation_anchors": ["p.3", "fig.2"],
+      "version": 1,
+      "status": "open",
+      "accepted_snapshot_id": "",
+      "resolution_note": "",
+      "resolved_at": null,
+      "resolved_by": ""
+    }
+  ],
+  "evaluator_profile_id": "",
+  "evaluator_model_id": "",
+  "evaluator_api_protocol": "",
+  "model_invocations": [],
+  "history": [
+    {
+      "seq": 1,
+      "event_type": "map_version_confirmed",
+      "aggregate": "map",
+      "aggregate_version": 1,
+      "summary": "map circuits v1",
+      "at": 1709999500.0,
+      "payload": {"version_id": "mv1", "path_id": "circuits", "version": 1, "invalidated_attempt_ids": []}
+    },
+    {
+      "seq": 2,
+      "event_type": "attempt_created",
+      "aggregate": "attempt",
+      "aggregate_version": 1,
+      "summary": "created a1",
+      "at": 1710000001.0,
+      "payload": {"attempt_id": "a1"}
+    }
+  ],
+  "aggregate_versions": {
+    "attempt": 3,
+    "evidence": 0,
+    "assessment": 1,
+    "challenge": 1,
+    "map": 1,
+    "conflict": 1,
+    "gap": 1,
+    "model_invocation": 0
+  },
+  "knowledge_cards": [],
+  "knowledge_card_generation_attempts": [],
+  "knowledge_card_publication_records": [],
+  "knowledge_card_retraction_records": [],
+  "version": 5,
+  "created_at": 1709999000.0,
+  "updated_at": 1710002000.0
+}

@@ -43,6 +43,9 @@ class LLMConfigUpdate(TypedDict, total=False):
     temperature: float
     max_concurrency: int
     requests_per_minute: int
+    api_protocol: str
+    strict_protocol: bool
+    resolved_api_protocol: str
     traffic_controller: "TrafficController" | None
 
 
@@ -111,6 +114,9 @@ class LLMConfig:
     temperature: float = 0.7
     max_concurrency: int = 20
     requests_per_minute: int = 600
+    api_protocol: str = "auto"
+    strict_protocol: bool = False
+    resolved_api_protocol: str = ""
     traffic_controller: TrafficController | None = None
 
     def __post_init__(self) -> None:
@@ -182,6 +188,9 @@ def _get_llm_config_from_resolver() -> LLMConfig:
         extra_headers=resolved.extra_headers,
         reasoning_effort=resolved.reasoning_effort,
         context_window=resolved.context_window,
+        api_protocol=resolved.api_protocol,
+        strict_protocol=resolved.strict_protocol,
+        resolved_api_protocol=resolved.resolved_api_protocol,
     )
 
 

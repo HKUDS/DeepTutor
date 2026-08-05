@@ -4,6 +4,8 @@ import asyncio
 import json
 from pathlib import Path
 
+import pytest
+
 from deeptutor.knowledge.add_documents import (
     DocumentAdder,
     RawDocumentRemoval,
@@ -159,3 +161,87 @@ def test_remove_raw_document_uses_relative_key_for_nested_file(
     assert removal.rel_path == "papers/2024/a.pdf"
     remaining = json.loads((kb_dir / "metadata.json").read_text(encoding="utf-8"))
     assert remaining["file_hashes"] == {"other.pdf": "keep"}
+
+
+def test_cli_add_documents_fails_closed_on_final_checkpoint_ownership_loss(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """A stale CLI writer whose lease is taken over before the final metadata /
+    status writes must stop instead of marking the KB ready."""
+    from deeptutor.knowledge.add_documents import add_documents as cli_add_documents
+    from deeptutor.knowledge.write_coordinator import (
+        KbOwnershipLostError,
+        KbWriteCoordinator,
+        KbWriteOperation,
+    )
+
+    kb_dir = tmp_path / "kb"
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True)
+    _write_provider_version(kb_dir, "llamaindex")
+    (kb_dir / "metadata.json").write_text(json.dumps({"file_hashes": {}}), encoding="utf-8")
+    (tmp_path / "kb_config.json").write_text(
+        json.dumps(
+            {
+                "knowledge_bases": {
+                    "kb": {
+                        "path": "kb",
+                        "rag_provider": "llamaindex",
+                        "status": "ready",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    source = tmp_path / "ok.txt"
+    source.write_text("ok", encoding="utf-8")
+
+    class _OkRagService:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def add_documents(self, *_args, **_kwargs) -> bool:
+            return True
+
+    monkeypatch.setattr("deeptutor.knowledge.add_documents.RAGService", _OkRagService)
+
+    coordinator = KbWriteCoordinator(base_dir=str(tmp_path))
+    real_update_metadata = DocumentAdder.update_metadata
+
+    def _takeover_update_metadata(self, added_count: int) -> None:
+        # A newer holder replaced the operation right before the CLI's final
+        # completion writes.
+        new_op = KbWriteOperation.from_dict(
+            {
+                "id": "new-holder-op",
+                "kb_name": "kb",
+                "operation_type": "reindex",
+                "status": "running",
+                "lease_owner": "holder-b",
+                "lease_expires_at": "2099-01-01T00:00:00Z",
+                "created_at": "2026-08-04T12:00:00Z",
+                "updated_at": "2026-08-04T12:00:00Z",
+            }
+        )
+        coordinator._save({"kb": new_op})
+        real_update_metadata(self, added_count)
+
+    monkeypatch.setattr(DocumentAdder, "update_metadata", _takeover_update_metadata)
+
+    with pytest.raises(KbOwnershipLostError):
+        asyncio.run(
+            cli_add_documents(
+                kb_name="kb",
+                source_files=[str(source)],
+                base_dir=str(tmp_path),
+            )
+        )
+
+    # The stale CLI writer did not mark the KB ready, and it did not close its
+    # own operation as succeeded — the new holder's op is preserved.
+    config = json.loads((tmp_path / "kb_config.json").read_text(encoding="utf-8"))
+    assert config["knowledge_bases"]["kb"]["status"] != "ready"
+    current = coordinator.current_operation("kb")
+    assert current.id == "new-holder-op"
+    assert current.status == "running"
