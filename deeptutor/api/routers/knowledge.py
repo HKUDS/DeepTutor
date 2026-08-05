@@ -1744,6 +1744,7 @@ async def list_knowledge_bases():
     try:
         manager = get_kb_manager()
         kb_names = manager.list_knowledge_bases()
+        default_name = manager.get_default(available_names=kb_names)
         access_items = list_visible_kb_access()
         access_by_id = {str(item.get("id") or ""): item for item in access_items}
         own_prefix = "admin:kb:" if get_current_user().is_admin else "user:kb:"
@@ -1755,7 +1756,11 @@ async def list_knowledge_bases():
 
         for name in kb_names:
             try:
-                info = manager.get_info(name)
+                info = manager.get_info(
+                    name,
+                    refresh_config=False,
+                    default_name=default_name,
+                )
                 logger.debug(f"Successfully got info for KB '{name}': {info.get('statistics', {})}")
                 result.append(
                     KnowledgeBaseInfo(
@@ -1792,7 +1797,7 @@ async def list_knowledge_bases():
                             KnowledgeBaseInfo(
                                 id=f"{own_prefix}{name}",
                                 name=name,
-                                is_default=name == manager.get_default(),
+                                is_default=name == default_name,
                                 statistics={
                                     "raw_documents": 0,
                                     "images": 0,
@@ -1821,6 +1826,7 @@ async def list_knowledge_bases():
 
         logger.debug(f"Returning {len(result)} knowledge bases")
         if not get_current_user().is_admin:
+            assigned_snapshots: dict[str, str | None] = {}
             own_ids = {item.id for item in result}
             for access in access_items:
                 if access.get("source") != "admin" or access.get("id") in own_ids:
@@ -1847,7 +1853,17 @@ async def list_knowledge_bases():
                 resource = resolve_kb(str(access.get("id") or access.get("name") or ""))
                 assigned_manager = manager_for_resource(resource)
                 try:
-                    info = assigned_manager.get_info(resource.name)
+                    manager_key = str(assigned_manager.base_dir.resolve())
+                    if manager_key not in assigned_snapshots:
+                        assigned_names = assigned_manager.list_knowledge_bases()
+                        assigned_snapshots[manager_key] = assigned_manager.get_default(
+                            available_names=assigned_names
+                        )
+                    info = assigned_manager.get_info(
+                        resource.name,
+                        refresh_config=False,
+                        default_name=assigned_snapshots[manager_key],
+                    )
                     result.append(
                         KnowledgeBaseInfo(
                             id=resource.id,
