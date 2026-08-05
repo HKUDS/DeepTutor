@@ -95,6 +95,7 @@ DOCUMENT_PARSING_ENGINE_MINERU = "mineru"
 DOCUMENT_PARSING_ENGINE_DOCLING = "docling"
 DOCUMENT_PARSING_ENGINE_MARKITDOWN = "markitdown"
 DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM = "pymupdf4llm"
+DOCUMENT_PARSING_ENGINE_LITEPARSE = "liteparse"
 _DOCUMENT_PARSING_ENGINES = frozenset(
     {
         DOCUMENT_PARSING_ENGINE_TEXT_ONLY,
@@ -102,6 +103,7 @@ _DOCUMENT_PARSING_ENGINES = frozenset(
         DOCUMENT_PARSING_ENGINE_DOCLING,
         DOCUMENT_PARSING_ENGINE_MARKITDOWN,
         DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM,
+        DOCUMENT_PARSING_ENGINE_LITEPARSE,
     }
 )
 # Image formats PyMuPDF4LLM can write extracted page images as.
@@ -162,6 +164,17 @@ _DEFAULT_PYMUPDF4LLM_ENGINE: dict[str, Any] = {
     "image_dpi": 150,
 }
 
+# liteparse engine slice. Fast PDF parser with spatial text extraction and
+# markdown output. No model downloads required.
+_DEFAULT_LITEPARSE_ENGINE: dict[str, Any] = {
+    "output_format": "markdown",
+    "image_mode": "placeholder",
+    "extract_links": True,
+    "extract_images": False,
+    "image_output_dir": "",
+    "max_pages": 0,
+}
+
 # Built-in text-only engine slice. It deliberately has no knobs: it reuses
 # DeepTutor's legacy text extractors for PDF / Office / text-like files.
 _DEFAULT_TEXT_ONLY_ENGINE: dict[str, Any] = {}
@@ -179,6 +192,7 @@ DEFAULT_DOCUMENT_PARSING_SETTINGS: dict[str, Any] = {
         DOCUMENT_PARSING_ENGINE_DOCLING: _DEFAULT_DOCLING_ENGINE,
         DOCUMENT_PARSING_ENGINE_MARKITDOWN: _DEFAULT_MARKITDOWN_ENGINE,
         DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM: _DEFAULT_PYMUPDF4LLM_ENGINE,
+        DOCUMENT_PARSING_ENGINE_LITEPARSE: _DEFAULT_LITEPARSE_ENGINE,
     },
 }
 
@@ -795,6 +809,9 @@ class RuntimeSettingsService:
             DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM: self._normalize_pymupdf4llm_engine(
                 engines_in.get(DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM) or {}
             ),
+            DOCUMENT_PARSING_ENGINE_LITEPARSE: self._normalize_liteparse_engine(
+                engines_in.get(DOCUMENT_PARSING_ENGINE_LITEPARSE) or {}
+            ),
         }
 
         engine = _string(settings.get("engine")).lower().replace("-", "_").replace(" ", "_")
@@ -848,6 +865,17 @@ class RuntimeSettingsService:
             "enable_llm_image_description": _coerce_bool(
                 settings.get("enable_llm_image_description"), False
             ),
+        }
+
+    def _normalize_liteparse_engine(self, settings: dict[str, Any]) -> dict[str, Any]:
+        """Normalize the liteparse engine slice."""
+        return {
+            "output_format": str(settings.get("output_format") or "markdown"),
+            "image_mode": str(settings.get("image_mode") or "placeholder"),
+            "extract_links": bool(settings.get("extract_links", True)),
+            "extract_images": bool(settings.get("extract_images", False)),
+            "image_output_dir": str(settings.get("image_output_dir") or ""),
+            "max_pages": int(settings.get("max_pages") or 0),
         }
 
     def _normalize_pymupdf4llm_engine(self, settings: dict[str, Any]) -> dict[str, Any]:
@@ -1074,6 +1102,7 @@ __all__ = [
     "DOCUMENT_PARSING_ENGINE_MARKITDOWN",
     "DOCUMENT_PARSING_ENGINE_MINERU",
     "DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM",
+    "DOCUMENT_PARSING_ENGINE_LITEPARSE",
     "DOCUMENT_PARSING_ENGINE_TEXT_ONLY",
     "MINERU_MODE_CLOUD",
     "MINERU_MODE_LOCAL",

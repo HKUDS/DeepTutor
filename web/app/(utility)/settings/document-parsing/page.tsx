@@ -38,6 +38,7 @@ const PIP_HINT: Record<string, string> = {
   docling: "pip install deeptutor[parse-docling]",
   markitdown: "pip install deeptutor[parse-markitdown]",
   pymupdf4llm: "pip install deeptutor[parse-pymupdf4llm]",
+  liteparse: "pip install deeptutor[parse-liteparse]",
 };
 
 export default function DocumentParsingSettingsPage() {
@@ -232,6 +233,21 @@ export default function DocumentParsingSettingsPage() {
               onInstalled={load}
               onSave={(patch) =>
                 putDocumentParsing({ engines: { pymupdf4llm: patch } })
+              }
+            />
+          )}
+
+          {data.engine === "liteparse" && (
+            <LiteParsePanel
+              slice={data.engines.liteparse || {}}
+              available={
+                data.available_engines.find((e) => e.id === "liteparse")
+                  ?.available ?? false
+              }
+              busy={busy}
+              onInstalled={load}
+              onSave={(patch) =>
+                putDocumentParsing({ engines: { liteparse: patch } })
               }
             />
           )}
@@ -532,6 +548,142 @@ function PyMuPDF4LLMPanel({
           />
         </>
       )}
+    </SettingSection>
+  );
+}
+
+function LiteParsePanel({
+  slice,
+  available,
+  busy,
+  onInstalled,
+  onSave,
+}: {
+  slice: Record<string, unknown>;
+  available: boolean;
+  busy: boolean;
+  onInstalled: () => void;
+  onSave: (patch: Record<string, unknown>) => void;
+}) {
+  const { t } = useTranslation();
+  const outputFormat =
+    typeof slice.output_format === "string" ? slice.output_format : "markdown";
+  const imageMode =
+    typeof slice.image_mode === "string" ? slice.image_mode : "placeholder";
+  const extractLinks = slice.extract_links !== false;
+  const extractImages = Boolean(slice.extract_images);
+  const maxPages =
+    typeof slice.max_pages === "number" ? slice.max_pages : 0;
+  const imageOutputDir =
+    typeof slice.image_output_dir === "string" ? slice.image_output_dir : "";
+
+  if (!available) {
+    return (
+      <NotInstalledSection
+        engineId="liteparse"
+        title={t("liteparse")}
+        onInstalled={onInstalled}
+      />
+    );
+  }
+
+  return (
+    <SettingSection
+      title={t("liteparse")}
+      description={t(
+        "Fast PDF/Office/image parser from LlamaIndex. Supports Markdown, JSON, or plain text output.",
+      )}
+    >
+      <SettingRow
+        title={t("Output format")}
+        control={
+          <select
+            className={nativeSelectClass + " w-32"}
+            value={outputFormat}
+            disabled={busy}
+            onChange={(e) => onSave({ output_format: e.target.value })}
+          >
+            {["markdown", "json", "text"].map((f) => (
+              <option key={f} className={selectOptionClass} value={f}>
+                {f}
+              </option>
+            ))}
+          </select>
+        }
+      />
+      <SettingRow
+        title={t("Image mode")}
+        description={t("How images are represented in the output.")}
+        control={
+          <select
+            className={nativeSelectClass + " w-32"}
+            value={imageMode}
+            disabled={busy}
+            onChange={(e) => onSave({ image_mode: e.target.value })}
+          >
+            {["placeholder", "off", "embed"].map((m) => (
+              <option key={m} className={selectOptionClass} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        }
+      />
+      <SettingRow
+        title={t("Extract links")}
+        description={t("Render [text](url) links in markdown output.")}
+        control={
+          <Toggle
+            checked={extractLinks}
+            disabled={busy}
+            onChange={(v) => onSave({ extract_links: v })}
+          />
+        }
+      />
+      <SettingRow
+        title={t("Extract images")}
+        description={t("Save embedded images into the parse output.")}
+        control={
+          <Toggle
+            checked={extractImages}
+            disabled={busy}
+            onChange={(v) => onSave({ extract_images: v })}
+          />
+        }
+      />
+      {extractImages && (
+        <SettingRow
+          title={t("Image output dir")}
+          description={t("Directory relative to the temp workdir for extracted images.")}
+          control={
+            <input
+              type="text"
+              value={imageOutputDir}
+              disabled={busy}
+              onChange={(e) => onSave({ image_output_dir: e.target.value })}
+              className="w-48 rounded-lg border border-[var(--border)] bg-transparent px-2 py-1 text-[12px] text-[var(--foreground)]"
+            />
+          }
+        />
+      )}
+      <SettingRow
+        title={t("Max pages")}
+        description={t("0 = unlimited. Limit pages parsed per document.")}
+        control={
+          <input
+            type="number"
+            min={0}
+            step={1}
+            value={maxPages}
+            disabled={busy}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (Number.isFinite(v) && v >= 0) onSave({ max_pages: v });
+            }}
+            className="w-24 rounded-lg border border-[var(--border)] bg-transparent px-2 py-1 text-[12px] text-[var(--foreground)]"
+          />
+        }
+      />
     </SettingSection>
   );
 }

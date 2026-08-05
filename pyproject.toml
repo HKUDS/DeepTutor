@@ -162,10 +162,12 @@ parse-docling = ["docling>=2.0.0"]
 # pulls a heavy dep, downloads a model, and can't extract images — defeating the
 # "lightweight, runs on a Pi, extracts images" point of this engine.
 parse-pymupdf4llm = ["pymupdf4llm>=0.0.17,<1.0"]
+parse-liteparse = ["liteparse>=2.0.0"]
 parse = [
     "deeptutor[parse-markitdown]",
     "deeptutor[parse-docling]",
     "deeptutor[parse-pymupdf4llm]",
+    "deeptutor[parse-liteparse]",
 ]
 
 # Legacy alias kept for one release: `pip install deeptutor[tutorbot]`.
