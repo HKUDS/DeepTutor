@@ -41,6 +41,8 @@ class CodeBuddyAuthService:
         async with self._lock:
             if self._task and not self._task.done():
                 return self.public_status()
+            if await self._probe_local_login():
+                return self.public_status()
             try:
                 flow = await _start_sdk_authenticate()
                 if not getattr(flow, "auth_url", ""):
@@ -98,6 +100,24 @@ class CodeBuddyAuthService:
             from deeptutor.core.agentic.client import reset_agentic_client_pool
 
             reset_agentic_client_pool()
+        except ImportError:
+            from deeptutor.services.codebuddy_credentials import load_credentials
+
+            # A session created by the IDE plugin / CLI can only be ended there.
+            if load_credentials() is not None:
+                async with self._lock:
+                    self._connection = "connected"
+                    self._operation_state = "failed"
+                    self._authorize_url = None
+                    self._error_code = "logout_external"
+                    return self.public_status()
+            async with self._lock:
+                self._connection = "disconnected"
+                self._operation_state = None
+                self._authorize_url = None
+                self._user_label = None
+                self._error_code = None
+                return self.public_status()
         except Exception as exc:  # noqa: BLE001 - converted to stable public state
             async with self._lock:
                 self._mark_error(exc)
@@ -112,6 +132,8 @@ class CodeBuddyAuthService:
             return self.public_status()
 
     async def _probe_locked(self) -> None:
+        if await self._probe_local_login():
+            return
         try:
             flow = await _start_sdk_authenticate()
             if getattr(flow, "auth_url", ""):
@@ -126,6 +148,30 @@ class CodeBuddyAuthService:
             self._mark_connected(result)
         except Exception as exc:  # noqa: BLE001 - converted to stable public state
             self._mark_error(exc)
+
+    async def _probe_local_login(self) -> bool:
+        """Accept the session the IDE plugin / CLI already stored on disk.
+
+        This path needs no Agent SDK, so it is tried before the SDK probe.
+        """
+        from deeptutor.services.codebuddy_credentials import load_credentials, probe_account
+
+        credentials = load_credentials()
+        if credentials is None:
+            return False
+        try:
+            label = await probe_account(credentials)
+        except Exception:  # noqa: BLE001 - fall through to the SDK probe
+            return False
+        if label is None:
+            return False
+
+        self._connection = "connected"
+        self._operation_state = "completed"
+        self._authorize_url = None
+        self._user_label = label
+        self._error_code = None
+        return True
 
     async def _wait_for_login(self, flow: Any) -> None:
         try:

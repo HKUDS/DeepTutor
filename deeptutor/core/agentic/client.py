@@ -215,11 +215,13 @@ def _build_copilot_adapter(config: LLMClientConfig, spec: Any) -> Any:
 
 
 def _build_codebuddy_adapter(config: LLMClientConfig, spec: Any) -> Any:
-    from deeptutor.services.llm.provider_core import CodeBuddyProvider
+    from deeptutor.services.llm.provider_core.codebuddy_http_provider import (
+        build_codebuddy_provider,
+    )
 
-    codebuddy_provider = CodeBuddyProvider(
+    codebuddy_provider = build_codebuddy_provider(
         api_key=config.api_key,
-        default_model=config.model or "codebuddy/default",
+        default_model=config.model or "codebuddy/hy3",
     )
     return _ProviderOpenAIAdapter(codebuddy_provider)
 

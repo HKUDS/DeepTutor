@@ -590,8 +590,10 @@ class OpenAICompatProvider(LLMProvider):
                 content_parts.append(chunk)
                 continue
 
+            # Most providers send usage in a final choice-less chunk, but some
+            # (CodeBuddy) attach it to the chunk carrying the last delta.
+            usage = cls._extract_usage(chunk) or usage
             if not chunk.choices:
-                usage = cls._extract_usage(chunk) or usage
                 continue
             choice = chunk.choices[0]
             if choice.finish_reason:

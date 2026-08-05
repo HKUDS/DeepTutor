@@ -192,6 +192,66 @@ async def test_codebuddy_provider_maps_sdk_mcp_tool_calls(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_codebuddy_session_survives_cross_task_turns(monkeypatch) -> None:
+    """Chat streams run each turn in a fresh task; SDK cancel scopes must not."""
+    clients = []
+
+    class FakeClient:
+        def __init__(self, options):
+            self.options = options
+            self.prompts = []
+            self.connect_task = None
+            self.disconnect_task = None
+            self.response_index = 0
+            clients.append(self)
+
+        async def connect(self):
+            self.connect_task = asyncio.current_task()
+
+        async def query(self, prompt):
+            self.prompts.append(prompt)
+
+        async def receive_response(self):
+            self.response_index += 1
+            yield FakeResultMessage("first" if self.response_index == 1 else "second")
+
+        async def interrupt(self):
+            pass
+
+        async def disconnect(self):
+            self.disconnect_task = asyncio.current_task()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "codebuddy_agent_sdk",
+        SimpleNamespace(
+            query=lambda **_kwargs: None,
+            CodeBuddyAgentOptions=FakeOptions,
+            CodeBuddySDKClient=FakeClient,
+        ),
+    )
+    provider = CodeBuddyProvider()
+
+    async def turn(content: str) -> str:
+        response = await provider.chat(
+            [{"role": "user", "content": content}],
+            deeptutor_session_id="cross-task",
+        )
+        return response.content
+
+    first = await asyncio.create_task(turn("one"))
+    second = await asyncio.create_task(turn("two"))
+    await provider.aclose()
+
+    assert first == "first"
+    assert second == "second"
+    assert len(clients) == 1
+    assert clients[0].connect_task is not None
+    assert clients[0].disconnect_task is clients[0].connect_task
+    assert clients[0].prompts == ["User:\none", "User:\ntwo"]
+
+
+@pytest.mark.asyncio
 async def test_codebuddy_provider_reuses_session_and_sends_message_delta(monkeypatch) -> None:
     clients = []
 
@@ -372,16 +432,21 @@ async def test_fetch_codebuddy_models_uses_account_catalog(monkeypatch) -> None:
     assert captured["env"]["CODEBUDDY_API_KEY"] == "secret"
 
 
-def test_codebuddy_registry_aliases_and_factory() -> None:
+def test_codebuddy_registry_aliases_and_factory(monkeypatch) -> None:
     spec = find_by_name("workbuddy")
 
     assert spec is not None
     assert spec.name == "codebuddy"
     assert spec.backend == "codebuddy"
 
+    monkeypatch.setenv("DEEPTUTOR_CODEBUDDY_BACKEND", "sdk")
+    monkeypatch.setattr(
+        "deeptutor.services.llm.provider_core.codebuddy_http_provider.sdk_installed",
+        lambda: True,
+    )
     provider = get_runtime_provider(
         LLMConfig(
-            model="codebuddy/default",
+            model="codebuddy/hy3",
             api_key="",
             binding="codebuddy",
             provider_name="codebuddy",

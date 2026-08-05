@@ -125,5 +125,61 @@ async def test_logout_clears_existing_local_login(monkeypatch) -> None:
     }
 
 
+@pytest.mark.asyncio
+async def test_status_accepts_ide_session_without_the_sdk(tmp_path, monkeypatch) -> None:
+    _write_ide_session(tmp_path, monkeypatch)
+
+    async def unused_sdk():
+        raise AssertionError("the SDK must not be probed when a session file exists")
+
+    monkeypatch.setattr(codebuddy_auth, "_start_sdk_authenticate", unused_sdk)
+    monkeypatch.setattr(
+        "deeptutor.services.codebuddy_credentials.probe_account", _account_label
+    )
+
+    status = await CodeBuddyAuthService().status()
+
+    assert status["connection"] == "connected"
+    assert status["user_label"] == "tester"
+    assert status["error_code"] is None
+
+
+@pytest.mark.asyncio
+async def test_logout_explains_that_an_ide_session_ends_in_the_ide(
+    tmp_path, monkeypatch
+) -> None:
+    _write_ide_session(tmp_path, monkeypatch)
+
+    async def missing_sdk() -> None:
+        raise ImportError("codebuddy-agent-sdk is not installed")
+
+    monkeypatch.setattr(codebuddy_auth, "_sdk_logout", missing_sdk)
+
+    status = await CodeBuddyAuthService().logout()
+
+    assert status["connection"] == "connected"
+    assert status["error_code"] == "logout_external"
+
+
+def _write_ide_session(tmp_path, monkeypatch) -> None:
+    import json
+
+    path = tmp_path / "Tencent-Cloud.coding-copilot.info"
+    path.write_text(
+        json.dumps(
+            {
+                "account": {"uid": "uid-1", "nickname": "tester"},
+                "auth": {"accessToken": "access-token", "domain": "www.codebuddy.cn"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEEPTUTOR_CODEBUDDY_AUTH_FILE", str(path))
+
+
+async def _account_label(credentials):
+    return credentials.user_label
+
+
 async def _value(value):
     return value

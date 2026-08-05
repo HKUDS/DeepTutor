@@ -99,7 +99,9 @@ export function CodeBuddyAuthCard() {
         ? "codebuddy.auth.cliMissing"
         : status?.error_code === "login_timeout"
           ? "codebuddy.auth.timeout"
-          : "codebuddy.auth.failed";
+          : status?.error_code === "logout_external"
+            ? "codebuddy.auth.logoutExternal"
+            : "codebuddy.auth.failed";
 
   return (
     <div className="rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 p-4">

@@ -61,9 +61,11 @@ def _build_runtime_provider(llm_config: LLMConfig) -> LLMProvider:
 
         provider = GitHubCopilotProvider(default_model=llm_config.model)
     elif backend == "codebuddy":
-        from deeptutor.services.llm.provider_core.codebuddy_provider import CodeBuddyProvider
+        from deeptutor.services.llm.provider_core.codebuddy_http_provider import (
+            build_codebuddy_provider,
+        )
 
-        provider = CodeBuddyProvider(
+        provider = build_codebuddy_provider(
             api_key=llm_config.api_key or None,
             default_model=llm_config.model,
         )

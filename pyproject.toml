@@ -42,7 +42,6 @@ dependencies = [
     "dashscope>=1.14.0",
     "perplexityai>=0.1.0",
     "oauth-cli-kit>=0.1.1",
-    "codebuddy-agent-sdk>=0.1.24",
     "llama-index>=0.14.12",
     "llama-index-retrievers-bm25>=0.7.1,<0.8.0",
     # FAISS vector store: vectorized ANN retrieval that replaces SimpleVectorStore's
@@ -105,6 +104,9 @@ cli = [
     "defusedxml>=0.7.1",
 ]
 
+# CodeBuddy chat works over HTTP with the login state the IDE plugin / CLI
+# already stores. This extra adds the Agent SDK (a ~130 MB bundled headless
+# CLI) for in-app browser login and CLI-driven agent tools.
 codebuddy = ["codebuddy-agent-sdk>=0.1.24"]
 
 # Compatibility extra for source installs and older docs. These packages are

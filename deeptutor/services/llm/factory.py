@@ -592,7 +592,7 @@ async def fetch_models(
     api_key: str | None = None,
 ) -> list[str]:
     if canonical_provider_name(binding) == "codebuddy":
-        from .provider_core.codebuddy_provider import fetch_codebuddy_models
+        from .provider_core.codebuddy_models import fetch_codebuddy_models
 
         return await fetch_codebuddy_models(api_key)
 

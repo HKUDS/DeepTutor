@@ -22,7 +22,7 @@ from deeptutor.services.llm.provider_core.base import (
     ToolCallRequest,
 )
 
-DEFAULT_CODEBUDDY_MODEL = "codebuddy/default"
+DEFAULT_CODEBUDDY_MODEL = "codebuddy/hy3"
 _CODEBUDDY_API_KEY_ENV = "CODEBUDDY_API_KEY"
 _API_KEY_ENV_LOCK = asyncio.Lock()
 _SESSION_POOL_MAXSIZE = 4
@@ -31,12 +31,118 @@ _MCP_TOOL_PREFIX = f"mcp__{_MCP_SERVER_NAME}__"
 
 
 @dataclass
+class _SessionTurn:
+    prompt: str
+    on_content_delta: Callable[[str], Awaitable[None]] | None
+    future: asyncio.Future[LLMResponse]
+
+
+@dataclass
 class _CodeBuddySession:
-    client: Any
+    """Stateful CodeBuddy CLI session with task-bound SDK ownership.
+
+    The CodeBuddy Agent SDK enters anyio cancel scopes / TaskGroups during
+    ``connect()`` and must exit them from the same task. DeepTutor chat turns
+    run in fresh ``_ProviderOpenAIStream`` tasks, so this session keeps a
+    dedicated owner task for connect / query / receive / disconnect.
+    """
+
     signature: str
     messages: list[dict[str, Any]] = field(default_factory=list)
     last_response: str = ""
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    client: Any = None
+    _ops: asyncio.Queue[_SessionTurn | None] = field(default_factory=asyncio.Queue)
+    _owner: asyncio.Task[None] | None = None
+
+    @classmethod
+    async def start(
+        cls,
+        *,
+        sdk: ModuleType,
+        signature: str,
+        options: Any,
+        env_api_key: str | None,
+    ) -> "_CodeBuddySession":
+        session = cls(signature=signature)
+        loop = asyncio.get_running_loop()
+        ready: asyncio.Future[None] = loop.create_future()
+        session._owner = asyncio.create_task(
+            session._owner_loop(sdk, options, env_api_key, ready),
+            name="codebuddy-session-owner",
+        )
+        await ready
+        return session
+
+    async def _owner_loop(
+        self,
+        sdk: ModuleType,
+        options: Any,
+        env_api_key: str | None,
+        ready: asyncio.Future[None],
+    ) -> None:
+        client = sdk.CodeBuddySDKClient(options=options)
+        try:
+            async with _temporary_codebuddy_api_key(env_api_key):
+                await client.connect()
+            self.client = client
+            if not ready.done():
+                ready.set_result(None)
+            while True:
+                turn = await self._ops.get()
+                if turn is None:
+                    break
+                try:
+                    await client.query(turn.prompt)
+                    response = await _consume_messages(
+                        client.receive_response(),
+                        on_content_delta=turn.on_content_delta,
+                        interrupt=client.interrupt,
+                    )
+                    if not turn.future.done():
+                        turn.future.set_result(response)
+                except BaseException as exc:
+                    if not turn.future.done():
+                        turn.future.set_exception(exc)
+        except BaseException as exc:
+            if not ready.done():
+                ready.set_exception(exc)
+            raise
+        finally:
+            self.client = client
+            try:
+                await client.disconnect()
+            except BaseException:
+                pass
+
+    async def run_turn(
+        self,
+        prompt: str,
+        on_content_delta: Callable[[str], Awaitable[None]] | None,
+    ) -> LLMResponse:
+        if self._owner is None or self._owner.done():
+            raise RuntimeError("CodeBuddy session owner is not running")
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[LLMResponse] = loop.create_future()
+        await self._ops.put(
+            _SessionTurn(prompt=prompt, on_content_delta=on_content_delta, future=future)
+        )
+        return await future
+
+    async def close(self) -> None:
+        owner = self._owner
+        if owner is None:
+            return
+        self._owner = None
+        if not owner.done():
+            try:
+                await self._ops.put(None)
+            except Exception:
+                owner.cancel()
+        try:
+            await owner
+        except Exception:
+            pass
 
 
 class CodeBuddyProvider(LLMProvider):
@@ -185,12 +291,7 @@ class CodeBuddyProvider(LLMProvider):
             async with session.lock:
                 prompt = _incremental_prompt(session, messages)
                 session.messages = deepcopy(messages)
-                await session.client.query(prompt)
-                response = await _consume_messages(
-                    session.client.receive_response(),
-                    on_content_delta=on_content_delta,
-                    interrupt=session.client.interrupt,
-                )
+                response = await session.run_turn(prompt, on_content_delta)
                 session.last_response = response.content or ""
                 return response
         except BaseException:
@@ -207,35 +308,46 @@ class CodeBuddyProvider(LLMProvider):
         reasoning_effort: str | None,
         tools: list[dict[str, Any]] | None,
     ) -> _CodeBuddySession:
-        async with self._sessions_lock:
-            existing = self._sessions.get(session_id)
-            if existing and existing.signature == signature:
-                self._sessions.move_to_end(session_id)
-                return existing
-            if existing:
-                self._sessions.pop(session_id, None)
-                await existing.client.disconnect()
+        to_close: list[_CodeBuddySession] = []
+        try:
+            async with self._sessions_lock:
+                existing = self._sessions.get(session_id)
+                if (
+                    existing
+                    and existing.signature == signature
+                    and existing._owner is not None
+                    and not existing._owner.done()
+                ):
+                    self._sessions.move_to_end(session_id)
+                    return existing
+                if existing:
+                    self._sessions.pop(session_id, None)
+                    to_close.append(existing)
 
-            options = _build_options(sdk, model, max_tokens, self.api_key, reasoning_effort, tools)
-            client = sdk.CodeBuddySDKClient(options=options)
-            env_api_key = None if _options_has_api_key_env(options) else self.api_key
-            async with _temporary_codebuddy_api_key(env_api_key):
-                await client.connect()
-            session = _CodeBuddySession(client=client, signature=signature)
-            self._sessions[session_id] = session
-            while len(self._sessions) > _SESSION_POOL_MAXSIZE:
-                _, evicted = self._sessions.popitem(last=False)
-                await evicted.client.disconnect()
-            return session
+                options = _build_options(
+                    sdk, model, max_tokens, self.api_key, reasoning_effort, tools
+                )
+                env_api_key = None if _options_has_api_key_env(options) else self.api_key
+                session = await _CodeBuddySession.start(
+                    sdk=sdk,
+                    signature=signature,
+                    options=options,
+                    env_api_key=env_api_key,
+                )
+                self._sessions[session_id] = session
+                while len(self._sessions) > _SESSION_POOL_MAXSIZE:
+                    _, evicted = self._sessions.popitem(last=False)
+                    to_close.append(evicted)
+                return session
+        finally:
+            for stale in to_close:
+                await stale.close()
 
     async def _drop_session(self, session_id: str, session: _CodeBuddySession) -> None:
         async with self._sessions_lock:
             if self._sessions.get(session_id) is session:
                 self._sessions.pop(session_id, None)
-        try:
-            await session.client.disconnect()
-        except BaseException:
-            pass
+        await session.close()
 
     async def aclose(self) -> None:
         async with self._sessions_lock:
@@ -243,7 +355,7 @@ class CodeBuddyProvider(LLMProvider):
             self._sessions.clear()
         for session in sessions:
             try:
-                await session.client.disconnect()
+                await session.close()
             except asyncio.CancelledError:
                 task = asyncio.current_task()
                 if task is not None:
@@ -655,6 +767,12 @@ def _friendly_error(exc: Exception) -> str:
             "Error calling CodeBuddy: authentication required. Run "
             "`deeptutor provider login codebuddy`, run `codebuddy` and enter `/login`, "
             "or set CODEBUDDY_API_KEY."
+        )
+    if "cancel scope" in message.lower():
+        return (
+            "Error calling CodeBuddy: the SDK session was closed from a different "
+            "async task than it was opened on. Retry the message; if it persists, "
+            "restart the backend."
         )
     return f"Error calling CodeBuddy: {message}"
 

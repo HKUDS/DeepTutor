@@ -6,7 +6,6 @@ import asyncio
 import webbrowser
 
 import typer
-import webbrowser
 
 from deeptutor.services.codex_auth import CodexAuthError, get_codex_oauth_service
 
@@ -111,13 +110,23 @@ async def _login_github_copilot() -> None:
 
 
 async def _login_codebuddy() -> None:
-    """Validate CodeBuddy Agent SDK auth, starting login when needed."""
+    """Validate CodeBuddy auth, starting an SDK login when needed."""
+    from deeptutor.services.codebuddy_credentials import load_credentials, probe_account
+
+    credentials = load_credentials()
+    if credentials is not None:
+        label = await probe_account(credentials)
+        if label:
+            typer.echo(f"CodeBuddy auth validation succeeded for {label}.")
+            return
+
     try:
         from codebuddy_agent_sdk import authenticate, query
     except ImportError:
         typer.echo(
-            "codebuddy-agent-sdk is not installed. Install it with "
-            "`python -m pip install codebuddy-agent-sdk` or `pip install -e .[codebuddy]`."
+            "CodeBuddy is not signed in. Sign in with the CodeBuddy IDE plugin, run "
+            "`codebuddy` and enter `/login`, or set CODEBUDDY_API_KEY. For in-app login "
+            "install the SDK: `python -m pip install codebuddy-agent-sdk`."
         )
         raise typer.Exit(code=1)
 

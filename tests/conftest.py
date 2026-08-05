@@ -89,6 +89,32 @@ def _guard_legacy_multi_user_migration(monkeypatch):
     yield
 
 
+@pytest.fixture(autouse=True)
+def _isolate_codebuddy_login(monkeypatch):
+    """Hide the developer's real CodeBuddy session from every test.
+
+    The CodeBuddy provider reads the OAuth session the IDE plugin / CLI stores
+    outside the repo, so without this a developer who is signed in gets
+    different results than CI. Tests that exercise the signed-in path point the
+    override at a fixture file.
+    """
+    from deeptutor.services import codebuddy_credentials
+
+    monkeypatch.setenv(
+        "DEEPTUTOR_CODEBUDDY_AUTH_FILE", str(Path("/nonexistent/codebuddy-auth.info"))
+    )
+    monkeypatch.setattr(
+        codebuddy_credentials,
+        "_local_storage_dir",
+        lambda: Path("/nonexistent/codebuddy-local-storage"),
+    )
+    monkeypatch.delenv("CODEBUDDY_API_KEY", raising=False)
+    monkeypatch.delenv("CODEBUDDY_BASE_URL", raising=False)
+    monkeypatch.delenv("CODEBUDDY_INTERNET_ENVIRONMENT", raising=False)
+    monkeypatch.delenv("DEEPTUTOR_CODEBUDDY_BACKEND", raising=False)
+    yield
+
+
 # ---------------------------------------------------------------------------
 # StreamBus
 # ---------------------------------------------------------------------------

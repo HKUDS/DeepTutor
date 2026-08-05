@@ -182,14 +182,14 @@ def test_build_openai_client_routes_codebuddy_backend_through_adapter(monkeypatc
             captured.update(kwargs)
 
     monkeypatch.setattr(
-        "deeptutor.services.llm.provider_core.CodeBuddyProvider",
+        "deeptutor.services.llm.provider_core.codebuddy_http_provider.CodeBuddyHTTPProvider",
         FakeProvider,
     )
 
     client = build_openai_client(
         LLMClientConfig(
             binding="codebuddy",
-            model="codebuddy/default",
+            model="codebuddy/hy3",
             api_key="sk-codebuddy",
             base_url=None,
         )
@@ -197,7 +197,7 @@ def test_build_openai_client_routes_codebuddy_backend_through_adapter(monkeypatc
 
     assert isinstance(client, _ProviderOpenAIAdapter)
     assert captured["api_key"] == "sk-codebuddy"
-    assert captured["default_model"] == "codebuddy/default"
+    assert captured["default_model"] == "codebuddy/hy3"
 
 
 def test_anthropic_backend_can_use_native_tool_calling() -> None:
