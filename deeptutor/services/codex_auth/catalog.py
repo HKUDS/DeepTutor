@@ -76,6 +76,8 @@ def parse_models_response(payload: Mapping[str, Any]) -> tuple[CodexModel, ...]:
                     raw_model.get("supports_parallel_tool_calls") is True
                 ),
                 use_responses_lite=raw_model.get("use_responses_lite") is True,
+                context_window=_optional_positive_int(raw_model.get("context_window")),
+                max_context_window=_optional_positive_int(raw_model.get("max_context_window")),
             )
         )
 
@@ -84,6 +86,12 @@ def parse_models_response(payload: Mapping[str, Any]) -> tuple[CodexModel, ...]:
 
 def _optional_string(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
+
+
+def _optional_positive_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return value
 
 
 def _reasoning_levels(value: object) -> tuple[str, ...]:

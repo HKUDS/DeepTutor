@@ -85,7 +85,7 @@ def codex_model_id(slug: str) -> str:
 
 
 def _managed_model(model: CodexModel) -> dict[str, Any]:
-    return {
+    managed = {
         "id": codex_model_id(model.slug),
         "name": model.display_name,
         "model": model.slug,
@@ -97,6 +97,11 @@ def _managed_model(model: CodexModel) -> dict[str, Any]:
         "codex_supports_parallel_tool_calls": model.supports_parallel_tool_calls,
         "codex_use_responses_lite": model.use_responses_lite,
     }
+    context_window = model.context_window or model.max_context_window
+    if context_window is not None:
+        managed["context_window"] = str(context_window)
+        managed["context_window_source"] = "metadata"
+    return managed
 
 
 def _managed_profile(snapshot: CatalogSnapshot) -> dict[str, Any]:
