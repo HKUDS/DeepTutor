@@ -453,6 +453,16 @@ export default function PartnerChat({
     }
   }, [sessionKey]);
 
+  useEffect(() => {
+    if (!streaming) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      sendStop();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [streaming, sendStop]);
+
   // Session-management commands run client-side: they switch the active
   // session or stop the turn — things a server text reply can't do. Returns
   // true when handled (so the caller skips the normal send).
