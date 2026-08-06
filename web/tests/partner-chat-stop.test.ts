@@ -39,3 +39,21 @@ test("partner chat removes its streaming Escape listener", () => {
     /return \(\) => window\.removeEventListener\("keydown", onKeyDown\);/,
   );
 });
+
+test("partner chat lets an open overlay keep Escape for itself", () => {
+  const effect = escapeStopEffect();
+
+  // Modal / PickerShell / ConfirmDialog / preview drawers all close on Escape
+  // and all mark themselves with a dialog role. Without this guard, dismissing
+  // any of them mid-stream would also stop the partner's answer.
+  assert.match(
+    effect,
+    /document\.querySelector\('\[role="dialog"\], \[role="alertdialog"\]'\)/,
+  );
+  const guardIndex = effect.indexOf("document.querySelector");
+  const stopIndex = effect.indexOf("sendStop();");
+  assert.ok(
+    guardIndex !== -1 && guardIndex < stopIndex,
+    "the overlay guard must run before sendStop()",
+  );
+});

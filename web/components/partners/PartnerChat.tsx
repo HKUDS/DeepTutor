@@ -453,10 +453,21 @@ export default function PartnerChat({
     }
   }, [sessionKey]);
 
+  // Escape interrupts a streaming answer. Bound on `window` rather than the
+  // chat container because the composer is disabled mid-stream, so focus
+  // usually sits on <body> and a scoped listener would never see the key.
+  // An open overlay owns Escape first — Modal, PickerShell, ConfirmDialog and
+  // the preview drawers all close on it — so bail while one is mounted
+  // instead of killing the turn behind a dismissal the user meant for the
+  // dialog. Every overlay marks itself with a dialog role and unmounts when
+  // closed, which makes the DOM the single source of truth here.
   useEffect(() => {
     if (!streaming) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) {
+        return;
+      }
       sendStop();
     };
     window.addEventListener("keydown", onKeyDown);
