@@ -64,6 +64,13 @@ def test_packaged_web_cache_refreshes_when_public_settings_change(tmp_path: Path
     assert "https://api.example" in (second / "server.js").read_text(encoding="utf-8")
 
 
+def test_backend_url_is_ipv4_so_the_frontend_proxy_can_reach_it() -> None:
+    """``localhost`` resolves to ``::1`` first under Node while uvicorn binds
+    ``0.0.0.0``, so web/proxy.ts refused every ``/api/*`` rewrite and the
+    browser saw HTTP 500 on Windows (issue #782)."""
+    assert launcher._loopback_url(8001) == "http://127.0.0.1:8001"
+
+
 def test_detect_existing_source_frontend_from_next_dev_lock(tmp_path: Path, monkeypatch) -> None:
     source = tmp_path / "web"
     lock = source / ".next" / "dev" / "lock"
