@@ -188,11 +188,7 @@ export default function KbDocumentsSection({
           ) : (
             <Upload size={14} />
           )}
-          {selection.validFiles.length > 0
-            ? t("Upload {{count}} files", {
-                count: selection.validFiles.length,
-              })
-            : t("Upload")}
+          {t("Upload")}
         </button>
       </div>
 

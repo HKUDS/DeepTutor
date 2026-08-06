@@ -17,7 +17,6 @@ import shutil
 import traceback
 from uuid import uuid4
 
-import httpx
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -36,7 +35,7 @@ from deeptutor.api.utils.task_id_manager import TaskIDManager
 from deeptutor.api.utils.task_log_stream import capture_task_logs, get_task_stream_manager
 from deeptutor.knowledge.add_documents import DocumentAdder, remove_raw_document
 from deeptutor.knowledge.initializer import KnowledgeBaseInitializer
-from deeptutor.knowledge.kb_types import LIGHTRAG_SERVER_KB_TYPE, is_connected_kb
+from deeptutor.knowledge.kb_types import is_connected_kb
 from deeptutor.knowledge.manager import KnowledgeBaseManager
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
@@ -679,92 +678,6 @@ def _assert_not_connected_kb(kb_name: str, kb_entry: dict) -> None:
                 "read-only. Uploads and re-indexing are not available for it."
             ),
         )
-
-
-async def _upload_to_lightrag_server(
-    kb_entry: dict,
-    files: list[UploadFile],
-) -> dict:
-    """Forward uploads to a connected LightRAG Server knowledge base."""
-    from deeptutor.services.rag.pipelines.lightrag_server.client import (
-        LightRagServerAPIError,
-        LightRagServerClient,
-    )
-    from deeptutor.services.rag.pipelines.lightrag_server.config import config_from_entry
-
-    allowed_extensions = FileTypeRouter.get_supported_extensions()
-    validated = _validate_upload_batch(files, allowed_extensions=allowed_extensions)
-    client = LightRagServerClient(config_from_entry(kb_entry), timeout=300.0)
-    results: list[dict] = []
-    try:
-        for upload, metadata in zip(files, validated, strict=True):
-            filename = str(metadata["sanitized_filename"])
-            content = await upload.read()
-            results.append(
-                {
-                    "file": filename,
-                    **await client.upload_document(filename, content, upload.content_type),
-                }
-            )
-    except (LightRagServerAPIError, httpx.HTTPError, OSError) as exc:
-        raise HTTPException(status_code=502, detail=f"LightRAG server upload failed: {exc}") from exc
-
-    failures = [item for item in results if item.get("status") in {"failure", "fail"}]
-    if failures:
-        raise HTTPException(status_code=502, detail=f"LightRAG server rejected upload: {failures}")
-    return {
-        "message": f"Uploaded {len(results)} files to LightRAG Server for background indexing.",
-        "files": [item["file"] for item in results],
-        "results": results,
-    }
-
-
-async def _list_lightrag_documents(kb_entry: dict) -> dict:
-    """Fetch the document inventory owned by a connected LightRAG server."""
-    from deeptutor.services.rag.pipelines.lightrag_server.client import (
-        LightRagServerAPIError,
-        LightRagServerClient,
-    )
-    from deeptutor.services.rag.pipelines.lightrag_server.config import config_from_entry
-
-    try:
-        return await LightRagServerClient(config_from_entry(kb_entry)).list_documents()
-    except (LightRagServerAPIError, httpx.HTTPError, OSError) as exc:
-        raise HTTPException(
-            status_code=502, detail=f"Could not list LightRAG server documents: {exc}"
-        ) from exc
-
-
-def _apply_lightrag_document_status(info: dict, payload: dict) -> None:
-    """Replace static connection readiness with the remote pipeline result."""
-    statuses = payload.get("statuses")
-    if not isinstance(statuses, dict):
-        return
-    counts = {
-        str(status).lower(): len(documents)
-        for status, documents in statuses.items()
-        if isinstance(documents, list)
-    }
-    if counts.get("processing") or counts.get("pending"):
-        status = "processing"
-    elif counts.get("failed"):
-        status = "error"
-    else:
-        status = "ready"
-    info["status"] = status
-    info["progress"] = {
-        "stage": "error" if status == "error" else status,
-        "message": (
-            f"{counts.get('failed', 0)} remote document(s) failed indexing."
-            if status == "error"
-            else f"{sum(counts.values())} remote document(s)."
-        ),
-    }
-    statistics = info.get("statistics")
-    if isinstance(statistics, dict):
-        statistics["status"] = status
-        statistics["progress"] = info["progress"]
-        statistics["raw_documents"] = sum(counts.values())
 
 
 def _assert_kb_writable_or_409(kb_name: str, kb_entry: dict) -> None:
@@ -1988,9 +1901,6 @@ async def get_knowledge_base_details(kb_name: str):
         resource = resolve_kb(kb_name)
         manager = manager_for_resource(resource)
         info = manager.get_info(resource.name)
-        entry = manager._load_config().get("knowledge_bases", {}).get(resource.name, {})
-        if entry.get("type") == LIGHTRAG_SERVER_KB_TYPE:
-            _apply_lightrag_document_status(info, await _list_lightrag_documents(entry))
         info.update(
             {
                 "id": resource.id,
@@ -2053,45 +1963,6 @@ async def list_kb_raw_files(kb_name: str):
     before it holds any files. Folders are purely organizational and have no
     effect on indexing or retrieval.
     """
-    resource = resolve_kb(kb_name)
-    manager = manager_for_resource(resource)
-    entry = manager._load_config().get("knowledge_bases", {}).get(resource.name, {})
-    if entry.get("type") == LIGHTRAG_SERVER_KB_TYPE:
-        payload = await _list_lightrag_documents(entry)
-
-        files = []
-        statuses = payload.get("statuses")
-        if isinstance(statuses, dict):
-            for group_status, documents in statuses.items():
-                if not isinstance(documents, list):
-                    continue
-                for document in documents:
-                    if not isinstance(document, dict):
-                        continue
-                    name = str(document.get("file_path") or "").strip()
-                    if not name:
-                        continue
-                    modified = None
-                    raw_modified = document.get("updated_at") or document.get("created_at")
-                    if raw_modified:
-                        try:
-                            modified = datetime.fromisoformat(str(raw_modified)).timestamp()
-                        except ValueError:
-                            pass
-                    files.append(
-                        {
-                            "name": name,
-                            "type": "file",
-                            "size": document.get("content_length"),
-                            "modified": modified,
-                            "remote": True,
-                            "status": str(document.get("status") or group_status).lower(),
-                            "document_id": document.get("id"),
-                            "error": document.get("error"),
-                        }
-                    )
-        return {"files": sorted(files, key=lambda item: item["name"].lower())}
-
     raw_dir = _resolve_kb_raw_dir(kb_name)
     if not raw_dir.exists() or not raw_dir.is_dir():
         return {"files": []}
@@ -2288,8 +2159,6 @@ async def upload_files(
             requested_provider = _validate_registered_provider(rag_provider)
 
         kb_entry = _load_kb_entry_or_404(manager, kb_name)
-        if kb_entry.get("type") == LIGHTRAG_SERVER_KB_TYPE:
-            return await _upload_to_lightrag_server(kb_entry, files)
         _assert_kb_writable_or_409(kb_name, kb_entry)
         kb_provider = _validate_registered_provider(
             kb_entry.get("rag_provider") or DEFAULT_PROVIDER

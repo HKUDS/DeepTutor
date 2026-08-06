@@ -73,27 +73,13 @@ class ChatOrchestrator:
             register_bus(_turn_id, bus)
 
         async def _run() -> None:
-            failed = False
             try:
                 await capability.run(context, bus)
             except Exception as exc:
-                failed = True
                 logger.error("Capability %s failed: %s", cap_name, exc, exc_info=True)
-                # Mark this as terminal so the chat UI does not treat the
-                # following DONE event as a successful empty response.
-                await bus.error(
-                    str(exc),
-                    source=cap_name,
-                    metadata={"turn_terminal": True, "status": "failed"},
-                )
+                await bus.error(str(exc), source=cap_name)
             finally:
-                await bus.emit(
-                    StreamEvent(
-                        type=StreamEventType.DONE,
-                        source=cap_name,
-                        metadata={"status": "failed" if failed else "completed"},
-                    )
-                )
+                await bus.emit(StreamEvent(type=StreamEventType.DONE, source=cap_name))
                 await bus.close()
                 if _turn_id:
                     unregister_bus(_turn_id)

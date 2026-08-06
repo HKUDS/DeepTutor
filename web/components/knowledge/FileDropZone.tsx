@@ -190,7 +190,7 @@ export default function FileDropZone({
                   ? t("{{count}} invalid files", {
                       count: selection.invalidFiles.length,
                     })
-                  : t("{{count}} files selected - click Upload below", {
+                  : t("{{count}} files ready", {
                       count: selection.validFiles.length,
                     })
                 : t("Choose files...")}
@@ -301,14 +301,12 @@ function SelectionSummary({
                   ready: readyCount,
                   skip: invalidCount,
                 })
-              : t("{{count}} files selected - click Upload below", {
-                  count: readyCount,
-                })}
+              : t("{{count}} files ready", { count: readyCount })}
           </div>
           <p className="mt-1 text-[11px] text-[var(--muted-foreground)]">
             {hasIssues
               ? t("Unsupported files are skipped; the rest will be indexed.")
-              : t("Selected - click Upload below")}{" "}
+              : t("Ready to upload")}{" "}
             · {formatFileSize(selection.totalBytes)}
           </p>
         </div>

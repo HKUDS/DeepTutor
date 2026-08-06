@@ -112,11 +112,6 @@ export interface KnowledgeBaseFile {
   size?: number;
   modified?: number;
   mime_type?: string | null;
-  /** Remote LightRAG documents have status metadata but no local preview path. */
-  remote?: boolean;
-  status?: "pending" | "processing" | "processed" | "failed" | string;
-  document_id?: string | null;
-  error?: string | null;
 }
 
 const IMAGE_UPLOAD_EXTENSIONS = [

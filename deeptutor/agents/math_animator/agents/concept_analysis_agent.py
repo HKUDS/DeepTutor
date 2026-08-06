@@ -2,14 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-import yaml
-
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.context import Attachment
 from deeptutor.core.trace import build_trace_metadata, new_call_id
-from deeptutor.services.config import parse_language
 from deeptutor.services.prompt import get_prompt_manager
 
 from ..models import ConceptAnalysis
@@ -45,29 +40,16 @@ class ConceptAnalysisAgent(BaseAgent):
         system_prompt = self.get_prompt("system")
         user_template = self.get_prompt("user_template")
         if not system_prompt or not user_template:
-            # Retry once in case a long-lived worker cached a failed resource
-            # lookup before the package or workspace became available.
+            # Retry once: a worker that looked the prompts up before the
+            # package finished installing used to cache the empty result
+            # forever. PromptManager no longer caches misses, so a reload can
+            # now actually recover — and it stays the one place that knows how
+            # to find a prompt file.
             self.prompts = get_prompt_manager().reload_prompts(
                 "math_animator", "concept_analysis_agent", self.language
             )
             system_prompt = self.get_prompt("system")
             user_template = self.get_prompt("user_template")
-
-        if not system_prompt or not user_template:
-            # Keep source/editable installs independent of the process cwd and
-            # of package-data discovery by reading the adjacent bundled asset.
-            lang = parse_language(self.language)
-            prompt_path = (
-                Path(__file__).resolve().parents[1]
-                / "prompts"
-                / lang
-                / "concept_analysis_agent.yaml"
-            )
-            if prompt_path.exists():
-                with prompt_path.open(encoding="utf-8") as prompt_file:
-                    self.prompts = yaml.safe_load(prompt_file) or {}
-                system_prompt = self.get_prompt("system")
-                user_template = self.get_prompt("user_template")
 
         if not system_prompt or not user_template:
             raise ValueError("ConceptAnalysisAgent prompts are not configured.")

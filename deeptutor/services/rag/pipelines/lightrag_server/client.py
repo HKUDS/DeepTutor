@@ -1,6 +1,7 @@
 """Thin async HTTP client for an external LightRAG server's REST API.
 
-We talk to the documented endpoints directly (``httpx`` only):
+We talk to the documented endpoints directly (``httpx`` only) — the calls map
+1:1 onto our retrieval-only contract:
 
 * ``POST /query`` with ``only_need_context=True`` — return the grounded context
   the server retrieved, WITHOUT its own generation. DeepTutor's chat loop keeps
@@ -9,9 +10,6 @@ We talk to the documented endpoints directly (``httpx`` only):
   (whitelisted on the server, so it answers without credentials).
 * ``GET /documents/pipeline_status`` — an auth-gated, side-effect-free call used
   only to validate that a configured API key is accepted.
-* ``POST /documents/upload`` — forward an uploaded document to the server-owned
-  workspace and let LightRAG index it in the background.
-* ``GET /documents`` — list the server-owned documents and their pipeline state.
 
 Mirrors :class:`PageIndexClient`: a fresh :class:`httpx.AsyncClient` per call so
 the object is safe to construct once and reuse, and an injectable ``transport``
@@ -96,28 +94,6 @@ class LightRagServerClient:
         content = str(data.get("response") or "")
         sources = _sources_from_references(data.get("references"))
         return {"content": content, "sources": sources}
-
-    # ----- indexing -------------------------------------------------------
-
-    async def upload_document(
-        self,
-        filename: str,
-        content: bytes,
-        content_type: str | None = None,
-    ) -> dict[str, Any]:
-        """Upload one document to the server-owned LightRAG workspace."""
-        async with self._open() as client:
-            resp = await client.post(
-                "/documents/upload",
-                files={"file": (filename, content, content_type or "application/octet-stream")},
-            )
-        return self._json(resp)
-
-    async def list_documents(self) -> dict[str, Any]:
-        """Return LightRAG's document groups keyed by pipeline status."""
-        async with self._open() as client:
-            resp = await client.get("/documents")
-        return self._json(resp)
 
     # ----- probing --------------------------------------------------------
 
