@@ -35,6 +35,33 @@ def test_load_ui_settings_migrates_legacy_language_to_response_language(
     assert settings["response_language"] == "zh"
 
 
+def test_both_readers_of_interface_json_agree_on_a_legacy_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """The router and the service must read the same file the same way.
+
+    ``interface.json`` has two readers: ``interface_settings.get_ui_settings``
+    (used by the turn path) and the router's ``load_ui_settings`` (which layers
+    the API's superset of defaults on top). They resolve the language pair
+    through one shared helper precisely so a legacy file can't mean different
+    things depending on which one asked.
+    """
+    from deeptutor.services.settings import interface_settings
+
+    settings_file = tmp_path / "interface.json"
+    settings_file.write_text('{"theme": "dark", "language": "zh"}', encoding="utf-8")
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    monkeypatch.setattr(
+        interface_settings, "_interface_settings_file", lambda: settings_file
+    )
+
+    from_router = settings_router.load_ui_settings()
+    from_service = interface_settings.get_ui_settings()
+
+    for field in ("language", "response_language"):
+        assert from_router[field] == from_service[field] == "zh"
+
+
 @pytest.mark.asyncio
 async def test_ui_languages_are_persisted_independently(
     monkeypatch: pytest.MonkeyPatch, tmp_path

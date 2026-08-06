@@ -39,6 +39,10 @@ from deeptutor.services.llm.client import reset_llm_client
 from deeptutor.services.llm.config import clear_llm_config_cache
 from deeptutor.services.model_selection import list_llm_options
 from deeptutor.services.path_service import get_path_service
+from deeptutor.services.settings.interface_settings import (
+    DEFAULT_UI_SETTINGS as INTERFACE_DEFAULTS,
+)
+from deeptutor.services.settings.interface_settings import resolve_languages
 from deeptutor.tools.builtin import USER_TOGGLEABLE_TOOL_NAMES
 
 router = APIRouter()
@@ -62,10 +66,10 @@ DEFAULT_SIDEBAR_NAV_ORDER = {
 }
 
 DEFAULT_UI_SETTINGS = {
-    # "snow" is the pure-white neutral theme, shown as "Default" in the UI.
-    "theme": "snow",
-    "language": "en",
-    "response_language": "en",
+    # theme / language / response_language come from the module that owns
+    # interface.json, so the two readers of that file can't drift on what a
+    # fresh install defaults to.
+    **INTERFACE_DEFAULTS,
     "sidebar_description": "✨ Data Intelligence Lab @ HKU",
     "sidebar_nav_order": DEFAULT_SIDEBAR_NAV_ORDER,
     # User-toggleable chat tools. Default = all on; the /settings/tools page
@@ -278,9 +282,9 @@ def load_ui_settings() -> dict[str, Any]:
         try:
             with open(settings_file, encoding="utf-8") as handle:
                 saved = json.load(handle)
-                merged = {**DEFAULT_UI_SETTINGS, **saved}
-                if "response_language" not in saved:
-                    merged["response_language"] = merged["language"]
+                # resolve_languages owns the legacy migration (a file predating
+                # the UI/response split inherits its one language into both).
+                merged = {**DEFAULT_UI_SETTINGS, **saved, **resolve_languages(saved)}
                 # Filter persisted enabled_optional_tools to current
                 # toggleable set so retired tool names can't leak into
                 # the per-turn payload.
