@@ -1111,19 +1111,26 @@ async def update_chat_response_timeout(update: ChatResponseTimeoutUpdate):
     return {"chat_response_timeout": update.chat_response_timeout}
 
 
+# The only two UI preferences a page can need before it knows who is asking.
+PRESESSION_UI_FIELDS = ("theme", "language")
+
+
 @public_router.get("/ui")
 async def get_ui_settings():
-    """Return the saved UI settings blob.
+    """Return the pre-session UI preferences: theme and interface language.
 
-    The full ``ui`` payload (sidebar_nav_order, enabled_optional_tools,
-    voice_autoplay, …), same as the ``ui`` key of GET /settings. The app shell
-    reads it during bootstrap for the interface language, which nothing outside
-    the settings route used to see.
+    Public by design, which is why it is a narrow projection rather than the
+    saved ``ui`` blob. The app shell — and the statically prerendered auth
+    pages, which have no session at all — adopt the persisted language here
+    during bootstrap. Theme rides along so those pages can paint in the right
+    one instead of flashing.
 
-    Public by design: auth pages bootstrap the language *before* a session
-    exists, and this payload contains no sensitive data.
+    Everything else under ``ui`` (sidebar_nav_order, enabled_optional_tools,
+    chat_response_timeout, …) describes what the deployment has turned on, so
+    it stays behind auth: read it from the ``ui`` key of GET /settings.
     """
-    return load_ui_settings()
+    settings = load_ui_settings()
+    return {field: settings.get(field) for field in PRESESSION_UI_FIELDS}
 
 
 @router.put("/ui")
