@@ -13,10 +13,12 @@ import {
 // Backend base URL for `/api/*` and `/ws/*` rewrites. The container entrypoint
 // exports `DEEPTUTOR_API_BASE_URL` from `data/user/settings/system.json`
 // (preferring `next_public_api_base`, then `next_public_api_base_external`,
-// then `http://localhost:${BACKEND_PORT}`). In dev (`deeptutor start`) it
-// defaults to `http://localhost:8001`.
+// then `http://localhost:${BACKEND_PORT}`). `deeptutor start` exports the
+// backend's IPv4 loopback instead, and the fallback below matches it: Node
+// resolves `localhost` to `::1` first while uvicorn binds IPv4 only, so a
+// `localhost` target is refused and every rewrite surfaces as a 500.
 const API_BASE_URL =
-  process.env.DEEPTUTOR_API_BASE_URL ?? "http://localhost:8001";
+  process.env.DEEPTUTOR_API_BASE_URL ?? "http://127.0.0.1:8001";
 
 const AUTH_ENABLED = parseAuthEnabled(process.env.DEEPTUTOR_AUTH_ENABLED);
 
