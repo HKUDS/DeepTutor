@@ -429,6 +429,15 @@ app.include_router(
     tags=["question-notebook"],
     dependencies=_auth,
 )
+# Public UI-settings read (auth pages bootstrap the interface language
+# before a session exists, so GET /api/v1/settings/ui must not be gated
+# by _auth). Mounted first so the path resolves here, not on the gated
+# settings router below.
+app.include_router(
+    settings.public_router,
+    prefix="/api/v1/settings",
+    tags=["settings"],
+)
 app.include_router(
     settings.router, prefix="/api/v1/settings", tags=["settings"], dependencies=_auth
 )

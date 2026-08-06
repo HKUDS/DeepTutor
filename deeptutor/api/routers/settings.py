@@ -46,6 +46,13 @@ from deeptutor.services.settings.interface_settings import resolve_languages
 from deeptutor.tools.builtin import USER_TOGGLEABLE_TOOL_NAMES
 
 router = APIRouter()
+# Public UI-settings router. The app shell bootstraps the interface language
+# from GET /api/v1/settings/ui, and auth pages (/register, /login) must be
+# able to do the same *before* a session exists — so this one read endpoint
+# is intentionally mounted outside the ``_auth`` dependency (see main.py).
+# It only exposes non-sensitive UI preferences (theme/language), never the
+# model catalog, provider credentials, or runtime configuration.
+public_router = APIRouter()
 
 TOUR_CACHE = None
 
@@ -1113,16 +1120,26 @@ async def update_chat_response_timeout(update: ChatResponseTimeoutUpdate):
     return {"chat_response_timeout": update.chat_response_timeout}
 
 
-@router.get("/ui")
-async def get_ui_settings():
-    """Return the saved UI settings blob.
+# The only two UI preferences a page can need before it knows who is asking.
+PRESESSION_UI_FIELDS = ("theme", "language")
 
-    The full ``ui`` payload (sidebar_nav_order, enabled_optional_tools,
-    voice_autoplay, …), same as the ``ui`` key of GET /settings. The app shell
-    reads it during bootstrap for the interface language, which nothing outside
-    the settings route used to see.
+
+@public_router.get("/ui")
+async def get_ui_settings():
+    """Return the pre-session UI preferences: theme and interface language.
+
+    Public by design, which is why it is a narrow projection rather than the
+    saved ``ui`` blob. The app shell — and the statically prerendered auth
+    pages, which have no session at all — adopt the persisted language here
+    during bootstrap. Theme rides along so those pages can paint in the right
+    one instead of flashing.
+
+    Everything else under ``ui`` (sidebar_nav_order, enabled_optional_tools,
+    chat_response_timeout, …) describes what the deployment has turned on, so
+    it stays behind auth: read it from the ``ui`` key of GET /settings.
     """
-    return load_ui_settings()
+    settings = load_ui_settings()
+    return {field: settings.get(field) for field in PRESESSION_UI_FIELDS}
 
 
 @router.put("/ui")
