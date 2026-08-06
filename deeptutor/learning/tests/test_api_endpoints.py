@@ -381,7 +381,7 @@ class TestGenerateFromNotebook:
         )
         assert resp.status_code == 502
 
-    @patch("deeptutor.api.routers.mastery_path.get_ui_language", return_value="en")
+    @patch("deeptutor.api.routers.mastery_path.get_response_language", return_value="en")
     @patch("deeptutor.services.llm.complete", new_callable=AsyncMock)
     def test_generate_injection_ignored(self, mock_complete, _mock_language, client):
         """Injection payload in title/output must not alter generation behavior."""
@@ -421,9 +421,9 @@ class TestGenerateFromNotebook:
         sys_prompt = call_args.kwargs.get("system_prompt") or call_args[1].get("system_prompt", "")
         assert "Ignore" in sys_prompt
 
-    @patch("deeptutor.api.routers.mastery_path.get_ui_language", return_value="zh")
+    @patch("deeptutor.api.routers.mastery_path.get_response_language", return_value="zh")
     @patch("deeptutor.services.llm.complete", new_callable=AsyncMock)
-    def test_generate_uses_zh_prompt_when_ui_language_is_zh(
+    def test_generate_uses_zh_prompt_when_response_language_is_zh(
         self,
         mock_complete,
         _mock_language,

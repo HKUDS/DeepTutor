@@ -69,6 +69,10 @@ def _load_question_router_module(monkeypatch: pytest.MonkeyPatch):
     fake_settings_package = _package("deeptutor.services.settings")
     fake_interface_settings = types.ModuleType("deeptutor.services.settings.interface_settings")
     fake_interface_settings.get_ui_language = lambda default="en": default
+    # The router asks for the *response* language now that reader-facing output
+    # no longer follows the interface locale; the stand-in module has to offer
+    # both readers the real one does.
+    fake_interface_settings.get_response_language = lambda default="en": default
     fake_settings_package.interface_settings = fake_interface_settings
     monkeypatch.setitem(sys.modules, "deeptutor.services.settings", fake_settings_package)
     monkeypatch.setitem(
