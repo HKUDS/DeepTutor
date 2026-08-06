@@ -14,7 +14,9 @@ import os
 from pathlib import Path
 import re
 import shutil
+import threading
 import traceback
+from typing import Awaitable, Callable
 from uuid import uuid4
 
 from fastapi import (
@@ -225,6 +227,46 @@ def _mark_kb_queued_for_processing(
             "timestamp": datetime.now().isoformat(),
         },
     )
+
+
+def _dispatch_background_task(
+    target: Callable[..., Awaitable[object]],
+    /,
+    *args,
+    **kwargs,
+) -> None:
+    """Run a long KB task on a dedicated daemon thread.
+
+    FastAPI ``BackgroundTasks`` schedules async callables back onto the app's
+    main event loop after the response is sent. KB ingestion still performs
+    heavy synchronous work (hashing, copying, parsing, SDK calls), so keeping
+    those coroutines on the request loop can starve unrelated traffic. Running
+    them in a detached thread gives each task an isolated event loop.
+    """
+
+    def _runner() -> None:
+        try:
+            asyncio.run(target(*args, **kwargs))
+        except Exception:
+            logger.exception("Detached knowledge-base task crashed: %s", target)
+
+    threading.Thread(
+        target=_runner,
+        name=f"kb-task-{getattr(target, '__name__', 'worker')}-{uuid4().hex[:8]}",
+        daemon=True,
+    ).start()
+
+
+def _rollback_created_kb(manager: KnowledgeBaseManager, kb_name: str, kb_base_dir: Path) -> None:
+    """Remove a partially created KB after a synchronous create failure."""
+
+    kb_dir = kb_base_dir / kb_name
+    if kb_dir.exists():
+        shutil.rmtree(kb_dir, ignore_errors=True)
+
+    manager.config = manager._load_config()
+    if manager.config.get("knowledge_bases", {}).pop(kb_name, None) is not None:
+        manager._save_config()
 
 
 def _save_zip_archive(
@@ -2179,8 +2221,12 @@ async def upload_files(
         # archive itself is never indexed (``safe_extract_zip`` skips ``.zip``).
         upload_extensions = allowed_extensions | {".zip"}
         _validate_upload_batch(files, allowed_extensions=upload_extensions, rel_paths=rel_paths)
-        uploaded_files, uploaded_file_paths = _save_uploaded_files(
-            files, raw_dir, allowed_extensions=upload_extensions, rel_paths=rel_paths
+        uploaded_files, uploaded_file_paths = await asyncio.to_thread(
+            _save_uploaded_files,
+            files,
+            raw_dir,
+            allowed_extensions=upload_extensions,
+            rel_paths=rel_paths,
         )
         task_id = _build_unique_task_id("kb_upload", kb_name)
         get_task_stream_manager().ensure_task(task_id)
@@ -2194,7 +2240,7 @@ async def upload_files(
             f"Processing {len(uploaded_files)} uploaded file(s)...",
         )
 
-        background_tasks.add_task(
+        _dispatch_background_task(
             run_upload_processing_task,
             kb_name=kb_name,
             base_dir=str(kb_base_dir),
@@ -2286,8 +2332,12 @@ async def create_knowledge_base(
             logger.warning(f"KB {name} not found in config, registering manually")
             initializer._register_to_config()
 
-        uploaded_files, _ = _save_uploaded_files(
-            files, initializer.raw_dir, allowed_extensions=allowed_extensions, rel_paths=rel_paths
+        uploaded_files, _ = await asyncio.to_thread(
+            _save_uploaded_files,
+            files,
+            initializer.raw_dir,
+            allowed_extensions=allowed_extensions,
+            rel_paths=rel_paths,
         )
 
         progress_tracker.update(
@@ -2297,7 +2347,7 @@ async def create_knowledge_base(
             total=len(uploaded_files),
         )
 
-        background_tasks.add_task(run_initialization_task, initializer, task_id)
+        _dispatch_background_task(run_initialization_task, initializer, task_id)
 
         logger.info(f"KB '{name}' created, processing {len(uploaded_files)} files in background")
 
@@ -2311,9 +2361,11 @@ async def create_knowledge_base(
     except HTTPException:
         raise
     except Exception as e:
+        if "manager" in locals() and "kb_base_dir" in locals() and "name" in locals():
+            _rollback_created_kb(manager, name, kb_base_dir)
         logger.error(f"Failed to create KB: {e}")
         logger.debug(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_hash: str) -> None:
@@ -2522,7 +2574,7 @@ async def reindex_knowledge_base(
             manager, kb_name, task_id, "Queueing re-index...", status="initializing"
         )
 
-        background_tasks.add_task(
+        _dispatch_background_task(
             run_reindex_task,
             kb_name=kb_name,
             base_dir=str(kb_base_dir),
@@ -2863,7 +2915,7 @@ async def sync_folder(kb_name: str, folder_id: str, background_tasks: Background
         )
 
         # Add background task to process files
-        background_tasks.add_task(
+        _dispatch_background_task(
             run_upload_processing_task,
             kb_name=kb_name,
             base_dir=str(kb_base_dir),
