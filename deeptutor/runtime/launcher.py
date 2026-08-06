@@ -793,6 +793,17 @@ def _coerce_port(value: object) -> int | None:
     return port if 1 <= port <= 65535 else None
 
 
+def _loopback_url(port: int) -> str:
+    """Return the loopback URL for ``port``, pinned to IPv4.
+
+    Node resolves ``localhost`` to ``::1`` before ``127.0.0.1`` while uvicorn
+    binds ``0.0.0.0`` (IPv4 only), so a ``localhost`` proxy target left every
+    ``/api/*`` rewrite refused -> HTTP 500 in the browser (issue #782).
+    """
+
+    return f"http://127.0.0.1:{port}"
+
+
 def _local_app_url(value: object, port: int) -> str:
     fallback = f"http://localhost:{port}"
     if not isinstance(value, str) or not value.strip():
@@ -955,7 +966,7 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
 
     backend_port = settings.backend_port
     frontend_port = settings.frontend_port
-    backend_url = f"http://localhost:{backend_port}"
+    backend_url = _loopback_url(backend_port)
     api_base = (
         runtime_env.get("NEXT_PUBLIC_API_BASE_EXTERNAL")
         or runtime_env.get("NEXT_PUBLIC_API_BASE")
@@ -991,7 +1002,7 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
     if (resolved_backend, resolved_frontend) != (backend_port, frontend_port):
         backend_port, frontend_port = resolved_backend, resolved_frontend
         runtime_env = export_runtime_settings_to_env(overwrite=True)
-        backend_url = f"http://localhost:{backend_port}"
+        backend_url = _loopback_url(backend_port)
         api_base = (
             runtime_env.get("NEXT_PUBLIC_API_BASE_EXTERNAL")
             or runtime_env.get("NEXT_PUBLIC_API_BASE")
@@ -1032,7 +1043,7 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
     # The Next.js middleware (web/proxy.ts) runs in the frontend's Node runtime
     # and reads these at request time to forward /api/* and /ws/* to the backend
     # and to gate the login redirect. The browser uses relative paths, so the
-    # frontend server reaches the backend on localhost at the resolved port —
+    # frontend server reaches the backend on the loopback at the resolved port —
     # use backend_url (not api_base, which may be an external browser URL).
     common_env["DEEPTUTOR_API_BASE_URL"] = backend_url
     common_env["DEEPTUTOR_AUTH_ENABLED"] = "true" if auth_enabled else "false"
