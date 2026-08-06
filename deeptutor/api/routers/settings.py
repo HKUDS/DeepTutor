@@ -1120,17 +1120,19 @@ async def update_chat_response_timeout(update: ChatResponseTimeoutUpdate):
     return {"chat_response_timeout": update.chat_response_timeout}
 
 
-# The only two UI preferences a page can need before it knows who is asking.
-PRESESSION_UI_FIELDS = ("theme", "language")
+# The UI preferences a page can need before it knows who is asking. All three
+# describe the person's own presentation and output choices; none of them say
+# anything about how the deployment is configured.
+PRESESSION_UI_FIELDS = ("theme", "language", "response_language")
 
 
 @public_router.get("/ui")
 async def get_ui_settings():
-    """Return the pre-session UI preferences: theme and interface language.
+    """Return the pre-session UI preferences: theme and the two languages.
 
     Public by design, which is why it is a narrow projection rather than the
     saved ``ui`` blob. The app shell — and the statically prerendered auth
-    pages, which have no session at all — adopt the persisted language here
+    pages, which have no session at all — adopt the persisted languages here
     during bootstrap. Theme rides along so those pages can paint in the right
     one instead of flashing.
 
