@@ -85,6 +85,22 @@ export function readStoredLanguage(): AppLanguage {
   }
 }
 
+/** Whether this browser has ever recorded a choice.
+ *
+ * ``readStoredLanguage`` cannot answer this: it normalizes a missing value to
+ * "en", which is indistinguishable from an explicit English selection. The
+ * bootstrap needs the difference — it may only consult the server-side
+ * preference when the browser has no choice of its own to honour.
+ */
+export function hasStoredLanguage(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(LANGUAGE_STORAGE_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
 export function writeStoredLanguage(language: AppLanguage): void {
   if (typeof window === "undefined") return;
   try {

@@ -955,7 +955,7 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
 
     backend_port = settings.backend_port
     frontend_port = settings.frontend_port
-    backend_url = f"http://localhost:{backend_port}"
+    backend_url = f"http://127.0.0.1:{backend_port}"
     api_base = (
         runtime_env.get("NEXT_PUBLIC_API_BASE_EXTERNAL")
         or runtime_env.get("NEXT_PUBLIC_API_BASE")
@@ -991,7 +991,7 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
     if (resolved_backend, resolved_frontend) != (backend_port, frontend_port):
         backend_port, frontend_port = resolved_backend, resolved_frontend
         runtime_env = export_runtime_settings_to_env(overwrite=True)
-        backend_url = f"http://localhost:{backend_port}"
+        backend_url = f"http://127.0.0.1:{backend_port}"
         api_base = (
             runtime_env.get("NEXT_PUBLIC_API_BASE_EXTERNAL")
             or runtime_env.get("NEXT_PUBLIC_API_BASE")
@@ -1032,7 +1032,7 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
     # The Next.js middleware (web/proxy.ts) runs in the frontend's Node runtime
     # and reads these at request time to forward /api/* and /ws/* to the backend
     # and to gate the login redirect. The browser uses relative paths, so the
-    # frontend server reaches the backend on localhost at the resolved port —
+    # frontend server reaches the backend on the IPv4 loopback at the resolved port —
     # use backend_url (not api_base, which may be an external browser URL).
     common_env["DEEPTUTOR_API_BASE_URL"] = backend_url
     common_env["DEEPTUTOR_AUTH_ENABLED"] = "true" if auth_enabled else "false"

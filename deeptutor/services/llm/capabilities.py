@@ -259,6 +259,11 @@ MODEL_OVERRIDES: dict[str, dict[str, object]] = {
     # Qwen text models often share the same provider/gateway as Qwen-VL.
     # Keep thinking-tag handling broad, but only mark explicit VL/vision model
     # names as image-capable so RAG image indexing can fail closed.
+    # Qwen3.8-Max is natively multimodal despite not using the historical
+    # ``-vl`` suffix. Keep this override narrow so other Qwen text models remain
+    # fail-closed.
+    # https://help.aliyun.com/zh/model-studio/vision-model
+    "qwen3.8-max": {"supports_vision": True},
     "qwen/qwen2.5-vl": {"has_thinking_tags": True, "supports_vision": True},
     "qwen/qwen3-vl": {"has_thinking_tags": True, "supports_vision": True},
     "qwen/qwen2-vl": {"has_thinking_tags": True, "supports_vision": True},
@@ -298,8 +303,12 @@ MODEL_OVERRIDES: dict[str, dict[str, object]] = {
     "gpt-4o": {"supports_vision": True},
     "gpt-4-turbo": {"supports_vision": True},
     "gpt-4-vision": {"supports_vision": True},
-    "claude-3": {"supports_vision": True},
-    "claude-4": {"supports_vision": True},
+    # Anthropic moved to `claude-<family>-<version>` after Claude 3, so no model id
+    # begins with "claude-4" and that prefix matched nothing. Every Claude model from
+    # 3 onward is multimodal, so match the vendor prefix rather than enumerating
+    # versions that go stale. A future text-only model can be excluded by adding a
+    # longer, more specific key (longest prefix wins in get_capability).
+    "claude-": {"supports_vision": True},
     "gemini": {"supports_vision": True},
     "gemma": {"supports_vision": False, "supports_response_format": False},
     "llava": {"supports_vision": True},
@@ -314,6 +323,7 @@ MODEL_OVERRIDES: dict[str, dict[str, object]] = {
     "moonshot-v1-128k-vision": {"supports_vision": True},
     "kimi-k2.5": {"supports_vision": True},
     "kimi-k2.6": {"supports_vision": True},
+    "kimi-k3": {"supports_vision": True},
 }
 
 

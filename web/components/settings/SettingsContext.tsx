@@ -25,6 +25,7 @@ import {
 import { useAppShell } from "@/context/AppShellContext";
 import { apiFetch, apiUrl } from "@/lib/api";
 import { invalidateLLMOptionsCache } from "@/lib/llm-options";
+import { setModelReasoningEffort } from "@/lib/reasoning-effort";
 import { setTheme as applyThemePreference } from "@/lib/theme";
 
 // ─── Domain types ─────────────────────────────────────────────────────────
@@ -49,6 +50,7 @@ export type CatalogModel = {
   context_window?: string;
   context_window_source?: string;
   context_window_detected_at?: string;
+  reasoning_effort?: string;
   // Voice (TTS): free-form provider/model-specific voice string, e.g.
   // "alloy", "autumn", "model:voice". `response_format` is the TTS output
   // codec (mp3/wav/...) and is reused by imagegen ("url"/"b64_json").
@@ -486,6 +488,7 @@ type SettingsContextValue = {
     value: boolean,
   ) => void;
   updateContextWindowField: (value: string) => void;
+  updateReasoningEffort: (value: string) => void;
   llmContextDetection: LlmContextWindowDetection | null;
   applyDetectedContextWindow: () => void;
 
@@ -960,6 +963,17 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     [mutateCatalog],
   );
 
+  const updateReasoningEffort = useCallback(
+    (value: string) => {
+      mutateCatalog((next) => {
+        const model = getActiveModel(next, "llm");
+        if (!model) return;
+        setModelReasoningEffort(model, value);
+      });
+    },
+    [mutateCatalog],
+  );
+
   const applyDetectedContextWindow = useCallback(() => {
     if (!llmContextDetection) return;
     mutateCatalog((next) => {
@@ -1291,6 +1305,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       updateModelField,
       updateModelBoolField,
       updateContextWindowField,
+      updateReasoningEffort,
       llmContextDetection,
       applyDetectedContextWindow,
       saving,
@@ -1354,6 +1369,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       updateCodeBlockTheme,
       updateCodeBlockWrapLongLines,
       updateContextWindowField,
+      updateReasoningEffort,
       updateLanguage,
       updateResponseLanguage,
       updateModelBoolField,

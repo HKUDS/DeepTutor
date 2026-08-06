@@ -78,7 +78,7 @@ user_template_fixed: |
   返回 JSON：
   {{
     "render_type": "{render_type}",
-    "visual_genre": "最贴合这个 {render_type} 和用户意图的 genre，或空字符串",
+    "visual_genre": "最贴合这个 {render_type} 和用户意图的 genre。必须是以下之一：flowchart / structural / illustrative / chart / stepper / interactive / mockup / art，没有合适的就留空",
     "description": "可视化应展示的内容的高层描述",
     "data_description": "要可视化的数据或元素的描述",
     "chart_type": "如果是 chartjs 填 Chart.js 图表类型；如果是 mermaid 填 Mermaid 图表类型；如果是 html 填交互形式（interactive / animation / walkthrough / quiz）；否则为空字符串",

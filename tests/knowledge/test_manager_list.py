@@ -56,6 +56,17 @@ def test_list_keeps_entries_when_directory_present(tmp_path: Path) -> None:
     assert "kept" in _read_config(manager.config_file).get("knowledge_bases", {})
 
 
+def test_get_default_reuses_available_names(monkeypatch, tmp_path: Path) -> None:
+    manager = KnowledgeBaseManager(base_dir=str(tmp_path))
+
+    def _unexpected_rescan() -> list[str]:
+        raise AssertionError("available names should avoid another KB scan")
+
+    monkeypatch.setattr(manager, "list_knowledge_bases", _unexpected_rescan)
+
+    assert manager.get_default(available_names=["first", "second"]) == "first"
+
+
 def test_list_keeps_recent_entry_with_missing_dir(tmp_path: Path) -> None:
     """During KB creation the config entry is written before the directory
     exists. A concurrent ``list`` must not delete that in-flight entry —

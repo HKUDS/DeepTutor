@@ -1,0 +1,18 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/(utility)/layout,_N_T_/(utility)/settings/layout,_N_T_/(utility)/settings/agents/layout,_N_T_/(utility)/settings/agents/opencode/layout,_N_T_/(utility)/settings/agents/opencode/page,_N_T_/settings/agents/opencode"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/!KHV0aWxpdHkp/settings/agents/opencode/__PAGE__",
+    "/!KHV0aWxpdHkp/settings/agents/opencode",
+    "/!KHV0aWxpdHkp/settings/agents",
+    "/!KHV0aWxpdHkp/settings",
+    "/!KHV0aWxpdHkp",
+    "/_index",
+    "/_head"
+  ]
+}

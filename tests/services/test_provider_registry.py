@@ -39,6 +39,20 @@ def test_edenai_provider_aliases_and_base_detection() -> None:
     assert find_gateway(api_base="https://api.edenai.run/v3") == spec
 
 
+def test_novita_provider_aliases_and_base_detection() -> None:
+    spec = find_by_name("novita")
+
+    assert spec is not None
+    assert spec.display_name == "Novita AI"
+    assert spec.env_key == "NOVITA_API_KEY"
+    assert spec.backend == "openai_compat"
+    assert spec.mode == "gateway"
+    assert spec.default_api_base == "https://api.novita.ai/openai"
+    assert find_by_name("novita-ai") == spec
+    assert find_by_name("novita_ai") == spec
+    assert find_gateway(api_base="https://api.novita.ai/openai") == spec
+
+
 def test_openai_codex_is_not_detected_from_api_base() -> None:
     assert find_gateway(api_base="https://codex.example.com/v1") is None
 

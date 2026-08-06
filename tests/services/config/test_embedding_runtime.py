@@ -9,6 +9,10 @@ from deeptutor.services.config.provider_runtime import (
     resolve_embedding_runtime_config,
 )
 
+NATIVE_GEMINI2_ENDPOINT = (
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:batchEmbedContents"
+)
+
 
 def _build_catalog(
     *,
@@ -91,6 +95,9 @@ def test_embedding_alias_canonicalization_google_to_gemini() -> None:
 
 
 def test_embedding_gemini_default_base_and_profile_key() -> None:
+    """An existing gemini-embedding-001 profile with no explicit endpoint must
+    keep the OpenAI-compatible URL — the native route sends a taskType and
+    L2-normalizes, so moving it would invalidate the index built from it."""
     catalog = _build_catalog(
         embedding_profile={
             "id": "embedding-p",
@@ -111,6 +118,69 @@ def test_embedding_gemini_default_base_and_profile_key() -> None:
         resolved.effective_url
         == "https://generativelanguage.googleapis.com/v1beta/openai/embeddings"
     )
+
+
+def test_embedding_gemini_defaults_to_stable_embedding2() -> None:
+    spec = EMBEDDING_PROVIDERS["gemini"]
+
+    assert spec.adapter == "gemini"
+    assert spec.default_model == "gemini-embedding-2"
+    assert spec.default_dim == 3072
+    assert spec.default_api_base == NATIVE_GEMINI2_ENDPOINT
+
+
+def test_embedding_gemini_embedding2_defaults_to_the_native_endpoint() -> None:
+    """Embedding 2 is new, so nothing has an index on it yet — it can default
+    straight to the native batch endpoint that carries its features."""
+    catalog = _build_catalog(
+        embedding_profile={
+            "id": "embedding-p",
+            "name": "Embedding",
+            "binding": "gemini",
+            "base_url": "",
+            "api_key": "gemini-test-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "embedding-m",
+                    "name": "m",
+                    "model": "gemini-embedding-2",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_embedding_runtime_config(catalog=catalog)
+
+    assert resolved.effective_url == NATIVE_GEMINI2_ENDPOINT
+
+
+def test_embedding_gemini_explicit_native_endpoint_opts_any_model_in() -> None:
+    """A saved native URL is used verbatim, which is how an older model can
+    still be pointed at the native route deliberately."""
+    catalog = _build_catalog(
+        embedding_profile={
+            "id": "embedding-p",
+            "name": "Embedding",
+            "binding": "gemini",
+            "base_url": NATIVE_GEMINI2_ENDPOINT,
+            "api_key": "gemini-test-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "embedding-m",
+                    "name": "m",
+                    "model": "gemini-embedding-2",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_embedding_runtime_config(catalog=catalog)
+
+    assert resolved.effective_url == NATIVE_GEMINI2_ENDPOINT
 
 
 def test_embedding_local_fallback_from_base_url() -> None:

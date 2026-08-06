@@ -61,7 +61,9 @@ def test_moonshot_vision_models() -> None:
 def test_minimax_openai_compat_supports_tools_without_response_format() -> None:
     """MiniMax M-series models support OpenAI-compatible tool calls, but
     the provider still should not receive json_object response_format."""
-    # M3 is the current default model (512K context, image input support).
+    # M3 is the current default model (1M-token context window, image input
+    # support — note PROVIDER_CAPABILITIES["minimax"]["supports_vision"] is
+    # still False while minimax_anthropic's is True).
     assert supports_tools("minimax", "MiniMax-M3") is True
     assert supports_response_format("minimax", "MiniMax-M3") is False
     # M2.7 and M2.7-highspeed remain as alternatives.
@@ -89,3 +91,42 @@ def test_qwen_model_override_enables_vision() -> None:
     assert supports_vision("openai", "Qwen/Qwen3-VL-235B-A22B-Instruct") is True
     assert supports_vision("openai", "qwen-plus") is False
     assert supports_vision("openai", "Qwen/Qwen3-235B-A22B-Instruct") is False
+
+
+def test_claude_model_ids_are_vision_capable() -> None:
+    """Anthropic's post-Claude-3 ids are `claude-<family>-<version>`.
+
+    The old "claude-4" override matched no real id, so every model from Sonnet 4
+    onward fell through to the binding default and reported no vision support on
+    OpenAI-compatible endpoints, including the Anthropic adapter's own default
+    model.
+    """
+    for model in (
+        "claude-3-5-sonnet-20241022",
+        "claude-sonnet-4-20250514",
+        "claude-sonnet-4-6",
+        "claude-opus-4-1",
+        "claude-opus-4-6",
+        "claude-opus-4-7",
+        "claude-haiku-4-5-20251001",
+        "claude-opus-5",
+        "claude-sonnet-5",
+        "claude-fable-5",
+    ):
+        assert supports_vision("custom", model) is True, model
+
+
+def test_claude_override_does_not_leak_to_other_vendors() -> None:
+    assert supports_vision("custom", "gpt-3.5-turbo") is False
+    assert supports_vision("lm_studio", "gemma-2-9b") is False
+
+
+def test_kimi_k3_is_vision_capable() -> None:
+    """Kimi K3 is natively multimodal, like the K2.5/K2.6 entries above it."""
+    assert supports_vision("moonshot", "kimi-k3") is True
+    assert supports_vision("custom", "kimi-k3") is True
+
+
+def test_qwen38_max_enables_vision_without_legacy_vl_suffix() -> None:
+    """Qwen3.8-Max is multimodal despite not carrying the legacy ``-vl`` suffix."""
+    assert supports_vision("dashscope", "qwen3.8-max") is True

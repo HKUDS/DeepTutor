@@ -71,6 +71,8 @@ def test_parse_catalog_keeps_only_picker_visible_raw_models() -> None:
 
     assert [model.slug for model in models] == ["gpt-5.6-sol"]
     assert models[0].display_name == "GPT-5.6-Sol"
+    assert models[0].context_window == 272_000
+    assert models[0].max_context_window == 272_000
     assert models[0].supported_reasoning_levels == ("medium", "high")
     assert models[0].supports_reasoning_summary is True
 

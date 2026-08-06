@@ -1,0 +1,16 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/(workspace)/layout,_N_T_/(workspace)/playground/layout,_N_T_/(workspace)/playground/page,_N_T_/playground"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/!KHdvcmtzcGFjZSk/playground/__PAGE__",
+    "/!KHdvcmtzcGFjZSk/playground",
+    "/!KHdvcmtzcGFjZSk",
+    "/_index",
+    "/_head"
+  ]
+}

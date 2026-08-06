@@ -526,10 +526,16 @@ class RuntimeSettingsService:
             # so the two deployment paths stay in sync. DEEPTUTOR_API_BASE_URL is
             # the address the frontend *server* uses to reach the backend; the
             # browser itself only ever talks to the frontend origin.
+            #
+            # The fallback is the IPv4 loopback, not "localhost": on a dual-stack
+            # host that name resolves to ::1 first, while uvicorn binds 0.0.0.0
+            # (IPv4 only), so every rewritten /api/* request fails to connect.
+            # The launcher passes the same literal (see runtime/launcher.py), so
+            # both deployment paths agree.
             "DEEPTUTOR_API_BASE_URL": (
                 system["next_public_api_base"]
                 or system["next_public_api_base_external"]
-                or f"http://localhost:{system['backend_port']}"
+                or f"http://127.0.0.1:{system['backend_port']}"
             ),
             "DEEPTUTOR_AUTH_ENABLED": _bool_env(auth["enabled"]),
             "POCKETBASE_URL": integrations["pocketbase_url"],

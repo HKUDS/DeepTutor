@@ -1113,6 +1113,18 @@ async def update_chat_response_timeout(update: ChatResponseTimeoutUpdate):
     return {"chat_response_timeout": update.chat_response_timeout}
 
 
+@router.get("/ui")
+async def get_ui_settings():
+    """Return the saved UI settings blob.
+
+    The full ``ui`` payload (sidebar_nav_order, enabled_optional_tools,
+    voice_autoplay, …), same as the ``ui`` key of GET /settings. The app shell
+    reads it during bootstrap for the interface language, which nothing outside
+    the settings route used to see.
+    """
+    return load_ui_settings()
+
+
 @router.put("/ui")
 async def update_ui_settings(update: UISettingsUpdate):
     """Merge frontend partial update into current UI settings.

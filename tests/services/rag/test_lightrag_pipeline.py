@@ -10,6 +10,7 @@ index/search orchestration without the heavy deps.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 from pathlib import Path
 import sys
@@ -131,29 +132,61 @@ def test_storage_meta_and_has_output(tmp_path) -> None:
     assert meta["provider"] == "lightrag"
 
 
-def test_embedding_func_returns_numpy_array(monkeypatch) -> None:
-    class _FakeEmbeddingFunc:
-        def __init__(self, *, embedding_dim, max_token_size, func) -> None:
-            self.embedding_dim = embedding_dim
-            self.max_token_size = max_token_size
-            self.func = func
+class _FakeEmbeddingFunc:
+    """Stands in for ``lightrag.utils.EmbeddingFunc``.
 
+    Its signature is deliberately limited to the real dataclass's fields, so a
+    constructor kwarg the pinned dependency does not accept fails here too.
+    ``test_fake_embedding_func_matches_the_real_dataclass`` pins the two
+    together whenever LightRAG is installed.
+    """
+
+    def __init__(
+        self,
+        *,
+        embedding_dim,
+        func,
+        max_token_size=8192,
+        send_dimensions=None,
+        model_name=None,
+    ) -> None:
+        self.embedding_dim = embedding_dim
+        self.func = func
+        self.max_token_size = max_token_size
+        self.send_dimensions = send_dimensions
+        self.model_name = model_name
+
+
+def _install_fake_lightrag(monkeypatch) -> None:
     fake_lightrag = types.ModuleType("lightrag")
     fake_utils = types.ModuleType("lightrag.utils")
     fake_utils.EmbeddingFunc = _FakeEmbeddingFunc
     monkeypatch.setitem(sys.modules, "lightrag", fake_lightrag)
     monkeypatch.setitem(sys.modules, "lightrag.utils", fake_utils)
 
+
+def test_fake_embedding_func_matches_the_real_dataclass() -> None:
+    """Guard against the stub drifting from the dependency it stands in for."""
+    import dataclasses
+
+    lightrag_utils = pytest.importorskip("lightrag.utils")
+
+    real_fields = {field.name for field in dataclasses.fields(lightrag_utils.EmbeddingFunc)}
+    stub_fields = set(inspect.signature(_FakeEmbeddingFunc.__init__).parameters.keys() - {"self"})
+    assert stub_fields == real_fields
+
+
+def test_embedding_func_returns_numpy_array(monkeypatch) -> None:
+    _install_fake_lightrag(monkeypatch)
+
     class _Config:
         dim = 3
         max_tokens = 99
 
     class _Client:
-        def get_embedding_func(self):
-            async def embed(texts):
-                return [[1, 2, 3] for _ in texts]
-
-            return embed
+        async def embed(self, texts, *, input_type=None):
+            del input_type
+            return [[1, 2, 3] for _ in texts]
 
     monkeypatch.setattr("deeptutor.services.embedding.get_embedding_config", lambda: _Config())
     monkeypatch.setattr("deeptutor.services.embedding.get_embedding_client", lambda: _Client())
@@ -164,6 +197,36 @@ def test_embedding_func_returns_numpy_array(monkeypatch) -> None:
     assert embedding.max_token_size == 99
     assert vectors.shape == (2, 3)
     assert hasattr(vectors, "size")
+
+
+def test_embedding_func_maps_lightrag_query_and_document_context(monkeypatch) -> None:
+    calls: list[tuple[list[str], str | None]] = []
+    _install_fake_lightrag(monkeypatch)
+
+    class _Config:
+        dim = 3
+        max_tokens = 99
+
+    class _Client:
+        async def embed(self, texts, *, input_type=None):
+            calls.append((list(texts), input_type))
+            return [[1, 2, 3] for _ in texts]
+
+    monkeypatch.setattr("deeptutor.services.embedding.get_embedding_config", lambda: _Config())
+    monkeypatch.setattr("deeptutor.services.embedding.get_embedding_client", lambda: _Client())
+
+    embedding = lr_config.build_embedding_func()
+    asyncio.run(embedding.func(["question"], context="query", _priority=1))
+    asyncio.run(embedding.func(["passage"], context="document"))
+    # The pinned LightRAG passes no context at all; that must mean "no role",
+    # not "document", or every query would be embedded as a passage.
+    asyncio.run(embedding.func(["unlabelled"]))
+
+    assert calls == [
+        (["question"], "search_query"),
+        (["passage"], "search_document"),
+        (["unlabelled"], None),
+    ]
 
 
 def test_lightrag_llm_adapter_preserves_messages_and_drops_extra_kwargs(

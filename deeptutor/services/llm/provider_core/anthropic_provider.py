@@ -381,7 +381,12 @@ class AnthropicProvider(LLMProvider):
             )
 
         max_tokens = max(1, max_tokens)
-        thinking_enabled = bool(reasoning_effort)
+        effort = (reasoning_effort or "").strip().lower()
+        # An off-sentinel means "thinking off" on every family, not "an effort
+        # level I don't recognise": the budget branch below treats an unknown
+        # value as the default budget, so a plain `bool(reasoning_effort)`
+        # turned `none` into thinking ON with 4096 tokens.
+        thinking_enabled = bool(effort) and effort not in _THINKING_OFF_EFFORTS
         effort_based = any(family in model_name for family in _EFFORT_BASED_FAMILIES)
 
         kwargs: dict[str, Any] = {
@@ -393,20 +398,18 @@ class AnthropicProvider(LLMProvider):
         if system:
             kwargs["system"] = system
 
-        if reasoning_effort == "adaptive":
-            kwargs["thinking"] = {"type": "adaptive"}
-            if not effort_based:
-                kwargs["temperature"] = 1.0
-        elif thinking_enabled and effort_based:
+        if thinking_enabled and effort_based:
             # These families reject enabled+budget_tokens with a 400 —
             # adaptive is their only on-mode, so any real effort level maps
             # to adaptive (no budget headroom needed). Off-sentinels omit
             # the param entirely.
-            if reasoning_effort.lower() not in _THINKING_OFF_EFFORTS:
-                kwargs["thinking"] = {"type": "adaptive"}
+            kwargs["thinking"] = {"type": "adaptive"}
         elif thinking_enabled:
+            # The older families are the mirror image: they take
+            # enabled+budget_tokens and reject `adaptive`, so a stored
+            # `adaptive` lands on the default budget rather than a 400.
             budget_map = {"low": 1024, "medium": 4096, "high": max(8192, max_tokens)}
-            budget = budget_map.get(reasoning_effort.lower(), 4096)
+            budget = budget_map.get(effort, 4096)
             kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}
             kwargs["max_tokens"] = max(max_tokens, budget + 4096)
             kwargs["temperature"] = 1.0

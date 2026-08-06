@@ -30,7 +30,10 @@ import {
 import { normalizeMarkdownForDisplay } from "@/lib/markdown-display";
 import { normalizeMessageContent } from "@/lib/message-content";
 import { buildVisiblePath, tipMessageId } from "@/lib/message-branches";
-import { nextOptimisticId } from "@/lib/optimistic-id";
+import {
+  nextOptimisticId,
+  resolvePersistedMessage,
+} from "@/lib/optimistic-id";
 import { reconcileTurnIds } from "@/lib/turn-reconcile";
 import {
   isNarrationMarker,
@@ -837,7 +840,7 @@ interface ChatContextValue {
   loadSession: (
     sessionId: string,
     options?: { signal?: AbortSignal; revalidate?: boolean },
-  ) => Promise<void>;
+  ) => Promise<MessageItem[] | undefined>;
   /** Select an already-loaded session without fetching. Returns false when
    *  it isn't in memory, i.e. the caller must load it. */
   showCachedSession: (sessionId: string) => boolean;
@@ -1007,9 +1010,9 @@ export function UnifiedChatProvider({
   // Forward-declared so ``handleRunnerEvent`` (created above
   // ``loadSession`` in source order) can trigger a server refresh after
   // a turn finishes without taking a stale closure of ``loadSession``.
-  const loadSessionRef = useRef<((sessionId: string) => Promise<void>) | null>(
-    null,
-  );
+  const loadSessionRef = useRef<
+    ((sessionId: string) => Promise<MessageItem[] | undefined>) | null
+  >(null);
 
   useLayoutEffect(() => {
     stateRef.current = state;
@@ -1339,12 +1342,13 @@ export function UnifiedChatProvider({
         const local = stateRef.current.sessions[key];
         if (!local || local.isStreaming || local.status === "running") return;
       }
+      const messages = hydrateMessages(session.messages ?? []);
       dispatch({
         type: options?.revalidate ? "REVALIDATE_SESSION" : "LOAD_SESSION",
         key,
         sessionId: key,
         title: session.title || "",
-        messages: hydrateMessages(session.messages ?? []),
+        messages,
         activeTurnId: activeTurn?.turn_id || activeTurn?.id || null,
         status:
           (session.status as SessionRuntimeStatus | undefined) ||
@@ -1379,6 +1383,7 @@ export function UnifiedChatProvider({
           after_seq: 0,
         });
       }
+      return messages;
     },
     [hydrateMessages, sendThroughRunner],
   );
@@ -1839,35 +1844,21 @@ export function UnifiedChatProvider({
       // already running so we don't queue against an in-flight stream
       // (matches the delete-turn guard).
       if (session.isStreaming) return;
-      const idx = session.messages.findIndex(
-        (m) => m.id === messageId && m.role === "user",
-      );
-      if (idx === -1) return;
-      let original = session.messages[idx];
-      // Optimistic in-flight rows have a negative client-side id — we
-      // need a real server id to hang the new sibling under. Refresh
-      // from the server, then re-resolve the row by its position in the
-      // (now-persisted) thread before continuing.
-      if (typeof original.id === "number" && original.id < 0) {
-        if (!session.sessionId) return;
-        try {
-          await loadSession(session.sessionId);
-        } catch {
-          return;
-        }
-        const refreshed = stateRef.current.sessions[key];
-        const candidate = refreshed?.messages[idx];
-        if (
-          !candidate ||
-          candidate.role !== "user" ||
-          typeof candidate.id !== "number" ||
-          candidate.id < 0
-        ) {
-          return;
-        }
-        original = candidate;
+      let original: MessageItem | undefined;
+      try {
+        original = await resolvePersistedMessage(
+          session.messages,
+          messageId,
+          "user",
+          async () =>
+            session.sessionId
+              ? await loadSession(session.sessionId)
+              : undefined,
+        );
+      } catch {
+        return;
       }
-      if (typeof original.id !== "number" || original.id < 0) return;
+      if (!original) return;
       const parentId = original.parentMessageId ?? null;
       sendMessage(
         trimmed,
