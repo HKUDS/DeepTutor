@@ -395,6 +395,47 @@ def test_refresh_drops_a_reasoning_override_the_model_no_longer_supports(
     assert "reasoning_effort" not in model
 
 
+def test_refresh_keeps_the_canonical_profile_override_when_removing_duplicates(
+    tmp_path: Path,
+) -> None:
+    service = ModelCatalogService(tmp_path / "model_catalog.json")
+    initial = sync_codex_catalog(service, _snapshot("live", _model("gpt-5.6-sol")))
+    canonical = _managed_profile(initial.catalog)
+    canonical["models"][0]["reasoning_effort"] = "medium"
+    duplicate = deepcopy(canonical)
+    duplicate["id"] = f"{CODEX_PROFILE_ID}-duplicate"
+    duplicate["models"][0]["reasoning_effort"] = "high"
+    initial.catalog["services"]["llm"]["profiles"].append(duplicate)
+    service.save(initial.catalog)
+
+    refreshed = sync_codex_catalog(service, _snapshot("live", _model("gpt-5.6-sol")))
+
+    managed = [
+        profile
+        for profile in refreshed.catalog["services"]["llm"]["profiles"]
+        if profile.get("managed_by") == MANAGED_BY
+    ]
+    assert len(managed) == 1
+    assert managed[0]["models"][0]["reasoning_effort"] == "medium"
+
+
+def test_refresh_ignores_an_override_with_a_non_string_model_identity(
+    tmp_path: Path,
+) -> None:
+    service = ModelCatalogService(tmp_path / "model_catalog.json")
+    initial = sync_codex_catalog(service, _snapshot("live", _model("gpt-5.6-sol")))
+    stale = _managed_profile(initial.catalog)["models"][0]
+    stale["model"] = []
+    stale["reasoning_effort"] = "high"
+    service.save(initial.catalog)
+
+    refreshed = sync_codex_catalog(service, _snapshot("live", _model("gpt-5.6-sol")))
+
+    model = _managed_profile(refreshed.catalog)["models"][0]
+    assert model["model"] == "gpt-5.6-sol"
+    assert "reasoning_effort" not in model
+
+
 def test_refresh_repoints_a_selection_whose_model_left_the_account(tmp_path: Path) -> None:
     service = ModelCatalogService(tmp_path / "model_catalog.json")
     sync_codex_catalog(service, _snapshot("live", _model("retired-model")))

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
+from copy import deepcopy
 from dataclasses import dataclass
 import hashlib
 import logging
@@ -129,6 +130,79 @@ def _managed_profile(
     }
 
 
+def _managed_profile_indexes(profiles: list[Any]) -> list[int]:
+    return [
+        index
+        for index, profile in enumerate(profiles)
+        if isinstance(profile, Mapping) and profile.get("managed_by") == MANAGED_BY
+    ]
+
+
+def _reasoning_efforts(profile: Mapping[str, Any]) -> dict[str, str]:
+    models = profile.get("models")
+    if not isinstance(models, list):
+        return {}
+    overrides: dict[str, str] = {}
+    for model in models:
+        if not isinstance(model, Mapping):
+            continue
+        slug = model.get("model")
+        effort = model.get("reasoning_effort")
+        if isinstance(slug, str) and slug and isinstance(effort, str) and effort:
+            overrides.setdefault(slug, effort)
+    return overrides
+
+
+def reconcile_codex_catalog_update(
+    current_catalog: Mapping[str, Any],
+    proposed_catalog: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Keep provider-owned Codex metadata authoritative on catalog writes."""
+    reconciled = deepcopy(dict(proposed_catalog))
+    current_profiles = current_catalog.get("services", {}).get("llm", {}).get("profiles", [])
+    proposed_llm = reconciled.get("services", {}).get("llm", {})
+    proposed_profiles = proposed_llm.get("profiles", [])
+    if not isinstance(current_profiles, list) or not isinstance(proposed_profiles, list):
+        return reconciled
+
+    current_indexes = _managed_profile_indexes(current_profiles)
+    proposed_indexes = _managed_profile_indexes(proposed_profiles)
+    proposed_index_set = set(proposed_indexes)
+    if not current_indexes:
+        proposed_llm["profiles"] = [
+            profile
+            for index, profile in enumerate(proposed_profiles)
+            if index not in proposed_index_set
+        ]
+        return reconciled
+
+    current_profile = deepcopy(dict(current_profiles[current_indexes[0]]))
+    requested = (
+        _reasoning_efforts(proposed_profiles[proposed_indexes[0]])
+        if proposed_indexes
+        else _reasoning_efforts(current_profile)
+    )
+    for model in current_profile.get("models", []):
+        if not isinstance(model, dict):
+            continue
+        model.pop("reasoning_effort", None)
+        slug = model.get("model")
+        supported = model.get("codex_supported_reasoning_levels")
+        effort = requested.get(slug) if isinstance(slug, str) else None
+        if isinstance(supported, list) and effort in supported:
+            model["reasoning_effort"] = effort
+
+    insert_at = proposed_indexes[0] if proposed_indexes else current_indexes[0]
+    unmanaged = [
+        profile
+        for index, profile in enumerate(proposed_profiles)
+        if index not in proposed_index_set
+    ]
+    unmanaged.insert(min(insert_at, len(unmanaged)), current_profile)
+    proposed_llm["profiles"] = unmanaged
+    return reconciled
+
+
 def sync_codex_catalog(
     catalog_service: ModelCatalogService,
     snapshot: CatalogSnapshot,
@@ -148,23 +222,18 @@ def sync_codex_catalog(
         profiles = llm.setdefault("profiles", [])
         # OAuth refreshes rebuild managed profiles, so preserve only the user-selected
         # reasoning override by the provider's stable model slug.
-        reasoning_efforts = {
-            model.get("model"): effort
-            for existing in profiles
-            if existing.get("managed_by") == MANAGED_BY
-            for model in existing.get("models", [])
-            if isinstance((effort := model.get("reasoning_effort")), str) and effort
-        }
+        managed_indexes = _managed_profile_indexes(profiles)
+        reasoning_efforts = (
+            _reasoning_efforts(profiles[managed_indexes[0]]) if managed_indexes else {}
+        )
         profile = _managed_profile(snapshot, reasoning_efforts)
-        managed_indexes = [
-            index
-            for index, existing in enumerate(profiles)
-            if existing.get("managed_by") == MANAGED_BY
-        ]
         if managed_indexes:
             first_index = managed_indexes[0]
+            managed_index_set = set(managed_indexes)
             profiles[:] = [
-                existing for existing in profiles if existing.get("managed_by") != MANAGED_BY
+                existing
+                for index, existing in enumerate(profiles)
+                if index not in managed_index_set
             ]
             profiles.insert(min(first_index, len(profiles)), profile)
         else:
@@ -888,6 +957,7 @@ __all__ = [
     "codex_model_id",
     "deliver_codex_oauth_callback",
     "get_codex_oauth_service",
+    "reconcile_codex_catalog_update",
     "remove_codex_catalog",
     "ssh_forward_command",
     "sync_codex_catalog",
