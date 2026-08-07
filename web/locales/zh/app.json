@@ -283,6 +283,8 @@
   "Solve": "解题",
   "More Capabilities": "更多能力",
   "Agent-loop driven modes": "由对话引擎驱动的模式",
+  "Ask Questions": "主动提问",
+  "Let the model ask you questions to fill in missing context": "让模型向你提问，补充它尚不了解的上下文",
   "Question": "题目",
   "No notebooks yet": "暂无笔记本",
   "Create your first notebook": "创建您的第一个笔记本",

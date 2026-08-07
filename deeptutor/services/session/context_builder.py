@@ -13,6 +13,7 @@ from deeptutor.core.trace import build_trace_metadata, merge_trace_metadata, new
 from deeptutor.services.llm.config import LLMConfig
 from deeptutor.services.llm.context_window import resolve_effective_context_window
 
+from .ask_user_trace import extract_ask_user_clarifications
 from .protocol import SessionStoreProtocol
 
 #: When the summarizer's output lands within this fraction of its hard token
@@ -53,11 +54,15 @@ def format_messages_as_transcript(messages: list[dict[str, Any]]) -> str:
         "system": "System",
     }
     for item in messages:
+        # User clarifications answered an ask_user card *before* the assistant
+        # answer was produced, so render them before the row's own content.
+        clarification = extract_ask_user_clarifications(item)
+        if clarification:
+            lines.append(f"User: {clarification}")
         content = str(item.get("content", "") or "").strip()
-        if not content:
-            continue
-        role = role_map.get(str(item.get("role", "user")), "User")
-        lines.append(f"{role}: {content}")
+        if content:
+            role = role_map.get(str(item.get("role", "user")), "User")
+            lines.append(f"{role}: {content}")
     return "\n\n".join(lines)
 
 
@@ -141,15 +146,19 @@ class ContextBuilder:
         cleaned_summary = summary.strip()
         if cleaned_summary:
             history.append({"role": "system", "content": cleaned_summary})
-        history.extend(
-            {
-                "role": item.get("role", "user"),
-                "content": str(item.get("content", "") or ""),
-            }
-            for item in messages
-            if item.get("role") in {"user", "assistant"}
-            and str(item.get("content", "") or "").strip()
-        )
+        for item in messages:
+            role = item.get("role")
+            content = str(item.get("content", "") or "")
+            # Resolved ask_user clarifications happened *before* the assistant
+            # produced this row's answer, so they must precede the row's own
+            # content in history. Otherwise later turns see the answer first
+            # and the user's clarification second, and the model wrongly
+            # assumes the answer came before the user supplied the context.
+            clarification = extract_ask_user_clarifications(item)
+            if clarification:
+                history.append({"role": "user", "content": clarification})
+            if role in {"user", "assistant"} and content.strip():
+                history.append({"role": role, "content": content})
         return history
 
     async def _append_event(
@@ -171,7 +180,8 @@ class ContextBuilder:
         total = 0
         for item in reversed(messages):
             content = str(item.get("content", "") or "")
-            tokens = count_tokens(content)
+            clarification = extract_ask_user_clarifications(item)
+            tokens = count_tokens(f"{content}\n{clarification}" if clarification else content)
             if selected and total + tokens > recent_budget:
                 break
             selected.insert(0, item)
@@ -474,5 +484,6 @@ __all__ = [
     "build_history_text",
     "count_tokens",
     "format_messages_as_transcript",
+    "extract_ask_user_clarifications",
     "trim_incomplete_tail",
 ]

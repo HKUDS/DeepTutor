@@ -256,6 +256,7 @@ class AgentLoop:
                     trace_role="explore",
                     max_tokens=self.pipeline.loop_max_tokens,
                     tool_schemas=self.tool_schemas,
+                    tool_choice=(self.pipeline.initial_tool_choice if _round == 0 else None),
                 )
             except Exception as exc:
                 # A mid-loop LLM failure (timeout / transient network) must not
@@ -444,6 +445,7 @@ class AgentLoop:
         trace_role: str,
         max_tokens: int,
         tool_schemas: list[dict[str, Any]] | None = None,
+        tool_choice: str | None = None,
     ) -> LLMCallResult:
         await self.pipeline._guard_context_window(messages, self.stream)
         stage = LOOP_STAGE
@@ -477,7 +479,20 @@ class AgentLoop:
             kwargs["stream_options"] = {"include_usage": True}
         if tool_schemas:
             kwargs["tools"] = tool_schemas
-            kwargs["tool_choice"] = "auto"
+            available_tools = {
+                str((schema.get("function") or {}).get("name") or "")
+                for schema in tool_schemas
+                if isinstance(schema, dict)
+            }
+            kwargs["tool_choice"] = (
+                {
+                    "type": "function",
+                    "function": {"name": tool_choice},
+                }
+                if tool_choice and tool_choice in available_tools
+                else "auto"
+            )
+        forced_tool_choice = isinstance(kwargs.get("tool_choice"), dict)
         # What this request actually carried, pinned now: the loop keeps
         # appending to ``messages`` and the deferred loader keeps appending to
         # ``tool_schemas``, so the turn's context budget is read off the last
@@ -558,10 +573,15 @@ class AgentLoop:
                     # channel so the content stream stays user-facing.
                     if not dsml_stream_active and has_dsml_tool_calls("".join(text_parts)):
                         dsml_stream_active = True
-                    segments = think_filter.feed(content)
-                    if dsml_stream_active:
-                        segments = [("thinking", seg) for _, seg in segments]
-                    await _emit_segments(segments)
+                    # Buffer prose during a forced-tool round. If the model
+                    # obeys the choice, the card is the first user-facing
+                    # artefact; if a provider ignores it, the buffered prose
+                    # is released below as a graceful fallback.
+                    if not forced_tool_choice:
+                        segments = think_filter.feed(content)
+                        if dsml_stream_active:
+                            segments = [("thinking", seg) for _, seg in segments]
+                        await _emit_segments(segments)
 
                 for tc_delta in getattr(delta, "tool_calls", None) or []:
                     index = int(getattr(tc_delta, "index", 0) or 0)
@@ -586,10 +606,11 @@ class AgentLoop:
                 with suppress(Exception):
                     await close()
 
-        flushed = think_filter.flush()
-        if dsml_stream_active:
-            flushed = [("thinking", seg) for _, seg in flushed]
-        await _emit_segments(flushed)
+        if not forced_tool_choice:
+            flushed = think_filter.flush()
+            if dsml_stream_active:
+                flushed = [("thinking", seg) for _, seg in flushed]
+            await _emit_segments(flushed)
         text = "".join(text_parts)
         record_streamed_usage(
             self.pipeline.usage,
@@ -618,6 +639,12 @@ class AgentLoop:
             if dsml_calls:
                 tool_calls = dsml_calls
                 text = cleaned_text
+
+        if forced_tool_choice and not tool_calls and text:
+            # Some compatibility providers accept ``tool_choice`` but ignore
+            # it. Do not lose their answer merely because it was buffered.
+            fallback_filter = InlineThinkFilter()
+            await _emit_segments(fallback_filter.feed(text) + fallback_filter.flush())
 
         await self.stream.progress(
             "",

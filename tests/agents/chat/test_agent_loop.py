@@ -709,6 +709,64 @@ async def test_ask_user_available_every_round(monkeypatch: pytest.MonkeyPatch) -
 
 
 @pytest.mark.asyncio
+async def test_initial_tool_choice_only_forces_first_round_and_hides_preamble(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _PausingRegistry(_Registry):
+        async def execute(self, name: str, **kwargs):
+            self.executed.append({"name": name, "kwargs": kwargs})
+            return ToolResult(
+                content="Asked the user.",
+                success=True,
+                pause_for_user={"questions": [{"id": "q1", "prompt": "What matters most?"}]},
+            )
+
+    registry = _PausingRegistry()
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(content="Let me ask one thing first."),
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "id": "call-1",
+                            "name": "ask_user",
+                            "arguments": json.dumps(
+                                {"questions": [{"id": "q1", "prompt": "What matters most?"}]}
+                            ),
+                        }
+                    ]
+                ),
+            ],
+            [_llm_chunk(content="Completed with the added context.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en", initial_tool_choice="ask_user")
+    pipeline.registry = registry
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["ask_user"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    async def _waiter():
+        return {"text": "Accuracy"}
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(
+            session_id="s1",
+            user_message="Help with this task",
+            metadata={"wait_for_user_reply": _waiter},
+        ),
+    )
+
+    assert client.calls[0]["tool_choice"] == {
+        "type": "function",
+        "function": {"name": "ask_user"},
+    }
+    assert client.calls[1]["tool_choice"] == "auto"
+    assert _contents(events) == ["Completed with the added context."]
+
+
+@pytest.mark.asyncio
 async def test_ask_user_pause_resumes_and_streams_interleaved(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

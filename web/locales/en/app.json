@@ -283,6 +283,8 @@
   "Solve": "Solve",
   "More Capabilities": "More Capabilities",
   "Agent-loop driven modes": "Agent-loop driven modes",
+  "Ask Questions": "Ask Questions",
+  "Let the model ask you questions to fill in missing context": "Let the model ask you questions to fill in missing context",
   "Question": "Question",
   "No notebooks yet": "No notebooks yet",
   "Create your first notebook": "Create your first notebook",

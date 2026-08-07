@@ -12,6 +12,7 @@ from deeptutor.services.session.context_builder import (
     ContextBuildResult,
     build_history_text,
     count_tokens,
+    extract_ask_user_clarifications,
     format_messages_as_transcript,
     trim_incomplete_tail,
 )
@@ -221,6 +222,47 @@ class TestBuildHistory:
             ],
         )
         assert len(history) == 1
+
+    def test_resolved_ask_user_answers_are_rehydrated_as_user_context(self) -> None:
+        message = {
+            "role": "assistant",
+            "content": "I adapted the explanation.",
+            "events": [
+                {
+                    "type": "tool_result",
+                    "metadata": {
+                        "tool_metadata": {
+                            "ask_user": {
+                                "questions": [
+                                    {"id": "level", "prompt": "What have you studied?"},
+                                    {"id": "goal", "prompt": "What is your goal?"},
+                                ]
+                            }
+                        }
+                    },
+                },
+                {
+                    "type": "progress",
+                    "metadata": {
+                        "ask_user_resolved": True,
+                        "answers": [
+                            {"questionId": "level", "text": "High-school calculus"},
+                            {"questionId": "goal", "text": "Understand the intuition"},
+                        ],
+                    },
+                },
+            ],
+        }
+
+        clarification = extract_ask_user_clarifications(message)
+        assert "What have you studied?" in clarification
+        assert "High-school calculus" in clarification
+
+        history = ContextBuilder(store=MagicMock())._build_history("", [message])
+        assert history == [
+            {"role": "user", "content": clarification},
+            {"role": "assistant", "content": "I adapted the explanation."},
+        ]
 
 
 # ---------------------------------------------------------------------------

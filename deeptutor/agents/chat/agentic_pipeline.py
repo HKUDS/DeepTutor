@@ -192,6 +192,7 @@ class AgenticChatPipeline:
         max_rounds: int | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        initial_tool_choice: str | None = None,
     ) -> None:
         self.language = "zh" if language.lower().startswith("zh") else "en"
         self.llm_config = get_llm_config()
@@ -211,6 +212,9 @@ class AgenticChatPipeline:
         self._deferred_pool: list[Any] = []
         self._exec_enabled = False
         self._kb_manifests: list[KbManifest] = []
+        # A selected capability may require one specific tool on the first
+        # internal loop round. Later rounds return to model-directed selection.
+        self.initial_tool_choice = (initial_tool_choice or "").strip() or None
         # The blocks the turn's system prompt was rendered from, kept for the
         # context-budget breakdown (see ``measure_context_budget``).
         self._last_prompt_blocks: list[PromptBlock] = []

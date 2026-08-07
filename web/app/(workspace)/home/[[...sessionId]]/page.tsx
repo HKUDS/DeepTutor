@@ -14,6 +14,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   BarChart3,
   BrainCircuit,
+  CircleHelp,
   Clapperboard,
   Code2,
   Compass,
@@ -239,6 +240,24 @@ const CAPABILITIES: CapabilityDef[] = [
     icon: BrainCircuit,
     allowedTools: ["web_search", "code_execution", "reason"],
     defaultTools: ["web_search", "code_execution", "reason"],
+    loopEngine: true,
+  },
+  {
+    value: "ask_questions",
+    label: "Ask Questions",
+    description: "Let the model ask you questions to fill in missing context",
+    icon: CircleHelp,
+    allowedTools: [
+      "brainstorm",
+      "geogebra_analysis",
+      "web_search",
+      "code_execution",
+      "reason",
+      "paper_search",
+      "imagegen",
+      "videogen",
+    ],
+    defaultTools: [],
     loopEngine: true,
   },
   {

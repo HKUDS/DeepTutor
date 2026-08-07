@@ -107,6 +107,7 @@ interface NotebookReferenceGroup {
 // the same wording the bubble carries.
 export function getModeBadgeLabel(capability?: string | null): string {
   if (!capability || capability === "chat") return "Chat";
+  if (capability === "ask_questions") return "Ask Questions";
   if (capability === "deep_solve") return "Deep Solve";
   if (capability === "deep_question") return "Quiz Generation";
   if (capability === "deep_research") return "Deep Research";

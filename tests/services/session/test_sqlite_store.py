@@ -265,3 +265,53 @@ def test_category_cascade_on_entry_delete(store: SQLiteSessionStore) -> None:
     asyncio.run(store.delete_notebook_entry(eid))
     cats = asyncio.run(store.list_categories())
     assert cats[0]["entry_count"] == 0
+
+
+# ── Context messages ──────────────────────────────────────────────
+
+
+_ASK_USER_EVENTS = [
+    {"type": "content", "content": "streamed delta", "metadata": {}},
+    {
+        "type": "tool_result",
+        "metadata": {
+            "tool_metadata": {"ask_user": {"questions": [{"id": "level", "prompt": "Your level?"}]}}
+        },
+    },
+    {
+        "type": "progress",
+        "metadata": {
+            "ask_user_resolved": True,
+            "answers": [{"questionId": "level", "text": "Beginner"}],
+        },
+    },
+]
+
+
+def _add_ask_user_turn(store: SQLiteSessionStore, session_id: str) -> None:
+    asyncio.run(store.add_message(session_id, "user", "Plan my study"))
+    asyncio.run(
+        store.add_message(session_id, "assistant", "Here is a plan", events=_ASK_USER_EVENTS)
+    )
+
+
+def test_context_messages_carry_ask_user_events(store: SQLiteSessionStore) -> None:
+    session = asyncio.run(store.create_session())
+    _add_ask_user_turn(store, session["id"])
+
+    messages = asyncio.run(store.get_messages_for_context(session["id"]))
+
+    assert [m["role"] for m in messages] == ["user", "assistant"]
+    # Streamed deltas are dropped; only the ask_user exchange survives, so a
+    # later turn can see which questions the learner already answered.
+    assert [e["type"] for e in messages[1]["events"]] == ["tool_result", "progress"]
+
+
+def test_branch_context_messages_carry_ask_user_events(store: SQLiteSessionStore) -> None:
+    session = asyncio.run(store.create_session())
+    _add_ask_user_turn(store, session["id"])
+    leaf = asyncio.run(store.add_message(session["id"], "user", "Still not right"))
+
+    messages = asyncio.run(store.get_messages_for_context(session["id"], leaf_message_id=leaf))
+
+    assert [e["type"] for e in messages[1]["events"]] == ["tool_result", "progress"]

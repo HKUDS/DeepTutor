@@ -78,6 +78,7 @@ def test_builtin_capability_aliases_resolve_to_canonical_names() -> None:
     runtime = DeepTutorApp()
 
     assert runtime.resolve_capability("solve") == "deep_solve"
+    assert runtime.resolve_capability("ask") == "ask_questions"
     assert runtime.resolve_capability("quiz") == "deep_question"
     assert runtime.resolve_capability("research") == "deep_research"
     assert runtime.resolve_capability("viz") == "visualize"
