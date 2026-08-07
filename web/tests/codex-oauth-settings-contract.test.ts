@@ -35,12 +35,14 @@ test("the Codex profile predicates live in one place", () => {
   );
 });
 
-test("managed Codex profiles cannot expose profile or model editing", () => {
+test("managed Codex profiles expose only provider-supported reasoning effort", () => {
   const source = readFileSync(EDITOR, "utf8");
 
   assert.match(source, /isManagedCodexProfile\(/);
   assert.match(source, /disabled=\{isManagedCodex\}/);
   assert.match(source, /!isCodexOAuth/);
+  assert.match(source, /activeModel\.codex_supported_reasoning_levels/);
+  assert.match(source, /!isCodexOAuth \|\| isManagedCodex/);
 });
 
 test("Codex OAuth copy stays in sync across locales", () => {

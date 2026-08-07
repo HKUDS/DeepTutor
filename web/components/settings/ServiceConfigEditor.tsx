@@ -16,7 +16,10 @@ import {
 import { useTranslation } from "react-i18next";
 
 import ProviderIcon from "@/components/common/ProviderIcon";
-import { reasoningEffortOptions } from "@/lib/reasoning-effort";
+import {
+  reasoningEffortOptions,
+  reasoningEffortOptionsFromSupportedLevels,
+} from "@/lib/reasoning-effort";
 import { CodexOAuthCard } from "./CodexOAuthCard";
 import { isCodexOAuthProfile, isManagedCodexProfile } from "./codex-profile";
 import {
@@ -137,11 +140,15 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
       : null;
   const reasoningOptions =
     service === "llm" && activeModel
-      ? reasoningEffortOptions(
-          activeProfile?.binding,
-          activeModel.model,
-          activeModel.reasoning_effort,
-        )
+      ? isManagedCodex
+        ? reasoningEffortOptionsFromSupportedLevels(
+            activeModel.codex_supported_reasoning_levels ?? [],
+          )
+        : reasoningEffortOptions(
+            activeProfile?.binding,
+            activeModel.model,
+            activeModel.reasoning_effort,
+          )
       : [];
 
   const startModelRename = (model: CatalogModel) => {
@@ -502,43 +509,49 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                     })}
                   </div>
                 )}
-                {activeModel && !isCodexOAuth && (
+                {activeModel && (!isCodexOAuth || isManagedCodex) && (
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                        {t("Model ID")}
+                    {!isCodexOAuth && (
+                      <div>
+                        <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                          {t("Model ID")}
+                        </div>
+                        <input
+                          className={inputClass}
+                          value={activeModel.model}
+                          onChange={(e) =>
+                            updateModelField(service, "model", e.target.value)
+                          }
+                          placeholder="gpt-4o"
+                        />
                       </div>
-                      <input
-                        className={inputClass}
-                        value={activeModel.model}
-                        onChange={(e) =>
-                          updateModelField(service, "model", e.target.value)
-                        }
-                        placeholder="gpt-4o"
-                      />
-                    </div>
+                    )}
                     {service === "llm" && (
                       <>
-                        <div>
-                          <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                            {t("Context Window")}
-                          </div>
-                          <input
-                            className={inputClass}
-                            inputMode="numeric"
-                            value={activeModel.context_window || ""}
-                            onChange={(e) =>
-                              updateContextWindowField(e.target.value)
-                            }
-                            placeholder="65536"
-                          />
-                          <ContextWindowMeta model={activeModel} />
-                        </div>
-                        <ContextWindowDetectionBanner
-                          model={activeModel}
-                          detection={activeLlmDetection}
-                          onApply={applyDetectedContextWindow}
-                        />
+                        {!isCodexOAuth && (
+                          <>
+                            <div>
+                              <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+                                {t("Context Window")}
+                              </div>
+                              <input
+                                className={inputClass}
+                                inputMode="numeric"
+                                value={activeModel.context_window || ""}
+                                onChange={(e) =>
+                                  updateContextWindowField(e.target.value)
+                                }
+                                placeholder="65536"
+                              />
+                              <ContextWindowMeta model={activeModel} />
+                            </div>
+                            <ContextWindowDetectionBanner
+                              model={activeModel}
+                              detection={activeLlmDetection}
+                              onApply={applyDetectedContextWindow}
+                            />
+                          </>
+                        )}
                         {reasoningOptions.length > 0 && (
                           <div>
                             <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">

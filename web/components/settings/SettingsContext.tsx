@@ -51,6 +51,7 @@ export type CatalogModel = {
   context_window_source?: string;
   context_window_detected_at?: string;
   reasoning_effort?: string;
+  codex_supported_reasoning_levels?: string[];
   // Voice (TTS): free-form provider/model-specific voice string, e.g.
   // "alloy", "autumn", "model:voice". `response_format` is the TTS output
   // codec (mp3/wav/...) and is reused by imagegen ("url"/"b64_json").

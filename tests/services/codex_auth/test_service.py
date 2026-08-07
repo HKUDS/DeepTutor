@@ -28,6 +28,7 @@ from deeptutor.services.codex_auth.service import (
 )
 from deeptutor.services.codex_auth.storage import CodexCredentialStore
 from deeptutor.services.config.model_catalog import ModelCatalogService
+from deeptutor.services.config.provider_runtime import resolve_llm_runtime_config
 
 
 def test_each_user_gets_their_own_codex_credential_root(
@@ -166,6 +167,7 @@ def _model(
     *,
     display_name: str | None = None,
     priority: int = 1,
+    supported_reasoning_levels: tuple[str, ...] = ("medium", "high"),
     context_window: int | None = None,
     max_context_window: int | None = None,
 ) -> CodexModel:
@@ -175,7 +177,7 @@ def _model(
         priority=priority,
         visibility="list",
         default_reasoning_level="medium",
-        supported_reasoning_levels=("medium", "high"),
+        supported_reasoning_levels=supported_reasoning_levels,
         supports_reasoning_summary=True,
         supports_parallel_tool_calls=True,
         use_responses_lite=False,
@@ -345,6 +347,52 @@ def test_refresh_replaces_only_managed_models(tmp_path: Path) -> None:
         )
         == existing_profile
     )
+
+
+def test_refresh_preserves_a_supported_reasoning_override_for_the_same_model(
+    tmp_path: Path,
+) -> None:
+    service = ModelCatalogService(tmp_path / "model_catalog.json")
+    initial = sync_codex_catalog(
+        service,
+        _snapshot("live", _model("gpt-5.6-sol"), _model("gpt-5.6-terra")),
+    )
+    profile = _managed_profile(initial.catalog)
+    profile["models"][0]["reasoning_effort"] = "high"
+    service.save(initial.catalog)
+
+    refreshed = sync_codex_catalog(
+        service,
+        _snapshot("live", _model("gpt-5.6-terra"), _model("gpt-5.6-sol")),
+    )
+
+    efforts = {
+        model["model"]: model.get("reasoning_effort")
+        for model in _managed_profile(refreshed.catalog)["models"]
+    }
+    assert efforts == {"gpt-5.6-terra": None, "gpt-5.6-sol": "high"}
+    assert resolve_llm_runtime_config(catalog=refreshed.catalog).reasoning_effort == "high"
+
+
+def test_refresh_drops_a_reasoning_override_the_model_no_longer_supports(
+    tmp_path: Path,
+) -> None:
+    service = ModelCatalogService(tmp_path / "model_catalog.json")
+    initial = sync_codex_catalog(service, _snapshot("live", _model("gpt-5.6-sol")))
+    profile = _managed_profile(initial.catalog)
+    profile["models"][0]["reasoning_effort"] = "high"
+    service.save(initial.catalog)
+
+    refreshed = sync_codex_catalog(
+        service,
+        _snapshot(
+            "live",
+            _model("gpt-5.6-sol", supported_reasoning_levels=("medium",)),
+        ),
+    )
+
+    model = _managed_profile(refreshed.catalog)["models"][0]
+    assert "reasoning_effort" not in model
 
 
 def test_refresh_repoints_a_selection_whose_model_left_the_account(tmp_path: Path) -> None:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 import hashlib
@@ -81,7 +81,10 @@ def codex_model_id(slug: str) -> str:
     return f"llm-model-openai-codex-{digest}"
 
 
-def _managed_model(model: CodexModel) -> dict[str, Any]:
+def _managed_model(
+    model: CodexModel,
+    reasoning_effort: str | None = None,
+) -> dict[str, Any]:
     managed = {
         "id": codex_model_id(model.slug),
         "name": model.display_name,
@@ -98,10 +101,16 @@ def _managed_model(model: CodexModel) -> dict[str, Any]:
     if context_window is not None:
         managed["context_window"] = str(context_window)
         managed["context_window_source"] = "metadata"
+    if reasoning_effort in model.supported_reasoning_levels:
+        managed["reasoning_effort"] = reasoning_effort
     return managed
 
 
-def _managed_profile(snapshot: CatalogSnapshot) -> dict[str, Any]:
+def _managed_profile(
+    snapshot: CatalogSnapshot,
+    reasoning_efforts: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    overrides = reasoning_efforts or {}
     return {
         "id": CODEX_PROFILE_ID,
         "name": "OpenAI Codex",
@@ -116,7 +125,7 @@ def _managed_profile(snapshot: CatalogSnapshot) -> dict[str, Any]:
         # profile stays with the operator who signed in and is never shared with
         # other users through grants (see deeptutor/multi_user/model_access.py).
         "owner_bound": True,
-        "models": [_managed_model(model) for model in snapshot.models],
+        "models": [_managed_model(model, overrides.get(model.slug)) for model in snapshot.models],
     }
 
 
@@ -131,13 +140,22 @@ def sync_codex_catalog(
     install is usable right after sign-in without ever silently replacing a
     model somebody already picked.
     """
-    profile = _managed_profile(snapshot)
     activated = False
 
     def mutate(catalog: dict[str, Any]) -> None:
         nonlocal activated
         llm = catalog["services"]["llm"]
         profiles = llm.setdefault("profiles", [])
+        # OAuth refreshes rebuild managed profiles, so preserve only the user-selected
+        # reasoning override by the provider's stable model slug.
+        reasoning_efforts = {
+            model.get("model"): effort
+            for existing in profiles
+            if existing.get("managed_by") == MANAGED_BY
+            for model in existing.get("models", [])
+            if isinstance((effort := model.get("reasoning_effort")), str) and effort
+        }
+        profile = _managed_profile(snapshot, reasoning_efforts)
         managed_indexes = [
             index
             for index, existing in enumerate(profiles)
