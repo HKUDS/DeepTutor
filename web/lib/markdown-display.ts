@@ -144,6 +144,8 @@ const INLINE_CODE_SPAN_REGEX = /`[^`\n]*`/g;
 // inline math ($x = [1, 5, 9]$) is protected from citation linkification.
 const MATH_SPAN_REGEX =
   /\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$\$[\s\S]*?\$\$|\$(?!\s)(?:\\.|[^$\n])*?(?<!\s)\$/g;
+const MALFORMED_STRONG_EMPHASIS_REGEX =
+  /(?<!\S)\*\*([^*\n]*?[^*\s])[ \t]+\*\*(?=\S)/g;
 const PROTECTED_SPAN_REGEX = /```[\s\S]*?```|`[^`\n]*`/g;
 const PROTECTED_PLACEHOLDER_REGEX = /\u0000PROTECTED_(\d+)\u0000/g;
 const HTML_ATTR_VALUE = /(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+)/.source;
@@ -324,7 +326,7 @@ function removeEmptyMarkdownTables(content: string): string {
   const lines = content.split("\n");
   const cleaned: string[] = [];
 
-  for (let index = 0; index < lines.length; ) {
+  for (let index = 0; index < lines.length;) {
     if (!isMarkdownTableStart(lines, index)) {
       cleaned.push(lines[index]);
       index += 1;
@@ -552,6 +554,33 @@ function maskProtectedSpans(
         (_match, idx: string) => protectedSpans[Number(idx)] ?? "",
       ),
   };
+}
+
+export function repairMalformedStrongEmphasis(content: string): string {
+  if (!content.includes("**")) return content;
+
+  const fenced = maskProtectedSpans(
+    content,
+    FENCED_CODE_BLOCK_REGEX,
+    "STRONG_FENCED_CODE",
+  );
+  const math = maskProtectedSpans(
+    fenced.masked,
+    MATH_SPAN_REGEX,
+    "STRONG_MATH",
+  );
+  const inline = maskProtectedSpans(
+    math.masked,
+    INLINE_CODE_SPAN_REGEX,
+    "STRONG_INLINE_CODE",
+  );
+
+  const repaired = inline.masked.replace(
+    MALFORMED_STRONG_EMPHASIS_REGEX,
+    "**$1** ",
+  );
+
+  return fenced.restore(math.restore(inline.restore(repaired)));
 }
 
 function linkifyCitationsOutsideCode(content: string): string {
