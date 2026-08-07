@@ -175,6 +175,11 @@ class CatalogPayload(BaseModel):
     catalog: dict[str, Any]
 
 
+class CodexReasoningEffortUpdate(BaseModel):
+    model: str = Field(min_length=1)
+    reasoning_effort: str | None = None
+
+
 class FetchModelsPayload(BaseModel):
     binding: str = ""
     base_url: str
@@ -605,6 +610,20 @@ async def refresh_openai_codex_models() -> dict[str, Any]:
     _require_codex_oauth_actor()
     try:
         return await get_codex_oauth_service().refresh_models()
+    except CodexAuthError as exc:
+        raise _codex_http_exception(exc) from None
+
+
+@router.post("/providers/openai-codex/models/reasoning-effort")
+async def update_openai_codex_reasoning_effort(
+    payload: CodexReasoningEffortUpdate,
+) -> dict[str, Any]:
+    _require_codex_oauth_actor()
+    try:
+        return await get_codex_oauth_service().set_reasoning_effort(
+            payload.model,
+            payload.reasoning_effort,
+        )
     except CodexAuthError as exc:
         raise _codex_http_exception(exc) from None
 

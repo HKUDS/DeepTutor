@@ -8,6 +8,11 @@ const EDITOR = path.resolve(
   process.cwd(),
   "components/settings/ServiceConfigEditor.tsx",
 );
+const CARD = path.resolve(
+  process.cwd(),
+  "components/settings/CodexOAuthCard.tsx",
+);
+const CLIENT = path.resolve(process.cwd(), "lib/codex-oauth.ts");
 const HELPER = path.resolve(
   process.cwd(),
   "components/settings/codex-profile.ts",
@@ -45,6 +50,23 @@ test("managed Codex profiles expose only provider-supported reasoning effort", (
   assert.match(source, /!isCodexOAuth \|\| isManagedCodex/);
 });
 
+test("ordinary users can edit only their owner-scoped Codex reasoning overrides", () => {
+  const card = readFileSync(CARD, "utf8");
+  const client = readFileSync(CLIENT, "utf8");
+
+  assert.match(client, /models: CodexReasoningModel\[\]/);
+  assert.match(card, /catalogEditable === false/);
+  assert.match(card, /status\.models\.map\(\(model\)/);
+  assert.match(
+    card,
+    /reasoningEffortOptionsFromSupportedLevels\(\s*model\.supported_reasoning_levels/,
+  );
+  assert.match(
+    card,
+    /setCodexReasoningEffort\(model\.model, value \|\| null\)/,
+  );
+});
+
 test("Codex OAuth copy stays in sync across locales", () => {
   const en = JSON.parse(readFileSync(EN, "utf8")) as Record<string, unknown>;
   const zh = JSON.parse(readFileSync(ZH, "utf8")) as Record<string, unknown>;
@@ -69,6 +91,11 @@ test("Codex OAuth copy stays in sync across locales", () => {
     "codex.oauth.callbackMissingUnknown",
     "codex.oauth.callbackUnavailable",
     "codex.oauth.invalidResponse",
+    "codex.oauth.reasoningTitle",
+    "codex.oauth.reasoningDescription",
+    "codex.oauth.reasoningSaved",
+    "codex.oauth.reasoningUnsupported",
+    "codex.oauth.reasoningCatalogChanged",
   ]) {
     assert.ok(codexKeys(en).includes(key));
     assert.equal(typeof en[key], "string");

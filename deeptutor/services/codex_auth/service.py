@@ -612,6 +612,48 @@ class CodexOAuthService:
             async with self._inference_lock:
                 self._logging_out = False
 
+    async def set_reasoning_effort(
+        self,
+        model_slug: str,
+        reasoning_effort: str | None,
+    ) -> dict[str, Any]:
+        async with self._catalog_sync_lock:
+
+            def mutate(catalog: dict[str, Any]) -> None:
+                profiles = catalog["services"]["llm"].get("profiles", [])
+                managed_indexes = _managed_profile_indexes(profiles)
+                if not managed_indexes:
+                    raise CodexAuthError(
+                        "codex_catalog_unavailable",
+                        "Sign in to Codex before changing reasoning effort.",
+                        409,
+                    )
+                for model in profiles[managed_indexes[0]].get("models", []):
+                    if not isinstance(model, dict) or model.get("model") != model_slug:
+                        continue
+                    supported = model.get("codex_supported_reasoning_levels")
+                    if reasoning_effort is not None and (
+                        not isinstance(supported, list) or reasoning_effort not in supported
+                    ):
+                        raise CodexAuthError(
+                            "reasoning_effort_unsupported",
+                            "The selected Codex model does not support that reasoning effort.",
+                            422,
+                        )
+                    if reasoning_effort is None:
+                        model.pop("reasoning_effort", None)
+                    else:
+                        model["reasoning_effort"] = reasoning_effort
+                    return
+                raise CodexAuthError(
+                    "codex_model_not_found",
+                    "The selected model is not part of this Codex account.",
+                    404,
+                )
+
+            self._model_catalog.update(mutate)
+            return self.public_status()
+
     def public_status(self) -> dict[str, Any]:
         operation = self._operation
         credentials: CodexCredentials | None = None
@@ -653,6 +695,7 @@ class CodexOAuthService:
             "catalog_source": snapshot.source if snapshot is not None else None,
             "catalog_fetched_at": (snapshot.fetched_at if snapshot is not None else None),
             "active_model": self._active_codex_model(),
+            "models": self._reasoning_effort_models(),
             "activated": (operation.activated if operation is not None else False),
             "error_code": (
                 storage_error or (operation.error_code if operation is not None else None)
@@ -694,6 +737,43 @@ class CodexOAuthService:
             return None
         value = model.get("model")
         return value if isinstance(value, str) and value else None
+
+    def _reasoning_effort_models(self) -> list[dict[str, Any]]:
+        catalog = self._model_catalog.load()
+        profiles = catalog.get("services", {}).get("llm", {}).get("profiles", [])
+        if not isinstance(profiles, list):
+            return []
+        managed_indexes = _managed_profile_indexes(profiles)
+        if not managed_indexes:
+            return []
+        models = profiles[managed_indexes[0]].get("models", [])
+        if not isinstance(models, list):
+            return []
+
+        result: list[dict[str, Any]] = []
+        for model in models:
+            if not isinstance(model, Mapping):
+                continue
+            slug = model.get("model")
+            if not isinstance(slug, str) or not slug:
+                continue
+            name = model.get("name")
+            supported = model.get("codex_supported_reasoning_levels")
+            levels = (
+                [level for level in supported if isinstance(level, str)]
+                if isinstance(supported, list)
+                else []
+            )
+            effort = model.get("reasoning_effort")
+            result.append(
+                {
+                    "model": slug,
+                    "name": name if isinstance(name, str) and name else slug,
+                    "supported_reasoning_levels": levels,
+                    "reasoning_effort": effort if isinstance(effort, str) else None,
+                }
+            )
+        return result
 
     def _credentials_from_payload(
         self,
