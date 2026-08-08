@@ -980,6 +980,18 @@ export default function ChatPage() {
           if (!ctrl.signal.aborted) {
             loadAbortRef.current = null;
             setSessionLoading(false);
+            // Re-arm autoscroll and re-pin after the browser has had a
+            // frame to lay out real (non-placeholder) heights. Every
+            // message wrapper opts into ``content-visibility: auto`` with
+            // ``containIntrinsicSize`` placeholders (see ChatMessages), so
+            // the layout-effect pin that fires when messages first render
+            // computes ``scrollHeight`` from the placeholders and can land
+            // mid-conversation. A double-rAF settle pass pins against the
+            // true bottom once the visible messages are actually laid out.
+            shouldAutoScrollRef.current = true;
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => scrollToBottom("instant"));
+            });
           }
         })
         .catch(() => {
@@ -992,7 +1004,7 @@ export default function ChatPage() {
           }
         });
     },
-    [loadSession, navigateToHome, showCachedSession],
+    [loadSession, navigateToHome, showCachedSession, scrollToBottom, shouldAutoScrollRef],
   );
 
   // Initial mount — load the session from the URL.

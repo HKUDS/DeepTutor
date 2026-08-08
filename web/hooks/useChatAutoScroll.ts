@@ -201,14 +201,22 @@ export function useChatAutoScroll({
 
     const mo = new MutationObserver(check);
     mo.observe(container, { childList: true, subtree: true });
+    // Images / iframes in a freshly loaded history conversation finish
+    // their network load without mutating the DOM, so the MutationObserver
+    // never fires for them. The streaming branch covers this with a
+    // capture-phase ``load`` listener; mirror it here so lazy images that
+    // settle inside the post-stream window re-pin to the true bottom.
+    container.addEventListener("load", check, true);
     const stopTimer = window.setTimeout(() => {
       mo.disconnect();
+      container.removeEventListener("load", check, true);
       if (rafId) cancelAnimationFrame(rafId);
     }, POST_STREAM_AUTOSCROLL_WINDOW_MS);
 
     return () => {
       window.clearTimeout(stopTimer);
       mo.disconnect();
+      container.removeEventListener("load", check, true);
       if (rafId) cancelAnimationFrame(rafId);
     };
   }, [hasMessages, isStreaming, pinToBottom]);
