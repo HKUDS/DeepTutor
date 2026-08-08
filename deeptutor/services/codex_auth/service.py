@@ -82,6 +82,10 @@ def codex_model_id(slug: str) -> str:
     return f"llm-model-openai-codex-{digest}"
 
 
+def _codex_account_binding(account_id: str) -> str:
+    return hashlib.sha256(account_id.encode("utf-8")).hexdigest()
+
+
 def _managed_model(
     model: CodexModel,
     reasoning_effort: str | None = None,
@@ -110,9 +114,11 @@ def _managed_model(
 def _managed_profile(
     snapshot: CatalogSnapshot,
     reasoning_efforts: Mapping[str, str] | None = None,
+    *,
+    account_binding: str | None = None,
 ) -> dict[str, Any]:
     overrides = reasoning_efforts or {}
-    return {
+    profile = {
         "id": CODEX_PROFILE_ID,
         "name": "OpenAI Codex",
         "binding": "openai_codex",
@@ -128,6 +134,9 @@ def _managed_profile(
         "owner_bound": True,
         "models": [_managed_model(model, overrides.get(model.slug)) for model in snapshot.models],
     }
+    if account_binding is not None:
+        profile["codex_account_binding"] = account_binding
+    return profile
 
 
 def _managed_profile_indexes(profiles: list[Any]) -> list[int]:
@@ -206,6 +215,8 @@ def reconcile_codex_catalog_update(
 def sync_codex_catalog(
     catalog_service: ModelCatalogService,
     snapshot: CatalogSnapshot,
+    *,
+    account_id: str | None = None,
 ) -> CatalogSyncResult:
     """Publish the managed Codex profile into the shared model catalog.
 
@@ -223,10 +234,22 @@ def sync_codex_catalog(
         # OAuth refreshes rebuild managed profiles, so preserve only the user-selected
         # reasoning override by the provider's stable model slug.
         managed_indexes = _managed_profile_indexes(profiles)
-        reasoning_efforts = (
-            _reasoning_efforts(profiles[managed_indexes[0]]) if managed_indexes else {}
+        account_binding = _codex_account_binding(account_id) if account_id is not None else None
+        existing_profile = profiles[managed_indexes[0]] if managed_indexes else None
+        preserve_overrides = account_binding is None or (
+            isinstance(existing_profile, Mapping)
+            and existing_profile.get("codex_account_binding") == account_binding
         )
-        profile = _managed_profile(snapshot, reasoning_efforts)
+        reasoning_efforts = (
+            _reasoning_efforts(existing_profile)
+            if isinstance(existing_profile, Mapping) and preserve_overrides
+            else {}
+        )
+        profile = _managed_profile(
+            snapshot,
+            reasoning_efforts,
+            account_binding=account_binding,
+        )
         if managed_indexes:
             first_index = managed_indexes[0]
             managed_index_set = set(managed_indexes)
@@ -438,7 +461,11 @@ class CodexOAuthService:
             await self._catalog.invalidate()
             snapshot = await self._catalog.get(committed, force=True)
             async with self._catalog_sync_lock:
-                sync_result = sync_codex_catalog(self._model_catalog, snapshot)
+                sync_result = sync_codex_catalog(
+                    self._model_catalog,
+                    snapshot,
+                    account_id=committed.account_id,
+                )
             self._last_snapshot = snapshot
             operation.activated = sync_result.activated
             operation.operation_state = "completed"
@@ -507,7 +534,11 @@ class CodexOAuthService:
                     409,
                 )
             snapshot = await self._catalog.get(credentials, force=True)
-            sync_codex_catalog(self._model_catalog, snapshot)
+            sync_codex_catalog(
+                self._model_catalog,
+                snapshot,
+                account_id=credentials.account_id,
+            )
             self._last_snapshot = snapshot
             return self.public_status()
 
@@ -628,7 +659,20 @@ class CodexOAuthService:
                         "Sign in to Codex before changing reasoning effort.",
                         409,
                     )
-                for model in profiles[managed_indexes[0]].get("models", []):
+                profile = profiles[managed_indexes[0]]
+                account_binding = profile.get("codex_account_binding")
+                credentials = self._store.load_credentials()
+                if (
+                    not isinstance(account_binding, str)
+                    or credentials is None
+                    or account_binding != _codex_account_binding(credentials.account_id)
+                ):
+                    raise CodexAuthError(
+                        "codex_catalog_unavailable",
+                        "Refresh Codex models before changing reasoning effort.",
+                        409,
+                    )
+                for model in profile.get("models", []):
                     if not isinstance(model, dict) or model.get("model") != model_slug:
                         continue
                     supported = model.get("codex_supported_reasoning_levels")
@@ -695,7 +739,7 @@ class CodexOAuthService:
             "catalog_source": snapshot.source if snapshot is not None else None,
             "catalog_fetched_at": (snapshot.fetched_at if snapshot is not None else None),
             "active_model": self._active_codex_model(),
-            "models": self._reasoning_effort_models(),
+            "models": self._reasoning_effort_models(credentials),
             "activated": (operation.activated if operation is not None else False),
             "error_code": (
                 storage_error or (operation.error_code if operation is not None else None)
@@ -738,7 +782,10 @@ class CodexOAuthService:
         value = model.get("model")
         return value if isinstance(value, str) and value else None
 
-    def _reasoning_effort_models(self) -> list[dict[str, Any]]:
+    def _reasoning_effort_models(
+        self,
+        credentials: CodexCredentials | None,
+    ) -> list[dict[str, Any]]:
         catalog = self._model_catalog.load()
         profiles = catalog.get("services", {}).get("llm", {}).get("profiles", [])
         if not isinstance(profiles, list):
@@ -746,7 +793,15 @@ class CodexOAuthService:
         managed_indexes = _managed_profile_indexes(profiles)
         if not managed_indexes:
             return []
-        models = profiles[managed_indexes[0]].get("models", [])
+        profile = profiles[managed_indexes[0]]
+        account_binding = profile.get("codex_account_binding")
+        if (
+            not isinstance(account_binding, str)
+            or credentials is None
+            or account_binding != _codex_account_binding(credentials.account_id)
+        ):
+            return []
+        models = profile.get("models", [])
         if not isinstance(models, list):
             return []
 
