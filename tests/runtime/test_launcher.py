@@ -6,11 +6,70 @@ from pathlib import Path
 import pytest
 
 from deeptutor.runtime import launcher
+from deeptutor.update.jobs import JobStatus, UpdateJobStore
 
 
 class _FakeTty:
     def isatty(self) -> bool:
         return True
+
+
+class _RecordingWorkerLauncher:
+    def __init__(self) -> None:
+        self.calls: list[tuple[Path, int]] = []
+
+    def launch(self, store_root: Path, *, parent_pid: int) -> None:
+        self.calls.append((store_root, parent_pid))
+
+
+def test_launcher_hands_a_web_update_to_one_worker(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    restart_argv = ("start", "--home", str(home.resolve()), "--dev")
+    store = UpdateJobStore(home / "data" / "user" / "update")
+    store.create_pypi(
+        current_version="1.5.4",
+        target_version="1.6.0",
+        restart_requested=True,
+    )
+    worker_launcher = _RecordingWorkerLauncher()
+
+    first = launcher._handoff_pending_update(
+        home,
+        restart_argv=restart_argv,
+        worker_launcher=worker_launcher,
+        parent_pid=123,
+    )
+    second = launcher._handoff_pending_update(
+        home,
+        restart_argv=restart_argv,
+        worker_launcher=worker_launcher,
+        parent_pid=123,
+    )
+
+    assert first is True
+    assert second is False
+    assert worker_launcher.calls == [(store.root, 123)]
+    job = store.load()
+    assert job.status is JobStatus.HANDOFF
+    assert job.restart_home == str(home.resolve())
+    assert job.restart_argv == restart_argv
+
+
+def test_launcher_marks_restart_complete_only_after_new_app_is_ready(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    store = UpdateJobStore(home / "data" / "user" / "update")
+    job = store.create_pypi(
+        current_version="1.5.4",
+        target_version="1.6.0",
+        restart_requested=True,
+    )
+    store.prepare_restart(job.id, home=home)
+    store.mark_running(job.id)
+    store.mark_restarting(job.id)
+
+    assert launcher._complete_restarted_update(home) is True
+    assert launcher._complete_restarted_update(home) is False
+    assert store.load().status is JobStatus.SUCCEEDED
 
 
 def test_packaged_web_cache_replaces_next_public_placeholders(tmp_path: Path) -> None:

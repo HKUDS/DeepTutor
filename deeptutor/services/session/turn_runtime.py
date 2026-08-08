@@ -620,6 +620,15 @@ class TurnRuntimeManager:
         """
         return await self._has_live_execution(turn_id)
 
+    async def has_live_executions(self) -> bool:
+        """Return whether any conversation task is still owned by this process."""
+
+        async with self._lock:
+            return any(
+                execution.task is None or not execution.task.done()
+                for execution in self._executions.values()
+            )
+
     async def _has_live_execution(self, turn_id: str) -> bool:
         """Whether this process still owns the turn's in-memory runner."""
         async with self._lock:

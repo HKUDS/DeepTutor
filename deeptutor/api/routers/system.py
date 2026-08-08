@@ -3,18 +3,43 @@ System Status API Router
 Manages system status checks and model connection tests
 """
 
+import asyncio
 from datetime import datetime
+import json
+import os
 import time
+from typing import Annotated, Literal, Protocol
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from deeptutor.api.routers.auth import require_admin
 from deeptutor.multi_user.context import get_current_user
+from deeptutor.runtime.home import get_runtime_home
 from deeptutor.services.config import resolve_search_runtime_config
 from deeptutor.services.embedding import get_embedding_client, get_embedding_config
 from deeptutor.services.llm import complete as llm_complete
 from deeptutor.services.llm import get_llm_config, get_token_limit_kwargs
 from deeptutor.services.search import web_search
+from deeptutor.update import (
+    Installation,
+    InstallMode,
+    UpdateCheck,
+    UpdateStatus,
+    create_update_coordinator,
+    detect_current_installation,
+)
+from deeptutor.update.jobs import (
+    JobStatus,
+    UpdateInProgressError,
+    UpdateJob,
+    UpdateJobStore,
+)
+from deeptutor.update.source import (
+    SourceUpdateError,
+    SourceUpdatePlan,
+    create_source_updater,
+)
 
 router = APIRouter()
 
@@ -25,6 +50,246 @@ class TestResponse(BaseModel):
     model: str | None = None
     response_time_ms: float | None = None
     error: str | None = None
+
+
+class UpdateCheckResponse(BaseModel):
+    """Read-only update availability returned to Web clients."""
+
+    status: UpdateStatus
+    current_version: str
+    latest_version: str | None
+    install_mode: InstallMode
+    can_auto_update: bool
+    release_url: str | None
+    detail: str
+
+
+class UpdateChecker(Protocol):
+    """Public check seam consumed by the system API."""
+
+    def check(self) -> UpdateCheck:
+        """Return current update availability."""
+
+
+class ConversationActivity(Protocol):
+    """Conversation liveness needed before a disruptive update."""
+
+    async def has_live_executions(self) -> bool:
+        """Return whether a turn is currently running."""
+
+
+class SourcePreflight(Protocol):
+    """Non-mutating source checks required before the Launcher exits."""
+
+    def preflight(
+        self,
+        installation: Installation,
+        target_version: str,
+    ) -> SourceUpdatePlan:
+        """Validate one source update without changing the checkout."""
+
+
+class WebUpdateRequest(BaseModel):
+    """Explicit second confirmation for an update and restart."""
+
+    confirmation: Literal["update-and-restart"]
+
+
+class UpdateJobResponse(BaseModel):
+    """Persisted update state consumed across application restarts."""
+
+    id: str
+    status: JobStatus
+    current_version: str
+    target_version: str
+    error: str | None
+    restart_count: int
+
+
+def get_update_coordinator() -> UpdateChecker:
+    """Provide the process update coordinator for dependency injection."""
+
+    return create_update_coordinator()
+
+
+def get_conversation_activity() -> ConversationActivity:
+    """Provide live conversation state for disruptive update checks."""
+
+    from deeptutor.services.session import get_turn_runtime_manager
+
+    return get_turn_runtime_manager()
+
+
+def get_update_job_store() -> UpdateJobStore:
+    """Provide the update job store under the active runtime home."""
+
+    root = get_runtime_home() / "data" / "user" / "update"
+    return UpdateJobStore(root)
+
+
+def get_current_installation() -> Installation:
+    """Provide current installation evidence for source preflight."""
+
+    return detect_current_installation()
+
+
+def get_source_preflight() -> SourcePreflight:
+    """Provide the source updater's non-mutating preflight boundary."""
+
+    return create_source_updater()
+
+
+def is_launcher_available() -> bool:
+    """Return whether the backend is managed by a live Web launcher."""
+
+    raw_pid = os.getenv("DEEPTUTOR_LAUNCHER_PID", "").strip()
+    try:
+        launcher_pid = int(raw_pid)
+    except ValueError:
+        return False
+    if launcher_pid <= 0:
+        return False
+    try:
+        os.kill(launcher_pid, 0)
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _job_response(job: UpdateJob) -> UpdateJobResponse:
+    return UpdateJobResponse(
+        id=job.id,
+        status=job.status,
+        current_version=job.current_version,
+        target_version=job.target_version,
+        error=job.error,
+        restart_count=job.restart_count,
+    )
+
+
+@router.get("/update", response_model=UpdateCheckResponse)
+async def get_update_status(
+    coordinator: Annotated[UpdateChecker, Depends(get_update_coordinator)],
+) -> UpdateCheckResponse:
+    """Check the latest stable release without mutating the installation."""
+
+    result = await asyncio.to_thread(coordinator.check)
+    return UpdateCheckResponse(
+        status=result.status,
+        current_version=result.current_version,
+        latest_version=result.latest_version,
+        install_mode=result.install_mode,
+        can_auto_update=result.can_auto_update,
+        release_url=result.release_url,
+        detail=result.detail,
+    )
+
+
+@router.get("/update/job", response_model=UpdateJobResponse | None)
+def get_update_job(
+    store: Annotated[UpdateJobStore, Depends(get_update_job_store)],
+) -> UpdateJobResponse | None:
+    """Read the durable job state before or after a restart."""
+
+    try:
+        return _job_response(store.load())
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+
+
+@router.post(
+    "/update",
+    response_model=UpdateJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_admin)],
+)
+async def request_web_update(
+    request: WebUpdateRequest,
+    coordinator: Annotated[UpdateChecker, Depends(get_update_coordinator)],
+    conversations: Annotated[
+        ConversationActivity,
+        Depends(get_conversation_activity),
+    ],
+    store: Annotated[UpdateJobStore, Depends(get_update_job_store)],
+    launcher_ready: Annotated[bool, Depends(is_launcher_available)],
+    installation: Annotated[Installation, Depends(get_current_installation)],
+    source_preflight: Annotated[SourcePreflight, Depends(get_source_preflight)],
+) -> UpdateJobResponse:
+    """Request a trusted update for the managing Launcher to apply."""
+
+    del request
+    if not launcher_ready:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Web updates require the app to be running under `deeptutor start`.",
+        )
+    if await conversations.has_live_executions():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An active conversation must finish before updating.",
+        )
+    result = await asyncio.to_thread(coordinator.check)
+    if result.status is not UpdateStatus.AVAILABLE or not result.latest_version:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No automatic update is currently available.",
+        )
+    source_root = installation.source_root
+    if result.install_mode is InstallMode.SOURCE_WEB:
+        if installation.mode is not InstallMode.SOURCE_WEB or source_root is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The editable source installation changed during the update check.",
+            )
+        try:
+            await asyncio.to_thread(
+                source_preflight.preflight,
+                installation,
+                result.latest_version,
+            )
+        except (SourceUpdateError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            ) from exc
+    elif result.install_mode is InstallMode.PYPI:
+        if installation.mode is not InstallMode.PYPI:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The PyPI installation changed during the update check.",
+            )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This installation cannot be updated from the Web app.",
+        )
+    try:
+        if result.install_mode is InstallMode.SOURCE_WEB:
+            if source_root is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="The editable source root is unavailable.",
+                )
+            job = store.create_source(
+                current_version=result.current_version,
+                target_version=result.latest_version,
+                source_root=source_root,
+                restart_requested=True,
+            )
+        else:
+            job = store.create_pypi(
+                current_version=result.current_version,
+                target_version=result.latest_version,
+                restart_requested=True,
+            )
+    except UpdateInProgressError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    return _job_response(job)
 
 
 @router.get("/runtime-topology")

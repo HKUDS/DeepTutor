@@ -155,6 +155,27 @@ deeptutor chat [options]
 
 ---
 
+## `update` — 检查或安装稳定版更新
+
+```bash
+deeptutor update          # PyPI 安装：确认后更新当前 Python 环境
+deeptutor update --check  # 仅检查，不修改环境
+```
+
+`--check` 只读取当前安装方式和官方稳定版元数据。PyPI 安装执行更新时，
+当前 CLI 会先退出，再由独立 Worker 升级固定的 `deeptutor` 包；完成后不会
+自动启动应用。editable 源码安装只会在工作区干净、分支未分叉且最新稳定
+Release tag 可从当前 HEAD 快进时更新；随后以 `--no-deps` 刷新原 editable
+安装，不推断 extras。完整源码仅在前端锁文件变化时用 Bun 刷新依赖。
+Docker 只提示在宿主机更新镜像并重建服务。
+
+通过 `deeptutor start` 启动的 PyPI 完整版或 editable 完整源码也可在网页
+侧栏版本徽标中确认“更新并重启”。有对话任务运行时会拒绝更新；源码模式会在
+停止服务前完成安全预检，重启沿用同一 `--home` 与端口设置。更新失败时会
+尝试恢复应用运行，但不自动回滚 Git 或依赖。
+
+---
+
 ## `serve` — 启动 API 服务
 
 ```bash

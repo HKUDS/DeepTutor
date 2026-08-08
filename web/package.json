@@ -16,6 +16,7 @@
     "i18n:audit:strict": "node ./scripts/i18n_audit.mjs --strict",
     "i18n:check": "npm run i18n:parity && npm run i18n:audit",
     "audit": "playwright test --project=ui-audit",
+    "test:e2e": "playwright test --project=functional-e2e",
     "audit:ui": "playwright test --ui --project=ui-audit",
     "audit:report": "playwright show-report",
     "build:brand-icons": "tsx ./scripts/build-brand-icons.mts"

@@ -89,6 +89,7 @@ def test_documented_deeptutor_subcommands_exist() -> None:
         "session",
         "skill",
         "start",
+        "update",
     }
     provider_subcommands = {"login"}
 

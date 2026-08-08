@@ -15,13 +15,16 @@ import subprocess
 import sys
 import threading
 import time
-from typing import Callable
+from typing import TYPE_CHECKING, Callable, Sequence
 from urllib import error as urlerror
 from urllib import parse as urlparse
 from urllib import request as urlrequest
 
 from deeptutor.runtime.banner import labels_for, print_banner, resolve_language
 from deeptutor.runtime.home import DEEPTUTOR_HOME_ENV, PACKAGE_ROOT, get_runtime_home
+
+if TYPE_CHECKING:
+    from deeptutor.update.jobs import WorkerLauncher
 
 BACKEND_READY_TIMEOUT = 60
 FRONTEND_READY_TIMEOUT = 120
@@ -926,10 +929,67 @@ def _install_signal_handlers(request_shutdown: Callable[[str | None], None]) -> 
             continue
 
 
+def _handoff_pending_update(
+    runtime_home: Path,
+    *,
+    restart_argv: Sequence[str],
+    worker_launcher: WorkerLauncher | None = None,
+    parent_pid: int | None = None,
+) -> bool:
+    """Hand one pending Web update to a worker before this launcher exits."""
+
+    from deeptutor.update.jobs import (
+        JobStatus,
+        SubprocessWorkerLauncher,
+        UpdateJobStore,
+    )
+
+    store = UpdateJobStore(runtime_home / "data" / "user" / "update")
+    try:
+        job = store.load()
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    if job.status is not JobStatus.PENDING or not job.restart_requested:
+        return False
+    try:
+        store.prepare_restart(
+            job.id,
+            home=runtime_home,
+            restart_argv=restart_argv,
+        )
+        (worker_launcher or SubprocessWorkerLauncher()).launch(
+            store.root,
+            parent_pid=parent_pid or os.getpid(),
+        )
+    except Exception as exc:
+        store.mark_failed(job.id, f"launcher handoff failed: {exc}")
+        return False
+    return True
+
+
+def _complete_restarted_update(runtime_home: Path) -> bool:
+    """Mark a restart successful after both managed servers are ready."""
+
+    from deeptutor.update.jobs import JobStatus, UpdateJobStore
+
+    store = UpdateJobStore(runtime_home / "data" / "user" / "update")
+    try:
+        job = store.load()
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    if job.status is not JobStatus.RESTARTING or job.restart_home != str(runtime_home.resolve()):
+        return False
+    store.mark_succeeded(job.id)
+    return True
+
+
 def start(home: str | Path | None = None, *, dev: bool = False) -> None:
     _relax_console_encoding()
     runtime_home = get_runtime_home(home)
     runtime_home.mkdir(parents=True, exist_ok=True)
+    restart_argv = ["start", "--home", str(runtime_home.resolve())]
+    if dev:
+        restart_argv.append("--dev")
     os.environ[DEEPTUTOR_HOME_ENV] = str(runtime_home)
     _reset_runtime_singletons()
 
@@ -1036,6 +1096,7 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
     # use backend_url (not api_base, which may be an external browser URL).
     common_env["DEEPTUTOR_API_BASE_URL"] = backend_url
     common_env["DEEPTUTOR_AUTH_ENABLED"] = "true" if auth_enabled else "false"
+    common_env["DEEPTUTOR_LAUNCHER_PID"] = str(os.getpid())
     common_env["PYTHONUNBUFFERED"] = "1"
     common_env["PYTHONIOENCODING"] = "utf-8:replace"
     _apply_single_user_allocator_env(common_env)
@@ -1132,9 +1193,16 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
                 timeout=FRONTEND_READY_TIMEOUT,
                 should_stop=lambda: shutdown_requested,
             )
+        _complete_restarted_update(runtime_home)
         _log(_t("start.open_in_browser", url=frontend_url))
 
         while not shutdown_requested:
+            if _handoff_pending_update(
+                runtime_home,
+                restart_argv=restart_argv,
+            ):
+                shutdown_requested = True
+                break
             for proc in processes:
                 if proc.process.poll() is not None:
                     _log(_t("start.exited", name=proc.name, code=proc.process.returncode))
