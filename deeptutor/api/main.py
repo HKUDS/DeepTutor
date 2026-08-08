@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 import logging
 import sys
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -18,6 +18,13 @@ from deeptutor.services.path_service import get_path_service
 
 ensure_runtime_settings_files()
 export_runtime_settings_to_env(overwrite=True)
+
+# Auth settings are exported above before this module reads their derived
+# constants. Keep this ordering aligned with the deferred router imports below.
+from deeptutor.multi_user.context import user_from_token_payload  # noqa: E402
+from deeptutor.multi_user.paths import get_path_service_for_scope  # noqa: E402
+from deeptutor.services.auth import AUTH_ENABLED, decode_token  # noqa: E402
+
 configure_logging()
 logger = logging.getLogger(__name__)
 
@@ -49,9 +56,28 @@ class SafeOutputStaticFiles(StaticFiles):
         self._path_service = path_service
 
     async def get_response(self, path: str, scope):
-        if not self._path_service.is_public_output_path(path):
+        path_service = self._path_service_for_request(scope)
+        if path_service is None or not path_service.is_public_output_path(path):
             raise HTTPException(status_code=404, detail="Output not found")
-        return await super().get_response(path, scope)
+
+        request_files = StaticFiles(
+            directory=str(path_service.get_public_outputs_root()),
+            check_dir=False,
+            follow_symlink=self.follow_symlink,
+        )
+        return await request_files.get_response(path, scope)
+
+    def _path_service_for_request(self, scope):
+        if not AUTH_ENABLED:
+            return self._path_service
+
+        token = Request(scope).cookies.get("dt_token")
+        payload = decode_token(token) if token else None
+        if payload is None:
+            return None
+
+        user = user_from_token_payload(payload)
+        return get_path_service_for_scope(user.scope)
 
 
 def validate_tool_consistency():
