@@ -88,16 +88,18 @@ export function sanitizeIframeHtml(html: string): string {
  * via postMessage:
  *   - `window.sendPrompt(text)` → posts a follow-up question; the host prefills
  *     it into the composer (the widget analogue of an SVG node's data-prompt).
- *   - a ResizeObserver posts the content height so the host can grow the iframe
- *     to fit instead of clipping at a fixed height.
+ *   - observers post the body content height so the host can grow and shrink the
+ *     iframe to fit instead of clipping at a fixed height or retaining an old
+ *     viewport height.
  */
 const BRIDGE_SCRIPT =
   "<script data-dt-bridge>" +
   "(function(){" +
   'window.sendPrompt=function(t){try{parent.postMessage({type:"dt:visualize-prompt",text:String(t||"")},"*")}catch(e){}};' +
-  'function rh(){try{var b=document.body,h=Math.max(document.documentElement.scrollHeight,b?b.scrollHeight:0);parent.postMessage({type:"dt:visualize-height",height:h},"*")}catch(e){}}' +
-  'if(typeof ResizeObserver!=="undefined"){var ro=new ResizeObserver(rh);document.addEventListener("DOMContentLoaded",function(){ro.observe(document.documentElement);rh()})}' +
-  'document.addEventListener("DOMContentLoaded",rh);window.addEventListener("load",rh);' +
+  'function rh(){try{var b=document.body,de=document.documentElement,h=b&&b.scrollHeight>0?b.scrollHeight:de.scrollHeight;if(!h||!isFinite(h))h=de.scrollHeight||0;parent.postMessage({type:"dt:visualize-height",height:h},"*")}catch(e){}}' +
+  'var raf=0;function schedule(){if(raf)return;var run=function(){raf=0;rh()};if(typeof requestAnimationFrame!=="undefined"){raf=requestAnimationFrame(run)}else{raf=setTimeout(run,0)}}' +
+  'function start(){try{var b=document.body;if(typeof ResizeObserver!=="undefined"&&b){var ro=new ResizeObserver(schedule);ro.observe(b)}if(typeof MutationObserver!=="undefined"&&b){var mo=new MutationObserver(schedule);mo.observe(b,{attributes:true,childList:true,subtree:true})}schedule()}catch(e){rh()}}' +
+  'if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",start,{once:true})}else{start()}window.addEventListener("load",schedule);' +
   "})();" +
   "<" +
   "/script>";
