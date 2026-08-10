@@ -653,6 +653,36 @@
   will-change: transform;
 }
 
+/* ─── Turn navigator: arrival flash ───
+   After the rail scrolls an earlier question back into view, the bubble
+   has to identify itself — the transcript looks the same everywhere and
+   a silent scroll leaves the user hunting for what moved. A ring blooms
+   and decays once (no loop, no layout shift: `box-shadow` only, so the
+   surrounding messages never reflow). Driven by `jumpToTurn`, which adds
+   the class and strips it after the animation. */
+@keyframes turn-flash {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 42%, transparent);
+  }
+  35% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 32%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+}
+
+.turn-flash {
+  animation: turn-flash 1.3s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-flash {
+    animation-duration: 0.01ms;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent);
+  }
+}
+
 /* While a fullscreen picker/modal is open, freeze ambient background
    animations (sidebar "running session" pulse, breathing titles, pulsing
    marks). They live behind the modal's frosted `backdrop-filter`; their

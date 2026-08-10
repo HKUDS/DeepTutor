@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 class TaskIDManager:
     """Singleton class for managing task IDs"""
 
+    _MAX_COMPLETED_TASKS = 256
+
     _instance: Optional["TaskIDManager"] = None
     _lock = threading.Lock()
     _task_ids: dict[str, str] = {}  # task_key -> task_id
@@ -39,6 +41,7 @@ class TaskIDManager:
         Returns:
             Task ID (format: {task_type}_{timestamp}_{uuid})
         """
+        self.cleanup_old_tasks()
         with self._lock:
             # If task already exists, return existing ID
             if task_key in self._task_ids:
@@ -97,6 +100,20 @@ class TaskIDManager:
                             logger.warning("Failed to parse finished_at for task %s", task_id)
 
             for task_id in to_remove:
+                metadata = self._task_metadata.pop(task_id, {})
+                task_key = metadata.get("task_key")
+                if task_key:
+                    self._task_ids.pop(task_key, None)
+
+            completed = sorted(
+                (
+                    (str(metadata.get("finished_at") or ""), task_id)
+                    for task_id, metadata in self._task_metadata.items()
+                    if metadata.get("status") in ["completed", "error", "cancelled"]
+                )
+            )
+            overflow = len(completed) - self._MAX_COMPLETED_TASKS
+            for _, task_id in completed[: max(0, overflow)]:
                 metadata = self._task_metadata.pop(task_id, {})
                 task_key = metadata.get("task_key")
                 if task_key:

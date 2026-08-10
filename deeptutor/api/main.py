@@ -2,9 +2,8 @@ from contextlib import asynccontextmanager
 import logging
 import sys
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from deeptutor.logging import configure_logging
 from deeptutor.services.config import (
@@ -39,19 +38,6 @@ CONFIG_DRIFT_ERROR_TEMPLATE = (
     "registered in the runtime tool registry. Register the missing tools or "
     "remove the stale tool names from the capability manifests."
 )
-
-
-class SafeOutputStaticFiles(StaticFiles):
-    """Static file mount that only exposes explicitly whitelisted artifacts."""
-
-    def __init__(self, *args, path_service, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._path_service = path_service
-
-    async def get_response(self, path: str, scope):
-        if not self._path_service.is_public_output_path(path):
-            raise HTTPException(status_code=404, detail="Output not found")
-        return await super().get_response(path, scope)
 
 
 def validate_tool_consistency():
@@ -205,6 +191,35 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to stop partners: {e}")
 
+    # Close MCP server connections. Each one owns an AsyncExitStack inside its
+    # own task, so they must be torn down here rather than left to interpreter
+    # exit (stdio servers would otherwise leak child processes).
+    try:
+        from deeptutor.services.mcp import get_mcp_manager
+
+        await get_mcp_manager().shutdown()
+        logger.info("MCP connections closed")
+    except Exception as e:
+        logger.warning(f"Failed to close MCP connections: {e}")
+
+    # Close pooled LLM SDK clients so their keep-alive sockets and transports
+    # are released deterministically instead of waiting for interpreter GC.
+    try:
+        from deeptutor.services.llm.provider_factory import close_runtime_provider_pool
+
+        await close_runtime_provider_pool()
+        logger.info("LLM provider pool closed")
+    except Exception as e:
+        logger.warning(f"Failed to close LLM provider pool: {e}")
+
+    try:
+        from deeptutor.core.agentic.client import close_agentic_client_pool
+
+        await close_agentic_client_pool()
+        logger.info("Agentic LLM client pool closed")
+    except Exception as e:
+        logger.warning(f"Failed to close agentic LLM client pool: {e}")
+
     # Stop EventBus
     try:
         from deeptutor.events.event_bus import get_event_bus
@@ -281,11 +296,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount a filtered view over user outputs.
-# Only whitelisted artifact paths are readable through the static handler.
-path_service = get_path_service()
-user_dir = path_service.get_public_outputs_root()
-
 # Initialize user directories on startup
 try:
     from deeptutor.services.setup import init_user_directories
@@ -293,14 +303,9 @@ try:
     init_user_directories()
 except Exception:
     # Fallback: just create the main directory if it doesn't exist
+    user_dir = get_path_service().get_public_outputs_root()
     if not user_dir.exists():
         user_dir.mkdir(parents=True)
-
-app.mount(
-    "/api/outputs",
-    SafeOutputStaticFiles(directory=str(user_dir), path_service=path_service),
-    name="outputs",
-)
 
 # Import routers only after runtime settings are initialized.
 # Some router modules load YAML settings at import time.
@@ -319,6 +324,7 @@ from deeptutor.api.routers import (
     mcp_settings,
     memory,
     notebook,
+    outputs,
     partners,
     personas,
     plugins_api,
@@ -328,6 +334,8 @@ from deeptutor.api.routers import (
     sessions,
     settings,
     skills,
+    space_cli_apps,
+    space_mcp,
     subagents,
     system,
     unified_ws,
@@ -340,6 +348,7 @@ from deeptutor.multi_user.router import router as multi_user_router  # noqa: E40
 
 # Auth router is public — login/logout/register/status require no token
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(outputs.router, prefix="/api/outputs", tags=["outputs"])
 
 # All other routers require a valid session when AUTH_ENABLED=true.
 # require_auth is a no-op when AUTH_ENABLED=false, so this is safe for local use.
@@ -398,6 +407,15 @@ app.include_router(
     tags=["question-notebook"],
     dependencies=_auth,
 )
+# Public UI-settings read (auth pages bootstrap the interface language
+# before a session exists, so GET /api/v1/settings/ui must not be gated
+# by _auth). Mounted first so the path resolves here, not on the gated
+# settings router below.
+app.include_router(
+    settings.public_router,
+    prefix="/api/v1/settings",
+    tags=["settings"],
+)
 app.include_router(
     settings.router, prefix="/api/v1/settings", tags=["settings"], dependencies=_auth
 )
@@ -405,6 +423,26 @@ app.include_router(
     mcp_settings.router,
     prefix="/api/v1/settings/mcp",
     tags=["mcp-settings"],
+    dependencies=_auth,
+)
+# Per-user MCP servers. Deliberately only ``_auth``: the router's own routes
+# resolve the owner server-side, and everything a non-admin can reach through it
+# is remote-transport-only (see the module docstring). The admin registry above
+# keeps its own ``require_admin``.
+app.include_router(
+    space_mcp.router,
+    prefix="/api/v1/space/mcp",
+    tags=["space-mcp"],
+    dependencies=_auth,
+)
+# CLI apps. Only ``_auth`` here as well, but for a different reason: the two
+# routes that install or remove an app carry their own ``require_admin``, and
+# what is left for an ordinary account is reading the catalog and toggling its
+# own preference among apps an administrator already granted it.
+app.include_router(
+    space_cli_apps.router,
+    prefix="/api/v1/space/cli-apps",
+    tags=["space-cli-apps"],
     dependencies=_auth,
 )
 app.include_router(skills.router, prefix="/api/v1/skills", tags=["skills"], dependencies=_auth)

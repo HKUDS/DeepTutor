@@ -22,11 +22,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Runtime workspace root. Defaults to the current directory.",
     )
+    parser.add_argument(
+        "--dev",
+        action="store_true",
+        help="Use the Next.js development server for frontend work.",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> None:
-    start(home=build_parser().parse_args(argv).home)
+    args = build_parser().parse_args(argv)
+    start(home=args.home, dev=args.dev)
 
 
 if __name__ == "__main__":

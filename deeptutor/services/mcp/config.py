@@ -4,14 +4,17 @@ MCP configuration
 
 Pydantic models + persistence for the deployment's MCP server registry.
 
-The config is deployment-global (one shared file, ``settings/mcp.json`` in
-the admin workspace): every user talks to the same set of connected servers.
-Per-user MCP connections are intentionally out of scope for v1.
+This file's config is deployment-global (``settings/mcp.json`` in the admin
+workspace): every account talks to the same set of connected servers, and only
+an administrator writes it. The servers an individual configures for themselves
+live in :mod:`deeptutor.services.mcp.user_config` and reuse
+:class:`MCPServerConfig` unchanged — one server shape, two stores.
 """
 
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import re
 from typing import Any, Literal
@@ -48,6 +51,19 @@ class MCPServerConfig(BaseModel):
     # entries (used by the built-in pageindex server).
     disabled_tools: list[str] = Field(default_factory=list)
     enabled: bool = True
+    # authentication
+    #: ``"oauth"`` when this server requires an OAuth 2.1 authorization the
+    #: account has to grant interactively; ``""`` when a static credential in
+    #: ``headers`` (or none at all) is enough. Opt-in rather than detected: a
+    #: server that answers 401 might need a token the user simply has not entered
+    #: yet, and silently starting a consent flow on that guess would be wrong.
+    auth: Literal["", "oauth"] = ""
+    # provenance
+    #: Catalog entry this server was installed from, or "" for a hand-written
+    #: one. Recorded because the local name is the installer's to choose: without
+    #: it, "is this service already installed?" can only be answered by comparing
+    #: names, and anyone who installed under a different name is told no.
+    catalog_entry: str = ""
 
     @field_validator("command", "url", "cwd", mode="before")
     @classmethod
@@ -64,12 +80,15 @@ class MCPServerConfig(BaseModel):
         return None
 
     def connection_signature(self) -> str:
-        """Stable fingerprint used by reload to detect changed servers."""
-        return json.dumps(
-            self.model_dump(mode="json"),
-            sort_keys=True,
-            ensure_ascii=False,
-        )
+        """Stable fingerprint used by reload to detect changed servers.
+
+        Provenance is excluded: ``catalog_entry`` records where a definition came
+        from, not how to reach it, so stamping it onto a server that predates the
+        field must not look like a changed connection and drop a live session.
+        """
+        data = self.model_dump(mode="json")
+        data.pop("catalog_entry", None)
+        return json.dumps(data, sort_keys=True, ensure_ascii=False)
 
     def tool_allowed(self, raw_name: str, wrapped_name: str) -> bool:
         blocked = set(self.disabled_tools or [])
@@ -113,12 +132,24 @@ def load_mcp_config() -> MCPConfig:
 
 
 def save_mcp_config(config: MCPConfig) -> None:
+    """Persist the config atomically.
+
+    A torn write here costs every server in the deployment: ``load_mcp_config``
+    falls back to an *empty* config on a JSON error, so a crash mid-write would
+    silently disconnect everything on next start.
+    """
     path = mcp_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(config.model_dump(mode="json"), ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    payload = json.dumps(config.model_dump(mode="json"), ensure_ascii=False, indent=2)
+    tmp = path.with_name(f"{path.name}.tmp")
+    try:
+        with tmp.open("w", encoding="utf-8") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 __all__ = [

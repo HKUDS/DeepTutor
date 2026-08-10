@@ -14,9 +14,11 @@ from deeptutor.agents._shared.tool_composition import (
     user_has_notebooks,
 )
 from deeptutor.agents.chat.agent_loop import AgentLoop
+from deeptutor.agents.chat.context_budget import LLMRequestSnapshot, build_context_budget
 from deeptutor.agents.chat.prompt_blocks import ChatPromptAssembler
 from deeptutor.capabilities import (
     LoopCapability,
+    PromptBlock,
     active_loop_capabilities,
     any_exclusive_capability_active,
 )
@@ -32,6 +34,7 @@ from deeptutor.core.agentic import (
 from deeptutor.core.agentic.tool_dispatch import MAX_PARALLEL_TOOL_CALLS
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream_bus import StreamBus
+from deeptutor.core.tool_protocol import ToolLookup
 from deeptutor.core.trace import (
     build_trace_metadata,
     derive_trace_metadata,
@@ -39,11 +42,11 @@ from deeptutor.core.trace import (
     new_call_id,
 )
 from deeptutor.knowledge.manifest import KbManifest, render_manifest_note
-from deeptutor.runtime.registry.deferred_tools import (
-    DeferredToolLoader,
-    render_deferred_tools_manifest,
-)
+from deeptutor.runtime.providers import ToolScope
+from deeptutor.runtime.providers.view import ProviderToolView, build_tool_view
+from deeptutor.runtime.registry.deferred_tools import DeferredToolLoader
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
+from deeptutor.services.cli_apps.models import TOOL_PREFIX as CLI_APP_TOOL_PREFIX
 from deeptutor.services.config import get_chat_params
 from deeptutor.services.llm import (
     get_llm_config,
@@ -199,12 +202,18 @@ class AgenticChatPipeline:
         self.api_version = getattr(self.llm_config, "api_version", None)
         self.extra_headers = getattr(self.llm_config, "extra_headers", None) or {}
         self.reasoning_effort = getattr(self.llm_config, "reasoning_effort", None)
-        self.registry = get_tool_registry()
+        # Process-wide registry. Stays the base for the whole turn; the
+        # per-turn scoped view lives on ``_tool_view`` (see ``tool_lookup``).
+        self.registry: ToolLookup = get_tool_registry()
         self._usage = UsageTracker(model=self.model)
+        self._tool_view: ProviderToolView | None = None
         self._deferred_loader: DeferredToolLoader | None = None
         self._deferred_pool: list[Any] = []
         self._exec_enabled = False
         self._kb_manifests: list[KbManifest] = []
+        # The blocks the turn's system prompt was rendered from, kept for the
+        # context-budget breakdown (see ``measure_context_budget``).
+        self._last_prompt_blocks: list[PromptBlock] = []
 
         try:
             chat_cfg = get_chat_params()
@@ -263,6 +272,20 @@ class AgenticChatPipeline:
         return self._usage
 
     @property
+    def tool_lookup(self) -> ToolLookup:
+        """Registry to use for this turn.
+
+        The scoped view once ``_prepare_deferred_tools`` has resolved it —
+        which is what refuses provider tools the caller is not authorised for
+        at dispatch time — and the process registry before that.
+
+        ``getattr`` because tests construct partially-initialised pipelines
+        via ``__new__`` (the same reason the mount flags read that way).
+        """
+        view = getattr(self, "_tool_view", None)
+        return view.registry if view is not None else self.registry
+
+    @property
     def max_rounds(self) -> int:
         return max(1, self._max_rounds)
 
@@ -309,9 +332,8 @@ class AgenticChatPipeline:
         tool_schemas = (
             self._build_llm_tool_schemas(enabled_tools, context) if use_native_tools else None
         )
-        if tool_schemas is not None and self._deferred_loader is not None:
-            tool_schemas.extend(self._deferred_loader.initial_schemas())
-            self._deferred_loader.bind_live_schemas(tool_schemas)
+        if tool_schemas is not None and self._tool_view is not None:
+            self._tool_view.attach(tool_schemas)
 
         loop = AgentLoop(
             pipeline=self,
@@ -332,7 +354,10 @@ class AgenticChatPipeline:
         *,
         include_tool_manifest: bool = True,
     ) -> str:
-        return self._prompt_assembler.system_prompt(
+        # Assemble once, then render: the context-budget breakdown is measured
+        # from these very blocks, so a second ``blocks()`` call could drift from
+        # the prompt actually sent.
+        self._last_prompt_blocks = self._prompt_assembler.blocks(
             context=context,
             tool_manifest=self._tool_manifest(enabled_tools),
             kb_note=self._kb_system_note(context),
@@ -344,6 +369,7 @@ class AgenticChatPipeline:
             capability_blocks=self._capability_system_blocks(context),
             include_tool_manifest=include_tool_manifest,
         )
+        return self._prompt_assembler.render(self._last_prompt_blocks)
 
     def _build_loop_messages(
         self,
@@ -391,6 +417,9 @@ class AgenticChatPipeline:
     def _finish_exhausted_instruction(self) -> str:
         return self._prompt_assembler.finish_exhausted_instruction()
 
+    def _settle_exhausted_instruction(self) -> str:
+        return self._prompt_assembler.settle_exhausted_instruction()
+
     def _tool_manifest(self, enabled_tools: list[str]) -> str:
         names = list(enabled_tools)
         if self._deferred_loader is not None:
@@ -398,13 +427,13 @@ class AgenticChatPipeline:
                 if name not in names:
                     names.append(name)
         try:
-            return self.registry.build_prompt_text(
+            return self.tool_lookup.build_prompt_text(
                 names,
                 format="list_with_usage",
                 language=self.language,
             )
         except TypeError:
-            return self.registry.build_prompt_text(names)
+            return self.tool_lookup.build_prompt_text(names)
         except Exception:
             logger.warning("failed to build tool prompt text", exc_info=True)
             return ""
@@ -445,60 +474,61 @@ class AgenticChatPipeline:
         return str((context.metadata or {}).get("source") or "") == "partner"
 
     async def _prepare_deferred_tools(self, context: UnifiedContext) -> None:
-        self._pageindex_docs = {}
+        """Resolve this turn's external-provider (MCP / CLI) tool surface.
+
+        The policy — grant intersection, resource-derived grants, filtering,
+        the progressive-disclosure loader, the manifest — lives in
+        ``runtime.providers``. All the pipeline owns is translating the turn's
+        context into a :class:`ToolScope`.
+        """
+        self._pageindex_docs = self._pageindex_doc_maps(context)
         try:
-            from deeptutor.services.mcp import get_mcp_manager, load_loaded_tools
-
-            await get_mcp_manager().ensure_started()
-            # Caller-scoped whitelist (e.g. a partner's configured MCP tools)
-            # intersected with the current user's grant. ``None`` means
-            # unrestricted; a set narrows the deferred tools. Real non-admin
-            # users fail closed when no MCP grant is present, while partner
-            # turns defer to their owner-scoped metadata whitelist as the
-            # authority (see ``_is_partner_turn``).
-            from deeptutor.multi_user.tool_access import allowed_mcp_tools, combine_whitelists
-
-            raw_filter = context.metadata.get("mcp_tools_filter")
-            caller_allowed = (
-                {str(name) for name in raw_filter} if isinstance(raw_filter, list) else None
-            )
-            user_allowed = None if self._is_partner_turn(context) else allowed_mcp_tools()
-            allowed: set[str] | None = combine_whitelists(caller_allowed, user_allowed)
-
-            # Narrowed implicit grant: a turn with a PageIndex KB
-            # attached is authorized to use the built-in pageindex MCP
-            # server's tools — access to the KB is the permission. The tools
-            # are also preloaded (no load_tools round-trip) so retrieval
-            # works on the first turn.
-            self._pageindex_docs = self._pageindex_doc_maps(context)
-            pool = self.registry.deferred_tools()
-            pageindex_tools: set[str] = set()
-            if self._pageindex_docs:
-                from deeptutor.services.mcp.pageindex_server import PAGEINDEX_SERVER_NAME
-
-                pageindex_tools = {
-                    t.get_definition().name
-                    for t in pool
-                    if getattr(t, "server_name", "") == PAGEINDEX_SERVER_NAME
-                }
-                if allowed is not None:
-                    allowed = allowed | pageindex_tools
-
-            if allowed is not None:
-                pool = [t for t in pool if t.get_definition().name in allowed]
-            self._deferred_pool = pool
-            if not pool:
-                self._deferred_loader = None
-                return
-            self._deferred_loader = DeferredToolLoader(
-                registry=self.registry,
-                session_id=context.session_id,
-                loaded=load_loaded_tools(context.session_id) | pageindex_tools,
-                allowed=allowed,
+            view = await build_tool_view(
+                base_registry=self.registry,
+                scope=self._tool_scope(context),
+                language=self.language,
+                refusal_message=self._t(
+                    "notices.tool_not_available",
+                    default=(
+                        "This tool is not available in this conversation. Only "
+                        "the tools listed in the prompt can be called."
+                    ),
+                ),
             )
         except Exception:
+            # ``build_tool_view`` is contractually non-raising; this is defence
+            # in depth because it is the turn's first await — a failure here
+            # would kill the turn before a single stream event is emitted.
             logger.warning("deferred-tool preparation failed", exc_info=True)
-            self._deferred_loader = None
+            view = ProviderToolView.empty(self.registry)
+        self._tool_view = view
+        self._deferred_loader = view.loader
+        # Kept as a plain list: the context-budget chip counts the provider
+        # tools whose schemas never entered the window.
+        self._deferred_pool = list(view.pool)
+
+    def _tool_scope(self, context: UnifiedContext) -> ToolScope:
+        """Per-turn policy inputs for the provider layer."""
+        from deeptutor.services.mcp.pageindex_server import PAGEINDEX_SERVER_NAME
+
+        raw_filter = context.metadata.get("mcp_tools_filter")
+        return ToolScope(
+            owner_id=self._current_owner_id(),
+            is_partner=self._is_partner_turn(context),
+            session_id=context.session_id,
+            caller_whitelist=(
+                frozenset(str(name) for name in raw_filter)
+                if isinstance(raw_filter, list)
+                else None
+            ),
+            # Attaching a PageIndex knowledge base authorises that server:
+            # access to the KB *is* the permission, and its tools are preloaded
+            # so retrieval works without a load_tools round-trip.
+            implicit_provider_ids=(
+                frozenset({PAGEINDEX_SERVER_NAME}) if self._pageindex_docs else frozenset()
+            ),
+            exclusive_capability=self._exclusive_capability_active(context),
+        )
 
     def _pageindex_doc_maps(self, context: UnifiedContext) -> dict[str, dict[str, str]]:
         """kb_name -> {file: doc_id} for bound KBs on the pageindex provider."""
@@ -520,12 +550,8 @@ class AgenticChatPipeline:
         return out
 
     def _deferred_tools_manifest(self) -> str:
-        if self._deferred_loader is None:
-            return ""
-        return render_deferred_tools_manifest(
-            getattr(self, "_deferred_pool", None) or self.registry.deferred_tools(),
-            language=self.language,
-        )
+        view = getattr(self, "_tool_view", None)
+        return view.manifest if view is not None else ""
 
     async def _exec_allowed(self, context: UnifiedContext) -> bool:
         try:
@@ -563,7 +589,7 @@ class AgenticChatPipeline:
     def _compose_enabled_tools(self, context: UnifiedContext) -> list[str]:
         is_partner = self._is_partner_turn(context)
         composed = compose_enabled_tools(
-            registry=self.registry,
+            registry=self.tool_lookup,
             requested_tools=context.enabled_tools,
             optional_whitelist=CHAT_OPTIONAL_TOOLS,
             mount_flags=ToolMountFlags(
@@ -678,7 +704,7 @@ class AgenticChatPipeline:
         enabled_tools: list[str],
         context: UnifiedContext,
     ) -> list[dict[str, Any]]:
-        schemas = self.registry.build_openai_schemas(enabled_tools)
+        schemas = self.tool_lookup.build_openai_schemas(enabled_tools)
         kb_choices = self._coexisting_rag_kbs(context)
         notebook_choices = self._notebook_choices()
         for schema in schemas:
@@ -775,7 +801,7 @@ class AgenticChatPipeline:
 
         stream = stream or StreamBus()
         return await execute_tool_call(
-            registry=self.registry,
+            registry=self.tool_lookup,
             tool_name=tool_name,
             tool_args=tool_args,
             stream=stream,
@@ -817,7 +843,7 @@ class AgenticChatPipeline:
             source="chat",
             stage=stage,
             iteration_index=iteration_index,
-            registry=self.registry,
+            registry=self.tool_lookup,
             kwarg_augmenter=self._augment_tool_kwargs,
             retrieve_meta_factory=lambda meta, tn, ta: self._retrieve_trace_metadata(
                 meta, context=context, tool_name=tn, tool_args=ta
@@ -924,6 +950,22 @@ class AgenticChatPipeline:
                 kwargs["_sandbox_mounts"] = (
                     Mount(host_path=str(exec_dir), sandbox_path=str(exec_dir), read_only=False),
                 )
+        elif tool_name.startswith(CLI_APP_TOOL_PREFIX):
+            # A CLI app runs like exec, and for the same reason gets its workdir
+            # from here rather than choosing one: one directory per turn shared by
+            # every app, so the model can render with one and post-process with
+            # another, and the files land where /api/outputs will serve them
+            # (``PathService.is_public_output_path`` has the matching branch).
+            from deeptutor.services.sandbox import Mount
+
+            kwargs["_sandbox_user_id"] = self._current_user_id()
+            cli_dir = task_dir / "cli" if task_dir is not None else None
+            if cli_dir is not None:
+                cli_dir.mkdir(parents=True, exist_ok=True)
+                kwargs["_sandbox_workdir"] = str(cli_dir)
+                kwargs["_sandbox_mounts"] = (
+                    Mount(host_path=str(cli_dir), sandbox_path=str(cli_dir), read_only=False),
+                )
         elif tool_name == "code_execution":
             from deeptutor.services.sandbox import Mount
 
@@ -1025,9 +1067,11 @@ class AgenticChatPipeline:
                 trace_group="retrieve",
                 query=str(tool_args.get("query", "") or ""),
             )
-        # imagegen/videogen are long-running: wiring retrieve_meta gives them an
-        # event_sink so their progress (esp. videogen's poll loop) streams to the
-        # client, which resets the chat idle-timeout watchdog mid-render.
+        # The remaining entries are pure label/call_kind customisation: every
+        # tool now gets an event_sink and a call_state unconditionally
+        # (``execute_tool_call``), so a long-running tool no longer has to pose
+        # as a retrieval to stream its progress. What it still needs from here
+        # is the call_kind the frontend renders it by.
         if tool_name in ("imagegen", "videogen"):
             return derive_trace_metadata(
                 tool_meta,
@@ -1035,10 +1079,8 @@ class AgenticChatPipeline:
                 call_kind="media_generation",
                 query=str(tool_args.get("prompt", "") or ""),
             )
-        # consult_subagent drives a live local agent that runs for as long as it
-        # needs: wiring retrieve_meta gives it an event_sink so every native
-        # output/log streams to the sidebar in real time (and keeps the
-        # idle-timeout watchdog fed during a long agent run).
+        # consult_subagent drives a live local agent; the frontend keys its
+        # in-place transcript row off this call_kind.
         if tool_name == "consult_subagent":
             return derive_trace_metadata(
                 tool_meta,
@@ -1227,6 +1269,36 @@ class AgenticChatPipeline:
                 metadata={"trace_kind": "warning"},
             )
 
+    def measure_context_budget(self, request: LLMRequestSnapshot) -> dict[str, Any] | None:
+        """Break the turn's last real request down for the composer's chip.
+
+        Measured after the fact from what was actually sent — never a dry run.
+        Returns ``None`` when the measurement fails, so the turn is unaffected.
+        """
+        loaded = self._deferred_loader.loaded_names if self._deferred_loader is not None else set()
+        return build_context_budget(
+            blocks=self._last_prompt_blocks,
+            request=request,
+            model=str(self.model or ""),
+            context_window=getattr(self.llm_config, "context_window", None),
+            max_tokens=getattr(self.llm_config, "max_tokens", None),
+            loaded_deferred_names=loaded,
+            deferred_tool_count=self._unloaded_deferred_tool_count(loaded),
+        )
+
+    def _unloaded_deferred_tool_count(self, loaded: set[str]) -> int:
+        """Extended tools whose full schemas never entered the window.
+
+        They cost only their manifest line (the ``extended_tools`` block), so
+        they are reported as a scalar rather than as a segment.
+        """
+        try:
+            pool = getattr(self, "_deferred_pool", None) or []
+            return sum(1 for tool in pool if tool.get_definition().name not in loaded)
+        except Exception:
+            logger.debug("deferred-tool count probe failed", exc_info=True)
+            return 0
+
     @staticmethod
     def _estimate_messages_tokens(messages: list[dict[str, Any]]) -> int:
         from deeptutor.services.session.context_builder import count_tokens
@@ -1269,6 +1341,24 @@ class AgenticChatPipeline:
             return str(get_current_user().id or "anonymous")
         except Exception:
             return "anonymous"
+
+    @staticmethod
+    def _current_owner_id() -> str:
+        """Id of the owning account — NOT the same as ``_current_user_id``.
+
+        A partner resolves to the person who owns it and an administrator to the
+        deployment id, which is how owner-keyed state (a caller's own MCP
+        servers and their credentials) is addressed everywhere else. Using the
+        raw current-user id here would have an admin's self-configured servers
+        written under one name and read under another.
+        """
+        try:
+            from deeptutor.multi_user.paths import current_owner_id
+
+            return current_owner_id()
+        except Exception:
+            logger.debug("owner id resolution failed", exc_info=True)
+            return ""
 
     @staticmethod
     def _selected_kbs(context: UnifiedContext) -> list[str]:

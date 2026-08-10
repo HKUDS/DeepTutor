@@ -14,6 +14,7 @@ from dataclasses import dataclass
 import os
 import time
 from typing import Any
+from urllib.parse import parse_qsl, urlparse
 
 import httpx
 from rich.console import Console
@@ -23,6 +24,12 @@ from rich.table import Table
 from rich.text import Text
 import typer
 
+from deeptutor.services.config.embedding_endpoint import (
+    GEMINI_API_HOST,
+    SENSITIVE_ENDPOINT_QUERY_KEYS,
+    is_gemini_native_embedding_endpoint,
+    redact_embedding_endpoint_for_display,
+)
 from deeptutor.services.llm.config import get_token_limit_kwargs
 from deeptutor.services.provider_registry import PROVIDERS, ProviderSpec, find_by_name
 
@@ -92,7 +99,7 @@ FEATURED_EMBEDDING_PROVIDERS: tuple[str, ...] = (
 # preferred and these are extras.
 EMBEDDING_FALLBACK_MODELS: dict[str, tuple[str, ...]] = {
     "openai": ("text-embedding-3-large", "text-embedding-3-small"),
-    "gemini": ("gemini-embedding-001", "text-embedding-004"),
+    "gemini": ("gemini-embedding-2", "gemini-embedding-001"),
     "aliyun": ("qwen3-vl-embedding", "text-embedding-v3", "text-embedding-v2"),
     "siliconflow": (
         "Qwen/Qwen3-Embedding-8B",
@@ -629,6 +636,22 @@ def _derive_embedding_models_url(endpoint: str, provider: str) -> str:
     """
     url = endpoint.rstrip("/")
 
+    if provider == "gemini":
+        parsed = urlparse(url)
+        if parsed.scheme and parsed.netloc:
+            path = parsed.path.rstrip("/")
+            if "/models/" in path and path.endswith(":batchEmbedContents"):
+                prefix = path.rsplit("/models/", 1)[0]
+                models_path = f"{prefix}/models"
+            elif path.endswith("/embeddings"):
+                prefix = path.removesuffix("/embeddings")
+                if prefix.endswith("/openai"):
+                    prefix = prefix.removesuffix("/openai")
+                models_path = f"{prefix}/models"
+            else:
+                models_path = f"{path}/models"
+            return parsed._replace(path=models_path, fragment="").geturl()
+
     if provider == "ollama" or url.endswith("/api/embed"):
         base = url
         for suffix in ("/api/embed", "/api/embeddings"):
@@ -674,16 +697,21 @@ def fetch_embedding_models(
     models_url = _derive_embedding_models_url(endpoint, provider)
     headers: dict[str, str] = {}
     if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
+        if provider == "gemini" and urlparse(endpoint).hostname == GEMINI_API_HOST:
+            headers["x-goog-api-key"] = api_key
+        else:
+            headers["Authorization"] = f"Bearer {api_key}"
 
-    info(console, strings["init.fetch_models"].format(url=models_url))
+    displayed_models_url = redact_embedding_endpoint_for_display(models_url)
+    info(console, strings["init.fetch_models"].format(url=displayed_models_url))
     try:
         with httpx.Client(timeout=5.0) as client:
             response = client.get(models_url, headers=headers)
         response.raise_for_status()
         payload = response.json()
     except Exception as exc:
-        warn(console, strings["init.fetch_models_fail"].format(error=str(exc)[:160]))
+        error = str(exc).replace(models_url, displayed_models_url)[:160]
+        warn(console, strings["init.fetch_models_fail"].format(error=error))
         return []
 
     raw_items: list[Any] = []
@@ -703,6 +731,8 @@ def fetch_embedding_models(
         elif isinstance(item, dict):
             name = item.get("id") or item.get("name") or item.get("model")
             if isinstance(name, str) and name:
+                if provider == "gemini" and name.startswith("models/"):
+                    name = name.removeprefix("models/")
                 names.append(name)
     if not names:
         warn(console, strings["init.fetch_models_fail"].format(error="empty model list"))
@@ -811,26 +841,63 @@ def probe_llm(*, base_url: str, api_key: str, binding: str, model: str) -> tuple
         return False, elapsed, str(exc)[:200]
 
 
-def probe_embedding(*, base_url: str, api_key: str, model: str) -> tuple[bool, int, str]:
+def probe_embedding(
+    *,
+    base_url: str,
+    api_key: str,
+    model: str,
+    provider: str = "",
+) -> tuple[bool, int, str]:
     """POST a tiny embedding request. Returns ``(ok, elapsed_ms, error)``."""
     if not base_url or not model:
         return False, 0, "missing base_url or model"
     started = time.monotonic()
+
+    def _safe_error(text: str) -> str:
+        secrets = [api_key]
+        secrets.extend(
+            value
+            for key, value in parse_qsl(urlparse(base_url).query, keep_blank_values=True)
+            if key.lower() in SENSITIVE_ENDPOINT_QUERY_KEYS
+        )
+        safe = text.replace(
+            base_url,
+            redact_embedding_endpoint_for_display(base_url),
+        )
+        for secret in secrets:
+            if secret:
+                safe = safe.replace(secret, "[REDACTED]")
+        return safe[:200]
+
     try:
-        headers = {
-            "Authorization": f"Bearer {api_key or 'sk-no-key-required'}",
-            "Content-Type": "application/json",
-        }
-        body = {"model": model, "input": "ping"}
+        headers = {"Content-Type": "application/json"}
+        body: dict[str, Any]
+        if provider == "gemini" and is_gemini_native_embedding_endpoint(base_url):
+            if api_key and urlparse(base_url).hostname == GEMINI_API_HOST:
+                headers["x-goog-api-key"] = api_key
+            elif api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+            model_id = model.removeprefix("models/")
+            body = {
+                "requests": [
+                    {
+                        "model": f"models/{model_id}",
+                        "content": {"parts": [{"text": "ping"}]},
+                    }
+                ]
+            }
+        else:
+            headers["Authorization"] = f"Bearer {api_key or 'sk-no-key-required'}"
+            body = {"model": model, "input": "ping"}
         with httpx.Client(timeout=15.0) as client:
             response = client.post(base_url, headers=headers, json=body)
         elapsed = int((time.monotonic() - started) * 1000)
         if response.status_code >= 400:
-            return False, elapsed, f"HTTP {response.status_code} · {response.text[:200]}"
+            return False, elapsed, f"HTTP {response.status_code} · {_safe_error(response.text)}"
         return True, elapsed, ""
     except Exception as exc:
         elapsed = int((time.monotonic() - started) * 1000)
-        return False, elapsed, str(exc)[:200]
+        return False, elapsed, _safe_error(str(exc))
 
 
 # --- Review panel --------------------------------------------------------------
@@ -869,7 +936,10 @@ def render_review_panel(
     if embedding:
         _row(
             strings["init.review_embedding"],
-            f"{embedding.display_provider} · {embedding.model} · {embedding.base_url}",
+            (
+                f"{embedding.display_provider} · {embedding.model} · "
+                f"{redact_embedding_endpoint_for_display(embedding.base_url)}"
+            ),
             probe=(embedding.probed, embedding.probe_ok),
         )
     if search:

@@ -237,3 +237,16 @@ def reset_llm_client() -> None:
     """Reset the singleton LLM client."""
     global _client
     _client = None
+    # The services-layer factory owns the actual SDK connection pools. Keep a
+    # settings reload authoritative by retiring clients built from the old
+    # credentials/base URL as well as this legacy facade.
+    from .provider_factory import reset_runtime_provider_pool
+
+    reset_runtime_provider_pool()
+    try:
+        from deeptutor.core.agentic.client import reset_agentic_client_pool
+
+        reset_agentic_client_pool()
+    except ImportError:
+        # CLI-only/lightweight imports may never have loaded the agentic stack.
+        pass

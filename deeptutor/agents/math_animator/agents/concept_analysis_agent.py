@@ -5,6 +5,7 @@ from __future__ import annotations
 from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.context import Attachment
 from deeptutor.core.trace import build_trace_metadata, new_call_id
+from deeptutor.services.prompt import get_prompt_manager
 
 from ..models import ConceptAnalysis
 from ..utils import extract_json_object
@@ -38,6 +39,18 @@ class ConceptAnalysisAgent(BaseAgent):
     ) -> ConceptAnalysis:
         system_prompt = self.get_prompt("system")
         user_template = self.get_prompt("user_template")
+        if not system_prompt or not user_template:
+            # Retry once: a worker that looked the prompts up before the
+            # package finished installing used to cache the empty result
+            # forever. PromptManager no longer caches misses, so a reload can
+            # now actually recover — and it stays the one place that knows how
+            # to find a prompt file.
+            self.prompts = get_prompt_manager().reload_prompts(
+                "math_animator", "concept_analysis_agent", self.language
+            )
+            system_prompt = self.get_prompt("system")
+            user_template = self.get_prompt("user_template")
+
         if not system_prompt or not user_template:
             raise ValueError("ConceptAnalysisAgent prompts are not configured.")
 

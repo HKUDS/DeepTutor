@@ -28,16 +28,27 @@ class ChatPromptAssembler:
         capability_blocks: list[PromptBlock] | None = None,
         include_tool_manifest: bool = True,
     ) -> str:
-        blocks = self.blocks(
-            context=context,
-            tool_manifest=tool_manifest,
-            kb_note=kb_note,
-            deferred_tools_manifest=deferred_tools_manifest,
-            notebook_manifest=notebook_manifest,
-            workspace_note=workspace_note,
-            capability_blocks=capability_blocks,
-            include_tool_manifest=include_tool_manifest,
+        return self.render(
+            self.blocks(
+                context=context,
+                tool_manifest=tool_manifest,
+                kb_note=kb_note,
+                deferred_tools_manifest=deferred_tools_manifest,
+                notebook_manifest=notebook_manifest,
+                workspace_note=workspace_note,
+                capability_blocks=capability_blocks,
+                include_tool_manifest=include_tool_manifest,
+            )
         )
+
+    def render(self, blocks: list[PromptBlock]) -> str:
+        """Join assembled blocks into the system prompt string.
+
+        Split out of :meth:`system_prompt` so a caller that also needs the
+        block list (the per-turn context-budget breakdown) can assemble once
+        and render the very blocks it measures, instead of calling
+        :meth:`blocks` a second time and risking drift.
+        """
         joined = "\n\n---\n\n".join(
             f"## {block.name}\n{block.content.strip()}" for block in blocks if block.content.strip()
         )
@@ -149,6 +160,17 @@ class ChatPromptAssembler:
                 "The round budget ran out before every gap was closed. Stop "
                 "calling tools and answer now with what you have, noting "
                 "briefly what remains uncertain."
+            ),
+        )
+
+    def settle_exhausted_instruction(self) -> str:
+        return self._t(
+            "loop.settle_exhausted",
+            default=(
+                "The exploration round budget is exhausted. Do not start new "
+                "searches or optional work. Complete only protocol steps, state "
+                "transitions, or user interactions already made necessary by "
+                "the work above, then provide the final user-facing answer."
             ),
         )
 

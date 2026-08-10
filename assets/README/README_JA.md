@@ -63,7 +63,7 @@ DeepTutorは、個別指導、問題解決、クイズ生成、研究、ビジ�
 - **接続された学習コンテキスト** — 知識ベース、本、Co-Writerの下書き、ノートブック、問題バンク、ペルソナ、Memoryが孤立したツールに閉じ込められることなく、すべてのワークフローで利用可能です。
 - **サブエージェントとPartners** — 任意のターンからライブのコーディングCLI（Claude Code、Codex、Gemini、Kimi、opencode、MiMo）またはPartnerに相談（または過去の会話をインポート）し、同じブレインで永続的なIMコンパニオンを実行します。
 - **マルチエンジン知識** — LlamaIndex、PageIndex、GraphRAG、LightRAG、またはリンクされたObsidianボールトにまたがるバージョン管理されたRAGライブラリ（プラグ可能なドキュメント解析付き）。
-- **拡張可能なツールとスキル** — 組み込みツール、MCPサーバー、画像/ビデオ/音声生成モデル、EduHubからインストール可能なコミュニティスキル。
+- **拡張可能なツールとスキル** — 組み込みツール、MCPサーバー、CLIアプリ、画像/ビデオ/音声生成モデル、EduHubからインストール可能なコミュニティスキル。
 - **検査可能なメモリ** — L1トレース、L2サーフェスサマリー、L3合成によりパーソナライズが可視化・編集可能となり、Memory Graphですべての主張を証拠まで追跡できます。
 
 ---
@@ -109,10 +109,10 @@ python -m pip install -e .
 ( cd web && npm ci --legacy-peer-deps )
 
 deeptutor init
-deeptutor start
+deeptutor start --dev
 ```
 
-ソースインストールはローカルの`web/`ディレクトリに対してNext.jsをdevモードで実行します。その他（設定レイアウト、ポート、`Ctrl+C`での停止）はオプション1と同じです。
+`deeptutor start`はローカルの`web/`フロントエンドを一度だけ本番用にビルドして再利用し、`--dev`はNext.jsをHMR（ホットリロード）付きで実行します。その他（設定レイアウト、ポート、`Ctrl+C`での停止）はオプション1と同じです。
 
 <details>
 <summary><b>Conda環境</b>（<code>venv</code>の代わり）</summary>
@@ -143,11 +143,11 @@ pip install -e ".[math-animator]"   # Maninアドオン; LaTeX/ffmpeg/システ�
 
 **フロントエンド依存関係の変更：** `npm install --legacy-peer-deps`を実行して`web/package-lock.json`を更新し、`web/package.json`と`web/package-lock.json`の両方をコミットしてください。
 
-**devサーバーが動かない場合：** `deeptutor start`が応答しない既存のフロントエンドを報告する場合は、表示されたPIDを停止してください。実際にNext.jsプロセスが実行されていない場合、ロックファイルが古くなっています — それらを削除して再試行してください：
+**devサーバーが動かない場合：** `deeptutor start --dev`が応答しない既存のフロントエンドを報告する場合は、表示されたPIDを停止してください。実際にNext.jsプロセスが実行されていない場合、ロックファイルが古くなっています — それらを削除して再試行してください：
 
 ```bash
 rm -f web/.next/dev/lock web/.next/lock
-deeptutor start
+deeptutor start --dev
 ```
 
 </details>
@@ -286,7 +286,7 @@ deeptutor config show
 | `system.json` | バックエンド/フロントエンドポート、公開APIベース、CORS、SSL検証、添付ファイルディレクトリ、アップロード/抽出の上限 |
 | `auth.json` | オプション認証トグル、ユーザー名、パスワードハッシュ、トークン/クッキー設定 |
 | `integrations.json` | オプションのPocketBaseとサイドカー統合設定 |
-| `interface.json` | UIの言語/テーマ/サイドバー設定 |
+| `interface.json` | UIの言語とモデル出力言語/テーマ/サイドバー設定 |
 | `main.yaml` | ランタイム動作のデフォルトとパス注入 |
 | `agents.yaml` | 機能/ツールのtemperatureとトークン設定 |
 
@@ -436,7 +436,7 @@ KBを作成する際は、**新規作成**（ドキュメントをアップロ�
 <img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="DeepTutor Learning Spaceハブ" width="900">
 </div>
 
-Learning Spaceはライブラリとパーソナライゼーション層です — 永続するものが置かれる場所です。**会話と素材**にはチャット履歴、ノートブック、問題バンク（各保存された質問にはあなたの回答、参照回答、説明が含まれます）が含まれます。**パーソナライゼーション**には習熟パス、ペルソナ（*peer*、*research-assistant*、*teacher*などの動作プリセット）、スキル（モデルがオンデマンドで読み取る`SKILL.md`プレイブック）が含まれます。ここのものはすべてChat、Partners、Co-Writer、Bookから再利用できます。
+Learning Spaceはライブラリとパーソナライゼーション層です — 永続するものが置かれる場所です。**会話と素材**にはチャット履歴、ノートブック、問題バンク（各保存された質問にはあなたの回答、参照回答、説明が含まれます）が含まれます。**パーソナライゼーション**には習熟パス、ペルソナ（*peer*、*research-assistant*、*teacher*などの動作プリセット）、スキル（モデルがオンデマンドで読み取る`SKILL.md`プレイブック）、**MCPサービス**（ワンクリックで自分用にインストールできるホスト型MCPサーバーのキュレートされたストアと、URLで設定できる任意のリモートサーバー）、そして**CLIアプリ**（チャットエージェントが直接呼び出す[CLI-Anything](https://github.com/HKUDS/CLI-Anything)カタログのコマンドラインツールで、各アプリ独自の使用ガイドがオンデマンドで読み込まれます）が含まれます。ここのものはすべてChat、Partners、Co-Writer、Bookから再利用できます。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="EduHubからスキルをインポート" width="900">
@@ -470,7 +470,7 @@ Memory Graphはピラミッド全体を表示します — L3合成が中心、L
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor Settingsハブ" width="900">
 </div>
 
-Settingsはオペレーションコントロールプレーンで、ライブステータスストリップ（バックエンド、LLM、埋め込み、検索）とエリアごとのカードがあります：**外観**（テーマ、UI言語、コードブロックスタイル）、**ネットワーク**（APIベース、ポート、CORS）、**モデル**（LLM、埋め込み、検索、TTS、STT、画像生成、動画生成）、**Knowledge Base**（ドキュメント解析エンジン）、**Chat**（ツール、MCPサーバー、機能パラメーター、添付ファイル上限）、**Partners & Agents**（ターンから相談できるサブエージェント）、**Memory**（コンソリデーターのバジェット）。
+Settingsはオペレーションコントロールプレーンで、ライブステータスストリップ（バックエンドの健全性とプロセスツリー全体の常駐メモリ使用量）とエリアごとのカードがあります：**外観**（テーマ、UI言語とモデル出力言語、コードブロックスタイル）、**ネットワーク**（APIベース、ポート、CORS）、**モデル**（LLM、埋め込み、検索、TTS、STT、画像生成、動画生成）、**Knowledge Base**（ドキュメント解析エンジン）、**Chat**（ツール、機能パラメーター、添付ファイル上限）、**Partners & Agents**（ターンから相談できるサブエージェント）、**Memory**（コンソリデーターのバジェット）。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor外観設定とテーマ" width="900">
@@ -478,7 +478,9 @@ Settingsはオペレーションコントロールプレーンで、ライブス
 
 ほとんどのセクションはドラフトと適用フローを使用するため、コミットする前にプロバイダーをテストできます。4つのテーマが箱に入っています：Default、Cream、Dark、Glass。プロジェクトルートの`.env`ファイルは意図的に無視されます。ランタイム設定は`DEEPTUTOR_HOME`または`deeptutor start --home`でアプリを別の場所に向けない限り、`data/user/settings/*.json`に保存されます。
 
-**OpenAI Codex OAuth（実験的）。** Models → LLMで**OpenAI Codex**を選択すると、APIキー入力欄の代わりに、あなた自身のChatGPTプランに対して実行されるブラウザサインインに置き換わるため、`OPENAI_API_KEY`は不要になります。トークンは`<user-root>/private/openai-codex/`にのみ保存され、DeepTutorがあなたの`~/.codex` CLIログインを読み取ったり変更したりすることは決してありません。モデルリストはそのアカウントのライブカタログから取得されます。サインインするとプロフィールは公開されますが、まだLLMが設定されていない場合にのみアクティブモデルになるため、気づかないうちにデプロイメントの向き先を変えることはありません。トークンは1人のプランを認可するものであるため、このプロフィールはユーザーグラントを通じて共有することはできません — 各アカウントは自分自身でサインインする必要があり、ブラウザはバックエンドを実行しているマシンに到達できなければなりません（リモートサーバーでは、代わりにそこで`deeptutor provider login openai-codex`を実行してください）。クォータエラーとカタログの失敗はそのまま報告され、有料プロバイダーへの自動フォールバックは決して行われません。この互換性パスは実験的です：上流のインターフェースは変更される可能性があります。
+**OpenAI Codex OAuth（実験的）。** Models → LLMで**OpenAI Codex**を選択すると、APIキー入力欄の代わりに、あなた自身のChatGPTプランに対して実行されるブラウザサインインに置き換わるため、`OPENAI_API_KEY`は不要になります。トークンは`data/system/user-secrets/<owner>/private/openai-codex/`にのみ保存され — マルチコンテナのComposeデプロイメントでは、execサンドボックスが到達できるすべてのツリーの外側にあります — DeepTutorがあなたの`~/.codex` CLIログインを読み取ったり変更したりすることは決してありません。モデルリストはそのアカウントのライブカタログから取得されます。サインインするとプロフィールは公開されますが、まだLLMが設定されていない場合にのみアクティブモデルになるため、気づかないうちにデプロイメントの向き先を変えることはありません。トークンは1人のプランを認可するものであるため、このプロフィールはユーザーグラントを通じて共有することはできません — 各アカウントは自分自身でサインインする必要があり（一般ユーザーも含め、そのカードはModels → LLMの下に置かれ、結果として得られるモデル、カタログ、サインアウトはそのアカウントのみに閉じます）、ブラウザはバックエンドを実行しているマシンに到達できなければなりません（リモートサーバーでは、代わりにそこで`deeptutor provider login openai-codex`を実行してください）。クォータエラーとカタログの失敗はそのまま報告され、有料プロバイダーへの自動フォールバックは決して行われません。この互換性パスは実験的です：上流のインターフェースは変更される可能性があります。
+
+デフォルトのローカルDockerおよびPodmanデプロイメントは別々のループバックネットワークを使用するため、サインイン中に一時的なブリッジが必要です。正確なDocker、Compose、Podman、および後片付け用のコマンドについては、[一時的なローカルCodex OAuthブリッジガイド](../../CONTAINERIZATION.md#temporary-local-codex-oauth-bridge)を参照してください。
 
 リモートデプロイメントでは、ブラウザ側の`localhost`とサーバー側の`localhost`は別のマシンであるため、通常のリバースプロキシだけではブラウザのlocalhostコールバックをサーバーまで運べません。コールバックの橋渡しとしてSSHトンネルを使用してください。トンネルは既に公開されているWebポートに到達します。Next.jsは正確なコールバックパスのみを公開コールバックブローカーに書き換え、ブローカーは元のOAuth操作にルーティングする前に`state`を検証します。コールバックリスナーはバックエンドのループバックに留まり、ポート`1455`と`1457`は公開されず、このパスはデフォルトのDockerブリッジネットワークをサポートします。
 
@@ -510,12 +512,13 @@ data/
 ├── user/                    # 管理者ワークスペース + グローバル設定
 ├── users/<uid>/             # ユーザー単位スコープ：チャット履歴、メモリ、ノートブック、KB
 ├── partners/<id>/workspace/ # Partner（合成ユーザー）スコープ
-└── system/                  # auth/users.json · grants/<uid>.json · audit/usage.jsonl
+├── cli-apps/                # インストール済みCLIアプリ、サンドボックスに読み取り専用でマウント
+└── system/                  # auth · grants · audit · user-secrets/<owner> (OAuthトークン)
 ```
 
 **最初に登録したユーザーが管理者**になり、モデルカタログ、プロバイダー認証情報、共有知識ベース、スキル、ユーザー単位グラントを所有します。それ以外のユーザーは分離されたワークスペースと編集されたSettingsページを取得します — 管理者が割り当てたモデル、KB、スキルはスコープ付きの読み取り専用オプションとして表示され、生のAPIキーは見えません。
 
-**有効化：** `data/user/settings/auth.json`で認証をオンにし、`deeptutor start`を再起動し、`/register`で最初の管理者を登録し、`/admin/users`からユーザーを追加し、グラントを通じてモデル、KB、スキル、Partner、ツール/MCPポリシー、コード実行アクセスを割り当てます。
+**有効化：** `data/user/settings/auth.json`で認証をオンにし、`deeptutor start`を再起動し、`/register`で最初の管理者を登録し、`/admin/users`からユーザーを追加し、グラントを通じてモデル、KB、スキル、Partner、ツール/MCP/CLIアプリポリシー、コード実行アクセスを割り当てます。
 
 > PocketBaseはシングルユーザー統合のままです — 外部ユーザーストアを組み込まない限り、マルチユーザーデプロイメントでは`integrations.pocketbase_url`を空白にしてください。
 
@@ -568,7 +571,7 @@ deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format j
 | コマンド | 説明 |
 |:---|:---|
 | `deeptutor init` | 現在のワークスペースの`data/user/settings`を作成または更新 |
-| `deeptutor start [--home PATH]` | バックエンド + フロントエンドを一緒に起動 |
+| `deeptutor start [--home PATH] [--dev]` | バックエンド + フロントエンドを一緒に起動 |
 | `deeptutor serve [--port PORT]` | FastAPIバックエンドのみ起動 |
 | `deeptutor run <capability> <message>` | 単一機能ターンを実行（`chat`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`）；`--format json`でNDJSON出力 |
 | `deeptutor chat` | 機能、ツール、KB、ノートブック、履歴コントロール付きインタラクティブREPL |
@@ -690,18 +693,6 @@ DeepTutorがコミュニティへのギフトになることを願っていま�
 
 <a href="https://github.com/HKUDS/DeepTutor/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=HKUDS/DeepTutor&max=999" alt="Contributors" />
-</a>
-
-</div>
-
-<div align="center">
-
-<a href="https://www.star-history.com/#HKUDS/DeepTutor&type=timeline&legend=top-left">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=timeline&theme=dark&legend=top-left" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=timeline&legend=top-left" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=timeline&legend=top-left" />
-  </picture>
 </a>
 
 </div>

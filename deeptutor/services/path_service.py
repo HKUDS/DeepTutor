@@ -132,7 +132,14 @@ class PathService:
     def get_public_outputs_root(self) -> Path:
         return self._user_data_dir
 
-    def is_public_output_path(self, path: str | Path) -> bool:
+    def resolve_public_output_path(self, path: str | Path) -> Path | None:
+        """Return a safe, public output file below this service's user root.
+
+        Resolving and authorizing the path in one operation gives callers the
+        exact canonical path they may read.  In particular, callers should not
+        validate against one workspace and then reconstruct the file path from
+        a different root.
+        """
         candidate = Path(path)
         if not candidate.is_absolute():
             candidate = (self.get_public_outputs_root() / candidate).resolve()
@@ -143,45 +150,55 @@ class PathService:
         try:
             relative = candidate.relative_to(root)
         except ValueError:
-            return False
+            return None
 
         if not candidate.is_file():
-            return False
+            return None
         if candidate.suffix.lower() in self._PRIVATE_SUFFIXES:
-            return False
+            return None
 
         parts = relative.parts
         if parts[:3] == ("workspace", "co-writer", "audio"):
-            return True
+            return candidate
 
         if (
             len(parts) >= 5
             and parts[:3] == ("workspace", "chat", "deep_solve")
             and "artifacts" in parts[4:]
         ):
-            return True
+            return candidate
 
         if (
             len(parts) >= 5
             and parts[:3] == ("workspace", "chat", "math_animator")
             and "artifacts" in parts[4:]
         ):
-            return True
+            return candidate
 
         if len(parts) >= 5 and parts[:2] == ("workspace", "chat") and "code_runs" in parts[3:]:
-            return True
+            return candidate
 
         # Generated media (imagegen / videogen tools write under <task>/media/).
         if len(parts) >= 5 and parts[:2] == ("workspace", "chat") and "media" in parts[3:]:
-            return True
+            return candidate
 
         if len(parts) >= 5 and parts[:3] == ("workspace", "chat", "chat") and parts[4] == "exec":
-            return True
+            return candidate
+
+        # Files a CLI app produced. One directory per turn shared by every app,
+        # not one per app, so a model can render with one and post-process with
+        # another. Listed explicitly rather than folded into the ``exec`` branch:
+        # what is publicly linkable is worth being able to read off this function.
+        if len(parts) >= 5 and parts[:3] == ("workspace", "chat", "chat") and parts[4] == "cli":
+            return candidate
 
         if len(parts) >= 4 and parts[:3] == ("workspace", "chat", "_detached_code_execution"):
-            return True
+            return candidate
 
-        return False
+        return None
+
+    def is_public_output_path(self, path: str | Path) -> bool:
+        return self.resolve_public_output_path(path) is not None
 
     def get_workspace_dir(self) -> Path:
         return self._user_data_dir / "workspace"

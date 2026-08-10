@@ -20,6 +20,7 @@ from .loader import (
 )
 from .model_catalog import ModelCatalogService, get_model_catalog_service
 from .runtime_settings import (
+    HTTP_KEEP_ALIVE_TIMEOUT,
     ChatAttachmentLimits,
     RuntimeSettingsService,
     ensure_runtime_settings_files,
@@ -71,6 +72,7 @@ __all__ = [
     "ConfigTestRunner",
     "TestRun",
     "get_config_test_runner",
+    "HTTP_KEEP_ALIVE_TIMEOUT",
     "ChatAttachmentLimits",
     "RuntimeSettingsService",
     "ensure_runtime_settings_files",

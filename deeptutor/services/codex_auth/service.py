@@ -7,17 +7,16 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 import hashlib
+import logging
 from pathlib import Path
 import secrets
+import shutil
 import time
 from typing import Any
 
 import httpx
 
-from deeptutor.services.config.model_catalog import (
-    ModelCatalogService,
-    get_model_catalog_service,
-)
+from deeptutor.services.config.model_catalog import ModelCatalogService
 from deeptutor.services.config.runtime_settings import load_system_settings
 
 from .catalog import CodexModelCatalog
@@ -44,6 +43,8 @@ from .oauth import (
     oauth_state_matches,
 )
 from .storage import CodexCredentialStore
+
+logger = logging.getLogger(__name__)
 
 MANAGED_BY = "openai_codex_oauth"
 CODEX_PROFILE_ID = "llm-profile-openai-codex-managed"
@@ -81,7 +82,7 @@ def codex_model_id(slug: str) -> str:
 
 
 def _managed_model(model: CodexModel) -> dict[str, Any]:
-    return {
+    managed = {
         "id": codex_model_id(model.slug),
         "name": model.display_name,
         "model": model.slug,
@@ -93,6 +94,11 @@ def _managed_model(model: CodexModel) -> dict[str, Any]:
         "codex_supports_parallel_tool_calls": model.supports_parallel_tool_calls,
         "codex_use_responses_lite": model.use_responses_lite,
     }
+    context_window = model.context_window or model.max_context_window
+    if context_window is not None:
+        managed["context_window"] = str(context_window)
+        managed["context_window_source"] = "metadata"
+    return managed
 
 
 def _managed_profile(snapshot: CatalogSnapshot) -> dict[str, Any]:
@@ -689,10 +695,11 @@ class CodexOAuthService:
 
 
 _SERVICE_INSTANCES: dict[str, CodexOAuthService] = {}
+_RELOCATED_SECRET_ROOTS: set[str] = set()
 
 
 def _codex_user_root() -> Path:
-    """Anchor the credential store to the account that owns the caller's scope.
+    """Resolve the user root of the account that owns the caller's scope.
 
     A Codex token is issued against one person's ChatGPT plan. Resolving other
     users to the administrator's root would run a whole deployment on a single
@@ -700,25 +707,119 @@ def _codex_user_root() -> Path:
     Owner resolution is what keeps that true while still letting a partner —
     a synthetic user with a workspace but no account — inherit the login of
     the person who owns it (#711).
+
+    This is where the store used to live; :func:`_codex_secrets_root` is where
+    it lives now, and this is only the location it is relocated from.
     """
     from deeptutor.multi_user.paths import get_owner_path_service
 
     return get_owner_path_service().get_user_root().resolve()
 
 
+def _codex_secrets_root() -> Path:
+    """Resolve the owner's secret root, moving an older login into it on first use.
+
+    For a non-admin account the user root of :func:`_codex_user_root` sits
+    inside the workspace subtree the sandbox runner mounts, so a refresh token
+    stored there was readable by every other account's ``exec`` (the admin's own
+    root was never mounted — only ``data/user/workspace`` is). ``data/system``
+    is mounted for nobody, so the store now lives under the owner's directory
+    there instead, keyed by the same owner resolution as before.
+    """
+    from deeptutor.multi_user.paths import get_owner_secrets_dir
+
+    secrets_root = get_owner_secrets_dir()
+    key = str(secrets_root)
+    if key not in _RELOCATED_SECRET_ROOTS:
+        # Memoised only on success: a relocation that failed (a permission
+        # problem, say) leaves the token in the exposed location, and retrying
+        # on the next resolution is strictly better than deciding once per
+        # process that the move is done.
+        if _relocate_legacy_store(_codex_user_root(), secrets_root):
+            _RELOCATED_SECRET_ROOTS.add(key)
+    return secrets_root
+
+
+def _relocate_legacy_store(user_root: Path, secrets_root: Path) -> bool:
+    """Move a login out of the sandbox-visible tree by rename, never by copy.
+
+    A copy would leave the plaintext refresh token exactly where the exposure
+    was, so this relocates the whole store directory or does nothing at all: a
+    login already at the safe location wins, and the stale one is reported for
+    an operator to remove by hand, mirroring
+    :func:`~deeptutor.multi_user.paths.migrate_legacy_multi_user_tree`.
+
+    Returns whether the legacy location is now settled — i.e. whether there is
+    nothing left to retry.
+    """
+    legacy = CodexCredentialStore(user_root)
+    target = CodexCredentialStore(secrets_root).root
+    try:
+        # The legacy tree is inside a subtree other accounts' sandboxed exec can
+        # write. Checking only the leaf is not enough: a symlinked ``private/``
+        # would make this relocate *another* account's store into this owner's
+        # secrets dir, where the server would then use it as their login.
+        legacy.assert_safe_location()
+    except CodexAuthError:
+        logger.warning(
+            "Refusing to relocate Codex credentials: %s is not a plain directory",
+            legacy.root,
+        )
+        return True  # nothing we will ever move; do not retry
+    if not legacy.root.is_dir():
+        return True
+    if target.exists():
+        logger.warning(
+            "Codex credentials already exist at %s; the sandbox-visible copy at "
+            "%s was left untouched and should be removed by hand",
+            target,
+            legacy.root,
+        )
+        return True
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(legacy.root), str(target))
+    except OSError:
+        # A failed copy leaves a partial target and an intact source; a failed
+        # source cleanup leaves a complete target. Only the former is safe to
+        # discard, and the credential file is what tells the two apart.
+        if legacy.credentials_path.exists():
+            shutil.rmtree(target, ignore_errors=True)
+        logger.warning("Could not relocate Codex credentials %s -> %s", legacy.root, target)
+        return False
+    logger.info("Relocated Codex credentials out of the sandbox-visible tree: %s", target)
+    return True
+
+
+def _owner_model_catalog_service() -> ModelCatalogService:
+    """The catalog a sign-in publishes its managed profile into.
+
+    Deliberately NOT :func:`get_model_catalog_service`, which resolves an
+    ordinary user to the *administrator's* catalog: a non-admin sign-in would
+    then write their personal Codex profile into the shared catalog, where it
+    would show up in the administrator's model list and in every other user's
+    resolution path. Owner scope keys this to the same account as the
+    credential store, so a login and its profile can never land in different
+    places (#781).
+    """
+    from deeptutor.multi_user.personal_models import owner_catalog_service
+
+    return owner_catalog_service()
+
+
 def get_codex_oauth_service() -> CodexOAuthService:
-    user_root = _codex_user_root()
-    key = str(user_root)
+    secrets_root = _codex_secrets_root()
+    key = str(secrets_root)
     service = _SERVICE_INSTANCES.get(key)
     if service is None:
         callback_forward_port = load_system_settings()["frontend_port"]
-        store = CodexCredentialStore(user_root)
+        store = CodexCredentialStore(secrets_root)
         http = httpx.AsyncClient(timeout=30)
         catalog = CodexModelCatalog(store, http=http)
         service = CodexOAuthService(
             store,
             catalog,
-            get_model_catalog_service(),
+            _owner_model_catalog_service(),
             oauth_client=CodexOAuthClient(http),
             callback_forward_port=callback_forward_port,
         )

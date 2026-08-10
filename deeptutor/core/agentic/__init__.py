@@ -19,28 +19,7 @@ in each capability's own module — the primitives expose hooks but do not bake
 those decisions in.
 """
 
-from deeptutor.core.agentic.client import (
-    LLMClientConfig,
-    build_completion_kwargs,
-    build_openai_client,
-    can_use_native_tool_calling,
-)
-from deeptutor.core.agentic.labeled_step import LabeledStepResult, run_labeled_step
-from deeptutor.core.agentic.labels import (
-    LABEL_PROBE_MAX_CHARS,
-    LABEL_UNKNOWN,
-    classify_label,
-    find_inline_labels,
-    strip_label_probe_prefix,
-)
-from deeptutor.core.agentic.loop import LabelProtocol, LoopHost, LoopOutcome, run_agentic_loop
-from deeptutor.core.agentic.tool_dispatch import (
-    MAX_PARALLEL_TOOL_CALLS,
-    DispatchOutcome,
-    dispatch_tool_calls,
-    execute_tool_call,
-)
-from deeptutor.core.agentic.usage import UsageTracker
+from importlib import import_module
 
 __all__ = [
     "LABEL_PROBE_MAX_CHARS",
@@ -64,3 +43,36 @@ __all__ = [
     "run_labeled_step",
     "strip_label_probe_prefix",
 ]
+
+
+_EXPORT_MODULES = {
+    "LLMClientConfig": "client",
+    "build_completion_kwargs": "client",
+    "build_openai_client": "client",
+    "can_use_native_tool_calling": "client",
+    "LabeledStepResult": "labeled_step",
+    "run_labeled_step": "labeled_step",
+    "LABEL_PROBE_MAX_CHARS": "labels",
+    "LABEL_UNKNOWN": "labels",
+    "classify_label": "labels",
+    "find_inline_labels": "labels",
+    "strip_label_probe_prefix": "labels",
+    "LabelProtocol": "loop",
+    "LoopHost": "loop",
+    "LoopOutcome": "loop",
+    "run_agentic_loop": "loop",
+    "MAX_PARALLEL_TOOL_CALLS": "tool_dispatch",
+    "DispatchOutcome": "tool_dispatch",
+    "dispatch_tool_calls": "tool_dispatch",
+    "execute_tool_call": "tool_dispatch",
+    "UsageTracker": "usage",
+}
+
+
+def __getattr__(name: str):
+    module_name = _EXPORT_MODULES.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(f"{__name__}.{module_name}"), name)
+    globals()[name] = value
+    return value

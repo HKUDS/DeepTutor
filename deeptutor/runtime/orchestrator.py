@@ -52,6 +52,14 @@ class ChatOrchestrator:
                 f"Unknown capability: {cap_name}. "
                 f"Available: {self._cap_registry.list_capabilities()}",
                 source="orchestrator",
+                metadata={"turn_terminal": True, "status": "failed"},
+            )
+            await bus.emit(
+                StreamEvent(
+                    type=StreamEventType.DONE,
+                    source="orchestrator",
+                    metadata={"status": "failed"},
+                )
             )
             await bus.close()
             async for event in bus.subscribe():
@@ -73,13 +81,25 @@ class ChatOrchestrator:
             register_bus(_turn_id, bus)
 
         async def _run() -> None:
+            status = "completed"
             try:
                 await capability.run(context, bus)
             except Exception as exc:
+                status = "failed"
                 logger.error("Capability %s failed: %s", cap_name, exc, exc_info=True)
-                await bus.error(str(exc), source=cap_name)
+                await bus.error(
+                    str(exc),
+                    source=cap_name,
+                    metadata={"turn_terminal": True, "status": status},
+                )
             finally:
-                await bus.emit(StreamEvent(type=StreamEventType.DONE, source=cap_name))
+                await bus.emit(
+                    StreamEvent(
+                        type=StreamEventType.DONE,
+                        source=cap_name,
+                        metadata={"status": status},
+                    )
+                )
                 await bus.close()
                 if _turn_id:
                     unregister_bus(_turn_id)

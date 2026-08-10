@@ -46,6 +46,7 @@ import ChatSpaceMenu from "@/components/chat/space/ChatSpaceMenu";
 import type { SpaceMemoryFile } from "@/lib/space-items";
 import type { SelectedBookReference } from "@/lib/book-references";
 import AgentSelector from "./AgentSelector";
+import ContextBudgetChip, { type ContextBudget } from "./ContextBudgetChip";
 import KnowledgeSelector from "./KnowledgeSelector";
 import ModelSelector from "./ModelSelector";
 import PersonaSelector from "./PersonaSelector";
@@ -136,6 +137,40 @@ function CapMenuItem({
   );
 }
 
+/**
+ * The composer's primary action is a single control that spans the whole
+ * turn — send, working, stop — rather than two buttons that swap places at
+ * the moment of the click. These are its four states; only the skin changes.
+ */
+type SendState = "idle" | "blocked" | "ready" | "streaming";
+
+/**
+ * `idle` keeps a legible glyph on a hairline ring instead of fading the whole
+ * button down: a translucent arrow on an equally translucent fill left the
+ * arrow invisible in every theme. Readiness is carried by colour (neutral →
+ * primary), not by opacity.
+ *
+ * Translucency goes through `color-mix` rather than Tailwind's `/NN` opacity
+ * modifier. Tailwind 3 can only apply that modifier to colours it can split
+ * into channels, so `bg-[var(--primary)]/90` — where the variable holds a hex
+ * literal — compiles to nothing at all. `hover:ring-[5px]` and the lift carry
+ * the hover state here; the fill deliberately doesn't shift, which also keeps
+ * it from having to mix in a direction that reads right on all four themes.
+ */
+const SEND_STATE_CLASS: Record<SendState, string> = {
+  idle: "cursor-default text-[var(--muted-foreground)] ring-1 ring-inset ring-[var(--border)]",
+  // The glyph goes to `--foreground`, not `--primary-foreground`: this fill is
+  // a wash of `--muted-foreground` and therefore sits near the background, so
+  // only the foreground colour is guaranteed to read against it on all four
+  // themes. (Inherited as `--primary-foreground`, which was white on pale grey
+  // — invisible — but never showed because the old `/30` compiled to nothing.)
+  blocked:
+    "bg-[color-mix(in_srgb,var(--muted-foreground)_30%,transparent)] text-[var(--foreground)] hover:bg-[color-mix(in_srgb,var(--muted-foreground)_45%,transparent)]",
+  ready:
+    "bg-[var(--primary)] text-[var(--primary-foreground)] ring-[3px] ring-[color-mix(in_srgb,var(--primary)_18%,transparent)] hover:-translate-y-px hover:ring-[5px]",
+  streaming: "bg-[var(--primary)] text-[var(--primary-foreground)]",
+};
+
 export default memo(function ChatComposer({
   composerRef,
   capMenuRef,
@@ -161,6 +196,7 @@ export default memo(function ChatComposer({
   llmSelection,
   llmOptionsLoading,
   llmOptionsError,
+  contextBudget = null,
   selectedNotebookRecords,
   selectedBookReferences,
   selectedHistorySessions,
@@ -240,6 +276,12 @@ export default memo(function ChatComposer({
   llmSelection: LLMSelection | null;
   llmOptionsLoading: boolean;
   llmOptionsError: boolean;
+  /**
+   * Context-window breakdown measured on the last turn that reported one.
+   * Omitted by surfaces that don't track it (quiz follow-up) and null until
+   * the first turn completes — the chip is skipped entirely in both cases.
+   */
+  contextBudget?: ContextBudget | null;
   selectedNotebookRecords: SelectedRecord[];
   selectedBookReferences: SelectedBookReference[];
   selectedHistorySessions: SelectedHistorySession[];
@@ -327,6 +369,7 @@ export default memo(function ChatComposer({
   const [moreCapsOpen, setMoreCapsOpen] = useState(false);
   const [lastCapMenuOpen, setLastCapMenuOpen] = useState(capMenuOpen);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const restoreFocusOnReturnRef = useRef(false);
   const inputHandleRef = useRef<ComposerInputHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   if (lastCapMenuOpen !== capMenuOpen) {
@@ -389,9 +432,37 @@ export default memo(function ChatComposer({
     [onAddFiles],
   );
 
+  const focusTextarea = useCallback(() => {
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, []);
+
   useEffect(() => {
-    if (!hasMessages) textareaRef.current?.focus();
-  }, [hasMessages]);
+    const rememberFocus = () => {
+      restoreFocusOnReturnRef.current =
+        document.activeElement === textareaRef.current;
+    };
+    const restoreFocus = () => {
+      if (
+        restoreFocusOnReturnRef.current &&
+        document.visibilityState === "visible"
+      ) {
+        focusTextarea();
+      }
+    };
+
+    window.addEventListener("blur", rememberFocus);
+    window.addEventListener("focus", restoreFocus);
+    document.addEventListener("visibilitychange", restoreFocus);
+    return () => {
+      window.removeEventListener("blur", rememberFocus);
+      window.removeEventListener("focus", restoreFocus);
+      document.removeEventListener("visibilitychange", restoreFocus);
+    };
+  }, [focusTextarea]);
+
+  useEffect(() => {
+    if (!hasMessages) focusTextarea();
+  }, [hasMessages, focusTextarea]);
 
   const handleSelectCapability = useCallback(
     (value: string) => {
@@ -414,8 +485,12 @@ export default memo(function ChatComposer({
       onSend(content);
       setHasContent(false);
       inputHandleRef.current?.clear();
+      // Sending can move focus to the button or rerender the empty-state
+      // composer into the conversation layout. Restore it after that update
+      // so the user can keep typing, including after switching back to the tab.
+      focusTextarea();
     },
-    [onSend],
+    [focusTextarea, onSend],
   );
 
   const hasReferences =
@@ -433,8 +508,20 @@ export default memo(function ChatComposer({
   // Clicking the send button while in this state surfaces the config card
   // (via `onRequestConfigConfirm`) instead of silently doing nothing.
   const isConfigBlocked = capabilityNeedsConfig && !capabilityConfigConfirmed;
-  const canSend =
-    (hasContent || hasReferences) && !isStreaming && !isConfigBlocked;
+  const hasIntent = hasContent || hasReferences;
+  const canSend = hasIntent && !isStreaming && !isConfigBlocked;
+
+  // `blocked` only exists once there is intent: without it the button stays
+  // `idle` so an empty composer doesn't present a live send affordance. That
+  // makes intent — not `canSend` — the thing that decides interactivity, so
+  // the `blocked` state can stay clickable and surface the config card.
+  const sendState: SendState = isStreaming
+    ? "streaming"
+    : !hasIntent
+      ? "idle"
+      : isConfigBlocked
+        ? "blocked"
+        : "ready";
 
   const spaceSelectionCounts: SpaceSelectionCounts = {
     attachments: attachments.length,
@@ -547,6 +634,22 @@ export default memo(function ChatComposer({
     const content = inputHandleRef.current?.getValue() || "";
     doSend(content);
   }, [canSend, doSend, isConfigBlocked, onRequestConfigConfirm]);
+
+  // One button, so one handler: mid-turn the same control cancels.
+  const handleSendButtonClick = useCallback(() => {
+    if (isStreaming) {
+      onCancelStreaming();
+      return;
+    }
+    handleManualSend();
+  }, [handleManualSend, isStreaming, onCancelStreaming]);
+
+  const sendLabel =
+    sendState === "streaming" ? t("Stop generating") : t("Send");
+  const sendTitle =
+    sendState === "blocked"
+      ? t("Confirm settings on the right to send.")
+      : sendLabel;
 
   return (
     <div
@@ -968,6 +1071,9 @@ export default memo(function ChatComposer({
                   error={llmOptionsError}
                   onChange={onSelectLLM}
                 />
+                {contextBudget ? (
+                  <ContextBudgetChip budget={contextBudget} />
+                ) : null}
 
                 <button
                   type="button"
@@ -1004,53 +1110,45 @@ export default memo(function ChatComposer({
                   )}
                 </button>
 
-                {isStreaming ? (
-                  <button
-                    type="button"
-                    onClick={onCancelStreaming}
-                    className="group relative ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-[var(--primary)] text-[var(--primary-foreground)] transition-[background-color,transform] duration-150 hover:bg-[var(--primary)]/90 active:scale-95"
-                    aria-label={t("Stop generating")}
-                    title={t("Stop generating")}
-                  >
-                    {/* A faint ring slowly rotates inside while streaming,
-                        signalling "still working — click to cancel". Kept
-                        circular (inset within the rounded square) so the
-                        rotation reads as a spinner, not a tumbling box. */}
-                    <span className="pointer-events-none absolute inset-[3px] rounded-full border-[1.5px] border-white/25 border-t-white/85 animate-spin opacity-90 transition-opacity group-hover:opacity-40" />
-                    <Square
-                      size={10}
-                      strokeWidth={2.6}
-                      className="relative z-10 fill-current"
-                    />
-                  </button>
-                ) : (
-                  // When the active capability needs an unconfirmed config,
-                  // we keep the button clickable (so a click can surface
-                  // the Activity-panel config card via
-                  // `onRequestConfigConfirm`) but only once the user has
-                  // *intent* (typed text or queued references). Without
-                  // intent, the button stays disabled so an empty-state
-                  // composer doesn't have a "live" send button.
-                  <button
-                    type="button"
-                    onClick={handleManualSend}
-                    disabled={!(hasContent || hasReferences) || isStreaming}
-                    title={
-                      isConfigBlocked
-                        ? t("Confirm settings on the right to send.")
-                        : undefined
-                    }
-                    aria-disabled={!canSend}
-                    className={`ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] transition-[background-color,transform,opacity] duration-150 active:scale-95 disabled:opacity-25 ${
-                      isConfigBlocked
-                        ? "bg-[var(--muted-foreground)]/30 text-[var(--primary-foreground)] hover:bg-[var(--muted-foreground)]/45"
-                        : "bg-[var(--primary)] text-[var(--primary-foreground)] hover:bg-[var(--primary)]/90"
+                {/* The thing you press is the thing that's working is the
+                    thing you press to stop — one element for the whole turn,
+                    so the button never swaps out from under the cursor at the
+                    moment of the click. The glyph crossfades arrow→square in
+                    place (both stacked in the same grid cell) and the progress
+                    ring moves to the perimeter, where it can spin without
+                    fighting the square for the same space. */}
+                <button
+                  type="button"
+                  onClick={handleSendButtonClick}
+                  disabled={sendState === "idle"}
+                  className={`group relative ml-1 inline-grid h-8 w-8 shrink-0 place-items-center rounded-full transition-[background-color,box-shadow,transform] duration-200 active:scale-95 ${SEND_STATE_CLASS[sendState]}`}
+                  aria-label={sendLabel}
+                  title={sendTitle}
+                >
+                  {sendState === "streaming" && (
+                    // Outside the fill, so "still working" reads at a glance
+                    // and dims on hover to hand the control back as "stop".
+                    <span className="pointer-events-none absolute -inset-[3px] rounded-full border-2 border-[color-mix(in_srgb,var(--primary)_15%,transparent)] border-t-[var(--primary)] animate-spin transition-opacity group-hover:opacity-30" />
+                  )}
+                  <ArrowUp
+                    size={16}
+                    strokeWidth={2.5}
+                    className={`col-start-1 row-start-1 transition-[opacity,transform] duration-200 ${
+                      sendState === "streaming"
+                        ? "scale-50 opacity-0"
+                        : "scale-100 opacity-100"
                     }`}
-                    aria-label={t("Send")}
-                  >
-                    <ArrowUp size={16} strokeWidth={2.5} />
-                  </button>
-                )}
+                  />
+                  <Square
+                    size={10}
+                    strokeWidth={2.6}
+                    className={`col-start-1 row-start-1 fill-current transition-[opacity,transform] duration-200 ${
+                      sendState === "streaming"
+                        ? "scale-100 opacity-100"
+                        : "scale-50 opacity-0"
+                    }`}
+                  />
+                </button>
               </div>
             </div>
           </div>

@@ -11,11 +11,11 @@ import React, {
   useRef,
 } from "react";
 import {
-  LANGUAGE_EVENT,
-  LANGUAGE_STORAGE_KEY,
+  RESPONSE_LANGUAGE_EVENT,
+  RESPONSE_LANGUAGE_STORAGE_KEY,
   normalizeLanguage,
   readStoredChatResponseTimeout,
-  readStoredLanguage,
+  readStoredResponseLanguage,
   writeStoredActiveSessionId,
 } from "@/context/app-shell-storage";
 import type { StreamEvent, ChatMessage, LLMSelection } from "@/lib/unified-ws";
@@ -30,7 +30,7 @@ import {
 import { normalizeMarkdownForDisplay } from "@/lib/markdown-display";
 import { normalizeMessageContent } from "@/lib/message-content";
 import { buildVisiblePath, tipMessageId } from "@/lib/message-branches";
-import { nextOptimisticId } from "@/lib/optimistic-id";
+import { nextOptimisticId, resolvePersistedMessage } from "@/lib/optimistic-id";
 import { reconcileTurnIds } from "@/lib/turn-reconcile";
 import {
   isNarrationMarker,
@@ -174,6 +174,25 @@ interface ProviderState {
   sidebarRefreshToken: number;
 }
 
+/** A session as the server describes it. ``LOAD_SESSION`` applies it and
+ *  selects the session; ``REVALIDATE_SESSION`` applies it in the background
+ *  to a session the user is already reading. */
+interface SessionSnapshot {
+  key: string;
+  sessionId: string;
+  title?: string;
+  messages: MessageItem[];
+  activeTurnId?: string | null;
+  status?: SessionRuntimeStatus;
+  tools?: string[];
+  capability?: string | null;
+  knowledgeBases?: string[];
+  llmSelection?: LLMSelection | null;
+  personaSelection?: string;
+  language?: string;
+  selectedBranches?: Record<string, number>;
+}
+
 type Action =
   | { type: "SET_TOOLS"; tools: string[] }
   | { type: "SET_CAPABILITY"; cap: string | null }
@@ -206,22 +225,9 @@ type Action =
       sessionId: string;
       turnId?: string | null;
     }
-  | {
-      type: "LOAD_SESSION";
-      key: string;
-      sessionId: string;
-      title?: string;
-      messages: MessageItem[];
-      activeTurnId?: string | null;
-      status?: SessionRuntimeStatus;
-      tools?: string[];
-      capability?: string | null;
-      knowledgeBases?: string[];
-      llmSelection?: LLMSelection | null;
-      personaSelection?: string;
-      language?: string;
-      selectedBranches?: Record<string, number>;
-    }
+  | ({ type: "LOAD_SESSION" } & SessionSnapshot)
+  | ({ type: "REVALIDATE_SESSION" } & SessionSnapshot)
+  | { type: "SELECT_SESSION"; key: string }
   | { type: "SET_SESSION_TITLE"; key: string; title: string }
   | {
       type: "RECONCILE_TURN";
@@ -261,7 +267,8 @@ function createSessionEntry(
     messages: [],
     isStreaming: false,
     currentStage: "",
-    language: typeof window === "undefined" ? "en" : readStoredLanguage(),
+    language:
+      typeof window === "undefined" ? "en" : readStoredResponseLanguage(),
     status: "idle",
     activeTurnId: null,
     lastSeq: 0,
@@ -558,13 +565,31 @@ function reducer(state: ProviderState, action: Action): ProviderState {
         sidebarRefreshToken: state.sidebarRefreshToken + 1,
       };
     }
-    case "LOAD_SESSION": {
+    case "SELECT_SESSION": {
+      // Show a session we already hold in memory. No fetch, no spinner —
+      // the pair to ``REVALIDATE_SESSION``, which refreshes it afterwards.
+      if (!state.sessions[action.key]) return state;
+      if (state.selectedKey === action.key) return state;
+      return { ...state, selectedKey: action.key };
+    }
+    case "LOAD_SESSION":
+    case "REVALIDATE_SESSION": {
+      if (action.type === "REVALIDATE_SESSION") {
+        // Second line of defence: ``loadSession`` already drops a revalidate
+        // whose session went live, but the check belongs here too so no
+        // background snapshot can ever clobber a streaming turn.
+        const local = state.sessions[action.key];
+        if (!local || local.isStreaming || local.status === "running") {
+          return state;
+        }
+      }
       const existing =
         state.sessions[action.key] ??
         createSessionEntry(action.key, action.sessionId);
       return {
         ...state,
-        selectedKey: action.key,
+        selectedKey:
+          action.type === "LOAD_SESSION" ? action.key : state.selectedKey,
         sessions: {
           ...state.sessions,
           [action.key]: {
@@ -806,7 +831,16 @@ interface ChatContextValue {
   switchBranch: (parentMessageId: number | null, childId: number) => void;
   renameSessionTitle: (title: string) => Promise<void>;
   newSession: () => void;
-  loadSession: (sessionId: string, signal?: AbortSignal) => Promise<void>;
+  /** Fetch a session and apply it. Pass ``revalidate`` when the session is
+   *  already on screen (see ``showCachedSession``): the snapshot is then
+   *  dropped rather than applied if a turn started meanwhile. */
+  loadSession: (
+    sessionId: string,
+    options?: { signal?: AbortSignal; revalidate?: boolean },
+  ) => Promise<MessageItem[] | undefined>;
+  /** Select an already-loaded session without fetching. Returns false when
+   *  it isn't in memory, i.e. the caller must load it. */
+  showCachedSession: (sessionId: string) => boolean;
   selectedSessionId: string | null;
   sessionStatuses: Record<string, SessionStatusSnapshot>;
   sidebarRefreshToken: number;
@@ -973,9 +1007,9 @@ export function UnifiedChatProvider({
   // Forward-declared so ``handleRunnerEvent`` (created above
   // ``loadSession`` in source order) can trigger a server refresh after
   // a turn finishes without taking a stale closure of ``loadSession``.
-  const loadSessionRef = useRef<((sessionId: string) => Promise<void>) | null>(
-    null,
-  );
+  const loadSessionRef = useRef<
+    ((sessionId: string) => Promise<MessageItem[] | undefined>) | null
+  >(null);
 
   useLayoutEffect(() => {
     stateRef.current = state;
@@ -1273,18 +1307,45 @@ export function UnifiedChatProvider({
     [ensureRunner],
   );
 
+  /** Select a session we already hold in memory, if we do.
+   *
+   *  Lets a caller paint a previously-opened conversation immediately and
+   *  refresh it in the background (``loadSession`` with ``revalidate``),
+   *  rather than blanking the view behind a spinner for a round-trip whose
+   *  result it usually already has. */
+  const showCachedSession = useCallback((sessionId: string) => {
+    const cached = stateRef.current.sessions[sessionId];
+    if (!cached?.messages.length) return false;
+    dispatch({ type: "SELECT_SESSION", key: sessionId });
+    return true;
+  }, []);
+
   const loadSession = useCallback(
-    async (sessionId: string, signal?: AbortSignal) => {
-      const session = await getSession(sessionId, signal);
+    async (
+      sessionId: string,
+      options?: { signal?: AbortSignal; revalidate?: boolean },
+    ) => {
+      const session = await getSession(sessionId, options?.signal);
+      const key = session.session_id || session.id;
       const activeTurn = Array.isArray(session.active_turns)
         ? session.active_turns[0]
         : undefined;
+      if (options?.revalidate) {
+        // Background refresh of a session already on screen. Drop the whole
+        // snapshot — data *and* the re-subscribe below — once a turn is live
+        // locally: this tab is already receiving that turn's events, so
+        // re-subscribing from ``after_seq: 0`` would replay them on top of
+        // what we have, and the snapshot predates the turn anyway.
+        const local = stateRef.current.sessions[key];
+        if (!local || local.isStreaming || local.status === "running") return;
+      }
+      const messages = hydrateMessages(session.messages ?? []);
       dispatch({
-        type: "LOAD_SESSION",
-        key: session.session_id || session.id,
-        sessionId: session.session_id || session.id,
+        type: options?.revalidate ? "REVALIDATE_SESSION" : "LOAD_SESSION",
+        key,
+        sessionId: key,
         title: session.title || "",
-        messages: hydrateMessages(session.messages ?? []),
+        messages,
         activeTurnId: activeTurn?.turn_id || activeTurn?.id || null,
         status:
           (session.status as SessionRuntimeStatus | undefined) ||
@@ -1301,22 +1362,25 @@ export function UnifiedChatProvider({
           typeof session.preferences?.persona === "string"
             ? session.preferences.persona
             : "",
-        // The Settings language is global UI state. Historical sessions may
-        // have stale persisted preferences, so new turns follow the current
-        // app language rather than the language saved when the session began.
-        language: readStoredLanguage(),
+        // Model output language is account-level state. Historical sessions
+        // may have stale persisted preferences, so new turns follow the
+        // current response-language setting rather than their original value.
+        language: readStoredResponseLanguage(),
         selectedBranches: normalizeSelectedBranches(
           session.preferences?.selected_branches,
         ),
       });
       if (activeTurn?.turn_id || activeTurn?.id) {
-        const key = session.session_id || session.id;
+        // Reached on a revalidate too, when the turn is live on the server but
+        // not in this tab (started in another tab, or our socket dropped) —
+        // that is exactly the case that still needs a subscribe.
         sendThroughRunner(key, {
           type: "subscribe_turn",
           turn_id: activeTurn.turn_id || activeTurn.id,
           after_seq: 0,
         });
       }
+      return messages;
     },
     [hydrateMessages, sendThroughRunner],
   );
@@ -1339,18 +1403,19 @@ export function UnifiedChatProvider({
     const syncLanguage = (language: string | null | undefined) => {
       dispatch({ type: "SET_LANGUAGE", lang: normalizeLanguage(language) });
     };
-    const onLanguage = (event: Event) => {
+    const onResponseLanguage = (event: Event) => {
       const detail = (event as CustomEvent<{ language?: string }>).detail;
       syncLanguage(detail?.language);
     };
     const onStorage = (event: StorageEvent) => {
-      if (event.key === LANGUAGE_STORAGE_KEY) syncLanguage(event.newValue);
+      if (event.key === RESPONSE_LANGUAGE_STORAGE_KEY)
+        syncLanguage(event.newValue);
     };
 
-    window.addEventListener(LANGUAGE_EVENT, onLanguage);
+    window.addEventListener(RESPONSE_LANGUAGE_EVENT, onResponseLanguage);
     window.addEventListener("storage", onStorage);
     return () => {
-      window.removeEventListener(LANGUAGE_EVENT, onLanguage);
+      window.removeEventListener(RESPONSE_LANGUAGE_EVENT, onResponseLanguage);
       window.removeEventListener("storage", onStorage);
     };
   }, []);
@@ -1447,7 +1512,7 @@ export function UnifiedChatProvider({
           ? (replaySnapshot.llmSelection ?? null)
           : session.llmSelection;
       const effectiveLanguage =
-        replaySnapshot?.language ?? readStoredLanguage();
+        replaySnapshot?.language ?? readStoredResponseLanguage();
       // Persona resolution: replay snapshot wins; then an explicit per-call
       // persona (quiz follow-up surface); then the session-level preference.
       // Always a string — "" means Default / no persona.
@@ -1681,7 +1746,7 @@ export function UnifiedChatProvider({
       type: "regenerate",
       session_id: session.sessionId,
       overrides: {
-        language: readStoredLanguage(),
+        language: readStoredResponseLanguage(),
       },
     });
   }, [sendThroughRunner]);
@@ -1776,35 +1841,21 @@ export function UnifiedChatProvider({
       // already running so we don't queue against an in-flight stream
       // (matches the delete-turn guard).
       if (session.isStreaming) return;
-      const idx = session.messages.findIndex(
-        (m) => m.id === messageId && m.role === "user",
-      );
-      if (idx === -1) return;
-      let original = session.messages[idx];
-      // Optimistic in-flight rows have a negative client-side id — we
-      // need a real server id to hang the new sibling under. Refresh
-      // from the server, then re-resolve the row by its position in the
-      // (now-persisted) thread before continuing.
-      if (typeof original.id === "number" && original.id < 0) {
-        if (!session.sessionId) return;
-        try {
-          await loadSession(session.sessionId);
-        } catch {
-          return;
-        }
-        const refreshed = stateRef.current.sessions[key];
-        const candidate = refreshed?.messages[idx];
-        if (
-          !candidate ||
-          candidate.role !== "user" ||
-          typeof candidate.id !== "number" ||
-          candidate.id < 0
-        ) {
-          return;
-        }
-        original = candidate;
+      let original: MessageItem | undefined;
+      try {
+        original = await resolvePersistedMessage(
+          session.messages,
+          messageId,
+          "user",
+          async () =>
+            session.sessionId
+              ? await loadSession(session.sessionId)
+              : undefined,
+        );
+      } catch {
+        return;
       }
-      if (typeof original.id !== "number" || original.id < 0) return;
+      if (!original) return;
       const parentId = original.parentMessageId ?? null;
       sendMessage(
         trimmed,
@@ -1909,6 +1960,7 @@ export function UnifiedChatProvider({
       renameSessionTitle,
       newSession,
       loadSession,
+      showCachedSession,
       selectedSessionId: derivedState.sessionId,
       sessionStatuses,
       sidebarRefreshToken: state.sidebarRefreshToken,
@@ -1931,6 +1983,7 @@ export function UnifiedChatProvider({
       renameSessionTitle,
       newSession,
       loadSession,
+      showCachedSession,
       sessionStatuses,
       state.sidebarRefreshToken,
     ],

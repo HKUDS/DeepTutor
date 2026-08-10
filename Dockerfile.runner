@@ -30,8 +30,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ripgrep \
         jq \
         build-essential \
+        nodejs \
         fonts-wqy-zenhei \
     && rm -rf /var/lib/apt/lists/*
+
+# nodejs (the runtime, deliberately not npm): CLI apps installed from npm ship
+# console scripts whose shebang is `#!/usr/bin/env node`, so the interpreter has
+# to exist *here* for them to run at all. The package manager does not: apps are
+# installed by the main container into ./data/cli-apps, which this container
+# mounts read-only. That split is the point — a sandbox escape here cannot
+# install or replace an app, only run the ones already there.
 
 # fonts-wqy-zenhei: a CJK font so reportlab-generated PDFs render Chinese/JP/KR
 # instead of tofu boxes (the pdf SKILL.md registers it from

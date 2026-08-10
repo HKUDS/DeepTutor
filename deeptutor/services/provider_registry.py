@@ -96,6 +96,7 @@ PROVIDER_ALIASES = {
     "atlas_cloud": "atlascloud",
     "atlas-cloud": "atlascloud",
     "eden_ai": "edenai",
+    "novita_ai": "novita",
 }
 
 
@@ -183,6 +184,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         is_gateway=True,
         detect_by_base_keyword="siliconflow",
         default_api_base="https://api.siliconflow.cn/v1",
+    ),
+    ProviderSpec(
+        name="novita",
+        keywords=("novita", "novita-ai", "novita ai"),
+        env_key="NOVITA_API_KEY",
+        display_name="Novita AI",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_base_keyword="novita",
+        default_api_base="https://api.novita.ai/openai",
     ),
     ProviderSpec(
         name="atlascloud",
@@ -330,13 +341,19 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         # not contain "kimi" and keeps the caller's temperature.
         model_overrides=(("kimi", {"temperature": None}),),
     ),
+    # MiniMax runs two separate platforms: global (platform.minimax.io /
+    # api.minimax.io) and mainland China (platform.minimaxi.com /
+    # api.minimaxi.com). Keys are issued per platform and are NOT
+    # interchangeable. The global endpoint is the default here; China-platform
+    # users must override base_url to https://api.minimaxi.com/v1 (or
+    # https://api.minimaxi.com/anthropic) *and* use a China-platform key.
     ProviderSpec(
         name="minimax",
         keywords=("minimax",),
         env_key="MINIMAX_API_KEY",
         display_name="MiniMax",
         backend="openai_compat",
-        default_api_base="https://api.minimaxi.com/v1",
+        default_api_base="https://api.minimax.io/v1",
         thinking_style="reasoning_split",
     ),
     ProviderSpec(
@@ -345,7 +362,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         env_key="MINIMAX_API_KEY",
         display_name="MiniMax (Anthropic)",
         backend="anthropic",
-        default_api_base="https://api.minimaxi.com/anthropic",
+        default_api_base="https://api.minimax.io/anthropic",
     ),
     ProviderSpec(
         name="mistral",

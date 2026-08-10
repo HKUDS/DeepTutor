@@ -48,6 +48,22 @@ def _finish(text: str) -> list[StreamEvent]:
     ]
 
 
+def _answer_visible_narration(call_id: str, text: str) -> list[StreamEvent]:
+    return [
+        _event(StreamEventType.CONTENT, content=text, metadata={"call_id": call_id}),
+        _event(
+            StreamEventType.PROGRESS,
+            metadata={
+                "trace_kind": "call_status",
+                "call_state": "complete",
+                "call_role": "narration",
+                "answer_visible": True,
+                "call_id": call_id,
+            },
+        ),
+    ]
+
+
 class _FakeOrchestrator:
     """Yields a scripted event sequence instead of running the chat loop."""
 
@@ -135,6 +151,45 @@ class TestTurnExecution:
         assert progress.content == "exploring…"
         assert progress.metadata["_progress"] is True
         assert progress.metadata["_tool_hint"] is False
+
+    @pytest.mark.asyncio
+    async def test_answer_visible_narration_stays_in_reply(self, partners_root, fake_orchestrator):
+        fake_orchestrator.script = _answer_visible_narration(
+            "c1", "Great job on that answer."
+        ) + _finish("Choose the next topic.")
+        runner = _runner(partners_root)
+
+        final = await runner.process_message(_msg())
+
+        assert final == "Great job on that answer.\n\nChoose the next topic."
+        assert runner.bus.outbound.empty()
+
+    @pytest.mark.asyncio
+    async def test_answer_visible_prefix_is_not_duplicated_when_result_is_canonical(
+        self, partners_root, fake_orchestrator
+    ):
+        fake_orchestrator.script = _answer_visible_narration("c1", "Part one. ") + [
+            _event(StreamEventType.CONTENT, content="Part two.", metadata={"call_id": "c2"}),
+            _event(
+                StreamEventType.PROGRESS,
+                metadata={
+                    "trace_kind": "call_status",
+                    "call_state": "complete",
+                    "call_role": "finish",
+                    "call_id": "c2",
+                },
+            ),
+            _event(
+                StreamEventType.RESULT,
+                metadata={"response": "Part one. Part two."},
+            ),
+        ]
+        runner = _runner(partners_root)
+
+        final = await runner.process_message(_msg())
+
+        assert final == "Part one. Part two."
+        assert runner.bus.outbound.empty()
 
     @pytest.mark.asyncio
     async def test_tool_calls_stream_as_hints_by_default(self, partners_root, fake_orchestrator):
@@ -359,7 +414,21 @@ class TestContextAssembly:
         await runner.process_message(_msg())
         context = fake_orchestrator.seen_contexts[0]
         assert context.enabled_tools == default_optional_tools()
-        assert "mcp_tools_filter" not in context.metadata
+        # MCP is the exception to "default = fully equipped": these tools reach
+        # host-side capabilities, so an untouched partner ships an empty filter
+        # (deny) rather than no filter (unrestricted).
+        assert context.metadata["mcp_tools_filter"] == []
+
+    @pytest.mark.asyncio
+    async def test_owner_can_opt_partner_into_all_mcp_tools(self, partners_root, fake_orchestrator):
+        """``mcp_tools=None`` is still the deliberate unrestricted state: it
+        emits no filter, which the chat pipeline reads as no MCP narrowing."""
+        fake_orchestrator.script = _finish("ok")
+        runner = _runner(partners_root, PartnerConfig(name="Ada", mcp_tools=None))
+
+        await runner.process_message(_msg())
+
+        assert "mcp_tools_filter" not in fake_orchestrator.seen_contexts[0].metadata
 
     @pytest.mark.asyncio
     async def test_history_feeds_next_turn(self, partners_root, fake_orchestrator):

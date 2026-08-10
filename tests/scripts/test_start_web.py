@@ -16,9 +16,10 @@ def _load_module():
 
 def test_start_web_parser_supports_home(tmp_path: Path) -> None:
     start_web = _load_module()
-    args = start_web.build_parser().parse_args(["--home", str(tmp_path)])
+    args = start_web.build_parser().parse_args(["--home", str(tmp_path), "--dev"])
 
     assert args.home == tmp_path
+    assert args.dev is True
 
 
 def test_start_web_delegates_to_runtime_launcher(tmp_path: Path) -> None:
@@ -26,4 +27,4 @@ def test_start_web_delegates_to_runtime_launcher(tmp_path: Path) -> None:
     with mock.patch.object(start_web, "start") as start:
         start_web.main(["--home", str(tmp_path)])
 
-    start.assert_called_once_with(home=tmp_path)
+    start.assert_called_once_with(home=tmp_path, dev=False)

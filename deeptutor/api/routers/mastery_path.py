@@ -19,7 +19,7 @@ from deeptutor.learning.models import (
 )
 from deeptutor.learning.service import LearningService
 from deeptutor.learning.storage import LearningStore
-from deeptutor.services.settings.interface_settings import get_ui_language
+from deeptutor.services.settings.interface_settings import get_response_language
 from deeptutor.utils.json_parser import parse_json_response
 
 router = APIRouter()
@@ -245,7 +245,7 @@ async def generate_from_notebook(book_id: str, body: GenerateFromNotebookRequest
     records_json = json.dumps(records_data, ensure_ascii=False)
     from deeptutor.services.llm import complete
 
-    language = get_ui_language()
+    language = get_response_language()
     system_prompt, prompt = learning_prompts.notebook_generation_prompts(language, records_json)
     response = await complete(prompt=prompt, system_prompt=system_prompt)
     # LLMs commonly fence/slightly-malform JSON; use the shared fence-stripping

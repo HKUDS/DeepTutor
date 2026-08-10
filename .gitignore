@@ -76,6 +76,7 @@ node_modules/
 # Next.js build output
 .next/
 web/.next/
+web/.next-deeptutor/
 out/
 web/out/
 .vercel/

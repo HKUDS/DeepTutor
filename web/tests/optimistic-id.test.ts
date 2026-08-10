@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { nextOptimisticId } from "../lib/optimistic-id";
+import {
+  nextOptimisticId,
+  resolvePersistedMessage,
+} from "../lib/optimistic-id";
 import { reconcileTurnIds } from "../lib/turn-reconcile";
 import { buildVisiblePath, tipMessageId } from "../lib/message-branches";
 import type { MessageItem } from "../context/UnifiedChatContext";
@@ -15,6 +18,28 @@ test("optimistic ids are negative and strictly decreasing", () => {
     );
   }
   assert.equal(new Set(ids).size, ids.length, "ids must be unique");
+});
+
+// Issue #739: loadSession dispatches the persisted snapshot, but stateRef is
+// only updated after React commits. The first edit must use the snapshot that
+// loadSession just returned instead of immediately reading the stale ref.
+test("an optimistic message resolves from the returned refresh snapshot", async () => {
+  const optimistic = [
+    { id: -100, role: "user", content: "question", parentMessageId: 10 },
+  ];
+  const persisted = [
+    { id: 11, role: "user", content: "question", parentMessageId: 10 },
+  ];
+
+  const resolved = await resolvePersistedMessage(
+    optimistic,
+    -100,
+    "user",
+    async () => persisted,
+  );
+
+  assert.equal(resolved?.id, 11);
+  assert.equal(optimistic[0].id, -100, "the state ref can still be stale");
 });
 
 // Issue #698: the user row and the assistant placeholder are minted

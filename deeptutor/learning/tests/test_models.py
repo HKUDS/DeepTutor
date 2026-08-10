@@ -9,6 +9,7 @@ from deeptutor.learning.models import (
     LearningModule,
     LearningProgress,
     LearningStage,
+    PendingQuestion,
     QuizAttempt,
     RepetitionState,
     RetryAttempt,
@@ -254,6 +255,26 @@ class TestSerializationRoundtrip:
         assert lp2.feynman_retries["kp1"] == 2
         assert lp2.stage_failure_counts["explain"] == 1
         assert lp2.current_stage == LearningStage.DIAGNOSTIC
+
+    def test_pending_choice_roundtrip_preserves_question_and_option_ids(self):
+        lp = LearningProgress(
+            book_id="b1",
+            pending_question=PendingQuestion(
+                question_id="question-1",
+                knowledge_point_id="kp1",
+                prompt="Pick one",
+                question_type="choice",
+                expected_answer="B",
+                options=["A: first", "B: second"],
+            ),
+        )
+
+        restored = LearningProgress.model_validate(lp.model_dump(mode="json"))
+
+        assert restored.pending_question is not None
+        assert restored.pending_question.question_id == "question-1"
+        assert restored.pending_question.options == ["A: first", "B: second"]
+        assert restored.pending_question.expected_answer == "B"
 
     def test_legacy_progress_roundtrip(self):
         # A payload persisted by the old engine (retired stage + dropped fields)

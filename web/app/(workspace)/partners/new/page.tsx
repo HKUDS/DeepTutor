@@ -103,7 +103,9 @@ export default function NewPartnerPage() {
         setToolOptions(options);
         setEnabledTools(options.tools.map((tool) => tool.name));
         setBuiltinTools(options.builtin_tools.map((tool) => tool.name));
-        setMcpTools(options.mcp_tools.map((tool) => tool.name));
+        // MCP starts empty: these tools reach host-side capabilities, so a new
+        // partner gets them only by an explicit pick here.
+        setMcpTools([]);
       })
       .catch(() => {});
   }, []);
@@ -124,7 +126,6 @@ export default function NewPartnerPage() {
       const allTools = toolOptions?.tools.map((tool) => tool.name) ?? [];
       const allBuiltin =
         toolOptions?.builtin_tools.map((tool) => tool.name) ?? [];
-      const allMcp = toolOptions?.mcp_tools.map((tool) => tool.name) ?? [];
       const result = await createPartner({
         name: name.trim(),
         description: description.trim() || undefined,
@@ -147,11 +148,9 @@ export default function NewPartnerPage() {
           : builtinTools.length === allBuiltin.length
             ? null
             : builtinTools,
-        mcp_tools: toolsTouched
-          ? mcpTools
-          : mcpTools.length === allMcp.length
-            ? null
-            : mcpTools,
+        // Never null for MCP: the list stays explicit so a server configured
+        // later is not silently inherited by this partner.
+        mcp_tools: mcpTools,
         assets,
         start: true,
       });

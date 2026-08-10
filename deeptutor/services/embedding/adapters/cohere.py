@@ -15,6 +15,10 @@ logger = logging.getLogger(__name__)
 class CohereEmbeddingAdapter(BaseEmbeddingAdapter):
     """Adapter for Cohere Embed API (v1 and v2)."""
 
+    # Cohere requires input_type and already defaults to "search_document",
+    # so document vectors are unchanged and only queries gain the right role.
+    SUPPORTS_INPUT_TYPE = True
+
     MODELS_INFO = {
         "embed-v4.0": {
             "dimensions": [256, 512, 1024, 1536],

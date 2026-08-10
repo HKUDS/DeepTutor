@@ -24,6 +24,7 @@ _CONTEXT_WINDOW_KEYS = (
     "context_window",
     "context_window_tokens",
     "context_length",
+    "context_size",
     "max_context_tokens",
     "max_input_tokens",
     "input_token_limit",
@@ -32,7 +33,11 @@ _CONTEXT_WINDOW_KEYS = (
     "max_sequence_length",
 )
 
-_KNOWN_CONTEXT_WINDOWS: tuple[tuple[str, int], ...] = (("deepseek-v4", 1_000_000),)
+_KNOWN_CONTEXT_WINDOWS: tuple[tuple[str, int], ...] = (
+    ("deepseek-v4", 1_000_000),
+    ("minimax-m3", 1_000_000),
+    ("minimax-m2.7", 204_800),
+)
 
 
 @dataclass(frozen=True)

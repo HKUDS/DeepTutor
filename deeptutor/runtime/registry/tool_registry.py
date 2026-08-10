@@ -13,7 +13,7 @@ from typing import Any
 
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolPromptHints
 from deeptutor.tools.builtin import BUILTIN_TOOL_TYPES, TOOL_ALIASES
-from deeptutor.tools.prompting import ToolPromptComposer
+from deeptutor.tools.prompting import compose_prompt_text
 
 logger = logging.getLogger(__name__)
 
@@ -114,22 +114,12 @@ class ToolRegistry:
         **opts: Any,
     ) -> str:
         """Compose prompt text for the given tools."""
-        composer = ToolPromptComposer(language=language)
-        hints = self.get_prompt_hints(names, language=language)
-        if format == "list":
-            return composer.format_list(hints)
-        if format == "list_with_usage":
-            return composer.format_list_with_usage(hints)
-        if format == "table":
-            return composer.format_table(
-                hints,
-                control_actions=opts.get("control_actions"),
-            )
-        if format == "aliases":
-            return composer.format_aliases(hints)
-        if format == "phased":
-            return composer.format_phased(hints)
-        raise ValueError(f"Unsupported prompt format: {format}")
+        return compose_prompt_text(
+            self.get_prompt_hints(names, language=language),
+            format=format,
+            language=language,
+            **opts,
+        )
 
     def build_openai_schemas(self, names: list[str] | None = None) -> list[dict[str, Any]]:
         """Build OpenAI function-calling tool schemas."""

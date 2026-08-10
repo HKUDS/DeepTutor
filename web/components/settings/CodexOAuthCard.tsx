@@ -5,6 +5,7 @@ import { ExternalLink, RefreshCw, ShieldCheck, Unplug } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import Button from "@/components/ui/Button";
+import { invalidateLLMOptionsCache } from "@/lib/llm-options";
 import {
   buildSshForwardCommand,
   cancelCodexLogin,
@@ -120,6 +121,12 @@ export function CodexOAuthCard() {
   // Reloading replaces the whole catalog draft, so this must never run behind
   // the operator's back while they have unsaved edits open on another provider.
   const syncCatalog = useCallback(async () => {
+    // Every model picker reads a cached option list — derived from the catalog
+    // for an administrator, from /settings/llm-options for an ordinary user —
+    // and a sign-in, logout, or model refresh changes what belongs in it. Drop
+    // the cache first, and unconditionally: the server has already changed
+    // even when the catalog reload below is deferred.
+    invalidateLLMOptionsCache();
     if (hasUnsavedChanges) {
       setToast(t("codex.oauth.reloadDeferred"));
       return;

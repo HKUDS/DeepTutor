@@ -35,7 +35,7 @@ def main() -> None:
     # Get port from configuration
     from deeptutor.logging import configure_logging
     from deeptutor.runtime.mode import RunMode, set_mode
-    from deeptutor.services.config import get_ws_max_size
+    from deeptutor.services.config import HTTP_KEEP_ALIVE_TIMEOUT, get_ws_max_size
     from deeptutor.services.setup import get_backend_port
 
     set_mode(RunMode.SERVER)
@@ -58,17 +58,25 @@ def main() -> None:
     # Filter out non-existent directories to avoid warnings
     reload_excludes = [d for d in reload_excludes if Path(d).exists()]
 
-    # Start uvicorn server with reload enabled. ws_max_size tracks the
-    # configured chat-attachment total so base64 uploads fit in one WS frame.
+    # Reload launches a supervisor plus a worker and retains file-watcher state,
+    # so keep it opt-in for local development. ws_max_size tracks the configured
+    # chat-attachment total so base64 uploads fit in one WS frame.
+    dev_reload = os.environ.get("DEEPTUTOR_DEV_RELOAD", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
     uvicorn.run(
         "deeptutor.api.main:app",
         host="0.0.0.0",
         port=backend_port,
-        reload=True,
-        reload_excludes=reload_excludes,
+        reload=dev_reload,
+        reload_excludes=reload_excludes if dev_reload else None,
         log_level="info",
         access_log=False,
         ws_max_size=get_ws_max_size(),
+        timeout_keep_alive=HTTP_KEEP_ALIVE_TIMEOUT,
     )
 
 

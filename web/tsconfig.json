@@ -22,7 +22,9 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    ".next/dev/types/**/*.ts",
+    ".next-deeptutor/types/**/*.ts",
+    ".next-deeptutor/dev/types/**/*.ts"
   ],
   "exclude": ["node_modules"]
 }

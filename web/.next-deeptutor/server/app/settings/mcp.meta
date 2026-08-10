@@ -1,0 +1,19 @@
+{
+  "status": 307,
+  "headers": {
+    "location": "/space/mcp",
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/(utility)/layout,_N_T_/(utility)/settings/layout,_N_T_/(utility)/settings/mcp/layout,_N_T_/(utility)/settings/mcp/page,_N_T_/settings/mcp"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/!KHV0aWxpdHkp/settings/mcp/__PAGE__",
+    "/!KHV0aWxpdHkp/settings/mcp",
+    "/!KHV0aWxpdHkp/settings",
+    "/!KHV0aWxpdHkp",
+    "/_index",
+    "/_head"
+  ]
+}

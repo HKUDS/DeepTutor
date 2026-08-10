@@ -63,3 +63,17 @@ version = {attr = "deeptutor.__version__.__version__"}
 where = ["../.."]
 include = ["deeptutor*", "deeptutor_cli*"]
 exclude = ["deeptutor_web*"]
+
+# This distribution includes the shared agent implementations. Keep their
+# runtime prompt/config assets in the wheel as the full distribution does.
+[tool.setuptools.package-data]
+deeptutor = [
+    "**/*.yaml",
+    "**/*.yml",
+    "**/*.md",
+    "**/*.json",
+    "**/*.sh",
+    "**/*.j2",
+    "**/*.jinja",
+]
+deeptutor_cli = ["**/*.md"]

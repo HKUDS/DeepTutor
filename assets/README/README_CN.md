@@ -63,7 +63,7 @@ DeepTutor 是一个智能体原生的学习工作区，将辅导、解题、测�
 - **互联的学习上下文** — 知识库、书籍、Co-Writer 草稿、笔记本、题库、人格预设和 Memory，在每个工作流中始终可用，而不是各自孤立。
 - **子智能体与 Partners** — 在任意对话轮次中调用实时运行的编程 CLI（Claude Code、Codex、Gemini、Kimi、opencode 或 MiMo）或 Partner（或导入其历史对话），并在同一大脑上运行持久化的 IM 伴侣。
 - **多引擎知识库** — 跨 LlamaIndex、PageIndex、GraphRAG、LightRAG 或链接的 Obsidian vault 的版本化 RAG 知识库，支持可插拔的文档解析。
-- **可扩展工具与技能** — 内置工具、MCP 服务器、图像 / 视频 / 语音生成模型，以及从 EduHub 安装的社区技能。
+- **可扩展工具与技能** — 内置工具、MCP 服务器、CLI 应用、图像 / 视频 / 语音生成模型，以及从 EduHub 安装的社区技能。
 - **可审计的记忆** — L1 追踪、L2 表面摘要和 L3 综合让个性化透明可编辑，Memory Graph 将每一条结论追溯到其原始证据。
 
 ---
@@ -109,10 +109,10 @@ python -m pip install -e .
 ( cd web && npm ci --legacy-peer-deps )
 
 deeptutor init
-deeptutor start
+deeptutor start --dev
 ```
 
-源码安装会以开发模式运行 Next.js，指向本地 `web/` 目录；其他所有内容（配置布局、端口、`Ctrl+C` 停止）与方式一相同。
+`deeptutor start` 会为本地 `web/` 前端构建一次生产版本并复用；`--dev` 则以热更新（HMR）方式运行 Next.js。配置布局、端口和 `Ctrl+C` 停止均与方式一相同。
 
 <details>
 <summary><b>Conda 环境</b>（替代 <code>venv</code>）</summary>
@@ -143,11 +143,11 @@ pip install -e ".[math-animator]"   # Manim 插件；需要 LaTeX/ffmpeg/系统�
 
 **修改前端依赖：** 运行 `npm install --legacy-peer-deps` 以刷新 `web/package-lock.json`，然后同时提交 `web/package.json` 和 `web/package-lock.json`。
 
-**开发服务器卡住：** 如果 `deeptutor start` 报告有已存在但无响应的前端进程，停止它打印的 PID。如果实际上没有 Next.js 进程在运行，则锁文件已过时 — 删除后重试：
+**开发服务器卡住：** 如果 `deeptutor start --dev` 报告有已存在但无响应的前端进程，停止它打印的 PID。如果实际上没有 Next.js 进程在运行，则锁文件已过时 — 删除后重试：
 
 ```bash
 rm -f web/.next/dev/lock web/.next/lock
-deeptutor start
+deeptutor start --dev
 ```
 
 </details>
@@ -162,7 +162,7 @@ deeptutor start
 - `ghcr.io/hkuds/deeptutor:latest` — 稳定版本
 - `ghcr.io/hkuds/deeptutor:pre` — 预发布版本（如有）
 
-> 有关 podman / 无根容器 / 只读根文件系统部署及完整的每种安装指南，请参阅 [CONTAINERIZATION.md](./CONTAINERIZATION.md)。
+> 有关 podman / 无根容器 / 只读根文件系统部署及完整的每种安装指南，请参阅 [CONTAINERIZATION.md](../../CONTAINERIZATION.md)。
 
 ```bash
 docker run --rm --name deeptutor \
@@ -217,7 +217,7 @@ docker run --rm --name deeptutor \
 
 Docker Desktop（macOS/Windows）通常无需 `--add-host` 即可解析 `host.docker.internal`。在 Linux 上，该标志是在现代 Docker Engine 上创建该主机名的便携方式。
 
-**Linux 替代方案 — 宿主机网络：** 添加 `--network=host` 并去掉 `-p` 标志。容器直接共享宿主机网络，打开 [http://127.0.0.1:3782](http://127.0.0.1:3782)（或 `system.json` 中的 `frontend_port`），宿主机服务可通过普通 localhost URL（如 `http://127.0.0.1:11434/v1`）访问。注意宿主机网络会将容器端口直接暴露在宿主机上，可能与现有服务冲突 — 若需保持在回环地址上，可设置 `BACKEND_HOST=127.0.0.1` 和 `FRONTEND_HOST=127.0.0.1`（详见 [CONTAINERIZATION.md](./CONTAINERIZATION.md)）。
+**Linux 替代方案 — 宿主机网络：** 添加 `--network=host` 并去掉 `-p` 标志。容器直接共享宿主机网络，打开 [http://127.0.0.1:3782](http://127.0.0.1:3782)（或 `system.json` 中的 `frontend_port`），宿主机服务可通过普通 localhost URL（如 `http://127.0.0.1:11434/v1`）访问。注意宿主机网络会将容器端口直接暴露在宿主机上，可能与现有服务冲突 — 若需保持在回环地址上，可设置 `BACKEND_HOST=127.0.0.1` 和 `FRONTEND_HOST=127.0.0.1`（详见 [CONTAINERIZATION.md](../../CONTAINERIZATION.md)）。
 
 </details>
 
@@ -286,7 +286,7 @@ deeptutor config show
 | `system.json` | 后端/前端端口、公开 API 基础地址、CORS、SSL 校验、附件目录及上传/提取限制 |
 | `auth.json` | 可选认证开关、用户名、密码哈希、token/cookie 设置 |
 | `integrations.json` | 可选的 PocketBase 和 sidecar 集成设置 |
-| `interface.json` | UI 语言 / 主题 / 侧边栏偏好 |
+| `interface.json` | UI 语言与模型输出语言 / 主题 / 侧边栏偏好 |
 | `main.yaml` | 运行时行为默认值和路径注入 |
 | `agents.yaml` | 能力/工具的 temperature 和 token 设置 |
 
@@ -436,7 +436,7 @@ Book 将选定的来源转化为交互式**活书** — 不是静态 PDF，而�
 <img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="DeepTutor 学习空间中心" width="900">
 </div>
 
-学习空间是知识库和个性化层 — 持久化内容的存放之处。**对话与素材**保存聊天历史、笔记本和题库（每道保存的题目包含你的答案、参考答案和解析）。**个性化**保存掌握路径、人格预设（如*同伴*、*研究助手*、*教师*等行为预设）和技能（模型按需读取的 `SKILL.md` 剧本）。这里的所有内容均可在 Chat、Partners、Co-Writer 和 Book 中复用。
+学习空间是知识库和个性化层 — 持久化内容的存放之处。**对话与素材**保存聊天历史、笔记本和题库（每道保存的题目包含你的答案、参考答案和解析）。**个性化**保存掌握路径、人格预设（如*同伴*、*研究助手*、*教师*等行为预设）、技能（模型按需读取的 `SKILL.md` 剧本）、**MCP 服务** — 一键为自己安装的托管 MCP 服务器精选商店，外加通过 URL 配置的任意远程服务器 — 以及**CLI 应用**，即来自 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) 目录、由聊天智能体直接调用的命令行工具，每个应用的使用指南按需加载。这里的所有内容均可在 Chat、Partners、Co-Writer 和 Book 中复用。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="从 EduHub 导入技能" width="900">
@@ -470,7 +470,7 @@ Memory Graph 展示整个金字塔 — L3 综合位于中心，L2 在中间圆�
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor 设置中心" width="900">
 </div>
 
-Settings 是操作控制面板，带有实时状态条（后端、LLM、嵌入、搜索）和每个区域的配置卡：**外观**（主题、UI 语言、代码块样式）、**网络**（API 基础地址、端口、CORS）、**模型**（LLM、嵌入、搜索、文字转语音、语音转文字、图像生成、视频生成）、**知识库**（文档解析引擎）、**聊天**（工具、MCP 服务器、每个能力的参数、附件上限）、**Partners 与智能体**（可在对话轮次中调用的子智能体），以及**记忆**（整合器预算）。
+Settings 是操作控制面板，带有实时状态条（后端健康状况与整个进程树的常驻内存占用）和每个区域的配置卡：**外观**（主题、UI 语言与模型输出语言、代码块样式）、**网络**（API 基础地址、端口、CORS）、**模型**（LLM、嵌入、搜索、文字转语音、语音转文字、图像生成、视频生成）、**知识库**（文档解析引擎）、**聊天**（工具、每个能力的参数、附件上限）、**Partners 与智能体**（可在对话轮次中调用的子智能体），以及**记忆**（整合器预算）。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor 外观设置与主题" width="900">
@@ -478,7 +478,9 @@ Settings 是操作控制面板，带有实时状态条（后端、LLM、嵌入�
 
 大多数部分采用草稿-应用流程，因此你可以在提交前测试提供商配置。开箱即提供四种主题 — Default、Cream、Dark 和 Glass。项目根目录的 `.env` 文件被刻意忽略；运行时配置存储在 `data/user/settings/*.json` 下，除非 `DEEPTUTOR_HOME` 或 `deeptutor start --home` 将应用指向其他位置。
 
-**OpenAI Codex OAuth（实验性）。** 在 **模型 → LLM** 下选择 **OpenAI Codex**，会用基于你自己 ChatGPT 订阅运行的浏览器登录取代 API Key 输入框，因此无需 `OPENAI_API_KEY`。令牌仅保存在 `<user-root>/private/openai-codex/` 中，DeepTutor 绝不会读取或修改你的 `~/.codex` CLI 登录状态。模型列表来自该账号的实时目录；只有尚未配置任何 LLM 时，登录后的 Codex 才会成为活跃模型。令牌只授权一个人的订阅，无法通过用户授权共享，因此每个账号都需自行登录。
+**OpenAI Codex OAuth（实验性）。** 在 **模型 → LLM** 下选择 **OpenAI Codex**，会用基于你自己 ChatGPT 订阅运行的浏览器登录取代 API Key 输入框，因此无需 `OPENAI_API_KEY`。令牌仅保存在 `data/system/user-secrets/<owner>/private/openai-codex/` 中 — 在多容器 Compose 部署中，位于 exec 沙箱可触及的所有目录树之外 — DeepTutor 绝不会读取或修改你的 `~/.codex` CLI 登录状态。模型列表来自该账号的实时目录；只有尚未配置任何 LLM 时，登录后的 Codex 才会成为活跃模型。令牌只授权一个人的订阅，无法通过用户授权共享，因此每个账号都需自行登录 — 普通用户也不例外：他们的卡片位于**模型 → LLM**下，产生的模型、目录和退出登录操作均只对该账号私有。
+
+默认的本地 Docker 和 Podman 部署各自使用独立的回环网络，登录时需要一个临时桥接。具体的 Docker、Compose、Podman 及拆除命令请参阅[临时本地 Codex OAuth 桥接指南](../../CONTAINERIZATION.md#temporary-local-codex-oauth-bridge)。
 
 远程部署时，浏览器的 `localhost` 和服务器的 `localhost` 不是同一台机器，仅有普通反向代理无法把浏览器的 localhost callback 送到服务器，必须用 SSH 隧道建立 callback 桥。隧道通向已发布的 Web 端口；Next.js 只把精确的 callback 路径改写到 public callback broker，broker 校验 `state` 后才路由到原 OAuth operation。callback listener 仍位于后端 loopback，不发布 `1455`/`1457`，并支持默认 Docker bridge 网络。
 
@@ -510,12 +512,13 @@ data/
 ├── user/                    # 管理员工作区 + 全局设置
 ├── users/<uid>/             # 用户作用域：聊天历史、记忆、笔记本、知识库
 ├── partners/<id>/workspace/ # Partner（合成用户）作用域
-└── system/                  # auth/users.json · grants/<uid>.json · audit/usage.jsonl
+├── cli-apps/                # 已安装的 CLI 应用，以只读方式挂载进沙箱
+└── system/                  # auth · grants · audit · user-secrets/<owner> (OAuth 令牌)
 ```
 
 **第一个注册用户成为管理员**，拥有模型目录、提供商凭证、共享知识库、技能和用户授权的管理权。其他所有人获得隔离的工作区和删减版的 Settings 页面 — 管理员分配的模型、知识库和技能以作用域只读选项的形式出现，原始 API Key 不可见。
 
-**启用方式：** 在 `data/user/settings/auth.json` 中开启认证，重启 `deeptutor start`，在 `/register` 注册第一个管理员，然后从 `/admin/users` 添加用户，并通过授权分配模型、知识库、技能、Partner、工具/MCP 策略和代码执行权限。
+**启用方式：** 在 `data/user/settings/auth.json` 中开启认证，重启 `deeptutor start`，在 `/register` 注册第一个管理员，然后从 `/admin/users` 添加用户，并通过授权分配模型、知识库、技能、Partner、工具/MCP/CLI 应用策略和代码执行权限。
 
 > PocketBase 仍为单用户集成 — 多用户部署时请将 `integrations.pocketbase_url` 留空，除非你已接入外部用户存储。
 
@@ -568,7 +571,7 @@ deeptutor run deep_question "就那篇调研测验我" --session "$SID" --format
 | 命令 | 说明 |
 |:---|:---|
 | `deeptutor init` | 为当前工作区创建或更新 `data/user/settings` |
-| `deeptutor start [--home PATH]` | 同时启动后端 + 前端 |
+| `deeptutor start [--home PATH] [--dev]` | 同时启动后端 + 前端；`--dev` 启用前端热更新 |
 | `deeptutor serve [--port PORT]` | 仅启动 FastAPI 后端 |
 | `deeptutor run <capability> <message>` | 运行单次能力对话（`chat`、`deep_solve`、`deep_question`、`deep_research`、`visualize`、`math_animator`、`mastery_path`）；添加 `--format json` 可获得 NDJSON 输出 |
 | `deeptutor chat` | 交互式 REPL，支持能力、工具、知识库、笔记本和历史控制 |
@@ -690,18 +693,6 @@ DeepTutor 也站在众多优秀开源项目的肩膀上，它们给予了我们�
 
 <a href="https://github.com/HKUDS/DeepTutor/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=HKUDS/DeepTutor&max=999" alt="贡献者" />
-</a>
-
-</div>
-
-<div align="center">
-
-<a href="https://www.star-history.com/#HKUDS/DeepTutor&type=timeline&legend=top-left">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=timeline&theme=dark&legend=top-left" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=timeline&legend=top-left" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=HKUDS/DeepTutor&type=timeline&legend=top-left" />
-  </picture>
 </a>
 
 </div>
