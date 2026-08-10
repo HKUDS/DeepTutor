@@ -1,0 +1,108 @@
+name: Sync upstream and build Docker image
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Notify start
+        run: |
+          curl -s -X POST "${{ secrets.GOOGLE_CHAT_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{"text": "🔄 *Encore-DeepTutor CI/CD* — New merge on main detected. Build starting..."}'
+
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN }}
+
+      - name: Notify checkout done
+        run: |
+          curl -s -X POST "${{ secrets.GOOGLE_CHAT_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{"text": "✅ *Checkout fork* done."}'
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: AppTeamit1
+          password: ${{ secrets.SYNC_TOKEN }}
+
+      - name: Notify build start
+        run: |
+          curl -s -X POST "${{ secrets.GOOGLE_CHAT_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{"text": "🏗️ *Building and pushing Docker image...*"}'
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(python3 -c "exec(open('deeptutor/__version__.py').read()); print(__version__)")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: production
+          push: true
+          tags: |
+            ghcr.io/apprentus/deeptutor:latest
+            ghcr.io/apprentus/deeptutor:${{ steps.version.outputs.version }}
+
+      - name: Notify build done
+        run: |
+          curl -s -X POST "${{ secrets.GOOGLE_CHAT_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{"text": "✅ *Build complete!* Image v${{ steps.version.outputs.version }} pushed to registry."}'
+
+      - name: Notify build failure
+        if: failure()
+        run: |
+          curl -s -X POST "${{ secrets.GOOGLE_CHAT_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{"text": "❌ *Build FAILED!* Check GitHub Actions for details."}'
+
+  deploy-staging:
+    needs: build
+    runs-on: [self-hosted, encore-staging]
+
+    steps:
+      - name: Notify deploy start
+        run: |
+          curl -s -X POST "${{ secrets.GOOGLE_CHAT_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{"text": "🚀 *Deploying to Staging...*"}'
+
+      - name: Deploy to staging
+        run: |
+          cd /opt/deeptutor
+          docker compose -f docker-compose.ghcr.yml down
+          docker pull ghcr.io/apprentus/deeptutor:latest
+          sed -i "s|ghcr.io/apprentus/deeptutor:.*|ghcr.io/apprentus/deeptutor:latest|" docker-compose.ghcr.yml
+          docker compose -f docker-compose.ghcr.yml up -d
+          echo "Staging deployed!"
+
+      - name: Notify deploy done
+        run: |
+          curl -s -X POST "${{ secrets.GOOGLE_CHAT_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{"text": "✅ *Staging deployed!* Ready for testing at https://encore-staging.apprentus.dev"}'
+
+      - name: Notify deploy failure
+        if: failure()
+        run: |
+          curl -s -X POST "${{ secrets.GOOGLE_CHAT_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{"text": "❌ *Staging deploy FAILED!* Check GitHub Actions for details."}'
