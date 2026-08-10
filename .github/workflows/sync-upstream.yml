@@ -11,14 +11,13 @@ jobs:
     permissions:
       contents: write
       packages: write
-      workflows: write
 
     steps:
       - name: Checkout fork
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.SYNC_TOKEN }}
 
       - name: Sync upstream
         run: |
@@ -27,7 +26,7 @@ jobs:
           git remote add upstream https://github.com/HKUDS/DeepTutor.git
           git fetch upstream
           git merge upstream/main --no-edit --strategy-option=ours || {
-            echo "❌ Merge conflict detected - manual intervention needed"
+            echo "❌ Merge conflict - manual intervention needed"
             exit 1
           }
           git push origin main
