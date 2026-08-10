@@ -184,6 +184,17 @@ class TestResponsesOutbound:
         assert output["call_id"] == "call_1"
         assert output["output"] == "21C, sunny"
 
+    def test_replays_responses_continuation_before_tool_output(self) -> None:
+        body = build_responses_request(_request(messages=[
+            {"role": "assistant", "content": "", "responses_continuation_items": [
+                {"id": "rs_1", "type": "reasoning", "encrypted_content": "opaque"},
+                {"id": "fc_1", "type": "function_call", "call_id": "call_1", "name": "get_weather", "arguments": "{}"},
+            ], "tool_calls": [{"id": "call_1|fc_1", "type": "function", "function": {"name": "get_weather", "arguments": "{}"}}]},
+            {"role": "tool", "tool_call_id": "call_1|fc_1", "content": "sunny"},
+        ]))
+        assert [item["type"] for item in body["input"]] == ["reasoning", "function_call", "function_call_output"]
+        assert body["input"][0]["encrypted_content"] == "opaque"
+
     def test_background_flag(self) -> None:
         body = build_responses_request(_request(background=True))
         assert body["background"] is True

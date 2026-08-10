@@ -12,6 +12,8 @@ from deeptutor.capabilities.protocol import PromptBlock
 from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.stream import StreamEventType
 from deeptutor.core.stream_bus import StreamBus
+from deeptutor.core.agentic.labeled_step import AgenticModelError
+from types import SimpleNamespace
 
 
 def _ctx(**metadata: Any) -> UnifiedContext:
@@ -51,6 +53,38 @@ def test_is_active_image_only_turn_has_no_readable_source() -> None:
     # carries no readable source and the pre-pass stays dormant.
     img = Attachment(type="image", id="i1")
     assert cap.is_active(_ctx(_attachments=[img])) is False
+
+
+@pytest.mark.asyncio
+async def test_explore_continuation_is_carried_to_next_round_and_incomplete_never_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    explorer = explorer_mod.ContextExplorer(language="en", prompts={"loop": {"system": "s", "user_template": "{question} {mode} {manifest}"}})
+    opaque = {"type": "function_call", "call_id": "c", "encrypted_content": "opaque-SENTINEL"}
+    seen: list[list[dict[str, Any]]] = []
+    scripted = [
+        explorer_mod._CallResult(tool_calls=[{"id": "c", "name": "read_source", "arguments": "{}"}], continuation_items=[opaque]),
+        explorer_mod._CallResult(text="briefing"),
+    ]
+    async def fake_call(_client, messages, _tools, _meta, _stream):
+        seen.append(list(messages)); return scripted.pop(0)
+    async def fake_dispatch(**_kwargs):
+        return SimpleNamespace(tool_messages=[{"role": "tool", "tool_call_id": "c", "content": "source"}], sources=[], pause=False, terminate=False)
+    monkeypatch.setattr(explorer, "_call_llm", fake_call)
+    monkeypatch.setattr(explorer_mod, "dispatch_tool_calls", fake_dispatch)
+    await explorer._run_loop(_ctx(source_index={"hs-x": "text"}), StreamBus(), {"hs-x": "text"}, None)
+    assistant = next(message for message in seen[1] if message.get("role") == "assistant")
+    assert assistant["responses_continuation_items"] == [opaque]
+    assert next(message for message in seen[1] if message.get("role") == "tool")["content"] == "source"
+
+    calls = 0
+    async def no_dispatch(**_kwargs):
+        nonlocal calls; calls += 1
+    monkeypatch.setattr(explorer_mod, "dispatch_tool_calls", no_dispatch)
+    async def incomplete(*_args, **_kwargs):
+        return explorer_mod._CallResult(tool_calls=[{"id": "c", "name": "read_source", "arguments": "{}"}], provider_status="incomplete")
+    monkeypatch.setattr(explorer, "_call_llm", incomplete)
+    with pytest.raises(AgenticModelError):
+        await explorer._run_loop(_ctx(source_index={"hs-x": "text"}), StreamBus(), {"hs-x": "text"}, None)
+    assert calls == 0
 
 
 def test_capability_owns_no_tools_and_no_system_block() -> None:
@@ -292,6 +326,73 @@ async def test_loop_falls_back_to_single_pass_on_client_error(
 
     assert isinstance(block, PromptBlock)
     assert "fallback briefing text" in block.content
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_failure_never_enters_single_pass_fallback(
+    monkeypatch: pytest.MonkeyPatch, _force_loop: None
+) -> None:
+    explorer = explorer_mod.ContextExplorer(language="en", prompts={})
+    calls: list[str] = []
+
+    async def fail_native(*_args, **_kwargs):
+        calls.append("native")
+        raise AgenticModelError(
+            "model_output_incomplete",
+            "The model response was incomplete.",
+            retryable=True,
+            normalized_result={
+                "termination": {
+                    "provider_status": "incomplete",
+                    "incomplete_details": {"reason": "max_output_tokens"},
+                }
+            },
+        )
+
+    async def forbidden_fallback(*_args, **_kwargs):
+        calls.append("fallback")
+        return "fallback"
+
+    monkeypatch.setattr(explorer, "_run_loop", fail_native)
+    monkeypatch.setattr(explorer, "_single_pass", forbidden_fallback)
+
+    with pytest.raises(AgenticModelError):
+        await explorer.investigate(
+            context=_ctx(source_index={"hs-x": "text"}), stream=StreamBus()
+        )
+
+    assert calls == ["native"]
+
+
+@pytest.mark.asyncio
+async def test_native_completed_empty_never_enters_single_pass_fallback(
+    monkeypatch: pytest.MonkeyPatch, _force_loop: None
+) -> None:
+    explorer = explorer_mod.ContextExplorer(
+        language="en",
+        prompts={"loop": {"system": "s", "user_template": "{question} {mode} {manifest}"}},
+    )
+    calls: list[str] = []
+
+    async def completed_empty(*_args, **_kwargs):
+        calls.append("native_completed_empty")
+        return explorer_mod._CallResult(provider_status="completed")
+
+    async def forbidden_fallback(*_args, **_kwargs):
+        calls.append("fallback")
+        return "fallback"
+
+    monkeypatch.setattr(explorer, "_call_llm", completed_empty)
+    monkeypatch.setattr(explorer, "_single_pass", forbidden_fallback)
+    monkeypatch.setattr(explorer_mod, "build_openai_client", lambda _cfg: object())
+
+    with pytest.raises(AgenticModelError) as excinfo:
+        await explorer.investigate(
+            context=_ctx(source_index={"hs-x": "text"}), stream=StreamBus()
+        )
+
+    assert excinfo.value.code == "model_output_empty"
+    assert calls == ["native_completed_empty"]
 
 
 # ---------------------------------------------------------------------------

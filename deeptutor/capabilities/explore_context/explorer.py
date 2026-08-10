@@ -37,6 +37,7 @@ from deeptutor.core.agentic import (
     dispatch_tool_calls,
 )
 from deeptutor.core.agentic.messages import assistant_message_with_tool_calls
+from deeptutor.core.agentic.labeled_step import AgenticModelError
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.trace import build_trace_metadata, merge_trace_metadata, new_call_id
@@ -82,6 +83,9 @@ class _CallResult:
     text: str = ""
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     output_chars: int = 0
+    continuation_items: list[dict[str, Any]] = field(default_factory=list)
+    provider_status: str = ""
+    status_code: int | None = None
 
 
 class ContextExplorer:
@@ -99,15 +103,7 @@ class ContextExplorer:
         self.extra_headers = getattr(cfg, "extra_headers", None) or {}
         self.reasoning_effort = getattr(cfg, "reasoning_effort", None)
         self.registry = get_tool_registry()
-        self._client_config = LLMClientConfig(
-            binding=self.binding,
-            model=self.model,
-            api_key=self.api_key,
-            base_url=self.base_url,
-            api_version=self.api_version,
-            extra_headers=self.extra_headers or None,
-            reasoning_effort=self.reasoning_effort,
-        )
+        self._client_config = LLMClientConfig.from_llm_config(cfg)
 
     async def investigate(
         self,
@@ -129,6 +125,8 @@ class ContextExplorer:
         if can_use_native_tool_calling(binding=self.binding, model=self.model):
             try:
                 investigation = await self._run_loop(context, stream, source_index, usage)
+            except AgenticModelError:
+                raise
             except Exception:
                 logger.warning(
                     "context exploration loop failed; falling back to single pass",
@@ -211,10 +209,36 @@ class ContextExplorer:
                     client, messages, tool_schemas if not is_last else None, chunk_meta, stream
                 )
                 total_out += result.output_chars
+                if result.provider_status in {"failed", "cancelled", "canceled", "incomplete"}:
+                    status_code = int(result.status_code or 0)
+                    transient = status_code in {408, 429} or 500 <= status_code <= 599
+                    raise AgenticModelError(
+                        "model_transport_transient" if transient else "model_provider_failed" if result.provider_status == "failed" else "model_output_incomplete",
+                        "The model response could not be used.", retryable=transient,
+                        normalized_result={"content": result.text, "tool_calls": result.tool_calls, "termination": {"provider_status": result.provider_status, "status_code": status_code or None}, "continuation_items": result.continuation_items},
+                    )
+                if (
+                    result.provider_status == "completed"
+                    and not result.text.strip()
+                    and not result.tool_calls
+                ):
+                    raise AgenticModelError(
+                        "model_output_empty",
+                        "The model completed without usable output.",
+                        retryable=False,
+                        normalized_result={
+                            "content": result.text, "tool_calls": result.tool_calls,
+                            "termination": {"provider_status": "completed"},
+                            "continuation_items": result.continuation_items,
+                        },
+                    )
                 if not result.tool_calls:
                     investigation = result.text
                     break
-                messages.append(assistant_message_with_tool_calls(result.text, result.tool_calls))
+                assistant = assistant_message_with_tool_calls(result.text, result.tool_calls)
+                if result.continuation_items:
+                    assistant["responses_continuation_items"] = list(result.continuation_items)
+                messages.append(assistant)
                 dispatch = await dispatch_tool_calls(
                     tool_calls=result.tool_calls,
                     context=context,
@@ -270,13 +294,30 @@ class ContextExplorer:
         text_parts: list[str] = []
         tool_acc: dict[int, dict[str, str]] = {}
         output_chars = 0
+        continuation_items: list[dict[str, Any]] = []
+        provider_status = ""
+        status_code: int | None = None
         response_stream = await client.chat.completions.create(**kwargs)
         try:
             async for chunk in response_stream:
+                continuation_items.extend(
+                    item for item in (getattr(chunk, "continuation_items", None) or []) if isinstance(item, dict)
+                )
+                termination = getattr(chunk, "termination", None)
+                if isinstance(termination, dict):
+                    status = str(termination.get("provider_status") or "").lower()
+                    if status:
+                        provider_status = status
+                    raw_status_code = termination.get("status_code")
+                    if isinstance(raw_status_code, int):
+                        status_code = raw_status_code
                 choices = getattr(chunk, "choices", None) or []
                 if not choices:
                     continue
                 delta = getattr(choices[0], "delta", None)
+                finish_reason = getattr(choices[0], "finish_reason", None)
+                if finish_reason in {"failed", "cancelled", "canceled", "incomplete"}:
+                    provider_status = str(finish_reason)
                 if delta is None:
                     continue
                 reasoning = getattr(delta, "reasoning_content", None) or getattr(
@@ -327,7 +368,9 @@ class ContextExplorer:
             if data.get("name")
         ]
         return _CallResult(
-            text="".join(text_parts), tool_calls=tool_calls, output_chars=output_chars
+            text="".join(text_parts), tool_calls=tool_calls, output_chars=output_chars,
+            continuation_items=continuation_items, provider_status=provider_status,
+            status_code=status_code,
         )
 
     def _read_source_schemas(self, source_index: dict[str, str]) -> list[dict[str, Any]]:

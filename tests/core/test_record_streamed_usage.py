@@ -33,13 +33,14 @@ def test_records_frame_exactly_once() -> None:
     assert tracker.completion_tokens == 20
 
 
-def test_falls_back_to_estimate_without_frame() -> None:
+def test_marks_usage_unavailable_without_frame() -> None:
     tracker = UsageTracker()
     record_streamed_usage(tracker, None, input_chars=35, output_chars=70)
 
-    assert tracker.calls == 1
-    assert tracker.prompt_tokens == 10  # 35 / 3.5
-    assert tracker.completion_tokens == 20
+    assert tracker.calls == 0
+    assert tracker.unavailable_calls == 1
+    assert tracker.prompt_tokens == 0
+    assert tracker.completion_tokens == 0
 
 
 def test_zero_chars_skip_the_fallback() -> None:

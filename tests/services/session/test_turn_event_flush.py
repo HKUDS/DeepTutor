@@ -17,6 +17,7 @@ import re
 
 import pytest
 
+from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.multi_user.context import reset_current_user, set_current_user
 from deeptutor.multi_user.models import CurrentUser, UserScope
 from deeptutor.services.session.pocketbase_store import PocketBaseSessionStore
@@ -199,6 +200,56 @@ async def test_flush_is_idempotent_per_execution(tmp_path, stub_workspace) -> No
     assert len(persisted) == 3
     mirror = stub_workspace / "chat" / turn["id"] / "events.jsonl"
     assert len(mirror.read_text().splitlines()) == 3
+
+
+async def test_durable_flush_failure_never_exposes_pending_success_done(
+    monkeypatch: pytest.MonkeyPatch, tmp_path, stub_workspace
+) -> None:
+    store = SQLiteSessionStore(tmp_path / "failed-terminal-flush.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session(None)
+    turn = await store.create_turn(session["id"], capability="chat")
+    execution = _TurnExecution(
+        turn_id=turn["id"],
+        session_id=session["id"],
+        capability="chat",
+        payload={},
+    )
+    runtime._executions[turn["id"]] = execution
+
+    subscription = runtime.subscribe_turn(turn["id"])
+    next_event = asyncio.create_task(anext(subscription))
+    for _ in range(100):
+        if execution.subscribers:
+            break
+        await asyncio.sleep(0.001)
+    assert execution.subscribers
+
+    done_event = StreamEvent(
+        type=StreamEventType.DONE,
+        source="chat",
+        metadata={"status": "completed"},
+    )
+    payload = await runtime._buffer_live_event(
+        execution, done_event, hold_for_publish=True
+    )
+
+    async def fail_flush(_turn_id, _events):
+        raise RuntimeError("terminal persistence unavailable")
+
+    monkeypatch.setattr(store, "append_turn_events", fail_flush)
+    with pytest.raises(RuntimeError, match="terminal persistence unavailable"):
+        await runtime._flush_buffered_events(execution)
+    await asyncio.sleep(0)
+    assert not next_event.done()
+    assert (await store.get_turn(turn["id"]) or {})["status"] == "running"
+
+    await runtime._discard_buffered_event(execution, done_event, payload)
+    next_event.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await next_event
+    await subscription.aclose()
+    runtime._executions.clear()
 
 
 async def test_flush_survives_turn_deleted_mid_drain(tmp_path, stub_workspace) -> None:

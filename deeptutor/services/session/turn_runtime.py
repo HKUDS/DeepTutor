@@ -5,13 +5,15 @@ Turn-level runtime manager for unified chat streaming.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 import contextlib
 from contextvars import Token
 from dataclasses import dataclass, field
 import json
 import logging
+import time
 from typing import TYPE_CHECKING, Any, Literal
+import uuid
 
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.services.llm.utils import clean_thinking_tags
@@ -36,6 +38,22 @@ MemoryReference = Literal["recent", "profile", "scope", "preferences", "summary"
 # filtered back out via their ``call_role`` marker (see _narration_marker_call_id).
 _ANSWER_CONTENT_CALL_KINDS = frozenset({"llm_final_response", "agent_loop_round"})
 _FINAL_TURN_STATUSES = frozenset({"completed", "failed", "cancelled", "rejected"})
+_OPAQUE_EVENT_METADATA_KEYS = frozenset({"continuation_items", "responses_continuation_items"})
+
+
+def _persistable_event_value(value: Any) -> Any:
+    """Remove provider-only continuation carriers before an event leaves memory."""
+    if isinstance(value, dict):
+        return {
+            str(key): _persistable_event_value(item)
+            for key, item in value.items()
+            if str(key) not in _OPAQUE_EVENT_METADATA_KEYS
+        }
+    if isinstance(value, list):
+        return [_persistable_event_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_persistable_event_value(item) for item in value]
+    return value
 
 
 def _should_capture_assistant_content(event: StreamEvent) -> bool:
@@ -585,8 +603,10 @@ class _TurnExecution:
     capability: str
     payload: dict[str, Any]
     task: asyncio.Task[None] | None = None
+    heartbeat_task: asyncio.Task[None] | None = None
     subscribers: list[_LiveSubscriber] = field(default_factory=list)
     events: list[dict[str, Any]] = field(default_factory=list)
+    unpublished_seqs: set[int] = field(default_factory=set)
     next_seq: int = 1
     events_flushed: bool = False
 
@@ -594,12 +614,35 @@ class _TurnExecution:
 class TurnRuntimeManager:
     """Run one turn in the background and multiplex persisted/live events."""
 
-    def __init__(self, store: SessionStoreProtocol | None = None) -> None:
+    def __init__(
+        self,
+        store: SessionStoreProtocol | None = None,
+        *,
+        remote_poll_interval: float = 0.1,
+        remote_poll_sleep: Callable[[float], Awaitable[None]] | None = None,
+        worker_id: str | None = None,
+        retry_lease_timeout: float = 10.0,
+        retry_heartbeat_interval: float = 2.0,
+        retry_lease_clock: Callable[[], float] | None = None,
+        retry_heartbeat_sleep: Callable[[float], Awaitable[None]] | None = None,
+        remote_terminal_grace_polls: int = 5,
+    ) -> None:
         from deeptutor.services.session import get_session_store
 
         self.store = store or get_session_store()
         self._lock = asyncio.Lock()
         self._executions: dict[str, _TurnExecution] = {}
+        self._research_retry_locks: dict[str, asyncio.Lock] = {}
+        self._research_retry_turns: dict[str, str] = {}
+        self._research_retry_hashes: dict[str, str] = {}
+        self._remote_poll_interval = max(0.0, float(remote_poll_interval))
+        self._remote_poll_sleep = remote_poll_sleep or asyncio.sleep
+        self._worker_id = worker_id or f"worker_{uuid.uuid4().hex}"
+        self._retry_lease_timeout = max(0.0, float(retry_lease_timeout))
+        self._retry_heartbeat_interval = max(0.01, float(retry_heartbeat_interval))
+        self._retry_lease_clock = retry_lease_clock or time.time
+        self._retry_heartbeat_sleep = retry_heartbeat_sleep or asyncio.sleep
+        self._remote_terminal_grace_polls = max(1, int(remote_terminal_grace_polls))
         # Per-turn reply queues used by tools that pause the agentic
         # loop (e.g. ``ask_user``). Queue is created in ``_run_turn``
         # before the orchestrator is invoked and cleaned up in the
@@ -644,13 +687,81 @@ class TurnRuntimeManager:
         turn_id = str(turn.get("id") or turn.get("turn_id") or "").strip()
         if not turn_id or await self._has_live_execution(turn_id):
             return turn
-        await self.store.update_turn_status(turn_id, "failed", _INTERRUPTED_TURN_ERROR)
+        fail_running = getattr(self.store, "fail_running_turn", None)
+        if callable(fail_running):
+            await fail_running(turn_id, _INTERRUPTED_TURN_ERROR)
+        else:
+            await self.store.update_turn_status(
+                turn_id, "failed", _INTERRUPTED_TURN_ERROR
+            )
         return await self.store.get_turn(turn_id)
+
+    def _retry_lease_is_fresh(self, lease: dict[str, Any] | None) -> bool:
+        if not lease or not str(lease.get("owner_id") or "").strip():
+            return False
+        try:
+            heartbeat_at = float(lease.get("heartbeat_at") or 0.0)
+        except (TypeError, ValueError):
+            return False
+        return heartbeat_at > 0 and (
+            self._retry_lease_clock() - heartbeat_at
+        ) <= self._retry_lease_timeout
+
+    async def _heartbeat_retry_lease(self, execution: _TurnExecution) -> None:
+        """Renew retry ownership independently of streamed event activity."""
+        try:
+            while execution.task is not None and not execution.task.done():
+                await self._retry_heartbeat_sleep(self._retry_heartbeat_interval)
+                if execution.task is None or execution.task.done():
+                    return
+                renewed = await self.store.heartbeat_research_retry_turn(
+                    execution.turn_id,
+                    self._worker_id,
+                    self._retry_lease_clock(),
+                )
+                if not renewed:
+                    logger.warning(
+                        "Retry lease renewal rejected for turn %s owned by %s",
+                        execution.turn_id,
+                        self._worker_id,
+                    )
+                    return
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning(
+                "Retry lease heartbeat failed for turn %s",
+                execution.turn_id,
+                exc_info=True,
+            )
+
+    async def _stop_retry_heartbeat(self, execution: _TurnExecution) -> None:
+        heartbeat_task = execution.heartbeat_task
+        execution.heartbeat_task = None
+        if heartbeat_task is None or heartbeat_task is asyncio.current_task():
+            return
+        heartbeat_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await heartbeat_task
 
     async def _recover_orphan_running_turns_for_session(self, session_id: str) -> None:
         """Clear stale active turns before creating a fresh turn."""
         for turn in await self.store.list_active_turns(session_id):
             await self._fail_orphan_running_turn(turn)
+
+    async def _wait_for_research_retry_winner(
+        self, reservation_id: str
+    ) -> dict[str, Any] | None:
+        """Replay a winner that another worker is between creating and binding."""
+        for attempt in range(20):
+            winner_turn_id = await self.store.get_research_retry_bound_turn(reservation_id)
+            if winner_turn_id:
+                winner_turn = await self.store.get_turn(winner_turn_id)
+                if winner_turn is not None:
+                    return winner_turn
+            if attempt < 19:
+                await asyncio.sleep(0.05)
+        return None
 
     async def start_turn(self, payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         capability = str(payload.get("capability") or "chat")
@@ -661,6 +772,8 @@ class TurnRuntimeManager:
             "_regenerated_from_message_id",
             "_superseded_turn_id",
             "followup_question_context",
+            "_research_retry",
+            "_research_retry_reservation_id",
             # Per-turn subagent consult budget (composer stepper). Not part of
             # any capability's public config schema, so it rides as a runtime
             # key — stripped before validation, merged back into the turn config
@@ -777,7 +890,14 @@ class TurnRuntimeManager:
                 "tools": [t for t in (payload.get("tools") or []) if t in allowed_tools],
             }
         payload = {**payload, "llm_selection": llm_selection}
-        await self._recover_orphan_running_turns_for_session(session["id"])
+        reservation_id = str(
+            runtime_only_config.get("_research_retry_reservation_id") or ""
+        )
+        # A reservation-backed turn may be running on another worker. Local
+        # execution ownership cannot distinguish that from a restart orphan;
+        # durable reservation arbitration below owns retry deduplication.
+        if not reservation_id:
+            await self._recover_orphan_running_turns_for_session(session["id"])
         preference_update: dict[str, Any] = {
             "capability": capability,
             "tools": list(payload.get("tools") or []),
@@ -790,7 +910,34 @@ class TurnRuntimeManager:
             # Persist explicit set AND explicit clear ("" = back to Default).
             preference_update["persona"] = persona_pref
         await self.store.update_session_preferences(session["id"], preference_update)
-        turn = await self.store.create_turn(session["id"], capability=capability)
+        try:
+            turn = await self.store.create_turn(session["id"], capability=capability)
+        except RuntimeError:
+            if not reservation_id:
+                raise
+            winner_turn = await self._wait_for_research_retry_winner(reservation_id)
+            if winner_turn is None:
+                raise
+            return session, winner_turn
+        if reservation_id:
+            if not await self.store.bind_research_retry_turn(
+                reservation_id,
+                str(turn["id"]),
+                self._worker_id,
+                self._retry_lease_clock(),
+            ):
+                winner_turn_id = await self.store.get_research_retry_bound_turn(
+                    reservation_id
+                )
+                await self.store.update_turn_status(
+                    str(turn["id"]), "cancelled", "research_retry_deduplicated"
+                )
+                winner_turn = (
+                    await self.store.get_turn(winner_turn_id) if winner_turn_id else None
+                )
+                if winner_turn is None:
+                    raise RuntimeError("research_retry_reservation_bind_failed")
+                return session, winner_turn
         execution = _TurnExecution(
             turn_id=turn["id"],
             session_id=session["id"],
@@ -820,7 +967,162 @@ class TurnRuntimeManager:
         async with self._lock:
             self._executions[turn["id"]] = execution
             execution.task = asyncio.create_task(self._run_turn(execution))
+            if reservation_id:
+                execution.heartbeat_task = asyncio.create_task(
+                    self._heartbeat_retry_lease(execution)
+                )
+                heartbeat_task = execution.heartbeat_task
+                execution.task.add_done_callback(
+                    lambda _task: heartbeat_task.cancel()
+                    if not heartbeat_task.done()
+                    else None
+                )
         return session, turn
+
+    async def retry_research_attempt(
+        self,
+        *,
+        session_id: str,
+        attempt_id: str,
+        strategy: str,
+        retry_request_id: str,
+        llm_selection: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Single-flight retry entry point for duplicate WS/API delivery."""
+        # The request id defines the idempotency namespace. Parameters are
+        # compared *inside* that namespace, never used to select another lock.
+        request_key = "|".join((str(session_id), str(attempt_id), str(retry_request_id)))
+        async with self._lock:
+            lock = self._research_retry_locks.setdefault(request_key, asyncio.Lock())
+        async with lock:
+            try:
+                session, turn = await self._retry_research_attempt_locked(
+                    session_id=session_id,
+                    attempt_id=attempt_id,
+                    strategy=strategy,
+                    retry_request_id=retry_request_id,
+                    llm_selection=llm_selection,
+                    idempotency_key=request_key,
+                )
+            except Exception:
+                # A failed start has no durable child to replay, so a later
+                # same-parameter retry may try again. Do not erase a child
+                # reservation that already owns a real turn.
+                if request_key not in self._research_retry_turns:
+                    self._research_retry_hashes.pop(request_key, None)
+                raise
+            turn_id = str(turn.get("id") or "")
+            if turn_id:
+                self._research_retry_turns[request_key] = turn_id
+            return session, turn
+
+    async def _retry_research_attempt_locked(
+        self,
+        *,
+        session_id: str,
+        attempt_id: str,
+        strategy: str,
+        retry_request_id: str,
+        llm_selection: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Create a linked Deep Research attempt without deleting its parent."""
+        from deeptutor.agents.research.recovery import retry_parameters_hash, verify_checkpoint
+
+        if strategy not in {"failed_blocks", "report_only", "full_research"}:
+            raise RuntimeError("invalid_research_retry_strategy")
+        if not retry_request_id:
+            raise RuntimeError("missing_research_retry_request_id")
+        messages = await self.store.get_messages(session_id)
+        parent = next(
+            (m for m in messages if (m.get("metadata") or {}).get("research_attempt", {}).get("attempt_id") == attempt_id),
+            None,
+        )
+        if parent is None:
+            raise RuntimeError("research_attempt_not_found")
+        checkpoint = (parent.get("metadata") or {}).get("research_attempt")
+        if not isinstance(checkpoint, dict) or not verify_checkpoint(checkpoint):
+            raise RuntimeError("research_attempt_checkpoint_invalid")
+        snapshot = (checkpoint.get("input") or {}).get("request_snapshot") or {}
+        if not isinstance(snapshot, dict):
+            raise RuntimeError("research_retry_snapshot_invalid")
+        selection = llm_selection or {
+            k: v for k, v in (checkpoint.get("model_snapshot") or {}).items()
+            if k in {"profile_id", "model_id"} and v
+        }
+        parameters_hash = retry_parameters_hash(
+            parent_attempt_id=attempt_id,
+            strategy=strategy,
+            llm_selection=selection,
+        )
+        reservation = await self.store.reserve_research_retry(
+            session_id, attempt_id, retry_request_id, parameters_hash,
+        )
+        known_turn_id = str(reservation.get("turn_id") or "")
+        if known_turn_id:
+            known_turn = await self.store.get_turn(known_turn_id)
+            if known_turn is not None:
+                return {"id": session_id}, known_turn
+        existing = [
+            (m.get("metadata") or {}).get("research_attempt", {}) for m in messages
+            if isinstance((m.get("metadata") or {}).get("research_attempt"), dict)
+        ]
+        children = [c for c in existing if c.get("retry_of_attempt_id") == attempt_id and c.get("retry_request_id") == retry_request_id]
+        if children:
+            if any(
+                c.get("strategy") != strategy
+                or c.get("retry_parameters_hash") != parameters_hash
+                for c in children
+            ):
+                raise RuntimeError("research_retry_idempotency_conflict")
+            child_id = children[0].get("attempt_id")
+            child_message = next((m for m in messages if (m.get("metadata") or {}).get("research_attempt", {}).get("attempt_id") == child_id), None)
+            if child_message:
+                turn_id = str(children[0].get("turn_id") or "")
+                if not turn_id:
+                    turn_id = next((str(e.get("turn_id")) for e in child_message.get("events") or [] if e.get("turn_id")), "")
+                existing_turn = await self.store.get_turn(turn_id) if turn_id else None
+                if existing_turn is not None:
+                    return {"id": session_id}, existing_turn
+                raise RuntimeError("research_retry_turn_missing")
+        blocks = checkpoint.get("blocks") or []
+        outline = [
+            {"title": str(b.get("title") or ""), "overview": str(b.get("overview") or "")}
+            for b in blocks
+        ]
+        if strategy == "full_research":
+            outline = checkpoint.get("input", {}).get("confirmed_outline") or outline
+        config = dict(snapshot.get("config") or checkpoint.get("input", {}).get("research_config") or {})
+        if outline:
+            config["confirmed_outline"] = outline
+        elif strategy == "full_research":
+            # Planning failures intentionally checkpoint zero blocks. A full
+            # retry must re-enter rephrase/decompose, represented by absence
+            # of confirmed_outline rather than an explicitly confirmed [].
+            config.pop("confirmed_outline", None)
+        else:
+            config["confirmed_outline"] = []
+        config["_persist_user_message"] = False
+        config["_research_retry"] = {
+            "checkpoint": checkpoint,
+            "strategy": strategy,
+            "retry_request_id": retry_request_id,
+            "parameters_hash": parameters_hash,
+        }
+        config["_research_retry_reservation_id"] = reservation["id"]
+        payload: dict[str, Any] = {
+            "session_id": session_id, "capability": "deep_research", "content": str(snapshot.get("content") or ""),
+            "tools": list(snapshot.get("enabledTools") or []), "knowledge_bases": list(snapshot.get("knowledgeBases") or []),
+            "language": str(snapshot.get("language") or "en"), "attachments": list(snapshot.get("attachments") or []),
+            "config": config, "parent_message_id": checkpoint.get("source_user_message_id"),
+        }
+        if selection:
+            payload["llm_selection"] = selection
+        try:
+            return await self.start_turn(payload)
+        except Exception:
+            await self.store.release_research_retry(str(reservation["id"]))
+            raise
 
     async def regenerate_last_turn(
         self,
@@ -1012,7 +1314,10 @@ class TurnRuntimeManager:
             if execution is not None:
                 execution.subscribers.append(subscriber)
                 live_backlog = [
-                    item for item in execution.events if int(item.get("seq") or 0) > last_seq
+                    item
+                    for item in execution.events
+                    if int(item.get("seq") or 0) > last_seq
+                    and int(item.get("seq") or 0) not in execution.unpublished_seqs
                 ]
 
         for item in live_backlog:
@@ -1034,6 +1339,70 @@ class TurnRuntimeManager:
 
         turn = await self.store.get_turn(turn_id)
         if execution is None:
+            lease = (
+                await self.store.get_research_retry_lease(turn_id)
+                if turn is not None and str(turn.get("status") or "") == "running"
+                else None
+            )
+            if self._retry_lease_is_fresh(lease):
+                # Another worker owns this retry winner. Follow only durable
+                # state while that worker keeps its explicit lease alive.
+                while True:
+                    remote_events = await self.store.get_turn_events(
+                        turn_id, after_seq=last_seq
+                    )
+                    for item in remote_events:
+                        seq = int(item.get("seq") or 0)
+                        if seq <= last_seq:
+                            continue
+                        last_seq = seq
+                        yield _track(item)
+
+                    turn = await self.store.get_turn(turn_id)
+                    remote_status = str((turn or {}).get("status") or "").strip()
+                    if turn is None or remote_status in _FINAL_TURN_STATUSES:
+                        # Legacy writers can still commit status just before
+                        # their final event rows. Give them a bounded replay
+                        # window; new writers persist the real DONE first.
+                        for _ in range(self._remote_terminal_grace_polls):
+                            if done_yielded:
+                                break
+                            await self._remote_poll_sleep(self._remote_poll_interval)
+                            final_events = await self.store.get_turn_events(
+                                turn_id, after_seq=last_seq
+                            )
+                            for item in final_events:
+                                seq = int(item.get("seq") or 0)
+                                if seq <= last_seq:
+                                    continue
+                                last_seq = seq
+                                yield _track(item)
+                        turn = await self.store.get_turn(turn_id)
+                        if not done_yielded:
+                            if (
+                                turn is not None
+                                and str(turn.get("status") or "") == "failed"
+                            ):
+                                error_event = self._synthesize_error_event(turn_id, turn)
+                                if error_event is not None:
+                                    yield error_event
+                            yield self._synthesize_done_event(turn_id, turn)
+                        return
+                    lease = await self.store.get_research_retry_lease(turn_id)
+                    if not self._retry_lease_is_fresh(lease):
+                        # The immutable binding still identifies the winner,
+                        # but no live owner remains. The conditional store
+                        # transition makes concurrent followers idempotent and
+                        # cannot overwrite a terminal status.
+                        turn = await self._fail_orphan_running_turn(turn)
+                        if not done_yielded:
+                            error_event = self._synthesize_error_event(turn_id, turn)
+                            if error_event is not None:
+                                yield error_event
+                            yield self._synthesize_done_event(turn_id, turn)
+                        return
+                    await self._remote_poll_sleep(self._remote_poll_interval)
+
             turn = await self._fail_orphan_running_turn(turn)
             if turn is None or turn.get("status") != "running":
                 # Turn already finished and we didn't see a DONE in any of the
@@ -1652,6 +2021,17 @@ class TurnRuntimeManager:
                     # The callable resolves when the frontend POSTs a
                     # reply via the ``submit_user_reply`` WS message.
                     "wait_for_user_reply": _wait_for_user_reply,
+                    "research_retry": (payload.get("config") or {}).get("_research_retry"),
+                    # A retry must replay this durable request view, not
+                    # whatever selections the user has changed since.
+                    "request_snapshot": _request_snapshot_metadata(
+                        payload=payload, content=raw_user_content, capability=capability_name,
+                        config=request_config, attachments=persisted_attachment_records,
+                        notebook_references=notebook_references, history_references=history_references,
+                        question_notebook_references=question_notebook_references,
+                        book_references=book_references, persona=active_persona,
+                        memory_references=memory_references, llm_selection=payload.get("llm_selection"),
+                    )["request_snapshot"],
                 },
             )
 
@@ -1686,6 +2066,25 @@ class TurnRuntimeManager:
             # The persisted answer is the captured content minus any narration
             # rounds (their text stayed in the trace, never the answer).
             assistant_content = _persisted_answer()
+            research_checkpoint = context.metadata.get("_research_attempt_checkpoint")
+            if isinstance(research_checkpoint, dict):
+                # The pipeline cannot know the persisted user-row identity.
+                # Seal it here, immediately before the single durable write.
+                source_id = new_user_message_id if new_user_message_id is not None else branch_parent_id
+                if source_id is not None:
+                    from deeptutor.agents.research.recovery import seal_checkpoint
+
+                    research_checkpoint = seal_checkpoint({
+                        **research_checkpoint,
+                        "source_user_message_id": source_id,
+                        "turn_id": turn_id,
+                    })
+                    context.metadata["_research_attempt_checkpoint"] = research_checkpoint
+            assistant_metadata = (
+                {"research_attempt": research_checkpoint}
+                if isinstance(research_checkpoint, dict)
+                else None
+            )
 
             # Assistant continues the same branch as the user message it
             # answers. If we just persisted a new user row we chain off
@@ -1701,6 +2100,7 @@ class TurnRuntimeManager:
                     events=assistant_events,
                     attachments=generated_attachments or None,
                     parent_message_id=new_user_message_id,
+                    metadata=assistant_metadata,
                 )
             elif branch_parent_explicit:
                 assistant_message_id = await self.store.add_message(
@@ -1711,6 +2111,7 @@ class TurnRuntimeManager:
                     events=assistant_events,
                     attachments=generated_attachments or None,
                     parent_message_id=branch_parent_id,
+                    metadata=assistant_metadata,
                 )
             else:
                 assistant_message_id = await self.store.add_message(
@@ -1720,13 +2121,13 @@ class TurnRuntimeManager:
                     capability=capability_name,
                     events=assistant_events,
                     attachments=generated_attachments or None,
+                    metadata=assistant_metadata,
                 )
-            await self._flush_buffered_events(execution)
+            context.metadata.pop("_research_attempt_checkpoint", None)
             turn_status, turn_error = _resolve_turn_outcome(
                 assistant_events,
                 pending_done_event,
             )
-            await self.store.update_turn_status(turn_id, turn_status, turn_error)
             if pending_done_event is None:
                 pending_done_event = StreamEvent(
                     type=StreamEventType.DONE,
@@ -1751,6 +2152,20 @@ class TurnRuntimeManager:
             }
             if persisted_ids:
                 pending_done_event.metadata = {**pending_done_event.metadata, **persisted_ids}
+            pending_done_payload = await self._buffer_live_event(
+                execution, pending_done_event, hold_for_publish=True
+            )
+            try:
+                await self._finalize_buffered_events(
+                    execution, turn_status, turn_error
+                )
+            except Exception:
+                # This success terminal was never broadcast. Remove it before
+                # the failure handler records its ERROR/DONE replacement.
+                await self._discard_buffered_event(
+                    execution, pending_done_event, pending_done_payload
+                )
+                raise
             await self._publish_live_event(execution, pending_done_event)
             stream_done_sent = True
             if not is_regenerate and turn_status == "completed":
@@ -1824,19 +2239,30 @@ class TurnRuntimeManager:
                 # forever and gets mislabelled as a server-restart orphan.
                 with contextlib.suppress(Exception):
                     await self._flush_buffered_events(execution)
+                public_error = (
+                    "Research could not be completed."
+                    if capability_name == "deep_research"
+                    else str(exc)
+                )
                 with contextlib.suppress(Exception):
-                    await self.store.update_turn_status(turn_id, "failed", str(exc))
+                    await self.store.update_turn_status(turn_id, "failed", public_error)
             else:
                 logger.error("Turn %s failed: %s", turn_id, exc, exc_info=True)
-                await self._publish_live_event(
+                public_error = (
+                    "Research could not be completed."
+                    if capability_name == "deep_research"
+                    else str(exc)
+                )
+                error_event = await self._publish_live_event(
                     execution,
                     StreamEvent(
                         type=StreamEventType.ERROR,
                         source=capability_name,
-                        content=str(exc),
+                        content=public_error,
                         metadata={"turn_terminal": True, "status": "failed"},
                     ),
                 )
+                assistant_events.append(error_event)
                 await self._publish_live_event(
                     execution,
                     StreamEvent(
@@ -1847,10 +2273,11 @@ class TurnRuntimeManager:
                 )
                 with contextlib.suppress(Exception):
                     await self._flush_buffered_events(execution)
-                await self.store.update_turn_status(turn_id, "failed", str(exc))
+                await self.store.update_turn_status(turn_id, "failed", public_error)
         finally:
             if llm_scope_token is not None and reset_active_llm_selection is not None:
                 reset_active_llm_selection(llm_scope_token)
+            await self._stop_retry_heartbeat(execution)
             # Drop the reply queue first — any in-flight ``submit_user_reply``
             # that finds the queue gone will return ``False`` rather than
             # accumulating on a dead turn.
@@ -1874,14 +2301,49 @@ class TurnRuntimeManager:
         execution: _TurnExecution,
         event: StreamEvent,
     ) -> dict[str, Any]:
+        payload = await self._buffer_live_event(execution, event)
+        async with self._lock:
+            current = self._executions.get(execution.turn_id, execution)
+            seq = int(payload.get("seq") or 0)
+            current.unpublished_seqs.discard(seq)
+            execution.unpublished_seqs.discard(seq)
+            subscribers = list(current.subscribers)
+        for subscriber in subscribers:
+            with contextlib.suppress(asyncio.QueueFull):
+                subscriber.queue.put_nowait(payload)
+        return payload
+
+    async def _buffer_live_event(
+        self,
+        execution: _TurnExecution,
+        event: StreamEvent,
+        *,
+        hold_for_publish: bool = False,
+    ) -> dict[str, Any]:
+        """Assign and buffer an event without exposing it to subscribers."""
         if event.type == StreamEventType.DONE and not event.metadata.get("status"):
             event.metadata = {**event.metadata, "status": "completed"}
         event.session_id = execution.session_id
         event.turn_id = execution.turn_id
         payload = event.to_dict()
+        payload["metadata"] = _persistable_event_value(payload.get("metadata") or {})
         async with self._lock:
             current = self._executions.get(execution.turn_id, execution)
             seq = int(payload.get("seq") or 0)
+            if seq > 0:
+                existing = next(
+                    (
+                        item
+                        for item in current.events
+                        if int(item.get("seq") or 0) == seq
+                    ),
+                    None,
+                )
+                if existing is not None:
+                    if hold_for_publish:
+                        current.unpublished_seqs.add(seq)
+                        execution.unpublished_seqs.add(seq)
+                    return existing
             if seq <= 0:
                 seq = current.next_seq
                 current.next_seq += 1
@@ -1891,14 +2353,30 @@ class TurnRuntimeManager:
                 current.next_seq = max(current.next_seq, seq + 1)
                 execution.next_seq = max(execution.next_seq, seq + 1)
             payload["seq"] = seq
+            event.seq = seq
             current.events.append(payload)
             if current is not execution:
                 execution.events.append(payload)
-            subscribers = list(current.subscribers)
-        for subscriber in subscribers:
-            with contextlib.suppress(asyncio.QueueFull):
-                subscriber.queue.put_nowait(payload)
+            if hold_for_publish:
+                current.unpublished_seqs.add(seq)
+                execution.unpublished_seqs.add(seq)
         return payload
+
+    async def _discard_buffered_event(
+        self,
+        execution: _TurnExecution,
+        event: StreamEvent,
+        payload: dict[str, Any],
+    ) -> None:
+        async with self._lock:
+            current = self._executions.get(execution.turn_id, execution)
+            current.events = [item for item in current.events if item is not payload]
+            if current is not execution:
+                execution.events = [item for item in execution.events if item is not payload]
+            seq = int(payload.get("seq") or 0)
+            current.unpublished_seqs.discard(seq)
+            execution.unpublished_seqs.discard(seq)
+            event.seq = 0
 
     async def _maybe_generate_session_title(
         self,
@@ -2016,18 +2494,19 @@ class TurnRuntimeManager:
         )
 
     async def _flush_buffered_events(self, execution: _TurnExecution) -> None:
-        """Persist buffered turn events after the live stream has already drained."""
+        """Durably persist the current event batch exactly once."""
         async with self._lock:
             if execution.events_flushed:
                 return
-            execution.events_flushed = True
             events = list(execution.events)
 
         # Prefer the store's batch append (single transaction) when available:
         # per-event commits fsync once per event, which on slow storage (NAS
         # spinning disks) stretches this flush — and the visible spinner — to
         # minutes for a long turn.
-        append_batch = getattr(self.store, "append_turn_events", None)
+        append_batch = getattr(self.store, "append_turn_events_durable", None)
+        if not callable(append_batch):
+            append_batch = getattr(self.store, "append_turn_events", None)
         if callable(append_batch):
             try:
                 persisted_batch = await append_batch(execution.turn_id, events)
@@ -2041,8 +2520,12 @@ class TurnRuntimeManager:
                     len(events),
                     execution.turn_id,
                 )
+                async with self._lock:
+                    execution.events_flushed = True
                 return
             await self._mirror_events_to_workspace(execution, persisted_batch)
+            async with self._lock:
+                execution.events_flushed = True
             return
 
         persisted_events: list[dict[str, Any]] = []
@@ -2070,6 +2553,38 @@ class TurnRuntimeManager:
             # Mirror whatever actually persisted, even when the loop broke or
             # raised part-way — matches the previous per-event behaviour.
             await self._mirror_events_to_workspace(execution, persisted_events)
+        async with self._lock:
+            execution.events_flushed = True
+
+    async def _finalize_buffered_events(
+        self,
+        execution: _TurnExecution,
+        status: str,
+        error: str,
+    ) -> None:
+        """Persist terminal events and status before exposing the held DONE."""
+        finalize = getattr(self.store, "finalize_turn_with_events", None)
+        if not callable(finalize):
+            await self._flush_buffered_events(execution)
+            if not await self.store.update_turn_status(
+                execution.turn_id, status, error
+            ):
+                raise RuntimeError("turn_terminal_status_persistence_failed")
+            return
+
+        async with self._lock:
+            if execution.events_flushed:
+                return
+            events = list(execution.events)
+        persisted_batch = await finalize(
+            execution.turn_id,
+            events,
+            status,
+            error,
+        )
+        await self._mirror_events_to_workspace(execution, persisted_batch)
+        async with self._lock:
+            execution.events_flushed = True
 
     async def _mirror_events_to_workspace(
         self, execution: _TurnExecution, payloads: list[dict[str, Any]]

@@ -59,6 +59,31 @@ class LLMClientConfig:
     api_version: str | None = None
     extra_headers: dict[str, str] | None = None
     reasoning_effort: str | None = None
+    provider_name: str | None = None
+    provider_mode: str | None = None
+    effective_url: str | None = None
+    api_protocol: str = "auto"
+    resolved_api_protocol: str | None = None
+    strict_protocol: bool = False
+
+    @classmethod
+    def from_llm_config(cls, config: Any) -> "LLMClientConfig":
+        """Lossless boundary conversion for every agentic consumer."""
+        return cls(
+            binding=getattr(config, "binding", None) or "openai",
+            model=getattr(config, "model", None),
+            api_key=getattr(config, "api_key", None),
+            base_url=getattr(config, "base_url", None),
+            api_version=getattr(config, "api_version", None),
+            extra_headers=getattr(config, "extra_headers", None) or None,
+            reasoning_effort=getattr(config, "reasoning_effort", None),
+            provider_name=getattr(config, "provider_name", None),
+            provider_mode=getattr(config, "provider_mode", None),
+            effective_url=getattr(config, "effective_url", None),
+            api_protocol=getattr(config, "api_protocol", "auto") or "auto",
+            resolved_api_protocol=getattr(config, "resolved_api_protocol", None) or None,
+            strict_protocol=bool(getattr(config, "strict_protocol", False)),
+        )
 
 
 def _client_cache_key(
@@ -71,16 +96,48 @@ def _client_cache_key(
     return (
         loop,
         config.binding,
+        config.provider_name or "",
+        config.provider_mode or "",
         config.model or "",
         secret,
-        config.base_url or "",
+        config.effective_url or config.base_url or "",
         config.api_version or "",
         headers,
+        config.api_protocol,
+        config.resolved_api_protocol or "",
+        config.strict_protocol,
         disable_ssl_verify,
     )
 
 
 def _build_openai_client(config: LLMClientConfig, *, disable_ssl_verify: bool) -> Any:
+    # Explicit selections must use the services-layer unified adapter.  It is
+    # the only route that preserves the wire protocol (notably Responses).
+    # ``auto`` retains the legacy client/wire behavior. A resolved protocol is
+    # diagnostic data only unless the user explicitly selected that protocol.
+    protocol = config.api_protocol
+    if protocol in {"openai_responses", "openai_chat_completions", "anthropic_messages"}:
+        from deeptutor.services.llm.config import LLMConfig
+        from deeptutor.services.llm.provider_factory import get_runtime_provider
+
+        provider = get_runtime_provider(
+            LLMConfig(
+                model=config.model or "",
+                api_key=config.api_key or "",
+                base_url=config.base_url,
+                effective_url=config.effective_url or config.base_url,
+                binding=config.binding,
+                provider_name=config.provider_name or config.binding,
+                provider_mode=config.provider_mode or "standard",
+                api_version=config.api_version,
+                extra_headers=config.extra_headers,
+                reasoning_effort=config.reasoning_effort,
+                api_protocol=protocol,
+                resolved_api_protocol=protocol,
+                strict_protocol=config.strict_protocol,
+            )
+        )
+        return _ProviderOpenAIAdapter(provider)
     default_headers = config.extra_headers or None
     spec = find_by_name(config.binding)
     if spec:
@@ -101,7 +158,7 @@ def _build_openai_client(config: LLMClientConfig, *, disable_ssl_verify: bool) -
         )
     return AsyncOpenAI(
         api_key=config.api_key or "sk-no-key-required",
-        base_url=config.base_url or None,
+        base_url=config.effective_url or config.base_url or None,
         http_client=http_client,
         default_headers=default_headers,
     )
@@ -288,6 +345,8 @@ class _ProviderOpenAIAdapter:
                 )
             ],
             usage=response.usage or None,
+            termination=response.termination or {},
+            continuation_items=list(response.continuation_items or []),
         )
 
 
@@ -367,6 +426,8 @@ class _ProviderOpenAIStream:
                 _openai_stream_chunk(
                     finish_reason=response.finish_reason or "stop",
                     usage=response.usage or None,
+                    termination=response.termination,
+                    continuation_items=response.continuation_items,
                 )
             )
         except Exception as exc:
@@ -399,6 +460,8 @@ def _openai_stream_chunk(
     index: int = 0,
     finish_reason: str | None = None,
     usage: dict[str, int] | None = None,
+    termination: dict[str, Any] | None = None,
+    continuation_items: list[dict[str, Any]] | None = None,
 ) -> Any:
     tool_calls = None
     if tool_call is not None:
@@ -411,6 +474,8 @@ def _openai_stream_chunk(
             )
         ],
         usage=usage,
+        termination=termination or {},
+        continuation_items=continuation_items or [],
     )
 
 

@@ -24,11 +24,12 @@ itself stays capability-agnostic.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from deeptutor.core.agentic.labeled_step import LabeledStepResult, run_labeled_step
+from deeptutor.core.agentic.labeled_step import AgenticModelError, LabeledStepResult, run_labeled_step
 from deeptutor.core.agentic.labels import LABEL_UNKNOWN, find_inline_labels
 from deeptutor.core.agentic.messages import assistant_message_with_tool_calls
 from deeptutor.core.agentic.tool_dispatch import DispatchOutcome
@@ -74,6 +75,21 @@ class LoopOutcome:
     sources: list[dict[str, Any]] = field(default_factory=list)
     messages: list[dict[str, Any]] = field(default_factory=list)
     completed: bool = False
+
+
+@dataclass(frozen=True)
+class LoopRetryPolicy:
+    """Immutable per-loop retry policy; no provider/client state is mutated."""
+    delays: tuple[float, ...] = (1.0, 2.0, 4.0)
+    max_output_tokens: int | None = None
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
+
+
+def _is_transient_loop_error(exc: BaseException) -> bool:
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError, ConnectionError)):
+        return True
+    status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
+    return status in {408, 429} or isinstance(status, int) and 500 <= status <= 599
 
 
 class LoopHost(Protocol):
@@ -188,6 +204,7 @@ async def run_agentic_loop(
     stream_body_live: bool = False,
     eager_sub_trace: bool = False,
     implicit_think_label: str | None = None,
+    retry_policy: LoopRetryPolicy | None = None,
 ) -> LoopOutcome:
     """Run a label-driven LLM loop until a terminal label fires or the
     iteration budget is exhausted.
@@ -227,25 +244,60 @@ async def run_agentic_loop(
             )
         iter_meta, final_meta = host.build_iteration_trace_meta(iteration)
 
-        step = await run_labeled_step(
-            client=client,
-            model=model,
-            messages=messages,
-            completion_kwargs=completion_kwargs,
-            tool_schemas=tool_schemas,
-            allowed_labels=protocol.allowed,
-            final_labels=protocol.final,
-            tool_label=protocol.tool_label,
-            stream=stream,
-            source=source,
-            stage=stage,
-            iter_meta=iter_meta,
-            binding=binding,
-            usage=usage,
-            final_meta=final_meta if stream_body_live else None,
-            eager_sub_trace=eager_sub_trace,
-            implicit_think_label=implicit_think_label,
-        )
+        policy = retry_policy or LoopRetryPolicy()
+        call_kwargs = dict(completion_kwargs)
+        retried_length = False
+        transport_retry_index = 0
+        while True:
+            try:
+                step = await run_labeled_step(
+                    client=client, model=model, messages=messages, completion_kwargs=call_kwargs,
+                    tool_schemas=tool_schemas, allowed_labels=protocol.allowed,
+                    final_labels=protocol.final, tool_label=protocol.tool_label,
+                    stream=stream, source=source, stage=stage, iter_meta=iter_meta,
+                    binding=binding, usage=usage, final_meta=final_meta if stream_body_live else None,
+                    eager_sub_trace=eager_sub_trace, implicit_think_label=implicit_think_label,
+                )
+                break
+            except Exception as exc:
+                if isinstance(exc, AgenticModelError) and exc.code == "model_output_incomplete":
+                    reason = str(
+                        ((exc.normalized_result.get("termination") or {}).get("incomplete_details") or {}).get("reason")
+                        or "model_output_incomplete"
+                    )
+                    keys = ("max_output_tokens", "max_completion_tokens", "max_tokens")
+                    key = next((candidate for candidate in keys if candidate in call_kwargs), "max_tokens")
+                    current = int(call_kwargs.get(key) or 0)
+                    ceiling = int(policy.max_output_tokens or 0)
+                    higher = min(current * 2, ceiling) if current > 0 and ceiling > current else None
+                    if retried_length or higher is None or higher <= current:
+                        raise
+                    await _emit_automatic_retry(
+                        stream=stream, source=source, stage=stage,
+                        retry_index=1, reason=reason,
+                        original_budget=current, retry_budget=higher,
+                    )
+                    call_kwargs[key] = higher
+                    retried_length = True
+                    continue
+                transient = (
+                    exc.retryable
+                    if isinstance(exc, AgenticModelError)
+                    else _is_transient_loop_error(exc)
+                )
+                if not transient or transport_retry_index >= len(policy.delays):
+                    raise
+                current_budget = next(
+                    (int(call_kwargs[key]) for key in ("max_output_tokens", "max_completion_tokens", "max_tokens") if call_kwargs.get(key) is not None),
+                    None,
+                )
+                transport_retry_index += 1
+                await _emit_automatic_retry(
+                    stream=stream, source=source, stage=stage,
+                    retry_index=transport_retry_index, reason="transport_transient",
+                    original_budget=current_budget, retry_budget=current_budget,
+                )
+                await policy.sleep(policy.delays[transport_retry_index - 1])
         iterations_run += 1
 
         violation = _protocol_violation(step, protocol)
@@ -295,7 +347,10 @@ async def run_agentic_loop(
             break
 
         if protocol.tool_label is not None and step.label == protocol.tool_label:
-            messages.append(assistant_message_with_tool_calls(step.text, step.tool_calls))
+            messages.append(assistant_message_with_tool_calls(
+                step.text, step.tool_calls,
+                continuation_items=step.continuation_items,
+            ))
             outcome = await host.dispatch_tools(
                 iteration=iteration,
                 tool_calls=step.tool_calls,
@@ -324,7 +379,10 @@ async def run_agentic_loop(
             if step.label in protocol.final and step.text and not stream_body_live:
                 await host.emit_final(step.text, final_meta)
             if step.text:
-                messages.append({"role": "assistant", "content": step.text})
+                assistant = {"role": "assistant", "content": step.text}
+                if step.continuation_items:
+                    assistant["responses_continuation_items"] = list(step.continuation_items)
+                messages.append(assistant)
             # Optional hook for capabilities that attach side-effects to
             # intermediate labels (e.g. research's ``APPEND`` mutates the
             # topic queue). When the hook returns a non-empty string we
@@ -413,6 +471,31 @@ async def _emit_retry_notice(
     )
 
 
+async def _emit_automatic_retry(
+    *,
+    stream: StreamBus,
+    source: str,
+    stage: str,
+    retry_index: int,
+    reason: str,
+    original_budget: int | None,
+    retry_budget: int | None,
+) -> None:
+    """Expose retry control flow without emitting raw provider errors."""
+    await stream.progress(
+        "Retrying model request.",
+        source=source,
+        stage=stage,
+        metadata={
+            "trace_kind": "automatic_retry",
+            "retry_index": retry_index,
+            "reason": reason,
+            "original_budget": original_budget,
+            "retry_budget": retry_budget,
+        },
+    )
+
+
 _REPAIR_PREVIEW_CHARS = 500
 
 
@@ -429,6 +512,8 @@ def _append_repair_messages(
     if clipped:
         if len(clipped) > _REPAIR_PREVIEW_CHARS:
             clipped = clipped[:_REPAIR_PREVIEW_CHARS].rstrip() + "\n...[truncated]"
+        # Repair drafts have no tool result to continue from, so retaining
+        # opaque provider continuation records would be invalid.
         messages.append({"role": "assistant", "content": clipped})
     messages.append({"role": "user", "content": host.protocol_repair_message(violation)})
 

@@ -522,6 +522,16 @@ class CitationManager:
         """Get all citation information"""
         return self._citations.copy()
 
+    def restore_citations(self, citations: dict[str, dict[str, Any]] | list[dict[str, Any]]) -> None:
+        """Restore checkpoint citations without changing their immutable ids."""
+        entries = citations.items() if isinstance(citations, dict) else (
+            (str(item.get("id") or ""), item) for item in citations if isinstance(item, dict)
+        )
+        for citation_id, value in entries:
+            if citation_id and isinstance(value, dict):
+                self._citations.setdefault(citation_id, dict(value))
+        self._restore_counters_from_citations()
+
     def get_citations_file_path(self) -> Path:
         """Get citation JSON file path"""
         return self.citations_file

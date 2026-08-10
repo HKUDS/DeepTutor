@@ -35,6 +35,7 @@ from deeptutor.agents._shared.capability_result import emit_capability_result
 from deeptutor.agents.chat.context_budget import LLMRequestSnapshot
 from deeptutor.agents.chat.dsml_tool_calls import extract_dsml_tool_calls, has_dsml_tool_calls
 from deeptutor.core.agentic.messages import assistant_message_with_tool_calls
+from deeptutor.core.agentic.labeled_step import AgenticModelError
 from deeptutor.core.agentic.tool_dispatch import DispatchOutcome
 from deeptutor.core.agentic.usage import message_content_chars, record_streamed_usage
 from deeptutor.core.context import UnifiedContext
@@ -198,6 +199,8 @@ class LLMCallResult:
     text: str
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     finish_reason: str = ""
+    continuation_items: list[dict[str, Any]] = field(default_factory=list)
+    termination: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -337,8 +340,35 @@ class AgentLoop:
                 )
                 return await self._forced_finish(messages, state, reason="error")
             state.rounds += 1
+            termination = getattr(result, "termination", {}) or {}
+            provider_status = str(termination.get("provider_status") or "").lower()
+            if provider_status in {"failed", "incomplete", "cancelled", "canceled"}:
+                code = "model_output_incomplete" if provider_status == "incomplete" else "model_provider_cancelled" if provider_status in {"cancelled", "canceled"} else "model_provider_failed"
+                raise AgenticModelError(code, "The model response could not be used.", retryable=False,
+                                        normalized_result={"content": result.text, "tool_calls": result.tool_calls, "termination": result.termination, "continuation_items": getattr(result, "continuation_items", [])})
             if not result.tool_calls:
                 final_text = self._clean(result.text)
+                configured_protocol = str(
+                    getattr(self.pipeline._client_config, "resolved_api_protocol", None)
+                    or getattr(self.pipeline._client_config, "api_protocol", "auto")
+                    or "auto"
+                )
+                structured_lifecycle = "provider_status" in termination
+                if not final_text and (
+                    (structured_lifecycle and provider_status == "completed")
+                    or (not structured_lifecycle and configured_protocol != "auto")
+                ):
+                    raise AgenticModelError(
+                        "model_output_empty",
+                        "The model completed without usable output.",
+                        retryable=False,
+                        normalized_result={
+                            "content": result.text,
+                            "tool_calls": result.tool_calls,
+                            "termination": termination,
+                            "continuation_items": getattr(result, "continuation_items", []),
+                        },
+                    )
                 if not final_text and not nudged_empty_finish:
                     # The round produced only internal reasoning (e.g. the
                     # whole reply inside <think>) — the model planned but
@@ -359,7 +389,11 @@ class AgentLoop:
                         metadata={"trace_kind": "warning"},
                     )
                     if result.text:
-                        messages.append({"role": "assistant", "content": result.text})
+                        assistant = {"role": "assistant", "content": result.text}
+                        continuation_items = getattr(result, "continuation_items", None) or []
+                        if continuation_items:
+                            assistant["responses_continuation_items"] = list(continuation_items)
+                        messages.append(assistant)
                     messages.append(
                         {
                             "role": "user",
@@ -379,7 +413,10 @@ class AgentLoop:
                 # Finish: the text streamed live this round IS the answer.
                 return await self._finalize_finish(final_text)
 
-            messages.append(assistant_message_with_tool_calls(result.text, result.tool_calls))
+            messages.append(assistant_message_with_tool_calls(
+                result.text, result.tool_calls,
+                continuation_items=getattr(result, "continuation_items", None) or [],
+            ))
             dispatch = await self.pipeline._dispatch_tool_calls(
                 tool_calls=result.tool_calls,
                 context=self.context,
@@ -567,6 +604,8 @@ class AgentLoop:
         tool_acc: dict[int, dict[str, str]] = {}
         output_chars = 0
         finish_reason = ""
+        termination: dict[str, Any] = {}
+        continuation_items: list[dict[str, Any]] = []
         think_filter = InlineThinkFilter()
         # Once a round's content channel starts carrying DeepSeek DSML tool-call
         # markup (issue #666), divert the rest of it to the thinking channel so
@@ -597,6 +636,10 @@ class AgentLoop:
             response_stream = await self._create_response_stream(kwargs, trace_meta, stage)
             try:
                 async for chunk in response_stream:
+                    chunk_termination = getattr(chunk, "termination", None)
+                    if isinstance(chunk_termination, dict):
+                        termination = dict(chunk_termination)
+                    continuation_items.extend(item for item in (getattr(chunk, "continuation_items", None) or []) if isinstance(item, dict))
                     model_name = getattr(chunk, "model", None)
                     if model_name:
                         reported_model = str(model_name)
@@ -727,7 +770,7 @@ class AgentLoop:
                 },
             ),
         )
-        return LLMCallResult(text=text, tool_calls=tool_calls, finish_reason=finish_reason)
+        return LLMCallResult(text=text, tool_calls=tool_calls, finish_reason=finish_reason, termination=termination, continuation_items=continuation_items)
 
     async def _create_response_stream(
         self,

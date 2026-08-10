@@ -12,6 +12,7 @@ from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.core.stream_bus import StreamBus
 from deeptutor.runtime.orchestrator import ChatOrchestrator
+from deeptutor.agents.research.recovery import ResearchTerminalError
 
 
 @pytest.fixture(autouse=True)
@@ -53,6 +54,41 @@ class _FailingCapability(BaseCapability):
         raise RuntimeError("intentional failure")
 
 
+class _TerminalResearchCapability(BaseCapability):
+    manifest = CapabilityManifest(name="deep_research", description="Terminal research.")
+
+    async def run(self, context: UnifiedContext, stream: StreamBus) -> None:
+        payload = {"response": "", "metadata": {"outcome": "failed", "attempt_id": "attempt_1"}}
+        await stream.result(payload, source=self.name)
+        raise ResearchTerminalError(payload, {"attempt_id": "attempt_1"})
+
+
+class _SecretResearchFailure(BaseCapability):
+    manifest = CapabilityManifest(name="deep_research", description="secret failure")
+
+    async def run(self, context: UnifiedContext, stream: StreamBus) -> None:
+        raise RuntimeError("https://secret.invalid bearer-SECRET")
+
+
+class _PlanningTerminalResearchCapability(BaseCapability):
+    manifest = CapabilityManifest(name="deep_research", description="planning failure")
+
+    def __init__(self, code: str) -> None:
+        self.code = code
+
+    async def run(self, context: UnifiedContext, stream: StreamBus) -> None:
+        failure = {"code": self.code, "stage": "decomposing", "summary": "Safe failure."}
+        payload = {
+            "response": "",
+            "metadata": {
+                "outcome": "failed", "attempt_id": "attempt_planning", "failure": failure,
+            },
+        }
+        checkpoint = {"attempt_id": "attempt_planning", "blocks": [], "failure": failure}
+        await stream.result(payload, source=self.name)
+        raise ResearchTerminalError(payload, checkpoint)
+
+
 def _make_orchestrator(
     capabilities: dict[str, BaseCapability] | None = None,
 ) -> ChatOrchestrator:
@@ -78,6 +114,41 @@ def _make_orchestrator(
 
 
 class TestOrchestratorRouting:
+    @pytest.mark.parametrize(
+        "code", ["model_output_incomplete", "research_planning_failed", "model_output_empty"]
+    )
+    @pytest.mark.asyncio
+    async def test_planning_failure_has_exact_result_error_done_suffix(self, code: str) -> None:
+        orch = _make_orchestrator({"deep_research": _PlanningTerminalResearchCapability(code)})
+        events = [
+            event async for event in orch.handle(
+                UnifiedContext(user_message="x", active_capability="deep_research")
+            )
+        ]
+        terminal = [
+            event for event in events
+            if event.type in {StreamEventType.RESULT, StreamEventType.ERROR, StreamEventType.DONE}
+        ]
+        assert [event.type for event in terminal] == [
+            StreamEventType.RESULT, StreamEventType.ERROR, StreamEventType.DONE,
+        ]
+        assert terminal[0].metadata["metadata"]["failure"]["code"] == code
+        assert terminal[1].metadata["failure_code"] == code
+        assert terminal[1].metadata["attempt_id"] == "attempt_planning"
+        assert terminal[2].metadata["status"] == "failed"
+
+    @pytest.mark.asyncio
+    async def test_terminal_research_result_has_one_strict_terminal_suffix(self) -> None:
+        orch = _make_orchestrator({"deep_research": _TerminalResearchCapability()})
+        events = [event async for event in orch.handle(UnifiedContext(user_message="x", active_capability="deep_research"))]
+        terminal = [event for event in events if event.type in {StreamEventType.RESULT, StreamEventType.ERROR, StreamEventType.DONE}]
+        assert [event.type for event in terminal] == [StreamEventType.RESULT, StreamEventType.ERROR, StreamEventType.DONE]
+        assert terminal[0].metadata["metadata"]["outcome"] == "failed"
+        assert terminal[1].metadata["turn_terminal"] is True
+        assert terminal[1].metadata["status"] == "failed"
+        assert terminal[1].metadata["failure_code"] == "research_failed"
+        assert terminal[1].metadata["attempt_id"] == "attempt_1"
+        assert terminal[2].metadata["status"] == "failed"
     @pytest.mark.asyncio
     async def test_routes_to_active_capability(self) -> None:
         echo = _EchoCapability()
@@ -146,6 +217,16 @@ class TestOrchestratorRouting:
 
 
 class TestOrchestratorErrorHandling:
+    @pytest.mark.asyncio
+    async def test_research_generic_failure_never_exposes_provider_secret(self) -> None:
+        orch = _make_orchestrator({"deep_research": _SecretResearchFailure()})
+        events = [event async for event in orch.handle(UnifiedContext(user_message="x", active_capability="deep_research"))]
+        errors = [event for event in events if event.type == StreamEventType.ERROR]
+        assert len(errors) == 1
+        assert errors[0].content == "Research could not be completed."
+        serialized = repr([(event.content, event.metadata) for event in events])
+        assert "secret.invalid" not in serialized
+        assert "bearer-SECRET" not in serialized
     @pytest.mark.asyncio
     async def test_capability_exception_yields_error_event(self) -> None:
         fail_cap = _FailingCapability()

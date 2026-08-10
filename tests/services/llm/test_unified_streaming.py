@@ -82,6 +82,22 @@ class TestResponsesStream:
         assert unified.finish_status == "tool_calls"
         assert unified.usage.total_tokens == 14
 
+    def test_terminal_output_preserves_ordered_opaque_continuation_items(self) -> None:
+        parser = ResponsesStreamParser()
+        parser.feed({
+            "type": "response.completed",
+            "response": {
+                "id": "resp_1", "status": "completed", "output": [
+                    {"id": "rs_1", "type": "reasoning", "encrypted_content": "opaque"},
+                    {"id": "fc_1", "type": "function_call", "call_id": "call_1", "name": "lookup", "arguments": "{}"},
+                ],
+            },
+        })
+        assert parser.final_response().metadata["continuation_items"] == [
+            {"id": "rs_1", "type": "reasoning", "encrypted_content": "opaque"},
+            {"id": "fc_1", "type": "function_call", "call_id": "call_1", "name": "lookup", "arguments": "{}"},
+        ]
+
     def test_incomplete_tool_call_raises(self) -> None:
         parser = ResponsesStreamParser()
         for event in fx.RESPONSES_STREAM_INCOMPLETE:

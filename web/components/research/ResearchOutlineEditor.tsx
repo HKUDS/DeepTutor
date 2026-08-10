@@ -7,12 +7,12 @@ import {
   Play,
   Trash2,
   Loader2,
-  CheckCircle2,
+  CheckCircle2, AlertTriangle, XCircle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { OutlineItem } from "@/lib/research-types";
 
-type OutlineStatus = "editing" | "researching" | "done";
+type OutlineStatus = "editing" | "researching" | "done" | "partial" | "failed";
 
 interface ResearchOutlineEditorProps {
   outline: OutlineItem[];
@@ -39,7 +39,7 @@ export default function ResearchOutlineEditor({
 
   const locked =
     externalStatus === "researching" ||
-    externalStatus === "done" ||
+    externalStatus === "done" || externalStatus === "partial" || externalStatus === "failed" ||
     localConfirmed;
 
   const displayCollapsed = locked && (userToggled ? collapsed : true);
@@ -81,13 +81,16 @@ export default function ResearchOutlineEditor({
     : items;
 
   const statusLabel = (() => {
-    if (externalStatus === "done") return "Research Complete";
+    if (externalStatus === "done") return t("Research complete");
+    if (externalStatus === "partial") return t("Partially complete");
+    if (externalStatus === "failed") return t("Research failed");
     if (externalStatus === "researching" || localConfirmed)
-      return "Researching…";
+      return t("Researching...");
     return null;
   })();
 
-  const StatusIcon = externalStatus === "done" ? CheckCircle2 : Loader2;
+  const StatusIcon = externalStatus === "done" ? CheckCircle2 : externalStatus === "partial" ? AlertTriangle : externalStatus === "failed" ? XCircle : Loader2;
+  const statusTone = externalStatus === "done" ? "text-emerald-600 dark:text-emerald-400" : externalStatus === "partial" ? "text-amber-700 dark:text-amber-300" : externalStatus === "failed" ? "text-red-700 dark:text-red-300" : "text-[var(--muted-foreground)]/60";
 
   const headerClickable = locked;
 
@@ -123,10 +126,10 @@ export default function ResearchOutlineEditor({
             )}
           </div>
           {statusLabel && (
-            <span className="flex items-center gap-1.5 text-[11px] text-[var(--muted-foreground)]/60">
+            <span className={`flex items-center gap-1.5 text-[11px] ${statusTone}`}>
               <StatusIcon
                 size={12}
-                className={externalStatus === "done" ? "" : "animate-spin"}
+                className={externalStatus === "researching" ? "animate-spin" : ""}
               />
               {statusLabel}
             </span>

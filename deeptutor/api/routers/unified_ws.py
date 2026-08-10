@@ -293,6 +293,25 @@ async def unified_websocket(ws: WebSocket) -> None:
                 await subscribe_turn(turn["id"], after_seq=0)
                 continue
 
+            if msg_type == "retry_research_attempt":
+                session_id = str(msg.get("session_id") or "").strip()
+                attempt_id = str(msg.get("attempt_id") or "").strip()
+                strategy = str(msg.get("strategy") or "").strip()
+                retry_request_id = str(msg.get("retry_request_id") or "").strip()
+                from deeptutor.services.session import get_turn_runtime_manager
+
+                try:
+                    _, turn = await get_turn_runtime_manager().retry_research_attempt(
+                        session_id=session_id, attempt_id=attempt_id, strategy=strategy,
+                        retry_request_id=retry_request_id,
+                        llm_selection=msg.get("llm_selection") if isinstance(msg.get("llm_selection"), dict) else None,
+                    )
+                except RuntimeError as exc:
+                    await safe_send({"type": "error", "content": str(exc), "metadata": {"turn_terminal": True, "status": "rejected"}, "session_id": session_id})
+                    continue
+                await subscribe_turn(turn["id"], after_seq=0)
+                continue
+
             if msg_type == "user_input":
                 turn_id = str(msg.get("turn_id") or "").strip()
                 if not turn_id:

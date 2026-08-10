@@ -114,7 +114,7 @@ async def _run_step(client: _Client, usage: UsageTracker) -> Any:
 
 
 @pytest.mark.asyncio
-async def test_finish_reason_closes_stalled_stream_and_estimates_usage(
+async def test_finish_reason_closes_stalled_stream_and_marks_usage_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(labeled_step_module, "_USAGE_TRAILER_GRACE_TIMEOUT_S", 0.01)
@@ -133,8 +133,10 @@ async def test_finish_reason_closes_stalled_stream_and_estimates_usage(
     assert client.calls[0]["stream_options"] == {"include_usage": True}
     summary = usage.summary()
     assert summary is not None
-    assert summary["total_calls"] == 1
-    assert summary["total_tokens"] > 0
+    assert summary["total_calls"] == 0
+    assert summary["total_tokens"] == 0
+    assert summary["usage_source"] == "unavailable"
+    assert summary["usage_unavailable_calls"] == 1
 
 
 @pytest.mark.asyncio

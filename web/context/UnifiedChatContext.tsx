@@ -820,6 +820,10 @@ interface ChatContextValue {
         },
   ) => void;
   regenerateLastMessage: () => void;
+  retryResearchAttempt: (
+    attemptId: string,
+    strategy: "failed_blocks" | "report_only" | "full_research",
+  ) => void;
   deleteTurn: (messageId: number) => Promise<void>;
   /** Re-send a user message under a new branch (sibling of the original).
    *  Uses the composer's current capability / refs — only the text is
@@ -1678,6 +1682,22 @@ export function UnifiedChatProvider({
     }
   }, []);
 
+  const retryResearchAttempt = useCallback(
+    (attemptId: string, strategy: "failed_blocks" | "report_only" | "full_research") => {
+      const current = stateRef.current;
+      const key = current.selectedKey;
+      const session = key ? current.sessions[key] : null;
+      if (!key || !session?.sessionId || session.isStreaming) return;
+      dispatch({ type: "STREAM_START", key });
+      sendThroughRunner(key, {
+        type: "retry_research_attempt", session_id: session.sessionId,
+        attempt_id: attemptId, strategy,
+        retry_request_id: `${attemptId}:${strategy}:${Date.now()}`,
+      });
+    },
+    [sendThroughRunner],
+  );
+
   const submitUserReply = useCallback(
     (
       reply:
@@ -1964,6 +1984,7 @@ export function UnifiedChatProvider({
       cancelStreamingTurn,
       submitUserReply,
       regenerateLastMessage,
+      retryResearchAttempt,
       deleteTurn,
       editMessage,
       switchBranch,
@@ -1987,6 +2008,7 @@ export function UnifiedChatProvider({
       cancelStreamingTurn,
       submitUserReply,
       regenerateLastMessage,
+      retryResearchAttempt,
       deleteTurn,
       editMessage,
       switchBranch,

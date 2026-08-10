@@ -52,6 +52,9 @@ class LLMResponse:
     usage: dict[str, int] = field(default_factory=dict)
     reasoning_content: str | None = None
     thinking_blocks: list[dict[str, Any]] | None = None
+    # Normalized terminal data is deliberately separate from visible content.
+    termination: dict[str, Any] = field(default_factory=dict)
+    continuation_items: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def has_tool_calls(self) -> bool:

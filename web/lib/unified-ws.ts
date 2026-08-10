@@ -117,6 +117,14 @@ export interface RegenerateMessage {
   session_id: string;
   overrides?: Record<string, unknown>;
 }
+export interface RetryResearchAttemptMessage {
+  type: "retry_research_attempt";
+  session_id: string;
+  attempt_id: string;
+  strategy: "failed_blocks" | "report_only" | "full_research";
+  retry_request_id: string;
+  llm_selection?: LLMSelection | null;
+}
 
 /**
  * Deliver the user's answer for an ``ask_user`` paused turn so the
@@ -143,6 +151,7 @@ export type ChatMessage =
   | UnsubscribeMessage
   | CancelTurnMessage
   | RegenerateMessage
+  | RetryResearchAttemptMessage
   | SubmitUserReplyMessage;
 
 // ---- Connection manager ----

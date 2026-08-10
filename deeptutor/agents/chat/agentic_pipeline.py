@@ -257,15 +257,7 @@ class AgenticChatPipeline:
             prompts=self._prompts,
             language=self.language,
         )
-        self._client_config = LLMClientConfig(
-            binding=self.binding,
-            model=self.model,
-            api_key=self.api_key,
-            base_url=self.base_url,
-            api_version=self.api_version,
-            extra_headers=self.extra_headers or None,
-            reasoning_effort=self.reasoning_effort,
-        )
+        self._client_config = LLMClientConfig.from_llm_config(self.llm_config)
 
     @property
     def usage(self) -> UsageTracker:

@@ -99,6 +99,62 @@ class LabeledStepResult:
     label: str  # one of allowed_labels, or LABEL_UNKNOWN on protocol failure
     text: str  # post-label content with provider <think> tags cleaned
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    termination: dict[str, Any] = field(default_factory=dict)
+    continuation_items: list[dict[str, Any]] = field(default_factory=list)
+
+
+class AgenticModelError(RuntimeError):
+    """Fail-closed provider lifecycle result with safe, inspectable context."""
+
+    def __init__(
+        self,
+        code: str,
+        safe_message: str,
+        *,
+        retryable: bool,
+        normalized_result: dict[str, Any],
+    ) -> None:
+        super().__init__(safe_message)
+        self.code = code
+        self.safe_message = safe_message
+        self.retryable = retryable
+        self.normalized_result = normalized_result
+
+
+def _lifecycle_error(result: LabeledStepResult, usage: Any) -> AgenticModelError | None:
+    termination = result.termination or {}
+    status = str(termination.get("provider_status") or "").lower()
+    normalized = {
+        "content": result.text,
+        "tool_calls": result.tool_calls,
+        "usage": usage or {},
+        "termination": termination,
+        "continuation_items": result.continuation_items,
+    }
+    if status == "incomplete":
+        details = termination.get("incomplete_details") or {}
+        return AgenticModelError(
+            "model_output_incomplete", "The model response was incomplete.",
+            retryable=details.get("reason") == "max_output_tokens", normalized_result=normalized,
+        )
+    if status == "failed":
+        status_code = termination.get("status_code")
+        retryable = status_code in {408, 429} or (
+            isinstance(status_code, int) and 500 <= status_code <= 599
+        )
+        if termination.get("error_code") == "transport_error" and retryable:
+            return AgenticModelError(
+                "model_transport_transient",
+                "The model transport is temporarily unavailable.",
+                retryable=True,
+                normalized_result=normalized,
+            )
+        return AgenticModelError("model_provider_failed", "The model provider failed.", retryable=False, normalized_result=normalized)
+    if status in {"cancelled", "canceled"}:
+        return AgenticModelError("model_provider_cancelled", "The model response was cancelled.", retryable=False, normalized_result=normalized)
+    if status == "completed" and not result.text.strip() and not result.tool_calls:
+        return AgenticModelError("model_output_empty", "The model completed without usable output.", retryable=False, normalized_result=normalized)
+    return None
 
 
 async def run_labeled_step(
@@ -175,6 +231,8 @@ async def run_labeled_step(
     usage_seen: Any = None
     output_chars_seen = 0
     finish_reason_seen: str | None = None
+    termination: dict[str, Any] = {}
+    continuation_items: list[dict[str, Any]] = []
     usage_trailer_waited = False
 
     async def _open_sub_trace() -> None:
@@ -449,6 +507,10 @@ async def run_labeled_step(
                 raise
             if getattr(chunk, "usage", None):
                 usage_seen = chunk.usage
+            if getattr(chunk, "termination", None):
+                termination = dict(chunk.termination)
+            if getattr(chunk, "continuation_items", None):
+                continuation_items = list(chunk.continuation_items)
             choices = getattr(chunk, "choices", None) or []
             if not choices:
                 continue
@@ -563,4 +625,11 @@ async def run_labeled_step(
         text = clean_thinking_tags(text, binding, model)
     ordered_tool_calls = [tc_acc[k] for k in sorted(tc_acc.keys())]
     ordered_tool_calls = [tc for tc in ordered_tool_calls if tc.get("name")]
-    return LabeledStepResult(label=label, text=text, tool_calls=ordered_tool_calls)
+    result = LabeledStepResult(
+        label=label, text=text, tool_calls=ordered_tool_calls,
+        termination=termination, continuation_items=continuation_items,
+    )
+    lifecycle_error = _lifecycle_error(result, usage_seen)
+    if lifecycle_error is not None:
+        raise lifecycle_error
+    return result

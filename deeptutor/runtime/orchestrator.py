@@ -85,10 +85,25 @@ class ChatOrchestrator:
             try:
                 await capability.run(context, bus)
             except Exception as exc:
+                from deeptutor.agents.research.recovery import ResearchTerminalError
+
+                if isinstance(exc, ResearchTerminalError):
+                    status = "failed"
+                    await bus.error(
+                        str(exc), source=cap_name,
+                        metadata={"turn_terminal": True, "status": status,
+                                  "error_type": "ResearchTerminalError",
+                                  "failure_code": exc.failure.get("code", "research_failed"),
+                                  "attempt_id": exc.checkpoint.get("attempt_id", "")},
+                    )
+                    return
                 status = "failed"
                 logger.error("Capability %s failed: %s", cap_name, exc, exc_info=True)
+                public_message = getattr(exc, "public_message", None)
+                if not public_message and cap_name == "deep_research":
+                    public_message = "Research could not be completed."
                 await bus.error(
-                    str(exc),
+                    str(public_message or exc),
                     source=cap_name,
                     metadata={"turn_terminal": True, "status": status},
                 )

@@ -404,15 +404,7 @@ class QuestionPipeline:
         self.binding = getattr(self.llm_config, "binding", None) or "openai"
         self.model = getattr(self.llm_config, "model", None)
         self.reasoning_effort = getattr(self.llm_config, "reasoning_effort", None)
-        self.client_config = LLMClientConfig(
-            binding=self.binding,
-            model=self.model,
-            api_key=getattr(self.llm_config, "api_key", None),
-            base_url=getattr(self.llm_config, "base_url", None),
-            api_version=getattr(self.llm_config, "api_version", None),
-            extra_headers=getattr(self.llm_config, "extra_headers", None) or None,
-            reasoning_effort=self.reasoning_effort,
-        )
+        self.client_config = LLMClientConfig.from_llm_config(self.llm_config)
 
         self.registry = get_tool_registry()
         self.usage = UsageTracker(model=self.model)

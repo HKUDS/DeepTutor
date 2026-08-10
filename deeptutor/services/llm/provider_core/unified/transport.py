@@ -19,6 +19,10 @@ from deeptutor.services.llm.provider_core.openai_responses.parsing import iter_s
 class TransportError(RuntimeError):
     """Raised when a transport request cannot be satisfied (e.g. no fixture)."""
 
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
 
 class LLMTransport(ABC):
     """Minimal HTTP transport interface used by the unified adapters."""
@@ -104,7 +108,8 @@ class HttpTransport(LLMTransport):
         )
         if response.status_code >= 400:
             raise TransportError(
-                f"{method} {path} returned HTTP {response.status_code}: {response.text[:300]}"
+                f"{method} {path} returned HTTP {response.status_code}: {response.text[:300]}",
+                status_code=response.status_code,
             )
         payload = response.json()
         if not isinstance(payload, dict):
@@ -129,7 +134,8 @@ class HttpTransport(LLMTransport):
                 raw = await response.aread()
                 raise TransportError(
                     f"{method} {path} returned HTTP {response.status_code}: "
-                    f"{raw.decode('utf-8', 'ignore')[:300]}"
+                    f"{raw.decode('utf-8', 'ignore')[:300]}",
+                    status_code=response.status_code,
                 )
             async for event in iter_sse(response):
                 yield event

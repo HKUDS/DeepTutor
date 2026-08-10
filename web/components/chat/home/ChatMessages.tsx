@@ -68,6 +68,9 @@ import { AssistantActivity } from "./TracePanels";
 import { agentGlyph } from "@/components/agents/agent-icons";
 import { InlineImageJobs } from "@/components/media/InlineImageJobs";
 import { useConnectedAgentKinds } from "@/hooks/useConnectedAgentKinds";
+import { useUnifiedChat } from "@/context/UnifiedChatContext";
+import { useRouter } from "next/navigation";
+import { extractResearchOutcome, researchOutcomeAction, researchOutcomeSurface, researchOutlineStatus, selectResearchResults, shouldShowResearchBody, suppressTerminalErrorForResearch } from "@/lib/research-outcome";
 
 const MathAnimatorViewer = dynamic(
   () => import("@/components/math-animator/MathAnimatorViewer"),
@@ -84,6 +87,44 @@ const VisualizationViewer = dynamic(
   () => import("@/components/visualize/VisualizationViewer"),
   { ssr: false },
 );
+
+function ResearchOutcomeCard({ metadata }: { metadata: Record<string, unknown> }) {
+  const { t } = useTranslation();
+  const { retryResearchAttempt } = useUnifiedChat();
+  const router = useRouter();
+  const outcome = String(metadata.outcome || "");
+  if (!outcome) return null; // legacy result envelopes remain unchanged
+  const failure = (metadata.failure || {}) as Record<string, unknown>;
+  const partial = outcome === "partial";
+  const complete = outcome === "completed";
+  const tone = complete
+    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200"
+    : partial
+      ? "border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-100"
+      : "border-red-500/40 bg-red-500/10 text-red-900 dark:text-red-100";
+  const title = complete ? t("Research complete") : partial ? t("Partially complete") : t("Research failed");
+  const action = researchOutcomeAction(metadata as import("@/lib/research-outcome").ResearchOutcome);
+  const surface = researchOutcomeSurface(metadata as import("@/lib/research-outcome").ResearchOutcome);
+  const attemptId = String(metadata.attempt_id || "");
+  const handleAction = () => {
+    if (action.kind === "settings") {
+      router.push("/settings/llm");
+    } else if (action.kind === "retry") {
+      retryResearchAttempt(attemptId, action.strategy);
+    }
+  };
+  return <div className={`mb-3 rounded-md border p-3 text-sm ${tone}`}>
+    <div className="font-medium">{title}{partial ? ` · ${String(metadata.failed_block_count || 0)} ${t("failed parts")}` : ""}</div>
+    {surface.showReason ? <p className="mt-2 break-words">{String(failure.summary || t("Research did not produce a usable result."))}</p> : null}
+    {surface.showAction ? <button type="button" onClick={handleAction} className="mt-3 inline-flex min-h-8 max-w-full items-center gap-1 whitespace-normal rounded-md border border-current px-2 py-1 text-left text-xs" title={t(action.label)}><RefreshCcw className="h-3.5 w-3.5 shrink-0" />{t(action.label)}</button> : null}
+    {surface.showDiagnostics ? <details className="mt-3 text-xs opacity-85">
+      <summary className="cursor-pointer">{t("Technical details")}</summary>
+      <div className="mt-2 break-words">
+        {t("Model")}: {String(((metadata.model_snapshot || {}) as Record<string, unknown>).model || "-")} · {t("Protocol")}: {String(((metadata.model_snapshot || {}) as Record<string, unknown>).protocol || "-")} · {t("Failure stage")}: {String(failure.stage || "-")} · {t("Usage")}: {String(((metadata.usage || {}) as Record<string, unknown>).usage_source || "unavailable")}
+      </div>
+    </details> : null}
+  </div>;
+}
 
 interface ChatMessageItem {
   id?: number;
@@ -291,7 +332,7 @@ const AssistantMessage = memo(function AssistantMessage({
 }: {
   msg: { content: string; capability?: string; events?: StreamEvent[] };
   isStreaming?: boolean;
-  outlineStatus?: "editing" | "researching" | "done";
+  outlineStatus?: "editing" | "researching" | "done" | "partial" | "failed";
   sessionId?: string | null;
   language?: string;
   researchRequestSnapshot?: MessageRequestSnapshot | null;
@@ -323,10 +364,15 @@ const AssistantMessage = memo(function AssistantMessage({
     () => msg.events?.find((event) => event.type === "result") ?? null,
     [msg.events],
   );
+  const researchResults = useMemo(
+    () => msg.capability === "deep_research" ? selectResearchResults(msg.events) : null,
+    [msg.capability, msg.events],
+  );
 
   const outlinePreview = useMemo(() => {
-    if (msg.capability !== "deep_research" || !resultEvent) return null;
-    const meta = resultEvent.metadata as Record<string, unknown> | undefined;
+    const outlineResult = researchResults?.outlineResult;
+    if (!outlineResult) return null;
+    const meta = outlineResult.metadata as Record<string, unknown> | undefined;
     if (!meta?.outline_preview) return null;
     return {
       sub_topics: (meta.sub_topics ?? []) as Array<{
@@ -339,7 +385,12 @@ const AssistantMessage = memo(function AssistantMessage({
         unknown
       > | null,
     };
-  }, [msg.capability, resultEvent]);
+  }, [researchResults]);
+  const researchOutcome = useMemo(() => {
+    const terminal = researchResults?.terminalOutcomeResult;
+    return terminal ? extractResearchOutcome(terminal.metadata) : null;
+  }, [researchResults]);
+  const researchSurfaceStatus = researchOutlineStatus(researchOutcome) ?? outlineStatus;
 
   const quizQuestions = useMemo(() => {
     if (msg.capability !== "deep_question") return null;
@@ -399,8 +450,9 @@ const AssistantMessage = memo(function AssistantMessage({
 
   const researchInProgress =
     outlineStatus === "researching" || outlineStatus === "done";
-  const showResearchBody =
-    Boolean(outlinePreview) && researchInProgress && Boolean(msg.content);
+  const showResearchBody = shouldShowResearchBody(
+    Boolean(outlinePreview), outlineStatus, researchOutcome, msg.content,
+  );
 
   return (
     <>
@@ -414,6 +466,7 @@ const AssistantMessage = memo(function AssistantMessage({
         content={msg.content}
         className="mb-3"
       />
+      {researchOutcome ? <ResearchOutcomeCard metadata={researchOutcome} /> : null}
       {outlinePreview && outlinePreview.sub_topics.length > 0 ? (
         <>
           {/* Layout for the merged research bubble:
@@ -446,7 +499,7 @@ const AssistantMessage = memo(function AssistantMessage({
                 researchRequestSnapshot,
               )
             }
-            status={outlineStatus}
+            status={researchSurfaceStatus}
           />
           {showResearchBody ? (
             <AssistantResponse
@@ -1251,24 +1304,21 @@ export const ChatMessageList = memo(function ChatMessageList({
   }, [visibleMessages]);
 
   const outlineStatusByIndex = useMemo(() => {
-    const map = new Map<number, "editing" | "researching" | "done">();
+    const map = new Map<number, "editing" | "researching" | "done" | "partial" | "failed">();
     for (let i = 0; i < visibleMessages.length; i++) {
       const msg = visibleMessages[i];
       if (msg.role !== "assistant" || msg.capability !== "deep_research")
         continue;
-      const resultEv = msg.events?.find((e) => e.type === "result");
-      const meta = resultEv?.metadata as Record<string, unknown> | undefined;
-      if (!meta?.outline_preview) continue;
+      if (!selectResearchResults(msg.events).outlineResult) continue;
       const followup = visibleMessages
         .slice(i + 1)
         .find(
           (m) => m.role === "assistant" && m.capability === "deep_research",
         );
       if (followup) {
-        const followupResult = followup.events?.find(
-          (e) => e.type === "result",
-        );
-        map.set(i, followupResult ? "done" : "researching");
+        const terminal = selectResearchResults(followup.events).terminalOutcomeResult;
+        const outcome = terminal ? extractResearchOutcome(terminal.metadata) : null;
+        map.set(i, researchOutlineStatus(outcome) ?? "researching");
       } else {
         // The first deep_research turn only plans/rephrases/decomposes and
         // returns an outline preview. While that turn is still flushing
@@ -1443,7 +1493,7 @@ export const ChatMessageList = memo(function ChatMessageList({
               // A turn that died (LLM/provider failure, interruption) ends
               // with a turn_terminal error event. Surface it as an error
               // card with an inline retry instead of leaving a bare trace.
-              if (isActiveAssistant) return null;
+              if (isActiveAssistant || suppressTerminalErrorForResearch(msg.events)) return null;
               const terminalError = (msg.events ?? []).find(
                 (e) =>
                   e.type === "error" &&

@@ -50,10 +50,15 @@ class UnifiedProtocolError(LLMError):
         protocol: str | None = None,
         provider: str | None = None,
         details: dict[str, Any] | None = None,
+        status_code: int | None = None,
     ) -> None:
         super().__init__(message, details=details, provider=provider)
         self.code = code
         self.protocol = protocol
+        self.status_code = status_code
+        self.retryable = status_code in {408, 429} or (
+            isinstance(status_code, int) and 500 <= status_code <= 599
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +122,9 @@ class UnifiedMessage(BaseModel):
 
     role: Literal["system", "user", "assistant", "tool"]
     content: list[UnifiedContentBlock] = Field(default_factory=list)
+    # Responses-specific opaque continuation records. These are transient
+    # request material, never persisted conversation metadata.
+    responses_continuation_items: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class UnifiedToolDefinition(BaseModel):
@@ -157,6 +165,7 @@ class UnifiedUsage(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    reasoning_tokens: int = 0
 
 
 UnifiedFinishStatus = Literal[

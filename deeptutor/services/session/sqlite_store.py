@@ -174,6 +174,19 @@ class SQLiteSessionStore:
                 CREATE INDEX IF NOT EXISTS idx_turns_session_status
                     ON turns(session_id, status, updated_at DESC);
 
+                CREATE TABLE IF NOT EXISTS research_retry_reservations (
+                    id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                    parent_attempt_id TEXT NOT NULL,
+                    retry_request_id TEXT NOT NULL,
+                    parameters_hash TEXT NOT NULL,
+                    turn_id TEXT,
+                    owner_id TEXT NOT NULL DEFAULT '',
+                    heartbeat_at REAL NOT NULL DEFAULT 0,
+                    created_at REAL NOT NULL,
+                    UNIQUE(session_id, parent_attempt_id, retry_request_id)
+                );
+
                 CREATE TABLE IF NOT EXISTS turn_events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
@@ -268,6 +281,22 @@ class SQLiteSessionStore:
                                 (prev_id, mrow[0]),
                             )
                         prev_id = mrow[0]
+            retry_columns = {
+                row[1]
+                for row in conn.execute(
+                    "PRAGMA table_info(research_retry_reservations)"
+                ).fetchall()
+            }
+            if "owner_id" not in retry_columns:
+                conn.execute(
+                    "ALTER TABLE research_retry_reservations "
+                    "ADD COLUMN owner_id TEXT NOT NULL DEFAULT ''"
+                )
+            if "heartbeat_at" not in retry_columns:
+                conn.execute(
+                    "ALTER TABLE research_retry_reservations "
+                    "ADD COLUMN heartbeat_at REAL NOT NULL DEFAULT 0"
+                )
             # Always ensure the parent-lookup index exists — covers both
             # the legacy-migration case (just added the column) and the
             # fresh-DB case (created above without the index inline).
@@ -578,6 +607,131 @@ class SQLiteSessionStore:
     async def create_turn(self, session_id: str, capability: str = "") -> dict[str, Any]:
         return await self._run(self._create_turn_sync, session_id, capability)
 
+    def _reserve_research_retry_sync(self, session_id: str, parent_attempt_id: str, retry_request_id: str, parameters_hash: str) -> dict[str, Any]:
+        now = time.time()
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM research_retry_reservations WHERE session_id=? AND parent_attempt_id=? AND retry_request_id=?", (session_id, parent_attempt_id, retry_request_id)).fetchone()
+            if row is not None:
+                if row["parameters_hash"] != parameters_hash:
+                    raise RuntimeError("research_retry_idempotency_conflict")
+                return dict(row)
+            reservation_id = "retry_" + uuid.uuid4().hex
+            conn.execute("INSERT INTO research_retry_reservations (id, session_id, parent_attempt_id, retry_request_id, parameters_hash, turn_id, created_at) VALUES (?, ?, ?, ?, ?, NULL, ?)", (reservation_id, session_id, parent_attempt_id, retry_request_id, parameters_hash, now))
+            conn.commit()
+            return {"id": reservation_id, "session_id": session_id, "parent_attempt_id": parent_attempt_id, "retry_request_id": retry_request_id, "parameters_hash": parameters_hash, "turn_id": None}
+
+    async def reserve_research_retry(self, session_id: str, parent_attempt_id: str, retry_request_id: str, parameters_hash: str) -> dict[str, Any]:
+        return await self._run(self._reserve_research_retry_sync, session_id, parent_attempt_id, retry_request_id, parameters_hash)
+
+    def _bind_research_retry_turn_sync(
+        self,
+        reservation_id: str,
+        turn_id: str,
+        owner_id: str = "",
+        heartbeat_at: float | None = None,
+    ) -> bool:
+        lease_time = float(heartbeat_at if heartbeat_at is not None else 0.0)
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                UPDATE research_retry_reservations
+                SET turn_id=?, owner_id=?, heartbeat_at=?
+                WHERE id=? AND turn_id IS NULL
+                """,
+                (turn_id, owner_id, lease_time, reservation_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
+    async def bind_research_retry_turn(
+        self,
+        reservation_id: str,
+        turn_id: str,
+        owner_id: str = "",
+        heartbeat_at: float | None = None,
+    ) -> bool:
+        return await self._run(
+            self._bind_research_retry_turn_sync,
+            reservation_id,
+            turn_id,
+            owner_id,
+            heartbeat_at,
+        )
+
+    def _get_research_retry_bound_turn_sync(self, reservation_id: str) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT turn_id FROM research_retry_reservations WHERE id=?",
+                (reservation_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return str(row["turn_id"] or "") or None
+
+    async def get_research_retry_bound_turn(self, reservation_id: str) -> str | None:
+        return await self._run(self._get_research_retry_bound_turn_sync, reservation_id)
+
+    def _is_research_retry_bound_turn_sync(self, turn_id: str) -> bool:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM research_retry_reservations WHERE turn_id=? LIMIT 1",
+                (turn_id,),
+            ).fetchone()
+            return row is not None
+
+    async def is_research_retry_bound_turn(self, turn_id: str) -> bool:
+        return await self._run(self._is_research_retry_bound_turn_sync, turn_id)
+
+    def _get_research_retry_lease_sync(self, turn_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT turn_id, owner_id, heartbeat_at
+                FROM research_retry_reservations
+                WHERE turn_id=?
+                LIMIT 1
+                """,
+                (turn_id,),
+            ).fetchone()
+            return dict(row) if row is not None else None
+
+    async def get_research_retry_lease(self, turn_id: str) -> dict[str, Any] | None:
+        return await self._run(self._get_research_retry_lease_sync, turn_id)
+
+    def _heartbeat_research_retry_turn_sync(
+        self, turn_id: str, owner_id: str, heartbeat_at: float
+    ) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                UPDATE research_retry_reservations
+                SET heartbeat_at=?
+                WHERE turn_id=? AND owner_id=?
+                """,
+                (float(heartbeat_at), turn_id, owner_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
+    async def heartbeat_research_retry_turn(
+        self, turn_id: str, owner_id: str, heartbeat_at: float
+    ) -> bool:
+        return await self._run(
+            self._heartbeat_research_retry_turn_sync,
+            turn_id,
+            owner_id,
+            heartbeat_at,
+        )
+
+    def _release_research_retry_sync(self, reservation_id: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute("DELETE FROM research_retry_reservations WHERE id=? AND turn_id IS NULL", (reservation_id,))
+            conn.commit()
+            return cur.rowcount > 0
+
+    async def release_research_retry(self, reservation_id: str) -> bool:
+        return await self._run(self._release_research_retry_sync, reservation_id)
+
     def _get_turn_sync(self, turn_id: str) -> dict[str, Any] | None:
         with self._connect() as conn:
             row = conn.execute(
@@ -654,6 +808,23 @@ class SQLiteSessionStore:
     async def update_turn_status(self, turn_id: str, status: str, error: str = "") -> bool:
         return await self._run(self._update_turn_status_sync, turn_id, status, error)
 
+    def _fail_running_turn_sync(self, turn_id: str, error: str) -> bool:
+        now = time.time()
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                UPDATE turns
+                SET status='failed', error=?, updated_at=?, finished_at=?
+                WHERE id=? AND status='running'
+                """,
+                (error, now, now, turn_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
+    async def fail_running_turn(self, turn_id: str, error: str) -> bool:
+        return await self._run(self._fail_running_turn_sync, turn_id, error)
+
     def _append_turn_event_sync(self, turn_id: str, event: dict[str, Any]) -> dict[str, Any]:
         now = time.time()
         with self._connect() as conn:
@@ -703,60 +874,70 @@ class SQLiteSessionStore:
     async def append_turn_event(self, turn_id: str, event: dict[str, Any]) -> dict[str, Any]:
         return await self._run(self._append_turn_event_sync, turn_id, event)
 
+    def _append_turn_events_in_connection(
+        self,
+        conn: sqlite3.Connection,
+        turn_id: str,
+        events: list[dict[str, Any]],
+        now: float,
+    ) -> list[dict[str, Any]]:
+        turn = conn.execute(
+            "SELECT id, session_id FROM turns WHERE id = ?", (turn_id,)
+        ).fetchone()
+        if turn is None:
+            raise ValueError(f"Turn not found: {turn_id}")
+        row = conn.execute(
+            "SELECT COALESCE(MAX(seq), 0) AS last_seq FROM turn_events WHERE turn_id = ?",
+            (turn_id,),
+        ).fetchone()
+        next_seq = (int(row["last_seq"]) if row else 0) + 1
+        payloads: list[dict[str, Any]] = []
+        rows: list[tuple[Any, ...]] = []
+        for event in events:
+            provided_seq = int(event.get("seq") or 0)
+            if provided_seq > 0:
+                seq = provided_seq
+                next_seq = max(next_seq, provided_seq + 1)
+            else:
+                seq = next_seq
+                next_seq += 1
+            payload = dict(event)
+            payload["seq"] = seq
+            payload["turn_id"] = payload.get("turn_id") or turn_id
+            payload["session_id"] = payload.get("session_id") or turn["session_id"]
+            payloads.append(payload)
+            rows.append(
+                (
+                    turn_id,
+                    seq,
+                    payload.get("type", ""),
+                    payload.get("source", ""),
+                    payload.get("stage", ""),
+                    payload.get("content", "") or "",
+                    _json_dumps(payload.get("metadata", {})),
+                    float(payload.get("timestamp") or now),
+                    now,
+                )
+            )
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO turn_events (
+                turn_id, seq, type, source, stage, content, metadata_json, timestamp, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        return payloads
+
     def _append_turn_events_sync(
         self, turn_id: str, events: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
         # Batch variant of _append_turn_event_sync: one transaction for the whole
-        # post-stream flush instead of one fsync'd commit per event. On slow
-        # storage (e.g. NAS spinning disks) per-event commits stretch a turn's
-        # finalisation to minutes while the client spinner keeps running.
+        # post-stream flush instead of one fsync'd commit per event.
         now = time.time()
         with self._connect() as conn:
-            turn = conn.execute(
-                "SELECT id, session_id FROM turns WHERE id = ?", (turn_id,)
-            ).fetchone()
-            if turn is None:
-                raise ValueError(f"Turn not found: {turn_id}")
-            row = conn.execute(
-                "SELECT COALESCE(MAX(seq), 0) AS last_seq FROM turn_events WHERE turn_id = ?",
-                (turn_id,),
-            ).fetchone()
-            next_seq = (int(row["last_seq"]) if row else 0) + 1
-            payloads: list[dict[str, Any]] = []
-            rows: list[tuple[Any, ...]] = []
-            for event in events:
-                provided_seq = int(event.get("seq") or 0)
-                if provided_seq > 0:
-                    seq = provided_seq
-                    next_seq = max(next_seq, provided_seq + 1)
-                else:
-                    seq = next_seq
-                    next_seq += 1
-                payload = dict(event)
-                payload["seq"] = seq
-                payload["turn_id"] = payload.get("turn_id") or turn_id
-                payload["session_id"] = payload.get("session_id") or turn["session_id"]
-                payloads.append(payload)
-                rows.append(
-                    (
-                        turn_id,
-                        seq,
-                        payload.get("type", ""),
-                        payload.get("source", ""),
-                        payload.get("stage", ""),
-                        payload.get("content", "") or "",
-                        _json_dumps(payload.get("metadata", {})),
-                        float(payload.get("timestamp") or now),
-                        now,
-                    )
-                )
-            conn.executemany(
-                """
-                INSERT OR REPLACE INTO turn_events (
-                    turn_id, seq, type, source, stage, content, metadata_json, timestamp, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                rows,
+            payloads = self._append_turn_events_in_connection(
+                conn, turn_id, events, now
             )
             conn.execute(
                 "UPDATE turns SET updated_at = ? WHERE id = ?",
@@ -769,6 +950,47 @@ class SQLiteSessionStore:
         self, turn_id: str, events: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
         return await self._run(self._append_turn_events_sync, turn_id, events)
+
+    def _finalize_turn_with_events_sync(
+        self,
+        turn_id: str,
+        events: list[dict[str, Any]],
+        status: str,
+        error: str = "",
+    ) -> list[dict[str, Any]]:
+        now = time.time()
+        finished_at = now if status in {"completed", "failed", "cancelled"} else None
+        with self._connect() as conn:
+            payloads = self._append_turn_events_in_connection(
+                conn, turn_id, events, now
+            )
+            cur = conn.execute(
+                """
+                UPDATE turns
+                SET status=?, error=?, updated_at=?, finished_at=?
+                WHERE id=?
+                """,
+                (status, error or "", now, finished_at, turn_id),
+            )
+            if cur.rowcount <= 0:
+                raise ValueError(f"Turn not found: {turn_id}")
+            conn.commit()
+        return payloads
+
+    async def finalize_turn_with_events(
+        self,
+        turn_id: str,
+        events: list[dict[str, Any]],
+        status: str,
+        error: str = "",
+    ) -> list[dict[str, Any]]:
+        return await self._run(
+            self._finalize_turn_with_events_sync,
+            turn_id,
+            events,
+            status,
+            error,
+        )
 
     def _get_turn_events_sync(self, turn_id: str, after_seq: int = 0) -> list[dict[str, Any]]:
         with self._connect() as conn:

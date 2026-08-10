@@ -71,6 +71,18 @@ def _user_content(messages: list[UnifiedMessage]) -> tuple[str, list[dict[str, A
             continue
 
         if msg.role == "assistant":
+            # A Responses continuation must be replayed byte-for-byte and in
+            # output order before the function_call_output that follows this
+            # assistant turn. The carrier is intentionally protocol-local.
+            carried_ids: set[str] = set()
+            for item in msg.responses_continuation_items:
+                if not isinstance(item, dict):
+                    continue
+                input_items.append(dict(item))
+                if item.get("type") == "function_call":
+                    carried_ids.add(_combine_tool_call_id(
+                        str(item.get("call_id") or ""), str(item.get("id") or ""),
+                    ))
             for block in msg.content:
                 if isinstance(block, UnifiedTextBlock) and block.text:
                     input_items.append(
@@ -83,6 +95,8 @@ def _user_content(messages: list[UnifiedMessage]) -> tuple[str, list[dict[str, A
                         }
                     )
                 elif isinstance(block, UnifiedToolCallBlock):
+                    if block.id in carried_ids:
+                        continue
                     call_id, item_id = split_tool_call_id(block.id)
                     input_items.append(
                         {
@@ -239,6 +253,10 @@ def parse_responses_response(raw: dict[str, Any]) -> UnifiedResponse:
         finish_status=finish_status,
         model=raw.get("model"),
         status=status or finish_status,
+        metadata={
+            "incomplete_details": raw.get("incomplete_details"),
+            "continuation_items": [item for item in raw.get("output") or [] if isinstance(item, dict) and item.get("type") in {"reasoning", "function_call"}],
+        },
     )
 
 
@@ -262,6 +280,21 @@ class ResponsesStreamParser:
         self.finish_status: str = "stop"
         self.status: str | None = None
         self.usage: Any = None
+        self.incomplete_details: dict[str, Any] | None = None
+        self._output_items: list[dict[str, Any]] = []
+        self._output_positions: dict[str, int] = {}
+
+    def _record_output_item(self, item: dict[str, Any]) -> None:
+        """Keep the provider output order while allowing terminal updates."""
+        if not isinstance(item, dict):
+            return
+        key = str(item.get("id") or item.get("call_id") or "")
+        if key and key in self._output_positions:
+            self._output_items[self._output_positions[key]] = dict(item)
+        else:
+            if key:
+                self._output_positions[key] = len(self._output_items)
+            self._output_items.append(dict(item))
 
     def feed(self, event: dict[str, Any]) -> list[UnifiedResponseEvent]:
         event_type = event.get("type")
@@ -269,6 +302,7 @@ class ResponsesStreamParser:
 
         if event_type == "response.output_item.added":
             item = event.get("item") or {}
+            self._record_output_item(item)
             if item.get("type") == "function_call":
                 call_id = item.get("call_id")
                 if call_id:
@@ -318,6 +352,7 @@ class ResponsesStreamParser:
                 self.tool_buffers[str(call_id)]["arguments"] = str(event.get("arguments") or "")
         elif event_type == "response.output_item.done":
             item = event.get("item") or {}
+            self._record_output_item(item)
             if item.get("type") == "function_call":
                 call_id = item.get("call_id")
                 if not call_id:
@@ -338,10 +373,20 @@ class ResponsesStreamParser:
                 self.tool_completed.append(tool_call)
                 self.tool_started.pop(str(call_id), None)
                 events.append(UnifiedResponseEvent(type="tool_call_completed", tool_call=tool_call))
-        elif event_type == "response.completed":
+        elif event_type in {"response.completed", "response.incomplete", "response.failed", "response.cancelled"}:
             response = event.get("response") or {}
-            self.status = response.get("status") or self.status
+            fallback = event_type.removeprefix("response.")
+            self.status = response.get("status") or fallback
             self.finish_status = map_finish_status(self.status)
+            self.incomplete_details = response.get("incomplete_details") or event.get("incomplete_details")
+            output = response.get("output")
+            if isinstance(output, list):
+                self._output_items = [dict(item) for item in output if isinstance(item, dict)]
+                self._output_positions = {
+                    str(item.get("id") or item.get("call_id")): index
+                    for index, item in enumerate(self._output_items)
+                    if item.get("id") or item.get("call_id")
+                }
             self.id = self.id or response.get("id")
             self.model = self.model or response.get("model")
             usage = parse_usage(response.get("usage"))
@@ -356,7 +401,7 @@ class ResponsesStreamParser:
                     model=self.model,
                 )
             )
-        elif event_type in {"error", "response.failed"}:
+        elif event_type == "error":
             detail = event.get("error") or event.get("message") or event
             error_text = str(detail)[:500]
             raise UnifiedProtocolError(
@@ -386,6 +431,13 @@ class ResponsesStreamParser:
             finish_status=self.finish_status,
             model=self.model,
             status=self.status or self.finish_status,
+            metadata={
+                "incomplete_details": self.incomplete_details,
+                "continuation_items": [
+                    item for item in self._output_items
+                    if item.get("type") in {"reasoning", "function_call"}
+                ],
+            },
         )
 
 

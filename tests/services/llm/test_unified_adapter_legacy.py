@@ -15,10 +15,13 @@ from deeptutor.services.llm.provider_core.unified import (
     PROTOCOL_CHAT_COMPLETIONS,
     PROTOCOL_RESPONSES,
     FakeTransport,
+    TransportError,
     UnifiedLLMAdapter,
 )
 from deeptutor.services.llm.provider_core.unified.common import to_legacy_llm_response
-from deeptutor.services.llm.provider_core.unified.types import UnifiedResponse
+from deeptutor.services.llm.provider_core.unified.types import UnifiedProtocolError, UnifiedResponse
+from deeptutor.core.agentic.loop import _is_transient_loop_error
+from deeptutor.agents.research.pipeline import _is_transient_model_error
 
 from . import unified_fixtures as fx
 
@@ -37,6 +40,54 @@ def _adapter(protocol: str, transport: FakeTransport) -> UnifiedLLMAdapter:
 
 
 class TestLegacyChat:
+    @pytest.mark.parametrize("status_code,retryable", [(429, True), (500, True), (401, False)])
+    def test_non_strict_responses_transport_error_preserves_lifecycle(
+        self, status_code: int, retryable: bool
+    ) -> None:
+        transport = FakeTransport()
+        transport.add_error(
+            "POST", "/v1/responses", TransportError("private", status_code=status_code)
+        )
+        adapter = UnifiedLLMAdapter(
+            protocol=PROTOCOL_RESPONSES, transport=transport, strict_protocol=False,
+            default_model="gpt-5.6", provider="openai", api_key="test-key",
+        )
+        import asyncio
+
+        response = asyncio.run(adapter.chat(MESSAGES))
+
+        assert response.termination == {
+            "provider_status": "failed", "finish_reason": "error",
+            "error_code": "transport_error", "status_code": status_code,
+            "protocol": "openai_responses", "provider": "openai",
+            "retryable": retryable,
+        }
+
+    @pytest.mark.parametrize(
+        "status_code,expected_retryable",
+        [(408, True), (429, True), (500, True), (503, True), (401, False), (403, False)],
+    )
+    def test_responses_transport_status_survives_adapter_and_retry_classifiers(
+        self, status_code: int, expected_retryable: bool
+    ) -> None:
+        transport = FakeTransport()
+        transport.add_error(
+            "POST", "/v1/responses",
+            TransportError("provider body is private", status_code=status_code),
+        )
+        adapter = _adapter(PROTOCOL_RESPONSES, transport)
+        import asyncio
+
+        with pytest.raises(UnifiedProtocolError) as excinfo:
+            asyncio.run(adapter.chat(MESSAGES))
+
+        error = excinfo.value
+        assert error.code == "transport_error"
+        assert error.status_code == status_code
+        assert error.retryable is expected_retryable
+        assert _is_transient_loop_error(error) is expected_retryable
+        assert _is_transient_model_error(error) is expected_retryable
+
     def test_chat_completions_returns_legacy_llm_response(self) -> None:
         transport = FakeTransport()
         transport.add_response("POST", "/v1/chat/completions", fx.CHAT_COMPLETIONS_TEXT)
@@ -62,6 +113,8 @@ class TestLegacyChat:
         assert all(isinstance(tc, ToolCallRequest) for tc in response.tool_calls)
         assert response.tool_calls[0].id == "call_1|fc_1"
         assert response.tool_calls[0].name == "get_weather"
+        assert response.termination["provider_status"] == "completed"
+        assert response.continuation_items
 
     def test_anthropic_returns_legacy_llm_response(self) -> None:
         transport = FakeTransport()

@@ -162,7 +162,9 @@ class UnifiedLLMAdapter(LLMProvider):
         try:
             raw = await self.transport.request_json("POST", path, body, self._headers())
         except TransportError as exc:
-            raise self._protocol_failure(str(exc), code="transport_error") from exc
+            raise self._protocol_failure(
+                str(exc), code="transport_error", status_code=exc.status_code
+            ) from exc
         return self._with_provider(parse_unified_response(self.protocol, raw))
 
     async def stream_events(
@@ -177,7 +179,9 @@ class UnifiedLLMAdapter(LLMProvider):
                 for event in parser.feed(raw):
                     yield event
         except TransportError as exc:
-            raise self._protocol_failure(str(exc), code="transport_error") from exc
+            raise self._protocol_failure(
+                str(exc), code="transport_error", status_code=exc.status_code
+            ) from exc
         yield _finished_event(parser.final_response())
 
     # ------------------------------------------------------------------
@@ -197,7 +201,9 @@ class UnifiedLLMAdapter(LLMProvider):
         try:
             raw = await self.transport.request_json("POST", RESPONSES_PATH, body, self._headers())
         except TransportError as exc:
-            raise self._protocol_failure(str(exc), code="transport_error") from exc
+            raise self._protocol_failure(
+                str(exc), code="transport_error", status_code=exc.status_code
+            ) from exc
         response = self._with_provider(parse_responses_response(raw))
         if not response.id:
             raise UnifiedProtocolError(
@@ -222,7 +228,9 @@ class UnifiedLLMAdapter(LLMProvider):
                 "GET", responses_retrieve_path(response_id), None, self._headers()
             )
         except TransportError as exc:
-            raise self._protocol_failure(str(exc), code="transport_error") from exc
+            raise self._protocol_failure(
+                str(exc), code="transport_error", status_code=exc.status_code
+            ) from exc
         response = self._with_provider(parse_responses_response(raw))
         response.metadata["response_id"] = response.id or response_id
         return response
@@ -240,7 +248,9 @@ class UnifiedLLMAdapter(LLMProvider):
                 "POST", responses_cancel_path(response_id), {}, self._headers()
             )
         except TransportError as exc:
-            raise self._protocol_failure(str(exc), code="transport_error") from exc
+            raise self._protocol_failure(
+                str(exc), code="transport_error", status_code=exc.status_code
+            ) from exc
         response = self._with_provider(parse_responses_response(raw))
         response.metadata["response_id"] = response.id or response_id
         return response
@@ -272,6 +282,12 @@ class UnifiedLLMAdapter(LLMProvider):
         )
         try:
             unified = await self.complete_unified(request)
+        except TransportError as exc:
+            return self._error_response(
+                self._protocol_failure(
+                    str(exc), code="transport_error", status_code=exc.status_code
+                )
+            )
         except Exception as exc:
             return self._error_response(exc)
         return to_legacy_llm_response(unified)
@@ -317,6 +333,12 @@ class UnifiedLLMAdapter(LLMProvider):
                     ):
                         await on_reasoning_delta(event.delta)
             unified = self._with_provider(parser.final_response())
+        except TransportError as exc:
+            return self._error_response(
+                self._protocol_failure(
+                    str(exc), code="transport_error", status_code=exc.status_code
+                )
+            )
         except Exception as exc:
             return self._error_response(exc)
         return to_legacy_llm_response(unified)
@@ -370,12 +392,15 @@ class UnifiedLLMAdapter(LLMProvider):
             unified.metadata["api_protocol"] = self.protocol
         return unified
 
-    def _protocol_failure(self, message: str, *, code: str) -> UnifiedProtocolError:
+    def _protocol_failure(
+        self, message: str, *, code: str, status_code: int | None = None
+    ) -> UnifiedProtocolError:
         return UnifiedProtocolError(
             message,
             code=code,
             protocol=self.protocol,
             provider=self.provider,
+            status_code=status_code,
         )
 
     def _error_response(self, exc: Exception) -> LLMResponse:
@@ -383,7 +408,27 @@ class UnifiedLLMAdapter(LLMProvider):
             if isinstance(exc, UnifiedProtocolError):
                 raise exc
             raise self._protocol_failure(str(exc), code="protocol_error") from exc
-        return LLMResponse(content=f"Error calling LLM: {exc}", finish_reason="error")
+        status_code = getattr(exc, "status_code", None)
+        error_code = str(getattr(exc, "code", "protocol_error") or "protocol_error")
+        retryable = status_code in {408, 429} or (
+            isinstance(status_code, int) and 500 <= status_code <= 599
+        )
+        return LLMResponse(
+            # Preserve the legacy facade's generic error body; lifecycle-aware
+            # consumers reject it based on ``termination`` before treating it
+            # as model output.
+            content="Error calling LLM.",
+            finish_reason="error",
+            termination={
+                "provider_status": "failed",
+                "finish_reason": "error",
+                "error_code": error_code,
+                "status_code": status_code,
+                "protocol": self.protocol,
+                "provider": self.provider,
+                "retryable": retryable,
+            },
+        )
 
 
 def parse_unified_response(protocol: str, raw: dict[str, Any]) -> UnifiedResponse:

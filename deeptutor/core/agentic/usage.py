@@ -27,26 +27,41 @@ class UsageTracker:
         self.completion_tokens: int = 0
         self.total_tokens: int = 0
         self.calls: int = 0
+        self.estimated_calls: int = 0
+        self.unavailable_calls: int = 0
+        self.estimated_prompt_tokens: int = 0
+        self.estimated_completion_tokens: int = 0
+        self.reasoning_tokens: int = 0
         self.model: str | None = model
 
     def add_from_response(self, response_or_usage: Any) -> None:
         usage = getattr(response_or_usage, "usage", None) or response_or_usage
-        prompt = int(getattr(usage, "prompt_tokens", 0) or 0)
-        completion = int(getattr(usage, "completion_tokens", 0) or 0)
-        total = int(getattr(usage, "total_tokens", prompt + completion) or 0)
+        def value(name: str, default: int = 0) -> int:
+            raw = usage.get(name, default) if isinstance(usage, dict) else getattr(usage, name, default)
+            try:
+                return int(raw or 0)
+            except (TypeError, ValueError):
+                return default
+        prompt = value("prompt_tokens")
+        completion = value("completion_tokens")
+        total = value("total_tokens", prompt + completion) or (prompt + completion)
+        reasoning = value("reasoning_tokens")
         if prompt or completion or total:
             self.prompt_tokens += prompt
             self.completion_tokens += completion
             self.total_tokens += total
             self.calls += 1
+            self.reasoning_tokens += reasoning
 
     def add_estimated(self, *, input_chars: int, output_chars: int) -> None:
         est_input = int(input_chars / 3.5)
         est_output = int(output_chars / 3.5)
-        self.prompt_tokens += est_input
-        self.completion_tokens += est_output
-        self.total_tokens += est_input + est_output
-        self.calls += 1
+        self.estimated_prompt_tokens += est_input
+        self.estimated_completion_tokens += est_output
+        self.estimated_calls += 1
+
+    def mark_usage_unavailable(self) -> None:
+        self.unavailable_calls += 1
 
     def add_usage(
         self,
@@ -78,7 +93,7 @@ class UsageTracker:
             self.add_estimated(input_chars=input_chars, output_chars=output_chars)
 
     def summary(self) -> dict[str, Any] | None:
-        if self.calls == 0:
+        if self.calls == 0 and self.estimated_calls == 0 and self.unavailable_calls == 0:
             return None
         cost_usd = 0.0
         if self.model:
@@ -89,13 +104,24 @@ class UsageTracker:
             cost_usd = (self.prompt_tokens / 1000.0) * pricing.get("input", 0.0) + (
                 self.completion_tokens / 1000.0
             ) * pricing.get("output", 0.0)
-        return {
+        summary = {
             "total_cost_usd": cost_usd,
             "total_tokens": self.total_tokens,
             "total_calls": self.calls,
             "prompt_tokens": self.prompt_tokens,
             "completion_tokens": self.completion_tokens,
+            "reasoning_tokens": self.reasoning_tokens,
         }
+        if self.estimated_calls:
+            summary.update({
+                "estimated_calls": self.estimated_calls,
+                "estimated_prompt_tokens": self.estimated_prompt_tokens,
+                "estimated_completion_tokens": self.estimated_completion_tokens,
+            })
+        if self.unavailable_calls:
+            summary["usage_unavailable_calls"] = self.unavailable_calls
+        summary["usage_source"] = "provider" if self.calls else ("estimated" if self.estimated_calls else "unavailable")
+        return summary
 
 
 def message_content_chars(message: dict[str, Any]) -> int:
@@ -138,7 +164,8 @@ def record_streamed_usage(
     try:
         if usage_frame is not None:
             tracker.add_from_response(usage_frame)
-        elif input_chars or output_chars:
-            tracker.add_estimated(input_chars=input_chars, output_chars=output_chars)
+        else:
+            # Do not turn character counts into public exact token/cost data.
+            tracker.mark_usage_unavailable()
     except Exception:
         logger.debug("stream usage recording failed", exc_info=True)

@@ -9,15 +9,10 @@ storage.  The key performance design:
   ~5–10 ms overhead is acceptable.
 
 - Turn events are the exception: they arrive hundreds at a time when the turn
-  runtime flushes its in-memory buffer after the stream ends.
-  ``append_turn_events`` therefore annotates the payloads and returns
-  immediately, uploading the records to the ``turn_events`` collection in a
-  background task — the turn's DONE event (and the client's spinner) must not
-  wait on one HTTP round-trip per event. Durability is anchored elsewhere: the
-  assistant message row already carries the full event list in
-  ``events_json``, and turn_runtime mirrors the batch to a task-local
-  ``events.jsonl``. The ``turn_events`` collection only serves post-turn trace
-  replay, so eventual consistency is acceptable.
+  runtime flushes its in-memory buffer after the stream ends. Generic callers
+  may use ``append_turn_events`` for a background upload, while the runtime's
+  terminal path selects ``append_turn_events_durable`` and waits for the exact
+  DONE row before publishing completion to subscribers.
 """
 
 from __future__ import annotations
@@ -26,6 +21,7 @@ import asyncio
 import json
 import logging
 import re
+import threading
 import time
 from typing import Any
 import uuid
@@ -33,6 +29,7 @@ import uuid
 logger = logging.getLogger(__name__)
 
 _VALID_ID = re.compile(r"^[a-zA-Z0-9_-]+$")
+_TURN_STATUS_LOCK = threading.Lock()
 
 
 def _validate_id(value: str, name: str = "id") -> str:
@@ -364,7 +361,7 @@ class PocketBaseSessionStore:
             return str(getattr(record, "id", "") or "")
         except Exception as exc:
             logger.warning(f"add_message failed: {exc}")
-            return 0
+            raise RuntimeError("session_message_persistence_failed") from exc
 
     async def delete_message(self, message_id: int | str) -> bool:
         def _delete():
@@ -507,6 +504,231 @@ class PocketBaseSessionStore:
             "last_seq": 0,
         }
 
+    async def reserve_research_retry(self, session_id: str, parent_attempt_id: str, retry_request_id: str, parameters_hash: str) -> dict[str, Any]:
+        """Durable reservation. Missing PocketBase schema fails closed."""
+        sid = _validate_id(session_id, "session_id")
+        now = time.time()
+        def _reserve():
+            collection = _pb().collection("research_retry_reservations")
+            bindings = _pb().collection("research_retry_bindings")
+            rows = collection.get_full_list(query_params={"filter": f'session_id="{sid}" && parent_attempt_id="{parent_attempt_id}" && retry_request_id="{retry_request_id}"'})
+            if rows:
+                row = rows[0]
+                if str(getattr(row, "parameters_hash", "")) != parameters_hash:
+                    raise RuntimeError("research_retry_idempotency_conflict")
+                binding_rows = bindings.get_full_list(
+                    query_params={"filter": f'reservation_id="{row.id}"'}
+                )
+                bound_turn = str(getattr(row, "turn_id", "") or "")
+                if not bound_turn and binding_rows:
+                    bound_turn = str(getattr(binding_rows[0], "turn_id", "") or "")
+                return row, bound_turn
+            try:
+                row = collection.create({"session_id": sid, "parent_attempt_id": parent_attempt_id, "retry_request_id": retry_request_id, "parameters_hash": parameters_hash, "turn_id": "", "created_at": now})
+                return row, ""
+            except Exception:
+                # The compound unique index may have been won by a concurrent
+                # request. Re-read and compare rather than creating a second
+                # logical reservation or silently treating a conflict as one.
+                rows = collection.get_full_list(query_params={"filter": f'session_id="{sid}" && parent_attempt_id="{parent_attempt_id}" && retry_request_id="{retry_request_id}"'})
+                if not rows:
+                    raise
+                row = rows[0]
+                if str(getattr(row, "parameters_hash", "")) != parameters_hash:
+                    raise RuntimeError("research_retry_idempotency_conflict")
+                binding_rows = bindings.get_full_list(
+                    query_params={"filter": f'reservation_id="{row.id}"'}
+                )
+                bound_turn = str(getattr(row, "turn_id", "") or "")
+                if not bound_turn and binding_rows:
+                    bound_turn = str(getattr(binding_rows[0], "turn_id", "") or "")
+                return row, bound_turn
+        try:
+            row, bound_turn = await asyncio.to_thread(_reserve)
+        except RuntimeError as exc:
+            if str(exc) == "research_retry_idempotency_conflict":
+                raise
+            raise RuntimeError("research_retry_reservation_unavailable") from exc
+        except Exception as exc:
+            raise RuntimeError("research_retry_reservation_unavailable") from exc
+        return {"id": str(getattr(row, "id", "")), "session_id": sid, "parent_attempt_id": parent_attempt_id, "retry_request_id": retry_request_id, "parameters_hash": parameters_hash, "turn_id": bound_turn or None}
+
+    async def bind_research_retry_turn(
+        self,
+        reservation_id: str,
+        turn_id: str,
+        owner_id: str = "",
+        heartbeat_at: float | None = None,
+    ) -> bool:
+        lease_time = float(heartbeat_at if heartbeat_at is not None else 0.0)
+
+        def _bind():
+            rows = _pb().collection("research_retry_reservations").get_full_list(query_params={"filter": f'id="{reservation_id}"'})
+            if not rows:
+                return False
+            # Legacy rows may already carry the immutable winner in turn_id.
+            legacy_turn = str(getattr(rows[0], "turn_id", "") or "")
+            if legacy_turn:
+                return legacy_turn == turn_id
+            bindings = _pb().collection("research_retry_bindings")
+            winners = bindings.get_full_list(
+                query_params={"filter": f'reservation_id="{reservation_id}"'}
+            )
+            if winners:
+                return str(getattr(winners[0], "turn_id", "")) == turn_id
+            try:
+                bindings.create({
+                    "reservation_id": reservation_id,
+                    "turn_id": turn_id,
+                    "owner_id": owner_id,
+                    "heartbeat_at": lease_time,
+                    "created_at": time.time(),
+                })
+                return True
+            except Exception:
+                # Unique-index loser replays the server-selected winner.
+                winners = bindings.get_full_list(
+                    query_params={"filter": f'reservation_id="{reservation_id}"'}
+                )
+                if not winners:
+                    raise
+                return str(getattr(winners[0], "turn_id", "")) == turn_id
+        try:
+            return await asyncio.to_thread(_bind)
+        except Exception as exc:
+            raise RuntimeError("research_retry_reservation_unavailable") from exc
+
+    async def get_research_retry_bound_turn(self, reservation_id: str) -> str | None:
+        def _get_bound():
+            rows = _pb().collection("research_retry_reservations").get_full_list(
+                query_params={"filter": f'id="{reservation_id}"'}
+            )
+            if not rows:
+                return None
+            legacy_turn = str(getattr(rows[0], "turn_id", "") or "")
+            if legacy_turn:
+                return legacy_turn
+            winners = _pb().collection("research_retry_bindings").get_full_list(
+                query_params={"filter": f'reservation_id="{reservation_id}"'}
+            )
+            return str(getattr(winners[0], "turn_id", "") or "") if winners else None
+
+        try:
+            return await asyncio.to_thread(_get_bound)
+        except Exception as exc:
+            raise RuntimeError("research_retry_reservation_unavailable") from exc
+
+    async def is_research_retry_bound_turn(self, turn_id: str) -> bool:
+        """Whether *turn_id* is an immutable retry winner.
+
+        Subscription recovery uses this as a safety boundary: unavailable or
+        partially migrated retry schema must never broaden ordinary orphan
+        handling, so lookup failures return ``False``.
+        """
+        tid = _validate_id(turn_id, "turn_id")
+
+        def _is_bound() -> bool:
+            reservations = _pb().collection("research_retry_reservations")
+            legacy = reservations.get_full_list(
+                query_params={"filter": f'turn_id="{tid}"'}
+            )
+            if legacy:
+                return True
+            bindings = _pb().collection("research_retry_bindings").get_full_list(
+                query_params={"filter": f'turn_id="{tid}"'}
+            )
+            return bool(bindings)
+
+        try:
+            return await asyncio.to_thread(_is_bound)
+        except Exception:
+            logger.warning(
+                "Retry-binding lookup unavailable for turn %s; using normal orphan handling",
+                tid,
+            )
+            return False
+
+    async def get_research_retry_lease(self, turn_id: str) -> dict[str, Any] | None:
+        """Return retry ownership, treating pre-lease rows as stale leases."""
+        tid = _validate_id(turn_id, "turn_id")
+
+        def _get_lease() -> dict[str, Any] | None:
+            legacy = _pb().collection("research_retry_reservations").get_full_list(
+                query_params={"filter": f'turn_id="{tid}"'}
+            )
+            if legacy:
+                row = legacy[0]
+                return {
+                    "turn_id": tid,
+                    "owner_id": str(getattr(row, "owner_id", "") or ""),
+                    "heartbeat_at": _to_float(getattr(row, "heartbeat_at", 0)),
+                }
+            rows = _pb().collection("research_retry_bindings").get_full_list(
+                query_params={"filter": f'turn_id="{tid}"'}
+            )
+            if not rows:
+                return None
+            row = rows[0]
+            return {
+                "turn_id": tid,
+                "owner_id": str(getattr(row, "owner_id", "") or ""),
+                "heartbeat_at": _to_float(getattr(row, "heartbeat_at", 0)),
+            }
+
+        try:
+            return await asyncio.to_thread(_get_lease)
+        except Exception:
+            logger.warning(
+                "Retry lease lookup unavailable for turn %s; treating it as stale",
+                tid,
+            )
+            return None
+
+    async def heartbeat_research_retry_turn(
+        self, turn_id: str, owner_id: str, heartbeat_at: float
+    ) -> bool:
+        """Renew only the binding owned by *owner_id*; schema gaps fail closed."""
+        tid = _validate_id(turn_id, "turn_id")
+        if not owner_id:
+            return False
+
+        def _heartbeat() -> bool:
+            rows = _pb().collection("research_retry_bindings").get_full_list(
+                query_params={"filter": f'turn_id="{tid}"'}
+            )
+            if not rows or str(getattr(rows[0], "owner_id", "") or "") != owner_id:
+                return False
+            _pb().collection("research_retry_bindings").update(
+                rows[0].id,
+                {"heartbeat_at": float(heartbeat_at)},
+            )
+            return True
+
+        try:
+            return await asyncio.to_thread(_heartbeat)
+        except Exception:
+            logger.warning(
+                "Retry lease heartbeat unavailable for turn %s; renewal rejected",
+                tid,
+            )
+            return False
+
+    async def release_research_retry(self, reservation_id: str) -> bool:
+        def _release():
+            rows = _pb().collection("research_retry_reservations").get_full_list(query_params={"filter": f'id="{reservation_id}"'})
+            bindings = _pb().collection("research_retry_bindings")
+            winners = bindings.get_full_list(
+                query_params={"filter": f'reservation_id="{reservation_id}"'}
+            )
+            if not rows or getattr(rows[0], "turn_id", "") or winners:
+                return False
+            _pb().collection("research_retry_reservations").delete(rows[0].id)
+            return True
+        try:
+            return await asyncio.to_thread(_release)
+        except Exception as exc:
+            raise RuntimeError("research_retry_reservation_unavailable") from exc
+
     async def get_turn(self, turn_id: str) -> dict[str, Any] | None:
         tid = _validate_id(turn_id, "turn_id")
 
@@ -589,6 +811,38 @@ class PocketBaseSessionStore:
 
         return updated
 
+    async def fail_running_turn(self, turn_id: str, error: str) -> bool:
+        """Fail a restart orphan without overwriting an observed terminal row."""
+        tid = _validate_id(turn_id, "turn_id")
+        now = time.time()
+
+        def _fail() -> bool:
+            # PocketBase has no conditional update primitive. The process-wide
+            # lock makes concurrent local followers one transition; the status
+            # re-read keeps terminal rows immutable on this path.
+            with _TURN_STATUS_LOCK:
+                records = _pb().collection("turns").get_full_list(
+                    query_params={"filter": f'turn_id="{tid}"'}
+                )
+                if not records or str(getattr(records[0], "status", "")) != "running":
+                    return False
+                _pb().collection("turns").update(
+                    records[0].id,
+                    {
+                        "status": "failed",
+                        "error": error,
+                        "turn_updated_at": now,
+                        "finished_at": now,
+                    },
+                )
+                return True
+
+        try:
+            return await asyncio.to_thread(_fail)
+        except Exception as exc:
+            logger.warning("fail_running_turn failed: %s", exc)
+            return False
+
     def _turn_record_to_dict(self, record: Any) -> dict[str, Any]:
         turn_id = getattr(record, "turn_id", getattr(record, "id", ""))
         return {
@@ -605,7 +859,7 @@ class PocketBaseSessionStore:
         }
 
     # ------------------------------------------------------------------
-    # Turn events — annotated synchronously, uploaded in the background
+    # Turn events — background replay writes and durable terminal batches
     # ------------------------------------------------------------------
 
     async def append_turn_event(self, turn_id: str, event: dict[str, Any]) -> dict[str, Any]:
@@ -618,29 +872,132 @@ class PocketBaseSessionStore:
     ) -> list[dict[str, Any]]:
         """Annotate a turn's buffered events and upload them in the background.
 
-        Returns the annotated payloads immediately: the caller (turn runtime)
-        publishes DONE right after this flush, and one HTTP round-trip per
-        event must not sit between the last streamed token and the client's
-        spinner clearing. The upload task keeps running past DONE — see the
-        module docstring for why eventual consistency is fine here.
+        Returns the annotated payloads immediately for non-terminal callers.
+        The turn runtime selects ``append_turn_events_durable`` instead.
         """
         tid = _validate_id(turn_id, "turn_id")
-        base_seq = int(time.time() * 1000) % 1_000_000
-        payloads: list[dict[str, Any]] = []
-        for offset, event in enumerate(events):
-            payload = dict(event)
-            payload.setdefault("turn_id", tid)
-            # The runtime assigns live seqs in _publish_live_event; the
-            # timestamp fallback only covers payloads that never went
-            # through it.
-            if not payload.get("seq"):
-                payload["seq"] = base_seq + offset
-            payloads.append(payload)
+        payloads = self._annotate_turn_events(tid, events)
         if payloads:
             task = asyncio.create_task(self._upload_turn_events(tid, payloads))
             self._event_upload_tasks.add(task)
             task.add_done_callback(self._event_upload_tasks.discard)
         return payloads
+
+    async def append_turn_events_durable(
+        self, turn_id: str, events: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Persist a terminal batch before the runtime publishes its DONE."""
+        tid = _validate_id(turn_id, "turn_id")
+        payloads = self._annotate_turn_events(tid, events)
+
+        def _create_all() -> None:
+            pb = _pb()
+            records = [self._turn_event_record(tid, event) for event in payloads]
+            create_batch = getattr(pb, "create_batch", None)
+            if callable(create_batch) and records:
+                batch = create_batch()
+                for record in records:
+                    batch.collection("turn_events").create(record)
+                results = batch.send()
+                failures = [
+                    result
+                    for result in results
+                    if not 200 <= int(result.get("status_code", 0)) < 300
+                ]
+                if failures or len(results) != len(records):
+                    raise RuntimeError(
+                        f"PocketBase terminal batch failed: {failures or results!r}"
+                    )
+                return
+            for record in records:
+                pb.collection("turn_events").create(record)
+
+        await asyncio.to_thread(_create_all)
+        return payloads
+
+    async def finalize_turn_with_events(
+        self,
+        turn_id: str,
+        events: list[dict[str, Any]],
+        status: str,
+        error: str = "",
+    ) -> list[dict[str, Any]]:
+        """Atomically persist the terminal event batch and turn status."""
+        tid = _validate_id(turn_id, "turn_id")
+        payloads = self._annotate_turn_events(tid, events)
+        now = time.time()
+        status_payload = {
+            "status": status,
+            "error": error or "",
+            "turn_updated_at": now,
+            "finished_at": (
+                now if status in {"completed", "failed", "cancelled"} else None
+            ),
+        }
+
+        def _finalize() -> None:
+            pb = _pb()
+            turns = pb.collection("turns")
+            turn_rows = turns.get_full_list(
+                query_params={"filter": f'turn_id="{tid}"'}
+            )
+            if not turn_rows:
+                raise ValueError(f"Turn not found: {tid}")
+            records = [self._turn_event_record(tid, event) for event in payloads]
+            create_batch = getattr(pb, "create_batch", None)
+            if callable(create_batch):
+                batch = create_batch()
+                for record in records:
+                    batch.collection("turn_events").create(record)
+                batch.collection("turns").update(turn_rows[0].id, status_payload)
+                results = batch.send()
+                failures = [
+                    result
+                    for result in results
+                    if not 200 <= int(result.get("status_code", 0)) < 300
+                ]
+                if failures or len(results) != len(records) + 1:
+                    raise RuntimeError(
+                        f"PocketBase terminal batch failed: {failures or results!r}"
+                    )
+                return
+            # Test/legacy-client fallback. Status remains running until every
+            # event create succeeds, so a partial failure cannot publish a
+            # completed turn through the runtime.
+            for record in records:
+                pb.collection("turn_events").create(record)
+            turns.update(turn_rows[0].id, status_payload)
+
+        await asyncio.to_thread(_finalize)
+        return payloads
+
+    @staticmethod
+    def _annotate_turn_events(
+        turn_id: str, events: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        base_seq = int(time.time() * 1000) % 1_000_000
+        payloads: list[dict[str, Any]] = []
+        for offset, event in enumerate(events):
+            payload = dict(event)
+            payload.setdefault("turn_id", turn_id)
+            if not payload.get("seq"):
+                payload["seq"] = base_seq + offset
+            payloads.append(payload)
+        return payloads
+
+    @staticmethod
+    def _turn_event_record(turn_id: str, event: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "turn_id": turn_id,
+            "session_id": event.get("session_id", ""),
+            "seq": int(event.get("seq", 0)),
+            "type": event.get("type", ""),
+            "source": event.get("source", ""),
+            "stage": event.get("stage", ""),
+            "content": str(event.get("content", ""))[:10000],
+            "metadata_json": event.get("metadata", {}),
+            "event_timestamp": float(event.get("timestamp", 0)),
+        }
 
     async def _upload_turn_events(self, turn_id: str, payloads: list[dict[str, Any]]) -> None:
         def _create_all() -> int:
@@ -649,17 +1006,7 @@ class PocketBaseSessionStore:
             for event in payloads:
                 try:
                     pb.collection("turn_events").create(
-                        {
-                            "turn_id": turn_id,
-                            "session_id": event.get("session_id", ""),
-                            "seq": int(event.get("seq", 0)),
-                            "type": event.get("type", ""),
-                            "source": event.get("source", ""),
-                            "stage": event.get("stage", ""),
-                            "content": str(event.get("content", ""))[:10000],
-                            "metadata_json": event.get("metadata", {}),
-                            "event_timestamp": float(event.get("timestamp", 0)),
-                        }
+                        self._turn_event_record(turn_id, event)
                     )
                     created += 1
                 except Exception as exc:

@@ -9,7 +9,8 @@ Run this once after starting PocketBase for the first time:
 Requires integrations.pocketbase_url, integrations.pocketbase_admin_email, and
 integrations.pocketbase_admin_password in data/user/settings/integrations.json.
 
-Safe to re-run — existing collections are left untouched.
+Safe to re-run. Existing collections are left untouched except for additive,
+backward-compatible fields required by durable retry leases.
 """
 
 from __future__ import annotations
@@ -72,6 +73,45 @@ def _create_if_missing(pb, name: str, schema: dict, existing: set[str]):
         print(f"  create {name}")
     except Exception as exc:
         print(f"  ERROR creating {name}: {exc}")
+
+
+def _ensure_fields(pb, name: str, required_fields: list[dict], existing: set[str]):
+    if name not in existing:
+        return
+    try:
+        collection = pb.collections.get_one(name)
+        current_fields = list(
+            getattr(collection, "fields", None)
+            or getattr(collection, "schema", None)
+            or []
+        )
+        present = {
+            str(
+                field.get("name")
+                if isinstance(field, dict)
+                else getattr(field, "name", "")
+            )
+            for field in current_fields
+        }
+        missing = [field for field in required_fields if field["name"] not in present]
+        if not missing:
+            return
+        serialized_fields: list[dict] = []
+        for field in current_fields:
+            payload = dict(field) if isinstance(field, dict) else dict(vars(field))
+            if "auto_generate_pattern" in payload:
+                payload["autogeneratePattern"] = payload.pop("auto_generate_pattern")
+            if "primary_key" in payload:
+                payload["primaryKey"] = payload.pop("primary_key")
+            serialized_fields.append(payload)
+        field_key = "fields" if hasattr(collection, "fields") else "schema"
+        pb.collections.update(
+            collection.id,
+            {field_key: [*serialized_fields, *missing]},
+        )
+        print(f"  update {name} (add: {', '.join(field['name'] for field in missing)})")
+    except Exception as exc:
+        print(f"  ERROR updating {name}: {exc}")
 
 
 def main():
@@ -173,11 +213,49 @@ def main():
                 {"name": "metadata_json", "type": "json", "required": False},
                 {"name": "event_timestamp", "type": "number", "required": False},
             ],
+            "indexes": [
+                "CREATE UNIQUE INDEX idx_turn_events_turn_seq ON turn_events (turn_id, seq)",
+            ],
             "listRule": "",
             "viewRule": "",
             "createRule": "",
             "updateRule": "",
             "deleteRule": "",
+        },
+        # Durable, non-user-visible retry idempotency records. The compound
+        # index makes concurrent reserve-or-get creation deterministic.
+        {
+            "name": "research_retry_reservations",
+            "type": "base",
+            "schema": [
+                {"name": "session_id", "type": "text", "required": True},
+                {"name": "parent_attempt_id", "type": "text", "required": True},
+                {"name": "retry_request_id", "type": "text", "required": True},
+                {"name": "parameters_hash", "type": "text", "required": True},
+                {"name": "turn_id", "type": "text", "required": False},
+                {"name": "created_at", "type": "number", "required": False},
+            ],
+            "indexes": [
+                "CREATE UNIQUE INDEX idx_research_retry_identity ON research_retry_reservations (session_id, parent_attempt_id, retry_request_id)",
+            ],
+            "listRule": "", "viewRule": "", "createRule": "", "updateRule": "", "deleteRule": "",
+        },
+        # Atomic child-turn ownership. Binding is create-only and the unique
+        # reservation_id index selects exactly one winner under concurrency.
+        {
+            "name": "research_retry_bindings",
+            "type": "base",
+            "schema": [
+                {"name": "reservation_id", "type": "text", "required": True},
+                {"name": "turn_id", "type": "text", "required": True},
+                {"name": "owner_id", "type": "text", "required": False},
+                {"name": "heartbeat_at", "type": "number", "required": False},
+                {"name": "created_at", "type": "number", "required": False},
+            ],
+            "indexes": [
+                "CREATE UNIQUE INDEX idx_research_retry_binding_reservation ON research_retry_bindings (reservation_id)",
+            ],
+            "listRule": "", "viewRule": "", "createRule": "", "updateRule": "", "deleteRule": "",
         },
         # ----------------------------------------------------------------
         # knowledge_bases
@@ -211,6 +289,15 @@ def main():
     print("Creating collections:")
     for col in collections:
         _create_if_missing(pb, col["name"], col, existing)
+    _ensure_fields(
+        pb,
+        "research_retry_bindings",
+        [
+            {"name": "owner_id", "type": "text", "required": False},
+            {"name": "heartbeat_at", "type": "number", "required": False},
+        ],
+        existing,
+    )
 
     print("\nDone. PocketBase collections are ready.")
     print(f"Open the admin panel at {POCKETBASE_BASE_URL}/_/ to view and configure collections.")

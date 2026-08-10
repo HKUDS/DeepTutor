@@ -167,7 +167,14 @@ def normalize_messages(messages: list[dict[str, Any]]) -> list[UnifiedMessage]:
             )
             continue
 
-        normalized.append(UnifiedMessage(role=role, content=blocks))
+        normalized.append(UnifiedMessage(
+            role=role,
+            content=blocks,
+            responses_continuation_items=(
+                list(msg.get("responses_continuation_items") or [])
+                if role == "assistant" else []
+            ),
+        ))
 
     return normalized
 
@@ -259,6 +266,11 @@ def parse_usage(usage: Any) -> UnifiedUsage | None:
 
     prompt = _as_int(usage.get("prompt_tokens") or usage.get("input_tokens"))
     completion = _as_int(usage.get("completion_tokens") or usage.get("output_tokens"))
+    details = usage.get("completion_tokens_details") or usage.get("output_tokens_details") or {}
+    reasoning = _as_int(
+        usage.get("reasoning_tokens")
+        or (details.get("reasoning_tokens") if isinstance(details, dict) else 0)
+    )
     total = usage.get("total_tokens")
     if total is None:
         total = prompt + completion
@@ -266,6 +278,7 @@ def parse_usage(usage: Any) -> UnifiedUsage | None:
         prompt_tokens=prompt,
         completion_tokens=completion,
         total_tokens=_as_int(total),
+        reasoning_tokens=reasoning,
     )
 
 
@@ -321,6 +334,8 @@ def to_legacy_llm_response(unified: UnifiedResponse) -> LLMResponse:
             "completion_tokens": unified.usage.completion_tokens,
             "total_tokens": unified.usage.total_tokens,
         }
+        if unified.usage.reasoning_tokens:
+            usage["reasoning_tokens"] = unified.usage.reasoning_tokens
 
     return LLMResponse(
         content=unified.content,
@@ -329,6 +344,14 @@ def to_legacy_llm_response(unified: UnifiedResponse) -> LLMResponse:
         usage=usage,
         reasoning_content=reasoning_content,
         thinking_blocks=thinking_blocks,
+        termination={
+            "protocol": unified.metadata.get("api_protocol", ""),
+            "provider_status": unified.status,
+            "finish_reason": unified.finish_status,
+            "response_id": unified.id,
+            "incomplete_details": unified.metadata.get("incomplete_details"),
+        },
+        continuation_items=list(unified.metadata.get("continuation_items") or []),
     )
 
 

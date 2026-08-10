@@ -53,10 +53,23 @@ from deeptutor.agents.research.data_structures import (
     TopicBlock,
     TopicStatus,
 )
+from deeptutor.agents.research.recovery import (
+    block_is_substantive,
+    new_attempt_id,
+    report_is_substantive,
+    ResearchTerminalError,
+    backoff_delays,
+    retry_budget,
+    safe_research_config,
+    seal_checkpoint,
+)
+from deeptutor.services.llm.exceptions import LLMAPIError, LLMRateLimitError, LLMTimeoutError
 from deeptutor.agents.research.utils.citation_manager import CitationManager
 from deeptutor.core.agentic import (
     DispatchOutcome,
     LabeledStepResult,
+    LoopRetryPolicy,
+    AgenticModelError,
     LabelProtocol,
     LLMClientConfig,
     UsageTracker,
@@ -87,6 +100,19 @@ from deeptutor.services.prompt import get_prompt_manager
 from deeptutor.services.prompt.language import append_language_directive
 from deeptutor.services.sandbox import exec_capability_available
 from deeptutor.utils.json_parser import parse_json_response
+
+
+def _is_transient_model_error(exc: BaseException) -> bool:
+    """Retry only explicitly transient transport/provider failures."""
+    if isinstance(exc, AgenticModelError):
+        return exc.retryable
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError, ConnectionError, LLMTimeoutError, LLMRateLimitError)):
+        return True
+    if isinstance(exc, LLMAPIError):
+        status = getattr(exc, "status_code", None)
+        return status == 408 or status == 429 or isinstance(status, int) and 500 <= status <= 599
+    status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
+    return status == 408 or status == 429 or isinstance(status, int) and 500 <= status <= 599
 
 logger = logging.getLogger(__name__)
 
@@ -366,15 +392,7 @@ class ResearchPipeline:
         self.api_version = getattr(self.llm_config, "api_version", None)
         self.extra_headers = getattr(self.llm_config, "extra_headers", None) or {}
         self.reasoning_effort = getattr(self.llm_config, "reasoning_effort", None)
-        self.client_config = LLMClientConfig(
-            binding=self.binding,
-            model=self.model,
-            api_key=self.api_key,
-            base_url=self.base_url,
-            api_version=self.api_version,
-            extra_headers=self.extra_headers or None,
-            reasoning_effort=self.reasoning_effort,
-        )
+        self.client_config = LLMClientConfig.from_llm_config(self.llm_config)
 
         self.registry = get_tool_registry()
         self.usage = UsageTracker(model=self.model)
@@ -430,6 +448,11 @@ class ResearchPipeline:
                 stream=stream,
                 client=client,
             )
+        except ResearchTerminalError:
+            # The result was emitted deliberately. The orchestrator owns the
+            # one terminal ERROR followed by DONE; adding a visible failure
+            # here would corrupt that suffix.
+            raise
         except Exception as exc:
             logger.exception("ResearchPipeline.run failed: %s", exc)
             await self._emit_visible_failure(stream, exc)
@@ -459,30 +482,41 @@ class ResearchPipeline:
         # already confirmed so the user isn't asked clarifying questions a
         # second time on the same logical research task.
         if confirmed_outline is None:
-            async with stream.stage("rephrasing", source=SOURCE):
-                refined_topic = (
-                    await self._rephrase(
-                        topic=topic,
+            try:
+                async with stream.stage("rephrasing", source=SOURCE):
+                    refined_topic = (
+                        await self._rephrase(
+                            topic=topic,
+                            context=context,
+                            image_attachments=image_attachments,
+                            stream=stream,
+                            client=client,
+                        )
+                        if self.rephrase_enabled
+                        else topic.strip()
+                    )
+            except AgenticModelError as exc:
+                await self._raise_planning_failure(
+                    context=context, topic=topic, stage="rephrasing", exc=exc, stream=stream
+                )
+
+            try:
+                async with stream.stage(
+                    "decomposing",
+                    source=SOURCE,
+                    metadata={"research_status_key": "decompose_target"},
+                ):
+                    outline = await self._decompose(
+                        topic=refined_topic,
                         context=context,
                         image_attachments=image_attachments,
                         stream=stream,
                         client=client,
                     )
-                    if self.rephrase_enabled
-                    else topic.strip()
-                )
-
-            async with stream.stage(
-                "decomposing",
-                source=SOURCE,
-                metadata={"research_status_key": "decompose_target"},
-            ):
-                outline = await self._decompose(
-                    topic=refined_topic,
-                    context=context,
-                    image_attachments=image_attachments,
+            except AgenticModelError as exc:
+                await self._raise_planning_failure(
+                    context=context, topic=refined_topic, stage="decomposing", exc=exc,
                     stream=stream,
-                    client=client,
                 )
 
             # Flat top-level keys: ``stream.result(data)`` merges ``data``
@@ -513,17 +547,30 @@ class ResearchPipeline:
         citations = CitationManager(queue.research_id, cache_dir=None)
         for sub in confirmed_outline:
             queue.add_block(sub.title, sub.overview)
+        retry = context.metadata.get("research_retry") or {}
+        if retry.get("checkpoint"):
+            citations.restore_citations((retry.get("checkpoint") or {}).get("citations") or [])
+        parent_blocks = (retry.get("checkpoint") or {}).get("blocks") or []
+        restored = {str(item.get("title") or ""): item for item in parent_blocks if isinstance(item, dict)}
+        restored_results: dict[str, ResearchedBlock] = {}
+        # Retry attempts keep successful evidence immutable and out of the
+        # scheduler. Only failed blocks are eligible for another model call.
+        if retry.get("strategy") in {"failed_blocks", "report_only"}:
+            for block in queue.blocks:
+                prior = restored.get(block.sub_topic) or {}
+                if prior.get("status") == "completed" and block_is_substantive(str(prior.get("knowledge") or "")):
+                    queue.mark_completed(block.block_id)
+                    restored_results[block.block_id] = ResearchedBlock(block=block, knowledge=str(prior.get("knowledge") or ""))
 
-        async with stream.stage("researching", source=SOURCE):
-            researched = await self._drive_queue(
-                queue=queue,
-                citations=citations,
-                topic=refined_topic,
-                context=context,
-                image_attachments=image_attachments,
-                stream=stream,
-                client=client,
-            )
+        if retry.get("strategy") == "report_only":
+            researched = [restored_results.get(block.block_id, ResearchedBlock(block=block, knowledge="")) for block in queue.blocks]
+        else:
+            async with stream.stage("researching", source=SOURCE):
+                fresh = await self._drive_queue(
+                    queue=queue, citations=citations, topic=refined_topic, context=context,
+                    image_attachments=image_attachments, stream=stream, client=client,
+                )
+            researched = [restored_results.get(item.block.block_id, item) for item in fresh]
 
         # A planned block that didn't reach COMPLETED (raised, or exhausted its
         # iteration budget without a FINISH) is backfilled with empty knowledge
@@ -531,7 +578,11 @@ class ResearchPipeline:
         # must not then look like a clean success — surface the shortfall both
         # visibly (a warning notice) and in the result envelope so callers can
         # tell the report is partial (issue #595).
-        incomplete = [rb for rb in researched if rb.block.status != TopicStatus.COMPLETED]
+        incomplete = [
+            rb
+            for rb in researched
+            if rb.block.status != TopicStatus.COMPLETED or not block_is_substantive(rb.knowledge)
+        ]
         failed_block_titles = [rb.block.sub_topic for rb in incomplete]
         if incomplete:
             logger.warning(
@@ -555,22 +606,59 @@ class ResearchPipeline:
                 metadata={"trace_kind": "warning"},
             )
 
-        # ----- Phase 4 (iterative reporting) -----
-        async with stream.stage(
-            "reporting",
-            source=SOURCE,
-            metadata={
-                "research_status_key": "report_outline",
-                "report_part": "outline",
-            },
-        ):
-            report_text = await self._write_report(
-                topic=refined_topic,
-                blocks=researched,
-                citations=citations,
-                stream=stream,
-                client=client,
-            )
+        successful = [rb for rb in researched if rb not in incomplete]
+        report_text = ""
+        failure: dict[str, Any] | None = None
+        if not successful:
+            failure = {"code": "research_all_blocks_failed", "stage": "researching", "summary": "No research block produced usable evidence.", "retry_strategy": "failed_blocks"}
+        else:
+            async with stream.stage(
+                "reporting", source=SOURCE,
+                metadata={"research_status_key": "report_outline", "report_part": "outline"},
+            ):
+                try:
+                    report_text = await self._write_report(
+                        topic=refined_topic, blocks=successful, citations=citations, stream=stream, client=client,
+                    )
+                except Exception as exc:
+                    # Evidence is still retryable through report_only. Do not
+                    # let a provider/protocol failure escape before the
+                    # checkpoint + public result have been made durable.
+                    logger.exception("Research report generation failed")
+                    failure = {
+                        "code": "report_generation_failed", "stage": "reporting",
+                        "summary": "The report could not be generated from the collected evidence.",
+                        "retry_strategy": "report_only",
+                        "retryable": bool(getattr(exc, "retryable", False)),
+                        "termination": getattr(exc, "normalized_result", {}).get("termination", {}) if isinstance(getattr(exc, "normalized_result", None), dict) else {},
+                    }
+                    report_text = ""
+            if failure is None and not report_is_substantive(report_text):
+                failure = {"code": "report_generation_failed", "stage": "reporting", "summary": "The report did not contain substantive body content.", "retry_strategy": "report_only"}
+
+        # A non-substantive report is a terminal domain failure even when the
+        # evidence survives for a report-only retry. Partial means some blocks
+        # fell short but the rendered report itself is substantive.
+        outcome = "failed" if failure else ("partial" if incomplete else "completed")
+        attempt_id = new_attempt_id()
+        model_snapshot = {
+            "profile_id": str(context.metadata.get("llm_selection", {}).get("profile_id", "")),
+            "model_id": str(context.metadata.get("llm_selection", {}).get("model_id", "")),
+            "model": self.model or "", "protocol": self.client_config.resolved_api_protocol or self.client_config.api_protocol,
+            "reasoning_effort": self.reasoning_effort or "",
+        }
+        retry = context.metadata.get("research_retry") or {}
+        checkpoint = seal_checkpoint({
+            "schema_version": 1, "attempt_id": attempt_id,
+            "retry_of_attempt_id": retry.get("checkpoint", {}).get("attempt_id"),
+            "retry_request_id": retry.get("retry_request_id"), "retry_parameters_hash": retry.get("parameters_hash"),
+            "strategy": retry.get("strategy", "full_research"),
+            "input": {"topic": refined_topic, "confirmed_outline": [{"title": item.title, "overview": item.overview} for item in confirmed_outline], "research_config": safe_research_config(context.config_overrides), "request_snapshot": dict(context.metadata.get("request_snapshot") or {})},
+            "model_snapshot": model_snapshot,
+            "blocks": [{"id": rb.block.block_id, "title": rb.block.sub_topic, "overview": rb.block.overview, "status": rb.block.status.value, "knowledge": rb.knowledge, "citation_ids": [trace.citation_id for trace in rb.block.tool_traces if trace.citation_id] or list((restored.get(rb.block.sub_topic) or {}).get("citation_ids") or []), "failure": None if rb not in incomplete else {"code": "tool_stage_failed"}} for rb in researched],
+            "citations": [{"id": key, **value} for key, value in citations.get_all_citations().items()], "report": {"outcome": outcome, "content": report_text}, "failure": failure,
+        })
+        context.metadata["_research_attempt_checkpoint"] = checkpoint
 
         result_payload: dict[str, Any] = {
             "response": report_text,
@@ -580,13 +668,93 @@ class ResearchPipeline:
                 "topic": refined_topic,
                 "block_count": len(researched),
                 "citation_count": len(citations.get_all_citations()),
-                "partial": bool(incomplete),
+                "partial": outcome == "partial",
                 "failed_block_count": len(incomplete),
                 "failed_block_titles": failed_block_titles,
+                "outcome": outcome,
+                "attempt_id": attempt_id,
+                "successful_block_count": len(successful),
+                "failure": failure,
+                "model_snapshot": model_snapshot,
+                "usage": self.usage.summary() if self.usage else {"usage_source": "unavailable", "usage_unavailable_calls": 0},
             },
         }
         await emit_capability_result(stream, result_payload, source=SOURCE, usage=self.usage)
+        if failure:
+            raise ResearchTerminalError(result_payload, checkpoint)
         return result_payload
+
+    async def _raise_planning_failure(
+        self,
+        *,
+        context: UnifiedContext,
+        topic: str,
+        stage: str,
+        exc: AgenticModelError,
+        stream: StreamBus,
+    ) -> None:
+        """Make typed planning lifecycle failures durable and retryable."""
+        attempt_id = new_attempt_id()
+        termination = exc.normalized_result.get("termination") or {}
+        failure = {
+            "code": exc.code,
+            "stage": stage,
+            "summary": exc.safe_message,
+            "retryable": exc.retryable,
+            "termination": termination,
+            "retry_strategy": "full_research",
+        }
+        model_snapshot = {
+            "profile_id": str(context.metadata.get("llm_selection", {}).get("profile_id", "")),
+            "model_id": str(context.metadata.get("llm_selection", {}).get("model_id", "")),
+            "model": self.model or "",
+            "protocol": self.client_config.resolved_api_protocol
+            or self.client_config.api_protocol,
+            "reasoning_effort": self.reasoning_effort or "",
+        }
+        checkpoint = seal_checkpoint({
+            "schema_version": 1,
+            "attempt_id": attempt_id,
+            "retry_of_attempt_id": None,
+            "retry_request_id": None,
+            "retry_parameters_hash": None,
+            "strategy": "full_research",
+            "input": {
+                "topic": topic.strip(),
+                "confirmed_outline": [],
+                "research_config": safe_research_config(context.config_overrides),
+                "request_snapshot": dict(context.metadata.get("request_snapshot") or {}),
+            },
+            "model_snapshot": model_snapshot,
+            "blocks": [],
+            "citations": [],
+            "report": {"outcome": "failed", "content": ""},
+            "failure": failure,
+        })
+        context.metadata["_research_attempt_checkpoint"] = checkpoint
+        result_payload = {
+            "response": "",
+            "output_dir": "",
+            "metadata": {
+                "mode": "agentic_research",
+                "topic": topic.strip(),
+                "block_count": 0,
+                "citation_count": 0,
+                "partial": False,
+                "failed_block_count": 0,
+                "failed_block_titles": [],
+                "outcome": "failed",
+                "attempt_id": attempt_id,
+                "successful_block_count": 0,
+                "failure": failure,
+                "model_snapshot": model_snapshot,
+                "usage": self.usage.summary() if self.usage else {
+                    "usage_source": "unavailable", "usage_unavailable_calls": 0,
+                },
+            },
+        }
+        await emit_capability_result(stream, result_payload, source=SOURCE, usage=self.usage)
+        raise ResearchTerminalError(result_payload, checkpoint)
 
     async def _emit_visible_failure(self, stream: StreamBus, exc: BaseException) -> None:
         """Surface a runtime exception as a labelled error trace card so the
@@ -601,12 +769,21 @@ class ResearchPipeline:
             trace_role="response",
             trace_group="stage",
         )
-        message = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+        # Exception strings can contain provider URLs, request fragments, or
+        # tool output. The stream is public UI; retain the raw exception only
+        # in server logs and expose a stable safe code to the client.
+        logger.exception("Deep Research failed", exc_info=exc)
+        if isinstance(exc, AgenticModelError):
+            message = exc.safe_message
+        elif isinstance(exc, ResearchTerminalError):
+            message = str((exc.failure or {}).get("summary") or "Research failed.")
+        else:
+            message = "Research could not be completed."
         await stream.error(
             message,
             source=SOURCE,
             stage="researching",
-            metadata=merge_trace_metadata(meta, {"trace_kind": "error"}),
+            metadata=merge_trace_metadata(meta, {"trace_kind": "error", "failure_code": getattr(exc, "code", "research_runtime_failed")}),
         )
         prefix = self._t("system.warning_prefix", default="⚠ ")
         await stream.content(
@@ -682,6 +859,7 @@ class ResearchPipeline:
                 max_iterations=self.rephrase_max_iterations,
                 host=host,
                 usage=self.usage,
+                retry_policy=self._loop_retry_policy(DEFAULT_BLOCK_MAX_TOKENS),
                 # FINISH text is the model's brief user-facing confirmation
                 # of what it's about to research — stream it live to the
                 # chat bubble body so the user sees the summary forming
@@ -695,12 +873,16 @@ class ResearchPipeline:
                 # thinking chunk arrives.
                 eager_sub_trace=False,
             )
-        except Exception as exc:
-            logger.warning("Rephrase loop failed; falling back to raw topic: %s", exc)
-            return topic.strip()
+        except Exception:
+            raise
 
         refined = (outcome.final_text or "").strip()
-        return refined or topic.strip()
+        if not refined:
+            raise AgenticModelError(
+                "research_planning_failed", "Research planning produced no topic.",
+                retryable=False, normalized_result={"content": "", "tool_calls": [], "termination": {}},
+            )
+        return refined
 
     # ------------------------------------------------------------------
     # Phase 2: decompose
@@ -751,7 +933,24 @@ class ResearchPipeline:
             max_tokens=DEFAULT_OUTLINE_MAX_TOKENS,
             eager_sub_trace=False,
         )
-        return self._parse_outline(topic, step.text)
+        try:
+            return self._parse_outline(topic, step.text)
+        except AgenticModelError:
+            # One bounded repair attempt: keep the original planning context
+            # but make the required JSON shape explicit. A second malformed
+            # answer is terminal rather than silently inventing an outline.
+            repair_messages = [
+                *messages,
+                {"role": "assistant", "content": step.text},
+                {"role": "user", "content": "Repair the previous answer. Return only a JSON array of objects with non-empty title and optional overview."},
+            ]
+            repaired = await self._run_labeled_step(
+                client=client, messages=repair_messages, tool_schemas=None,
+                protocol=_PROTOCOL_DECOMPOSE, stream=stream, stage="decomposing",
+                iter_meta=iter_meta, max_tokens=DEFAULT_OUTLINE_MAX_TOKENS,
+                eager_sub_trace=False,
+            )
+            return self._parse_outline(topic, repaired.text)
 
     def _parse_outline(self, topic: str, raw: str) -> list[SubTopicItem]:
         data = parse_json_response(raw, logger_instance=logger, fallback={})
@@ -777,7 +976,10 @@ class ResearchPipeline:
             if len(items) >= self.initial_subtopics:
                 break
         if not items:
-            items = [SubTopicItem(title=topic, overview="")]
+            raise AgenticModelError(
+                "research_planning_failed", "Research planning produced no outline.",
+                retryable=False, normalized_result={"content": raw, "tool_calls": [], "termination": {}},
+            )
         return items
 
     # ------------------------------------------------------------------
@@ -868,6 +1070,7 @@ class ResearchPipeline:
                 max_iterations=effective_max_iterations,
                 host=host,
                 usage=self.usage,
+                retry_policy=self._loop_retry_policy(DEFAULT_BLOCK_MAX_TOKENS),
                 stream_body_live=False,
                 eager_sub_trace=True,
             )
@@ -1131,10 +1334,10 @@ class ResearchPipeline:
             )
             section_texts.append(title_block)
 
+        if section_texts:
+            await self._stream_report_separator(stream)
         intro = await self._write_intro(topic=topic, outline=outline, stream=stream, client=client)
         if intro:
-            if section_texts:
-                await self._stream_report_separator(stream)
             section_texts.append(intro)
 
         section_bodies: list[str] = []
@@ -1866,6 +2069,15 @@ class ResearchPipeline:
             reasoning_effort=self.reasoning_effort,
         )
 
+    def _loop_retry_policy(self, current_budget: int) -> LoopRetryPolicy:
+        """Per-request retry ceiling; never mutates the shared provider."""
+        configured = getattr(self.llm_config, "max_tokens", None)
+        try:
+            ceiling = int(configured or 0)
+        except (TypeError, ValueError):
+            ceiling = 0
+        return LoopRetryPolicy(max_output_tokens=ceiling if ceiling > current_budget else current_budget)
+
     async def _run_labeled_step(
         self,
         *,
@@ -1880,25 +2092,52 @@ class ResearchPipeline:
         final_meta: dict[str, Any] | None = None,
         eager_sub_trace: bool = True,
     ) -> LabeledStepResult:
-        """Research-flavoured thin wrapper over :func:`run_labeled_step`."""
-        return await run_labeled_step(
-            client=client,
-            model=self.model,
-            messages=messages,
-            completion_kwargs=self._completion_kwargs(max_tokens),
-            tool_schemas=tool_schemas,
-            allowed_labels=protocol.allowed,
-            final_labels=protocol.final,
-            tool_label=protocol.tool_label,
-            stream=stream,
-            source=SOURCE,
-            stage=stage,
-            iter_meta=iter_meta,
-            binding=self.binding,
-            usage=self.usage,
-            final_meta=final_meta,
-            eager_sub_trace=eager_sub_trace,
-        )
+        """Run one call with bounded transient retry and one legal length retry."""
+        async def call(budget: int) -> LabeledStepResult:
+            return await run_labeled_step(
+                client=client, model=self.model, messages=messages,
+                completion_kwargs=self._completion_kwargs(budget), tool_schemas=tool_schemas,
+                allowed_labels=protocol.allowed, final_labels=protocol.final, tool_label=protocol.tool_label,
+                stream=stream, source=SOURCE, stage=stage, iter_meta=iter_meta, binding=self.binding,
+                usage=self.usage, final_meta=final_meta, eager_sub_trace=eager_sub_trace,
+            )
+        current_budget = max_tokens
+        transport_retry_index = 0
+        delays = backoff_delays()
+        retried_length = False
+        while True:
+            try:
+                return await call(current_budget)
+            except Exception as exc:
+                if isinstance(exc, AgenticModelError) and exc.code == "model_output_incomplete":
+                    termination = exc.normalized_result.get("termination") or {}
+                    reason = str((termination.get("incomplete_details") or {}).get("reason") or "")
+                    higher = retry_budget(current_budget, getattr(self.llm_config, "max_tokens", None))
+                    if reason != "max_output_tokens" or retried_length or higher is None:
+                        raise
+                    await stream.progress(
+                        "Retrying model request.", source=SOURCE, stage=stage,
+                        metadata={
+                            "trace_kind": "automatic_retry", "retry_index": 1,
+                            "reason": reason, "original_budget": current_budget,
+                            "retry_budget": higher,
+                        },
+                    )
+                    current_budget = higher
+                    retried_length = True
+                    continue
+                if not _is_transient_model_error(exc) or transport_retry_index >= len(delays):
+                    raise
+                transport_retry_index += 1
+                await stream.progress(
+                    "Retrying model request.", source=SOURCE, stage=stage,
+                    metadata={
+                        "trace_kind": "automatic_retry", "retry_index": transport_retry_index,
+                        "reason": "transport_transient", "original_budget": current_budget,
+                        "retry_budget": current_budget,
+                    },
+                )
+                await asyncio.sleep(delays[transport_retry_index - 1])
 
     # ------------------------------------------------------------------
     # Message + trace assembly
