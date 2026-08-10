@@ -11,6 +11,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      workflows: write
 
     steps:
       - name: Checkout fork
