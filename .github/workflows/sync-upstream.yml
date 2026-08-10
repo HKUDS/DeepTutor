@@ -1,0 +1,54 @@
+name: Sync upstream and build Docker image
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync-and-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync upstream
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/HKUDS/DeepTutor.git
+          git fetch upstream
+          git merge upstream/main --no-edit --strategy-option=ours || {
+            echo "❌ Merge conflict detected - manual intervention needed"
+            exit 1
+          }
+          git push origin main
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(grep '__version__' deeptutor/__version__.py | grep -o '".*"' | tr -d '"')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/apprentus/deeptutor:latest
+            ghcr.io/apprentus/deeptutor:${{ steps.version.outputs.version }}
