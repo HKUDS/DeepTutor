@@ -41,7 +41,7 @@ jobs:
       - name: Get version
         id: version
         run: |
-          VERSION=$(grep '__version__' deeptutor/__version__.py | grep -o '".*"' | tr -d '"')
+          VERSION=$(python3 -c "import sys; exec(open('deeptutor/__version__.py').read()); print(__version__)")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
