@@ -305,33 +305,53 @@ class CitationManager:
             # Extract source documents if available
             # Common fields in RAG responses: chunks, documents, sources, context
             sources = []
+            source_list: list[Any] = []
+            kb_name = ""
 
-            # Try different field names for source documents
-            for field_name in ["chunks", "documents", "sources", "context", "retrieved_docs"]:
-                if field_name in answer_data:
-                    source_list = answer_data[field_name]
-                    if isinstance(source_list, list):
-                        for i, doc in enumerate(source_list[:5]):  # Limit to 5 sources
-                            source_info = {}
-                            if isinstance(doc, dict):
-                                source_info["title"] = doc.get("title", doc.get("doc_title", ""))
-                                source_info["content_preview"] = doc.get(
-                                    "content", doc.get("text", "")
-                                )[:200]
-                                source_info["source_file"] = doc.get(
-                                    "source", doc.get("file_path", doc.get("filename", ""))
-                                )
-                                source_info["page"] = doc.get("page", doc.get("page_number", ""))
-                                source_info["chunk_id"] = doc.get("chunk_id", doc.get("id", i))
-                                source_info["score"] = doc.get("score", doc.get("similarity", ""))
-                            elif isinstance(doc, str):
-                                source_info["content_preview"] = doc[:200]
-                            if source_info:
-                                sources.append(source_info)
-                    break
+            if isinstance(answer_data, dict):
+                kb_name = answer_data.get("kb_name", "")
+                # Try different field names for source documents
+                for field_name in ["chunks", "documents", "sources", "context", "retrieved_docs"]:
+                    if field_name in answer_data:
+                        candidate_sources = answer_data[field_name]
+                        if isinstance(candidate_sources, list):
+                            source_list = candidate_sources
+                        break
+            elif isinstance(answer_data, list):
+                source_list = answer_data
+
+            document_source_fields = (
+                "title",
+                "doc_title",
+                "content",
+                "text",
+                "source",
+                "file_path",
+                "filename",
+            )
+            for i, doc in enumerate(source_list[:5]):  # Limit to 5 sources
+                source_info = {}
+                if isinstance(doc, dict):
+                    if not any(
+                        doc.get(field_name) not in (None, "")
+                        for field_name in document_source_fields
+                    ):
+                        continue
+                    source_info["title"] = doc.get("title", doc.get("doc_title", ""))
+                    source_info["content_preview"] = doc.get("content", doc.get("text", ""))[:200]
+                    source_info["source_file"] = doc.get(
+                        "source", doc.get("file_path", doc.get("filename", ""))
+                    )
+                    source_info["page"] = doc.get("page", doc.get("page_number", ""))
+                    source_info["chunk_id"] = doc.get("chunk_id", doc.get("id", i))
+                    source_info["score"] = doc.get("score", doc.get("similarity", ""))
+                elif isinstance(doc, str):
+                    source_info["content_preview"] = doc[:200]
+                if source_info:
+                    sources.append(source_info)
 
             # Also extract kb_name if available
-            citation_info["kb_name"] = answer_data.get("kb_name", "")
+            citation_info["kb_name"] = kb_name
             citation_info["sources"] = sources
             citation_info["total_sources"] = len(sources)
 
