@@ -21,7 +21,11 @@ import {
   reasoningEffortOptionsFromSupportedLevels,
 } from "@/lib/reasoning-effort";
 import { CodexOAuthCard } from "./CodexOAuthCard";
-import { isCodexOAuthProfile, isManagedCodexProfile } from "./codex-profile";
+import {
+  isBoundManagedCodexProfile,
+  isCodexOAuthProfile,
+  isManagedCodexProfile,
+} from "./codex-profile";
 import {
   type CatalogModel,
   type CatalogProfile,
@@ -92,6 +96,7 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
     (option) => option.value === activeProviderValue,
   );
   const isManagedCodex = isManagedCodexProfile(activeProfile);
+  const isBoundManagedCodex = isBoundManagedCodexProfile(activeProfile);
   const isCodexOAuth = isCodexOAuthProfile(
     service,
     activeProviderValue,
@@ -141,9 +146,11 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
   const reasoningOptions =
     service === "llm" && activeModel
       ? isManagedCodex
-        ? reasoningEffortOptionsFromSupportedLevels(
-            activeModel.codex_supported_reasoning_levels ?? [],
-          )
+        ? isBoundManagedCodex
+          ? reasoningEffortOptionsFromSupportedLevels(
+              activeModel.codex_supported_reasoning_levels ?? [],
+            )
+          : []
         : reasoningEffortOptions(
             activeProfile?.binding,
             activeModel.model,
@@ -509,7 +516,7 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                     })}
                   </div>
                 )}
-                {activeModel && (!isCodexOAuth || isManagedCodex) && (
+                {activeModel && (!isCodexOAuth || isBoundManagedCodex) && (
                   <div className="grid gap-4 sm:grid-cols-2">
                     {!isCodexOAuth && (
                       <div>

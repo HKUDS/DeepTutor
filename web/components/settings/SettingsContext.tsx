@@ -82,6 +82,7 @@ export type CatalogProfile = {
   id: string;
   name: string;
   managed_by?: string;
+  codex_account_binding?: string;
   read_only?: boolean;
   binding?: string;
   provider?: string;

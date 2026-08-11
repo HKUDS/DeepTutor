@@ -186,9 +186,21 @@ def reconcile_codex_catalog_update(
         return reconciled
 
     current_profile = deepcopy(dict(current_profiles[current_indexes[0]]))
+    proposed_profile = proposed_profiles[proposed_indexes[0]] if proposed_indexes else None
+    current_binding = current_profile.get("codex_account_binding")
+    proposed_binding = (
+        proposed_profile.get("codex_account_binding")
+        if isinstance(proposed_profile, Mapping)
+        else None
+    )
+    same_bound_account = (
+        isinstance(current_binding, str)
+        and bool(current_binding)
+        and proposed_binding == current_binding
+    )
     requested = (
-        _reasoning_efforts(proposed_profiles[proposed_indexes[0]])
-        if proposed_indexes
+        _reasoning_efforts(proposed_profile)
+        if isinstance(proposed_profile, Mapping) and same_bound_account
         else _reasoning_efforts(current_profile)
     )
     for model in current_profile.get("models", []):

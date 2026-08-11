@@ -4,6 +4,11 @@ import path from "node:path";
 import test from "node:test";
 import { createInstance } from "i18next";
 
+import {
+  CODEX_MANAGED_BY,
+  isBoundManagedCodexProfile,
+} from "../components/settings/codex-profile";
+
 const EDITOR = path.resolve(
   process.cwd(),
   "components/settings/ServiceConfigEditor.tsx",
@@ -40,6 +45,23 @@ test("the Codex profile predicates live in one place", () => {
   );
 });
 
+test("managed Codex reasoning controls require a current account binding", () => {
+  const editor = readFileSync(EDITOR, "utf8");
+
+  assert.equal(
+    isBoundManagedCodexProfile({
+      managed_by: CODEX_MANAGED_BY,
+      codex_account_binding: "account-binding",
+    }),
+    true,
+  );
+  assert.equal(
+    isBoundManagedCodexProfile({ managed_by: CODEX_MANAGED_BY }),
+    false,
+  );
+  assert.match(editor, /isBoundManagedCodexProfile\(activeProfile\)/);
+});
+
 test("managed Codex profiles expose only provider-supported reasoning effort", () => {
   const source = readFileSync(EDITOR, "utf8");
 
@@ -47,7 +69,7 @@ test("managed Codex profiles expose only provider-supported reasoning effort", (
   assert.match(source, /disabled=\{isManagedCodex\}/);
   assert.match(source, /!isCodexOAuth/);
   assert.match(source, /activeModel\.codex_supported_reasoning_levels/);
-  assert.match(source, /!isCodexOAuth \|\| isManagedCodex/);
+  assert.match(source, /!isCodexOAuth \|\| isBoundManagedCodex/);
 });
 
 test("ordinary users can edit only their owner-scoped Codex reasoning overrides", () => {
