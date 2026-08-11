@@ -85,26 +85,34 @@ class CustomEmbedding(BaseEmbedding):
         LlamaIndex's IngestionPipeline calls the sync embed hooks. When the
         outer call site is itself inside a running event loop (e.g. the async
         ``add_documents`` flow), creating and ``run_until_complete``-ing a new
-        loop raises ``RuntimeError: Cannot run the event loop while another
-        loop is running``. Run the fresh loop in a worker thread so the outer
-        loop stays untouched and the embedding call actually fires.
+        loop on the same thread raises ``RuntimeError: Cannot run the event
+        loop while another loop is running``. Run the fresh loop on a worker
+        thread that owns it (mirroring the pattern in
+        ``graphrag.engine._run_isolated``) so the outer loop stays untouched,
+        the embedding call actually fires, and the AsyncClient inside the
+        embed call resolves the correct loop via ``asyncio.get_event_loop()``.
         """
-        import concurrent.futures
-
-        def _runner():
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
             loop = asyncio.new_event_loop()
             try:
                 return loop.run_until_complete(coro)
             finally:
                 loop.close()
 
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return _runner()
+        def _runner():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(coro)
+            finally:
+                try:
+                    loop.close()
+                finally:
+                    asyncio.set_event_loop(None)
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            return pool.submit(_runner).result()
+        return asyncio.get_event_loop().run_in_executor(None, _runner).result()
 
     async def _aget_query_embedding(self, query: str) -> List[float]:
         client = self.refresh_client()
