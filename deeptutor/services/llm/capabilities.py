@@ -29,6 +29,11 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "system_in_messages": True,  # System prompt goes in messages array
         "newer_models_use_max_completion_tokens": True,
     },
+    # Codex uses OpenAI's Responses API and converts image_url message parts
+    # into native input_image blocks before sending the request.
+    "openai_codex": {
+        "supports_vision": True,
+    },
     # Custom / user-defined OpenAI-compatible endpoints
     "custom": {
         "supports_response_format": True,
