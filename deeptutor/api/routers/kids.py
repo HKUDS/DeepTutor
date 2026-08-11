@@ -99,6 +99,7 @@ async def bootstrap() -> dict:
                 "age": p.age,
                 "age_band": p.age_band,
                 "has_pin": bool(p.pin_hash),
+                "device_url": f"/kids/p/{p.id}",
             }
             for p in profiles
         ]
@@ -437,3 +438,21 @@ async def kids_translate(
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Translation failed: {exc}") from exc
     return {"translation": translated}
+
+
+# ── Exit verification (PIN required to leave Kids mode) ────────────────────
+
+class ExitVerifyRequest(BaseModel):
+    profile_id: str
+    pin: str = Field(min_length=4, max_length=20)
+
+
+@router.post("/exit-verify")
+async def exit_verify(request: ExitVerifyRequest) -> dict:
+    """Verify the parent PIN before allowing the child to exit Kids mode."""
+    manager = get_kids_manager()
+    if manager.get_profile(request.profile_id) is None:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    if not manager.verify_parent_pin(request.profile_id, request.pin):
+        raise HTTPException(status_code=403, detail="Invalid PIN or too many attempts")
+    return {"ok": True}

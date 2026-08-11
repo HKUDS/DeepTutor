@@ -14,10 +14,20 @@ export default function KidsPage() {
   const [library, setLibrary] = useState<KidsLibraryItem[]>([]);
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
-  const [error, setError] = useState("");
+ const [error, setError] = useState("");
 
   const loadProfiles = useCallback(async () => {
     try {
+      // Auto-redirect: if we have a stored token for a specific profile,
+      // skip the picker and go straight to that profile's dedicated link
+      if (typeof window !== "undefined") {
+        const storedToken = localStorage.getItem("dt_kids_token");
+        const storedPid = localStorage.getItem("dt_kids_profile_id");
+        if (storedToken && storedPid) {
+          router.push(`/kids/p/${storedPid}`);
+          return;
+        }
+      }
       const { profiles } = await kidsApi.bootstrap();
       setProfiles(profiles);
       if (profiles.length === 0) {
@@ -35,6 +45,11 @@ export default function KidsPage() {
   useEffect(() => {
     loadProfiles();
   }, [loadProfiles]);
+
+  // Exit-protection state
+  const [showExitPin, setShowExitPin] = useState(false);
+  const [exitPin, setExitPin] = useState("");
+  const [exitPinError, setExitPinError] = useState("");
 
   const handleSelectProfile = async (profile: KidsProfile) => {
     setSelectedProfile(profile);
@@ -74,9 +89,31 @@ export default function KidsPage() {
   };
 
   const handleBackToPicker = () => {
+    if (selectedProfile?.has_pin) {
+      setShowExitPin(true);
+      setExitPin("");
+      setExitPinError("");
+    } else {
+      doExit();
+    }
+  };
+
+  const doExit = () => {
     localStorage.removeItem("dt_kids_token");
+    localStorage.removeItem("dt_kids_profile_id");
     setSelectedProfile(null);
     setStage("picker");
+  };
+
+  const handleExitPinSubmit = async () => {
+    if (!selectedProfile) return;
+    try {
+      await kidsApi.exitVerify(selectedProfile.id, exitPin);
+      doExit();
+    } catch {
+      setExitPinError("Wrong PIN. Try again!");
+      setExitPin("");
+    }
   };
 
   // ── Loading ────────────────────────────────────────────────────────────
@@ -152,13 +189,45 @@ export default function KidsPage() {
     );
   }
 
-  // ── Bookshelf ───────────────────────────────────────────────────────────
-  return (
-    <div style={styles.container}>
-      <div style={styles.shelfHeader}>
-        <button style={styles.backBtn} onClick={handleBackToPicker}>
-          👈
-        </button>
+ // ── Bookshelf ───────────────────────────────────────────────────────────
+ return (
+   <div style={styles.container}>
+      {/* Exit PIN modal */}
+      {showExitPin && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+        }}>
+          <div style={{ ...styles.pinPad, maxWidth: 360 }}>
+            <p style={styles.subtitle}>🔒 Enter PIN to exit</p>
+            <input
+              type="password"
+              value={exitPin}
+              onChange={(e) => setExitPin(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && exitPin.length >= 4 && handleExitPinSubmit()}
+              maxLength={8}
+              style={styles.pinInput}
+              placeholder="• • • •"
+              autoFocus
+            />
+            {exitPinError && <p style={styles.errorText}>{exitPinError}</p>}
+            <div style={styles.pinButtons}>
+              <button style={{ ...styles.btn, ...styles.btnSecondary }}
+                onClick={() => { setShowExitPin(false); setExitPin(""); setExitPinError(""); }}>
+                Cancel
+              </button>
+              <button style={{ ...styles.btn, ...styles.btnPrimary }}
+                onClick={handleExitPinSubmit} disabled={exitPin.length < 4}>
+                Exit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+     <div style={styles.shelfHeader}>
+       <button style={styles.backBtn} onClick={handleBackToPicker}>
+         👈
+       </button>
         <h1 style={styles.shelfTitle}>
           {AVATAR_EMOJIS[profiles.findIndex((p) => p.id === selectedProfile?.id) % AVATAR_EMOJIS.length]}{" "}
           {selectedProfile?.name}&apos;s Books

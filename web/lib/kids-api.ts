@@ -17,6 +17,7 @@ export interface KidsProfile {
   daily_limit_minutes: number;
   has_pin?: boolean;
   created_at?: number;
+  device_url?: string;
   updated_at?: number;
 }
 
@@ -218,5 +219,11 @@ export const kidsApi = {
     kidsRequest<{ translation: string }>("/translate", {
       method: "POST",
       body: JSON.stringify({ text, target_language: targetLanguage }),
+    }),
+
+  exitVerify: (profileId: string, pin: string) =>
+    kidsRequest<{ ok: boolean }>("/exit-verify", {
+      method: "POST",
+      body: JSON.stringify({ profile_id: profileId, pin }),
     }),
 };

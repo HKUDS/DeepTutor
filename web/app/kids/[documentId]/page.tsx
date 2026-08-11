@@ -40,6 +40,12 @@ export default function KidsReaderPage() {
   const [translateResult, setTranslateResult] = useState("");
   const [translating, setTranslating] = useState(false);
   const [stars, setStars] = useState(0);
+  // Exit-protection state
+  const [showExitPin, setShowExitPin] = useState(false);
+  const [exitPin, setExitPin] = useState("");
+  const [exitPinError, setExitPinError] = useState("");
+  const [profileHasPin, setProfileHasPin] = useState(false);
+  const [profileId, setProfileId] = useState("");
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const renditionRef = useRef<Rendition | null>(null);
   const currentHrefRef = useRef<string>("");
@@ -64,6 +70,37 @@ export default function KidsReaderPage() {
     })();
     return () => { cancelled = true; };
   }, [documentId]);
+
+  // Check if the current profile has a PIN (for exit protection)
+  useEffect(() => {
+    const pid = localStorage.getItem("dt_kids_profile_id") || "";
+    setProfileId(pid);
+    if (!pid) return;
+    kidsApi.bootstrap().then(({ profiles }) => {
+      const p = profiles.find((x) => x.id === pid);
+      if (p) setProfileHasPin(!!p.has_pin);
+    }).catch(() => {});
+  }, []);
+
+  const handleExitClick = () => {
+    if (profileHasPin) {
+      setShowExitPin(true);
+      setExitPin("");
+      setExitPinError("");
+    } else {
+      router.push("/kids");
+    }
+  };
+
+  const handleExitPinSubmit = async () => {
+    try {
+      await kidsApi.exitVerify(profileId, exitPin);
+      router.push("/kids");
+    } catch {
+      setExitPinError("Wrong PIN. Try again!");
+      setExitPin("");
+    }
+  };
 
   const saveProgress = useCallback(
     (loc: string, href: string) => {
@@ -159,22 +196,67 @@ export default function KidsReaderPage() {
     );
   }
 
-  return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "#fef9f0" }}>
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        padding: "8px 16px",
-        background: "white",
-        boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
-        zIndex: 10,
-        flexShrink: 0,
-      }}>
-        <button onClick={() => router.push("/kids")} style={toolbarBtn}>Books</button>
-        <div style={{ flex: 1, textAlign: "center", fontWeight: 700, fontSize: 18, color: "#4a3f6b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {bookTitle}
+ return (
+   <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "#fef9f0" }}>
+      {/* Exit PIN modal */}
+      {showExitPin && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+        }}>
+          <div style={{
+            background: "white", borderRadius: 24, padding: 32,
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 16,
+            boxShadow: "0 4px 14px rgba(0,0,0,0.1)", maxWidth: 360, width: "90%",
+          }}>
+            <p style={{ fontSize: 18, color: "#7c6f9b" }}>🔒 Enter PIN to exit</p>
+            <input
+              type="password"
+              value={exitPin}
+              onChange={(e) => setExitPin(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && exitPin.length >= 4 && handleExitPinSubmit()}
+              maxLength={8}
+              style={{
+                fontSize: 32, textAlign: "center", letterSpacing: 12,
+                border: "3px solid #667eea", borderRadius: 12, padding: "12px 16px",
+                width: "100%", outline: "none",
+              }}
+              placeholder="• • • •"
+              autoFocus
+            />
+            {exitPinError && <p style={{ fontSize: 16, color: "#e53e3e" }}>{exitPinError}</p>}
+            <div style={{ display: "flex", gap: 12 }}>
+              <button
+                style={{ padding: "12px 24px", borderRadius: 12, border: "none", fontSize: 16, fontWeight: 700, cursor: "pointer", background: "#e2e8f0", color: "#4a5568" }}
+                onClick={() => { setShowExitPin(false); setExitPin(""); setExitPinError(""); }}
+              >
+                Cancel
+              </button>
+              <button
+                style={{ padding: "12px 24px", borderRadius: 12, border: "none", fontSize: 16, fontWeight: 700, cursor: "pointer", background: "#667eea", color: "white", opacity: exitPin.length < 4 ? 0.5 : 1 }}
+                onClick={handleExitPinSubmit}
+                disabled={exitPin.length < 4}
+              >
+                Exit
+              </button>
+            </div>
+          </div>
         </div>
+      )}
+     <div style={{
+       display: "flex",
+       alignItems: "center",
+       gap: 12,
+       padding: "8px 16px",
+       background: "white",
+       boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
+       zIndex: 10,
+       flexShrink: 0,
+     }}>
+        <button onClick={handleExitClick} style={toolbarBtn}>Books</button>
+       <div style={{ flex: 1, textAlign: "center", fontWeight: 700, fontSize: 18, color: "#4a3f6b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+         {bookTitle}
+       </div>
         <div style={{ fontSize: 22 }}>Stars: {stars}</div>
       </div>
 

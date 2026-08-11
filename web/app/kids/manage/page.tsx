@@ -13,6 +13,8 @@ export default function KidsManagePage() {
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const [copiedId, setCopiedId] = useState("");
+
   // Create form state
   const [name, setName] = useState("");
   const [birthDate, setBirthDate] = useState("");
@@ -45,6 +47,16 @@ export default function KidsManagePage() {
   }, []);
 
   useEffect(() => { loadProfiles(); }, [loadProfiles]);
+
+  const copyDeviceUrl = (profile: KidsProfile) => {
+    const url = typeof window !== "undefined"
+      ? `${window.location.origin}/kids/p/${profile.id}`
+      : `/kids/p/${profile.id}`;
+    navigator.clipboard?.writeText(url).then(() => {
+      setCopiedId(profile.id);
+      setTimeout(() => setCopiedId(""), 2000);
+    });
+  };
 
   useEffect(() => {
     if (selected) {
@@ -217,8 +229,35 @@ export default function KidsManagePage() {
         {selected && (
           <div>
             <button onClick={() => setSelected(null)} style={{ ...btnStyle, background: "#e2e8f0", color: "#4a5568", marginBottom: 16 }}>
-              All Children
-            </button>
+             All Children
+           </button>
+
+            {/* Child's dedicated link */}
+            <div style={{ ...cardStyle, marginBottom: 16, background: "#f0f4ff" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#553c9a", marginBottom: 8 }}>
+                🔗 {selected.name}&apos;s Reading Link
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <code style={{
+                  flex: 1, fontSize: 13, color: "#4a5568", background: "white",
+                  padding: "8px 12px", borderRadius: 8, overflow: "hidden",
+                  textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}>
+                  {typeof window !== "undefined"
+                    ? `${window.location.origin}/kids/p/${selected.id}`
+                    : `/kids/p/${selected.id}`}
+                </code>
+                <button
+                  onClick={() => copyDeviceUrl(selected)}
+                  style={{ ...miniBtn, background: copiedId === selected.id ? "#c6f6d5" : "#e9d8fd", color: "#553c9a" }}
+                >
+                  {copiedId === selected.id ? "✓ Copied!" : "Copy"}
+                </button>
+              </div>
+              <div style={{ fontSize: 12, color: "#a0aec0", marginTop: 8 }}>
+                Bookmark this on your child&apos;s device — they tap it to go straight to their books.
+              </div>
+            </div>
 
             {/* Assigned books */}
             <div style={{ ...cardStyle, marginBottom: 16 }}>

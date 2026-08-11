@@ -25,6 +25,7 @@ def _profile_dict(profile) -> dict:
         "age": profile.age,
         "age_band": profile.age_band,
         "has_pin": bool(profile.pin_hash),
+        "device_url": f"/kids/p/{profile.id}",
     }
 
 
