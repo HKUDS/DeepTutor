@@ -54,6 +54,34 @@ def test_import_rejects_empty_and_unsupported_documents(reading_service: Immersi
         reading_service.import_document("book.docx", b"not a book")
 
 
+def test_import_epub_uses_source_extractor(
+    reading_service: ImmersiveReadingService, monkeypatch
+) -> None:
+    import deeptutor.immersive_reading.service as service_module
+
+    monkeypatch.setattr(
+        service_module,
+        "_fitz_sections",
+        lambda path: (
+            "The Compass Book",
+            "Ada Writer",
+            "chapters",
+            [("Chapter 1", "The original EPUB chapter text.", 1, 1)],
+            None,
+        ),
+    )
+
+    document = reading_service.import_document("compass.epub", b"fixture epub bytes")
+
+    assert document["title"] == "The Compass Book"
+    assert document["author"] == "Ada Writer"
+    assert document["source_format"] == "epub"
+    assert reading_service.original_path(document["id"]).name == "original.epub"
+    assert reading_service.get_section(document["id"], "section_0001")["content"] == (
+        "The original EPUB chapter text."
+    )
+
+
 def test_exact_search_is_case_insensitive_and_keeps_source_offsets(
     reading_service: ImmersiveReadingService, imported_document: dict
 ) -> None:
