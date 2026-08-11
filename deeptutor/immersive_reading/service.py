@@ -557,6 +557,12 @@ class ImmersiveReadingService:
     def _kids_quiz_path(self, document_id: str, section_id: str) -> Path:
         return self._document_root(document_id) / "kids-quiz" / f"{section_id}.json"
 
+    def _save_kids_quiz_cache(self, document_id: str, section_id: str, result: KidsQuizResult) -> None:
+        """Persist a quiz result (used by fallback quiz generation)."""
+        quiz_path = self._kids_quiz_path(document_id, section_id)
+        quiz_path.parent.mkdir(parents=True, exist_ok=True)
+        _write_json(quiz_path, result.model_dump(mode="json"))
+
     KIDS_QUIZ_PROMPT_VERSION = "kids-quiz-v1"
 
     async def generate_kids_quiz(
@@ -591,12 +597,13 @@ class ImmersiveReadingService:
         excerpt = content[:6000]
 
         system = (
-            "You create fun, age-appropriate reading quizzes for children aged 4-8. "
-            "The content is from an early reader book. Generate exactly 3 multiple-choice questions: "
-            "1) A comprehension question about the story. "
-            "2) A sight word question (which word was in the story). "
-            "3) A sequence question (what happened first/next/last). "
-            "Each question has exactly 4 choices. Keep language very simple. "
+            "You create simple vocabulary quizzes for children aged 4-8 learning English. "
+            "The content is from an early reader book. Generate exactly 3 multiple-choice questions. "
+            "Each question asks what a word from the story means, using very simple English. "
+            "For example: What does 'said' mean? Choices: talked, ran, sat, ate. "
+            "Pick words that actually appear in the story. "
+            "Use very short, simple definitions a child can understand. "
+            "Each question has exactly 4 choices. "
             "Return JSON only. Schema: "
             '{"questions":[{"id":"q1","kind":"comprehension","question":"str","choices":["a","b","c","d"],'
             '"answer_index":0,"explanation":"str"}]}'

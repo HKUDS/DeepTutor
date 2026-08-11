@@ -281,8 +281,17 @@ async def get_kids_quiz(
     """Get quiz questions — answer_index is stripped for children."""
     manager = get_kids_manager()
     if not manager.is_section_allowed(profile_id, document_id, 0):
-        raise HTTPException(status_code=404, detail="Book not found")
+       raise HTTPException(status_code=404, detail="Book not found")
     ir = get_immersive_reading_service()
+
+    # Read section text for fallback quiz generation
+    section_text = ""
+    try:
+        section_data = ir.get_section(document_id, request.section_id)
+        section_text = section_data.get("content", "")
+    except Exception:
+        pass
+
     try:
         result = await ir.generate_kids_quiz(
             document_id, request.section_id, force_refresh=request.force_refresh
@@ -290,8 +299,42 @@ async def get_kids_quiz(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        logger.exception("Kids quiz generation failed document=%s", document_id)
-        raise HTTPException(status_code=502, detail=f"Quiz generation failed: {exc}") from exc
+        logger.warning("LLM quiz failed, using deterministic fallback: %s", exc)
+        result = None
+
+    # If LLM produced no usable questions, fall back to deterministic translation quiz
+    if result is None or not result.questions:
+        from deeptutor.immersive_reading.sight_words import generate_translation_quiz
+        fallback_qs = generate_translation_quiz(section_text)
+        if fallback_qs:
+            logger.info("Using fallback translation quiz: %d questions", len(fallback_qs))
+            safe_questions = [
+                {"id": q["id"], "kind": q["kind"], "question": q["question"], "choices": q["choices"]}
+                for q in fallback_qs
+            ]
+            # Cache the fallback so submit can grade it
+            from deeptutor.immersive_reading.models import KidsQuizQuestion, KidsQuizResult
+            import hashlib
+            fallback_result = KidsQuizResult(
+                document_id=document_id,
+                section_id=request.section_id,
+                questions=[
+                    KidsQuizQuestion(
+                        id=q["id"], kind=q["kind"], question=q["question"],
+                        choices=q["choices"], answer_index=q["answer_index"],
+                        explanation=q["explanation"],
+                    )
+                    for q in fallback_qs
+                ],
+                content_hash=hashlib.sha256(section_text.encode()).hexdigest(),
+                model="sight-words-fallback",
+                prompt_version="sight-words-v1",
+            )
+            ir._save_kids_quiz_cache(document_id, request.section_id, fallback_result)
+            return {"questions": safe_questions, "section_id": request.section_id}
+        # No words found either
+        return {"questions": [], "section_id": request.section_id, "message": "Read more to unlock quizzes!"}
+
     # Strip answer_index from questions sent to the child
     safe_questions = []
     for q in result.questions:
