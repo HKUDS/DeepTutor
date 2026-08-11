@@ -80,12 +80,31 @@ class CustomEmbedding(BaseEmbedding):
         return "custom_embedding"
 
     def _run_in_new_loop(self, coro):
-        """Run an async coroutine from sync context using a fresh event loop."""
-        loop = asyncio.new_event_loop()
+        """Run an async coroutine from sync context.
+
+        LlamaIndex's IngestionPipeline calls the sync embed hooks. When the
+        outer call site is itself inside a running event loop (e.g. the async
+        ``add_documents`` flow), creating and ``run_until_complete``-ing a new
+        loop raises ``RuntimeError: Cannot run the event loop while another
+        loop is running``. Run the fresh loop in a worker thread so the outer
+        loop stays untouched and the embedding call actually fires.
+        """
+        import concurrent.futures
+
+        def _runner():
+            loop = asyncio.new_event_loop()
+            try:
+                return loop.run_until_complete(coro)
+            finally:
+                loop.close()
+
         try:
-            return loop.run_until_complete(coro)
-        finally:
-            loop.close()
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return _runner()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(_runner).result()
 
     async def _aget_query_embedding(self, query: str) -> List[float]:
         client = self.refresh_client()
