@@ -284,6 +284,10 @@ async def get_kids_quiz(
        raise HTTPException(status_code=404, detail="Book not found")
     ir = get_immersive_reading_service()
 
+    # Get age band from profile for age-appropriate quiz difficulty
+    profile = manager.get_profile(profile_id)
+    age_band = profile.age_band if profile else "6-8"
+
     # Read section text for fallback quiz generation
     section_text = ""
     try:
@@ -294,7 +298,7 @@ async def get_kids_quiz(
 
     try:
         result = await ir.generate_kids_quiz(
-            document_id, request.section_id, force_refresh=request.force_refresh
+            document_id, request.section_id, force_refresh=request.force_refresh, age_band=age_band
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -305,7 +309,7 @@ async def get_kids_quiz(
     # If LLM produced no usable questions, fall back to deterministic translation quiz
     if result is None or not result.questions:
         from deeptutor.immersive_reading.sight_words import generate_translation_quiz
-        fallback_qs = generate_translation_quiz(section_text)
+        fallback_qs = generate_translation_quiz(section_text, age_band=age_band)
         if fallback_qs:
             logger.info("Using fallback translation quiz: %d questions", len(fallback_qs))
             safe_questions = [

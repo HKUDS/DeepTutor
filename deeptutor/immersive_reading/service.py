@@ -566,7 +566,7 @@ class ImmersiveReadingService:
     KIDS_QUIZ_PROMPT_VERSION = "kids-quiz-v1"
 
     async def generate_kids_quiz(
-        self, document_id: str, section_id: str, *, force_refresh: bool = False
+        self, document_id: str, section_id: str, *, force_refresh: bool = False, age_band: str = "6-8"
     ) -> KidsQuizResult:
         """Generate (or load cached) 3 multiple-choice questions for a section."""
         quiz_path = self._kids_quiz_path(document_id, section_id)
@@ -596,18 +596,30 @@ class ImmersiveReadingService:
         # Limit content to 6000 chars for children's books (usually very short)
         excerpt = content[:6000]
 
-        system = (
-            "You create simple vocabulary quizzes for children aged 4-8 learning English. "
-            "The content is from an early reader book. Generate exactly 3 multiple-choice questions. "
-            "Each question asks what a word from the story means, using very simple English. "
-            "For example: What does 'said' mean? Choices: talked, ran, sat, ate. "
-            "Pick words that actually appear in the story. "
-            "Use very short, simple definitions a child can understand. "
-            "Each question has exactly 4 choices. "
-            "Return JSON only. Schema: "
-            '{"questions":[{"id":"q1","kind":"comprehension","question":"str","choices":["a","b","c","d"],'
-            '"answer_index":0,"explanation":"str"}]}'
-        )
+        if age_band == "9-12":
+            system = (
+                "You create vocabulary quizzes for readers aged 9-12. "
+                "Generate exactly 3 multiple-choice questions asking what words from the story mean. "
+                "Choose interesting or challenging words (not basic words like 'the' or 'and'). "
+                "Definitions should be clear and simple but not childish. "
+                "For example: What does 'venture' mean? Choices: a risky journey, a type of food, a loud noise, a small animal. "
+                "Each question has exactly 4 choices. Return JSON only. Schema: "
+                '{"questions":[{"id":"q1","kind":"comprehension","question":"str","choices":["a","b","c","d"],'
+                '"answer_index":0,"explanation":"str"}]}'
+            )
+        else:
+            system = (
+                "You create simple vocabulary quizzes for children learning English. "
+                "Generate exactly 3 multiple-choice questions. "
+                "Each question asks what a word from the story means, using very simple English. "
+                "For example: What does 'said' mean? Choices: talked, ran, sat, ate. "
+                "Pick words that actually appear in the story. "
+                "Use very short, simple definitions a child can understand. "
+                "Each question has exactly 4 choices. "
+                "Return JSON only. Schema: "
+                '{"questions":[{"id":"q1","kind":"comprehension","question":"str","choices":["a","b","c","d"],'
+                '"answer_index":0,"explanation":"str"}]}'
+            )
 
         raw = await complete(
             prompt=(
