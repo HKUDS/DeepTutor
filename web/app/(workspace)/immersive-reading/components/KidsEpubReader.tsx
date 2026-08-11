@@ -7,7 +7,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
 } from "react";
 import {
   ArrowLeft,
@@ -18,7 +17,9 @@ import {
   Languages,
   List,
   Loader2,
+  PartyPopper,
   RotateCcw,
+  Star,
   Volume2,
   VolumeX,
   X,
@@ -38,7 +39,6 @@ const ReactReader = dynamic(
 );
 
 type Panel = "toc" | "quiz" | "none";
-type SpeechState = { speaking: boolean; sentenceIndex: number };
 
 interface Props {
   document: ReadingDocument;
@@ -48,6 +48,12 @@ interface Props {
 
 const EPUB_URL = (documentId: string) =>
   `/api/v1/immersive-reading/documents/${encodeURIComponent(documentId)}/original`;
+
+const QUIZ_KIND_LABEL: Record<string, string> = {
+  comprehension: "\U0001f4d6",  // open book
+  sight_word: "\u2b50",          // star
+  sequence: "\u27a1\ufe0f",     // arrow
+};
 
 export default function KidsEpubReader({ document: doc, onBack, onError }: Props) {
   const { t } = useTranslation();
@@ -59,9 +65,7 @@ export default function KidsEpubReader({ document: doc, onBack, onError }: Props
 
   // TTS state
   const [speaking, setSpeaking] = useState(false);
-  const sentencesRef = useRef<string[]>([]);
-  const sentenceIdxRef = useRef(0);
-  const [highlightedSentence, setHighlightedSentence] = useState(-1);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   // Translation state
   const [translateResult, setTranslateResult] = useState<{ text: string; result: string } | null>(null);
@@ -72,6 +76,9 @@ export default function KidsEpubReader({ document: doc, onBack, onError }: Props
   const [quizLoading, setQuizLoading] = useState(false);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
+
+  // Encouragement toast
+  const [encourage, setEncourage] = useState<string | null>(null);
 
   const sections = doc.sections;
 
@@ -85,6 +92,28 @@ export default function KidsEpubReader({ document: doc, onBack, onError }: Props
   useEffect(() => {
     void immersiveReadingApi.setExperienceMode(doc.id, "kids").catch(() => undefined);
   }, [doc.id]);
+
+  // ── TTS: tap paragraph to read aloud ─────────────────────────────────
+
+  const stopSpeaking = useCallback(() => {
+    window.speechSynthesis?.cancel();
+    setSpeaking(false);
+    utteranceRef.current = null;
+  }, []);
+
+  const speakText = useCallback((text: string) => {
+    if (!text.trim()) return;
+    window.speechSynthesis?.cancel();
+    setSpeaking(true);
+
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = "en-US";
+    utter.rate = 0.8;
+    utter.onend = () => setSpeaking(false);
+    utter.onerror = () => setSpeaking(false);
+    utteranceRef.current = utter;
+    window.speechSynthesis?.speak(utter);
+  }, []);
 
   const handleLocationChange = useCallback(
     (locStr: string) => {
@@ -104,42 +133,79 @@ export default function KidsEpubReader({ document: doc, onBack, onError }: Props
     setToc(items);
   }, []);
 
+  // ── Core interaction: click paragraph = read it, long-click = translate ──
+
+  const lastClickTime = useRef(0);
+  const pendingTranslate = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleGetRendition = useCallback((rendition: Rendition) => {
     renditionRef.current = rendition;
     rendition.themes.register("kids", {
-      p: { fontSize: "130%", lineHeight: "2.0", fontFamily: "'Comic Sans MS', 'Marker Felt', sans-serif", margin: "0.8em 0" },
-      h1: { fontSize: "180%", textAlign: "center" },
-      h2: { fontSize: "160%", textAlign: "center" },
-      img: { maxWidth: "100%", height: "auto" },
-      body: { padding: "0 1em", color: "#333" },
+      p: {
+        fontSize: "160%",
+        lineHeight: "2.4",
+        fontFamily: "'Comic Sans MS', 'Marker Felt', 'Chalkboard SE', sans-serif",
+        margin: "1em 0",
+        cursor: "pointer",
+      },
+      h1: { fontSize: "200%", textAlign: "center", fontFamily: "'Comic Sans MS', sans-serif" },
+      h2: { fontSize: "180%", textAlign: "center", fontFamily: "'Comic Sans MS', sans-serif" },
+      img: { maxWidth: "100%", height: "auto", display: "block", margin: "1em auto" },
+      body: { padding: "0 1.5em", color: "#2d2d2d" },
     });
     rendition.themes.select("kids");
-    rendition.themes.fontSize("130%");
+    rendition.themes.fontSize("160%");
 
-    // Track which chapter is visible
-    rendition.on("relocated", (location: { start: { href: string } }) => {
-      const href = location?.start?.href ?? "";
+    rendition.on("relocated", (loc: { start: { href: string } }) => {
+      const href = loc?.start?.href ?? "";
       setCurrentHref(href);
     });
 
-    // Selection for translation
-    rendition.on("selected", (cfiRange: string, contents: { window: { getSelection: () => Selection | null } }) => {
-      const selection = contents.window.getSelection();
-      const selectedText = selection?.toString().trim() ?? "";
-      if (selectedText.length > 0 && selectedText.length < 500) {
-        void handleTranslate(selectedText);
+    // Click paragraph = read aloud; double click = translate
+    rendition.on("click", (event: MouseEvent, contents: { window: Window }) => {
+      const target = event.target as HTMLElement;
+      // Walk up to find the nearest paragraph or heading
+      let el: HTMLElement | null = target;
+      while (el && el.tagName !== "P" && el.tagName !== "H1" && el.tagName !== "H2" && el.tagName !== "H3" && el.parentElement) {
+        el = el.parentElement;
+      }
+      if (!el) return;
+
+      const text = el.textContent?.trim() ?? "";
+      if (!text) return;
+
+      const now = Date.now();
+      const isDouble = now - lastClickTime.current < 400;
+      lastClickTime.current = now;
+
+      if (pendingTranslate.current) {
+        clearTimeout(pendingTranslate.current);
+        pendingTranslate.current = null;
+      }
+
+      if (isDouble) {
+        // Double tap = translate
+        stopSpeaking();
+        void handleTranslate(text);
+      } else {
+        // Single tap = read (with small delay to detect double-tap)
+        pendingTranslate.current = setTimeout(() => {
+          speakText(text);
+        }, 250);
       }
     });
-  }, []);
+  }, [speakText, stopSpeaking]);
 
   const handleTranslate = useCallback(
     async (text: string) => {
       setTranslating(true);
+      setTranslateResult({ text, result: "" });
       try {
         const { translation } = await immersiveReadingApi.translate(text, "Chinese");
         setTranslateResult({ text, result: translation });
       } catch {
-        onError(t("Translation failed. Please try again."));
+        onError(t("Translation failed."));
+        setTranslateResult(null);
       } finally {
         setTranslating(false);
       }
@@ -147,63 +213,14 @@ export default function KidsEpubReader({ document: doc, onBack, onError }: Props
     [onError, t],
   );
 
-  // ── TTS ──────────────────────────────────────────────────────────────────
-
-  const stopSpeaking = useCallback(() => {
-    window.speechSynthesis?.cancel();
-    setSpeaking(false);
-    setHighlightedSentence(-1);
-    renditionRef.current?.annotations.remove("tts-highlight", "highlight");
-  }, []);
-
-  const speakFromSelection = useCallback(() => {
-    if (!renditionRef.current) return;
-    const rendition = renditionRef.current;
-    const sel = (rendition.getContents() as unknown as Array<{ window: { getSelection: () => Selection | null } }>)?.[0]?.window?.getSelection?.();
-    const selectedText = sel?.toString().trim();
-    if (!selectedText) {
-      onError(t("Tap a sentence first, then press the speaker button."));
-      return;
-    }
-    stopSpeaking();
-
-    // Split into sentences for sequential highlighting
-    const sentences = selectedText.match(/[^.!?]+[.!?]*/g)?.map((s: string) => s.trim()).filter(Boolean) ?? [selectedText];
-    sentencesRef.current = sentences;
-    sentenceIdxRef.current = 0;
-    setSpeaking(true);
-
-    const speakNext = () => {
-      if (sentenceIdxRef.current >= sentences.length) {
-        setSpeaking(false);
-        setHighlightedSentence(-1);
-        return;
-      }
-      const idx = sentenceIdxRef.current;
-      setHighlightedSentence(idx);
-      const utter = new SpeechSynthesisUtterance(sentences[idx]);
-      utter.lang = "en-US";
-      utter.rate = 0.85;
-      utter.onend = () => {
-        sentenceIdxRef.current++;
-        speakNext();
-      };
-      utter.onerror = () => {
-        setSpeaking(false);
-        setHighlightedSentence(-1);
-      };
-      window.speechSynthesis?.speak(utter);
-    };
-    speakNext();
-  }, [onError, stopSpeaking, t]);
-
   useEffect(() => {
     return () => {
       window.speechSynthesis?.cancel();
+      if (pendingTranslate.current) clearTimeout(pendingTranslate.current);
     };
   }, []);
 
-  // ── Quiz ─────────────────────────────────────────────────────────────────
+  // ── Quiz ─────────────────────────────────────────────────────────────
 
   const loadQuiz = useCallback(
     async (forceRefresh = false) => {
@@ -216,7 +233,7 @@ export default function KidsEpubReader({ document: doc, onBack, onError }: Props
         setQuiz(result);
         setPanel("quiz");
       } catch {
-        onError(t("Quiz generation failed. Please try again later."));
+        onError(t("Quiz generation failed."));
       } finally {
         setQuizLoading(false);
       }
@@ -233,6 +250,20 @@ export default function KidsEpubReader({ document: doc, onBack, onError }: Props
     return { correct, total: quiz.questions.length };
   }, [quiz, quizAnswers, quizSubmitted]);
 
+  // Show encouragement on quiz submit
+  useEffect(() => {
+    if (quizSubmitted && quizScore) {
+      const msgs = quizScore.correct === quizScore.total
+        ? ["\u2b50 Perfect! \u2b50", "\u2b50 Amazing! \u2b50", "\u2b50 You did it! \u2b50"]
+        : quizScore.correct >= 2
+          ? ["\u2b50 Great job! \u2b50", "\u2b50 Almost there! \u2b50"]
+          : ["\u2b50 Keep trying! \u2b50"];
+      setEncourage(msgs[Math.floor(Math.random() * msgs.length)]);
+      const timer = setTimeout(() => setEncourage(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [quizSubmitted, quizScore]);
+
   const handleNextPage = useCallback(() => {
     renditionRef.current?.next();
   }, []);
@@ -240,57 +271,61 @@ export default function KidsEpubReader({ document: doc, onBack, onError }: Props
     renditionRef.current?.prev();
   }, []);
 
-  // ── Render ───────────────────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full flex-col bg-[var(--background)]">
-      {/* Kids toolbar */}
-      <header className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--card)] px-4 py-3">
+    <div className="flex h-full flex-col" style={{ background: "#faf9f6" }}>
+      {/* Big colorful toolbar */}
+      <header className="flex items-center justify-between gap-3 bg-gradient-to-r from-sky-400 to-indigo-400 px-4 py-3 shadow-md">
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/25 text-white transition hover:bg-white/40"
+          aria-label={t("Back")}
+        >
+          <ArrowLeft size={26} />
+        </button>
+
+        <h1 className="flex-1 truncate text-center text-lg font-bold text-white drop-shadow-sm">
+          {doc.title}
+        </h1>
+
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--muted)] transition hover:brightness-95"
-            aria-label={t("Back to library")}
-          >
-            <ArrowLeft size={22} />
-          </button>
           <button
             type="button"
             onClick={() => setPanel(panel === "toc" ? "none" : "toc")}
-            className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${panel === "toc" ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "bg-[var(--muted)]"}`}
-            aria-label={t("Contents")}
+            className={`flex h-12 w-12 items-center justify-center rounded-2xl transition ${panel === "toc" ? "bg-white text-indigo-500" : "bg-white/25 text-white hover:bg-white/40"}`}
+            aria-label={t("Stories")}
           >
-            <List size={22} />
+            <List size={24} />
           </button>
-        </div>
-        <h1 className="flex-1 truncate px-3 text-center text-base font-semibold">
-          {doc.title}
-        </h1>
-        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={speaking ? stopSpeaking : speakFromSelection}
-            className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${speaking ? "bg-amber-500 text-white" : "bg-[var(--muted)]"}`}
-            aria-label={speaking ? t("Stop reading") : t("Read aloud")}
-            title={t("Select text then tap to read aloud")}
+            onClick={speaking ? stopSpeaking : undefined}
+            className={`flex h-12 w-12 items-center justify-center rounded-2xl transition ${speaking ? "bg-amber-400 text-white animate-pulse" : "bg-white/25 text-white hover:bg-white/40"}`}
+            aria-label={speaking ? t("Stop") : t("Reading")}
           >
-            {speaking ? <VolumeX size={22} /> : <Volume2 size={22} />}
+            {speaking ? <VolumeX size={24} /> : <Volume2 size={24} />}
           </button>
           <button
             type="button"
             onClick={() => loadQuiz(false)}
             disabled={quizLoading || !currentSection}
-            className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--muted)] transition hover:brightness-95 disabled:opacity-40"
+            className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/25 text-white transition hover:bg-white/40 disabled:opacity-40"
             aria-label={t("Quiz")}
           >
-            {quizLoading ? <Loader2 size={22} className="animate-spin" /> : <Award size={22} />}
+            {quizLoading ? <Loader2 size={24} className="animate-spin" /> : <Award size={24} />}
           </button>
         </div>
       </header>
 
+      {/* Hint bar */}
+      <div className="bg-amber-50 px-4 py-2 text-center text-sm text-amber-700">
+        {speaking ? "\u266a Listening... tap \u23f9 to stop" : "Tap a sentence to hear it \u266a  \u00b7  Double-tap to translate"}
+      </div>
+
       {/* EPUB rendering area */}
-      <div className="relative min-h-0 flex-1" style={{ "--tts-hl": "rgba(255, 215, 0, 0.4)" } as CSSProperties}>
+      <div className="relative min-h-0 flex-1">
         <ReactReader
           url={EPUB_URL(doc.id)}
           location={location}
@@ -307,195 +342,211 @@ export default function KidsEpubReader({ document: doc, onBack, onError }: Props
           }}
         />
 
-        {/* Page turn buttons for children */}
+        {/* Large page-turn buttons */}
         <button
           type="button"
           onClick={handlePrevPage}
-          className="absolute bottom-5 left-4 z-10 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--background)] shadow-lg transition hover:scale-105 active:scale-95"
-          aria-label={t("Previous page")}
+          className="absolute bottom-6 left-3 z-10 flex h-16 w-16 items-center justify-center rounded-full bg-indigo-500 text-white shadow-xl transition hover:scale-110 active:scale-95"
+          aria-label={t("Previous")}
         >
-          <ChevronLeft size={28} />
+          <ChevronLeft size={32} />
         </button>
         <button
           type="button"
           onClick={handleNextPage}
-          className="absolute bottom-5 right-4 z-10 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-foreground)] shadow-lg transition hover:scale-105 active:scale-95"
-          aria-label={t("Next page")}
+          className="absolute bottom-6 right-3 z-10 flex h-16 w-16 items-center justify-center rounded-full bg-sky-500 text-white shadow-xl transition hover:scale-110 active:scale-95"
+          aria-label={t("Next")}
         >
-          <ChevronRight size={28} />
+          <ChevronRight size={32} />
         </button>
       </div>
 
       {/* TOC drawer */}
       {panel === "toc" && (
-        <aside className="absolute left-0 top-[64px] z-30 flex h-[calc(100%-64px)] w-72 flex-col border-r border-[var(--border)] bg-[var(--card)] shadow-xl">
-          <header className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              <BookOpen size={16} /> {t("Stories")}
-            </div>
-            <button type="button" onClick={() => setPanel("none")} className="rounded-lg p-1.5 hover:bg-[var(--muted)]">
-              <X size={16} />
-            </button>
-          </header>
-          <div className="min-h-0 flex-1 overflow-y-auto p-2">
-            {toc.map((item, i) => (
-              <button
-                key={item.href}
-                type="button"
-                onClick={() => {
-                  renditionRef.current?.display(item.href);
-                  setPanel("none");
-                }}
-                className={`block w-full rounded-xl px-4 py-3 text-left text-sm transition ${currentHref === item.href ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "hover:bg-[var(--muted)]"}`}
-              >
-                <span className="mr-2 text-xs opacity-50">{i + 1}.</span>
-                {item.label.trim() || `${t("Story")} ${i + 1}`}
+        <div className="fixed inset-0 z-40 flex">
+          <div className="w-80 max-w-[85vw] bg-white shadow-2xl">
+            <header className="flex items-center justify-between bg-sky-100 px-4 py-3">
+              <span className="flex items-center gap-2 font-bold text-sky-700">
+                <BookOpen size={20} /> {t("Pick a Story")}
+              </span>
+              <button type="button" onClick={() => setPanel("none")} className="rounded-xl p-2 hover:bg-sky-200">
+                <X size={20} />
               </button>
-            ))}
+            </header>
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              {toc.map((item, i) => (
+                <button
+                  key={item.href}
+                  type="button"
+                  onClick={() => {
+                    renditionRef.current?.display(item.href);
+                    setPanel("none");
+                  }}
+                  className={`mb-2 block w-full rounded-2xl px-4 py-3 text-left text-base font-medium transition ${currentHref === item.href ? "bg-sky-500 text-white" : "bg-sky-50 text-sky-800 hover:bg-sky-100"}`}
+                >
+                  <span className="mr-2 text-sm opacity-60">{i + 1}</span>
+                  {item.label.trim() || `${t("Story")} ${i + 1}`}
+                </button>
+              ))}
+            </div>
           </div>
-        </aside>
+          <div className="flex-1 bg-black/30" onClick={() => setPanel("none")} />
+        </div>
       )}
 
-      {/* Quiz panel */}
+      {/* Quiz panel - full overlay */}
       {panel === "quiz" && (
-        <aside className="absolute right-0 top-[64px] z-30 flex h-[calc(100%-64px)] w-full max-w-md flex-col border-l border-[var(--border)] bg-[var(--card)] shadow-xl">
-          <header className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              <Award size={16} className="text-[var(--primary)]" /> {t("Story Quiz")}
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-3xl bg-white shadow-2xl">
+            <header className="flex items-center justify-between bg-gradient-to-r from-purple-400 to-pink-400 rounded-t-3xl px-5 py-4">
+              <span className="flex items-center gap-2 text-lg font-bold text-white">
+                <Award size={22} /> {t("Story Quiz")}
+              </span>
+              <button type="button" onClick={() => setPanel("none")} className="rounded-xl bg-white/25 p-2 text-white hover:bg-white/40">
+                <X size={20} />
+              </button>
+            </header>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
+              {!quiz || quizLoading ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3">
+                  <Loader2 size={32} className="animate-spin text-purple-400" />
+                  <p className="text-sm text-gray-500">{t("Making your quiz...")}</p>
+                </div>
+              ) : quiz.questions.length === 0 ? (
+                <p className="py-8 text-center text-gray-500">{t("No quiz for this story.")}</p>
+              ) : (
+                <div className="space-y-5">
+                  {quiz.questions.map((q, qi) => (
+                    <div key={q.id} className="rounded-2xl border-2 border-gray-100 bg-gray-50/50 p-4">
+                      <div className="mb-2 flex items-center gap-2">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-500 text-sm font-bold text-white">{qi + 1}</span>
+                        <span className="text-lg">{QUIZ_KIND_LABEL[q.kind] || "\u2753"}</span>
+                      </div>
+                      <p className="mb-3 text-base font-semibold text-gray-800">{q.question}</p>
+                      <div className="space-y-2">
+                        {q.choices.map((choice, ci) => {
+                          const selected = quizAnswers[q.id] === ci;
+                          const correct = ci === q.answer_index;
+                          const showResult = quizSubmitted;
+                          return (
+                            <button
+                              key={ci}
+                              type="button"
+                              disabled={quizSubmitted}
+                              onClick={() => setQuizAnswers((prev) => ({ ...prev, [q.id]: ci }))}
+                              className={`flex w-full items-center gap-3 rounded-xl border-2 px-4 py-3 text-left text-base font-medium transition ${
+                                showResult && correct
+                                  ? "border-green-400 bg-green-50"
+                                  : showResult && selected && !correct
+                                    ? "border-red-400 bg-red-50"
+                                    : selected
+                                      ? "border-purple-400 bg-purple-50"
+                                      : "border-gray-200 bg-white hover:border-purple-200"
+                              }`}
+                            >
+                              <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+                                showResult && correct ? "bg-green-500 text-white" : showResult && selected && !correct ? "bg-red-500 text-white" : selected ? "bg-purple-500 text-white" : "bg-gray-200 text-gray-600"
+                              }`}>
+                                {showResult && correct ? "\u2714" : showResult && selected && !correct ? "\u2718" : String.fromCharCode(65 + ci)}
+                              </span>
+                              {choice}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {quizSubmitted && q.explanation && (
+                        <p className="mt-2 rounded-xl bg-yellow-50 px-3 py-2 text-sm leading-6 text-yellow-800">\U0001f4a1 {q.explanation}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            <button type="button" onClick={() => setPanel("none")} className="rounded-lg p-1.5 hover:bg-[var(--muted)]">
-              <X size={16} />
-            </button>
-          </header>
-          <div className="min-h-0 flex-1 overflow-y-auto p-5">
-            {!quiz || quizLoading ? (
-              <div className="flex items-center justify-center py-12 text-[var(--muted-foreground)]">
-                <Loader2 className="animate-spin" />
-              </div>
-            ) : quiz.questions.length === 0 ? (
-              <p className="text-center text-sm text-[var(--muted-foreground)]">{t("No quiz available for this story.")}</p>
-            ) : (
-              <div className="space-y-6">
-                {quiz.questions.map((q, qi) => (
-                  <div key={q.id} className="rounded-2xl border border-[var(--border)] p-4">
-                    <div className="mb-1 flex items-center gap-2">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--primary)] text-xs font-bold text-[var(--primary-foreground)]">{qi + 1}</span>
-                      <span className="text-[10px] uppercase tracking-wide text-[var(--muted-foreground)]">
-                        {q.kind === "comprehension" ? t("Comprehension") : q.kind === "sight_word" ? t("Sight Word") : t("Sequence")}
-                      </span>
+
+            {quiz && !quizLoading && (
+              <footer className="border-t border-gray-100 p-5">
+                {quizSubmitted && quizScore ? (
+                  <div className="flex flex-col items-center gap-3">
+                    <div className={`flex items-center gap-3 rounded-2xl px-6 py-3 ${quizScore.correct === quizScore.total ? "bg-green-100" : "bg-amber-100"}`}>
+                      <PartyPopper size={28} className={quizScore.correct === quizScore.total ? "text-green-600" : "text-amber-600"} />
+                      <div>
+                        <div className="text-2xl font-bold text-gray-800">
+                          {quizScore.correct}/{quizScore.total}
+                        </div>
+                        <div className="flex gap-1">
+                          {Array.from({ length: quizScore.total }).map((_, i) => (
+                            <Star key={i} size={18} className={i < quizScore.correct ? "fill-yellow-400 text-yellow-400" : "text-gray-300"} />
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                    <p className="mb-3 text-sm font-medium">{q.question}</p>
-                    <div className="grid grid-cols-1 gap-2">
-                      {q.choices.map((choice, ci) => {
-                        const selected = quizAnswers[q.id] === ci;
-                        const correct = ci === q.answer_index;
-                        const showResult = quizSubmitted;
-                        return (
-                          <button
-                            key={ci}
-                            type="button"
-                            disabled={quizSubmitted}
-                            onClick={() => setQuizAnswers((prev) => ({ ...prev, [q.id]: ci }))}
-                            className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm transition ${
-                              showResult && correct
-                                ? "border-emerald-500 bg-emerald-500/10"
-                                : showResult && selected && !correct
-                                  ? "border-red-500 bg-red-500/10"
-                                  : selected
-                                    ? "border-[var(--primary)] bg-[var(--primary)]/8"
-                                    : "border-[var(--border)] hover:bg-[var(--muted)]"
-                            }`}
-                          >
-                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-current text-[10px] font-bold opacity-60">
-                              {String.fromCharCode(65 + ci)}
-                            </span>
-                            {choice}
-                          </button>
-                        );
-                      })}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => loadQuiz(true)}
+                        className="inline-flex items-center gap-2 rounded-2xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-700 hover:bg-gray-200"
+                      >
+                        <RotateCcw size={16} /> {t("Try Again")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPanel("none")}
+                        className="inline-flex items-center gap-2 rounded-2xl bg-sky-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-sky-600"
+                      >
+                        {t("Keep Reading")}
+                      </button>
                     </div>
-                    {quizSubmitted && q.explanation && (
-                      <p className="mt-2 rounded-lg bg-[var(--muted)] px-3 py-2 text-xs leading-5 text-[var(--muted-foreground)]">{q.explanation}</p>
-                    )}
                   </div>
-                ))}
-              </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={Object.keys(quizAnswers).length < quiz.questions.length}
+                    onClick={() => setQuizSubmitted(true)}
+                    className="w-full rounded-2xl bg-gradient-to-r from-purple-500 to-pink-500 py-3.5 text-lg font-bold text-white shadow-lg transition disabled:opacity-40 enabled:hover:scale-[1.02]"
+                  >
+                    {t("Check My Answers!")}
+                  </button>
+                )}
+              </footer>
             )}
           </div>
-          {quiz && !quizLoading && (
-            <footer className="border-t border-[var(--border)] px-5 py-4">
-              {quizSubmitted && quizScore ? (
-                <div className="flex flex-col items-center gap-3">
-                  <div className={`flex items-center gap-2 rounded-2xl px-5 py-3 ${quizScore.correct === quizScore.total ? "bg-emerald-500/15" : "bg-amber-500/15"}`}>
-                    <Award size={24} className={quizScore.correct === quizScore.total ? "text-emerald-500" : "text-amber-500"} />
-                    <span className="text-lg font-bold">{quizScore.correct}/{quizScore.total}</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => loadQuiz(true)}
-                      className="inline-flex items-center gap-2 rounded-xl bg-[var(--muted)] px-4 py-2 text-sm font-medium"
-                    >
-                      <RotateCcw size={15} /> {t("New quiz")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPanel("none")}
-                      className="inline-flex items-center gap-2 rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)]"
-                    >
-                      {t("Keep reading")}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  disabled={Object.keys(quizAnswers).length < quiz.questions.length}
-                  onClick={() => setQuizSubmitted(true)}
-                  className="w-full rounded-xl bg-[var(--primary)] py-3 text-base font-bold text-[var(--primary-foreground)] disabled:opacity-40"
-                >
-                  {t("Check answers")}
-                </button>
-              )}
-            </footer>
-          )}
-        </aside>
+        </div>
       )}
 
-      {/* Translation modal */}
+      {/* Translation popup - small, non-blocking */}
       {translateResult && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 p-5 backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-4 sm:items-center"
           onMouseDown={(e) => { if (e.currentTarget === e.target) setTranslateResult(null); }}
         >
-          <div className="w-full max-w-lg rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-lg font-semibold">
-                <Languages size={20} /> {t("Translation")}
-              </div>
-              <button type="button" onClick={() => setTranslateResult(null)} className="rounded-lg p-2 hover:bg-[var(--muted)]">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="flex items-center gap-2 font-bold text-indigo-600">
+                <Languages size={18} /> \u4e2d\u6587
+              </span>
+              <button type="button" onClick={() => setTranslateResult(null)} className="rounded-lg p-1.5 hover:bg-gray-100">
                 <X size={18} />
               </button>
             </div>
             {translating ? (
-              <div className="flex items-center justify-center gap-2 py-8 text-[var(--muted-foreground)]">
-                <Loader2 size={18} className="animate-spin" /> {t("Translating…")}
+              <div className="flex items-center gap-2 py-4 text-gray-400">
+                <Loader2 size={18} className="animate-spin" /> {t("Translating...")}
               </div>
             ) : (
-              <div className="mt-4 space-y-4">
-                <div>
-                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">{t("English")}</p>
-                  <p className="font-serif text-base leading-7">{translateResult.text}</p>
-                </div>
-                <div className="border-t border-[var(--border)] pt-3">
-                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">{t("Chinese")}</p>
-                  <p className="text-base leading-7">{translateResult.result}</p>
-                </div>
-              </div>
+              <p className="text-lg leading-7 text-gray-800">{translateResult.result}</p>
+            )}
+            {!translating && (
+              <p className="mt-3 border-t border-gray-100 pt-2 text-sm text-gray-400">{translateResult.text}</p>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Encouragement toast */}
+      {encourage && (
+        <div className="fixed left-1/2 top-1/3 z-[60] -translate-x-1/2 rounded-3xl bg-gradient-to-r from-yellow-400 to-orange-400 px-8 py-4 text-2xl font-bold text-white shadow-2xl">
+          {encourage}
         </div>
       )}
     </div>
