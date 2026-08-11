@@ -197,9 +197,9 @@ async def get_kids_book(
     max_index = assignment.available_through_section_index if assignment else 999
     allowed_sections = [s for s in doc.sections if s.index <= max_index]
     detail = ir.document_detail(document_id)
-    detail["document"]["sections"] = [s.model_dump(mode="json") for s in allowed_sections]
+    detail["sections"] = [s.model_dump(mode="json") for s in allowed_sections]
     progress = manager.load_kids_progress(profile_id, document_id)
-    return {"document": detail["document"], "progress": progress.model_dump(mode="json")}
+    return {"document": detail, "progress": progress.model_dump(mode="json")}
 
 
 @router.get("/books/{document_id}/cover")
