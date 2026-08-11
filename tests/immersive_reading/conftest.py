@@ -1,0 +1,43 @@
+"""Shared isolated storage for immersive-reading tests."""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import pytest
+
+from deeptutor.immersive_reading.service import ImmersiveReadingService
+from deeptutor.services.path_service import PathService
+
+
+@pytest.fixture
+def reading_service(tmp_path, monkeypatch) -> ImmersiveReadingService:
+    import deeptutor.immersive_reading.service as service_module
+
+    paths = PathService(workspace_root=tmp_path / "data")
+    monkeypatch.setattr(service_module, "get_path_service", lambda: paths)
+    monkeypatch.setattr(
+        service_module,
+        "get_llm_config",
+        lambda: SimpleNamespace(
+            model="test-model",
+            binding="test-binding",
+            context_window=128_000,
+            max_tokens=4_096,
+        ),
+    )
+    return ImmersiveReadingService()
+
+
+@pytest.fixture
+def imported_document(reading_service: ImmersiveReadingService) -> dict:
+    padding = "A quiet detail carries the story forward without changing its direction. " * 8
+    source = "\n\n".join(
+        [
+            "Title page and publication notes.",
+            "# Chapter 1\nAda follows a brass compass through the old observatory. " + padding,
+            "# Chapter 2\nAda follows a brass compass through the old harbor. " + padding,
+            "# Chapter 3\nAda follows a brass compass through the old library. " + padding,
+        ]
+    )
+    return reading_service.import_document("ada-journey.txt", source.encode("utf-8"))
