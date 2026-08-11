@@ -121,6 +121,31 @@ export interface FocusCheckResult {
   progress: ReadingProgress;
 }
 
+export interface CharacterNode {
+  id: string;
+  name: string;
+  aliases: string[];
+  description: string;
+}
+
+export interface CharacterEdge {
+  source: string;
+  target: string;
+  relation: string;
+  confidence: number;
+}
+
+export interface CharacterGraphResult {
+  graph: {
+    nodes: CharacterNode[];
+    edges: CharacterEdge[];
+  };
+  mermaid: string;
+  generated_at: number;
+  scope: "current" | "through_current";
+  section_id: string;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   if (!(init?.body instanceof FormData)) headers.set("Content-Type", "application/json");
@@ -247,5 +272,22 @@ export const immersiveReadingApi = {
     request<{ answer: string; citations: Array<Record<string, unknown>>; search_provider: string }>(
       "/query",
       { method: "POST", body: JSON.stringify({ text, question, language }) },
+    ),
+  characterGraph: (
+    documentId: string,
+    sectionId: string,
+    scope: "current" | "through_current" = "current",
+    forceRefresh = false,
+  ) =>
+    request<CharacterGraphResult>(
+      `/documents/${encodeURIComponent(documentId)}/character-graph`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          section_id: sectionId,
+          scope,
+          force_refresh: forceRefresh,
+        }),
+      },
     ),
 };

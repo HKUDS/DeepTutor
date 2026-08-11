@@ -366,3 +366,118 @@ async def query_selection(request: QuerySelectionRequest) -> dict:
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Selection query failed: {exc}") from exc
     return result.model_dump(mode="json")
+
+
+class CharacterGraphRequest(BaseModel):
+    section_id: str
+    scope: Literal["current", "through_current"] = "current"
+    force_refresh: bool = False
+
+
+@router.post("/documents/{document_id}/character-graph")
+async def character_graph(document_id: str, request: CharacterGraphRequest) -> dict:
+    """Generate a character relationship graph for an immersive reading document."""
+    import hashlib
+    import json as _json
+    import time as _time
+
+    from deeptutor.book.character_graph import (
+        extract_character_graph,
+        render_character_graph_mermaid,
+    )
+
+    service = get_immersive_reading_service()
+    doc = service.load_document(document_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    sections = doc.sections
+    target_index = next(
+        (s.index for s in sections if s.id == request.section_id), 0
+    )
+
+    if request.scope == "current":
+        chosen = [sections[target_index]] if target_index < len(sections) else []
+    else:
+        chosen = sections[: target_index + 1]
+
+    texts: list[str] = []
+    for section in chosen:
+        try:
+            result = service.get_section(document_id, section.id)
+            texts.append(result.get("content", ""))
+        except Exception:
+            pass
+
+    combined = "\n\n".join(texts)
+    if not combined.strip():
+        return {
+            "graph": {"nodes": [], "edges": []},
+            "mermaid": 'graph LR\n  empty["No characters found"]',
+        }
+
+    content_hash = hashlib.sha256(combined.encode()).hexdigest()[:16]
+
+    cache_path = (
+        service._document_root(document_id)
+        / f"character_graph_{request.scope}_{content_hash}.json"
+    )
+    if not request.force_refresh and cache_path.exists():
+        try:
+            return _json.loads(cache_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    language = (
+        "zh"
+        if any("\u4e00" <= ch <= "\u9fff" for ch in combined[:500])
+        else "en"
+    )
+
+    try:
+        graph = await extract_character_graph(
+            text=combined,
+            language=language,
+            included_chapter_ids=[s.id for s in chosen],
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502, detail=f"Character graph extraction failed: {exc}"
+        ) from exc
+
+    mermaid = render_character_graph_mermaid(graph)
+    payload = {
+        "graph": {
+            "nodes": [
+                {
+                    "id": n.id,
+                    "name": n.name,
+                    "aliases": n.aliases,
+                    "description": n.description,
+                }
+                for n in graph.nodes
+            ],
+            "edges": [
+                {
+                    "source": e.source,
+                    "target": e.target,
+                    "relation": e.relation,
+                    "confidence": e.confidence,
+                }
+                for e in graph.edges
+            ],
+        },
+        "mermaid": mermaid,
+        "generated_at": _time.time(),
+        "scope": request.scope,
+        "section_id": request.section_id,
+    }
+
+    try:
+        cache_path.write_text(
+            _json.dumps(payload, ensure_ascii=False), encoding="utf-8"
+        )
+    except Exception:
+        pass
+
+    return payload

@@ -20,6 +20,7 @@ import {
   MessageCircleQuestion,
   MoreHorizontal,
   Plus,
+  Network,
   Quote,
   RotateCcw,
   Search,
@@ -54,10 +55,12 @@ const MarkdownRenderer = dynamic(
   () => import("@/components/common/MarkdownRenderer"),
   { ssr: false },
 );
+const Mermaid = dynamic(() => import("@/components/Mermaid"), { ssr: false });
 
 type SearchMode = "exact" | "fuzzy" | "description_fast" | "description_fine";
 type ShelfView = "library" | "citations";
 type SelectionAction = "translate" | "query";
+type CharacterScope = "current" | "through_current";
 
 interface SelectionMenuState {
   text: string;
@@ -570,6 +573,14 @@ function Reader({
   const [focusValidationError, setFocusValidationError] = useState<string | null>(null);
   const [restartMenu, setRestartMenu] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [charGraphOpen, setCharGraphOpen] = useState(false);
+  const [charGraphScope, setCharGraphScope] = useState<CharacterScope>("current");
+  const [charGraphMermaid, setCharGraphMermaid] = useState("");
+  const [charGraphNodes, setCharGraphNodes] = useState<
+    Array<{ id: string; name: string; aliases: string[]; description: string }>
+  >([]);
+  const [charGraphLoading, setCharGraphLoading] = useState(false);
+  const [charGraphError, setCharGraphError] = useState<string | null>(null);
   const articleRef = useRef<HTMLDivElement>(null);
   const lastProgressSentRef = useRef({ at: 0, value: -1 });
   const focusTriggeredRef = useRef<string>("");
@@ -896,6 +907,61 @@ function Reader({
     }
   };
 
+  // --- Character Graph ---
+  const fetchCharGraph = useCallback(
+    async (scope: CharacterScope, force = false) => {
+      if (!currentSection) return;
+      setCharGraphLoading(true);
+      setCharGraphError(null);
+      try {
+        const result = await immersiveReadingApi.characterGraph(
+          documentId,
+          currentSection.id,
+          scope,
+          force,
+        );
+        setCharGraphMermaid(result.mermaid);
+        setCharGraphNodes(result.graph.nodes);
+      } catch (err) {
+        setCharGraphError(
+          err instanceof Error ? err.message : String(t("Failed to generate graph")),
+        );
+      } finally {
+        setCharGraphLoading(false);
+      }
+    },
+    [currentSection, documentId, t],
+  );
+
+  useEffect(() => {
+    if (charGraphOpen && currentSection) {
+      void fetchCharGraph(charGraphScope);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [charGraphOpen, charGraphScope, currentSection?.id]);
+
+  const handleCharGraphRefresh = async () => {
+    if (!currentSection) return;
+    setCharGraphLoading(true);
+    setCharGraphError(null);
+    try {
+      const result = await immersiveReadingApi.characterGraph(
+        documentId,
+        currentSection.id,
+        charGraphScope,
+        true,
+      );
+      setCharGraphMermaid(result.mermaid);
+      setCharGraphNodes(result.graph.nodes);
+    } catch (err) {
+      setCharGraphError(
+        err instanceof Error ? err.message : String(t("Failed to generate graph")),
+      );
+    } finally {
+      setCharGraphLoading(false);
+    }
+  };
+
   const continueAfterFocus = () => {
     if (!document || !currentSection) return;
     const next = document.sections[currentSection.index + 1];
@@ -1097,7 +1163,16 @@ function Reader({
                 </button>
               );
             })}
-          </div>
+         </div>
+          <button
+            type="button"
+            onClick={() => setCharGraphOpen((v) => !v)}
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-[var(--border)] px-3 py-2 text-xs font-medium transition ${charGraphOpen ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
+            title={t("Character relationships")}
+          >
+            <Network size={15} />
+            {t("Characters")}
+          </button>
           {searchOpen && (
             <div className="absolute left-5 right-5 top-[58px] max-h-[430px] overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--popover)] p-2 shadow-2xl">
               {searching ? (
@@ -1180,7 +1255,96 @@ function Reader({
             </div>
           </article>
         </div>
-      </section>
+     </section>
+
+      {charGraphOpen && (
+        <aside className="flex h-full w-[400px] shrink-0 flex-col border-l border-[var(--border)] bg-[var(--card)]/40 backdrop-blur">
+          <header className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Network className="h-4 w-4 text-[var(--primary)]" />
+              {t("Character Relationships")}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={charGraphLoading}
+                onClick={() => void handleCharGraphRefresh()}
+                className="rounded-lg p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                title={t("Refresh")}
+              >
+                {charGraphLoading ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setCharGraphOpen(false)}
+                className="rounded-lg p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </header>
+
+          <div className="flex gap-1 border-b border-[var(--border)] px-3 py-2">
+            <button
+              type="button"
+              onClick={() => setCharGraphScope("current")}
+              className={`rounded-lg px-3 py-1.5 text-xs transition ${charGraphScope === "current" ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
+            >
+              {t("This chapter")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setCharGraphScope("through_current")}
+              className={`rounded-lg px-3 py-1.5 text-xs transition ${charGraphScope === "through_current" ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
+            >
+              {t("All chapters so far")}
+            </button>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            {charGraphError ? (
+              <div className="flex items-start gap-2 rounded-xl border border-red-500/25 bg-red-500/8 p-3 text-sm text-red-500">
+                <CircleAlert size={15} className="mt-0.5 shrink-0" />
+                <span>{charGraphError}</span>
+              </div>
+            ) : charGraphLoading && !charGraphMermaid ? (
+              <div className="flex items-center justify-center gap-2 py-12 text-sm text-[var(--muted-foreground)]">
+                <Loader2 size={16} className="animate-spin" /> {t("Generating character map…")}
+              </div>
+            ) : (
+              <>
+                {charGraphMermaid && (
+                  <div className="mb-4 overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-3">
+                    <Mermaid chart={charGraphMermaid} />
+                  </div>
+                )}
+                {charGraphNodes.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+                      {t("Characters")} ({charGraphNodes.length})
+                    </p>
+                    <div className="space-y-2">
+                      {charGraphNodes.map((node) => (
+                        <div key={node.id} className="rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
+                          <div className="text-sm font-medium">{node.name}</div>
+                          {node.aliases.length > 0 && (
+                            <div className="mt-0.5 text-[11px] text-[var(--muted-foreground)]">
+                              {t("Also known as")}: {node.aliases.join(", ")}
+                            </div>
+                          )}
+                          {node.description && (
+                            <p className="mt-1 text-xs leading-5 text-[var(--muted-foreground)]">{node.description}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </aside>
+      )}
 
       {selectionMenu && (
         <div
