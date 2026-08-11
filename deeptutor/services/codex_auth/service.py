@@ -169,9 +169,19 @@ def reconcile_codex_catalog_update(
     """Keep provider-owned Codex metadata authoritative on catalog writes."""
     reconciled = deepcopy(dict(proposed_catalog))
     current_profiles = current_catalog.get("services", {}).get("llm", {}).get("profiles", [])
-    proposed_llm = reconciled.get("services", {}).get("llm", {})
-    proposed_profiles = proposed_llm.get("profiles", [])
-    if not isinstance(current_profiles, list) or not isinstance(proposed_profiles, list):
+    proposed_services_raw = reconciled.get("services")
+    proposed_services = (
+        dict(proposed_services_raw) if isinstance(proposed_services_raw, Mapping) else {}
+    )
+    reconciled["services"] = proposed_services
+    proposed_llm_raw = proposed_services.get("llm")
+    proposed_llm = dict(proposed_llm_raw) if isinstance(proposed_llm_raw, Mapping) else {}
+    proposed_services["llm"] = proposed_llm
+    proposed_profiles = proposed_llm.get("profiles")
+    if not isinstance(proposed_profiles, list):
+        proposed_profiles = []
+        proposed_llm["profiles"] = proposed_profiles
+    if not isinstance(current_profiles, list):
         return reconciled
 
     current_indexes = _managed_profile_indexes(current_profiles)
@@ -465,10 +475,23 @@ class CodexOAuthService:
                 payload,
                 expected_generation=operation.expected_generation,
             )
-            committed = self._store.commit_credentials(
-                credentials,
-                expected_generation=operation.expected_generation,
-            )
+            async with self._catalog_sync_lock:
+                catalog = self._model_catalog.load()
+                profiles = catalog.get("services", {}).get("llm", {}).get("profiles", [])
+                managed_indexes = (
+                    _managed_profile_indexes(profiles) if isinstance(profiles, list) else []
+                )
+                committed = self._store.commit_credentials(
+                    credentials,
+                    expected_generation=operation.expected_generation,
+                )
+                account_binding = _codex_account_binding(committed.account_id)
+                if any(
+                    not isinstance(profiles[index], Mapping)
+                    or profiles[index].get("codex_account_binding") != account_binding
+                    for index in managed_indexes
+                ):
+                    remove_codex_catalog(self._model_catalog)
             operation.operation_state = "fetching_models"
             await self._catalog.invalidate()
             snapshot = await self._catalog.get(committed, force=True)
@@ -567,6 +590,54 @@ class CodexOAuthService:
                 return credentials.public_token()
             refreshed = await self._refresh_credentials(credentials)
             return refreshed.public_token()
+
+    def profile_matches_current_account(self, profile: Mapping[str, Any]) -> bool:
+        credentials = self._store.load_credentials()
+        return bool(
+            credentials is not None
+            and profile.get("managed_by") == MANAGED_BY
+            and profile.get("codex_account_binding")
+            == _codex_account_binding(credentials.account_id)
+        )
+
+    def validate_runtime_profile(
+        self,
+        token: CodexToken,
+        model_slug: str,
+        reasoning_effort: str | None,
+    ) -> None:
+        """Reject a model config that no longer belongs to the loaded token."""
+        credentials = self._store.load_credentials()
+        catalog = self._model_catalog.load()
+        profiles = catalog.get("services", {}).get("llm", {}).get("profiles", [])
+        managed_indexes = _managed_profile_indexes(profiles) if isinstance(profiles, list) else []
+        profile = profiles[managed_indexes[0]] if managed_indexes else None
+        if (
+            credentials is None
+            or credentials.generation != token.generation
+            or credentials.account_id != token.account_id
+            or not isinstance(profile, Mapping)
+            or profile.get("codex_account_binding") != _codex_account_binding(token.account_id)
+        ):
+            raise CodexAuthError(
+                "codex_catalog_unavailable",
+                "Refresh Codex models before using this configuration.",
+                409,
+            )
+
+        for model in profile.get("models", []):
+            if not isinstance(model, Mapping) or model.get("model") != model_slug:
+                continue
+            stored_effort = model.get("reasoning_effort")
+            effective_effort = stored_effort if isinstance(stored_effort, str) else None
+            if effective_effort == reasoning_effort:
+                return
+            break
+        raise CodexAuthError(
+            "codex_catalog_unavailable",
+            "Refresh Codex models before using this configuration.",
+            409,
+        )
 
     async def _refresh_credentials(
         self,

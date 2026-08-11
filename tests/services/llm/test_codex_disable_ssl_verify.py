@@ -41,6 +41,14 @@ def _stub_token_loader(monkeypatch: pytest.MonkeyPatch) -> None:
         async def recover_after_unauthorized(self, generation: int) -> None:
             del generation
 
+        def validate_runtime_profile(
+            self,
+            token: _Token,
+            model_slug: str,
+            reasoning_effort: str | None,
+        ) -> None:
+            del token, model_slug, reasoning_effort
+
     monkeypatch.setattr(
         openai_codex_provider,
         "get_codex_oauth_service",

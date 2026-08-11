@@ -67,6 +67,16 @@ def no_grants(monkeypatch):
     monkeypatch.setattr(model_access, "load_grant", lambda _uid=None: {"models": {"llm": []}})
 
 
+@pytest.fixture(autouse=True)
+def current_codex_profile(monkeypatch):
+    monkeypatch.setattr(
+        personal_models,
+        "_codex_profile_is_current",
+        lambda _profile: True,
+        raising=False,
+    )
+
+
 def test_personal_catalog_is_the_users_own_file_not_the_shared_one(as_user, mu_isolated_root):
     """The whole isolation argument rests on this: nothing a user does can
     reach the catalog the administrator manages."""
@@ -97,6 +107,28 @@ def test_signed_in_user_sees_their_own_codex_models(as_user, monkeypatch, no_gra
         assert model_access.apply_allowed_llm_selection(
             {"profile_id": CODEX_PROFILE, "model_id": "m-sol"}
         ) == {"profile_id": CODEX_PROFILE, "model_id": "m-sol"}
+
+
+def test_mismatched_codex_profile_is_not_exposed_as_a_personal_model(
+    as_user,
+    monkeypatch,
+    no_grants,
+):
+    monkeypatch.setattr(model_access, "admin_catalog", lambda: _admin_catalog([]))
+    _sign_in_codex(as_user, "u_alice", "m-sol", "gpt-5.6-sol")
+    monkeypatch.setattr(
+        personal_models,
+        "_codex_profile_is_current",
+        lambda _profile: False,
+    )
+
+    with as_user("u_alice"):
+        assert model_access.redacted_model_access()["llm"] == []
+        assert model_access.has_capability_access("llm") is False
+        with pytest.raises(PermissionError):
+            model_access.apply_allowed_llm_selection(
+                {"profile_id": CODEX_PROFILE, "model_id": "m-sol"}
+            )
 
 
 def test_one_users_codex_is_invisible_to_another(as_user, monkeypatch, no_grants):

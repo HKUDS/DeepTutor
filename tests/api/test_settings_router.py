@@ -851,6 +851,40 @@ async def test_catalog_write_uses_current_managed_codex_profile_presence(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["save", "apply"])
+async def test_incomplete_catalog_write_preserves_the_current_managed_codex_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    current = _build_catalog(
+        llm_model="gpt-standard",
+        llm_base_url="https://llm.example/v1",
+        llm_api_key="llm-key",
+        embedding_model="text-embedding-current",
+        embedding_base_url="https://embedding.example/v1/embeddings",
+        embedding_api_key="",
+    )
+    managed_profile = _managed_codex_profile(
+        ["medium", "high"],
+        reasoning_effort="medium",
+        account_binding="current-account-binding",
+    )
+    current["services"]["llm"]["profiles"].append(managed_profile)
+    service = _FakeCatalogService(current)
+    monkeypatch.setattr(settings_router, "get_model_catalog_service", lambda: service)
+    monkeypatch.setattr(settings_router, "_invalidate_runtime_caches", lambda: None)
+    payload = settings_router.CatalogPayload(catalog={"version": 1})
+
+    if operation == "save":
+        await settings_router.update_catalog(payload)
+    else:
+        await settings_router.apply_catalog(payload)
+
+    stored_profiles = service.load()["services"]["llm"]["profiles"]
+    assert stored_profiles == [managed_profile]
+
+
+@pytest.mark.asyncio
 async def test_enabled_tools_roundtrip(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     settings_file = tmp_path / "interface.json"
     monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)

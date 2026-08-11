@@ -771,6 +771,33 @@ async def test_owner_sets_supported_reasoning_effort_on_their_managed_model(
 
 
 @pytest.mark.asyncio
+async def test_runtime_validation_rejects_a_stale_reasoning_effort(tmp_path: Path) -> None:
+    snapshot = _snapshot("live", _model("gpt-5.6-sol"))
+    service, _model_catalog = _bound_reasoning_service(tmp_path, snapshot)
+    token = await service.get_token()
+    validator = getattr(service, "validate_runtime_profile", None)
+
+    assert callable(validator)
+    with pytest.raises(CodexAuthError) as exc_info:
+        validator(token, "gpt-5.6-sol", "high")
+
+    assert exc_info.value.code == "codex_catalog_unavailable"
+    assert exc_info.value.http_status == 409
+
+
+def test_profile_binding_matches_only_current_credentials(tmp_path: Path) -> None:
+    snapshot = _snapshot("live", _model("gpt-5.6-sol"))
+    service, model_catalog = _bound_reasoning_service(tmp_path, snapshot)
+    profile = _managed_profile(model_catalog.load())
+    matcher = getattr(service, "profile_matches_current_account", None)
+
+    assert callable(matcher)
+    assert matcher(profile) is True
+    profile["codex_account_binding"] = "stale-account-binding"
+    assert matcher(profile) is False
+
+
+@pytest.mark.asyncio
 async def test_owner_cannot_set_an_unsupported_reasoning_effort(tmp_path: Path) -> None:
     snapshot = _snapshot("live", _model("gpt-5.6-sol", supported_reasoning_levels=("medium",)))
     service, model_catalog = _bound_reasoning_service(tmp_path, snapshot)
@@ -1112,6 +1139,55 @@ async def test_catalog_failure_keeps_auth_but_not_selection(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("has_previous_credentials", [True, False])
+async def test_account_switch_retires_old_catalog_before_fetching_new_models(
+    tmp_path: Path,
+    has_previous_credentials: bool,
+) -> None:
+    service, callback, oauth, catalog, store, model_catalog = await _oauth_service(tmp_path)
+    if has_previous_credentials:
+        store.commit_credentials(
+            _stored_credentials(account_id="account-a"),
+            expected_generation=0,
+        )
+    fallback_selection = _selection(model_catalog.load())
+    account_a = sync_codex_catalog(
+        model_catalog,
+        _snapshot("account-a", _model("gpt-5.6-sol")),
+        account_id="account-a",
+    ).catalog
+    profile = _managed_profile(account_a)
+    profile["models"][0]["reasoning_effort"] = "high"
+    llm = account_a["services"]["llm"]
+    llm["active_profile_id"] = profile["id"]
+    llm["active_model_id"] = profile["models"][0]["id"]
+    model_catalog.save(account_a)
+
+    oauth.exchange_payload["account_id"] = "account-b"
+    catalog.snapshot = _snapshot("account-b", _model("gpt-5.6-sol"))
+    catalog.get_started = asyncio.Event()
+    catalog.get_release = asyncio.Event()
+
+    started = await service.start_login()
+    callback.complete(started["authorize_url"])
+    await asyncio.wait_for(catalog.get_started.wait(), timeout=1)
+
+    current = store.load_credentials()
+    assert current is not None
+    assert current.account_id == "account-b"
+    during_fetch = model_catalog.load()
+    assert not any(
+        profile.get("managed_by") == MANAGED_BY
+        for profile in during_fetch["services"]["llm"]["profiles"]
+    )
+    assert _selection(during_fetch) == fallback_selection
+
+    catalog.get_release.set()
+    status = await _wait_until_terminal(service)
+    assert status["operation_state"] == "completed"
+
+
+@pytest.mark.asyncio
 async def test_failed_account_switch_rejects_a_stale_reasoning_write(
     tmp_path: Path,
 ) -> None:
@@ -1143,6 +1219,9 @@ async def test_failed_account_switch_rejects_a_stale_reasoning_write(
     assert current.account_id == "account-b"
     assert status["operation_state"] == "failed"
     assert status["models"] == []
+    assert not any(
+        profile.get("managed_by") == MANAGED_BY for profile in before["services"]["llm"]["profiles"]
+    )
     with pytest.raises(CodexAuthError) as exc_info:
         await service.set_reasoning_effort("account-a-only", "high")
     assert exc_info.value.code == "codex_catalog_unavailable"
