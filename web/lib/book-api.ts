@@ -7,6 +7,7 @@ import type {
   Book,
   BookDetail,
   BookProposal,
+  CharacterGraphResult,
   Page,
   Spine,
   Block,
@@ -239,6 +240,17 @@ export const bookApi = {
         repeated_failures?: { signature: string; count: number }[];
       };
     }>(`/books/${encodeURIComponent(book_id)}/health`),
+
+  characterGraph: (
+    book_id: string,
+    chapter_id: string,
+    scope: "current" | "through_current" = "current",
+    force_refresh = false,
+  ) =>
+    request<CharacterGraphResult>("/books/character-graph", {
+      method: "POST",
+      body: JSON.stringify({ book_id, chapter_id, scope, force_refresh }),
+    }),
 
   refreshFingerprints: (book_id: string) =>
     request<{
