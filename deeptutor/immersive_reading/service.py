@@ -21,6 +21,9 @@ import uuid
 
 from deeptutor.immersive_reading.models import (
     ChapterSearchCard,
+    KidsBookAssignment,
+    KidsLearningProgress,
+    KidsProfile,
     KidsQuizQuestion,
     KidsQuizResult,
     FastSearchIndex,
