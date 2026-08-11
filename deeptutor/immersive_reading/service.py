@@ -21,6 +21,8 @@ import uuid
 
 from deeptutor.immersive_reading.models import (
     ChapterSearchCard,
+    KidsQuizQuestion,
+    KidsQuizResult,
     FastSearchIndex,
     FocusAttempt,
     FocusCheckResult,
@@ -532,6 +534,145 @@ class ImmersiveReadingService:
             progress.passed_section_ids = []
             progress.focus_attempts = {}
             progress.immersive_run += 1
+        self._save_progress(progress)
+        return progress
+
+    # ── Kids experience mode ──────────────────────────────────────────────
+
+    def set_experience_mode(self, document_id: str, mode: str) -> dict[str, Any]:
+        """Set the document experience mode (standard | kids)."""
+        if mode not in ("standard", "kids"):
+            raise ValueError("Invalid experience mode")
+        doc = self.load_document(document_id)
+        if doc is None:
+            raise ValueError("Reading document not found")
+        doc.experience_mode = mode
+        doc.updated_at = time.time()
+        _write_json(self._manifest_path(document_id), doc.model_dump(mode="json"))
+        return self._summary(doc)
+
+    def _kids_quiz_path(self, document_id: str, section_id: str) -> Path:
+        return self._document_root(document_id) / "kids-quiz" / f"{section_id}.json"
+
+    KIDS_QUIZ_PROMPT_VERSION = "kids-quiz-v1"
+
+    async def generate_kids_quiz(
+        self, document_id: str, section_id: str, *, force_refresh: bool = False
+    ) -> KidsQuizResult:
+        """Generate (or load cached) 3 multiple-choice questions for a section."""
+        quiz_path = self._kids_quiz_path(document_id, section_id)
+        cached = _read_json(quiz_path) if quiz_path.exists() else None
+
+        content = self._section_path(document_id, section_id).read_text(encoding="utf-8")
+        content_hash = self._content_hash(content)
+
+        cfg = get_llm_config()
+        model_name = str(getattr(cfg, "model", "") or "")
+
+        if (
+            not force_refresh
+            and cached
+            and cached.get("content_hash") == content_hash
+            and cached.get("prompt_version") == self.KIDS_QUIZ_PROMPT_VERSION
+        ):
+            return KidsQuizResult(**cached)
+
+        doc = self.load_document(document_id)
+        if doc is None:
+            raise ValueError("Reading document not found")
+        section = next((s for s in doc.sections if s.id == section_id), None)
+        if section is None:
+            raise ValueError("Reading section not found")
+
+        # Limit content to 6000 chars for children's books (usually very short)
+        excerpt = content[:6000]
+
+        system = (
+            "You create fun, age-appropriate reading quizzes for children aged 4-8. "
+            "The content is from an early reader book. Generate exactly 3 multiple-choice questions: "
+            "1) A comprehension question about the story. "
+            "2) A sight word question (which word was in the story). "
+            "3) A sequence question (what happened first/next/last). "
+            "Each question has exactly 4 choices. Keep language very simple. "
+            "Return JSON only. Schema: "
+            '{"questions":[{"id":"q1","kind":"comprehension","question":"str","choices":["a","b","c","d"],'
+            '"answer_index":0,"explanation":"str"}]}'
+        )
+
+        raw = await complete(
+            prompt=(
+                f"Book: {doc.title}\n"
+                f"Story: {section.title}\n\n"
+                f"<story_text>\n{excerpt}\n</story_text>"
+            ),
+            system_prompt=system,
+            temperature=0.3,
+            max_tokens=2000,
+            max_retries=1,
+            timeout=120,
+            response_format={"type": "json_object"},
+        )
+
+        if not raw or not raw.strip():
+            raise RuntimeError("The model returned an empty quiz")
+
+        parsed = parse_json_response(raw)
+        questions_raw = parsed.get("questions", [])
+        questions: list[KidsQuizQuestion] = []
+        for i, q in enumerate(questions_raw[:3]):
+            choices = q.get("choices", [])
+            if len(choices) < 2:
+                continue
+            questions.append(
+                KidsQuizQuestion(
+                    id=q.get("id", f"q{i + 1}"),
+                    kind=q.get("kind", "comprehension"),
+                    question=q.get("question", ""),
+                    choices=[str(c) for c in choices[:4]],
+                    answer_index=max(0, min(len(choices) - 1, int(q.get("answer_index", 0)))),
+                    explanation=q.get("explanation", ""),
+                )
+            )
+
+        if not questions:
+            raise RuntimeError("No valid questions were generated")
+
+        result = KidsQuizResult(
+            document_id=document_id,
+            section_id=section_id,
+            questions=questions,
+            content_hash=content_hash,
+            model=model_name,
+            prompt_version=self.KIDS_QUIZ_PROMPT_VERSION,
+        )
+        quiz_path.parent.mkdir(parents=True, exist_ok=True)
+        _write_json(quiz_path, result.model_dump(mode="json"))
+        return result
+
+    def update_kids_progress(
+        self,
+        document_id: str,
+        section_id: str,
+        *,
+        scroll_percent: float = 0.0,
+        epub_cfi: str = "",
+        section_href: str = "",
+    ) -> ReadingProgress:
+        """Update progress without enforcing Focus-Check (kids mode)."""
+        doc = self.load_document(document_id)
+        if doc is None:
+            raise ValueError("Reading document not found")
+        section = next((s for s in doc.sections if s.id == section_id), None)
+        if section is None:
+            raise ValueError("Reading section not found")
+        progress = self.load_progress(document_id)
+        progress.current_section_id = section.id
+        progress.current_section_index = section.index
+        progress.scroll_percent = max(0.0, min(100.0, float(scroll_percent)))
+        if epub_cfi:
+            progress.epub_cfi = epub_cfi
+        if section_href:
+            progress.section_href = section_href
         self._save_progress(progress)
         return progress
 

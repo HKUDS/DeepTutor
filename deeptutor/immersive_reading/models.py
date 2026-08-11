@@ -16,6 +16,7 @@ class ReadingSection(BaseModel):
     source_start: int = 0
     source_end: int = 0
     checkpoint_kind: Literal["chapter", "chunk", "none"] = "chapter"
+    source_href: str = ""
 
 
 class ReadingDocument(BaseModel):
@@ -29,6 +30,7 @@ class ReadingDocument(BaseModel):
     reading_mode: Literal["chapters", "chunks"] = "chapters"
     sections: list[ReadingSection] = Field(default_factory=list)
     has_cover: bool = False
+    experience_mode: Literal["standard", "kids"] = "standard"
     created_at: float = Field(default_factory=time.time)
     updated_at: float = Field(default_factory=time.time)
 
@@ -85,6 +87,8 @@ class ReadingProgress(BaseModel):
     scroll_percent: float = 0.0
     passed_section_ids: list[str] = Field(default_factory=list)
     focus_attempts: dict[str, FocusAttempt] = Field(default_factory=dict)
+    epub_cfi: str = ""
+    section_href: str = ""
     immersive_run: int = 1
     updated_at: float = Field(default_factory=time.time)
 
@@ -126,6 +130,31 @@ class SelectionQueryResult(BaseModel):
     search_provider: str = ""
 
 
+
+class KidsQuizQuestion(BaseModel):
+    """One multiple-choice question for the child reading quiz."""
+
+    id: str = ""
+    kind: Literal["comprehension", "sight_word", "sequence"] = "comprehension"
+    question: str = ""
+    choices: list[str] = Field(default_factory=list)
+    answer_index: int = 0
+    explanation: str = ""
+
+
+class KidsQuizResult(BaseModel):
+    """Cached quiz for a document + section pair."""
+
+    document_id: str
+    section_id: str
+    questions: list[KidsQuizQuestion] = Field(default_factory=list)
+    content_hash: str = ""
+    model: str = ""
+    prompt_version: str = ""
+    generated_at: float = Field(default_factory=time.time)
+
+
+
 __all__ = [
     "ChapterSearchCard",
     "FastSearchIndex",
@@ -136,5 +165,7 @@ __all__ = [
     "ReadingProgress",
     "ReadingSection",
     "SearchHit",
+    "KidsQuizQuestion",
+    "KidsQuizResult",
     "SelectionQueryResult",
 ]

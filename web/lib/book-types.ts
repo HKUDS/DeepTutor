@@ -204,4 +204,8 @@ export interface CharacterGraphResult {
   mermaid: string;
 }
 
-export interface BookDetail {
+export interface BookDetail {  book: Book;
+  spine: Spine | null;
+  pages: Page[];
+  progress: Progress;
+}

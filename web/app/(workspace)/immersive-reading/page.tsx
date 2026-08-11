@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
+  Baby,
   BookCheck,
   BookMarked,
   Check,
@@ -56,6 +57,7 @@ const MarkdownRenderer = dynamic(
   { ssr: false },
 );
 const Mermaid = dynamic(() => import("@/components/Mermaid"), { ssr: false });
+const KidsEpubReader = dynamic(() => import("./components/KidsEpubReader"), { ssr: false, loading: () => null });
 
 type SearchMode = "exact" | "fuzzy" | "description_fast" | "description_fine";
 type ShelfView = "library" | "citations";
@@ -568,6 +570,8 @@ function Reader({
   const [focusOpen, setFocusOpen] = useState(false);
   const [focusSummary, setFocusSummary] = useState("");
   const [focusReflection, setFocusReflection] = useState("");
+  const [kidsMode, setKidsMode] = useState(false);
+  const [kidsToggling, setKidsToggling] = useState(false);
   const [focusBusy, setFocusBusy] = useState(false);
   const [focusResult, setFocusResult] = useState<FocusCheckResult | null>(null);
   const [focusValidationError, setFocusValidationError] = useState<string | null>(null);
@@ -1002,6 +1006,16 @@ function Reader({
     return <div className="flex h-full items-center justify-center text-[var(--muted-foreground)]">{error ? error : <Loader2 className="animate-spin" />}</div>;
   }
 
+  if ((kidsMode || document.experience_mode === "kids") && document.source_format === "epub") {
+    return (
+      <KidsEpubReader
+        document={document}
+        onBack={onBack}
+        onError={onErrorToast}
+      />
+    );
+  }
+
   const previous = document.sections[currentIndex - 1];
   const next = document.sections[currentIndex + 1];
   const overallProgress = document.sections.length
@@ -1164,6 +1178,27 @@ function Reader({
               );
             })}
          </div>
+          <button
+            type="button"
+            disabled={kidsToggling}
+            onClick={async () => {
+              if (document.source_format !== "epub") return;
+              setKidsToggling(true);
+              try {
+                await immersiveReadingApi.setExperienceMode(document.id, "kids");
+                setKidsMode(true);
+              } catch {
+                onErrorToast(t("Could not switch to kids mode."));
+              } finally {
+                setKidsToggling(false);
+              }
+            }}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--muted-foreground)] transition hover:text-[var(--foreground)]"
+            title={t("Illustrated kids reading mode")}
+          >
+            <Baby size={15} />
+            {t("Kids")}
+          </button>
           <button
             type="button"
             onClick={() => setCharGraphOpen((v) => !v)}

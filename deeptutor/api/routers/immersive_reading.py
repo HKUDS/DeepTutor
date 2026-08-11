@@ -60,6 +60,24 @@ class FocusCheckRequest(BaseModel):
     language: Literal["zh", "en"] = "en"
 
 
+class ExperienceModeRequest(BaseModel):
+    mode: Literal["standard", "kids"] = "kids"
+
+
+class KidsQuizRequest(BaseModel):
+    section_id: str
+    force_refresh: bool = False
+
+
+class KidsProgressRequest(BaseModel):
+    section_id: str
+    scroll_percent: float = Field(default=0, ge=0, le=100)
+    epub_cfi: str = Field(default="", max_length=500)
+    section_href: str = Field(default="", max_length=500)
+
+
+
+
 async def _execute_search(document_id: str, request: SearchRequest) -> dict[str, Any]:
     service = get_immersive_reading_service()
     if request.mode == "description_fast":
@@ -481,3 +499,45 @@ async def character_graph(document_id: str, request: CharacterGraphRequest) -> d
         pass
 
     return payload
+
+
+# ── Kids experience mode ───────────────────────────────────────────────────
+
+
+@router.put("/documents/{document_id}/experience-mode")
+async def set_experience_mode(document_id: str, request: ExperienceModeRequest):
+    try:
+        return get_immersive_reading_service().set_experience_mode(document_id, request.mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/documents/{document_id}/kids-quiz")
+async def generate_kids_quiz(document_id: str, request: KidsQuizRequest):
+    try:
+        result = await get_immersive_reading_service().generate_kids_quiz(
+            document_id, request.section_id, force_refresh=request.force_refresh
+        )
+        return result.model_dump(mode="json")
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Kids quiz generation failed document=%s", document_id)
+        raise HTTPException(
+            status_code=502, detail=f"Quiz generation failed: {exc}"
+        ) from exc
+
+
+@router.put("/documents/{document_id}/kids-progress")
+async def update_kids_progress(document_id: str, request: KidsProgressRequest):
+    try:
+        progress = get_immersive_reading_service().update_kids_progress(
+            document_id,
+            request.section_id,
+            scroll_percent=request.scroll_percent,
+            epub_cfi=request.epub_cfi,
+            section_href=request.section_href,
+        )
+        return {"progress": progress.model_dump(mode="json")}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

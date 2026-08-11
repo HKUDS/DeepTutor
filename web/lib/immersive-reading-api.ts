@@ -10,6 +10,7 @@ export interface ReadingSection {
   source_start: number;
   source_end: number;
   checkpoint_kind: "chapter" | "chunk" | "none";
+  source_href?: string;
 }
 
 export interface FocusAttempt {
@@ -28,6 +29,8 @@ export interface ReadingProgress {
   scroll_percent: number;
   passed_section_ids: string[];
   focus_attempts: Record<string, FocusAttempt>;
+  epub_cfi?: string;
+  section_href?: string;
   immersive_run: number;
   updated_at: number;
 }
@@ -60,6 +63,7 @@ export interface ReadingDocument {
   updated_at: number;
   progress: ReadingProgress;
   progress_percent: number;
+  experience_mode: "standard" | "kids";
   cover_url: string;
   fast_search_index: FastSearchIndexStatus;
 }
@@ -145,6 +149,27 @@ export interface CharacterGraphResult {
   scope: "current" | "through_current";
   section_id: string;
 }
+
+
+export interface KidsQuizChoice {
+  id: string;
+  kind: "comprehension" | "sight_word" | "sequence";
+  question: string;
+  choices: string[];
+  answer_index: number;
+  explanation: string;
+}
+
+export interface KidsQuizResult {
+  document_id: string;
+  section_id: string;
+  questions: KidsQuizChoice[];
+  content_hash: string;
+  model: string;
+  prompt_version: string;
+  generated_at: number;
+}
+
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
@@ -288,6 +313,38 @@ export const immersiveReadingApi = {
           scope,
           force_refresh: forceRefresh,
         }),
+      },
+    ),
+  setExperienceMode: (documentId: string, mode: "standard" | "kids") =>
+    request<{ experience_mode: string; progress_percent: number }>(
+      `/documents/${encodeURIComponent(documentId)}/experience-mode`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ mode }),
+      },
+    ),
+  kidsQuiz: (
+    documentId: string,
+    sectionId: string,
+    forceRefresh = false,
+  ) =>
+    request<KidsQuizResult>(
+      `/documents/${encodeURIComponent(documentId)}/kids-quiz`,
+      {
+        method: "POST",
+        body: JSON.stringify({ section_id: sectionId, force_refresh: forceRefresh }),
+      },
+    ),
+  kidsProgress: (
+    documentId: string,
+    sectionId: string,
+    data: { scroll_percent?: number; epub_cfi?: string; section_href?: string },
+  ) =>
+    request<{ progress: ReadingProgress }>(
+      `/documents/${encodeURIComponent(documentId)}/kids-progress`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ section_id: sectionId, ...data }),
       },
     ),
 };
