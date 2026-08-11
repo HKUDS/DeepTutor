@@ -1832,7 +1832,7 @@ class KidsManager:
         name: str,
         *,
         avatar: str = "default",
-        age_band: str = "6-8",
+        birth_date: str = "",
         help_language: str = "en",
         narration_rate: float = 0.8,
         daily_limit_minutes: int = 30,
@@ -1843,7 +1843,7 @@ class KidsManager:
             id=uuid.uuid4().hex[:12],
             name=name.strip() or "Child",
             avatar=avatar,
-            age_band=age_band,
+            birth_date=birth_date,
             help_language=help_language,
             narration_rate=max(0.5, min(1.5, narration_rate)),
             daily_limit_minutes=max(5, min(120, daily_limit_minutes)),
@@ -1859,7 +1859,7 @@ class KidsManager:
         if idx is None:
             raise ValueError("Profile not found")
         p = profiles[idx]
-        for key in ("name", "avatar", "age_band", "help_language", "narration_rate", "daily_limit_minutes"):
+        for key in ("name", "avatar", "birth_date", "help_language", "narration_rate", "daily_limit_minutes"):
             if key in kwargs and kwargs[key] is not None:
                 setattr(p, key, kwargs[key])
         if "parent_pin" in kwargs and kwargs["parent_pin"]:

@@ -161,13 +161,37 @@ class KidsProfile(BaseModel):
     id: str
     name: str = ""
     avatar: str = "default"
-    age_band: Literal["3-5", "6-8", "9-12"] = "6-8"
+    birth_date: str = ""  # ISO date string, e.g. "2018-03-15"
     help_language: Literal["en", "zh"] = "en"
     narration_rate: float = 0.8
     daily_limit_minutes: int = 30
     pin_hash: str = ""
     created_at: float = Field(default_factory=time.time)
     updated_at: float = Field(default_factory=time.time)
+
+    @property
+    def age(self) -> int:
+        """Current age in years, computed from birth_date."""
+        if not self.birth_date:
+            return 7
+        try:
+            from datetime import date
+            born = date.fromisoformat(self.birth_date)
+            today = date.today()
+            return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+        except (ValueError, TypeError):
+            return 7
+
+    @property
+    def age_band(self) -> str:
+        """Auto-derived age band from birth_date. Updates as the child grows."""
+        a = self.age
+        if a <= 5:
+            return "3-5"
+        elif a <= 8:
+            return "6-8"
+        else:
+            return "9-12"
 
 
 class KidsBookAssignment(BaseModel):

@@ -9,6 +9,8 @@ export interface KidsProfile {
   id: string;
   name: string;
   avatar: string;
+  birth_date: string;
+  age: number;
   age_band: "3-5" | "6-8" | "9-12";
   help_language: "en" | "zh";
   narration_rate: number;
@@ -84,7 +86,7 @@ export const kidsAdminApi = {
   createProfile: (data: {
     name: string;
     avatar?: string;
-    age_band?: string;
+    birth_date?: string;
     help_language?: string;
     narration_rate?: number;
     daily_limit_minutes?: number;

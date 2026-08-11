@@ -13,7 +13,7 @@ export default function KidsManagementPanel({ onClose }: { onClose: () => void }
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState("");
-  const [newAge, setNewAge] = useState("6-8");
+  const [newBirthDate, setNewBirthDate] = useState("");
   const [newPin, setNewPin] = useState("");
   const [report, setReport] = useState<Record<string, any> | null>(null);
 
@@ -56,7 +56,7 @@ export default function KidsManagementPanel({ onClose }: { onClose: () => void }
     if (!newName.trim()) return;
     await kidsAdminApi.createProfile({
       name: newName.trim(),
-      age_band: newAge,
+      birth_date: newBirthDate,
       parent_pin: newPin || undefined,
     });
     setNewName("");
@@ -120,11 +120,13 @@ export default function KidsManagementPanel({ onClose }: { onClose: () => void }
                   onChange={(e) => setNewName(e.target.value)}
                   style={inputStyle}
                 />
-                <select value={newAge} onChange={(e) => setNewAge(e.target.value)} style={inputStyle}>
-                  <option value="3-5">Ages 3-5</option>
-                  <option value="6-8">Ages 6-8</option>
-                  <option value="9-12">Ages 9-12</option>
-                </select>
+                <input
+                  type="date"
+                  value={newBirthDate}
+                  onChange={(e) => setNewBirthDate(e.target.value)}
+                  style={inputStyle}
+                  max={new Date().toISOString().split("T")[0]}
+                />
                 <input
                   type="password"
                   placeholder="Parent PIN (optional, 4+ digits)"
@@ -152,7 +154,7 @@ export default function KidsManagementPanel({ onClose }: { onClose: () => void }
                     onClick={() => setSelectedProfile(p)}
                   >
                     <div style={{ fontWeight: 600, fontSize: 18 }}>{p.name}</div>
-                    <div style={{ fontSize: 14, color: "var(--muted, #718096)" }}>Age: {p.age_band}</div>
+                    <div style={{ fontSize: 14, color: "var(--muted, #718096)" }}>Age: {p.age ?? "?"} ({p.age_band})</div>
                     <div style={{ fontSize: 14, color: "var(--muted, #718096)" }}>
                       {p.has_pin ? "PIN protected" : "No PIN"}
                     </div>

@@ -18,12 +18,22 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def _profile_dict(profile) -> dict:
+    """Serialize profile with computed age and age_band included."""
+    return {
+        **profile.model_dump(mode="json"),
+        "age": profile.age,
+        "age_band": profile.age_band,
+        "has_pin": bool(profile.pin_hash),
+    }
+
+
 # ── Profile CRUD ────────────────────────────────────────────────────────────
 
 class CreateProfileRequest(BaseModel):
     name: str = Field(min_length=1, max_length=40)
     avatar: str = "default"
-    age_band: Literal["3-5", "6-8", "9-12"] = "6-8"
+    birth_date: str = Field(default="", pattern=r"^\d{4}-\d{2}-\d{2}$")
     help_language: Literal["en", "zh"] = "en"
     narration_rate: float = 0.8
     daily_limit_minutes: int = 30
@@ -33,7 +43,7 @@ class CreateProfileRequest(BaseModel):
 class UpdateProfileRequest(BaseModel):
     name: str | None = None
     avatar: str | None = None
-    age_band: Literal["3-5", "6-8", "9-12"] | None = None
+    birth_date: str | None = None
     help_language: Literal["en", "zh"] | None = None
     narration_rate: float | None = None
     daily_limit_minutes: int | None = None
@@ -46,7 +56,7 @@ async def list_profiles() -> dict:
     profiles = manager.list_profiles()
     return {
         "profiles": [
-            {**p.model_dump(mode="json"), "has_pin": bool(p.pin_hash)}
+            _profile_dict(p)
             for p in profiles
         ]
     }
@@ -58,13 +68,13 @@ async def create_profile(request: CreateProfileRequest) -> dict:
     profile = manager.create_profile(
         request.name,
         avatar=request.avatar,
-        age_band=request.age_band,
+        birth_date=request.birth_date,
         help_language=request.help_language,
         narration_rate=request.narration_rate,
         daily_limit_minutes=request.daily_limit_minutes,
         parent_pin=request.parent_pin,
     )
-    return {"profile": {**profile.model_dump(mode="json"), "has_pin": bool(profile.pin_hash)}}
+    return {"profile": _profile_dict(profile)}
 
 
 @router.put("/profiles/{profile_id}")
@@ -74,7 +84,7 @@ async def update_profile(profile_id: str, request: UpdateProfileRequest) -> dict
         profile = manager.update_profile(profile_id, **request.model_dump(exclude_none=True))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return {"profile": {**profile.model_dump(mode="json"), "has_pin": bool(profile.pin_hash)}}
+    return {"profile": _profile_dict(profile)}
 
 
 @router.delete("/profiles/{profile_id}")
