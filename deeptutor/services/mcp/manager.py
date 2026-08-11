@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+import hashlib
 import logging
 import re
 from typing import Any
@@ -73,6 +74,11 @@ _RETRY_BACKOFF_MAX_S = 300.0
 # account reconnects.
 _MAX_OWNER_SCOPES = 64
 _SCOPE_IDLE_TTL_S = 900.0
+
+
+class ConnectionLost(RuntimeError):
+    """A server's connection task ended while one of its tools was in flight."""
+
 
 # Transient transport errors worth exactly one retry (mirrors nanobot).
 _TRANSIENT_ERRORS = (
@@ -416,7 +422,12 @@ class MCPConnectionManager:
         if conn is None or conn.session is None or conn.status != "connected":
             return f"(MCP server {server_name!r} is not connected)"
         try:
-            return await self._call_once(conn, tool_name, arguments, timeout, on_progress)
+            return await self._call_watching_connection(
+                conn, tool_name, arguments, timeout, on_progress
+            )
+        except ConnectionLost as exc:
+            logger.warning("MCP tool %s/%s lost its connection: %s", server_name, tool_name, exc)
+            return f"(MCP server {server_name!r} connection failed during the call: {exc})"
         except _TRANSIENT_ERRORS:
             logger.warning(
                 "MCP tool %s/%s hit a transient transport error; retrying once",
@@ -439,6 +450,50 @@ class MCPConnectionManager:
         except Exception as exc:
             logger.exception("MCP tool %s/%s failed", server_name, tool_name)
             return f"(MCP tool call failed: {type(exc).__name__}: {exc})"
+
+    async def _call_watching_connection(
+        self,
+        conn: _ServerConnection,
+        tool_name: str,
+        arguments: dict[str, Any],
+        timeout: int,
+        on_progress: "ProgressCallback | None" = None,
+    ) -> str:
+        """Run one call, abandoning it as soon as the connection task dies.
+
+        A transport-level failure on the POST that carries the call — an HTTP
+        error, most often auth — is raised inside the SDK's *own* task group,
+        not on the awaiting caller. The request future is simply never resolved,
+        so the bare call sits until ``tool_timeout`` expires and then reports a
+        timeout: the one explanation that rules out the actual cause. Watching
+        the connection task lets the real error, which that task has already
+        recorded, be the thing the model and the user are told, in the second it
+        actually took rather than the full timeout.
+        """
+        call = asyncio.ensure_future(
+            self._call_once(conn, tool_name, arguments, timeout, on_progress)
+        )
+        watcher = conn.task
+        if watcher is None or watcher.done():
+            return await call
+        done, _pending = await asyncio.wait({call, watcher}, return_when=asyncio.FIRST_COMPLETED)
+        if call in done:
+            return call.result()
+        # The connection died first. Cancel the orphaned call and absorb its
+        # outcome so the loop never sees a "task exception was never retrieved".
+        call.cancel()
+        try:
+            await call
+        except asyncio.CancelledError:
+            # Ours, not the turn's — unless this task is itself being cancelled,
+            # in which case swallowing it would strand the cancellation and
+            # report a lost connection instead.
+            task = asyncio.current_task()
+            if task is not None and task.cancelling() > 0:
+                raise
+        except Exception:
+            logger.debug("MCP call for %r discarded after its connection died", conn.name)
+        raise ConnectionLost(conn.error or "the connection task ended")
 
     @staticmethod
     async def _call_once(
@@ -471,6 +526,33 @@ class MCPConnectionManager:
 
     # ── connection internals ───────────────────────────────────────────
 
+    @classmethod
+    def _signature(cls, cfg: MCPServerConfig, owner: str) -> str:
+        """``cfg``'s connection fingerprint, sensitive to its resolved secrets.
+
+        :meth:`MCPServerConfig.connection_signature` fingerprints the *stored*
+        config, which holds ``${secret:...}`` references rather than values (see
+        :mod:`deeptutor.services.mcp.secrets`). Rotating a credential therefore
+        leaves that fingerprint byte-identical, and the reload diff concludes
+        nothing changed — so the account keeps talking to the server with the
+        key it just replaced until the process restarts.
+
+        Mixing in a digest of the materialized config closes that hole. Only the
+        digest is kept: a signature is held on a live connection and compared in
+        logs-adjacent code, so the credential itself must not be in it. Configs
+        with no references keep their plain signature, so upgrading this code
+        does not invalidate — and drop — every live session.
+        """
+        base = cfg.connection_signature()
+        try:
+            resolved = cls._materialize(cfg, owner).connection_signature()
+        except Exception:  # pragma: no cover - unreadable secrets store
+            logger.warning("Could not resolve secrets while fingerprinting a server config")
+            return base
+        if resolved == base:
+            return base
+        return f"{base}#{hashlib.sha256(resolved.encode('utf-8')).hexdigest()}"
+
     async def _sync_to_config(self, config: MCPConfig, *, owner: str = SHARED_OWNER) -> None:
         """Diff *owner*'s live connections against *config*; caller holds the lock."""
         desired = {name: cfg for name, cfg in config.servers.items() if cfg.enabled}
@@ -479,7 +561,7 @@ class MCPConnectionManager:
             if key[0] != owner:
                 continue
             cfg = desired.get(key[1])
-            if cfg is None or cfg.connection_signature() != self._connections[key].signature:
+            if cfg is None or self._signature(cfg, owner) != self._connections[key].signature:
                 await self._disconnect(self._connections.pop(key))
         # Connect new/changed servers concurrently.
         pending = [
@@ -501,7 +583,7 @@ class MCPConnectionManager:
         conn = _ServerConnection(
             name=name,
             config=cfg,
-            signature=cfg.connection_signature(),
+            signature=self._signature(cfg, owner),
             owner=owner,
             retry_delay=retry_delay,
         )
@@ -583,7 +665,10 @@ class MCPConnectionManager:
                 logger.warning("MCP server %r connection task ended: %s", conn.name, exc)
                 self._unregister_adapters(conn)
                 conn.adapters = []
-                self._mark_failed(conn, f"{type(exc).__name__}: {exc}")
+                # Unwrapped like the connect path: this string is now also what a
+                # tool call reports when the connection dies under it, and
+                # "ExceptionGroup: unhandled errors in a TaskGroup" names nothing.
+                self._mark_failed(conn, describe_connect_failure(exc))
         finally:
             conn.session = None
 
