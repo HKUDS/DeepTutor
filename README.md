@@ -219,6 +219,8 @@ deeptutor start    # starts backend + frontend; keep the terminal open
 
 `deeptutor init` prompts for backend port (default `8001`), frontend port (default `3782`), LLM provider / base URL / API key / model, and an optional embedding provider for Knowledge Base / RAG.
 
+[OrcaRouter](https://www.orcarouter.ai) is supported as a named OpenAI-compatible gateway for both LLM and embedding. With one `ORCAROUTER_API_KEY` (keys start with `sk-orca-`) you get 150+ models from OpenAI, Anthropic, Google, DeepSeek, Qwen, MiniMax and xAI behind a single `https://api.orcarouter.ai/v1` endpoint. Pick it in the `deeptutor init` provider menu (or **Settings → Models**), use gateway model ids like `anthropic/claude-sonnet-4.6`, `deepseek/deepseek-v4-pro`, or `orcarouter/auto` for OrcaRouter's auto-routing alias, and set embedding models such as `openai/text-embedding-3-large`. It also runs gateway-level, zero-trust security for AI agents on the same endpoint — screening every prompt/response and governing every tool call on a default-deny basis, with no application code changes.
+
 After `deeptutor start`, open the frontend URL printed in the terminal — by default [http://127.0.0.1:3782](http://127.0.0.1:3782). Press `Ctrl+C` in that terminal to stop both backend and frontend. Skipping `deeptutor init` is fine for a quick trial; the app boots with default ports and empty model settings, configure them later in **Settings → Models**.
 
 </details>
