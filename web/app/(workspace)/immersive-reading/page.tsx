@@ -27,6 +27,7 @@ import {
   Search,
   Sparkles,
   Trash2,
+  Users,
   X,
 } from "lucide-react";
 import {
@@ -58,6 +59,7 @@ const MarkdownRenderer = dynamic(
 );
 const Mermaid = dynamic(() => import("@/components/Mermaid"), { ssr: false });
 const KidsEpubReader = dynamic(() => import("./components/KidsEpubReader"), { ssr: false, loading: () => null });
+const KidsManagementPanel = dynamic(() => import("./components/KidsManagementPanel"), { ssr: false });
 
 type SearchMode = "exact" | "fuzzy" | "description_fast" | "description_fine";
 type ShelfView = "library" | "citations";
@@ -572,6 +574,7 @@ function Reader({
   const [focusReflection, setFocusReflection] = useState("");
   const [kidsMode, setKidsMode] = useState(false);
   const [kidsToggling, setKidsToggling] = useState(false);
+  const [kidsMgmtOpen, setKidsMgmtOpen] = useState(false);
   const [focusBusy, setFocusBusy] = useState(false);
   const [focusResult, setFocusResult] = useState<FocusCheckResult | null>(null);
   const [focusValidationError, setFocusValidationError] = useState<string | null>(null);
@@ -1178,6 +1181,15 @@ function Reader({
               );
             })}
          </div>
+          <button
+            type="button"
+            onClick={() => setKidsMgmtOpen(true)}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--muted-foreground)] transition hover:text-[var(--foreground)]"
+            title={t("Manage children profiles and books")}
+          >
+            <Users size={15} />
+            {t("Manage Kids")}
+          </button>
           <button
             type="button"
             disabled={kidsToggling}

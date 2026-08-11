@@ -155,17 +155,92 @@ class KidsQuizResult(BaseModel):
 
 
 
+class KidsProfile(BaseModel):
+    """A child profile managed by the parent (adult user)."""
+
+    id: str
+    name: str = ""
+    avatar: str = "default"
+    age_band: Literal["3-5", "6-8", "9-12"] = "6-8"
+    help_language: Literal["en", "zh"] = "en"
+    narration_rate: float = 0.8
+    daily_limit_minutes: int = 30
+    pin_hash: str = ""
+    created_at: float = Field(default_factory=time.time)
+    updated_at: float = Field(default_factory=time.time)
+
+
+class KidsBookAssignment(BaseModel):
+    """Links a book (document) to a child profile with access controls."""
+
+    id: str
+    profile_id: str
+    document_id: str
+    document_title: str = ""
+    status: Literal["active", "hidden"] = "active"
+    available_through_section_id: str = ""
+    available_through_section_index: int = 999
+    sort_order: int = 0
+    is_next_read: bool = False
+    assigned_at: float = Field(default_factory=time.time)
+    updated_at: float = Field(default_factory=time.time)
+
+
+class KidsLearningProgress(BaseModel):
+    """Per-profile per-book learning progress, isolated from adult progress."""
+
+    profile_id: str
+    document_id: str
+    current_section_id: str = ""
+    current_section_index: int = 0
+    scroll_percent: float = 0.0
+    epub_cfi: str = ""
+    section_href: str = ""
+    completed_section_ids: list[str] = Field(default_factory=list)
+    total_stars: int = 0
+    quiz_attempts: int = 0
+    quiz_best_score: int = 0
+    time_spent_seconds: float = 0.0
+    last_read_at: float = 0.0
+    updated_at: float = Field(default_factory=time.time)
+
+
+class KidsQuizSubmission(BaseModel):
+    """A submitted quiz answer for server-side grading."""
+
+    profile_id: str
+    document_id: str
+    section_id: str
+    answers: list[int] = Field(default_factory=list)
+
+
+class KidsQuizGradeResult(BaseModel):
+    """Grading result returned to the child after submission."""
+
+    score: int
+    total: int
+    stars: int
+    per_question: list[dict[str, Any]] = Field(default_factory=list)
+    encouragements: list[str] = Field(default_factory=list)
+
+
+
 __all__ = [
     "ChapterSearchCard",
     "FastSearchIndex",
     "FocusAttempt",
     "FocusCheckResult",
+    "KidsBookAssignment",
+    "KidsLearningProgress",
+    "KidsProfile",
+    "KidsQuizGradeResult",
+    "KidsQuizQuestion",
+    "KidsQuizResult",
+    "KidsQuizSubmission",
     "ReadingCitation",
     "ReadingDocument",
     "ReadingProgress",
     "ReadingSection",
     "SearchHit",
-    "KidsQuizQuestion",
-    "KidsQuizResult",
     "SelectionQueryResult",
 ]
