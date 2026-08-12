@@ -23,6 +23,7 @@ import {
   type MasteryMapResult,
   type ObjectiveStatus,
 } from "@/lib/learning-api";
+import { newMasteryPathChatUrl } from "@/lib/mastery-path-navigation";
 
 /**
  * Mastery Path dashboard — the persistent "screen" of the mastery experience.
@@ -31,8 +32,8 @@ import {
  * Chat); this page is the map of where the learner stands. It reads the
  * gate-accurate snapshot from ``/progress/{id}/map`` (per-type status computed
  * by ``deeptutor.learning.policy``) so the colours here agree with the gate the
- * tutor enforces. A path is keyed by its chat session, so "Continue" reopens
- * that session in mastery mode.
+ * tutor enforces. A path and a conversation have independent identities, so
+ * "Continue" starts a focused chat while retaining the selected path state.
  */
 export default function MasteryPathPage() {
   const { i18n } = useTranslation();
@@ -206,7 +207,7 @@ export default function MasteryPathPage() {
             zh={!!zh}
             tr={tr}
             onContinue={() =>
-              selected && router.push(`/home/${encodeURIComponent(selected)}`)
+              selected && router.push(newMasteryPathChatUrl(selected))
             }
             onRedo={() => selected && handleRedo(selected)}
             onDelete={() => selected && handleDelete(selected)}

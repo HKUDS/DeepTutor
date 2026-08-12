@@ -27,6 +27,7 @@ from deeptutor.learning.models import (
     LearningProgress,
     ReviewTask,
 )
+from deeptutor.learning.pending import PublicPendingQuestion, public_pending_question
 
 # Quantitative gate for objective knowledge types: the learner must reach this
 # mastery (recency-weighted accuracy; see ``mastery.compute_mastery``) before
@@ -122,6 +123,7 @@ class NextStep:
     threshold: float = 0.0
     reason: str = ""
     pending_prompt: str = ""
+    pending_question: PublicPendingQuestion | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -137,6 +139,9 @@ class NextStep:
             "threshold": round(self.threshold, 3),
             "reason": self.reason,
             "pending_prompt": self.pending_prompt,
+            "pending_question": (
+                self.pending_question.to_dict() if self.pending_question is not None else None
+            ),
         }
 
 
@@ -180,6 +185,7 @@ def next_objective(progress: LearningProgress, *, now: float | None = None) -> N
             threshold=gate_threshold(kp.type) if kp else 0.0,
             reason="A posed question is awaiting the learner's answer; grade it with mastery_grade.",
             pending_prompt=pending.prompt,
+            pending_question=public_pending_question(pending),
         )
 
     due = due_reviews(progress, now=now)

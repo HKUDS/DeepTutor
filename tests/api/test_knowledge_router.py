@@ -612,6 +612,75 @@ def test_list_files_returns_nested_tree(monkeypatch, tmp_path: Path) -> None:
     assert entries["root.txt"]["type"] == "file"
 
 
+def test_remote_kb_file_listing_is_empty_without_creating_local_storage(
+    monkeypatch, tmp_path: Path
+) -> None:
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    manager.register_lightrag_server_kb("remote", "http://localhost:9621")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+
+    with TestClient(_build_app()) as client:
+        response = client.get("/api/v1/knowledge/remote/files")
+
+    assert response.status_code == 200
+    assert response.json() == {"files": []}
+    assert not (manager.base_dir / "remote").exists()
+
+
+@pytest.mark.parametrize(
+    ("method", "url", "kwargs"),
+    [
+        ("get", "/api/v1/knowledge/remote/files/demo.txt", {}),
+        ("get", "/api/v1/knowledge/remote/file-preview-text/demo.txt", {}),
+        ("delete", "/api/v1/knowledge/remote/files/demo.txt", {}),
+        ("post", "/api/v1/knowledge/remote/folders", {"json": {"path": "notes"}}),
+        (
+            "post",
+            "/api/v1/knowledge/remote/files/move",
+            {"json": {"source": "demo.txt", "dest_folder": "notes"}},
+        ),
+        ("post", "/api/v1/knowledge/remote/upload", {"files": _upload_payload()}),
+    ],
+)
+def test_remote_kb_rejects_local_file_operations_without_creating_storage(
+    monkeypatch, tmp_path: Path, method: str, url: str, kwargs: dict
+) -> None:
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    manager.register_lightrag_server_kb("remote", "http://localhost:9621")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+
+    with TestClient(_build_app()) as client:
+        response = getattr(client, method)(url, **kwargs)
+
+    assert response.status_code == 409
+    assert "external resource" in response.json()["detail"]
+    assert not (manager.base_dir / "remote").exists()
+
+
+def test_list_files_returns_404_for_unknown_kb_without_creating_storage(
+    monkeypatch, tmp_path: Path
+) -> None:
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+
+    with TestClient(_build_app()) as client:
+        response = client.get("/api/v1/knowledge/missing/files")
+
+    assert response.status_code == 404
+    assert not (manager.base_dir / "missing").exists()
+
+
+def test_raw_file_download_rejects_traversal(monkeypatch, tmp_path: Path) -> None:
+    manager = _ready_kb_manager(tmp_path)
+    (manager.base_dir / "secret.txt").write_text("secret", encoding="utf-8")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+
+    with TestClient(_build_app()) as client:
+        response = client.get("/api/v1/knowledge/kb/files/%2E%2E/secret.txt")
+
+    assert response.status_code == 403
+
+
 def test_upload_preserves_folder_structure(monkeypatch, tmp_path: Path) -> None:
     manager = _ready_kb_manager(tmp_path)
     monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)

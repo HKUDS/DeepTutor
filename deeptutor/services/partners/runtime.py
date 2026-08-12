@@ -13,8 +13,8 @@ Event → IM mapping:
   text (the loop's RESULT is empty for an unresolved ask_user pause — the
   pending question IS the reply, and the user's next IM message simply
   starts the next turn)
-* narration rounds (``call_role=narration``)     → optional ``_progress``
-  messages (``send_progress`` channel flag)
+* trace-only narration rounds (``call_role=narration``) → optional
+  ``_progress`` messages (``send_progress`` channel flag)
 * ``TOOL_CALL``                                  → optional ``_tool_hint``
 """
 
@@ -247,8 +247,10 @@ class PartnerRunner:
         round_buffers: dict[str, list[str]] = {}
         streamed_rounds: dict[str, str] = {}  # call_id → accumulated streamed text
         ended_rounds: set[str] = set()
+        answer_visible_parts: list[str] = []
         errors: list[str] = []
         turn_events: list[dict[str, Any]] = []
+        wants_stream = False
 
         # Turn setup (context assembly + LLM-selection resolution) runs INSIDE
         # the try so a setup failure folds into the error list instead of
@@ -320,7 +322,15 @@ class PartnerRunner:
                             and meta.get("call_role") == "narration"
                         ):
                             call_id = str(meta.get("call_id") or "")
-                            text = "".join(round_buffers.pop(call_id, [])).strip()
+                            raw_text = "".join(round_buffers.pop(call_id, []))
+                            text = raw_text.strip()
+                            if meta.get("answer_visible") is True:
+                                if raw_text:
+                                    answer_visible_parts.append(raw_text)
+                                if call_id in streamed_rounds:
+                                    ended_rounds.add(call_id)
+                                    await self._publish_stream_end(msg, turn_id, call_id)
+                                continue
                             if call_id in streamed_rounds:
                                 # Already streamed live — freeze the segment.
                                 ended_rounds.add(call_id)
@@ -342,6 +352,23 @@ class PartnerRunner:
         if not final_text.strip():
             final_text = terminator_text.strip()
         final_text = final_text.strip()
+        if answer_visible_parts and not wants_stream:
+            replayed_prefix = "".join(answer_visible_parts)
+            display_prefix = "\n\n".join(
+                part.strip() for part in answer_visible_parts if part.strip()
+            )
+            # Continuation rounds return the canonical, fully joined answer in
+            # RESULT so SDK and persistence consumers do not lose the prefix.
+            # DSML feedback rounds return only their later finish, so prepend
+            # the visible narration only when RESULT does not already contain it.
+            if not final_text:
+                final_text = display_prefix
+            elif display_prefix and not (
+                final_text.startswith(replayed_prefix)
+                or final_text == display_prefix
+                or final_text.startswith(f"{display_prefix}\n")
+            ):
+                final_text = f"{display_prefix}\n\n{final_text}"
 
         # Close any stream segments still open (the finish round, or partial
         # rounds after a crash) so channels can flush their edit buffers.

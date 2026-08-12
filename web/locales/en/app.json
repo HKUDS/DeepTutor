@@ -1173,7 +1173,7 @@
   "settingsTour.appearance.title": "Appearance",
   "settingsTour.appearance.desc": "Visual theme and interface language. Changes apply immediately.",
   "settingsTour.status.title": "Status",
-  "settingsTour.status.desc": "Runtime state of the backend and your configured model services — always visible here on the hub.",
+  "settingsTour.status.desc": "Whether the backend is up and what the running DeepTutor processes cost in memory — always visible here on the hub.",
   "settingsTour.network.title": "Network",
   "settingsTour.network.desc": "Ports, the browser-facing API base, and CORS origins — for Docker, LAN, and reverse-proxy deployments.",
   "settingsTour.models.title": "Models",
@@ -2919,5 +2919,14 @@
   "Running {{app}}": "Running {{app}}",
   "Product names and logos are trademarks of their respective owners, shown for identification only.": "Product names and logos are trademarks of their respective owners, shown for identification only.",
   "Needs authorization": "Needs authorization",
-  "Reauthorize": "Reauthorize"
+  "Reauthorize": "Reauthorize",
+  "Frontend": "Frontend",
+  "Sandbox": "Sandbox",
+  "Supervisor": "Supervisor",
+  "Other": "Other",
+  "System available": "System available",
+  "Container available": "Container available",
+  "{{used}} · {{percent}}% of {{total}}": "{{used}} · {{percent}}% of {{total}}",
+  "(backend only)": "(backend only)",
+  "Only the backend and its own children. Start DeepTutor through the launcher to include the web server.": "Only the backend and its own children. Start DeepTutor through the launcher to include the web server."
 }

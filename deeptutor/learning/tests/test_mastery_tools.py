@@ -9,6 +9,7 @@ import json
 
 import pytest
 
+from deeptutor.learning.models import PendingQuestion
 from deeptutor.learning.storage import LearningStore
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 from deeptutor.tools.mastery_tool import (
@@ -245,6 +246,129 @@ async def test_choice_quiz_rejects_bare_option_labels(path_id):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("type_kwargs", "expected_answer"),
+    [
+        ({}, "B"),
+        ({"question_type": ""}, "blue"),
+    ],
+)
+async def test_quiz_infers_choice_and_normalizes_expected_answer(
+    path_id, type_kwargs, expected_answer
+):
+    await _build_basic(path_id)
+    status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = status["next"]["knowledge_point_id"]
+
+    result = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=kp_id,
+        question="Pick a colour",
+        expected_answer=expected_answer,
+        options=["A: red", "B: blue"],
+        **type_kwargs,
+    )
+
+    assert result.success is True
+    pending = LearningStore().load(path_id).pending_question
+    assert pending is not None
+    assert pending.question_type == "choice"
+    assert pending.expected_answer == "B"
+    assert pending.options == ["A: red", "B: blue"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("question_type", ["short", "open"])
+async def test_explicit_non_choice_without_options_is_unchanged(path_id, question_type):
+    await _build_basic(path_id)
+    status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = status["next"]["knowledge_point_id"]
+
+    result = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=kp_id,
+        question="Explain it",
+        expected_answer="stored as written",
+        question_type=question_type,
+        options=[],
+    )
+
+    assert result.success is True
+    pending = LearningStore().load(path_id).pending_question
+    assert pending is not None
+    assert pending.question_type == question_type
+    assert pending.expected_answer == "stored as written"
+    assert pending.options == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("question_type", ["short", "open"])
+async def test_explicit_non_choice_rejects_options(path_id, question_type):
+    await _build_basic(path_id)
+    status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = status["next"]["knowledge_point_id"]
+
+    result = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=kp_id,
+        question="Explain it",
+        expected_answer="answer",
+        question_type=question_type,
+        options=["A: first", "B: second"],
+    )
+
+    assert result.success is False
+    assert "cannot be used" in result.content
+    assert LearningStore().load(path_id).pending_question is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("options", "error"),
+    [
+        ("A: first, B: second", "must be an array"),
+        (["A: first", "A: second", "B: third"], "labels must be unique"),
+        (["A: first", ""], "non-empty strings"),
+    ],
+)
+async def test_choice_quiz_rejects_malformed_options(path_id, options, error):
+    await _build_basic(path_id)
+    status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = status["next"]["knowledge_point_id"]
+
+    result = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=kp_id,
+        question="Pick one",
+        expected_answer="A",
+        question_type="choice",
+        options=options,
+    )
+
+    assert result.success is False
+    assert error in result.content
+
+
+@pytest.mark.asyncio
+async def test_choice_quiz_requires_options_even_when_type_is_explicit(path_id):
+    await _build_basic(path_id)
+    status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = status["next"]["knowledge_point_id"]
+
+    result = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=kp_id,
+        question="Pick one",
+        expected_answer="A",
+        question_type="choice",
+        options=[],
+    )
+
+    assert result.success is False
+    assert "full option bodies" in result.content
+
+
+@pytest.mark.asyncio
 async def test_choice_quiz_preserves_bodies_and_normalizes_answer(path_id, session_store):
     session = await session_store.create_session(title="Choice Mastery")
     await _build_basic(path_id)
@@ -289,6 +413,127 @@ async def test_choice_quiz_preserves_bodies_and_normalizes_answer(path_id, sessi
     assert entry["correct_answer"] == "C"
     assert entry["user_answer"] == "C"
     assert entry["is_correct"] is True
+
+
+@pytest.mark.asyncio
+async def test_pending_choice_status_reuses_public_contract_without_answer(path_id):
+    await _build_basic(path_id)
+    initial = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = initial["next"]["knowledge_point_id"]
+
+    registered = json.loads(
+        (
+            await MasteryQuizTool().execute(
+                _mastery_path_id=path_id,
+                knowledge_point_id=kp_id,
+                question="Pick a colour",
+                expected_answer="blue",
+                question_type="choice",
+                options=["A: red", "B: blue"],
+            )
+        ).content
+    )
+    status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+
+    pending = status["next"]["pending_question"]
+    assert pending == registered["pending_question"]
+    assert registered["ask_user"]["questions"][0] == {
+        "id": pending["question_id"],
+        "prompt": "Pick a colour",
+        "options": [
+            {"label": "A", "description": "red"},
+            {"label": "B", "description": "blue"},
+        ],
+        "multi_select": False,
+        "allow_free_text": True,
+    }
+    assert "expected_answer" not in registered
+    assert "expected_answer" not in pending
+
+
+@pytest.mark.asyncio
+async def test_choice_grade_accepts_unique_persisted_body(path_id):
+    await _build_basic(path_id)
+    initial = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = initial["next"]["knowledge_point_id"]
+    quiz = json.loads(
+        (
+            await MasteryQuizTool().execute(
+                _mastery_path_id=path_id,
+                knowledge_point_id=kp_id,
+                question="Pick a colour",
+                expected_answer="B",
+                question_type="choice",
+                options=["A: red", "B: blue"],
+            )
+        ).content
+    )
+
+    grade = json.loads(
+        (
+            await MasteryGradeTool().execute(
+                _mastery_path_id=path_id,
+                question_id=quiz["question_id"],
+                answer="blue",
+            )
+        ).content
+    )
+
+    assert grade["is_correct"] is True
+
+
+@pytest.mark.asyncio
+async def test_choice_grade_rejects_stale_question_id_without_clearing_pending(path_id):
+    await _build_basic(path_id)
+    initial = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = initial["next"]["knowledge_point_id"]
+    await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=kp_id,
+        question="Pick a colour",
+        expected_answer="B",
+        question_type="choice",
+        options=["A: red", "B: blue"],
+    )
+
+    grade = await MasteryGradeTool().execute(
+        _mastery_path_id=path_id,
+        question_id="stale-question",
+        answer="B",
+    )
+
+    assert grade.success is False
+    assert LearningStore().load(path_id).pending_question is not None
+
+
+@pytest.mark.asyncio
+async def test_choice_grade_keeps_legacy_bare_label_pending_compatible(path_id):
+    await _build_basic(path_id)
+    progress = LearningStore().load(path_id)
+    assert progress is not None
+    kp_id = progress.modules[0].knowledge_points[0].id
+    progress.pending_question = PendingQuestion(
+        question_id="legacy-question",
+        knowledge_point_id=kp_id,
+        module_id=progress.modules[0].id,
+        prompt="Legacy choice",
+        question_type="choice",
+        expected_answer="B",
+        options=["A", "B"],
+    )
+    LearningStore().save(progress)
+
+    grade = json.loads(
+        (
+            await MasteryGradeTool().execute(
+                _mastery_path_id=path_id,
+                question_id="legacy-question",
+                answer="B",
+            )
+        ).content
+    )
+
+    assert grade["is_correct"] is True
 
 
 # ── assess: the qualitative gate ─────────────────────────────────────────────

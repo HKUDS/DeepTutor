@@ -35,7 +35,7 @@ from deeptutor.api.utils.task_id_manager import TaskIDManager
 from deeptutor.api.utils.task_log_stream import capture_task_logs, get_task_stream_manager
 from deeptutor.knowledge.add_documents import DocumentAdder, remove_raw_document
 from deeptutor.knowledge.initializer import KnowledgeBaseInitializer
-from deeptutor.knowledge.kb_types import is_connected_kb
+from deeptutor.knowledge.kb_types import is_connected_kb, supports_local_raw_files
 from deeptutor.knowledge.manager import KnowledgeBaseManager
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
@@ -702,8 +702,8 @@ def _assert_not_connected_kb(kb_name: str, kb_entry: dict) -> None:
         raise HTTPException(
             status_code=409,
             detail=(
-                f"Knowledge base '{kb_name}' is connected to an external folder and is "
-                "read-only. Uploads and re-indexing are not available for it."
+                f"Knowledge base '{kb_name}' is connected to an external resource and is "
+                "read-only. Local file operations and re-indexing are not available for it."
             ),
         )
 
@@ -1973,21 +1973,42 @@ async def get_knowledge_base_details(kb_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _resolve_kb_raw_dir(kb_name: str) -> Path:
-    """Resolve the raw/ directory for a KB, validating that it exists."""
+def _resolve_kb_raw_dir(kb_name: str, *, allow_unsupported: bool = False) -> Path | None:
+    """Resolve a KB's managed ``raw/`` directory without inventing one.
+
+    Connected KBs are external-resource pointers and intentionally have no
+    DeepTutor-managed raw directory.  File listing treats that as an empty
+    collection for backwards compatibility; endpoints that require a local
+    file receive an explicit conflict response.
+    """
     manager = _overridden_kb_manager()
     if manager is not None:
         resolved_name = _resolve_registered_kb_name(manager, kb_name)
-        return manager.get_knowledge_base_path(resolved_name) / "raw"
-    resource = resolve_kb(kb_name)
-    manager = manager_for_resource(resource)
-    kb_path = manager.get_knowledge_base_path(resource.name)
+    else:
+        resource = resolve_kb(kb_name)
+        manager = manager_for_resource(resource)
+        resolved_name = resource.name
+
+    kb_entry = _load_kb_entry_or_404(manager, resolved_name)
+    if not supports_local_raw_files(kb_entry):
+        if allow_unsupported:
+            return None
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Knowledge base '{resolved_name}' is connected to an external resource "
+                "and has no local files."
+            ),
+        )
+
+    kb_path = manager.get_knowledge_base_path(resolved_name)
     return kb_path / "raw"
 
 
 def _resolve_kb_raw_file_or_404(kb_name: str, filename: str) -> Path:
     """Resolve a raw KB file while preventing traversal outside raw/."""
     raw_dir = _resolve_kb_raw_dir(kb_name)
+    assert raw_dir is not None  # allow_unsupported=False guarantees a path
     if not raw_dir.exists():
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -2014,7 +2035,9 @@ async def list_kb_raw_files(kb_name: str):
     before it holds any files. Folders are purely organizational and have no
     effect on indexing or retrieval.
     """
-    raw_dir = _resolve_kb_raw_dir(kb_name)
+    raw_dir = _resolve_kb_raw_dir(kb_name, allow_unsupported=True)
+    if raw_dir is None:
+        return {"files": []}
     if not raw_dir.exists() or not raw_dir.is_dir():
         return {"files": []}
 
@@ -2201,16 +2224,15 @@ async def upload_files(
     """Upload files to a knowledge base and process them in background."""
     try:
         manager, kb_name, kb_base_dir = _writable_kb(kb_name)
-        kb_path = manager.get_knowledge_base_path(kb_name)
-        raw_dir = kb_path / "raw"
-        raw_dir.mkdir(parents=True, exist_ok=True)
-
         requested_provider = None
         if rag_provider is not None and str(rag_provider).strip():
             requested_provider = _validate_registered_provider(rag_provider)
 
         kb_entry = _load_kb_entry_or_404(manager, kb_name)
         _assert_kb_writable_or_409(kb_name, kb_entry)
+        kb_path = manager.get_knowledge_base_path(kb_name)
+        raw_dir = kb_path / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
         kb_provider = _validate_registered_provider(
             kb_entry.get("rag_provider") or DEFAULT_PROVIDER
         )

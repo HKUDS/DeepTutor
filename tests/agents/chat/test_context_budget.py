@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from deeptutor.agents.chat.agent_loop import MAX_SETTLEMENT_ROUNDS
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 from deeptutor.agents.chat.context_budget import (
     LLMRequestSnapshot,
@@ -460,6 +461,11 @@ async def test_forced_finish_still_reports_the_tools_the_turn_carried(
     # tools from, to make the model answer. Reading the budget off that round
     # verbatim would report zero tool tokens for a turn whose schemas sat in
     # the window the entire time.
+    #
+    # Exhausting the budget means exploration *and* the bounded settlement
+    # window that follows it — settlement rounds deliberately keep tools
+    # available, so the model must keep requesting them to reach the hard
+    # finish.
     monkeypatch.setattr(
         "deeptutor.agents.chat.agentic_pipeline.get_llm_config",
         lambda: SimpleNamespace(
@@ -473,7 +479,10 @@ async def test_forced_finish_still_reports_the_tools_the_turn_carried(
     )
     client = _MultiTurnChatClient(
         [
-            [_tool_call_chunk("rag", '{"query": "gd", "kb_name": "kb"}')],
+            [_tool_call_chunk("rag", '{"query": "gd", "kb_name": "kb"}')]
+            for _ in range(1 + MAX_SETTLEMENT_ROUNDS)
+        ]
+        + [
             [
                 SimpleNamespace(
                     choices=[
