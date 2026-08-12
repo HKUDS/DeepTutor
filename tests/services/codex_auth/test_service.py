@@ -148,7 +148,9 @@ def test_service_singleton_reads_frontend_port_only_when_created(
         lambda _store, *, http: object(),
     )
     monkeypatch.setattr(service_module, "CodexOAuthClient", lambda _http: object())
-    monkeypatch.setattr(service_module, "get_model_catalog_service", lambda: object())
+    # A sign-in publishes into the OWNER's catalog, never the shared one that
+    # ``get_model_catalog_service`` resolves an ordinary user to (#781).
+    monkeypatch.setattr(service_module, "_owner_model_catalog_service", lambda: object())
     monkeypatch.setattr(service_module, "CodexOAuthService", CapturingService)
 
     first = service_module.get_codex_oauth_service()
@@ -164,6 +166,8 @@ def _model(
     *,
     display_name: str | None = None,
     priority: int = 1,
+    context_window: int | None = None,
+    max_context_window: int | None = None,
 ) -> CodexModel:
     return CodexModel(
         slug=slug,
@@ -175,6 +179,8 @@ def _model(
         supports_reasoning_summary=True,
         supports_parallel_tool_calls=True,
         use_responses_lite=False,
+        context_window=context_window,
+        max_context_window=max_context_window,
     )
 
 
@@ -244,7 +250,15 @@ def test_sync_publishes_a_read_only_owner_bound_codex_profile(tmp_path: Path) ->
 
     result = sync_codex_catalog(
         service,
-        _snapshot("live", _model("gpt-5.6-sol"), _model("gpt-5.6-terra", priority=2)),
+        _snapshot(
+            "live",
+            _model(
+                "gpt-5.6-sol",
+                context_window=272_000,
+                max_context_window=272_000,
+            ),
+            _model("gpt-5.6-terra", priority=2),
+        ),
     )
 
     profile = _managed_profile(result.catalog)
@@ -258,6 +272,24 @@ def test_sync_publishes_a_read_only_owner_bound_codex_profile(tmp_path: Path) ->
         "gpt-5.6-sol",
         "gpt-5.6-terra",
     ]
+    assert profile["models"][0]["context_window"] == "272000"
+    assert profile["models"][0]["context_window_source"] == "metadata"
+
+
+def test_sync_uses_max_context_window_when_current_window_is_missing(tmp_path: Path) -> None:
+    service = ModelCatalogService(tmp_path / "model_catalog.json")
+
+    result = sync_codex_catalog(
+        service,
+        _snapshot(
+            "live",
+            _model("gpt-5.6-sol", max_context_window=272_000),
+        ),
+    )
+
+    model = _managed_profile(result.catalog)["models"][0]
+    assert model["context_window"] == "272000"
+    assert model["context_window_source"] == "metadata"
 
 
 def test_signing_in_never_replaces_a_model_the_operator_already_chose(

@@ -14,6 +14,50 @@ from typing import Any
 from deeptutor.services.path_service import get_path_service
 from deeptutor.utils.json_parser import parse_json_response
 
+_RAG_SOURCE_FIELDS = ("chunks", "documents", "sources", "context", "retrieved_docs")
+
+
+def _as_text(value: Any) -> str:
+    """Normalize optional source metadata without leaking ``None`` values."""
+    if value is None:
+        return ""
+    return value if isinstance(value, str) else str(value)
+
+
+def _rag_source_payload(answer_data: Any) -> tuple[list[Any], str]:
+    """Normalize the object- and list-shaped payloads returned by RAG tools."""
+    if isinstance(answer_data, list):
+        return answer_data, ""
+    if not isinstance(answer_data, dict):
+        return [], ""
+
+    kb_name = _as_text(answer_data.get("kb_name"))
+    for field_name in _RAG_SOURCE_FIELDS:
+        value = answer_data.get(field_name)
+        if isinstance(value, list):
+            return value, kb_name
+    return [], kb_name
+
+
+def _rag_source_info(document: Any, index: int) -> dict[str, Any]:
+    """Convert one heterogeneous RAG result into stable citation metadata."""
+    if isinstance(document, str):
+        return {"content_preview": document[:200]}
+    if not isinstance(document, dict):
+        return {}
+
+    content = document.get("content", document.get("text", ""))
+    return {
+        "title": _as_text(document.get("title", document.get("doc_title", ""))),
+        "content_preview": _as_text(content)[:200],
+        "source_file": _as_text(
+            document.get("source", document.get("file_path", document.get("filename", "")))
+        ),
+        "page": document.get("page", document.get("page_number", "")),
+        "chunk_id": document.get("chunk_id", document.get("id", index)),
+        "score": document.get("score", document.get("similarity", "")),
+    }
+
 
 class CitationManager:
     """Citation manager with global ID management"""
@@ -301,41 +345,18 @@ class CitationManager:
         try:
             # Parse raw_answer to extract source information
             answer_data = parse_json_response(raw_answer)
+            source_documents, kb_name = _rag_source_payload(answer_data)
+            sources = [
+                source_info
+                for index, document in enumerate(source_documents[:5])
+                if (source_info := _rag_source_info(document, index))
+            ]
 
-            # Extract source documents if available
-            # Common fields in RAG responses: chunks, documents, sources, context
-            sources = []
-
-            # Try different field names for source documents
-            for field_name in ["chunks", "documents", "sources", "context", "retrieved_docs"]:
-                if field_name in answer_data:
-                    source_list = answer_data[field_name]
-                    if isinstance(source_list, list):
-                        for i, doc in enumerate(source_list[:5]):  # Limit to 5 sources
-                            source_info = {}
-                            if isinstance(doc, dict):
-                                source_info["title"] = doc.get("title", doc.get("doc_title", ""))
-                                source_info["content_preview"] = doc.get(
-                                    "content", doc.get("text", "")
-                                )[:200]
-                                source_info["source_file"] = doc.get(
-                                    "source", doc.get("file_path", doc.get("filename", ""))
-                                )
-                                source_info["page"] = doc.get("page", doc.get("page_number", ""))
-                                source_info["chunk_id"] = doc.get("chunk_id", doc.get("id", i))
-                                source_info["score"] = doc.get("score", doc.get("similarity", ""))
-                            elif isinstance(doc, str):
-                                source_info["content_preview"] = doc[:200]
-                            if source_info:
-                                sources.append(source_info)
-                    break
-
-            # Also extract kb_name if available
-            citation_info["kb_name"] = answer_data.get("kb_name", "")
+            citation_info["kb_name"] = kb_name
             citation_info["sources"] = sources
             citation_info["total_sources"] = len(sources)
 
-        except (json.JSONDecodeError, Exception) as e:
+        except Exception as e:
             # If parsing fails, still return basic citation info
             print(f"⚠️ Failed to parse RAG source info: {e}")
 

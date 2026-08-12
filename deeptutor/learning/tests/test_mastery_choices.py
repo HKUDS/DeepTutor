@@ -15,6 +15,7 @@ from deeptutor.capabilities.mastery.choices import (
     parse_options,
     recover_options_from_turn,
     resolve_answer,
+    resolve_choice_submission,
 )
 
 # ── parse_options ────────────────────────────────────────────────────────────
@@ -109,6 +110,13 @@ def test_resolve_answer_blank_when_ambiguous():
 
 def test_resolve_answer_blank_when_empty():
     assert resolve_answer("", {"A": "x", "B": "y"}) == ""
+
+
+def test_resolve_choice_submission_accepts_label_or_exact_body_only():
+    options = {"A": "Step 2", "B": "Step 6"}
+    assert resolve_choice_submission("B", options) == "B"
+    assert resolve_choice_submission("Step 6", options) == "B"
+    assert resolve_choice_submission("Step", options) == ""
 
 
 # ── recover_options_from_turn ────────────────────────────────────────────────

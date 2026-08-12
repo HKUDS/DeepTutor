@@ -77,7 +77,11 @@ class PromptManager:
             return self._cache[cache_key]
 
         prompts = self._load_with_fallback(module_name, agent_name, lang_code, subdirectory)
-        self._cache[cache_key] = prompts
+        # A missing resource is usually a packaging or startup-layout problem.
+        # Do not cache the empty result permanently: a later retry must be able
+        # to see resources that become available after startup.
+        if prompts:
+            self._cache[cache_key] = prompts
         return prompts
 
     def _build_cache_key(

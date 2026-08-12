@@ -20,7 +20,7 @@ from deeptutor.logging import (
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
 from deeptutor.services.llm.config import get_llm_config
 from deeptutor.services.path_service import get_path_service
-from deeptutor.services.settings.interface_settings import get_ui_language
+from deeptutor.services.settings.interface_settings import get_response_language
 from deeptutor.tools.question import mimic_exam_questions
 from deeptutor.utils.document_validator import DocumentValidator
 from deeptutor.utils.error_utils import format_exception_message
@@ -412,7 +412,7 @@ async def websocket_question_generate(websocket: WebSocket):
             base_url=base_url,
             api_version=api_version,
             kb_name=kb_name,
-            language=get_ui_language(default=config.get("system", {}).get("language", "en")),
+            language=get_response_language(default=config.get("system", {}).get("language", "en")),
             output_dir=str(output_base),
         )
 

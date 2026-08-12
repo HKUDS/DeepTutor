@@ -58,6 +58,11 @@ loop:
     {user_message}
   finish_exhausted: |-
     循环轮次预算已用尽，仍有缺口未补齐。现在停止调用工具，基于已有材料作答，并简短说明仍不确定的部分。
+  settle_exhausted: |-
+    探索轮次预算已用尽。不要发起新的搜索或可选工作；只完成前面工作已经要求的协议步骤、状态转换或用户交互，
+    工具仅可用于这些必要收尾。随后停止调用工具并给出面向用户的最终回答。
+  continue_truncated: |-
+    你上一条回复因 token 上限而中断。请从中断处继续，不要重复已有内容，并完成面向用户的回答。
   finish_empty_nudge: |-
     你上一轮只输出了内部推理——既没有调用工具，也没有写出面向用户的回答。
     现在继续：要么调用工具执行你计划好的步骤，要么直接写出最终回答。
@@ -78,6 +83,8 @@ notices:
   start_retrieval: "开始检索"
   empty_tool_result: "工具执行完成，但没有返回文本内容。"
   loop_budget_exhausted: "探索轮次预算已用尽，将基于已收集的材料作答。"
+  loop_settlement: "探索轮次预算已用尽；正在完成必要收尾，然后给出最终回答。"
+  output_truncated: "模型输出达到 token 上限，已要求其继续完成回答。"
   loop_error_finish: "某一步执行失败，将基于已收集的材料作答。"
   context_window_guard: "已裁剪较旧的工具结果，以确保本轮在模型上下文窗口内。"
   tool_schema_fallback: "服务方拒绝了原生工具 schema；将不带工具重试。"

@@ -48,6 +48,21 @@ export function statusDotClass(configured: boolean, hasError: boolean): string {
   return "bg-[var(--border)]";
 }
 
+/**
+ * Hairline between two items of the settings status strip. Lives here rather
+ * than inside the strip because items that can render nothing (MemoryUsageItem)
+ * have to draw their own leading rule — otherwise hiding the item leaves a
+ * dangling separator behind.
+ */
+export function StatusStripDivider() {
+  return (
+    <span
+      aria-hidden
+      className="hidden h-7 w-px shrink-0 bg-[var(--border)]/70 sm:block"
+    />
+  );
+}
+
 export function formatContextWindowSource(
   source: string | undefined,
   t: (key: string) => string,

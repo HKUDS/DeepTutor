@@ -41,11 +41,13 @@ export default function AppearanceSettingsPage() {
   const {
     theme,
     language,
+    responseLanguage,
     codeBlockTheme,
     codeBlockShowLineNumbers,
     codeBlockWrapLongLines,
     updateTheme,
     updateLanguage,
+    updateResponseLanguage,
     updateCodeBlockTheme,
     updateCodeBlockShowLineNumbers,
     updateCodeBlockWrapLongLines,
@@ -78,7 +80,7 @@ export default function AppearanceSettingsPage() {
         <SettingRow
           title={t("Interface language")}
           description={t(
-            "Affects the UI only. Model output language is controlled by your prompt.",
+            "Controls navigation, settings, and status text only.",
           )}
           control={
             <div className="flex gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
@@ -93,6 +95,31 @@ export default function AppearanceSettingsPage() {
                   }`}
                 >
                   {v === "en" ? t("language.english") : t("language.chinese")}
+                </button>
+              ))}
+            </div>
+          }
+        />
+        <SettingRow
+          title={t("Model output language")}
+          description={t(
+            "Sets the default language for chat and capability responses.",
+          )}
+          control={
+            <div className="flex gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
+              {(["en", "zh"] as const).map((value) => (
+                <button
+                  key={value}
+                  onClick={() => updateResponseLanguage(value)}
+                  className={`rounded-md px-2.5 py-1 text-[12px] transition-all ${
+                    responseLanguage === value
+                      ? "bg-[var(--card)] font-medium text-[var(--foreground)] shadow-sm"
+                      : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  {value === "en"
+                    ? t("language.english")
+                    : t("language.chinese")}
                 </button>
               ))}
             </div>

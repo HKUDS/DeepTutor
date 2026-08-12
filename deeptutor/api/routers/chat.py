@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from deeptutor.agents.chat import ChatAgent, SessionManager
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
 from deeptutor.services.llm.config import get_llm_config
-from deeptutor.services.settings.interface_settings import get_ui_language
+from deeptutor.services.settings.interface_settings import get_response_language
 
 config = load_config_with_main("main.yaml", PROJECT_ROOT)
 log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {}).get("log_dir")
@@ -76,7 +76,7 @@ async def websocket_chat(websocket: WebSocket):
                 if requested_language.startswith("zh")
                 else "en"
                 if requested_language.startswith("en")
-                else get_ui_language(default=config.get("system", {}).get("language", "en"))
+                else get_response_language(default=config.get("system", {}).get("language", "en"))
             )
             message = data.get("message", "").strip()
             session_id = data.get("session_id")

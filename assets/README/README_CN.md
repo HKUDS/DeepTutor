@@ -286,7 +286,7 @@ deeptutor config show
 | `system.json` | 后端/前端端口、公开 API 基础地址、CORS、SSL 校验、附件目录及上传/提取限制 |
 | `auth.json` | 可选认证开关、用户名、密码哈希、token/cookie 设置 |
 | `integrations.json` | 可选的 PocketBase 和 sidecar 集成设置 |
-| `interface.json` | UI 语言 / 主题 / 侧边栏偏好 |
+| `interface.json` | UI 语言与模型输出语言 / 主题 / 侧边栏偏好 |
 | `main.yaml` | 运行时行为默认值和路径注入 |
 | `agents.yaml` | 能力/工具的 temperature 和 token 设置 |
 
@@ -470,7 +470,7 @@ Memory Graph 展示整个金字塔 — L3 综合位于中心，L2 在中间圆�
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor 设置中心" width="900">
 </div>
 
-Settings 是操作控制面板，带有实时状态条（后端、LLM、嵌入、搜索）和每个区域的配置卡：**外观**（主题、UI 语言、代码块样式）、**网络**（API 基础地址、端口、CORS）、**模型**（LLM、嵌入、搜索、文字转语音、语音转文字、图像生成、视频生成）、**知识库**（文档解析引擎）、**聊天**（工具、每个能力的参数、附件上限）、**Partners 与智能体**（可在对话轮次中调用的子智能体），以及**记忆**（整合器预算）。
+Settings 是操作控制面板，带有实时状态条（后端健康状况与整个进程树的常驻内存占用）和每个区域的配置卡：**外观**（主题、UI 语言与模型输出语言、代码块样式）、**网络**（API 基础地址、端口、CORS）、**模型**（LLM、嵌入、搜索、文字转语音、语音转文字、图像生成、视频生成）、**知识库**（文档解析引擎）、**聊天**（工具、每个能力的参数、附件上限）、**Partners 与智能体**（可在对话轮次中调用的子智能体），以及**记忆**（整合器预算）。
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor 外观设置与主题" width="900">
@@ -478,7 +478,7 @@ Settings 是操作控制面板，带有实时状态条（后端、LLM、嵌入�
 
 大多数部分采用草稿-应用流程，因此你可以在提交前测试提供商配置。开箱即提供四种主题 — Default、Cream、Dark 和 Glass。项目根目录的 `.env` 文件被刻意忽略；运行时配置存储在 `data/user/settings/*.json` 下，除非 `DEEPTUTOR_HOME` 或 `deeptutor start --home` 将应用指向其他位置。
 
-**OpenAI Codex OAuth（实验性）。** 在 **模型 → LLM** 下选择 **OpenAI Codex**，会用基于你自己 ChatGPT 订阅运行的浏览器登录取代 API Key 输入框，因此无需 `OPENAI_API_KEY`。令牌仅保存在 `data/system/user-secrets/<owner>/private/openai-codex/` 中 — 在多容器 Compose 部署中，位于 exec 沙箱可触及的所有目录树之外 — DeepTutor 绝不会读取或修改你的 `~/.codex` CLI 登录状态。模型列表来自该账号的实时目录；只有尚未配置任何 LLM 时，登录后的 Codex 才会成为活跃模型。令牌只授权一个人的订阅，无法通过用户授权共享，因此每个账号都需自行登录。
+**OpenAI Codex OAuth（实验性）。** 在 **模型 → LLM** 下选择 **OpenAI Codex**，会用基于你自己 ChatGPT 订阅运行的浏览器登录取代 API Key 输入框，因此无需 `OPENAI_API_KEY`。令牌仅保存在 `data/system/user-secrets/<owner>/private/openai-codex/` 中 — 在多容器 Compose 部署中，位于 exec 沙箱可触及的所有目录树之外 — DeepTutor 绝不会读取或修改你的 `~/.codex` CLI 登录状态。模型列表来自该账号的实时目录；只有尚未配置任何 LLM 时，登录后的 Codex 才会成为活跃模型。令牌只授权一个人的订阅，无法通过用户授权共享，因此每个账号都需自行登录 — 普通用户也不例外：他们的卡片位于**模型 → LLM**下，产生的模型、目录和退出登录操作均只对该账号私有。
 
 默认的本地 Docker 和 Podman 部署各自使用独立的回环网络，登录时需要一个临时桥接。具体的 Docker、Compose、Podman 及拆除命令请参阅[临时本地 Codex OAuth 桥接指南](../../CONTAINERIZATION.md#temporary-local-codex-oauth-bridge)。
 

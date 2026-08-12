@@ -123,6 +123,54 @@ def test_next_objective_pending_question_takes_precedence():
     assert step.pending_prompt == "?"
 
 
+def test_pending_choice_context_is_stable_and_does_not_expose_answer():
+    kp = _kp("kp1", KnowledgeType.MEMORY)
+    progress = _progress(kp)
+    progress.pending_question = PendingQuestion(
+        question_id="question-stable-1",
+        knowledge_point_id="kp1",
+        prompt="Pick the blue option",
+        question_type="choice",
+        expected_answer="B",
+        options=["A: red", "B: blue"],
+    )
+
+    payload = policy.next_objective(progress).to_dict()
+
+    assert payload["pending_prompt"] == "Pick the blue option"  # legacy field
+    assert payload["pending_question"] == {
+        "question_id": "question-stable-1",
+        "prompt": "Pick the blue option",
+        "question_type": "choice",
+        "options": [
+            {"id": "A", "label": "A", "body": "red"},
+            {"id": "B", "label": "B", "body": "blue"},
+        ],
+    }
+    assert "expected_answer" not in payload["pending_question"]
+
+
+def test_pending_non_choice_context_keeps_type_without_options_or_answer():
+    kp = _kp("kp1", KnowledgeType.PROCEDURE)
+    progress = _progress(kp)
+    progress.pending_question = PendingQuestion(
+        question_id="short-1",
+        knowledge_point_id="kp1",
+        prompt="Name the invariant",
+        question_type="short",
+        expected_answer="server secret",
+    )
+
+    pending = policy.next_objective(progress).to_dict()["pending_question"]
+
+    assert pending == {
+        "question_id": "short-1",
+        "prompt": "Name the invariant",
+        "question_type": "short",
+        "options": [],
+    }
+
+
 def test_next_objective_due_review_beats_new_ground():
     kp1, kp2 = _kp("kp1", KnowledgeType.MEMORY), _kp("kp2", KnowledgeType.MEMORY)
     progress = _progress(kp1, kp2)

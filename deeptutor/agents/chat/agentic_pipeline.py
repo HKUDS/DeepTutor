@@ -417,6 +417,9 @@ class AgenticChatPipeline:
     def _finish_exhausted_instruction(self) -> str:
         return self._prompt_assembler.finish_exhausted_instruction()
 
+    def _settle_exhausted_instruction(self) -> str:
+        return self._prompt_assembler.settle_exhausted_instruction()
+
     def _tool_manifest(self, enabled_tools: list[str]) -> str:
         names = list(enabled_tools)
         if self._deferred_loader is not None:

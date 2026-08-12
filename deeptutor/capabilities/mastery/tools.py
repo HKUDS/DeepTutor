@@ -26,6 +26,7 @@ from deeptutor.capabilities.mastery.choices import (
     parse_options,
     recover_options_from_turn,
     resolve_answer,
+    resolve_choice_submission,
 )
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolParameter, ToolResult
 
@@ -41,6 +42,7 @@ from deeptutor.learning.models import (
     LearningModule,
     PendingQuestion,
 )
+from deeptutor.learning.pending import public_pending_question
 from deeptutor.learning.policy import (
     QUALITATIVE_TYPES,
     display_mastery,
@@ -97,13 +99,73 @@ def _question_bank_type(question_type: str) -> str:
     return "short_answer"
 
 
+def _normalize_quiz_contract(
+    raw_question_type: Any,
+    raw_options: Any,
+    expected_answer: str,
+) -> tuple[str, list[str], str]:
+    """Validate and canonicalise the persisted quiz shape.
+
+    A missing question type is inferred from the actual payload: options mean
+    ``choice`` and no options mean ``short``. Once a caller explicitly chooses
+    ``short`` or ``open``, options are rejected instead of being silently
+    discarded. Choice answers are stored as labels so the interactive card and
+    deterministic grader always compare the same representation.
+    """
+    if raw_options is None:
+        options: list[str] = []
+    elif not isinstance(raw_options, list):
+        raise ValueError("mastery_quiz.options must be an array of non-empty strings.")
+    elif any(not isinstance(option, str) or not option.strip() for option in raw_options):
+        raise ValueError("mastery_quiz.options must contain only non-empty strings.")
+    else:
+        options = [option.strip() for option in raw_options]
+
+    supplied_type = str(raw_question_type or "").strip().lower()
+    if supplied_type and supplied_type not in _QUESTION_TYPES:
+        allowed = ", ".join(_QUESTION_TYPES)
+        raise ValueError(f"mastery_quiz.question_type must be one of: {allowed}.")
+
+    question_type = supplied_type or ("choice" if options else "short")
+    if question_type != "choice":
+        if options:
+            raise ValueError(
+                f"mastery_quiz.options cannot be used with question_type={question_type!r}; "
+                "omit options or use question_type='choice'."
+            )
+        return question_type, [], expected_answer
+
+    choice_options = parse_options(options)
+    if len(choice_options) != len(options):
+        raise ValueError(
+            "Choice option labels must be unique; retry mastery_quiz with one full body "
+            "for each label."
+        )
+    if not has_option_bodies(choice_options):
+        raise ValueError(
+            "Choice questions need full option bodies in mastery_quiz.options "
+            "(for example ['A: first answer', 'B: second answer']), not only "
+            "the labels A/B/C/D. Retry mastery_quiz with the exact option "
+            "descriptions you will show through ask_user."
+        )
+
+    resolved_expected = resolve_answer(expected_answer, choice_options)
+    if not resolved_expected:
+        raise ValueError(
+            "Choice expected_answer must be an option label such as A/B/C/D, "
+            "or uniquely match one full option body. Retry mastery_quiz with "
+            "the correct label."
+        )
+    return question_type, format_options(choice_options), resolved_expected
+
+
 async def _resolve_pending_choice(
     pending: PendingQuestion, turn_id: str
 ) -> tuple[dict[str, str], str]:
     """Resolve a pending choice question's ``({label: body}, expected_label)``.
 
-    Re-parses the bodies stored at registration; for legacy paths that stored
-    only ``["A", "B", ...]`` it recovers the real bodies from the turn's
+    The persisted options are authoritative. For legacy paths that stored only
+    ``["A", "B", ...]`` it recovers the real bodies from the turn's
     ``ask_user`` event. The expected answer is normalised to a stable label
     when it resolves, else left as registered.
     """
@@ -252,7 +314,8 @@ class MasteryQuizTool(BaseTool):
                     type="string",
                     description=(
                         "'choice' (exact match), 'short' (exact / fuzzy for ≤30 "
-                        "chars), or 'open' (keyword overlap). Default 'short'."
+                        "chars), or 'open' (keyword overlap). When omitted, options "
+                        "infer 'choice'; otherwise the default is 'short'."
                     ),
                     required=False,
                     default="short",
@@ -262,10 +325,12 @@ class MasteryQuizTool(BaseTool):
                     name="options",
                     type="array",
                     description=(
-                        "For question_type='choice', every full option in label order, "
+                        "Every full choice option in label order; providing options "
+                        "infers question_type='choice' when the type is omitted. "
                         "for example ['A: first answer', 'B: second answer']. Never "
-                        "pass bare labels such as ['A', 'B', 'C', 'D']. Use the same "
-                        "bodies as the ask_user option descriptions."
+                        "pass options for 'short'/'open' or bare labels such as "
+                        "['A', 'B', 'C', 'D']. Use the same bodies as the ask_user "
+                        "option descriptions."
                     ),
                     required=False,
                     items={"type": "string"},
@@ -285,34 +350,12 @@ class MasteryQuizTool(BaseTool):
                 content="mastery_quiz needs knowledge_point_id, question, and expected_answer.",
                 success=False,
             )
-        q_type = str(kwargs.get("question_type") or "short").strip().lower()
-        if q_type not in _QUESTION_TYPES:
-            q_type = "short"
-        options = [str(o) for o in (kwargs.get("options") or []) if str(o).strip()]
-        if q_type == "choice":
-            choice_options = parse_options(options)
-            if not has_option_bodies(choice_options):
-                return ToolResult(
-                    content=(
-                        "Choice questions need full option bodies in mastery_quiz.options "
-                        "(for example ['A: first answer', 'B: second answer']), not only "
-                        "the labels A/B/C/D. Retry mastery_quiz with the exact option "
-                        "descriptions you will show through ask_user."
-                    ),
-                    success=False,
-                )
-            resolved_expected = resolve_answer(expected, choice_options)
-            if not resolved_expected:
-                return ToolResult(
-                    content=(
-                        "Choice expected_answer must be an option label such as A/B/C/D, "
-                        "or uniquely match one full option body. Retry mastery_quiz with "
-                        "the correct label."
-                    ),
-                    success=False,
-                )
-            expected = resolved_expected
-            options = format_options(choice_options)
+        try:
+            q_type, options, expected = _normalize_quiz_contract(
+                kwargs.get("question_type"), kwargs.get("options"), expected
+            )
+        except ValueError as exc:
+            return ToolResult(content=str(exc), success=False)
 
         service = _new_service()
         progress = service.get_or_create(path_id)
@@ -332,17 +375,21 @@ class MasteryQuizTool(BaseTool):
             options=options,
         )
         service.set_pending_question(progress, pending)
+        public_question = public_pending_question(pending)
         return _json_result(
             {
                 "status": "registered",
                 "knowledge_point_id": kp_id,
+                "question_id": pending.question_id,
+                "question_type": pending.question_type,
                 "question": question,
                 "options": options,
+                "pending_question": public_question.to_dict(),
+                "ask_user": {"questions": [public_question.to_ask_user_dict()]},
                 "instruction": (
-                    "Present this question with the ask_user tool (use its options "
-                    "for multiple choice; the option labels must match the "
-                    "expected_answer you registered), then call mastery_grade with "
-                    "the learner's answer."
+                    "Pass ask_user.questions through unchanged: its question id and "
+                    "option labels are bound to the persisted question. Then call "
+                    "mastery_grade with the learner's answer and this question_id."
                 ),
             },
             meta_key="mastery_quiz",
@@ -368,6 +415,15 @@ class MasteryGradeTool(BaseTool):
                     type="string",
                     description="The learner's answer, verbatim.",
                 ),
+                ToolParameter(
+                    name="question_id",
+                    type="string",
+                    description=(
+                        "Stable question_id from mastery_quiz or mastery_status. "
+                        "Optional only for legacy pending questions."
+                    ),
+                    required=False,
+                ),
             ],
         )
 
@@ -387,19 +443,30 @@ class MasteryGradeTool(BaseTool):
                 content="No question is awaiting an answer. Pose one with mastery_quiz first.",
                 success=False,
             )
+        submitted_question_id = str(kwargs.get("question_id") or "").strip()
+        if submitted_question_id and submitted_question_id != pending.question_id:
+            return ToolResult(
+                content=(
+                    f"Question {submitted_question_id!r} is no longer pending; "
+                    f"call mastery_status and answer {pending.question_id!r}."
+                ),
+                success=False,
+            )
         choice_options: dict[str, str] = {}
         expected_answer = pending.expected_answer
+        answer_for_grading = answer
         if pending.question_type == "choice":
             choice_options, expected_answer = await _resolve_pending_choice(
                 pending, _resolve_turn_id(kwargs)
             )
+            answer_for_grading = resolve_choice_submission(answer, choice_options) or answer
 
         is_correct = service.grade_and_record(
             progress,
             question_id=pending.question_id,
             knowledge_point_id=pending.knowledge_point_id,
             module_id=pending.module_id,
-            user_answer=answer,
+            user_answer=answer_for_grading,
             expected_answer=expected_answer,
             question_type=pending.question_type,
             scheduler=scheduler,

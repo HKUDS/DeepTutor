@@ -280,7 +280,11 @@ class DocumentAdder:
                 success = await rag_service.add_documents(self.kb_name, [str(doc_file)])
                 if success:
                     processed_files.append(doc_file)
-                    self._record_successful_hash(doc_file)
+                    # Re-hashes the whole file, so it stays off the event loop:
+                    # this runs inside a FastAPI BackgroundTasks entry, which is
+                    # awaited on the loop and would otherwise stall unrelated
+                    # requests once per indexed file (#777).
+                    await asyncio.to_thread(self._record_successful_hash, doc_file)
                     logger.info(f"Processed: {doc_file.name}")
                 else:
                     error = "Provider returned failure without details."

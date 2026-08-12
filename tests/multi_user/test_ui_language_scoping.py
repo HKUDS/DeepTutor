@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from deeptutor.services.settings.interface_settings import (
+    get_response_language,
     get_ui_language,
     get_ui_settings,
 )
@@ -36,3 +37,23 @@ def test_get_ui_language_defaults_when_no_file(mu_isolated_root, as_user):
     with as_user("u_alice", role="user"):
         # Bob has nothing on disk yet — falls back to the default "en".
         assert get_ui_language() == "en"
+
+
+def test_response_language_is_scoped_independently_per_user(mu_isolated_root, as_user):
+    admin_settings = mu_isolated_root / "data" / "user" / "settings" / "interface.json"
+    admin_settings.parent.mkdir(parents=True, exist_ok=True)
+    admin_settings.write_text(json.dumps({"language": "en", "response_language": "zh"}))
+
+    alice_settings = (
+        mu_isolated_root / "data" / "users" / "u_alice" / "user" / "settings" / "interface.json"
+    )
+    alice_settings.parent.mkdir(parents=True, exist_ok=True)
+    alice_settings.write_text(json.dumps({"language": "zh", "response_language": "en"}))
+
+    with as_user("u_admin", role="admin"):
+        assert get_ui_language() == "en"
+        assert get_response_language() == "zh"
+
+    with as_user("u_alice", role="user"):
+        assert get_ui_language() == "zh"
+        assert get_response_language() == "en"
