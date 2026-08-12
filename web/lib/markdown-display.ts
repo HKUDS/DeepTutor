@@ -144,8 +144,14 @@ const INLINE_CODE_SPAN_REGEX = /`[^`\n]*`/g;
 // inline math ($x = [1, 5, 9]$) is protected from citation linkification.
 const MATH_SPAN_REGEX =
   /\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$\$[\s\S]*?\$\$|\$(?!\s)(?:\\.|[^$\n])*?(?<!\s)\$/g;
+// ``**Label: **value`` — a label whose closing marker has whitespace just
+// inside it, which CommonMark does not read as strong emphasis, so the raw
+// asterisks stay on screen. Deliberately narrow: the capture must start at a
+// non-space and end at a colon, because this rewrite has no notion of which
+// two delimiters the author meant to pair (see repairStrongEmphasisLine).
 const MALFORMED_STRONG_EMPHASIS_REGEX =
-  /(?<!\S)\*\*([^*\n]*?[^*\s])[ \t]+\*\*(?=\S)/g;
+  /(?<!\S)\*\*(?=\S)([^*\n]*?[:：])[ \t]+\*\*(?=\S)/g;
+const INDENTED_CODE_LINE_REGEX = /^(?: {4}|\t)/;
 const PROTECTED_SPAN_REGEX = /```[\s\S]*?```|`[^`\n]*`/g;
 const PROTECTED_PLACEHOLDER_REGEX = /\u0000PROTECTED_(\d+)\u0000/g;
 const HTML_ATTR_VALUE = /(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+)/.source;
@@ -575,12 +581,30 @@ export function repairMalformedStrongEmphasis(content: string): string {
     "STRONG_INLINE_CODE",
   );
 
-  const repaired = inline.masked.replace(
-    MALFORMED_STRONG_EMPHASIS_REGEX,
-    "**$1** ",
-  );
+  const repaired = inline.masked
+    .split("\n")
+    .map(repairStrongEmphasisLine)
+    .join("\n");
 
   return fenced.restore(math.restore(inline.restore(repaired)));
+}
+
+/**
+ * Repair one line, or leave it exactly as it was.
+ *
+ * The regex pairs an opening ``**`` with the next one on the line, which is
+ * only the author's intent when every marker on that line is paired off. With
+ * an odd count at least one is literal or unclosed, and rewriting then breaks
+ * emphasis the renderer gets right today — ``In Markdown, use ** to make text
+ * **bold**.`` would lose its bold, and ``**Note: **Important**`` would end up
+ * with a stray ``**``. Bailing out costs nothing: the line renders exactly as
+ * it does on a build without this repair.
+ */
+function repairStrongEmphasisLine(line: string): string {
+  // Indented code blocks are displayed verbatim and are not masked above.
+  if (INDENTED_CODE_LINE_REGEX.test(line)) return line;
+  if ((line.split("**").length - 1) % 2 !== 0) return line;
+  return line.replace(MALFORMED_STRONG_EMPHASIS_REGEX, "**$1** ");
 }
 
 function linkifyCitationsOutsideCode(content: string): string {

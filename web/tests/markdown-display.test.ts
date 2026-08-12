@@ -47,6 +47,30 @@ test("repairMalformedStrongEmphasis leaves code and math spans untouched", () =>
   assert.equal(repairMalformedStrongEmphasis(input), input);
 });
 
+test("repairMalformedStrongEmphasis leaves lines whose ** markers don't pair off", () => {
+  // Each of these renders correctly today; pairing the first two ``**`` would
+  // break emphasis the renderer already gets right.
+  const inputs = [
+    // Prose that mentions ** literally, followed by a real bold span.
+    "In Markdown, use ** to make text **bold**.",
+    // A malformed label immediately followed by a legitimate bold span:
+    // repairing the label would leave a stray ** behind.
+    "**Note: **Important**",
+    // Nested strong emphasis, which CommonMark renders as all-bold.
+    "**重點 **必讀** 內容**",
+  ];
+
+  for (const input of inputs) {
+    assert.equal(repairMalformedStrongEmphasis(input), input);
+  }
+});
+
+test("repairMalformedStrongEmphasis leaves indented code blocks verbatim", () => {
+  const input = "Example:\n\n    **label: **value";
+
+  assert.equal(repairMalformedStrongEmphasis(input), input);
+});
+
 test("repairMalformedStrongEmphasis repairs multiple occurrences idempotently", () => {
   const input = "**Date: **2026 and **Source: **Official";
   const expected = "**Date:** 2026 and **Source:** Official";
