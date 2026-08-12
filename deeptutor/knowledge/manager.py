@@ -1077,10 +1077,12 @@ class KnowledgeBaseManager:
                 "last_indexed_count": kb_config.get("last_indexed_count"),
                 "last_indexed_action": kb_config.get("last_indexed_action"),
                 # Connected-KB fields (None for ordinary indexed KBs, dropped below).
-                "type": kb_config.get("type"),
-                "vault_path": kb_config.get("vault_path"),
-                "external_path": kb_config.get("external_path"),
-                # LightRAG server pointer (the URL is safe to surface; the API
+               "type": kb_config.get("type"),
+               "vault_path": kb_config.get("vault_path"),
+               "external_path": kb_config.get("external_path"),
+                # MarginNote 4 pointer (SQLite store path for synced data).
+                "db_path": kb_config.get("db_path"),
+               # LightRAG server pointer (the URL is safe to surface; the API
                 # key deliberately is not).
                 "server_url": kb_config.get("server_url"),
                 # IMA pointer. The library id identifies which IMA knowledge

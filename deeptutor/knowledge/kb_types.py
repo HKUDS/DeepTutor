@@ -74,6 +74,13 @@ LIGHTRAG_SERVER_KB_TYPE = "lightrag_server"
 # ``search_knowledge`` OpenAPI by the ``ima`` provider.
 IMA_KB_TYPE = "ima"
 
+# A connected MarginNote 4 library: a pointer (``device_id`` + optional
+# ``server_url``) to the user's MN4 study data synced via the official Add-on
+# API. No path on disk and no local index — MN4 objects land in a dedicated
+# SQLite store and are navigated by the MarginNote capability's own tools.
+# See ``capabilities/marginnote4``.
+MARGINNOTE4_KB_TYPE = "marginnote4"
+
 # Every pointer/connected KB type. Membership here is what makes the manager
 # skip the index pipeline, the orphan prune and the embedding reconcile.
 CONNECTED_KB_TYPES = frozenset(
@@ -83,6 +90,7 @@ CONNECTED_KB_TYPES = frozenset(
         SUBAGENT_KB_TYPE,
         LIGHTRAG_SERVER_KB_TYPE,
         IMA_KB_TYPE,
+        MARGINNOTE4_KB_TYPE,
     }
 )
 
@@ -119,6 +127,7 @@ __all__ = [
     "SUBAGENT_KB_TYPE",
     "LIGHTRAG_SERVER_KB_TYPE",
     "IMA_KB_TYPE",
+    "MARGINNOTE4_KB_TYPE",
     "CONNECTED_KB_TYPES",
     "is_connected_kb",
     "supports_local_raw_files",
