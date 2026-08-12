@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Loader2, MessageSquare } from "lucide-react";
+import { Loader2, MessageSquare, Network } from "lucide-react";
 import { notify } from "@/lib/notifications";
 import { useTranslation } from "react-i18next";
 
@@ -32,6 +32,7 @@ import {
 } from "@/lib/book-progress";
 
 import BookChatPanel from "./components/BookChatPanel";
+import CharacterGraphPanel from "./components/CharacterGraphPanel";
 import BookCreator from "./components/BookCreator";
 import BookHealthBanner from "./components/BookHealthBanner";
 import BookLibrary from "./components/BookLibrary";
@@ -95,6 +96,7 @@ function BookPageInner() {
     string | null
   >(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [charGraphOpen, setCharGraphOpen] = useState(false);
   const [rebuildingBook, setRebuildingBook] = useState(false);
 
   // Phase 5 — live BookEngine progress timeline state.
@@ -590,13 +592,31 @@ function BookPageInner() {
         </div>
 
         {view === "reader" && !chatOpen && (
-          <button
-            onClick={() => setChatOpen(true)}
-            className="absolute bottom-4 right-4 inline-flex items-center gap-2 rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] shadow-lg hover:opacity-90"
-          >
-            <MessageSquare className="h-4 w-4" />
-            {t("Chat")}
-          </button>
+          <div className="absolute bottom-4 right-4 flex flex-col items-end gap-2">
+            <button
+              onClick={() => setCharGraphOpen(true)}
+              className="inline-flex items-center gap-2 rounded-full bg-[var(--card)] px-4 py-2 text-sm font-medium text-[var(--foreground)] shadow-lg border border-[var(--border)] hover:opacity-90"
+            >
+              <Network className="h-4 w-4" />
+              {t("Characters")}
+            </button>
+            <button
+              onClick={() => setChatOpen(true)}
+              className="inline-flex items-center gap-2 rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] shadow-lg hover:opacity-90"
+            >
+              <MessageSquare className="h-4 w-4" />
+              {t("Chat")}
+            </button>
+          </div>
+        )}
+
+        {view === "reader" && charGraphOpen && (
+          <CharacterGraphPanel
+            book={detail?.book || null}
+            page={selectedPage}
+            open={charGraphOpen}
+            onClose={() => setCharGraphOpen(false)}
+          />
         )}
 
         {view === "reader" && chatOpen && (

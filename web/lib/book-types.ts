@@ -170,8 +170,41 @@ export interface Progress {
   updated_at: number;
 }
 
-export interface BookDetail {
-  book: Book;
+
+export interface CharacterNode {
+  id: string;
+  name: string;
+  aliases: string[];
+  description: string;
+  evidence_chapter_ids: string[];
+  confidence: number;
+}
+
+export interface CharacterEdge {
+  source: string;
+  target: string;
+  relation: string;
+  description: string;
+  evidence_chapter_ids: string[];
+  confidence: number;
+}
+
+export interface CharacterGraph {
+  book_id: string;
+  chapter_id: string;
+  scope: "current" | "through_current";
+  nodes: CharacterNode[];
+  edges: CharacterEdge[];
+  content_hash: string;
+  generated_at: number;
+}
+
+export interface CharacterGraphResult {
+  graph: CharacterGraph;
+  mermaid: string;
+}
+
+export interface BookDetail {  book: Book;
   spine: Spine | null;
   pages: Page[];
   progress: Progress;

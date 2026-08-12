@@ -318,6 +318,9 @@ from deeptutor.api.routers import (
     chat,
     co_writer,
     dashboard,
+    immersive_reading,
+    kids_admin,
+    kids,
     imports,
     knowledge,
     mastery_path,
@@ -391,6 +394,25 @@ app.include_router(
     notebook.router, prefix="/api/v1/notebook", tags=["notebook"], dependencies=_auth
 )
 app.include_router(book.router, prefix="/api/v1/book", tags=["book"], dependencies=_auth)
+app.include_router(
+    immersive_reading.router,
+    prefix="/api/v1/immersive-reading",
+    tags=["immersive-reading"],
+    dependencies=_auth,
+)
+# Kids parent-management endpoints require adult authentication.
+app.include_router(
+    kids_admin.router,
+    prefix="/api/v1/kids-admin",
+    tags=["kids-admin"],
+    dependencies=_auth,
+)
+# Kids child-facing endpoints use a lightweight device token, no adult auth.
+app.include_router(
+    kids.router,
+    prefix="/api/v1/kids",
+    tags=["kids"],
+)
 app.include_router(memory.router, prefix="/api/v1/memory", tags=["memory"], dependencies=_auth)
 app.include_router(
     capabilities_settings.router,

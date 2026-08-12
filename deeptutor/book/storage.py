@@ -31,7 +31,7 @@ from typing import Any
 from deeptutor.services.file_io import atomic_write_text as _atomic_write_text
 from deeptutor.services.path_service import get_path_service
 
-from .models import Book, BookInputs, ExplorationReport, Page, Progress, Spine
+from .models import Book, BookInputs, CharacterGraph, ExplorationReport, Page, Progress, Spine
 
 logger = logging.getLogger(__name__)
 
@@ -240,6 +240,41 @@ class BookStorage:
         line = f"- `{ts}Z` **{op}** — {message.strip()}\n"
         with open(path, "a", encoding="utf-8") as f:
             f.write(line)
+
+
+    # ── Character graph ─────────────────────────────────────────────────
+
+    def _character_graph_path(self, book_id: str, chapter_id: str, scope: str) -> Path:
+        """Return the path to the cached character graph JSON."""
+        return (
+            self.ensure_book_root(book_id)
+            / "character_graphs"
+            / f"{scope}_{chapter_id}.json"
+        )
+
+    def save_character_graph(self, graph: CharacterGraph) -> None:
+        path = self._character_graph_path(graph.book_id, graph.chapter_id, graph.scope)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write_json(path, graph.model_dump(mode="json"))
+
+    def load_character_graph(
+        self, book_id: str, chapter_id: str, scope: str = "current"
+    ) -> CharacterGraph | None:
+        path = self._character_graph_path(book_id, chapter_id, scope)
+        data = _read_json(path)
+        if data is None:
+            return None
+        try:
+            return CharacterGraph.model_validate(data)
+        except Exception as exc:
+            logger.warning(f"Failed to load character graph {path}: {exc}")
+            return None
+
+    def delete_character_graphs(self, book_id: str) -> None:
+        """Remove all cached character graphs for a book."""
+        root = self.book_root(book_id) / "character_graphs"
+        if root.exists():
+            shutil.rmtree(root, ignore_errors=True)
 
     # ── Delete ───────────────────────────────────────────────────────────
 

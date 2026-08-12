@@ -134,6 +134,13 @@ class RebuildBookRequest(BaseModel):
     book_id: str
     auto_compile: bool = True
 
+class CharacterGraphRequest(BaseModel):
+    book_id: str
+    chapter_id: str
+    scope: str = "current"  # "current" | "through_current"
+    force_refresh: bool = False
+
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # REST endpoints
@@ -470,6 +477,43 @@ async def rebuild_book(req: RebuildBookRequest) -> dict[str, Any]:
         logger.error(f"rebuild_book failed: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc))
     return {"pages": [p.model_dump(mode="json") for p in pages]}
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Character relationship graph
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.post("/books/character-graph")
+async def generate_character_graph(req: CharacterGraphRequest) -> dict[str, Any]:
+    """Generate (or load from cache) a chapter-scoped character relationship graph.
+
+    The LLM only sees text from the requested scope (current chapter or all
+    chapters up to and including the current one). Future chapters are never
+    included.
+    """
+    from deeptutor.book.character_graph import render_character_graph_mermaid
+
+    engine = get_book_engine()
+    try:
+        graph = await engine.generate_character_graph(
+            book_id=req.book_id,
+            chapter_id=req.chapter_id,
+            scope=req.scope,
+            force_refresh=req.force_refresh,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"generate_character_graph failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    mermaid_src = render_character_graph_mermaid(graph)
+    return {
+        "graph": graph.model_dump(mode="json"),
+        "mermaid": mermaid_src,
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
