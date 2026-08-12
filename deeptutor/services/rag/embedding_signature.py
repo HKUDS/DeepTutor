@@ -9,6 +9,8 @@ from deeptutor.services.rag.index_versioning import EmbeddingSignature
 
 logger = logging.getLogger(__name__)
 
+LLAMAINDEX_INGESTION_SCHEMA_VERSION = "1"
+
 
 def signature_from_config(config: Any) -> EmbeddingSignature:
     """Build a stable RAG index signature from an embedding config object."""
@@ -35,6 +37,22 @@ def signature_from_embedding_config() -> EmbeddingSignature | None:
     except Exception as exc:
         logger.debug(f"Cannot resolve embedding signature: {exc}")
         return None
+
+
+def llamaindex_signature_from_embedding_config() -> EmbeddingSignature | None:
+    """Return the active embedding identity plus LlamaIndex's node schema."""
+
+    signature = signature_from_embedding_config()
+    if signature is None:
+        return None
+    return EmbeddingSignature(
+        binding=signature.binding,
+        model=signature.model,
+        dimension=signature.dimension,
+        base_url=signature.base_url,
+        api_version=signature.api_version,
+        ingestion_schema_version=LLAMAINDEX_INGESTION_SCHEMA_VERSION,
+    )
 
 
 def embedding_meta_fields() -> dict[str, Any]:

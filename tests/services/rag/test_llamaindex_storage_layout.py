@@ -214,3 +214,16 @@ def test_retrieval_config_reads_profile_from_env(monkeypatch: pytest.MonkeyPatch
     config = config_module.retrieval_config_from_env()
 
     assert config.profile == config_module.VECTOR_PROFILE
+
+
+def test_pipeline_default_signature_includes_ingestion_schema(monkeypatch) -> None:
+    from deeptutor.services.rag import embedding_signature
+    from deeptutor.services.rag.pipelines.llamaindex.pipeline import LlamaIndexPipeline
+
+    base = _signature()
+    monkeypatch.setattr(embedding_signature, "signature_from_embedding_config", lambda: base)
+    monkeypatch.setattr(LlamaIndexPipeline, "_configure_settings", lambda self: None)
+
+    pipeline = LlamaIndexPipeline()
+
+    assert pipeline._current_signature().ingestion_schema_version == "1"

@@ -2554,12 +2554,14 @@ async def reindex_knowledge_base(
         kb_dir = kb_base_dir / kb_name
         signature_hash = kb_provider
         if provider_uses_embedding_versions(kb_provider):
-            from deeptutor.services.rag.embedding_signature import signature_from_embedding_config
+            from deeptutor.services.rag.embedding_signature import (
+                llamaindex_signature_from_embedding_config,
+            )
             from deeptutor.services.rag.index_versioning import (
                 find_matching_version,
             )
 
-            signature = signature_from_embedding_config()
+            signature = llamaindex_signature_from_embedding_config()
             if signature is None:
                 raise HTTPException(
                     status_code=409,

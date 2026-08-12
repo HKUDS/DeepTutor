@@ -840,7 +840,7 @@ def test_reindex_accepts_default_alias(monkeypatch, tmp_path: Path) -> None:
     embedding_signature = importlib.import_module("deeptutor.services.rag.embedding_signature")
     index_versioning = importlib.import_module("deeptutor.services.rag.index_versioning")
     monkeypatch.setattr(
-        embedding_signature, "signature_from_embedding_config", lambda: _Signature()
+        embedding_signature, "llamaindex_signature_from_embedding_config", lambda: _Signature()
     )
     monkeypatch.setattr(index_versioning, "find_matching_version", lambda *_args, **_kwargs: None)
 
@@ -876,7 +876,7 @@ def test_reindex_error_status_bypasses_existing_match_noop(monkeypatch, tmp_path
     embedding_signature = importlib.import_module("deeptutor.services.rag.embedding_signature")
     index_versioning = importlib.import_module("deeptutor.services.rag.index_versioning")
     monkeypatch.setattr(
-        embedding_signature, "signature_from_embedding_config", lambda: _Signature()
+        embedding_signature, "llamaindex_signature_from_embedding_config", lambda: _Signature()
     )
     monkeypatch.setattr(
         index_versioning,
@@ -916,7 +916,7 @@ def test_retry_error_status_queues_reindex(monkeypatch, tmp_path: Path) -> None:
     embedding_signature = importlib.import_module("deeptutor.services.rag.embedding_signature")
     index_versioning = importlib.import_module("deeptutor.services.rag.index_versioning")
     monkeypatch.setattr(
-        embedding_signature, "signature_from_embedding_config", lambda: _Signature()
+        embedding_signature, "llamaindex_signature_from_embedding_config", lambda: _Signature()
     )
     monkeypatch.setattr(
         index_versioning,
@@ -986,7 +986,7 @@ def test_reindex_bypasses_existing_match_when_vectors_are_invalid(
 
     embedding_signature = importlib.import_module("deeptutor.services.rag.embedding_signature")
     monkeypatch.setattr(
-        embedding_signature, "signature_from_embedding_config", lambda: _Signature()
+        embedding_signature, "llamaindex_signature_from_embedding_config", lambda: _Signature()
     )
 
     async def _noop_reindex_task(*_args, **_kwargs):

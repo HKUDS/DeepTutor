@@ -25,6 +25,14 @@ from deeptutor.services.rag.linked_kb import (
 _SIG = EmbeddingSignature(
     binding="openai", model="text-embedding-3-small", dimension=1536, base_url="u", api_version=""
 )
+_LLAMAINDEX_SIG = EmbeddingSignature(
+    binding=_SIG.binding,
+    model=_SIG.model,
+    dimension=_SIG.dimension,
+    base_url=_SIG.base_url,
+    api_version=_SIG.api_version,
+    ingestion_schema_version="1",
+)
 
 
 def _write_llamaindex_index(root: Path, *, signature: str, docs: int = 0) -> None:
@@ -95,9 +103,11 @@ def test_probe_errors_when_no_index(tmp_path: Path) -> None:
 
 
 def test_probe_finds_ready_llamaindex_index(tmp_path: Path, monkeypatch) -> None:
-    _write_llamaindex_index(tmp_path, signature=_SIG.hash(), docs=3)
+    _write_llamaindex_index(tmp_path, signature=_LLAMAINDEX_SIG.hash(), docs=3)
     # Current embedding matches what the index was built with.
-    monkeypatch.setattr(emb_sig, "signature_from_embedding_config", lambda: _SIG)
+    monkeypatch.setattr(
+        emb_sig, "llamaindex_signature_from_embedding_config", lambda: _LLAMAINDEX_SIG
+    )
 
     result = probe_linked_folder(str(tmp_path), "llamaindex")
     assert result.ok
@@ -109,7 +119,9 @@ def test_probe_finds_ready_llamaindex_index(tmp_path: Path, monkeypatch) -> None
 
 def test_probe_warns_on_embedding_mismatch(tmp_path: Path, monkeypatch) -> None:
     _write_llamaindex_index(tmp_path, signature="0000different0000")
-    monkeypatch.setattr(emb_sig, "signature_from_embedding_config", lambda: _SIG)
+    monkeypatch.setattr(
+        emb_sig, "llamaindex_signature_from_embedding_config", lambda: _LLAMAINDEX_SIG
+    )
 
     result = probe_linked_folder(str(tmp_path), "llamaindex")
     # A mismatch is a warning, not a hard block — the user may switch models.
@@ -121,7 +133,7 @@ def test_probe_warns_on_embedding_mismatch(tmp_path: Path, monkeypatch) -> None:
 def test_probe_unverifiable_embedding_is_a_warning(tmp_path: Path, monkeypatch) -> None:
     _write_llamaindex_index(tmp_path, signature=_SIG.hash())
     # No embedding configured → can't verify compatibility.
-    monkeypatch.setattr(emb_sig, "signature_from_embedding_config", lambda: None)
+    monkeypatch.setattr(emb_sig, "llamaindex_signature_from_embedding_config", lambda: None)
 
     result = probe_linked_folder(str(tmp_path), "llamaindex")
     assert result.ok

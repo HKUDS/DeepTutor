@@ -139,13 +139,15 @@ def _reconcile_embedding_flags(knowledge_bases: dict, base_dir: Path | None = No
 
     Returns ``True`` when any entry changed.
     """
-    from deeptutor.services.rag.embedding_signature import signature_from_embedding_config
+    from deeptutor.services.rag.embedding_signature import (
+        llamaindex_signature_from_embedding_config,
+    )
     from deeptutor.services.rag.index_versioning import (
         find_matching_version,
     )
 
     fp = _get_embedding_fingerprint()
-    signature = signature_from_embedding_config()
+    signature = llamaindex_signature_from_embedding_config()
     changed = False
 
     if signature is None and not fp:
@@ -472,15 +474,20 @@ class KnowledgeBaseManager:
             # the UI can render version chips without recomputing.
             try:
                 from deeptutor.services.rag.embedding_signature import (
+                    llamaindex_signature_from_embedding_config,
                     signature_from_embedding_config,
                 )
 
-                sig = signature_from_embedding_config()
+                provider = normalize_provider_name(kb_config.get("rag_provider"))
+                sig = (
+                    llamaindex_signature_from_embedding_config()
+                    if provider_uses_embedding_versions(provider)
+                    else signature_from_embedding_config()
+                )
                 if sig is not None:
                     kb_config["embedding_signature"] = sig.hash()
                 kb_dir = self.base_dir / name
                 if kb_dir.is_dir():
-                    provider = normalize_provider_name(kb_config.get("rag_provider"))
                     kb_config["index_versions"] = inspect_kb_versions(kb_dir, provider)
             except Exception:  # pragma: no cover - best-effort metadata
                 pass
@@ -962,12 +969,16 @@ class KnowledgeBaseManager:
     def get_rag_storage_path(self, name: str | None = None) -> Path:
         """Get active index storage path for a knowledge base."""
         kb_dir = self.get_knowledge_base_path(name)
-        from deeptutor.services.rag.embedding_signature import signature_from_embedding_config
+        from deeptutor.services.rag.embedding_signature import (
+            llamaindex_signature_from_embedding_config,
+        )
         from deeptutor.services.rag.index_versioning import (
             resolve_storage_dir_for_read,
         )
 
-        active_storage = resolve_storage_dir_for_read(kb_dir, signature_from_embedding_config())
+        active_storage = resolve_storage_dir_for_read(
+            kb_dir, llamaindex_signature_from_embedding_config()
+        )
         legacy_storage = kb_dir / "rag_storage"
         if active_storage is not None:
             return active_storage
@@ -1289,7 +1300,10 @@ class KnowledgeBaseManager:
                 pass
 
         # Check rag_initialized from provider-owned real output, not metadata alone.
-        from deeptutor.services.rag.embedding_signature import signature_from_embedding_config
+        from deeptutor.services.rag.embedding_signature import (
+            llamaindex_signature_from_embedding_config,
+            signature_from_embedding_config,
+        )
         from deeptutor.services.rag.index_versioning import (
             find_matching_version,
         )
@@ -1299,6 +1313,7 @@ class KnowledgeBaseManager:
 
         active_signature = signature_from_embedding_config()
         if provider_uses_embedding_versions(rag_provider):
+            active_signature = llamaindex_signature_from_embedding_config()
             matched_entry = (
                 find_matching_version(kb_probe_dir, active_signature)
                 if (kb_probe_dir and active_signature)

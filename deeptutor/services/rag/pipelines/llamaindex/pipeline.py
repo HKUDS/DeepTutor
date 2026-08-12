@@ -11,7 +11,9 @@ from typing import Any, Callable, Dict, List, Optional
 
 from deeptutor.runtime.home import get_runtime_data_root
 from deeptutor.services.embedding import get_embedding_config
-from deeptutor.services.rag.embedding_signature import signature_from_embedding_config
+from deeptutor.services.rag.embedding_signature import (
+    llamaindex_signature_from_embedding_config,
+)
 from deeptutor.services.rag.index_versioning import (
     EmbeddingSignature,
     resolve_storage_dir_for_read,
@@ -47,7 +49,7 @@ class LlamaIndexPipeline:
     ):
         self.logger = logging.getLogger(__name__)
         self.kb_base_dir = kb_base_dir or DEFAULT_KB_BASE_DIR
-        self._signature_provider = signature_provider or signature_from_embedding_config
+        self._signature_provider = signature_provider or llamaindex_signature_from_embedding_config
         self.document_loader = document_loader or LlamaIndexDocumentLoader(self.logger)
         self._configure_settings()
 

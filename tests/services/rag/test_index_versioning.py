@@ -130,3 +130,72 @@ def test_list_kb_versions_includes_legacy_nested_and_root_layouts(tmp_path: Path
     layouts = {entry["layout"] for entry in list_kb_versions(kb_dir)}
 
     assert {"nested_legacy", "root_legacy"} <= layouts
+
+
+def test_ingestion_schema_changes_embedding_signature_and_version_metadata(
+    tmp_path: Path,
+) -> None:
+    base = _signature()
+    assert base.hash() == "f758673f49726b31"
+    schema_v1 = EmbeddingSignature(
+        binding=base.binding,
+        model=base.model,
+        dimension=base.dimension,
+        base_url=base.base_url,
+        api_version=base.api_version,
+        ingestion_schema_version="1",
+    )
+    schema_v2 = EmbeddingSignature(
+        binding=base.binding,
+        model=base.model,
+        dimension=base.dimension,
+        base_url=base.base_url,
+        api_version=base.api_version,
+        ingestion_schema_version="2",
+    )
+
+    assert base.hash() != schema_v1.hash()
+    assert schema_v1.hash() != schema_v2.hash()
+
+    kb_dir = tmp_path / "kb"
+    storage_dir = resolve_storage_dir_for_write(kb_dir, schema_v1)
+    (storage_dir / "docstore.json").write_text("{}", encoding="utf-8")
+    write_version_meta(kb_dir, schema_v1, storage_dir=storage_dir)
+
+    metadata = json.loads((storage_dir / "meta.json").read_text(encoding="utf-8"))
+    assert metadata["ingestion_schema_version"] == "1"
+    assert find_matching_version(kb_dir, schema_v2) is None
+
+
+def test_llamaindex_signature_helper_adds_only_ingestion_schema(
+    monkeypatch,
+) -> None:
+    from deeptutor.services.rag import embedding_signature
+
+    base = _signature()
+    monkeypatch.setattr(embedding_signature, "signature_from_embedding_config", lambda: base)
+
+    llamaindex = embedding_signature.llamaindex_signature_from_embedding_config()
+
+    assert base.ingestion_schema_version == ""
+    assert base.hash() == "f758673f49726b31"
+    assert llamaindex.ingestion_schema_version == "1"
+    assert llamaindex.hash() != base.hash()
+
+
+def test_schema_aware_read_does_not_reuse_root_legacy_store(tmp_path: Path) -> None:
+    kb_dir = tmp_path / "kb"
+    legacy = kb_dir / "llamaindex_storage"
+    legacy.mkdir(parents=True)
+    (legacy / "docstore.json").write_text("{}", encoding="utf-8")
+    base = _signature()
+    schema = EmbeddingSignature(
+        binding=base.binding,
+        model=base.model,
+        dimension=base.dimension,
+        base_url=base.base_url,
+        api_version=base.api_version,
+        ingestion_schema_version="1",
+    )
+
+    assert resolve_storage_dir_for_read(kb_dir, schema) is None

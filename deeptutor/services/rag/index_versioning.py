@@ -52,10 +52,14 @@ class EmbeddingSignature:
     dimension: int
     base_url: str
     api_version: str
+    ingestion_schema_version: str = ""
 
     def hash(self) -> str:
         """Short hex digest used as the stable signature."""
-        canonical = json.dumps(asdict(self), sort_keys=True, ensure_ascii=False)
+        payload = asdict(self)
+        if not payload["ingestion_schema_version"]:
+            payload.pop("ingestion_schema_version")
+        canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False)
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
@@ -291,7 +295,7 @@ def resolve_storage_dir_for_read(
             return Path(str(latest_flat["storage_path"]))
 
     root_legacy = legacy_storage_dir(kb_dir)
-    if _is_storage_ready(root_legacy):
+    if _is_storage_ready(root_legacy) and not (signature and signature.ingestion_schema_version):
         return root_legacy
 
     return None

@@ -61,6 +61,11 @@ def _patch_active_embedding(
         "signature_from_embedding_config",
         lambda: _Signature(sig_hash),
     )
+    monkeypatch.setattr(
+        embedding_signature,
+        "llamaindex_signature_from_embedding_config",
+        lambda: _Signature(sig_hash),
+    )
 
 
 def test_processing_with_ready_index_promotes_to_ready(

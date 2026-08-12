@@ -30,6 +30,11 @@ def _patch_active_embedding(
         "signature_from_embedding_config",
         lambda: _Signature(sig_hash),
     )
+    monkeypatch.setattr(
+        embedding_signature,
+        "llamaindex_signature_from_embedding_config",
+        lambda: _Signature(sig_hash),
+    )
 
 
 def test_in_progress_empty_version_dir_does_not_mark_new_kb_reindex(
@@ -177,3 +182,116 @@ def test_ready_status_records_last_indexed_only_when_index_changes(
     info = KnowledgeBaseManager(base_dir=str(tmp_path)).get_info("kb")
     assert info["metadata"]["last_indexed_at"] == "2026-05-04T10:00:00"
     assert info["metadata"]["last_indexed_count"] == 2
+
+
+def test_old_llamaindex_schema_marks_ready_kb_for_reindex(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.knowledge import manager as manager_module
+    from deeptutor.services.rag import embedding_signature
+    from deeptutor.services.rag.index_versioning import EmbeddingSignature
+
+    base = EmbeddingSignature(
+        binding="openai",
+        model="embed-active",
+        dimension=4096,
+        base_url="https://example.test/v1",
+        api_version="",
+    )
+    monkeypatch.setattr(
+        manager_module, "_get_embedding_fingerprint", lambda: ("embed-active", 4096)
+    )
+    monkeypatch.setattr(embedding_signature, "signature_from_embedding_config", lambda: base)
+    kb_dir = tmp_path / "kb"
+    version_dir = kb_dir / "version-1"
+    version_dir.mkdir(parents=True)
+    (version_dir / "docstore.json").write_text("{}", encoding="utf-8")
+    (version_dir / "index_store.json").write_text("{}", encoding="utf-8")
+    (version_dir / "meta.json").write_text(
+        json.dumps({"signature": base.hash(), "version": "version-1"}),
+        encoding="utf-8",
+    )
+    (tmp_path / "kb_config.json").write_text(
+        json.dumps(
+            {
+                "knowledge_bases": {
+                    "kb": {
+                        "path": "kb",
+                        "rag_provider": "llamaindex",
+                        "embedding_model": "embed-active",
+                        "embedding_dim": 4096,
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    entry = KnowledgeBaseManager(base_dir=str(tmp_path)).config["knowledge_bases"]["kb"]
+
+    assert entry["needs_reindex"] is True
+    assert entry["embedding_mismatch"] is True
+
+
+def test_ready_non_llamaindex_status_keeps_embedding_only_signature(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.knowledge import manager as manager_module
+    from deeptutor.services.rag import embedding_signature
+    from deeptutor.services.rag.index_versioning import EmbeddingSignature
+
+    base = EmbeddingSignature(
+        binding="openai",
+        model="embed-active",
+        dimension=4096,
+        base_url="https://example.test/v1",
+        api_version="",
+    )
+    monkeypatch.setattr(
+        manager_module, "_get_embedding_fingerprint", lambda: ("embed-active", 4096)
+    )
+    monkeypatch.setattr(embedding_signature, "signature_from_embedding_config", lambda: base)
+    manager = KnowledgeBaseManager(base_dir=str(tmp_path))
+    manager.config["knowledge_bases"] = {
+        "graph-kb": {"rag_provider": "graphrag", "path": "graph-kb"}
+    }
+    manager._save_config()
+
+    manager.update_kb_status(name="graph-kb", status="ready")
+
+    entry = KnowledgeBaseManager(base_dir=str(tmp_path)).config["knowledge_bases"]["graph-kb"]
+    assert entry["embedding_signature"] == base.hash()
+
+
+def test_ready_llamaindex_status_records_ingestion_schema_signature(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.knowledge import manager as manager_module
+    from deeptutor.services.rag import embedding_signature
+    from deeptutor.services.rag.index_versioning import EmbeddingSignature
+
+    base = EmbeddingSignature(
+        binding="openai",
+        model="embed-active",
+        dimension=4096,
+        base_url="https://example.test/v1",
+        api_version="",
+    )
+    monkeypatch.setattr(
+        manager_module, "_get_embedding_fingerprint", lambda: ("embed-active", 4096)
+    )
+    monkeypatch.setattr(embedding_signature, "signature_from_embedding_config", lambda: base)
+    manager = KnowledgeBaseManager(base_dir=str(tmp_path))
+    manager.config["knowledge_bases"] = {"kb": {"rag_provider": "llamaindex", "path": "kb"}}
+    manager._save_config()
+
+    manager.update_kb_status(name="kb", status="ready")
+
+    entry = KnowledgeBaseManager(base_dir=str(tmp_path)).config["knowledge_bases"]["kb"]
+    assert entry["embedding_signature"] == (
+        embedding_signature.llamaindex_signature_from_embedding_config().hash()
+    )
+    assert entry["embedding_signature"] != base.hash()
