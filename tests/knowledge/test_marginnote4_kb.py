@@ -61,3 +61,29 @@ def test_ordinary_kb_metadata_has_no_mn4_fields(tmp_path: Path) -> None:
     meta = manager.get_metadata("plain")
     assert "type" not in meta
     assert "db_path" not in meta
+
+
+def test_register_marginnote4_kb_creates_pointer(tmp_path: Path) -> None:
+    manager = KnowledgeBaseManager(base_dir=str(tmp_path / "kbs"))
+    entry = manager.register_marginnote4_kb(
+        "MyLibrary", db_path="/data/mn4/test.db", description="Test lib"
+    )
+    assert entry["type"] == "marginnote4"
+    assert entry["db_path"] == "/data/mn4/test.db"
+    assert entry["description"] == "Test lib"
+    assert "MyLibrary" in manager.list_knowledge_bases()
+
+
+def test_register_marginnote4_kb_default_path(tmp_path: Path) -> None:
+    manager = KnowledgeBaseManager(base_dir=str(tmp_path / "kbs"))
+    entry = manager.register_marginnote4_kb("AutoPath")
+    assert entry["type"] == "marginnote4"
+    assert "db_path" not in entry  # capability derives default from name
+
+
+def test_register_marginnote4_kb_rejects_duplicate(tmp_path: Path) -> None:
+    manager = KnowledgeBaseManager(base_dir=str(tmp_path / "kbs"))
+    manager.register_marginnote4_kb("Lib")
+    import pytest
+    with pytest.raises(ValueError, match="already exists"):
+        manager.register_marginnote4_kb("Lib")

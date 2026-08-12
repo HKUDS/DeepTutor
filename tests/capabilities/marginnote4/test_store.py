@@ -160,6 +160,15 @@ def test_search_finds_common_term_across_objects(tmp_path: Path) -> None:
     assert "node1" in ids
 
 
+def test_search_includes_document_title(tmp_path: Path) -> None:
+    store = MarginNoteStore(tmp_path / "test.db")
+    store.ingest(SyncBatch(device_id="dev1", objects=_seed_objects()))
+    # "Biology Textbook" is a document_title, not in any note's content
+    hits = store.search("Biology Textbook")
+    assert len(hits) >= 1
+    assert any(h["object_id"] == "note1" for h in hits)
+
+
 def test_search_filters_by_type(tmp_path: Path) -> None:
     store = MarginNoteStore(tmp_path / "test.db")
     store.ingest(SyncBatch(device_id="dev1", objects=_seed_objects()))
