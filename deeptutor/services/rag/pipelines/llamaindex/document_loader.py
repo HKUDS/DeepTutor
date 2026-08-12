@@ -19,12 +19,14 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from llama_index.core import Document
-from llama_index.core.schema import ImageNode
+from llama_index.core.schema import ImageNode, TextNode
 
 from deeptutor.services.embedding import get_embedding_client
 from deeptutor.services.llm.client import get_llm_client
 from deeptutor.services.rag.file_routing import FileTypeRouter
 from deeptutor.utils.document_validator import DocumentValidator
+
+from .visual_assets import StructuredVisualAsset, build_structured_visual_assets
 
 IMAGE_DESCRIPTION_SYSTEM_PROMPT = (
     "You describe images for a retrieval-augmented knowledge base. "
@@ -62,14 +64,16 @@ class LlamaIndexDocumentLoader:
     async def load(self, file_paths: Iterable[str]) -> list[Any]:
         documents: list[Any] = []
         image_sources: list[_ImageSource] = []
+        structured_assets: list[StructuredVisualAsset] = []
         classification = FileTypeRouter.classify_files(list(file_paths))
 
         for file_path_str in classification.parser_files:
             file_path = Path(file_path_str)
             self.logger.info(f"Parsing document: {file_path.name}")
-            text, extracted_images = self._parse_document(file_path)
+            text, extracted_images, parsed_assets = self._parse_document(file_path)
             self._append_if_nonempty(documents, file_path, text)
             image_sources.extend(extracted_images)
+            structured_assets.extend(parsed_assets)
 
         for file_path_str in classification.text_files:
             file_path = Path(file_path_str)
@@ -83,13 +87,17 @@ class LlamaIndexDocumentLoader:
 
         if image_sources:
             documents.extend(await self._load_image_nodes(image_sources))
+        if structured_assets:
+            documents.extend(await self._load_structured_visual_nodes(structured_assets))
 
         for file_path_str in classification.unsupported:
             self.logger.warning(f"Skipped unsupported file: {Path(file_path_str).name}")
 
         return documents
 
-    def _parse_document(self, file_path: Path) -> tuple[str, list[_ImageSource]]:
+    def _parse_document(
+        self, file_path: Path
+    ) -> tuple[str, list[_ImageSource], list[StructuredVisualAsset]]:
         """Parse a document through the shared, engine-pluggable parse layer.
 
         Returns ``(text, extracted_images)``. A parse failure (engine
@@ -106,11 +114,14 @@ class LlamaIndexDocumentLoader:
                 f"Skipped {file_path.name}: the active document-parsing engine could "
                 f"not handle it ({exc}). Change the engine in Settings → Document Parsing."
             )
-            return "", []
+            return "", [], []
 
         text = parsed.markdown.strip() or self._text_from_blocks(parsed.blocks)
+        if parsed.blocks:
+            assets = build_structured_visual_assets(parsed, origin=file_path)
+            return text, [], assets
         images = self._collect_asset_images(parsed.asset_dir, origin=file_path)
-        return text, images
+        return text, images, []
 
     @staticmethod
     def _text_from_blocks(blocks: list[dict] | None) -> str:
@@ -234,6 +245,108 @@ class LlamaIndexDocumentLoader:
                 )
             )
             self.logger.info(f"Loaded image: {source.path.name} ({len(embedding)}D vector)")
+        return nodes
+
+    async def _load_structured_visual_nodes(self, assets: list[StructuredVisualAsset]) -> list[Any]:
+        """Build linked text companions and optional pre-embedded image nodes."""
+
+        embedding_client = get_embedding_client()
+        supports_images = embedding_client.supports_multimodal_contents()
+        nodes: list[Any] = []
+
+        for asset in assets:
+            companion_id = f"visual-companion-{asset.asset_id}"
+            component_id = f"visual-component-{asset.asset_id}"
+            component_ids: list[str] = []
+            image_embedding: list[float] | None = None
+            mimetype = mimetypes.guess_type(asset.path.name)[0] or "application/octet-stream"
+
+            if supports_images:
+                try:
+                    payload = self._load_image_payload(asset.path)
+                    embeddings = await embedding_client.embed_contents(
+                        [{"image": payload["data_uri"]}]
+                    )
+                    if embeddings:
+                        image_embedding = embeddings[0]
+                        component_ids.append(component_id)
+                except Exception as exc:
+                    self.logger.warning(
+                        "Skipped image embedding for structured visual asset %s: %s",
+                        asset.asset_id,
+                        exc,
+                    )
+
+            page_number = asset.page_index + 1 if asset.page_index is not None else None
+            bbox = list(asset.bbox) if asset.bbox is not None else None
+            metadata = {
+                "file_name": asset.origin.name,
+                "file_path": str(asset.origin),
+                "content_type": asset.resource_type,
+                "asset_id": asset.asset_id,
+                "block_index": asset.block_index,
+                "page": page_number,
+                "bbox": bbox,
+                "source_hash": asset.source_hash,
+                "parser_signature": asset.parser_signature,
+            }
+            companion_text = "\n".join(
+                part
+                for part in (
+                    f"[Visual asset: {asset.resource_type}] {asset.origin.name}",
+                    f"Caption: {asset.caption}" if asset.caption else "",
+                    f"Content:\n{asset.text}" if asset.text else "",
+                    f"Page: {page_number}" if page_number is not None else "",
+                )
+                if part
+            )
+            try:
+                companion_embeddings = await embedding_client.embed(
+                    [companion_text], input_type="search_document"
+                )
+            except Exception as exc:
+                self.logger.warning(
+                    "Skipped structured visual asset %s because its text companion "
+                    "could not be embedded: %s",
+                    asset.asset_id,
+                    exc,
+                )
+                continue
+            if not companion_embeddings:
+                self.logger.warning(
+                    "Skipped structured visual asset with no companion embedding: %s",
+                    asset.asset_id,
+                )
+                continue
+
+            if image_embedding is not None:
+                nodes.append(
+                    ImageNode(
+                        id_=component_id,
+                        text=companion_text,
+                        image_path=str(asset.path),
+                        image_mimetype=mimetype,
+                        metadata={
+                            **metadata,
+                            "node_role": "visual_component",
+                            "companion_node_id": companion_id,
+                        },
+                        embedding=image_embedding,
+                    )
+                )
+
+            nodes.append(
+                TextNode(
+                    id_=companion_id,
+                    text=companion_text,
+                    metadata={
+                        **metadata,
+                        "node_role": "visual_companion",
+                        "component_node_ids": component_ids,
+                    },
+                    embedding=companion_embeddings[0],
+                )
+            )
         return nodes
 
     async def _describe_image(self, file_path: Path, image_base64: str, mimetype: str) -> str:

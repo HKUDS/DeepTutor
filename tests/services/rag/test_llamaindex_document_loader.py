@@ -292,3 +292,144 @@ def test_loader_logs_all_missing_multimodal_image_requirements(
     assert "LLM provider/model does not support multimodal image input" in caplog.text
     assert "text-embedding-3-small" in caplog.text
     assert "gpt-3.5-turbo" in caplog.text
+
+
+def test_structured_visual_keeps_text_companion_with_text_only_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("llama_index.core")
+    from llama_index.core.schema import ImageNode, TextNode
+
+    from deeptutor.services.parsing.types import ParsedDocument
+    from deeptutor.services.rag.pipelines.llamaindex import document_loader as loader_module
+
+    pdf_path = tmp_path / "paper.pdf"
+    pdf_path.write_bytes(b"stub")
+    asset_dir = tmp_path / "images"
+    asset_dir.mkdir()
+    figure = asset_dir / "figure.png"
+    figure.write_bytes(b"\x89PNG\r\n")
+    (asset_dir / "unreferenced.png").write_bytes(b"\x89PNG\r\n")
+
+    _install_stub_parse_service(
+        monkeypatch,
+        {
+            "paper.pdf": ParsedDocument(
+                markdown="Paper body",
+                blocks=[
+                    {
+                        "type": "image",
+                        "img_path": str(figure),
+                        "page_idx": 3,
+                        "bbox": [10, 20, 30, 40],
+                        "image_caption": ["Figure 2: Number line"],
+                    }
+                ],
+                asset_dir=asset_dir,
+                source_hash="source-hash",
+                parser_signature="parser-v1",
+            )
+        },
+    )
+
+    class _TextOnlyEmbeddingClient:
+        config = type("Config", (), {"binding": "openai", "model": "text-embedding"})()
+
+        def supports_multimodal_contents(self) -> bool:
+            return False
+
+        async def embed(self, texts, **_kwargs):
+            return [[0.7, 0.8] for _ in texts]
+
+    monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _TextOnlyEmbeddingClient())
+
+    documents = asyncio.run(loader_module.LlamaIndexDocumentLoader().load([str(pdf_path)]))
+
+    companions = [
+        node
+        for node in documents
+        if isinstance(node, TextNode) and node.metadata.get("node_role") == "visual_companion"
+    ]
+    assert len(companions) == 1
+    companion = companions[0]
+    assert "Figure 2: Number line" in companion.text
+    assert companion.metadata["file_name"] == "paper.pdf"
+    assert companion.metadata["page"] == 4
+    assert companion.metadata["bbox"] == [10.0, 20.0, 30.0, 40.0]
+    assert companion.metadata["component_node_ids"] == []
+    assert companion.embedding == [0.7, 0.8]
+    assert not any(isinstance(node, ImageNode) for node in documents)
+
+
+def test_structured_visual_links_image_and_companion_for_multimodal_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("llama_index.core")
+    from llama_index.core.schema import ImageNode, TextNode
+
+    from deeptutor.services.parsing.types import ParsedDocument
+    from deeptutor.services.rag.pipelines.llamaindex import document_loader as loader_module
+
+    pdf_path = tmp_path / "paper.pdf"
+    pdf_path.write_bytes(b"stub")
+    asset_dir = tmp_path / "images"
+    asset_dir.mkdir()
+    table = asset_dir / "table.png"
+    table.write_bytes(b"\x89PNG\r\n")
+    _install_stub_parse_service(
+        monkeypatch,
+        {
+            "paper.pdf": ParsedDocument(
+                markdown="Paper body",
+                blocks=[
+                    {
+                        "type": "table",
+                        "img_path": str(table),
+                        "table_caption": ["Table 1: Results"],
+                    }
+                ],
+                asset_dir=asset_dir,
+                source_hash="source-hash",
+                parser_signature="parser-v1",
+            )
+        },
+    )
+
+    captured: list[dict[str, str]] = []
+
+    class _MultimodalEmbeddingClient:
+        config = type("Config", (), {"binding": "jina", "model": "multimodal"})()
+
+        def supports_multimodal_contents(self) -> bool:
+            return True
+
+        async def embed_contents(self, contents):
+            captured.extend(contents)
+            return [[0.1, 0.2, 0.3]]
+
+        async def embed(self, texts, **_kwargs):
+            return [[0.4, 0.5, 0.6] for _ in texts]
+
+    monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _MultimodalEmbeddingClient())
+
+    documents = asyncio.run(loader_module.LlamaIndexDocumentLoader().load([str(pdf_path)]))
+
+    component = next(
+        node
+        for node in documents
+        if isinstance(node, ImageNode) and node.metadata.get("node_role") == "visual_component"
+    )
+    companion = next(
+        node
+        for node in documents
+        if isinstance(node, TextNode) and node.metadata.get("node_role") == "visual_companion"
+    )
+    assert component.embedding == [0.1, 0.2, 0.3]
+    assert component.image_path == str(table)
+    assert component.metadata["content_type"] == "table"
+    assert component.metadata["asset_id"] == companion.metadata["asset_id"]
+    assert component.metadata["companion_node_id"] == companion.node_id
+    assert companion.metadata["component_node_ids"] == [component.node_id]
+    assert companion.embedding == [0.4, 0.5, 0.6]
+    assert "Table 1: Results" in companion.text
+    assert captured[0]["image"].startswith("data:image/png;base64,")
