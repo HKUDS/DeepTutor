@@ -12,6 +12,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from deeptutor.core.context import Attachment
+
 
 @dataclass
 class ToolParameter:
@@ -128,6 +130,8 @@ class ToolResult:
         metadata: Free-form payload — also used by the chat pipeline as a
             channel for structured UI hints (e.g. ``ask_user.options``
             for chip rendering).
+        attachments: Binary evidence returned by a tool. These stay structured
+            and are never serialized into the ``role=tool`` text body.
         success: ``False`` marks an explicit failure path; the LLM is
             still allowed to read ``content`` (often an error message).
         terminate_turn: When ``True`` the agentic chat loop must stop
@@ -148,6 +152,7 @@ class ToolResult:
     content: str = ""
     sources: list[dict[str, Any]] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    attachments: list[Attachment] = field(default_factory=list)
     success: bool = True
     terminate_turn: bool = False
     pause_for_user: dict[str, Any] | None = None

@@ -30,7 +30,7 @@ from deeptutor.core.agentic.tool_arg_guard import (
     missing_args_message,
     missing_required_args,
 )
-from deeptutor.core.context import UnifiedContext
+from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.tool_protocol import ToolLookup, provider_identity
 from deeptutor.core.trace import (
@@ -67,6 +67,7 @@ class DispatchOutcome:
 
     sources: list[dict[str, Any]] = field(default_factory=list)
     tool_messages: list[dict[str, Any]] = field(default_factory=list)
+    tool_attachments_by_id: dict[str, list[Attachment]] = field(default_factory=dict)
     tool_metadata_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
     terminate: bool = False
     terminate_payload: dict[str, Any] | None = None
@@ -539,6 +540,7 @@ async def execute_tool_call(
             "result_text": result.content or empty_tool_result_message,
             "success": result.success,
             "sources": result.sources,
+            "attachments": result.attachments,
             "metadata": result.metadata,
             "terminate_turn": getattr(result, "terminate_turn", False),
             "pause_for_user": getattr(result, "pause_for_user", None),
@@ -582,6 +584,7 @@ async def execute_tool_call(
             "result_text": unknown_msg,
             "success": False,
             "sources": [],
+            "attachments": [],
             "metadata": {"error": str(exc)},
             "terminate_turn": False,
             "pause_for_user": None,
@@ -607,6 +610,7 @@ async def _collect_outcome(
     """
     aggregated_sources: list[dict[str, Any]] = []
     tool_messages: list[dict[str, Any]] = []
+    tool_attachments_by_id: dict[str, list[Attachment]] = {}
     tool_metadata_by_id: dict[str, dict[str, Any]] = {}
     terminate = False
     terminate_payload: dict[str, Any] | None = None
@@ -635,6 +639,9 @@ async def _collect_outcome(
                 metadata=result_event_meta,
             )
         aggregated_sources.extend(result.get("sources") or [])
+        result_attachments = result.get("attachments") or []
+        if result_attachments:
+            tool_attachments_by_id[tool_call_id] = list(result_attachments)
         tool_messages.append(
             {
                 "role": "tool",
@@ -664,6 +671,7 @@ async def _collect_outcome(
     return DispatchOutcome(
         sources=aggregated_sources,
         tool_messages=tool_messages,
+        tool_attachments_by_id=tool_attachments_by_id,
         tool_metadata_by_id=tool_metadata_by_id,
         terminate=terminate,
         terminate_payload=terminate_payload,

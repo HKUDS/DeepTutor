@@ -150,6 +150,22 @@ class _Registry:
         )
 
 
+class _ImageRegistry(_Registry):
+    async def execute(self, name: str, **kwargs):
+        self.executed.append({"name": name, "kwargs": kwargs})
+        return ToolResult(
+            content="[MCP image attached: image/jpeg, 3 bytes]",
+            attachments=[
+                Attachment(
+                    type="image",
+                    base64="QUJD",
+                    filename="mcp-image-1.jpg",
+                    mime_type="image/jpeg",
+                )
+            ],
+        )
+
+
 @pytest.fixture(autouse=True)
 def _fake_llm_config(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
@@ -499,6 +515,68 @@ async def test_tool_round_then_finish(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.metadata["rounds"] == 2
     # Only the finish round's text is the persisted answer.
     assert result.metadata["response"] == "Found what was needed."
+
+
+@pytest.mark.asyncio
+async def test_codex_tool_image_is_injected_into_the_next_model_round(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _ImageRegistry()
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "id": "call-1",
+                            "name": "web_search",
+                            "arguments": json.dumps({"query": "figure"}),
+                        }
+                    ]
+                )
+            ],
+            [_llm_chunk(content="I can see the figure.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.binding = "openai_codex"
+    pipeline.registry = registry
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    await _run(
+        pipeline,
+        UnifiedContext(session_id="s1", user_message="Inspect the figure"),
+    )
+
+    second_round = client.calls[1]["messages"]
+    tool_message = next(message for message in second_round if message.get("role") == "tool")
+    assert isinstance(tool_message["content"], list)
+    image_part = next(part for part in tool_message["content"] if part.get("type") == "image_url")
+    assert image_part["image_url"]["url"] == "data:image/jpeg;base64,QUJD"
+    assert second_round[-1]["role"] == "tool"
+
+
+def test_non_codex_tool_image_does_not_change_tool_message_shape() -> None:
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.binding = "openai"
+    messages: list[dict[str, Any]] = [
+        {"role": "tool", "tool_call_id": "call-1", "content": "image attached"}
+    ]
+    attachments = {
+        "call-1": [
+            Attachment(
+                type="image",
+                base64="QUJD",
+                filename="mcp-image-1.jpg",
+                mime_type="image/jpeg",
+            )
+        ]
+    }
+
+    pipeline._attach_tool_images(messages, attachments)
+
+    assert messages == [{"role": "tool", "tool_call_id": "call-1", "content": "image attached"}]
 
 
 @pytest.mark.asyncio

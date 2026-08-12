@@ -53,14 +53,31 @@ def convert_messages(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str
 
         if role == "tool":
             call_id, _ = split_tool_call_id(msg.get("tool_call_id"))
-            output_text = (
-                content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
-            )
+            output = _convert_tool_output(content)
             input_items.append(
-                {"type": "function_call_output", "call_id": call_id, "output": output_text}
+                {"type": "function_call_output", "call_id": call_id, "output": output}
             )
 
     return system_prompt, input_items
+
+
+def _convert_tool_output(content: Any) -> str | list[dict[str, Any]]:
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return json.dumps(content, ensure_ascii=False)
+
+    converted: list[dict[str, Any]] = []
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") == "text":
+            converted.append({"type": "input_text", "text": str(item.get("text") or "")})
+        elif item.get("type") == "image_url":
+            url = (item.get("image_url") or {}).get("url")
+            if url:
+                converted.append({"type": "input_image", "image_url": url, "detail": "auto"})
+    return converted or json.dumps(content, ensure_ascii=False)
 
 
 def convert_user_message(content: Any) -> dict[str, Any]:

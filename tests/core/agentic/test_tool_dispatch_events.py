@@ -23,7 +23,7 @@ from typing import Any
 import pytest
 
 from deeptutor.core.agentic.tool_dispatch import dispatch_tool_calls
-from deeptutor.core.context import UnifiedContext
+from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.tool_protocol import ToolResult
@@ -51,6 +51,21 @@ class _ProgressRegistry:
         await sink("tool_log", "step 1/2")
         await sink("tool_log", "")  # empty messages stay dropped
         return ToolResult(content="ok", success=True)
+
+
+class _ImageRegistry(_Registry):
+    async def execute(self, name: str, **kwargs: Any) -> ToolResult:
+        return ToolResult(
+            content="[MCP image attached: image/jpeg, 3 bytes]",
+            attachments=[
+                Attachment(
+                    type="image",
+                    base64="QUJD",
+                    filename="mcp-image-1.jpg",
+                    mime_type="image/jpeg",
+                )
+            ],
+        )
 
 
 def _augment(tool_name: str, tool_args: dict[str, Any], _ctx: UnifiedContext) -> dict[str, Any]:
@@ -150,6 +165,34 @@ async def test_tool_call_event_args_exclude_private_kwargs() -> None:
     # The whole event must survive strict JSON serialization — this is what
     # the WS push and the turn-event store both rely on.
     json.dumps(tool_calls[0].to_dict())
+
+
+@pytest.mark.asyncio
+async def test_tool_attachment_stays_bound_to_its_call_id() -> None:
+    bus = StreamBus()
+    events: list[StreamEvent] = []
+
+    async def _consume() -> None:
+        async for event in bus.subscribe():
+            events.append(event)
+
+    consumer = asyncio.create_task(_consume())
+    await asyncio.sleep(0)
+    outcome = await dispatch_tool_calls(
+        tool_calls=[{"id": "c1", "name": "image_tool", "arguments": "{}"}],
+        context=UnifiedContext(session_id="s1", user_message="inspect"),
+        stream=bus,
+        source="chat",
+        stage="responding",
+        iteration_index=0,
+        registry=_ImageRegistry(),
+    )
+    await bus.close()
+    await consumer
+
+    assert outcome.tool_attachments_by_id["c1"][0].base64 == "QUJD"
+    assert outcome.tool_messages[0]["content"] == ("[MCP image attached: image/jpeg, 3 bytes]")
+    assert "QUJD" not in outcome.tool_messages[0]["content"]
 
 
 @pytest.mark.asyncio

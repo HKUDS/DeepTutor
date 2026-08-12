@@ -30,14 +30,18 @@ path executes them.
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+import hashlib
 import logging
 import re
 from typing import Any
 
 import httpx
 
+from deeptutor.core.context import Attachment
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolResult
 from deeptutor.services.mcp.config import (
     MCPConfig,
@@ -79,6 +83,15 @@ _TRANSIENT_ERRORS = (
     BrokenPipeError,
     ConnectionResetError,
 )
+
+_MAX_IMAGE_BYTES = 10 * 1024 * 1024
+_MAX_IMAGE_BASE64_CHARS = ((_MAX_IMAGE_BYTES + 2) // 3) * 4
+_IMAGE_MIME_EXTENSIONS = {
+    "image/gif": "gif",
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+}
 
 
 def wrapped_tool_name(server: str, tool: str) -> str:
@@ -140,7 +153,7 @@ class MCPToolAdapter(BaseTool):
         # notifications during a long call, and that is the only thing a reader
         # has to look at while a five-minute render or crawl is running.
         event_sink = kwargs.pop("event_sink", None)
-        text = await self._manager.call_tool(
+        result = await self._manager.call_tool(
             self._owner,
             self._server_name,
             self._original_name,
@@ -148,10 +161,12 @@ class MCPToolAdapter(BaseTool):
             timeout=self._tool_timeout,
             on_progress=_progress_reporter(event_sink, self._server_name) if event_sink else None,
         )
-        return ToolResult(
-            content=text,
-            metadata={"mcp_server": self._server_name, "mcp_tool": self._original_name},
-        )
+        result.metadata = {
+            **result.metadata,
+            "mcp_server": self._server_name,
+            "mcp_tool": self._original_name,
+        }
+        return result
 
 
 def _progress_reporter(event_sink: Any, server_name: str) -> "ProgressCallback":
@@ -410,11 +425,11 @@ class MCPConnectionManager:
         *,
         timeout: int,
         on_progress: "ProgressCallback | None" = None,
-    ) -> str:
+    ) -> ToolResult:
         """Invoke a tool on a connected server; one retry on transient errors."""
         conn = self._connections.get((owner, server_name))
         if conn is None or conn.session is None or conn.status != "connected":
-            return f"(MCP server {server_name!r} is not connected)"
+            return ToolResult(content=f"(MCP server {server_name!r} is not connected)")
         try:
             return await self._call_once(conn, tool_name, arguments, timeout, on_progress)
         except _TRANSIENT_ERRORS:
@@ -426,19 +441,25 @@ class MCPConnectionManager:
             try:
                 return await self._call_once(conn, tool_name, arguments, timeout, on_progress)
             except Exception as exc:
-                return f"(MCP tool call failed after retry: {type(exc).__name__})"
+                return ToolResult(
+                    content=f"(MCP tool call failed after retry: {type(exc).__name__})",
+                )
         except asyncio.TimeoutError:
-            return f"(MCP tool call timed out after {timeout}s)"
+            return ToolResult(
+                content=f"(MCP tool call timed out after {timeout}s)",
+            )
         except asyncio.CancelledError:
             # The MCP SDK's anyio scopes can leak CancelledError on internal
             # failures; re-raise only when our own task was cancelled.
             task = asyncio.current_task()
             if task is not None and task.cancelling() > 0:
                 raise
-            return "(MCP tool call was cancelled)"
+            return ToolResult(content="(MCP tool call was cancelled)")
         except Exception as exc:
             logger.exception("MCP tool %s/%s failed", server_name, tool_name)
-            return f"(MCP tool call failed: {type(exc).__name__}: {exc})"
+            return ToolResult(
+                content=f"(MCP tool call failed: {type(exc).__name__}: {exc})",
+            )
 
     @staticmethod
     async def _call_once(
@@ -447,7 +468,7 @@ class MCPConnectionManager:
         arguments: dict[str, Any],
         timeout: int,
         on_progress: "ProgressCallback | None" = None,
-    ) -> str:
+    ) -> ToolResult:
         from mcp import types
 
         result = await asyncio.wait_for(
@@ -462,12 +483,56 @@ class MCPConnectionManager:
             timeout=timeout,
         )
         parts: list[str] = []
+        attachments: list[Attachment] = []
+        image_metadata: list[dict[str, Any]] = []
         for block in result.content:
             if isinstance(block, types.TextContent):
                 parts.append(block.text)
+            elif isinstance(block, types.ImageContent):
+                mime_type = str(block.mimeType or "").lower()
+                extension = _IMAGE_MIME_EXTENSIONS.get(mime_type)
+                if len(block.data) > _MAX_IMAGE_BASE64_CHARS:
+                    parts.append(f"[MCP image omitted: exceeds {_MAX_IMAGE_BYTES} byte limit]")
+                    continue
+                try:
+                    raw = base64.b64decode(block.data, validate=True)
+                except (binascii.Error, TypeError, ValueError):
+                    parts.append("[MCP image omitted: invalid base64]")
+                    continue
+                if not extension:
+                    parts.append(
+                        f"[MCP image omitted: unsupported MIME type {mime_type or 'unknown'}]"
+                    )
+                    continue
+                if len(raw) > _MAX_IMAGE_BYTES:
+                    parts.append(f"[MCP image omitted: exceeds {_MAX_IMAGE_BYTES} byte limit]")
+                    continue
+                index = len(attachments) + 1
+                digest = hashlib.sha256(raw).hexdigest()
+                attachments.append(
+                    Attachment(
+                        type="image",
+                        base64=block.data,
+                        filename=f"mcp-image-{index}.{extension}",
+                        mime_type=mime_type,
+                        id=digest[:16],
+                    )
+                )
+                image_metadata.append(
+                    {
+                        "mime_type": mime_type,
+                        "bytes": len(raw),
+                        "sha256": digest,
+                    }
+                )
+                parts.append(f"[MCP image attached: {mime_type}, {len(raw)} bytes]")
             else:
                 parts.append(str(block))
-        return "\n".join(parts) or "(no output)"
+        return ToolResult(
+            content="\n".join(parts) or "(no output)",
+            attachments=attachments,
+            metadata={"mcp_images": image_metadata} if image_metadata else {},
+        )
 
     # ── connection internals ───────────────────────────────────────────
 

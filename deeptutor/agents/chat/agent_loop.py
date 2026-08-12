@@ -410,6 +410,9 @@ class AgentLoop:
             )
             state.tool_steps += 1
             state.sources.extend(dispatch.sources)
+            self.pipeline._attach_tool_images(
+                dispatch.tool_messages, dispatch.tool_attachments_by_id
+            )
             messages.extend(dispatch.tool_messages)
 
             if dispatch.pause:

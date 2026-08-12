@@ -32,7 +32,7 @@ from deeptutor.core.agentic import (
     dispatch_tool_calls,
 )
 from deeptutor.core.agentic.tool_dispatch import MAX_PARALLEL_TOOL_CALLS
-from deeptutor.core.context import UnifiedContext
+from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.tool_protocol import ToolLookup
 from deeptutor.core.trace import (
@@ -458,6 +458,37 @@ class AgenticChatPipeline:
             binding=self.binding,
             model=self.model,
         ).messages
+
+    def _attach_tool_images(
+        self,
+        messages: list[dict[str, Any]],
+        attachments_by_call_id: dict[str, list[Attachment]],
+    ) -> None:
+        """Attach tool-returned images where the Codex Responses API accepts them."""
+        if self.binding != "openai_codex" or not attachments_by_call_id:
+            return
+        for message in messages:
+            if message.get("role") != "tool":
+                continue
+            attachments = attachments_by_call_id.get(str(message.get("tool_call_id") or ""))
+            if not attachments:
+                continue
+            content: list[dict[str, Any]] = [
+                {"type": "text", "text": str(message.get("content") or "")}
+            ]
+            for attachment in attachments:
+                if attachment.type != "image" or not attachment.base64 or not attachment.mime_type:
+                    continue
+                content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{attachment.mime_type};base64,{attachment.base64}"
+                        },
+                    }
+                )
+            if len(content) > 1:
+                message["content"] = content
 
     # ---- deferred tools / tool composition ------------------------------
 

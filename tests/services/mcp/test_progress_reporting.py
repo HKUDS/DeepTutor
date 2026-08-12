@@ -208,6 +208,75 @@ async def test_progress_reaches_the_sink_end_to_end() -> None:
     assert result.content == "done"
 
 
+@pytest.mark.asyncio
+async def test_image_content_is_returned_as_attachment_not_serialized_text() -> None:
+    class _ImageSession(_Session):
+        async def call_tool(self, tool_name, arguments, progress_callback=None):  # type: ignore[no-untyped-def]
+            from mcp import types
+
+            return types.CallToolResult(
+                content=[
+                    types.TextContent(type="text", text="page image"),
+                    types.ImageContent(type="image", data="QUJD", mimeType="image/jpeg"),
+                ]
+            )
+
+    result = await _adapter(MCPConnectionManager(), _ImageSession()).execute()
+
+    assert result.content == "page image\n[MCP image attached: image/jpeg, 3 bytes]"
+    assert "QUJD" not in result.content
+    assert len(result.attachments) == 1
+    assert result.attachments[0].base64 == "QUJD"
+    assert result.attachments[0].mime_type == "image/jpeg"
+    image_meta = result.metadata["mcp_images"][0]
+    assert image_meta["bytes"] == 3
+    assert image_meta["sha256"] == (
+        "b5d4045c3f466fa91fe2cc6abe79232a1a57cdf104f7a26e716e0a1e2789df78"
+    )
+    assert "QUJD" not in str(result.metadata)
+
+
+@pytest.mark.asyncio
+async def test_invalid_image_data_is_omitted_without_leaking_payload() -> None:
+    class _InvalidImageSession(_Session):
+        async def call_tool(self, tool_name, arguments, progress_callback=None):  # type: ignore[no-untyped-def]
+            from mcp import types
+
+            return types.CallToolResult(
+                content=[types.ImageContent(type="image", data="not@base64", mimeType="image/jpeg")]
+            )
+
+    result = await _adapter(MCPConnectionManager(), _InvalidImageSession()).execute()
+
+    assert result.content == "[MCP image omitted: invalid base64]"
+    assert "not@base64" not in result.content
+    assert result.attachments == []
+
+
+@pytest.mark.asyncio
+async def test_oversized_image_is_rejected_before_decode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.services.mcp import manager as manager_module
+
+    monkeypatch.setattr(manager_module, "_MAX_IMAGE_BYTES", 2)
+    monkeypatch.setattr(manager_module, "_MAX_IMAGE_BASE64_CHARS", 4)
+
+    class _OversizedImageSession(_Session):
+        async def call_tool(self, tool_name, arguments, progress_callback=None):  # type: ignore[no-untyped-def]
+            from mcp import types
+
+            return types.CallToolResult(
+                content=[types.ImageContent(type="image", data="QUJDRA==", mimeType="image/jpeg")]
+            )
+
+    result = await _adapter(MCPConnectionManager(), _OversizedImageSession()).execute()
+
+    assert result.content == "[MCP image omitted: exceeds 2 byte limit]"
+    assert "QUJDRA==" not in result.content
+    assert result.attachments == []
+
+
 # ── why a connection failed ────────────────────────────────────────────────
 
 

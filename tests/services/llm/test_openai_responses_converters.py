@@ -4,7 +4,41 @@ from __future__ import annotations
 
 from deeptutor.services.llm.provider_core.openai_responses import (
     adapt_chat_kwargs_to_responses,
+    convert_messages,
 )
+
+
+def test_tool_image_content_converts_to_function_output_image() -> None:
+    _, items = convert_messages(
+        [
+            {
+                "role": "tool",
+                "tool_call_id": "call-1",
+                "content": [
+                    {"type": "text", "text": "image attached"},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": "data:image/jpeg;base64,QUJD"},
+                    },
+                ],
+            }
+        ]
+    )
+
+    assert items == [
+        {
+            "type": "function_call_output",
+            "call_id": "call-1",
+            "output": [
+                {"type": "input_text", "text": "image attached"},
+                {
+                    "type": "input_image",
+                    "image_url": "data:image/jpeg;base64,QUJD",
+                    "detail": "auto",
+                },
+            ],
+        }
+    ]
 
 
 class TestAdaptChatKwargsToResponses:
