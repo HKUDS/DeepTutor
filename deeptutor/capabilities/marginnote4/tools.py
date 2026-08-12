@@ -17,6 +17,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from deeptutor.capabilities.marginnote4.models import ALL_TYPES
 from deeptutor.capabilities.marginnote4.store import MarginNoteStore
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolParameter, ToolResult
 
@@ -36,7 +37,22 @@ def _store(kwargs: dict[str, Any]) -> MarginNoteStore | None:
     if not raw:
         return None
     root = Path(raw)
-    return MarginNoteStore(root) if root.parent.exists() else None
+    cached = _STORE_CACHE.get(raw)
+    if cached is not None:
+        return cached
+    if not root.parent.exists():
+        return None
+    store = MarginNoteStore(root)
+    _STORE_CACHE[raw] = store
+    return store
+
+
+_STORE_CACHE: dict[str, MarginNoteStore] = {}
+
+
+def _clear_store_cache() -> None:
+    """Drop cached stores (tests that swap db files under the same path)."""
+    _STORE_CACHE.clear()
 
 
 def _no_store_result() -> ToolResult:
@@ -101,9 +117,11 @@ class MarginNoteSearchTool(_MN4Tool):
                     name="object_type",
                     type="string",
                     description=(
-        "Filter by type: note, excerpt, card, mindmap_node, document, comment."
+                        "Filter by type: note, excerpt, card, mindmap_node, "
+                        "document, comment."
                     ),
                     required=False,
+                    enum=sorted(ALL_TYPES),
                 ),
                 ToolParameter(
                     name="limit",
@@ -172,6 +190,7 @@ class MarginNoteListTool(_MN4Tool):
                     type="string",
                     description="Filter: note, excerpt, card, mindmap_node.",
                     required=False,
+                    enum=sorted(ALL_TYPES),
                 ),
                 ToolParameter(
                     name="document_id",

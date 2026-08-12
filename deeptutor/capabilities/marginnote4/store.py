@@ -94,7 +94,9 @@ def _hash_token(token: str) -> str:
 def _default_db_path(kb_name: str) -> Path:
     """Default database location under DeepTutor's data directory."""
     safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in kb_name)
-    return Path("data") / "marginnote4" / f"{safe}.db"
+    from deeptutor.services.path_service import get_path_service
+
+    return get_path_service().user_data_dir / "marginnote4" / f"{safe}.db"
 
 
 class MarginNoteStore:
@@ -332,9 +334,10 @@ class MarginNoteStore:
         sql = (
             "SELECT * FROM mn4_objects "
             "WHERE (LOWER(title) LIKE ? OR LOWER(content) LIKE ? "
-            "OR LOWER(COALESCE(excerpt, '')) LIKE ?)"
+            "OR LOWER(COALESCE(excerpt, '')) LIKE ? "
+            "OR LOWER(COALESCE(document_title, '')) LIKE ?)"
         )
-        params: list[Any] = [needle, needle, needle]
+        params: list[Any] = [needle, needle, needle, needle]
         if object_type:
             sql += " AND object_type = ?"
             params.append(object_type)
@@ -390,7 +393,7 @@ class MarginNoteStore:
             {
                 "document_id": r["document_id"],
                 "title": r["document_title"] or "(untitled)",
-                "count": str(r["n"]),
+                "count": int(r["n"]),
             }
             for r in rows
         ]

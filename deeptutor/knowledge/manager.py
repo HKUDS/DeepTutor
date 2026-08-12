@@ -21,6 +21,7 @@ from deeptutor.knowledge.kb_types import (
     IMA_KB_TYPE,
     LIGHTRAG_SERVER_KB_TYPE,
     LINKED_KB_TYPE,
+    MARGINNOTE4_KB_TYPE,
     OBSIDIAN_KB_TYPE,
     SUBAGENT_KB_TYPE,
     external_root_of,
@@ -880,6 +881,48 @@ class KnowledgeBaseManager:
         self._save_config()
         return entry
 
+    def register_marginnote4_kb(
+        self,
+        name: str,
+        *,
+        db_path: str = "",
+        description: str = "",
+    ) -> dict:
+        """Register a connected MarginNote 4 library as a pointer KB.
+
+        Creates no folder under ``base_dir`` and runs no index pipeline: it
+        records a ``type: marginnote4`` entry whose ``db_path`` (when given)
+        the MarginNote capability binds to. When ``db_path`` is omitted the
+        capability derives a default SQLite path from the KB name, so callers
+        can leave it blank for the simple single-library case. Raises
+        ``ValueError`` on a missing name or a name clash.
+        """
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("Knowledge base name is required.")
+
+        self.config = self._load_config()
+        knowledge_bases = self.config.setdefault("knowledge_bases", {})
+        if name in knowledge_bases:
+            raise ValueError(f"A knowledge base named '{name}' already exists.")
+
+        now = datetime.now().isoformat()
+        entry: dict[str, Any] = {
+            "path": name,
+            "type": MARGINNOTE4_KB_TYPE,
+            "description": description or f"MarginNote 4 library: {name}",
+            "status": "ready",
+            "needs_reindex": False,
+            "created_at": now,
+            "updated_at": now,
+        }
+        db_path = (db_path or "").strip()
+        if db_path:
+            entry["db_path"] = db_path
+        knowledge_bases[name] = entry
+        self._save_config()
+        return entry
+
     def register_ima_kb(
         self,
         name: str,
@@ -1077,12 +1120,12 @@ class KnowledgeBaseManager:
                 "last_indexed_count": kb_config.get("last_indexed_count"),
                 "last_indexed_action": kb_config.get("last_indexed_action"),
                 # Connected-KB fields (None for ordinary indexed KBs, dropped below).
-               "type": kb_config.get("type"),
-               "vault_path": kb_config.get("vault_path"),
-               "external_path": kb_config.get("external_path"),
+                "type": kb_config.get("type"),
+                "vault_path": kb_config.get("vault_path"),
+                "external_path": kb_config.get("external_path"),
                 # MarginNote 4 pointer (SQLite store path for synced data).
                 "db_path": kb_config.get("db_path"),
-               # LightRAG server pointer (the URL is safe to surface; the API
+                # LightRAG server pointer (the URL is safe to surface; the API
                 # key deliberately is not).
                 "server_url": kb_config.get("server_url"),
                 # IMA pointer. The library id identifies which IMA knowledge
@@ -1234,6 +1277,8 @@ class KnowledgeBaseManager:
             metadata["vault_path"] = kb_config.get("vault_path")
         if kb_config.get("external_path"):
             metadata["external_path"] = kb_config.get("external_path")
+        if kb_config.get("db_path"):
+            metadata["db_path"] = kb_config.get("db_path")
         if kb_config.get("agent_kind"):
             metadata["agent_kind"] = kb_config.get("agent_kind")
         # The server URL is shown read-only in the UI; the API key never leaves

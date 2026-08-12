@@ -1533,6 +1533,41 @@ async def connect_obsidian_vault(payload: ConnectObsidianRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class ConnectMarginNote4Request(BaseModel):
+    name: str
+    db_path: str = ""
+    description: str = ""
+
+
+@router.post("/connect-marginnote4")
+async def connect_marginnote4(payload: ConnectMarginNote4Request):
+    """Register a connected MarginNote 4 library as a knowledge base.
+
+    Creates a ``type: marginnote4`` pointer so the MarginNote capability can
+    bind to it on turns where the user selects this KB. When ``db_path`` is
+    omitted the capability derives a default SQLite path from the KB name.
+    """
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required.")
+    try:
+        manager = get_kb_manager()
+        entry = manager.register_marginnote4_kb(
+            name,
+            db_path=(payload.db_path or "").strip(),
+            description=(payload.description or "").strip(),
+        )
+        result = {"status": "connected", "name": name}
+        if entry.get("db_path"):
+            result["db_path"] = entry["db_path"]
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error connecting MarginNote 4 library: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class ProbeFolderRequest(BaseModel):
     folder_path: str
     rag_provider: str = DEFAULT_PROVIDER

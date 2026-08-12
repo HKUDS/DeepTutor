@@ -22,11 +22,13 @@ from deeptutor.capabilities.marginnote4.tools import (
     MarginNoteReadTool,
     MarginNoteSearchTool,
     MarginNoteTagsTool,
+    _clear_store_cache,
 )
 
 
 def _seed_store(tmp_path: Path) -> str:
     """Seed a store with test data and return its db_path for tool calls."""
+    _clear_store_cache()
     store = MarginNoteStore(tmp_path / "test.db")
     store.ingest(
         SyncBatch(
