@@ -129,6 +129,23 @@ def _build_tool_call(
     )
 
 
+def _response_error_detail(event: Any) -> str:
+    """Extract a useful message from raw or SDK Responses error events."""
+
+    def _field(value: Any, name: str) -> Any:
+        return value.get(name) if isinstance(value, dict) else getattr(value, name, None)
+
+    response = _field(event, "response")
+    error = _field(response, "error") if response is not None else _field(event, "error")
+    if error is not None:
+        code = _field(error, "code")
+        message = _field(error, "message")
+        if code and message:
+            return f"{code}: {message}"
+        return str(message or error)
+    return str(_field(event, "message") or event)
+
+
 async def iter_sse(response: httpx.Response) -> AsyncGenerator[dict[str, Any], None]:
     """Yield parsed JSON events from a Responses API SSE stream."""
     buffer: list[str] = []
@@ -226,8 +243,7 @@ async def consume_sse(
             status = (event.get("response") or {}).get("status")
             finish_reason = map_finish_reason(status)
         elif event_type in {"error", "response.failed"}:
-            detail = event.get("error") or event.get("message") or event
-            raise RuntimeError(f"Response failed: {str(detail)[:500]}")
+            raise RuntimeError(f"Response failed: {_response_error_detail(event)[:500]}")
 
     return content, tool_calls, finish_reason
 
@@ -377,5 +393,7 @@ async def consume_sdk_stream(
                     "completion_tokens": int(getattr(usage_obj, "output_tokens", 0) or 0),
                     "total_tokens": int(getattr(usage_obj, "total_tokens", 0) or 0),
                 }
+        elif event_type in {"error", "response.failed"}:
+            raise RuntimeError(f"Response failed: {_response_error_detail(event)[:500]}")
 
     return content, tool_calls, finish_reason, usage, reasoning_content
