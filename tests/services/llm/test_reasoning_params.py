@@ -14,18 +14,21 @@ class TestDefaultReasoningEffortFor:
     """Single source of truth for the implicit per-provider/model effort."""
 
     @pytest.mark.parametrize(
-        "model",
+        "model, expected",
         [
-            "gemini-2.5-flash",
-            "gemini-2.5-pro",
-            "gemini-2.5-flash-lite",
-            "GEMINI-2.5-FLASH",
-            "models/gemini-2.5-flash",
-            "gemini-3.0-pro",
+            ("gemini-2.5-flash", "none"),
+            ("gemini-2.5-flash-lite", "none"),
+            ("GEMINI-2.5-FLASH", "none"),
+            ("models/gemini-2.5-flash", "none"),
+            ("gemini-2.5-pro", "minimal"),
+            ("gemini-3.0-pro", "minimal"),
+            ("gemini-3.6-flash", "minimal"),
+            ("gemini-3.6-flash-latest", "minimal"),
+            ("models/gemini-3.6-flash", "minimal"),
         ],
     )
-    def test_gemini_thinking_models_default_to_none(self, model: str) -> None:
-        assert default_reasoning_effort_for("gemini", model) == "none"
+    def test_gemini_thinking_models_default(self, model: str, expected: str) -> None:
+        assert default_reasoning_effort_for("gemini", model) == expected
 
     @pytest.mark.parametrize(
         "model",

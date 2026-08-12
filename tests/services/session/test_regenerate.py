@@ -224,6 +224,19 @@ class TestRegenerateLastTurn:
             {"book_id": "book-1", "page_ids": ["page-1"]}
         ]
 
+    def test_replays_mastery_path_from_request_snapshot(self, store: SQLiteSessionStore) -> None:
+        sid, _, _ = _seed_session(
+            store,
+            user_metadata={"request_snapshot": {"masteryPathId": "path-1"}},
+        )
+        runtime = TurnRuntimeManager(store=store)
+        recorder = _FakeStartTurnRecorder()
+
+        with patch.object(runtime, "start_turn", new=recorder):
+            asyncio.run(runtime.regenerate_last_turn(sid))
+
+        assert recorder.calls[0]["mastery_path_id"] == "path-1"
+
     def test_user_tail_is_kept_and_no_delete(self, store: SQLiteSessionStore) -> None:
         sid, user_id, _ = _seed_session(store, assistant_content=None)
         runtime = TurnRuntimeManager(store=store)

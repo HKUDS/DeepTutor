@@ -74,6 +74,11 @@ def default_reasoning_effort_for(provider: str | None, model: str | None) -> str
     provider_name = (provider or "").strip().lower()
     off_patterns = _PROVIDER_DEFAULT_OFF_PATTERNS.get(provider_name)
     if off_patterns and _matches(model or "", off_patterns):
+        _m = (model or "").lower()
+        # Gemini 3 and 2.5 Pro reject reasoning_effort="none";
+        # "minimal" is the lowest valid level for those families.
+        if "gemini-3" in _m or "gemini-2.5-pro" in _m:
+            return "minimal"
         return "none"
     return None
 
