@@ -982,18 +982,26 @@ export default function ChatPage() {
           if (!ctrl.signal.aborted) {
             loadAbortRef.current = null;
             setSessionLoading(false);
-            // Re-arm autoscroll and re-pin after the browser has had a
-            // frame to lay out real (non-placeholder) heights. Every
-            // message wrapper opts into ``content-visibility: auto`` with
-            // ``containIntrinsicSize`` placeholders (see ChatMessages), so
-            // the layout-effect pin that fires when messages first render
-            // computes ``scrollHeight`` from the placeholders and can land
-            // mid-conversation. A double-rAF settle pass pins against the
-            // true bottom once the visible messages are actually laid out.
-            shouldAutoScrollRef.current = true;
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => scrollToBottom("instant"));
-            });
+            // Settle at the bottom once the transcript is really laid out.
+            // The layout-effect pin runs as the messages first render, when
+            // lazily-loaded images (ChatMessages `loading="lazy"`) and the
+            // `next/dynamic` capability viewers have not contributed their
+            // heights yet, so its `scrollHeight` is short and the viewport
+            // stops above the true bottom. One frame later those are in.
+            //
+            // Only on a cold open. A cached session is already painted at
+            // the bottom and this resolves after a background revalidate —
+            // re-arming there would yank a reader who had scrolled up.
+            if (!cached) {
+              shouldAutoScrollRef.current = true;
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  // A newer session may have superseded this one while the
+                  // two frames elapsed; that load owns the viewport now.
+                  if (!ctrl.signal.aborted) scrollToBottom("instant");
+                });
+              });
+            }
           }
         })
         .catch(() => {

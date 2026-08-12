@@ -201,11 +201,13 @@ export function useChatAutoScroll({
 
     const mo = new MutationObserver(check);
     mo.observe(container, { childList: true, subtree: true });
-    // Images / iframes in a freshly loaded history conversation finish
-    // their network load without mutating the DOM, so the MutationObserver
-    // never fires for them. The streaming branch covers this with a
-    // capture-phase ``load`` listener; mirror it here so lazy images that
-    // settle inside the post-stream window re-pin to the true bottom.
+    // An image or iframe finishing its network load grows the content
+    // without mutating the DOM, so the MutationObserver above never sees
+    // it — a turn that ends with a generated image would settle just
+    // above the bottom. The streaming branch already listens for this;
+    // mirror it here for the window right after the stream stops.
+    // (Opening a history session is not this path: that effect does not
+    // re-run on a session switch, so the page re-pins there itself.)
     container.addEventListener("load", check, true);
     const stopTimer = window.setTimeout(() => {
       mo.disconnect();
