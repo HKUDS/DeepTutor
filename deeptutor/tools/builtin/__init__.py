@@ -8,6 +8,7 @@ import logging
 from typing import Any
 
 from deeptutor.capabilities.ima import IMA_TOOL_TYPES
+from deeptutor.capabilities.marginnote4 import MARGINNOTE_TOOL_TYPES
 from deeptutor.capabilities.mastery import MASTERY_TOOL_TYPES
 from deeptutor.capabilities.obsidian import OBSIDIAN_TOOL_TYPES
 from deeptutor.capabilities.reading import READING_TOOL_TYPES
@@ -1713,6 +1714,7 @@ BUILTIN_TOOL_TYPES: tuple[type[BaseTool], ...] = (
     *MASTERY_TOOL_TYPES,
     *SOLVE_TOOL_TYPES,
     *OBSIDIAN_TOOL_TYPES,
+    *MARGINNOTE_TOOL_TYPES,
     # Subagent consult tool — globally registered; the subagent knowledge
     # capability runs the turn exclusively on it when a connected agent is the
     # selected KB.
