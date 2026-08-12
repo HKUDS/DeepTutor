@@ -75,31 +75,35 @@ async def consume_sse(
                 call_id = item.get("call_id")
                 if not call_id:
                     continue
-                tool_call_buffers[call_id] = {
+                buffer = {
                     "id": item.get("id") or "fc_0",
                     "name": item.get("name"),
                     "arguments": item.get("arguments") or "",
                 }
+                tool_call_buffers[call_id] = buffer
+                item_id = item.get("id")
+                if item_id:
+                    tool_call_buffers[item_id] = buffer
         elif event_type == "response.output_text.delta":
             delta_text = event.get("delta") or ""
             content += delta_text
             if on_content_delta and delta_text:
                 await on_content_delta(delta_text)
         elif event_type == "response.function_call_arguments.delta":
-            call_id = event.get("call_id")
-            if call_id and call_id in tool_call_buffers:
-                tool_call_buffers[call_id]["arguments"] += event.get("delta") or ""
+            buffer_id = event.get("call_id") or event.get("item_id")
+            if buffer_id and buffer_id in tool_call_buffers:
+                tool_call_buffers[buffer_id]["arguments"] += event.get("delta") or ""
         elif event_type == "response.function_call_arguments.done":
-            call_id = event.get("call_id")
-            if call_id and call_id in tool_call_buffers:
-                tool_call_buffers[call_id]["arguments"] = event.get("arguments") or ""
+            buffer_id = event.get("call_id") or event.get("item_id")
+            if buffer_id and buffer_id in tool_call_buffers:
+                tool_call_buffers[buffer_id]["arguments"] = event.get("arguments") or ""
         elif event_type == "response.output_item.done":
             item = event.get("item") or {}
             if item.get("type") == "function_call":
                 call_id = item.get("call_id")
                 if not call_id:
                     continue
-                buf = tool_call_buffers.get(call_id) or {}
+                buf = tool_call_buffers.get(call_id) or tool_call_buffers.get(item.get("id")) or {}
                 args_raw = buf.get("arguments") or item.get("arguments") or "{}"
                 try:
                     args = json.loads(args_raw)
@@ -226,31 +230,39 @@ async def consume_sdk_stream(
                 call_id = getattr(item, "call_id", None)
                 if not call_id:
                     continue
-                tool_call_buffers[call_id] = {
+                buffer = {
                     "id": getattr(item, "id", None) or "fc_0",
                     "name": getattr(item, "name", None),
                     "arguments": getattr(item, "arguments", None) or "",
                 }
+                tool_call_buffers[call_id] = buffer
+                item_id = getattr(item, "id", None)
+                if item_id:
+                    tool_call_buffers[item_id] = buffer
         elif event_type == "response.output_text.delta":
             delta_text = getattr(event, "delta", "") or ""
             content += delta_text
             if on_content_delta and delta_text:
                 await on_content_delta(delta_text)
         elif event_type == "response.function_call_arguments.delta":
-            call_id = getattr(event, "call_id", None)
-            if call_id and call_id in tool_call_buffers:
-                tool_call_buffers[call_id]["arguments"] += getattr(event, "delta", "") or ""
+            buffer_id = getattr(event, "call_id", None) or getattr(event, "item_id", None)
+            if buffer_id and buffer_id in tool_call_buffers:
+                tool_call_buffers[buffer_id]["arguments"] += getattr(event, "delta", "") or ""
         elif event_type == "response.function_call_arguments.done":
-            call_id = getattr(event, "call_id", None)
-            if call_id and call_id in tool_call_buffers:
-                tool_call_buffers[call_id]["arguments"] = getattr(event, "arguments", "") or ""
+            buffer_id = getattr(event, "call_id", None) or getattr(event, "item_id", None)
+            if buffer_id and buffer_id in tool_call_buffers:
+                tool_call_buffers[buffer_id]["arguments"] = getattr(event, "arguments", "") or ""
         elif event_type == "response.output_item.done":
             item = getattr(event, "item", None)
             if item and getattr(item, "type", None) == "function_call":
                 call_id = getattr(item, "call_id", None)
                 if not call_id:
                     continue
-                buf = tool_call_buffers.get(call_id) or {}
+                buf = (
+                    tool_call_buffers.get(call_id)
+                    or tool_call_buffers.get(getattr(item, "id", None))
+                    or {}
+                )
                 args_raw = buf.get("arguments") or getattr(item, "arguments", None) or "{}"
                 try:
                     args = json.loads(args_raw) if isinstance(args_raw, str) else args_raw

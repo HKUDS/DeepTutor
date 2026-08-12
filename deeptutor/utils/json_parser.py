@@ -71,10 +71,11 @@ def parse_json_response(
     """
     Safely parse JSON from LLM responses with automatic repair.
 
-    Implements a three-tier parsing strategy:
-    1. Extract JSON from markdown code blocks if present
-    2. Direct JSON parsing
-    3. Automated repair using json-repair library with fallback
+    Implements a four-tier parsing strategy:
+    1. Direct JSON parsing
+    2. Extract JSON from markdown code blocks if present
+    3. Decode JSON embedded in surrounding prose
+    4. Automated repair using json-repair library with fallback
 
     Args:
         response: Raw string response from LLM
@@ -102,21 +103,26 @@ def parse_json_response(
         log.warning("LLM returned empty response")
         return fallback
 
-    # Extract from markdown code blocks if present
+    # A valid JSON payload may legitimately contain Markdown code fences inside
+    # a string value (for example write_note's Markdown ``content`` argument).
+    # Parse the complete payload before treating a fence as a JSON wrapper.
+    try:
+        return json.loads(response)
+    except (json.JSONDecodeError, TypeError) as parse_error:
+        log.debug(f"Direct JSON parse failed: {parse_error}")
+
+    # The complete payload was not JSON. It may be an LLM response wrapping
+    # JSON in a Markdown fence, so extract that wrapper before repair.
     extracted_response = response
     if "```" in response:
         json_match = re.search(r"```(?:json)?\s*\n?(.*?)```", response, re.DOTALL)
         if json_match:
             extracted_response = json_match.group(1).strip()
             log.debug("Extracted JSON from markdown code block")
-
-    # Strategy 1: Direct parsing. Done before any <think> stripping so a valid
-    # JSON payload whose string values legitimately contain "<think>" is
-    # preserved exactly.
-    try:
-        return json.loads(extracted_response)
-    except (json.JSONDecodeError, TypeError) as parse_error:
-        log.debug(f"Direct JSON parse failed: {parse_error}")
+            try:
+                return json.loads(extracted_response)
+            except (json.JSONDecodeError, TypeError) as parse_error:
+                log.debug(f"Markdown-wrapped JSON parse failed: {parse_error}")
 
     # Strategy 1b: strip chain-of-thought <think> reasoning that models like
     # Qwen/DeepSeek emit before the JSON payload, then retry. Only reached once

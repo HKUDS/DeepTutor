@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from unittest.mock import patch
 
@@ -23,6 +24,16 @@ class TestParseJsonResponseDirect:
 
     def test_valid_json_string(self) -> None:
         assert parse_json_response('"hello"') == "hello"
+
+    def test_valid_tool_arguments_preserve_markdown_code_fence_in_content(self) -> None:
+        payload = {
+            "mode": "edit",
+            "notebook_id": "notebook-123",
+            "record_id": "record-123",
+            "content": "# RecyclerView\n\n```text\ndata -> bind -> draw\n```",
+        }
+
+        assert parse_json_response(json.dumps(payload, ensure_ascii=False)) == payload
 
     def test_empty_string_returns_fallback(self) -> None:
         assert parse_json_response("") == {}
