@@ -4,7 +4,8 @@ import { extractMathAnimatorResult } from "@/lib/math-animator-types";
 export type VisualizeTextRenderType = "svg" | "chartjs" | "mermaid" | "html";
 export type VisualizeManimRenderType = "manim_video" | "manim_image";
 export type VisualizeRenderType =
-  VisualizeTextRenderType | VisualizeManimRenderType;
+  | VisualizeTextRenderType
+  | VisualizeManimRenderType;
 export type VisualizeRenderMode = "auto" | VisualizeRenderType;
 
 export interface VisualizeFormConfig {

@@ -22,7 +22,11 @@ logger = logging.getLogger(__name__)
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.model_access import allowed_llm_options
 from deeptutor.services.codebuddy_auth import get_codebuddy_auth_service
-from deeptutor.services.codex_auth import CodexAuthError, get_codex_oauth_service
+from deeptutor.services.codex_auth import (
+    CodexAuthError,
+    get_codex_oauth_service,
+    reconcile_codex_catalog_update,
+)
 from deeptutor.services.config import (
     get_config_test_runner,
     get_model_catalog_service,
@@ -170,6 +174,11 @@ class EnabledToolsUpdate(BaseModel):
 
 class CatalogPayload(BaseModel):
     catalog: dict[str, Any]
+
+
+class CodexReasoningEffortUpdate(BaseModel):
+    model: str = Field(min_length=1)
+    reasoning_effort: str | None = None
 
 
 class FetchModelsPayload(BaseModel):
@@ -630,6 +639,20 @@ async def logout_codebuddy_auth() -> dict[str, Any]:
     return await get_codebuddy_auth_service().logout()
 
 
+@router.post("/providers/openai-codex/models/reasoning-effort")
+async def update_openai_codex_reasoning_effort(
+    payload: CodexReasoningEffortUpdate,
+) -> dict[str, Any]:
+    _require_codex_oauth_actor()
+    try:
+        return await get_codex_oauth_service().set_reasoning_effort(
+            payload.model,
+            payload.reasoning_effort,
+        )
+    except CodexAuthError as exc:
+        raise _codex_http_exception(exc) from None
+
+
 @router.get("/catalog")
 async def get_catalog():
     _require_settings_admin()
@@ -1077,7 +1100,9 @@ async def get_llm_options():
 @router.put("/catalog")
 async def update_catalog(payload: CatalogPayload):
     _require_settings_admin()
-    catalog = get_model_catalog_service().save(payload.catalog)
+    service = get_model_catalog_service()
+    proposed = reconcile_codex_catalog_update(service.load(), payload.catalog)
+    catalog = service.save(proposed)
     _invalidate_runtime_caches()
     return {"catalog": catalog}
 
@@ -1085,12 +1110,16 @@ async def update_catalog(payload: CatalogPayload):
 @router.post("/apply")
 async def apply_catalog(payload: CatalogPayload | None = None):
     _require_settings_admin()
-    catalog = payload.catalog if payload is not None else get_model_catalog_service().load()
-    applied = get_model_catalog_service().apply(catalog)
+    service = get_model_catalog_service()
+    current = service.load()
+    catalog = (
+        reconcile_codex_catalog_update(current, payload.catalog) if payload is not None else current
+    )
+    applied = service.apply(catalog)
     _invalidate_runtime_caches()
     return {
         "message": "Catalog applied to runtime settings.",
-        "catalog": get_model_catalog_service().load(),
+        "catalog": service.load(),
         "runtime": applied,
     }
 

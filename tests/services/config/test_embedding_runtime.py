@@ -76,6 +76,33 @@ def test_embedding_explicit_binding_and_headers() -> None:
     assert resolved.dimension == 1024
 
 
+def test_embedding_orcarouter_binding_uses_default_endpoint() -> None:
+    catalog = _build_catalog(
+        embedding_profile={
+            "id": "embedding-p",
+            "name": "Embedding",
+            "binding": "orcarouter",
+            "base_url": "",
+            "api_key": "sk-orca-test-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "embedding-m",
+                    "name": "orcarouter",
+                    "model": "openai/text-embedding-3-large",
+                    "dimension": "3072",
+                }
+            ],
+        }
+    )
+    resolved = resolve_embedding_runtime_config(catalog=catalog)
+    assert resolved.provider_name == "orcarouter"
+    assert resolved.provider_mode == "standard"
+    assert resolved.effective_url == "https://api.orcarouter.ai/v1/embeddings"
+    assert resolved.dimension == 3072
+
+
 def test_embedding_alias_canonicalization_google_to_gemini() -> None:
     catalog = _build_catalog(
         embedding_profile={

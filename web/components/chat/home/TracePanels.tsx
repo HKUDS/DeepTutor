@@ -1306,7 +1306,8 @@ function TraceRowItem({
       "",
   ).trim();
   const toolArgs = toolCallEvent?.metadata?.args as
-    Record<string, unknown> | undefined;
+    | Record<string, unknown>
+    | undefined;
 
   const thoughtText = getTraceText(callEvents, ["thinking"]).trim();
   const contentText = getTraceText(callEvents, ["content"], narration).trim();

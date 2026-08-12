@@ -81,7 +81,11 @@ class CodeBuddyAuthService:
         return self.public_status()
 
     async def logout(self) -> dict[str, Any]:
-        """Clear the CLI/SDK credential so a different account can sign in."""
+        """Disconnect DeepTutor from the CodeBuddy session on this host.
+
+        Not a sign-out: the session belongs to the IDE plugin / CLI that
+        created it, and only they can end it.
+        """
         async with self._lock:
             flow = self._flow
             task = self._task
@@ -95,35 +99,22 @@ class CodeBuddyAuthService:
             except Exception:
                 pass
 
-        try:
-            await _sdk_logout()
-            from deeptutor.core.agentic.client import reset_agentic_client_pool
+        # DeepTutor does not own this credential: it is the session the IDE
+        # plugin and the `codebuddy` CLI share on this host. Ending it from a
+        # web endpoint would sign the operator out of their editor too — and on
+        # a shared host, out of whoever else is on that login. Drop our cached
+        # clients and report where the session actually lives.
+        from deeptutor.core.agentic.client import reset_agentic_client_pool
+        from deeptutor.services.codebuddy_credentials import load_credentials
 
-            reset_agentic_client_pool()
-        except ImportError:
-            from deeptutor.services.codebuddy_credentials import load_credentials
-
-            # A session created by the IDE plugin / CLI can only be ended there.
-            if load_credentials() is not None:
-                async with self._lock:
-                    self._connection = "connected"
-                    self._operation_state = "failed"
-                    self._authorize_url = None
-                    self._error_code = "logout_external"
-                    return self.public_status()
-            async with self._lock:
-                self._connection = "disconnected"
-                self._operation_state = None
-                self._authorize_url = None
-                self._user_label = None
-                self._error_code = None
-                return self.public_status()
-        except Exception as exc:  # noqa: BLE001 - converted to stable public state
-            async with self._lock:
-                self._mark_error(exc)
-                return self.public_status()
-
+        reset_agentic_client_pool()
         async with self._lock:
+            if load_credentials() is not None:
+                self._connection = "connected"
+                self._operation_state = "failed"
+                self._authorize_url = None
+                self._error_code = "logout_external"
+                return self.public_status()
             self._connection = "disconnected"
             self._operation_state = None
             self._authorize_url = None
@@ -223,14 +214,6 @@ async def _start_sdk_authenticate() -> Any:
     except ImportError as exc:
         raise ImportError("codebuddy-agent-sdk is not installed") from exc
     return await authenticate(timeout=300.0)
-
-
-async def _sdk_logout() -> None:
-    try:
-        from codebuddy_agent_sdk import logout
-    except ImportError as exc:
-        raise ImportError("codebuddy-agent-sdk is not installed") from exc
-    await logout()
 
 
 def _userinfo_label(userinfo: Any) -> str | None:

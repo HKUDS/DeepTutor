@@ -85,7 +85,9 @@ export interface NormalizedSession {
 }
 
 export type ImportScanErrorCode =
-  "unsupported_browser" | "not_recognized" | "aborted";
+  | "unsupported_browser"
+  | "not_recognized"
+  | "aborted";
 
 export class ImportScanError extends Error {
   code: ImportScanErrorCode;

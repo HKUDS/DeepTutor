@@ -6,7 +6,13 @@ import { Suspense } from "react";
 import MemoryL1Workbench from "@/components/memory/MemoryL1Workbench";
 
 type Surface =
-  "chat" | "notebook" | "quiz" | "kb" | "book" | "partner" | "cowriter";
+  | "chat"
+  | "notebook"
+  | "quiz"
+  | "kb"
+  | "book"
+  | "partner"
+  | "cowriter";
 
 const VALID_SURFACES: ReadonlySet<Surface> = new Set([
   "chat",

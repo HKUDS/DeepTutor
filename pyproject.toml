@@ -111,7 +111,11 @@ cli = [
 # CodeBuddy chat works over HTTP with the login state the IDE plugin / CLI
 # already stores. This extra adds the Agent SDK (a ~130 MB bundled headless
 # CLI) for in-app browser login and CLI-driven agent tools.
-codebuddy = ["codebuddy-agent-sdk>=0.1.24"]
+# Upper-bounded on purpose: the provider probes the SDK for its turn-limit
+# and permission-mode kwargs, and a minor bump that renames them would make
+# every options build fail. Not in `all` — it vendors a ~130 MB headless CLI
+# and chat works over plain HTTP without it.
+codebuddy = ["codebuddy-agent-sdk>=0.1.24,<0.2"]
 
 # Compatibility extra for source installs and older docs. These packages are
 # already included in the public `deeptutor` wheel.
@@ -239,7 +243,6 @@ dev = [
 # Everything: server + partners + non-E2EE matrix + math-animator + dev tools.
 all = [
     "deeptutor[partners]",
-    "deeptutor[codebuddy]",
     "deeptutor[matrix]",
     "deeptutor[math-animator]",
     "deeptutor[dev]",

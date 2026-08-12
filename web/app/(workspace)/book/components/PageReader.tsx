@@ -229,7 +229,8 @@ export default function PageReader({
                 <div className="space-y-1.5 text-xs opacity-90">
                   {failedBlocks.slice(0, 5).map((block) => {
                     const failure = block.metadata?.failure as
-                      { kind?: string; message?: string } | undefined;
+                      | { kind?: string; message?: string }
+                      | undefined;
                     return (
                       <div
                         key={block.id}

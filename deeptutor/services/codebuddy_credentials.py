@@ -21,6 +21,7 @@ from pathlib import Path
 import sys
 import time
 from typing import Any
+from urllib.parse import urlsplit
 
 _AUTH_FILE_NAME = "Tencent-Cloud.coding-copilot.info"
 _AUTH_SUBPATH = ("CodeBuddyExtension", "Data", "Public", "auth")
@@ -142,7 +143,7 @@ def load_credentials() -> CodeBuddyCredentials | None:
     account = account if isinstance(account, dict) else {}
 
     label = ""
-    for field in ("nickname", "phoneNumber", "uin", "uid"):
+    for field in ("nickname", "uin", "uid"):
         value = account.get(field)
         if value:
             label = str(value)
@@ -215,10 +216,34 @@ def _iter_cached_product_configs() -> list[dict[str, Any]]:
     return configs
 
 
+#: Hosts the cached product config may name. That file belongs to another
+#: application, so anything able to write under this account's home can choose
+#: where the bearer token is sent — and ``startswith("http")`` accepts plain
+#: HTTP to an arbitrary host. An operator who needs a different deployment sets
+#: ``CODEBUDDY_BASE_URL``, which ``resolve_api_base`` honours before consulting
+#: the cache at all.
+_TRUSTED_ENDPOINT_HOSTS = frozenset(
+    host
+    for host in (
+        urlsplit(OVERSEAS_ENDPOINT).hostname,
+        urlsplit(INTERNAL_ENDPOINT).hostname,
+    )
+    if host
+)
+
+
+def _is_trusted_endpoint(endpoint: str) -> bool:
+    try:
+        parts = urlsplit(endpoint)
+    except ValueError:
+        return False
+    return parts.scheme == "https" and (parts.hostname or "") in _TRUSTED_ENDPOINT_HOSTS
+
+
 def cached_product_endpoint() -> str | None:
     for config in _iter_cached_product_configs():
         endpoint = config.get("endpoint")
-        if isinstance(endpoint, str) and endpoint.startswith("http"):
+        if isinstance(endpoint, str) and _is_trusted_endpoint(endpoint):
             return endpoint
     return None
 
@@ -317,7 +342,7 @@ async def probe_account(credentials: CodeBuddyCredentials) -> str | None:
             continue
         if credentials.user_id and account.get("uid") != credentials.user_id:
             continue
-        for field in ("nickname", "phoneNumber", "uin", "uid"):
+        for field in ("nickname", "uin", "uid"):
             value = account.get(field)
             if value:
                 return str(value)

@@ -43,7 +43,8 @@ type SourceTab = "knowledge" | "notebooks" | "questions" | "chats";
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 type ParentSelection<TChild extends string | number> =
-  { mode: "all" } | { mode: "subset"; ids: Set<TChild> };
+  | { mode: "all" }
+  | { mode: "subset"; ids: Set<TChild> };
 
 type ParentMap<
   TParent extends string | number,

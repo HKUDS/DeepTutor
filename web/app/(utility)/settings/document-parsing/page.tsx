@@ -54,7 +54,8 @@ export default function DocumentParsingSettingsPage() {
         apiUrl("/api/v1/settings/document-parsing"),
       );
       const payload = (await response.json().catch(() => ({}))) as
-        DocumentParsingPayload | { detail?: string };
+        | DocumentParsingPayload
+        | { detail?: string };
       if (!response.ok) {
         throw new Error(
           "detail" in payload && payload.detail
@@ -88,7 +89,8 @@ export default function DocumentParsingSettingsPage() {
           },
         );
         const payload = (await response.json().catch(() => ({}))) as
-          DocumentParsingPayload | { detail?: string };
+          | DocumentParsingPayload
+          | { detail?: string };
         if (!response.ok) {
           throw new Error(
             "detail" in payload && payload.detail

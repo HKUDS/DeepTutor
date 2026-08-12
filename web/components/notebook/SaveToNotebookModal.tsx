@@ -19,7 +19,12 @@ import {
 } from "@/lib/notebook-api";
 
 type RecordType =
-  "solve" | "question" | "research" | "chat" | "co_writer" | "tutorbot";
+  | "solve"
+  | "question"
+  | "research"
+  | "chat"
+  | "co_writer"
+  | "tutorbot";
 
 export interface NotebookSavePayload {
   recordType: RecordType;

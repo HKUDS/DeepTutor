@@ -332,7 +332,7 @@ function removeEmptyMarkdownTables(content: string): string {
   const lines = content.split("\n");
   const cleaned: string[] = [];
 
-  for (let index = 0; index < lines.length;) {
+  for (let index = 0; index < lines.length; ) {
     if (!isMarkdownTableStart(lines, index)) {
       cleaned.push(lines[index]);
       index += 1;

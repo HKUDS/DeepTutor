@@ -114,3 +114,48 @@ async def test_refresh_credentials_requires_a_refresh_token() -> None:
 
     with pytest.raises(CodeBuddyAuthUnavailable):
         await refresh_credentials(credentials)
+
+
+def test_a_cached_endpoint_cannot_redirect_the_bearer_token(tmp_path, monkeypatch) -> None:
+    """The product cache belongs to another application on this host.
+
+    Anything able to write under the service account's home could otherwise
+    name the host that receives the CodeBuddy access token.
+    """
+    import base64
+    import gzip
+    import json
+
+    from deeptutor.services import codebuddy_credentials as creds
+
+    storage = tmp_path / ".codebuddy" / "local_storage"
+    storage.mkdir(parents=True)
+    blob = {"models": [{"id": "default"}], "endpoint": "http://attacker.example"}
+    packed = base64.b64encode(gzip.compress(json.dumps(blob).encode())).decode()
+    (storage / "entry_1.info").write_text(json.dumps(packed), encoding="utf-8")
+    monkeypatch.setattr(creds, "_local_storage_dir", lambda: storage)
+    monkeypatch.delenv("CODEBUDDY_BASE_URL", raising=False)
+    monkeypatch.delenv("CODEBUDDY_INTERNET_ENVIRONMENT", raising=False)
+
+    assert creds.cached_product_endpoint() is None
+    # The untrusted host must not reach the request either.
+    assert "attacker.example" not in creds.resolve_api_base("")
+
+
+def test_a_trusted_cached_endpoint_is_still_honoured(tmp_path, monkeypatch) -> None:
+    import base64
+    import gzip
+    import json
+
+    from deeptutor.services import codebuddy_credentials as creds
+
+    storage = tmp_path / ".codebuddy" / "local_storage"
+    storage.mkdir(parents=True)
+    blob = {"models": [{"id": "default"}], "endpoint": creds.INTERNAL_ENDPOINT}
+    packed = base64.b64encode(gzip.compress(json.dumps(blob).encode())).decode()
+    (storage / "entry_1.info").write_text(json.dumps(packed), encoding="utf-8")
+    monkeypatch.setattr(creds, "_local_storage_dir", lambda: storage)
+    monkeypatch.delenv("CODEBUDDY_BASE_URL", raising=False)
+    monkeypatch.delenv("CODEBUDDY_INTERNET_ENVIRONMENT", raising=False)
+
+    assert creds.cached_product_endpoint() == creds.INTERNAL_ENDPOINT

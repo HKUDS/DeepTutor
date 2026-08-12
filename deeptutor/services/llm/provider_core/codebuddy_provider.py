@@ -410,52 +410,38 @@ def _build_options(
     env_kwargs = {"env": {_CODEBUDDY_API_KEY_ENV: api_key}} if api_key else {}
     reasoning_kwargs = _reasoning_options(reasoning_effort)
     tool_kwargs = _build_tool_options(sdk, tools)
-    candidates = [
-        {
+    # The turn limit and the permission mode ARE the sandbox — they keep the
+    # agent from acting on its own beyond the single turn we asked for. The SDK
+    # spells them snake_case or camelCase depending on version, so both are
+    # tried; but a build that accepts neither is a build whose restrictions we
+    # cannot express, and running unrestricted is not the safe fallback. Every
+    # candidate therefore carries them, and exhausting the list raises.
+    candidates: list[dict[str, Any]] = []
+    for guard in (
+        {"max_turns": 1, "permission_mode": "plan"},
+        {"maxTurns": 1, "permissionMode": "plan"},
+    ):
+        restricted = {
             **model_kwargs,
             **env_kwargs,
             **reasoning_kwargs,
             **tool_kwargs,
-            "max_turns": 1,
-            "permission_mode": "plan",
-        },
-        {**model_kwargs, **reasoning_kwargs, **tool_kwargs, "max_turns": 1},
-        {
-            **model_kwargs,
-            **env_kwargs,
-            **reasoning_kwargs,
-            **tool_kwargs,
-            "maxTurns": 1,
-            "permissionMode": "plan",
-        },
-        {**model_kwargs, **reasoning_kwargs, **tool_kwargs, "maxTurns": 1},
-        {**model_kwargs, **reasoning_kwargs, **tool_kwargs},
-        {**model_kwargs, **env_kwargs, "max_turns": 1, "permission_mode": "plan"},
-        {**model_kwargs, "max_turns": 1},
-        {**model_kwargs, **env_kwargs, "maxTurns": 1, "permissionMode": "plan"},
-        {**model_kwargs, "maxTurns": 1},
-        model_kwargs,
-    ]
-    if max_tokens > 0:
-        candidates.insert(
-            0,
-            {
-                **model_kwargs,
-                **env_kwargs,
-                **reasoning_kwargs,
-                **tool_kwargs,
-                "max_turns": 1,
-                "permission_mode": "plan",
-                "max_tokens": max_tokens,
-            },
-        )
+            **guard,
+        }
+        if max_tokens > 0:
+            candidates.append({**restricted, "max_tokens": max_tokens})
+        candidates.append(restricted)
 
     for kwargs in candidates:
         try:
             return options_cls(**kwargs)
         except TypeError:
             continue
-    return None
+    raise RuntimeError(
+        "The installed codebuddy-agent-sdk does not accept the turn limit and "
+        "permission mode this provider requires. Install a supported version "
+        '(pip install "deeptutor[codebuddy]").'
+    )
 
 
 def _build_tool_options(sdk: ModuleType, tools: list[dict[str, Any]] | None) -> dict[str, Any]:

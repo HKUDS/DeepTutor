@@ -1,5 +1,9 @@
 export type ResearchMode =
-  "" | "notes" | "report" | "comparison" | "learning_path";
+  | ""
+  | "notes"
+  | "report"
+  | "comparison"
+  | "learning_path";
 export type ResearchDepth = "" | "quick" | "standard" | "deep" | "manual";
 
 export interface OutlineItem {

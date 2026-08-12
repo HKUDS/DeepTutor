@@ -556,41 +556,51 @@ export default memo(function ChatComposer({
   // toolbar KnowledgeSelector chip instead — same lifecycle class as
   // the persona selector.
   const contextTreeItems: ContextTreeItem[] = [
-    ...selectedBookReferences.map((book): ContextTreeItem => ({
-      key: `book-${book.bookId}`,
-      icon: BookOpen,
-      kind: t("Book"),
-      label: `${book.bookTitle} (${book.pages.length})`,
-      onRemove: () => onRemoveBookReference(book.bookId),
-    })),
-    ...notebookReferenceGroups.map((group): ContextTreeItem => ({
-      key: `nb-${group.notebookId}`,
-      icon: BookOpen,
-      kind: t("Notebook"),
-      label: `${group.notebookName} (${group.count})`,
-      onRemove: () => onRemoveNotebook(group.notebookId),
-    })),
-    ...selectedHistorySessions.map((session): ContextTreeItem => ({
-      key: `hist-${session.sessionId}`,
-      icon: MessageSquare,
-      kind: t("Chat History"),
-      label: session.title,
-      onRemove: () => onRemoveHistory(session.sessionId),
-    })),
-    ...selectedAgentSessions.map((session): ContextTreeItem => ({
-      key: `agent-${session.sessionId}`,
-      icon: Bot,
-      kind: t("My Agents"),
-      label: session.title,
-      onRemove: () => onRemoveAgent(session.sessionId),
-    })),
-    ...selectedQuestionEntries.map((entry): ContextTreeItem => ({
-      key: `q-${entry.id}`,
-      icon: ClipboardList,
-      kind: t("Question Bank"),
-      label: entry.question,
-      onRemove: () => onRemoveQuestion(entry.id),
-    })),
+    ...selectedBookReferences.map(
+      (book): ContextTreeItem => ({
+        key: `book-${book.bookId}`,
+        icon: BookOpen,
+        kind: t("Book"),
+        label: `${book.bookTitle} (${book.pages.length})`,
+        onRemove: () => onRemoveBookReference(book.bookId),
+      }),
+    ),
+    ...notebookReferenceGroups.map(
+      (group): ContextTreeItem => ({
+        key: `nb-${group.notebookId}`,
+        icon: BookOpen,
+        kind: t("Notebook"),
+        label: `${group.notebookName} (${group.count})`,
+        onRemove: () => onRemoveNotebook(group.notebookId),
+      }),
+    ),
+    ...selectedHistorySessions.map(
+      (session): ContextTreeItem => ({
+        key: `hist-${session.sessionId}`,
+        icon: MessageSquare,
+        kind: t("Chat History"),
+        label: session.title,
+        onRemove: () => onRemoveHistory(session.sessionId),
+      }),
+    ),
+    ...selectedAgentSessions.map(
+      (session): ContextTreeItem => ({
+        key: `agent-${session.sessionId}`,
+        icon: Bot,
+        kind: t("My Agents"),
+        label: session.title,
+        onRemove: () => onRemoveAgent(session.sessionId),
+      }),
+    ),
+    ...selectedQuestionEntries.map(
+      (entry): ContextTreeItem => ({
+        key: `q-${entry.id}`,
+        icon: ClipboardList,
+        kind: t("Question Bank"),
+        label: entry.question,
+        onRemove: () => onRemoveQuestion(entry.id),
+      }),
+    ),
     ...(selectedPersona
       ? [
           {
@@ -602,13 +612,15 @@ export default memo(function ChatComposer({
           } satisfies ContextTreeItem,
         ]
       : []),
-    ...selectedMemoryFiles.map((file): ContextTreeItem => ({
-      key: `mem-${file}`,
-      icon: Brain,
-      kind: t("Memory"),
-      label: file === "summary" ? t("Summary") : t("Profile"),
-      onRemove: () => onToggleMemoryFile(file),
-    })),
+    ...selectedMemoryFiles.map(
+      (file): ContextTreeItem => ({
+        key: `mem-${file}`,
+        icon: Brain,
+        kind: t("Memory"),
+        label: file === "summary" ? t("Summary") : t("Profile"),
+        onRemove: () => onToggleMemoryFile(file),
+      }),
+    ),
   ];
 
   const handleManualSend = useCallback(() => {

@@ -36,7 +36,13 @@ const MarkdownRenderer = dynamic(
 type Layer = "L2" | "L3";
 
 type Surface =
-  "chat" | "notebook" | "quiz" | "kb" | "book" | "partner" | "cowriter";
+  | "chat"
+  | "notebook"
+  | "quiz"
+  | "kb"
+  | "book"
+  | "partner"
+  | "cowriter";
 
 const SURFACES: readonly Surface[] = [
   "chat",

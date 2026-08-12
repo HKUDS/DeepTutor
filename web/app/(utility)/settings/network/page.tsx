@@ -222,7 +222,8 @@ export default function NetworkSettingsPage() {
       try {
         const response = await apiFetch(apiUrl("/api/v1/settings/network"));
         const data = (await response.json().catch(() => ({}))) as
-          NetworkSettingsPayload | { detail?: string };
+          | NetworkSettingsPayload
+          | { detail?: string };
         if (!response.ok) {
           throw new Error(
             "detail" in data && data.detail
@@ -281,7 +282,8 @@ export default function NetworkSettingsPage() {
         }),
       });
       const data = (await response.json().catch(() => ({}))) as
-        NetworkSettingsPayload | { detail?: string };
+        | NetworkSettingsPayload
+        | { detail?: string };
       if (!response.ok) {
         throw new Error(
           "detail" in data && data.detail

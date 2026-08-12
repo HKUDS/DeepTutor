@@ -31,7 +31,13 @@ import { setTheme as applyThemePreference } from "@/lib/theme";
 // ─── Domain types ─────────────────────────────────────────────────────────
 
 export type ServiceName =
-  "llm" | "embedding" | "search" | "tts" | "stt" | "imagegen" | "videogen";
+  | "llm"
+  | "embedding"
+  | "search"
+  | "tts"
+  | "stt"
+  | "imagegen"
+  | "videogen";
 
 export type CatalogModel = {
   id: string;
@@ -45,6 +51,7 @@ export type CatalogModel = {
   context_window_source?: string;
   context_window_detected_at?: string;
   reasoning_effort?: string;
+  codex_supported_reasoning_levels?: string[];
   // Voice (TTS): free-form provider/model-specific voice string, e.g.
   // "alloy", "autumn", "model:voice". `response_format` is the TTS output
   // codec (mp3/wav/...) and is reused by imagegen ("url"/"b64_json").
@@ -75,6 +82,7 @@ export type CatalogProfile = {
   id: string;
   name: string;
   managed_by?: string;
+  codex_account_binding?: string;
   read_only?: boolean;
   binding?: string;
   provider?: string;
@@ -190,7 +198,10 @@ export type DiagnosticsResult = {
 };
 
 export type ServiceReadiness =
-  "not_configured" | "untested" | "passed" | "failed";
+  | "not_configured"
+  | "untested"
+  | "passed"
+  | "failed";
 
 type SettingsPayload = {
   ui: UiSettings;

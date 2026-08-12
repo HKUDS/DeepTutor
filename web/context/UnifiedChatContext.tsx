@@ -46,7 +46,12 @@ import {
 } from "@/lib/book-references";
 
 type SessionRuntimeStatus =
-  "idle" | "running" | "completed" | "failed" | "cancelled" | "rejected";
+  | "idle"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "rejected";
 
 interface OutgoingAttachment {
   type: string;

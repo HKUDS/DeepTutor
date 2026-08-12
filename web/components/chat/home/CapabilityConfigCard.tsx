@@ -27,7 +27,10 @@ import {
 import { useTranslation } from "react-i18next";
 
 export type ConfigurableCapability =
-  "deep_question" | "math_animator" | "visualize" | "deep_research";
+  | "deep_question"
+  | "math_animator"
+  | "visualize"
+  | "deep_research";
 
 interface CapabilityChrome {
   icon: LucideIcon;

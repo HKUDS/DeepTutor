@@ -100,14 +100,8 @@ async def test_start_login_reports_missing_sdk(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_logout_clears_existing_local_login(monkeypatch) -> None:
-    logged_out = False
-
-    async def fake_logout() -> None:
-        nonlocal logged_out
-        logged_out = True
-
-    monkeypatch.setattr(codebuddy_auth, "_sdk_logout", fake_logout)
+async def test_logout_disconnects_when_no_session_remains(monkeypatch) -> None:
+    """With no login on the host there is nothing to report but disconnection."""
     service = CodeBuddyAuthService()
     service._connection = "connected"
     service._operation_state = "completed"
@@ -115,7 +109,6 @@ async def test_logout_clears_existing_local_login(monkeypatch) -> None:
 
     status = await service.logout()
 
-    assert logged_out is True
     assert status == {
         "connection": "disconnected",
         "operation_state": None,
@@ -144,12 +137,13 @@ async def test_status_accepts_ide_session_without_the_sdk(tmp_path, monkeypatch)
 
 @pytest.mark.asyncio
 async def test_logout_explains_that_an_ide_session_ends_in_the_ide(tmp_path, monkeypatch) -> None:
+    """DeepTutor never ends a session it does not own.
+
+    The auth file is shared with the IDE plugin and the CLI on this host —
+    signing it out from a web endpoint would sign the operator out of their
+    editor, and on a shared host out of whoever else is on that login.
+    """
     _write_ide_session(tmp_path, monkeypatch)
-
-    async def missing_sdk() -> None:
-        raise ImportError("codebuddy-agent-sdk is not installed")
-
-    monkeypatch.setattr(codebuddy_auth, "_sdk_logout", missing_sdk)
 
     status = await CodeBuddyAuthService().logout()
 

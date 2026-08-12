@@ -35,13 +35,15 @@ export function useNotebookSelection() {
       const data = await listNotebooks();
       const items = data
         .filter((nb) => (nb.record_count ?? 0) > 0)
-        .map((nb): Notebook => ({
-          id: String(nb.id),
-          name: nb.name,
-          description: nb.description ?? "",
-          record_count: nb.record_count ?? 0,
-          color: nb.color ?? "",
-        }));
+        .map(
+          (nb): Notebook => ({
+            id: String(nb.id),
+            name: nb.name,
+            description: nb.description ?? "",
+            record_count: nb.record_count ?? 0,
+            color: nb.color ?? "",
+          }),
+        );
       setNotebooks(items);
     } catch (err) {
       console.error("Failed to fetch notebooks:", err);
@@ -62,14 +64,16 @@ export function useNotebookSelection() {
       });
       try {
         const detail = await getNotebook(notebookId);
-        const records = (detail.records || []).map((rec): NotebookRecord => ({
-          id: String(rec.id),
-          title: rec.title,
-          summary: rec.summary,
-          user_query: rec.user_query,
-          output: rec.output,
-          type: String(rec.type),
-        }));
+        const records = (detail.records || []).map(
+          (rec): NotebookRecord => ({
+            id: String(rec.id),
+            title: rec.title,
+            summary: rec.summary,
+            user_query: rec.user_query,
+            output: rec.output,
+            type: String(rec.type),
+          }),
+        );
         setNotebookRecordsMap((prev) => new Map(prev).set(notebookId, records));
       } catch (err) {
         console.error("Failed to fetch notebook records:", err);

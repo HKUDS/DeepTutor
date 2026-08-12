@@ -52,7 +52,12 @@ export interface SessionSummary {
   message_count: number;
   last_message: string;
   status?:
-    "idle" | "running" | "completed" | "failed" | "cancelled" | "rejected";
+    | "idle"
+    | "running"
+    | "completed"
+    | "failed"
+    | "cancelled"
+    | "rejected";
   active_turn_id?: string;
   preferences?: SessionPreferences;
 }
@@ -77,7 +82,12 @@ export interface SessionDetail {
   created_at: number;
   updated_at: number;
   status?:
-    "idle" | "running" | "completed" | "failed" | "cancelled" | "rejected";
+    | "idle"
+    | "running"
+    | "completed"
+    | "failed"
+    | "cancelled"
+    | "rejected";
   active_turn_id?: string;
   compressed_summary?: string;
   summary_up_to_msg_id?: number;

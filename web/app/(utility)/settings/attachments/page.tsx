@@ -63,7 +63,8 @@ export default function AttachmentSettingsPage() {
           apiUrl("/api/v1/settings/chat-attachments"),
         );
         const data = (await response.json().catch(() => ({}))) as
-          AttachmentSettingsPayload | { detail?: string };
+          | AttachmentSettingsPayload
+          | { detail?: string };
         if (!response.ok) {
           throw new Error(
             "detail" in data && data.detail
@@ -117,7 +118,8 @@ export default function AttachmentSettingsPage() {
         },
       );
       const data = (await response.json().catch(() => ({}))) as
-        AttachmentSettingsPayload | { detail?: string };
+        | AttachmentSettingsPayload
+        | { detail?: string };
       if (!response.ok) {
         throw new Error(
           "detail" in data && data.detail
