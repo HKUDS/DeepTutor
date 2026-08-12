@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from deeptutor.capabilities.explore_context import ExploreContextCapability
+from deeptutor.capabilities.guruai import GuruExplainLoopCapability, GuruPracticeLoopCapability
 from deeptutor.capabilities.mastery import MasteryLoopCapability
 from deeptutor.capabilities.obsidian import ObsidianCapability
 from deeptutor.capabilities.protocol import LoopCapability
@@ -13,6 +14,8 @@ from deeptutor.core.context import UnifiedContext
 LOOP_CAPABILITIES: tuple[LoopCapability, ...] = (
     MasteryLoopCapability(),
     SolveLoopCapability(),
+    GuruExplainLoopCapability(),
+    GuruPracticeLoopCapability(),
     ObsidianCapability(),
     SubagentCapability(),
     ExploreContextCapability(),
@@ -25,22 +28,12 @@ def active_loop_capabilities(context: UnifiedContext) -> tuple[LoopCapability, .
 
 
 def any_exclusive_capability_active(context: UnifiedContext) -> bool:
-    """Whether an active capability *replaces* the tool surface (knowledge category).
-
-    Drives the pipeline's exclusive-tools branch and the suppression of rag
-    scaffolding (KB seed / kb note) — the turn runs only on the capability's
-    own tools. ``getattr`` default keeps plain capabilities (solve / mastery)
-    out of this path.
-    """
+    """Whether an active capability replaces the tool surface."""
     return any(getattr(cap, "exclusive_tools", False) for cap in active_loop_capabilities(context))
 
 
 def capability_tool_owners() -> dict[str, str]:
-    """Map each capability-owned tool name to its owning capability name.
-
-    Static (independent of any turn) so the settings UI can group capability
-    tools under their owner. Built-in/system tools are absent from the map.
-    """
+    """Map each capability-owned tool name to its owning capability name."""
     return {name: cap.name for cap in LOOP_CAPABILITIES for name in cap.owned_tools}
 
 
