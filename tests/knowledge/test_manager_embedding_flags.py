@@ -197,9 +197,7 @@ def test_ready_non_llamaindex_status_keeps_embedding_only_signature(
     monkeypatch.setattr(
         manager_module, "_get_embedding_fingerprint", lambda: ("embed-active", 4096)
     )
-    monkeypatch.setattr(
-        embedding_signature, "signature_from_embedding_config", lambda: signature
-    )
+    monkeypatch.setattr(embedding_signature, "signature_from_embedding_config", lambda: signature)
     manager = KnowledgeBaseManager(base_dir=str(tmp_path))
     manager.config["knowledge_bases"] = {
         "graph-kb": {"rag_provider": "graphrag", "path": "graph-kb"}

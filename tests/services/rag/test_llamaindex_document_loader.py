@@ -383,8 +383,12 @@ def test_loader_builds_linked_visual_and_companion_nodes_from_structured_blocks(
     ]
     assert len(text_documents) == 1
     assert len(visual_nodes) == 2
-    component = next(item for item in visual_nodes if item.metadata["node_role"] == "visual_component")
-    companion = next(item for item in visual_nodes if item.metadata["node_role"] == "visual_companion")
+    component = next(
+        item for item in visual_nodes if item.metadata["node_role"] == "visual_component"
+    )
+    companion = next(
+        item for item in visual_nodes if item.metadata["node_role"] == "visual_companion"
+    )
     assert component.metadata["asset_id"] == companion.metadata["asset_id"]
     assert component.metadata["companion_node_id"] == companion.node_id
     assert companion.metadata["component_node_ids"] == [component.node_id]
@@ -471,7 +475,9 @@ def test_structured_visual_companion_survives_text_only_embedding_provider(
     documents = asyncio.run(loader_module.LlamaIndexDocumentLoader().load([str(pdf_path)]))
 
     assert not any(isinstance(item, ImageNode) for item in documents)
-    companion = next(item for item in documents if item.metadata.get("node_role") == "visual_companion")
+    companion = next(
+        item for item in documents if item.metadata.get("node_role") == "visual_companion"
+    )
     assert companion.embedding == [0.7, 0.8]
     assert "Pixel-visible: a number line." in companion.text
 
@@ -540,7 +546,9 @@ def test_structured_visual_uses_deterministic_companion_when_llm_has_no_vision(
     documents = asyncio.run(loader_module.LlamaIndexDocumentLoader().load([str(pdf_path)]))
 
     assert any(isinstance(item, ImageNode) for item in documents)
-    companion = next(item for item in documents if item.metadata.get("node_role") == "visual_companion")
+    companion = next(
+        item for item in documents if item.metadata.get("node_role") == "visual_companion"
+    )
     assert "Table 1" in companion.text
     assert "Quarterly results" in companion.text
     assert "Visual description unavailable" in companion.text

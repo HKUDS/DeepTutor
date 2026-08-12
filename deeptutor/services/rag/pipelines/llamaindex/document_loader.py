@@ -298,7 +298,9 @@ class LlamaIndexDocumentLoader:
                 [companion_text], input_type="search_document"
             )
             if not companion_embeddings:
-                self.logger.warning("Skipped visual asset with no companion embedding: %s", asset.asset_id)
+                self.logger.warning(
+                    "Skipped visual asset with no companion embedding: %s", asset.asset_id
+                )
                 continue
 
             component_nodes: list[ImageNode] = []

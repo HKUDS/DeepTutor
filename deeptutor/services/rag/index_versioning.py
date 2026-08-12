@@ -302,9 +302,8 @@ def resolve_storage_dir_for_read(
             return Path(str(latest_flat["storage_path"]))
 
     root_legacy = legacy_storage_dir(kb_dir)
-    if (
-        _is_storage_ready(root_legacy)
-        and not (signature and getattr(signature, "ingestion_schema_version", ""))
+    if _is_storage_ready(root_legacy) and not (
+        signature and getattr(signature, "ingestion_schema_version", "")
     ):
         return root_legacy
 

@@ -199,9 +199,7 @@ def _context_text(block: dict[str, Any]) -> str:
     return text
 
 
-def _nearby_context(
-    blocks: list[dict[str, Any]], index: int, page_idx: int
-) -> tuple[str, str]:
+def _nearby_context(blocks: list[dict[str, Any]], index: int, page_idx: int) -> tuple[str, str]:
     before = ""
     after = ""
     for candidate in reversed(blocks[:index]):
@@ -337,12 +335,12 @@ def _aligned_compact(candidates: Sequence[_Candidate]) -> bool:
     boxes = [candidate.component.bbox for candidate in candidates]
     widths = [box[2] - box[0] for box in boxes]
     heights = [box[3] - box[1] for box in boxes]
-    horizontal = max(
+    horizontal = max((box[1] + box[3]) / 2 for box in boxes) - min(
         (box[1] + box[3]) / 2 for box in boxes
-    ) - min((box[1] + box[3]) / 2 for box in boxes) <= max(heights)
-    vertical = max(
+    ) <= max(heights)
+    vertical = max((box[0] + box[2]) / 2 for box in boxes) - min(
         (box[0] + box[2]) / 2 for box in boxes
-    ) - min((box[0] + box[2]) / 2 for box in boxes) <= max(widths)
+    ) <= max(widths)
     if horizontal:
         ordered = sorted(boxes, key=lambda box: box[0])
         return all(
