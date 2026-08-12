@@ -104,3 +104,12 @@ test("classifyToken honors expiry and accepts unexpired / expiry-less tokens", (
   assert.equal(classifyToken(makeToken({ exp: nowSec - 1 }), now), "expired");
   assert.equal(classifyToken(makeToken({}), now), "valid"); // no exp claim
 });
+
+test("isAuthExempt exempts child-facing /kids paths but NOT /kids/manage", () => {
+  // Child-facing pages should be exempt (no login required)
+  assert.equal(isAuthExempt("/kids"), true);
+  assert.equal(isAuthExempt("/kids/p/abc123"), true);
+  assert.equal(isAuthExempt("/kids/94498b585152"), true); // book reader
+  // Parent management page must require login
+  assert.equal(isAuthExempt("/kids/manage"), false);
+});
