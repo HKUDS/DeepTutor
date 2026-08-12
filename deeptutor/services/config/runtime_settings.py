@@ -108,6 +108,9 @@ _DOCUMENT_PARSING_ENGINES = frozenset(
 )
 # Image formats PyMuPDF4LLM can write extracted page images as.
 _PYMUPDF4LLM_IMAGE_FORMATS = frozenset({"png", "jpg", "jpeg", "webp"})
+# How LiteParse presents images in its Markdown. Independent of whether the
+# image bytes are extracted (that is the engine's ``extract_images`` knob).
+LITEPARSE_IMAGE_MODES = frozenset({"off", "placeholder", "embed"})
 # Fresh installs default to the built-in text extractor so parsing works out of
 # the box without optional parser packages or model weights.
 # Migrated v1 installs keep MinerU (see ``_normalize_document_parsing``).
@@ -164,14 +167,14 @@ _DEFAULT_PYMUPDF4LLM_ENGINE: dict[str, Any] = {
     "image_dpi": 150,
 }
 
-# liteparse engine slice. Fast PDF parser with spatial text extraction and
-# markdown output. No model downloads required.
+# LiteParse engine slice. Rust-backed, no model downloads. Like PyMuPDF4LLM it
+# can extract embedded images into the parse's images/ dir. Output format and
+# image directory are fixed by the workdir contract, so neither is a knob here
+# (see engines/liteparse/engine.py). ``max_pages`` 0 means the whole document.
 _DEFAULT_LITEPARSE_ENGINE: dict[str, Any] = {
-    "output_format": "markdown",
     "image_mode": "placeholder",
     "extract_links": True,
     "extract_images": False,
-    "image_output_dir": "",
     "max_pages": 0,
 }
 
@@ -874,14 +877,14 @@ class RuntimeSettingsService:
         }
 
     def _normalize_liteparse_engine(self, settings: dict[str, Any]) -> dict[str, Any]:
-        """Normalize the liteparse engine slice."""
+        image_mode = _string(settings.get("image_mode")).lower() or "placeholder"
+        if image_mode not in LITEPARSE_IMAGE_MODES:
+            image_mode = "placeholder"
         return {
-            "output_format": str(settings.get("output_format") or "markdown"),
-            "image_mode": str(settings.get("image_mode") or "placeholder"),
-            "extract_links": bool(settings.get("extract_links", True)),
-            "extract_images": bool(settings.get("extract_images", False)),
-            "image_output_dir": str(settings.get("image_output_dir") or ""),
-            "max_pages": int(settings.get("max_pages") or 0),
+            "image_mode": image_mode,
+            "extract_links": _coerce_bool(settings.get("extract_links"), True),
+            "extract_images": _coerce_bool(settings.get("extract_images"), False),
+            "max_pages": _coerce_clamped_int(settings.get("max_pages"), 0, 0, 100_000),
         }
 
     def _normalize_pymupdf4llm_engine(self, settings: dict[str, Any]) -> dict[str, Any]:
@@ -1105,11 +1108,12 @@ __all__ = [
     "DEFAULT_PAGEINDEX_SETTINGS",
     "DEFAULT_SYSTEM_SETTINGS",
     "DOCUMENT_PARSING_ENGINE_DOCLING",
+    "DOCUMENT_PARSING_ENGINE_LITEPARSE",
     "DOCUMENT_PARSING_ENGINE_MARKITDOWN",
     "DOCUMENT_PARSING_ENGINE_MINERU",
     "DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM",
-    "DOCUMENT_PARSING_ENGINE_LITEPARSE",
     "DOCUMENT_PARSING_ENGINE_TEXT_ONLY",
+    "LITEPARSE_IMAGE_MODES",
     "MINERU_MODE_CLOUD",
     "MINERU_MODE_LOCAL",
     "ChatAttachmentLimits",

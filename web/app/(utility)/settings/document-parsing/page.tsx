@@ -566,22 +566,17 @@ function LiteParsePanel({
   onSave: (patch: Record<string, unknown>) => void;
 }) {
   const { t } = useTranslation();
-  const outputFormat =
-    typeof slice.output_format === "string" ? slice.output_format : "markdown";
   const imageMode =
     typeof slice.image_mode === "string" ? slice.image_mode : "placeholder";
   const extractLinks = slice.extract_links !== false;
   const extractImages = Boolean(slice.extract_images);
-  const maxPages =
-    typeof slice.max_pages === "number" ? slice.max_pages : 0;
-  const imageOutputDir =
-    typeof slice.image_output_dir === "string" ? slice.image_output_dir : "";
+  const maxPages = typeof slice.max_pages === "number" ? slice.max_pages : 0;
 
   if (!available) {
     return (
       <NotInstalledSection
         engineId="liteparse"
-        title={t("liteparse")}
+        title={t("LiteParse")}
         onInstalled={onInstalled}
       />
     );
@@ -589,28 +584,11 @@ function LiteParsePanel({
 
   return (
     <SettingSection
-      title={t("liteparse")}
+      title={t("LiteParse")}
       description={t(
-        "Fast PDF/Office/image parser from LlamaIndex. Supports Markdown, JSON, or plain text output.",
+        "Fast Rust-backed PDF/Office/image parser from LlamaIndex. Markdown output, no model downloads.",
       )}
     >
-      <SettingRow
-        title={t("Output format")}
-        control={
-          <select
-            className={nativeSelectClass + " w-32"}
-            value={outputFormat}
-            disabled={busy}
-            onChange={(e) => onSave({ output_format: e.target.value })}
-          >
-            {["markdown", "json", "text"].map((f) => (
-              <option key={f} className={selectOptionClass} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-        }
-      />
       <SettingRow
         title={t("Image mode")}
         description={t("How images are represented in the output.")}
@@ -642,7 +620,7 @@ function LiteParsePanel({
       />
       <SettingRow
         title={t("Extract images")}
-        description={t("Save embedded images into the parse output.")}
+        description={t("Save embedded images alongside the parsed Markdown.")}
         control={
           <Toggle
             checked={extractImages}
@@ -651,21 +629,6 @@ function LiteParsePanel({
           />
         }
       />
-      {extractImages && (
-        <SettingRow
-          title={t("Image output dir")}
-          description={t("Directory relative to the temp workdir for extracted images.")}
-          control={
-            <input
-              type="text"
-              value={imageOutputDir}
-              disabled={busy}
-              onChange={(e) => onSave({ image_output_dir: e.target.value })}
-              className="w-48 rounded-lg border border-[var(--border)] bg-transparent px-2 py-1 text-[12px] text-[var(--foreground)]"
-            />
-          }
-        />
-      )}
       <SettingRow
         title={t("Max pages")}
         description={t("0 = unlimited. Limit pages parsed per document.")}

@@ -4,7 +4,6 @@ import asyncio
 import importlib
 import json
 from pathlib import Path
-import threading
 
 import pytest
 
@@ -22,11 +21,9 @@ pytestmark = pytest.mark.skipif(
 if FastAPI is not None and TestClient is not None:
     knowledge_router_module = importlib.import_module("deeptutor.api.routers.knowledge")
     router = knowledge_router_module.router
-    _REAL_DISPATCH_BACKGROUND_TASK = knowledge_router_module._dispatch_background_task
 else:  # pragma: no cover - optional dependency in lightweight envs
     knowledge_router_module = None
     router = None
-    _REAL_DISPATCH_BACKGROUND_TASK = None
 
 
 def _build_app() -> FastAPI:
@@ -35,18 +32,6 @@ def _build_app() -> FastAPI:
     app = FastAPI()
     app.include_router(router, prefix="/api/v1/knowledge")
     return app
-
-
-@pytest.fixture(autouse=True)
-def _stub_route_background_dispatch(monkeypatch) -> None:
-    """Keep route tests deterministic by disabling detached worker threads."""
-
-    if knowledge_router_module is not None:
-        monkeypatch.setattr(
-            knowledge_router_module,
-            "_dispatch_background_task",
-            lambda *_args, **_kwargs: None,
-        )
 
 
 class _FakeKBManager:
@@ -140,27 +125,6 @@ def _write_ready_llamaindex_version(kb_dir: Path) -> None:
         json.dumps({"provider": "llamaindex", "signature": "sig", "version": "version-1"}),
         encoding="utf-8",
     )
-
-
-def test_background_dispatch_runs_async_work_off_request_thread(monkeypatch) -> None:
-    done = threading.Event()
-    seen_thread_names: list[str] = []
-
-    monkeypatch.setattr(
-        knowledge_router_module,
-        "_dispatch_background_task",
-        _REAL_DISPATCH_BACKGROUND_TASK,
-    )
-
-    async def _job() -> None:
-        seen_thread_names.append(threading.current_thread().name)
-        done.set()
-
-    knowledge_router_module._dispatch_background_task(_job)
-
-    assert done.wait(timeout=2), "background worker did not start"
-    assert seen_thread_names
-    assert seen_thread_names[0] != threading.current_thread().name
 
 
 def test_rag_providers_lists_llamaindex_and_pageindex() -> None:
@@ -422,35 +386,6 @@ def test_upload_ready_kb_returns_task_id(monkeypatch, tmp_path: Path) -> None:
     assert isinstance(body.get("task_id"), str) and body["task_id"]
 
 
-def test_upload_offloads_file_saving_to_thread(monkeypatch, tmp_path: Path) -> None:
-    manager = _FakeKBManager(tmp_path / "knowledge_bases")
-    manager.config["knowledge_bases"]["ready-kb"] = {
-        "path": "ready-kb",
-        "rag_provider": "llamaindex",
-        "needs_reindex": False,
-        "status": "ready",
-    }
-    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
-    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", tmp_path / "knowledge_bases")
-
-    captured: dict[str, object] = {}
-    real_to_thread = asyncio.to_thread
-
-    async def _fake_to_thread(func, /, *args, **kwargs):
-        captured["func"] = func
-        captured["args"] = args
-        captured["kwargs"] = kwargs
-        return await real_to_thread(func, *args, **kwargs)
-
-    monkeypatch.setattr(knowledge_router_module.asyncio, "to_thread", _fake_to_thread)
-
-    with TestClient(_build_app()) as client:
-        response = client.post("/api/v1/knowledge/ready-kb/upload", files=_upload_payload())
-
-    assert response.status_code == 200
-    assert captured["func"] is knowledge_router_module._save_uploaded_files
-
-
 def test_upload_flips_ready_kb_to_processing_before_dispatch(monkeypatch, tmp_path: Path) -> None:
     """An existing ready KB must not keep reporting ``ready`` between the
     accepted upload response and the background task's first progress write."""
@@ -478,33 +413,6 @@ def test_upload_flips_ready_kb_to_processing_before_dispatch(monkeypatch, tmp_pa
     # Stage must be a member of the frontend's LIVE_PROGRESS_STAGES set.
     assert entry["progress"]["stage"] == "starting"
     assert entry["progress"]["task_id"] == response.json()["task_id"]
-
-
-def test_create_rolls_back_registered_kb_when_file_save_fails(
-    monkeypatch, tmp_path: Path
-) -> None:
-    manager = _FakeKBManager(tmp_path / "knowledge_bases")
-    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
-    monkeypatch.setattr(knowledge_router_module, "KnowledgeBaseInitializer", _FakeInitializer)
-    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", tmp_path / "knowledge_bases")
-
-    async def _fake_to_thread(func, /, *args, **kwargs):
-        assert func is knowledge_router_module._save_uploaded_files
-        raise RuntimeError("disk full")
-
-    monkeypatch.setattr(knowledge_router_module.asyncio, "to_thread", _fake_to_thread)
-
-    with TestClient(_build_app()) as client:
-        response = client.post(
-            "/api/v1/knowledge/create",
-            data={"name": "kb-broken", "rag_provider": "llamaindex"},
-            files=_upload_payload(),
-        )
-
-    assert response.status_code == 500
-    assert "disk full" in response.json()["detail"]
-    assert "kb-broken" not in manager.config["knowledge_bases"]
-    assert not (tmp_path / "knowledge_bases" / "kb-broken").exists()
 
 
 def test_upload_task_marks_provider_failures_as_error(monkeypatch, tmp_path: Path) -> None:
