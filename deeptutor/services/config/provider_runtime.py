@@ -541,6 +541,24 @@ def _load_catalog(catalog: dict[str, Any] | None) -> dict[str, Any]:
     return get_model_catalog_service().load()
 
 
+def _with_personal_llm_profiles(catalog: dict[str, Any]) -> dict[str, Any]:
+    """Add the current owner's own owner-bound LLM profiles to *catalog*.
+
+    An ordinary user's Codex profile lives in their own catalog rather than
+    the shared one (see :mod:`deeptutor.multi_user.personal_models`), so
+    resolving a personal selection against the shared catalog alone would
+    fail to find the profile it names. Imported lazily and guarded: the LLM
+    layer must keep resolving in contexts where multi-user state is absent
+    (CLI, tests, background jobs).
+    """
+    try:
+        from deeptutor.multi_user.personal_models import merge_personal_llm_profiles
+
+        return merge_personal_llm_profiles(catalog)
+    except Exception:
+        return catalog
+
+
 def _active_profile_and_model(
     catalog: dict[str, Any],
     service: ModelCatalogService,
@@ -626,7 +644,7 @@ def resolve_llm_runtime_config(
 ) -> ResolvedLLMConfig:
     """Resolve active LLM config with TutorBot-style provider matching."""
     catalog_service = service or get_model_catalog_service()
-    loaded = _load_catalog(catalog)
+    loaded = _with_personal_llm_profiles(_load_catalog(catalog))
     loaded = apply_llm_selection_to_catalog(loaded, llm_selection)
 
     profile, model = _active_profile_and_model(loaded, catalog_service, "llm")

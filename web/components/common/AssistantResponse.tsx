@@ -6,6 +6,7 @@ import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import ModelThinkingCard from "@/components/common/ModelThinkingCard";
 import {
   hasVisibleMarkdownContent,
+  repairMalformedStrongEmphasis,
   stripArtifactAnnotations,
 } from "@/lib/markdown-display";
 import { parseModelThinkingSegments } from "@/lib/think-segments";
@@ -71,15 +72,16 @@ function AssistantResponseImpl({
             />
           );
         }
+        const repairedContent = repairMalformedStrongEmphasis(segment.content);
 
-        if (!hasVisibleMarkdownContent(segment.content)) {
+        if (!hasVisibleMarkdownContent(repairedContent)) {
           return <Fragment key={`text-${index}`} />;
         }
 
         return (
           <MarkdownRenderer
             key={`text-${index}`}
-            content={segment.content}
+            content={repairedContent}
             variant="prose"
             className="text-[var(--foreground)]"
           />

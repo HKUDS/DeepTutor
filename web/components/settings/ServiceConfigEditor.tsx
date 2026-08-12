@@ -276,10 +276,18 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
       );
     }
     return (
-      <div className="rounded-xl border border-dashed border-[var(--border)] px-5 py-10 text-center text-[13px] text-[var(--muted-foreground)]">
-        {t(
-          "Model endpoints are assigned by your administrator. You can still personalize theme and language here.",
-        )}
+      <div className="space-y-4">
+        <div className="rounded-xl border border-dashed border-[var(--border)] px-5 py-10 text-center text-[13px] text-[var(--muted-foreground)]">
+          {t(
+            "Model endpoints are assigned by your administrator. You can still personalize theme and language here.",
+          )}
+        </div>
+        {/* One thing an ordinary user CAN configure for themselves: an
+            owner-bound Codex login. It authenticates their own ChatGPT plan,
+            so it is never something an administrator can grant them — the
+            account has to sign in for itself (#781). The card talks only to
+            the per-user OAuth endpoints and exposes no catalog. */}
+        {service === "llm" && <CodexOAuthCard />}
       </div>
     );
   }

@@ -4,6 +4,7 @@ export type AppLanguage = "en" | "zh";
 
 export const ACTIVE_SESSION_STORAGE_KEY = "deeptutor.activeSessionId.tab";
 export const LANGUAGE_STORAGE_KEY = "deeptutor-language";
+export const RESPONSE_LANGUAGE_STORAGE_KEY = "deeptutor-response-language";
 export const SIDEBAR_COLLAPSED_STORAGE_KEY = "deeptutor.sidebarCollapsed";
 export const CHAT_RESPONSE_TIMEOUT_STORAGE_KEY =
   "deeptutor.chatResponseTimeout";
@@ -56,6 +57,7 @@ export function writeStoredChatResponseTimeout(seconds: number): void {
 
 export const ACTIVE_SESSION_EVENT = "deeptutor:active-session";
 export const LANGUAGE_EVENT = "deeptutor:language";
+export const RESPONSE_LANGUAGE_EVENT = "deeptutor:response-language";
 export const SIDEBAR_COLLAPSED_EVENT = "deeptutor:sidebar-collapsed";
 export const CODE_BLOCK_SETTINGS_EVENT = "deeptutor:code-block-settings";
 
@@ -63,6 +65,15 @@ export function normalizeLanguage(
   value: string | null | undefined,
 ): AppLanguage {
   return value === "zh" ? "zh" : "en";
+}
+
+export function resolveResponseLanguage(
+  value: string | null | undefined,
+  legacyLanguage: string | null | undefined = "en",
+): AppLanguage {
+  return value === "zh" || value === "en"
+    ? value
+    : normalizeLanguage(legacyLanguage);
 }
 
 export function readStoredLanguage(): AppLanguage {
@@ -96,6 +107,32 @@ export function writeStoredLanguage(language: AppLanguage): void {
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
     window.dispatchEvent(
       new CustomEvent(LANGUAGE_EVENT, {
+        detail: { language },
+      }),
+    );
+  } catch {
+    // localStorage may be unavailable
+  }
+}
+
+export function readStoredResponseLanguage(): AppLanguage {
+  if (typeof window === "undefined") return "en";
+  try {
+    return resolveResponseLanguage(
+      window.localStorage.getItem(RESPONSE_LANGUAGE_STORAGE_KEY),
+      window.localStorage.getItem(LANGUAGE_STORAGE_KEY),
+    );
+  } catch {
+    return "en";
+  }
+}
+
+export function writeStoredResponseLanguage(language: AppLanguage): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(RESPONSE_LANGUAGE_STORAGE_KEY, language);
+    window.dispatchEvent(
+      new CustomEvent(RESPONSE_LANGUAGE_EVENT, {
         detail: { language },
       }),
     );

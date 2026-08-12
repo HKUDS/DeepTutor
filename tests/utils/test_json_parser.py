@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from unittest.mock import patch
 
@@ -62,6 +63,14 @@ class TestParseJsonResponseMarkdown:
         response = '```json\n{"a": 1}\n```\nsome text\n```json\n{"b": 2}\n```'
         result = parse_json_response(response)
         assert result == {"a": 1}
+
+    def test_fenced_code_inside_json_string_is_not_extracted(self) -> None:
+        payload = {
+            "content": "Use this example:\n```python\nprint('hello')\n```",
+            "language": "en",
+        }
+
+        assert parse_json_response(json.dumps(payload)) == payload
 
 
 # ---------------------------------------------------------------------------

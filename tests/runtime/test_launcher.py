@@ -401,3 +401,71 @@ def test_source_production_build_is_reused_until_an_input_changes(
         (["npm", "run", "build"], source, launcher.SOURCE_PRODUCTION_DIST_DIR),
     ]
     assert next_env.read_text(encoding="utf-8") == "// developer dist types\n"
+
+
+@pytest.mark.parametrize("resolved_backend_port", [8001, 8123])
+def test_start_uses_ipv4_loopback_for_frontend_proxy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    resolved_backend_port: int,
+) -> None:
+    from deeptutor.services import config as config_module
+    from deeptutor.services import setup as setup_module
+
+    settings_dir = tmp_path / "data" / "user" / "settings"
+    settings = config_module.LaunchSettings(
+        backend_port=8001,
+        frontend_port=3782,
+        language="en",
+        source="test",
+        settings_dir=settings_dir,
+        interface_json_path=settings_dir / "interface.json",
+        system_json_path=settings_dir / "system.json",
+    )
+    captured_env: dict[str, str] = {}
+
+    monkeypatch.setattr(launcher, "_relax_console_encoding", lambda: None)
+    monkeypatch.setattr(launcher, "_reset_runtime_singletons", lambda: None)
+    monkeypatch.setattr(config_module, "ensure_runtime_settings_files", lambda: None)
+    monkeypatch.setattr(config_module, "load_launch_settings", lambda _home: settings)
+    monkeypatch.setattr(
+        config_module,
+        "export_runtime_settings_to_env",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(config_module, "load_auth_settings", lambda: {"enabled": False})
+    monkeypatch.setattr(config_module, "get_ws_max_size", lambda: 1024)
+    monkeypatch.setattr(setup_module, "init_user_directories", lambda _home: None)
+    monkeypatch.setattr(launcher, "resolve_language", lambda: "en")
+    monkeypatch.setattr(launcher, "print_banner", lambda **_kwargs: None)
+    monkeypatch.setattr(launcher, "_log", lambda _message: None)
+    monkeypatch.setattr(
+        launcher,
+        "_resolve_frontend",
+        lambda *_args, **_kwargs: launcher.FrontendRuntime("source", ["npm"], tmp_path),
+    )
+    monkeypatch.setattr(launcher, "_detect_existing_source_frontend", lambda _runtime: None)
+    monkeypatch.setattr(
+        launcher,
+        "_resolve_port_conflicts",
+        lambda **_kwargs: (resolved_backend_port, 3782),
+    )
+    monkeypatch.setattr(launcher, "_install_signal_handlers", lambda _callback: None)
+    monkeypatch.setattr(launcher.atexit, "register", lambda _callback: None)
+    monkeypatch.setattr(launcher, "_wait_for_http", lambda **_kwargs: None)
+    monkeypatch.setattr(launcher, "_terminate", lambda _process: None)
+
+    def _capture_spawn(_command, *, cwd, env, name):
+        assert cwd == tmp_path
+        if name == "backend":
+            return launcher.ManagedProcess("backend", object(), None)
+        assert name == "frontend"
+        captured_env.update(env)
+        raise RuntimeError("captured launch environment")
+
+    monkeypatch.setattr(launcher, "_spawn", _capture_spawn)
+
+    with pytest.raises(RuntimeError, match="captured launch environment"):
+        launcher.start(tmp_path)
+
+    assert captured_env["DEEPTUTOR_API_BASE_URL"] == (f"http://127.0.0.1:{resolved_backend_port}")

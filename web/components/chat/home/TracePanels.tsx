@@ -36,6 +36,9 @@ type TraceMetadata = {
   // The "finish" marker is the signal that the turn entered its final
   // answer phase.
   call_role?: string;
+  // A tool-calling round can explicitly keep its content in the answer rather
+  // than demoting it to trace-only narration.
+  answer_visible?: boolean;
   // Set by the chat pipeline on the final iteration's reasoning sub-trace.
   // Marks "this sub-trace's text has been re-emitted as the final-response
   // CONTENT event in the same turn, so don't render it as a duplicate row."
@@ -591,7 +594,8 @@ function isNarrationRound(events: StreamEvent[]): boolean {
     return (
       meta.trace_kind === "call_status" &&
       meta.call_state === "complete" &&
-      meta.call_role === "narration"
+      meta.call_role === "narration" &&
+      meta.answer_visible !== true
     );
   });
 }

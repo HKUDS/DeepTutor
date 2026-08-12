@@ -286,7 +286,7 @@ sandbox ย่อย subprocess ถูกควบคุมโดยการต
 | `system.json` | พอร์ต backend/frontend, public API base, CORS, SSL verification, ไดเร็กทอรีไฟล์แนบ และขีดจำกัดการอัพโหลด/การแยกเนื้อหา |
 | `auth.json` | สวิตช์ auth แบบเสริม, ชื่อผู้ใช้, password hash, การตั้งค่า token/cookie |
 | `integrations.json` | การตั้งค่า PocketBase แบบเสริมและการรวม sidecar |
-| `interface.json` | ความชอบภาษา / ธีม / แถบด้านข้างของ UI |
+| `interface.json` | ความชอบภาษา UI และภาษา output ของ model / ธีม / แถบด้านข้างของ UI |
 | `main.yaml` | ค่าเริ่มต้นพฤติกรรม runtime และการ inject path |
 | `agents.yaml` | การตั้งค่า temperature และ token ของ capability/tool |
 
@@ -470,7 +470,7 @@ Memory Graph แสดงพีระมิดทั้งหมด — กา�
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor settings hub" width="900">
 </div>
 
-Settings คือ control plane การดำเนินงาน พร้อม live status strip (Backend, LLM, Embedding, Search) และหนึ่งการ์ดต่อพื้นที่: **Appearance** (ธีม, ภาษา UI, การจัดรูปแบบ code block), **Network** (API base, ports, CORS), **Models** (LLM, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (เอ็นจินการแยกวิเคราะห์เอกสาร), **Chat** (เครื่องมือ, พารามิเตอร์ต่อความสามารถ, ขีดจำกัดไฟล์แนบ), **Partners & Agents** (subagents ที่คุณปรึกษาได้จาก turn) และ **Memory** (งบประมาณของ consolidator)
+Settings คือ control plane การดำเนินงาน พร้อม live status strip (สถานะ Backend และ resident memory ที่ใช้งานอยู่ทั่วทั้ง process tree) และหนึ่งการ์ดต่อพื้นที่: **Appearance** (ธีม, ภาษา UI และภาษา output ของ model, การจัดรูปแบบ code block), **Network** (API base, ports, CORS), **Models** (LLM, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (เอ็นจินการแยกวิเคราะห์เอกสาร), **Chat** (เครื่องมือ, พารามิเตอร์ต่อความสามารถ, ขีดจำกัดไฟล์แนบ), **Partners & Agents** (subagents ที่คุณปรึกษาได้จาก turn) และ **Memory** (งบประมาณของ consolidator)
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor appearance settings and themes" width="900">
@@ -478,7 +478,7 @@ Settings คือ control plane การดำเนินงาน พร้�
 
 ส่วนส่วนใหญ่ใช้ draft-and-apply flow เพื่อให้คุณทดสอบ provider ก่อนยืนยัน ธีมสี่แบบมาในกล่อง — Default, Cream, Dark และ Glass ไฟล์ `.env` ที่ root ของโปรเจกต์ถูกเพิกเฉยโดยเจตนา; การกำหนดค่า runtime อยู่ใน `data/user/settings/*.json` เว้นแต่ `DEEPTUTOR_HOME` หรือ `deeptutor start --home` จะชี้แอปไปที่อื่น
 
-**OpenAI Codex OAuth (ทดลอง)** การเลือก **OpenAI Codex** ภายใต้ **Models → LLM** จะแทนที่ช่อง API key ด้วยการลงชื่อเข้าใช้ผ่านเบราว์เซอร์ที่รันกับแผน ChatGPT ของคุณเอง จึงไม่จำเป็นต้องใช้ `OPENAI_API_KEY` Tokens อยู่เฉพาะใน `data/system/user-secrets/<owner>/private/openai-codex/` — ในการปรับใช้แบบ multi-container ด้วย Compose จะอยู่นอกเหนือทุก tree ที่ exec sandbox สามารถเข้าถึงได้ — และ DeepTutor จะไม่อ่านหรือแก้ไข `~/.codex` CLI login ของคุณเลย รายการ model มาจาก catalog แบบสดของบัญชีนั้น; การลงชื่อเข้าใช้จะเผยแพร่โปรไฟล์ แต่จะกลายเป็น model ที่ใช้งานอยู่ก็ต่อเมื่อยังไม่มีการกำหนดค่า LLM ใด ๆ เท่านั้น จึงไม่มีทางเปลี่ยนทิศทางของการปรับใช้โดยที่คุณไม่รู้ตัว เนื่องจาก token อนุญาตให้ใช้แผนของคนคนเดียว โปรไฟล์นี้จึงไม่สามารถแชร์ผ่าน per-user grants ได้ — แต่ละบัญชีต้องลงชื่อเข้าใช้ด้วยตัวเอง และเบราว์เซอร์ต้องเข้าถึงเครื่องที่รัน backend ได้ (บนเซิร์ฟเวอร์ remote ให้รัน `deeptutor provider login openai-codex` ที่นั่นแทน) ข้อผิดพลาดเรื่อง quota และความล้มเหลวของ catalog จะถูกรายงานตามจริงและจะไม่ตกกลับไปใช้ provider แบบเสียเงินแทนเด็ดขาด เส้นทาง compatibility นี้ยังอยู่ในขั้นทดลอง: อินเทอร์เฟซต้นทางอาจเปลี่ยนแปลงได้
+**OpenAI Codex OAuth (ทดลอง)** การเลือก **OpenAI Codex** ภายใต้ **Models → LLM** จะแทนที่ช่อง API key ด้วยการลงชื่อเข้าใช้ผ่านเบราว์เซอร์ที่รันกับแผน ChatGPT ของคุณเอง จึงไม่จำเป็นต้องใช้ `OPENAI_API_KEY` Tokens อยู่เฉพาะใน `data/system/user-secrets/<owner>/private/openai-codex/` — ในการปรับใช้แบบ multi-container ด้วย Compose จะอยู่นอกเหนือทุก tree ที่ exec sandbox สามารถเข้าถึงได้ — และ DeepTutor จะไม่อ่านหรือแก้ไข `~/.codex` CLI login ของคุณเลย รายการ model มาจาก catalog แบบสดของบัญชีนั้น; การลงชื่อเข้าใช้จะเผยแพร่โปรไฟล์ แต่จะกลายเป็น model ที่ใช้งานอยู่ก็ต่อเมื่อยังไม่มีการกำหนดค่า LLM ใด ๆ เท่านั้น จึงไม่มีทางเปลี่ยนทิศทางของการปรับใช้โดยที่คุณไม่รู้ตัว เนื่องจาก token อนุญาตให้ใช้แผนของคนคนเดียว โปรไฟล์นี้จึงไม่สามารถแชร์ผ่าน per-user grants ได้ — แต่ละบัญชีต้องลงชื่อเข้าใช้ด้วยตัวเอง รวมถึงผู้ใช้ทั่วไปด้วย: การ์ดของพวกเขาจะอยู่ภายใต้ **Models → LLM** และ models, catalog และการลงชื่อออกที่ได้จะเป็นส่วนตัวเฉพาะบัญชีนั้นเท่านั้น และเบราว์เซอร์ต้องเข้าถึงเครื่องที่รัน backend ได้ (บนเซิร์ฟเวอร์ remote ให้รัน `deeptutor provider login openai-codex` ที่นั่นแทน) ข้อผิดพลาดเรื่อง quota และความล้มเหลวของ catalog จะถูกรายงานตามจริงและจะไม่ตกกลับไปใช้ provider แบบเสียเงินแทนเด็ดขาด เส้นทาง compatibility นี้ยังอยู่ในขั้นทดลอง: อินเทอร์เฟซต้นทางอาจเปลี่ยนแปลงได้
 
 การปรับใช้ Docker และ Podman บนเครื่อง local แบบเริ่มต้นใช้ loopback network แยกจากกัน และต้องการสะพานเชื่อมชั่วคราวระหว่างการลงชื่อเข้าใช้ ทำตาม [คู่มือสะพานเชื่อม Codex OAuth ชั่วคราวสำหรับเครื่อง local](../../CONTAINERIZATION.md#temporary-local-codex-oauth-bridge) สำหรับคำสั่ง Docker, Compose, Podman และ teardown ที่แน่นอน
 

@@ -33,7 +33,7 @@ dependencies = [
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
     "aiosqlite>=0.19.0",
-    "typer[all]>=0.9.0",
+    "typer>=0.9.0",
     "rich>=13.0.0",
     "prompt_toolkit>=3.0.36",
     "pyte>=0.8.1",  # in-memory terminal emulator: scrape Claude Code's /model TUI on sync
@@ -68,6 +68,10 @@ dependencies = [
     "pocketbase>=0.12.0",
     "loguru>=0.7.3,<1.0.0",
     "json-repair>=0.57.0,<1.0.0",
+    # Process-tree memory readings for /api/v1/system/memory. Soft dependency:
+    # deeptutor.runtime.memory_probe imports it lazily and falls back to /proc,
+    # so a missing wheel costs the settings strip, not the app.
+    "psutil>=5.9.0,<8.0.0",
 ]
 
 [project.scripts]
@@ -123,6 +127,7 @@ server = [
     "loguru>=0.7.3,<1.0.0",
     "json-repair>=0.57.0,<1.0.0",
     "croniter>=6.0.0,<7.0.0",
+    "psutil>=5.9.0,<8.0.0",
 ]
 
 # Partner channel SDKs + MCP client. Mirrors requirements/partners.txt.

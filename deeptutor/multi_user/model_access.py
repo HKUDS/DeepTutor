@@ -3,6 +3,13 @@
 Grants carry LLM assignments only (grant v2): embedding and search always
 resolve from the deployment's active profiles, so per-user grants for them
 were never enforced and are not stored.
+
+Two sources reach an ordinary user, and :func:`redacted_model_access` is the
+one place both are resolved: ``admin`` models assigned through a grant, and
+the ``personal`` owner-bound profiles the user signed in for themselves (see
+:mod:`deeptutor.multi_user.personal_models`). Everything downstream — the
+option list, the capability gate, and selection validation — reads that one
+function, so the three can never disagree about what a user may use.
 """
 
 from __future__ import annotations
@@ -86,6 +93,14 @@ def redacted_model_access(user_id: str | None = None) -> dict[str, list[dict[str
                     "available": model is not None,
                 }
             )
+    if user_id == user.id:
+        # Only ever the caller's OWN personal models. An administrator
+        # inspecting somebody's grants asks for that user's id, and their
+        # personal sign-in is not the administrator's business — nor is it in
+        # the grant editor's gift to assign.
+        from .personal_models import personal_llm_rows
+
+        result["llm"].extend(personal_llm_rows())
     return result
 
 
@@ -102,7 +117,7 @@ def allowed_llm_options() -> dict[str, Any]:
             "label": item.get("name") or item.get("model") or item.get("model_id"),
             "model": item.get("model") or "",
             "provider": "",
-            "source": "admin",
+            "source": item.get("source") or "admin",
             "is_active_default": False,
         }
         for item in redacted_model_access(user.id).get("llm", [])

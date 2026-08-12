@@ -48,16 +48,20 @@
 
 ### 📦 Releases
 
+> **[2026.8.10]** [v1.5.11](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.11) — Prose around a DSML tool call stops vanishing, a truncated reply continues instead of ending, live memory usage in Settings, and LightRAG indexing off the event loop.
+
+> **[2026.8.7]** [v1.5.10](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.10) — Every account signs in to its own **Codex**, model output language becomes its own setting, empty tool calls are rejected instead of retried, and uploads stop blocking the loop.
+
 > **[2026.8.4]** [v1.5.9](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.9) — Gemini **Embedding 2** on its native endpoint, a per-model **reasoning effort** control, a **Novita AI** gateway, retrieval roles for queries, and Compose deployments that keep all of `data/`.
+
+<details>
+<summary><b>Past releases (more than 1 week ago)</b></summary>
 
 > **[2026.8.2]** [v1.5.8](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.8) — Memory: a real heap ceiling for the dev server, source installs serve a production build, bounded LLM client and index caches, and a keep-alive fix for stray 500s.
 
 > **[2026.7.31]** [v1.5.7](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.7) — A per-account **MCP Services** store, 101 **CLI Apps** the tutor can run, credentials moved out of the sandbox's reach, and a mobile layout.
 
 > **[2026.7.29]** [v1.5.6](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.6) — Remote **Codex** sign-in completes behind an SSH tunnel, generated files get their own card in Activity, non-English languages stop collapsing to Chinese, and book creation no longer times out.
-
-<details>
-<summary><b>Past releases (more than 1 week ago)</b></summary>
 
 > **[2026.7.26]** [v1.5.5](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.5) — Sign in with your ChatGPT plan via **OpenAI Codex** OAuth, an **Eden AI** provider, knowledge bases that report what they hold, traceable `rag` citations, and GraphRAG indexing without a workaround.
 
@@ -437,7 +441,7 @@ Everything under `data/user/settings/` is plain JSON/YAML. The **Settings** page
 | `system.json` | Backend/frontend ports, public API base, CORS, SSL verification, attachment directory and upload/extraction limits |
 | `auth.json` | Optional auth toggle, username, password hash, token/cookie settings |
 | `integrations.json` | Optional PocketBase and sidecar integration settings |
-| `interface.json` | UI language / theme / sidebar preferences |
+| `interface.json` | UI and model output language / theme / sidebar preferences |
 | `main.yaml` | Runtime behavior defaults and path injection |
 | `agents.yaml` | Capability/tool temperature and token settings |
 
@@ -621,7 +625,7 @@ The Memory Graph shows the whole pyramid — L3 synthesis at the centre, L2 in t
 <img src="assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor settings hub" width="900">
 </div>
 
-Settings is the operational control plane, with a live status strip (Backend, LLM, Embedding, Search) and one card per area: **Appearance** (theme, UI language, code-block styling), **Network** (API base, ports, CORS), **Models** (LLM, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (document parsing engine), **Chat** (tools, per-capability parameters, attachment caps), **Partners & Agents** (the subagents you can consult from a turn), and **Memory** (the consolidator's budgets).
+Settings is the operational control plane, with a live status strip (backend health and resident memory across the process tree) and one card per area: **Appearance** (theme, interface and model output language, code-block styling), **Network** (API base, ports, CORS), **Models** (LLM, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (document parsing engine), **Chat** (tools, per-capability parameters, attachment caps), **Partners & Agents** (the subagents you can consult from a turn), and **Memory** (the consolidator's budgets).
 
 <div align="center">
 <img src="assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor appearance settings and themes" width="900">
@@ -629,7 +633,7 @@ Settings is the operational control plane, with a live status strip (Backend, LL
 
 Most sections use a draft-and-apply flow, so you can test a provider before committing it. Four themes ship in the box — Default, Cream, Dark, and Glass. Project-root `.env` files are intentionally ignored; runtime configuration lives under `data/user/settings/*.json` unless `DEEPTUTOR_HOME` or `deeptutor start --home` points the app elsewhere.
 
-**OpenAI Codex OAuth (experimental).** Picking **OpenAI Codex** under Models → LLM replaces the API-key fields with a browser sign-in that runs against your own ChatGPT plan, so no `OPENAI_API_KEY` is needed. Tokens live only in `data/system/user-secrets/<owner>/private/openai-codex/` — in the multi-container Compose deployment, outside every tree the exec sandbox can reach — and DeepTutor never reads or modifies your `~/.codex` CLI login. The model list comes from that account's live catalog; signing in publishes the profile but only becomes the active model when no LLM is configured yet. Because a token authorizes one person's plan, the profile is not shareable through user grants — each account signs in for itself.
+**OpenAI Codex OAuth (experimental).** Picking **OpenAI Codex** under Models → LLM replaces the API-key fields with a browser sign-in that runs against your own ChatGPT plan, so no `OPENAI_API_KEY` is needed. Tokens live only in `data/system/user-secrets/<owner>/private/openai-codex/` — in the multi-container Compose deployment, outside every tree the exec sandbox can reach — and DeepTutor never reads or modifies your `~/.codex` CLI login. The model list comes from that account's live catalog; signing in publishes the profile but only becomes the active model when no LLM is configured yet. Because a token authorizes one person's plan, the profile is not shareable through user grants — each account signs in for itself, ordinary users included: their card sits under Models → LLM, and the resulting models, catalog, and sign-out stay private to that account.
 
 Default local Docker and Podman deployments use separate loopback networks and need a temporary bridge during sign-in. Follow the [temporary local Codex OAuth bridge guide](./CONTAINERIZATION.md#temporary-local-codex-oauth-bridge) for the exact Docker, Compose, Podman, and teardown commands.
 
@@ -809,6 +813,22 @@ deeptutor skill install clawhub:git-release-notes@1.0.1
 Add more registries in `settings/skill_hubs.json`: a `type: "clawhub"` entry points at any compatible HTTP API (EduHub and ClawHub both speak it), `type: "command"` wraps whatever fetch CLI a registry ships, and `"default"` chooses the hub used for bare slugs. All of them feed the same import gate.
 
 </details>
+
+## 🤝 Open Source Partners
+
+<p align="center">
+  <a href="https://github.com/VectifyAI/PageIndex" target="_blank">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/pageindex-mark-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/pageindex-mark.svg">
+      <img src="assets/figs/partners/pageindex-mark.svg" alt="PageIndex" height="38">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
+  Code <b><code>DEEPTUTOR20</code></b> — <b>$20 off</b> your first <a href="https://developer.pageindex.ai/">PageIndex subscription</a> (new customers · Standard / Pro / Max)
+</p>
 
 ## 🌐 Community
 

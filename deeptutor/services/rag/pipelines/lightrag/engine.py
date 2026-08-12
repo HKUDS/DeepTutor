@@ -26,11 +26,12 @@ from .config import (
     normalize_mode,
     query_kwargs_from_settings,
 )
+from .worker import OwnerLoopBridge
 
 logger = logging.getLogger(__name__)
 
 
-def build_rag(working_dir: Path) -> Any:
+def build_rag(working_dir: Path, *, io_bridge: OwnerLoopBridge | None = None) -> Any:
     """Construct a RAG-Anything instance rooted at ``working_dir``.
 
     Pinned to RAG-Anything's config-based constructor; this is the single spot
@@ -39,11 +40,12 @@ def build_rag(working_dir: Path) -> Any:
     from raganything import RAGAnything, RAGAnythingConfig
 
     config = RAGAnythingConfig(working_dir=str(working_dir))
+    adapter_kwargs = {"io_bridge": io_bridge} if io_bridge is not None else {}
     rag = RAGAnything(
         config=config,
-        llm_model_func=build_llm_model_func(),
-        vision_model_func=build_vision_model_func(),
-        embedding_func=build_embedding_func(),
+        llm_model_func=build_llm_model_func(**adapter_kwargs),
+        vision_model_func=build_vision_model_func(**adapter_kwargs),
+        embedding_func=build_embedding_func(**adapter_kwargs),
     )
     # DeepTutor always feeds RAG-Anything a pre-parsed ``content_list`` (the
     # parse layer runs upstream via DeepTutor's own ParseService), so

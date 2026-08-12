@@ -55,8 +55,8 @@ class _FakeKBManager:
         entry["status"] = status
         entry["progress"] = progress or {}
 
-    def get_default(self) -> str | None:
-        names = self.list_knowledge_bases()
+    def get_default(self, *, available_names: list[str] | None = None) -> str | None:
+        names = available_names if available_names is not None else self.list_knowledge_bases()
         return names[0] if names else None
 
     def get_knowledge_base_path(self, name: str) -> Path:
@@ -505,6 +505,57 @@ def test_list_fallback_reports_error_status(monkeypatch, tmp_path: Path) -> None
     assert "get_info" in item["progress"]["error"]
 
 
+def test_list_reuses_manager_config_snapshot(monkeypatch, tmp_path: Path) -> None:
+    class _CountingKBManager:
+        def __init__(self) -> None:
+            self.base_dir = tmp_path / "knowledge_bases"
+            self.base_dir.mkdir(parents=True)
+            self.names = ["kb-a", "kb-b", "kb-c"]
+            self.list_calls = 0
+            self.default_calls = 0
+            self.info_calls: list[tuple[str, bool, str | None]] = []
+
+        def list_knowledge_bases(self) -> list[str]:
+            self.list_calls += 1
+            return self.names
+
+        def get_default(self, *, available_names: list[str] | None = None) -> str:
+            self.default_calls += 1
+            assert available_names == self.names
+            return self.names[0]
+
+        def get_info(
+            self,
+            name: str,
+            *,
+            refresh_config: bool,
+            default_name: str | None,
+        ) -> dict:
+            self.info_calls.append((name, refresh_config, default_name))
+            return {
+                "name": name,
+                "path": str(self.base_dir / name),
+                "is_default": name == default_name,
+                "statistics": {},
+                "metadata": {"name": name},
+                "status": "ready",
+                "progress": None,
+            }
+
+    manager = _CountingKBManager()
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(knowledge_router_module, "list_visible_kb_access", lambda: [])
+
+    with TestClient(_build_app()) as client:
+        response = client.get("/api/v1/knowledge/list")
+
+    assert response.status_code == 200
+    assert [item["name"] for item in response.json()] == manager.names
+    assert manager.list_calls == 1
+    assert manager.default_calls == 1
+    assert manager.info_calls == [(name, False, "kb-a") for name in manager.names]
+
+
 def _ready_kb_manager(tmp_path: Path, name: str = "kb") -> "_FakeKBManager":
     manager = _FakeKBManager(tmp_path / "knowledge_bases")
     manager.config["knowledge_bases"][name] = {
@@ -559,6 +610,75 @@ def test_list_files_returns_nested_tree(monkeypatch, tmp_path: Path) -> None:
     assert entries["Empty"]["type"] == "folder"  # empty folder still shows
     assert entries["Papers/a.pdf"]["type"] == "file"
     assert entries["root.txt"]["type"] == "file"
+
+
+def test_remote_kb_file_listing_is_empty_without_creating_local_storage(
+    monkeypatch, tmp_path: Path
+) -> None:
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    manager.register_lightrag_server_kb("remote", "http://localhost:9621")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+
+    with TestClient(_build_app()) as client:
+        response = client.get("/api/v1/knowledge/remote/files")
+
+    assert response.status_code == 200
+    assert response.json() == {"files": []}
+    assert not (manager.base_dir / "remote").exists()
+
+
+@pytest.mark.parametrize(
+    ("method", "url", "kwargs"),
+    [
+        ("get", "/api/v1/knowledge/remote/files/demo.txt", {}),
+        ("get", "/api/v1/knowledge/remote/file-preview-text/demo.txt", {}),
+        ("delete", "/api/v1/knowledge/remote/files/demo.txt", {}),
+        ("post", "/api/v1/knowledge/remote/folders", {"json": {"path": "notes"}}),
+        (
+            "post",
+            "/api/v1/knowledge/remote/files/move",
+            {"json": {"source": "demo.txt", "dest_folder": "notes"}},
+        ),
+        ("post", "/api/v1/knowledge/remote/upload", {"files": _upload_payload()}),
+    ],
+)
+def test_remote_kb_rejects_local_file_operations_without_creating_storage(
+    monkeypatch, tmp_path: Path, method: str, url: str, kwargs: dict
+) -> None:
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    manager.register_lightrag_server_kb("remote", "http://localhost:9621")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+
+    with TestClient(_build_app()) as client:
+        response = getattr(client, method)(url, **kwargs)
+
+    assert response.status_code == 409
+    assert "external resource" in response.json()["detail"]
+    assert not (manager.base_dir / "remote").exists()
+
+
+def test_list_files_returns_404_for_unknown_kb_without_creating_storage(
+    monkeypatch, tmp_path: Path
+) -> None:
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+
+    with TestClient(_build_app()) as client:
+        response = client.get("/api/v1/knowledge/missing/files")
+
+    assert response.status_code == 404
+    assert not (manager.base_dir / "missing").exists()
+
+
+def test_raw_file_download_rejects_traversal(monkeypatch, tmp_path: Path) -> None:
+    manager = _ready_kb_manager(tmp_path)
+    (manager.base_dir / "secret.txt").write_text("secret", encoding="utf-8")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+
+    with TestClient(_build_app()) as client:
+        response = client.get("/api/v1/knowledge/kb/files/%2E%2E/secret.txt")
+
+    assert response.status_code == 403
 
 
 def test_upload_preserves_folder_structure(monkeypatch, tmp_path: Path) -> None:

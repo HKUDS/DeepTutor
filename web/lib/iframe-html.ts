@@ -88,19 +88,87 @@ export function sanitizeIframeHtml(html: string): string {
  * via postMessage:
  *   - `window.sendPrompt(text)` → posts a follow-up question; the host prefills
  *     it into the composer (the widget analogue of an SVG node's data-prompt).
- *   - a ResizeObserver posts the content height so the host can grow the iframe
- *     to fit instead of clipping at a fixed height.
+ *   - observers post the current body content height so the host can grow and
+ *     shrink the iframe instead of retaining an old viewport height.
  */
 const BRIDGE_SCRIPT =
-  "<script data-dt-bridge>" +
-  "(function(){" +
-  'window.sendPrompt=function(t){try{parent.postMessage({type:"dt:visualize-prompt",text:String(t||"")},"*")}catch(e){}};' +
-  'function rh(){try{var b=document.body,h=Math.max(document.documentElement.scrollHeight,b?b.scrollHeight:0);parent.postMessage({type:"dt:visualize-height",height:h},"*")}catch(e){}}' +
-  'if(typeof ResizeObserver!=="undefined"){var ro=new ResizeObserver(rh);document.addEventListener("DOMContentLoaded",function(){ro.observe(document.documentElement);rh()})}' +
-  'document.addEventListener("DOMContentLoaded",rh);window.addEventListener("load",rh);' +
-  "})();" +
-  "<" +
-  "/script>";
+  `<script data-dt-bridge>
+(function () {
+  window.sendPrompt = function (text) {
+    try {
+      parent.postMessage({
+        type: "dt:visualize-prompt",
+        text: String(text || "")
+      }, "*");
+    } catch (error) {}
+  };
+
+  function reportHeight() {
+    try {
+      var body = document.body;
+      var root = document.documentElement;
+      // root.scrollHeight is at least the iframe viewport height. Once the host
+      // grows that viewport it becomes a historical floor, so body content is
+      // the primary measurement and the root is only a defensive fallback.
+      var height = body && body.scrollHeight > 0
+        ? body.scrollHeight
+        : root.scrollHeight;
+      if (!height || !isFinite(height)) height = root.scrollHeight || 0;
+      parent.postMessage({
+        type: "dt:visualize-height",
+        height: height
+      }, "*");
+    } catch (error) {}
+  }
+
+  var scheduledFrame = 0;
+  function scheduleHeightReport() {
+    if (scheduledFrame) return;
+    var run = function () {
+      scheduledFrame = 0;
+      reportHeight();
+    };
+    scheduledFrame = typeof requestAnimationFrame === "function"
+      ? requestAnimationFrame(run)
+      : setTimeout(run, 0);
+  }
+
+  function startHeightObservers() {
+    try {
+      var body = document.body;
+      if (body && typeof ResizeObserver !== "undefined") {
+        var resizeObserver = new ResizeObserver(scheduleHeightReport);
+        resizeObserver.observe(body);
+      }
+      if (body && typeof MutationObserver !== "undefined") {
+        var mutationObserver = new MutationObserver(scheduleHeightReport);
+        mutationObserver.observe(body, {
+          attributes: true,
+          characterData: true,
+          childList: true,
+          subtree: true
+        });
+      }
+      scheduleHeightReport();
+    } catch (error) {
+      reportHeight();
+    }
+  }
+
+  // Gate on document.body, not readyState. This script is injected just
+  // before </body>, so the body already exists while readyState is still
+  // "loading" — and deferred scripts (the KaTeX tags injectKaTeX adds) must
+  // all run before DOMContentLoaded fires. Waiting for that event means a
+  // blocked or slow CDN leaves the observers unattached and every
+  // visualization frozen at the iframe's initial height.
+  if (document.body) {
+    startHeightObservers();
+  } else {
+    document.addEventListener("DOMContentLoaded", startHeightObservers, { once: true });
+  }
+  window.addEventListener("load", scheduleHeightReport);
+})();
+<` + "/script>";
 
 function injectBridge(html: string): string {
   if (html.includes("</body>")) {
