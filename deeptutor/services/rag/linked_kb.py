@@ -176,9 +176,16 @@ def probe_linked_folder(folder_path: str, provider: str) -> ProbeResult:
 
 def _check_embedding(provider: str, version: dict, result: ProbeResult) -> None:
     """Compare the index's embedding identity against the active config."""
-    from deeptutor.services.rag.embedding_signature import signature_from_embedding_config
+    from deeptutor.services.rag.embedding_signature import (
+        llamaindex_signature_from_embedding_config,
+        signature_from_embedding_config,
+    )
 
-    current = signature_from_embedding_config()
+    current = (
+        llamaindex_signature_from_embedding_config()
+        if provider == DEFAULT_PROVIDER
+        else signature_from_embedding_config()
+    )
     compat = result.embedding
     compat.current_model = current.model if current else None
 

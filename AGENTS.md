@@ -116,6 +116,33 @@ deeptutor start                   # backend + frontend together
 | `deeptutor_cli/main.py`                    | Typer CLI entry point                |
 | `deeptutor/api/routers/unified_ws.py`      | Unified WebSocket endpoint           |
 
+## Structured Visual Ingestion
+
+LlamaIndex preserves parser visual structure without replacing normal Markdown
+chunking. When `ParsedDocument.blocks` is present, those blocks are authoritative:
+only referenced `image` and `table` resources beneath `asset_dir` may become
+visual assets. Scanning the whole asset directory is a compatibility fallback only
+for parsers that emit no blocks.
+
+Visual assets keep source/parser identity, component hashes and bboxes, PDF and
+printed page numbers, hierarchy, captions, footnotes, and nearby same-page text.
+Classification is conservative: strong anchors are `semantic`; only tiny,
+repeated, layout-position-consistent unanchored resources are `layout_marker`;
+ambiguous resources remain `uncertain` and are indexed. Compact contiguous
+components group only with one shared figure id or explicit component ids sharing
+a root; otherwise they remain separate.
+
+Each indexable logical asset gets a text-embedded companion node. It also gets one
+independently embedded image node per physical component when the active embedding
+provider supports image contents. Description prose follows a bounded document
+language sample while preserving visible labels and framing all parser text as
+untrusted reference data. Shared `asset_id` metadata links the channels. The
+LlamaIndex signature includes ingestion, visual-mapping, and description-prompt
+versions; a schema change therefore requires a fresh `version-N` and never mixes
+old and new nodes. This ingestion contract provides structure-aware visual
+retrieval only; attaching retrieved pixels to answer turns is a separate runtime
+boundary.
+
 ## Dependency Layers
 
 Public install paths and source extras are defined in `pyproject.toml`.

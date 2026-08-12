@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from deeptutor.services.rag import embedding_signature as emb_sig
+from deeptutor.services.rag.embedding_signature import with_llamaindex_schema
 from deeptutor.services.rag.index_versioning import EmbeddingSignature
 from deeptutor.services.rag.kb_paths import resolve_kb_dir
 from deeptutor.services.rag.linked_kb import (
@@ -22,9 +23,16 @@ from deeptutor.services.rag.linked_kb import (
     provider_is_linkable,
 )
 
-_SIG = EmbeddingSignature(
-    binding="openai", model="text-embedding-3-small", dimension=1536, base_url="u", api_version=""
+_SIG = with_llamaindex_schema(
+    EmbeddingSignature(
+        binding="openai",
+        model="text-embedding-3-small",
+        dimension=1536,
+        base_url="u",
+        api_version="",
+    )
 )
+assert _SIG is not None
 
 
 def _write_llamaindex_index(root: Path, *, signature: str, docs: int = 0) -> None:

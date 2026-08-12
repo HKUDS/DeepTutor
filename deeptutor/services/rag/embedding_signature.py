@@ -9,6 +9,10 @@ from deeptutor.services.rag.index_versioning import EmbeddingSignature
 
 logger = logging.getLogger(__name__)
 
+LLAMAINDEX_INGESTION_SCHEMA_VERSION = "2"
+LLAMAINDEX_VISUAL_MAPPING_VERSION = "1"
+LLAMAINDEX_DESCRIPTION_PROMPT_VERSION = "2"
+
 
 def signature_from_config(config: Any) -> EmbeddingSignature:
     """Build a stable RAG index signature from an embedding config object."""
@@ -35,6 +39,32 @@ def signature_from_embedding_config() -> EmbeddingSignature | None:
     except Exception as exc:
         logger.debug(f"Cannot resolve embedding signature: {exc}")
         return None
+
+
+def with_llamaindex_schema(signature: EmbeddingSignature | None) -> EmbeddingSignature | None:
+    """Attach the LlamaIndex node-contract versions to an embedding signature."""
+    if signature is None:
+        return None
+    fields = ("binding", "model", "dimension", "base_url", "api_version")
+    if not all(hasattr(signature, field) for field in fields):
+        # Some callers/tests provide a hash-only signature object. Preserve that
+        # backward-compatible protocol; real embedding signatures carry fields.
+        return signature
+    return EmbeddingSignature(
+        binding=signature.binding,
+        model=signature.model,
+        dimension=signature.dimension,
+        base_url=signature.base_url,
+        api_version=signature.api_version,
+        ingestion_schema_version=LLAMAINDEX_INGESTION_SCHEMA_VERSION,
+        visual_mapping_version=LLAMAINDEX_VISUAL_MAPPING_VERSION,
+        description_prompt_version=LLAMAINDEX_DESCRIPTION_PROMPT_VERSION,
+    )
+
+
+def llamaindex_signature_from_embedding_config() -> EmbeddingSignature | None:
+    """Compute the active embedding signature plus LlamaIndex ingestion schema."""
+    return with_llamaindex_schema(signature_from_embedding_config())
 
 
 def embedding_meta_fields() -> dict[str, Any]:

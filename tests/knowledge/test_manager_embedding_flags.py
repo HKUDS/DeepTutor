@@ -177,3 +177,36 @@ def test_ready_status_records_last_indexed_only_when_index_changes(
     info = KnowledgeBaseManager(base_dir=str(tmp_path)).get_info("kb")
     assert info["metadata"]["last_indexed_at"] == "2026-05-04T10:00:00"
     assert info["metadata"]["last_indexed_count"] == 2
+
+
+def test_ready_non_llamaindex_status_keeps_embedding_only_signature(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from deeptutor.knowledge import manager as manager_module
+    from deeptutor.services.rag import embedding_signature
+    from deeptutor.services.rag.index_versioning import EmbeddingSignature
+
+    signature = EmbeddingSignature(
+        binding="openai",
+        model="embed-active",
+        dimension=4096,
+        base_url="https://example.test/v1",
+        api_version="",
+    )
+    monkeypatch.setattr(
+        manager_module, "_get_embedding_fingerprint", lambda: ("embed-active", 4096)
+    )
+    monkeypatch.setattr(
+        embedding_signature, "signature_from_embedding_config", lambda: signature
+    )
+    manager = KnowledgeBaseManager(base_dir=str(tmp_path))
+    manager.config["knowledge_bases"] = {
+        "graph-kb": {"rag_provider": "graphrag", "path": "graph-kb"}
+    }
+    manager._save_config()
+
+    manager.update_kb_status(name="graph-kb", status="ready")
+
+    entry = KnowledgeBaseManager(base_dir=str(tmp_path)).config["knowledge_bases"]["graph-kb"]
+    assert entry["embedding_signature"] == signature.hash()

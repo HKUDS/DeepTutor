@@ -26,7 +26,17 @@ async def test_incremental_add_migrates_matching_legacy_index_to_flat_version(
     from deeptutor.services.rag.pipelines.llamaindex import storage as storage_module
     from deeptutor.services.rag.pipelines.llamaindex.pipeline import LlamaIndexPipeline
 
-    sig = _signature()
+    base = _signature()
+    sig = EmbeddingSignature(
+        binding=base.binding,
+        model=base.model,
+        dimension=base.dimension,
+        base_url=base.base_url,
+        api_version=base.api_version,
+        ingestion_schema_version="2",
+        visual_mapping_version="1",
+        description_prompt_version="2",
+    )
     kb_dir = tmp_path / "kb"
     raw_file = kb_dir / "raw" / "new.txt"
     raw_file.parent.mkdir(parents=True)
@@ -89,6 +99,22 @@ async def test_incremental_add_migrates_matching_legacy_index_to_flat_version(
     assert captured["persist_dir"] == str(flat_storage_dir)
     assert (flat_storage_dir / "docstore.json").exists()
     assert json.loads((flat_storage_dir / "meta.json").read_text())["signature"] == sig.hash()
+
+
+def test_llamaindex_pipeline_stamps_visual_ingestion_schema() -> None:
+    from deeptutor.services.rag.pipelines.llamaindex.pipeline import LlamaIndexPipeline
+
+    base = _signature()
+    pipeline = object.__new__(LlamaIndexPipeline)
+    pipeline._signature_provider = lambda: base
+
+    signature = pipeline._current_signature()
+
+    assert signature is not None
+    assert signature.ingestion_schema_version == "2"
+    assert signature.visual_mapping_version == "1"
+    assert signature.description_prompt_version == "2"
+    assert signature.hash() != base.hash()
 
 
 def test_hybrid_retriever_uses_official_query_fusion_when_bm25_available(
