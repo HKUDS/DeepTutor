@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+import httpx
 import pytest
 
 from deeptutor.services.mcp.config import MCPServerConfig
@@ -184,3 +185,118 @@ async def test_a_live_connection_still_lets_a_call_time_out() -> None:
 
     assert "timed out after 1s" in result
     conn.task.cancel()
+
+
+# ── what a cancelled turn leaves behind ────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_cancelling_the_turn_does_not_orphan_the_call() -> None:
+    """``asyncio.wait`` leaves its futures running when the waiter is cancelled.
+
+    The call is a free-standing task, so nothing else would ever stop it:
+    clicking Stop would leave the tool running against the server with its
+    result thrown away.
+    """
+    manager = MCPConnectionManager()
+    started = asyncio.Event()
+    finished = False
+
+    class _SlowSession:
+        async def call_tool(self, *_args, **_kwargs):
+            nonlocal finished
+            started.set()
+            await asyncio.sleep(30)
+            finished = True
+
+    conn = _ServerConnection(
+        name=SERVER,
+        config=MCPServerConfig(url="https://maps.example/mcp"),
+        signature="sig",
+        owner=OWNER,
+        status="connected",
+        session=_SlowSession(),
+    )
+    conn.task = asyncio.create_task(asyncio.Event().wait())
+    manager._connections[(OWNER, SERVER)] = conn
+
+    turn = asyncio.create_task(manager.call_tool(OWNER, SERVER, "compute_routes", {}, timeout=45))
+    await asyncio.wait_for(started.wait(), timeout=5)
+    turn.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await turn
+
+    # Give an orphaned task a chance to be scheduled before asserting.
+    await asyncio.sleep(0)
+    inflight = [
+        task
+        for task in asyncio.all_tasks()
+        if task is not asyncio.current_task() and task is not conn.task and not task.done()
+    ]
+    assert inflight == [], f"call outlived its cancelled turn: {inflight}"
+    assert finished is False
+    conn.task.cancel()
+
+
+# ── what the model is allowed to see ───────────────────────────────────
+
+
+def test_a_credential_in_the_url_never_reaches_the_caller() -> None:
+    """Several curated servers authenticate with a query parameter.
+
+    httpx names the full request URL in its message, and that string is now
+    returned to the model as a tool result, not just shown in settings.
+    """
+    from deeptutor.services.mcp.manager import describe_connect_failure
+
+    exc = httpx.HTTPStatusError(
+        "Client error '403 Forbidden' for url "
+        "'https://mapstools.googleapis.com/mcp?key=AIzaSyREALSECRET&v=1'",
+        request=httpx.Request("POST", "https://mapstools.googleapis.com/mcp"),
+        response=httpx.Response(403, request=httpx.Request("POST", "https://x/")),
+    )
+
+    described = describe_connect_failure(exc)
+
+    assert "AIzaSyREALSECRET" not in described
+    # The part that helps whoever is debugging survives.
+    assert "403 Forbidden" in described
+    assert "mapstools.googleapis.com/mcp" in described
+
+
+def test_redaction_keeps_a_plain_url_readable() -> None:
+    from deeptutor.services.mcp.manager import describe_connect_failure
+
+    exc = RuntimeError("connect failed for url 'https://maps.example:8443/mcp'")
+
+    described = describe_connect_failure(exc)
+
+    assert "https://maps.example:8443/mcp" in described
+
+
+def test_userinfo_credentials_are_redacted() -> None:
+    from deeptutor.services.mcp.manager import describe_connect_failure
+
+    exc = RuntimeError("connect failed for url 'https://user:pw@maps.example/mcp'")
+
+    described = describe_connect_failure(exc)
+
+    assert "pw@" not in described
+    assert "maps.example/mcp" in described
+
+
+# ── the cost of fingerprinting on the turn's critical path ─────────────
+
+
+def test_a_config_without_references_is_fingerprinted_without_touching_disk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_signature`` runs per live connection on every reload, once per turn."""
+    cfg = MCPServerConfig(url="https://maps.example/mcp", headers={"X-Api-Key": "literal"})
+
+    def _explode(*_args, **_kwargs):
+        raise AssertionError("materialized a config that holds no references")
+
+    monkeypatch.setattr(MCPConnectionManager, "_materialize", staticmethod(_explode))
+
+    assert MCPConnectionManager._signature(cfg, OWNER) == cfg.connection_signature()

@@ -36,6 +36,7 @@ import hashlib
 import logging
 import re
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -78,6 +79,16 @@ _SCOPE_IDLE_TTL_S = 900.0
 
 class ConnectionLost(RuntimeError):
     """A server's connection task ended while one of its tools was in flight."""
+
+
+def _connection_lost_result(server_name: str, exc: BaseException) -> str:
+    """What the model is told when the transport died under its tool call."""
+    return f"(MCP server {server_name!r} connection failed during the call: {exc})"
+
+
+# The literal prefix of ``secrets.SECRET_REFERENCE_RE``. Kept as a plain string
+# so fingerprinting never has to import the secrets module.
+_SECRET_REFERENCE_MARKER = "${secret:"
 
 
 # Transient transport errors worth exactly one retry (mirrors nanobot).
@@ -427,7 +438,7 @@ class MCPConnectionManager:
             )
         except ConnectionLost as exc:
             logger.warning("MCP tool %s/%s lost its connection: %s", server_name, tool_name, exc)
-            return f"(MCP server {server_name!r} connection failed during the call: {exc})"
+            return _connection_lost_result(server_name, exc)
         except _TRANSIENT_ERRORS:
             logger.warning(
                 "MCP tool %s/%s hit a transient transport error; retrying once",
@@ -435,7 +446,14 @@ class MCPConnectionManager:
                 tool_name,
             )
             try:
-                return await self._call_once(conn, tool_name, arguments, timeout, on_progress)
+                # Watched like the first attempt. A retry is if anything *more*
+                # likely to meet a dead transport, which is exactly the failure
+                # this reports as itself rather than as a timeout.
+                return await self._call_watching_connection(
+                    conn, tool_name, arguments, timeout, on_progress
+                )
+            except ConnectionLost as exc:
+                return _connection_lost_result(server_name, exc)
             except Exception as exc:
                 return f"(MCP tool call failed after retry: {type(exc).__name__})"
         except asyncio.TimeoutError:
@@ -476,24 +494,43 @@ class MCPConnectionManager:
         watcher = conn.task
         if watcher is None or watcher.done():
             return await call
-        done, _pending = await asyncio.wait({call, watcher}, return_when=asyncio.FIRST_COMPLETED)
+        try:
+            done, _pending = await asyncio.wait(
+                {call, watcher}, return_when=asyncio.FIRST_COMPLETED
+            )
+        except BaseException:
+            # Unlike ``gather``, ``wait`` leaves the futures it was waiting on
+            # running when the waiter itself is cancelled — and ``call`` is a
+            # free-standing task, so nothing else would ever stop it. A turn
+            # cancelled from the UI would leave the tool running against the
+            # server and its result discarded.
+            await self._abandon(call, conn)
+            raise
         if call in done:
             return call.result()
-        # The connection died first. Cancel the orphaned call and absorb its
-        # outcome so the loop never sees a "task exception was never retrieved".
+        # The connection died first.
+        await self._abandon(call, conn)
+        raise ConnectionLost(conn.error or "the connection task ended")
+
+    @staticmethod
+    async def _abandon(call: "asyncio.Task[str]", conn: _ServerConnection) -> None:
+        """Cancel an in-flight call and absorb whatever it ends up raising.
+
+        Absorbing is the point: nobody is waiting on this result any more, and
+        an un-awaited task that raises makes the loop log "task exception was
+        never retrieved" for a failure that is no longer anyone's problem.
+        """
         call.cancel()
         try:
             await call
         except asyncio.CancelledError:
             # Ours, not the turn's — unless this task is itself being cancelled,
-            # in which case swallowing it would strand the cancellation and
-            # report a lost connection instead.
+            # in which case swallowing it would strand that cancellation.
             task = asyncio.current_task()
             if task is not None and task.cancelling() > 0:
                 raise
         except Exception:
-            logger.debug("MCP call for %r discarded after its connection died", conn.name)
-        raise ConnectionLost(conn.error or "the connection task ended")
+            logger.debug("MCP call for %r discarded after it was abandoned", conn.name)
 
     @staticmethod
     async def _call_once(
@@ -544,6 +581,13 @@ class MCPConnectionManager:
         does not invalidate — and drop — every live session.
         """
         base = cfg.connection_signature()
+        if _SECRET_REFERENCE_MARKER not in base:
+            # Nothing to resolve, so nothing can change behind the diff. Worth
+            # checking first: this runs for every live connection on every
+            # reload, which ``ensure_scope`` performs once per turn, and
+            # resolving does per-reference disk work (mkdir + chmod + read, see
+            # ``secrets._secrets_dir``) synchronously on that path.
+            return base
         try:
             resolved = cls._materialize(cfg, owner).connection_signature()
         except Exception:  # pragma: no cover - unreadable secrets store
@@ -893,13 +937,44 @@ def describe_connect_failure(exc: BaseException) -> str:
     """
     leaves = _exception_leaves(exc)
     if not leaves:
-        return f"{type(exc).__name__}: {exc}"
+        return _redact_urls(f"{type(exc).__name__}: {exc}")
     seen: list[str] = []
     for leaf in leaves:
-        text = f"{type(leaf).__name__}: {leaf}".strip().rstrip(":").strip()
+        text = _redact_urls(f"{type(leaf).__name__}: {leaf}".strip().rstrip(":").strip())
         if text not in seen:
             seen.append(text)
     return "; ".join(seen[:3])
+
+
+# httpx names the full request URL in its error messages ("Client error '403
+# Forbidden' for url '<url>'"). A catalog server may carry its credential in a
+# query parameter or in userinfo (``CredentialTarget`` includes "url_param";
+# several curated servers use it), and this string is shown in settings *and*,
+# since a dead transport is now reported as itself, returned to the model as a
+# tool result. Strip both before it travels.
+_URL_IN_TEXT_RE = re.compile(r"\b[a-z][a-z0-9+.-]*://[^\s'\"<>]+", re.IGNORECASE)
+
+
+def _redact_urls(text: str) -> str:
+    def _redact(match: re.Match[str]) -> str:
+        url = match.group(0)
+        trailing = ""
+        # Punctuation the message put after the URL, not part of it.
+        while url and url[-1] in ").,;:":
+            url, trailing = url[:-1], url[-1] + trailing
+        try:
+            parts = urlsplit(url)
+        except ValueError:
+            return match.group(0)
+        netloc = parts.hostname or ""
+        if parts.port:
+            netloc = f"{netloc}:{parts.port}"
+        if parts.username:
+            netloc = f"***@{netloc}"
+        query = "***" if parts.query else ""
+        return urlunsplit((parts.scheme, netloc, parts.path, query, "")) + trailing
+
+    return _URL_IN_TEXT_RE.sub(_redact, text)
 
 
 def _needs_authorization(exc: BaseException) -> bool:
