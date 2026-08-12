@@ -348,6 +348,30 @@ def _require_settings_admin() -> None:
         )
 
 
+def _require_codex_oauth_actor() -> None:
+    """Gate the Codex OAuth lifecycle: personal, not administrative.
+
+    Every one of these endpoints acts on the *caller's own* credentials —
+    ``get_codex_oauth_service()`` resolves the store, the model catalog, and
+    the callback route from owner scope — so requiring an administrator was
+    what left ordinary users unable to use Codex at all: an owner-bound
+    profile is (correctly) never grantable, and they could not sign in for
+    themselves either (#781).
+
+    A partner is refused: it is a synthetic user whose owner is a real
+    account, so letting one in would mean acting on that person's login —
+    including signing them out. Partners inherit the owner's login at call
+    time and need no lifecycle of their own.
+    """
+    from deeptutor.services.partners.scope import is_partner_user_id
+
+    if is_partner_user_id(get_current_user().id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="A partner uses the Codex login of the account that owns it.",
+        )
+
+
 def _codex_http_exception(error: CodexAuthError) -> HTTPException:
     return HTTPException(
         status_code=error.http_status,
@@ -538,7 +562,7 @@ async def get_settings():
 
 @router.post("/providers/openai-codex/oauth/start")
 async def start_openai_codex_oauth() -> dict[str, Any]:
-    _require_settings_admin()
+    _require_codex_oauth_actor()
     try:
         return await get_codex_oauth_service().start_login()
     except CodexAuthError as exc:
@@ -547,7 +571,7 @@ async def start_openai_codex_oauth() -> dict[str, Any]:
 
 @router.get("/providers/openai-codex/oauth/status")
 async def get_openai_codex_oauth_status() -> dict[str, Any]:
-    _require_settings_admin()
+    _require_codex_oauth_actor()
     try:
         return get_codex_oauth_service().public_status()
     except CodexAuthError as exc:
@@ -556,7 +580,7 @@ async def get_openai_codex_oauth_status() -> dict[str, Any]:
 
 @router.post("/providers/openai-codex/oauth/cancel")
 async def cancel_openai_codex_oauth() -> dict[str, Any]:
-    _require_settings_admin()
+    _require_codex_oauth_actor()
     try:
         return await get_codex_oauth_service().cancel_login()
     except CodexAuthError as exc:
@@ -565,7 +589,7 @@ async def cancel_openai_codex_oauth() -> dict[str, Any]:
 
 @router.post("/providers/openai-codex/oauth/logout")
 async def logout_openai_codex_oauth() -> dict[str, Any]:
-    _require_settings_admin()
+    _require_codex_oauth_actor()
     try:
         return await get_codex_oauth_service().logout()
     except CodexAuthError as exc:
@@ -574,7 +598,7 @@ async def logout_openai_codex_oauth() -> dict[str, Any]:
 
 @router.post("/providers/openai-codex/models/refresh")
 async def refresh_openai_codex_models() -> dict[str, Any]:
-    _require_settings_admin()
+    _require_codex_oauth_actor()
     try:
         return await get_codex_oauth_service().refresh_models()
     except CodexAuthError as exc:

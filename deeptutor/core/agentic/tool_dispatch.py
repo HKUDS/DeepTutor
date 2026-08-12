@@ -26,6 +26,10 @@ import json
 import logging
 from typing import Any
 
+from deeptutor.core.agentic.tool_arg_guard import (
+    missing_args_message,
+    missing_required_args,
+)
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.tool_protocol import ToolLookup, provider_identity
@@ -156,6 +160,17 @@ async def dispatch_tool_calls(
                 tool_name=prepared[tool_index][1],
             )
         _tcid, tool_name, exec_args = prepared[tool_index]
+        rejection = await _reject_if_args_missing(
+            registry=registry,
+            tool_name=tool_name,
+            exec_args=exec_args,
+            stream=stream,
+            source=source,
+            stage=stage,
+            trace_meta=per_tool_trace_meta[tool_index],
+        )
+        if rejection is not None:
+            return rejection
         return await execute_tool_call(
             registry=registry,
             tool_name=tool_name,
@@ -258,6 +273,73 @@ def _duplicate_stub_result(
     return {
         "result_text": result_text,
         "sources": [],
+    }
+
+
+async def _reject_if_args_missing(
+    *,
+    registry: ToolLookup,
+    tool_name: str,
+    exec_args: dict[str, Any],
+    stream: StreamBus,
+    source: str,
+    stage: str,
+    trace_meta: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Short-circuit a call whose required arguments never arrived.
+
+    Returns ``None`` when the call is well-formed (dispatch proceeds), or a
+    synthetic failed result whose text tells the model which arguments to
+    fill in. See :mod:`deeptutor.core.agentic.tool_arg_guard` for why the
+    tool itself is the wrong place to catch this.
+
+    Unknown tool names and definitions that fail to build are passed
+    through untouched: the registry owns those errors and reports them with
+    the context this layer lacks.
+    """
+    try:
+        tool = registry.get(tool_name)
+        definition = tool.get_definition() if tool is not None else None
+    except Exception:  # pragma: no cover - defensive: never block dispatch
+        logger.debug("Arg guard skipped for %s (definition unavailable)", tool_name, exc_info=True)
+        return None
+    if definition is None:
+        return None
+
+    missing = missing_required_args(definition, exec_args)
+    if not missing:
+        return None
+
+    message = missing_args_message(tool_name, missing)
+    logger.warning(
+        "Rejected %s before dispatch: missing required args %s",
+        tool_name,
+        [arg.name for arg in missing],
+    )
+    if trace_meta is not None:
+        # Close the sub-trace with a terminal state, as the raising path in
+        # ``execute_tool_call`` does — a rejected call must not leave a row
+        # that reads as still running. ``progress`` (not ``error``): this is
+        # a recoverable per-call correction, and a stream ERROR makes a
+        # partner turn re-run the whole turn on its backup model.
+        await stream.progress(
+            f"{tool_name} not dispatched: missing {', '.join(arg.name for arg in missing)}",
+            source=source,
+            stage=stage,
+            metadata=derive_trace_metadata(
+                trace_meta,
+                trace_kind="call_status",
+                call_state="error",
+                error=message,
+            ),
+        )
+    return {
+        "result_text": message,
+        "success": False,
+        "sources": [],
+        "metadata": {"error": "missing_required_arguments"},
+        "terminate_turn": False,
+        "pause_for_user": None,
     }
 
 

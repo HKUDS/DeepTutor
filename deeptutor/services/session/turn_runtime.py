@@ -77,16 +77,35 @@ def _resolve_turn_outcome(
 def _narration_marker_call_id(event: StreamEvent) -> str | None:
     """call_id of a chat-loop round that resolved as narration (a short
     preamble streamed alongside a tool call). Its text belongs to the trace,
-    not the persisted answer, so it is excluded when assembling content."""
+    not the persisted answer, so it is excluded when assembling content.
+
+    DSML rounds may explicitly keep the cleaned prose surrounding a call; that
+    narrow exception remains part of the persisted answer.
+    """
     metadata = event.metadata or {}
     if (
         metadata.get("trace_kind") == "call_status"
         and metadata.get("call_state") == "complete"
         and metadata.get("call_role") == "narration"
+        and metadata.get("answer_visible") is not True
     ):
         call_id = metadata.get("call_id")
         return str(call_id) if call_id else None
     return None
+
+
+def _assemble_persisted_answer(
+    content_segments: Sequence[tuple[str | None, str]],
+    narration_call_ids: set[str],
+) -> str:
+    """Replay visible content bytes, excluding trace-only narration rounds."""
+    return clean_thinking_tags(
+        "".join(
+            text
+            for call_id, text in content_segments
+            if not (call_id and call_id in narration_call_ids)
+        )
+    )
 
 
 def _clip_text(value: str, limit: int = 4000) -> str:
@@ -175,6 +194,11 @@ def _string_list(value: Any) -> list[str]:
     return [item for item in value if isinstance(item, str) and item]
 
 
+def _mastery_path_id(value: Any) -> str:
+    """Normalize the optional session-to-mastery-path association."""
+    return str(value or "").strip()
+
+
 def _llm_selection_dict(value: Any) -> dict[str, str] | None:
     from deeptutor.services.model_selection import LLMSelection
 
@@ -217,6 +241,9 @@ def _request_snapshot_metadata(
         snapshot["questionNotebookReferences"] = question_notebook_references
     if book_references:
         snapshot["bookReferences"] = book_references
+    mastery_path_id = _mastery_path_id(payload.get("mastery_path_id"))
+    if mastery_path_id:
+        snapshot["masteryPathId"] = mastery_path_id
     if persona:
         snapshot["persona"] = persona
     if memory_references:
@@ -689,6 +716,16 @@ class TurnRuntimeManager:
         }
         session = await self.store.ensure_session(payload.get("session_id"))
         preferences = session.get("preferences") or {}
+        # A mastery path has a longer lifetime than any one conversation.
+        # Persist the explicit association on the session, and restore it on
+        # later turns whose frontend payload omits the field.
+        mastery_path_explicit = "mastery_path_id" in payload
+        mastery_path_id = _mastery_path_id(
+            payload.get("mastery_path_id")
+            if mastery_path_explicit
+            else preferences.get("mastery_path_id")
+        )
+        payload = {**payload, "mastery_path_id": mastery_path_id}
         # Persona is a session-level preference (mirrors llm_selection): an
         # explicit ``persona`` key in the payload — including an empty string,
         # which means "Default" / no persona — wins and is persisted below; an
@@ -744,6 +781,7 @@ class TurnRuntimeManager:
                     "model_id": assigned_llms[0].get("model_id"),
                 }
         if llm_selection:
+            from deeptutor.multi_user.personal_models import merge_personal_llm_profiles
             from deeptutor.services.config import get_model_catalog_service
             from deeptutor.services.model_selection import (
                 LLMSelection,
@@ -751,8 +789,12 @@ class TurnRuntimeManager:
             )
 
             try:
+                # Personal (owner-bound) profiles live in the user's own
+                # catalog, so validating against the shared one alone would
+                # reject a Codex model the user signed in for themselves —
+                # the same merge the resolution path performs (#781).
                 apply_llm_selection_to_catalog(
-                    get_model_catalog_service().load(),
+                    merge_personal_llm_profiles(get_model_catalog_service().load()),
                     LLMSelection.from_payload(llm_selection),
                 )
             except ValueError as exc:
@@ -795,6 +837,9 @@ class TurnRuntimeManager:
         if persona_explicit:
             # Persist explicit set AND explicit clear ("" = back to Default).
             preference_update["persona"] = persona_pref
+        if mastery_path_explicit:
+            # Like persona, an explicit empty string clears the association.
+            preference_update["mastery_path_id"] = mastery_path_id
         await self.store.update_session_preferences(session["id"], preference_update)
         turn = await self.store.create_turn(session["id"], capability=capability)
         execution = _TurnExecution(
@@ -908,6 +953,11 @@ class TurnRuntimeManager:
             if overrides.get("llm_selection") is not None
             else snapshot.get("llmSelection") or preferences.get("llm_selection")
         )
+        mastery_path_id = _mastery_path_id(
+            overrides.get("mastery_path_id")
+            if "mastery_path_id" in overrides
+            else snapshot.get("masteryPathId") or preferences.get("mastery_path_id")
+        )
 
         payload: dict[str, Any] = {
             "session_id": session_id,
@@ -932,6 +982,7 @@ class TurnRuntimeManager:
                 if overrides.get("book_references") is not None
                 else snapshot.get("bookReferences") or []
             ),
+            "mastery_path_id": mastery_path_id,
             "config": config,
         }
         if llm_selection:
@@ -1165,13 +1216,7 @@ class TurnRuntimeManager:
             # inline <think> in the content channel are split at streaming
             # time by the agent loop, but anything that slips through must
             # never be persisted as the user-facing answer.
-            return clean_thinking_tags(
-                "".join(
-                    text
-                    for call_id, text in content_segments
-                    if not (call_id and call_id in narration_call_ids)
-                )
-            )
+            return _assemble_persisted_answer(content_segments, narration_call_ids)
 
         # Files the model generated this turn (exec/code_execution artifacts),
         # persisted as assistant-message attachments so the UI shows openable
@@ -1631,6 +1676,7 @@ class TurnRuntimeManager:
                     "history_references": history_references,
                     "question_notebook_references": question_notebook_references,
                     "book_references": book_references,
+                    "mastery_path_id": _mastery_path_id(payload.get("mastery_path_id")),
                     "book_context": book_context,
                     "book_context_warnings": book_context_result.warnings,
                     "memory_references": memory_references,

@@ -2,8 +2,8 @@ self.__SERVER_FILES_MANIFEST={
   "version": 1,
   "config": {
     "env": {
-      "NEXT_PUBLIC_APP_VERSION": "1.5.7",
-      "NEXT_PUBLIC_API_BASE": "http://localhost:8000",
+      "NEXT_PUBLIC_APP_VERSION": "1.5.11",
+      "NEXT_PUBLIC_API_BASE": "http://127.0.0.1:8000",
       "NEXT_PUBLIC_AUTH_ENABLED": "false"
     },
     "typescript": {

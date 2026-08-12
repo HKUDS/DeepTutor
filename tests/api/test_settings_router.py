@@ -24,9 +24,7 @@ def test_load_ui_settings_migrates_legacy_language_to_response_language(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     settings_file = tmp_path / "interface.json"
-    settings_file.write_text(
-        '{"theme": "snow", "language": "zh"}', encoding="utf-8"
-    )
+    settings_file.write_text('{"theme": "snow", "language": "zh"}', encoding="utf-8")
     monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
 
     settings = settings_router.load_ui_settings()
@@ -51,9 +49,7 @@ def test_both_readers_of_interface_json_agree_on_a_legacy_file(
     settings_file = tmp_path / "interface.json"
     settings_file.write_text('{"theme": "dark", "language": "zh"}', encoding="utf-8")
     monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
-    monkeypatch.setattr(
-        interface_settings, "_interface_settings_file", lambda: settings_file
-    )
+    monkeypatch.setattr(interface_settings, "_interface_settings_file", lambda: settings_file)
 
     from_router = settings_router.load_ui_settings()
     from_service = interface_settings.get_ui_settings()
@@ -70,9 +66,7 @@ async def test_ui_languages_are_persisted_independently(
     monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
 
     response = await settings_router.update_ui_settings(
-        settings_router.UISettingsUpdate(
-            theme="snow", language="en", response_language="zh"
-        )
+        settings_router.UISettingsUpdate(theme="snow", language="en", response_language="zh")
     )
 
     assert response["language"] == "en"
@@ -868,27 +862,33 @@ def test_codex_provider_choice_is_advertised_as_oauth() -> None:
 
 
 @pytest.mark.asyncio
-async def test_codex_oauth_status_is_admin_only(
+async def test_codex_oauth_status_is_reachable_by_an_ordinary_user(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from fastapi import HTTPException
+    """Codex OAuth is personal, not administrative (#781).
 
+    This route used to be administrator-gated, which left ordinary users with
+    no path to Codex at all: an owner-bound profile is never grantable, so
+    they could neither be given one nor sign in for themselves. Everything it
+    touches — credential store, model catalog, callback route — resolves from
+    owner scope, so it is the caller's own login either way. The full
+    authorization contract, including the partner refusal that replaced the
+    admin gate, lives in ``tests/api/test_codex_oauth_scope.py``.
+    """
+    fake = _FakeCodexOAuthService()
     monkeypatch.setattr(
         settings_router,
         "get_current_user",
-        lambda: SimpleNamespace(is_admin=False),
+        lambda: SimpleNamespace(id="u_alice", is_admin=False),
     )
     monkeypatch.setattr(
         settings_router,
         "get_codex_oauth_service",
-        lambda: (_ for _ in ()).throw(AssertionError("service must not be accessed")),
+        lambda: fake,
         raising=False,
     )
 
-    with pytest.raises(HTTPException) as exc_info:
-        await settings_router.get_openai_codex_oauth_status()
-
-    assert exc_info.value.status_code == 403
+    assert await settings_router.get_openai_codex_oauth_status() == fake.public_status()
 
 
 @pytest.mark.asyncio
@@ -899,7 +899,7 @@ async def test_codex_oauth_routes_return_only_public_service_payloads(
     monkeypatch.setattr(
         settings_router,
         "get_current_user",
-        lambda: SimpleNamespace(is_admin=True),
+        lambda: SimpleNamespace(id="root", is_admin=True),
     )
     monkeypatch.setattr(
         settings_router,
@@ -948,7 +948,7 @@ async def test_codex_oauth_error_maps_to_sanitized_http_detail(
     monkeypatch.setattr(
         settings_router,
         "get_current_user",
-        lambda: SimpleNamespace(is_admin=True),
+        lambda: SimpleNamespace(id="root", is_admin=True),
     )
     monkeypatch.setattr(
         settings_router,
@@ -993,9 +993,7 @@ async def test_update_ui_settings_persists_explicit_theme_and_language_defaults(
     assert persisted["language"] == "en"
 
 
-def test_get_ui_settings_is_public_without_auth(
-    monkeypatch: pytest.MonkeyPatch, tmp_path
-) -> None:
+def test_get_ui_settings_is_public_without_auth(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Auth pages bootstrap the interface language *before* a session exists.
 
     Regression for #760: the app shell fetches GET /api/v1/settings/ui on the

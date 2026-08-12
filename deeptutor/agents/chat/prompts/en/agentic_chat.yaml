@@ -84,6 +84,14 @@ loop:
   finish_exhausted: |-
     The round budget ran out before every gap was closed. Stop calling tools
     and answer now with what you have, noting briefly what remains uncertain.
+  settle_exhausted: |-
+    The exploration round budget is exhausted. Do not start new searches or optional work.
+    Complete only protocol steps, state transitions, or user interactions already made
+    necessary by the work above; tools remain available only for that required follow-up.
+    Then stop calling tools and provide the final user-facing answer.
+  continue_truncated: |-
+    Your previous response stopped at the token limit. Continue from where it ended
+    without repeating it, and complete the user-facing answer.
   finish_empty_nudge: |-
     Your previous round produced only internal reasoning — no tool call and
     no user-facing answer. Continue now: either call the tools to execute
@@ -106,6 +114,8 @@ notices:
   start_retrieval: "Starting retrieval"
   empty_tool_result: "The tool completed without returning text output."
   loop_budget_exhausted: "Exploration budget reached; answering with what has been gathered."
+  loop_settlement: "Exploration budget reached; completing required follow-up before the final answer."
+  output_truncated: "The model output reached its token limit; asked it to continue."
   loop_error_finish: "A step failed; answering with what has been gathered."
   context_window_guard: "Trimmed older tool results to keep this turn within the model's context window."
   tool_schema_fallback: "Provider rejected native tool schemas; retrying without tools."

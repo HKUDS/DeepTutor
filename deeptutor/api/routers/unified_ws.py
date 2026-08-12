@@ -18,7 +18,8 @@ Supported client message ``type`` values:
   brand-new turn. Replaces the trailing assistant message (if any) and
   reuses the session's stored capability/tools/preferences. Optional
   ``overrides`` field accepts ``capability``, ``tools``, ``knowledge_bases``,
-  ``language``, ``config``, ``notebook_references``, ``history_references``.
+  ``language``, ``config``, ``notebook_references``, ``history_references``,
+  ``mastery_path_id``.
   Errors: ``regenerate_busy`` (another turn is running) and
   ``nothing_to_regenerate`` (no prior user message).
 - ``check_active_turn`` — report whether the session has a live running turn;

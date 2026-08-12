@@ -39,28 +39,16 @@ def test_get_ui_language_defaults_when_no_file(mu_isolated_root, as_user):
         assert get_ui_language() == "en"
 
 
-def test_response_language_is_scoped_independently_per_user(
-    mu_isolated_root, as_user
-):
+def test_response_language_is_scoped_independently_per_user(mu_isolated_root, as_user):
     admin_settings = mu_isolated_root / "data" / "user" / "settings" / "interface.json"
     admin_settings.parent.mkdir(parents=True, exist_ok=True)
-    admin_settings.write_text(
-        json.dumps({"language": "en", "response_language": "zh"})
-    )
+    admin_settings.write_text(json.dumps({"language": "en", "response_language": "zh"}))
 
     alice_settings = (
-        mu_isolated_root
-        / "data"
-        / "users"
-        / "u_alice"
-        / "user"
-        / "settings"
-        / "interface.json"
+        mu_isolated_root / "data" / "users" / "u_alice" / "user" / "settings" / "interface.json"
     )
     alice_settings.parent.mkdir(parents=True, exist_ok=True)
-    alice_settings.write_text(
-        json.dumps({"language": "zh", "response_language": "en"})
-    )
+    alice_settings.write_text(json.dumps({"language": "zh", "response_language": "en"}))
 
     with as_user("u_admin", role="admin"):
         assert get_ui_language() == "en"

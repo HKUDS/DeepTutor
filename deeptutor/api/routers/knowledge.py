@@ -35,7 +35,7 @@ from deeptutor.api.utils.task_id_manager import TaskIDManager
 from deeptutor.api.utils.task_log_stream import capture_task_logs, get_task_stream_manager
 from deeptutor.knowledge.add_documents import DocumentAdder, remove_raw_document
 from deeptutor.knowledge.initializer import KnowledgeBaseInitializer
-from deeptutor.knowledge.kb_types import is_connected_kb
+from deeptutor.knowledge.kb_types import is_connected_kb, supports_local_raw_files
 from deeptutor.knowledge.manager import KnowledgeBaseManager
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
@@ -458,6 +458,34 @@ def _save_uploaded_files(
     return uploaded_files, uploaded_file_paths
 
 
+async def _save_uploaded_files_off_loop(
+    files: list[UploadFile],
+    target_dir: Path,
+    allowed_extensions: set[str] | None = None,
+    kb_name: str | None = None,
+    rel_paths: list[str] | None = None,
+) -> tuple[list[str], list[str]]:
+    """:func:`_save_uploaded_files` on a worker thread.
+
+    That function blocks end to end — a chunked write of every uploaded byte,
+    zip extraction for archive members, and (when PocketBase is enabled) one
+    synchronous HTTP upload per file. Called inline from an ``async def``
+    route it held the event loop for the whole batch, so every other request
+    — chat WebSockets included — stalled until the upload finished (#777).
+
+    Safe to hand to a thread: it only touches ``UploadFile.file``, the plain
+    ``SpooledTemporaryFile`` underneath, never the async ``UploadFile`` API.
+    """
+    return await asyncio.to_thread(
+        _save_uploaded_files,
+        files,
+        target_dir,
+        allowed_extensions=allowed_extensions,
+        kb_name=kb_name,
+        rel_paths=rel_paths,
+    )
+
+
 def _get_upload_file_size(file: UploadFile) -> int | None:
     """Best-effort byte size detection without consuming the uploaded stream."""
     try:
@@ -674,8 +702,8 @@ def _assert_not_connected_kb(kb_name: str, kb_entry: dict) -> None:
         raise HTTPException(
             status_code=409,
             detail=(
-                f"Knowledge base '{kb_name}' is connected to an external folder and is "
-                "read-only. Uploads and re-indexing are not available for it."
+                f"Knowledge base '{kb_name}' is connected to an external resource and is "
+                "read-only. Local file operations and re-indexing are not available for it."
             ),
         )
 
@@ -853,7 +881,14 @@ async def run_upload_processing_task(
                 rag_provider=rag_provider,
             )
 
-            staged_files = adder.add_documents(uploaded_file_paths, allow_duplicates=False)
+            # Staging blocks: a full-content hash per file, plus a copy for
+            # anything not already under raw/. A BackgroundTasks entry declared
+            # ``async def`` is awaited ON the event loop — starlette only routes
+            # *sync* callables to its threadpool — so doing this inline stalled
+            # every other request for the length of the batch (#777).
+            staged_files = await asyncio.to_thread(
+                adder.add_documents, uploaded_file_paths, allow_duplicates=False
+            )
             _task_log(task_id, f"Staged {len(staged_files)} new file(s)")
 
             if not staged_files:
@@ -1938,21 +1973,42 @@ async def get_knowledge_base_details(kb_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _resolve_kb_raw_dir(kb_name: str) -> Path:
-    """Resolve the raw/ directory for a KB, validating that it exists."""
+def _resolve_kb_raw_dir(kb_name: str, *, allow_unsupported: bool = False) -> Path | None:
+    """Resolve a KB's managed ``raw/`` directory without inventing one.
+
+    Connected KBs are external-resource pointers and intentionally have no
+    DeepTutor-managed raw directory.  File listing treats that as an empty
+    collection for backwards compatibility; endpoints that require a local
+    file receive an explicit conflict response.
+    """
     manager = _overridden_kb_manager()
     if manager is not None:
         resolved_name = _resolve_registered_kb_name(manager, kb_name)
-        return manager.get_knowledge_base_path(resolved_name) / "raw"
-    resource = resolve_kb(kb_name)
-    manager = manager_for_resource(resource)
-    kb_path = manager.get_knowledge_base_path(resource.name)
+    else:
+        resource = resolve_kb(kb_name)
+        manager = manager_for_resource(resource)
+        resolved_name = resource.name
+
+    kb_entry = _load_kb_entry_or_404(manager, resolved_name)
+    if not supports_local_raw_files(kb_entry):
+        if allow_unsupported:
+            return None
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Knowledge base '{resolved_name}' is connected to an external resource "
+                "and has no local files."
+            ),
+        )
+
+    kb_path = manager.get_knowledge_base_path(resolved_name)
     return kb_path / "raw"
 
 
 def _resolve_kb_raw_file_or_404(kb_name: str, filename: str) -> Path:
     """Resolve a raw KB file while preventing traversal outside raw/."""
     raw_dir = _resolve_kb_raw_dir(kb_name)
+    assert raw_dir is not None  # allow_unsupported=False guarantees a path
     if not raw_dir.exists():
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -1979,7 +2035,9 @@ async def list_kb_raw_files(kb_name: str):
     before it holds any files. Folders are purely organizational and have no
     effect on indexing or retrieval.
     """
-    raw_dir = _resolve_kb_raw_dir(kb_name)
+    raw_dir = _resolve_kb_raw_dir(kb_name, allow_unsupported=True)
+    if raw_dir is None:
+        return {"files": []}
     if not raw_dir.exists() or not raw_dir.is_dir():
         return {"files": []}
 
@@ -2166,16 +2224,15 @@ async def upload_files(
     """Upload files to a knowledge base and process them in background."""
     try:
         manager, kb_name, kb_base_dir = _writable_kb(kb_name)
-        kb_path = manager.get_knowledge_base_path(kb_name)
-        raw_dir = kb_path / "raw"
-        raw_dir.mkdir(parents=True, exist_ok=True)
-
         requested_provider = None
         if rag_provider is not None and str(rag_provider).strip():
             requested_provider = _validate_registered_provider(rag_provider)
 
         kb_entry = _load_kb_entry_or_404(manager, kb_name)
         _assert_kb_writable_or_409(kb_name, kb_entry)
+        kb_path = manager.get_knowledge_base_path(kb_name)
+        raw_dir = kb_path / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
         kb_provider = _validate_registered_provider(
             kb_entry.get("rag_provider") or DEFAULT_PROVIDER
         )
@@ -2195,7 +2252,7 @@ async def upload_files(
         # archive itself is never indexed (``safe_extract_zip`` skips ``.zip``).
         upload_extensions = allowed_extensions | {".zip"}
         _validate_upload_batch(files, allowed_extensions=upload_extensions, rel_paths=rel_paths)
-        uploaded_files, uploaded_file_paths = _save_uploaded_files(
+        uploaded_files, uploaded_file_paths = await _save_uploaded_files_off_loop(
             files, raw_dir, allowed_extensions=upload_extensions, rel_paths=rel_paths
         )
         task_id = _build_unique_task_id("kb_upload", kb_name)
@@ -2302,7 +2359,7 @@ async def create_knowledge_base(
             logger.warning(f"KB {name} not found in config, registering manually")
             initializer._register_to_config()
 
-        uploaded_files, _ = _save_uploaded_files(
+        uploaded_files, _ = await _save_uploaded_files_off_loop(
             files, initializer.raw_dir, allowed_extensions=allowed_extensions, rel_paths=rel_paths
         )
 

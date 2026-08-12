@@ -16,10 +16,7 @@ from typing import Any
 
 import httpx
 
-from deeptutor.services.config.model_catalog import (
-    ModelCatalogService,
-    get_model_catalog_service,
-)
+from deeptutor.services.config.model_catalog import ModelCatalogService
 from deeptutor.services.config.runtime_settings import load_system_settings
 
 from .catalog import CodexModelCatalog
@@ -794,6 +791,22 @@ def _relocate_legacy_store(user_root: Path, secrets_root: Path) -> bool:
     return True
 
 
+def _owner_model_catalog_service() -> ModelCatalogService:
+    """The catalog a sign-in publishes its managed profile into.
+
+    Deliberately NOT :func:`get_model_catalog_service`, which resolves an
+    ordinary user to the *administrator's* catalog: a non-admin sign-in would
+    then write their personal Codex profile into the shared catalog, where it
+    would show up in the administrator's model list and in every other user's
+    resolution path. Owner scope keys this to the same account as the
+    credential store, so a login and its profile can never land in different
+    places (#781).
+    """
+    from deeptutor.multi_user.personal_models import owner_catalog_service
+
+    return owner_catalog_service()
+
+
 def get_codex_oauth_service() -> CodexOAuthService:
     secrets_root = _codex_secrets_root()
     key = str(secrets_root)
@@ -806,7 +819,7 @@ def get_codex_oauth_service() -> CodexOAuthService:
         service = CodexOAuthService(
             store,
             catalog,
-            get_model_catalog_service(),
+            _owner_model_catalog_service(),
             oauth_client=CodexOAuthClient(http),
             callback_forward_port=callback_forward_port,
         )

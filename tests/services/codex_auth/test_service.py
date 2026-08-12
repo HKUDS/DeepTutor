@@ -148,7 +148,9 @@ def test_service_singleton_reads_frontend_port_only_when_created(
         lambda _store, *, http: object(),
     )
     monkeypatch.setattr(service_module, "CodexOAuthClient", lambda _http: object())
-    monkeypatch.setattr(service_module, "get_model_catalog_service", lambda: object())
+    # A sign-in publishes into the OWNER's catalog, never the shared one that
+    # ``get_model_catalog_service`` resolves an ordinary user to (#781).
+    monkeypatch.setattr(service_module, "_owner_model_catalog_service", lambda: object())
     monkeypatch.setattr(service_module, "CodexOAuthService", CapturingService)
 
     first = service_module.get_codex_oauth_service()

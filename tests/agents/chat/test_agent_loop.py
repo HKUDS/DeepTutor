@@ -502,6 +502,143 @@ async def test_tool_round_then_finish(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_dsml_round_keeps_clean_prose_visible_and_decodes_container_args(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A DSML call may share a content stream with tutor feedback.
+
+    Only the call markup is hidden; prose on both sides stays in ``content``.
+    The completion marker narrowly opts that cleaned prose out of the normal
+    narration demotion, and schema-declared arrays reach the tool as arrays.
+    """
+
+    class _PausingRegistry(_Registry):
+        async def execute(self, name: str, **kwargs):
+            self.executed.append({"name": name, "kwargs": kwargs})
+            return ToolResult(
+                content="Asked the user.",
+                success=True,
+                pause_for_user={"questions": kwargs["questions"]},
+            )
+
+    registry = _PausingRegistry()
+    dsml = (
+        "Feedback before. "
+        '<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name="ask_user">'
+        '<｜｜DSML｜｜parameter name="questions" string="true">'
+        '[{"id":"q1","prompt":"Continue?"}]'
+        "</｜｜DSML｜｜parameter></｜｜DSML｜｜invoke>"
+        "</｜｜DSML｜｜tool_calls> Feedback after."
+    )
+    # Split inside special tokens, tag names, and the JSON parameter value.
+    dsml_chunks = [dsml[index : index + 5] for index in range(0, len(dsml), 5)]
+    client = _ScriptedChatClient([[_llm_chunk(content=piece) for piece in dsml_chunks]])
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["ask_user"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(session_id="s1", user_message="Teach me", enabled_tools=["ask_user"]),
+    )
+
+    assert registry.executed[0]["name"] == "ask_user"
+    assert registry.executed[0]["kwargs"]["questions"] == [{"id": "q1", "prompt": "Continue?"}]
+    round_content = "".join(
+        event.content
+        for event in events
+        if event.type == StreamEventType.CONTENT
+        and event.metadata.get("call_kind") == "agent_loop_round"
+    )
+    assert round_content == "Feedback before.  Feedback after."
+    assert "DSML" not in round_content
+    thinking = "".join(event.content for event in events if event.type == StreamEventType.THINKING)
+    assert "DSML" not in thinking
+
+    markers = [
+        event.metadata
+        for event in events
+        if event.type == StreamEventType.PROGRESS
+        and event.metadata.get("call_state") == "complete"
+        and "call_role" in event.metadata
+    ]
+    assert markers[0]["call_role"] == "narration"
+    assert markers[0]["answer_visible"] is True
+    result = _result(events)
+    assert client.call_count == 1
+    assert result.metadata["completed"] is False
+    assert result.metadata["response"] == ""
+
+
+@pytest.mark.asyncio
+async def test_dsml_container_schema_survives_native_tool_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _FallbackClient:
+        def __init__(self, scripted: list[list[SimpleNamespace]]) -> None:
+            self.scripted = list(scripted)
+            self.calls: list[dict[str, Any]] = []
+
+            class _Completions:
+                def __init__(self, parent: _FallbackClient) -> None:
+                    self.parent = parent
+
+                async def create(self, **kwargs):
+                    self.parent.calls.append(kwargs)
+                    if kwargs.get("tools"):
+                        raise RuntimeError("tool_choice is invalid")
+                    return _async_llm_stream(self.parent.scripted.pop(0))
+
+            self.chat = SimpleNamespace(completions=_Completions(self))
+
+    class _PausingRegistry(_Registry):
+        async def execute(self, name: str, **kwargs):
+            self.executed.append({"name": name, "kwargs": kwargs})
+            if name == "ask_user":
+                return ToolResult(
+                    content="Asked the user.",
+                    success=True,
+                    pause_for_user={"questions": kwargs["questions"]},
+                )
+            return ToolResult(content="search result", success=True)
+
+    first = (
+        '<｜DSML｜invoke name="web_search">'
+        '<｜DSML｜parameter name="query" string="true">topic'
+        "</｜DSML｜parameter></｜DSML｜invoke>"
+    )
+    second = (
+        '<｜DSML｜invoke name="ask_user">'
+        '<｜DSML｜parameter name="questions" string="true">'
+        '[{"id":"q1","prompt":"Continue?"}]'
+        "</｜DSML｜parameter></｜DSML｜invoke>"
+    )
+    client = _FallbackClient([[_llm_chunk(content=first)], [_llm_chunk(content=second)]])
+    registry = _PausingRegistry()
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry
+    monkeypatch.setattr(
+        pipeline, "_compose_enabled_tools", lambda _context: ["web_search", "ask_user"]
+    )
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    await _run(
+        pipeline,
+        UnifiedContext(
+            session_id="s1",
+            user_message="Teach me",
+            enabled_tools=["web_search", "ask_user"],
+        ),
+    )
+
+    assert [item["name"] for item in registry.executed] == ["web_search", "ask_user"]
+    assert registry.executed[-1]["kwargs"]["questions"] == [{"id": "q1", "prompt": "Continue?"}]
+    assert "tools" in client.calls[0]
+    assert all("tools" not in call for call in client.calls[1:])
+
+
+@pytest.mark.asyncio
 async def test_midloop_llm_failure_salvages_turn_with_forced_finish(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -822,7 +959,9 @@ async def test_unresolved_ask_user_halts_turn(monkeypatch: pytest.MonkeyPatch) -
 
 
 @pytest.mark.asyncio
-async def test_round_budget_forces_tool_less_finish(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_round_budget_enters_tool_enabled_settlement_then_finishes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     registry = _Registry()
     client = _ScriptedChatClient(
         [
@@ -852,13 +991,266 @@ async def test_round_budget_forces_tool_less_finish(monkeypatch: pytest.MonkeyPa
     )
 
     assert client.call_count == 2
-    # The forced finish round disables tools and tells the model to answer now.
-    assert "tools" not in client.calls[-1]
-    forced_instruction = client.calls[-1]["messages"][-1]["content"]
-    assert "round budget ran out" in forced_instruction
+    # The exploration budget is separate from bounded protocol settlement:
+    # one follow-up round retains tools so already-started work can settle.
+    assert "tools" in client.calls[-1]
+    settlement_instruction = client.calls[-1]["messages"][-1]["content"]
+    assert "exploration round budget" in settlement_instruction.lower()
     result = _result(events)
     assert result.metadata["response"] == "Best effort answer."
     assert result.metadata["completed"] is True
+    assert result.metadata["settlement_rounds"] == 1
+
+
+@pytest.mark.asyncio
+async def test_budget_settlement_completes_quiz_ask_grade_and_feedback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A quiz registered on the final exploration round still gets shown,
+    answered, graded, and followed by deterministic learner feedback."""
+
+    class _MasteryRegistry(_Registry):
+        def build_openai_schemas(self, _enabled):
+            schemas = super().build_openai_schemas(_enabled)
+            schemas.extend(
+                [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": name,
+                            "description": name,
+                            "parameters": {
+                                "type": "object",
+                                "properties": {},
+                                "additionalProperties": True,
+                            },
+                        },
+                    }
+                    for name in ("mastery_quiz", "mastery_grade")
+                ]
+            )
+            return schemas
+
+        async def execute(self, name: str, **kwargs):
+            self.executed.append({"name": name, "kwargs": kwargs})
+            if name == "ask_user":
+                return ToolResult(
+                    content="Asked the learner.",
+                    success=True,
+                    pause_for_user={"questions": kwargs["questions"]},
+                )
+            if name == "mastery_quiz":
+                return ToolResult(content="Quiz q1 registered.", success=True)
+            if name == "mastery_grade":
+                return ToolResult(content="Correct; objective mastered.", success=True)
+            raise AssertionError(f"unexpected tool: {name}")
+
+    registry = _MasteryRegistry()
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "id": "quiz-1",
+                            "name": "mastery_quiz",
+                            "arguments": "{}",
+                        }
+                    ]
+                )
+            ],
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "id": "ask-1",
+                            "name": "ask_user",
+                            "arguments": json.dumps(
+                                {"questions": [{"id": "q1", "prompt": "Which answer?"}]}
+                            ),
+                        }
+                    ]
+                )
+            ],
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "id": "grade-1",
+                            "name": "mastery_grade",
+                            "arguments": json.dumps({"question_id": "q1", "answer": "B"}),
+                        }
+                    ]
+                )
+            ],
+            [_llm_chunk(content="Correct — here is why B is the right answer.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry
+    pipeline._max_rounds = 1
+    monkeypatch.setattr(
+        pipeline,
+        "_compose_enabled_tools",
+        lambda _context: ["mastery_quiz", "ask_user", "mastery_grade"],
+    )
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    async def _waiter():
+        return {"text": "B"}
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(
+            session_id="s1",
+            user_message="Quiz me",
+            enabled_tools=["mastery_quiz", "ask_user", "mastery_grade"],
+            metadata={"wait_for_user_reply": _waiter},
+        ),
+    )
+
+    assert [entry["name"] for entry in registry.executed] == [
+        "mastery_quiz",
+        "ask_user",
+        "mastery_grade",
+    ]
+    assert client.call_count == 4
+    # All three settlement rounds retain the tool contract; the final one
+    # chooses to finish without calling another tool.
+    assert all("tools" in call for call in client.calls)
+    grade_round = client.calls[2]["messages"]
+    assert any(
+        message.get("role") == "tool" and "User answered" in str(message.get("content"))
+        for message in grade_round
+    )
+    result = _result(events)
+    assert result.metadata["response"] == "Correct — here is why B is the right answer."
+    assert result.metadata["completed"] is True
+    assert result.metadata["rounds"] == 4
+    assert result.metadata["settlement_rounds"] == 3
+
+
+@pytest.mark.asyncio
+async def test_settlement_hard_limit_forces_one_tool_less_finish(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A model that ignores settlement instructions cannot loop forever."""
+    registry = _Registry()
+    repeated_tool_rounds = [
+        [
+            _llm_chunk(
+                tool_calls=[
+                    {
+                        "id": f"call-{index}",
+                        "name": "web_search",
+                        "arguments": json.dumps({"query": f"step {index}"}),
+                    }
+                ]
+            )
+        ]
+        for index in range(4)
+    ]
+    client = _ScriptedChatClient([*repeated_tool_rounds, [_llm_chunk(content="Hard-stop answer.")]])
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry
+    pipeline._max_rounds = 1
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(session_id="s1", user_message="Research", enabled_tools=["web_search"]),
+    )
+
+    # N exploration calls + 3 tool-enabled settlement calls + 1 hard finish.
+    assert client.call_count == 5
+    assert all("tools" in call for call in client.calls[:4])
+    assert "tools" not in client.calls[4]
+    assert len(registry.executed) == 4
+    result = _result(events)
+    assert result.metadata["response"] == "Hard-stop answer."
+    assert result.metadata["completed"] is True
+    assert result.metadata["rounds"] == 5
+    assert result.metadata["settlement_rounds"] == 3
+
+
+@pytest.mark.asyncio
+async def test_length_finish_reason_continues_within_bounded_settlement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A token-truncated, tool-less round is incomplete, not a finish."""
+    registry = _Registry()
+    client = _ScriptedChatClient(
+        [
+            [_llm_chunk(content="Part one is incomplete. ", finish_reason="length")],
+            [_llm_chunk(content="Part two completes the answer.", finish_reason="stop")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry
+    pipeline._max_rounds = 1
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(session_id="s1", user_message="Explain fully", enabled_tools=["web_search"]),
+    )
+
+    assert client.call_count == 2
+    continuation_messages = client.calls[1]["messages"]
+    assert continuation_messages[-2] == {
+        "role": "assistant",
+        "content": "Part one is incomplete. ",
+    }
+    assert "token limit" in continuation_messages[-1]["content"].lower()
+    markers = [
+        event.metadata
+        for event in events
+        if event.type == StreamEventType.PROGRESS
+        and event.metadata.get("call_state") == "complete"
+        and "call_role" in event.metadata
+    ]
+    assert markers[0]["call_role"] == "narration"
+    assert markers[0]["answer_visible"] is True
+    assert markers[1]["call_role"] == "finish"
+    result = _result(events)
+    expected = "Part one is incomplete. Part two completes the answer."
+    assert result.metadata["response"] == expected
+    # RESULT/SDK and event-replay consumers use the exact same visible bytes.
+    assert "".join(_contents(events)) == expected
+    assert result.metadata["completed"] is True
+    assert result.metadata["settlement_rounds"] == 1
+
+
+@pytest.mark.asyncio
+async def test_repeated_empty_finish_stops_after_one_nudge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An empty provider response gets one recovery chance, never a loop."""
+    registry = _Registry()
+    client = _ScriptedChatClient(
+        [
+            [_llm_chunk(content="<think>first empty</think>")],
+            [_llm_chunk(content="<think>still empty</think>")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry
+    pipeline._max_rounds = 1
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(pipeline, UnifiedContext(session_id="s1", user_message="Answer"))
+
+    assert client.call_count == 2
+    result = _result(events)
+    assert result.metadata["response"] == (
+        "I could not produce a useful response from the model output. "
+        "Please try again or narrow the request."
+    )
+    assert result.metadata["completed"] is True
+    assert result.metadata["settlement_rounds"] == 1
 
 
 def test_compose_enabled_tools_injects_rag_when_kb_selected(
