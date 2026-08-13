@@ -42,6 +42,11 @@ def test_effective_temperature_override() -> None:
     assert get_effective_temperature("openai", "gpt-4o", requested_temp=0.4) == 0.4
 
 
+def test_openai_codex_provider_is_vision_capable() -> None:
+    """The Codex Responses provider accepts image input for its model catalog."""
+    assert supports_vision("openai_codex", "gpt-5.6-sol") is True
+
+
 def test_moonshot_vision_models() -> None:
     """Per Kimi docs the five vision-capable IDs flip supports_vision to True;
     other Moonshot models stay at the binding default (False).

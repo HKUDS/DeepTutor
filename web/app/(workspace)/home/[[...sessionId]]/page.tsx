@@ -353,6 +353,7 @@ export default function ChatPage() {
     setCapability,
     setKBs,
     setLLMSelection,
+    setMasteryPathId,
     setPersonaSelection,
     sendMessage,
     cancelStreamingTurn,
@@ -1120,12 +1121,14 @@ export default function ChatPage() {
     setCapabilityConfigs(loadCapabilityPlaygroundConfigs());
   }, []);
 
-  /* URL query params (capability, tool) */
+  /* URL query params (capability, tool, persistent mastery path) */
   useEffect(() => {
     if (typeof window === "undefined") return;
     const p = new URLSearchParams(window.location.search);
     const qc = p.get("capability");
     const qt = p.getAll("tool");
+    const masteryPathId = p.get("mastery_path_id")?.trim();
+    if (masteryPathId) setMasteryPathId(masteryPathId);
     if (qc !== null) handleSelectCapability(qc || "");
     else if (qt.length) {
       const valid = qt.filter((t): t is ToolName =>

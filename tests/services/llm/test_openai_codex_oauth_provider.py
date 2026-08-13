@@ -58,8 +58,17 @@ async def test_provider_uses_deeptutor_token_service_and_raw_sol_id(
     monkeypatch.setattr(module, "get_codex_oauth_service", lambda: service)
     monkeypatch.setattr(module, "_request_codex", request)
 
+    image_url = "data:image/png;base64,QUJD"
     result = await OpenAICodexProvider().chat(
-        [{"role": "user", "content": "hello"}],
+        [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "describe"},
+                    {"type": "image_url", "image_url": {"url": image_url}},
+                ],
+            }
+        ],
         model="openai-codex/gpt-5.6-sol",
         reasoning_effort="medium",
         tools=[
@@ -84,6 +93,15 @@ async def test_provider_uses_deeptutor_token_service_and_raw_sol_id(
     assert body["model"] == "gpt-5.6-sol"
     assert body["reasoning"] == {"effort": "medium"}
     assert body["tools"][0]["name"] == "lookup"
+    assert body["input"] == [
+        {
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": "describe"},
+                {"type": "input_image", "image_url": image_url, "detail": "auto"},
+            ],
+        }
+    ]
 
 
 @pytest.mark.asyncio
