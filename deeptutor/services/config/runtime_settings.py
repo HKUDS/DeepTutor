@@ -87,6 +87,10 @@ _LEGACY_DOCUMENT_PARSING_SETTINGS_NAME = "mineru"
 MINERU_MODE_LOCAL = "local"
 MINERU_MODE_CLOUD = "cloud"
 _MINERU_MODES = frozenset({MINERU_MODE_LOCAL, MINERU_MODE_CLOUD})
+
+DOCLING_MODE_LOCAL = "local"
+DOCLING_MODE_REMOTE = "remote"
+_DOCLING_MODES = frozenset({DOCLING_MODE_LOCAL, DOCLING_MODE_REMOTE})
 _MINERU_MODEL_VERSIONS = frozenset({"pipeline", "vlm"})
 _MINERU_DOWNLOAD_SOURCES = frozenset({"huggingface", "modelscope"})
 
@@ -143,9 +147,14 @@ _DEFAULT_MINERU_ENGINE: dict[str, Any] = {
     "allow_local_model_download": False,
 }
 
-# Docling engine slice. Downloads layout/table models on first run, hence the
-# same ``allow_local_model_download`` gate as MinerU local.
+# Docling engine slice. ``mode`` selects the in-process ``docling`` package
+# ("local") or a Docling Serve HTTP server ("remote"; needs ``api_base_url`` and
+# optionally ``api_token``). Local downloads layout/table models on first run,
+# hence the same ``allow_local_model_download`` gate as MinerU local.
 _DEFAULT_DOCLING_ENGINE: dict[str, Any] = {
+    "mode": DOCLING_MODE_LOCAL,
+    "api_base_url": "http://localhost:5001",
+    "api_token": "",
     "do_ocr": False,
     "do_table_structure": True,
     "allow_local_model_download": False,
@@ -421,6 +430,9 @@ class RuntimeSettingsService:
             engines = dict(payload["engines"])
             engines[DOCUMENT_PARSING_ENGINE_MINERU] = self._apply_mineru_process_overrides(
                 dict(engines[DOCUMENT_PARSING_ENGINE_MINERU])
+            )
+            engines[DOCUMENT_PARSING_ENGINE_DOCLING] = self._apply_docling_process_overrides(
+                dict(engines[DOCUMENT_PARSING_ENGINE_DOCLING])
             )
             payload = {**payload, "engines": engines}
         return payload
@@ -861,13 +873,30 @@ class RuntimeSettingsService:
         }
 
     def _normalize_docling_engine(self, settings: dict[str, Any]) -> dict[str, Any]:
+        mode = _string(settings.get("mode")).lower()
+        if mode not in _DOCLING_MODES:
+            mode = DOCLING_MODE_LOCAL
         return {
+            "mode": mode,
+            "api_base_url": _string(settings.get("api_base_url")).rstrip("/")
+            or "http://localhost:5001",
+            "api_token": _string(settings.get("api_token")),
             "do_ocr": _coerce_bool(settings.get("do_ocr"), False),
             "do_table_structure": _coerce_bool(settings.get("do_table_structure"), True),
             "allow_local_model_download": _coerce_bool(
                 settings.get("allow_local_model_download"), False
             ),
         }
+
+    def _apply_docling_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(settings)
+        if value := self._process_env_value("DOCLING_MODE"):
+            payload["mode"] = value
+        if value := self._process_env_value("DOCLING_API_BASE_URL"):
+            payload["api_base_url"] = value
+        if value := self._process_env_value("DOCLING_API_TOKEN"):
+            payload["api_token"] = value
+        return self._normalize_docling_engine(payload)
 
     def _normalize_markitdown_engine(self, settings: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -1113,6 +1142,8 @@ __all__ = [
     "DOCUMENT_PARSING_ENGINE_MINERU",
     "DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM",
     "DOCUMENT_PARSING_ENGINE_TEXT_ONLY",
+    "DOCLING_MODE_LOCAL",
+    "DOCLING_MODE_REMOTE",
     "LITEPARSE_IMAGE_MODES",
     "MINERU_MODE_CLOUD",
     "MINERU_MODE_LOCAL",

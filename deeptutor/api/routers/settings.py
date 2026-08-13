@@ -270,6 +270,15 @@ class DocumentParsingTest(BaseModel):
     engine: Optional[str] = None
 
 
+class DoclingRemoteTest(BaseModel):
+    """Draft Docling remote-server test. ``api_token`` is tri-state: ``None``
+    falls back to the stored key, ``""`` clears it, a string supplies it (so
+    the user can verify an unsaved key before saving)."""
+
+    api_base_url: str = "http://localhost:5001"
+    api_token: Optional[str] = None
+
+
 class DocumentParsingInstall(BaseModel):
     """One-click pip install of an optional parser engine's package(s)."""
 
@@ -812,8 +821,6 @@ def _document_parsing_payload() -> dict[str, Any]:
     readiness: dict[str, Any] = {}
     available = list_engines()
     for entry in available:
-        if not entry["available"]:
-            continue
         try:
             parser = get_parser(entry["id"])
             report = parser.is_ready(parser.resolve_config())
@@ -826,6 +833,7 @@ def _document_parsing_payload() -> dict[str, Any]:
             continue
 
     mineru_slice = engines.get("mineru", {})
+    docling_slice = engines.get("docling", {})
     return {
         "engine": full.get("engine"),
         "engines": redacted,
@@ -838,6 +846,10 @@ def _document_parsing_payload() -> dict[str, Any]:
         "mineru": {
             "api_token_set": bool(mineru_slice.get("api_token")),
             "local_cli": local_cli_probe(str(mineru_slice.get("local_cli_path") or "")),
+        },
+        # Docling UI state (token presence for remote mode).
+        "docling": {
+            "api_token_set": bool(docling_slice.get("api_token")),
         },
     }
 
@@ -893,8 +905,10 @@ async def update_document_parsing_settings(payload: DocumentParsingUpdate):
         if name not in engines:
             continue
         merged = dict(update or {})
-        # MinerU token tri-state: omitted / None keeps the stored token.
-        if name == "mineru" and merged.get("api_token") is None:
+        # Token tri-state for engines with a secret (MinerU, Docling remote):
+        # omitted / None keeps the stored token; "" clears it; a string
+        # replaces it.
+        if "api_token" in (engines[name] or {}) and merged.get("api_token") is None:
             merged.pop("api_token", None)
         engines[name].update(merged)
 
@@ -917,13 +931,48 @@ async def test_document_parsing(payload: DocumentParsingTest):
         return {"ok": False, "message": f"The '{engine}' parsing engine isn't installed."}
     try:
         parser = get_parser(engine)
-        report = parser.is_ready(parser.resolve_config())
+        config = parser.resolve_config()
+        report = parser.is_ready(config)
+        # Remote engines get a live connectivity check (e.g. Docling Serve
+        # /health) rather than a config-only readiness gate.
+        verify = getattr(parser, "verify", None)
+        if verify is not None and report.ready and callable(verify):
+            ok, message = verify(config)
+            return {"ok": ok, "message": message or ("Ready to parse." if ok else "Not ready.")}
     except Exception as exc:  # noqa: BLE001 - surface as a test result
         return {"ok": False, "message": str(exc)}
     return {
         "ok": report.ready,
         "message": report.message or ("Ready to parse." if report.ready else "Not ready."),
     }
+
+
+@router.post("/document-parsing/docling/test")
+async def test_docling_remote_connection(payload: DoclingRemoteTest):
+    """Live connectivity check for the Docling remote-server draft values.
+    Pings the server health + version endpoints and returns ``ok`` + a
+    human-readable detail. Tests draft form values so the user can verify the
+    URL/key before saving; falls back to the stored key when the secret field
+    is untouched."""
+    _require_settings_admin()
+    from deeptutor.services.parsing.engines.docling.config import (
+        DoclingConfig,
+        resolve_docling_config,
+    )
+    from deeptutor.services.parsing.engines.docling.remote import verify_remote
+
+    stored = resolve_docling_config()
+    base_url = payload.api_base_url.strip().rstrip("/") or "http://localhost:5001"
+    token = stored.api_token if payload.api_token is None else payload.api_token.strip()
+    config = DoclingConfig(
+        mode="remote",
+        api_base_url=base_url,
+        api_token=token,
+        do_ocr=stored.do_ocr,
+        do_table_structure=stored.do_table_structure,
+    )
+    ok, detail = await asyncio.to_thread(verify_remote, config)
+    return {"ok": ok, "message": detail or ("Ready to parse." if ok else "Not ready.")}
 
 
 def _normalize_engine_name(name: str) -> str:
