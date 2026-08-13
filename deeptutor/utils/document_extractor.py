@@ -3,9 +3,11 @@
 Bytes-in, text-out. Used by the chat turn runtime to inline the text of
 user-dropped files into the ``effective_user_message`` sent to the LLM.
 
-Two format families:
+Three format families:
   * **Binary Office** (.pdf / .docx / .xlsx / .pptx) — parsed with pymupdf /
     python-docx / openpyxl / python-pptx.
+  * **EPUB** (.epub) — ZIP of XHTML documents; text is pulled in the OPF
+    spine reading order using only the standard library.
   * **Text-like** (plain text, Markdown, source code, JSON, XML, CSV, …) —
     the extension set is imported from ``FileTypeRouter.TEXT_EXTENSIONS`` so
     the chat composer accepts every format the knowledge-base pipeline
@@ -22,8 +24,10 @@ from collections.abc import Iterable
 import io
 import logging
 from pathlib import Path, PurePosixPath
+import posixpath
 import re
 from typing import Any
+from urllib.parse import unquote
 import zipfile
 
 from defusedxml import ElementTree as DefusedElementTree
@@ -89,6 +93,35 @@ def _current_limits() -> tuple[int, int, int, int]:
 _PDF_MAGIC = b"%PDF-"
 _OOXML_MAGIC = b"PK\x03\x04"
 
+_EPUB_CONTENT_EXTENSIONS: frozenset[str] = frozenset({".xhtml", ".html", ".htm"})
+_EPUB_BLOCK_TAGS: frozenset[str] = frozenset(
+    {
+        "p",
+        "div",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "li",
+        "blockquote",
+        "tr",
+        "table",
+        "section",
+        "article",
+        "header",
+        "footer",
+        "aside",
+        "figure",
+        "figcaption",
+        "dd",
+        "dt",
+        "dl",
+        "hr",
+    }
+)
+
 
 class DocumentExtractionError(Exception):
     """Base class for extraction failures. ``str(exc)`` is user-friendly."""
@@ -146,6 +179,12 @@ def _check_magic(ext: str, data: bytes, filename: str) -> None:
                 f"{filename} does not look like a valid Office file (bad header)",
                 filename=filename,
             )
+    elif ext == ".epub":
+        if not data.startswith(_OOXML_MAGIC):
+            raise CorruptDocumentError(
+                f"{filename} does not look like a valid EPUB (bad header)",
+                filename=filename,
+            )
 
 
 def extract_text_from_bytes(
@@ -187,6 +226,8 @@ def extract_text_from_bytes(
         text = _extract_xlsx(data, filename)
     elif ext == ".pptx":
         text = _extract_pptx(data, filename)
+    elif ext == ".epub":
+        text = _extract_epub(data, filename)
     elif ext in TEXT_LIKE_EXTENSIONS:
         text = _extract_text_like(data, filename)
     else:  # pragma: no cover - guarded above
@@ -400,6 +441,129 @@ def _extract_text_like(data: bytes, filename: str) -> str:
         raise CorruptDocumentError(
             f"{filename}: failed to decode text ({exc})", filename=filename
         ) from exc
+
+
+def _epub_parse_member(zf: zipfile.ZipFile, member: str, filename: str) -> Any | None:
+    """Parse one XML/XHTML member, returning ``None`` when unreadable.
+
+    Real-world EPUBs occasionally ship sloppy XHTML (undeclared entities,
+    stray tags); a single bad chapter must not sink the whole book, so parse
+    failures are logged and skipped instead of raising.
+    """
+    try:
+        return _parse_xml_member(zf, member, filename)
+    except CorruptDocumentError as exc:
+        logger.warning("EPUB %s: skipping unparseable member %s (%s)", filename, member, exc)
+        return None
+
+
+def _epub_render_text(element: Any, parts: list[str]) -> None:
+    """Append the text of one XHTML element and its subtree to ``parts``.
+
+    Element text is emitted before its children and each child's tail after
+    it, preserving the document's word spacing. Block-level tags contribute a
+    paragraph break; ``script``/``style`` subtrees are dropped entirely.
+    """
+    tag = _local_name(element.tag) if isinstance(element.tag, str) else ""
+    if tag in {"script", "style"}:
+        return
+    if element.text:
+        parts.append(element.text)
+    if tag == "br":
+        parts.append("\n")
+    for child in element:
+        _epub_render_text(child, parts)
+        if child.tail:
+            parts.append(child.tail)
+    if tag in _EPUB_BLOCK_TAGS:
+        parts.append("\n\n")
+
+
+def _epub_xhtml_text(root: Any) -> str:
+    """Render one XHTML document as plain text with paragraph breaks.
+
+    Keeps the source whitespace of text nodes (XHTML carries its own word
+    spacing) and collapses each line afterwards, so ``<b>world</b>.`` stays
+    ``world.`` instead of gaining a stray space.
+    """
+    parts: list[str] = []
+    _epub_render_text(root, parts)
+    raw = "".join(parts)
+    lines = [re.sub(r"\s+", " ", line).strip() for line in raw.split("\n")]
+    return "\n".join(line for line in lines if line)
+
+
+def _epub_html_members(names: list[str]) -> list[str]:
+    """Archive members that look like XHTML content, in archive order."""
+    return [name for name in names if _ext(name) in _EPUB_CONTENT_EXTENSIONS]
+
+
+def _epub_content_files(zf: zipfile.ZipFile, filename: str) -> list[str]:
+    """Resolve the XHTML content documents of an EPUB in reading order.
+
+    Follows the standard chain ``META-INF/container.xml`` -> OPF package
+    document -> spine ``itemref`` order. Falls back to every HTML/XHTML
+    member in archive order when package metadata is missing or unusable.
+    """
+    names = zf.namelist()
+    name_set = set(names)
+
+    container_root = _epub_parse_member(zf, "META-INF/container.xml", filename)
+    if container_root is None:
+        return _epub_html_members(names)
+
+    opf_path = ""
+    for node in container_root.iter():
+        if _local_name(node.tag) == "rootfile":
+            opf_path = node.get("full-path") or ""
+            break
+    if not opf_path or opf_path not in name_set:
+        return _epub_html_members(names)
+
+    opf_root = _epub_parse_member(zf, opf_path, filename)
+    if opf_root is None:
+        return _epub_html_members(names)
+
+    manifest: dict[str, str] = {}
+    spine_ids: list[str] = []
+    for node in opf_root.iter():
+        name = _local_name(node.tag)
+        if name == "item":
+            item_id = node.get("id")
+            href = node.get("href")
+            if item_id and href:
+                manifest[item_id] = href
+        elif name == "itemref":
+            idref = node.get("idref")
+            if idref:
+                spine_ids.append(idref)
+
+    opf_dir = posixpath.dirname(opf_path)
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for idref in spine_ids:
+        href = manifest.get(idref)
+        if not href:
+            continue
+        member = posixpath.normpath(posixpath.join(opf_dir, unquote(href.split("#", 1)[0])))
+        if member in name_set and member not in seen:
+            ordered.append(member)
+            seen.add(member)
+    return ordered or _epub_html_members(names)
+
+
+def _extract_epub(data: bytes, filename: str) -> str:
+    """Extract the reading text of an EPUB with only the standard library."""
+    with _open_ooxml(data, filename) as zf:
+        chapters: list[str] = []
+        for member in _epub_content_files(zf, filename):
+            root = _epub_parse_member(zf, member, filename)
+            if root is None:
+                continue
+            text = _epub_xhtml_text(root)
+            if text:
+                chapters.append(text)
+    return "\n\n".join(chapters)
 
 
 def _open_ooxml(data: bytes, filename: str) -> zipfile.ZipFile:
