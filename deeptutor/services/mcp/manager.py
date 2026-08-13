@@ -557,6 +557,8 @@ class MCPConnectionManager:
         for block in result.content:
             if isinstance(block, types.TextContent):
                 parts.append(block.text)
+            elif isinstance(block, types.ImageContent):
+                parts.append("[MCP image omitted]")
             else:
                 parts.append(str(block))
         return "\n".join(parts) or "(no output)"
