@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { useAppShell } from "@/context/AppShellContext";
 import {
+  BookMarked,
   BookOpen,
   BookText,
   Bot,
@@ -79,6 +80,13 @@ const PRIMARY_NAV: NavEntry[] = [
     label: "Book",
     icon: Library,
     tooltipKey: "Book tooltip",
+    requires: "llm",
+  },
+  {
+    href: "/immersive-reading",
+    label: "Immersive Reading",
+    icon: BookMarked,
+    tooltipKey: "Immersive Reading tooltip",
     requires: "llm",
   },
   {
