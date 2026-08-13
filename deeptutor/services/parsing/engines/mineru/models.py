@@ -65,6 +65,10 @@ def model_env_overrides(source: str, endpoint: str = "") -> dict[str, str]:
     """
     src = source if source in DOWNLOAD_SOURCES else "huggingface"
     overrides = {"MINERU_MODEL_SOURCE": src}
+    # On Windows, MinerU's default multi-threaded PDF rendering can crash the
+    # process with a heap-corruption fault (0xc0000409). Serializing the render
+    # thread avoids the crash while only marginally slowing large documents.
+    overrides["MINERU_PDF_RENDER_THREADS"] = "1"
     cleaned = (endpoint or "").strip().rstrip("/")
     if cleaned and src == "huggingface":
         overrides["HF_ENDPOINT"] = cleaned

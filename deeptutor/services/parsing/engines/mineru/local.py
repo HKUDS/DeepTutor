@@ -139,6 +139,8 @@ def parse_pdf_with_mineru(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             shell=False,
             env={**os.environ, **extra_env} if extra_env else None,
         )
