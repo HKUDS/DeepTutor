@@ -1990,7 +1990,7 @@ export default function ChatPage() {
                 <div className="w-full max-w-[960px] flex items-center justify-center gap-4">
                   <img
                     src="/logo_black.png"
-                    alt="DeepTutor"
+                    alt="Encore"
                     width={40}
                     height={40}
                     className="h-10 w-10 select-none"

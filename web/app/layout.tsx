@@ -21,8 +21,10 @@ const fontSerif = Lora({
 });
 
 export const metadata: Metadata = {
-  title: "DeepTutor",
-  description: "Agent-native intelligent learning companion",
+  title: "Encore",
+  applicationName: "Encore",
+  description:
+    "Encore is your always-on AI companion between your one-to-one lessons with your private teacher. Continue your teacher’s practice with personalized exercises, instant feedback, and support so you arrive better prepared every time.",
   icons: {
     icon: [
       { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
