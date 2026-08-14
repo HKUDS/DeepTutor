@@ -513,7 +513,7 @@ class NormalizedProviderConfig:
     """Normalized provider configuration input."""
 
     name: str
-    api_key: str = ""
+    api_key: str | list[str] = ""
     api_base: str | None = None
     api_version: str | None = None
     extra_headers: dict[str, str] | None = None
@@ -528,7 +528,7 @@ class ResolvedLLMConfig:
     provider_mode: str
     binding_hint: str | None = None
     binding: str = "openai"
-    api_key: str = ""
+    api_key: str | list[str] = ""
     base_url: str | None = None
     effective_url: str | None = None
     api_version: str | None = None
@@ -546,7 +546,7 @@ class ResolvedEmbeddingConfig:
     provider_mode: str
     binding_hint: str | None = None
     binding: str = "openai"
-    api_key: str = ""
+    api_key: str | list[str] = ""
     base_url: str | None = None
     effective_url: str | None = None
     api_version: str | None = None
@@ -588,6 +588,16 @@ class ResolvedSearchConfig:
 
 def _as_str(value: Any) -> str:
     return str(value).strip() if value is not None else ""
+
+
+def _as_api_key(value: Any) -> str | list[str]:
+    if isinstance(value, list):
+        return [key for item in value if (key := _as_str(item))]
+    return _as_str(value)
+
+
+def _primary_api_key(value: str | list[str]) -> str:
+    return value[0] if isinstance(value, list) and value else value if isinstance(value, str) else ""
 
 
 def _to_headers(value: Any) -> dict[str, str]:
@@ -657,7 +667,7 @@ def _collect_provider_pool(catalog: dict[str, Any]) -> dict[str, NormalizedProvi
             continue
         providers[name] = NormalizedProviderConfig(
             name=name,
-            api_key=_as_str(profile.get("api_key")),
+            api_key=_as_api_key(profile.get("api_key")),
             api_base=_as_str(profile.get("base_url")) or None,
             api_version=_as_str(profile.get("api_version")) or None,
             extra_headers=_to_headers(profile.get("extra_headers")) or None,
@@ -669,14 +679,14 @@ def _choose_resolved_provider(
     *,
     hint: str | None,
     model: str,
-    api_key: str,
+    api_key: str | list[str],
     api_base: str | None,
     provider_pool: dict[str, NormalizedProviderConfig],
 ) -> ProviderSpec:
     explicit_spec = find_by_name(hint) if hint else None
     detected_gateway = find_gateway(
         provider_name=None,
-        api_key=api_key or None,
+        api_key=_primary_api_key(api_key) or None,
         api_base=api_base or None,
     )
     # Keep backward compatibility: old `binding=openai` should not block
@@ -732,7 +742,7 @@ def resolve_llm_runtime_config(
     binding_hint_raw = _as_str((profile or {}).get("binding"))
     binding_hint = canonical_provider_name(binding_hint_raw)
 
-    active_api_key = _as_str((profile or {}).get("api_key"))
+    active_api_key = _as_api_key((profile or {}).get("api_key"))
     active_api_base = _as_str((profile or {}).get("base_url"))
     active_api_version = _as_str((profile or {}).get("api_version"))
     reasoning_effort = _as_str((model or {}).get("reasoning_effort")) or None
@@ -801,7 +811,7 @@ def _collect_embedding_provider_pool(
             continue
         providers[name] = NormalizedProviderConfig(
             name=name,
-            api_key=_as_str(profile.get("api_key")),
+            api_key=_as_api_key(profile.get("api_key")),
             api_base=_as_str(profile.get("base_url")) or None,
             api_version=_as_str(profile.get("api_version")) or None,
             extra_headers=_to_headers(profile.get("extra_headers")) or None,
@@ -910,7 +920,7 @@ def resolve_embedding_runtime_config(
     binding_hint_raw = _as_str((profile or {}).get("binding"))
     binding_hint = _canonical_embedding_provider_name(binding_hint_raw)
 
-    active_api_key = _as_str((profile or {}).get("api_key"))
+    active_api_key = _as_api_key((profile or {}).get("api_key"))
     active_api_base = _as_str((profile or {}).get("base_url"))
     active_api_version = _as_str((profile or {}).get("api_version"))
     active_extra_headers = _to_headers((profile or {}).get("extra_headers"))

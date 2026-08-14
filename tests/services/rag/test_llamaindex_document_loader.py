@@ -333,3 +333,81 @@ def test_loader_skips_images_when_llm_client_is_unavailable(
     assert "requires both multimodal embedding and multimodal LLM support" in caplog.text
     assert "LLM client is unavailable" in caplog.text
     assert "no LLM configured" in caplog.text
+    assert "embedding provider/model does not support multimodal contents" in caplog.text
+    assert "LLM provider/model does not support multimodal image input" in caplog.text
+    assert "text-embedding-3-small" in caplog.text
+    assert "gpt-3.5-turbo" in caplog.text
+
+
+def test_loader_processes_images_concurrently_and_keeps_partial_successes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    pytest.importorskip("llama_index.core")
+    from llama_index.core.schema import ImageNode
+
+    from deeptutor.services.rag.pipelines.llamaindex import document_loader as loader_module
+
+    image_paths = [
+        tmp_path / "one.png",
+        tmp_path / "two.png",
+        tmp_path / "describe-fail.png",
+        tmp_path / "embed-fail.png",
+        tmp_path / "five.png",
+    ]
+    for image_path in image_paths:
+        image_path.write_bytes(image_path.stem.encode())
+
+    active = {"describe": 0, "embed": 0}
+    maximum = {"describe": 0, "embed": 0}
+
+    class _MultimodalEmbeddingClient:
+        config = type("Config", (), {"binding": "siliconflow", "model": "qwen3-vl"})()
+
+        def supports_multimodal_contents(self) -> bool:
+            return True
+
+        async def embed_contents(self, contents):
+            active["embed"] += 1
+            maximum["embed"] = max(maximum["embed"], active["embed"])
+            try:
+                await asyncio.sleep(0.01)
+                if "ZW1iZWQtZmFpbA==" in contents[0]["image"]:
+                    raise RuntimeError("embedding unavailable")
+                return [[0.1, 0.2, 0.3]]
+            finally:
+                active["embed"] -= 1
+
+    class _VisionClient:
+        config = type("Config", (), {"binding": "openai", "model": "gpt-4o"})()
+
+        def supports_multimodal_images(self) -> bool:
+            return True
+
+        async def complete(self, prompt, **kwargs):
+            active["describe"] += 1
+            maximum["describe"] = max(maximum["describe"], active["describe"])
+            try:
+                await asyncio.sleep(0.01)
+                if kwargs["image_filename"] == "describe-fail.png":
+                    raise RuntimeError("description unavailable")
+                return f"Description for {kwargs['image_filename']}"
+            finally:
+                active["describe"] -= 1
+
+    monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _MultimodalEmbeddingClient())
+    monkeypatch.setattr(loader_module, "get_llm_client", lambda: _VisionClient())
+
+    with caplog.at_level("WARNING"):
+        documents = asyncio.run(
+            loader_module.LlamaIndexDocumentLoader(image_concurrency=2).load(
+                [str(path) for path in image_paths]
+            )
+        )
+
+    image_nodes = [document for document in documents if isinstance(document, ImageNode)]
+    assert len(image_nodes) == 3
+    assert maximum == {"describe": 2, "embed": 2}
+    assert "describe-fail.png" in caplog.text
+    assert "embed-fail.png" in caplog.text

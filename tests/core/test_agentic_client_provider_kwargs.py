@@ -151,6 +151,53 @@ def test_build_openai_client_routes_oauth_backend_through_adapter(monkeypatch) -
     assert captured["default_model"] == "openai-codex/gpt-5.5"
 
 
+@pytest.mark.asyncio
+async def test_build_openai_client_rotates_api_keys_after_429(monkeypatch) -> None:
+    await agentic_client.close_agentic_client_pool()
+    seen_keys: list[str] = []
+
+    class RateLimitError(Exception):
+        status_code = 429
+
+    class FakeCompletions:
+        def __init__(self, api_key: str) -> None:
+            self.api_key = api_key
+
+        async def create(self, **_kwargs):
+            seen_keys.append(self.api_key)
+            if self.api_key == "key-a":
+                raise RateLimitError("rate limited")
+            return "ok"
+
+    class FakeClient:
+        def __init__(self, api_key: str, **_kwargs) -> None:
+            self.chat = type(
+                "Chat", (), {"completions": FakeCompletions(api_key)}
+            )()
+
+        async def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(agentic_client, "AsyncOpenAI", FakeClient)
+    monkeypatch.setattr(
+        agentic_client, "load_system_settings", lambda: {"disable_ssl_verify": False}
+    )
+    client = build_openai_client(
+        LLMClientConfig(
+            binding="openai",
+            model="gpt-test",
+            api_key=["key-a", "key-b"],
+            base_url="https://example.test/v1",
+        )
+    )
+
+    result = await client.chat.completions.create(model="gpt-test", messages=[])
+
+    assert result == "ok"
+    assert seen_keys == ["key-a", "key-b"]
+    await agentic_client.close_agentic_client_pool()
+
+
 def test_build_openai_client_routes_github_copilot_backend_through_adapter(monkeypatch) -> None:
     captured = {}
 

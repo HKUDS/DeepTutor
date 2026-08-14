@@ -80,6 +80,23 @@ def test_llm_explicit_binding_and_headers() -> None:
     assert resolved.extra_headers == {"APP-Code": "abc"}
 
 
+def test_llm_runtime_preserves_api_key_array() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "LLM pool",
+            "binding": "openai",
+            "base_url": "https://api.example.com/v1",
+            "api_key": ["key-a", "key-b"],
+            "api_version": "",
+            "extra_headers": {},
+            "models": [{"id": "llm-m", "name": "m", "model": "gpt-4o-mini"}],
+        }
+    )
+
+    assert resolve_llm_runtime_config(catalog=catalog).api_key == ["key-a", "key-b"]
+
+
 def test_llm_api_key_prefix_gateway() -> None:
     catalog = _build_catalog(
         llm_profile={

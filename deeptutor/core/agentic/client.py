@@ -11,7 +11,7 @@ import asyncio
 from collections import OrderedDict
 from collections.abc import Callable
 import contextlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import inspect
 import json
@@ -23,6 +23,7 @@ import httpx
 from openai import AsyncAzureOpenAI, AsyncOpenAI
 
 from deeptutor.services.config import load_system_settings
+from deeptutor.services.keypool import KeyPool
 from deeptutor.services.llm import get_token_limit_kwargs, supports_tools
 from deeptutor.services.llm.openai_http_client import sanitize_invalid_ssl_env
 from deeptutor.services.llm.reasoning_params import (
@@ -55,7 +56,7 @@ class LLMClientConfig:
 
     binding: str
     model: str | None
-    api_key: str | None
+    api_key: str | list[str] | None
     base_url: str | None
     api_version: str | None = None
     extra_headers: dict[str, str] | None = None
@@ -67,7 +68,8 @@ def _client_cache_key(
     loop: asyncio.AbstractEventLoop,
     disable_ssl_verify: bool,
 ) -> tuple[Any, ...]:
-    secret = hashlib.sha256((config.api_key or "").encode("utf-8")).hexdigest()[:16]
+    serialized_key = json.dumps(config.api_key or "", ensure_ascii=False, separators=(",", ":"))
+    secret = hashlib.sha256(serialized_key.encode("utf-8")).hexdigest()[:16]
     headers = json.dumps(config.extra_headers or {}, sort_keys=True, separators=(",", ":"))
     return (
         loop,
@@ -86,6 +88,23 @@ def _build_openai_client(config: LLMClientConfig, *, disable_ssl_verify: bool) -
     # create_ssl_context raise FileNotFoundError mid-__init__, aborting client
     # construction. Drop broken CA paths first so TLS uses its default CA config.
     sanitize_invalid_ssl_env()
+def _build_openai_client(
+    config: LLMClientConfig,
+    *,
+    disable_ssl_verify: bool,
+    sdk_max_retries: int | None = None,
+) -> Any:
+    if isinstance(config.api_key, list):
+        keys = [str(key).strip() for key in config.api_key if str(key).strip()]
+        clients = {
+            key: _build_openai_client(
+                replace(config, api_key=key),
+                disable_ssl_verify=disable_ssl_verify,
+                sdk_max_retries=0,
+            )
+            for key in keys
+        }
+        return _KeyRotatingClient(KeyPool(keys), clients)
     default_headers = config.extra_headers or None
     spec = find_by_name(config.binding)
     if spec:
@@ -97,19 +116,56 @@ def _build_openai_client(config: LLMClientConfig, *, disable_ssl_verify: bool) -
     if disable_ssl_verify:
         http_client = httpx.AsyncClient(verify=False)  # nosec B501
     if config.binding == "azure_openai" or (config.binding == "openai" and config.api_version):
+        retry_kwargs = {"max_retries": sdk_max_retries} if sdk_max_retries is not None else {}
         return AsyncAzureOpenAI(
             api_key=config.api_key or "sk-no-key-required",
             azure_endpoint=config.base_url,
             api_version=config.api_version,
             http_client=http_client,
             default_headers=default_headers,
+            **retry_kwargs,
         )
+    retry_kwargs = {"max_retries": sdk_max_retries} if sdk_max_retries is not None else {}
     return AsyncOpenAI(
         api_key=config.api_key or "sk-no-key-required",
         base_url=config.base_url or None,
         http_client=http_client,
         default_headers=default_headers,
+        **retry_kwargs,
     )
+
+
+class _KeyRotatingCompletions:
+    def __init__(self, key_pool: KeyPool, clients: dict[str, Any]) -> None:
+        self._key_pool = key_pool
+        self._clients = clients
+
+    async def create(self, **kwargs: Any) -> Any:
+        for attempt in range(2):
+            api_key = self._key_pool.next()
+            try:
+                return await self._clients[api_key].chat.completions.create(**kwargs)
+            except Exception as exc:
+                status = getattr(exc, "status_code", None) or getattr(
+                    getattr(exc, "response", None), "status_code", None
+                )
+                if status != 429:
+                    raise
+                self._key_pool.mark_429(api_key)
+                if attempt:
+                    raise
+        raise RuntimeError("LLM key rotation exhausted")
+
+
+class _KeyRotatingClient:
+    def __init__(self, key_pool: KeyPool, clients: dict[str, Any]) -> None:
+        self._clients = clients
+        self.chat = SimpleNamespace(
+            completions=_KeyRotatingCompletions(key_pool, clients)
+        )
+
+    async def close(self) -> None:
+        await asyncio.gather(*(_close_client(client) for client in self._clients.values()))
 
 
 async def _close_client(client: Any) -> None:

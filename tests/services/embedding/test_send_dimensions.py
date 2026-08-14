@@ -174,3 +174,48 @@ async def test_payload_auto_skips_dimensions_for_non_openai_models(
     adapter = _make_adapter(model="text-embedding-v4", send_dimensions=None)
     await adapter.embed(_request("text-embedding-v4"))
     assert "dimensions" not in capturing_httpx.captured_payloads[-1]
+
+
+@pytest.mark.asyncio
+async def test_embedding_retries_429_once_with_next_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    seen_auth: list[str] = []
+
+    class _RateLimitThenSuccess(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+            seen_auth.append(request.headers.get("Authorization", ""))
+            if len(seen_auth) == 1:
+                return httpx.Response(429, request=request)
+            return httpx.Response(
+                200,
+                request=request,
+                json={"data": [{"embedding": [0.1, 0.2]}], "usage": {}},
+            )
+
+    transport = _RateLimitThenSuccess()
+    real_client_init = httpx.AsyncClient.__init__
+
+    def _patched_init(self: httpx.AsyncClient, *args: Any, **kwargs: Any) -> None:
+        kwargs["transport"] = transport
+        real_client_init(self, *args, **kwargs)
+
+    async def _no_sleep(_delay: float) -> None:
+        return None
+
+    monkeypatch.setattr(httpx.AsyncClient, "__init__", _patched_init)
+    monkeypatch.setattr(asyncio, "sleep", _no_sleep)
+    adapter = OpenAICompatibleEmbeddingAdapter(
+        {
+            "api_key": ["key-a", "key-b"],
+            "base_url": "https://api.example.test/v1/embeddings",
+            "model": "text-embedding-3-small",
+        }
+    )
+
+    response = await adapter.embed(_request("text-embedding-3-small"))
+
+    assert response.embeddings == [[0.1, 0.2]]
+    assert seen_auth == ["Bearer key-a", "Bearer key-b"]

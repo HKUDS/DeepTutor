@@ -241,12 +241,13 @@ class MinerUSettingsUpdate(BaseModel):
 
     ``api_token`` is tri-state: ``None`` keeps the stored token (the UI sends
     None when the user didn't edit the secret field), ``""`` clears it, and a
-    non-empty string replaces it. The GET payload never echoes the raw token.
+    non-empty string or string array replaces it. The GET payload never echoes
+    the raw token.
     """
 
     mode: Literal["local", "cloud"] = "local"
     api_base_url: str = "https://mineru.net"
-    api_token: Optional[str] = None
+    api_token: Optional[str | list[str]] = None
     local_cli_path: str = ""
     model_download_source: Literal["huggingface", "modelscope"] = "huggingface"
     model_download_endpoint: str = ""
@@ -938,7 +939,11 @@ async def update_mineru_settings(payload: MinerUSettingsUpdate):
     # Tri-state token: None keeps the stored value, anything else replaces it.
     token = current.get("api_token", "")
     if payload.api_token is not None:
-        token = payload.api_token.strip()
+        token = (
+            [value.strip() for value in payload.api_token if value.strip()]
+            if isinstance(payload.api_token, list)
+            else payload.api_token.strip()
+        )
     service.save_mineru(
         {
             "mode": payload.mode,
@@ -1230,7 +1235,13 @@ async def test_mineru_connection(payload: MinerUSettingsUpdate):
 
     service = get_runtime_settings_service()
     stored = service.load_mineru(include_process_overrides=False)
-    token = stored.get("api_token", "") if payload.api_token is None else payload.api_token.strip()
+    token = stored.get("api_token", "")
+    if payload.api_token is not None:
+        token = (
+            [value.strip() for value in payload.api_token if value.strip()]
+            if isinstance(payload.api_token, list)
+            else payload.api_token.strip()
+        )
     config = MinerUConfig(
         mode="cloud",
         api_base_url=(payload.api_base_url or "").strip().rstrip("/") or "https://mineru.net",

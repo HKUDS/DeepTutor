@@ -53,7 +53,7 @@ def mineru_models_ready(_source: str = "huggingface") -> bool:
 def mineru_readiness(config) -> ReadinessReport:
     """Whether a MinerU parse can run now under ``config``."""
     if config.is_cloud:
-        if not (config.api_token or "").strip():
+        if not config.api_keys:
             return ReadinessReport(
                 ready=False,
                 reason="not_configured",
