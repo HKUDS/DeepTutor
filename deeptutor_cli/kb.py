@@ -284,3 +284,170 @@ def register(app: typer.Typer) -> None:
         provider = result.get("provider", DEFAULT_PROVIDER)
         console.print(f"[bold]Provider:[/] {provider}")
         console.print(f"[bold]Answer:[/]\n{answer}")
+
+    # ── GitHub source commands ──────────────────────────────────────
+
+    @app.command("add-github-source")
+    def kb_add_github_source(
+        name: str = typer.Argument(..., help="KB name."),
+        repo: str = typer.Option(..., "--repo", "-r", help="GitHub repo as owner/name or URL."),
+        branch: str = typer.Option("main", "--branch", "-b", help="Branch to track."),
+        path: str = typer.Option("", "--path", "-p", help="Subdirectory prefix (e.g. docs/)."),
+        glob: str = typer.Option("*.md", "--glob", "-g", help="File glob pattern."),
+    ) -> None:
+        """Add a GitHub repo as a Markdown document source for a KB."""
+        mgr = _get_kb_manager()
+        if name not in mgr.list_knowledge_bases():
+            console.print(f"[red]Knowledge base '{name}' not found.[/]")
+            raise typer.Exit(code=1)
+        try:
+            info = mgr.add_github_source(name, repo, branch, path, glob)
+        except Exception as exc:
+            console.print(f"[red]Failed: {exc}[/]")
+            raise typer.Exit(code=1) from exc
+        console.print(f"[green]GitHub source added:[/]")
+        console.print_json(json.dumps(info, ensure_ascii=False))
+
+    @app.command("remove-github-source")
+    def kb_remove_github_source(
+        name: str = typer.Argument(..., help="KB name."),
+        source_id: str = typer.Option(..., "--source-id", "-s", help="Source ID to remove."),
+    ) -> None:
+        """Remove a GitHub source from a KB."""
+        mgr = _get_kb_manager()
+        ok = mgr.remove_github_source(name, source_id)
+        if ok:
+            console.print(f"[green]Removed '{source_id}'.[/]")
+        else:
+            console.print(f"[yellow]Source '{source_id}' not found.[/]")
+
+    @app.command("add-web-source")
+    def kb_add_web_source(
+        name: str = typer.Argument(..., help="KB name."),
+        url: str = typer.Option(..., "--url", "-u", help="Documentation site base URL."),
+        max_depth: int = typer.Option(3, "--max-depth", help="Crawl depth."),
+        max_pages: int = typer.Option(200, "--max-pages", help="Max pages to crawl."),
+    ) -> None:
+        """Add a documentation site URL as a source for a KB."""
+        mgr = _get_kb_manager()
+        if name not in mgr.list_knowledge_bases():
+            console.print(f"[red]Knowledge base '{name}' not found.[/]")
+            raise typer.Exit(code=1)
+        try:
+            info = mgr.add_web_source(name, url, max_depth, max_pages)
+        except Exception as exc:
+            console.print(f"[red]Failed: {exc}[/]")
+            raise typer.Exit(code=1) from exc
+        console.print(f"[green]Web source added:[/]")
+        console.print_json(json.dumps(info, ensure_ascii=False))
+
+    @app.command("remove-web-source")
+    def kb_remove_web_source(
+        name: str = typer.Argument(..., help="KB name."),
+        source_id: str = typer.Option(..., "--source-id", "-s", help="Source ID to remove."),
+    ) -> None:
+        """Remove a web source from a KB."""
+        mgr = _get_kb_manager()
+        ok = mgr.remove_web_source(name, source_id)
+        if ok:
+            console.print(f"[green]Removed '{source_id}'.[/]")
+        else:
+            console.print(f"[yellow]Source '{source_id}' not found.[/]")
+
+    @app.command("list-sources")
+    def kb_list_sources(
+        name: str = typer.Argument(..., help="KB name."),
+    ) -> None:
+        """List all GitHub and web sources for a KB."""
+        mgr = _get_kb_manager()
+        if name not in mgr.list_knowledge_bases():
+            console.print(f"[red]Knowledge base '{name}' not found.[/]")
+            raise typer.Exit(code=1)
+
+        gh_sources = mgr.get_github_sources(name)
+        web_sources = mgr.get_web_sources(name)
+
+        if not gh_sources and not web_sources:
+            console.print("[dim]No sources for this KB.[/]")
+            return
+
+        if gh_sources:
+            table = Table(title=f"GitHub Sources — {name}")
+            table.add_column("ID", style="dim")
+            table.add_column("Repo")
+            table.add_column("Branch")
+            table.add_column("Status")
+            table.add_column("Files", justify="right")
+            for s in gh_sources:
+                table.add_row(s.get("id",""), s.get("repo",""), s.get("branch",""),
+                              s.get("last_sync_status","pending"), str(s.get("files_synced",0)))
+            console.print(table)
+
+        if web_sources:
+            table = Table(title=f"Web Sources — {name}")
+            table.add_column("ID", style="dim")
+            table.add_column("URL")
+            table.add_column("Status")
+            table.add_column("Pages", justify="right")
+            for s in web_sources:
+                table.add_row(s.get("id",""), s.get("url",""),
+                              s.get("last_sync_status","pending"), str(s.get("page_count",0)))
+            console.print(table)
+
+    @app.command("sync")
+    def kb_sync(name: str = typer.Argument(..., help="KB name.")) -> None:
+        """Immediately sync all GitHub and web sources for a KB."""
+        mgr = _get_kb_manager()
+        if name not in mgr.list_knowledge_bases():
+            console.print(f"[red]Knowledge base '{name}' not found.[/]")
+            raise typer.Exit(code=1)
+
+        gh_sources = mgr.get_github_sources(name)
+        web_sources = mgr.get_web_sources(name)
+        if not gh_sources and not web_sources:
+            console.print("[yellow]No sources to sync.[/]")
+            raise typer.Exit(code=0)
+
+        from deeptutor.services.github_source.sync import sync_source as gh_sync
+        from deeptutor.services.web_source.sync import sync_source as web_sync
+
+        for src in gh_sources:
+            if not src.get("enabled", True):
+                continue
+            console.print(f"Syncing GitHub [bold]{src.get('repo')}[/] ...")
+            try:
+                r = asyncio.run(gh_sync(kb_name=name, source=src, base_dir=str(mgr.base_dir)))
+            except Exception as exc:
+                console.print(f"  [red]Error: {exc}[/]")
+                continue
+            if r.skipped:
+                console.print("  [dim]Up to date.[/]")
+            elif r.ok:
+                console.print(f"  [green]+{r.files_added} ~{r.files_updated} -{r.files_removed}[/]")
+            else:
+                console.print(f"  [red]Failed: {r.error}[/]")
+
+        for src in web_sources:
+            if not src.get("enabled", True):
+                continue
+            console.print(f"Crawling [bold]{src.get('url')}[/] ...")
+            try:
+                r = asyncio.run(web_sync(kb_name=name, source=src, base_dir=str(mgr.base_dir)))
+            except Exception as exc:
+                console.print(f"  [red]Error: {exc}[/]")
+                continue
+            if r.ok:
+                console.print(f"  [green]+{r.pages_added} ~{r.pages_updated} -{r.pages_removed} ({r.pages_unchanged} unchanged)[/]")
+            else:
+                console.print(f"  [red]Failed: {r.error}[/]")
+
+        # Post-sync: merge bilingual EN/ZH pages and add navigation headers
+        if web_sources:
+            try:
+                from pathlib import Path
+                from deeptutor.services.web_source.bilingual_merger import merge_bilingual_pages
+                merged = merge_bilingual_pages(Path(str(mgr.base_dir)) / name / "raw")
+                if merged:
+                    console.print(f"[dim]Merged {merged} bilingual page pairs with navigation.[/]")
+            except Exception:
+                pass  # Non-fatal: pages are already synced
