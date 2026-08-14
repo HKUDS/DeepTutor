@@ -112,9 +112,7 @@ async def test_read_missing_object_fails(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_list_by_type(tmp_path: Path) -> None:
     db_path = _seed_store(tmp_path)
-    res = await MarginNoteListTool().execute(
-        object_type="card", _db_path=db_path
-    )
+    res = await MarginNoteListTool().execute(object_type="card", _db_path=db_path)
     assert res.success
     data = json.loads(res.content)
     assert data["count"] == 1

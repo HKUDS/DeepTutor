@@ -57,6 +57,7 @@ def _seed_objects(device_id: str = "dev1") -> list[MarginNoteObject]:
 
 # ---- device pairing --------------------------------------------------------
 
+
 def test_pair_device_returns_token(tmp_path: Path) -> None:
     store = MarginNoteStore(tmp_path / "test.db")
     device, token = store.pair_device(device_name="MacBook", device_kind="macos")
@@ -85,6 +86,7 @@ def test_revoke_device_blocks_token(tmp_path: Path) -> None:
 
 # ---- sync ingest -----------------------------------------------------------
 
+
 def test_ingest_stores_objects(tmp_path: Path) -> None:
     store = MarginNoteStore(tmp_path / "test.db")
     objects = _seed_objects()
@@ -102,10 +104,15 @@ def test_ingest_updates_existing(tmp_path: Path) -> None:
     objects = _seed_objects()
     store.ingest(SyncBatch(device_id="dev1", objects=objects))
     # Re-sync with updated content
-    updated = [MarginNoteObject(
-        object_id="note1", object_type=NOTE, title="Photosynthesis Updated",
-        content="New content", device_id="dev1",
-    )]
+    updated = [
+        MarginNoteObject(
+            object_id="note1",
+            object_type=NOTE,
+            title="Photosynthesis Updated",
+            content="New content",
+            device_id="dev1",
+        )
+    ]
     result = store.ingest(SyncBatch(device_id="dev1", objects=updated))
     assert result.stored == 0
     assert result.updated == 1
@@ -117,9 +124,7 @@ def test_ingest_updates_existing(tmp_path: Path) -> None:
 def test_ingest_handles_deletions(tmp_path: Path) -> None:
     store = MarginNoteStore(tmp_path / "test.db")
     store.ingest(SyncBatch(device_id="dev1", objects=_seed_objects()))
-    result = store.ingest(
-        SyncBatch(device_id="dev1", deleted_ids=["note1", "card1"])
-    )
+    result = store.ingest(SyncBatch(device_id="dev1", deleted_ids=["note1", "card1"]))
     assert result.deleted == 2
     assert store.count(device_id="dev1") == 1
     assert store.get("note1") is None
@@ -127,15 +132,14 @@ def test_ingest_handles_deletions(tmp_path: Path) -> None:
 
 def test_ingest_skips_unknown_types(tmp_path: Path) -> None:
     store = MarginNoteStore(tmp_path / "test.db")
-    bad = [MarginNoteObject(
-        object_id="bad1", object_type="unknown_type", device_id="dev1"
-    )]
+    bad = [MarginNoteObject(object_id="bad1", object_type="unknown_type", device_id="dev1")]
     result = store.ingest(SyncBatch(device_id="dev1", objects=bad))
     assert result.stored == 0
     assert store.count() == 0
 
 
 # ---- search ----------------------------------------------------------------
+
 
 def test_search_finds_by_unique_term(tmp_path: Path) -> None:
     store = MarginNoteStore(tmp_path / "test.db")
@@ -185,6 +189,7 @@ def test_search_empty_query_returns_nothing(tmp_path: Path) -> None:
 
 # ---- list / documents / tags ----------------------------------------------
 
+
 def test_list_objects_by_type(tmp_path: Path) -> None:
     store = MarginNoteStore(tmp_path / "test.db")
     store.ingest(SyncBatch(device_id="dev1", objects=_seed_objects()))
@@ -214,6 +219,7 @@ def test_collect_tags_ranked(tmp_path: Path) -> None:
 
 # ---- links -----------------------------------------------------------------
 
+
 def test_linked_objects_bidirectional(tmp_path: Path) -> None:
     store = MarginNoteStore(tmp_path / "test.db")
     store.ingest(SyncBatch(device_id="dev1", objects=_seed_objects()))
@@ -224,6 +230,7 @@ def test_linked_objects_bidirectional(tmp_path: Path) -> None:
 
 
 # ---- cursor ----------------------------------------------------------------
+
 
 def test_cursor_advances(tmp_path: Path) -> None:
     store = MarginNoteStore(tmp_path / "test.db")

@@ -45,9 +45,7 @@ def _store_for(request: Request) -> MarginNoteStore:
     return MarginNoteStore(db_path)
 
 
-def _auth_device(
-    request: Request, authorization: str | None
-) -> tuple[str, MarginNoteStore]:
+def _auth_device(request: Request, authorization: str | None) -> tuple[str, MarginNoteStore]:
     """Validate the device token and return ``(device_id, store)``."""
     if not authorization or not authorization.startswith("MarginNote "):
         raise HTTPException(401, "Missing or malformed Authorization header.")
@@ -63,6 +61,7 @@ def _auth_device(
 
 
 # -- request / response models ---------------------------------------------
+
 
 class PairRequest(BaseModel):
     device_name: str = ""
@@ -117,6 +116,7 @@ class DeviceInfo(BaseModel):
 
 # -- session-authenticated endpoints (DeepTutor user) -----------------------
 
+
 @router.post("/pair", response_model=PairResponse, dependencies=_auth)
 async def pair_device(body: PairRequest, request: Request) -> PairResponse:
     """Pair a new MN4 device. Requires a DeepTutor session.
@@ -124,9 +124,7 @@ async def pair_device(body: PairRequest, request: Request) -> PairResponse:
     Returns a one-time token the Add-on stores and presents on every sync.
     """
     store = _store_for(request)
-    device, token = store.pair_device(
-        device_name=body.device_name, device_kind=body.device_kind
-    )
+    device, token = store.pair_device(device_name=body.device_name, device_kind=body.device_kind)
     logger.info("Paired MN4 device %s (%s)", device.device_id, device.device_name)
     return PairResponse(
         device_id=device.device_id,
@@ -175,6 +173,7 @@ async def status(request: Request) -> dict[str, Any]:
 
 # -- device-token-authenticated endpoints (MN4 Add-on) ---------------------
 
+
 @router.post("/sync", response_model=SyncResponse)
 async def sync_objects(
     body: SyncRequest,
@@ -212,7 +211,10 @@ async def sync_objects(
     result = store.ingest(batch)
     logger.info(
         "MN4 sync from %s: +%d ~%d -%d",
-        device_id, result.stored, result.updated, result.deleted,
+        device_id,
+        result.stored,
+        result.updated,
+        result.deleted,
     )
     return SyncResponse(
         stored=result.stored,

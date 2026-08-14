@@ -54,9 +54,7 @@ def test_ordinary_kb_metadata_has_no_mn4_fields(tmp_path: Path) -> None:
     kb_dir = manager.base_dir / "plain"
     (kb_dir / "version-1").mkdir(parents=True)
     (kb_dir / "version-1" / "docstore.json").write_text("{}", encoding="utf-8")
-    manager.config.setdefault("knowledge_bases", {})["plain"] = {
-        "path": "plain", "status": "ready"
-    }
+    manager.config.setdefault("knowledge_bases", {})["plain"] = {"path": "plain", "status": "ready"}
     manager._save_config()
     meta = manager.get_metadata("plain")
     assert "type" not in meta
@@ -85,5 +83,6 @@ def test_register_marginnote4_kb_rejects_duplicate(tmp_path: Path) -> None:
     manager = KnowledgeBaseManager(base_dir=str(tmp_path / "kbs"))
     manager.register_marginnote4_kb("Lib")
     import pytest
+
     with pytest.raises(ValueError, match="already exists"):
         manager.register_marginnote4_kb("Lib")
