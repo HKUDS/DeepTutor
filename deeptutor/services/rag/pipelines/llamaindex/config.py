@@ -4,10 +4,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+import sys
 
 VECTOR_PROFILE = "vector"
 HYBRID_PROFILE = "hybrid"
 SUPPORTED_RETRIEVAL_PROFILES = {VECTOR_PROFILE, HYBRID_PROFILE}
+
+
+def should_show_progress() -> bool:
+    """Whether to emit LlamaIndex ``tqdm`` progress bars.
+
+    tqdm writes carriage-return progress lines to ``sys.stdout``. When
+    DeepTutor runs as a server that stream is a pipe whose read end (the
+    launcher's relay thread) can close mid-indexing, and the next tqdm write
+    then raises :class:`BrokenPipeError`, killing document indexing. DeepTutor
+    reports indexing progress through its own ``ProgressTracker``, so the tqdm
+    output is only wanted in an interactive CLI/REPL session.
+    """
+    return bool(getattr(sys.stdout, "isatty", lambda: False)())
 
 
 @dataclass(frozen=True)

@@ -4,6 +4,7 @@ Error Mapping - Map provider-specific errors to unified exceptions.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
 import logging
@@ -14,6 +15,7 @@ from .exceptions import (
     LLMAuthenticationError,
     LLMError,
     LLMRateLimitError,
+    LLMTimeoutError,
     ProviderContextWindowError,
 )
 
@@ -52,6 +54,12 @@ def _class_named(*names: str) -> ErrorClassifier:
 
 
 _GLOBAL_RULES: list[MappingRule] = [
+    MappingRule(
+        classifier=_instance_of(asyncio.TimeoutError, TimeoutError),
+        factory=lambda exc, provider: LLMTimeoutError(
+            str(exc) or "Request timed out", provider=provider
+        ),
+    ),
     MappingRule(
         classifier=_class_named("AuthenticationError", "AuthenticationStatusError"),
         factory=lambda exc, provider: LLMAuthenticationError(str(exc), provider=provider),
