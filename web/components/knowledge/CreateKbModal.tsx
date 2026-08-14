@@ -230,7 +230,7 @@ export default function CreateKbModal({
         // The connection must pass the test before a KB is bound to it.
         return !!trimmedServerUrl && !!serverProbe?.ok;
       }
-      return !providerUnavailable && selection.validFiles.length > 0;
+      return !providerUnavailable;
     }
     if (linkIsIma) return imaConnection.canSubmit;
     if (!trimmedPath) return false;
@@ -628,6 +628,9 @@ function NewModeFields({
         <div>
           <label className="mb-2 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
             {t("Initial documents")}
+            <span className="ml-1 normal-case tracking-normal text-[var(--muted-foreground)]/80">
+              ({t("optional")})
+            </span>
             {isPageIndex && (
               <span className="ml-2 normal-case tracking-normal text-[var(--muted-foreground)]/80">
                 · {t("PDF, Office, text and Markdown")}
@@ -640,6 +643,11 @@ function NewModeFields({
             uploadPolicy={policyForProvider}
             disabled={submitting}
           />
+          <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
+            {t(
+              "Skip for now — you can add web sources or upload documents after creation.",
+            )}
+          </p>
         </div>
       )}
     </>
