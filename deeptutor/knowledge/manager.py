@@ -1844,6 +1844,110 @@ class KnowledgeBaseManager:
                 result.append((kb_name, src))
         return result
 
+    # ------------------------------------------------------------------
+    # Web source management
+    # ------------------------------------------------------------------
+
+    def add_web_source(
+        self,
+        kb_name: str,
+        url: str,
+        max_depth: int = 3,
+        max_pages: int = 200,
+    ) -> dict:
+        """Register a documentation site URL as a document source for a KB."""
+        if kb_name not in self.list_knowledge_bases():
+            raise ValueError(f"Knowledge base not found: {kb_name}")
+        normalized_url = url.strip()
+        source_id = hashlib.md5(  # noqa: S324
+            normalized_url.encode(), usedforsecurity=False
+        ).hexdigest()[:8]
+        metadata_file = self.base_dir / kb_name / "metadata.json"
+        metadata = self._read_kb_metadata(metadata_file)
+        sources = metadata.get("web_sources", [])
+        for existing in sources:
+            if existing.get("id") == source_id:
+                return existing
+
+        source_info = {
+            "id": source_id,
+            "url": normalized_url,
+            "max_depth": max_depth,
+            "max_pages": max_pages,
+            "enabled": True,
+            "page_hashes": {},
+            "page_count": 0,
+            "last_synced_at": "",
+            "last_sync_status": "pending",
+            "last_sync_error": None,
+            "added_at": datetime.now().isoformat(),
+        }
+        sources.append(source_info)
+        metadata["web_sources"] = sources
+        atomic_write_json(metadata_file, metadata)
+        return source_info
+
+    def remove_web_source(self, kb_name: str, source_id: str) -> bool:
+        """Remove a web source from a KB."""
+        if kb_name not in self.list_knowledge_bases():
+            raise ValueError(f"Knowledge base not found: {kb_name}")
+        metadata_file = self.base_dir / kb_name / "metadata.json"
+        metadata = self._read_kb_metadata(metadata_file)
+        sources = metadata.get("web_sources", [])
+        remaining = [source for source in sources if source.get("id") != source_id]
+        if len(remaining) == len(sources):
+            return False
+
+        metadata["web_sources"] = remaining
+        atomic_write_json(metadata_file, metadata)
+        return True
+
+    def get_web_sources(self, kb_name: str) -> list[dict]:
+        """Return all web sources registered for a KB."""
+        if kb_name not in self.list_knowledge_bases():
+            raise ValueError(f"Knowledge base not found: {kb_name}")
+        metadata_file = self.base_dir / kb_name / "metadata.json"
+        metadata = self._read_kb_metadata(metadata_file)
+        return metadata.get("web_sources", [])
+
+    def update_web_source_state(self, kb_name: str, source_id: str, **fields: object) -> None:
+        """Persist sync state fields into a web source entry."""
+        if kb_name not in self.list_knowledge_bases():
+            raise ValueError(f"Knowledge base not found: {kb_name}")
+        metadata_file = self.base_dir / kb_name / "metadata.json"
+        metadata = self._read_kb_metadata(metadata_file)
+        for source in metadata.get("web_sources", []):
+            if source.get("id") == source_id:
+                source.update(fields)
+                atomic_write_json(metadata_file, metadata)
+                return
+
+    def get_all_web_sources(self) -> list[tuple[str, dict]]:
+        """Scan every KB and return (kb_name, source_dict) pairs."""
+        result = []
+        for kb_name in self.list_knowledge_bases():
+            for source in self.get_web_sources(kb_name):
+                result.append((kb_name, source))
+        return result
+
+    def get_web_navigation(self, kb_name: str) -> list[dict]:
+        """Return navigation manifests for all web sources in a KB."""
+        result = []
+        for source in self.get_web_sources(kb_name):
+            navigation = source.get("navigation") or {}
+            result.append(
+                {
+                    "source_id": source.get("id", ""),
+                    "source_url": source.get("url", ""),
+                    "kind": navigation.get("kind", ""),
+                    "nodes": navigation.get("nodes", []),
+                    "language": source.get("language", ""),
+                    "pair_key": source.get("pair_key", ""),
+                    "pair_status": source.get("pair_status", ""),
+                }
+            )
+        return result
+
     @staticmethod
     def _read_kb_metadata(metadata_file):
         """Load metadata.json, returning {} on absence or parse error."""
