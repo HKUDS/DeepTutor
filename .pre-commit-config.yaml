@@ -10,6 +10,15 @@
 #   git commit  # Hooks run automatically on commit
 
 repos:
+  - repo: local
+    hooks:
+      - id: deeptutor-repo-hygiene
+        name: DeepTutor repository hygiene
+        entry: python3 scripts/check_repo_hygiene.py
+        language: system
+        pass_filenames: false
+        always_run: true
+
   # ============================================
   # General file checks
   # ============================================
