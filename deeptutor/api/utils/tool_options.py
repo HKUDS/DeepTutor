@@ -33,7 +33,10 @@ async def build_tool_options(
     use the mandatory ``partner_*`` memory tools instead and cannot configure
     chat's memory tools.
     """
-    from deeptutor.agents._shared.tool_composition import default_optional_tools
+    from deeptutor.agents._shared.tool_composition import (
+        admin_enabled_optional_tools,
+        default_optional_tools,
+    )
     from deeptutor.runtime.registry.deferred_tools import provider_identity
     from deeptutor.runtime.registry.tool_registry import get_tool_registry
     from deeptutor.tools.builtin import CONFIGURABLE_BUILTIN_TOOL_NAMES
@@ -64,7 +67,17 @@ async def build_tool_options(
             "description_i18n": descriptions,
         }
 
-    tools: list[dict[str, Any]] = [_describe(name) for name in default_optional_tools()]
+    # The partner tool surface mirrors the admin's chat composer: a tool the
+    # admin turned off in Settings → Chat → Tools is not offered here, so a
+    # partner can neither pick nor default to a tool disabled globally. This
+    # is the same source the partner runtime intersects against
+    # (``_resolved_enabled_tools``), so the picker and runtime can't drift.
+    globally_enabled = set(admin_enabled_optional_tools())
+    tools: list[dict[str, Any]] = [
+        _describe(name)
+        for name in default_optional_tools()
+        if name in globally_enabled
+    ]
     builtin_tools: list[dict[str, Any]] = [
         _describe(name) for name in CONFIGURABLE_BUILTIN_TOOL_NAMES if name not in exclude
     ]

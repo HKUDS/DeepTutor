@@ -465,14 +465,25 @@ class PartnerRunner:
 
         ``None`` in config means "everything the user could toggle on in
         chat" — partners default to fully equipped; an explicit list (or
-        ``[]``) is the owner's selection.
+        ``[]``) is the owner's selection. The result is intersected with the
+        admin's global chat toggles (``admin_enabled_optional_tools``) so a
+        tool the admin disabled in Settings → Chat → Tools can never run
+        inside a partner turn, even if the partner config saved it (or saved
+        ``None`` before the admin turned the tool off).
         """
-        configured = getattr(self.config, "enabled_tools", None)
-        if configured is None:
-            from deeptutor.agents._shared.tool_composition import default_optional_tools
+        from deeptutor.agents._shared.tool_composition import (
+            admin_enabled_optional_tools,
+            default_optional_tools,
+        )
 
-            return default_optional_tools()
-        return [str(name) for name in configured]
+        configured = getattr(self.config, "enabled_tools", None)
+        candidates = (
+            default_optional_tools()
+            if configured is None
+            else [str(name) for name in configured]
+        )
+        globally_enabled = set(admin_enabled_optional_tools())
+        return [name for name in candidates if name in globally_enabled]
 
     def _resolved_builtin_tools(self) -> list[str] | None:
         """The partner's allowed built-in (auto-mounted) tools.
