@@ -92,6 +92,7 @@ export interface ReadingDocument {
   updated_at: number;
   progress: ReadingProgress;
   progress_percent: number;
+  experience_mode: "standard" | "kids";
   cover_url: string;
   fast_search_index: FastSearchIndexStatus;
 }
@@ -154,6 +155,82 @@ export interface FocusCheckResult {
   progress: ReadingProgress;
 }
 
+export interface DictionaryDefinition {
+  part_of_speech: string;
+  definition: string;
+  chinese: string;
+  example: string;
+  synonyms: string[];
+  context_match: boolean;
+}
+
+export interface DictionaryResult {
+  word: string;
+  phonetic: string;
+  definitions: DictionaryDefinition[];
+  chinese?: string;
+  context_note: string;
+}
+
+export interface VocabEntry {
+  id: string;
+  word: string;
+  phonetic: string;
+  definitions: DictionaryDefinition[];
+  chinese?: string;
+  context_note: string;
+  document_id: string;
+  document_title: string;
+  section_title: string;
+  created_at: number;
+  mn4_exported: boolean;
+}
+
+export interface CharacterNode {
+  id: string;
+  name: string;
+  aliases: string[];
+  description: string;
+}
+
+export interface CharacterEdge {
+  source: string;
+  target: string;
+  relation: string;
+  confidence: number;
+}
+
+export interface CharacterGraphResult {
+  graph: {
+    nodes: CharacterNode[];
+    edges: CharacterEdge[];
+  };
+  mermaid: string;
+  generated_at: number;
+  scope: "current" | "through_current";
+  section_id: string;
+}
+
+export interface KidsQuizChoice {
+  id: string;
+  kind: "comprehension" | "sight_word" | "sequence";
+  question: string;
+  choices: string[];
+  answer_index: number;
+  explanation: string;
+}
+
+export interface KidsQuizResult {
+  document_id: string;
+  section_id: string;
+  questions: KidsQuizChoice[];
+  content_hash: string;
+  model: string;
+  prompt_version: string;
+  generated_at: number;
+}
+
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   if (!(init?.body instanceof FormData)) headers.set("Content-Type", "application/json");
@@ -166,9 +243,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // Keep the HTTP status text.
     }
-    throw new Error(String(detail));
+    throw new ApiRequestError(String(detail), response.status);
   }
   return (await response.json()) as T;
+}
+
+export class ApiRequestError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
 }
 
 export const immersiveReadingApi = {
@@ -204,6 +291,17 @@ export const immersiveReadingApi = {
       {
         method: "PUT",
         body: JSON.stringify({ section_id: sectionId, scroll_percent: scrollPercent }),
+      },
+    ),
+  epubProgress: (
+    documentId: string,
+    data: { epub_cfi?: string; section_href?: string; scroll_percent?: number },
+  ) =>
+    request<{ progress: ReadingProgress }>(
+      `/documents/${encodeURIComponent(documentId)}/epub-progress`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
       },
     ),
   restart: (documentId: string, resetFocusChecks: boolean) =>
@@ -280,14 +378,234 @@ export const immersiveReadingApi = {
     request<{ deleted: boolean }>(`/citations/${encodeURIComponent(citationId)}`, {
       method: "DELETE",
     }),
-  translate: (text: string, targetLanguage: string) =>
+  translate: (text: string, targetLanguage: string, signal?: AbortSignal) =>
     request<{ translation: string }>("/translate", {
       method: "POST",
       body: JSON.stringify({ text, target_language: targetLanguage }),
+      signal,
     }),
   query: (text: string, question: string, language: "zh" | "en") =>
     request<{ answer: string; citations: Array<Record<string, unknown>>; search_provider: string }>(
       "/query",
       { method: "POST", body: JSON.stringify({ text, question, language }) },
     ),
+ dictionary: (word: string, context: string = "", signal?: AbortSignal) =>
+   request<DictionaryResult>("/dictionary", {
+     method: "POST",
+     body: JSON.stringify({ word, context }),
+     signal,
+   }),
+  vocabulary: (documentId?: string) =>
+    request<{ entries: VocabEntry[] }>(
+      `/vocabulary${documentId ? `?document_id=${encodeURIComponent(documentId)}` : ""}`,
+    ),
+  addWord: (
+    word: string,
+    context: string,
+    documentId: string,
+    documentTitle: string,
+    sectionTitle: string,
+ ) =>
+   request<{ entry: VocabEntry; lookup_warning?: string }>("/vocabulary", {
+     method: "POST",
+     body: JSON.stringify({
+       word,
+       context,
+       document_id: documentId,
+       document_title: documentTitle,
+       section_title: sectionTitle,
+      }),
+    }),
+  deleteWord: (entryId: string) =>
+    request<{ deleted: boolean }>(`/vocabulary/${encodeURIComponent(entryId)}`, {
+      method: "DELETE",
+    }),
+ characterGraph: (
+    documentId: string,
+    sectionId: string,
+    scope: "current" | "through_current" = "current",
+    forceRefresh = false,
+  ) =>
+    request<CharacterGraphResult>(
+      `/documents/${encodeURIComponent(documentId)}/character-graph`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+         section_id: sectionId,
+         scope,
+         force_refresh: forceRefresh,
+       }),
+     },
+   ),
+  setExperienceMode: (documentId: string, mode: "standard" | "kids") =>
+    request<{ experience_mode: string; progress_percent: number }>(
+      `/documents/${encodeURIComponent(documentId)}/experience-mode`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ mode }),
+      },
+    ),
+  kidsQuiz: (
+    documentId: string,
+    sectionId: string,
+    forceRefresh = false,
+  ) =>
+    request<KidsQuizResult>(
+      `/documents/${encodeURIComponent(documentId)}/kids-quiz`,
+      {
+        method: "POST",
+        body: JSON.stringify({ section_id: sectionId, force_refresh: forceRefresh }),
+      },
+    ),
+  kidsProgress: (
+    documentId: string,
+    sectionId: string,
+    data: { scroll_percent?: number; epub_cfi?: string; section_href?: string },
+  ) =>
+    request<{ progress: ReadingProgress }>(
+      `/documents/${encodeURIComponent(documentId)}/kids-progress`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ section_id: sectionId, ...data }),
+      },
+    ),
+};
+
+// ── Bilingual paired reading ────────────────────────────────────────────
+
+export interface BilingualPairing {
+  pairing_id: string;
+  en_document_id: string;
+  zh_document_id: string;
+  en_title: string;
+  zh_title: string;
+  target_lang: string;
+  translator: string;
+  chapter_count: number;
+  aligned: boolean;
+  review_count: number;
+  annotation_count?: number;
+  created_at: number;
+  updated_at: number;
+  chapter_map?: ChapterMapEntry[];
+}
+
+export interface ChapterMapEntry {
+  id: string;
+  english: string;
+  translation: string;
+  en_title?: string;
+  zh_title?: string;
+}
+
+export interface BilingualAlignGroup {
+  en: string[];
+  zh: string[];
+  shape: string;
+  cost: number;
+  forced: boolean;
+  low_confidence: boolean;
+}
+
+export interface BilingualSection {
+  chapter: string;
+  en_title: string;
+  pairs: number;
+  groups: BilingualAlignGroup[];
+  review: Array<Record<string, unknown>>;
+}
+
+export const bilingualApi = {
+  pair: (enDocumentId: string, zhDocumentId: string, targetLang?: string, translator = "") =>
+    request<{ pairing_id: string } & Partial<BilingualPairing>>("/bilingual/pair", {
+      method: "POST",
+      body: JSON.stringify({
+        en_document_id: enDocumentId,
+        zh_document_id: zhDocumentId,
+        target_lang: targetLang,
+        translator,
+      }),
+    }),
+  list: () => request<{ pairings: BilingualPairing[] }>("/bilingual"),
+  get: (pairingId: string) =>
+    request<BilingualPairing>(`/bilingual/${encodeURIComponent(pairingId)}`),
+  updateChapterMap: (pairingId: string, chapterMap: ChapterMapEntry[]) =>
+    request<BilingualPairing>(`/bilingual/${encodeURIComponent(pairingId)}/chapter-map`, {
+      method: "PUT",
+      body: JSON.stringify({ chapter_map: chapterMap }),
+    }),
+  align: (pairingId: string, force = false) =>
+    request<BilingualPairing>(
+      `/bilingual/${encodeURIComponent(pairingId)}/align${force ? "?force=true" : ""}`,
+      { method: "POST" },
+    ),
+  section: (pairingId: string, chapterId: string) =>
+    request<BilingualSection>(
+      `/bilingual/${encodeURIComponent(pairingId)}/section/${encodeURIComponent(chapterId)}`,
+    ),
+  report: (pairingId: string) =>
+    request<{ report: string }>(`/bilingual/${encodeURIComponent(pairingId)}/report`),
+  exportUrl: (pairingId: string) =>
+    apiUrl(`${BASE}/bilingual/${encodeURIComponent(pairingId)}/export`),
+  delete: (pairingId: string) =>
+    request<{ status: string }>(`/bilingual/${encodeURIComponent(pairingId)}`, {
+      method: "DELETE",
+    }),
+};
+
+// ── Annotation (review feedback loop) ───────────────────────────────────
+
+export interface BilingualAnnotation {
+  id: string;
+  pairing_id: string;
+  chapter_id: string;
+  chapter_title: string;
+  group_index: number;
+  issue_type: string;
+  note: string;
+  en_text: string;
+  zh_text: string;
+  shape: string;
+  cost: number;
+  status: "open" | "resolved";
+  created_at: number;
+}
+
+export const annotationApi = {
+  list: (pairingId: string, status?: string) =>
+    request<{ annotations: BilingualAnnotation[] }>(
+      `/bilingual/${encodeURIComponent(pairingId)}/annotations${status ? `?status=${status}` : ""}`,
+    ),
+  add: (
+    pairingId: string,
+    payload: {
+      chapter_id: string;
+      group_index: number;
+      issue_type: string;
+      note?: string;
+    },
+  ) =>
+    request<BilingualAnnotation>(
+      `/bilingual/${encodeURIComponent(pairingId)}/annotations`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
+  resolve: (pairingId: string, annotationId: string, resolved = true) =>
+    request<{ status: string }>(
+      `/bilingual/${encodeURIComponent(pairingId)}/annotations/${encodeURIComponent(annotationId)}`,
+      { method: "PUT", body: JSON.stringify({ resolved }) },
+    ),
+  delete: (pairingId: string, annotationId: string) =>
+    request<{ status: string }>(
+      `/bilingual/${encodeURIComponent(pairingId)}/annotations/${encodeURIComponent(annotationId)}`,
+      { method: "DELETE" },
+    ),
+  reviewReport: (pairingId: string) =>
+    request<{ report: string }>(
+      `/bilingual/${encodeURIComponent(pairingId)}/review-report`,
+    ),
+ saveOverrides: (pairingId: string, overridesJson: string) =>
+   request<{ status: string }>(
+     `/bilingual/${encodeURIComponent(pairingId)}/alignment-overrides`,
+     { method: "PUT", body: JSON.stringify({ overrides_json: overridesJson }) },
+   ),
 };
