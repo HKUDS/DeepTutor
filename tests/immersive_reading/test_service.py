@@ -16,6 +16,7 @@ from deeptutor.immersive_reading.models import (
     ReadingSection,
 )
 from deeptutor.immersive_reading.service import ImmersiveReadingService
+from deeptutor.services.llm.exceptions import LLMAPIError, LLMParseError
 
 
 def _minimal_epub_bytes() -> bytes:
@@ -130,7 +131,9 @@ def test_import_text_extracts_chapters_and_preserves_source(
     assert reading_service.original_path(document_id).read_bytes().startswith(b"Title page")
 
 
-def test_import_rejects_empty_and_unsupported_documents(reading_service: ImmersiveReadingService) -> None:
+def test_import_rejects_empty_and_unsupported_documents(
+    reading_service: ImmersiveReadingService,
+) -> None:
     with pytest.raises(ValueError, match="empty"):
         reading_service.import_document("empty.txt", b"")
     with pytest.raises(ValueError, match="Unsupported"):
@@ -181,6 +184,32 @@ def test_import_real_epub_extracts_metadata_toc_and_text(
     ]
     chapter_text = reading_service.get_section(document["id"], "section_0002")["content"]
     assert "Ada maps the compass bearings" in chapter_text
+
+
+def test_import_epub_uses_declared_cover_image(
+    reading_service: ImmersiveReadingService,
+    monkeypatch,
+) -> None:
+    import deeptutor.immersive_reading.service as service_module
+    from tests.immersive_reading.epub_fixtures import build_epub
+
+    declared_cover = b"declared-cover"
+    monkeypatch.setattr(
+        service_module,
+        "_fitz_sections",
+        lambda path: (
+            "The Compass Book",
+            "Ada Writer",
+            "chapters",
+            [("Chapter 1", "Chapter text", 1, 1, -1, 1)],
+            b"rendered-first-page",
+        ),
+    )
+    monkeypatch.setattr(service_module, "_epub_cover_bytes", lambda path: declared_cover)
+
+    document = reading_service.import_document("compass.epub", build_epub())
+
+    assert reading_service.cover_path(document["id"]).read_bytes() == declared_cover
 
 
 def test_exact_search_is_case_insensitive_and_keeps_source_offsets(
@@ -352,11 +381,344 @@ def test_citations_round_trip_and_delete(
     document_id = imported_document["id"]
     section_id = imported_document["sections"][1]["id"]
 
-    citation = reading_service.add_citation(document_id, section_id, "Ada follows the compass.", "Key clue")
+    citation = reading_service.add_citation(
+        document_id, section_id, "Ada follows the compass.", "Key clue"
+    )
 
     assert reading_service.list_citations(document_id) == [citation]
     reading_service.delete_citation(citation.id)
     assert reading_service.list_citations(document_id) == []
+
+
+@pytest.mark.asyncio
+async def test_dictionary_lookup_pins_local_qwen_json_request(
+    reading_service: ImmersiveReadingService, monkeypatch
+) -> None:
+    """The native Ollama /api/chat payload pins model, think=false, format=json."""
+    import aiohttp
+
+    captured: dict[str, object] = {}
+
+    # Bypass the live Ollama readiness probe.
+    async def _noop_ready() -> None:
+        return None
+
+    monkeypatch.setattr(reading_service, "_ensure_ollama_ready", _noop_ready)
+
+    valid_payload = (
+        '{"word":"technical","phonetic":"/ˈtɛknɪkəl/",'
+        '"definitions":[{"part_of_speech":"adjective",'
+        '"definition":"related to a specialized subject",'
+        '"example":"a technical manual","synonyms":["specialized"],'
+        '"context_match":true}],"context_note":"Fits the sentence."}'
+    )
+
+    class _FakeResp:
+        status = 200
+
+        async def json(self):
+            return {"message": {"content": valid_payload}}
+
+        async def text(self):
+            return valid_payload
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    class _FakeSession:
+        def post(self, url, json=None):
+            captured.update(json or {})
+            return _FakeResp()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    monkeypatch.setattr(aiohttp, "ClientSession", lambda **kw: _FakeSession())
+
+    result = await reading_service.lookup_word("technical", "a technical manual")
+
+    assert result.word == "technical"
+    assert result.definitions[0].context_match is True
+    # Native Ollama API payload fields
+    assert captured["model"] == "qwen3.5:2b"
+    assert captured["think"] is False
+    assert captured["stream"] is False
+    assert captured["format"] == "json"
+    assert captured["options"]["temperature"] == 0.1
+
+
+@pytest.mark.asyncio
+async def test_local_ecdict_result_wins_before_network_or_model(
+    reading_service: ImmersiveReadingService, tmp_path, monkeypatch
+) -> None:
+    from deeptutor.immersive_reading.models import DictionaryDefinition, DictionaryResult
+
+    local = DictionaryResult(
+        word="technical",
+        phonetic="'teknikl",
+        definitions=[DictionaryDefinition(definition="a. relating to a specialized subject")],
+        chinese="a. 技术的",
+    )
+    monkeypatch.setattr(
+        reading_service,
+        "_local_dictionary_lookup",
+        lambda _word: local.model_copy(deep=True),
+    )
+
+    async def fail_online(*_args, **_kwargs):
+        raise AssertionError("online dictionary must not run after an ECDICT hit")
+
+    monkeypatch.setattr(reading_service, "_fast_dictionary_lookup", fail_online)
+
+    result = await reading_service.lookup_word("TECHNICAL")
+
+    assert result.chinese == "a. 技术的"
+    assert reading_service._cache_get("technical").chinese == "a. 技术的"
+
+
+@pytest.mark.asyncio
+async def test_dictionary_lookup_rejects_invalid_local_output(
+    reading_service: ImmersiveReadingService, monkeypatch
+) -> None:
+    import aiohttp
+
+    async def _noop_ready() -> None:
+        return None
+
+    monkeypatch.setattr(reading_service, "_ensure_ollama_ready", _noop_ready)
+
+    class _FakeResp:
+        status = 200
+
+        async def json(self):
+            return {"message": {"content": "not json"}}
+
+        async def text(self):
+            return "not json"
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    class _FakeSession:
+        def post(self, url, json=None):
+            return _FakeResp()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    monkeypatch.setattr(aiohttp, "ClientSession", lambda **kw: _FakeSession())
+
+    with pytest.raises(LLMParseError):
+        await reading_service.lookup_word("technical")
+
+
+@pytest.mark.asyncio
+async def test_dictionary_model_missing_is_marked_service_unavailable(
+    reading_service: ImmersiveReadingService, monkeypatch
+) -> None:
+    from deeptutor.services.llm.exceptions import LLMModelNotFoundError
+
+    async def _model_missing() -> None:
+        raise LLMModelNotFoundError(
+            "Model qwen3.5:2b is not installed.",
+            model="qwen3.5:2b",
+            provider="ollama",
+        )
+
+    monkeypatch.setattr(reading_service, "_ensure_ollama_ready", _model_missing)
+
+    # Service raises LLMModelNotFoundError (a subclass of LLMAPIError).  The
+    # API router maps this to HTTP 503 for the /dictionary endpoint.
+    with pytest.raises(LLMAPIError) as exc_info:
+        await reading_service.lookup_word("technical")
+    assert exc_info.value.provider == "ollama"
+
+
+@pytest.mark.asyncio
+async def test_fast_online_result_returns_without_waiting_for_model(
+    reading_service: ImmersiveReadingService, monkeypatch
+) -> None:
+    """Words absent from ECDICT still display English immediately."""
+    from deeptutor.immersive_reading.models import (
+        DictionaryDefinition,
+        DictionaryResult,
+    )
+
+    english_only = DictionaryResult(
+        word="complex",
+        phonetic="/kəmpleks/",
+        definitions=[
+            DictionaryDefinition(
+                part_of_speech="adjective",
+                definition="Made up of multiple parts; not simple.",
+            ),
+        ],
+    )
+
+    async def fail_model(*_args, **_kwargs):
+        raise AssertionError("online dictionary hit must not wait for Ollama")
+
+    async def _fast(_word: str):
+        return english_only.model_copy(deep=True)
+
+    monkeypatch.setattr(reading_service, "_fast_dictionary_lookup", _fast)
+    monkeypatch.setattr(reading_service, "_ensure_ollama_ready", fail_model)
+
+    result = await reading_service.lookup_word("complex")
+
+    assert result.definitions[0].definition == ("Made up of multiple parts; not simple.")
+    assert reading_service._cache_get("complex") is not None
+
+
+def test_resolve_ollama_model_prefers_exact_then_sibling() -> None:
+    installed = ["qwen3.5:2b", "llama3:8b"]
+    # Exact match wins.
+    assert ImmersiveReadingService._resolve_ollama_model("qwen3.5:2b", installed) == "qwen3.5:2b"
+    # Same-family sibling when the exact tag is absent.
+    assert ImmersiveReadingService._resolve_ollama_model("qwen3.5:4b", installed) == "qwen3.5:2b"
+    # Any installed model when nothing in the family matches.
+    assert ImmersiveReadingService._resolve_ollama_model("gpt-4", installed) in installed
+    # Empty install list: hand back the preference unchanged.
+    assert ImmersiveReadingService._resolve_ollama_model("qwen3.5:4b", []) == "qwen3.5:4b"
+
+
+@pytest.mark.asyncio
+async def test_translate_uses_native_ollama_path(
+    reading_service: ImmersiveReadingService, monkeypatch
+) -> None:
+    """When the active LLM is local Ollama, translate calls the native
+    /api/chat endpoint (think=False) instead of the unreliable /v1 path, so
+    it no longer surfaces 'Translation service unavailable'."""
+    from types import SimpleNamespace
+
+    import deeptutor.immersive_reading.service as service_module
+
+    monkeypatch.setattr(
+        service_module,
+        "get_llm_config",
+        lambda: SimpleNamespace(
+            model="qwen3.5:4b",
+            binding="ollama",
+            provider_name="ollama",
+            base_url="http://localhost:11434/v1",
+        ),
+    )
+
+    async def _reachable() -> list[str]:
+        return ["qwen3.5:4b"]
+
+    monkeypatch.setattr(reading_service, "_ensure_ollama_reachable", _reachable)
+
+    captured: dict[str, object] = {}
+
+    async def _native_chat(model, messages, **opts):
+        captured["model"] = model
+        captured["messages"] = messages
+        captured["opts"] = opts
+        return "复杂的"
+
+    monkeypatch.setattr(reading_service, "_ollama_native_chat", _native_chat)
+
+    result = await reading_service.translate("complex", "Chinese")
+
+    assert result == "复杂的"
+    # Used the configured (Ollama) model, not a cloud one.
+    assert captured["model"] == "qwen3.5:4b"
+    # Thinking tokens suppressed.
+    assert captured["opts"]["think"] is False
+    # Translation prompt preserved.
+    assert captured["messages"][0]["role"] == "system"
+    assert "faithfully" in captured["messages"][0]["content"]
+    assert "Chinese" in captured["messages"][1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_translate_reuses_completed_result(
+    reading_service: ImmersiveReadingService, monkeypatch
+) -> None:
+    calls = 0
+
+    async def fake_translate(text: str, language: str) -> str:
+        nonlocal calls
+        calls += 1
+        return f"{text}-{language}"
+
+    monkeypatch.setattr(reading_service, "_translate_uncached", fake_translate)
+
+    assert await reading_service.translate("cloud", "Chinese") == "cloud-Chinese"
+    assert await reading_service.translate("CLOUD", "Chinese") == "cloud-Chinese"
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_translate_merges_concurrent_duplicate_requests(
+    reading_service: ImmersiveReadingService, monkeypatch
+) -> None:
+    calls = 0
+
+    async def fake_translate(text: str, language: str) -> str:
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0)
+        return f"{text}-{language}"
+
+    monkeypatch.setattr(reading_service, "_translate_uncached", fake_translate)
+
+    results = await asyncio.gather(
+        reading_service.translate("cloud", "Chinese"),
+        reading_service.translate("cloud", "Chinese"),
+    )
+
+    assert results == ["cloud-Chinese", "cloud-Chinese"]
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_translate_falls_back_to_complete_for_cloud(
+    reading_service: ImmersiveReadingService, monkeypatch
+) -> None:
+    """Non-Ollama providers keep using the standard completion path."""
+    from types import SimpleNamespace
+
+    import deeptutor.immersive_reading.service as service_module
+
+    monkeypatch.setattr(
+        service_module,
+        "get_llm_config",
+        lambda: SimpleNamespace(
+            model="glm-4-flash",
+            binding="zhipu",
+            provider_name="zhipu",
+            base_url="https://open.bigmodel.cn/api/coding/paas/v4",
+        ),
+    )
+
+    called: dict[str, object] = {}
+
+    async def _fake_complete(**kwargs):
+        called.update(kwargs)
+        return " облачно"
+
+    monkeypatch.setattr(service_module, "complete", _fake_complete)
+
+    result = await reading_service.translate("cloud", "Russian")
+
+    assert result == "облачно"
+    assert called["temperature"] == 0.1
+    assert "Russian" in called["prompt"]
+    # Did NOT touch the Ollama readiness probe.
 
 
 def test_render_reference_can_scope_to_selected_sections(

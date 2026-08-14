@@ -7,34 +7,60 @@ their pages are extracted from the user's original file and never rewritten.
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
 from difflib import SequenceMatcher
 import hashlib
+import hmac
+from io import BytesIO
 import json
 import logging
-from pathlib import Path
+import os
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import time
 from typing import Any, Iterable, Literal
 import unicodedata
 import uuid
+import zipfile
 
+from deeptutor.immersive_reading.ecdict import ECDictionary
+from deeptutor.immersive_reading.epub_structure import (
+    apply_source_hrefs,
+    resolve_section_for_href,
+    resolve_section_titles,
+    section_needs_title,
+)
 from deeptutor.immersive_reading.models import (
     ChapterSearchCard,
+    DictionaryDefinition,
+    DictionaryResult,
     FastSearchIndex,
     FocusAttempt,
     FocusAttemptRecord,
     FocusCheckResult,
+    KidsBookAssignment,
+    KidsLearningProgress,
+    KidsProfile,
+    KidsQuizQuestion,
+    KidsQuizResult,
     ReadingCitation,
     ReadingDocument,
     ReadingProgress,
     ReadingSection,
     SearchHit,
     SelectionQueryResult,
+    VocabEntry,
 )
 from deeptutor.services.file_io import atomic_write_text
 from deeptutor.services.llm import clean_thinking_tags, complete, get_llm_config
 from deeptutor.services.llm.context_window import resolve_effective_context_window
+from deeptutor.services.llm.exceptions import (
+    LLMAPIError,
+    LLMModelNotFoundError,
+    LLMParseError,
+    LLMTimeoutError,
+)
 from deeptutor.services.path_service import get_path_service
 from deeptutor.tools.web_search import web_search
 from deeptutor.utils.json_parser import parse_json_response
@@ -52,6 +78,11 @@ FAST_INDEX_CONCURRENCY = 4
 FAST_DEEP_MAX_TOKENS = 32_000
 FAST_ROUTER_CONFIDENCE_THRESHOLD = 0.62
 FAST_PASSAGE_CONFIDENCE_THRESHOLD = 0.55
+# Free Dictionary API (dictionaryapi.dev) — fast, no API key, ~200ms.
+_FREE_DICT_API = "https://api.dictionaryapi.dev/api/v2/entries/en/{word}"
+_DICT_CACHE_LIMIT = 500
+_TRANSLATION_CACHE_LIMIT = 500
+_OLLAMA_MODEL_CACHE_TTL_SECONDS = 60.0
 _SAFE_ID = re.compile(r"^[a-zA-Z0-9_-]{1,80}$")
 _HEADING_RE = re.compile(
     r"^(?:\s{0,3}#{1,4}\s+(.+?)\s*|\s*((?:chapter|book|part)\s+[\divxlcdm]+(?:\s*[:.\-–—]\s*.*)?|第[〇零一二三四五六七八九十百千两\d]+[章节回部卷](?:\s+.*)?))$",
@@ -60,12 +91,75 @@ _HEADING_RE = re.compile(
 logger = logging.getLogger(__name__)
 
 
+def _trim_cover_whitespace(raw: bytes) -> bytes:
+    """Remove the blank page area around cover art exported from a PDF."""
+    try:
+        from PIL import Image, ImageOps
+
+        image = Image.open(BytesIO(raw)).convert("RGB")
+        gray = ImageOps.grayscale(image)
+        content = gray.point(lambda value: 255 if value < 250 else 0)
+        bbox = content.getbbox()
+        if not bbox:
+            return raw
+
+        left, top, right, bottom = bbox
+        width, height = image.size
+        # Keep ordinary full-page covers unchanged. Only compact covers that
+        # are surrounded by a large white PDF page need normalization.
+        if (right - left) >= width * 0.82 and (bottom - top) >= height * 0.82:
+            return raw
+
+        padding = max(8, round(min(width, height) * 0.02))
+        crop = image.crop(
+            (
+                max(0, left - padding),
+                max(0, top - padding),
+                min(width, right + padding),
+                min(height, bottom + padding),
+            )
+        )
+        output = BytesIO()
+        crop.save(output, format="PNG")
+        return output.getvalue()
+    except Exception:
+        # Cover cleanup is cosmetic; importing and reading must remain robust
+        # when Pillow is unavailable or a malformed image is encountered.
+        return raw
+
+
+def _epub_cover_bytes(path: Path) -> bytes | None:
+    """Read the cover image declared by an EPUB package instead of a page screenshot."""
+    try:
+        from deeptutor.immersive_reading.epub_structure import parse_epub_structure
+
+        structure = parse_epub_structure(path)
+        if not structure.cover_href:
+            return None
+        archive_path = str(
+            PurePosixPath(structure.opf_dir, structure.cover_href)
+            if structure.opf_dir
+            else PurePosixPath(structure.cover_href)
+        )
+        with zipfile.ZipFile(path) as archive:
+            return archive.read(archive_path)
+    except (OSError, ValueError, KeyError, zipfile.BadZipFile):
+        logger.debug("Unable to read declared EPUB cover from %s", path, exc_info=True)
+        return None
+
+
 def _is_reference_matter_title(title: str) -> bool:
     """Identify structural pages that are useful to browse but poor quiz material."""
     normalized = unicodedata.normalize("NFKC", title).casefold().strip()
     words = re.sub(r"[^a-z]+", " ", normalized).strip()
     compact = re.sub(r"[\s\W_]+", "", normalized)
-    return words in {"front matter", "contents", "table of contents", "toc", "index"} or compact in {
+    return words in {
+        "front matter",
+        "contents",
+        "table of contents",
+        "toc",
+        "index",
+    } or compact in {
         "目录",
         "目錄",
         "文档目录",
@@ -101,13 +195,19 @@ def _build_focus_prompts(content_type: str, *, language: str) -> list[str]:
     zh = language.startswith("zh")
     if content_type == "code_heavy":
         return [
-            "这节解决什么问题或实现什么功能？" if zh else "What problem does this section solve or what feature does it implement?",
-            "列出 1-2 个关键 API、命令或配置项" if zh else "List 1-2 key APIs, commands, or config options",
+            "这节解决什么问题或实现什么功能？"
+            if zh
+            else "What problem does this section solve or what feature does it implement?",
+            "列出 1-2 个关键 API、命令或配置项"
+            if zh
+            else "List 1-2 key APIs, commands, or config options",
             "你会怎么在实际中使用？" if zh else "How would you use this in practice?",
         ]
     return [
         "用自己的话概括核心概念" if zh else "Summarize the core concept in your own words",
-        "这个概念和什么相关或依赖什么？" if zh else "What does this concept relate to or depend on?",
+        "这个概念和什么相关或依赖什么？"
+        if zh
+        else "What does this concept relate to or depend on?",
         "它解决了什么问题？" if zh else "What problem does it solve?",
     ]
 
@@ -395,7 +495,14 @@ def _fitz_recursive_sections(
                 sections.append((node.title, "", start + 1, end, parent_idx, level))
                 for ci, chunk in enumerate(_split_near(body)):
                     sections.append(
-                        (f"{node.title} \\u2013 {ci + 1}", chunk, start + 1, end, this_idx, level + 1)
+                        (
+                            f"{node.title} \\u2013 {ci + 1}",
+                            chunk,
+                            start + 1,
+                            end,
+                            this_idx,
+                            level + 1,
+                        )
                     )
 
     # Handle front matter before the first TOC entry
@@ -413,7 +520,7 @@ def _fitz_sections(
     path: Path,
 ) -> tuple[str, str, str, list[tuple[str, str, int, int, int, int]], bytes | None]:
     try:
-        import fitz
+        import pymupdf as fitz
     except ImportError as exc:  # pragma: no cover - core dependency in full app
         raise ValueError("PyMuPDF is required to read PDF and EPUB files") from exc
 
@@ -461,7 +568,7 @@ def _fitz_sections(
                 rect = page.rect
                 scale = min(1.8, 720 / max(rect.width, 1))
                 pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
-                cover = pix.tobytes("png")
+                cover = _trim_cover_whitespace(pix.tobytes("png"))
             except Exception:
                 cover = None
         return title, author, mode, sections, cover
@@ -472,11 +579,21 @@ def _fitz_sections(
 class ImmersiveReadingService:
     def __init__(self) -> None:
         self._fast_index_locks: dict[str, asyncio.Lock] = {}
+        self._ecdict: ECDictionary | None = None
+        self._translation_cache: OrderedDict[str, str] = OrderedDict()
+        self._translation_tasks: dict[str, asyncio.Task[str]] = {}
+        self._ollama_models_cache: tuple[float, list[str]] | None = None
 
     def _root(self) -> Path:
         root = get_path_service().get_immersive_reading_dir()
         root.mkdir(parents=True, exist_ok=True)
         return root
+
+    def _ecdict_path(self) -> Path:
+        configured = os.environ.get("DEEPTUTOR_ECDICT_DB")
+        if configured:
+            return Path(configured)
+        return self._root() / "dictionaries" / "ecdict.db"
 
     def _document_root(self, document_id: str) -> Path:
         if not _SAFE_ID.fullmatch(document_id):
@@ -607,6 +724,7 @@ class ImmersiveReadingService:
         doc = self.load_document(document_id)
         if doc is None:
             raise ValueError("Reading document not found")
+        doc = self.ensure_epub_source_hrefs(doc)
         return self._summary(doc)
 
     def import_document(self, filename: str, raw: bytes) -> dict[str, Any]:
@@ -633,6 +751,10 @@ class ImmersiveReadingService:
             else:
                 meta_title, author, mode, raw_sections, cover = _fitz_sections(original)
                 title = meta_title or title
+                if suffix == ".epub":
+                    # EPUBs declare their cover image in content.opf. Do not use
+                    # the first rendered page, which often contains a blank canvas.
+                    cover = _epub_cover_bytes(original) or cover
             if not raw_sections:
                 raise ValueError("No readable text was found in this file")
 
@@ -681,6 +803,16 @@ class ImmersiveReadingService:
                         ),
                     )
                 )
+            if suffix == ".epub":
+                try:
+                    apply_source_hrefs(
+                        section_models,
+                        original,
+                        reading_mode=mode,
+                    )
+                    resolve_section_titles(section_models, original)
+                except Exception:
+                    logger.exception("Failed to map EPUB hrefs during import")
             if cover:
                 (root / "cover.png").write_bytes(cover)
             now = time.time()
@@ -717,26 +849,81 @@ class ImmersiveReadingService:
             raise ValueError("Reading document not found")
         shutil.rmtree(root)
 
+    def _original_file(self, document_id: str) -> Path | None:
+        root = self._document_root(document_id)
+        if not root.is_dir():
+            return None
+        matches = sorted(root.glob("original.*"))
+        return matches[0] if matches else None
+
     def original_path(self, document_id: str) -> Path:
         doc = self.load_document(document_id)
         if doc is None:
             raise ValueError("Reading document not found")
-        root = self._document_root(document_id)
-        matches = sorted(root.glob("original.*"))
-        if not matches:
+        path = self._original_file(document_id)
+        if path is None:
             raise ValueError("Original file not found")
-        return matches[0]
+        return path
+
+    def ensure_epub_source_hrefs(self, document: ReadingDocument) -> ReadingDocument:
+        """Lazily backfill spine/nav hrefs on older EPUB manifests."""
+        if document.source_format != "epub":
+            return document
+        hrefs_needed = not all(section.source_href for section in document.sections)
+        titles_needed = hrefs_needed or any(
+            section_needs_title(section) for section in document.sections
+        )
+        if not hrefs_needed and not titles_needed:
+            return document
+        original = self._original_file(document.id)
+        if original is None:
+            return document
+        changed = False
+        if hrefs_needed:
+            try:
+                changed = apply_source_hrefs(
+                    document.sections,
+                    original,
+                    reading_mode=document.reading_mode,
+                )
+            except Exception:
+                logger.exception("Failed to backfill EPUB hrefs for %s", document.id)
+        # Run after href backfill so titles can be matched by source_href.
+        if titles_needed:
+            try:
+                if resolve_section_titles(document.sections, original):
+                    changed = True
+            except Exception:
+                logger.exception("Failed to resolve EPUB titles for %s", document.id)
+        if changed:
+            _write_json(self._manifest_path(document.id), document.model_dump(mode="json"))
+        return document
 
     def cover_path(self, document_id: str) -> Path:
         path = self._document_root(document_id) / "cover.png"
         if not path.is_file():
             raise ValueError("Cover not found")
+        try:
+            document = self.load_document(document_id)
+            source = self._original_file(document_id) if document else None
+            if document and document.source_format == "epub" and source:
+                epub_cover = _epub_cover_bytes(source)
+                if epub_cover:
+                    path.write_bytes(epub_cover)
+            elif document:
+                original = path.read_bytes()
+                trimmed = _trim_cover_whitespace(original)
+                if trimmed != original:
+                    path.write_bytes(trimmed)
+        except OSError:
+            pass
         return path
 
     def get_section(self, document_id: str, section_id: str) -> dict[str, Any]:
         doc = self.load_document(document_id)
         if doc is None:
             raise ValueError("Reading document not found")
+        doc = self.ensure_epub_source_hrefs(doc)
         section = next((s for s in doc.sections if s.id == section_id), None)
         if section is None:
             raise ValueError("Reading section not found")
@@ -750,6 +937,36 @@ class ImmersiveReadingService:
             "skipped": section_id in progress.skipped_section_ids,
             "locked": False,
         }
+
+    def update_epub_progress(
+        self,
+        document_id: str,
+        *,
+        epub_cfi: str = "",
+        section_href: str = "",
+        scroll_percent: float = 0.0,
+    ) -> ReadingProgress:
+        """Persist original-reader CFI/href without requiring a section id."""
+        doc = self.load_document(document_id)
+        if doc is None:
+            raise ValueError("Reading document not found")
+        doc = self.ensure_epub_source_hrefs(doc)
+        progress = self.load_progress(document_id)
+        matched = resolve_section_for_href(
+            doc.sections,
+            section_href,
+            preferred_section_id=progress.current_section_id,
+        )
+        if matched is not None:
+            progress.current_section_id = matched.id
+            progress.current_section_index = matched.index
+        progress.scroll_percent = max(0.0, min(100.0, float(scroll_percent)))
+        if epub_cfi:
+            progress.epub_cfi = epub_cfi
+        if section_href:
+            progress.section_href = section_href
+        self._save_progress(progress)
+        return progress
 
     def update_progress(
         self, document_id: str, section_id: str, scroll_percent: float
@@ -1591,6 +1808,70 @@ class ImmersiveReadingService:
                 return
         raise ValueError("Citation not found")
 
+    def _vocabulary_path(self) -> Path:
+        return self._root() / "vocabulary.json"
+
+    async def add_word(
+        self,
+        word: str,
+        context: str = "",
+        document_id: str = "",
+        document_title: str = "",
+        section_title: str = "",
+    ) -> VocabEntry:
+        """Look up a word and save it to the global vocabulary book.
+
+        The dictionary lookup is best-effort: if the LLM call fails or times
+        out, the word is still saved with empty definitions so the user does
+        not lose their selection.
+        """
+        word = word.strip()
+        if not word:
+            raise ValueError("Provide a word to save")
+        if len(word) > 200:
+            raise ValueError("Word is too long")
+        result: DictionaryResult
+        try:
+            result = await self.lookup_word(word, context)
+        except Exception as exc:
+            logger.warning("Dictionary lookup failed for %r: %s", word, exc)
+            result = DictionaryResult(word=word)
+        entry = VocabEntry(
+            id=uuid.uuid4().hex[:12],
+            word=result.word or word,
+            phonetic=result.phonetic,
+            definitions=result.definitions,
+            chinese=result.chinese,
+            context_note=result.context_note,
+            document_id=document_id,
+            document_title=document_title,
+            section_title=section_title,
+        )
+        entries = self.list_vocabulary()
+        entries.append(entry)
+        _write_json(self._vocabulary_path(), [e.model_dump(mode="json") for e in entries])
+        return entry
+
+    def list_vocabulary(self, document_id: str | None = None) -> list[VocabEntry]:
+        data = _read_json(self._vocabulary_path(), [])
+        entries: list[VocabEntry] = []
+        for item in data:
+            try:
+                entries.append(VocabEntry.model_validate(item))
+            except Exception:
+                continue
+        if document_id:
+            entries = [e for e in entries if e.document_id == document_id]
+        entries.sort(key=lambda e: e.created_at, reverse=True)
+        return entries
+
+    def delete_word(self, entry_id: str) -> None:
+        entries = self.list_vocabulary()
+        remaining = [e for e in entries if e.id != entry_id]
+        if len(remaining) == len(entries):
+            raise ValueError("Vocabulary entry not found")
+        _write_json(self._vocabulary_path(), [e.model_dump(mode="json") for e in remaining])
+
     async def translate(self, text: str, target_language: str) -> str:
         selected = text.strip()
         if not selected:
@@ -1598,15 +1879,77 @@ class ImmersiveReadingService:
         if len(selected) > 12_000:
             raise ValueError("The selected passage is too long")
         cfg = get_llm_config()
-        output = await complete(
-            prompt=f"Target language: {target_language}\n\nText:\n{selected}",
-            system_prompt=(
-                "Translate the supplied book passage faithfully. Preserve paragraph breaks, names, tone, "
-                "and uncertainty. Output only the translation, with no commentary."
-            ),
-            temperature=0.1,
+        cache_key = "\n".join(
+            (
+                selected.casefold(),
+                target_language.strip().casefold(),
+                str(getattr(cfg, "provider_name", "") or ""),
+                str(cfg.model or ""),
+            )
         )
-        return clean_thinking_tags(output, getattr(cfg, "binding", None), cfg.model).strip()
+        cached = self._translation_cache.get(cache_key)
+        if cached is not None:
+            self._translation_cache.move_to_end(cache_key)
+            return cached
+
+        pending = self._translation_tasks.get(cache_key)
+        if pending is not None:
+            return await asyncio.shield(pending)
+
+        task = asyncio.create_task(self._translate_uncached(selected, target_language))
+        self._translation_tasks[cache_key] = task
+        try:
+            translated = await asyncio.shield(task)
+        finally:
+            if self._translation_tasks.get(cache_key) is task:
+                self._translation_tasks.pop(cache_key, None)
+
+        self._translation_cache[cache_key] = translated
+        self._translation_cache.move_to_end(cache_key)
+        while len(self._translation_cache) > _TRANSLATION_CACHE_LIMIT:
+            self._translation_cache.popitem(last=False)
+        return translated
+
+    async def _translate_uncached(self, selected: str, target_language: str) -> str:
+        cfg = get_llm_config()
+        system_prompt = (
+            "Translate the supplied book passage faithfully. Preserve paragraph breaks, names, tone, "
+            "and uncertainty. Output only the translation, with no commentary."
+        )
+        user_prompt = f"Target language: {target_language}\n\nText:\n{selected}"
+        base_url = getattr(cfg, "base_url", "") or getattr(cfg, "effective_url", "") or ""
+        # Local Ollama: use the native /api/chat endpoint directly. The
+        # OpenAI-compatible /v1 path is unreliable with qwen3.x reasoning
+        # models on Ollama 0.3x (slow/hanging responses, and no way to pass
+        # think=false), which previously surfaced as "Translation service
+        # unavailable". The native path also auto-starts Ollama if it is down.
+        is_ollama = (
+            getattr(cfg, "provider_name", "") or ""
+        ).lower() == "ollama" or "11434" in base_url
+        if is_ollama:
+            installed = await self._ensure_ollama_reachable()
+            model = self._resolve_ollama_model(cfg.model or "", installed)
+            raw = await self._ollama_native_chat(
+                model,
+                [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                think=False,
+                temperature=0.1,
+                num_predict=512
+                if len(selected) <= 200
+                else 1024
+                if len(selected) <= 1000
+                else 4096,
+            )
+        else:
+            raw = await complete(
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                temperature=0.1,
+            )
+        return clean_thinking_tags(raw, getattr(cfg, "binding", None), cfg.model).strip()
 
     async def query_selection(
         self, text: str, question: str, language: str
@@ -1656,6 +1999,611 @@ class ImmersiveReadingService:
             citations=list(search_payload.get("citations") or []),
             search_provider=str(search_payload.get("provider") or ""),
         )
+
+    async def _ensure_ollama_ready(self) -> None:
+        """Verify Ollama is reachable, auto-starting it if needed.
+
+        Raises LLMAPIError / LLMModelNotFoundError so the API router returns
+        the right HTTP status to the frontend.
+        """
+        models = await self._ensure_ollama_reachable()
+        has_model = any("qwen3.5" in name and "2b" in name for name in models)
+        if not has_model:
+            from deeptutor.services.llm.exceptions import LLMModelNotFoundError
+
+            raise LLMModelNotFoundError(
+                "Model qwen3.5:2b is not installed. Run `ollama pull qwen3.5:2b`.",
+                model="qwen3.5:2b",
+                provider="ollama",
+            )
+
+    async def _ensure_ollama_reachable(self) -> list[str]:
+        """Verify Ollama is reachable, auto-starting it if needed.
+
+        Returns the list of installed model names. Raises LLMAPIError so the
+        API router returns HTTP 503 when Ollama cannot be reached.
+        """
+        now = time.monotonic()
+        if (
+            self._ollama_models_cache is not None
+            and now - self._ollama_models_cache[0] < _OLLAMA_MODEL_CACHE_TTL_SECONDS
+        ):
+            return self._ollama_models_cache[1]
+
+        import asyncio as _aio
+
+        import aiohttp
+
+        ollama_base = "http://127.0.0.1:11434"
+        timeout = aiohttp.ClientTimeout(total=10)
+
+        async def _check_tags() -> dict | None:
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(f"{ollama_base}/api/tags") as resp:
+                        if resp.status == 200:
+                            return await resp.json()
+            except (aiohttp.ClientError, OSError):
+                pass
+            return None
+
+        data = await _check_tags()
+
+        if data is None:
+            await self._auto_start_ollama()
+            for _ in range(8):
+                await _aio.sleep(1)
+                data = await _check_tags()
+                if data is not None:
+                    break
+
+        if data is None:
+            self._ollama_models_cache = None
+            raise LLMAPIError(
+                "Cannot reach Ollama at 127.0.0.1:11434. Start it with `ollama serve`.",
+                status_code=503,
+                provider="ollama",
+            )
+
+        models = [m.get("name", "") for m in data.get("models", [])]
+        self._ollama_models_cache = (time.monotonic(), models)
+        return models
+
+    @staticmethod
+    def _resolve_ollama_model(preferred: str, installed: list[str]) -> str:
+        """Pick the best available Ollama model, preferring *preferred*.
+
+        Falls back to a sibling of the same family (e.g. qwen3.5:2b when
+        qwen3.5:4b is requested but absent), then to any installed model.
+        """
+        if not installed:
+            return preferred
+        if preferred in installed:
+            return preferred
+        family = preferred.split(":", 1)[0]
+        sibling = next((m for m in installed if m.split(":", 1)[0] == family), None)
+        return sibling or installed[0]
+
+    async def _ollama_native_chat(
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        *,
+        think: bool = False,
+        temperature: float = 0.1,
+        num_predict: int = 4096,
+        timeout: float = 180,
+    ) -> str:
+        """Call Ollama's native /api/chat endpoint directly.
+
+        Bypasses the OpenAI-compatible /v1 path, which is unreliable with
+        qwen3.x reasoning models on Ollama 0.3x, and lets us suppress the
+        model's thinking tokens via think=False. Maps failures to the unified
+        LLM exceptions so the API router returns the right HTTP status.
+        """
+        import aiohttp
+
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "think": think,
+            "keep_alive": "10m",
+            "options": {"temperature": temperature, "num_predict": num_predict},
+        }
+        try:
+            to = aiohttp.ClientTimeout(total=timeout)
+            async with aiohttp.ClientSession(timeout=to) as session:
+                async with session.post("http://127.0.0.1:11434/api/chat", json=payload) as resp:
+                    if resp.status == 404:
+                        raise LLMModelNotFoundError(
+                            f"Model {model} is not installed. Run `ollama pull {model}`.",
+                            model=model,
+                            provider="ollama",
+                        )
+                    if resp.status != 200:
+                        body = await resp.text()
+                        raise LLMAPIError(
+                            f"Ollama returned HTTP {resp.status}: {body[:200]}",
+                            status_code=resp.status,
+                            provider="ollama",
+                        )
+                    data = await resp.json()
+        except (aiohttp.ClientError, OSError) as exc:
+            raise LLMAPIError(
+                "Cannot reach Ollama at 127.0.0.1:11434. Start it with `ollama serve`.",
+                status_code=503,
+                provider="ollama",
+            ) from exc
+        except asyncio.TimeoutError as exc:
+            raise LLMTimeoutError("Ollama request timed out.", provider="ollama") from exc
+        return (data.get("message") or {}).get("content", "")
+
+    async def _auto_start_ollama(self) -> None:
+        """Launch ``ollama serve`` as a detached background daemon."""
+        import shutil
+        import subprocess
+
+        ollama_bin = shutil.which("ollama")
+        if not ollama_bin:
+            for candidate in (
+                "/opt/homebrew/bin/ollama",
+                "/usr/local/bin/ollama",
+                "/usr/bin/ollama",
+            ):
+                if Path(candidate).exists():
+                    ollama_bin = candidate
+                    break
+        if not ollama_bin:
+            return
+        try:
+            subprocess.Popen(
+                [ollama_bin, "serve"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            logger.info("Auto-started Ollama daemon for dictionary lookup")
+        except OSError as exc:
+            logger.warning("Failed to auto-start Ollama: %s", exc)
+
+    # In-process LRU cache: word -> DictionaryResult.
+    # Keyed by word only (definitions don't change); context only affects
+    # which definition gets context_match=True, which is recomputed cheaply.
+    _dict_cache: OrderedDict[str, DictionaryResult] = OrderedDict()
+
+    @classmethod
+    def _cache_get(cls, word: str) -> DictionaryResult | None:
+        c = cls._dict_cache
+        key = word.strip().casefold()
+        if key in c:
+            c.move_to_end(key)
+            return c[key]
+        return None
+
+    @classmethod
+    def _cache_put(cls, word: str, result: DictionaryResult) -> None:
+        c = cls._dict_cache
+        key = word.strip().casefold()
+        c[key] = result
+        c.move_to_end(key)
+        while len(c) > _DICT_CACHE_LIMIT:
+            c.popitem(last=False)
+
+    @staticmethod
+    def _mark_context_match(result: DictionaryResult, context: str) -> DictionaryResult:
+        """Heuristically flag the definition whose meaning fits *context*.
+
+        Uses a simple word-overlap score: the definition sharing the most
+        non-stop-word tokens with the context sentence is flagged. This is
+        cheap and correct often enough for ESL readers.
+        """
+        if not context or not result.definitions:
+            return result
+        stop = frozenset(
+            "a an the of to in on at for and or but is are was were be been "
+            "being have has had do does did will would could should may might "
+            "must can this that these those it he she they we you i his her "
+            "their our your my its as with from by not no".split()
+        )
+        ctx_words = {
+            w for w in re.findall(r"[a-z']+", context.lower()) if w not in stop and len(w) > 2
+        }
+        if not ctx_words:
+            return result
+
+        best_idx = 0
+        best_score = -1
+        for i, d in enumerate(result.definitions):
+            def_words = {
+                w for w in re.findall(r"[a-z']+", (d.definition + " " + d.example).lower())
+            }
+            score = len(def_words & ctx_words)
+            if score > best_score:
+                best_score = score
+                best_idx = i
+
+        if best_score > 0:
+            new_defs = [
+                d.model_copy(update={"context_match": i == best_idx})
+                for i, d in enumerate(result.definitions)
+            ]
+            return result.model_copy(update={"definitions": new_defs})
+        return result
+
+    async def _fast_dictionary_lookup(self, word: str) -> DictionaryResult | None:
+        """Try the Free Dictionary API (dictionaryapi.dev).
+
+        Returns a DictionaryResult or None if the word is not found / the
+        API is unreachable. English-only — no Chinese translations.
+        """
+        import aiohttp as _aiohttp
+
+        url = _FREE_DICT_API.format(word=word.lower())
+        try:
+            timeout = _aiohttp.ClientTimeout(total=8)
+            async with _aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url) as resp:
+                    if resp.status == 404:
+                        return None
+                    if resp.status != 200:
+                        return None
+                    data = await resp.json()
+        except Exception:
+            return None
+
+        if not isinstance(data, list) or not data:
+            return None
+
+        phonetic = ""
+        defs: list[DictionaryDefinition] = []
+        for entry in data[:3]:  # at most 3 entries
+            if not isinstance(entry, dict):
+                continue
+            if not phonetic:
+                # Prefer the text field from phonetics array
+                for p in entry.get("phonetics", []):
+                    if isinstance(p, dict) and p.get("text"):
+                        phonetic = p["text"]
+                        break
+                if not phonetic and entry.get("phonetic"):
+                    phonetic = entry["phonetic"]
+            for meaning in entry.get("meanings", []):
+                if not isinstance(meaning, dict):
+                    continue
+                pos = meaning.get("partOfSpeech", "")
+                for d in meaning.get("definitions", [])[:3]:  # cap per-pos
+                    if not isinstance(d, dict):
+                        continue
+                    definition = d.get("definition", "")
+                    if not definition:
+                        continue
+                    defs.append(
+                        DictionaryDefinition(
+                            part_of_speech=pos,
+                            definition=definition,
+                            chinese="",
+                            example=d.get("example", "") or "",
+                            synonyms=d.get("synonyms", [])[:5],
+                            context_match=False,
+                        )
+                    )
+
+        if not defs:
+            return None
+
+        return DictionaryResult(
+            word=word,
+            phonetic=phonetic,
+            definitions=defs[:6],  # cap total
+            context_note="",
+        )
+
+    def _local_dictionary_lookup(self, word: str) -> DictionaryResult | None:
+        """Return a millisecond-level ECDICT result when the local DB exists."""
+        try:
+            if self._ecdict is None:
+                self._ecdict = ECDictionary(self._ecdict_path())
+            entry = self._ecdict.lookup(word)
+        except FileNotFoundError:
+            self._ecdict = None
+            return None
+
+        if entry is None:
+            return None
+        english_definitions = [
+            DictionaryDefinition(definition=line.strip(), part_of_speech=entry.pos)
+            for line in entry.definition.splitlines()
+            if line.strip()
+        ][:6]
+        if not english_definitions and not entry.translation:
+            return None
+        return DictionaryResult(
+            word=entry.word or word,
+            phonetic=entry.phonetic,
+            definitions=english_definitions,
+            chinese=entry.translation,
+        )
+
+    async def _enrich_with_chinese(self, result: DictionaryResult) -> DictionaryResult:
+        """Fill in Chinese (中文释义) for an English-only DictionaryResult.
+
+        The Free Dictionary API returns authoritative English definitions but no
+        translations, so the frontend "reveal Chinese" feature would have
+        nothing to blur for common words. This asks the local Ollama model to
+        translate each definition. Best-effort: if the model is unavailable or
+        the call fails, the original English-only result is returned unchanged
+        so callers never lose the English definitions.
+        """
+        if not result.definitions or all(d.chinese for d in result.definitions):
+            return result
+
+        try:
+            await self._ensure_ollama_ready()
+        except Exception as exc:  # model missing / Ollama down
+            logger.debug("Ollama unavailable for Chinese enrichment: %s", exc)
+            return result
+
+        items = [{"pos": d.part_of_speech, "definition": d.definition} for d in result.definitions]
+        system_prompt = (
+            "/no_think\n"
+            "You translate English dictionary definitions into concise Chinese "
+            "(中文释义). You receive a word and a JSON array of its English "
+            'definitions. Return a JSON object whose "translations" key holds '
+            "an array of the SAME LENGTH where element i is the concise Chinese "
+            "translation of definition i. Each translation should be a short "
+            "phrase. Respond with ONLY this JSON (no markdown, no explanation):\n"
+            '{"translations": ["中文释义1", "中文释义2"]}'
+        )
+        user_prompt = (
+            f"Word: {result.word}\n"
+            f"Definitions to translate:\n{json.dumps(items, ensure_ascii=False)}"
+        )
+        payload = {
+            "model": "qwen3.5:2b",
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "stream": False,
+            "think": False,
+            "format": "json",
+            "options": {"temperature": 0.1, "num_predict": 1024},
+        }
+
+        try:
+            import aiohttp as _aiohttp
+
+            timeout = _aiohttp.ClientTimeout(total=45)
+            async with _aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post("http://127.0.0.1:11434/api/chat", json=payload) as resp:
+                    if resp.status != 200:
+                        logger.debug("Chinese enrichment Ollama HTTP %s", resp.status)
+                        return result
+                    data = await resp.json()
+        except Exception as exc:
+            logger.debug("Chinese enrichment request failed: %s", exc)
+            return result
+
+        raw = (data.get("message") or {}).get("content", "")
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```[a-z]*\n?", "", cleaned).rsplit("```", 1)[0].strip()
+        try:
+            parsed = json.loads(cleaned)
+        except json.JSONDecodeError:
+            logger.debug("Chinese enrichment returned unparseable JSON")
+            return result
+
+        translations = parsed.get("translations") if isinstance(parsed, dict) else None
+        if not isinstance(translations, list):
+            return result
+
+        enriched_defs = []
+        for i, d in enumerate(result.definitions):
+            candidate = translations[i] if i < len(translations) else ""
+            chinese = (
+                candidate.strip() if isinstance(candidate, str) and candidate.strip() else d.chinese
+            )
+            enriched_defs.append(d.model_copy(update={"chinese": chinese}))
+        return result.model_copy(update={"definitions": enriched_defs})
+
+    async def lookup_word(self, word: str, context: str = "") -> DictionaryResult:
+        """Context-aware English/Chinese dictionary lookup.
+
+        ECDICT is the primary source because it returns both English and Chinese
+        data locally.  The online dictionary and local model are reserved for
+        words that are absent from the offline database.
+        """
+        import json as _json
+
+        word = word.strip()
+        if not word:
+            raise ValueError("Provide a word to look up")
+        if len(word) > 200:
+            raise ValueError("Word is too long")
+        context = context.strip()[:2_000]
+
+        # 1. Server-side LRU cache — instant for previously looked-up words.
+        cached = self._cache_get(word)
+        if cached is not None:
+            return self._mark_context_match(cached, context) if context else cached
+
+        # 2. ECDICT - local SQLite lookup, normally sub-millisecond.
+        local_result = self._local_dictionary_lookup(word)
+        if local_result is not None:
+            self._cache_put(word, local_result)
+            return self._mark_context_match(local_result, context) if context else local_result
+
+        # 3. Free Dictionary API - fallback for words absent from ECDICT.
+        fast_result = await self._fast_dictionary_lookup(word)
+        if fast_result is not None:
+            self._cache_put(word, fast_result)
+            return self._mark_context_match(fast_result, context) if context else fast_result
+
+        # 4. Fallback: local Ollama LLM (slower but has Chinese + context).
+        # Pre-flight check: verify Ollama is reachable and the model is available.
+        await self._ensure_ollama_ready()
+
+        system_prompt = (
+            "/no_think\n"
+            "You are a learner's dictionary designed for ESL students. Given a word and optionally "
+            "the sentence it appears in, return JSON with definitions sorted so the meaning that "
+            "fits the context comes FIRST.\n\n"
+            "IMPORTANT rules:\n"
+            "1. Write ALL definitions in SIMPLE English (A2/B1 level). Use short sentences and common "
+            "words. Avoid difficult vocabulary in the explanation itself.\n"
+            '2. For each definition, also provide a CHINESE translation in the "chinese" field.\n'
+            '3. Set "context_match": true only for the definition(s) that match the provided sentence.\n'
+            "4. Include IPA pronunciation, part of speech, a simple example sentence, and 0-3 synonyms.\n\n"
+            "Respond with ONLY this JSON schema (no markdown fence):\n"
+            "{\n"
+            '  "word": "<headword>",\n'
+            '  "phonetic": "<IPA or empty>",\n'
+            '  "definitions": [\n'
+            '    {"part_of_speech": "", "definition": "<simple English>", '
+            '"chinese": "<中文释义>", "example": "", "synonyms": [], '
+            '"context_match": false}\n'
+            "  ],\n"
+            '  "context_note": "<short note on which meaning fits the context, or empty>"\n'
+            "}\n\n"
+            "Return at most 4 definitions. If the context makes the word's meaning unambiguous, "
+            "put that meaning first and mark it context_match=true."
+        )
+        user_prompt = f"Word: {word}"
+        if context:
+            user_prompt += f"\nSentence from the book: {context}"
+
+        # Call the native Ollama /api/chat endpoint directly instead of the
+        # OpenAI-compatible /v1 path.  The v1 endpoint crashes Ollama 0.32.x
+        # with qwen3.5:2b, and the native API lets us pass think=false to
+        # suppress the model's thinking tokens entirely.
+        import aiohttp as _aiohttp
+
+        ollama_payload = {
+            "model": "qwen3.5:2b",
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "stream": False,
+            "think": False,
+            "format": "json",
+            "options": {"temperature": 0.1, "num_predict": 4096},
+        }
+        try:
+            timeout = _aiohttp.ClientTimeout(total=60)
+            async with _aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(
+                    "http://127.0.0.1:11434/api/chat",
+                    json=ollama_payload,
+                ) as resp:
+                    if resp.status == 404:
+                        raise LLMModelNotFoundError(
+                            "Model qwen3.5:2b is not installed. Run `ollama pull qwen3.5:2b`.",
+                            model="qwen3.5:2b",
+                            provider="ollama",
+                        )
+                    if resp.status != 200:
+                        body = await resp.text()
+                        raise LLMAPIError(
+                            f"Ollama returned HTTP {resp.status}: {body[:200]}",
+                            status_code=resp.status,
+                            provider="ollama",
+                        )
+                    result = await resp.json()
+        except (_aiohttp.ClientError, OSError) as exc:
+            raise LLMAPIError(
+                "Cannot reach Ollama at 127.0.0.1:11434. Start it with `ollama serve`.",
+                status_code=503,
+                provider="ollama",
+            ) from exc
+        except asyncio.TimeoutError as exc:
+            raise LLMTimeoutError(
+                "Dictionary lookup timed out. Is Ollama running and is the model loaded?",
+                provider="ollama",
+            ) from exc
+
+        raw = (result.get("message") or {}).get("content", "")
+
+        if not raw.strip():
+            raise LLMParseError(
+                f"Local model returned empty content for word {word!r}.",
+                provider="ollama",
+            )
+
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```[a-z]*\n?", "", cleaned).rsplit("```", 1)[0].strip()
+        try:
+            data = _json.loads(cleaned)
+        except _json.JSONDecodeError:
+            raise LLMParseError(
+                f"Local model returned unparseable output for word {word!r}.",
+                provider="ollama",
+            )
+        if not isinstance(data, dict) or not isinstance(data.get("definitions"), list):
+            raise LLMParseError(
+                f"Local model returned an invalid dictionary payload for word {word!r}.",
+                provider="ollama",
+            )
+        for field in ("word", "phonetic", "context_note"):
+            if field in data and not isinstance(data[field], str):
+                raise LLMParseError(
+                    f"Local model returned an invalid {field} for word {word!r}.",
+                    provider="ollama",
+                )
+        defs = []
+        for d in data.get("definitions", []):
+            if not isinstance(d, dict):
+                raise LLMParseError(
+                    f"Local model returned an invalid definition for word {word!r}.",
+                    provider="ollama",
+                )
+            for field in ("part_of_speech", "definition", "example"):
+                if field in d and not isinstance(d[field], str):
+                    raise LLMParseError(
+                        f"Local model returned an invalid definition for word {word!r}.",
+                        provider="ollama",
+                    )
+            synonyms = d.get("synonyms", [])
+            if not isinstance(synonyms, list) or not all(
+                isinstance(item, str) for item in synonyms
+            ):
+                raise LLMParseError(
+                    f"Local model returned invalid synonyms for word {word!r}.",
+                    provider="ollama",
+                )
+            try:
+                defs.append(
+                    DictionaryDefinition(
+                        part_of_speech=d.get("part_of_speech", ""),
+                        definition=d.get("definition", ""),
+                        chinese=d.get("chinese", ""),
+                        example=d.get("example", ""),
+                        synonyms=d.get("synonyms", []),
+                        context_match=bool(d.get("context_match", False)),
+                    )
+                )
+            except Exception as exc:
+                raise LLMParseError(
+                    f"Local model returned an invalid definition for word {word!r}.",
+                    provider="ollama",
+                ) from exc
+        if not defs:
+            raise LLMParseError(
+                f"Local model returned no definitions for word {word!r}.",
+                provider="ollama",
+            )
+        llm_result = DictionaryResult(
+            word=data.get("word", word),
+            phonetic=data.get("phonetic", ""),
+            definitions=defs,
+            context_note=data.get("context_note", ""),
+        )
+        self._cache_put(word, llm_result)
+        return llm_result
 
     async def _focus_material(self, content: str, *, language: str) -> str:
         cfg = get_llm_config()
@@ -1920,6 +2868,169 @@ class ImmersiveReadingService:
             blocks.append(f"## {section.title}\n{content}")
         return "\n\n".join(blocks), doc.title
 
+    def set_experience_mode(self, document_id: str, mode: str) -> dict[str, Any]:
+        """Set the document experience mode (standard | kids)."""
+        if mode not in ("standard", "kids"):
+            raise ValueError("Invalid experience mode")
+        doc = self.load_document(document_id)
+        if doc is None:
+            raise ValueError("Reading document not found")
+        doc.experience_mode = mode
+        doc.updated_at = time.time()
+        _write_json(self._manifest_path(document_id), doc.model_dump(mode="json"))
+        return self._summary(doc)
+
+    def _kids_quiz_path(self, document_id: str, section_id: str) -> Path:
+        return self._document_root(document_id) / "kids-quiz" / f"{section_id}.json"
+
+    def _save_kids_quiz_cache(
+        self, document_id: str, section_id: str, result: KidsQuizResult
+    ) -> None:
+        """Persist a quiz result (used by fallback quiz generation)."""
+        quiz_path = self._kids_quiz_path(document_id, section_id)
+        quiz_path.parent.mkdir(parents=True, exist_ok=True)
+        _write_json(quiz_path, result.model_dump(mode="json"))
+
+    KIDS_QUIZ_PROMPT_VERSION = "kids-quiz-v1"
+
+    async def generate_kids_quiz(
+        self,
+        document_id: str,
+        section_id: str,
+        *,
+        force_refresh: bool = False,
+        age_band: str = "6-8",
+    ) -> KidsQuizResult:
+        """Generate (or load cached) 3 multiple-choice questions for a section."""
+        quiz_path = self._kids_quiz_path(document_id, section_id)
+        cached = _read_json(quiz_path) if quiz_path.exists() else None
+
+        content = self._section_path(document_id, section_id).read_text(encoding="utf-8")
+        content_hash = self._content_hash(content)
+
+        cfg = get_llm_config()
+        model_name = str(getattr(cfg, "model", "") or "")
+
+        if (
+            not force_refresh
+            and cached
+            and cached.get("content_hash") == content_hash
+            and cached.get("prompt_version") == self.KIDS_QUIZ_PROMPT_VERSION
+        ):
+            return KidsQuizResult(**cached)
+
+        doc = self.load_document(document_id)
+        if doc is None:
+            raise ValueError("Reading document not found")
+        section = next((s for s in doc.sections if s.id == section_id), None)
+        if section is None:
+            raise ValueError("Reading section not found")
+
+        # Limit content to 6000 chars for children's books (usually very short)
+        excerpt = content[:6000]
+
+        if age_band == "9-12":
+            system = (
+                "You create vocabulary quizzes for readers aged 9-12. "
+                "Generate exactly 3 multiple-choice questions asking what words from the story mean. "
+                "Choose interesting or challenging words (not basic words like 'the' or 'and'). "
+                "Definitions should be clear and simple but not childish. "
+                "For example: What does 'venture' mean? Choices: a risky journey, a type of food, a loud noise, a small animal. "
+                "Each question has exactly 4 choices. Return JSON only. Schema: "
+                '{"questions":[{"id":"q1","kind":"comprehension","question":"str","choices":["a","b","c","d"],'
+                '"answer_index":0,"explanation":"str"}]}'
+            )
+        else:
+            system = (
+                "You create simple vocabulary quizzes for children learning English. "
+                "Generate exactly 3 multiple-choice questions. "
+                "Each question asks what a word from the story means, using very simple English. "
+                "For example: What does 'said' mean? Choices: talked, ran, sat, ate. "
+                "Pick words that actually appear in the story. "
+                "Use very short, simple definitions a child can understand. "
+                "Each question has exactly 4 choices. "
+                "Return JSON only. Schema: "
+                '{"questions":[{"id":"q1","kind":"comprehension","question":"str","choices":["a","b","c","d"],'
+                '"answer_index":0,"explanation":"str"}]}'
+            )
+
+        raw = await complete(
+            prompt=(
+                f"Book: {doc.title}\n"
+                f"Story: {section.title}\n\n"
+                f"<story_text>\n{excerpt}\n</story_text>"
+            ),
+            system_prompt=system,
+            temperature=0.3,
+            max_tokens=2000,
+            max_retries=1,
+            timeout=120,
+            response_format={"type": "json_object"},
+        )
+
+        if not raw or not raw.strip():
+            raise RuntimeError("The model returned an empty quiz")
+
+        parsed = parse_json_response(raw)
+        questions_raw = parsed.get("questions", [])
+        questions: list[KidsQuizQuestion] = []
+        for i, q in enumerate(questions_raw[:3]):
+            choices = q.get("choices", [])
+            if len(choices) < 2:
+                continue
+            questions.append(
+                KidsQuizQuestion(
+                    id=q.get("id", f"q{i + 1}"),
+                    kind=q.get("kind", "comprehension"),
+                    question=q.get("question", ""),
+                    choices=[str(c) for c in choices[:4]],
+                    answer_index=max(0, min(len(choices) - 1, int(q.get("answer_index", 0)))),
+                    explanation=q.get("explanation", ""),
+                )
+            )
+
+        if not questions:
+            raise RuntimeError("No valid questions were generated")
+
+        result = KidsQuizResult(
+            document_id=document_id,
+            section_id=section_id,
+            questions=questions,
+            content_hash=content_hash,
+            model=model_name,
+            prompt_version=self.KIDS_QUIZ_PROMPT_VERSION,
+        )
+        quiz_path.parent.mkdir(parents=True, exist_ok=True)
+        _write_json(quiz_path, result.model_dump(mode="json"))
+        return result
+
+    def update_kids_progress(
+        self,
+        document_id: str,
+        section_id: str,
+        *,
+        scroll_percent: float = 0.0,
+        epub_cfi: str = "",
+        section_href: str = "",
+    ) -> ReadingProgress:
+        """Update progress without enforcing Focus-Check (kids mode)."""
+        doc = self.load_document(document_id)
+        if doc is None:
+            raise ValueError("Reading document not found")
+        section = next((s for s in doc.sections if s.id == section_id), None)
+        if section is None:
+            raise ValueError("Reading section not found")
+        progress = self.load_progress(document_id)
+        progress.current_section_id = section.id
+        progress.current_section_index = section.index
+        progress.scroll_percent = max(0.0, min(100.0, float(scroll_percent)))
+        if epub_cfi:
+            progress.epub_cfi = epub_cfi
+        if section_href:
+            progress.section_href = section_href
+        self._save_progress(progress)
+        return progress
+
 
 _service: ImmersiveReadingService | None = None
 
@@ -1931,6 +3042,348 @@ def get_immersive_reading_service() -> ImmersiveReadingService:
     return _service
 
 
+def _hash_pin(pin: str) -> str:
+    """Hash a parent PIN using a salted comparison."""
+    import hashlib
+
+    salt = "deeptutor-kids-pin-v1"
+    return hashlib.sha256(f"{salt}:{pin}".encode()).hexdigest()
+
+
+def _verify_pin(pin: str, pin_hash: str) -> bool:
+    if not pin_hash:
+        return False
+    return hmac.compare_digest(_hash_pin(pin), pin_hash)
+
+
+class KidsManager:
+    """Manages child profiles, book assignments, and per-profile progress.
+
+    All data is stored as JSON files under the immersive-reading root's
+    ``kids/`` subdirectory, scoped to the current user's workspace.
+    """
+
+    def __init__(self) -> None:
+        self._pin_failures: dict[str, list[float]] = {}
+
+    def _kids_root(self) -> Path:
+        root = get_path_service().get_immersive_reading_dir() / "kids"
+        root.mkdir(parents=True, exist_ok=True)
+        return root
+
+    def _profiles_path(self) -> Path:
+        return self._kids_root() / "profiles.json"
+
+    def _assignments_path(self) -> Path:
+        return self._kids_root() / "assignments.json"
+
+    def _progress_dir(self) -> Path:
+        d = self._kids_root() / "progress"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _progress_path(self, profile_id: str, document_id: str) -> Path:
+        return self._progress_dir() / f"{profile_id}_{document_id}.json"
+
+    # ── Profiles ───────────────────────────────────────────────────────
+
+    def list_profiles(self) -> list[KidsProfile]:
+        data = _read_json(self._profiles_path(), [])
+        return [KidsProfile(**p) for p in data]
+
+    def get_profile(self, profile_id: str) -> KidsProfile | None:
+        return next((p for p in self.list_profiles() if p.id == profile_id), None)
+
+    def create_profile(
+        self,
+        name: str,
+        *,
+        avatar: str = "default",
+        birth_date: str = "",
+        help_language: str = "en",
+        narration_rate: float = 0.8,
+        daily_limit_minutes: int = 30,
+        parent_pin: str = "",
+    ) -> KidsProfile:
+        profiles = self.list_profiles()
+        profile = KidsProfile(
+            id=uuid.uuid4().hex[:12],
+            name=name.strip() or "Child",
+            avatar=avatar,
+            birth_date=birth_date,
+            help_language=help_language,
+            narration_rate=max(0.5, min(1.5, narration_rate)),
+            daily_limit_minutes=max(5, min(120, daily_limit_minutes)),
+            pin_hash=_hash_pin(parent_pin) if parent_pin else "",
+        )
+        profiles.append(profile)
+        _write_json(self._profiles_path(), [p.model_dump(mode="json") for p in profiles])
+        return profile
+
+    def update_profile(self, profile_id: str, **kwargs: Any) -> KidsProfile:
+        profiles = self.list_profiles()
+        idx = next((i for i, p in enumerate(profiles) if p.id == profile_id), None)
+        if idx is None:
+            raise ValueError("Profile not found")
+        p = profiles[idx]
+        for key in (
+            "name",
+            "avatar",
+            "birth_date",
+            "help_language",
+            "narration_rate",
+            "daily_limit_minutes",
+        ):
+            if key in kwargs and kwargs[key] is not None:
+                setattr(p, key, kwargs[key])
+        if "parent_pin" in kwargs and kwargs["parent_pin"]:
+            p.pin_hash = _hash_pin(kwargs["parent_pin"])
+        p.updated_at = time.time()
+        profiles[idx] = p
+        _write_json(self._profiles_path(), [pp.model_dump(mode="json") for pp in profiles])
+        return p
+
+    def delete_profile(self, profile_id: str) -> None:
+        profiles = [p for p in self.list_profiles() if p.id != profile_id]
+        _write_json(self._profiles_path(), [p.model_dump(mode="json") for p in profiles])
+        # Remove assignments and progress for this profile
+        assignments = self.list_assignments()
+        assignments = [a for a in assignments if a.profile_id != profile_id]
+        _write_json(self._assignments_path(), [a.model_dump(mode="json") for a in assignments])
+        # Clean progress files
+        for f in self._progress_dir().glob(f"{profile_id}_*.json"):
+            f.unlink(missing_ok=True)
+
+    def verify_parent_pin(self, profile_id: str, pin: str) -> bool:
+        """Verify parent PIN with rate limiting."""
+        now = time.time()
+        failures = [t for t in self._pin_failures.get(profile_id, []) if now - t < 300]
+        if len(failures) >= 5:
+            return False
+        profile = self.get_profile(profile_id)
+        if profile is None:
+            return False
+        ok = _verify_pin(pin, profile.pin_hash)
+        if not ok:
+            failures.append(now)
+            self._pin_failures[profile_id] = failures
+        else:
+            self._pin_failures.pop(profile_id, None)
+        return ok
+
+    def has_pin(self, profile_id: str) -> bool:
+        p = self.get_profile(profile_id)
+        return bool(p and p.pin_hash)
+
+    # ── Assignments ────────────────────────────────────────────────────
+
+    def list_assignments(self, profile_id: str | None = None) -> list[KidsBookAssignment]:
+        data = _read_json(self._assignments_path(), [])
+        items = [KidsBookAssignment(**a) for a in data]
+        if profile_id:
+            items = [a for a in items if a.profile_id == profile_id]
+        return items
+
+    def assign_book(
+        self,
+        profile_id: str,
+        document_id: str,
+        *,
+        available_through_section_id: str = "",
+        available_through_section_index: int = 999,
+    ) -> KidsBookAssignment:
+        existing = self.list_assignments(profile_id)
+        match = next((a for a in existing if a.document_id == document_id), None)
+        if match:
+            match.status = "active"
+            match.available_through_section_id = available_through_section_id
+            match.available_through_section_index = available_through_section_index
+            match.updated_at = time.time()
+            self._save_assignments()
+            return match
+
+        ir_service = get_immersive_reading_service()
+        doc = ir_service.load_document(document_id)
+        title = doc.title if doc else document_id
+        sort_order = len(existing)
+        assignment = KidsBookAssignment(
+            id=uuid.uuid4().hex[:12],
+            profile_id=profile_id,
+            document_id=document_id,
+            document_title=title,
+            available_through_section_id=available_through_section_id,
+            available_through_section_index=available_through_section_index,
+            sort_order=sort_order,
+        )
+        existing.append(assignment)
+        _write_json(self._assignments_path(), [a.model_dump(mode="json") for a in existing])
+        return assignment
+
+    def unassign_book(self, profile_id: str, document_id: str) -> None:
+        assignments = [
+            a
+            for a in self.list_assignments()
+            if not (a.profile_id == profile_id and a.document_id == document_id)
+        ]
+        _write_json(self._assignments_path(), [a.model_dump(mode="json") for a in assignments])
+
+    def update_assignment(
+        self, profile_id: str, document_id: str, **kwargs: Any
+    ) -> KidsBookAssignment:
+        assignments = self.list_assignments()
+        idx = next(
+            (
+                i
+                for i, a in enumerate(assignments)
+                if a.profile_id == profile_id and a.document_id == document_id
+            ),
+            None,
+        )
+        if idx is None:
+            raise ValueError("Assignment not found")
+        a = assignments[idx]
+        for key in (
+            "status",
+            "sort_order",
+            "is_next_read",
+            "available_through_section_id",
+            "available_through_section_index",
+        ):
+            if key in kwargs and kwargs[key] is not None:
+                setattr(a, key, kwargs[key])
+        a.updated_at = time.time()
+        assignments[idx] = a
+        _write_json(self._assignments_path(), [aa.model_dump(mode="json") for aa in assignments])
+        return a
+
+    def _save_assignments(self) -> None:
+        assignments = self.list_assignments()
+        _write_json(self._assignments_path(), [a.model_dump(mode="json") for a in assignments])
+
+    def get_kids_library(self, profile_id: str) -> list[dict[str, Any]]:
+        """Return assigned books with progress for a child profile."""
+        assignments = [a for a in self.list_assignments(profile_id) if a.status == "active"]
+        assignments.sort(key=lambda a: a.sort_order)
+        ir_service = get_immersive_reading_service()
+        library: list[dict[str, Any]] = []
+        for a in assignments:
+            doc = ir_service.load_document(a.document_id)
+            if doc is None:
+                continue
+            progress = self.load_kids_progress(profile_id, a.document_id)
+            library.append(
+                {
+                    "assignment": a.model_dump(mode="json"),
+                    "document": ir_service._summary(doc),
+                    "progress": progress.model_dump(mode="json"),
+                }
+            )
+        return library
+
+    # ── Progress ───────────────────────────────────────────────────────
+
+    def load_kids_progress(self, profile_id: str, document_id: str) -> KidsLearningProgress:
+        data = _read_json(self._progress_path(profile_id, document_id))
+        if data:
+            return KidsLearningProgress(**data)
+        return KidsLearningProgress(profile_id=profile_id, document_id=document_id)
+
+    def update_kids_progress_record(
+        self,
+        profile_id: str,
+        document_id: str,
+        *,
+        section_id: str = "",
+        section_index: int = 0,
+        scroll_percent: float = 0.0,
+        epub_cfi: str = "",
+        section_href: str = "",
+        time_delta: float = 0.0,
+    ) -> KidsLearningProgress:
+        progress = self.load_kids_progress(profile_id, document_id)
+        if section_id:
+            progress.current_section_id = section_id
+            progress.current_section_index = section_index
+        progress.scroll_percent = max(0.0, min(100.0, scroll_percent))
+        if epub_cfi:
+            progress.epub_cfi = epub_cfi
+        if section_href:
+            progress.section_href = section_href
+        progress.time_spent_seconds += time_delta
+        progress.last_read_at = time.time()
+        progress.updated_at = time.time()
+        _write_json(self._progress_path(profile_id, document_id), progress.model_dump(mode="json"))
+        return progress
+
+    def mark_section_completed(
+        self, profile_id: str, document_id: str, section_id: str
+    ) -> KidsLearningProgress:
+        progress = self.load_kids_progress(profile_id, document_id)
+        if section_id not in progress.completed_section_ids:
+            progress.completed_section_ids.append(section_id)
+            progress.updated_at = time.time()
+            _write_json(
+                self._progress_path(profile_id, document_id), progress.model_dump(mode="json")
+            )
+        return progress
+
+    def add_stars(self, profile_id: str, document_id: str, stars: int) -> KidsLearningProgress:
+        progress = self.load_kids_progress(profile_id, document_id)
+        progress.total_stars += max(0, stars)
+        progress.updated_at = time.time()
+        _write_json(self._progress_path(profile_id, document_id), progress.model_dump(mode="json"))
+        return progress
+
+    def record_quiz(
+        self, profile_id: str, document_id: str, score: int, total: int
+    ) -> KidsLearningProgress:
+        progress = self.load_kids_progress(profile_id, document_id)
+        progress.quiz_attempts += 1
+        progress.quiz_best_score = max(progress.quiz_best_score, score)
+        progress.updated_at = time.time()
+        _write_json(self._progress_path(profile_id, document_id), progress.model_dump(mode="json"))
+        return progress
+
+    def get_report(self, profile_id: str) -> dict[str, Any]:
+        """Aggregate learning report for a child profile."""
+        profile = self.get_profile(profile_id)
+        if profile is None:
+            raise ValueError("Profile not found")
+        library = self.get_kids_library(profile_id)
+        total_stars = sum(item["progress"]["total_stars"] for item in library)
+        total_time = sum(item["progress"]["time_spent_seconds"] for item in library)
+        total_quizzes = sum(item["progress"]["quiz_attempts"] for item in library)
+        return {
+            "profile": profile.model_dump(mode="json"),
+            "books": library,
+            "total_stars": total_stars,
+            "total_time_seconds": total_time,
+            "total_quiz_attempts": total_quizzes,
+            "total_books": len(library),
+        }
+
+    def is_section_allowed(self, profile_id: str, document_id: str, section_index: int) -> bool:
+        """Check if a child is allowed to read a section based on assignment limits."""
+        assignments = self.list_assignments(profile_id)
+        assignment = next(
+            (a for a in assignments if a.document_id == document_id and a.status == "active"), None
+        )
+        if assignment is None:
+            return False
+        return section_index <= assignment.available_through_section_index
+
+
+# Singleton
+_kids_manager: KidsManager | None = None
+
+
+def get_kids_manager() -> KidsManager:
+    global _kids_manager
+    if _kids_manager is None:
+        _kids_manager = KidsManager()
+    return _kids_manager
+
+
 __all__ = [
     "CHUNK_CHAR_TARGET",
     "DESCRIPTION_CONTEXT_MIN",
@@ -1938,4 +3391,5 @@ __all__ = [
     "MAX_UPLOAD_BYTES",
     "SUPPORTED_FORMATS",
     "get_immersive_reading_service",
+    "get_kids_manager",
 ]
