@@ -231,7 +231,7 @@ test("Codex OAuth reports a stable error for an invalid successful response", as
       assert.equal(error.code, "invalid_response");
       assert.equal(
         error.message,
-        "DeepTutor returned an invalid Codex OAuth response.",
+        "Encore returned an invalid Codex OAuth response.",
       );
       assert.equal(error.message.includes(responseBody), false);
       assert.equal(error.message.includes("text/html"), false);
