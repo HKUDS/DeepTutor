@@ -37,6 +37,13 @@ dependencies = [
     "rich>=13.0.0",
     "prompt_toolkit>=3.0.36",
     "pyte>=0.8.1",  # in-memory terminal emulator: scrape Claude Code's /model TUI on sync
+    # MCP client. Core rather than a `partners`-only extra (issue #792): the
+    # connection manager and the built-in PageIndex MCP server are injected on
+    # any turn where a PageIndex API key is configured, so a plain
+    # `pip install deeptutor` has to be able to import `mcp` — otherwise the
+    # connection task dies with ModuleNotFoundError and every turn stalls for
+    # the full connect timeout.
+    "mcp>=1.26.0,<2.0.0",
     # Full app dependencies included by default for `pip install deeptutor`.
     "anthropic>=0.30.0",
     "dashscope>=1.14.0",
@@ -134,12 +141,12 @@ server = [
     "psutil>=5.9.0,<8.0.0",
 ]
 
-# Partner channel SDKs + MCP client. Mirrors requirements/partners.txt.
+# Partner channel SDKs. Mirrors requirements/partners.txt.
 # Partners run on the chat agent loop, so there is no engine here — just the
-# IM platform SDKs and the MCP client used for deferred tools.
+# IM platform SDKs. The MCP client used for deferred tools is a core dependency
+# (see `mcp` above), not a partners-only one.
 partners = [
     "deeptutor[server]",
-    "mcp>=1.26.0,<2.0.0",
     "python-telegram-bot[socks]>=22.6,<23.0",
     "wecom-aibot-sdk>=1.0.8,<2.0.0",
     "lark-oapi>=1.5.0,<2.0.0",

@@ -669,9 +669,14 @@ class MCPConnectionManager:
         """Connection task: owns the AsyncExitStack for one server."""
         from contextlib import AsyncExitStack
 
-        from mcp import ClientSession
-
         try:
+            # Imported inside the guarded block on purpose (issue #792): if the
+            # `mcp` package is missing, an import at function scope raises before
+            # anything can fail *ready*, so the task dies with an unretrieved
+            # ModuleNotFoundError while the connect waits out the full timeout.
+            # Inside the block the real cause reaches the caller immediately.
+            from mcp import ClientSession
+
             async with AsyncExitStack() as stack:
                 read, write = await self._open_transport(
                     stack, conn.config, owner=conn.owner, server_name=conn.name
