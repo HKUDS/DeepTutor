@@ -26,16 +26,14 @@ from typing import Any
 # Object types — what kind of MN4 entity a row represents.
 # --------------------------------------------------------------------------- #
 
-NOTE = "note"           # A highlight, underline, or text selection annotation.
-EXCERPT = "excerpt"     # An excerpt block (longer quoted passage).
-CARD = "card"           # A flashcard with front/back.
+NOTE = "note"  # A highlight, underline, or text selection annotation.
+EXCERPT = "excerpt"  # An excerpt block (longer quoted passage).
+CARD = "card"  # A flashcard with front/back.
 MINDMAP_NODE = "mindmap_node"  # A node in the study mindmap.
-DOCUMENT = "document"   # A source document (PDF, EPUB, web).
-COMMENT = "comment"     # A free-form comment attached to a note or node.
+DOCUMENT = "document"  # A source document (PDF, EPUB, web).
+COMMENT = "comment"  # A free-form comment attached to a note or node.
 
-ALL_TYPES: frozenset[str] = frozenset(
-    {NOTE, EXCERPT, CARD, MINDMAP_NODE, DOCUMENT, COMMENT}
-)
+ALL_TYPES: frozenset[str] = frozenset({NOTE, EXCERPT, CARD, MINDMAP_NODE, DOCUMENT, COMMENT})
 
 
 @dataclass(slots=True)

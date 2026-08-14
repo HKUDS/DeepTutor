@@ -48,9 +48,7 @@ class MarginNoteCapability(KnowledgeCapability):
             return None
         override = _prompt_text(prompts, ("marginnote4", "system"))
         content = override or _load_system_prompt(language)
-        return PromptBlock(
-            "marginnote4", content.replace("{library_name}", binding["name"])
-        )
+        return PromptBlock("marginnote4", content.replace("{library_name}", binding["name"]))
 
     def augment_kwargs(
         self,

@@ -187,8 +187,7 @@ class MarginNoteStore:
         """Mark a device inactive. Returns True if a row was affected."""
         with self._connect() as conn:
             cur = conn.execute(
-                "UPDATE mn4_devices SET active = 0 "
-                "WHERE device_id = ? AND active = 1",
+                "UPDATE mn4_devices SET active = 0 WHERE device_id = ? AND active = 1",
                 (device_id,),
             )
             return cur.rowcount > 0
@@ -206,9 +205,7 @@ class MarginNoteStore:
 
     def list_devices(self) -> list[PairedDevice]:
         with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM mn4_devices ORDER BY paired_at"
-            ).fetchall()
+            rows = conn.execute("SELECT * FROM mn4_devices ORDER BY paired_at").fetchall()
         return [_row_to_device(r) for r in rows]
 
     def touch_device(self, device_id: str) -> None:
@@ -231,8 +228,7 @@ class MarginNoteStore:
                     logger.warning("Skipping unknown MN4 type: %s", obj.object_type)
                     continue
                 prev = conn.execute(
-                    "SELECT synced_at FROM mn4_objects "
-                    "WHERE object_id = ? AND device_id = ?",
+                    "SELECT synced_at FROM mn4_objects WHERE object_id = ? AND device_id = ?",
                     (obj.object_id, batch.device_id),
                 ).fetchone()
                 synced_at = obj.synced_at or now
@@ -254,13 +250,22 @@ class MarginNoteStore:
                          updated_at=excluded.updated_at,
                          synced_at=excluded.synced_at, raw=excluded.raw""",
                     (
-                        obj.object_id, batch.device_id, obj.object_type,
-                        obj.title, obj.content, obj.excerpt,
-                        obj.document_id, obj.document_title, obj.page,
+                        obj.object_id,
+                        batch.device_id,
+                        obj.object_type,
+                        obj.title,
+                        obj.content,
+                        obj.excerpt,
+                        obj.document_id,
+                        obj.document_title,
+                        obj.page,
                         json.dumps(obj.tags, ensure_ascii=False),
                         json.dumps(obj.links, ensure_ascii=False),
-                        obj.color, obj.created_at, obj.updated_at,
-                        synced_at, json.dumps(obj.raw, ensure_ascii=False),
+                        obj.color,
+                        obj.created_at,
+                        obj.updated_at,
+                        synced_at,
+                        json.dumps(obj.raw, ensure_ascii=False),
                     ),
                 )
                 if prev:
@@ -275,22 +280,18 @@ class MarginNoteStore:
                     (oid, batch.device_id, now),
                 )
                 conn.execute(
-                    "DELETE FROM mn4_objects "
-                    "WHERE object_id = ? AND device_id = ?",
+                    "DELETE FROM mn4_objects WHERE object_id = ? AND device_id = ?",
                     (oid, batch.device_id),
                 )
                 deleted += 1
 
             new_cursor = _now_iso()
             conn.execute(
-                "INSERT OR REPLACE INTO mn4_cursors (device_id, cursor) "
-                "VALUES (?, ?)",
+                "INSERT OR REPLACE INTO mn4_cursors (device_id, cursor) VALUES (?, ?)",
                 (batch.device_id, new_cursor),
             )
 
-        return SyncResult(
-            stored=stored, updated=updated, deleted=deleted, new_cursor=new_cursor
-        )
+        return SyncResult(stored=stored, updated=updated, deleted=deleted, new_cursor=new_cursor)
 
     def get_cursor(self, device_id: str) -> str:
         with self._connect() as conn:
@@ -307,8 +308,7 @@ class MarginNoteStore:
         with self._connect() as conn:
             if device_id:
                 row = conn.execute(
-                    "SELECT * FROM mn4_objects "
-                    "WHERE object_id = ? AND device_id = ?",
+                    "SELECT * FROM mn4_objects WHERE object_id = ? AND device_id = ?",
                     (object_id, device_id),
                 ).fetchone()
             else:
@@ -398,9 +398,7 @@ class MarginNoteStore:
             for r in rows
         ]
 
-    def linked_objects(
-        self, object_id: str, *, device_id: str = ""
-    ) -> list[dict[str, Any]]:
+    def linked_objects(self, object_id: str, *, device_id: str = "") -> list[dict[str, Any]]:
         """Return objects linked TO or FROM the given object."""
         obj = self.get(object_id, device_id=device_id)
         if obj is None:
@@ -420,9 +418,7 @@ class MarginNoteStore:
                 results.append(_to_summary(linked, ""))
         return results
 
-    def collect_tags(
-        self, *, device_id: str = "", limit: int = 200
-    ) -> list[dict[str, Any]]:
+    def collect_tags(self, *, device_id: str = "", limit: int = 200) -> list[dict[str, Any]]:
         """All tags across objects, ranked by frequency."""
         with self._connect() as conn:
             sql = "SELECT tags FROM mn4_objects"
@@ -449,9 +445,7 @@ class MarginNoteStore:
                     (device_id,),
                 ).fetchone()
             else:
-                row = conn.execute(
-                    "SELECT COUNT(*) AS n FROM mn4_objects"
-                ).fetchone()
+                row = conn.execute("SELECT COUNT(*) AS n FROM mn4_objects").fetchone()
         return row["n"]
 
 
@@ -492,11 +486,7 @@ def _snippet(body: str, query: str, width: int = 160) -> str:
         return body[:width].strip().replace("\n", " ")
     start = max(0, idx - width // 3)
     tail = "..." if start + width < len(body) else ""
-    return (
-        ("..." if start else "")
-        + body[start : start + width].strip().replace("\n", " ")
-        + tail
-    )
+    return ("..." if start else "") + body[start : start + width].strip().replace("\n", " ") + tail
 
 
 __all__ = ["MarginNoteStore"]

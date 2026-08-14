@@ -117,8 +117,7 @@ class MarginNoteSearchTool(_MN4Tool):
                     name="object_type",
                     type="string",
                     description=(
-                        "Filter by type: note, excerpt, card, mindmap_node, "
-                        "document, comment."
+                        "Filter by type: note, excerpt, card, mindmap_node, document, comment."
                     ),
                     required=False,
                     enum=sorted(ALL_TYPES),
@@ -211,9 +210,7 @@ class MarginNoteListTool(_MN4Tool):
         obj_type = str(kwargs.get("object_type") or "").strip()
         doc_id = str(kwargs.get("document_id") or "").strip()
         limit = _as_int(kwargs.get("limit"), default=200, lo=1, hi=1000)
-        items = store.list_objects(
-            object_type=obj_type, document_id=doc_id, limit=limit
-        )
+        items = store.list_objects(object_type=obj_type, document_id=doc_id, limit=limit)
         return _ok({"count": len(items), "objects": items})
 
 

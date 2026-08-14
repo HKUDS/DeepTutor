@@ -44,10 +44,7 @@ def test_capability_active_injects_db_path(monkeypatch, tmp_path: Path) -> None:
     assert tuple(cap.owned_tools) == MARGINNOTE_TOOL_NAMES
     # db_path injected for marginnote tools, even overwriting a forged value
     assert cap.augment_kwargs("marginnote_read", {}, ctx)["_db_path"] == db_path
-    assert (
-        cap.augment_kwargs("marginnote_read", {"_db_path": "/etc"}, ctx)["_db_path"]
-        == db_path
-    )
+    assert cap.augment_kwargs("marginnote_read", {"_db_path": "/etc"}, ctx)["_db_path"] == db_path
     # but never for a non-marginnote tool
     assert "_db_path" not in cap.augment_kwargs("rag", {}, ctx)
 
@@ -76,9 +73,7 @@ def test_binding_resolved_once_and_cached(monkeypatch, tmp_path: Path) -> None:
         calls["n"] += 1
         return {"name": ref, "type": "marginnote4", "db_path": str(tmp_path / "x.db")}
 
-    monkeypatch.setattr(
-        "deeptutor.multi_user.knowledge_access.resolve_kb_metadata", fake
-    )
+    monkeypatch.setattr("deeptutor.multi_user.knowledge_access.resolve_kb_metadata", fake)
     ctx = UnifiedContext(user_message="hi", knowledge_bases=["lib"])
     mn4_binding.marginnote_binding(ctx)
     mn4_binding.marginnote_binding(ctx)
@@ -88,9 +83,7 @@ def test_binding_resolved_once_and_cached(monkeypatch, tmp_path: Path) -> None:
 def test_owned_kbs_reports_only_mn4_refs(monkeypatch, tmp_path: Path) -> None:
     _bind(monkeypatch, str(tmp_path / "test.db"))
     cap = MarginNoteCapability()
-    ctx = UnifiedContext(
-        user_message="hi", knowledge_bases=["mylibrary", "kb-plain"]
-    )
+    ctx = UnifiedContext(user_message="hi", knowledge_bases=["mylibrary", "kb-plain"])
     assert cap.owned_kbs(ctx) == {"mylibrary"}
 
 
@@ -100,12 +93,8 @@ def test_kb_refs_enumerates_every_selected_library(monkeypatch, tmp_path: Path) 
             return {"name": ref, "type": "marginnote4", "db_path": str(tmp_path / "x.db")}
         return {"name": ref, "type": None}
 
-    monkeypatch.setattr(
-        "deeptutor.multi_user.knowledge_access.resolve_kb_metadata", fake
-    )
-    ctx = UnifiedContext(
-        user_message="hi", knowledge_bases=["libA", "kb1", "libB"]
-    )
+    monkeypatch.setattr("deeptutor.multi_user.knowledge_access.resolve_kb_metadata", fake)
+    ctx = UnifiedContext(user_message="hi", knowledge_bases=["libA", "kb1", "libB"])
     assert mn4_binding.marginnote_kb_refs(ctx) == {"libA", "libB"}
 
 
