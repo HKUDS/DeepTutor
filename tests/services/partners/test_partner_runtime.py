@@ -424,13 +424,12 @@ class TestContextAssembly:
         """Persist the admin's Settings → Chat → Tools toggles under the
         isolated admin workspace, using the same path the runtime reads."""
         import json
+
         from deeptutor.multi_user.paths import get_admin_path_service
 
         path = get_admin_path_service().get_settings_file("interface")
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps({"enabled_optional_tools": names}), encoding="utf-8"
-        )
+        path.write_text(json.dumps({"enabled_optional_tools": names}), encoding="utf-8")
 
     def test_globally_disabled_tool_dropped_from_explicit_config(self, partners_root):
         # web_search is turned off in Settings → Chat → Tools, so even though
@@ -453,9 +452,7 @@ class TestContextAssembly:
         from deeptutor.agents._shared.tool_composition import default_optional_tools
 
         # No interface.json → fail-open: the partner's saved selection stands.
-        runner = _runner(
-            partners_root, PartnerConfig(name="Ada", enabled_tools=["web_search"])
-        )
+        runner = _runner(partners_root, PartnerConfig(name="Ada", enabled_tools=["web_search"]))
         assert runner._resolved_enabled_tools() == ["web_search"]
         assert _runner(partners_root)._resolved_enabled_tools() == default_optional_tools()
 

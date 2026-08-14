@@ -74,9 +74,7 @@ async def build_tool_options(
     # (``_resolved_enabled_tools``), so the picker and runtime can't drift.
     globally_enabled = set(admin_enabled_optional_tools())
     tools: list[dict[str, Any]] = [
-        _describe(name)
-        for name in default_optional_tools()
-        if name in globally_enabled
+        _describe(name) for name in default_optional_tools() if name in globally_enabled
     ]
     builtin_tools: list[dict[str, Any]] = [
         _describe(name) for name in CONFIGURABLE_BUILTIN_TOOL_NAMES if name not in exclude

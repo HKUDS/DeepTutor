@@ -478,9 +478,7 @@ class PartnerRunner:
 
         configured = getattr(self.config, "enabled_tools", None)
         candidates = (
-            default_optional_tools()
-            if configured is None
-            else [str(name) for name in configured]
+            default_optional_tools() if configured is None else [str(name) for name in configured]
         )
         globally_enabled = set(admin_enabled_optional_tools())
         return [name for name in candidates if name in globally_enabled]
