@@ -43,8 +43,12 @@ const PROVIDER_ICONS: Record<string, { file: string; mono?: boolean }> = {
   qianfan: { file: "baiducloud-color.svg" },
   cohere: { file: "cohere-color.svg" },
   jina: { file: "jina.svg", mono: true },
-  // Search providers (web/components/settings/shared.tsx). brave/duckduckgo/
-  // searxng come from simple-icons with the brand color baked in.
+  // Search providers (see SEARCH_PROVIDERS in
+  // deeptutor/services/config/provider_runtime.py). brave/duckduckgo/searxng
+  // come from simple-icons with the brand color baked in. Keys shared with an
+  // LLM binding above (zhipu, qianfan) already resolve and are not repeated.
+  // A search provider with no vendored logo falls back to the generic Bot mark
+  // rather than borrowing an unrelated brand's.
   tavily: { file: "tavily-color.svg" },
   perplexity: { file: "perplexity-color.svg" },
   exa: { file: "exa-color.svg" },
@@ -52,6 +56,9 @@ const PROVIDER_ICONS: Record<string, { file: string; mono?: boolean }> = {
   duckduckgo: { file: "duckduckgo.svg" },
   searxng: { file: "searxng.svg" },
   baidu: { file: "baidu-color.svg" },
+  // Doubao is Volcengine's own model line, so it carries the Ark mark.
+  doubao: { file: "volcengine-color.svg" },
+  aliyun_iqs: { file: "qwen-color.svg" },
 };
 
 export default function ProviderIcon({

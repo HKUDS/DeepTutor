@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   reasoningEffortOptions,
+  reasoningEffortOptionsFromSupportedLevels,
   setModelReasoningEffort,
 } from "../lib/reasoning-effort";
 
@@ -104,6 +105,24 @@ test("unknown models stay hidden unless they already carry an override", () => {
     "",
     "vendor-level",
   ]);
+});
+
+test("managed profiles use only the provider-supported reasoning levels", () => {
+  assert.deepEqual(
+    reasoningEffortOptionsFromSupportedLevels(["medium", "high"]).map(
+      (option) => option.value,
+    ),
+    ["", "medium", "high"],
+  );
+  assert.deepEqual(
+    reasoningEffortOptionsFromSupportedLevels([
+      "high",
+      "",
+      "high",
+      "medium",
+    ]).map((option) => option.value),
+    ["", "high", "medium"],
+  );
 });
 
 test("Auto removes the catalog field instead of persisting an empty string", () => {

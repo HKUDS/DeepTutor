@@ -99,3 +99,47 @@ async def test_sdk_arguments_can_be_correlated_by_item_id() -> None:
     assert len(tool_calls) == 1
     assert tool_calls[0].id == "call_1|fc_1"
     assert tool_calls[0].arguments == {"topic": "geometry"}
+
+
+@pytest.mark.asyncio
+async def test_a_call_without_an_item_id_does_not_inherit_another_calls_identity() -> None:
+    """The placeholder item id is not an identity, and must never resolve one.
+
+    A provider that omits ``item.id`` on function-call items makes every call
+    carry the same stand-in. If that stand-in were registered as a lookup key,
+    a ``done`` event for a call that was never announced would find the
+    previous call's buffer — and the tool would be dispatched under the wrong
+    name with the wrong arguments.
+    """
+    events = [
+        {
+            "type": "response.output_item.added",
+            "item": {"type": "function_call", "call_id": "call_1", "name": "delete_kb"},
+        },
+        {
+            "type": "response.function_call_arguments.done",
+            "call_id": "call_1",
+            "arguments": '{"kb":"secret"}',
+        },
+        {
+            "type": "response.output_item.done",
+            "item": {"type": "function_call", "call_id": "call_1", "name": "delete_kb"},
+        },
+        # Never announced with an ``added`` event, and carries no item id.
+        {
+            "type": "response.output_item.done",
+            "item": {
+                "type": "function_call",
+                "call_id": "call_2",
+                "name": "list_kb",
+                "arguments": '{"scope":"mine"}',
+            },
+        },
+    ]
+
+    _, tool_calls, _ = await consume_sse(_SSEFixture(events))
+
+    assert [(call.name, call.arguments) for call in tool_calls] == [
+        ("delete_kb", {"kb": "secret"}),
+        ("list_kb", {"scope": "mine"}),
+    ]

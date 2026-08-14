@@ -425,7 +425,7 @@ Co-Writer هو مساحة عمل Markdown ذات عرض مقسَّم للتقا�
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="إنشاء قاعدة معرفة" width="900">
 </div>
 
-عند إنشاء قاعدة معرفة، إما أن **تنشئ جديدة** (تحميل مستندات وبناء فهرس جديد) أو **تربط موجودة** (إعادة استخدام فهرس مبني في مكان آخر، قراءة في مكانه بدون إعادة فهرسة). تكتب إعادة الفهرسة دليل `version-N` مسطحاً جديداً وتحتفظ بالسابقة، لذا لا يُدمَّر فهرس عامل أبداً أثناء إعادة البناء. يمكن إزالة مستند واحد حتى من قاعدة في حالة **خطأ** — إسقاط ملف فشل تحليله بدون حذف وإعادة بناء كاملين. تحليل المستندات — نص فقط أو MinerU أو Docling أو markitdown أو PyMuPDF4LLM — يُختار في **الإعدادات ← قاعدة المعرفة**، مع إيقاف تنزيلات النماذج المحلية افتراضياً. تعكس واجهة CLI دورة الحياة مع `deeptutor kb list` و`info` و`create` و`add` و`search` و`set-default` و`delete`.
+عند إنشاء قاعدة معرفة، إما أن **تنشئ جديدة** (تحميل مستندات وبناء فهرس جديد) أو **تربط موجودة** (إعادة استخدام فهرس مبني في مكان آخر، قراءة في مكانه بدون إعادة فهرسة). تكتب إعادة الفهرسة دليل `version-N` مسطحاً جديداً وتحتفظ بالسابقة، لذا لا يُدمَّر فهرس عامل أبداً أثناء إعادة البناء. يمكن إزالة مستند واحد حتى من قاعدة في حالة **خطأ** — إسقاط ملف فشل تحليله بدون حذف وإعادة بناء كاملين. تحليل المستندات — نص فقط أو MinerU أو Docling أو markitdown أو PyMuPDF4LLM أو LiteParse — يُختار في **الإعدادات ← قاعدة المعرفة**، مع إيقاف تنزيلات النماذج المحلية افتراضياً. تعكس واجهة CLI دورة الحياة مع `deeptutor kb list` و`info` و`create` و`add` و`search` و`set-default` و`delete`.
 
 </details>
 
@@ -584,7 +584,7 @@ deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format j
 | `deeptutor book list/health/refresh-fingerprints` | فحص الكتب وتحديث بصمات المصادر |
 | `deeptutor plugin list/info` | فحص الأدوات والقدرات المسجلة |
 | `deeptutor config show` | طباعة ملخص التهيئة |
-| `deeptutor provider login <provider>` | مصادقة المزود (`openai-codex` OAuth login؛ `github-copilot` يتحقق من جلسة مصادقة Copilot موجودة) |
+| `deeptutor provider login <provider>` | مصادقة المزود (`openai-codex` OAuth login؛ `github-copilot` يتحقق من جلسة مصادقة Copilot موجودة؛ `codebuddy` يتحقق من مصادقة CodeBuddy SDK ويبدأ تسجيل الدخول عند الحاجة) |
 
 </details>
 
@@ -658,6 +658,22 @@ deeptutor skill install clawhub:git-release-notes@1.0.1
 أضف المزيد من السجلات في `settings/skill_hubs.json`: إدخال `type: "clawhub"` يشير إلى أي HTTP API متوافق (EduHub وClawHub يتحدثانه كلاهما)، `type: "command"` يلفّ أي CLI جلب يشحنه السجل، و`"default"` يختار المركز المستخدم للـ slugs المجردة. كلها تُغذّي نفس بوابة الاستيراد.
 
 </details>
+
+## 🤝 شركاء المصادر المفتوحة
+
+<p align="center">
+  <a href="https://github.com/VectifyAI/PageIndex" target="_blank">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="../../assets/figs/partners/pageindex-mark-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="../../assets/figs/partners/pageindex-mark.svg">
+      <img src="../../assets/figs/partners/pageindex-mark.svg" alt="PageIndex" height="38">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
+  باستخدام الرمز: <b><code>DEEPTUTOR20</code></b> — احصل على خصم 20 دولاراً على أول <a href="https://developer.pageindex.ai/">اشتراك في PageIndex</a>!
+</p>
 
 ## 🌐 المجتمع
 

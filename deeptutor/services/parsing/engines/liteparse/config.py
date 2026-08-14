@@ -36,6 +36,11 @@ def _image_mode(value: object) -> str:
 
 
 def _max_pages(value: object) -> int:
+    # The settings slice is JSON, so anything outside these three types could
+    # only ever have raised TypeError inside int() and been caught below.
+    # Narrowing here says the same thing to a reader and to the type checker.
+    if not isinstance(value, (str, int, float)):
+        return 0
     try:
         pages = int(value or 0)
     except (TypeError, ValueError):

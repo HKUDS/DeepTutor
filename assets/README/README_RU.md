@@ -425,7 +425,7 @@ Co-Writer — это разделённое рабочее пространст�
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="Создание базы знаний" width="900">
 </div>
 
-При создании KB вы либо **создаёте новую** (загружаете документы и строите свежий индекс), либо **связываете существующую** (повторно используете индекс, построенный в другом месте, читаете на месте без переиндексирования). Переиндексирование записывает новую плоскую директорию `version-N` и сохраняет предыдущие, поэтому рабочий индекс никогда не уничтожается в процессе перестройки. Отдельный документ можно удалить даже из базы в состоянии **error** — убрав файл, который не удалось разобрать, без полного удаления и пересборки. Разбор документов — только текст, MinerU, Docling, markitdown или PyMuPDF4LLM — выбирается в **Настройки → База знаний**, с отключёнными по умолчанию загрузками локальных моделей. CLI отражает жизненный цикл командами `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` и `delete`.
+При создании KB вы либо **создаёте новую** (загружаете документы и строите свежий индекс), либо **связываете существующую** (повторно используете индекс, построенный в другом месте, читаете на месте без переиндексирования). Переиндексирование записывает новую плоскую директорию `version-N` и сохраняет предыдущие, поэтому рабочий индекс никогда не уничтожается в процессе перестройки. Отдельный документ можно удалить даже из базы в состоянии **error** — убрав файл, который не удалось разобрать, без полного удаления и пересборки. Разбор документов — только текст, MinerU, Docling, markitdown, PyMuPDF4LLM или LiteParse — выбирается в **Настройки → База знаний**, с отключёнными по умолчанию загрузками локальных моделей. CLI отражает жизненный цикл командами `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` и `delete`.
 
 </details>
 
@@ -584,7 +584,7 @@ deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format j
 | `deeptutor book list/health/refresh-fingerprints` | Просмотр книг и обновление исходных отпечатков |
 | `deeptutor plugin list/info` | Просмотр зарегистрированных инструментов и возможностей |
 | `deeptutor config show` | Вывод сводки конфигурации |
-| `deeptutor provider login <provider>` | Аутентификация провайдера (`openai-codex` вход через OAuth; `github-copilot` проверяет существующую сессию аутентификации Copilot) |
+| `deeptutor provider login <provider>` | Аутентификация провайдера (`openai-codex` вход через OAuth; `github-copilot` проверяет существующую сессию аутентификации Copilot; `codebuddy` проверяет аутентификацию CodeBuddy SDK и запускает вход при необходимости) |
 
 </details>
 
@@ -658,6 +658,22 @@ deeptutor skill install clawhub:git-release-notes@1.0.1
 Добавляйте дополнительные реестры в `settings/skill_hubs.json`: запись `type: "clawhub"` указывает на любой совместимый HTTP API (EduHub и ClawHub оба его поддерживают), `type: "command"` оборачивает любой CLI получения, который поставляет реестр, а `"default"` выбирает хаб, используемый для голых слагов. Все они передаются через тот же шлюз импорта.
 
 </details>
+
+## 🤝 Партнёры по открытому коду
+
+<p align="center">
+  <a href="https://github.com/VectifyAI/PageIndex" target="_blank">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="../../assets/figs/partners/pageindex-mark-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="../../assets/figs/partners/pageindex-mark.svg">
+      <img src="../../assets/figs/partners/pageindex-mark.svg" alt="PageIndex" height="38">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
+  Используйте код: <b><code>DEEPTUTOR20</code></b> — скидка $20 на первую <a href="https://developer.pageindex.ai/">подписку PageIndex</a>!
+</p>
 
 ## 🌐 Сообщество
 

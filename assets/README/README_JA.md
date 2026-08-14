@@ -425,7 +425,7 @@ Bookは選択したソースをインタラクティブな**生きている本**
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="知識ベースの作成" width="900">
 </div>
 
-KBを作成する際は、**新規作成**（ドキュメントをアップロードして新しいインデックスを構築）または**既存をリンク**（再インデックスなしで既に構築されたインデックスを再利用）を選択します。再インデックスは新しいフラットな`version-N`ディレクトリを書き込み、以前のものを保持するため、再構築中に作業中のインデックスが破壊されることはありません。解析に失敗したファイルを完全な削除・再構築なしで取り除けるよう、**error**状態のベースからでも単一のドキュメントを削除できます。ドキュメント解析（Text-only、MinerU、Docling、markitdown、PyMuPDF4LLM）は**Settings → Knowledge Base**で選択し、ローカルモデルのダウンロードはデフォルトでオフです。CLIは`deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default`、`delete`でライフサイクルをミラーします。
+KBを作成する際は、**新規作成**（ドキュメントをアップロードして新しいインデックスを構築）または**既存をリンク**（再インデックスなしで既に構築されたインデックスを再利用）を選択します。再インデックスは新しいフラットな`version-N`ディレクトリを書き込み、以前のものを保持するため、再構築中に作業中のインデックスが破壊されることはありません。解析に失敗したファイルを完全な削除・再構築なしで取り除けるよう、**error**状態のベースからでも単一のドキュメントを削除できます。ドキュメント解析（Text-only、MinerU、Docling、markitdown、PyMuPDF4LLM、LiteParse）は**Settings → Knowledge Base**で選択し、ローカルモデルのダウンロードはデフォルトでオフです。CLIは`deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default`、`delete`でライフサイクルをミラーします。
 
 </details>
 
@@ -584,7 +584,7 @@ deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format j
 | `deeptutor book list/health/refresh-fingerprints` | 本を検査してソースフィンガープリントを更新 |
 | `deeptutor plugin list/info` | 登録済みツールと機能を検査 |
 | `deeptutor config show` | 設定サマリーを出力 |
-| `deeptutor provider login <provider>` | プロバイダー認証（`openai-codex` OAuthログイン；`github-copilot`は既存のCopilot認証セッションを検証） |
+| `deeptutor provider login <provider>` | プロバイダー認証（`openai-codex` OAuthログイン；`github-copilot`は既存のCopilot認証セッションを検証；`codebuddy`はCodeBuddy SDK認証を検証し、必要に応じてログインを開始） |
 
 </details>
 
@@ -658,6 +658,22 @@ deeptutor skill install clawhub:git-release-notes@1.0.1
 `settings/skill_hubs.json`にさらにレジストリを追加できます：`type: "clawhub"`エントリは互換性のあるHTTP APIを指し（EduHubとClawHubはどちらもそれを話します）、`type: "command"`はレジストリが配布するフェッチCLIをラップし、`"default"`はベアスラッグに使用するハブを選択します。すべて同じインポートゲートを通過します。
 
 </details>
+
+## 🤝 オープンソースパートナー
+
+<p align="center">
+  <a href="https://github.com/VectifyAI/PageIndex" target="_blank">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="../../assets/figs/partners/pageindex-mark-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="../../assets/figs/partners/pageindex-mark.svg">
+      <img src="../../assets/figs/partners/pageindex-mark.svg" alt="PageIndex" height="38">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
+  クーポンコード <b><code>DEEPTUTOR20</code></b> を使用 — 初回の <a href="https://developer.pageindex.ai/">PageIndex サブスクリプション</a>が $20 割引！
+</p>
 
 ## 🌐 コミュニティ
 

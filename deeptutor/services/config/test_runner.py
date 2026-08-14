@@ -16,6 +16,7 @@ from .provider_runtime import (
     resolve_embedding_runtime_config,
     resolve_llm_runtime_config,
     resolve_search_runtime_config,
+    supported_search_providers_hint,
 )
 
 
@@ -428,7 +429,7 @@ class ConfigTestRunner:
         if resolved.unsupported_provider:
             raise ValueError(
                 f"Search provider `{resolved.requested_provider}` is deprecated/unsupported. "
-                "Switch to none/brave/tavily/jina/searxng/duckduckgo/perplexity/serper."
+                f"Switch to none/{supported_search_providers_hint()}."
             )
         if resolved.missing_credentials:
             raise ValueError(

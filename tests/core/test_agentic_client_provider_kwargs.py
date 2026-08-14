@@ -174,6 +174,32 @@ def test_build_openai_client_routes_github_copilot_backend_through_adapter(monke
     assert captured["default_model"] == "github-copilot/gpt-4.1"
 
 
+def test_build_openai_client_routes_codebuddy_backend_through_adapter(monkeypatch) -> None:
+    captured = {}
+
+    class FakeProvider:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(
+        "deeptutor.services.llm.provider_core.codebuddy_http_provider.CodeBuddyHTTPProvider",
+        FakeProvider,
+    )
+
+    client = build_openai_client(
+        LLMClientConfig(
+            binding="codebuddy",
+            model="codebuddy/hy3",
+            api_key="sk-codebuddy",
+            base_url=None,
+        )
+    )
+
+    assert isinstance(client, _ProviderOpenAIAdapter)
+    assert captured["api_key"] == "sk-codebuddy"
+    assert captured["default_model"] == "codebuddy/hy3"
+
+
 def test_anthropic_backend_can_use_native_tool_calling() -> None:
     assert can_use_native_tool_calling(binding="custom_anthropic", model="claude-test") is True
     assert can_use_native_tool_calling(binding="minimax_anthropic", model="MiniMax-M3") is True
@@ -225,6 +251,10 @@ def test_openai_codex_backend_can_use_native_tool_calling() -> None:
         )
         is True
     )
+
+
+def test_codebuddy_backend_can_use_native_tool_calling() -> None:
+    assert can_use_native_tool_calling(binding="codebuddy", model="codebuddy/hy3") is True
 
 
 def test_local_and_github_copilot_backends_stay_opted_out_of_native_tools() -> None:

@@ -101,6 +101,7 @@ EMBEDDING_PROVIDER_LABELS = {
     "openai": "OpenAI",
     "gemini": "Gemini",
     "openrouter": "OpenRouter",
+    "orcarouter": "OrcaRouter",
     "jina": "Jina",
     "vllm": "vLLM / LM Studio",
     "siliconflow": "SiliconFlow",
@@ -112,6 +113,7 @@ EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS = {
     "openai": "https://api.openai.com/v1/embeddings",
     "gemini": gemini_embedding_endpoint(GEMINI_DEFAULT_EMBEDDING_MODEL),
     "openrouter": "https://openrouter.ai/api/v1/embeddings",
+    "orcarouter": "https://api.orcarouter.ai/v1/embeddings",
     "cohere": "https://api.cohere.com/v2/embed",
     "jina": "https://api.jina.ai/v1/embeddings",
     "ollama": "http://localhost:11434/api/embed",
@@ -126,6 +128,7 @@ EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS = {
 EMBEDDING_PROVIDERS_REQUIRING_EMBEDDINGS_PATH = {
     "openai",
     "openrouter",
+    "orcarouter",
     "jina",
     "vllm",
     "siliconflow",

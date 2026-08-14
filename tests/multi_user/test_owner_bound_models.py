@@ -89,3 +89,19 @@ def test_ordinary_shared_profiles_stay_grantable(tmp_path, monkeypatch):
         ) == {"profile_id": CODEX_PROFILE, "model_id": "m-sol"}
     finally:
         reset_current_user(token)
+
+
+def test_a_codebuddy_profile_is_owner_bound_by_its_binding() -> None:
+    """CodeBuddy reads the operator's own IDE-plugin login on this host.
+
+    Codex stamps ``owner_bound`` onto the managed profile it publishes, but a
+    CodeBuddy profile is created by hand in the settings editor and has nowhere
+    to acquire the flag — so without this the administrator's own subscription
+    would be grantable to every account on the deployment.
+    """
+    assert model_access.is_owner_bound({"binding": "codebuddy"}) is True
+    assert model_access.is_owner_bound({"binding": "CodeBuddy"}) is True
+    # An ordinary team key stays grantable.
+    assert model_access.is_owner_bound({"binding": "openai"}) is False
+    # The explicit flag still wins for anything else that sets it.
+    assert model_access.is_owner_bound({"binding": "openai", "owner_bound": True}) is True

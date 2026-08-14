@@ -90,6 +90,12 @@ def test_custom_and_dashscope_openai_compat_support_native_tools_for_qwen() -> N
     assert has_thinking_tags("custom", "qwen3.6-plus") is True
 
 
+def test_codebuddy_capabilities_use_agent_sdk_mcp_tools() -> None:
+    assert supports_tools("codebuddy", "codebuddy/default") is True
+    assert supports_response_format("codebuddy", "codebuddy/default") is False
+    assert supports_vision("codebuddy", "codebuddy/default") is False
+
+
 def test_qwen_model_override_enables_vision() -> None:
     assert supports_vision("dashscope", "qwen-vl-plus") is True
     assert supports_vision("openai", "qwen2.5-vl-72b-instruct") is True

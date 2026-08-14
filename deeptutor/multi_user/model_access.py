@@ -46,6 +46,15 @@ def _model_by_id(profile: dict[str, Any], model_id: str) -> dict[str, Any] | Non
     return None
 
 
+#: Bindings whose credential is one person's own subscription login rather than
+#: a billable team key. Codex stamps ``owner_bound`` onto the managed profile it
+#: publishes, but a profile can also be created by hand in the settings editor —
+#: a CodeBuddy profile is, and it reads the operator's own IDE-plugin session —
+#: and there is nowhere for such a profile to acquire the flag. Binding is the
+#: durable fact, so it decides too.
+OWNER_BOUND_BINDINGS = frozenset({"openai_codex", "codebuddy"})
+
+
 def is_owner_bound(profile: dict[str, Any]) -> bool:
     """Whether a profile is tied to the identity of the operator who set it up.
 
@@ -53,6 +62,9 @@ def is_owner_bound(profile: dict[str, Any]) -> bool:
     a billable team key, so those profiles are never lent to other accounts
     through grants — each user signs in for themselves or goes without.
     """
+    binding = str(profile.get("binding") or "").strip().lower()
+    if binding in OWNER_BOUND_BINDINGS:
+        return True
     return bool(profile.get("owner_bound"))
 
 

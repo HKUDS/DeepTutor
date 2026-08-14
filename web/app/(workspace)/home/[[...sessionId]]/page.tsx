@@ -982,6 +982,26 @@ export default function ChatPage() {
           if (!ctrl.signal.aborted) {
             loadAbortRef.current = null;
             setSessionLoading(false);
+            // Settle at the bottom once the transcript is really laid out.
+            // The layout-effect pin runs as the messages first render, when
+            // lazily-loaded images (ChatMessages `loading="lazy"`) and the
+            // `next/dynamic` capability viewers have not contributed their
+            // heights yet, so its `scrollHeight` is short and the viewport
+            // stops above the true bottom. One frame later those are in.
+            //
+            // Only on a cold open. A cached session is already painted at
+            // the bottom and this resolves after a background revalidate —
+            // re-arming there would yank a reader who had scrolled up.
+            if (!cached) {
+              shouldAutoScrollRef.current = true;
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  // A newer session may have superseded this one while the
+                  // two frames elapsed; that load owns the viewport now.
+                  if (!ctrl.signal.aborted) scrollToBottom("instant");
+                });
+              });
+            }
           }
         })
         .catch(() => {
@@ -994,7 +1014,13 @@ export default function ChatPage() {
           }
         });
     },
-    [loadSession, navigateToHome, showCachedSession],
+    [
+      loadSession,
+      navigateToHome,
+      showCachedSession,
+      scrollToBottom,
+      shouldAutoScrollRef,
+    ],
   );
 
   // Initial mount — load the session from the URL.

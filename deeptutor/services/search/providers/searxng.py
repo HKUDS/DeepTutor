@@ -27,10 +27,7 @@ def _validate_base_url(base_url: str) -> str:
 class SearxngProvider(BaseSearchProvider):
     """SearXNG provider."""
 
-    display_name = "SearXNG"
     description = "Self-hosted SearXNG endpoint"
-    supports_answer = False
-    requires_api_key = False
     API_KEY_ENV_VARS = ()
 
     def search(

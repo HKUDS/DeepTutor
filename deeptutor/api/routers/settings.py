@@ -21,7 +21,12 @@ logger = logging.getLogger(__name__)
 
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.model_access import allowed_llm_options
-from deeptutor.services.codex_auth import CodexAuthError, get_codex_oauth_service
+from deeptutor.services.codebuddy_auth import get_codebuddy_auth_service
+from deeptutor.services.codex_auth import (
+    CodexAuthError,
+    get_codex_oauth_service,
+    reconcile_codex_catalog_update,
+)
 from deeptutor.services.config import (
     get_config_test_runner,
     get_model_catalog_service,
@@ -171,9 +176,14 @@ class CatalogPayload(BaseModel):
     catalog: dict[str, Any]
 
 
+class CodexReasoningEffortUpdate(BaseModel):
+    model: str = Field(min_length=1)
+    reasoning_effort: str | None = None
+
+
 class FetchModelsPayload(BaseModel):
     binding: str = ""
-    base_url: str
+    base_url: str = ""
     api_key: Optional[str] = None
 
 
@@ -385,8 +395,10 @@ def _codex_http_exception(error: CodexAuthError) -> HTTPException:
 def _provider_choices() -> dict[str, list[dict[str, Any]]]:
     """Build dropdown options for provider selection, keyed by service type."""
     from deeptutor.services.config.provider_runtime import (
+        DEPRECATED_SEARCH_PROVIDERS,
         EMBEDDING_PROVIDERS,
         IMAGEGEN_PROVIDERS,
+        SEARCH_PROVIDERS,
         STT_PROVIDERS,
         TTS_PROVIDERS,
         VIDEOGEN_PROVIDERS,
@@ -424,15 +436,36 @@ def _provider_choices() -> dict[str, list[dict[str, Any]]]:
         ],
         key=lambda p: p["label"].lower(),
     )
+    # Derived from SEARCH_PROVIDERS so the dropdown, the connection-field form
+    # and the provider warnings the web app renders all follow the backend spec
+    # table. No search provider ships a default base_url — only SearXNG takes
+    # one, and it is the user's own instance.
     search = [
-        {"value": "none", "label": "None", "base_url": ""},
-        {"value": "brave", "label": "Brave", "base_url": ""},
-        {"value": "tavily", "label": "Tavily", "base_url": ""},
-        {"value": "jina", "label": "Jina", "base_url": ""},
-        {"value": "searxng", "label": "SearXNG", "base_url": ""},
-        {"value": "duckduckgo", "label": "DuckDuckGo", "base_url": ""},
-        {"value": "perplexity", "label": "Perplexity", "base_url": ""},
-        {"value": "serper", "label": "Serper", "base_url": ""},
+        {
+            "value": name,
+            "label": spec.label,
+            "base_url": "",
+            "requires_api_key": spec.requires_api_key,
+            "requires_base_url": spec.requires_base_url,
+            "soft_fallback": spec.soft_fallback,
+            "status": "supported",
+        }
+        for name, spec in SEARCH_PROVIDERS.items()
+    ]
+    # Retired providers ride along marked rather than offered, so a stale
+    # catalog can be told apart from a typo without a second name table in the
+    # web app. The dropdown filters them out; only the warning text uses them.
+    search += [
+        {
+            "value": name,
+            "label": name,
+            "base_url": "",
+            "requires_api_key": False,
+            "requires_base_url": False,
+            "soft_fallback": True,
+            "status": "deprecated",
+        }
+        for name in sorted(DEPRECATED_SEARCH_PROVIDERS)
     ]
     tts = sorted(
         [
@@ -603,6 +636,49 @@ async def refresh_openai_codex_models() -> dict[str, Any]:
         return await get_codex_oauth_service().refresh_models()
     except CodexAuthError as exc:
         raise _codex_http_exception(exc) from None
+
+
+@router.get("/providers/codebuddy/auth/status")
+async def get_codebuddy_auth_status() -> dict[str, Any]:
+    _require_settings_admin()
+    return await get_codebuddy_auth_service().status()
+
+
+@router.post("/providers/codebuddy/auth/start")
+async def start_codebuddy_auth() -> dict[str, Any]:
+    _require_settings_admin()
+    return await get_codebuddy_auth_service().start_login()
+
+
+@router.post("/providers/codebuddy/auth/cancel")
+async def cancel_codebuddy_auth() -> dict[str, Any]:
+    _require_settings_admin()
+    return await get_codebuddy_auth_service().cancel_login()
+
+
+@router.post("/providers/codebuddy/auth/logout")
+async def logout_codebuddy_auth() -> dict[str, Any]:
+    _require_settings_admin()
+    return await get_codebuddy_auth_service().logout()
+
+
+@router.post("/providers/openai-codex/models/reasoning-effort")
+async def update_openai_codex_reasoning_effort(
+    payload: CodexReasoningEffortUpdate,
+) -> dict[str, Any]:
+    _require_codex_oauth_actor()
+    try:
+        status_payload = await get_codex_oauth_service().set_reasoning_effort(
+            payload.model,
+            payload.reasoning_effort,
+        )
+    except CodexAuthError as exc:
+        raise _codex_http_exception(exc) from None
+    # This writes the catalog the runtime resolves against, like every other
+    # catalog write here — without it the next turn keeps the old effort until
+    # something else happens to invalidate.
+    _invalidate_runtime_caches()
+    return status_payload
 
 
 @router.get("/catalog")
@@ -1052,7 +1128,9 @@ async def get_llm_options():
 @router.put("/catalog")
 async def update_catalog(payload: CatalogPayload):
     _require_settings_admin()
-    catalog = get_model_catalog_service().save(payload.catalog)
+    service = get_model_catalog_service()
+    proposed = reconcile_codex_catalog_update(service.load(), payload.catalog)
+    catalog = service.save(proposed)
     _invalidate_runtime_caches()
     return {"catalog": catalog}
 
@@ -1060,12 +1138,16 @@ async def update_catalog(payload: CatalogPayload):
 @router.post("/apply")
 async def apply_catalog(payload: CatalogPayload | None = None):
     _require_settings_admin()
-    catalog = payload.catalog if payload is not None else get_model_catalog_service().load()
-    applied = get_model_catalog_service().apply(catalog)
+    service = get_model_catalog_service()
+    current = service.load()
+    catalog = (
+        reconcile_codex_catalog_update(current, payload.catalog) if payload is not None else current
+    )
+    applied = service.apply(catalog)
     _invalidate_runtime_caches()
     return {
         "message": "Catalog applied to runtime settings.",
-        "catalog": get_model_catalog_service().load(),
+        "catalog": service.load(),
         "runtime": applied,
     }
 
@@ -1083,10 +1165,10 @@ async def fetch_models_from_provider(payload: FetchModelsPayload):
 
     base_url = (payload.base_url or "").strip()
     binding = (payload.binding or "").strip().lower() or "openai"
-    if not base_url:
+    if not base_url and binding != "codebuddy":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="base_url is required.",
+            detail="base_url is required for this provider.",
         )
 
     try:

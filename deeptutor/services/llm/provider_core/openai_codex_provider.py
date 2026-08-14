@@ -50,10 +50,11 @@ class OpenAICodexProvider(LLMProvider):
         on_content_delta: Callable[[str], Awaitable[None]] | None = None,
     ) -> LLMResponse:
         model_name = model or self.default_model
+        model_slug = _strip_model_prefix(model_name)
         system_prompt, input_items = convert_messages(messages)
 
         body: dict[str, Any] = {
-            "model": _strip_model_prefix(model_name),
+            "model": model_slug,
             "store": False,
             "stream": True,
             "instructions": system_prompt,
@@ -73,6 +74,7 @@ class OpenAICodexProvider(LLMProvider):
         async with service.inference_guard():
             try:
                 token = await self._load_token()
+                service.validate_runtime_profile(token, model_slug, reasoning_effort)
                 headers = _build_headers(token.account_id, token.access_token)
                 try:
                     content, tool_calls, finish_reason = await _request_codex(
