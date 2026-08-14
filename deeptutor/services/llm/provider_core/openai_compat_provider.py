@@ -593,6 +593,17 @@ class OpenAICompatProvider(LLMProvider):
             if not chunk.choices:
                 usage = cls._extract_usage(chunk) or usage
                 continue
+            # Some providers (CodeBuddy) attach usage to the chunk carrying the
+            # last delta rather than to a final choice-less one. Only a report
+            # with real numbers replaces what we already have: a gateway that
+            # echoes a zero-filled usage object on every delta would otherwise
+            # wipe the counts on its way past.
+            delta_usage = cls._extract_usage(chunk)
+            if delta_usage and any(
+                delta_usage.get(key)
+                for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+            ):
+                usage = delta_usage
             choice = chunk.choices[0]
             if choice.finish_reason:
                 finish_reason = choice.finish_reason

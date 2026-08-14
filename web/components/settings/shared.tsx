@@ -14,22 +14,6 @@ export const selectClass = `${nativeSelectClass} appearance-none`;
 export const selectOptionClass =
   "bg-[var(--background)] text-[var(--foreground)]";
 
-export const supportedSearchProviders = [
-  "brave",
-  "tavily",
-  "jina",
-  "searxng",
-  "duckduckgo",
-  "perplexity",
-] as const;
-
-export const deprecatedSearchProviders = new Set([
-  "exa",
-  "serper",
-  "baidu",
-  "openrouter",
-]);
-
 export function stringifyExtraHeaders(
   value: CatalogProfile["extra_headers"],
 ): string {

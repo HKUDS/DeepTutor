@@ -43,6 +43,11 @@ class _ToolCallBuffers:
     SSE and SDK consumers share the same correlation rules.
     """
 
+    #: Stands in for the output-item id when a provider omits one. It is not an
+    #: identity — several calls in one response can carry it — so it is never
+    #: registered as a lookup key (see :meth:`add`).
+    PLACEHOLDER_ITEM_ID = "fc_0"
+
     def __init__(self) -> None:
         self._by_identity: dict[str, _ToolCallBuffer] = {}
 
@@ -50,13 +55,17 @@ class _ToolCallBuffers:
         self,
         *,
         call_id: str,
-        item_id: str,
+        item_id: str | None,
         name: str,
         arguments: str,
     ) -> None:
-        buffer = _ToolCallBuffer(call_id, item_id, name, arguments)
+        buffer = _ToolCallBuffer(call_id, item_id or self.PLACEHOLDER_ITEM_ID, name, arguments)
         self._by_identity[call_id] = buffer
-        self._by_identity[item_id] = buffer
+        # Only a real id becomes an alias. Aliasing the placeholder would let
+        # the *next* call that omits its item id resolve to this buffer and be
+        # dispatched under this call's tool name, with this call's arguments.
+        if item_id and item_id != self.PLACEHOLDER_ITEM_ID:
+            self._by_identity[item_id] = buffer
 
     def get(
         self,
@@ -173,7 +182,7 @@ async def consume_sse(
                     continue
                 tool_call_buffers.add(
                     call_id=call_id,
-                    item_id=item.get("id") or "fc_0",
+                    item_id=item.get("id"),
                     name=item.get("name") or "",
                     arguments=item.get("arguments") or "",
                 )
@@ -200,12 +209,15 @@ async def consume_sse(
                 call_id = item.get("call_id")
                 if not call_id:
                     continue
-                item_id = item.get("id") or "fc_0"
-                buf = tool_call_buffers.get(call_id=call_id, item_id=item_id)
+                # Look up by the ids this item actually carries; the
+                # placeholder is only a fallback for the id we report back.
+                raw_item_id = item.get("id")
+                buf = tool_call_buffers.get(call_id=call_id, item_id=raw_item_id)
                 tool_calls.append(
                     _build_tool_call(
                         call_id=call_id,
-                        item_id=buf.item_id if buf else item_id,
+                        item_id=(buf.item_id if buf else raw_item_id)
+                        or _ToolCallBuffers.PLACEHOLDER_ITEM_ID,
                         name=(buf.name if buf else "") or item.get("name") or "",
                         arguments=(buf.arguments if buf else "") or item.get("arguments") or "{}",
                     )
@@ -253,7 +265,7 @@ def parse_response_output(response: Any) -> LLMResponse:
                     reasoning_content = (reasoning_content or "") + summary["text"]
         elif item_type == "function_call":
             call_id = item.get("call_id") or ""
-            item_id = item.get("id") or "fc_0"
+            item_id = item.get("id") or _ToolCallBuffers.PLACEHOLDER_ITEM_ID
             args_raw = item.get("arguments") or "{}"
             tool_calls.append(
                 _build_tool_call(
@@ -309,7 +321,7 @@ async def consume_sdk_stream(
                     continue
                 tool_call_buffers.add(
                     call_id=call_id,
-                    item_id=getattr(item, "id", None) or "fc_0",
+                    item_id=getattr(item, "id", None),
                     name=getattr(item, "name", None) or "",
                     arguments=getattr(item, "arguments", None) or "",
                 )
@@ -336,12 +348,13 @@ async def consume_sdk_stream(
                 call_id = getattr(item, "call_id", None)
                 if not call_id:
                     continue
-                item_id = getattr(item, "id", None) or "fc_0"
-                buf = tool_call_buffers.get(call_id=call_id, item_id=item_id)
+                raw_item_id = getattr(item, "id", None)
+                buf = tool_call_buffers.get(call_id=call_id, item_id=raw_item_id)
                 tool_calls.append(
                     _build_tool_call(
                         call_id=call_id,
-                        item_id=buf.item_id if buf else item_id,
+                        item_id=(buf.item_id if buf else raw_item_id)
+                        or _ToolCallBuffers.PLACEHOLDER_ITEM_ID,
                         name=(buf.name if buf else "") or getattr(item, "name", None) or "",
                         arguments=(buf.arguments if buf else "")
                         or getattr(item, "arguments", None)

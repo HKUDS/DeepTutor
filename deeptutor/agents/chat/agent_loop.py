@@ -42,6 +42,7 @@ from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.trace import build_trace_metadata, merge_trace_metadata, new_call_id
 from deeptutor.services.llm import clean_thinking_tags
+from deeptutor.services.llm.capabilities import threads_session_id
 from deeptutor.services.llm.multimodal import should_degrade_to_text, strip_image_parts_inplace
 from deeptutor.services.llm.request_compat import (
     is_image_input_unsupported,
@@ -607,6 +608,8 @@ class AgentLoop:
             "stream": True,
             **self.pipeline._completion_kwargs(max_tokens=max_tokens),
         }
+        if threads_session_id(self.pipeline.binding):
+            kwargs["deeptutor_session_id"] = self.context.session_id
         if self.pipeline.usage is not None:
             kwargs["stream_options"] = {"include_usage": True}
         if tool_schemas:
