@@ -673,7 +673,7 @@ data/
 └── system/                  # auth · grants · audit · user-secrets/<owner> (OAuth tokens)
 ```
 
-The **first registered user becomes admin** and owns model catalogs, provider credentials, shared knowledge bases, skills, and per-user grants. Everyone else gets an isolated workspace and a redacted Settings page — admin-assigned models, KBs, and skills show up as scoped, read-only options, never as raw API keys.
+The **first registered user becomes admin** and owns model catalogs, provider credentials, shared knowledge bases, skills, and per-user grants. Everyone else gets an isolated workspace and a redacted Settings page — admin-assigned models, KBs, and skills show up as scoped, read-only options, never as raw API keys. If `auth.json` already carries a `username` + `password_hash`, that account *is* the admin: `/register` stays closed and accounts created from `/admin/users` are always `role=user` until you promote them.
 
 **Enable it:** turn auth on in `data/user/settings/auth.json`, restart `deeptutor start`, register the first admin at `/register`, then add users from `/admin/users` and assign models, KBs, skills, partners, tool/MCP/CLI-app policy, and code-execution access through grants.
 
