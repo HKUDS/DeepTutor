@@ -305,7 +305,7 @@ def register(app: typer.Typer) -> None:
         except Exception as exc:
             console.print(f"[red]Failed: {exc}[/]")
             raise typer.Exit(code=1) from exc
-        console.print(f"[green]GitHub source added:[/]")
+        console.print("[green]GitHub source added:[/]")
         console.print_json(json.dumps(info, ensure_ascii=False))
 
     @app.command("remove-github-source")
@@ -338,7 +338,7 @@ def register(app: typer.Typer) -> None:
         except Exception as exc:
             console.print(f"[red]Failed: {exc}[/]")
             raise typer.Exit(code=1) from exc
-        console.print(f"[green]Web source added:[/]")
+        console.print("[green]Web source added:[/]")
         console.print_json(json.dumps(info, ensure_ascii=False))
 
     @app.command("remove-web-source")
@@ -379,8 +379,13 @@ def register(app: typer.Typer) -> None:
             table.add_column("Status")
             table.add_column("Files", justify="right")
             for s in gh_sources:
-                table.add_row(s.get("id",""), s.get("repo",""), s.get("branch",""),
-                              s.get("last_sync_status","pending"), str(s.get("files_synced",0)))
+                table.add_row(
+                    s.get("id", ""),
+                    s.get("repo", ""),
+                    s.get("branch", ""),
+                    s.get("last_sync_status", "pending"),
+                    str(s.get("files_synced", 0)),
+                )
             console.print(table)
 
         if web_sources:
@@ -390,8 +395,12 @@ def register(app: typer.Typer) -> None:
             table.add_column("Status")
             table.add_column("Pages", justify="right")
             for s in web_sources:
-                table.add_row(s.get("id",""), s.get("url",""),
-                              s.get("last_sync_status","pending"), str(s.get("page_count",0)))
+                table.add_row(
+                    s.get("id", ""),
+                    s.get("url", ""),
+                    s.get("last_sync_status", "pending"),
+                    str(s.get("page_count", 0)),
+                )
             console.print(table)
 
     @app.command("sync")
@@ -437,7 +446,9 @@ def register(app: typer.Typer) -> None:
                 console.print(f"  [red]Error: {exc}[/]")
                 continue
             if r.ok:
-                console.print(f"  [green]+{r.pages_added} ~{r.pages_updated} -{r.pages_removed} ({r.pages_unchanged} unchanged)[/]")
+                console.print(
+                    f"  [green]+{r.pages_added} ~{r.pages_updated} -{r.pages_removed} ({r.pages_unchanged} unchanged)[/]"
+                )
             else:
                 console.print(f"  [red]Failed: {r.error}[/]")
 
@@ -445,7 +456,9 @@ def register(app: typer.Typer) -> None:
         if web_sources:
             try:
                 from pathlib import Path
+
                 from deeptutor.services.web_source.bilingual_merger import merge_bilingual_pages
+
                 merged = merge_bilingual_pages(Path(str(mgr.base_dir)) / name / "raw")
                 if merged:
                     console.print(f"[dim]Merged {merged} bilingual page pairs with navigation.[/]")

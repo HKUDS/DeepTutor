@@ -1758,8 +1758,6 @@ class KnowledgeBaseManager:
                 atomic_write_json(metadata_file, metadata)
                 break
 
-
-
     # ------------------------------------------------------------------
     # GitHub source management
     # ------------------------------------------------------------------
@@ -1934,15 +1932,17 @@ class KnowledgeBaseManager:
         result = []
         for src in sources:
             nav = src.get("navigation") or {}
-            result.append({
-                "source_id": src.get("id", ""),
-                "source_url": src.get("url", ""),
-                "kind": nav.get("kind", ""),
-                "nodes": nav.get("nodes", []),
-                "language": src.get("language", ""),
-                "pair_key": src.get("pair_key", ""),
-                "pair_status": src.get("pair_status", ""),
-            })
+            result.append(
+                {
+                    "source_id": src.get("id", ""),
+                    "source_url": src.get("url", ""),
+                    "kind": nav.get("kind", ""),
+                    "nodes": nav.get("nodes", []),
+                    "language": src.get("language", ""),
+                    "pair_key": src.get("pair_key", ""),
+                    "pair_status": src.get("pair_status", ""),
+                }
+            )
         return result
 
     @staticmethod
@@ -1956,6 +1956,7 @@ class KnowledgeBaseManager:
         except Exception:
             return {}
         return data if isinstance(data, dict) else {}
+
 
 def main():
     """Command-line interface for knowledge base manager"""

@@ -140,14 +140,13 @@ def list_pair_keys(kb_dir: Path) -> list[str]:
     bilingual_root = kb_dir / "bilingual"
     if not bilingual_root.is_dir():
         return []
-    return sorted(
-        d.name for d in bilingual_root.iterdir() if d.is_dir()
-    )
+    return sorted(d.name for d in bilingual_root.iterdir() if d.is_dir())
 
 
 def remove_pair(kb_dir: Path, pair_key: str) -> None:
     """Remove all alignment data for a pair."""
     import shutil
+
     pair_dir = _bilingual_dir(kb_dir, pair_key)
     if pair_dir.exists():
         shutil.rmtree(pair_dir, ignore_errors=True)

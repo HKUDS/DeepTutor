@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 # -- flat-to-tree conversion -------------------------------------------
 
+
 def flat_to_tree(
     links: list[dict],
     url_to_file: dict[str, str],
@@ -81,6 +82,7 @@ def build_navigation_manifest(
 
 # -- bilingual nav merge -----------------------------------------------
 
+
 def merge_navigation(
     en_nav: dict,
     zh_nav: dict,
@@ -102,9 +104,7 @@ def merge_navigation(
     if zh_nav.get("kind") == "original":
         merged_kind = "original"
 
-    merged_nodes = [
-        _merge_node(n, zh_by_base, pair_key) for n in en_nodes
-    ]
+    merged_nodes = [_merge_node(n, zh_by_base, pair_key) for n in en_nodes]
     return {"kind": merged_kind, "nodes": merged_nodes}
 
 
@@ -148,8 +148,5 @@ def _merge_node(
         "file_path_zh": zh_node.get("file_path", "") if zh_node else "",
         "page_class": page_class,
         "pair_key": pair_key,
-        "children": [
-            _merge_node(c, zh_by_base, pair_key)
-            for c in en_node.get("children", [])
-        ],
+        "children": [_merge_node(c, zh_by_base, pair_key) for c in en_node.get("children", [])],
     }

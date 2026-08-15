@@ -11,9 +11,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
-import hashlib
 import logging
 from pathlib import Path
 from typing import Any
@@ -74,8 +73,10 @@ async def sync_source(
     raw_dir.mkdir(parents=True, exist_ok=True)
 
     diff = await crawl_and_diff(
-        source, raw_dir,
-        max_depth=max_depth, max_pages=max_pages,
+        source,
+        raw_dir,
+        max_depth=max_depth,
+        max_pages=max_pages,
     )
 
     if not diff.ok:
@@ -126,8 +127,12 @@ async def sync_source(
 
     logger.info(
         "Web sync %s: +%d ~%d -%d (%d unchanged), %d indexed",
-        diff.url, len(diff.pages_added), len(diff.pages_updated), removed_count,
-        len(diff.pages_unchanged), indexed,
+        diff.url,
+        len(diff.pages_added),
+        len(diff.pages_updated),
+        removed_count,
+        len(diff.pages_unchanged),
+        indexed,
     )
 
     return WebSyncResult(
@@ -143,6 +148,8 @@ async def sync_source(
 # These aliases keep backward compatibility for existing imports/tests.
 from deeptutor.services.web_source.navigation import (  # noqa: F401, E402
     build_navigation_manifest as _build_navigation_manifest_impl,
+)
+from deeptutor.services.web_source.navigation import (
     flat_to_tree as _flat_to_tree_impl,
 )
 

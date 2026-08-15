@@ -6,14 +6,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import logging
 from pathlib import Path
-from typing import Any
 
 from deeptutor.knowledge.add_documents import DEFAULT_BASE_DIR
 from deeptutor.services.github_source.client import (
-    FileChange,
     GitHubAPIError,
     GitHubClient,
-    TreeEntry,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,12 +40,13 @@ def _is_markdown(path: str) -> bool:
 def _raw_rel_path(github_path: str, path_prefix: str) -> str:
     prefix = path_prefix.strip("/")
     if prefix and github_path.startswith(prefix + "/"):
-        return github_path[len(prefix) + 1:]
+        return github_path[len(prefix) + 1 :]
     return github_path
 
 
 def _filter_markdown_changes(changes, path_prefix, glob):
     from fnmatch import fnmatch
+
     prefix = path_prefix.strip("/")
     result = []
     for ch in changes:
@@ -63,6 +61,7 @@ def _filter_markdown_changes(changes, path_prefix, glob):
 
 def _filter_markdown_entries(entries, path_prefix, glob):
     from fnmatch import fnmatch
+
     prefix = path_prefix.strip("/")
     result = []
     for e in entries:
@@ -99,9 +98,22 @@ async def sync_source(kb_name, source, *, base_dir=DEFAULT_BASE_DIR, client=None
 
     try:
         if not old_sha:
-            result = await _full_sync(client, kb_name, raw_dir, repo, branch, path_prefix, glob, latest_sha, base_dir)
+            result = await _full_sync(
+                client, kb_name, raw_dir, repo, branch, path_prefix, glob, latest_sha, base_dir
+            )
         else:
-            result = await _incremental_sync(client, kb_name, raw_dir, repo, branch, path_prefix, glob, old_sha, latest_sha, base_dir)
+            result = await _incremental_sync(
+                client,
+                kb_name,
+                raw_dir,
+                repo,
+                branch,
+                path_prefix,
+                glob,
+                old_sha,
+                latest_sha,
+                base_dir,
+            )
     except GitHubAPIError as exc:
         return SyncResult(ok=False, error=str(exc))
     except Exception as exc:
@@ -111,17 +123,23 @@ async def sync_source(kb_name, source, *, base_dir=DEFAULT_BASE_DIR, client=None
         return result
 
     from deeptutor.knowledge.manager import KnowledgeBaseManager
+
     manager = KnowledgeBaseManager(base_dir=base_dir)
     manager.update_github_source_state(
-        kb_name=kb_name, source_id=source["id"],
-        last_synced_sha=latest_sha, last_synced_at=_utcnow_iso(),
-        last_sync_status="success", last_sync_error=None,
+        kb_name=kb_name,
+        source_id=source["id"],
+        last_synced_sha=latest_sha,
+        last_synced_at=_utcnow_iso(),
+        last_sync_status="success",
+        last_sync_error=None,
         files_synced=result.files_added + result.files_updated,
     )
     return result
 
 
-async def _full_sync(client, kb_name, raw_dir, repo, branch, path_prefix, glob, latest_sha, base_dir):
+async def _full_sync(
+    client, kb_name, raw_dir, repo, branch, path_prefix, glob, latest_sha, base_dir
+):
     tree = await client.get_tree(repo, branch, path_prefix=path_prefix, glob=glob)
     entries = _filter_markdown_entries(tree, path_prefix, glob)
     downloaded = []
@@ -137,7 +155,9 @@ async def _full_sync(client, kb_name, raw_dir, repo, branch, path_prefix, glob, 
     return SyncResult(ok=True, files_added=len(downloaded))
 
 
-async def _incremental_sync(client, kb_name, raw_dir, repo, branch, path_prefix, glob, old_sha, new_sha, base_dir):
+async def _incremental_sync(
+    client, kb_name, raw_dir, repo, branch, path_prefix, glob, old_sha, new_sha, base_dir
+):
     all_changes = await client.compare_commits(repo, old_sha, new_sha)
     changes = _filter_markdown_changes(all_changes, path_prefix, glob)
     added_or_modified = []
@@ -164,6 +184,7 @@ async def _incremental_sync(client, kb_name, raw_dir, repo, branch, path_prefix,
         if target.exists():
             try:
                 from deeptutor.knowledge.add_documents import remove_raw_document
+
                 kb_dir = Path(base_dir) / kb_name
                 remove_raw_document(kb_dir, target)
                 removed_count += 1
@@ -177,7 +198,10 @@ async def _index_files(kb_name, file_paths, base_dir):
         return 0
     try:
         from deeptutor.knowledge.add_documents import add_documents
-        count = await add_documents(kb_name=kb_name, source_files=file_paths, base_dir=base_dir, allow_duplicates=False)
+
+        count = await add_documents(
+            kb_name=kb_name, source_files=file_paths, base_dir=base_dir, allow_duplicates=False
+        )
         return count or 0
     except Exception as exc:
         logger.warning("Indexing failed: %s", exc)

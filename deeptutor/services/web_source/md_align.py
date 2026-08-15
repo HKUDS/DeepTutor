@@ -11,9 +11,9 @@ so the result can be rendered natively by the KB preview component.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import hashlib
 import re
-from dataclasses import dataclass, field
 from typing import Sequence
 
 # -- Block types -------------------------------------------------------
@@ -82,6 +82,7 @@ class AlignGroup:
 
 # -- Block splitting (code-fence aware) --------------------------------
 
+
 def split_blocks(md_text: str) -> list[MdBlock]:
     """Split Markdown text into semantic blocks.
 
@@ -113,13 +114,15 @@ def split_blocks(md_text: str) -> list[MdBlock]:
             if m:
                 level = len(m.group(1))
         feats = _feature_set(text) if current_type not in SHOW_ONCE_TYPES else {}
-        blocks.append(MdBlock(
-            block_type=current_type,
-            content=content,
-            text=text,
-            level=level,
-            feats=feats,
-        ))
+        blocks.append(
+            MdBlock(
+                block_type=current_type,
+                content=content,
+                text=text,
+                level=level,
+                feats=feats,
+            )
+        )
         current = []
         current_type = None
 
@@ -224,15 +227,59 @@ def _extract_plain_text(content: str, block_type: str) -> str:
 
 # -- Feature extraction ------------------------------------------------
 
+
 def _feature_set(text: str) -> dict:
     latin = set(w.lower() for w in re.findall(r"\b[A-Za-z][A-Za-z\-']{2,}\b", text))
     stop = {
-        "the", "and", "for", "that", "with", "this", "from", "were", "was",
-        "are", "have", "has", "had", "not", "but", "they", "their", "them",
-        "what", "when", "where", "than", "then", "into", "onto", "about",
-        "over", "under", "after", "before", "also", "only", "more", "most",
-        "such", "some", "any", "all", "can", "could", "would", "should",
-        "may", "might", "will", "shall", "one", "two", "three",
+        "the",
+        "and",
+        "for",
+        "that",
+        "with",
+        "this",
+        "from",
+        "were",
+        "was",
+        "are",
+        "have",
+        "has",
+        "had",
+        "not",
+        "but",
+        "they",
+        "their",
+        "them",
+        "what",
+        "when",
+        "where",
+        "than",
+        "then",
+        "into",
+        "onto",
+        "about",
+        "over",
+        "under",
+        "after",
+        "before",
+        "also",
+        "only",
+        "more",
+        "most",
+        "such",
+        "some",
+        "any",
+        "all",
+        "can",
+        "could",
+        "would",
+        "should",
+        "may",
+        "might",
+        "will",
+        "shall",
+        "one",
+        "two",
+        "three",
     }
     return {
         "years": set(re.findall(r"\b(?:1[0-9]{3}|20[0-2][0-9])\b", text)),
@@ -274,9 +321,11 @@ def _pair_cost(en_feat: dict, zh_feat: dict, target_en_len: float) -> float:
 
 # -- Section-locked alignment ------------------------------------------
 
+
 @dataclass
 class _Section:
     """A group of blocks under the same heading."""
+
     heading: MdBlock | None
     blocks: list[MdBlock] = field(default_factory=list)
 
@@ -302,8 +351,10 @@ def _group_into_sections(blocks: list[MdBlock]) -> list[_Section]:
 
 
 def _align_interval(
-    en: Sequence[MdBlock], zh: Sequence[MdBlock],
-    en_offset: int, zh_offset: int,
+    en: Sequence[MdBlock],
+    zh: Sequence[MdBlock],
+    en_offset: int,
+    zh_offset: int,
 ) -> list[tuple[int, int, int, int, float]]:
     """DP alignment of two block sequences, returning index groups.
 
@@ -353,11 +404,15 @@ def _align_interval(
             break
         take_en, take_zh = step
         si, sj = i - take_en, j - take_zh
-        groups.append((
-            en_offset + si, en_offset + i,
-            zh_offset + sj, zh_offset + j,
-            dp[i][j] - dp[si][sj],
-        ))
+        groups.append(
+            (
+                en_offset + si,
+                en_offset + i,
+                zh_offset + sj,
+                zh_offset + j,
+                dp[i][j] - dp[si][sj],
+            )
+        )
         i, j = si, sj
     return list(reversed(groups))
 
@@ -381,6 +436,7 @@ def _is_show_once(block: MdBlock) -> str | None:
 
 # -- Public alignment entry point --------------------------------------
 
+
 def align_markdown(en_md: str, zh_md: str) -> dict:
     """Align EN and ZH Markdown pages, returning structured content groups.
 
@@ -401,14 +457,29 @@ def align_markdown(en_md: str, zh_md: str) -> dict:
     zh_hash = hashlib.sha256(zh_md.encode()).hexdigest()[:16]
 
     if not en_blocks and not zh_blocks:
-        return {"page_class": "en_only", "groups": [], "review_count": 0,
-                "en_hash": en_hash, "zh_hash": zh_hash}
+        return {
+            "page_class": "en_only",
+            "groups": [],
+            "review_count": 0,
+            "en_hash": en_hash,
+            "zh_hash": zh_hash,
+        }
     if not zh_blocks:
-        return {"page_class": "en_only", "groups": [], "review_count": 0,
-                "en_hash": en_hash, "zh_hash": zh_hash}
+        return {
+            "page_class": "en_only",
+            "groups": [],
+            "review_count": 0,
+            "en_hash": en_hash,
+            "zh_hash": zh_hash,
+        }
     if not en_blocks:
-        return {"page_class": "zh_only", "groups": [], "review_count": 0,
-                "en_hash": en_hash, "zh_hash": zh_hash}
+        return {
+            "page_class": "zh_only",
+            "groups": [],
+            "review_count": 0,
+            "en_hash": en_hash,
+            "zh_hash": zh_hash,
+        }
 
     en_sections = _group_into_sections(en_blocks)
     zh_sections = _group_into_sections(zh_blocks)
@@ -423,39 +494,45 @@ def align_markdown(en_md: str, zh_md: str) -> dict:
 
         # Emit heading as its own group (show-once if both have it, EN-only otherwise).
         if en_sec and en_sec.heading:
-            groups.append(AlignGroup(
-                group_id=_stable_group_id(en_sec.heading.content, "", len(groups)),
-                en_content=en_sec.heading.content,
-                zh_content=zh_sec.heading.content if zh_sec and zh_sec.heading else "",
-                shape="1:1",
-                confidence=1.0,
-            ))
+            groups.append(
+                AlignGroup(
+                    group_id=_stable_group_id(en_sec.heading.content, "", len(groups)),
+                    en_content=en_sec.heading.content,
+                    zh_content=zh_sec.heading.content if zh_sec and zh_sec.heading else "",
+                    shape="1:1",
+                    confidence=1.0,
+                )
+            )
 
         if not en_sec or not en_sec.blocks:
             # ZH-only blocks in this section.
             if zh_sec and zh_sec.blocks:
                 for blk in zh_sec.blocks:
-                    groups.append(AlignGroup(
-                        group_id=_stable_group_id("", blk.content, len(groups)),
-                        en_content="",
-                        zh_content=blk.content,
-                        shape="0:1",
-                        confidence=0.0,
-                    ))
+                    groups.append(
+                        AlignGroup(
+                            group_id=_stable_group_id("", blk.content, len(groups)),
+                            en_content="",
+                            zh_content=blk.content,
+                            shape="0:1",
+                            confidence=0.0,
+                        )
+                    )
             continue
 
         if not zh_sec or not zh_sec.blocks:
             # EN-only blocks in this section.
             for blk in en_sec.blocks:
                 show = _is_show_once(blk)
-                groups.append(AlignGroup(
-                    group_id=_stable_group_id(blk.content, "", len(groups)),
-                    en_content=blk.content,
-                    zh_content="",
-                    shape="1:0",
-                    confidence=1.0 if show else 0.0,
-                    show_once=[show] if show else [],
-                ))
+                groups.append(
+                    AlignGroup(
+                        group_id=_stable_group_id(blk.content, "", len(groups)),
+                        en_content=blk.content,
+                        zh_content="",
+                        shape="1:0",
+                        confidence=1.0 if show else 0.0,
+                        show_once=[show] if show else [],
+                    )
+                )
             continue
 
         # Align blocks within the section.
@@ -487,15 +564,17 @@ def align_markdown(en_md: str, zh_md: str) -> dict:
                 or ratio > REVIEW_RATIO_MAX
                 or ratio < REVIEW_RATIO_MIN
             )
-            groups.append(AlignGroup(
-                group_id=_stable_group_id(en_content, zh_content, len(groups)),
-                en_content=en_content,
-                zh_content=zh_content,
-                shape=shape,
-                confidence=1.0 / (1.0 + abs(cost)),
-                show_once=show_once,
-                low_confidence=is_low,
-            ))
+            groups.append(
+                AlignGroup(
+                    group_id=_stable_group_id(en_content, zh_content, len(groups)),
+                    en_content=en_content,
+                    zh_content=zh_content,
+                    shape=shape,
+                    confidence=1.0 / (1.0 + abs(cost)),
+                    show_once=show_once,
+                    low_confidence=is_low,
+                )
+            )
 
     review_count = sum(1 for g in groups if g.low_confidence)
     return {
@@ -515,14 +594,16 @@ def align_markdown_en_only(en_md: str) -> dict:
     groups: list[AlignGroup] = []
     for blk in en_blocks:
         show = _is_show_once(blk)
-        groups.append(AlignGroup(
-            group_id=_stable_group_id(blk.content, "", len(groups)),
-            en_content=blk.content,
-            zh_content="",
-            shape="1:0",
-            confidence=1.0 if show else 0.0,
-            show_once=[show] if show else [],
-        ))
+        groups.append(
+            AlignGroup(
+                group_id=_stable_group_id(blk.content, "", len(groups)),
+                en_content=blk.content,
+                zh_content="",
+                shape="1:0",
+                confidence=1.0 if show else 0.0,
+                show_once=[show] if show else [],
+            )
+        )
     return {
         "page_class": "en_only",
         "groups": [g.to_dict() for g in groups],

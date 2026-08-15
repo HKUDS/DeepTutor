@@ -1,7 +1,9 @@
 """Tests for bilingual alignment sidecar persistence."""
+
 import json
-import pytest
 from pathlib import Path
+
+import pytest
 
 from deeptutor.services.web_source import bilingual_store
 
@@ -40,8 +42,12 @@ class TestBilingualStore:
     def test_list_aligned_pages(self, tmp_path):
         kb_dir = tmp_path / "TestKB"
         kb_dir.mkdir()
-        bilingual_store.save_alignment(kb_dir, "key1", "a.md", {"page_class": "en_only", "groups": []})
-        bilingual_store.save_alignment(kb_dir, "key1", "b.md", {"page_class": "bilingual", "groups": []})
+        bilingual_store.save_alignment(
+            kb_dir, "key1", "a.md", {"page_class": "en_only", "groups": []}
+        )
+        bilingual_store.save_alignment(
+            kb_dir, "key1", "b.md", {"page_class": "bilingual", "groups": []}
+        )
         pages = bilingual_store.list_aligned_pages(kb_dir, "key1")
         assert set(pages) == {"a.md", "b.md"}
 
@@ -57,15 +63,21 @@ class TestBilingualStore:
     def test_list_pair_keys(self, tmp_path):
         kb_dir = tmp_path / "TestKB"
         kb_dir.mkdir()
-        bilingual_store.save_alignment(kb_dir, "keyA", "a.md", {"page_class": "en_only", "groups": []})
-        bilingual_store.save_alignment(kb_dir, "keyB", "b.md", {"page_class": "bilingual", "groups": []})
+        bilingual_store.save_alignment(
+            kb_dir, "keyA", "a.md", {"page_class": "en_only", "groups": []}
+        )
+        bilingual_store.save_alignment(
+            kb_dir, "keyB", "b.md", {"page_class": "bilingual", "groups": []}
+        )
         keys = bilingual_store.list_pair_keys(kb_dir)
         assert set(keys) == {"keyA", "keyB"}
 
     def test_remove_pair(self, tmp_path):
         kb_dir = tmp_path / "TestKB"
         kb_dir.mkdir()
-        bilingual_store.save_alignment(kb_dir, "keyA", "a.md", {"page_class": "en_only", "groups": []})
+        bilingual_store.save_alignment(
+            kb_dir, "keyA", "a.md", {"page_class": "en_only", "groups": []}
+        )
         bilingual_store.remove_pair(kb_dir, "keyA")
         assert bilingual_store.load_alignment(kb_dir, "keyA", "a.md") is None
 
@@ -83,6 +95,7 @@ class TestBilingualStore:
 
 
 # -- stale sidecar cleanup --------------------------------------------------
+
 
 def test_cleanup_stale_sidecars(tmp_path):
     """Stale sidecars for removed pages should be cleaned up."""

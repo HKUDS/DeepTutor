@@ -8,10 +8,10 @@ subclasses only need to implement ``_sync_one_cycle``.
 
 from __future__ import annotations
 
-import asyncio
-import logging
 from abc import ABC, abstractmethod
+import asyncio
 from datetime import datetime, timezone
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +38,11 @@ def default_base_dir() -> str:
     """Return the default knowledge-base directory for the current project."""
     try:
         from deeptutor.services.path_service import get_path_service
+
         return str(get_path_service().project_root / "data" / "knowledge_bases")
     except Exception:
         from deeptutor.knowledge.add_documents import DEFAULT_BASE_DIR
+
         return DEFAULT_BASE_DIR
 
 
@@ -51,8 +53,9 @@ class BaseSourceSyncService(ABC):
     and optionally override :attr:`task_name` for logging.
     """
 
-    def __init__(self, *, base_dir: str | None = None,
-                 check_interval_s: int = _CHECK_INTERVAL_SECONDS):
+    def __init__(
+        self, *, base_dir: str | None = None, check_interval_s: int = _CHECK_INTERVAL_SECONDS
+    ):
         self._base_dir = base_dir
         self._check_interval_s = check_interval_s
         self._task: asyncio.Task | None = None

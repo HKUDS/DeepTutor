@@ -1,17 +1,18 @@
 """Tests for Markdown-level bilingual alignment."""
+
 import pytest
 
 from deeptutor.services.web_source.md_align import (
-    split_blocks,
-    align_markdown,
-    align_markdown_en_only,
-    HEADING,
-    PARAGRAPH,
     CODE,
+    HEADING,
+    HR,
     IMAGE,
     LIST,
+    PARAGRAPH,
     TABLE,
-    HR,
+    align_markdown,
+    align_markdown_en_only,
+    split_blocks,
 )
 
 
@@ -170,10 +171,7 @@ Open **Book** in the left sidebar.
         result = align_markdown(en, zh)
         assert result["page_class"] == "bilingual"
         # Should have heading pairs for all 3 sections
-        heading_groups = [
-            g for g in result["groups"]
-            if g["en_content"].strip().startswith("#")
-        ]
+        heading_groups = [g for g in result["groups"] if g["en_content"].strip().startswith("#")]
         assert len(heading_groups) >= 3
         # Check the first heading pair
         assert "Interactive Book" in heading_groups[0]["en_content"]

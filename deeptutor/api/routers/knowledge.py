@@ -3292,12 +3292,16 @@ class WebNavigationSource(BaseModel):
 async def add_github_source(kb_name: str, request: AddGitHubSourceRequest):
     try:
         manager, resolved_name, _ = _writable_kb(kb_name)
-        info = manager.add_github_source(resolved_name, request.repo, request.branch, request.path, request.glob)
+        info = manager.add_github_source(
+            resolved_name, request.repo, request.branch, request.path, request.glob
+        )
         return GitHubSourceInfo(**info)
     except HTTPException:
         raise
     except ValueError as e:
-        raise HTTPException(status_code=400 if "not found" not in str(e).lower() else 404, detail=str(e))
+        raise HTTPException(
+            status_code=400 if "not found" not in str(e).lower() else 404, detail=str(e)
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -3338,13 +3342,24 @@ async def sync_github_sources(kb_name: str):
         if not sources:
             return {"message": "No GitHub sources", "results": []}
         from deeptutor.services.github_source.sync import sync_source
+
         results = []
         for src in sources:
             if not src.get("enabled", True):
                 continue
             r = await sync_source(kb_name=resolved_name, source=src, base_dir=str(kb_base_dir))
-            results.append({"source_id": src.get("id"), "repo": src.get("repo"), "ok": r.ok, "skipped": r.skipped,
-                           "files_added": r.files_added, "files_updated": r.files_updated, "files_removed": r.files_removed, "error": r.error or None})
+            results.append(
+                {
+                    "source_id": src.get("id"),
+                    "repo": src.get("repo"),
+                    "ok": r.ok,
+                    "skipped": r.skipped,
+                    "files_added": r.files_added,
+                    "files_updated": r.files_updated,
+                    "files_removed": r.files_removed,
+                    "error": r.error or None,
+                }
+            )
         return {"message": f"Synced {len(results)} source(s)", "results": results}
     except HTTPException:
         raise
@@ -3358,12 +3373,16 @@ async def sync_github_sources(kb_name: str):
 async def add_web_source(kb_name: str, request: AddWebSourceRequest):
     try:
         manager, resolved_name, _ = _writable_kb(kb_name)
-        info = manager.add_web_source(resolved_name, request.url, request.max_depth, request.max_pages)
+        info = manager.add_web_source(
+            resolved_name, request.url, request.max_depth, request.max_pages
+        )
         return WebSourceInfo(**info)
     except HTTPException:
         raise
     except ValueError as e:
-        raise HTTPException(status_code=400 if "not found" not in str(e).lower() else 404, detail=str(e))
+        raise HTTPException(
+            status_code=400 if "not found" not in str(e).lower() else 404, detail=str(e)
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -3407,11 +3426,22 @@ async def sync_web_sources(kb_name: str):
         manager, resolved_name, kb_base_dir = _writable_kb(kb_name)
         sources = manager.get_web_sources(resolved_name)
         if not sources:
-            return {"message": "No web sources", "results": [], "pair_results": [], "index_rebuilt": False}
+            return {
+                "message": "No web sources",
+                "results": [],
+                "pair_results": [],
+                "index_rebuilt": False,
+            }
         from deeptutor.services.web_source.orchestrator import sync_kb_sources_safe
+
         enabled = [s for s in sources if s.get("enabled", True)]
         if not enabled:
-            return {"message": "No enabled web sources", "results": [], "pair_results": [], "index_rebuilt": False}
+            return {
+                "message": "No enabled web sources",
+                "results": [],
+                "pair_results": [],
+                "index_rebuilt": False,
+            }
         kb_result = await sync_kb_sources_safe(
             kb_name=resolved_name,
             sources=enabled,
@@ -3419,19 +3449,21 @@ async def sync_web_sources(kb_name: str):
         )
         pair_summaries = []
         for pr in kb_result.pair_results:
-            pair_summaries.append({
-                "pair_key": pr.pair_key,
-                "origin": pr.origin,
-                "status": pr.status,
-                "en_pages": pr.en_pages,
-                "zh_pages": pr.zh_pages,
-                "paired_pages": pr.paired_pages,
-                "en_only_pages": pr.en_only_pages,
-                "zh_only_pages": pr.zh_only_pages,
-                "low_confidence": pr.low_confidence,
-                "error": pr.error or None,
-                "source_results": pr.source_results,
-            })
+            pair_summaries.append(
+                {
+                    "pair_key": pr.pair_key,
+                    "origin": pr.origin,
+                    "status": pr.status,
+                    "en_pages": pr.en_pages,
+                    "zh_pages": pr.zh_pages,
+                    "paired_pages": pr.paired_pages,
+                    "en_only_pages": pr.en_only_pages,
+                    "zh_only_pages": pr.zh_only_pages,
+                    "low_confidence": pr.low_confidence,
+                    "error": pr.error or None,
+                    "source_results": pr.source_results,
+                }
+            )
         return {
             "message": f"Synced {len(enabled)} source(s) in {len(pair_summaries)} pair(s)",
             "ok": kb_result.ok,
@@ -3461,21 +3493,25 @@ async def get_web_navigation(kb_name: str):
         # Try merged bilingual navigation first.
         try:
             from pathlib import Path
+
             from deeptutor.services.web_source import bilingual_store
+
             kb_dir = Path(manager.base_dir) / resolved_name
             merged = []
             for pk in bilingual_store.list_pair_keys(kb_dir):
                 idx = bilingual_store.load_pair_index(kb_dir, pk)
                 if idx and idx.get("navigation", {}).get("nodes"):
-                    merged.append({
-                        "source_id": pk,
-                        "source_url": idx.get("origin", ""),
-                        "kind": idx["navigation"].get("kind", "inferred"),
-                        "nodes": idx["navigation"]["nodes"],
-                        "language": "en+zh" if idx.get("status") == "bilingual" else "en",
-                        "pair_key": pk,
-                        "pair_status": idx.get("status", ""),
-                    })
+                    merged.append(
+                        {
+                            "source_id": pk,
+                            "source_url": idx.get("origin", ""),
+                            "kind": idx["navigation"].get("kind", "inferred"),
+                            "nodes": idx["navigation"]["nodes"],
+                            "language": "en+zh" if idx.get("status") == "bilingual" else "en",
+                            "pair_key": pk,
+                            "pair_status": idx.get("status", ""),
+                        }
+                    )
             if merged:
                 return [WebNavigationSource(**item) for item in merged]
         except Exception:
@@ -3505,7 +3541,9 @@ async def get_bilingual_page(kb_name: str, file_path: str):
     try:
         manager, resolved_name, _ = _writable_kb(kb_name)
         from pathlib import Path
+
         from deeptutor.services.web_source import bilingual_store
+
         kb_dir = Path(manager.base_dir) / resolved_name
 
         # Search all pair keys for this file.
@@ -3517,10 +3555,17 @@ async def get_bilingual_page(kb_name: str, file_path: str):
         # Check if the raw file exists and return its content as en_only.
         raw_path = kb_dir / "raw" / file_path
         if raw_path.exists():
-            return {"page_class": "en_only", "groups": [], "review_count": 0,
-                    "file_path": file_path, "note": "No bilingual alignment for this file."}
+            return {
+                "page_class": "en_only",
+                "groups": [],
+                "review_count": 0,
+                "file_path": file_path,
+                "note": "No bilingual alignment for this file.",
+            }
 
-        raise HTTPException(status_code=404, detail=f"File '{file_path}' not found in KB '{kb_name}'")
+        raise HTTPException(
+            status_code=404, detail=f"File '{file_path}' not found in KB '{kb_name}'"
+        )
     except HTTPException:
         raise
     except ValueError:

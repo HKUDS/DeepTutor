@@ -19,10 +19,9 @@ from collections import deque
 from dataclasses import dataclass, field
 import hashlib
 import logging
-import re
-from urllib.parse import urldefrag, urljoin, urlparse, urlunparse
-
 from pathlib import Path
+import re
+from urllib.parse import urldefrag, urljoin, urlparse
 
 import httpx
 
@@ -176,8 +175,13 @@ async def _fetch_page(
                     return None
 
                 if response.status_code in _RETRY_STATUS and attempt < _MAX_RETRIES:
-                    backoff = 0.5 * (2 ** attempt)
-                    logger.debug("Crawl: HTTP %d for %s, retrying in %.1fs", response.status_code, url, backoff)
+                    backoff = 0.5 * (2**attempt)
+                    logger.debug(
+                        "Crawl: HTTP %d for %s, retrying in %.1fs",
+                        response.status_code,
+                        url,
+                        backoff,
+                    )
                     await asyncio.sleep(backoff)
                     continue
 
@@ -191,8 +195,10 @@ async def _fetch_page(
         except httpx.HTTPError as exc:
             last_error = exc
             if attempt < _MAX_RETRIES:
-                backoff = 0.5 * (2 ** attempt)
-                logger.debug("Crawl: network error for %s: %s, retrying in %.1fs", url, exc, backoff)
+                backoff = 0.5 * (2**attempt)
+                logger.debug(
+                    "Crawl: network error for %s: %s, retrying in %.1fs", url, exc, backoff
+                )
                 await asyncio.sleep(backoff)
                 continue
             logger.debug("Crawl: network error for %s: %s (giving up)", url, exc)
@@ -224,9 +230,10 @@ async def _process_page(
 
     from deeptutor.services.web_source.html_extractor import (
         extract_article_markdown,
-        extract_navigation,
         extract_headings,
+        extract_navigation,
     )
+
     try:
         title, body = extract_article_markdown(html)
     except Exception:
@@ -321,7 +328,10 @@ async def crawl_docs_site(
             # Fetch and process all pages in the batch concurrently.
             tasks = [
                 _process_page(
-                    url, depth, client, sem,
+                    url,
+                    depth,
+                    client,
+                    sem,
                     base_host=base_host,
                     base_path_prefix=base_path_prefix,
                     max_depth=max_depth,
@@ -360,8 +370,11 @@ async def crawl_docs_site(
 
     logger.info(
         "Crawled %s: %d pages (%d errors), nav=%s (%d links)",
-        base_url, len(result.pages), len(result.errors),
-        result.navigation_kind, len(result.navigation_links),
+        base_url,
+        len(result.pages),
+        len(result.errors),
+        result.navigation_kind,
+        len(result.navigation_links),
     )
     return result
 
@@ -392,17 +405,20 @@ def _infer_navigation(pages: list[CrawledPage], base_url: str) -> list[dict]:
         depth = len(segments)
 
         title = page.title or segments[-1] if segments else "Home"
-        result.append({
-            "title": title,
-            "url": page.url,
-            "path": parsed.path,
-            "depth": depth if depth > 0 else 0,
-        })
+        result.append(
+            {
+                "title": title,
+                "url": page.url,
+                "path": parsed.path,
+                "depth": depth if depth > 0 else 0,
+            }
+        )
 
     return result
 
 
 # ── shared crawl-diff-write pipeline ─────────────────────────────────
+
 
 @dataclass
 class CrawlDiff:
