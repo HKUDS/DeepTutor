@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
+from deeptutor.learning.storage import LearningStore
 from deeptutor.services.session import get_session_store, get_sqlite_session_store
 from deeptutor.services.storage.attachment_store import get_attachment_store
 
@@ -156,6 +157,10 @@ async def delete_session(session_id: str):
     deleted = await store.delete_session(session_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
+    try:
+        LearningStore().delete(session_id)
+    except Exception:
+        logger.exception("failed to clean up mastery path for session %s", session_id)
     try:
         await get_attachment_store().delete_session(session_id)
     except Exception:
