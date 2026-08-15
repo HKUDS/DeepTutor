@@ -43,7 +43,9 @@ import {
 import { useTranslation } from "react-i18next";
 
 import {
+  ApiRequestError,
   immersiveReadingApi,
+  type DictionaryResult,
   type FocusAttemptRecord,
   type FocusCheckResult,
   type ReadingCapabilities,
@@ -52,11 +54,9 @@ import {
   type ReadingProgress,
   type SearchHit,
   type SearchResponse,
+  type VocabEntry,
   bilingualApi,
   type BilingualPairing,
-  type VocabEntry,
-  type DictionaryResult,
-  ApiRequestError,
 } from "@/lib/immersive-reading-api";
 import { defaultReadingView, immersiveReadingPath } from "@/lib/epub-reader";
 import DictionaryPanel from "@/components/common/DictionaryPanel";
@@ -69,8 +69,14 @@ const Mermaid = dynamic(() => import("@/components/Mermaid"), { ssr: false });
 const KidsEpubReader = dynamic(() => import("./components/KidsEpubReader"), { ssr: false, loading: () => null });
 const OriginalEpubReader = dynamic(() => import("./components/OriginalEpubReader"), { ssr: false, loading: () => null });
 const KidsManagementPanel = dynamic(() => import("./components/KidsManagementPanel"), { ssr: false });
-const BilingualReader = dynamic(() => import("@/components/immersive-reading/BilingualReader").then((m) => m.BilingualReader), { ssr: false, loading: () => null });
-const BilingualPairDialog = dynamic(() => import("@/components/immersive-reading/BilingualPairDialog").then((m) => m.BilingualPairDialog), { ssr: false });
+const BilingualReader = dynamic(
+  () => import("@/components/immersive-reading/BilingualReader").then((module) => module.BilingualReader),
+  { ssr: false, loading: () => null },
+);
+const BilingualPairDialog = dynamic(
+  () => import("@/components/immersive-reading/BilingualPairDialog").then((module) => module.BilingualPairDialog),
+  { ssr: false },
+);
 
 type SearchMode = "exact" | "fuzzy" | "description_fast" | "description_fine";
 type ShelfView = "library" | "citations" | "focus-history" | "vocabulary";
@@ -286,7 +292,7 @@ function ImmersiveReadingContent() {
     setVocabulary(data.entries || []);
   }, []);
 
- useEffect(() => {
+  useEffect(() => {
     let mounted = true;
     setLoading(true);
    Promise.all([
@@ -310,6 +316,10 @@ function ImmersiveReadingContent() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    void refreshPairings();
+  }, [refreshPairings]);
 
   useEffect(() => {
     if (!toast) return;
@@ -372,7 +382,11 @@ function ImmersiveReadingContent() {
             void refreshPairings();
           }}
         />
-        {toast && <div className="fixed bottom-6 left-1/2 z-[120] -translate-x-1/2 rounded-xl bg-[var(--foreground)] px-4 py-2.5 text-sm text-[var(--background)] shadow-xl">{toast}</div>}
+        {toast && (
+          <div className="fixed bottom-6 left-1/2 z-[120] -translate-x-1/2 rounded-xl bg-[var(--foreground)] px-4 py-2.5 text-sm text-[var(--background)] shadow-xl">
+            {toast}
+          </div>
+        )}
         {errorToast && (
           <ErrorNotification
             message={errorToast.message}
@@ -618,21 +632,21 @@ function ImmersiveReadingContent() {
           </p>
         )}
         {pairings.length > 0 && shelfView === "library" && (
-          <div className="mt-12">
+          <section className="mt-12">
             <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
               <Languages size={20} className="text-[var(--primary)]" />
               {t("Bilingual Pairings")}
             </h2>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-             {pairings.map((pairing) => (
+              {pairings.map((pairing) => (
                 <div
                   key={pairing.pairing_id}
-                  onClick={() => router.push(`/immersive-reading?pairing=${encodeURIComponent(pairing.pairing_id)}`)}
                   role="button"
                   tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
+                  onClick={() => router.push(`/immersive-reading?pairing=${encodeURIComponent(pairing.pairing_id)}`)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
                       router.push(`/immersive-reading?pairing=${encodeURIComponent(pairing.pairing_id)}`);
                     }
                   }}
@@ -647,12 +661,11 @@ function ImmersiveReadingContent() {
                     <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--muted-foreground)]">
                       <span>{pairing.chapter_count} {t("chapters")}</span>
                       {pairing.aligned ? (
-                        <span className="flex items-center gap-0.5 text-emerald-500"><Check size={11} /> {t("aligned")}</span>
+                        <span className="flex items-center gap-0.5 text-emerald-500">
+                          <Check size={11} /> {t("aligned")}
+                        </span>
                       ) : (
                         <span className="text-amber-500">{t("not aligned")}</span>
-                      )}
-                      {pairing.review_count > 0 && (
-                        <span className="flex items-center gap-0.5 text-amber-500"><CircleAlert size={11} /> {pairing.review_count} {t("review")}</span>
                       )}
                     </div>
                   </div>
@@ -668,7 +681,7 @@ function ImmersiveReadingContent() {
                 </div>
               ))}
             </div>
-          </div>
+          </section>
         )}
       </main>
 
@@ -676,9 +689,7 @@ function ImmersiveReadingContent() {
         <BilingualPairDialog
           isOpen={showPairDialog}
           onClose={() => setShowPairDialog(false)}
-          onPaired={() => {
-            void refreshPairings();
-          }}
+          onPaired={() => void refreshPairings()}
         />
       )}
 
