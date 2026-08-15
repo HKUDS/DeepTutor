@@ -12,7 +12,7 @@ import json
 import logging
 from pathlib import Path
 import shutil
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from deeptutor.services.config import resolve_llm_runtime_config
 from deeptutor.services.file_io import atomic_write_json
@@ -28,6 +28,9 @@ from deeptutor.services.rag.service import RAGService
 logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_DIR = "./data/knowledge_bases"
+
+if TYPE_CHECKING:
+    from deeptutor.knowledge.manager import KnowledgeBaseManager
 
 
 @dataclass(frozen=True)

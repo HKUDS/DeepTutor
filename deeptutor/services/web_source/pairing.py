@@ -14,6 +14,7 @@ ZH_PREFIXES = ("zh-cn", "zh-hans", "zh-tw", "zh-hant", "zh")
 
 # -- Language inference -------------------------------------------------
 
+
 def infer_language(url: str) -> str:
     """Return ``"zh"`` if *url* starts with a Chinese prefix, else ``"en"``."""
     path = (urlparse(url).path or "/").strip("/")
@@ -41,6 +42,7 @@ def normalize_origin(url: str) -> str:
 
 # -- File-path pairing --------------------------------------------------
 
+
 def strip_lang_prefix_from_path(file_path: str, lang_prefix: str) -> str:
     """Remove a language prefix from a raw-file relative path.
 
@@ -52,7 +54,7 @@ def strip_lang_prefix_from_path(file_path: str, lang_prefix: str) -> str:
         return file_path
     nested = lang_prefix + "/"
     if file_path.startswith(nested):
-        return file_path[len(nested):]
+        return file_path[len(nested) :]
     if file_path == lang_prefix + ".md":
         return "index.md"
     return file_path
@@ -79,6 +81,7 @@ def pair_file_paths(
 
 
 # -- Source grouping ----------------------------------------------------
+
 
 @dataclass
 class LanguagePair:
@@ -112,11 +115,13 @@ def group_sources_by_origin(sources: list[dict]) -> list[LanguagePair]:
                 pair.zh_source = src
                 pair.zh_lang_prefix = language_prefix(src.get("url", ""))
             else:
-                unpaired.append(LanguagePair(
-                    origin=origin,
-                    zh_source=src,
-                    zh_lang_prefix=language_prefix(src.get("url", "")),
-                ))
+                unpaired.append(
+                    LanguagePair(
+                        origin=origin,
+                        zh_source=src,
+                        zh_lang_prefix=language_prefix(src.get("url", "")),
+                    )
+                )
         else:
             if pair.en_source is None:
                 pair.en_source = src
@@ -128,9 +133,11 @@ def group_sources_by_origin(sources: list[dict]) -> list[LanguagePair]:
 
 # -- Pair-key generation ------------------------------------------------
 
+
 def pair_key_for(origin: str) -> str:
     """Stable filesystem-safe key from an origin string."""
     import re
+
     key = re.sub(r"[^A-Za-z0-9._-]", "-", origin)
     return key.strip("-") or "default"
 

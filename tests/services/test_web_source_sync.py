@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from deeptutor.services.web_source.crawler import (
-    CrawlResult,
     CrawledPage,
+    CrawlResult,
     _is_internal,
     _normalise_link,
     _to_filename,
@@ -22,23 +22,30 @@ from deeptutor.services.web_source.sync_service import _is_stale
 def test_normalise_link_absolute():
     assert _normalise_link("https://a.com/b/", "/b/c") == "https://a.com/b/c"
 
+
 def test_normalise_link_javascript():
     assert _normalise_link("https://a.com/b", "javascript:void(0)") is None
+
 
 def test_normalise_link_fragment():
     assert _normalise_link("https://a.com/b", "#section") is None
 
+
 def test_is_internal_same_host():
     assert _is_internal("https://a.com/docs/x", "a.com", "/docs") is True
+
 
 def test_is_internal_different_host():
     assert _is_internal("https://b.com/docs/x", "a.com", "/docs") is False
 
+
 def test_is_internal_outside_prefix():
     assert _is_internal("https://a.com/blog/x", "a.com", "/docs") is False
 
+
 def test_to_filename_docs_path():
     assert _to_filename("https://a.com/docs/getting-started/", "/docs") == "docs/getting-started.md"
+
 
 def test_to_filename_root():
     assert _to_filename("https://a.com/docs/", "/docs") == "docs.md"
@@ -55,6 +62,7 @@ def test_to_filename_no_prefix_collision():
 
 def _make_kb(tmp_path: Path, kb_name: str = "kb") -> tuple[str, Path]:
     from deeptutor.knowledge.manager import KnowledgeBaseManager
+
     manager = KnowledgeBaseManager(base_dir=str(tmp_path / "kbs"))
     kb_dir = manager.base_dir / kb_name
     kb_dir.mkdir()
@@ -68,19 +76,33 @@ def _make_kb(tmp_path: Path, kb_name: str = "kb") -> tuple[str, Path]:
 async def test_sync_source_first_run(tmp_path: Path):
     base_dir, kb_dir = _make_kb(tmp_path)
     from deeptutor.knowledge.manager import KnowledgeBaseManager
+
     mgr = KnowledgeBaseManager(base_dir=base_dir)
     source = mgr.add_web_source("kb", "https://example.com/docs/")
 
-    mock_result = CrawlResult(pages=[
-        CrawledPage(url="https://example.com/docs/", title="Home", markdown="# Home", content_hash="aaa"),
-        CrawledPage(url="https://example.com/docs/intro", title="Intro", markdown="# Intro", content_hash="bbb"),
-    ])
+    mock_result = CrawlResult(
+        pages=[
+            CrawledPage(
+                url="https://example.com/docs/", title="Home", markdown="# Home", content_hash="aaa"
+            ),
+            CrawledPage(
+                url="https://example.com/docs/intro",
+                title="Intro",
+                markdown="# Intro",
+                content_hash="bbb",
+            ),
+        ]
+    )
 
-    with patch("deeptutor.services.web_source.crawler.crawl_docs_site", new_callable=AsyncMock) as mock_crawl:
+    with patch(
+        "deeptutor.services.web_source.crawler.crawl_docs_site", new_callable=AsyncMock
+    ) as mock_crawl:
         mock_crawl.return_value = mock_result
-        with patch("deeptutor.knowledge.add_documents.add_documents", new_callable=AsyncMock) as mock_add:
-                mock_add.return_value = 2
-                result = await sync_source("kb", source, base_dir=base_dir)
+        with patch(
+            "deeptutor.knowledge.add_documents.add_documents", new_callable=AsyncMock
+        ) as mock_add:
+            mock_add.return_value = 2
+            result = await sync_source("kb", source, base_dir=base_dir)
 
     assert result.ok is True
     assert result.pages_added == 2
@@ -97,19 +119,26 @@ async def test_sync_source_first_run(tmp_path: Path):
 async def test_sync_source_unchanged_pages(tmp_path: Path):
     base_dir, kb_dir = _make_kb(tmp_path)
     from deeptutor.knowledge.manager import KnowledgeBaseManager
+
     mgr = KnowledgeBaseManager(base_dir=base_dir)
     source = mgr.add_web_source("kb", "https://example.com/docs/")
     # Pre-populate hashes to simulate prior sync
     source["page_hashes"] = {"docs.md": "aaa"}
 
-    mock_result = CrawlResult(pages=[
-        CrawledPage(url="https://example.com/docs/", title="Home", markdown="# Home", content_hash="aaa"),
-    ])
+    mock_result = CrawlResult(
+        pages=[
+            CrawledPage(
+                url="https://example.com/docs/", title="Home", markdown="# Home", content_hash="aaa"
+            ),
+        ]
+    )
 
-    with patch("deeptutor.services.web_source.crawler.crawl_docs_site", new_callable=AsyncMock) as mock_crawl:
+    with patch(
+        "deeptutor.services.web_source.crawler.crawl_docs_site", new_callable=AsyncMock
+    ) as mock_crawl:
         mock_crawl.return_value = mock_result
         with patch("deeptutor.knowledge.add_documents.add_documents", new_callable=AsyncMock):
-                result = await sync_source("kb", source, base_dir=base_dir)
+            result = await sync_source("kb", source, base_dir=base_dir)
 
     assert result.ok is True
     assert result.pages_added == 0
@@ -119,9 +148,11 @@ async def test_sync_source_unchanged_pages(tmp_path: Path):
 def test_is_stale_never_synced():
     assert _is_stale({"last_synced_at": ""}) is True
 
+
 def test_is_stale_recent():
     recent = datetime.now(timezone.utc).isoformat()
     assert _is_stale({"last_synced_at": recent}) is False
+
 
 def test_is_stale_old():
     old = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
@@ -130,11 +161,12 @@ def test_is_stale_old():
 
 # ── Navigation extraction tests ──────────────────────────────────────
 
+
 def test_extract_navigation_docusaurus():
     """Sidebar links should be extracted before they are stripped."""
     from deeptutor.services.web_source.html_extractor import extract_navigation
 
-    html = '''<html><body>
+    html = """<html><body>
 <nav class="theme-doc-sidebar-menu">
   <ul>
     <li><a href="/get-started/">Get Started</a></li>
@@ -143,7 +175,7 @@ def test_extract_navigation_docusaurus():
   </ul>
 </nav>
 <main><h1>Page</h1></main>
-</body></html>'''
+</body></html>"""
 
     links = extract_navigation(html, "https://docs.example.com/")
     assert len(links) == 3
@@ -165,13 +197,13 @@ def test_extract_navigation_dedupes():
     """Duplicate URLs should appear only once."""
     from deeptutor.services.web_source.html_extractor import extract_navigation
 
-    html = '''<html><body>
+    html = """<html><body>
 <nav class="sidebar"><ul>
 <li><a href="/a/">A</a></li>
 <li><a href="/a/">A again</a></li>
 <li><a href="/b/">B</a></li>
 </ul></nav>
-</body></html>'''
+</body></html>"""
 
     links = extract_navigation(html, "https://example.com/")
     assert len(links) == 2
@@ -273,14 +305,23 @@ async def test_sync_persists_navigation(tmp_path: Path):
         ],
         navigation_links=[
             {"title": "Home", "url": "https://example.com/docs/", "path": "/docs/", "depth": 0},
-            {"title": "Intro", "url": "https://example.com/docs/intro", "path": "/docs/intro", "depth": 1},
+            {
+                "title": "Intro",
+                "url": "https://example.com/docs/intro",
+                "path": "/docs/intro",
+                "depth": 1,
+            },
         ],
         navigation_kind="original",
     )
 
-    with patch("deeptutor.services.web_source.crawler.crawl_docs_site", new_callable=AsyncMock) as mock_crawl:
+    with patch(
+        "deeptutor.services.web_source.crawler.crawl_docs_site", new_callable=AsyncMock
+    ) as mock_crawl:
         mock_crawl.return_value = mock_result
-        with patch("deeptutor.knowledge.add_documents.add_documents", new_callable=AsyncMock) as mock_add:
+        with patch(
+            "deeptutor.knowledge.add_documents.add_documents", new_callable=AsyncMock
+        ) as mock_add:
             mock_add.return_value = 2
             result = await sync_source("kb", source, base_dir=base_dir)
 

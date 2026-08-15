@@ -1,15 +1,16 @@
 """Tests for bilingual source pairing logic."""
+
 import pytest
 
 from deeptutor.services.web_source.pairing import (
+    compute_pair_status,
+    group_sources_by_origin,
     infer_language,
     language_prefix,
     normalize_origin,
-    strip_lang_prefix_from_path,
     pair_file_paths,
-    group_sources_by_origin,
     pair_key_for,
-    compute_pair_status,
+    strip_lang_prefix_from_path,
 )
 
 
@@ -69,7 +70,9 @@ class TestStripLangPrefix:
         assert strip_lang_prefix_from_path("explore/book.md", "") == "explore/book.md"
 
     def test_unrelated_prefix(self):
-        assert strip_lang_prefix_from_path("other/explore/book.md", "zh-cn") == "other/explore/book.md"
+        assert (
+            strip_lang_prefix_from_path("other/explore/book.md", "zh-cn") == "other/explore/book.md"
+        )
 
 
 class TestPairFilePaths:
@@ -137,6 +140,7 @@ class TestPairKey:
 class TestPairStatus:
     def test_bilingual_status(self):
         from deeptutor.services.web_source.pairing import LanguagePair
+
         pair = LanguagePair(
             origin="docs.example.com/",
             en_source={"id": "a", "url": "https://docs.example.com/"},

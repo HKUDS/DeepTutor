@@ -3,6 +3,7 @@
 Strips navigation chrome, sidebars, and boilerplate, then converts the
 main article content to clean markdown preserving structure.
 """
+
 from __future__ import annotations
 
 import html as _html
@@ -13,8 +14,19 @@ logger = logging.getLogger(__name__)
 
 # Tags to completely remove before extraction
 _STRIP_TAGS = (
-    "script", "style", "noscript", "nav", "header", "footer",
-    "aside", "iframe", "svg", "form", "button", "input", "select",
+    "script",
+    "style",
+    "noscript",
+    "nav",
+    "header",
+    "footer",
+    "aside",
+    "iframe",
+    "svg",
+    "form",
+    "button",
+    "input",
+    "select",
 )
 
 # CSS-ish selectors (via XPath) to find the main content in priority order.
@@ -61,11 +73,21 @@ _SIDEBAR_XPATHS = [
 # Tags whose subtrees _walk should NOT descend into.  Any element not in
 # this set gets recursed into, catching custom-element components from
 # Astro/Starlight, web-components, etc. that a static tag-allowlist would miss.
-_WALK_SKIP_TAGS = frozenset({
-    "script", "style", "svg", "input", "button", "form",
-    "meta", "link", "br", "hr", "img",
-})
-
+_WALK_SKIP_TAGS = frozenset(
+    {
+        "script",
+        "style",
+        "svg",
+        "input",
+        "button",
+        "form",
+        "meta",
+        "link",
+        "br",
+        "hr",
+        "img",
+    }
+)
 
 
 def extract_navigation(raw_html: str, base_url: str) -> list[dict]:
@@ -78,8 +100,9 @@ def extract_navigation(raw_html: str, base_url: str) -> list[dict]:
     Must be called on the **raw** HTML (before :func:`extract_article_markdown`
     strips ``nav``/``aside`` elements).
     """
-    from lxml import html as lxml_html
     from urllib.parse import urljoin, urlparse
+
+    from lxml import html as lxml_html
 
     try:
         tree = lxml_html.fromstring(raw_html)
@@ -114,12 +137,14 @@ def extract_navigation(raw_html: str, base_url: str) -> list[dict]:
                 if absolute in seen:
                     continue
                 seen.add(absolute)
-                links.append({
-                    "title": title,
-                    "url": absolute,
-                    "path": parsed.path,
-                    "depth": depth,
-                })
+                links.append(
+                    {
+                        "title": title,
+                        "url": absolute,
+                        "path": parsed.path,
+                        "depth": depth,
+                    }
+                )
 
             elif tag in ("ul", "ol"):
                 _walk(child, depth + 1)
@@ -184,7 +209,6 @@ def extract_headings(markdown: str) -> list[dict]:
     return headings
 
 
-
 def extract_article_markdown(raw_html: str) -> tuple[str, str]:
     """Extract ``(title, markdown)`` from a doc-site HTML page.
 
@@ -228,12 +252,28 @@ def extract_article_markdown(raw_html: str) -> tuple[str, str]:
             parent.remove(el)
 
     # Also remove elements with common nav/chrome classes
-    for cls_kw in ["navbar", "sidebar", "toc", "breadcrumb", "pagination",
-                    "menu", "search", "theme-toggle", "skip-to-content",
-                    "back-to-top", "edit-this-page", "last-updated",
-                    "sr-only", "sl-anchor-link", "sl-toc",
-                    "social-icons", "header", "mobile-header",
-                    "right-sidebar", "left-sidebar"]:
+    for cls_kw in [
+        "navbar",
+        "sidebar",
+        "toc",
+        "breadcrumb",
+        "pagination",
+        "menu",
+        "search",
+        "theme-toggle",
+        "skip-to-content",
+        "back-to-top",
+        "edit-this-page",
+        "last-updated",
+        "sr-only",
+        "sl-anchor-link",
+        "sl-toc",
+        "social-icons",
+        "header",
+        "mobile-header",
+        "right-sidebar",
+        "left-sidebar",
+    ]:
         for el in tree.xpath(f"//*[contains(@class, '{cls_kw}')]"):
             parent = el.getparent()
             if parent is not None:
@@ -354,9 +394,7 @@ def _element_to_markdown(el) -> str:
             items = _list_to_markdown(child, ordered=(tag == "ol"))
             parts.append(f"\n\n{items}\n\n")
         elif tag == "blockquote":
-            quoted = "\n".join(
-                f"> {line}" for line in text.strip().split("\n")
-            )
+            quoted = "\n".join(f"> {line}" for line in text.strip().split("\n"))
             parts.append(f"\n\n{quoted}\n\n")
         elif tag == "hr":
             parts.append("\n\n---\n\n")

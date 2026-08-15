@@ -24,7 +24,13 @@ from pathlib import Path
 from typing import Any
 
 from deeptutor.knowledge.add_documents import DEFAULT_BASE_DIR
+from deeptutor.services.web_source import bilingual_store, index_rebuild
 from deeptutor.services.web_source.crawler import crawl_and_diff
+from deeptutor.services.web_source.md_align import (
+    align_markdown,
+    align_markdown_en_only,
+)
+from deeptutor.services.web_source.navigation import merge_navigation
 from deeptutor.services.web_source.pairing import (
     LanguagePair,
     compute_pair_status,
@@ -32,13 +38,6 @@ from deeptutor.services.web_source.pairing import (
     pair_file_paths,
     strip_lang_prefix_from_path,
 )
-from deeptutor.services.web_source.md_align import (
-    align_markdown,
-    align_markdown_en_only,
-)
-from deeptutor.services.web_source import bilingual_store
-from deeptutor.services.web_source.navigation import merge_navigation
-from deeptutor.services.web_source import index_rebuild
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +53,7 @@ def _content_hash(text: str) -> str:
 
 
 # ── result dataclasses ───────────────────────────────────────────────
+
 
 @dataclass
 class PairSyncResult:
@@ -86,6 +86,7 @@ class KBSyncResult:
 
 # ── public entry points ──────────────────────────────────────────────
 
+
 async def sync_kb_sources(
     kb_name: str,
     sources: list[dict[str, Any]],
@@ -100,8 +101,11 @@ async def sync_kb_sources(
     compatibility.
     """
     return await sync_kb_sources_safe(
-        kb_name, sources,
-        base_dir=base_dir, max_depth=max_depth, max_pages=max_pages,
+        kb_name,
+        sources,
+        base_dir=base_dir,
+        max_depth=max_depth,
+        max_pages=max_pages,
     )
 
 
@@ -125,8 +129,12 @@ async def sync_kb_sources_safe(
 
     for pair in pairs:
         pair_result = await _sync_pair(
-            kb_name, kb_dir, raw_dir, pair,
-            max_depth=max_depth, max_pages=max_pages,
+            kb_name,
+            kb_dir,
+            raw_dir,
+            pair,
+            max_depth=max_depth,
+            max_pages=max_pages,
         )
         result.pair_results.append(pair_result)
         if pair_result.error:
@@ -135,9 +143,7 @@ async def sync_kb_sources_safe(
             if sr.get("pages_added", 0) or sr.get("pages_updated", 0) or sr.get("pages_removed", 0):
                 any_pages_changed = True
 
-    result.total_pages = sum(
-        pr.en_pages + pr.zh_pages for pr in result.pair_results
-    )
+    result.total_pages = sum(pr.en_pages + pr.zh_pages for pr in result.pair_results)
 
     # Rebuild index once if any pages changed.
     if any_pages_changed or index_rebuild.needs_initial_index(kb_dir):
@@ -153,6 +159,7 @@ async def sync_kb_sources_safe(
 
 
 # ── per-pair sync ────────────────────────────────────────────────────
+
 
 async def _sync_pair(
     kb_name: str,
@@ -173,15 +180,25 @@ async def _sync_pair(
     # Crawl EN and ZH sources concurrently (they're independent).
     crawl_tasks: dict[str, asyncio.Task] = {}
     if pair.en_source:
-        crawl_tasks["en"] = asyncio.ensure_future(_crawl_and_write(
-            kb_name, pair.en_source, raw_dir,
-            max_depth=max_depth, max_pages=max_pages,
-        ))
+        crawl_tasks["en"] = asyncio.ensure_future(
+            _crawl_and_write(
+                kb_name,
+                pair.en_source,
+                raw_dir,
+                max_depth=max_depth,
+                max_pages=max_pages,
+            )
+        )
     if pair.zh_source:
-        crawl_tasks["zh"] = asyncio.ensure_future(_crawl_and_write(
-            kb_name, pair.zh_source, raw_dir,
-            max_depth=max_depth, max_pages=max_pages,
-        ))
+        crawl_tasks["zh"] = asyncio.ensure_future(
+            _crawl_and_write(
+                kb_name,
+                pair.zh_source,
+                raw_dir,
+                max_depth=max_depth,
+                max_pages=max_pages,
+            )
+        )
 
     crawl_outcomes = await asyncio.gather(*crawl_tasks.values())
     crawl_by_lang = dict(zip(crawl_tasks.keys(), crawl_outcomes))
@@ -191,25 +208,29 @@ async def _sync_pair(
 
     if "en" in crawl_by_lang:
         en_crawl, en_changed = crawl_by_lang["en"]
-        pr.source_results.append({
-            "source_id": pair.en_source.get("id", ""),
-            "url": pair.en_source.get("url", ""),
-            "language": "en",
-            **(en_crawl or {}),
-            "changed_files": en_changed,
-        })
+        pr.source_results.append(
+            {
+                "source_id": pair.en_source.get("id", ""),
+                "url": pair.en_source.get("url", ""),
+                "language": "en",
+                **(en_crawl or {}),
+                "changed_files": en_changed,
+            }
+        )
         if en_crawl and en_crawl.get("ok"):
             pr.en_pages = en_crawl.get("page_count", 0)
 
     if "zh" in crawl_by_lang:
         zh_crawl, zh_changed = crawl_by_lang["zh"]
-        pr.source_results.append({
-            "source_id": pair.zh_source.get("id", ""),
-            "url": pair.zh_source.get("url", ""),
-            "language": "zh",
-            **(zh_crawl or {}),
-            "changed_files": zh_changed,
-        })
+        pr.source_results.append(
+            {
+                "source_id": pair.zh_source.get("id", ""),
+                "url": pair.zh_source.get("url", ""),
+                "language": "zh",
+                **(zh_crawl or {}),
+                "changed_files": zh_changed,
+            }
+        )
         if zh_crawl and zh_crawl.get("ok"):
             pr.zh_pages = zh_crawl.get("page_count", 0)
 
@@ -221,8 +242,7 @@ async def _sync_pair(
 
     # Align paired pages.
     if pair.is_pair and en_crawl and zh_crawl:
-        _sync_bilingual_pair(kb_dir, raw_dir, pair, pair_status, pr,
-                             en_crawl, zh_crawl)
+        _sync_bilingual_pair(kb_dir, raw_dir, pair, pair_status, pr, en_crawl, zh_crawl)
     elif pair.en_source and en_crawl:
         _sync_en_only_pair(kb_dir, raw_dir, pair, pair_status, pr, en_crawl)
 
@@ -306,23 +326,27 @@ def _sync_bilingual_pair(
         pair.zh_lang_prefix,
         pr.pair_key,
     )
-    bilingual_store.save_pair_index(kb_dir, pr.pair_key, {
-        "pair_key": pr.pair_key,
-        "origin": pr.origin,
-        "status": "bilingual",
-        "en_source_id": pair_status.en_source_id,
-        "zh_source_id": pair_status.zh_source_id,
-        "en_url": pair_status.en_url,
-        "zh_url": pair_status.zh_url,
-        "en_pages": pr.en_pages,
-        "zh_pages": pr.zh_pages,
-        "paired_pages": pr.paired_pages,
-        "en_only_pages": pr.en_only_pages,
-        "zh_only_pages": pr.zh_only_pages,
-        "low_confidence": pr.low_confidence,
-        "synced_at": _utcnow_iso(),
-        "navigation": merged_nav,
-    })
+    bilingual_store.save_pair_index(
+        kb_dir,
+        pr.pair_key,
+        {
+            "pair_key": pr.pair_key,
+            "origin": pr.origin,
+            "status": "bilingual",
+            "en_source_id": pair_status.en_source_id,
+            "zh_source_id": pair_status.zh_source_id,
+            "en_url": pair_status.en_url,
+            "zh_url": pair_status.zh_url,
+            "en_pages": pr.en_pages,
+            "zh_pages": pr.zh_pages,
+            "paired_pages": pr.paired_pages,
+            "en_only_pages": pr.en_only_pages,
+            "zh_only_pages": pr.zh_only_pages,
+            "low_confidence": pr.low_confidence,
+            "synced_at": _utcnow_iso(),
+            "navigation": merged_nav,
+        },
+    )
 
 
 def _sync_en_only_pair(
@@ -355,19 +379,24 @@ def _sync_en_only_pair(
             alignment = align_markdown_en_only(en_path.read_text(encoding="utf-8"))
             bilingual_store.save_alignment(kb_dir, pr.pair_key, en_file, alignment)
 
-    bilingual_store.save_pair_index(kb_dir, pr.pair_key, {
-        "pair_key": pr.pair_key,
-        "origin": pr.origin,
-        "status": "en_only",
-        "en_source_id": pair_status.en_source_id,
-        "en_url": pair_status.en_url,
-        "en_pages": pr.en_pages,
-        "synced_at": _utcnow_iso(),
-        "navigation": en_crawl.get("navigation", {}),
-    })
+    bilingual_store.save_pair_index(
+        kb_dir,
+        pr.pair_key,
+        {
+            "pair_key": pr.pair_key,
+            "origin": pr.origin,
+            "status": "en_only",
+            "en_source_id": pair_status.en_source_id,
+            "en_url": pair_status.en_url,
+            "en_pages": pr.en_pages,
+            "synced_at": _utcnow_iso(),
+            "navigation": en_crawl.get("navigation", {}),
+        },
+    )
 
 
 # ── crawl + write ────────────────────────────────────────────────────
+
 
 async def _crawl_and_write(
     kb_name: str,
@@ -383,8 +412,10 @@ async def _crawl_and_write(
     ``(crawl_summary_dict, changed_file_paths)``.
     """
     diff = await crawl_and_diff(
-        source, raw_dir,
-        max_depth=max_depth, max_pages=max_pages,
+        source,
+        raw_dir,
+        max_depth=max_depth,
+        max_pages=max_pages,
     )
     summary = {
         "ok": diff.ok,
@@ -403,6 +434,7 @@ async def _crawl_and_write(
 
 
 # ── state persistence ────────────────────────────────────────────────
+
 
 def _persist_sync_state(
     kb_name: str,

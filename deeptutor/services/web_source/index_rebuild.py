@@ -7,9 +7,9 @@ version intact for rollback.
 
 from __future__ import annotations
 
+from datetime import datetime
 import hashlib
 import logging
-from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -19,6 +19,7 @@ def needs_initial_index(kb_dir: Path) -> bool:
     """Return True if the KB has no usable index version yet."""
     try:
         from deeptutor.services.rag.index_versioning import list_kb_versions
+
         versions = list_kb_versions(kb_dir)
         return not any(v.get("ready") for v in versions)
     except Exception:
@@ -33,8 +34,8 @@ async def rebuild_index_async(kb_name: str, base_dir: str, raw_dir: Path) -> int
 
     Returns the number of files indexed.
     """
-    from deeptutor.services.rag.service import RAGService
     from deeptutor.services.rag.file_routing import FileTypeRouter
+    from deeptutor.services.rag.service import RAGService
 
     supported = FileTypeRouter.collect_supported_files(raw_dir, recursive=True)
     if not supported:
@@ -53,13 +54,12 @@ async def rebuild_index_async(kb_name: str, base_dir: str, raw_dir: Path) -> int
     return len(file_paths)
 
 
-def update_file_hashes(
-    kb_name: str, base_dir: str, raw_dir: Path, file_paths: list[str]
-) -> None:
+def update_file_hashes(kb_name: str, base_dir: str, raw_dir: Path, file_paths: list[str]) -> None:
     """Record content hashes for all indexed files in metadata.json."""
     import json
-    from deeptutor.services.file_io import atomic_write_json
+
     from deeptutor.knowledge.add_documents import _raw_hash_key
+    from deeptutor.services.file_io import atomic_write_json
 
     kb_dir = Path(base_dir) / kb_name
     metadata_file = kb_dir / "metadata.json"
@@ -93,7 +93,9 @@ def resolve_rag_provider(base_dir: str, kb_name: str) -> str:
     """Resolve the RAG provider name for a KB."""
     try:
         from deeptutor.services.rag.provider_binding import resolve_bound_provider
+
         return resolve_bound_provider(base_dir, kb_name)
     except Exception:
         from deeptutor.services.rag.factory import DEFAULT_PROVIDER
+
         return DEFAULT_PROVIDER
