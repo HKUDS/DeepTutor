@@ -154,6 +154,12 @@ bytecode caches are regeneratable and must remain untracked. If a build output
 is already tracked, remove it from the index with `git rm --cached` rather than
 deleting the local file needed by an application run.
 
+Fresh checkouts can enable the dependency-free safety hook with:
+
+```bash
+git config core.hooksPath scripts/hooks
+```
+
 Use a separate Git worktree for each feature (`git worktree add ../DeepTutor-<task>
 -b <branch> dev`) and keep the primary checkout clean. This lets builds, tests,
 and long-running agents operate independently without rewriting one another's
