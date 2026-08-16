@@ -44,10 +44,12 @@ class ChannelManager:
         channels_config: ChannelsConfig,
         bus: MessageBus,
         groq_api_key: str = "",
+        partner_id: str = "",
     ):
         self.channels_config = channels_config
         self.bus = bus
         self._groq_api_key = groq_api_key
+        self._partner_id = str(partner_id or "")
         self.channels: dict[str, BaseChannel] = {}
         self._dispatch_task: asyncio.Task | None = None
         self._origin_reply_fingerprints: dict[tuple[str, str, str], str] = {}
@@ -71,6 +73,7 @@ class ChannelManager:
                 continue
             try:
                 channel = cls(section, self.bus)
+                channel.partner_id = self._partner_id
                 channel.transcription_api_key = self._groq_api_key
                 # Effective delivery flags are per-channel only. Historical
                 # top-level channel config keys are ignored at runtime.

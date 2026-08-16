@@ -2,12 +2,11 @@
 
 A partner has a *split* memory model that the product chat does not:
 
-* its OWN long-term memory lives in the partner's synthetic workspace
-  (``data/partners/<id>/workspace/memory``) and is the only thing
-  ``partner_memorize`` ever writes to — a partner can never mutate the
-  owner's memory;
-* the OWNER's shared memory (the admin L3) is read-only context the
-  partner inherits, so ``partner_read`` returns *both* layers concatenated.
+* relationship memory for an assigned user lives below
+  ``data/partners/<id>/users/<uid>/workspace/memory``; admin and IM turns keep
+  the legacy Partner workspace for backward compatibility;
+* the authenticated human's L3 is read-only context. Admin and IM turns retain
+  the legacy admin L3. ``partner_read`` returns both layers concatenated.
 
 These three tools replace the product chat's ``read_memory`` / ``write_memory``
 for partners (which are suppressed on partner turns) and add a keyword search
@@ -102,15 +101,16 @@ class PartnerReadTool(BaseTool):
         )
 
     async def execute(self, **kwargs: Any) -> ToolResult:
-        from deeptutor.multi_user.paths import (
-            get_admin_path_service,
-            get_current_path_service,
-        )
+        from deeptutor.multi_user.paths import get_admin_path_service, get_current_path_service
         from deeptutor.services.memory import memory_path_service_override
+        from deeptutor.services.partners.interaction import get_partner_turn_context
 
-        with memory_path_service_override(get_admin_path_service()):
+        turn = get_partner_turn_context()
+        shared_service = turn.shared_memory if turn else get_admin_path_service()
+        own_service = turn.own_memory if turn else get_current_path_service()
+        with memory_path_service_override(shared_service):
             shared = _concat_l3()
-        with memory_path_service_override(get_current_path_service()):
+        with memory_path_service_override(own_service):
             own = _concat_l3()
 
         sections = [
@@ -171,6 +171,7 @@ class PartnerMemorizeTool(BaseTool):
         from deeptutor.multi_user.paths import get_current_path_service
         from deeptutor.services.memory import get_memory_store, memory_path_service_override
         from deeptutor.services.memory.trace import TraceEvent
+        from deeptutor.services.partners.interaction import get_partner_turn_context
 
         op = str(kwargs.get("op") or "").strip().lower()
         text = str(kwargs.get("text") or "").strip()
@@ -187,9 +188,11 @@ class PartnerMemorizeTool(BaseTool):
             )
 
         store = get_memory_store()
+        turn = get_partner_turn_context()
+        own_service = turn.own_memory if turn else get_current_path_service()
         # Trace + preference both land in the partner's own memory scope, so the
         # footnote ref resolves inside the same tree it's stored in.
-        with memory_path_service_override(get_current_path_service()):
+        with memory_path_service_override(own_service):
             event = TraceEvent.new(
                 "partner",
                 "preference_stated",
@@ -246,6 +249,7 @@ class PartnerSearchTool(BaseTool):
 
     async def execute(self, **kwargs: Any) -> ToolResult:
         from deeptutor.partners.config.paths import get_partner_sessions_dir
+        from deeptutor.services.partners.interaction import get_partner_turn_context
         from deeptutor.services.partners.sessions import PartnerSessionStore
 
         query = str(kwargs.get("query") or "").strip()
@@ -264,7 +268,12 @@ class PartnerSearchTool(BaseTool):
                 success=False,
             )
 
-        store = PartnerSessionStore(get_partner_sessions_dir(partner_id))
+        turn = get_partner_turn_context()
+        store = (
+            turn.store
+            if turn is not None and turn.partner_id == partner_id
+            else PartnerSessionStore(get_partner_sessions_dir(partner_id))
+        )
         needle = query.lower()
         # (timestamp, formatted_line) — collected across all sessions, then
         # sorted most-recent-first and truncated to ``limit``.

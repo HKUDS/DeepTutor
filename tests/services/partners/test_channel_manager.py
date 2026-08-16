@@ -34,6 +34,28 @@ class _DummyChannel:
         self.send_tool_hints = True
 
 
+def test_channel_media_is_scoped_to_owning_partner(partners_root):
+    from deeptutor.partners.bus.queue import MessageBus
+    from deeptutor.partners.channels.base import BaseChannel
+
+    class _MediaChannel(BaseChannel):
+        name = "telegram"
+
+        async def start(self):
+            pass
+
+        async def stop(self):
+            pass
+
+        async def send(self, msg):
+            pass
+
+    channel = _MediaChannel({}, MessageBus())
+    channel.partner_id = "ada"
+
+    assert channel.media_dir() == partners_root / "ada" / "media" / "telegram"
+
+
 async def _dispatch_one(
     msg: OutboundMessage,
     *,

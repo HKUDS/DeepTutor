@@ -29,7 +29,6 @@ import websockets
 from deeptutor.partners.bus.events import OutboundMessage
 from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.partners.channels.base import BaseChannel
-from deeptutor.partners.config.paths import get_media_dir
 from deeptutor.partners.config.schema import DeliveryOverrides
 from deeptutor.partners.helpers import split_message
 
@@ -323,7 +322,7 @@ class MattermostChannel(BaseChannel):
         file_ids = post.get("file_ids") or []
         if not file_ids or not self._http:
             return []
-        media_dir = get_media_dir("mattermost")
+        media_dir = self.media_dir()
         paths: list[str] = []
         for file_id in file_ids:
             local = await self._download_file(str(file_id), media_dir)
