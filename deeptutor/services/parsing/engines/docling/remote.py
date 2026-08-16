@@ -95,27 +95,28 @@ class _ConnectivityError(Exception):
 
 def _convert_file(source_path: Path, base_url: str, config: DoclingConfig) -> str:
     headers = _auth_headers(config)
-    files = {"files": (source_path.name, source_path.open("rb"), "application/octet-stream")}
     data = {
         "to_formats": "md",
         "do_ocr": "true" if config.do_ocr else "false",
         "do_table_structure": "true" if config.do_table_structure else "false",
     }
-    with httpx.Client(
-        base_url=base_url, headers=headers, timeout=_SUBMIT_TIMEOUT_SECONDS
-    ) as client:
-        try:
-            response = client.post(_CONVERT_ENDPOINT, files=files, data=data)
-        except httpx.HTTPError as exc:
-            raise _ConnectivityError(f"Docling server request failed: {exc}") from exc
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            raise _ConnectivityError(_http_error_message(exc)) from exc
-        try:
-            payload = response.json()
-        except ValueError as exc:
-            raise _ConnectivityError("Docling server returned a non-JSON response.") from exc
+    with source_path.open("rb") as source:
+        files = {"files": (source_path.name, source, "application/octet-stream")}
+        with httpx.Client(
+            base_url=base_url, headers=headers, timeout=_SUBMIT_TIMEOUT_SECONDS
+        ) as client:
+            try:
+                response = client.post(_CONVERT_ENDPOINT, files=files, data=data)
+            except httpx.HTTPError as exc:
+                raise _ConnectivityError(f"Docling server request failed: {exc}") from exc
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise _ConnectivityError(_http_error_message(exc)) from exc
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise _ConnectivityError("Docling server returned a non-JSON response.") from exc
     return _extract_markdown(payload, source_path.name)
 
 

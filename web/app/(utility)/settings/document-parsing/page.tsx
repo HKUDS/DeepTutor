@@ -100,8 +100,10 @@ export default function DocumentParsingSettingsPage() {
           );
         }
         setData(payload as DocumentParsingPayload);
+        return true;
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
+        return false;
       } finally {
         setBusy(false);
       }
@@ -344,7 +346,7 @@ function DoclingPanel({
   busy: boolean;
   tokenSet: boolean;
   onInstalled: () => void;
-  onSave: (patch: Record<string, unknown>) => void;
+  onSave: (patch: Record<string, unknown>) => Promise<boolean>;
 }) {
   const { t } = useTranslation();
   const mode =
@@ -373,13 +375,7 @@ function DoclingPanel({
   } | null>(null);
   const [remoteMsg, setRemoteMsg] = useState("");
 
-  function saveRemote() {
-    if (
-      remoteDraft.url.trim() !== slice.api_base_url &&
-      !remoteDraft.url.trim()
-    ) {
-      return;
-    }
+  async function saveRemote() {
     setSavingRemote(true);
     setRemoteMsg("");
     setTestResult(null);
@@ -389,11 +385,14 @@ function DoclingPanel({
     };
     if (tokenTouched) patch.api_token = tokenDraft;
     try {
-      onSave(patch);
+      const saved = await onSave(patch);
+      if (saved) {
+        setRemoteMsg(t("Remote Docling settings saved."));
+        setTokenDraft("");
+        setTokenTouched(false);
+      }
     } finally {
       setSavingRemote(false);
-      setTokenDraft("");
-      setTokenTouched(false);
     }
   }
 
@@ -558,7 +557,7 @@ function DoclingPanel({
                 <button
                   type="button"
                   onClick={testConnection}
-                  disabled={testing}
+                  disabled={testing || savingRemote || busy}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-opacity hover:opacity-80 disabled:opacity-40"
                 >
                   {testing && <Loader2 className="h-3 w-3 animate-spin" />}
@@ -570,6 +569,7 @@ function DoclingPanel({
                   disabled={savingRemote || busy}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] transition-opacity hover:opacity-80 disabled:opacity-40"
                 >
+                  {savingRemote && <Loader2 className="h-3 w-3 animate-spin" />}
                   {t("Save remote server")}
                 </button>
               </div>

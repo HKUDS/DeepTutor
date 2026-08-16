@@ -159,6 +159,7 @@ def test_docling_remote_parse_writes_markdown(tmp_path, monkeypatch: pytest.Monk
     # the parsed markdown written to <stem>.md.
     assert captured["endpoint"] == "/v1/convert/file"
     assert captured["data"]["to_formats"] == "md"
+    assert captured["files"]["files"][1].closed
     assert (workdir / "doc.md").read_text(encoding="utf-8") == "# Extracted via Docling serve\n"
 
 
