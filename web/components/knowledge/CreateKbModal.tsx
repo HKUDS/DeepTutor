@@ -210,10 +210,11 @@ export default function CreateKbModal({
   useEffect(() => {
     if (linkSource === IMA_PROVIDER) return;
     imaRequestVersionRef.current += 1;
-    setImaLookup((current) => ({
-      ...emptyImaLookupState(),
-      lastAutoName: current.lastAutoName,
-    }));
+    setImaClientId("");
+    setImaApiKey("");
+    setImaMode("automatic");
+    setImaKnowledgeBaseId("");
+    setImaLookup(emptyImaLookupState());
     setImaManualProbe(null);
   }, [linkSource]);
 

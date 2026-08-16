@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
 
 import type { RagProviderSummary } from "../lib/knowledge-api";
@@ -27,6 +29,18 @@ test("IMA belongs only to link-existing provider choices", () => {
   assert.equal(
     linkSourceEnabled({ ...providers[1], linkable: true }),
     true,
+  );
+});
+
+test("leaving the IMA source clears credentials from the mounted modal", () => {
+  const source = readFileSync(
+    path.resolve("components/knowledge/CreateKbModal.tsx"),
+    "utf8",
+  );
+
+  assert.match(
+    source,
+    /if \(linkSource === IMA_PROVIDER\) return;\s+imaRequestVersionRef\.current \+= 1;\s+setImaClientId\(""\);\s+setImaApiKey\(""\);/,
   );
 });
 

@@ -36,7 +36,7 @@ _API_PREFIX = "/openapi/wiki/v1"
 
 # Envelope codes worth naming. IMA returns hundreds of business codes; these are
 # the two classes a caller reacts to differently from a generic failure.
-_CREDENTIAL_CODES = frozenset({20004})
+_CREDENTIAL_CODES = frozenset({20004, 200002})
 _RATE_LIMIT_CODES = frozenset({20002, 110021})
 
 # ``search_knowledge`` is cursor-paginated. Retrieval feeds an LLM prompt, so a
@@ -147,9 +147,10 @@ class ImaClient:
     ) -> dict[str, Any]:
         """Return one page of knowledge bases available to these credentials.
 
-        IMA's list endpoint returns only ids and names. A single batch details
-        request enriches the page with descriptions when possible; that
-        optional request never prevents a usable name list from being returned.
+        IMA names the wire fields ``kb_id`` / ``kb_name``. A single batch
+        details request normalizes and enriches the page with descriptions when
+        possible; that optional request never prevents a usable name list from
+        being returned.
         """
         if not 1 <= limit <= 20:
             raise ValueError("IMA knowledge base list limit must be between 1 and 20.")

@@ -332,6 +332,13 @@ class TestClientKnowledgeBaseList:
         [
             (httpx.Response(200, json={"code": 20004, "msg": "bad key"}), ImaAuthError),
             (
+                httpx.Response(
+                    401,
+                    json={"code": 200002, "msg": "skill auth failed"},
+                ),
+                ImaAuthError,
+            ),
+            (
                 httpx.Response(200, json={"code": 110021, "msg": "slow down"}),
                 ImaRateLimitError,
             ),

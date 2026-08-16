@@ -129,7 +129,7 @@ async def search_knowledge_bases(
 
 - 先验证 `1 <= limit <= 20`。
 - 调用 `search_knowledge_base`，body 只含 `query`、`cursor`、`limit`。
-- 仅接受有非空字符串 `id` 与 `name` 的 dict；按 ID 保序去重。
+- 仅接受有非空字符串 `kb_id` 与 `kb_name` 的 IMA 原始条目；按 `kb_id` 保序去重，并在 DeepTutor 响应中归一化为 `id` / `name`。
 - 对本页 ID 调用一次 `get_knowledge_bases`；任何详情增强异常只令描述为空，不吞掉最初的列表异常。
 - 返回固定结构：
 
