@@ -169,8 +169,8 @@ class ImaClient:
             for raw in page:
                 if not isinstance(raw, dict):
                     continue
-                kb_id = str(raw.get("id") or "").strip()
-                name = str(raw.get("name") or "").strip()
+                kb_id = str(raw.get("kb_id") or "").strip()
+                name = str(raw.get("kb_name") or "").strip()
                 if not kb_id or not name or kb_id in seen:
                     continue
                 seen.add(kb_id)

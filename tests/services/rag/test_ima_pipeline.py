@@ -248,11 +248,11 @@ class TestClientKnowledgeBaseList:
                 return _ok(
                     {
                         "info_list": [
-                            {"id": "kb-1", "name": "Alpha"},
-                            {"id": "kb-1", "name": "Alpha duplicate"},
-                            {"id": "", "name": "Missing id"},
-                            {"id": "kb-2", "name": ""},
-                            {"id": "kb-3", "name": "Gamma"},
+                            {"kb_id": "kb-1", "kb_name": "Alpha"},
+                            {"kb_id": "kb-1", "kb_name": "Alpha duplicate"},
+                            {"kb_id": "", "kb_name": "Missing id"},
+                            {"kb_id": "kb-2", "kb_name": ""},
+                            {"kb_id": "kb-3", "kb_name": "Gamma"},
                         ],
                         "is_end": False,
                         "next_cursor": "cursor-2",
@@ -290,7 +290,7 @@ class TestClientKnowledgeBaseList:
             if request.url.path.endswith("/search_knowledge_base"):
                 return _ok(
                     {
-                        "info_list": [{"id": "kb-1", "name": "Alpha"}],
+                        "info_list": [{"kb_id": "kb-1", "kb_name": "Alpha"}],
                         "is_end": True,
                         "next_cursor": "",
                     }
