@@ -96,10 +96,11 @@ test('unexpected closes reconnect without creating concurrent sockets', () => {
 })
 
 test('wake reconnects immediately when a hidden page becomes active', () => {
-  let active = false
+  let active = true
   const { client, sockets, scheduled } = createHarness(() => active)
   client.start()
   sockets[0].open()
+  active = false
   sockets[0].drop()
   assert.equal(scheduled.length, 0, 'hidden pages should not spin retry timers')
 
