@@ -106,9 +106,7 @@ def test_loader_keeps_event_loop_responsive_while_parser_blocks(
         return await asyncio.wait_for(load_task, timeout=1)
 
     documents = asyncio.run(_exercise())
-    assert [document.text for document in documents] == [
-        "Parsed without blocking the loop"
-    ]
+    assert [document.text for document in documents] == ["Parsed without blocking the loop"]
 
 
 def test_loader_skips_document_when_active_engine_cannot_parse(
