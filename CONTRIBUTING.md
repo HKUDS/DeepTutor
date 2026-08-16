@@ -140,6 +140,7 @@ detect-secrets scan > .secrets.baseline
 
 | Task | Command |
 |---|---|
+| Check clean workspace + tracked hygiene | `python3 scripts/check_workspace_hygiene.py` |
 | Check repository hygiene | `python3 scripts/check_repo_hygiene.py` |
 | Check all files | `pre-commit run --all-files` |
 | Check quietly | `pre-commit run --all-files -q` |
