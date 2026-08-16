@@ -313,8 +313,12 @@ class AgentLoop:
                 # A mid-loop LLM failure (timeout / transient network) must not
                 # discard a turn that already gathered useful work. Salvage it
                 # with a forced finish; only a failure on the very first round
-                # (nothing gathered yet) propagates as before.
-                if state.rounds == 0:
+                # (nothing gathered yet) propagates as before. Once a failed
+                # stream emitted output, however, replay is unsafe: a second
+                # completion would mix new prose with the visible partial one.
+                if state.rounds == 0 or (
+                    isinstance(exc, LLMProviderTransportError) and exc.partial_response
+                ):
                     raise
                 logger.warning(
                     "agent loop round failed after %d round(s); forcing finish: %s",
@@ -532,10 +536,15 @@ class AgentLoop:
                 max_tokens=self.pipeline.loop_max_tokens,
                 tool_schemas=None,  # tools disabled so the model must finish
             )
+        except LLMProviderTransportError:
+            # Preserve the structured retryable error. Treating an unavailable
+            # provider as a successful empty answer hides the real failure and
+            # prevents callers from offering an accurate retry action.
+            raise
         except Exception as exc:
             # The salvage call itself failed (e.g. the provider is still
-            # stalling). Don't bubble up and lose the turn — emit the graceful
-            # fallback answer instead.
+            # returning unusable data). Don't bubble up and lose the turn —
+            # emit the graceful fallback answer instead.
             logger.warning("forced-finish LLM call failed: %s", exc)
             return await self._finalize_finish(
                 "",

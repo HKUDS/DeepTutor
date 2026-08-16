@@ -923,6 +923,122 @@ async def test_midstream_transport_failure_is_not_replayed(
 
 
 @pytest.mark.asyncio
+async def test_later_round_midstream_transport_failure_is_not_forced_finished(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Visible output after a tool round must not be mixed with a replay."""
+
+    async def _interrupted_stream():
+        yield _llm_chunk(content="Partial final answer.")
+        raise httpx.ReadError("peer closed the SSE stream")
+
+    class _ToolThenInterruptedClient:
+        def __init__(self) -> None:
+            self.call_count = 0
+            parent = self
+
+            class _Completions:
+                async def create(self, **kwargs):
+                    parent.call_count += 1
+                    if parent.call_count == 1:
+                        return _async_llm_stream(
+                            [
+                                _llm_chunk(
+                                    tool_calls=[
+                                        {
+                                            "id": "call-1",
+                                            "name": "web_search",
+                                            "arguments": json.dumps({"query": "q"}),
+                                        }
+                                    ]
+                                )
+                            ]
+                        )
+                    return _interrupted_stream()
+
+            self.chat = SimpleNamespace(completions=_Completions())
+
+    client = _ToolThenInterruptedClient()
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(agent_loop_mod, "_PROVIDER_RETRY_DELAYS", (0, 0))
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    bus = StreamBus()
+    events, consumer = await _collect_bus_events(bus)
+    with pytest.raises(LLMProviderTransportError) as raised:
+        await pipeline.run(
+            UnifiedContext(session_id="s1", user_message="Look up", enabled_tools=["web_search"]),
+            bus,
+        )
+    await bus.close()
+    await consumer
+
+    assert client.call_count == 2
+    assert _contents(events).count("Partial final answer.") == 1
+    assert raised.value.partial_response is True
+
+
+@pytest.mark.asyncio
+async def test_forced_finish_transport_failure_remains_structured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed salvage request must stay retryable instead of completing."""
+
+    class _ToolThenFailingClient:
+        def __init__(self) -> None:
+            self.call_count = 0
+            parent = self
+
+            class _Completions:
+                async def create(self, **kwargs):
+                    parent.call_count += 1
+                    if parent.call_count == 1:
+                        return _async_llm_stream(
+                            [
+                                _llm_chunk(
+                                    tool_calls=[
+                                        {
+                                            "id": "call-1",
+                                            "name": "web_search",
+                                            "arguments": json.dumps({"query": "q"}),
+                                        }
+                                    ]
+                                )
+                            ]
+                        )
+                    if parent.call_count == 2:
+                        raise RuntimeError("mid-loop application failure")
+                    raise TimeoutError("provider unavailable during forced finish")
+
+            self.chat = SimpleNamespace(completions=_Completions())
+
+    client = _ToolThenFailingClient()
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(agent_loop_mod, "_PROVIDER_RETRY_DELAYS", (0, 0))
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    bus = StreamBus()
+    _events, consumer = await _collect_bus_events(bus)
+    with pytest.raises(LLMProviderTransportError) as raised:
+        await pipeline.run(
+            UnifiedContext(session_id="s1", user_message="Look up", enabled_tools=["web_search"]),
+            bus,
+        )
+    await bus.close()
+    await consumer
+
+    # Tool round + failed ordinary round + three bounded finish attempts.
+    assert client.call_count == 5
+    assert raised.value.error_code == "provider_transport"
+    assert raised.value.retryable is True
+    assert raised.value.partial_response is False
+
+
+@pytest.mark.asyncio
 async def test_context_checkpoint_folds_completed_tool_rounds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
