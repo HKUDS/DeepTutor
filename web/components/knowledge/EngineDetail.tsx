@@ -142,7 +142,7 @@ const ENGINE_PREREQUISITES: Record<string, string> = {
     "Local knowledge-graph retrieval. Needs the optional dependency installed; indexing is LLM-heavy. Requires an active chat model and embedding model.",
   lightrag:
     "Graph + vector retrieval with multimodal parsing. Needs the optional dependency installed; indexing is LLM-heavy. Requires active chat and embedding models; multimodal also needs a vision model.",
-  ima: "Connect each Tencent IMA knowledge base with its own Client ID and API key. Retrieval is read-only and uses only titles and matched snippets returned by IMA.",
+  ima: "Connect each Tencent IMA knowledge base with its own Client ID and API key. Retrieval is read-only and loads bounded source text when IMA omits a matched snippet.",
 };
 
 function StatusBadge({ status }: { status: ProviderConnectionStatus }) {

@@ -1812,9 +1812,11 @@ async def connect_ima_route(payload: ConnectImaRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error connecting IMA knowledge base: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        # Never echo or log an upstream message from this credential-bearing
+        # flow. The exception class is enough for server-side diagnosis.
+        logger.error("Error connecting IMA knowledge base (%s)", type(exc).__name__)
+        raise HTTPException(status_code=500, detail="Could not connect the IMA knowledge base.")
 
     return {
         "status": "connected",

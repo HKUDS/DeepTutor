@@ -29,15 +29,21 @@ test("IMA belongs only to link-existing provider choices", () => {
   assert.equal(linkSourceEnabled({ ...providers[1], linkable: true }), true);
 });
 
-test("leaving the IMA source clears credentials from the mounted modal", () => {
-  const source = readFileSync(
+test("leaving the IMA source clears credentials from the mounted flow", () => {
+  const hookSource = readFileSync(
+    path.resolve("hooks/useImaConnection.ts"),
+    "utf8",
+  );
+  const modalSource = readFileSync(
     path.resolve("components/knowledge/CreateKbModal.tsx"),
     "utf8",
   );
 
+  assert.match(hookSource, /setClientId\(""\);\s+setApiKey\(""\);/);
+  assert.match(modalSource, /const handleClose = \(\) => {\s+imaConnection\.reset\(\);/);
   assert.match(
-    source,
-    /if \(linkSource === IMA_PROVIDER\) return;\s+imaRequestVersionRef\.current \+= 1;\s+setImaClientId\(""\);\s+setImaApiKey\(""\);/,
+    modalSource,
+    /if \(source !== IMA_PROVIDER\) imaConnection\.reset\(\);/,
   );
 });
 

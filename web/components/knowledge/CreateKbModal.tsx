@@ -13,31 +13,23 @@ import {
   Server,
 } from "lucide-react";
 import Modal from "@/components/common/Modal";
+import { useImaConnection } from "@/hooks/useImaConnection";
 import {
-  listImaKnowledgeBases,
-  probeImaKnowledgeBase,
   probeLightRagServer,
   probeLinkedFolder,
-  type ImaProbe,
   type KnowledgeUploadPolicy,
   type LightRagServerProbe,
   type LinkedFolderProbe,
   type RagProviderSummary,
 } from "@/lib/knowledge-api";
 import {
-  canConnectIma,
   createProviders,
-  emptyImaLookupState,
   IMA_PROVIDER,
   linkSourceEnabled,
-  mergeImaKnowledgeBases,
-  nextAutoName,
-  type ImaConnectionMode,
-  type ImaKnowledgeBaseOption,
-  type ImaLookupState,
 } from "@/lib/ima-connection";
 import { validateFiles } from "@/lib/knowledge-helpers";
 import FileDropZone from "./FileDropZone";
+import ImaConnectionFields from "./ImaConnectionFields";
 
 // Mirrors SUPPORTED_EXTENSIONS in the backend pageindex pipeline (PageIndex POST /doc/).
 const PAGEINDEX_FORMATS = [
@@ -136,17 +128,32 @@ export default function CreateKbModal({
     null,
   );
   const [serverProbing, setServerProbing] = useState(false);
-  const [imaClientId, setImaClientId] = useState("");
-  const [imaApiKey, setImaApiKey] = useState("");
-  const [imaMode, setImaMode] = useState<ImaConnectionMode>("automatic");
-  const [imaKnowledgeBaseId, setImaKnowledgeBaseId] = useState("");
-  const [imaLookup, setImaLookup] = useState(emptyImaLookupState);
-  const [imaManualProbe, setImaManualProbe] = useState<ImaProbe | null>(null);
-  const imaRequestVersionRef = useRef(0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const linkIsObsidian = linkSource === OBSIDIAN_SOURCE;
+  const linkIsIma = linkSource === IMA_PROVIDER;
+  const imaConnection = useImaConnection({
+    name,
+    onNameChange: setName,
+    onError: setError,
+  });
 
   const firstLinkable = providers.find((p) => p.linkable)?.id;
+
+  const handleClose = () => {
+    imaConnection.reset();
+    onClose();
+  };
+
+  const handleModeChange = (nextMode: Mode) => {
+    if (nextMode !== "link") imaConnection.reset();
+    setMode(nextMode);
+  };
+
+  const handleLinkSourceChange = (source: string) => {
+    if (source !== IMA_PROVIDER) imaConnection.reset();
+    setLinkSource(source);
+  };
 
   // Reset the form only on the closed → open transition. While the modal is
   // open, background indexing polls replace `providers` (and friends) every
@@ -175,13 +182,6 @@ export default function CreateKbModal({
     setServerMode("");
     setServerProbe(null);
     setServerProbing(false);
-    setImaClientId("");
-    setImaApiKey("");
-    setImaMode("automatic");
-    setImaKnowledgeBaseId("");
-    setImaLookup(emptyImaLookupState());
-    setImaManualProbe(null);
-    imaRequestVersionRef.current += 1;
   }, [isOpen, providers, firstLinkable, initialMode, initialSource]);
 
   // A fresh path / source invalidates a stale probe verdict.
@@ -193,42 +193,6 @@ export default function CreateKbModal({
   useEffect(() => {
     setServerProbe(null);
   }, [serverUrl, apiKey]);
-
-  // Credentials, mode, or a manual id change invalidates every earlier IMA
-  // list/probe verdict. The version also prevents slow stale responses from
-  // restoring a selection after the inputs changed.
-  useEffect(() => {
-    imaRequestVersionRef.current += 1;
-    setImaLookup((current) => ({
-      ...emptyImaLookupState(),
-      lastAutoName: current.lastAutoName,
-    }));
-    setImaManualProbe(null);
-  }, [imaClientId, imaApiKey, imaMode, imaKnowledgeBaseId]);
-
-  useEffect(() => {
-    if (linkSource === IMA_PROVIDER) return;
-    imaRequestVersionRef.current += 1;
-    setImaClientId("");
-    setImaApiKey("");
-    setImaMode("automatic");
-    setImaKnowledgeBaseId("");
-    setImaLookup(emptyImaLookupState());
-    setImaManualProbe(null);
-  }, [linkSource]);
-
-  // The modal remains mounted while closed, so clear credentials immediately
-  // rather than waiting for the next open transition.
-  useEffect(() => {
-    if (isOpen) return;
-    imaRequestVersionRef.current += 1;
-    setImaClientId("");
-    setImaApiKey("");
-    setImaMode("automatic");
-    setImaKnowledgeBaseId("");
-    setImaLookup(emptyImaLookupState());
-    setImaManualProbe(null);
-  }, [isOpen]);
 
   // ---- New mode (build a fresh index) ----------------------------------
   const activeProvider = providers.find((p) => p.id === provider);
@@ -252,22 +216,10 @@ export default function CreateKbModal({
   const selection = validateFiles(files, policyForProvider, t);
 
   // ---- Link mode (mount an existing folder) ----------------------------
-  const linkIsObsidian = linkSource === OBSIDIAN_SOURCE;
-  const linkIsIma = linkSource === IMA_PROVIDER;
   const trimmed = name.trim();
   const trimmedPath = folderPath.trim();
 
   const trimmedServerUrl = serverUrl.trim();
-
-  const imaCanSubmit = canConnectIma({
-    mode: imaMode,
-    name,
-    clientId: imaClientId,
-    apiKey: imaApiKey,
-    selectedId: imaLookup.selectedId,
-    manualKnowledgeBaseId: imaKnowledgeBaseId,
-    manualVerification: imaLookup.manualVerification,
-  });
 
   const canSubmit = (() => {
     if (submitting) return false;
@@ -279,7 +231,7 @@ export default function CreateKbModal({
       }
       return !providerUnavailable && selection.validFiles.length > 0;
     }
-    if (linkIsIma) return imaCanSubmit;
+    if (linkIsIma) return imaConnection.canSubmit;
     if (!trimmedPath) return false;
     if (linkIsObsidian) return true;
     // An engine index must pass the probe before it can be linked.
@@ -320,102 +272,6 @@ export default function CreateKbModal({
     }
   };
 
-  const handleLoadIma = async (reset: boolean) => {
-    const clientId = imaClientId.trim();
-    const key = imaApiKey.trim();
-    if (!clientId || !key) return;
-    const version = ++imaRequestVersionRef.current;
-    const cursor = reset ? "" : imaLookup.nextCursor;
-    setError(null);
-    setImaLookup((current) =>
-      reset
-        ? {
-            ...emptyImaLookupState(),
-            status: "loading",
-            isEnd: false,
-            lastAutoName: current.lastAutoName,
-          }
-        : { ...current, status: "loading" },
-    );
-    try {
-      const page = await listImaKnowledgeBases({
-        clientId,
-        apiKey: key,
-        cursor,
-        limit: 20,
-      });
-      if (imaRequestVersionRef.current !== version) return;
-      setImaLookup((current) => {
-        const knowledgeBases = mergeImaKnowledgeBases(
-          reset ? [] : current.knowledgeBases,
-          page.knowledge_bases,
-        );
-        return {
-          ...current,
-          status: knowledgeBases.length > 0 ? "ready" : "empty",
-          knowledgeBases,
-          selectedId: reset ? "" : current.selectedId,
-          nextCursor: page.next_cursor,
-          isEnd: page.is_end,
-          manualVerification: null,
-          lastAutoName: current.lastAutoName,
-        };
-      });
-    } catch (err) {
-      if (imaRequestVersionRef.current !== version) return;
-      setImaLookup((current) => ({
-        ...current,
-        status: current.knowledgeBases.length > 0 ? "ready" : "error",
-      }));
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const handleSelectIma = (item: ImaKnowledgeBaseOption) => {
-    const shouldAutoFill = !name.trim() || name === imaLookup.lastAutoName;
-    setName(nextAutoName(name, imaLookup.lastAutoName, item.name));
-    setImaLookup((current) => ({
-      ...current,
-      selectedId: item.id,
-      lastAutoName: shouldAutoFill ? item.name : current.lastAutoName,
-    }));
-  };
-
-  const handleProbeIma = async () => {
-    const clientId = imaClientId.trim();
-    const key = imaApiKey.trim();
-    const knowledgeBaseId = imaKnowledgeBaseId.trim();
-    if (!clientId || !key || !knowledgeBaseId) return;
-    const version = ++imaRequestVersionRef.current;
-    setError(null);
-    setImaLookup((current) => ({ ...current, status: "loading" }));
-    try {
-      const result = await probeImaKnowledgeBase({
-        clientId,
-        apiKey: key,
-        knowledgeBaseId,
-      });
-      if (imaRequestVersionRef.current !== version) return;
-      setImaManualProbe(result);
-      setImaLookup((current) => ({
-        ...current,
-        status: result.ok ? "manual_verified" : "error",
-        manualVerification: result.ok
-          ? { ok: true, clientId, apiKey: key, knowledgeBaseId }
-          : null,
-      }));
-    } catch (err) {
-      if (imaRequestVersionRef.current !== version) return;
-      setImaLookup((current) => ({
-        ...current,
-        status: "error",
-        manualVerification: null,
-      }));
-      setImaManualProbe(null);
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
   const handleSubmit = async () => {
     if (!canSubmit) return;
     setSubmitting(true);
@@ -439,12 +295,9 @@ export default function CreateKbModal({
       } else if (linkIsIma) {
         await onConnectIma({
           name: trimmed,
-          clientId: imaClientId.trim(),
-          apiKey: imaApiKey.trim(),
-          knowledgeBaseId:
-            imaMode === "automatic"
-              ? imaLookup.selectedId
-              : imaKnowledgeBaseId.trim(),
+          clientId: imaConnection.clientId.trim(),
+          apiKey: imaConnection.apiKey.trim(),
+          knowledgeBaseId: imaConnection.knowledgeBaseId,
         });
       } else if (linkIsObsidian) {
         await onConnectObsidian({ name: trimmed, vaultPath: trimmedPath });
@@ -455,7 +308,7 @@ export default function CreateKbModal({
           provider: linkSource,
         });
       }
-      onClose();
+      handleClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -475,7 +328,7 @@ export default function CreateKbModal({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={submitting ? () => {} : onClose}
+      onClose={submitting ? () => {} : handleClose}
       title={t("Create knowledge base")}
       titleIcon={<Plus size={16} />}
       width="lg"
@@ -485,7 +338,7 @@ export default function CreateKbModal({
         <div className="flex items-center justify-end gap-2">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             disabled={submitting}
             className="rounded-md px-3 py-1.5 text-[12.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-40"
           >
@@ -513,7 +366,7 @@ export default function CreateKbModal({
         {/* New vs. link existing */}
         <ModeToggle
           mode={mode}
-          onChange={setMode}
+          onChange={handleModeChange}
           disabled={submitting}
           t={t}
         />
@@ -569,7 +422,7 @@ export default function CreateKbModal({
           <LinkModeFields
             providers={providers}
             linkSource={linkSource}
-            setLinkSource={setLinkSource}
+            setLinkSource={handleLinkSourceChange}
             linkIsObsidian={linkIsObsidian}
             linkIsIma={linkIsIma}
             folderPath={folderPath}
@@ -581,22 +434,8 @@ export default function CreateKbModal({
             connectionForm={
               linkIsIma ? (
                 <ImaConnectionFields
-                  clientId={imaClientId}
-                  setClientId={setImaClientId}
-                  apiKey={imaApiKey}
-                  setApiKey={setImaApiKey}
-                  mode={imaMode}
-                  setMode={setImaMode}
-                  manualKnowledgeBaseId={imaKnowledgeBaseId}
-                  setManualKnowledgeBaseId={setImaKnowledgeBaseId}
-                  lookup={imaLookup}
-                  manualProbe={imaManualProbe}
+                  connection={imaConnection}
                   submitting={submitting}
-                  onLoad={() => void handleLoadIma(true)}
-                  onLoadMore={() => void handleLoadIma(false)}
-                  onSelect={handleSelectIma}
-                  onProbe={() => void handleProbeIma()}
-                  t={t}
                 />
               ) : null
             }
@@ -941,247 +780,6 @@ function ServerProbeVerdict({
           {probe.auth_required ? t("API key accepted") : t("Open access")}
         </span>
       </div>
-    </div>
-  );
-}
-
-function ImaConnectionFields({
-  clientId,
-  setClientId,
-  apiKey,
-  setApiKey,
-  mode,
-  setMode,
-  manualKnowledgeBaseId,
-  setManualKnowledgeBaseId,
-  lookup,
-  manualProbe,
-  submitting,
-  onLoad,
-  onLoadMore,
-  onSelect,
-  onProbe,
-  t,
-}: {
-  clientId: string;
-  setClientId: (value: string) => void;
-  apiKey: string;
-  setApiKey: (value: string) => void;
-  mode: ImaConnectionMode;
-  setMode: (value: ImaConnectionMode) => void;
-  manualKnowledgeBaseId: string;
-  setManualKnowledgeBaseId: (value: string) => void;
-  lookup: ImaLookupState;
-  manualProbe: ImaProbe | null;
-  submitting: boolean;
-  onLoad: () => void;
-  onLoadMore: () => void;
-  onSelect: (item: ImaKnowledgeBaseOption) => void;
-  onProbe: () => void;
-  t: TFn;
-}) {
-  const loading = lookup.status === "loading";
-  const credentialsReady = clientId.trim() && apiKey.trim();
-
-  return (
-    <div className="space-y-3">
-      <p className="text-[11.5px] leading-relaxed text-[var(--muted-foreground)]">
-        {t(
-          "DeepTutor searches titles and matched snippets from IMA. It does not download full documents or write to IMA.",
-        )}
-      </p>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-            {t("Client ID")}
-          </label>
-          <input
-            value={clientId}
-            onChange={(event) => setClientId(event.target.value)}
-            disabled={submitting}
-            autoComplete="off"
-            className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 font-mono text-[12.5px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-            {t("API key")}
-          </label>
-          <input
-            value={apiKey}
-            onChange={(event) => setApiKey(event.target.value)}
-            disabled={submitting}
-            type="password"
-            autoComplete="off"
-            className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[12.5px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
-          />
-        </div>
-      </div>
-
-      <p className="text-[11px] text-[var(--muted-foreground)]">
-        {t("Create these credentials on the Tencent IMA agent interface.")}{" "}
-        <a
-          href="https://ima.qq.com/agent-interface"
-          target="_blank"
-          rel="noreferrer"
-          className="font-medium text-[var(--foreground)] underline underline-offset-2"
-        >
-          {t("Open IMA")}
-        </a>
-      </p>
-
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => setMode("automatic")}
-          disabled={submitting}
-          className={`rounded-lg border px-3 py-1.5 text-[11.5px] font-medium transition-colors ${
-            mode === "automatic"
-              ? "border-[var(--primary)] bg-[var(--primary)]/5 text-[var(--foreground)]"
-              : "border-[var(--border)] text-[var(--muted-foreground)]"
-          }`}
-        >
-          {t("Choose from knowledge base list")}
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("manual")}
-          disabled={submitting}
-          className={`rounded-lg border px-3 py-1.5 text-[11.5px] font-medium transition-colors ${
-            mode === "manual"
-              ? "border-[var(--primary)] bg-[var(--primary)]/5 text-[var(--foreground)]"
-              : "border-[var(--border)] text-[var(--muted-foreground)]"
-          }`}
-        >
-          {t("Use knowledge base ID instead")}
-        </button>
-      </div>
-
-      {mode === "automatic" ? (
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={onLoad}
-            disabled={submitting || loading || !credentialsReady}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:border-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {loading && lookup.knowledgeBases.length === 0 ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Server className="h-3.5 w-3.5" />
-            )}
-            {t("Verify and load knowledge bases")}
-          </button>
-
-          {lookup.status === "empty" && (
-            <div className="rounded-lg border border-[var(--border)] bg-[var(--muted)]/30 px-3 py-3 text-[12px] text-[var(--muted-foreground)]">
-              {t("No accessible knowledge bases found.")}
-            </div>
-          )}
-
-          {lookup.knowledgeBases.length > 0 && (
-            <div className="space-y-2">
-              <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-xl border border-[var(--border)] p-2">
-                {lookup.knowledgeBases.map((item) => {
-                  const selected = lookup.selectedId === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => onSelect(item)}
-                      disabled={submitting}
-                      className={`flex w-full items-start justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${
-                        selected
-                          ? "border-[var(--primary)] bg-[var(--primary)]/5"
-                          : "border-transparent hover:bg-[var(--muted)]/50"
-                      }`}
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-[12.5px] font-medium text-[var(--foreground)]">
-                          {item.name}
-                        </span>
-                        {item.description && (
-                          <span className="mt-0.5 line-clamp-2 block text-[11px] leading-snug text-[var(--muted-foreground)]">
-                            {item.description}
-                          </span>
-                        )}
-                      </span>
-                      {selected && (
-                        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--primary)]" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              {!lookup.isEnd && (
-                <button
-                  type="button"
-                  onClick={onLoadMore}
-                  disabled={submitting || loading}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[11.5px] font-medium text-[var(--foreground)] disabled:opacity-40"
-                >
-                  {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  {t("Load more")}
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-2">
-          <label className="block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-            {t("Knowledge Base ID")}
-          </label>
-          <div className="flex gap-2">
-            <input
-              value={manualKnowledgeBaseId}
-              onChange={(event) => setManualKnowledgeBaseId(event.target.value)}
-              disabled={submitting}
-              autoComplete="off"
-              className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 font-mono text-[12.5px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
-            />
-            <button
-              type="button"
-              onClick={onProbe}
-              disabled={
-                submitting ||
-                loading ||
-                !credentialsReady ||
-                !manualKnowledgeBaseId.trim()
-              }
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 text-[12px] font-medium text-[var(--foreground)] disabled:opacity-40"
-            >
-              {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {t("Verify knowledge base")}
-            </button>
-          </div>
-
-          {manualProbe &&
-            (manualProbe.ok ? (
-              <div className="rounded-lg border border-[var(--border)] bg-[var(--muted)]/40 px-3 py-2.5 text-[12px]">
-                <div className="flex items-center gap-1.5 font-medium text-emerald-700 dark:text-emerald-300">
-                  <Check className="h-3.5 w-3.5" />
-                  {t("Knowledge base verified")}
-                </div>
-                {manualProbe.knowledge_base_name && (
-                  <p className="mt-1 text-[var(--foreground)]">
-                    {manualProbe.knowledge_base_name}
-                  </p>
-                )}
-                {manualProbe.description && (
-                  <p className="mt-0.5 text-[11px] text-[var(--muted-foreground)]">
-                    {manualProbe.description}
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
-                {manualProbe.error || t("Could not connect")}
-              </div>
-            ))}
-        </div>
-      )}
     </div>
   );
 }
