@@ -1,0 +1,154 @@
+{
+  "windowInfo": {
+    "before": {
+      "left": 6,
+      "top": 31,
+      "width": 1440,
+      "height": 900,
+      "windowState": "normal"
+    },
+    "after": {
+      "left": 6,
+      "top": 31,
+      "width": 1440,
+      "height": 900,
+      "windowState": "normal"
+    },
+    "inner": {
+      "w": 1440,
+      "h": 900
+    }
+  },
+  "steps": [
+    {
+      "name": "theme",
+      "items": [
+        {
+          "name": "亮色",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1065,
+            "y": 230,
+            "width": 118,
+            "height": 30
+          }
+        },
+        {
+          "name": "暗色",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1065,
+            "y": 260,
+            "width": 118,
+            "height": 30
+          }
+        }
+      ]
+    },
+    {
+      "name": "language",
+      "items": [
+        {
+          "name": "简体中文",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1065,
+            "y": 297,
+            "width": 118,
+            "height": 30
+          }
+        },
+        {
+          "name": "English",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1065,
+            "y": 327,
+            "width": 118,
+            "height": 28
+          }
+        }
+      ]
+    },
+    {
+      "name": "gear",
+      "items": [
+        {
+          "name": "录制快捷键",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1065,
+            "y": 409,
+            "width": 118,
+            "height": 30
+          }
+        },
+        {
+          "name": "恢复默认值",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1065,
+            "y": 439,
+            "width": 118,
+            "height": 30
+          }
+        }
+      ]
+    },
+    {
+      "name": "localLink",
+      "items": [
+        {
+          "name": "始终询问",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1058,
+            "y": 480,
+            "width": 125,
+            "height": 30
+          }
+        },
+        {
+          "name": "内置浏览器",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1058,
+            "y": 510,
+            "width": 125,
+            "height": 30
+          }
+        },
+        {
+          "name": "系统默认浏览器",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1058,
+            "y": 540,
+            "width": 125,
+            "height": 30
+          }
+        }
+      ]
+    },
+    {
+      "name": "path",
+      "items": [
+        {
+          "name": "path-input",
+          "visible": true,
+          "covered": false
+        }
+      ]
+    }
+  ],
+  "failed": []
+}

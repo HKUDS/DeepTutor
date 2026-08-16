@@ -1,0 +1,451 @@
+{
+  "mark": "AskoraSidebarProbe 1786805452594",
+  "steps": {},
+  "before": {
+    "label": "before",
+    "url": "https://work.trae.ai/",
+    "title": "TraeWork | TRAE - Collaborate with Intelligence",
+    "heading": "任务列表",
+    "nav": [
+      {
+        "text": "新建任务 ⌘ ⌃ N",
+        "className": "navItem-r4wswG navItemActive-FMVRXn",
+        "active": true
+      },
+      {
+        "text": "插件市场",
+        "className": "navItem-r4wswG ",
+        "active": false
+      },
+      {
+        "text": "自动化",
+        "className": "navItem-r4wswG ",
+        "active": false
+      }
+    ],
+    "items": [
+      {
+        "sessionId": "6a80776968c1e9eb4f5eb964",
+        "text": "分析代码性能瓶颈",
+        "selected": false,
+        "className": "taskItem"
+      },
+      {
+        "sessionId": "",
+        "text": "分析代码性能瓶颈",
+        "selected": false,
+        "className": "taskItem"
+      },
+      {
+        "sessionId": "6a7ee9e617e7e38a635f9f24",
+        "text": "Greeting",
+        "selected": false,
+        "className": "taskItem"
+      },
+      {
+        "sessionId": "",
+        "text": "Greeting",
+        "selected": false,
+        "className": "taskItem"
+      }
+    ],
+    "selectedHeader": "",
+    "headerTime": "",
+    "isHome": true,
+    "isConversation": false
+  },
+  "clickNew": {
+    "ok": true,
+    "text": "新建任务 ⌘ ⌃ N"
+  },
+  "afterNewClick": {
+    "label": "after-new-click",
+    "url": "https://work.trae.ai/",
+    "title": "TraeWork | TRAE - Collaborate with Intelligence",
+    "heading": "任务列表",
+    "nav": [
+      {
+        "text": "新建任务 ⌘ ⌃ N",
+        "className": "navItem-r4wswG navItemActive-FMVRXn",
+        "active": true
+      },
+      {
+        "text": "插件市场",
+        "className": "navItem-r4wswG ",
+        "active": false
+      },
+      {
+        "text": "自动化",
+        "className": "navItem-r4wswG ",
+        "active": false
+      }
+    ],
+    "items": [
+      {
+        "sessionId": "6a80776968c1e9eb4f5eb964",
+        "text": "分析代码性能瓶颈",
+        "selected": false,
+        "className": "taskItem"
+      },
+      {
+        "sessionId": "",
+        "text": "分析代码性能瓶颈",
+        "selected": false,
+        "className": "taskItem"
+      },
+      {
+        "sessionId": "6a7ee9e617e7e38a635f9f24",
+        "text": "Greeting",
+        "selected": false,
+        "className": "taskItem"
+      },
+      {
+        "sessionId": "",
+        "text": "Greeting",
+        "selected": false,
+        "className": "taskItem"
+      }
+    ],
+    "selectedHeader": "",
+    "headerTime": "",
+    "isHome": true,
+    "isConversation": false
+  },
+  "afterType": {
+    "label": "after-type",
+    "url": "https://work.trae.ai/",
+    "title": "TraeWork | TRAE - Collaborate with Intelligence",
+    "heading": "任务列表",
+    "nav": [
+      {
+        "text": "新建任务 ⌘ ⌃ N",
+        "className": "navItem-r4wswG navItemActive-FMVRXn",
+        "active": true
+      },
+      {
+        "text": "插件市场",
+        "className": "navItem-r4wswG ",
+        "active": false
+      },
+      {
+        "text": "自动化",
+        "className": "navItem-r4wswG ",
+        "active": false
+      }
+    ],
+    "items": [
+      {
+        "sessionId": "6a80776968c1e9eb4f5eb964",
+        "text": "分析代码性能瓶颈",
+        "selected": false,
+        "className": "taskItem"
+      },
+      {
+        "sessionId": "",
+        "text": "分析代码性能瓶颈",
+        "selected": false,
+        "className": "taskItem"
+      },
+      {
+        "sessionId": "6a7ee9e617e7e38a635f9f24",
+        "text": "Greeting",
+        "selected": false,
+        "className": "taskItem"
+      },
+      {
+        "sessionId": "",
+        "text": "Greeting",
+        "selected": false,
+        "className": "taskItem"
+      }
+    ],
+    "selectedHeader": "",
+    "headerTime": "",
+    "isHome": true,
+    "isConversation": false
+  },
+  "afterSend1_5s": {
+    "label": "after-send-1.5s",
+    "url": "https://work.trae.ai/session/6a807ccf91391aef3a64aa22",
+    "title": "TraeWork | TRAE - Collaborate with Intelligence",
+    "heading": "任务列表",
+    "nav": [
+      {
+        "text": "新建任务",
+        "className": "navItem-r4wswG ",
+        "active": false
+      },
+      {
+        "text": "插件市场",
+        "className": "navItem-r4wswG ",
+        "active": false
+      },
+      {
+        "text": "自动化",
+        "className": "navItem-r4wswG ",
+        "active": false
+      }
+    ],
+    "items": [
+      {
+        "sessionId": "6a807ccf91391aef3a64aa22",
+        "text": "新任务",
+        "selected": true,
+        "className": "taskItem taskItemSelected"
+      },
+      {
+        "sessionId": "",
+        "text": "新任务",
+        "selected": true,
+        "className": "taskItem taskItemSelected"
+      },
+      {
+        "sessionId": "6a80776968c1e9eb4f5eb964",
+        "text": "分析代码性能瓶颈",
+        "selected": false,
+        "className": "taskItem"
+      },
+      {
+        "sessionId": "",
+        "text": "分析代码性能瓶颈",
+        "selected": false,
+        "className": "taskItem"
+      },
+      {
+        "sessionId": "6a7ee9e617e7e38a635f9f24",
+        "text": "Greeting",
+        "selected": false,
+        "className": "taskItem"
+      },
+      {
+        "sessionId": "",
+        "text": "Greeting",
+        "selected": false,
+        "className": "taskItem"
+      }
+    ],
+    "selectedHeader": "新任务",
+    "headerTime": "22:50",
+    "isHome": false,
+    "isConversation": true
+  },
+  "afterSend4s": {
+    "label": "after-send-4s",
+    "url": "https://work.trae.ai/session/6a807ccf91391aef3a64aa22",
+    "title": "TraeWork | TRAE - Collaborate with Intelligence",
+    "heading": "任务列表",
+    "nav": [
+      {
+        "text": "新建任务",
+        "className": "navItem-r4wswG ",
+        "active": false
+      },
+      {
+        "text": "插件市场",
+        "className": "navItem-r4wswG ",
+        "active": false
+      },
+      {
+        "text": "自动化",
+        "className": "navItem-r4wswG ",
+        "active": false
+      }
+    ],
+    "items": [
+      {
+        "sessionId": "6a807ccf91391aef3a64aa22",
+        "text": "Askora Sidebar Probe",
+        "selected": true,
+        "className": "taskItem taskItemSelected"
+      },
+      {
+        "sessionId": "",
+        "text": "Askora Sidebar Probe",
+        "selected": true,
+        "className": "taskItem taskItemSelected"
+      },
+      {
+        "sessionId": "6a80776968c1e9eb4f5eb964",
+        "text": "分析代码性能瓶颈",
+        "selected": false,
+        "className": "taskItem"
+      },
+      {
+        "sessionId": "",
+        "text": "分析代码性能瓶颈",
+        "selected": false,
+        "className": "taskItem"
+      },
+      {
+        "sessionId": "6a7ee9e617e7e38a635f9f24",
+        "text": "Greeting",
+        "selected": false,
+        "className": "taskItem"
+      },
+      {
+        "sessionId": "",
+        "text": "Greeting",
+        "selected": false,
+        "className": "taskItem"
+      }
+    ],
+    "selectedHeader": "Askora Sidebar Probe",
+    "headerTime": "22:50",
+    "isHome": false,
+    "isConversation": true
+  },
+  "requests": [
+    {
+      "t": 1786805455069,
+      "method": "POST",
+      "type": "fetch",
+      "url": "https://core-normal.trae.ai/api/remote/v1/chat_sessions"
+    },
+    {
+      "t": 1786805455434,
+      "method": "GET",
+      "type": "fetch",
+      "url": "https://core-normal.trae.ai/api/remote/v1/chat_sessions/6a807ccf91391aef3a64aa22"
+    },
+    {
+      "t": 1786805455516,
+      "method": "GET",
+      "type": "stylesheet",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/css/async/session/layout.936e4054.css"
+    },
+    {
+      "t": 1786805455516,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/async/session/layout.cc8cd22c.js"
+    },
+    {
+      "t": 1786805455519,
+      "method": "GET",
+      "type": "stylesheet",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/css/async/session/(sessionId)/page.c8251d02.css"
+    },
+    {
+      "t": 1786805455519,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/async/session/(sessionId)/page.0c866e7b.js"
+    },
+    {
+      "t": 1786805455551,
+      "method": "GET",
+      "type": "fetch",
+      "url": "https://core-normal.trae.ai/api/remote/v1/chat_sessions/6a807ccf91391aef3a64aa22"
+    },
+    {
+      "t": 1786805455552,
+      "method": "GET",
+      "type": "fetch",
+      "url": "https://core-normal.trae.ai/api/remote/v1/chat_sessions/6a807ccf91391aef3a64aa22/messages?page_size=20"
+    },
+    {
+      "t": 1786805455820,
+      "method": "GET",
+      "type": "fetch",
+      "url": "https://core-normal.trae.ai/api/remote/v1/chat_sessions/6a807ccf91391aef3a64aa22/events"
+    },
+    {
+      "t": 1786805458962,
+      "method": "POST",
+      "type": "fetch",
+      "url": "https://core-normal.trae.ai/api/remote/v1/chat_sessions/6a807ccf91391aef3a64aa22/commit"
+    }
+  ],
+  "responses": [
+    {
+      "t": 1786805455543,
+      "status": 200,
+      "method": "POST",
+      "url": "https://core-normal.trae.ai/api/remote/v1/chat_sessions",
+      "bodyPreview": "{\"code\":0,\"data\":{\"chat_session_id\":\"6a807ccf91391aef3a64aa22\",\"status\":2,\"message_id\":\"6a807ccf91391aef3a64aa23\"},\"message\":\"success\"}"
+    },
+    {
+      "t": 1786805455683,
+      "status": 200,
+      "method": "GET",
+      "url": "https://core-normal.trae.ai/api/remote/v1/chat_sessions/6a807ccf91391aef3a64aa22",
+      "bodyPreview": "{\"code\":0,\"data\":{\"chat_session_id\":\"6a807ccf91391aef3a64aa22\",\"user_id\":\"7479326807670998023\",\"status\":2,\"mode\":\"code\",\"target\":{\"review_status\":\"idle\"},\"created_at\":\"1786805455343\",\"updated_at\":\"1786805455451\",\"extra\":{\"primary_sandbox_type\":\"agent\"},\"sandbox\":{\"name\":\"run-agent-6a807ccf91391aef3a64aa22-msuhu148\",\"allocation_status\":2,\"sandbox_type\":\"agent\"},\"explorer_url\":\"https://agent-sandbox-my-b1-gw.trae.ai/explorer/6a807ccf91391aef3a64aa22\",\"vnc_template_url\":\"wss://${SandboxName}.agent-sandbox-my-b1-gw.trae.ai/websockify\",\"preview_url\":\"https://run-agent-6a807ccf91391aef3a64aa22-msuhu148-preview.agent-sandbox-my-b1-gw.trae.ai/\",\"workspace_path\":\"/workspace\",\"uploads_path\":\".uploads\",\"origin\":\"web\",\"primary_sandbox\":{\"name\":\"run-agent-6a807ccf91391aef3a64aa22-msuhu148\",\"allocation_status\":2,\"sandbox_type\":\"agent\"}},\"message\":\"success\"}"
+    },
+    {
+      "t": 1786805455790,
+      "status": 200,
+      "method": "GET",
+      "url": "https://core-normal.trae.ai/api/remote/v1/chat_sessions/6a807ccf91391aef3a64aa22/messages?page_size=20",
+      "bodyPreview": "{\"code\":0,\"data\":{\"items\":[{\"chat_session_id\":\"6a807ccf91391aef3a64aa22\",\"message_id\":\"6a807ccf91391aef3a64aa23\",\"status\":\"in_progress\",\"message_type\":\"general\",\"role\":\"user\",\"content\":\"[{\\\"type\\\": \\\"text\\\", \\\"text_content\\\": \\\"AskoraSidebarProbe 1786805452594\\\"}]\",\"revertible\":true,\"agent_type\":\"solo_agent_remote\",\"created_at\":\"1786805455354\",\"query\":\"[{\\\"data\\\": {\\\"content\\\": \\\"AskoraSidebarProbe 1786805452594\\\"}, \\\"type\\\": \\\"text\\\"}]\",\"is_archived\":false}],\"total\":1},\"message\":\"success\"}"
+    },
+    {
+      "t": 1786805455820,
+      "status": 200,
+      "method": "GET",
+      "url": "https://core-normal.trae.ai/api/remote/v1/chat_sessions/6a807ccf91391aef3a64aa22",
+      "bodyPreview": "{\"code\":0,\"data\":{\"chat_session_id\":\"6a807ccf91391aef3a64aa22\",\"user_id\":\"7479326807670998023\",\"status\":2,\"mode\":\"code\",\"target\":{\"review_status\":\"idle\"},\"created_at\":\"1786805455343\",\"updated_at\":\"1786805455451\",\"extra\":{\"primary_sandbox_type\":\"agent\"},\"sandbox\":{\"name\":\"run-agent-6a807ccf91391aef3a64aa22-msuhu148\",\"allocation_status\":2,\"sandbox_type\":\"agent\"},\"explorer_url\":\"https://agent-sandbox-my-b1-gw.trae.ai/explorer/6a807ccf91391aef3a64aa22\",\"vnc_template_url\":\"wss://${SandboxName}.agent-sandbox-my-b1-gw.trae.ai/websockify\",\"preview_url\":\"https://run-agent-6a807ccf91391aef3a64aa22-msuhu148-preview.agent-sandbox-my-b1-gw.trae.ai/\",\"workspace_path\":\"/workspace\",\"uploads_path\":\".uploads\",\"origin\":\"web\",\"primary_sandbox\":{\"name\":\"run-agent-6a807ccf91391aef3a64aa22-msuhu148\",\"allocation_status\":2,\"sandbox_type\":\"agent\"}},\"message\":\"success\"}"
+    },
+    {
+      "t": 1786805457056,
+      "status": 200,
+      "method": "GET",
+      "url": "https://core-normal.trae.ai/api/remote/v1/chat_sessions/6a807ccf91391aef3a64aa22/events",
+      "bodyPreview": null
+    }
+  ],
+  "delta": {
+    "itemsBeforeNew": [
+      "分析代码性能瓶颈",
+      "分析代码性能瓶颈",
+      "Greeting",
+      "Greeting"
+    ],
+    "itemsAfterNewClick": [
+      "分析代码性能瓶颈",
+      "分析代码性能瓶颈",
+      "Greeting",
+      "Greeting"
+    ],
+    "itemsAfterSend": [
+      "Askora Sidebar Probe",
+      "Askora Sidebar Probe",
+      "分析代码性能瓶颈",
+      "分析代码性能瓶颈",
+      "Greeting",
+      "Greeting"
+    ],
+    "newAfterClick": [],
+    "newAfterSend": [
+      {
+        "sessionId": "6a807ccf91391aef3a64aa22",
+        "text": "Askora Sidebar Probe",
+        "selected": true,
+        "className": "taskItem taskItemSelected"
+      },
+      {
+        "sessionId": "",
+        "text": "Askora Sidebar Probe",
+        "selected": true,
+        "className": "taskItem taskItemSelected"
+      }
+    ],
+    "urlBefore": "https://work.trae.ai/",
+    "urlAfterClick": "https://work.trae.ai/",
+    "urlAfterSend": "https://work.trae.ai/session/6a807ccf91391aef3a64aa22",
+    "headerAfterSend": "Askora Sidebar Probe",
+    "selectedAfterSend": [
+      {
+        "sessionId": "6a807ccf91391aef3a64aa22",
+        "text": "Askora Sidebar Probe",
+        "selected": true,
+        "className": "taskItem taskItemSelected"
+      },
+      {
+        "sessionId": "",
+        "text": "Askora Sidebar Probe",
+        "selected": true,
+        "className": "taskItem taskItemSelected"
+      }
+    ]
+  }
+}

@@ -1,0 +1,2108 @@
+{
+  "site": "askora",
+  "steps": {},
+  "initialUrl": "http://127.0.0.1:5173/",
+  "clickNew": {
+    "ok": true,
+    "text": "新建对话\n⌃\n⌘\nN",
+    "className": "navItem-r4wswG navItemActive-FMVRXn"
+  },
+  "afterNew": {
+    "label": "after-new",
+    "url": "http://127.0.0.1:5173/",
+    "title": "Askora",
+    "activeTag": "BODY",
+    "activeClass": "",
+    "editable": {
+      "tag": "DIV",
+      "className": "chat-input-v2-input-box-editable",
+      "role": "textbox",
+      "contentEditable": "true",
+      "spellcheck": true,
+      "ariaDisabled": null,
+      "ariaReadonly": null,
+      "ariaMultiline": null,
+      "disabled": false,
+      "readOnly": false,
+      "text": "",
+      "html": "",
+      "childCount": 0,
+      "childTags": [],
+      "attrs": [
+        [
+          "class",
+          "chat-input-v2-input-box-editable"
+        ],
+        [
+          "contenteditable",
+          "true"
+        ],
+        [
+          "role",
+          "textbox"
+        ],
+        [
+          "spellcheck",
+          "true"
+        ],
+        [
+          "style",
+          "user-select: text; white-space: pre-wrap; word-break: break-word;"
+        ]
+      ],
+      "styleAttr": "user-select: text; white-space: pre-wrap; word-break: break-word;",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "20",
+        "opacity": "1",
+        "userSelect": "text",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "placeholder": {
+      "text": "围绕你的资料开始学习，Askora 会决定下一步。",
+      "display": "block",
+      "className": "chat-input-v2-placeholder",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "10",
+        "opacity": "1",
+        "userSelect": "none",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "send": {
+      "tag": "BUTTON",
+      "className": "chat-input-v2-send-button",
+      "ariaLabel": "发送",
+      "disabled": false,
+      "ariaDisabled": null,
+      "html": "<svg width=\"15\" height=\"15\" viewBox=\"0 0 16 16\" fill=\"currentColor\"><path d=\"M2.37305 10V6C2.37305 5.6539 2.6539 5.37305 3 5.37305C3.3461 5.37305 3.62695 5.6539 3.62695 6V10C3.62695 10.3461 3.3461 10.627 3 10.627C2.6539 10.627 2.37305 10.3461 2.37305 10zM12.373 8.66659V7.33325C12.373 6.98715 12.6539",
+      "cs": {
+        "display": "flex",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "auto",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "container": {
+      "className": "chat-input-v2-container chat-input-v2-container--has-focus chat-input-v2-container--empty messageInputChatInput messageInputChatInputHome",
+      "hasFocus": true,
+      "empty": true,
+      "noFocus": false
+    },
+    "overlay": {
+      "className": "chat-input-v2-slot-overlay",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "100",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "chain": [
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-editable",
+        "role": "textbox",
+        "contentEditable": "true",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-wrapper chat-input-v2-input-box--modern-scroll",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-upper-area",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-editor-part",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-container chat-input-v2-container--has-focus chat-input-v2-container--empty messageInputChatInput messageInputChatInputHome",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputEditorWrapper",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputContainer",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "homeMessageInput-bhe4cx",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "workspace-sBvxKr",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "contentWrapper-U1GjQr",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "MAIN",
+        "id": "main-container",
+        "className": "main-KqevMo",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "layout-kZA4Q1",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "app-root ",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "root",
+        "className": "",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      }
+    ]
+  },
+  "clickInput": {
+    "ok": true,
+    "rect": {
+      "x": 351,
+      "y": 523,
+      "w": 0,
+      "h": 40
+    },
+    "topAtPoint": {
+      "tag": "DIV",
+      "className": "chat-input-v2-input-box-wrapper chat-input-v2-input-box--modern-scroll"
+    },
+    "active": true
+  },
+  "afterFocus": {
+    "label": "after-focus",
+    "url": "http://127.0.0.1:5173/",
+    "title": "Askora",
+    "activeTag": "DIV",
+    "activeClass": "chat-input-v2-input-box-editable",
+    "editable": {
+      "tag": "DIV",
+      "className": "chat-input-v2-input-box-editable",
+      "role": "textbox",
+      "contentEditable": "true",
+      "spellcheck": true,
+      "ariaDisabled": null,
+      "ariaReadonly": null,
+      "ariaMultiline": null,
+      "disabled": false,
+      "readOnly": false,
+      "text": "",
+      "html": "",
+      "childCount": 0,
+      "childTags": [],
+      "attrs": [
+        [
+          "class",
+          "chat-input-v2-input-box-editable"
+        ],
+        [
+          "contenteditable",
+          "true"
+        ],
+        [
+          "role",
+          "textbox"
+        ],
+        [
+          "spellcheck",
+          "true"
+        ],
+        [
+          "style",
+          "user-select: text; white-space: pre-wrap; word-break: break-word;"
+        ]
+      ],
+      "styleAttr": "user-select: text; white-space: pre-wrap; word-break: break-word;",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "20",
+        "opacity": "1",
+        "userSelect": "text",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "placeholder": {
+      "text": "围绕你的资料开始学习，Askora 会决定下一步。",
+      "display": "block",
+      "className": "chat-input-v2-placeholder",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "10",
+        "opacity": "1",
+        "userSelect": "none",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "send": {
+      "tag": "BUTTON",
+      "className": "chat-input-v2-send-button",
+      "ariaLabel": "发送",
+      "disabled": false,
+      "ariaDisabled": null,
+      "html": "<svg width=\"15\" height=\"15\" viewBox=\"0 0 16 16\" fill=\"currentColor\"><path d=\"M2.37305 10V6C2.37305 5.6539 2.6539 5.37305 3 5.37305C3.3461 5.37305 3.62695 5.6539 3.62695 6V10C3.62695 10.3461 3.3461 10.627 3 10.627C2.6539 10.627 2.37305 10.3461 2.37305 10zM12.373 8.66659V7.33325C12.373 6.98715 12.6539",
+      "cs": {
+        "display": "flex",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "auto",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "container": {
+      "className": "chat-input-v2-container chat-input-v2-container--has-focus chat-input-v2-container--empty messageInputChatInput messageInputChatInputHome",
+      "hasFocus": true,
+      "empty": true,
+      "noFocus": false
+    },
+    "overlay": {
+      "className": "chat-input-v2-slot-overlay",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "100",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "chain": [
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-editable",
+        "role": "textbox",
+        "contentEditable": "true",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-wrapper chat-input-v2-input-box--modern-scroll",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-upper-area",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-editor-part",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-container chat-input-v2-container--has-focus chat-input-v2-container--empty messageInputChatInput messageInputChatInputHome",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputEditorWrapper",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputContainer",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "homeMessageInput-bhe4cx",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "workspace-sBvxKr",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "contentWrapper-U1GjQr",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "MAIN",
+        "id": "main-container",
+        "className": "main-KqevMo",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "layout-kZA4Q1",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "app-root ",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "root",
+        "className": "",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      }
+    ]
+  },
+  "afterType": {
+    "label": "after-type",
+    "url": "http://127.0.0.1:5173/",
+    "title": "Askora",
+    "activeTag": "DIV",
+    "activeClass": "chat-input-v2-input-box-editable",
+    "editable": {
+      "tag": "DIV",
+      "className": "chat-input-v2-input-box-editable",
+      "role": "textbox",
+      "contentEditable": "true",
+      "spellcheck": true,
+      "ariaDisabled": null,
+      "ariaReadonly": null,
+      "ariaMultiline": null,
+      "disabled": false,
+      "readOnly": false,
+      "text": "Hello Askora",
+      "html": "Hello Askora",
+      "childCount": 1,
+      "childTags": [
+        "#text:Hello Askora"
+      ],
+      "attrs": [
+        [
+          "class",
+          "chat-input-v2-input-box-editable"
+        ],
+        [
+          "contenteditable",
+          "true"
+        ],
+        [
+          "role",
+          "textbox"
+        ],
+        [
+          "spellcheck",
+          "true"
+        ],
+        [
+          "style",
+          "user-select: text; white-space: pre-wrap; word-break: break-word;"
+        ]
+      ],
+      "styleAttr": "user-select: text; white-space: pre-wrap; word-break: break-word;",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "20",
+        "opacity": "1",
+        "userSelect": "text",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "placeholder": {
+      "text": "围绕你的资料开始学习，Askora 会决定下一步。",
+      "display": "block",
+      "className": "chat-input-v2-placeholder",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "10",
+        "opacity": "1",
+        "userSelect": "none",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "send": {
+      "tag": "BUTTON",
+      "className": "chat-input-v2-send-button",
+      "ariaLabel": "发送",
+      "disabled": false,
+      "ariaDisabled": null,
+      "html": "<svg width=\"15\" height=\"15\" viewBox=\"0 0 16 16\" fill=\"currentColor\"><path d=\"M2.37305 10V6C2.37305 5.6539 2.6539 5.37305 3 5.37305C3.3461 5.37305 3.62695 5.6539 3.62695 6V10C3.62695 10.3461 3.3461 10.627 3 10.627C2.6539 10.627 2.37305 10.3461 2.37305 10zM12.373 8.66659V7.33325C12.373 6.98715 12.6539",
+      "cs": {
+        "display": "flex",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "auto",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "container": {
+      "className": "chat-input-v2-container chat-input-v2-container--has-focus chat-input-v2-container--empty messageInputChatInput messageInputChatInputHome",
+      "hasFocus": true,
+      "empty": true,
+      "noFocus": false
+    },
+    "overlay": {
+      "className": "chat-input-v2-slot-overlay",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "100",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "chain": [
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-editable",
+        "role": "textbox",
+        "contentEditable": "true",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-wrapper chat-input-v2-input-box--modern-scroll",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-upper-area",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-editor-part",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-container chat-input-v2-container--has-focus chat-input-v2-container--empty messageInputChatInput messageInputChatInputHome",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputEditorWrapper",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputContainer",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "homeMessageInput-bhe4cx",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "workspace-sBvxKr",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "contentWrapper-U1GjQr",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "MAIN",
+        "id": "main-container",
+        "className": "main-KqevMo",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "layout-kZA4Q1",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "app-root ",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "root",
+        "className": "",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      }
+    ]
+  },
+  "afterEnter": {
+    "label": "after-enter",
+    "url": "http://127.0.0.1:5173/",
+    "title": "Askora",
+    "activeTag": "DIV",
+    "activeClass": "chat-input-v2-input-box-editable",
+    "editable": {
+      "tag": "DIV",
+      "className": "chat-input-v2-input-box-editable",
+      "role": "textbox",
+      "contentEditable": "true",
+      "spellcheck": true,
+      "ariaDisabled": null,
+      "ariaReadonly": null,
+      "ariaMultiline": null,
+      "disabled": false,
+      "readOnly": false,
+      "text": "Hello Askora\n\n",
+      "html": "Hello Askora<div><br></div>",
+      "childCount": 2,
+      "childTags": [
+        "#text:Hello Askora",
+        "DIV."
+      ],
+      "attrs": [
+        [
+          "class",
+          "chat-input-v2-input-box-editable"
+        ],
+        [
+          "contenteditable",
+          "true"
+        ],
+        [
+          "role",
+          "textbox"
+        ],
+        [
+          "spellcheck",
+          "true"
+        ],
+        [
+          "style",
+          "user-select: text; white-space: pre-wrap; word-break: break-word;"
+        ]
+      ],
+      "styleAttr": "user-select: text; white-space: pre-wrap; word-break: break-word;",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "20",
+        "opacity": "1",
+        "userSelect": "text",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "placeholder": {
+      "text": "围绕你的资料开始学习，Askora 会决定下一步。",
+      "display": "block",
+      "className": "chat-input-v2-placeholder",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "10",
+        "opacity": "1",
+        "userSelect": "none",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "send": {
+      "tag": "BUTTON",
+      "className": "chat-input-v2-send-button",
+      "ariaLabel": "发送",
+      "disabled": false,
+      "ariaDisabled": null,
+      "html": "<svg width=\"15\" height=\"15\" viewBox=\"0 0 16 16\" fill=\"currentColor\"><path d=\"M2.37305 10V6C2.37305 5.6539 2.6539 5.37305 3 5.37305C3.3461 5.37305 3.62695 5.6539 3.62695 6V10C3.62695 10.3461 3.3461 10.627 3 10.627C2.6539 10.627 2.37305 10.3461 2.37305 10zM12.373 8.66659V7.33325C12.373 6.98715 12.6539",
+      "cs": {
+        "display": "flex",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "auto",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "container": {
+      "className": "chat-input-v2-container chat-input-v2-container--has-focus chat-input-v2-container--empty messageInputChatInput messageInputChatInputHome",
+      "hasFocus": true,
+      "empty": true,
+      "noFocus": false
+    },
+    "overlay": {
+      "className": "chat-input-v2-slot-overlay",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "100",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "chain": [
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-editable",
+        "role": "textbox",
+        "contentEditable": "true",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-wrapper chat-input-v2-input-box--modern-scroll",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-upper-area",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-editor-part",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-container chat-input-v2-container--has-focus chat-input-v2-container--empty messageInputChatInput messageInputChatInputHome",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputEditorWrapper",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputContainer",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "homeMessageInput-bhe4cx",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "workspace-sBvxKr",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "contentWrapper-U1GjQr",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "MAIN",
+        "id": "main-container",
+        "className": "main-KqevMo",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "layout-kZA4Q1",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "app-root ",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "root",
+        "className": "",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      }
+    ]
+  },
+  "sendClick": {
+    "ok": true,
+    "className": "chat-input-v2-send-button",
+    "disabled": false
+  },
+  "afterSend": {
+    "label": "after-send",
+    "url": "http://127.0.0.1:5173/",
+    "title": "Askora",
+    "activeTag": "DIV",
+    "activeClass": "chat-input-v2-input-box-editable",
+    "editable": {
+      "tag": "DIV",
+      "className": "chat-input-v2-input-box-editable",
+      "role": "textbox",
+      "contentEditable": "true",
+      "spellcheck": true,
+      "ariaDisabled": null,
+      "ariaReadonly": null,
+      "ariaMultiline": null,
+      "disabled": false,
+      "readOnly": false,
+      "text": "Hello Askora\n\n",
+      "html": "Hello Askora<div><br></div>",
+      "childCount": 2,
+      "childTags": [
+        "#text:Hello Askora",
+        "DIV."
+      ],
+      "attrs": [
+        [
+          "class",
+          "chat-input-v2-input-box-editable"
+        ],
+        [
+          "contenteditable",
+          "true"
+        ],
+        [
+          "role",
+          "textbox"
+        ],
+        [
+          "spellcheck",
+          "true"
+        ],
+        [
+          "style",
+          "user-select: text; white-space: pre-wrap; word-break: break-word;"
+        ]
+      ],
+      "styleAttr": "user-select: text; white-space: pre-wrap; word-break: break-word;",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "20",
+        "opacity": "1",
+        "userSelect": "text",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "placeholder": {
+      "text": "围绕你的资料开始学习，Askora 会决定下一步。",
+      "display": "block",
+      "className": "chat-input-v2-placeholder",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "10",
+        "opacity": "1",
+        "userSelect": "none",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "send": {
+      "tag": "BUTTON",
+      "className": "chat-input-v2-send-button",
+      "ariaLabel": "发送",
+      "disabled": false,
+      "ariaDisabled": null,
+      "html": "<svg width=\"15\" height=\"15\" viewBox=\"0 0 16 16\" fill=\"currentColor\"><path d=\"M2.37305 10V6C2.37305 5.6539 2.6539 5.37305 3 5.37305C3.3461 5.37305 3.62695 5.6539 3.62695 6V10C3.62695 10.3461 3.3461 10.627 3 10.627C2.6539 10.627 2.37305 10.3461 2.37305 10zM12.373 8.66659V7.33325C12.373 6.98715 12.6539",
+      "cs": {
+        "display": "flex",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "auto",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "container": {
+      "className": "chat-input-v2-container chat-input-v2-container--has-focus chat-input-v2-container--empty messageInputChatInput messageInputChatInputHome",
+      "hasFocus": true,
+      "empty": true,
+      "noFocus": false
+    },
+    "overlay": {
+      "className": "chat-input-v2-slot-overlay",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "100",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "chain": [
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-editable",
+        "role": "textbox",
+        "contentEditable": "true",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-wrapper chat-input-v2-input-box--modern-scroll",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-upper-area",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-editor-part",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-container chat-input-v2-container--has-focus chat-input-v2-container--empty messageInputChatInput messageInputChatInputHome",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputEditorWrapper",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputContainer",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "homeMessageInput-bhe4cx",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "workspace-sBvxKr",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "contentWrapper-U1GjQr",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "MAIN",
+        "id": "main-container",
+        "className": "main-KqevMo",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "layout-kZA4Q1",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "app-root ",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "root",
+        "className": "",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      }
+    ]
+  },
+  "observers": {
+    "events": [
+      {
+        "t": 415,
+        "type": "click",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": ""
+      },
+      {
+        "t": 416,
+        "type": "focus",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": ""
+      },
+      {
+        "t": 421,
+        "type": "keydown",
+        "key": "H",
+        "code": "KeyH",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": ""
+      },
+      {
+        "t": 422,
+        "type": "keypress",
+        "key": "H",
+        "code": "KeyH",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": ""
+      },
+      {
+        "t": 422,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "H",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": ""
+      },
+      {
+        "t": 422,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "H",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "H"
+      },
+      {
+        "t": 448,
+        "type": "keyup",
+        "key": "H",
+        "code": "KeyH",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "H"
+      },
+      {
+        "t": 448,
+        "type": "keydown",
+        "key": "e",
+        "code": "KeyE",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "H"
+      },
+      {
+        "t": 448,
+        "type": "keypress",
+        "key": "e",
+        "code": "KeyE",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "H"
+      },
+      {
+        "t": 448,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "e",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "H"
+      },
+      {
+        "t": 449,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "e",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "He"
+      },
+      {
+        "t": 470,
+        "type": "keyup",
+        "key": "e",
+        "code": "KeyE",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "He"
+      },
+      {
+        "t": 471,
+        "type": "keydown",
+        "key": "l",
+        "code": "KeyL",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "He"
+      },
+      {
+        "t": 471,
+        "type": "keypress",
+        "key": "l",
+        "code": "KeyL",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "He"
+      },
+      {
+        "t": 471,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "l",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "He"
+      },
+      {
+        "t": 472,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "l",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hel"
+      },
+      {
+        "t": 494,
+        "type": "keyup",
+        "key": "l",
+        "code": "KeyL",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hel"
+      },
+      {
+        "t": 494,
+        "type": "keydown",
+        "key": "l",
+        "code": "KeyL",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hel"
+      },
+      {
+        "t": 494,
+        "type": "keypress",
+        "key": "l",
+        "code": "KeyL",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hel"
+      },
+      {
+        "t": 494,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "l",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hel"
+      },
+      {
+        "t": 495,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "l",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hell"
+      },
+      {
+        "t": 526,
+        "type": "keyup",
+        "key": "l",
+        "code": "KeyL",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hell"
+      },
+      {
+        "t": 532,
+        "type": "keydown",
+        "key": "o",
+        "code": "KeyO",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hell"
+      },
+      {
+        "t": 532,
+        "type": "keypress",
+        "key": "o",
+        "code": "KeyO",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hell"
+      },
+      {
+        "t": 532,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "o",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hell"
+      },
+      {
+        "t": 533,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "o",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello"
+      },
+      {
+        "t": 559,
+        "type": "keyup",
+        "key": "o",
+        "code": "KeyO",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello"
+      },
+      {
+        "t": 561,
+        "type": "keydown",
+        "key": " ",
+        "code": "Space",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello"
+      },
+      {
+        "t": 561,
+        "type": "keypress",
+        "key": " ",
+        "code": "Space",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello"
+      },
+      {
+        "t": 561,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": " ",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello"
+      },
+      {
+        "t": 561,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": " ",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello "
+      },
+      {
+        "t": 583,
+        "type": "keyup",
+        "key": " ",
+        "code": "Space",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello "
+      },
+      {
+        "t": 584,
+        "type": "keydown",
+        "key": "A",
+        "code": "KeyA",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello "
+      },
+      {
+        "t": 584,
+        "type": "keypress",
+        "key": "A",
+        "code": "KeyA",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello "
+      },
+      {
+        "t": 584,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "A",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello "
+      },
+      {
+        "t": 584,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "A",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello A"
+      },
+      {
+        "t": 606,
+        "type": "keyup",
+        "key": "A",
+        "code": "KeyA",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello A"
+      },
+      {
+        "t": 607,
+        "type": "keydown",
+        "key": "s",
+        "code": "KeyS",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello A"
+      },
+      {
+        "t": 607,
+        "type": "keypress",
+        "key": "s",
+        "code": "KeyS",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello A"
+      },
+      {
+        "t": 607,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "s",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello A"
+      },
+      {
+        "t": 607,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "s",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello As"
+      },
+      {
+        "t": 629,
+        "type": "keyup",
+        "key": "s",
+        "code": "KeyS",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello As"
+      },
+      {
+        "t": 629,
+        "type": "keydown",
+        "key": "k",
+        "code": "KeyK",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello As"
+      },
+      {
+        "t": 629,
+        "type": "keypress",
+        "key": "k",
+        "code": "KeyK",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello As"
+      },
+      {
+        "t": 629,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "k",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello As"
+      },
+      {
+        "t": 630,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "k",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Ask"
+      },
+      {
+        "t": 653,
+        "type": "keyup",
+        "key": "k",
+        "code": "KeyK",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Ask"
+      },
+      {
+        "t": 654,
+        "type": "keydown",
+        "key": "o",
+        "code": "KeyO",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Ask"
+      },
+      {
+        "t": 654,
+        "type": "keypress",
+        "key": "o",
+        "code": "KeyO",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Ask"
+      },
+      {
+        "t": 654,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "o",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Ask"
+      },
+      {
+        "t": 655,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "o",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Asko"
+      },
+      {
+        "t": 679,
+        "type": "keyup",
+        "key": "o",
+        "code": "KeyO",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Asko"
+      },
+      {
+        "t": 680,
+        "type": "keydown",
+        "key": "r",
+        "code": "KeyR",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Asko"
+      },
+      {
+        "t": 680,
+        "type": "keypress",
+        "key": "r",
+        "code": "KeyR",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Asko"
+      },
+      {
+        "t": 680,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "r",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Asko"
+      },
+      {
+        "t": 680,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "r",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Askor"
+      },
+      {
+        "t": 703,
+        "type": "keyup",
+        "key": "r",
+        "code": "KeyR",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Askor"
+      },
+      {
+        "t": 704,
+        "type": "keydown",
+        "key": "a",
+        "code": "KeyA",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Askor"
+      },
+      {
+        "t": 704,
+        "type": "keypress",
+        "key": "a",
+        "code": "KeyA",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Askor"
+      },
+      {
+        "t": 704,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "a",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Askor"
+      },
+      {
+        "t": 705,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "a",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Askora"
+      },
+      {
+        "t": 727,
+        "type": "keyup",
+        "key": "a",
+        "code": "KeyA",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Askora"
+      },
+      {
+        "t": 940,
+        "type": "keydown",
+        "key": "Enter",
+        "code": "Enter",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Askora"
+      },
+      {
+        "t": 940,
+        "type": "keypress",
+        "key": "Enter",
+        "code": "Enter",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Askora"
+      },
+      {
+        "t": 940,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertParagraph",
+        "data": null,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Askora"
+      },
+      {
+        "t": 942,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertParagraph",
+        "data": null,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Askora\n\n"
+      },
+      {
+        "t": 945,
+        "type": "keyup",
+        "key": "Enter",
+        "code": "Enter",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Askora\n\n"
+      },
+      {
+        "t": 1354,
+        "type": "click",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "tag": "BUTTON",
+        "className": "chat-input-v2-send-button",
+        "text": ""
+      }
+    ],
+    "mutations": [
+      {
+        "t": 422,
+        "type": "childList",
+        "attr": null,
+        "className": "chat-input-v2-input-box-editable",
+        "text": "H"
+      },
+      {
+        "t": 942,
+        "type": "childList",
+        "attr": null,
+        "className": "chat-input-v2-input-box-editable",
+        "text": "Hello Askora"
+      }
+    ],
+    "network": [],
+    "startedAt": 1786804186412
+  },
+  "conversationSample": {
+    "userCount": 0,
+    "last": [],
+    "viewHint": "new-task"
+  }
+}

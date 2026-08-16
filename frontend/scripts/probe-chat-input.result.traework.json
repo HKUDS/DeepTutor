@@ -1,0 +1,3250 @@
+{
+  "site": "traework",
+  "steps": {},
+  "initialUrl": "https://work.trae.ai/",
+  "initialTitle": "TraeWork | TRAE - Collaborate with Intelligence",
+  "beforeNew": {
+    "label": "before-new",
+    "url": "https://work.trae.ai/",
+    "title": "TraeWork | TRAE - Collaborate with Intelligence",
+    "activeTag": "DIV",
+    "activeClass": "chat-input-v2-input-box-editable",
+    "editable": {
+      "tag": "DIV",
+      "className": "chat-input-v2-input-box-editable",
+      "role": "textbox",
+      "contentEditable": "true",
+      "spellcheck": true,
+      "ariaDisabled": null,
+      "ariaReadonly": null,
+      "ariaMultiline": null,
+      "disabled": false,
+      "readOnly": false,
+      "text": "你好，请帮我分析这段代码的性能瓶颈",
+      "html": "<p class=\"chat-input-v2__paragraph\" dir=\"auto\"><span data-lexical-text=\"true\">你好，请帮我分析这段代码的性能瓶颈</span></p>",
+      "childCount": 1,
+      "childTags": [
+        "P.chat-input-v2__paragraph"
+      ],
+      "attrs": [
+        [
+          "class",
+          "chat-input-v2-input-box-editable"
+        ],
+        [
+          "contenteditable",
+          "true"
+        ],
+        [
+          "role",
+          "textbox"
+        ],
+        [
+          "spellcheck",
+          "true"
+        ],
+        [
+          "data-lexical-editor",
+          "true"
+        ],
+        [
+          "style",
+          "user-select: text; white-space: pre-wrap; word-break: break-word;"
+        ]
+      ],
+      "styleAttr": "user-select: text; white-space: pre-wrap; word-break: break-word;",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "20",
+        "opacity": "1",
+        "userSelect": "text",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "placeholder": {
+      "text": "帮你编写代码、调试 Bug、优化性能等开发工作，交付生产级代码产物。",
+      "display": "none",
+      "className": "chat-input-v2-placeholder",
+      "cs": {
+        "display": "none",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "10",
+        "opacity": "1",
+        "userSelect": "none",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "send": {
+      "tag": "BUTTON",
+      "className": "chat-input-v2-send-button",
+      "ariaLabel": null,
+      "disabled": false,
+      "ariaDisabled": null,
+      "html": "<span data-testid=\"chat-icon-arrow-up\" style=\"display: inline-flex; align-items: center; justify-content: center;\"><svg class=\"trae-icon trae-icon-arrow_up chat-input-v2-send-button-arrow-icon\" width=\"1em\" height=\"1em\" viewBox=\"0 0 16 16\" fill=\"currentColor\" xmlns=\"http://www.w3.org/2000/svg\" style=",
+      "cs": {
+        "display": "flex",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "auto",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "container": {
+      "className": "chat-input-v2-container chat-input-v2-container--has-focus messageInputChatInput messageInputChatInputHome",
+      "hasFocus": true,
+      "empty": false,
+      "noFocus": false
+    },
+    "overlay": {
+      "className": "chat-input-v2-slot-overlay",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "100",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "chain": [
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-editable",
+        "role": "textbox",
+        "contentEditable": "true",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-wrapper chat-input-v2-input-box--modern-scroll",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-upper-area",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-editor-part",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-container chat-input-v2-container--has-focus messageInputChatInput messageInputChatInputHome",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputEditorWrapper",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputContainer",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "homeMessageInput-bhe4cx",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "workspace-sBvxKr",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "contentWrapper-NHOhpY",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "MAIN",
+        "id": "main-container",
+        "className": "main-r6badv",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "layout-kZA4Q1 ",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "root",
+        "className": "",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "BODY",
+        "id": "",
+        "className": "",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      }
+    ]
+  },
+  "clickNew": {
+    "ok": true,
+    "text": "新建任务\n⌘\n⌃\nN",
+    "className": "navItem-r4wswG navItemActive-FMVRXn"
+  },
+  "afterNew": {
+    "label": "after-new",
+    "url": "https://work.trae.ai/",
+    "title": "TraeWork | TRAE - Collaborate with Intelligence",
+    "activeTag": "DIV",
+    "activeClass": "chat-input-v2-input-box-editable",
+    "editable": {
+      "tag": "DIV",
+      "className": "chat-input-v2-input-box-editable",
+      "role": "textbox",
+      "contentEditable": "true",
+      "spellcheck": true,
+      "ariaDisabled": null,
+      "ariaReadonly": null,
+      "ariaMultiline": null,
+      "disabled": false,
+      "readOnly": false,
+      "text": "你好，请帮我分析这段代码的性能瓶颈",
+      "html": "<p class=\"chat-input-v2__paragraph\" dir=\"auto\"><span data-lexical-text=\"true\">你好，请帮我分析这段代码的性能瓶颈</span></p>",
+      "childCount": 1,
+      "childTags": [
+        "P.chat-input-v2__paragraph"
+      ],
+      "attrs": [
+        [
+          "class",
+          "chat-input-v2-input-box-editable"
+        ],
+        [
+          "contenteditable",
+          "true"
+        ],
+        [
+          "role",
+          "textbox"
+        ],
+        [
+          "spellcheck",
+          "true"
+        ],
+        [
+          "data-lexical-editor",
+          "true"
+        ],
+        [
+          "style",
+          "user-select: text; white-space: pre-wrap; word-break: break-word;"
+        ]
+      ],
+      "styleAttr": "user-select: text; white-space: pre-wrap; word-break: break-word;",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "20",
+        "opacity": "1",
+        "userSelect": "text",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "placeholder": {
+      "text": "帮你编写代码、调试 Bug、优化性能等开发工作，交付生产级代码产物。",
+      "display": "none",
+      "className": "chat-input-v2-placeholder",
+      "cs": {
+        "display": "none",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "10",
+        "opacity": "1",
+        "userSelect": "none",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "send": {
+      "tag": "BUTTON",
+      "className": "chat-input-v2-send-button",
+      "ariaLabel": null,
+      "disabled": false,
+      "ariaDisabled": null,
+      "html": "<span data-testid=\"chat-icon-arrow-up\" style=\"display: inline-flex; align-items: center; justify-content: center;\"><svg class=\"trae-icon trae-icon-arrow_up chat-input-v2-send-button-arrow-icon\" width=\"1em\" height=\"1em\" viewBox=\"0 0 16 16\" fill=\"currentColor\" xmlns=\"http://www.w3.org/2000/svg\" style=",
+      "cs": {
+        "display": "flex",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "auto",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "container": {
+      "className": "chat-input-v2-container chat-input-v2-container--has-focus messageInputChatInput messageInputChatInputHome",
+      "hasFocus": true,
+      "empty": false,
+      "noFocus": false
+    },
+    "overlay": {
+      "className": "chat-input-v2-slot-overlay",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "100",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "chain": [
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-editable",
+        "role": "textbox",
+        "contentEditable": "true",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-wrapper chat-input-v2-input-box--modern-scroll",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-upper-area",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-editor-part",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-container chat-input-v2-container--has-focus messageInputChatInput messageInputChatInputHome",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputEditorWrapper",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputContainer",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "homeMessageInput-bhe4cx",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "workspace-sBvxKr",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "contentWrapper-NHOhpY",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "MAIN",
+        "id": "main-container",
+        "className": "main-r6badv",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "layout-kZA4Q1 ",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "root",
+        "className": "",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "BODY",
+        "id": "",
+        "className": "",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      }
+    ]
+  },
+  "afterFocus": {
+    "label": "after-focus",
+    "url": "https://work.trae.ai/",
+    "title": "TraeWork | TRAE - Collaborate with Intelligence",
+    "activeTag": "DIV",
+    "activeClass": "chat-input-v2-input-box-editable",
+    "editable": {
+      "tag": "DIV",
+      "className": "chat-input-v2-input-box-editable",
+      "role": "textbox",
+      "contentEditable": "true",
+      "spellcheck": true,
+      "ariaDisabled": null,
+      "ariaReadonly": null,
+      "ariaMultiline": null,
+      "disabled": false,
+      "readOnly": false,
+      "text": "你好，请帮我分析这段代码的性能瓶颈",
+      "html": "<p class=\"chat-input-v2__paragraph\" dir=\"auto\"><span data-lexical-text=\"true\">你好，请帮我分析这段代码的性能瓶颈</span></p>",
+      "childCount": 1,
+      "childTags": [
+        "P.chat-input-v2__paragraph"
+      ],
+      "attrs": [
+        [
+          "class",
+          "chat-input-v2-input-box-editable"
+        ],
+        [
+          "contenteditable",
+          "true"
+        ],
+        [
+          "role",
+          "textbox"
+        ],
+        [
+          "spellcheck",
+          "true"
+        ],
+        [
+          "data-lexical-editor",
+          "true"
+        ],
+        [
+          "style",
+          "user-select: text; white-space: pre-wrap; word-break: break-word;"
+        ]
+      ],
+      "styleAttr": "user-select: text; white-space: pre-wrap; word-break: break-word;",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "20",
+        "opacity": "1",
+        "userSelect": "text",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "placeholder": {
+      "text": "帮你编写代码、调试 Bug、优化性能等开发工作，交付生产级代码产物。",
+      "display": "none",
+      "className": "chat-input-v2-placeholder",
+      "cs": {
+        "display": "none",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "10",
+        "opacity": "1",
+        "userSelect": "none",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "send": {
+      "tag": "BUTTON",
+      "className": "chat-input-v2-send-button",
+      "ariaLabel": null,
+      "disabled": false,
+      "ariaDisabled": null,
+      "html": "<span data-testid=\"chat-icon-arrow-up\" style=\"display: inline-flex; align-items: center; justify-content: center;\"><svg class=\"trae-icon trae-icon-arrow_up chat-input-v2-send-button-arrow-icon\" width=\"1em\" height=\"1em\" viewBox=\"0 0 16 16\" fill=\"currentColor\" xmlns=\"http://www.w3.org/2000/svg\" style=",
+      "cs": {
+        "display": "flex",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "auto",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "container": {
+      "className": "chat-input-v2-container chat-input-v2-container--has-focus messageInputChatInput messageInputChatInputHome",
+      "hasFocus": true,
+      "empty": false,
+      "noFocus": false
+    },
+    "overlay": {
+      "className": "chat-input-v2-slot-overlay",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "100",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "chain": [
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-editable",
+        "role": "textbox",
+        "contentEditable": "true",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-wrapper chat-input-v2-input-box--modern-scroll",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-upper-area",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-editor-part",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-container chat-input-v2-container--has-focus messageInputChatInput messageInputChatInputHome",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputEditorWrapper",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputContainer",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "homeMessageInput-bhe4cx",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "workspace-sBvxKr",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "contentWrapper-NHOhpY",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "MAIN",
+        "id": "main-container",
+        "className": "main-r6badv",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "layout-kZA4Q1 ",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "root",
+        "className": "",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "BODY",
+        "id": "",
+        "className": "",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      }
+    ]
+  },
+  "afterType": {
+    "label": "after-type",
+    "url": "https://work.trae.ai/",
+    "title": "TraeWork | TRAE - Collaborate with Intelligence",
+    "activeTag": "DIV",
+    "activeClass": "chat-input-v2-input-box-editable",
+    "editable": {
+      "tag": "DIV",
+      "className": "chat-input-v2-input-box-editable",
+      "role": "textbox",
+      "contentEditable": "true",
+      "spellcheck": true,
+      "ariaDisabled": null,
+      "ariaReadonly": null,
+      "ariaMultiline": null,
+      "disabled": false,
+      "readOnly": false,
+      "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe",
+      "html": "<p class=\"chat-input-v2__paragraph\" dir=\"auto\"><span data-lexical-text=\"true\">你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe</span></p>",
+      "childCount": 1,
+      "childTags": [
+        "P.chat-input-v2__paragraph"
+      ],
+      "attrs": [
+        [
+          "class",
+          "chat-input-v2-input-box-editable"
+        ],
+        [
+          "contenteditable",
+          "true"
+        ],
+        [
+          "role",
+          "textbox"
+        ],
+        [
+          "spellcheck",
+          "true"
+        ],
+        [
+          "data-lexical-editor",
+          "true"
+        ],
+        [
+          "style",
+          "user-select: text; white-space: pre-wrap; word-break: break-word;"
+        ]
+      ],
+      "styleAttr": "user-select: text; white-space: pre-wrap; word-break: break-word;",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "20",
+        "opacity": "1",
+        "userSelect": "text",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "placeholder": {
+      "text": "帮你编写代码、调试 Bug、优化性能等开发工作，交付生产级代码产物。",
+      "display": "none",
+      "className": "chat-input-v2-placeholder",
+      "cs": {
+        "display": "none",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "10",
+        "opacity": "1",
+        "userSelect": "none",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "send": {
+      "tag": "BUTTON",
+      "className": "chat-input-v2-send-button",
+      "ariaLabel": null,
+      "disabled": false,
+      "ariaDisabled": null,
+      "html": "<span data-testid=\"chat-icon-arrow-up\" style=\"display: inline-flex; align-items: center; justify-content: center;\"><svg class=\"trae-icon trae-icon-arrow_up chat-input-v2-send-button-arrow-icon\" width=\"1em\" height=\"1em\" viewBox=\"0 0 16 16\" fill=\"currentColor\" xmlns=\"http://www.w3.org/2000/svg\" style=",
+      "cs": {
+        "display": "flex",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "auto",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "container": {
+      "className": "chat-input-v2-container chat-input-v2-container--has-focus messageInputChatInput messageInputChatInputHome",
+      "hasFocus": true,
+      "empty": false,
+      "noFocus": false
+    },
+    "overlay": {
+      "className": "chat-input-v2-slot-overlay",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "100",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "chain": [
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-editable",
+        "role": "textbox",
+        "contentEditable": "true",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-wrapper chat-input-v2-input-box--modern-scroll",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-upper-area",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-editor-part",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-container chat-input-v2-container--has-focus messageInputChatInput messageInputChatInputHome",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputEditorWrapper",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputContainer",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "homeMessageInput-bhe4cx",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "workspace-sBvxKr",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "contentWrapper-NHOhpY",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "MAIN",
+        "id": "main-container",
+        "className": "main-r6badv",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "layout-kZA4Q1 ",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "root",
+        "className": "",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "BODY",
+        "id": "",
+        "className": "",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      }
+    ]
+  },
+  "afterShiftEnter": {
+    "label": "after-shift-enter",
+    "url": "https://work.trae.ai/",
+    "title": "TraeWork | TRAE - Collaborate with Intelligence",
+    "activeTag": "DIV",
+    "activeClass": "chat-input-v2-input-box-editable",
+    "editable": {
+      "tag": "DIV",
+      "className": "chat-input-v2-input-box-editable",
+      "role": "textbox",
+      "contentEditable": "true",
+      "spellcheck": true,
+      "ariaDisabled": null,
+      "ariaReadonly": null,
+      "ariaMultiline": null,
+      "disabled": false,
+      "readOnly": false,
+      "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe\n\n",
+      "html": "<p class=\"chat-input-v2__paragraph\" dir=\"auto\"><span data-lexical-text=\"true\">你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe</span><br><br></p>",
+      "childCount": 1,
+      "childTags": [
+        "P.chat-input-v2__paragraph"
+      ],
+      "attrs": [
+        [
+          "class",
+          "chat-input-v2-input-box-editable"
+        ],
+        [
+          "contenteditable",
+          "true"
+        ],
+        [
+          "role",
+          "textbox"
+        ],
+        [
+          "spellcheck",
+          "true"
+        ],
+        [
+          "data-lexical-editor",
+          "true"
+        ],
+        [
+          "style",
+          "user-select: text; white-space: pre-wrap; word-break: break-word;"
+        ]
+      ],
+      "styleAttr": "user-select: text; white-space: pre-wrap; word-break: break-word;",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "20",
+        "opacity": "1",
+        "userSelect": "text",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "placeholder": {
+      "text": "帮你编写代码、调试 Bug、优化性能等开发工作，交付生产级代码产物。",
+      "display": "none",
+      "className": "chat-input-v2-placeholder",
+      "cs": {
+        "display": "none",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "10",
+        "opacity": "1",
+        "userSelect": "none",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "send": {
+      "tag": "BUTTON",
+      "className": "chat-input-v2-send-button",
+      "ariaLabel": null,
+      "disabled": false,
+      "ariaDisabled": null,
+      "html": "<span data-testid=\"chat-icon-arrow-up\" style=\"display: inline-flex; align-items: center; justify-content: center;\"><svg class=\"trae-icon trae-icon-arrow_up chat-input-v2-send-button-arrow-icon\" width=\"1em\" height=\"1em\" viewBox=\"0 0 16 16\" fill=\"currentColor\" xmlns=\"http://www.w3.org/2000/svg\" style=",
+      "cs": {
+        "display": "flex",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "auto",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "container": {
+      "className": "chat-input-v2-container chat-input-v2-container--has-focus messageInputChatInput messageInputChatInputHome",
+      "hasFocus": true,
+      "empty": false,
+      "noFocus": false
+    },
+    "overlay": {
+      "className": "chat-input-v2-slot-overlay",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "100",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "chain": [
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-editable",
+        "role": "textbox",
+        "contentEditable": "true",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-wrapper chat-input-v2-input-box--modern-scroll",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-upper-area",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-editor-part",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-container chat-input-v2-container--has-focus messageInputChatInput messageInputChatInputHome",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputEditorWrapper",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputContainer",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "homeMessageInput-bhe4cx",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "workspace-sBvxKr",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "contentWrapper-NHOhpY",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "MAIN",
+        "id": "main-container",
+        "className": "main-r6badv",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "layout-kZA4Q1 ",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "root",
+        "className": "",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "BODY",
+        "id": "",
+        "className": "",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      }
+    ]
+  },
+  "sendBeforeClick": {
+    "className": "chat-input-v2-send-button",
+    "disabled": false,
+    "box": {
+      "x": 1073,
+      "y": 532,
+      "width": 32,
+      "height": 32,
+      "top": 532,
+      "right": 1105,
+      "bottom": 564,
+      "left": 1073
+    }
+  },
+  "afterSend": {
+    "label": "after-send",
+    "url": "https://work.trae.ai/session/6a80776968c1e9eb4f5eb964",
+    "title": "TraeWork | TRAE - Collaborate with Intelligence",
+    "activeTag": "DIV",
+    "activeClass": "chat-input-v2-input-box-editable",
+    "editable": {
+      "tag": "DIV",
+      "className": "chat-input-v2-input-box-editable",
+      "role": "textbox",
+      "contentEditable": "true",
+      "spellcheck": true,
+      "ariaDisabled": null,
+      "ariaReadonly": null,
+      "ariaMultiline": null,
+      "disabled": false,
+      "readOnly": false,
+      "text": "\n",
+      "html": "<p class=\"chat-input-v2__paragraph\" dir=\"auto\"><br></p>",
+      "childCount": 1,
+      "childTags": [
+        "P.chat-input-v2__paragraph"
+      ],
+      "attrs": [
+        [
+          "class",
+          "chat-input-v2-input-box-editable"
+        ],
+        [
+          "contenteditable",
+          "true"
+        ],
+        [
+          "role",
+          "textbox"
+        ],
+        [
+          "spellcheck",
+          "true"
+        ],
+        [
+          "data-lexical-editor",
+          "true"
+        ],
+        [
+          "style",
+          "user-select: text; white-space: pre-wrap; word-break: break-word;"
+        ]
+      ],
+      "styleAttr": "user-select: text; white-space: pre-wrap; word-break: break-word;",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "20",
+        "opacity": "1",
+        "userSelect": "text",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "placeholder": {
+      "text": "帮你编写代码、调试 Bug、优化性能等开发工作，交付生产级代码产物。",
+      "display": "block",
+      "className": "chat-input-v2-placeholder",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "10",
+        "opacity": "1",
+        "userSelect": "none",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "send": {
+      "tag": "BUTTON",
+      "className": "chat-input-v2-send-button",
+      "ariaLabel": null,
+      "disabled": false,
+      "ariaDisabled": null,
+      "html": "<span data-testid=\"chat-icon-stop\" style=\"display: inline-flex; align-items: center; justify-content: center;\"><svg class=\"trae-icon trae-icon-Stop chat-input-v2-send-button-stop-icon\" width=\"1em\" height=\"1em\" viewBox=\"0 0 16 16\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\" style=\"width: 14px; hei",
+      "cs": {
+        "display": "flex",
+        "visibility": "visible",
+        "pointerEvents": "auto",
+        "zIndex": "auto",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "relative",
+        "overflow": "visible"
+      }
+    },
+    "container": {
+      "className": "chat-input-v2-container chat-input-v2-container--has-focus chat-input-v2-container--empty messageInputChatInput messageInputChatInputConversation",
+      "hasFocus": true,
+      "empty": true,
+      "noFocus": false
+    },
+    "overlay": {
+      "className": "chat-input-v2-slot-overlay",
+      "cs": {
+        "display": "block",
+        "visibility": "visible",
+        "pointerEvents": "none",
+        "zIndex": "100",
+        "opacity": "1",
+        "userSelect": "auto",
+        "position": "absolute",
+        "overflow": "visible"
+      }
+    },
+    "chain": [
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-editable",
+        "role": "textbox",
+        "contentEditable": "true",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-input-box-wrapper chat-input-v2-input-box--modern-scroll",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-upper-area",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-editor-part",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chat-input-v2-container chat-input-v2-container--has-focus chat-input-v2-container--empty messageInputChatInput messageInputChatInputConversation",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputEditorWrapper",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "messageInputContainer",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "chatInner-c6091C",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "agent-chat-view",
+        "className": "chatArea-zQPQwl ",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "mainContent-I6jtPZ",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "workspace-nQt_sr",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      },
+      {
+        "tag": "DIV",
+        "id": "",
+        "className": "contentWrapper-U1GjQr",
+        "role": "",
+        "contentEditable": "inherit",
+        "disabled": false,
+        "readOnly": false,
+        "tabIndex": -1
+      }
+    ]
+  },
+  "playwrightRequests": [
+    {
+      "t": 1786804072926,
+      "method": "POST",
+      "type": "fetch",
+      "url": "https://core-normal.trae.ai/api/remote/v1/chat_sessions"
+    },
+    {
+      "t": 1786804073245,
+      "method": "GET",
+      "type": "fetch",
+      "url": "https://core-normal.trae.ai/api/remote/v1/chat_sessions/6a80776968c1e9eb4f5eb964"
+    },
+    {
+      "t": 1786804073276,
+      "method": "GET",
+      "type": "stylesheet",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/css/async/session/layout.936e4054.css"
+    },
+    {
+      "t": 1786804073276,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/async/session/layout.cc8cd22c.js"
+    },
+    {
+      "t": 1786804073277,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/async/7913.a810c137.js"
+    },
+    {
+      "t": 1786804073277,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/async/688.9d6a0339.js"
+    },
+    {
+      "t": 1786804073277,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/async/3693.13739baf.js"
+    },
+    {
+      "t": 1786804073278,
+      "method": "GET",
+      "type": "stylesheet",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/css/async/8582.81589c32.css"
+    },
+    {
+      "t": 1786804073278,
+      "method": "GET",
+      "type": "stylesheet",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/css/async/session/(sessionId)/page.c8251d02.css"
+    },
+    {
+      "t": 1786804073278,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/async/session/(sessionId)/page.0c866e7b.js"
+    },
+    {
+      "t": 1786804073299,
+      "method": "POST",
+      "type": "xhr",
+      "url": "https://mcs-normal.trae.ai/list"
+    },
+    {
+      "t": 1786804073336,
+      "method": "GET",
+      "type": "fetch",
+      "url": "https://core-normal.trae.ai/api/remote/v1/chat_sessions/6a80776968c1e9eb4f5eb964"
+    },
+    {
+      "t": 1786804073337,
+      "method": "GET",
+      "type": "fetch",
+      "url": "https://core-normal.trae.ai/api/remote/v1/chat_sessions/6a80776968c1e9eb4f5eb964/messages?page_size=20"
+    },
+    {
+      "t": 1786804073660,
+      "method": "GET",
+      "type": "fetch",
+      "url": "https://core-normal.trae.ai/api/remote/v1/chat_sessions/6a80776968c1e9eb4f5eb964/events"
+    },
+    {
+      "t": 1786804073693,
+      "method": "GET",
+      "type": "document",
+      "url": "https://work.trae.ai/preview/file"
+    },
+    {
+      "t": 1786804073775,
+      "method": "POST",
+      "type": "fetch",
+      "url": "https://api-sg-central.trae.ai/cloudide/api/v3/trae/GetThirdPartyToken"
+    },
+    {
+      "t": 1786804073775,
+      "method": "GET",
+      "type": "fetch",
+      "url": "https://api.trae.ai/extensions/api/-/plugin/registries?product_name=web&package_type=prod&client_version=1.0.0.2725"
+    },
+    {
+      "t": 1786804073776,
+      "method": "GET",
+      "type": "fetch",
+      "url": "https://agent-sandbox-my-b1-gw.trae.ai/explorer/6a80776968c1e9eb4f5eb964/slash/list"
+    },
+    {
+      "t": 1786804074132,
+      "method": "POST",
+      "type": "xhr",
+      "url": "https://mcs-normal.trae.ai/list"
+    },
+    {
+      "t": 1786804074157,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/lib-polyfill.8fafc97f.js"
+    },
+    {
+      "t": 1786804074158,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/lib-react.dd7aa67f.js"
+    },
+    {
+      "t": 1786804074158,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/argus-builder-strategy.1c3cd3d6.js"
+    },
+    {
+      "t": 1786804074159,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/1832.08382666.js"
+    },
+    {
+      "t": 1786804074159,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/1202.a3ce92c9.js"
+    },
+    {
+      "t": 1786804074159,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/preview.e4632b03.js"
+    },
+    {
+      "t": 1786804074160,
+      "method": "GET",
+      "type": "stylesheet",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/css/1202.40843739.css"
+    },
+    {
+      "t": 1786804074160,
+      "method": "GET",
+      "type": "stylesheet",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/css/preview.b36590a6.css"
+    },
+    {
+      "t": 1786804074244,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/async/8799.ec8e01d6.js"
+    },
+    {
+      "t": 1786804074244,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/async/2573.0404ea34.js"
+    },
+    {
+      "t": 1786804074245,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/6056.78ebef8a.js"
+    },
+    {
+      "t": 1786804074245,
+      "method": "GET",
+      "type": "stylesheet",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/css/async/8933.39afebee.css"
+    },
+    {
+      "t": 1786804074246,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/async/8933.37b49e49.js"
+    },
+    {
+      "t": 1786804074246,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/1426.3947a4ae.js"
+    },
+    {
+      "t": 1786804074246,
+      "method": "GET",
+      "type": "stylesheet",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/css/async/3618.27f1404b.css"
+    },
+    {
+      "t": 1786804074246,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/async/3618.815e8144.js"
+    },
+    {
+      "t": 1786804074247,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/async/lib-lottie.bf46778a.js"
+    },
+    {
+      "t": 1786804074247,
+      "method": "GET",
+      "type": "script",
+      "url": "https://lf-cdn.marscode.com/obj/marscode-bucket-sg/goofy_deploy_edenx/ide/trae-mono/static/js/async/8491.2c688ed4.js"
+    },
+    {
+      "t": 1786804074262,
+      "method": "GET",
+      "type": "fetch",
+      "url": "https://api.trae.ai/extensions/api/-/plugin/list?page_size=200&registry=trae-remote-official&product_name=web&package_type=prod&client_version=1.0.0.2725"
+    },
+    {
+      "t": 1786804074262,
+      "method": "GET",
+      "type": "fetch",
+      "url": "https://api.trae.ai/extensions/api/-/plugin/categories?registry=trae-remote-official&product_name=web&package_type=prod&client_version=1.0.0.2725"
+    },
+    {
+      "t": 1786804074263,
+      "method": "GET",
+      "type": "fetch",
+      "url": "https://core-normal.trae.ai/api/remote/v1/plugins?page_size=50&product_name=web&package_type=prod&client_version=1.0.0.2725"
+    }
+  ],
+  "observers": {
+    "events": [
+      {
+        "t": 880,
+        "type": "click",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "tag": "P",
+        "className": "chat-input-v2__paragraph",
+        "text": "你好，请帮我分析这段代码的性能瓶颈"
+      },
+      {
+        "t": 1099,
+        "type": "keydown",
+        "key": "H",
+        "code": "KeyH",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈"
+      },
+      {
+        "t": 1100,
+        "type": "keypress",
+        "key": "H",
+        "code": "KeyH",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈"
+      },
+      {
+        "t": 1100,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "H",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈"
+      },
+      {
+        "t": 1105,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "H",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈H"
+      },
+      {
+        "t": 1131,
+        "type": "keyup",
+        "key": "H",
+        "code": "KeyH",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈H"
+      },
+      {
+        "t": 1132,
+        "type": "keydown",
+        "key": "e",
+        "code": "KeyE",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈H"
+      },
+      {
+        "t": 1132,
+        "type": "keypress",
+        "key": "e",
+        "code": "KeyE",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈H"
+      },
+      {
+        "t": 1132,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "e",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈H"
+      },
+      {
+        "t": 1132,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "e",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈He"
+      },
+      {
+        "t": 1154,
+        "type": "keyup",
+        "key": "e",
+        "code": "KeyE",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈He"
+      },
+      {
+        "t": 1154,
+        "type": "keydown",
+        "key": "l",
+        "code": "KeyL",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈He"
+      },
+      {
+        "t": 1154,
+        "type": "keypress",
+        "key": "l",
+        "code": "KeyL",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈He"
+      },
+      {
+        "t": 1154,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "l",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈He"
+      },
+      {
+        "t": 1155,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "l",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hel"
+      },
+      {
+        "t": 1180,
+        "type": "keyup",
+        "key": "l",
+        "code": "KeyL",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hel"
+      },
+      {
+        "t": 1181,
+        "type": "keydown",
+        "key": "l",
+        "code": "KeyL",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hel"
+      },
+      {
+        "t": 1181,
+        "type": "keypress",
+        "key": "l",
+        "code": "KeyL",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hel"
+      },
+      {
+        "t": 1181,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "l",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hel"
+      },
+      {
+        "t": 1181,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "l",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hell"
+      },
+      {
+        "t": 1203,
+        "type": "keyup",
+        "key": "l",
+        "code": "KeyL",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hell"
+      },
+      {
+        "t": 1204,
+        "type": "keydown",
+        "key": "o",
+        "code": "KeyO",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hell"
+      },
+      {
+        "t": 1204,
+        "type": "keypress",
+        "key": "o",
+        "code": "KeyO",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hell"
+      },
+      {
+        "t": 1204,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "o",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hell"
+      },
+      {
+        "t": 1204,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "o",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello"
+      },
+      {
+        "t": 1226,
+        "type": "keyup",
+        "key": "o",
+        "code": "KeyO",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello"
+      },
+      {
+        "t": 1230,
+        "type": "keydown",
+        "key": " ",
+        "code": "Space",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello"
+      },
+      {
+        "t": 1230,
+        "type": "keypress",
+        "key": " ",
+        "code": "Space",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello"
+      },
+      {
+        "t": 1230,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": " ",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello"
+      },
+      {
+        "t": 1230,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": " ",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello "
+      },
+      {
+        "t": 1253,
+        "type": "keyup",
+        "key": " ",
+        "code": "Space",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello "
+      },
+      {
+        "t": 1253,
+        "type": "keydown",
+        "key": "T",
+        "code": "KeyT",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello "
+      },
+      {
+        "t": 1253,
+        "type": "keypress",
+        "key": "T",
+        "code": "KeyT",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello "
+      },
+      {
+        "t": 1253,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "T",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello "
+      },
+      {
+        "t": 1254,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "T",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello T"
+      },
+      {
+        "t": 1274,
+        "type": "keyup",
+        "key": "T",
+        "code": "KeyT",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello T"
+      },
+      {
+        "t": 1274,
+        "type": "keydown",
+        "key": "r",
+        "code": "KeyR",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello T"
+      },
+      {
+        "t": 1274,
+        "type": "keypress",
+        "key": "r",
+        "code": "KeyR",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello T"
+      },
+      {
+        "t": 1274,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "r",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello T"
+      },
+      {
+        "t": 1275,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "r",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello Tr"
+      },
+      {
+        "t": 1297,
+        "type": "keyup",
+        "key": "r",
+        "code": "KeyR",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello Tr"
+      },
+      {
+        "t": 1298,
+        "type": "keydown",
+        "key": "a",
+        "code": "KeyA",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello Tr"
+      },
+      {
+        "t": 1298,
+        "type": "keypress",
+        "key": "a",
+        "code": "KeyA",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello Tr"
+      },
+      {
+        "t": 1298,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "a",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello Tr"
+      },
+      {
+        "t": 1298,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "a",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello Tra"
+      },
+      {
+        "t": 1320,
+        "type": "keyup",
+        "key": "a",
+        "code": "KeyA",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello Tra"
+      },
+      {
+        "t": 1321,
+        "type": "keydown",
+        "key": "e",
+        "code": "KeyE",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello Tra"
+      },
+      {
+        "t": 1321,
+        "type": "keypress",
+        "key": "e",
+        "code": "KeyE",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello Tra"
+      },
+      {
+        "t": 1321,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "e",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello Tra"
+      },
+      {
+        "t": 1321,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "e",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello Trae"
+      },
+      {
+        "t": 1343,
+        "type": "keyup",
+        "key": "e",
+        "code": "KeyE",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello Trae"
+      },
+      {
+        "t": 1344,
+        "type": "keydown",
+        "key": "W",
+        "code": "KeyW",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello Trae"
+      },
+      {
+        "t": 1344,
+        "type": "keypress",
+        "key": "W",
+        "code": "KeyW",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello Trae"
+      },
+      {
+        "t": 1344,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "W",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello Trae"
+      },
+      {
+        "t": 1345,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "W",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeW"
+      },
+      {
+        "t": 1367,
+        "type": "keyup",
+        "key": "W",
+        "code": "KeyW",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeW"
+      },
+      {
+        "t": 1367,
+        "type": "keydown",
+        "key": "o",
+        "code": "KeyO",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeW"
+      },
+      {
+        "t": 1368,
+        "type": "keypress",
+        "key": "o",
+        "code": "KeyO",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeW"
+      },
+      {
+        "t": 1368,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "o",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeW"
+      },
+      {
+        "t": 1368,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "o",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWo"
+      },
+      {
+        "t": 1390,
+        "type": "keyup",
+        "key": "o",
+        "code": "KeyO",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWo"
+      },
+      {
+        "t": 1391,
+        "type": "keydown",
+        "key": "r",
+        "code": "KeyR",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWo"
+      },
+      {
+        "t": 1391,
+        "type": "keypress",
+        "key": "r",
+        "code": "KeyR",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWo"
+      },
+      {
+        "t": 1391,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "r",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWo"
+      },
+      {
+        "t": 1392,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "r",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWor"
+      },
+      {
+        "t": 1414,
+        "type": "keyup",
+        "key": "r",
+        "code": "KeyR",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWor"
+      },
+      {
+        "t": 1415,
+        "type": "keydown",
+        "key": "k",
+        "code": "KeyK",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWor"
+      },
+      {
+        "t": 1415,
+        "type": "keypress",
+        "key": "k",
+        "code": "KeyK",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWor"
+      },
+      {
+        "t": 1415,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "k",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWor"
+      },
+      {
+        "t": 1416,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "k",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork"
+      },
+      {
+        "t": 1438,
+        "type": "keyup",
+        "key": "k",
+        "code": "KeyK",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork"
+      },
+      {
+        "t": 1439,
+        "type": "keydown",
+        "key": " ",
+        "code": "Space",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork"
+      },
+      {
+        "t": 1439,
+        "type": "keypress",
+        "key": " ",
+        "code": "Space",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork"
+      },
+      {
+        "t": 1439,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": " ",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork"
+      },
+      {
+        "t": 1440,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": " ",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork "
+      },
+      {
+        "t": 1462,
+        "type": "keyup",
+        "key": " ",
+        "code": "Space",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork "
+      },
+      {
+        "t": 1463,
+        "type": "keydown",
+        "key": "p",
+        "code": "KeyP",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork "
+      },
+      {
+        "t": 1463,
+        "type": "keypress",
+        "key": "p",
+        "code": "KeyP",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork "
+      },
+      {
+        "t": 1463,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "p",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork "
+      },
+      {
+        "t": 1464,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "p",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork p"
+      },
+      {
+        "t": 1486,
+        "type": "keyup",
+        "key": "p",
+        "code": "KeyP",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork p"
+      },
+      {
+        "t": 1487,
+        "type": "keydown",
+        "key": "r",
+        "code": "KeyR",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork p"
+      },
+      {
+        "t": 1487,
+        "type": "keypress",
+        "key": "r",
+        "code": "KeyR",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork p"
+      },
+      {
+        "t": 1487,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "r",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork p"
+      },
+      {
+        "t": 1488,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "r",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork pr"
+      },
+      {
+        "t": 1510,
+        "type": "keyup",
+        "key": "r",
+        "code": "KeyR",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork pr"
+      },
+      {
+        "t": 1511,
+        "type": "keydown",
+        "key": "o",
+        "code": "KeyO",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork pr"
+      },
+      {
+        "t": 1511,
+        "type": "keypress",
+        "key": "o",
+        "code": "KeyO",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork pr"
+      },
+      {
+        "t": 1511,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "o",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork pr"
+      },
+      {
+        "t": 1512,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "o",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork pro"
+      },
+      {
+        "t": 1535,
+        "type": "keyup",
+        "key": "o",
+        "code": "KeyO",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork pro"
+      },
+      {
+        "t": 1535,
+        "type": "keydown",
+        "key": "b",
+        "code": "KeyB",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork pro"
+      },
+      {
+        "t": 1536,
+        "type": "keypress",
+        "key": "b",
+        "code": "KeyB",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork pro"
+      },
+      {
+        "t": 1536,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "b",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork pro"
+      },
+      {
+        "t": 1536,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "b",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork prob"
+      },
+      {
+        "t": 1558,
+        "type": "keyup",
+        "key": "b",
+        "code": "KeyB",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork prob"
+      },
+      {
+        "t": 1559,
+        "type": "keydown",
+        "key": "e",
+        "code": "KeyE",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork prob"
+      },
+      {
+        "t": 1559,
+        "type": "keypress",
+        "key": "e",
+        "code": "KeyE",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork prob"
+      },
+      {
+        "t": 1559,
+        "type": "beforeinput",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "e",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork prob"
+      },
+      {
+        "t": 1560,
+        "type": "input",
+        "isComposing": false,
+        "inputType": "insertText",
+        "data": "e",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe"
+      },
+      {
+        "t": 1585,
+        "type": "keyup",
+        "key": "e",
+        "code": "KeyE",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe"
+      },
+      {
+        "t": 1893,
+        "type": "keydown",
+        "key": "Shift",
+        "code": "ShiftLeft",
+        "shift": true,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe"
+      },
+      {
+        "t": 1895,
+        "type": "keydown",
+        "key": "Enter",
+        "code": "Enter",
+        "shift": true,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe"
+      },
+      {
+        "t": 1898,
+        "type": "keyup",
+        "key": "Enter",
+        "code": "Enter",
+        "shift": true,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe\n\n"
+      },
+      {
+        "t": 1900,
+        "type": "keyup",
+        "key": "Shift",
+        "code": "ShiftLeft",
+        "shift": false,
+        "meta": false,
+        "ctrl": false,
+        "isComposing": false,
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe\n\n"
+      },
+      {
+        "t": 2159,
+        "type": "blur",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe\n\n"
+      },
+      {
+        "t": 2162,
+        "type": "focus",
+        "tag": "BUTTON",
+        "className": "chat-input-v2-send-button",
+        "text": ""
+      },
+      {
+        "t": 2183,
+        "type": "blur",
+        "tag": "BUTTON",
+        "className": "chat-input-v2-send-button",
+        "text": ""
+      },
+      {
+        "t": 3012,
+        "type": "focus",
+        "tag": "DIV",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "\n"
+      }
+    ],
+    "mutations": [
+      {
+        "t": 1897,
+        "type": "childList",
+        "attr": null,
+        "className": "chat-input-v2__paragraph",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe"
+      },
+      {
+        "t": 1897,
+        "type": "childList",
+        "attr": null,
+        "className": "chat-input-v2__paragraph",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe"
+      },
+      {
+        "t": 2161,
+        "type": "attributes",
+        "attr": "class",
+        "className": "chat-input-v2-container chat-input-v2-container--no-focus messageInputChatInput messageInputChatInputHome",
+        "text": "帮你编写代码、调试 Bug、优化性能等开发工作，交付生产级代码产物。你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probeAuto Mode"
+      },
+      {
+        "t": 2186,
+        "type": "attributes",
+        "attr": "contenteditable",
+        "className": "chat-input-v2-input-box-editable",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe"
+      },
+      {
+        "t": 2186,
+        "type": "attributes",
+        "attr": "class",
+        "className": "chat-input-v2-editor-part-lower__left disabled",
+        "text": "Auto Mode"
+      },
+      {
+        "t": 2186,
+        "type": "attributes",
+        "attr": "class",
+        "className": "chat-input-v2-container chat-input-v2-container--no-focus chat-input-v2-container--disabled messageInputChatInput messageInputChatInputHome",
+        "text": "帮你编写代码、调试 Bug、优化性能等开发工作，交付生产级代码产物。你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probeAuto Mode"
+      },
+      {
+        "t": 2530,
+        "type": "childList",
+        "attr": null,
+        "className": "chat-input-v2-input-box-editable",
+        "text": ""
+      },
+      {
+        "t": 2597,
+        "type": "childList",
+        "attr": null,
+        "className": "chat-input-v2-input-box-editable",
+        "text": ""
+      },
+      {
+        "t": 3012,
+        "type": "childList",
+        "attr": null,
+        "className": "virtualized-message-list-view__scroller virtualized-message-list-view__scroller--hide-scrollbar",
+        "text": ""
+      },
+      {
+        "t": 3014,
+        "type": "attributes",
+        "attr": "class",
+        "className": "chat-input-v2-container chat-input-v2-container--has-focus chat-input-v2-container--empty messageInputChatInput messageInputChatInputConversation",
+        "text": "帮你编写代码、调试 Bug、优化性能等开发工作，交付生产级代码产物。Auto Mode"
+      },
+      {
+        "t": 3061,
+        "type": "attributes",
+        "attr": "style",
+        "className": "virtualized-message-list-view__virtuoso",
+        "text": ""
+      },
+      {
+        "t": 3085,
+        "type": "childList",
+        "attr": null,
+        "className": "chat-input-v2-upper-area",
+        "text": "帮你编写代码、调试 Bug、优化性能等开发工作，交付生产级代码产物。"
+      },
+      {
+        "t": 3085,
+        "type": "childList",
+        "attr": null,
+        "className": "chat-input-v2-editor-part-lower__right",
+        "text": ""
+      },
+      {
+        "t": 3085,
+        "type": "childList",
+        "attr": null,
+        "className": "chat-input-v2-container chat-input-v2-container--has-focus chat-input-v2-container--empty messageInputChatInput messageInputChatInputConversation",
+        "text": "帮你编写代码、调试 Bug、优化性能等开发工作，交付生产级代码产物。Auto Mode"
+      },
+      {
+        "t": 3123,
+        "type": "attributes",
+        "attr": "class",
+        "className": "user-message__text-content custom-scrollbar user-message__text-content--no-expand",
+        "text": "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe"
+      }
+    ],
+    "network": [
+      {
+        "t": 39,
+        "kind": "xhr",
+        "method": "POST",
+        "url": "https://mcs-normal.trae.ai/list"
+      },
+      {
+        "t": 2116,
+        "kind": "xhr",
+        "method": "POST",
+        "url": "https://mon-normal.trae.ai/monitor_browser/collect/batch/?biz_id=solo_web"
+      },
+      {
+        "t": 2560,
+        "kind": "xhr",
+        "method": "POST",
+        "url": "https://mcs-normal.trae.ai/list"
+      },
+      {
+        "t": 3015,
+        "kind": "fetch",
+        "url": "https://api-sg-central.trae.ai/cloudide/api/v3/trae/GetThirdPartyToken"
+      },
+      {
+        "t": 3015,
+        "kind": "fetch",
+        "url": "https://api.trae.ai/extensions/api/-/plugin/registries?product_name=web&package_type=prod&client_version=1.0.0.2725"
+      },
+      {
+        "t": 3205,
+        "kind": "ws-open",
+        "url": "wss://agent-sandbox-my-b1-gw.trae.ai/explorer/6a80776968c1e9eb4f5eb964"
+      },
+      {
+        "t": 3393,
+        "kind": "xhr",
+        "method": "POST",
+        "url": "https://mcs-normal.trae.ai/list"
+      },
+      {
+        "t": 3512,
+        "kind": "fetch",
+        "url": "https://api.trae.ai/extensions/api/-/plugin/list?page_size=200&registry=trae-remote-official&product_name=web&package_type=prod&client_version=1.0.0.2725"
+      },
+      {
+        "t": 3512,
+        "kind": "fetch",
+        "url": "https://api.trae.ai/extensions/api/-/plugin/categories?registry=trae-remote-official&product_name=web&package_type=prod&client_version=1.0.0.2725"
+      }
+    ],
+    "startedAt": 1786804070737
+  },
+  "conversationSample": {
+    "turnCount": 3,
+    "lastTexts": [
+      "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe\n22:27\nTraeWork\n思考中",
+      "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe\n22:27",
+      "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe\n22:27"
+    ],
+    "userMessages": [
+      "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe\n22:27",
+      "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe\n22:27",
+      "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe",
+      "你好，请帮我分析这段代码的性能瓶颈Hello TraeWork probe"
+    ]
+  }
+}

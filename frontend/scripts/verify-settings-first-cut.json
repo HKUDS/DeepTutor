@@ -1,0 +1,280 @@
+{
+  "toolNames": [
+    "广泛发散想法，并按理由组织结果。",
+    "联网搜索并返回带来源的结果。",
+    "调用专门的推理模型处理高难度推理任务。",
+    "搜索 arXiv 预印本并返回论文元数据。",
+    "Analyze a math problem image, detect geometric elements, and generate validated GeoGebra commands for visualization. Requires an attached image.",
+    "用已配置的模型，根据文字描述生成图片。",
+    "用已配置的模型，根据文字描述生成短视频。"
+  ],
+  "pluginNames": [
+    "广泛发散想法，并按理由组织结果。",
+    "联网搜索并返回带来源的结果。",
+    "调用专门的推理模型处理高难度推理任务。",
+    "搜索 arXiv 预印本并返回论文元数据。",
+    "Analyze a math problem image, detect geometric elements, and generate validated GeoGebra commands for visualization. Requires an attached image.",
+    "用已配置的模型，根据文字描述生成图片。",
+    "用已配置的模型，根据文字描述生成短视频。"
+  ],
+  "afterClick": {
+    "responseLanguage": "en",
+    "autoplay": "1",
+    "timeout": "300"
+  },
+  "reopened": {
+    "reply": "English",
+    "autoplay": "true",
+    "timeout": "5 分钟",
+    "webSearch": null
+  },
+  "persistOk": true,
+  "steps": [
+    {
+      "name": "theme",
+      "items": [
+        {
+          "name": "亮色",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1050,
+            "y": 230,
+            "width": 118,
+            "height": 30
+          }
+        },
+        {
+          "name": "暗色",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1050,
+            "y": 260,
+            "width": 118,
+            "height": 30
+          }
+        }
+      ]
+    },
+    {
+      "name": "language",
+      "items": [
+        {
+          "name": "简体中文",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1050,
+            "y": 297,
+            "width": 118,
+            "height": 30
+          }
+        },
+        {
+          "name": "English",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1050,
+            "y": 327,
+            "width": 118,
+            "height": 28
+          }
+        }
+      ]
+    },
+    {
+      "name": "replyLanguage",
+      "items": [
+        {
+          "name": "简体中文",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1050,
+            "y": 364,
+            "width": 118,
+            "height": 30
+          }
+        },
+        {
+          "name": "English",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1050,
+            "y": 394,
+            "width": 118,
+            "height": 28
+          }
+        }
+      ]
+    },
+    {
+      "name": "timeout",
+      "items": [
+        {
+          "name": "30 秒",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1050,
+            "y": 547,
+            "width": 118,
+            "height": 30
+          }
+        },
+        {
+          "name": "1 分钟",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1050,
+            "y": 577,
+            "width": 118,
+            "height": 30
+          }
+        },
+        {
+          "name": "3 分钟",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1050,
+            "y": 607,
+            "width": 118,
+            "height": 30
+          }
+        },
+        {
+          "name": "5 分钟",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1050,
+            "y": 637,
+            "width": 118,
+            "height": 30
+          }
+        },
+        {
+          "name": "10 分钟",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1050,
+            "y": 667,
+            "width": 118,
+            "height": 30
+          }
+        },
+        {
+          "name": "30 分钟",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1050,
+            "y": 697,
+            "width": 118,
+            "height": 30
+          }
+        }
+      ]
+    },
+    {
+      "name": "tools",
+      "items": [
+        {
+          "name": "回复自动朗读",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1137,
+            "y": 445,
+            "width": 36,
+            "height": 20
+          }
+        },
+        {
+          "name": "广泛发散想法，并按理由组织结果。",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1137,
+            "y": 762,
+            "width": 36,
+            "height": 20
+          }
+        },
+        {
+          "name": "联网搜索并返回带来源的结果。",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1137,
+            "y": 810,
+            "width": 36,
+            "height": 20
+          }
+        },
+        {
+          "name": "调用专门的推理模型处理高难度推理任务。",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1137,
+            "y": 440,
+            "width": 36,
+            "height": 20
+          }
+        },
+        {
+          "name": "搜索 arXiv 预印本并返回论文元数据。",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1137,
+            "y": 507,
+            "width": 36,
+            "height": 20
+          }
+        },
+        {
+          "name": "Analyze a math problem image, detect geometric elements, and generate validated GeoGebra commands for visualization. Requires an attached image.",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1137,
+            "y": 583,
+            "width": 36,
+            "height": 20
+          }
+        },
+        {
+          "name": "用已配置的模型，根据文字描述生成图片。",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1137,
+            "y": 659,
+            "width": 36,
+            "height": 20
+          }
+        },
+        {
+          "name": "用已配置的模型，根据文字描述生成短视频。",
+          "visible": true,
+          "covered": false,
+          "box": {
+            "x": 1137,
+            "y": 726,
+            "width": 36,
+            "height": 20
+          }
+        }
+      ]
+    }
+  ],
+  "failed": []
+}
