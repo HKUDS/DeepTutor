@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Iterable
+from html.parser import HTMLParser
 import io
 import logging
 from pathlib import Path, PurePosixPath
@@ -94,6 +95,10 @@ _PDF_MAGIC = b"%PDF-"
 _OOXML_MAGIC = b"PK\x03\x04"
 
 _EPUB_CONTENT_EXTENSIONS: frozenset[str] = frozenset({".xhtml", ".html", ".htm"})
+_EPUB_MAX_MEMBERS = 4096
+_EPUB_MAX_MEMBER_BYTES = 20 * 1024 * 1024
+_EPUB_MAX_TOTAL_UNCOMPRESSED_BYTES = 200 * 1024 * 1024
+_EPUB_MAX_COMPRESSION_RATIO = 200.0
 _EPUB_BLOCK_TAGS: frozenset[str] = frozenset(
     {
         "p",
@@ -457,6 +462,34 @@ def _epub_parse_member(zf: zipfile.ZipFile, member: str, filename: str) -> Any |
         return None
 
 
+class _EpubHTMLTextParser(HTMLParser):
+    """Best-effort text renderer for EPUB chapters that are not valid XML."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self._ignored_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        del attrs
+        tag = tag.lower()
+        if tag in {"script", "style"}:
+            self._ignored_depth += 1
+        elif not self._ignored_depth and tag == "br":
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in {"script", "style"} and self._ignored_depth:
+            self._ignored_depth -= 1
+        elif not self._ignored_depth and tag in _EPUB_BLOCK_TAGS:
+            self.parts.append("\n\n")
+
+    def handle_data(self, data: str) -> None:
+        if not self._ignored_depth:
+            self.parts.append(data)
+
+
 def _epub_render_text(element: Any, parts: list[str]) -> None:
     """Append the text of one XHTML element and its subtree to ``parts``.
 
@@ -488,9 +521,33 @@ def _epub_xhtml_text(root: Any) -> str:
     """
     parts: list[str] = []
     _epub_render_text(root, parts)
+    return _normalize_epub_text(parts)
+
+
+def _normalize_epub_text(parts: Iterable[str]) -> str:
     raw = "".join(parts)
     lines = [re.sub(r"\s+", " ", line).strip() for line in raw.split("\n")]
     return "\n".join(line for line in lines if line)
+
+
+def _epub_chapter_text(zf: zipfile.ZipFile, member: str, filename: str) -> str:
+    """Render a chapter as XHTML, falling back to tolerant HTML parsing."""
+    try:
+        root = _parse_xml_member(zf, member, filename)
+    except CorruptDocumentError as exc:
+        try:
+            raw = zf.read(member)
+            parser = _EpubHTMLTextParser()
+            parser.feed(FileTypeRouter.decode_bytes(raw))
+            parser.close()
+        except Exception:
+            logger.warning("EPUB %s: skipping unparseable member %s", filename, member)
+            return ""
+        text = _normalize_epub_text(parser.parts)
+        if text:
+            logger.info("EPUB %s: used tolerant HTML parser for %s (%s)", filename, member, exc)
+        return text
+    return _epub_xhtml_text(root) if root is not None else ""
 
 
 def _epub_html_members(names: list[str]) -> list[str]:
@@ -555,15 +612,42 @@ def _epub_content_files(zf: zipfile.ZipFile, filename: str) -> list[str]:
 def _extract_epub(data: bytes, filename: str) -> str:
     """Extract the reading text of an EPUB with only the standard library."""
     with _open_ooxml(data, filename) as zf:
+        _validate_epub_archive(zf, filename)
         chapters: list[str] = []
         for member in _epub_content_files(zf, filename):
-            root = _epub_parse_member(zf, member, filename)
-            if root is None:
-                continue
-            text = _epub_xhtml_text(root)
+            text = _epub_chapter_text(zf, member, filename)
             if text:
                 chapters.append(text)
     return "\n\n".join(chapters)
+
+
+def _validate_epub_archive(zf: zipfile.ZipFile, filename: str) -> None:
+    """Reject oversized or suspicious EPUB ZIPs before reading any member."""
+    members = [info for info in zf.infolist() if not info.is_dir()]
+    if len(members) > _EPUB_MAX_MEMBERS:
+        raise DocumentTooLargeError(
+            f"{filename}: EPUB has too many archive members ({len(members)})",
+            filename=filename,
+        )
+
+    total = 0
+    for info in members:
+        if info.file_size > _EPUB_MAX_MEMBER_BYTES:
+            raise DocumentTooLargeError(
+                f"{filename}: EPUB member {info.filename} is too large",
+                filename=filename,
+            )
+        total += info.file_size
+        if total > _EPUB_MAX_TOTAL_UNCOMPRESSED_BYTES:
+            raise DocumentTooLargeError(
+                f"{filename}: EPUB uncompressed contents are too large",
+                filename=filename,
+            )
+        if info.compress_size and info.file_size / info.compress_size > _EPUB_MAX_COMPRESSION_RATIO:
+            raise DocumentTooLargeError(
+                f"{filename}: EPUB member {info.filename} has a suspicious compression ratio",
+                filename=filename,
+            )
 
 
 def _open_ooxml(data: bytes, filename: str) -> zipfile.ZipFile:

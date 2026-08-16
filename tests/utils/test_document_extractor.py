@@ -281,7 +281,7 @@ class TestExtractEpub:
 
         assert "Solo chapter." in text
 
-    def test_unparseable_chapter_is_skipped_not_fatal(self) -> None:
+    def test_malformed_xhtml_uses_tolerant_html_fallback(self) -> None:
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w") as zf:
             zf.writestr("mimetype", "application/epub+zip")
@@ -300,7 +300,23 @@ class TestExtractEpub:
         text = extract_text_from_bytes("book.epub", buf.getvalue())
 
         assert "Readable chapter." in text
-        assert "Broken" not in text
+        assert "Broken chapter" in text
+
+    def test_rejects_suspicious_compression_ratio(self) -> None:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("mimetype", "application/epub+zip")
+            zf.writestr("chapter.xhtml", f"<p>{'A' * 1_000_000}</p>")
+
+        with pytest.raises(DocumentTooLargeError, match="compression ratio"):
+            extract_text_from_bytes("book.epub", buf.getvalue())
+
+    def test_rejects_excessive_member_count(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(document_extractor_module, "_EPUB_MAX_MEMBERS", 2)
+        data = _make_epub({"chapter.xhtml": "<p>text</p>"})
+
+        with pytest.raises(DocumentTooLargeError, match="too many archive members"):
+            extract_text_from_bytes("book.epub", data)
 
     def test_bad_header_raises_corrupt(self) -> None:
         with pytest.raises(CorruptDocumentError):
