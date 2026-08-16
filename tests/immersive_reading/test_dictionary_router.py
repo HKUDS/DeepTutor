@@ -29,6 +29,15 @@ def client(monkeypatch):
                 "context_note": "Fits the harbour scene.",
             }
 
+        def dictionary_status(self):
+            return {
+                "installed": True,
+                "path": "/tmp/ecdict.db",
+                "entries": 3,
+                "size_bytes": 128,
+                "error": "",
+            }
+
     app = FastAPI()
     monkeypatch.setattr(router_module, "get_immersive_reading_service", lambda: FakeService())
     app.include_router(router_module.router, prefix="/api/v1/immersive-reading")
@@ -51,3 +60,16 @@ def test_dictionary_rejects_empty_word(client):
     response = client.post("/api/v1/immersive-reading/dictionary", json={"word": ""})
 
     assert response.status_code == 422
+
+
+def test_dictionary_status_reports_offline_database(client):
+    response = client.get("/api/v1/immersive-reading/dictionary/status")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "installed": True,
+        "path": "/tmp/ecdict.db",
+        "entries": 3,
+        "size_bytes": 128,
+        "error": "",
+    }

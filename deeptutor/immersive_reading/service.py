@@ -631,9 +631,16 @@ class ImmersiveReadingService:
             ):
                 section["checkpoint_kind"] = "none"
                 migrated = True
-        document = ReadingDocument.model_validate(data)
+        try:
+            document = ReadingDocument.model_validate(data)
+        except Exception as exc:
+            logger.warning("Invalid document manifest %s: %s", document_id, exc)
+            return None
         if migrated:
-            _write_json(self._manifest_path(document_id), document.model_dump(mode="json"))
+            try:
+                _write_json(self._manifest_path(document_id), document.model_dump(mode="json"))
+            except OSError as exc:
+                logger.warning("Could not persist migrated manifest %s: %s", document_id, exc)
         return document
 
     def load_progress(self, document_id: str) -> ReadingProgress:
@@ -711,12 +718,21 @@ class ImmersiveReadingService:
 
     def list_documents(self) -> list[dict[str, Any]]:
         docs: list[ReadingDocument] = []
-        for child in self._root().iterdir():
-            if not child.is_dir() or not child.name.startswith("document_"):
+        try:
+            children = list(self._root().iterdir())
+        except OSError as exc:
+            logger.warning("Failed to iterate reading documents dir: %s", exc)
+            return []
+        for child in children:
+            try:
+                if not child.is_dir() or not child.name.startswith("document_"):
+                    continue
+                doc = self.load_document(child.name[len("document_") :])
+                if doc:
+                    docs.append(doc)
+            except OSError as exc:
+                logger.warning("Skipping unreadable document %s: %s", child.name, exc)
                 continue
-            doc = self.load_document(child.name[len("document_") :])
-            if doc:
-                docs.append(doc)
         docs.sort(key=lambda item: item.updated_at, reverse=True)
         return [self._summary(doc) for doc in docs]
 
@@ -2272,6 +2288,10 @@ class ImmersiveReadingService:
         while len(c) > _DICT_CACHE_LIMIT:
             c.popitem(last=False)
 
+    @classmethod
+    def _cache_clear(cls) -> None:
+        cls._dict_cache.clear()
+
     @staticmethod
     def _mark_context_match(result: DictionaryResult, context: str) -> DictionaryResult:
         """Heuristically flag the definition whose meaning fits *context*.
@@ -2406,6 +2426,35 @@ class ImmersiveReadingService:
             definitions=english_definitions,
             chinese=entry.translation,
         )
+
+    def dictionary_status(self) -> dict[str, object]:
+        path = self._ecdict_path()
+        entries: int | None = None
+        error = ""
+        if path.is_file():
+            try:
+                import sqlite3
+
+                with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as connection:
+                    entries = int(connection.execute("SELECT count(*) FROM entries").fetchone()[0])
+            except Exception as exc:
+                error = str(exc)
+        return {
+            "installed": path.is_file() and entries is not None,
+            "path": str(path),
+            "entries": entries,
+            "size_bytes": path.stat().st_size if path.exists() else 0,
+            "error": error,
+        }
+
+    def import_ecdict_csv(self, csv_path: str | Path) -> int:
+        target = self._ecdict_path()
+        count = ECDictionary.import_csv(csv_path, target)
+        if self._ecdict is not None:
+            self._ecdict.close()
+            self._ecdict = None
+        self._cache_clear()
+        return count
 
     async def _enrich_with_chinese(self, result: DictionaryResult) -> DictionaryResult:
         """Fill in Chinese (中文释义) for an English-only DictionaryResult.

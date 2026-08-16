@@ -172,6 +172,14 @@ export interface DictionaryResult {
   context_note: string;
 }
 
+export interface DictionaryStatus {
+  installed: boolean;
+  path: string;
+  entries: number | null;
+  size_bytes: number;
+  error: string;
+}
+
 export interface VocabEntry {
   id: string;
   word: string;
@@ -324,6 +332,15 @@ export const immersiveReadingApi = {
       body: JSON.stringify({ word, context }),
       signal,
     }),
+  dictionaryStatus: () => request<DictionaryStatus>("/dictionary/status"),
+  importDictionaryCsv: (file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return request<{ imported: boolean; entries: number }>(
+      "/dictionary/ecdict/import",
+      { method: "POST", body },
+    );
+  },
   skipSection: (documentId: string, sectionId: string) =>
     request<{ progress: ReadingProgress }>(
       `/documents/${encodeURIComponent(documentId)}/skip-section`,
