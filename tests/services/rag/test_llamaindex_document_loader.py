@@ -323,9 +323,7 @@ def test_loader_skips_images_when_llm_client_is_unavailable(
     def _unavailable_llm_client():
         raise RuntimeError("no LLM configured")
 
-    monkeypatch.setattr(
-        loader_module, "get_embedding_client", lambda: _MultimodalEmbeddingClient()
-    )
+    monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _MultimodalEmbeddingClient())
     monkeypatch.setattr(loader_module, "get_llm_client", _unavailable_llm_client)
 
     with caplog.at_level("WARNING"):
