@@ -33,6 +33,15 @@ class TestLanguageInference:
     def test_root_url(self):
         assert infer_language("https://docs.example.com/") == "en"
 
+    def test_en_prefix(self):
+        assert infer_language("https://docs.example.com/en/guide/") == "en"
+
+    def test_locale_query(self):
+        assert infer_language("https://example.com/docs?locale=zh_CN") == "zh"
+
+    def test_language_subdomain(self):
+        assert infer_language("https://cn.example.com/docs/") == "zh"
+
 
 class TestLanguagePrefix:
     def test_zh_cn(self):
@@ -96,6 +105,16 @@ class TestPairFilePaths:
         assert result[0][1] is not None  # index.md paired
         assert result[1][1] is None  # extra.md unpaired
 
+    def test_manual_path_pair_overrides_different_leaf_names(self):
+        result = pair_file_paths(
+            ["en.html.md"],
+            ["zh.html.md"],
+            "",
+            {"en.html.md": "zh.html.md"},
+        )
+
+        assert result == [("en.html.md", "zh.html.md")]
+
 
 class TestGroupSourcesByOrigin:
     def test_deepTutor_pairing(self):
@@ -126,6 +145,48 @@ class TestGroupSourcesByOrigin:
         pairs = group_sources_by_origin(sources)
         assert len(pairs) == 2
         assert not pairs[0].is_pair
+
+    def test_explicit_language_overrides_url_inference(self):
+        sources = [
+            {"id": "a", "url": "https://example.com/guide/", "language": "zh"},
+            {"id": "b", "url": "https://example.com/en/guide/", "language": "en"},
+        ]
+        pairs = group_sources_by_origin(sources)
+        assert len(pairs) == 1
+        assert pairs[0].is_pair
+
+    def test_manual_pairing_key_groups_separate_domains(self):
+        key = "manual-pair"
+        sources = [
+            {"id": "a", "url": "https://docs.example.com/", "pairing_key": key, "language": "en"},
+            {"id": "b", "url": "https://example.cn/docs/", "pairing_key": key, "language": "zh"},
+        ]
+        pairs = group_sources_by_origin(sources)
+        assert len(pairs) == 1
+        assert pairs[0].is_pair
+
+    def test_manual_pairing_url_adds_entry_file_mapping(self):
+        key = "manual-pair"
+        sources = [
+            {
+                "id": "a",
+                "url": "https://docs.example.com/en.html",
+                "pairing_key": key,
+                "language": "en",
+                "paired_url": "https://example.cn/zh.html",
+            },
+            {
+                "id": "b",
+                "url": "https://example.cn/zh.html",
+                "pairing_key": key,
+                "language": "zh",
+                "paired_url": "https://docs.example.com/en.html",
+            },
+        ]
+
+        pairs = group_sources_by_origin(sources)
+
+        assert pairs[0].manual_path_pairs == {"en.html.md": "zh.html.md"}
 
 
 class TestPairKey:

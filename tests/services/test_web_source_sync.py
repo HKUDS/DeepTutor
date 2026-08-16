@@ -9,11 +9,15 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from deeptutor.services.web_source.crawler import (
+    ALLOWED_HOSTS_ENV,
     CrawledPage,
     CrawlResult,
+    _configured_allowed_hosts,
+    _is_crawler_disallowed_host,
     _is_internal,
     _normalise_link,
     _to_filename,
+    crawl_docs_site,
 )
 from deeptutor.services.web_source.sync import WebSyncResult, sync_source
 from deeptutor.services.web_source.sync_service import _is_stale
@@ -58,6 +62,37 @@ def test_to_filename_no_prefix_collision():
     assert en == "docs/intro.md"
     assert zh == "zh-cn/docs/intro.md"
     assert en != zh
+
+
+def test_crawler_host_allowlist_parses_normalized_hosts(monkeypatch):
+    monkeypatch.setenv(ALLOWED_HOSTS_ENV, "Local.Host; 127.0.0.1, [::1]")
+
+    assert _configured_allowed_hosts() == frozenset({"local.host", "127.0.0.1", "::1"})
+
+
+def test_crawler_host_allowlist_only_bypasses_named_hosts(monkeypatch):
+    monkeypatch.setenv(ALLOWED_HOSTS_ENV, "127.0.0.1")
+    monkeypatch.setattr(
+        "deeptutor.services.web_source.crawler._is_disallowed_host",
+        lambda host: host in {"127.0.0.1", "10.0.0.8"},
+    )
+
+    assert _is_crawler_disallowed_host("127.0.0.1") is False
+    assert _is_crawler_disallowed_host("10.0.0.8") is True
+    assert _is_crawler_disallowed_host("example.com") is False
+
+
+@pytest.mark.asyncio
+async def test_crawler_host_allowlist_accepts_local_base_url(monkeypatch):
+    monkeypatch.setenv(ALLOWED_HOSTS_ENV, "127.0.0.1")
+    monkeypatch.setattr(
+        "deeptutor.services.web_source.crawler._fetch_page",
+        AsyncMock(return_value=None),
+    )
+
+    result = await crawl_docs_site("http://127.0.0.1:18784/en.html")
+
+    assert result.errors == []
 
 
 def _make_kb(tmp_path: Path, kb_name: str = "kb") -> tuple[str, Path]:

@@ -1181,12 +1181,18 @@ export interface WebSource {
   language?: string;
   pair_key?: string;
   pair_status?: string;
+  paired_source_id?: string;
+  paired_url?: string;
+  coverage?: number | null;
+  latest_sync_job?: string;
 }
 
 export interface AddWebSourcePayload {
   url: string;
   max_depth?: number;
   max_pages?: number;
+  language?: "auto" | "en" | "zh";
+  paired_url?: string;
 }
 
 export interface WebSyncSourceResult {
@@ -1226,6 +1232,20 @@ export interface WebSyncResult {
   message: string;
 }
 
+export interface WebSyncJob {
+  job_id: string;
+  kb_name: string;
+  status: "queued" | "running" | "cancelling" | "succeeded" | "failed" | "cancelled" | "interrupted";
+  progress: number;
+  message: string;
+  result: WebSyncResult | null;
+  error: string | null;
+  created_at: string;
+  started_at: string;
+  finished_at: string;
+  status_url?: string;
+}
+
 export async function listWebSources(
   kbName: string,
   options?: { signal?: AbortSignal },
@@ -1251,6 +1271,8 @@ export async function addWebSource(
         url: payload.url,
         max_depth: payload.max_depth ?? 3,
         max_pages: payload.max_pages ?? 200,
+        language: payload.language ?? "auto",
+        paired_url: payload.paired_url ?? "",
       }),
     },
   );
@@ -1268,13 +1290,34 @@ export async function removeWebSource(kbName: string, sourceId: string): Promise
   invalidateKnowledgeCaches();
 }
 
-export async function syncWebSources(kbName: string): Promise<WebSyncResult> {
+export async function startWebSync(kbName: string): Promise<WebSyncJob> {
   const res = await apiFetch(
     apiUrl(`/api/v1/knowledge/${encodeURIComponent(kbName)}/sync-web`),
     { method: "POST" },
   );
   if (!res.ok) throw new Error(await readErrorDetail(res, `Failed (${res.status})`));
-  return (await res.json()) as WebSyncResult;
+  return (await res.json()) as WebSyncJob;
+}
+
+export async function getWebSyncJob(kbName: string, jobId: string): Promise<WebSyncJob> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/v1/knowledge/${encodeURIComponent(kbName)}/web-sync-jobs/${encodeURIComponent(jobId)}`,
+    ),
+  );
+  if (!res.ok) throw new Error(await readErrorDetail(res, `Failed (${res.status})`));
+  return (await res.json()) as WebSyncJob;
+}
+
+export async function cancelWebSync(kbName: string, jobId: string): Promise<WebSyncJob> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/v1/knowledge/${encodeURIComponent(kbName)}/web-sync-jobs/${encodeURIComponent(jobId)}/cancel`,
+    ),
+    { method: "POST" },
+  );
+  if (!res.ok) throw new Error(await readErrorDetail(res, `Failed (${res.status})`));
+  return (await res.json()) as WebSyncJob;
 }
 
 // ── Web navigation ──────────────────────────────────────────────────
