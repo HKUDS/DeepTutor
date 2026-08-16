@@ -21,7 +21,10 @@ import uuid
 import zipfile
 
 from deeptutor.immersive_reading.bilingual.align import extract_align_pairs
-from deeptutor.immersive_reading.bilingual.merge_epub import build_bilingual_epub
+from deeptutor.immersive_reading.bilingual.merge_epub import (
+    BilingualExportStyle,
+    build_bilingual_epub,
+)
 from deeptutor.services.path_service import get_path_service
 
 logger = logging.getLogger(__name__)
@@ -950,7 +953,14 @@ class BilingualPairingService:
             return "# No alignment report yet\n\nRun alignment first."
         return report_path.read_text(encoding="utf-8")
 
-    def export_epub(self, pairing_id: str) -> Path:
+    def export_epub(
+        self,
+        pairing_id: str,
+        *,
+        style: BilingualExportStyle = "folded",
+        font_family: str = "",
+        custom_css: str = "",
+    ) -> Path:
         """Build and return a bilingual EPUB file path."""
         data = self._load_pairing(pairing_id)
         chapter_map = _read_json(self._chapter_map_path(pairing_id), [])
@@ -966,16 +976,28 @@ class BilingualPairingService:
             if data["target_lang"] == "zh-Hans"
             else "\u5c55\u958b\u4e2d\u6587"
         )
+        style_suffixes = {
+            "folded": "folded",
+            "alternating": "alternating",
+            "two_column": "two-column",
+        }
         title_suffix = (
-            " (\u53cc\u8bed\u53ef\u5c55\u5f00)"
-            if data["target_lang"] == "zh-Hans"
-            else " (\u96d9\u8a9e\u53ef\u5c55\u958b)"
+            f" (Bilingual {style_suffixes.get(style, 'folded')})"
         )
 
         output = (
             self._pairing_root(pairing_id)
-            / f"{Path(data.get('en_title', 'book')).stem}_bilingual.epub"
+            / f"{Path(data.get('en_title', 'book')).stem}_bilingual_{style_suffixes.get(style, 'folded')}.epub"
         )
+        translation_overrides: dict[str, list[str | None]] = {}
+        for entry in chapter_map:
+            section = _read_json(self._section_path(pairing_id, str(entry[0])), {})
+            translation_overrides[str(entry[0])] = [
+                next((str(text) for text in group.get("zh", []) if str(text).strip()), None)
+                if group.get("translation_source") == "translation_task"
+                else None
+                for group in section.get("groups", [])
+            ]
         build_bilingual_epub(
             english_epub=en_epub,
             translation_epub=zh_epub,
@@ -986,6 +1008,10 @@ class BilingualPairingService:
             title_suffix=title_suffix,
             summary_label=summary_label,
             alignment_overrides=self.load_alignment_overrides(pairing_id),
+            style=style,
+            font_family=font_family,
+            custom_css=custom_css,
+            translation_overrides=translation_overrides,
         )
         return output
 

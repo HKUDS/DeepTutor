@@ -13,6 +13,7 @@ export interface TranslationTask {
   chapter_index: number;
   group_index: number;
   source_text: string;
+  glossary?: TranslationGlossaryEntry[];
   target_language: string;
   reason: string;
   priority: "high" | "normal" | "low";
@@ -69,6 +70,22 @@ export interface TranslationTaskBoard {
   sources: TranslationSourceSummary[];
   chapters?: TranslationChapterSummary[];
   documents?: TranslationDocumentSummary[];
+  glossary?: TranslationGlossaryEntry[];
+}
+
+export interface TranslationGlossaryEntry {
+  term: string;
+  translation: string;
+  kind: string;
+  frequency: number;
+  protected: boolean;
+  approved: boolean;
+}
+
+export interface TranslationTaskEvent {
+  type: "snapshot" | "group_translated" | "task_updated" | "heartbeat";
+  task?: TranslationTask & { translation?: string };
+  board?: TranslationTaskBoard;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -136,5 +153,61 @@ export const translationTaskApi = {
     request<TranslationTaskBoard>("/api/v1/translation/tasks/retry-failed", {
       method: "POST",
       body: JSON.stringify({ source_type: sourceType, source_id: sourceId }),
+    }),
+  stream: async (
+    options: {
+      sourceType?: TranslationSourceType;
+      sourceId?: string;
+      chapterId?: string;
+      limit?: number;
+      onEvent: (event: TranslationTaskEvent) => void;
+      signal?: AbortSignal;
+    },
+  ) => {
+    const params = new URLSearchParams();
+    if (options.sourceType) params.set("source_type", options.sourceType);
+    if (options.sourceId) params.set("source_id", options.sourceId);
+    if (options.chapterId) params.set("chapter_id", options.chapterId);
+    params.set("limit", String(options.limit ?? 8));
+    const response = await apiFetch(
+      apiUrl(`/api/v1/translation/tasks/stream?${params.toString()}`),
+      { signal: options.signal },
+    );
+    if (!response.ok || !response.body) {
+      throw new Error(`Translation stream failed (${response.status})`);
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary >= 0) {
+        const rawEvent = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        const data = rawEvent
+          .split(/\r?\n/)
+          .filter((line) => line.startsWith("data: "))
+          .map((line) => line.slice(6))
+          .join("\n");
+        if (data) options.onEvent(JSON.parse(data) as TranslationTaskEvent);
+        boundary = buffer.indexOf("\n\n");
+      }
+    }
+  },
+  getGlossary: (sourceType: TranslationSourceType, sourceId: string) =>
+    request<{ entries: TranslationGlossaryEntry[] }>(
+      `/api/v1/translation/glossary?source_type=${encodeURIComponent(sourceType)}&source_id=${encodeURIComponent(sourceId)}`,
+    ),
+  updateGlossary: (
+    sourceType: TranslationSourceType,
+    sourceId: string,
+    entries: TranslationGlossaryEntry[],
+  ) =>
+    request<TranslationTaskBoard>("/api/v1/translation/glossary", {
+      method: "PUT",
+      body: JSON.stringify({ source_type: sourceType, source_id: sourceId, entries }),
     }),
 };

@@ -19,6 +19,11 @@ from typing import Any, Literal
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.services.file_io import atomic_write_json
 from deeptutor.services.path_service import get_path_service
+from .glossary import (
+    extract_glossary_candidates,
+    merge_glossary,
+    terms_for_text,
+)
 
 TranslationSourceType = Literal["bilingual", "kb_document"]
 _PRIORITY_RANK = {"high": 0, "normal": 1, "low": 2}
@@ -116,6 +121,7 @@ class TranslationTaskService:
             get_path_service().workspace_root / "translation" / "tasks.json"
         )
         self._lock = asyncio.Lock()
+        self._listeners: set[asyncio.Queue[dict[str, Any]]] = set()
         self._recover_interrupted_tasks()
 
     def _load(self) -> dict[str, Any]:
@@ -123,6 +129,7 @@ class TranslationTaskService:
         state.setdefault("version", 1)
         state.setdefault("tasks", [])
         state.setdefault("sources", {})
+        state.setdefault("glossaries", {})
         state.setdefault("is_running", False)
         state.setdefault("last_run_at", 0)
         return state
@@ -198,6 +205,9 @@ class TranslationTaskService:
             board["chapters"] = self._bilingual_chapter_summaries(source_id)
         if source_type == "kb_document" and source_id:
             board["documents"] = self._kb_document_summaries(source_id)
+        glossary_key = f"{source_type}:{source_id}"
+        if glossary_key in state.get("glossaries", {}):
+            board["glossary"] = state["glossaries"][glossary_key]
         return board
 
     @staticmethod
@@ -321,6 +331,19 @@ class TranslationTaskService:
             completed_at=old.get("completed_at"),
         )
 
+    @staticmethod
+    def _refresh_glossary(
+        state: dict[str, Any],
+        source_type: str,
+        source_id: str,
+        texts: list[str],
+    ) -> list[dict[str, Any]]:
+        key = f"{source_type}:{source_id}"
+        existing = state.setdefault("glossaries", {}).get(key, [])
+        merged = merge_glossary(existing, extract_glossary_candidates(texts))
+        state["glossaries"][key] = merged
+        return merged
+
     def plan_bilingual(self, pairing_id: str, *, force: bool = False) -> dict[str, Any]:
         root = _pairing_root(pairing_id)
         pairing = _read_json(root / "pairing.json")
@@ -351,6 +374,20 @@ class TranslationTaskService:
         new_tasks: list[dict[str, Any]] = []
         total_units = 0
         translated_units = 0
+        glossary = self._refresh_glossary(
+            state,
+            "bilingual",
+            pairing_id,
+            [
+                str(text)
+                for section in (
+                    _read_json(root / "sections" / f"{str(entry[0])}.json", {})
+                    for entry in chapter_map
+                )
+                for group in section.get("groups", [])
+                for text in group.get("en", [])
+            ],
+        )
 
         for chapter_index, entry in enumerate(chapter_map):
             chapter_id = str(entry[0])
@@ -391,6 +428,7 @@ class TranslationTaskService:
                     "chapter_id": chapter_id,
                     "group_index": group_index,
                     "source_text": source_text[:12_000],
+                    "glossary": terms_for_text(glossary, source_text),
                     "target_language": pairing.get("target_lang", "Chinese"),
                     "reason": reasons[0],
                     "priority": "high" if priority_window or "flagged" in reasons else "normal",
@@ -451,6 +489,10 @@ class TranslationTaskService:
             old_tasks = {}
         new_tasks: list[dict[str, Any]] = []
         translated_units = 0
+        source_documents: list[tuple[str, str]] = []
+        glossary = self._refresh_glossary(
+            state, "kb_document", kb_name, []
+        )
         for document in documents[: max(1, min(limit, 500))]:
             relative = document.relative_to(document_root).as_posix()
             task_id = f"kb:{kb_name}:{relative}"
@@ -465,6 +507,7 @@ class TranslationTaskService:
             source_text = (
                 _html_to_text(raw) if document.suffix.lower() in {".html", ".htm"} else raw
             )
+            source_documents.append((relative, source_text))
             if not source_text.strip() or len(source_text) > 12_000:
                 continue
             now = time.time()
@@ -477,6 +520,7 @@ class TranslationTaskService:
                 "chapter_index": 0,
                 "group_index": 0,
                 "source_text": source_text[:12_000],
+                "glossary": terms_for_text(glossary, source_text),
                 "target_language": "Chinese",
                 "reason": "missing_translation",
                 "priority": "normal",
@@ -494,6 +538,12 @@ class TranslationTaskService:
         total_units = min(len(documents), 500)
         state["tasks"] = [item for item in state["tasks"] if item.get("id") not in old_tasks]
         state["tasks"].extend(new_tasks)
+        state["glossaries"][f"kb_document:{kb_name}"] = merge_glossary(
+            glossary, extract_glossary_candidates([text for _, text in source_documents])
+        )
+        glossary = state["glossaries"][f"kb_document:{kb_name}"]
+        for task in new_tasks:
+            task["glossary"] = terms_for_text(glossary, str(task["source_text"]))
         self._update_source_stats(
             state, "kb_document", kb_name, kb_name, total_units, translated_units
         )
@@ -515,6 +565,41 @@ class TranslationTaskService:
         task.update(status="queued", error="", updated_at=time.time())
         self._save(state)
         return self._board(source_type=task["source_type"], source_id=task["source_id"])
+
+    def get_glossary(self, source_type: str, source_id: str) -> list[dict[str, Any]]:
+        if source_type not in {"bilingual", "kb_document"}:
+            raise ValueError("Unsupported translation source type")
+        state = self._load()
+        return list(state.get("glossaries", {}).get(f"{source_type}:{source_id}", []))
+
+    def update_glossary(
+        self, source_type: str, source_id: str, entries: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        if source_type not in {"bilingual", "kb_document"}:
+            raise ValueError("Unsupported translation source type")
+        normalized: list[dict[str, Any]] = []
+        for entry in entries[:500]:
+            term = str(entry.get("term", "")).strip()
+            translation = str(entry.get("translation", "")).strip()
+            if not term or len(term) > 300 or len(translation) > 500:
+                raise ValueError("Each glossary term is required and must be bounded")
+            normalized.append(
+                {
+                    "term": term,
+                    "translation": translation or term,
+                    "kind": str(entry.get("kind") or "custom")[:50],
+                    "frequency": max(0, int(entry.get("frequency", 0))),
+                    "protected": bool(entry.get("protected")),
+                    "approved": True,
+                }
+            )
+        state = self._load()
+        key = f"{source_type}:{source_id}"
+        state.setdefault("glossaries", {})[key] = sorted(
+            normalized, key=lambda item: item["term"].casefold()
+        )
+        self._save(state)
+        return self._board(source_type=source_type, source_id=source_id)
 
     def retry_failed(
         self, source_type: str | None = None, source_id: str | None = None
@@ -623,7 +708,9 @@ class TranslationTaskService:
                     self._save(state)
                     try:
                         translation = await translator.translate(
-                            str(task["source_text"]), str(task.get("target_language", "Chinese"))
+                            str(task["source_text"]),
+                            str(task.get("target_language", "Chinese")),
+                            glossary=task.get("glossary", []),
                         )
                         await asyncio.to_thread(self._apply_translation, task, translation)
                         task.update(
@@ -641,11 +728,75 @@ class TranslationTaskService:
                             updated_at=time.time(),
                         )
                     self._save(state)
+                    self._publish(task, translation if "translation" in task else None)
             finally:
                 state = self._load()
                 state["is_running"] = False
                 self._save(state)
             return self._board(source_type=source_type, source_id=source_id, chapter_id=chapter_id)
+
+    def _publish(
+        self, task: dict[str, Any], translation: str | None = None
+    ) -> None:
+        if not self._listeners:
+            return
+        public_task = self._public_task(task)
+        if translation is not None:
+            public_task["translation"] = translation
+        event = {
+            "type": "group_translated" if translation is not None else "task_updated",
+            "task": public_task,
+        }
+        for queue in list(self._listeners):
+            queue.put_nowait(event)
+
+    def subscribe(
+        self,
+        *,
+        source_type: str | None = None,
+        source_id: str | None = None,
+        chapter_id: str | None = None,
+    ):
+        """Yield task transitions for one filtered board without busy polling."""
+
+        async def iterator():
+            queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+            self._listeners.add(queue)
+            try:
+                yield {
+                    "type": "snapshot",
+                    "board": self._board(
+                        source_type=source_type,
+                        source_id=source_id,
+                        chapter_id=chapter_id,
+                    ),
+                }
+                while True:
+                    try:
+                        event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    except asyncio.TimeoutError:
+                        yield {"type": "heartbeat"}
+                        continue
+                    task = event.get("task", {})
+                    if (
+                        source_type
+                        and task.get("source_type") != source_type
+                        or source_id
+                        and task.get("source_id") != source_id
+                        or chapter_id
+                        and str(task.get("chapter_id") or task.get("title")) != chapter_id
+                    ):
+                        continue
+                    event["board"] = self._board(
+                        source_type=source_type,
+                        source_id=source_id,
+                        chapter_id=chapter_id,
+                    )
+                    yield event
+            finally:
+                self._listeners.discard(queue)
+
+        return iterator()
 
 
 _translation_task_service: TranslationTaskService | None = None

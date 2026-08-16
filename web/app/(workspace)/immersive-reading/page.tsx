@@ -14,7 +14,9 @@ import {
   ChevronRight,
   CircleAlert,
   Download,
+  FileSpreadsheet,
   FileSearch,
+  Layers,
   Languages,
   Library,
   Loader2,
@@ -490,7 +492,6 @@ function ImmersiveReadingContent() {
                   : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
               }`}
             >
-             {view === "library" ? <Library size={15} /> : view === "citations" ? <Quote size={15} /> : <BookCheck size={15} />}
               {view === "library"
                 ? <Library size={15} />
                 : view === "citations"
@@ -802,6 +803,22 @@ function VocabularyView({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-xs text-[var(--muted-foreground)]">{t("{{count}} words", { count: entries.length })}</span>
+        <a
+          href={immersiveReadingApi.vocabularyExportUrl("csv")}
+          download="deeptutor-vocabulary.csv"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]"
+        >
+          <FileSpreadsheet size={13} />
+          {t("Export CSV")}
+        </a>
+        <a
+          href={immersiveReadingApi.vocabularyExportUrl("apkg")}
+          download="deeptutor-vocabulary.apkg"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--foreground)] transition hover:bg-[var(--muted)]"
+        >
+          <Layers size={13} />
+          {t("Export Anki")}
+        </a>
         {bookOptions.length > 1 && (
           <select value={filterBook} onChange={(e) => setFilterBook(e.target.value)} className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 text-xs text-[var(--foreground)]">
             <option value="all">{t("All books")}</option>

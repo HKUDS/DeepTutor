@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
+from fastapi.responses import StreamingResponse
 
 from .service import get_translation_task_service
 
@@ -29,6 +31,21 @@ class RunRequest(BaseModel):
 class RetryFailedRequest(BaseModel):
     source_type: Literal["bilingual", "kb_document"] | None = None
     source_id: str | None = Field(default=None, min_length=1, max_length=300)
+
+
+class GlossaryEntry(BaseModel):
+    term: str = Field(min_length=1, max_length=300)
+    translation: str = Field(default="", max_length=500)
+    kind: str = Field(default="custom", max_length=50)
+    frequency: int = Field(default=0, ge=0)
+    protected: bool = False
+    approved: bool = True
+
+
+class UpdateGlossaryRequest(BaseModel):
+    source_type: Literal["bilingual", "kb_document"]
+    source_id: str = Field(min_length=1, max_length=300)
+    entries: list[GlossaryEntry] = Field(default_factory=list, max_length=500)
 
 
 @router.get("/health")
@@ -87,6 +104,76 @@ async def run_tasks(request: RunRequest, background_tasks: BackgroundTasks) -> d
         chapter_id=request.chapter_id,
     )
     return {"started": True, **board}
+
+
+@router.get("/tasks/stream")
+async def stream_tasks(
+    source_type: Literal["bilingual", "kb_document"] | None = None,
+    source_id: str | None = None,
+    chapter_id: str | None = None,
+    limit: int = 8,
+) -> StreamingResponse:
+    """Start a chapter run and stream one event per completed Group."""
+    service = get_translation_task_service()
+    board = service._board(source_type=source_type, source_id=source_id, chapter_id=chapter_id)
+    tracked = {
+        task["id"]: task["status"]
+        for task in board["tasks"]
+        if task["status"] in {"queued", "running"}
+    }
+
+    async def event_stream():
+        if tracked:
+            asyncio.create_task(
+                service.run(
+                    limit,
+                    source_type=source_type,
+                    source_id=source_id,
+                    chapter_id=chapter_id,
+                )
+            )
+        async for event in service.subscribe(
+            source_type=source_type, source_id=source_id, chapter_id=chapter_id
+        ):
+            task = event.get("task")
+            if isinstance(task, dict) and task.get("id") in tracked:
+                tracked[task["id"]] = task.get("status")
+            payload = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
+            yield f"event: {event.get('type', 'task_updated')}\ndata: {payload}\n\n"
+            if tracked and all(status in {"completed", "failed"} for status in tracked.values()):
+                break
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.get("/glossary")
+async def get_glossary(
+    source_type: Literal["bilingual", "kb_document"], source_id: str
+) -> dict[str, Any]:
+    try:
+        return {
+            "source_type": source_type,
+            "source_id": source_id,
+            "entries": get_translation_task_service().get_glossary(source_type, source_id),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.put("/glossary")
+async def update_glossary(request: UpdateGlossaryRequest) -> dict[str, Any]:
+    try:
+        return get_translation_task_service().update_glossary(
+            request.source_type,
+            request.source_id,
+            [entry.model_dump() for entry in request.entries],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/tasks/{task_id}/retry")

@@ -52,6 +52,14 @@ from deeptutor.immersive_reading.models import (
     SelectionQueryResult,
     VocabEntry,
 )
+from deeptutor.immersive_reading.vocabulary import (
+    chapter_difficulty,
+    ensure_cards,
+    grade_review,
+    review_queue,
+    vocabulary_apkg,
+    vocabulary_csv,
+)
 from deeptutor.services.file_io import atomic_write_text
 from deeptutor.services.llm import clean_thinking_tags, complete, get_llm_config
 from deeptutor.services.llm.context_window import resolve_effective_context_window
@@ -61,6 +69,7 @@ from deeptutor.services.llm.exceptions import (
     LLMParseError,
     LLMTimeoutError,
 )
+from deeptutor.services.translation.glossary import build_translation_guardrail
 from deeptutor.services.path_service import get_path_service
 from deeptutor.tools.web_search import web_search
 from deeptutor.utils.json_parser import parse_json_response
@@ -1827,6 +1836,26 @@ class ImmersiveReadingService:
     def _vocabulary_path(self) -> Path:
         return self._root() / "vocabulary.json"
 
+    def _bilingual_source_context(
+        self, pairing_id: str, chapter_id: str, group_index: int
+    ) -> tuple[str, str]:
+        section_path = (
+            get_path_service()
+            .get_immersive_reading_pairing_root(pairing_id)
+            / "sections"
+            / f"{chapter_id}.json"
+        )
+        section = _read_json(section_path, {})
+        groups = section.get("groups", []) if isinstance(section, dict) else []
+        index = max(0, min(group_index, len(groups) - 1)) if groups else -1
+        if index < 0:
+            return "", ""
+        group = groups[index]
+        return (
+            " ".join(group.get("en", []))[:4000],
+            " ".join(group.get("zh", []))[:4000],
+        )
+
     async def add_word(
         self,
         word: str,
@@ -1871,10 +1900,20 @@ class ImmersiveReadingService:
             )
             entries.append(existing)
 
+        bilingual_en, bilingual_zh = (
+            self._bilingual_source_context(pairing_id, chapter_id, group_index)
+            if pairing_id and chapter_id
+            else ("", "")
+        )
+        context_en = bilingual_en or context.strip()[:4000]
+
         updates: dict[str, Any] = {
             "updated_at": now,
             "occurrence_count": 1 if is_new else existing.occurrence_count + 1,
+            "context_en": context_en,
         }
+        if bilingual_zh:
+            updates["context_zh"] = bilingual_zh
         if result.phonetic:
             updates["phonetic"] = result.phonetic
         if result.definitions:
@@ -1897,6 +1936,8 @@ class ImmersiveReadingService:
             )
         entry = existing.model_copy(update=updates)
         entries[entries.index(existing)] = entry
+        entries = [ensure_cards(item, entries) for item in entries]
+        entry = next(item for item in entries if item.id == entry.id)
         _write_json(self._vocabulary_path(), [e.model_dump(mode="json") for e in entries])
         return entry
 
@@ -1910,12 +1951,56 @@ class ImmersiveReadingService:
                 entries.append(VocabEntry.model_validate(item))
             except Exception:
                 continue
+        # Legacy files predate generated cards; keep reads non-mutating but
+        # make every caller see a complete review/export shape.
+        if any(not entry.cards for entry in entries):
+            entries = [ensure_cards(entry, entries) for entry in entries]
         if document_id:
             entries = [e for e in entries if e.document_id == document_id]
         if pairing_id:
             entries = [e for e in entries if e.pairing_id == pairing_id]
         entries.sort(key=lambda e: e.created_at, reverse=True)
         return entries
+
+    def review_vocabulary(self, limit: int = 10) -> list[VocabEntry]:
+        limit = max(1, min(50, limit))
+        return review_queue(self.list_vocabulary(), limit=limit)
+
+    def grade_vocabulary_review(self, entry_id: str, *, correct: bool) -> VocabEntry:
+        entries = self.list_vocabulary()
+        entries, updated = grade_review(entries, entry_id, correct=correct)
+        _write_json(self._vocabulary_path(), [e.model_dump(mode="json") for e in entries])
+        return updated
+
+    def export_vocabulary_csv(self) -> Path:
+        entries = self.list_vocabulary()
+        if not entries:
+            raise ValueError("No vocabulary entries to export")
+        target = self._root() / "exports" / "vocabulary.csv"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(vocabulary_csv(entries))
+        return target
+
+    def export_vocabulary_apkg(self) -> Path:
+        entries = self.list_vocabulary()
+        if not entries:
+            raise ValueError("No vocabulary entries to export")
+        target = self._root() / "exports" / "vocabulary.apkg"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(vocabulary_apkg(entries, "DeepTutor Vocabulary"))
+        return target
+
+    def analyze_vocabulary_difficulty(self, content: str) -> dict[str, Any]:
+        try:
+            dictionary = ECDictionary(self._ecdict_path())
+            saved = [entry.word for entry in self.list_vocabulary()]
+            result = chapter_difficulty(content, dictionary, saved_words=saved)
+        finally:
+            try:
+                dictionary.close()
+            except UnboundLocalError:
+                pass
+        return result.model_dump(mode="json")
 
     def delete_word(self, entry_id: str) -> None:
         entries = self.list_vocabulary()
@@ -1924,7 +2009,12 @@ class ImmersiveReadingService:
             raise ValueError("Vocabulary entry not found")
         _write_json(self._vocabulary_path(), [e.model_dump(mode="json") for e in remaining])
 
-    async def translate(self, text: str, target_language: str) -> str:
+    async def translate(
+        self,
+        text: str,
+        target_language: str,
+        glossary: list[dict[str, Any]] | None = None,
+    ) -> str:
         selected = text.strip()
         if not selected:
             raise ValueError("Select some text to translate")
@@ -1937,6 +2027,7 @@ class ImmersiveReadingService:
                 target_language.strip().casefold(),
                 str(getattr(cfg, "provider_name", "") or ""),
                 str(cfg.model or ""),
+                json.dumps(glossary or [], ensure_ascii=False, sort_keys=True),
             )
         )
         cached = self._translation_cache.get(cache_key)
@@ -1948,7 +2039,11 @@ class ImmersiveReadingService:
         if pending is not None:
             return await asyncio.shield(pending)
 
-        task = asyncio.create_task(self._translate_uncached(selected, target_language))
+        try:
+            coro = self._translate_uncached(selected, target_language, glossary or [])
+        except TypeError:
+            coro = self._translate_uncached(selected, target_language)
+        task = asyncio.create_task(coro)
         self._translation_tasks[cache_key] = task
         try:
             translated = await asyncio.shield(task)
@@ -1962,13 +2057,20 @@ class ImmersiveReadingService:
             self._translation_cache.popitem(last=False)
         return translated
 
-    async def _translate_uncached(self, selected: str, target_language: str) -> str:
+    async def _translate_uncached(
+        self,
+        selected: str,
+        target_language: str,
+        glossary: list[dict[str, Any]],
+    ) -> str:
         cfg = get_llm_config()
         system_prompt = (
             "Translate the supplied book passage faithfully. Preserve paragraph breaks, names, tone, "
             "and uncertainty. Output only the translation, with no commentary."
         )
-        user_prompt = f"Target language: {target_language}\n\nText:\n{selected}"
+        user_prompt = (
+            f"{build_translation_guardrail(target_language, glossary)}\n\nText:\n{selected}"
+        )
         base_url = getattr(cfg, "base_url", "") or getattr(cfg, "effective_url", "") or ""
         # Local Ollama: use the native /api/chat endpoint directly. The
         # OpenAI-compatible /v1 path is unreliable with qwen3.x reasoning
@@ -2466,6 +2568,7 @@ class ImmersiveReadingService:
     def dictionary_status(self) -> dict[str, object]:
         path = self._ecdict_path()
         entries: int | None = None
+        frequency_fields = False
         error = ""
         if path.is_file():
             try:
@@ -2473,10 +2576,16 @@ class ImmersiveReadingService:
 
                 with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as connection:
                     entries = int(connection.execute("SELECT count(*) FROM entries").fetchone()[0])
+                dictionary = ECDictionary(path)
+                try:
+                    frequency_fields = dictionary.frequency_columns_available
+                finally:
+                    dictionary.close()
             except Exception as exc:
                 error = str(exc)
         return {
             "installed": path.is_file() and entries is not None,
+            "frequency_fields": frequency_fields if entries is not None else False,
             "path": str(path),
             "entries": entries,
             "size_bytes": path.stat().st_size if path.exists() else 0,

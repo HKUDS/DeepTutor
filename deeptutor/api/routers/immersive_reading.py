@@ -94,6 +94,11 @@ class VocabRequest(BaseModel):
     group_index: int = Field(default=0, ge=0)
 
 
+class VocabularyReviewGradeRequest(BaseModel):
+    entry_id: str = Field(min_length=1, max_length=80)
+    correct: bool
+
+
 class FocusCheckRequest(BaseModel):
     section_id: str
     summary: str = Field(min_length=1, max_length=20_000)
@@ -262,6 +267,16 @@ async def get_original(document_id: str):
 async def get_section(document_id: str, section_id: str) -> dict:
     try:
         return get_immersive_reading_service().get_section(document_id, section_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/documents/{document_id}/sections/{section_id}/vocabulary-difficulty")
+async def get_section_difficulty(document_id: str, section_id: str) -> dict:
+    service = get_immersive_reading_service()
+    try:
+        section = service.get_section(document_id, section_id)
+        return service.analyze_vocabulary_difficulty(str(section.get("content", "")))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -565,6 +580,41 @@ async def list_vocabulary(
     return {"entries": [item.model_dump(mode="json") for item in entries]}
 
 
+@router.get("/vocabulary/review")
+async def review_vocabulary(limit: int = 10) -> dict:
+    entries = get_immersive_reading_service().review_vocabulary(limit)
+    return {"entries": [item.model_dump(mode="json") for item in entries]}
+
+
+@router.post("/vocabulary/review/grade")
+async def grade_vocabulary_review(request: VocabularyReviewGradeRequest) -> dict:
+    try:
+        entry = get_immersive_reading_service().grade_vocabulary_review(
+            request.entry_id, correct=request.correct
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"entry": entry.model_dump(mode="json")}
+
+
+@router.get("/vocabulary/export/{export_format}")
+async def export_vocabulary(export_format: Literal["csv", "apkg"]) -> FileResponse:
+    service = get_immersive_reading_service()
+    try:
+        path = (
+            service.export_vocabulary_csv()
+            if export_format == "csv"
+            else service.export_vocabulary_apkg()
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return FileResponse(
+        path=str(path),
+        media_type="text/csv; charset=utf-8" if export_format == "csv" else "application/octet-stream",
+        filename=path.name,
+    )
+
+
 @router.delete("/vocabulary/{entry_id}")
 async def delete_vocabulary_word(entry_id: str) -> dict:
     try:
@@ -733,6 +783,12 @@ class RenameBookmarkRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
 
 
+class BilingualExportRequest(BaseModel):
+    style: Literal["folded", "alternating", "two_column"] = "folded"
+    font_family: str = Field(default="", max_length=300)
+    custom_css: str = Field(default="", max_length=100_000)
+
+
 @router.post("/bilingual/pair")
 async def bilingual_pair(request: PairRequest) -> dict[str, Any]:
     """Create a bilingual pairing from two imported reading documents."""
@@ -806,6 +862,24 @@ async def bilingual_get_section(pairing_id: str, chapter_id: str) -> dict[str, A
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@router.get("/bilingual/{pairing_id}/section/{chapter_id}/vocabulary-difficulty")
+async def bilingual_get_section_difficulty(pairing_id: str, chapter_id: str) -> dict[str, Any]:
+    """Preview difficult vocabulary before entering a bilingual chapter."""
+    try:
+        section = get_pairing_service().get_bilingual_section(pairing_id, chapter_id)
+        content = " ".join(
+            " ".join(group.get("en", []))
+            for group in section.get("groups", [])
+            if isinstance(group, dict)
+        )
+        return get_immersive_reading_service().analyze_vocabulary_difficulty(content)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Bilingual vocabulary difficulty failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @router.get("/bilingual/{pairing_id}/report")
 async def bilingual_get_report(pairing_id: str) -> dict[str, Any]:
     """Get the alignment review report."""
@@ -819,10 +893,19 @@ async def bilingual_get_report(pairing_id: str) -> dict[str, Any]:
 
 
 @router.post("/bilingual/{pairing_id}/export")
-async def bilingual_export(pairing_id: str) -> FileResponse:
+async def bilingual_export(
+    pairing_id: str, request: BilingualExportRequest | None = None
+) -> FileResponse:
     """Build and download a bilingual EPUB."""
+    options = request or BilingualExportRequest()
     try:
-        epub_path = await asyncio.to_thread(get_pairing_service().export_epub, pairing_id)
+        epub_path = await asyncio.to_thread(
+            get_pairing_service().export_epub,
+            pairing_id,
+            style=options.style,
+            font_family=options.font_family,
+            custom_css=options.custom_css,
+        )
         return FileResponse(
             path=str(epub_path),
             media_type="application/epub+zip",

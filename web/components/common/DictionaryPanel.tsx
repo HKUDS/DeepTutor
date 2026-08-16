@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  AudioLines,
   BookOpen,
   ChevronDown,
   CircleAlert,
@@ -11,6 +12,7 @@ import {
   BookPlus,
   RotateCw,
   Upload,
+  Volume2,
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -24,6 +26,11 @@ import {
   type DictionaryResult,
   type DictionaryStatus,
 } from "@/lib/immersive-reading-api";
+import {
+  subscribePronunciationState,
+  type PronunciationPlaybackState,
+  type WordPronunciationAccent,
+} from "@/lib/word-pronunciation";
 import {
   useResponsiveLayout,
   useDynamicViewportHeight,
@@ -131,6 +138,8 @@ export interface DictionaryPanelProps {
   onSaveToVocabulary?: () => void;
   /** Disables the save action while a save request is in flight. */
   saveBusy?: boolean;
+  /** Optional browser/Web Speech pronunciation controls. */
+  onPronounce?: (accent: WordPronunciationAccent) => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -220,7 +229,7 @@ function FullDefinitions({ result }: { result: DictionaryResult }) {
       {result.chinese && (
         <button
           type="button"
-          onClick={() => setRevealChinese((v) => !v)}
+          onClick={() => setRevealChinese(true)}
           aria-expanded={revealChinese}
           className={chineseRevealClassName(revealChinese)}
         >
@@ -295,6 +304,7 @@ interface ContentProps {
   onRetry?: () => void;
   onSaveToVocabulary?: () => void;
   saveBusy?: boolean;
+  onPronounce?: (accent: WordPronunciationAccent) => void;
 }
 
 function PanelContent({
@@ -312,8 +322,24 @@ function PanelContent({
   onRetry,
   onSaveToVocabulary,
   saveBusy,
+  onPronounce,
 }: ContentProps) {
   const { t } = useTranslation();
+  const [audioState, setAudioState] = useState<PronunciationPlaybackState>({
+    isPlaying: false,
+    word: null,
+    accent: null,
+  });
+
+  useEffect(() => {
+    return subscribePronunciationState(setAudioState);
+  }, []);
+
+  const isCurrentWordPlaying =
+    audioState.isPlaying &&
+    audioState.word?.toLowerCase() === word.trim().toLowerCase();
+  const isPlayingUS = isCurrentWordPlaying && audioState.accent === "en-US";
+  const isPlayingUK = isCurrentWordPlaying && audioState.accent === "en-GB";
 
   const isDictResult =
     !!result && (result.definitions.length > 0 || !!result.chinese);
@@ -347,13 +373,47 @@ function PanelContent({
             </span>
           )}
         </div>
-        <button
-          onClick={onClose}
-          aria-label={t("Close")}
-          className="shrink-0 rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
-        >
-          <X size={16} />
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          {onPronounce && (
+            <>
+              <button
+                type="button"
+                onClick={() => onPronounce("en-US")}
+                title={t("Play US pronunciation (P)")}
+                aria-label={t("Play US pronunciation (P)")}
+                className={`inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs transition ${
+                  isPlayingUS
+                    ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/40 animate-pulse"
+                    : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+                }`}
+              >
+                {isPlayingUS ? <AudioLines size={14} /> : <Volume2 size={14} />}
+                <span className="text-[10px] font-semibold">{t("US")}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onPronounce("en-GB")}
+                title={t("Play UK pronunciation (Shift+P)")}
+                aria-label={t("Play UK pronunciation (Shift+P)")}
+                className={`inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs transition ${
+                  isPlayingUK
+                    ? "bg-[var(--primary)]/15 text-[var(--primary)] ring-1 ring-[var(--primary)]/40 animate-pulse"
+                    : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+                }`}
+              >
+                {isPlayingUK ? <AudioLines size={14} /> : <Volume2 size={14} />}
+                <span className="text-[10px] font-semibold">{t("UK")}</span>
+              </button>
+            </>
+          )}
+          <button
+            onClick={onClose}
+            aria-label={t("Close")}
+            className="rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+          >
+            <X size={16} />
+          </button>
+        </div>
       </div>
 
       {/* Mode tabs */}
@@ -474,7 +534,7 @@ function MobileSheet(props: DictionaryPanelProps) {
   const vh = useDynamicViewportHeight();
   const [expanded, setExpanded] = useState(false);
 
-  const collapsedH = Math.round((vh || 600) * 0.35);
+  const collapsedH = Math.round((vh || 600) * 0.38);
   const expandedH = Math.round((vh || 600) * 0.85);
   const height = expanded ? expandedH : collapsedH;
 
@@ -494,8 +554,6 @@ function MobileSheet(props: DictionaryPanelProps) {
         paddingBottom: "env(safe-area-inset-bottom, 0px)",
         transition: "height 250ms cubic-bezier(0.22, 1, 0.36, 1)",
         animation: "dt-sheet-up 250ms cubic-bezier(0.22, 1, 0.36, 1)",
-        // Let touch events above the sheet pass through to the page so the
-        // reading content stays scrollable while the dictionary is open.
         pointerEvents: "auto",
       }}
     >
@@ -519,6 +577,7 @@ function MobileSheet(props: DictionaryPanelProps) {
           onRetry={() => {}}
           onSaveToVocabulary={props.onSaveToVocabulary}
           saveBusy={props.saveBusy}
+          onPronounce={props.onPronounce}
         />
       </div>
     </div>,
@@ -584,6 +643,7 @@ function DesktopPanel(props: DictionaryPanelProps) {
       onRetry={() => {}}
       onSaveToVocabulary={props.onSaveToVocabulary}
       saveBusy={props.saveBusy}
+      onPronounce={props.onPronounce}
     />
   );
 
