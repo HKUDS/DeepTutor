@@ -32,6 +32,44 @@ def test_capture_without_supervisor_anchor_reports_partial(
     assert snapshot.partial is True
 
 
+def test_psutil_permission_denied_falls_back_to_this_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Process:
+        pid = os.getpid()
+
+        def children(self, recursive: bool = True) -> list["Process"]:
+            raise PermissionError("process enumeration denied")
+
+        def memory_info(self) -> object:
+            class MemoryInfo:
+                rss = 1234
+
+            return MemoryInfo()
+
+    class RestrictedPsutil:
+        Error = OSError
+        AccessDenied = PermissionError
+
+        @staticmethod
+        def Process(pid: int | None = None) -> Process:
+            return Process()
+
+        @staticmethod
+        def pid_exists(pid: int) -> bool:
+            return pid == os.getpid()
+
+    monkeypatch.delenv(memory_probe.SUPERVISOR_PID_ENV, raising=False)
+    monkeypatch.setattr(memory_probe, "_load_psutil", lambda: RestrictedPsutil)
+
+    snapshot = memory_probe.capture()
+
+    assert [(proc.pid, proc.label, proc.rss_bytes) for proc in snapshot.processes] == [
+        (os.getpid(), "backend", 1234)
+    ]
+    assert snapshot.partial is True
+
+
 def test_supervisor_pid_ignores_dead_and_malformed_values(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

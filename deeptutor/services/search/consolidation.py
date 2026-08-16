@@ -51,15 +51,17 @@ PROVIDER_TEMPLATES = {
 ### Search Results for "{{ query }}"
 
 {% for result in results[:max_results] %}
-**[{{ loop.index }}] {{ result.title }}**
-{{ result.snippet }}
+**[{{ loop.index }}] [{{ result.title|default('Untitled', true) }}]({{ result.url|default('#', true) }})**
+{{ result.snippet|default('(No snippet available)', true) }}
 {% if result.date %}📅 {{ result.date }}{% endif %}
-🔗 {{ result.url }}
 {% if result.sitelinks %}
   └ Related: {% for link in result.sitelinks[:3] %}[{{ link.title }}]({{ link.link }}){% if not loop.last %} | {% endif %}{% endfor %}
 {% endif %}
 
 {% endfor %}
+{% if not results %}
+*No results found.*
+{% endif %}
 {% if people_also_ask %}
 ---
 ### People Also Ask
@@ -81,9 +83,9 @@ PROVIDER_TEMPLATES = {
 
 {% for result in results[:max_results] %}
 ---
-## [{{ loop.index }}] {{ result.title }}
+## [{{ loop.index }}] [{{ result.title|default('Untitled', true) }}]({{ result.url|default('#', true) }})
 
-{% if result.attributes.date %}📅 *{{ result.attributes.date }}*{% endif %}
+{% if result.attributes.publishedTime %}📅 *{{ result.attributes.publishedTime }}*{% endif %}
 
 {% if result.content %}
 {% if result.snippet %}*{{ result.snippet }}*{% endif %}
@@ -93,14 +95,17 @@ PROVIDER_TEMPLATES = {
 
 *[Content truncated - {{ result.attributes.tokens|default('many') }} tokens total]*{% endif %}
 {% else %}
-*{{ result.snippet }}*
+*{{ result.snippet|default('(No snippet available)', true) }}*
 {% endif %}
 
-🔗 [{{ result.url }}]({{ result.url }})
+🔗 [{{ result.url|default('#', true) }}]({{ result.url|default('#', true) }})
 
 {% endfor %}
 ---
 *{{ results|length }} results via Jina Reader{% if results and results|length > 0 and not results[0].content %} (no-content mode){% endif %}*
+{% if not results %}
+*No results found.*
+{% endif %}
 
 {% if links %}
 ### Extracted Links
@@ -120,19 +125,26 @@ PROVIDER_TEMPLATES = {
     "serper_scholar": """### Academic Results for "{{ query }}"
 
 {% for result in results[:max_results] %}
-**[{{ loop.index }}] {{ result.title }}**{% if result.attributes.year %} ({{ result.attributes.year }}){% endif %}
+**[{{ loop.index }}] [{{ result.title|default('Untitled', true) }}]({{ result.url|default('#', true) }})**{% if result.attributes.year %} ({{ result.attributes.year }}){% endif %}
 
 {% if result.attributes.publicationInfo %}*{{ result.attributes.publicationInfo }}*{% endif %}
 
-{{ result.snippet }}
+{{ result.snippet|default('(No snippet available)', true) }}
 
 {% if result.attributes.pdfUrl %}📄 [PDF]({{ result.attributes.pdfUrl }}) | {% endif %}🔗 [Link]({{ result.url }})
 {% if result.attributes.citedBy %}📚 Cited by: {{ result.attributes.citedBy }}{% endif %}
 
 {% endfor %}
 ---
+{% if not results %}*No results found.*
+{% endif %}
 *{{ results|length }} academic papers found via Google Scholar*""",
 }
+
+
+def _normalise_text(value: Any) -> str:
+    """Return provider values as trim strings so missing fields never render as None."""
+    return "" if value is None else str(value).strip()
 
 
 class AnswerConsolidator:
@@ -210,18 +222,18 @@ class AnswerConsolidator:
         """
         # Base context (common to all providers)
         context: dict[str, Any] = {
-            "query": response.query,
-            "provider": response.provider,
-            "model": response.model,
+            "query": _normalise_text(response.query),
+            "provider": _normalise_text(response.provider),
+            "model": _normalise_text(response.model),
             "max_results": self.max_results,
             "results": [
                 {
-                    "title": r.title,
-                    "url": r.url,
-                    "snippet": r.snippet,
-                    "date": r.date,
-                    "source": r.source,
-                    "content": r.content,
+                    "title": _normalise_text(r.title),
+                    "url": _normalise_text(r.url),
+                    "snippet": _normalise_text(r.snippet),
+                    "date": _normalise_text(r.date),
+                    "source": _normalise_text(r.source),
+                    "content": _normalise_text(r.content),
                     "sitelinks": r.sitelinks,
                     "attributes": r.attributes,
                 }
@@ -232,8 +244,8 @@ class AnswerConsolidator:
                     "id": c.id,
                     "reference": c.reference,
                     "url": c.url,
-                    "title": c.title,
-                    "snippet": c.snippet,
+                    "title": _normalise_text(c.title),
+                    "snippet": _normalise_text(c.snippet),
                 }
                 for c in response.citations
             ],
@@ -349,15 +361,16 @@ Consolidate these results into structured grounding context."""
 
         This is used as a fallback when no provider-specific template is available.
         """
-        lines = [f'### Search Results for "{response.query}"', ""]
+        lines = [f'### Search Results for "{_normalise_text(response.query)}"', ""]
 
         for i, result in enumerate(response.search_results[: self.max_results], 1):
-            lines.append(f"**[{i}] {result.title}**")
-            if result.snippet:
-                lines.append(f"{result.snippet}")
+            title = _normalise_text(result.title) or "Untitled"
+            url = _normalise_text(result.url) or "#"
+            lines.append(f"**[{i}] {title}**")
+            lines.append(_normalise_text(result.snippet) or "(No snippet available)")
             if result.source:
                 lines.append(f"*Source: {result.source}*")
-            lines.append(f"🔗 [{result.url}]({result.url})")
+            lines.append(f"🔗 [{url}]({url})")
             lines.append("")
 
         if response.search_results:
