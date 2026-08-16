@@ -27,6 +27,4 @@ def test_hook_stops_when_repo_hygiene_fails(tmp_path: Path) -> None:
     )
 
     assert result.returncode != 0
-    assert calls.read_text(encoding="utf-8").splitlines() == [
-        "scripts/check_repo_hygiene.py"
-    ]
+    assert calls.read_text(encoding="utf-8").splitlines() == ["scripts/check_repo_hygiene.py"]

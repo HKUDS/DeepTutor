@@ -72,9 +72,7 @@ class LlamaIndexDocumentLoader:
             # archive download) on a synchronous httpx.Client — running it on
             # the event loop stalls every other request for the whole PDF
             # (same class of bug as upstream #761/#777). Hand it to a thread.
-            text, extracted_images = await asyncio.to_thread(
-                self._parse_document, file_path
-            )
+            text, extracted_images = await asyncio.to_thread(self._parse_document, file_path)
             self._append_if_nonempty(documents, file_path, text)
             image_sources.extend(extracted_images)
 

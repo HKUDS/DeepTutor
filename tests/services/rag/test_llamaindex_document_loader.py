@@ -106,9 +106,7 @@ def test_loader_keeps_event_loop_responsive_while_parser_blocks(
         return await asyncio.wait_for(load_task, timeout=1)
 
     documents = asyncio.run(_exercise())
-    assert [document.text for document in documents] == [
-        "Parsed without blocking the loop"
-    ]
+    assert [document.text for document in documents] == ["Parsed without blocking the loop"]
 
 
 def test_loader_skips_document_when_active_engine_cannot_parse(
@@ -325,9 +323,7 @@ def test_loader_skips_images_when_llm_client_is_unavailable(
     def _unavailable_llm_client():
         raise RuntimeError("no LLM configured")
 
-    monkeypatch.setattr(
-        loader_module, "get_embedding_client", lambda: _MultimodalEmbeddingClient()
-    )
+    monkeypatch.setattr(loader_module, "get_embedding_client", lambda: _MultimodalEmbeddingClient())
     monkeypatch.setattr(loader_module, "get_llm_client", _unavailable_llm_client)
 
     with caplog.at_level("WARNING"):
