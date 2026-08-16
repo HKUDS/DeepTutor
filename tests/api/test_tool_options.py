@@ -160,3 +160,17 @@ async def test_unreadable_tool_is_skipped(stub_registry) -> None:
     # The non-MCP halves of the surface are unaffected.
     assert isinstance(payload["tools"], list)
     assert isinstance(payload["builtin_tools"], list)
+
+
+@pytest.mark.asyncio
+async def test_optional_tool_filter_is_explicit_and_does_not_change_default(stub_registry) -> None:
+    """Partner policy must not leak into the shared admin grant catalog."""
+    stub_registry([])
+
+    complete = await tool_options_mod.build_tool_options()
+    restricted = await tool_options_mod.build_tool_options(optional_tools={"reason"})
+
+    complete_names = {row["name"] for row in complete["tools"]}
+    assert "reason" in complete_names
+    assert "web_search" in complete_names
+    assert {row["name"] for row in restricted["tools"]} == {"reason"}

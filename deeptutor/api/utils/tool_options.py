@@ -14,6 +14,7 @@ spelling of ``provider_id`` and stays populated for existing clients.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import logging
 from typing import Any
 
@@ -24,7 +25,9 @@ logger = logging.getLogger(__name__)
 
 
 async def build_tool_options(
-    *, exclude_builtin: set[str] | None = None
+    *,
+    exclude_builtin: set[str] | None = None,
+    optional_tools: Iterable[str] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Build the configurable-tool surface.
 
@@ -32,9 +35,13 @@ async def build_tool_options(
     the partners API passes ``{"read_memory", "write_memory"}`` because partners
     use the mandatory ``partner_*`` memory tools instead and cannot configure
     chat's memory tools.
+
+    ``optional_tools`` is an optional allow-list for the user-toggleable
+    surface.  The generic builder intentionally owns no admin or partner
+    policy: callers that need a restricted view pass it explicitly, while the
+    multi-user grant editor keeps seeing the complete assignable catalog.
     """
     from deeptutor.agents._shared.tool_composition import (
-        admin_enabled_optional_tools,
         default_optional_tools,
     )
     from deeptutor.runtime.registry.deferred_tools import provider_identity
@@ -67,14 +74,11 @@ async def build_tool_options(
             "description_i18n": descriptions,
         }
 
-    # The partner tool surface mirrors the admin's chat composer: a tool the
-    # admin turned off in Settings → Chat → Tools is not offered here, so a
-    # partner can neither pick nor default to a tool disabled globally. This
-    # is the same source the partner runtime intersects against
-    # (``_resolved_enabled_tools``), so the picker and runtime can't drift.
-    globally_enabled = set(admin_enabled_optional_tools())
+    allowed_optional = None if optional_tools is None else frozenset(optional_tools)
     tools: list[dict[str, Any]] = [
-        _describe(name) for name in default_optional_tools() if name in globally_enabled
+        _describe(name)
+        for name in default_optional_tools()
+        if allowed_optional is None or name in allowed_optional
     ]
     builtin_tools: list[dict[str, Any]] = [
         _describe(name) for name in CONFIGURABLE_BUILTIN_TOOL_NAMES if name not in exclude
