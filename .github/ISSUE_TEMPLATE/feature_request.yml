@@ -8,16 +8,20 @@ body:
     id: existingcheck
     attributes:
       label: Do you need to file a feature request?
-      description: Please help us manage our time by avoiding duplicates and common feature request with the steps below.
+      description: Please help us manage our time by avoiding duplicates and common feature requests.
       options:
-        - label: I have searched the existing feature request and this feature request is not already filed.
+        - label: I have searched the existing feature requests and this feature request is not already filed.
         - label: I believe this is a legitimate feature request, not just a question or bug.
+    validations:
+      required: true
   - type: textarea
     id: feature_request_description
     attributes:
       label: Feature Request Description
       description: A clear and concise description of the feature request you would like.
       placeholder: What does this feature request add or improve?
+    validations:
+      required: true
   - type: dropdown
     id: module
     attributes:
@@ -25,16 +29,25 @@ body:
       description: Which module would this feature affect?
       options:
         - Dashboard
+        - Chat
         - Knowledge Base Management
         - Smart Solver
         - Question Generator
         - Deep Research
+        - Visualize
+        - Math Animator
         - Co-Writer
         - Notebook
         - Guided Learning
         - Idea Generation
+        - Memory
+        - Partners
+        - Tools / Skills
+        - Provider Integrations
+        - CLI
         - API/Backend
         - Frontend/Web
+        - Installation/Setup
         - Other
     validations:
       required: true
@@ -44,9 +57,11 @@ body:
       label: Use Case
       description: Describe the problem this feature would solve or the use case it would enable.
       placeholder: What problem does this feature solve?
+    validations:
+      required: true
   - type: textarea
     id: additional_context
     attributes:
       label: Additional Context
-      description: Add any other context or screenshots about the feature request here.
+      description: Add any other context or screenshots. Redact API keys, tokens, private URLs, and local paths.
       placeholder: Any additional information, mockups, or examples

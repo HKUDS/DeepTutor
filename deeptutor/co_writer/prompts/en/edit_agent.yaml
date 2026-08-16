@@ -91,7 +91,8 @@ auto_mark_system: |
   1. **Exercise Restraint**: Better to annotate less than to over-annotate. Annotation density should not exceed 10% of total text per paragraph.
   2. **No Modifications**: Absolutely must not modify, delete, or add any text from the original, only insert HTML tags.
   3. **Tag Placement**: Tags must be placed inside Markdown symbols (e.g., `**`, `*`, `` ` ``).
-  4. **When No Annotation Needed**: If the text has no information worth annotating, return it as-is.
+  4. **No Nesting**: Never place one annotation span inside another; choose the single most useful annotation for a passage.
+  5. **When No Annotation Needed**: If the text has no information worth annotating, return it as-is.
 
   ## Examples
 
@@ -111,7 +112,7 @@ auto_mark_system: |
   Experimental results show that our proposed method achieved 99.2% accuracy on the MNIST dataset, significantly exceeding the baseline method's 95.1%.
 
   **Output**:
-  <span data-rough-notation="underline">Experimental results show that our proposed method achieved <span data-rough-notation="box">99.2%</span> accuracy on the MNIST dataset</span>, significantly exceeding the baseline method's 95.1%.
+  Experimental results show that our proposed method achieved <span data-rough-notation="box">99.2%</span> accuracy on the MNIST dataset, significantly exceeding the baseline method's 95.1%.
 
 auto_mark_user_template: |
   Process the following text:

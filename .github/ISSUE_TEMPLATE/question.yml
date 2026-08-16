@@ -12,12 +12,16 @@ body:
       options:
         - label: I have searched the existing questions and discussions and this question is not already answered.
         - label: I believe this is a legitimate question, not just a bug or feature request.
+    validations:
+      required: true
   - type: textarea
     id: question
     attributes:
       label: Your Question
       description: A clear and concise description of your question.
       placeholder: What is your question?
+    validations:
+      required: true
   - type: dropdown
     id: module
     attributes:
@@ -25,14 +29,22 @@ body:
       description: Which module is your question related to?
       options:
         - Dashboard
+        - Chat
         - Knowledge Base Management
         - Smart Solver
         - Question Generator
         - Deep Research
+        - Visualize
+        - Math Animator
         - Co-Writer
         - Notebook
         - Guided Learning
         - Idea Generation
+        - Memory
+        - Partners
+        - Tools / Skills
+        - Provider Integrations
+        - CLI
         - API/Backend
         - Frontend/Web
         - Installation/Setup
@@ -43,5 +55,5 @@ body:
     id: context
     attributes:
       label: Additional Context
-      description: Provide any additional context or details that might help us understand your question better.
-      placeholder: Add any relevant information here (code snippets, error messages, configuration, etc.)
+      description: Provide any additional context or details. Redact API keys, tokens, private URLs, and local paths.
+      placeholder: Add any relevant information here (code snippets, error messages, public configuration, etc.)

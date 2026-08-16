@@ -7,12 +7,7 @@ from typing import Any, Iterable
 import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-AGENTS_DIR = PROJECT_ROOT / "deeptutor" / "agents"
-# Modules that live outside deeptutor/agents/ but still own prompts.
-EXTRA_PROMPT_MODULE_DIRS = (
-    PROJECT_ROOT / "deeptutor" / "book",
-    PROJECT_ROOT / "deeptutor" / "co_writer",
-)
+DEEPTUTOR_DIR = PROJECT_ROOT / "deeptutor"
 
 # Template placeholders are expected to be like {topic}, {knowledge_title}, etc.
 # Avoid false positives from LaTeX (\frac{1}{3}) and Mermaid (B{{Processing}}).
@@ -24,10 +19,10 @@ def _load_yaml(path: Path) -> Any:
         return yaml.safe_load(f) or {}
 
 
-def _iter_yaml_files(root: Path) -> Iterable[Path]:
-    if not root.exists():
-        return []
-    return sorted([p for p in root.rglob("*.yaml") if p.is_file()])
+def _iter_english_prompt_files() -> Iterable[Path]:
+    nested = DEEPTUTOR_DIR.rglob("en/*.yaml")
+    flat = DEEPTUTOR_DIR.rglob("en.yaml")
+    return sorted(set(nested) | set(flat))
 
 
 def _get_placeholders(value: Any) -> set[str]:
@@ -35,89 +30,66 @@ def _get_placeholders(value: Any) -> set[str]:
     if isinstance(value, str):
         found |= set(PLACEHOLDER_RE.findall(value))
     elif isinstance(value, dict):
-        for v in value.values():
-            found |= _get_placeholders(v)
+        for child in value.values():
+            found |= _get_placeholders(child)
     elif isinstance(value, list):
-        for v in value:
-            found |= _get_placeholders(v)
+        for child in value:
+            found |= _get_placeholders(child)
     return found
 
 
 def _collect_keys(value: Any, prefix: str = "") -> set[str]:
     keys: set[str] = set()
     if isinstance(value, dict):
-        for k, v in value.items():
-            path = f"{prefix}.{k}" if prefix else str(k)
+        for key, child in value.items():
+            path = f"{prefix}.{key}" if prefix else str(key)
             keys.add(path)
-            keys |= _collect_keys(v, path)
-    elif isinstance(value, list):
-        if prefix:
-            keys.add(prefix)
-    else:
-        if prefix:
-            keys.add(prefix)
+            keys |= _collect_keys(child, path)
+    elif prefix:
+        keys.add(prefix)
     return keys
 
 
 def test_prompts_key_and_placeholder_parity():
-    assert AGENTS_DIR.exists(), f"Agents dir not found: {AGENTS_DIR}"
+    assert DEEPTUTOR_DIR.exists(), f"DeepTutor dir not found: {DEEPTUTOR_DIR}"
 
     failures: list[str] = []
+    english_files = list(_iter_english_prompt_files())
+    assert len(english_files) >= 61
 
-    module_dirs: list[Path] = sorted(
-        [p for p in AGENTS_DIR.iterdir() if p.is_dir() and not p.name.startswith("__")]
-    )
-    module_dirs.extend(p for p in EXTRA_PROMPT_MODULE_DIRS if p.is_dir())
-
-    for module_dir in module_dirs:
-        prompts_dir = module_dir / "prompts"
-        en_dir = prompts_dir / "en"
-        if not en_dir.exists():
+    for en_file in english_files:
+        zh_file = (
+            en_file.parent.parent / "zh" / en_file.name
+            if en_file.parent.name == "en"
+            else en_file.parent / "zh.yaml"
+        )
+        display = en_file.relative_to(DEEPTUTOR_DIR).as_posix()
+        if not zh_file.exists():
+            failures.append(f"[MISSING zh] {display}")
             continue
 
-        zh_dir = prompts_dir / "zh"
-        cn_dir = prompts_dir / "cn"
+        en_obj = _load_yaml(en_file)
+        zh_obj = _load_yaml(zh_file)
+        en_keys = _collect_keys(en_obj)
+        zh_keys = _collect_keys(zh_obj)
+        en_placeholders = _get_placeholders(en_obj)
+        zh_placeholders = _get_placeholders(zh_obj)
 
-        for en_file in _iter_yaml_files(en_dir):
-            rel = en_file.relative_to(en_dir)
-            en_obj = _load_yaml(en_file)
+        missing_keys = sorted(en_keys - zh_keys)
+        extra_keys = sorted(zh_keys - en_keys)
+        missing_placeholders = sorted(en_placeholders - zh_placeholders)
+        extra_placeholders = sorted(zh_placeholders - en_placeholders)
 
-            candidates: list[tuple[str, Path]] = []
-            if zh_dir.exists():
-                candidates.append(("zh", zh_dir / rel))
-            if cn_dir.exists():
-                candidates.append(("cn", cn_dir / rel))
-
-            if not candidates:
-                continue
-
-            for lang_name, target_file in candidates:
-                if not target_file.exists():
-                    failures.append(f"[MISSING {lang_name}] {module_dir.name}: {rel.as_posix()}")
-                    continue
-
-                target_obj = _load_yaml(target_file)
-                en_keys = _collect_keys(en_obj)
-                target_keys = _collect_keys(target_obj)
-
-                missing = sorted(en_keys - target_keys)
-                extra = sorted(target_keys - en_keys)
-
-                en_ph = _get_placeholders(en_obj)
-                target_ph = _get_placeholders(target_obj)
-                ph_missing = sorted(en_ph - target_ph)
-                ph_extra = sorted(target_ph - en_ph)
-
-                if missing or extra or ph_missing or ph_extra:
-                    msg = [f"[DIFF {lang_name}] {module_dir.name}: {rel.as_posix()}"]
-                    if missing:
-                        msg.append("  missing keys: " + ", ".join(missing[:50]))
-                    if extra:
-                        msg.append("  extra keys: " + ", ".join(extra[:50]))
-                    if ph_missing:
-                        msg.append("  missing placeholders: " + ", ".join(ph_missing))
-                    if ph_extra:
-                        msg.append("  extra placeholders: " + ", ".join(ph_extra))
-                    failures.append("\n".join(msg))
+        if missing_keys or extra_keys or missing_placeholders or extra_placeholders:
+            message = [f"[DIFF zh] {display}"]
+            if missing_keys:
+                message.append("  missing keys: " + ", ".join(missing_keys[:50]))
+            if extra_keys:
+                message.append("  extra keys: " + ", ".join(extra_keys[:50]))
+            if missing_placeholders:
+                message.append("  missing placeholders: " + ", ".join(missing_placeholders))
+            if extra_placeholders:
+                message.append("  extra placeholders: " + ", ".join(extra_placeholders))
+            failures.append("\n".join(message))
 
     assert not failures, "Prompt parity failures:\n" + "\n\n".join(failures)

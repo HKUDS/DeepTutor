@@ -412,6 +412,9 @@ def test_tool_schemas_populated_when_kb_attached() -> None:
         kb_name="demo-kb",
         enabled_tools=["web_search"],
     )
+    # Keep this test on a known tool-capable binding regardless of the
+    # developer's selected provider.
+    pipeline.binding = "openai"
     ctx = UnifiedContext(
         user_message="test",
         session_id="s1",
@@ -446,6 +449,7 @@ def test_use_native_tools_false_when_no_tools_resolved() -> None:
 
     pipeline = _make_pipeline()
     pipeline.kb_name = None
+    pipeline.binding = "openai"
     ctx = UnifiedContext(
         user_message="test",
         session_id="s1",

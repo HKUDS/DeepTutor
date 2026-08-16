@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from deeptutor.api import main as api_main
+from deeptutor.services.config.runtime_settings import DEFAULT_SYSTEM_SETTINGS
 
 
 def test_cors_allows_remote_http_origins_when_auth_disabled(
@@ -14,6 +15,12 @@ def test_cors_allows_remote_http_origins_when_auth_disabled(
     monkeypatch.delenv("CORS_ORIGIN", raising=False)
     monkeypatch.delenv("CORS_ORIGINS", raising=False)
     monkeypatch.setenv("FRONTEND_PORT", "3782")
+    monkeypatch.setattr(
+        api_main,
+        "load_system_settings",
+        lambda: {**DEFAULT_SYSTEM_SETTINGS, "frontend_port": 3782},
+    )
+    monkeypatch.setattr(api_main, "load_auth_settings", lambda: {"enabled": False})
 
     settings = api_main._build_cors_settings()
 

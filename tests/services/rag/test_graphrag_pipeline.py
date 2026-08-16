@@ -9,6 +9,7 @@ config bridge, ingestion, storage, lifecycle gating) directly, and stub the thin
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import json
 from pathlib import Path
 import sys
@@ -38,6 +39,10 @@ def test_factory_dispatches_graphrag_lazily(tmp_path) -> None:
     assert "graphrag" not in sys.modules
 
 
+@pytest.mark.skipif(
+    importlib.util.find_spec("graphrag") is not None,
+    reason="GraphRAG availability assertions target the optional-dependency-absent CI matrix",
+)
 def test_list_pipelines_includes_graphrag() -> None:
     entry = next(p for p in list_pipelines() if p["id"] == GRAPHRAG_PROVIDER)
     assert entry["requires_api_key"] is False
@@ -207,6 +212,10 @@ def test_normalize_mode(given, expected) -> None:
     assert gr_config.normalize_mode(given) == expected
 
 
+@pytest.mark.skipif(
+    importlib.util.find_spec("graphrag") is not None,
+    reason="GraphRAG availability assertions target the optional-dependency-absent CI matrix",
+)
 def test_is_graphrag_available_false_in_ci() -> None:
     assert gr_config.is_graphrag_available() is False
 

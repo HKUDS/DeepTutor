@@ -122,6 +122,9 @@ def _build_app(router_module) -> FastAPI:
 def test_mimic_websocket_accepts_config_and_returns_messages(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    from deeptutor.api.routers import auth
+
+    monkeypatch.setattr(auth, "AUTH_ENABLED", False)
     question_router_module = _load_question_router_module(monkeypatch)
 
     async def _fake_mimic_exam_questions(*_args, **_kwargs):
