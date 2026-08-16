@@ -9,10 +9,12 @@ CSS, rewrite OPF metadata, and repackage. The English package stays intact
 from __future__ import annotations
 
 import os
+from dataclasses import replace
+import html
 from pathlib import Path
 import re
 import shutil
-from typing import Any, List, Sequence, Tuple
+from typing import Any, List, Literal, Sequence, Tuple
 from urllib.parse import unquote
 import zipfile
 
@@ -43,6 +45,20 @@ div.zh-footnotes { margin-top: 2em; padding-top: 1em; border-top: 1px solid #cbd
 @media (prefers-color-scheme: dark) { details.zh-details { background: #1e293b; border-left-color: #38bdf8; } details.zh-details[open] { background: #0f172a; } details.zh-details summary { color: #38bdf8; } details.zh-details .zh-content p, details.zh-details .zh-content blockquote { color: #e2e8f0; } }
 """
 
+# Additional rules shared by all export styles. Keeping this separate makes
+# reader customization additive and avoids replacing a book's existing CSS.
+STYLE_EXTENSION_CSS = """
+:root { --dt-bilingual-font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Heiti TC", "Microsoft JhengHei", "Noto Serif CJK TC", serif; }
+.details.zh-details .zh-content p, .details.zh-details .zh-content blockquote, .zh-alternate, .zh-column { font-family: var(--dt-bilingual-font-family); }
+.zh-alternate { margin: .35em 0 1.1em; padding: .45em .75em; background: #f8f9fa; border-left: 3px solid #0066cc; border-radius: 4px; line-height: 1.7; color: #1e293b; }
+.bilingual-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1em; align-items: start; margin: 0 0 1.1em; break-inside: avoid; }
+.bilingual-row > .en-column { line-height: 1.65; }
+.bilingual-row > .zh-column { padding: .45em .65em; background: #f8f9fa; border-left: 3px solid #0066cc; border-radius: 4px; line-height: 1.7; color: #1e293b; }
+@media (prefers-color-scheme: dark) { .zh-alternate, .bilingual-row > .zh-column { background: #1e293b; border-left-color: #38bdf8; color: #e2e8f0; } }
+"""
+
+BilingualExportStyle = Literal["folded", "alternating", "two_column"]
+
 
 def _outer_attrs(attrs: str, fragment_index: int) -> str:
     from deeptutor.immersive_reading.bilingual.align import attr_id
@@ -69,9 +85,50 @@ def _make_details(unit: ZhUnit, label: str) -> str:
     )
 
 
-def _render_group(group: Group, en: Sequence[EnPara], zh: Sequence[ZhUnit], label: str) -> List[Tuple[int, str]]:
+def _translation_markup(unit: ZhUnit, style: BilingualExportStyle, label: str) -> str:
+    content = (
+        (unit.heading_html + "\n" if unit.heading_html else "")
+        + f"<{unit.tag}{unit.attrs}>{unit.inner}</{unit.tag}>"
+    )
+    if style == "folded":
+        return _make_details(unit, label)
+    if style == "alternating":
+        return f'<div class="zh-alternate">{content}</div>\n'
+    return f'<div class="zh-column">{content}</div>\n'
+
+
+def _two_column_row(en_markup: str, zh_markup: Sequence[str]) -> str:
+    return (
+        '<div class="bilingual-row">\n'
+        f'  <div class="en-column">{en_markup}</div>\n'
+        f'  <div class="zh-column">{"".join(zh_markup)}</div>\n'
+        "</div>\n"
+    )
+
+
+def _render_group(
+    group: Group,
+    en: Sequence[EnPara],
+    zh: Sequence[ZhUnit],
+    label: str,
+    style: BilingualExportStyle = "folded",
+    translation_override: str | None = None,
+) -> List[Tuple[int, str]]:
     """Render one aligned group into XHTML markup fragments keyed by EN paragraph index."""
-    en_group, zh_group = en[group.en_start:group.en_end], zh[group.zh_start:group.zh_end]
+    en_group = en[group.en_start:group.en_end]
+    zh_group = zh[group.zh_start:group.zh_end]
+    if translation_override is not None and zh_group:
+        zh_group = [
+            replace(
+                zh_group[0],
+                heading_html="",
+                heading_text="",
+                inner="<br/>".join(
+                    html.escape(line, quote=False) for line in translation_override.splitlines()
+                ),
+                text=translation_override,
+            )
+        ]
     # 1 EN paragraph mapped to N ZH units: split into sentence fragments and interleave.
     if len(en_group) == 1 and len(zh_group) > 1:
         para = en_group[0]
@@ -83,25 +140,68 @@ def _render_group(group: Group, en: Sequence[EnPara], zh: Sequence[ZhUnit], labe
                 cursor = end
                 ends.append(sum(len(s) for s in sentences[:cursor]) + max(0, cursor - 1))
             inners = fragment_inner(para.inner, ends)
+            if style == "two_column":
+                return [
+                    (
+                        group.en_start,
+                        _two_column_row(
+                            _make_en(para, inner, index),
+                            [_translation_markup(unit, style, label)],
+                        ),
+                    )
+                    for index, (inner, unit) in enumerate(zip(inners, zh_group))
+                ]
             return [
-                (group.en_start, _make_en(para, inner, index) + "\n" + _make_details(unit, label))
+                (
+                    group.en_start,
+                    _make_en(para, inner, index)
+                    + "\n"
+                    + _translation_markup(unit, style, label),
+                )
                 for index, (inner, unit) in enumerate(zip(inners, zh_group))
             ]
     if len(en_group) == len(zh_group):
+        if style == "two_column":
+            return [
+                (
+                    group.en_start + index,
+                    _two_column_row(
+                        _make_en(item, item.inner),
+                        [_translation_markup(unit, style, label)],
+                    ),
+                )
+                for index, (item, unit) in enumerate(zip(en_group, zh_group))
+            ]
         return [
-            (group.en_start + index, _make_en(item, item.inner) + "\n" + _make_details(unit, label))
+            (
+                group.en_start + index,
+                _make_en(item, item.inner)
+                + "\n"
+                + _translation_markup(unit, style, label),
+            )
             for index, (item, unit) in enumerate(zip(en_group, zh_group))
         ]
     # Fall back: render all EN paragraphs, attach all ZH details after the last one.
     rendered = [(group.en_start + index, _make_en(item, item.inner)) for index, item in enumerate(en_group)]
     if rendered and zh_group:
         idx, markup = rendered[-1]
-        rendered[-1] = (idx, markup + "".join(_make_details(unit, label) for unit in zh_group))
+        translations = [_translation_markup(unit, style, label) for unit in zh_group]
+        rendered[-1] = (
+            (idx, _two_column_row(markup, translations))
+            if style == "two_column"
+            else (idx, markup + "".join(translations))
+        )
     return rendered
 
 
 def _process_chapter(
-    en_xml: str, zh_xml: str, chapter: str, overrides: dict[str, List[dict]], label: str
+    en_xml: str,
+    zh_xml: str,
+    chapter: str,
+    overrides: dict[str, List[dict]],
+    label: str,
+    style: BilingualExportStyle = "folded",
+    translation_overrides: Sequence[str | None] | None = None,
 ) -> Tuple[str, dict[str, Any]]:
     """Inject bilingual blocks into a single chapter's XHTML."""
     en = extract_en_paragraphs(en_xml)
@@ -110,8 +210,14 @@ def _process_chapter(
         return en_xml, {"chapter": chapter, "pairs": 0, "groups": [], "low_conf": []}
     groups = align_groups(en, zh, chapter, overrides)
     by_para: dict[int, str] = {}
-    for group in groups:
-        for index, markup in _render_group(group, en, zh, label):
+    overrides_by_group = list(translation_overrides or [])
+    for group_index, group in enumerate(groups):
+        override = (
+            overrides_by_group[group_index]
+            if group_index < len(overrides_by_group)
+            else None
+        )
+        for index, markup in _render_group(group, en, zh, label, style, override):
             by_para[index] = by_para.get(index, "") + markup
     chunks: List[str] = []
     cursor = en[0].start
@@ -165,7 +271,37 @@ def _stylesheet_hrefs(chapter_xml: str) -> List[str]:
 _CSS_TAG_MARKER = "epub-bilingual-translator"
 
 
-def _inject_css(work: Path, chapter_paths: Sequence[Path]) -> None:
+def _css_string(value: str) -> str:
+    return "".join(
+        char for char in value.strip() if ord(char) >= 32 and char not in "<>&\\"
+    ).replace('"', "'")
+
+
+def _safe_custom_css(value: str) -> str:
+    return re.sub(r"</\s*style\s*>", "", value, flags=re.IGNORECASE).replace("\x00", "")
+
+
+def _style_css(font_family: str = "", custom_css: str = "") -> str:
+    css = CSS.lstrip() + "\n" + STYLE_EXTENSION_CSS.lstrip()
+    if font_family.strip():
+        css = css.replace(
+            "--dt-bilingual-font-family:",
+            f'--dt-bilingual-font-family: "{_css_string(font_family)}",',
+            1,
+        )
+    custom = _safe_custom_css(custom_css).strip()
+    if custom:
+        css += "\n/* custom reader stylesheet */\n" + custom + "\n"
+    return css
+
+
+def _inject_css(
+    work: Path,
+    chapter_paths: Sequence[Path],
+    *,
+    font_family: str = "",
+    custom_css: str = "",
+) -> None:
     linked: set[Path] = set()
     inline: List[Tuple[Path, str]] = []
     root = work.resolve()
@@ -188,11 +324,14 @@ def _inject_css(work: Path, chapter_paths: Sequence[Path]) -> None:
     for css_path in sorted(linked):
         css = css_path.read_text(encoding="utf-8")
         if _CSS_TAG_MARKER not in css:
-            css_path.write_text(css.rstrip() + "\n\n" + CSS.lstrip(), encoding="utf-8")
+            css_path.write_text(
+                css.rstrip() + "\n\n" + _style_css(font_family, custom_css),
+                encoding="utf-8",
+            )
     for chapter_path, xml in inline:
         if _CSS_TAG_MARKER in xml:
             continue
-        style = f'<style type="text/css">{CSS}</style>'
+        style = f'<style type="text/css">{_style_css(font_family, custom_css)}</style>'
         if re.search(r"</head\s*>", xml, flags=re.IGNORECASE):
             xml = re.sub(r"</head\s*>", style + "\n</head>", xml, count=1, flags=re.IGNORECASE)
         else:
@@ -226,6 +365,10 @@ def build_bilingual_epub(
     title_suffix: str = " (Bilingual Expandable)",
     summary_label: str = "\u5c55\u5f00\u4e2d\u6587",
     alignment_overrides: dict[str, List[dict]] | None = None,
+    style: BilingualExportStyle = "folded",
+    font_family: str = "",
+    custom_css: str = "",
+    translation_overrides: dict[str, Sequence[str | None]] | None = None,
     work_dir: Path | None = None,
 ) -> List[dict]:
     """Build a bilingual EPUB from an English base + official translation.
@@ -241,6 +384,7 @@ def build_bilingual_epub(
         Returns: per-chapter alignment stats for the report.
     """
     overrides = alignment_overrides or {}
+    group_translations = translation_overrides or {}
     work = work_dir or Path(output.parent) / f".bilingual_work_{output.stem}"
     if work.exists():
         shutil.rmtree(work)
@@ -270,12 +414,19 @@ def build_bilingual_epub(
                 chapter,
                 overrides,
                 summary_label,
+                style,
+                group_translations.get(str(chapter)),
             )
             path.write_text(xml, encoding="utf-8")
             processed_paths.append(path)
             stats.append(stat)
 
-    _inject_css(work, processed_paths)
+    _inject_css(
+        work,
+        processed_paths,
+        font_family=font_family,
+        custom_css=custom_css,
+    )
 
     # Update OPF metadata.
     opf_path = _find_package_opf(work)

@@ -184,6 +184,34 @@ class DictionaryResult(BaseModel):
     context_note: str = ""
 
 
+class VocabularyCard(BaseModel):
+    """One generated recall prompt for a saved word."""
+
+    id: str
+    card_type: Literal["cloze", "choice"]
+    front: str
+    back: str
+    context_en: str = ""
+    context_zh: str = ""
+    choices: list[str] = Field(default_factory=list)
+    answer: str = ""
+    created_at: float = Field(default_factory=time.time)
+    updated_at: float = Field(default_factory=time.time)
+
+
+class VocabularyReviewState(BaseModel):
+    """Lightweight word-level spaced-repetition state."""
+
+    due_at: float = 0.0
+    interval_index: int = Field(default=0, ge=0)
+    consecutive_correct: int = Field(default=0, ge=0)
+    review_count: int = Field(default=0, ge=0)
+    correct_count: int = Field(default=0, ge=0)
+    wrong_count: int = Field(default=0, ge=0)
+    last_result: Literal["unset", "correct", "wrong"] = "unset"
+    last_reviewed_at: float = 0.0
+
+
 class VocabEntry(BaseModel):
     """A word saved to the global vocabulary book from the reading view."""
 
@@ -200,10 +228,37 @@ class VocabEntry(BaseModel):
     chapter_id: str = ""
     chapter_index: int = Field(default=0, ge=0)
     group_index: int = Field(default=0, ge=0)
+    context_en: str = ""
+    context_zh: str = ""
+    cards: list[VocabularyCard] = Field(default_factory=list)
+    review: VocabularyReviewState = Field(default_factory=VocabularyReviewState)
     created_at: float = Field(default_factory=time.time)
     updated_at: float = 0
     occurrence_count: int = Field(default=1, ge=1)
     mn4_exported: bool = False
+
+
+class VocabularyDifficultyWord(BaseModel):
+    """A chapter word with frequency-library classification."""
+
+    word: str
+    lemma: str
+    count: int = Field(default=1, ge=1)
+    frequency_rank: int | None = None
+    oxford: bool = False
+    band: Literal["core", "common", "advanced", "low", "unknown"]
+    phonetic: str = ""
+    definition: str = ""
+    chinese: str = ""
+
+
+class ChapterVocabularyPreview(BaseModel):
+    """Pre-reading vocabulary summary for one chapter."""
+
+    available: bool
+    reason: str = ""
+    words: list[VocabularyDifficultyWord] = Field(default_factory=list)
+    distribution: dict[str, int] = Field(default_factory=dict)
 
 
 class KidsQuizQuestion(BaseModel):

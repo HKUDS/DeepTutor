@@ -73,3 +73,62 @@ test("saving vocabulary sends bilingual source metadata", async () => {
   assert.equal(payload.chapter_index, 2);
   assert.equal(payload.group_index, 7);
 });
+
+test("review and difficulty calls use their dedicated contracts", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: requestUrl(url), init });
+    return jsonResponse({
+      entries: [],
+      entry: {},
+      available: true,
+      reason: "",
+      words: [],
+      distribution: {},
+    });
+  }) as typeof fetch;
+
+  try {
+    await immersiveReadingApi.reviewVocabulary(10);
+    await immersiveReadingApi.gradeVocabularyReview("vocab-1", true);
+    await immersiveReadingApi.sectionVocabularyDifficulty("document-1", "section-1");
+    await immersiveReadingApi.bilingualVocabularyDifficulty("pairing-1", "chapter-1");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(calls[0].url.endsWith("/vocabulary/review?limit=10"), true);
+  assert.equal(calls[1].url.endsWith("/vocabulary/review/grade"), true);
+  assert.deepEqual(JSON.parse(String(calls[1].init?.body)), {
+    entry_id: "vocab-1",
+    correct: true,
+  });
+  assert.equal(
+    calls[2].url.endsWith(
+      "/documents/document-1/sections/section-1/vocabulary-difficulty",
+    ),
+    true,
+  );
+  assert.equal(
+    calls[3].url.endsWith(
+      "/bilingual/pairing-1/section/chapter-1/vocabulary-difficulty",
+    ),
+    true,
+  );
+});
+
+test("vocabulary export URLs target csv and apkg endpoints", () => {
+  assert.equal(
+    immersiveReadingApi.vocabularyExportUrl("csv").endsWith(
+      "/vocabulary/export/csv",
+    ),
+    true,
+  );
+  assert.equal(
+    immersiveReadingApi.vocabularyExportUrl("apkg").endsWith(
+      "/vocabulary/export/apkg",
+    ),
+    true,
+  );
+});

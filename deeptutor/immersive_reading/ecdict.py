@@ -21,6 +21,8 @@ class ECDictEntry:
     translation: str
     pos: str
     exchange: str
+    frq: int = 0
+    oxford: int = 0
 
 
 def normalize_word(word: str) -> str:
@@ -37,6 +39,7 @@ class ECDictionary:
     def __init__(self, db_path: str | Path):
         self.db_path = Path(db_path)
         self._connection: sqlite3.Connection | None = None
+        self._frequency_columns_available: bool | None = None
 
     def close(self) -> None:
         if self._connection is not None:
@@ -62,7 +65,19 @@ class ECDictionary:
             translation=str(row["translation"] or ""),
             pos=str(row["pos"] or ""),
             exchange=str(row["exchange"] or ""),
+            frq=int(row["frq"] or 0),
+            oxford=int(row["oxford"] or 0),
         )
+
+    @property
+    def frequency_columns_available(self) -> bool:
+        if self._frequency_columns_available is None:
+            columns = {
+                str(row["name"])
+                for row in self._connect().execute("PRAGMA table_info(entries)")
+            }
+            self._frequency_columns_available = {"frq", "oxford"}.issubset(columns)
+        return self._frequency_columns_available
 
     @staticmethod
     def _morphological_candidates(word: str) -> list[str]:
@@ -102,8 +117,11 @@ class ECDictionary:
         return list(dict.fromkeys(candidates))
 
     def _lookup_exact(self, connection: sqlite3.Connection, word: str) -> ECDictEntry | None:
+        frequency_columns = (
+            "frq, oxford" if self.frequency_columns_available else "0 AS frq, 0 AS oxford"
+        )
         row = connection.execute(
-            "SELECT word, phonetic, definition, translation, pos, exchange "
+            f"SELECT word, phonetic, definition, translation, pos, exchange, {frequency_columns} "
             "FROM entries WHERE word = ? LIMIT 1",
             (word,),
         ).fetchone()
@@ -135,8 +153,11 @@ class ECDictionary:
         stripped = strip_word(word)
         if not stripped or stripped == normalized:
             return None
+        frequency_columns = (
+            "frq, oxford" if self.frequency_columns_available else "0 AS frq, 0 AS oxford"
+        )
         row = connection.execute(
-            "SELECT word, phonetic, definition, translation, pos, exchange "
+            f"SELECT word, phonetic, definition, translation, pos, exchange, {frequency_columns} "
             "FROM entries WHERE sw = ? ORDER BY length(word), word LIMIT 1",
             (stripped,),
         ).fetchone()
@@ -165,7 +186,9 @@ class ECDictionary:
                     definition TEXT NOT NULL,
                     translation TEXT NOT NULL,
                     pos TEXT NOT NULL,
-                    exchange TEXT NOT NULL
+                    exchange TEXT NOT NULL,
+                    frq INTEGER NOT NULL DEFAULT 0,
+                    oxford INTEGER NOT NULL DEFAULT 0
                 );
                 CREATE INDEX idx_entries_sw ON entries(sw);
                 """
@@ -181,13 +204,15 @@ class ECDictionary:
                         (row.get("translation") or "").strip(),
                         (row.get("pos") or "").strip(),
                         (row.get("exchange") or "").strip(),
+                        max(0, int(float(row.get("frq") or 0))),
+                        1 if str(row.get("oxford") or "").strip() == "1" else 0,
                     )
                     for row in reader
                 )
                 connection.executemany(
                     "INSERT OR IGNORE INTO entries "
-                    "(word, sw, phonetic, definition, translation, pos, exchange) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "(word, sw, phonetic, definition, translation, pos, exchange, frq, oxford) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     rows,
                 )
             connection.commit()

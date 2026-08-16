@@ -6,6 +6,7 @@ import { CheckCircle2, CircleDot, Clock, ListChecks, Loader2, Play, RefreshCw, X
 import {
   translationTaskApi,
   type TranslationSourceType,
+  type TranslationTask,
   type TranslationTaskBoard as Board,
 } from "@/lib/translation-tasks-api";
 
@@ -15,6 +16,7 @@ interface TranslationTaskBoardProps {
   chapterId?: string;
   compact?: boolean;
   onBoardLoaded?: (board: Board) => void;
+  onGroupTranslated?: (task: TranslationTask & { translation?: string }) => void;
 }
 
 export default function TranslationTaskBoardPanel({
@@ -23,6 +25,7 @@ export default function TranslationTaskBoardPanel({
   chapterId,
   compact = false,
   onBoardLoaded,
+  onGroupTranslated,
 }: TranslationTaskBoardProps) {
   const { t } = useTranslation();
   const [board, setBoard] = useState<Board | null>(null);
@@ -77,8 +80,18 @@ export default function TranslationTaskBoardPanel({
       if (sourceType && sourceId) {
         await translationTaskApi.plan(sourceType, sourceId);
       }
-      const result = await translationTaskApi.run({ sourceType, sourceId, chapterId, limit: compact ? 4 : 8 });
-      applyBoard(result);
+      await translationTaskApi.stream({
+        sourceType,
+        sourceId,
+        chapterId,
+        limit: compact ? 4 : 8,
+        onEvent: (event) => {
+          if (event.board) applyBoard(event.board);
+          if (event.type === "group_translated" && event.task) {
+            onGroupTranslated?.(event.task);
+          }
+        },
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
