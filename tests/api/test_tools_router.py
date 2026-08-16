@@ -47,6 +47,7 @@ async def test_list_builtin_tools_marks_toggleable_set(
         "geogebra_analysis",
         "imagegen",
         "videogen",
+        "tts",
     }
 
     # Locked-on (non-toggleable, non-coming-soon) tools always report
