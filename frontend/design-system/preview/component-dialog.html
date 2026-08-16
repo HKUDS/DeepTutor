@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dialog</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="../colors_and_type.css" />
+  <style data-preview-shell>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html,
+    body {
+      background: var(--bg-base-default);
+      color: var(--text-default);
+      font-family: var(--body-base-font-family);
+      font-size: var(--body-base-font-size);
+      line-height: var(--body-base-line-height);
+      font-weight: var(--body-base-font-weight);
+      letter-spacing: var(--body-base-letter-spacing);
+      min-height: 100%;
+      overflow-x: hidden;
+      max-width: 100%;
+    }
+
+    body { padding: var(--spacer-32); }
+    img, svg, video, canvas { max-width: 100%; }
+    a { color: var(--text-default); text-decoration: none; }
+    a:hover { color: var(--text-default-hover); }
+    hr { border: 0; border-top: 1px solid var(--border-neutral-l1); margin: var(--spacer-24) 0; }
+
+    .h1 { font-family: var(--heading-2xl-font-family); font-size: var(--heading-2xl-font-size); line-height: var(--heading-2xl-line-height); font-weight: var(--heading-2xl-font-weight); color: var(--text-default); }
+    .h2 { font-family: var(--heading-md-font-family); font-size: var(--heading-md-font-size); line-height: var(--heading-md-line-height); font-weight: var(--heading-md-font-weight); color: var(--text-default); }
+    .h3 { font-family: var(--heading-sm-font-family); font-size: var(--heading-sm-font-size); line-height: var(--heading-sm-line-height); font-weight: var(--heading-sm-font-weight); color: var(--text-default); }
+    .eyebrow { font-size: var(--body-xs-font-size); line-height: var(--body-xs-line-height); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: var(--body-xs-letter-spacing); }
+    .text-secondary { color: var(--text-secondary); }
+    .text-tertiary { color: var(--text-tertiary); }
+
+    .row { display: flex; gap: var(--spacer-12); flex-wrap: wrap; align-items: center; }
+    .col { display: flex; flex-direction: column; gap: var(--spacer-12); }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--spacer-24); }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--spacer-24); }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--spacer-24); }
+    .stack-8 { display: flex; flex-direction: column; gap: var(--spacer-8); }
+    .stack-12 { display: flex; flex-direction: column; gap: var(--spacer-12); }
+    .stack-16 { display: flex; flex-direction: column; gap: var(--spacer-16); }
+    .stack-24 { display: flex; flex-direction: column; gap: var(--spacer-24); }
+    .stack-40 { display: flex; flex-direction: column; gap: var(--spacer-40); }
+
+    .pv-header { margin-bottom: var(--spacer-32); padding-bottom: var(--spacer-16); border-bottom: 1px solid var(--border-neutral-l1); }
+    .pv-header h1 { font-size: var(--heading-lg-font-size); line-height: var(--heading-lg-line-height); font-weight: var(--heading-lg-font-weight); margin-bottom: var(--spacer-4); }
+    .pv-header p { color: var(--text-secondary); font-size: var(--body-base-font-size); line-height: var(--body-base-line-height); }
+    .pv-section { margin-bottom: var(--spacer-32); }
+    .pv-section__title { font-size: var(--heading-sm-font-size); line-height: var(--heading-sm-line-height); font-weight: var(--heading-sm-font-weight); margin-bottom: var(--spacer-12); color: var(--text-default); }
+    .pv-section__sub { font-size: var(--body-base-font-size); line-height: var(--body-base-line-height); color: var(--text-tertiary); margin-bottom: var(--spacer-12); }
+
+    @media (max-width: 720px) {
+      body { padding: var(--spacer-16); }
+      .grid-2,
+      .grid-3,
+      .grid-4 { grid-template-columns: 1fr; }
+    }
+  </style>
+  <link rel="stylesheet" href="../components.css" />
+  <style>
+    /* @component-css-start */
+    /* ===== Dialog / Modal ===== */
+    .ds-backdrop { position: relative; background: var(--bg-overlay-l4); border: 1px solid var(--border-neutral-l1); padding: var(--spacer-32) var(--spacer-24); display: flex; align-items: center; justify-content: center; }
+    .ds-dialog { background: var(--bg-base-default); border: 1px solid var(--border-neutral-l1); border-radius: var(--radius-12); width: 100%; max-width: 520px; overflow: hidden; color: var(--text-default); box-shadow: 0 24px 64px color-mix(in srgb, var(--text-default) 14%, transparent), 0 4px 16px color-mix(in srgb, var(--text-default) 8%, transparent); }
+    .ds-dialog--form { max-width: 560px; }
+    .ds-dialog__head { padding: var(--spacer-16) var(--spacer-20); display: flex; align-items: center; justify-content: space-between; border-bottom: 0; }
+    .ds-dialog__title { font-size: var(--heading-sm-font-size); line-height: var(--heading-sm-line-height); font-weight: var(--heading-sm-font-weight); color: var(--text-default); }
+    .ds-dialog__close { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: none; color: var(--icon-secondary); cursor: pointer; border-radius: var(--radius-8); }
+    .ds-dialog__close:hover { background: var(--bg-overlay-l2); color: var(--icon-default); }
+    .ds-dialog__body { padding: var(--spacer-16) var(--spacer-20); color: var(--text-secondary); font-size: var(--body-base-font-size); line-height: var(--body-base-line-height); }
+    .ds-dialog__foot { padding: var(--spacer-12) var(--spacer-20); display: flex; justify-content: flex-end; gap: var(--spacer-8); border-top: 0; }
+    .ds-drawer { background: var(--bg-base-default); border: 1px solid var(--border-neutral-l1); border-radius: var(--radius-12); width: 100%; max-width: 360px; display: flex; flex-direction: column; box-shadow: 0 24px 64px color-mix(in srgb, var(--text-default) 14%, transparent), 0 4px 16px color-mix(in srgb, var(--text-default) 8%, transparent); }
+    .ds-drawer__head { padding: var(--spacer-16) var(--spacer-20); display: flex; justify-content: space-between; align-items: center; border-bottom: 0; }
+    .ds-drawer__body { padding: var(--spacer-16) var(--spacer-20); flex: 1; }
+    .dialog-form { display: grid; gap: var(--spacer-16); }
+    .dialog-field { display: flex; flex-direction: column; gap: var(--spacer-6); }
+    .dialog-field__label { color: var(--text-default); font-size: var(--body-base-font-size); line-height: var(--body-base-line-height); font-weight: var(--font-weight-medium); }
+    .dialog-field__hint { color: var(--text-tertiary); font-size: var(--body-base-font-size); line-height: var(--body-base-line-height); }
+    .dialog-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacer-12); }
+    .dialog-form .ds-input,
+    .dialog-form .ds-select,
+    .dialog-form .ds-textarea { background: var(--bg-base-default); font-size: var(--body-base-font-size); line-height: var(--body-base-line-height); letter-spacing: var(--body-base-letter-spacing); }
+    .dialog-form .ds-input:focus-within,
+    .dialog-form .ds-select:focus,
+    .dialog-form .ds-textarea:focus { background: var(--bg-base-default); }
+    .dialog-form .ds-textarea { min-height: 72px; resize: none; }
+    .dialog-calendar-icon { width: 16px; height: 16px; color: var(--icon-secondary); object-fit: contain; }
+    @media (max-width: 720px) { .dialog-grid { grid-template-columns: 1fr; } }
+    /* @component-css-end */
+
+    /* Inline asset icon normalization: keep uploaded HTML independent from external SVG styling. */
+    [data-asset-icon] {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent !important;
+      -webkit-mask: none !important;
+      mask: none !important;
+    }
+
+    [data-asset-icon] > svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      flex: 0 0 auto;
+    }
+
+    .asset-inline-icon {
+      width: 16px;
+      height: 16px;
+      flex: 0 0 auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="pv-header">
+    <h1>Dialog / Modal</h1>
+    <p>Surface <code>--bg-base-default</code>, radius <code>--radius-8</code>. Width 360 / 420 / 560. Backdrop <code>--bg-overlay-l4</code>.</p>
+  </div>
+
+  <div class="pv-section">
+    <div class="pv-section__title">Confirmation</div>
+    <div class="ds-backdrop" style="border-radius: var(--radius-8);">
+      <div class="ds-dialog">
+        <div class="ds-dialog__head">
+          <span class="ds-dialog__title">Delete project</span>
+          <button class="ds-dialog__close" aria-label="Close"><span class="icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../assets/icons/Close.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M12.1956 2.86165C12.456 2.60168 12.8778 2.60157 13.138 2.86165C13.3984 3.122 13.3984 3.54466 13.138 3.80501L8.9427 7.99935L13.138 12.1956C13.3982 12.456 13.3983 12.8777 13.138 13.138C12.8777 13.3983 12.456 13.3982 12.1956 13.138L7.99934 8.94271L3.805 13.138C3.54465 13.3984 3.12199 13.3984 2.86164 13.138C2.60157 12.8778 2.60167 12.456 2.86164 12.1956L7.05696 7.99935L2.86164 3.80501C2.60129 3.54466 2.60129 3.122 2.86164 2.86165C3.12199 2.6013 3.54465 2.6013 3.805 2.86165L7.99934 7.05696L12.1956 2.86165Z" fill="#404040"/></svg></span></button>
+        </div>
+        <div class="ds-dialog__body">
+          This action cannot be undone. The project <span style="color:var(--text-default);">TraeWork Web</span>
+          and all of its tokens will be permanently removed.
+        </div>
+        <div class="ds-dialog__foot">
+          <button class="ds-btn ds-btn--ghost">Cancel</button>
+          <button class="ds-btn ds-btn--danger">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pv-section">
+    <div class="pv-section__title">Form dialog</div>
+    <div class="ds-backdrop" style="border-radius: var(--radius-8);">
+      <div class="ds-dialog ds-dialog--form">
+        <div class="ds-dialog__head">
+          <span class="ds-dialog__title">Invite member</span>
+          <button class="ds-dialog__close" aria-label="Close"><span class="icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../assets/icons/Close.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M12.1956 2.86165C12.456 2.60168 12.8778 2.60157 13.138 2.86165C13.3984 3.122 13.3984 3.54466 13.138 3.80501L8.9427 7.99935L13.138 12.1956C13.3982 12.456 13.3983 12.8777 13.138 13.138C12.8777 13.3983 12.456 13.3982 12.1956 13.138L7.99934 8.94271L3.805 13.138C3.54465 13.3984 3.12199 13.3984 2.86164 13.138C2.60157 12.8778 2.60167 12.456 2.86164 12.1956L7.05696 7.99935L2.86164 3.80501C2.60129 3.54466 2.60129 3.122 2.86164 2.86165C3.12199 2.6013 3.54465 2.6013 3.805 2.86165L7.99934 7.05696L12.1956 2.86165Z" fill="#404040"/></svg></span></button>
+        </div>
+        <div class="ds-dialog__body">
+          <form class="dialog-form">
+            <div class="dialog-field">
+              <label class="dialog-field__label" for="invite-email">Email address</label>
+              <div class="ds-input"><span class="ds-input__icon"><span class="icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../assets/icons/email.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M14.2793 6.22534L9.17383 8.77905C8.43497 9.14838 7.56504 9.14836 6.82617 8.77905V8.77808L1.7207 6.22534L2.2793 5.10815L7.38477 7.66089C7.77188 7.85444 8.22812 7.85444 8.61523 7.66089L13.7207 5.10815L14.2793 6.22534Z" fill="#404040"/><path d="M13.375 5.25C13.375 4.49061 12.7594 3.875 12 3.875H4C3.24061 3.875 2.625 4.49061 2.625 5.25V10.75C2.625 11.5094 3.24061 12.125 4 12.125H12C12.7594 12.125 13.375 11.5094 13.375 10.75V5.25ZM14.625 10.75C14.625 12.1997 13.4497 13.375 12 13.375H4C2.55025 13.375 1.375 12.1997 1.375 10.75V5.25C1.375 3.80025 2.55025 2.625 4 2.625H12C13.4497 2.625 14.625 3.80025 14.625 5.25V10.75Z" fill="#404040"/></svg></span></span><input id="invite-email" type="email" value="maria@traework.com" /></div>
+              <div class="dialog-field__hint">Invitation will be sent to this workspace email.</div>
+            </div>
+            <div class="dialog-grid">
+              <div class="dialog-field">
+                <label class="dialog-field__label" for="invite-role">Role</label>
+                <div class="ds-select-wrap"><select class="ds-select" id="invite-role"><option>Editor</option><option>Viewer</option><option>Admin</option></select><span class="ds-select__icon" aria-hidden="true" data-asset-icon="../assets/icons/Down.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.2249 6.22429C10.469 5.98059 10.8647 5.98048 11.1087 6.22429C11.3528 6.46837 11.3528 6.86498 11.1087 7.10905L9.14876 9.06804C8.51414 9.70255 7.48548 9.70261 6.8509 9.06804L4.89094 7.10905C4.64687 6.86498 4.64687 6.46837 4.89094 6.22429C5.13502 5.98021 5.53163 5.98021 5.77571 6.22429L7.73469 8.18425C7.88112 8.33067 8.1185 8.3306 8.26497 8.18425L10.2249 6.22429Z" fill="#404040"/></svg></span></div>
+              </div>
+              <div class="dialog-field">
+                <label class="dialog-field__label" for="invite-team">Team</label>
+                <div class="ds-select-wrap"><select class="ds-select" id="invite-team"><option>Design System</option><option>Product</option><option>Growth</option></select><span class="ds-select__icon" aria-hidden="true" data-asset-icon="../assets/icons/Down.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.2249 6.22429C10.469 5.98059 10.8647 5.98048 11.1087 6.22429C11.3528 6.46837 11.3528 6.86498 11.1087 7.10905L9.14876 9.06804C8.51414 9.70255 7.48548 9.70261 6.8509 9.06804L4.89094 7.10905C4.64687 6.86498 4.64687 6.46837 4.89094 6.22429C5.13502 5.98021 5.53163 5.98021 5.77571 6.22429L7.73469 8.18425C7.88112 8.33067 8.1185 8.3306 8.26497 8.18425L10.2249 6.22429Z" fill="#404040"/></svg></span></div>
+              </div>
+            </div>
+            <div class="dialog-grid">
+              <div class="dialog-field">
+                <label class="dialog-field__label" for="invite-expiry">Access expires</label>
+                <div class="ds-input"><input id="invite-expiry" type="text" inputmode="numeric" value="2026/07/16" /><span class="ds-input__icon dialog-calendar-icon" aria-hidden="true" data-asset-icon="../assets/icons/calendar.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.667 1.375C11.0121 1.37513 11.292 1.6549 11.292 2V2.70801H11.334C12.7834 2.70832 13.9589 3.88357 13.959 5.33301V11.333C13.959 12.7826 12.7835 13.9577 11.334 13.958H4.66699C3.21725 13.958 2.04199 12.7828 2.04199 11.333V5.33301C2.04212 3.88338 3.21733 2.70801 4.66699 2.70801H4.70801V2C4.70801 1.6549 4.98794 1.37513 5.33301 1.375C5.67819 1.375 5.95801 1.65482 5.95801 2V2.70801H10.042V2C10.042 1.65482 10.3218 1.375 10.667 1.375ZM3.29199 11.333C3.29199 12.0924 3.9076 12.708 4.66699 12.708H11.334C12.0931 12.7077 12.709 12.0922 12.709 11.333V7.29199H3.29199V11.333ZM4.66699 3.95801C3.90768 3.95801 3.29212 4.57373 3.29199 5.33301V6.04199H12.709V5.33301C12.7089 4.57391 12.0931 3.95832 11.334 3.95801H4.66699Z" fill="#404040"/></svg></span></div>
+              </div>
+              <div class="dialog-field">
+                <label class="dialog-field__label" for="invite-seat">Seat type</label>
+                <div class="ds-select-wrap"><select class="ds-select" id="invite-seat"><option>Full seat</option><option>Review only</option><option>Temporary seat</option></select><span class="ds-select__icon" aria-hidden="true" data-asset-icon="../assets/icons/Down.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.2249 6.22429C10.469 5.98059 10.8647 5.98048 11.1087 6.22429C11.3528 6.46837 11.3528 6.86498 11.1087 7.10905L9.14876 9.06804C8.51414 9.70255 7.48548 9.70261 6.8509 9.06804L4.89094 7.10905C4.64687 6.86498 4.64687 6.46837 4.89094 6.22429C5.13502 5.98021 5.53163 5.98021 5.77571 6.22429L7.73469 8.18425C7.88112 8.33067 8.1185 8.3306 8.26497 8.18425L10.2249 6.22429Z" fill="#404040"/></svg></span></div>
+              </div>
+            </div>
+            <div class="dialog-field">
+              <label class="dialog-field__label" for="invite-message">Message</label>
+              <textarea class="ds-textarea" id="invite-message">Welcome to the TraeWork Web project. You can edit components and review token updates.</textarea>
+            </div>
+          </form>
+        </div>
+        <div class="ds-dialog__foot">
+          <button class="ds-btn ds-btn--ghost">Cancel</button>
+          <button class="ds-btn ds-btn--primary">Send invite</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

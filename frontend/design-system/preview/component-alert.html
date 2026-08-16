@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Notifications</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="../colors_and_type.css" />
+  <style data-preview-shell>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html,
+    body {
+      background: var(--bg-base-default);
+      color: var(--text-default);
+      font-family: var(--body-base-font-family);
+      font-size: var(--body-base-font-size);
+      line-height: var(--body-base-line-height);
+      font-weight: var(--body-base-font-weight);
+      letter-spacing: var(--body-base-letter-spacing);
+      min-height: 100%;
+      overflow-x: hidden;
+      max-width: 100%;
+    }
+
+    body { padding: var(--spacer-32); }
+    img, svg, video, canvas { max-width: 100%; }
+    a { color: var(--text-default); text-decoration: none; }
+    a:hover { color: var(--text-default-hover); }
+    hr { border: 0; border-top: 1px solid var(--border-neutral-l1); margin: var(--spacer-24) 0; }
+
+    .h1 { font-family: var(--heading-2xl-font-family); font-size: var(--heading-2xl-font-size); line-height: var(--heading-2xl-line-height); font-weight: var(--heading-2xl-font-weight); color: var(--text-default); }
+    .h2 { font-family: var(--heading-md-font-family); font-size: var(--heading-md-font-size); line-height: var(--heading-md-line-height); font-weight: var(--heading-md-font-weight); color: var(--text-default); }
+    .h3 { font-family: var(--heading-sm-font-family); font-size: var(--heading-sm-font-size); line-height: var(--heading-sm-line-height); font-weight: var(--heading-sm-font-weight); color: var(--text-default); }
+    .eyebrow { font-size: var(--body-xs-font-size); line-height: var(--body-xs-line-height); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: var(--body-xs-letter-spacing); }
+    .text-secondary { color: var(--text-secondary); }
+    .text-tertiary { color: var(--text-tertiary); }
+
+    .row { display: flex; gap: var(--spacer-12); flex-wrap: wrap; align-items: center; }
+    .col { display: flex; flex-direction: column; gap: var(--spacer-12); }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--spacer-24); }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--spacer-24); }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--spacer-24); }
+    .stack-8 { display: flex; flex-direction: column; gap: var(--spacer-8); }
+    .stack-12 { display: flex; flex-direction: column; gap: var(--spacer-12); }
+    .stack-16 { display: flex; flex-direction: column; gap: var(--spacer-16); }
+    .stack-24 { display: flex; flex-direction: column; gap: var(--spacer-24); }
+    .stack-40 { display: flex; flex-direction: column; gap: var(--spacer-40); }
+
+    .pv-header { margin-bottom: var(--spacer-32); padding-bottom: var(--spacer-16); border-bottom: 1px solid var(--border-neutral-l1); }
+    .pv-header h1 { font-size: var(--heading-lg-font-size); line-height: var(--heading-lg-line-height); font-weight: var(--heading-lg-font-weight); margin-bottom: var(--spacer-4); }
+    .pv-header p { color: var(--text-secondary); font-size: var(--body-base-font-size); line-height: var(--body-base-line-height); }
+    .pv-section { margin-bottom: var(--spacer-32); }
+    .pv-section__title { font-size: var(--heading-sm-font-size); line-height: var(--heading-sm-line-height); font-weight: var(--heading-sm-font-weight); margin-bottom: var(--spacer-12); color: var(--text-default); }
+    .pv-section__sub { font-size: var(--body-base-font-size); line-height: var(--body-base-line-height); color: var(--text-tertiary); margin-bottom: var(--spacer-12); }
+
+    @media (max-width: 720px) {
+      body { padding: var(--spacer-16); }
+      .grid-2,
+      .grid-3,
+      .grid-4 { grid-template-columns: 1fr; }
+    }
+  </style>
+  <link rel="stylesheet" href="../components.css" />
+  <style>
+    /* === Notifications preview layout === */
+    .pv-header,
+    .pv-section {
+      max-width: 1180px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .pv-header {
+      margin-bottom: var(--spacer-24);
+      padding-bottom: var(--spacer-20);
+    }
+    .pv-section {
+      margin-bottom: var(--spacer-40);
+    }
+    .pv-section__title {
+      margin-bottom: var(--spacer-16);
+    }
+    .pv-section__sub {
+      max-width: 760px;
+    }
+    .notif-groups {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacer-20);
+    }
+    .notif-group {
+      padding-top: var(--spacer-20);
+      border-top: 1px solid var(--border-neutral-l1);
+    }
+    .notif-group:first-child {
+      padding-top: 0;
+      border-top: 0;
+    }
+    .notif-group__label {
+      margin-bottom: var(--spacer-12);
+      color: var(--text-tertiary);
+      font-family: var(--code-editor-font-family);
+      font-size: var(--body-sm-font-size);
+      line-height: var(--body-sm-line-height);
+    }
+    .notif-pair {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--spacer-24);
+      align-items: start;
+      min-width: 0;
+    }
+    .notif-example {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      gap: var(--spacer-8);
+    }
+    .notif-example__head {
+      color: var(--text-secondary);
+      font-family: var(--code-editor-font-family);
+      font-size: var(--body-sm-font-size);
+      line-height: var(--body-sm-line-height);
+    }
+    .notif-example > .ds-notif {
+      max-width: none;
+    }
+    .inline-alert-stack {
+      max-width: 760px;
+    }
+    @media (max-width: 980px) {
+      .notif-pair {
+        grid-template-columns: 1fr;
+        gap: var(--spacer-12);
+      }
+    }
+
+    /* @component-css-start */
+    /* ===== Notification / Toast ===== */
+    .ds-notif {
+      display: flex; align-items: flex-start;
+      gap: var(--spacer-8);
+      width: 100%; max-width: 560px;
+      padding: var(--spacer-8) var(--spacer-12);
+      border: 1px solid var(--border-neutral-l1);
+      background: var(--bg-base-secondary);
+      border-radius: var(--radius-8);
+      color: var(--text-default);
+      font-family: var(--body-md-font-family);
+      font-size: var(--body-md-font-size);
+      line-height: var(--body-md-line-height);
+      letter-spacing: var(--body-md-letter-spacing);
+      box-shadow: none;
+    }
+    .ds-notif__icon { flex: 0 0 16px; width: 16px; height: 16px; margin-top: var(--spacer-2); color: var(--icon-default); display: inline-flex; align-items: center; justify-content: center; }
+    .ds-notif__body { flex: 1; min-width: 0; }
+    .ds-notif__title { font-family: var(--body-md-strong-font-family); font-size: var(--body-md-strong-font-size); line-height: var(--body-md-strong-line-height); font-weight: var(--body-md-strong-font-weight); letter-spacing: var(--body-md-strong-letter-spacing); color: var(--text-default); }
+    .ds-notif__text { flex: 1; color: var(--text-default); }
+    .ds-notif__desc { margin-top: var(--spacer-2); color: var(--text-secondary); font-size: var(--body-md-font-size); line-height: var(--body-md-line-height); }
+    .ds-notif__actions { display: inline-flex; align-items: center; gap: var(--spacer-8); margin-top: var(--spacer-8); }
+    .ds-notif__close { flex-shrink: 0; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: none; cursor: pointer; color: var(--icon-secondary); border-radius: var(--radius-8); }
+    .ds-notif__close .icon { width: 14px; height: 14px; }
+    .ds-notif__close:hover { background: var(--bg-overlay-l2); color: var(--icon-default); }
+    .ds-notif--simple { align-items: center; }
+    .ds-notif--error { background: var(--status-error-surface-l1); border-color: var(--status-error-surface-l2); }
+    .ds-notif--error .ds-notif__icon { color: var(--status-error-default); }
+    .ds-notif--warning { background: var(--status-warning-surface-l1); border-color: var(--status-warning-surface-l2); }
+    .ds-notif--warning .ds-notif__icon { color: var(--status-warning-default); }
+    .ds-notif--alert { background: var(--status-alert-surface-l1); border-color: var(--status-alert-surface-l2); }
+    .ds-notif--alert .ds-notif__icon { color: var(--status-alert-default); }
+    .ds-notif--info { background: var(--status-primary-surface-l1); border-color: var(--status-primary-surface-l2); }
+    .ds-notif--info .ds-notif__icon { color: var(--status-primary-default); }
+    .ds-notif--success { background: var(--status-success-surface-l1); border-color: var(--status-success-surface-l2); }
+    .ds-notif--success .ds-notif__icon { color: var(--status-success-default); }
+
+    /* ===== Alert / Banner ===== */
+    .ds-alert {
+      display: flex; align-items: flex-start;
+      gap: var(--spacer-12);
+      padding: var(--spacer-12) var(--spacer-16);
+      background: var(--bg-base-secondary);
+      border: 1px solid var(--border-neutral-l1);
+      border-radius: var(--radius-8);
+      color: var(--text-default);
+      font-family: var(--body-md-font-family);
+      font-size: var(--body-md-font-size);
+      line-height: var(--body-md-line-height);
+      letter-spacing: var(--body-md-letter-spacing);
+    }
+    .ds-alert__icon { flex: 0 0 16px; width: 16px; height: 16px; margin-top: var(--spacer-2); color: var(--icon-default); display: inline-flex; align-items: center; justify-content: center; }
+    .ds-notif__icon .icon, .ds-alert__icon .icon { width: 16px; height: 16px; display: block; }
+    .ds-alert--success .ds-alert__icon { color: var(--status-success-default); }
+    .ds-alert--warning .ds-alert__icon { color: var(--status-warning-default); }
+    .ds-alert--danger .ds-alert__icon { color: var(--status-error-default); }
+    .ds-alert--info .ds-alert__icon { color: var(--status-primary-default); }
+    .ds-alert__title { font-family: var(--body-md-strong-font-family); font-size: var(--body-md-strong-font-size); line-height: var(--body-md-strong-line-height); font-weight: var(--body-md-strong-font-weight); letter-spacing: var(--body-md-strong-letter-spacing); margin-bottom: var(--spacer-4); }
+    .ds-alert__desc { color: var(--text-secondary); font-size: var(--body-md-font-size); line-height: var(--body-md-line-height); }
+    /* @component-css-end */
+
+    /* Inline asset icon normalization: keep uploaded HTML independent from external SVG styling. */
+    [data-asset-icon] {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent !important;
+      -webkit-mask: none !important;
+      mask: none !important;
+    }
+
+    [data-asset-icon] > svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      flex: 0 0 auto;
+    }
+
+    .asset-inline-icon {
+      width: 16px;
+      height: 16px;
+      flex: 0 0 auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="pv-header">
+    <h1>Notifications</h1>
+    <p>Two layouts (Simple, Complex) × four statuses (Error, Warning, Alert, Information). Status is conveyed by a filled icon using the matching status token color + tinted surface.</p>
+  </div>
+
+  <div class="pv-section">
+    <div class="pv-section__title">Variants</div>
+    <div class="notif-groups">
+      <div class="notif-group">
+        <div class="notif-group__label">Error</div>
+        <div class="notif-pair">
+          <div class="notif-example">
+            <div class="notif-example__head">Simple</div>
+        <div class="ds-notif ds-notif--simple ds-notif--error">
+          <span class="ds-notif__icon"><span class="icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../assets/icons/Error.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#E8463A" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M1.33325 8C1.33325 4.3181 4.31802 1.33334 7.99992 1.33334C11.6818 1.33334 14.6666 4.3181 14.6666 8C14.6666 11.6819 11.6818 14.6667 7.99992 14.6667C4.31802 14.6667 1.33325 11.6819 1.33325 8ZM6.47133 5.5286C6.21097 5.26825 5.78886 5.26825 5.52851 5.5286C5.26816 5.78895 5.26816 6.21106 5.52851 6.47141L7.05712 8L5.52851 9.5286C5.26816 9.78894 5.26816 10.2111 5.52851 10.4714C5.78886 10.7317 6.21097 10.7317 6.47133 10.4714L7.99992 8.9428L9.52852 10.4714C9.78885 10.7317 10.211 10.7317 10.4713 10.4714C10.7317 10.2111 10.7317 9.78894 10.4713 9.5286L8.94272 8L10.4713 6.47141C10.7317 6.21106 10.7317 5.78895 10.4713 5.5286C10.211 5.26825 9.78885 5.26825 9.52852 5.5286L7.99992 7.0572L6.47133 5.5286Z" fill="#E8463A"/></svg></span></span>
+          <p class="ds-notif__text">Your account is abnormal and operations are restricted.</p>
+          <button class="ds-btn ds-btn--sm ds-btn--tertiary">Button Title</button>
+          <button class="ds-notif__close" aria-label="Dismiss"><span class="icon" style="width: 14px; height: 14px;" aria-hidden="true" data-asset-icon="../assets/icons/close-small.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.2248 4.70231C10.4689 4.45862 10.8646 4.45851 11.1086 4.70231C11.3527 4.94639 11.3527 5.343 11.1086 5.58708L8.88399 7.81071L11.1086 10.0363C11.3525 10.2804 11.3526 10.6761 11.1086 10.9201C10.8646 11.1641 10.4689 11.164 10.2248 10.9201L7.99922 8.69548L5.77559 10.9201C5.53151 11.1642 5.1349 11.1642 4.89082 10.9201C4.64702 10.6761 4.64712 10.2803 4.89082 10.0363L7.11543 7.81071L4.89082 5.58708C4.64674 5.343 4.64674 4.94639 4.89082 4.70231C5.1349 4.45824 5.53151 4.45824 5.77559 4.70231L7.99922 6.92692L10.2248 4.70231Z" fill="#404040"/></svg></span></button>
+        </div>
+          </div>
+          <div class="notif-example">
+            <div class="notif-example__head">Complex</div>
+        <div class="ds-notif ds-notif--error">
+          <span class="ds-notif__icon"><span class="icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../assets/icons/Error.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#E8463A" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M1.33325 8C1.33325 4.3181 4.31802 1.33334 7.99992 1.33334C11.6818 1.33334 14.6666 4.3181 14.6666 8C14.6666 11.6819 11.6818 14.6667 7.99992 14.6667C4.31802 14.6667 1.33325 11.6819 1.33325 8ZM6.47133 5.5286C6.21097 5.26825 5.78886 5.26825 5.52851 5.5286C5.26816 5.78895 5.26816 6.21106 5.52851 6.47141L7.05712 8L5.52851 9.5286C5.26816 9.78894 5.26816 10.2111 5.52851 10.4714C5.78886 10.7317 6.21097 10.7317 6.47133 10.4714L7.99992 8.9428L9.52852 10.4714C9.78885 10.7317 10.211 10.7317 10.4713 10.4714C10.7317 10.2111 10.7317 9.78894 10.4713 9.5286L8.94272 8L10.4713 6.47141C10.7317 6.21106 10.7317 5.78895 10.4713 5.5286C10.211 5.26825 9.78885 5.26825 9.52852 5.5286L7.99992 7.0572L6.47133 5.5286Z" fill="#E8463A"/></svg></span></span>
+          <div class="ds-notif__body">
+            <div class="ds-notif__title">Error</div>
+            <p class="ds-notif__desc">Our system has captured that you have performed illegal operations, so your account has been banned and you will log out.</p>
+            <div class="ds-notif__actions">
+              <button class="ds-btn ds-btn--sm ds-btn--secondary">Button Title</button>
+              <button class="ds-btn ds-btn--sm ds-btn--tertiary">Button Title</button>
+            </div>
+          </div>
+          <button class="ds-notif__close" aria-label="Dismiss"><span class="icon" style="width: 14px; height: 14px;" aria-hidden="true" data-asset-icon="../assets/icons/close-small.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.2248 4.70231C10.4689 4.45862 10.8646 4.45851 11.1086 4.70231C11.3527 4.94639 11.3527 5.343 11.1086 5.58708L8.88399 7.81071L11.1086 10.0363C11.3525 10.2804 11.3526 10.6761 11.1086 10.9201C10.8646 11.1641 10.4689 11.164 10.2248 10.9201L7.99922 8.69548L5.77559 10.9201C5.53151 11.1642 5.1349 11.1642 4.89082 10.9201C4.64702 10.6761 4.64712 10.2803 4.89082 10.0363L7.11543 7.81071L4.89082 5.58708C4.64674 5.343 4.64674 4.94639 4.89082 4.70231C5.1349 4.45824 5.53151 4.45824 5.77559 4.70231L7.99922 6.92692L10.2248 4.70231Z" fill="#404040"/></svg></span></button>
+        </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notif-group">
+        <div class="notif-group__label">Warning</div>
+        <div class="notif-pair">
+          <div class="notif-example">
+            <div class="notif-example__head">Simple</div>
+        <div class="ds-notif ds-notif--simple ds-notif--warning">
+          <span class="ds-notif__icon"><span class="icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../assets/icons/warning-fill.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#E27900" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M5.73515 2.71392C6.77855 1.03546 9.22128 1.03546 10.2647 2.71392L14.3331 9.25893C15.4374 11.0353 14.16 13.3334 12.0684 13.3334H3.93141C1.83983 13.3334 0.562431 11.0353 1.66665 9.25893L5.73515 2.71392ZM8.00008 5.33333C8.36828 5.33333 8.66675 5.6318 8.66675 6V8C8.66675 8.3682 8.36828 8.66666 8.00008 8.66666C7.63188 8.66666 7.33342 8.3682 7.33342 8V6C7.33342 5.6318 7.63188 5.33333 8.00008 5.33333ZM7.16675 10C7.16675 9.53973 7.53981 9.16666 8.00008 9.16666C8.46035 9.16666 8.83342 9.53973 8.83342 10C8.83342 10.4603 8.46035 10.8333 8.00008 10.8333C7.53981 10.8333 7.16675 10.4603 7.16675 10Z" fill="#E27900"/></svg></span></span>
+          <p class="ds-notif__text">Your account is abnormal and operations are restricted.</p>
+          <button class="ds-btn ds-btn--sm ds-btn--tertiary">Button Title</button>
+          <button class="ds-notif__close" aria-label="Dismiss"><span class="icon" style="width: 14px; height: 14px;" aria-hidden="true" data-asset-icon="../assets/icons/close-small.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.2248 4.70231C10.4689 4.45862 10.8646 4.45851 11.1086 4.70231C11.3527 4.94639 11.3527 5.343 11.1086 5.58708L8.88399 7.81071L11.1086 10.0363C11.3525 10.2804 11.3526 10.6761 11.1086 10.9201C10.8646 11.1641 10.4689 11.164 10.2248 10.9201L7.99922 8.69548L5.77559 10.9201C5.53151 11.1642 5.1349 11.1642 4.89082 10.9201C4.64702 10.6761 4.64712 10.2803 4.89082 10.0363L7.11543 7.81071L4.89082 5.58708C4.64674 5.343 4.64674 4.94639 4.89082 4.70231C5.1349 4.45824 5.53151 4.45824 5.77559 4.70231L7.99922 6.92692L10.2248 4.70231Z" fill="#404040"/></svg></span></button>
+        </div>
+          </div>
+          <div class="notif-example">
+            <div class="notif-example__head">Complex</div>
+        <div class="ds-notif ds-notif--warning">
+          <span class="ds-notif__icon"><span class="icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../assets/icons/warning-fill.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#E27900" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M5.73515 2.71392C6.77855 1.03546 9.22128 1.03546 10.2647 2.71392L14.3331 9.25893C15.4374 11.0353 14.16 13.3334 12.0684 13.3334H3.93141C1.83983 13.3334 0.562431 11.0353 1.66665 9.25893L5.73515 2.71392ZM8.00008 5.33333C8.36828 5.33333 8.66675 5.6318 8.66675 6V8C8.66675 8.3682 8.36828 8.66666 8.00008 8.66666C7.63188 8.66666 7.33342 8.3682 7.33342 8V6C7.33342 5.6318 7.63188 5.33333 8.00008 5.33333ZM7.16675 10C7.16675 9.53973 7.53981 9.16666 8.00008 9.16666C8.46035 9.16666 8.83342 9.53973 8.83342 10C8.83342 10.4603 8.46035 10.8333 8.00008 10.8333C7.53981 10.8333 7.16675 10.4603 7.16675 10Z" fill="#E27900"/></svg></span></span>
+          <div class="ds-notif__body">
+            <div class="ds-notif__title">Warning</div>
+            <p class="ds-notif__desc">Our system has captured that you have performed illegal operations, so your account has been banned and you will log out.</p>
+            <div class="ds-notif__actions">
+              <button class="ds-btn ds-btn--sm ds-btn--secondary">Button Title</button>
+              <button class="ds-btn ds-btn--sm ds-btn--tertiary">Button Title</button>
+            </div>
+          </div>
+          <button class="ds-notif__close" aria-label="Dismiss"><span class="icon" style="width: 14px; height: 14px;" aria-hidden="true" data-asset-icon="../assets/icons/close-small.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.2248 4.70231C10.4689 4.45862 10.8646 4.45851 11.1086 4.70231C11.3527 4.94639 11.3527 5.343 11.1086 5.58708L8.88399 7.81071L11.1086 10.0363C11.3525 10.2804 11.3526 10.6761 11.1086 10.9201C10.8646 11.1641 10.4689 11.164 10.2248 10.9201L7.99922 8.69548L5.77559 10.9201C5.53151 11.1642 5.1349 11.1642 4.89082 10.9201C4.64702 10.6761 4.64712 10.2803 4.89082 10.0363L7.11543 7.81071L4.89082 5.58708C4.64674 5.343 4.64674 4.94639 4.89082 4.70231C5.1349 4.45824 5.53151 4.45824 5.77559 4.70231L7.99922 6.92692L10.2248 4.70231Z" fill="#404040"/></svg></span></button>
+        </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notif-group">
+        <div class="notif-group__label">Alert</div>
+        <div class="notif-pair">
+          <div class="notif-example">
+            <div class="notif-example__head">Simple</div>
+        <div class="ds-notif ds-notif--simple ds-notif--alert">
+          <span class="ds-notif__icon"><span class="icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../assets/icons/icon-warning-fill.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#FEA900" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M7.99992 1.33334C11.6818 1.33334 14.6666 4.3181 14.6666 8C14.6666 11.6819 11.6818 14.6667 7.99992 14.6667C4.31802 14.6667 1.33325 11.6819 1.33325 8C1.33325 4.3181 4.31802 1.33334 7.99992 1.33334ZM7.99992 9.73307C7.55812 9.73307 7.19978 10.0914 7.19978 10.5332C7.19985 10.9749 7.55812 11.3333 7.99992 11.3333C8.44172 11.3333 8.79998 10.975 8.80005 10.5332C8.80005 10.0914 8.44172 9.73307 7.99992 9.73307ZM7.99992 4.66667C7.63172 4.66667 7.33325 4.96515 7.33325 5.33334V8C7.33325 8.3682 7.63172 8.66667 7.99992 8.66667C8.36812 8.66667 8.66658 8.3682 8.66658 8V5.33334C8.66658 4.96515 8.36812 4.66667 7.99992 4.66667Z" fill="#FEA900"/></svg></span></span>
+          <p class="ds-notif__text">Your account is abnormal and operations are restricted.</p>
+          <button class="ds-btn ds-btn--sm ds-btn--tertiary">Button Title</button>
+          <button class="ds-notif__close" aria-label="Dismiss"><span class="icon" style="width: 14px; height: 14px;" aria-hidden="true" data-asset-icon="../assets/icons/close-small.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.2248 4.70231C10.4689 4.45862 10.8646 4.45851 11.1086 4.70231C11.3527 4.94639 11.3527 5.343 11.1086 5.58708L8.88399 7.81071L11.1086 10.0363C11.3525 10.2804 11.3526 10.6761 11.1086 10.9201C10.8646 11.1641 10.4689 11.164 10.2248 10.9201L7.99922 8.69548L5.77559 10.9201C5.53151 11.1642 5.1349 11.1642 4.89082 10.9201C4.64702 10.6761 4.64712 10.2803 4.89082 10.0363L7.11543 7.81071L4.89082 5.58708C4.64674 5.343 4.64674 4.94639 4.89082 4.70231C5.1349 4.45824 5.53151 4.45824 5.77559 4.70231L7.99922 6.92692L10.2248 4.70231Z" fill="#404040"/></svg></span></button>
+        </div>
+          </div>
+          <div class="notif-example">
+            <div class="notif-example__head">Complex</div>
+        <div class="ds-notif ds-notif--alert">
+          <span class="ds-notif__icon"><span class="icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../assets/icons/icon-warning-fill.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#FEA900" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M7.99992 1.33334C11.6818 1.33334 14.6666 4.3181 14.6666 8C14.6666 11.6819 11.6818 14.6667 7.99992 14.6667C4.31802 14.6667 1.33325 11.6819 1.33325 8C1.33325 4.3181 4.31802 1.33334 7.99992 1.33334ZM7.99992 9.73307C7.55812 9.73307 7.19978 10.0914 7.19978 10.5332C7.19985 10.9749 7.55812 11.3333 7.99992 11.3333C8.44172 11.3333 8.79998 10.975 8.80005 10.5332C8.80005 10.0914 8.44172 9.73307 7.99992 9.73307ZM7.99992 4.66667C7.63172 4.66667 7.33325 4.96515 7.33325 5.33334V8C7.33325 8.3682 7.63172 8.66667 7.99992 8.66667C8.36812 8.66667 8.66658 8.3682 8.66658 8V5.33334C8.66658 4.96515 8.36812 4.66667 7.99992 4.66667Z" fill="#FEA900"/></svg></span></span>
+          <div class="ds-notif__body">
+            <div class="ds-notif__title">Alert</div>
+            <p class="ds-notif__desc">Our system has captured that you have performed illegal operations, so your account has been banned and you will log out.</p>
+            <div class="ds-notif__actions">
+              <button class="ds-btn ds-btn--sm ds-btn--secondary">Button Title</button>
+              <button class="ds-btn ds-btn--sm ds-btn--tertiary">Button Title</button>
+            </div>
+          </div>
+          <button class="ds-notif__close" aria-label="Dismiss"><span class="icon" style="width: 14px; height: 14px;" aria-hidden="true" data-asset-icon="../assets/icons/close-small.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.2248 4.70231C10.4689 4.45862 10.8646 4.45851 11.1086 4.70231C11.3527 4.94639 11.3527 5.343 11.1086 5.58708L8.88399 7.81071L11.1086 10.0363C11.3525 10.2804 11.3526 10.6761 11.1086 10.9201C10.8646 11.1641 10.4689 11.164 10.2248 10.9201L7.99922 8.69548L5.77559 10.9201C5.53151 11.1642 5.1349 11.1642 4.89082 10.9201C4.64702 10.6761 4.64712 10.2803 4.89082 10.0363L7.11543 7.81071L4.89082 5.58708C4.64674 5.343 4.64674 4.94639 4.89082 4.70231C5.1349 4.45824 5.53151 4.45824 5.77559 4.70231L7.99922 6.92692L10.2248 4.70231Z" fill="#404040"/></svg></span></button>
+        </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notif-group">
+        <div class="notif-group__label">Information</div>
+        <div class="notif-pair">
+          <div class="notif-example">
+            <div class="notif-example__head">Simple</div>
+        <div class="ds-notif ds-notif--simple ds-notif--info">
+          <span class="ds-notif__icon"><span class="icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../assets/icons/info_fill.svg"><svg focusable="false" width="24" height="25.5" viewBox="0 0 16 17" fill="#2F74FF" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.65039C11.6451 1.65039 14.5996 4.60492 14.5996 8.25C14.5996 11.8951 11.6451 14.8496 8 14.8496C4.35492 14.8496 1.40039 11.8951 1.40039 8.25C1.40039 4.60492 4.35492 1.65039 8 1.65039ZM6.7334 6.9834V8.18262H7.39941V11.5166H8.59961V6.9834H6.7334ZM7.40137 4.98438V6.18262H8.59961V4.98438H7.40137Z" fill="#2F74FF"/></svg></span></span>
+          <p class="ds-notif__text">Your account is abnormal and operations are restricted.</p>
+          <button class="ds-btn ds-btn--sm ds-btn--tertiary">Button Title</button>
+          <button class="ds-notif__close" aria-label="Dismiss"><span class="icon" style="width: 14px; height: 14px;" aria-hidden="true" data-asset-icon="../assets/icons/close-small.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.2248 4.70231C10.4689 4.45862 10.8646 4.45851 11.1086 4.70231C11.3527 4.94639 11.3527 5.343 11.1086 5.58708L8.88399 7.81071L11.1086 10.0363C11.3525 10.2804 11.3526 10.6761 11.1086 10.9201C10.8646 11.1641 10.4689 11.164 10.2248 10.9201L7.99922 8.69548L5.77559 10.9201C5.53151 11.1642 5.1349 11.1642 4.89082 10.9201C4.64702 10.6761 4.64712 10.2803 4.89082 10.0363L7.11543 7.81071L4.89082 5.58708C4.64674 5.343 4.64674 4.94639 4.89082 4.70231C5.1349 4.45824 5.53151 4.45824 5.77559 4.70231L7.99922 6.92692L10.2248 4.70231Z" fill="#404040"/></svg></span></button>
+        </div>
+          </div>
+          <div class="notif-example">
+            <div class="notif-example__head">Complex</div>
+        <div class="ds-notif ds-notif--info">
+          <span class="ds-notif__icon"><span class="icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../assets/icons/info_fill.svg"><svg focusable="false" width="24" height="25.5" viewBox="0 0 16 17" fill="#2F74FF" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.65039C11.6451 1.65039 14.5996 4.60492 14.5996 8.25C14.5996 11.8951 11.6451 14.8496 8 14.8496C4.35492 14.8496 1.40039 11.8951 1.40039 8.25C1.40039 4.60492 4.35492 1.65039 8 1.65039ZM6.7334 6.9834V8.18262H7.39941V11.5166H8.59961V6.9834H6.7334ZM7.40137 4.98438V6.18262H8.59961V4.98438H7.40137Z" fill="#2F74FF"/></svg></span></span>
+          <div class="ds-notif__body">
+            <div class="ds-notif__title">Information</div>
+            <p class="ds-notif__desc">Our system has captured that you have performed illegal operations, so your account has been banned and you will log out.</p>
+            <div class="ds-notif__actions">
+              <button class="ds-btn ds-btn--sm ds-btn--secondary">Button Title</button>
+              <button class="ds-btn ds-btn--sm ds-btn--tertiary">Button Title</button>
+            </div>
+          </div>
+          <button class="ds-notif__close" aria-label="Dismiss"><span class="icon" style="width: 14px; height: 14px;" aria-hidden="true" data-asset-icon="../assets/icons/close-small.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.2248 4.70231C10.4689 4.45862 10.8646 4.45851 11.1086 4.70231C11.3527 4.94639 11.3527 5.343 11.1086 5.58708L8.88399 7.81071L11.1086 10.0363C11.3525 10.2804 11.3526 10.6761 11.1086 10.9201C10.8646 11.1641 10.4689 11.164 10.2248 10.9201L7.99922 8.69548L5.77559 10.9201C5.53151 11.1642 5.1349 11.1642 4.89082 10.9201C4.64702 10.6761 4.64712 10.2803 4.89082 10.0363L7.11543 7.81071L4.89082 5.58708C4.64674 5.343 4.64674 4.94639 4.89082 4.70231C5.1349 4.45824 5.53151 4.45824 5.77559 4.70231L7.99922 6.92692L10.2248 4.70231Z" fill="#404040"/></svg></span></button>
+        </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pv-section">
+    <div class="pv-section__title">Inline alert (within page flow)</div>
+    <p class="pv-section__sub">Use <code>.ds-alert</code> for inline banners that share the page surface — neutral background, status conveyed by icon color only.</p>
+    <div class="stack-12 inline-alert-stack">
+      <div class="ds-alert ds-alert--info">
+        <span class="ds-alert__icon"><span class="icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../assets/icons/info_fill.svg"><svg focusable="false" width="24" height="25.5" viewBox="0 0 16 17" fill="#2F74FF" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.65039C11.6451 1.65039 14.5996 4.60492 14.5996 8.25C14.5996 11.8951 11.6451 14.8496 8 14.8496C4.35492 14.8496 1.40039 11.8951 1.40039 8.25C1.40039 4.60492 4.35492 1.65039 8 1.65039ZM6.7334 6.9834V8.18262H7.39941V11.5166H8.59961V6.9834H6.7334ZM7.40137 4.98438V6.18262H8.59961V4.98438H7.40137Z" fill="#2F74FF"/></svg></span></span>
+        <div>
+          <div class="ds-alert__title">A new version is available.</div>
+          <div class="ds-alert__desc">Refresh to load the latest tokens and Markdown spec.</div>
+        </div>
+      </div>
+      <div class="ds-alert ds-alert--success">
+        <span class="ds-alert__icon"><span class="icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../assets/icons/success-fill.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#15A877" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M7.99992 1.33334C4.31802 1.33334 1.33325 4.3181 1.33325 8C1.33325 11.6819 4.31802 14.6667 7.99992 14.6667C11.6818 14.6667 14.6666 11.6819 14.6666 8C14.6666 4.3181 11.6818 1.33334 7.99992 1.33334ZM10.5159 6.75554C10.7491 6.47055 10.7071 6.05054 10.4221 5.81738C10.1371 5.58424 9.71712 5.62624 9.48392 5.9112L6.95045 9.00774L6.13799 8.19527C5.87764 7.93494 5.45553 7.93494 5.19518 8.19527C4.93483 8.4556 4.93483 8.87774 5.19518 9.13807L6.52851 10.4714C6.6617 10.6046 6.84499 10.6753 7.03312 10.6659C7.22125 10.6565 7.39658 10.5679 7.51592 10.4222L10.5159 6.75554Z" fill="#15A877"/></svg></span></span>
+        <div>
+          <div class="ds-alert__title">Configuration saved</div>
+          <div class="ds-alert__desc">All members will see the new tokens within a minute.</div>
+        </div>
+      </div>
+      <div class="ds-alert ds-alert--warning">
+        <span class="ds-alert__icon"><span class="icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../assets/icons/warning-fill.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#E27900" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M5.73515 2.71392C6.77855 1.03546 9.22128 1.03546 10.2647 2.71392L14.3331 9.25893C15.4374 11.0353 14.16 13.3334 12.0684 13.3334H3.93141C1.83983 13.3334 0.562431 11.0353 1.66665 9.25893L5.73515 2.71392ZM8.00008 5.33333C8.36828 5.33333 8.66675 5.6318 8.66675 6V8C8.66675 8.3682 8.36828 8.66666 8.00008 8.66666C7.63188 8.66666 7.33342 8.3682 7.33342 8V6C7.33342 5.6318 7.63188 5.33333 8.00008 5.33333ZM7.16675 10C7.16675 9.53973 7.53981 9.16666 8.00008 9.16666C8.46035 9.16666 8.83342 9.53973 8.83342 10C8.83342 10.4603 8.46035 10.8333 8.00008 10.8333C7.53981 10.8333 7.16675 10.4603 7.16675 10Z" fill="#E27900"/></svg></span></span>
+        <div>
+          <div class="ds-alert__title">You're approaching your free-tier limit.</div>
+          <div class="ds-alert__desc">Upgrade to keep generating CSS specs.</div>
+        </div>
+      </div>
+      <div class="ds-alert ds-alert--danger">
+        <span class="ds-alert__icon"><span class="icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../assets/icons/Error.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#E8463A" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M1.33325 8C1.33325 4.3181 4.31802 1.33334 7.99992 1.33334C11.6818 1.33334 14.6666 4.3181 14.6666 8C14.6666 11.6819 11.6818 14.6667 7.99992 14.6667C4.31802 14.6667 1.33325 11.6819 1.33325 8ZM6.47133 5.5286C6.21097 5.26825 5.78886 5.26825 5.52851 5.5286C5.26816 5.78895 5.26816 6.21106 5.52851 6.47141L7.05712 8L5.52851 9.5286C5.26816 9.78894 5.26816 10.2111 5.52851 10.4714C5.78886 10.7317 6.21097 10.7317 6.47133 10.4714L7.99992 8.9428L9.52852 10.4714C9.78885 10.7317 10.211 10.7317 10.4713 10.4714C10.7317 10.2111 10.7317 9.78894 10.4713 9.5286L8.94272 8L10.4713 6.47141C10.7317 6.21106 10.7317 5.78895 10.4713 5.5286C10.211 5.26825 9.78885 5.26825 9.52852 5.5286L7.99992 7.0572L6.47133 5.5286Z" fill="#E8463A"/></svg></span></span>
+        <div>
+          <div class="ds-alert__title">Token import failed</div>
+          <div class="ds-alert__desc">Please check the JSON structure and try again.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

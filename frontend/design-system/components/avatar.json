@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 2,
+  "slug": "avatar",
+  "name": "Avatar",
+  "category": "data-display",
+  "sourceKind": "preview-contract",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    {
+      "type": "Avatar",
+      "evidence": "Inferred from preview/component-avatar.html title and component CSS selectors."
+    }
+  ],
+  "variantDimensions": [
+    {
+      "name": "style-state-density",
+      "values": [
+        ".ds-avatar",
+        ".ds-avatar--lg"
+      ],
+      "evidence": "Representative selectors from preview/component-avatar.html."
+    }
+  ],
+  "coverageMatrix": {
+    "source": "preview/component-avatar.html",
+    "representativeSelectors": [
+      ".ds-avatar",
+      ".ds-avatar--lg"
+    ],
+    "cssRuleCount": 3
+  },
+  "sizeDeltas": [],
+  "stateCoverage": {
+    "states": []
+  },
+  "representativeVariants": [
+    {
+      "selector": ".ds-avatar",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-avatar--lg",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    }
+  ],
+  "anatomy": {
+    "source": "preview/component-avatar.html",
+    "selectors": [
+      ".ds-avatar",
+      ".ds-avatar--lg"
+    ]
+  },
+  "structurePatterns": [],
+  "usageHints": [
+    "Copy component markup from preview/component-avatar.html; keep page/demo-only styles outside shared component CSS.",
+    "Use colors_and_type.css + components.css as the executable rendering contract.",
+    "Use preview/component-avatar.html and components.css as the executable rendering contract."
+  ],
+  "doNotInvent": [
+    "Do not add variants or states that are absent from the preview marker block without updating the component contract.",
+    "Do not add visual states or component parts not present in the preview or components.css.",
+    "Do not treat this inferred JSON as original Figma evidence."
+  ],
+  "unknowns": [
+    "Original design evidence was not available during this repair pass."
+  ],
+  "tokensConsumed": [
+    "--bg-overlay-l3",
+    "--body-base-strong-font-family",
+    "--body-base-strong-font-size",
+    "--body-base-strong-font-weight",
+    "--body-base-strong-line-height",
+    "--body-sm-font-size",
+    "--radius-full",
+    "--text-default"
+  ],
+  "domAnatomy": {
+    "root": {
+      "tag": "preview-fragment",
+      "source": "preview/component-avatar.html",
+      "classes": [
+        "ds-avatar",
+        "ds-avatar--lg",
+        "ds-avatar--sm"
+      ]
+    },
+    "componentCssMarker": {
+      "start": "/* @component-css-start */",
+      "end": "/* @component-css-end */"
+    }
+  },
+  "provenance": {
+    "preview": "preview/component-avatar.html",
+    "source": "preview/component-avatar.html",
+    "css": {
+      "file": "components.css",
+      "marker": "avatar"
+    },
+    "contractBasis": "Derived from the component preview marker block and rendered .ds-* markup; original design evidence was not available."
+  },
+  "assetsConsumed": []
+}

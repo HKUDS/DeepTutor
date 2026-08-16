@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 2,
+  "slug": "table",
+  "name": "Table",
+  "category": "data-display",
+  "sourceKind": "preview-contract",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    {
+      "type": "Table",
+      "evidence": "Inferred from preview/component-table.html title and component CSS selectors."
+    }
+  ],
+  "variantDimensions": [
+    {
+      "name": "style-state-density",
+      "values": [
+        ".ds-table-card",
+        ".ds-table",
+        ".ds-table--fixed",
+        ".ds-table__col-member",
+        ".ds-table__col-role",
+        ".ds-table__col-active",
+        ".ds-table__col-status",
+        ".ds-table__col-actions"
+      ],
+      "evidence": "Representative selectors from preview/component-table.html."
+    }
+  ],
+  "coverageMatrix": {
+    "source": "preview/component-table.html",
+    "representativeSelectors": [
+      ".ds-table-card",
+      ".ds-table",
+      ".ds-table--fixed",
+      ".ds-table__col-member",
+      ".ds-table__col-role",
+      ".ds-table__col-active",
+      ".ds-table__col-status",
+      ".ds-table__col-actions",
+      ".ds-table th",
+      ".ds-table td",
+      ".ds-table td:first-child",
+      ".ds-table tr:last-child td",
+      ".ds-table__member",
+      ".ds-table__member-meta",
+      ".ds-table__member-name",
+      ".ds-table__member-email",
+      ".ds-table td.ds-table__actions"
+    ],
+    "cssRuleCount": 19
+  },
+  "sizeDeltas": [],
+  "stateCoverage": {
+    "states": []
+  },
+  "representativeVariants": [
+    {
+      "selector": ".ds-table-card",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-table",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-table--fixed",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-table__col-member",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    }
+  ],
+  "anatomy": {
+    "source": "preview/component-table.html",
+    "selectors": [
+      ".ds-table-card",
+      ".ds-table",
+      ".ds-table--fixed",
+      ".ds-table__col-member",
+      ".ds-table__col-role",
+      ".ds-table__col-active",
+      ".ds-table__col-status",
+      ".ds-table__col-actions"
+    ]
+  },
+  "structurePatterns": [],
+  "usageHints": [
+    "Copy component markup from preview/component-table.html; keep page/demo-only styles outside shared component CSS.",
+    "Use colors_and_type.css + components.css as the executable rendering contract.",
+    "Use preview/component-table.html and components.css as the executable rendering contract."
+  ],
+  "doNotInvent": [
+    "Do not add variants or states that are absent from the preview marker block without updating the component contract.",
+    "Do not add visual states or component parts not present in the preview or components.css.",
+    "Do not treat this inferred JSON as original Figma evidence."
+  ],
+  "unknowns": [
+    "Original design evidence was not available during this repair pass."
+  ],
+  "tokensConsumed": [
+    "--body-base-font-size",
+    "--body-base-line-height",
+    "--body-md-font-size",
+    "--body-md-letter-spacing",
+    "--body-md-line-height",
+    "--border-neutral-l1",
+    "--code-editor-font-family",
+    "--font-weight-medium",
+    "--spacer-12",
+    "--spacer-16",
+    "--spacer-2",
+    "--spacer-8",
+    "--text-default",
+    "--text-secondary",
+    "--text-tertiary"
+  ],
+  "domAnatomy": {
+    "root": {
+      "tag": "preview-fragment",
+      "source": "preview/component-table.html",
+      "classes": [
+        "ds-table",
+        "ds-table__actions",
+        "ds-table__col-actions",
+        "ds-table__col-active",
+        "ds-table__col-member",
+        "ds-table__col-role",
+        "ds-table__col-status",
+        "ds-table__member",
+        "ds-table__member-email",
+        "ds-table__member-meta",
+        "ds-table__member-name",
+        "ds-table--fixed",
+        "ds-table-card"
+      ]
+    },
+    "componentCssMarker": {
+      "start": "/* @component-css-start */",
+      "end": "/* @component-css-end */"
+    }
+  },
+  "provenance": {
+    "preview": "preview/component-table.html",
+    "source": "preview/component-table.html",
+    "css": {
+      "file": "components.css",
+      "marker": "table"
+    },
+    "contractBasis": "Derived from the component preview marker block and rendered .ds-* markup; original design evidence was not available."
+  },
+  "assetsConsumed": [
+    "assets/icons/more-action.svg"
+  ]
+}

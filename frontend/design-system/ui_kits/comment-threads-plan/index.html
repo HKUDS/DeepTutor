@@ -1,0 +1,1249 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Implementation Plan - Comment Threads</title>
+    <meta
+      name="description"
+      content="A TraeWork document page adapted from the implementation plan reference."
+    >
+    <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../../colors_and_type.css">
+  <link rel="stylesheet" href="../../components.css">
+    <!-- Assumption: comment-threads-plan is a static light-only document page that maps the reference layout to TraeWork tokens and local components for parser validation. -->
+    <style>
+      :root {
+        color-scheme: light;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        background: var(--bg-base-default);
+        color: var(--text-default);
+        scroll-behavior: smooth;
+      }
+
+      body {
+        min-width: 320px;
+        margin: var(--spacer-0);
+        background: var(--bg-base-default);
+        color: var(--text-default);
+        font-family: var(--body-base-font-family);
+        font-size: var(--body-base-font-size);
+        font-weight: var(--body-base-font-weight);
+        line-height: var(--body-base-line-height);
+        letter-spacing: var(--body-base-letter-spacing);
+        text-rendering: optimizeLegibility;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      h1,
+      h2,
+      h3,
+      p,
+      pre {
+        margin: var(--spacer-0);
+      }
+
+      :focus-visible {
+        outline: 2px solid var(--border-brand);
+        outline-offset: var(--spacer-2);
+      }
+
+      code,
+      pre,
+      .mono,
+      .num {
+        font-family: var(--code-editor-font-family);
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum" 1, "lnum" 1;
+      }
+
+      code {
+        border-radius: var(--radius-4);
+        background: var(--bg-overlay-l1);
+        padding: var(--spacer-2) var(--spacer-4);
+        color: var(--code-text);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+      }
+
+      .page {
+        min-height: 100vh;
+        background:
+          linear-gradient(var(--bg-base-secondary), var(--bg-base-default) 360px);
+      }
+
+      .page-shell {
+        width: min(calc(100% - (var(--spacer-32) * 2)), 1120px);
+        margin: var(--spacer-0) auto;
+        padding: var(--spacer-48) var(--spacer-0) var(--spacer-64);
+      }
+
+      .document-head {
+        display: grid;
+        gap: var(--spacer-16);
+        margin-bottom: var(--spacer-32);
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacer-8);
+        color: var(--text-tertiary);
+        font-family: var(--body-base-strong-font-family);
+        font-size: var(--body-base-strong-font-size);
+        line-height: var(--body-base-strong-line-height);
+        font-weight: var(--font-weight-medium);
+        letter-spacing: var(--body-base-strong-letter-spacing);
+      }
+
+      h1 {
+        color: var(--text-default);
+        font-family: var(--heading-3xl-font-family);
+        font-size: var(--heading-3xl-font-size);
+        line-height: var(--heading-3xl-line-height);
+        font-weight: var(--heading-3xl-font-weight);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .prompt-card {
+        display: grid;
+        gap: var(--spacer-8);
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-12);
+        background: var(--bg-base-secondary);
+        padding: var(--spacer-16) var(--spacer-20);
+      }
+
+      .prompt-card__label,
+      .mock-label,
+      .owner-line,
+      .meta-label {
+        color: var(--text-tertiary);
+        font-family: var(--body-md-strong-font-family);
+        font-size: var(--body-md-strong-font-size);
+        line-height: var(--body-md-strong-line-height);
+        font-weight: var(--body-md-strong-font-weight);
+        letter-spacing: var(--body-md-strong-letter-spacing);
+      }
+
+      .prompt-card__body {
+        color: var(--text-secondary);
+      }
+
+      .file-label {
+        display: flex;
+        align-items: center;
+        gap: var(--spacer-6);
+        color: var(--text-tertiary);
+        font-family: var(--code-editor-font-family);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+        font-weight: var(--font-weight-code);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .file-icon {
+        width: var(--spacer-16);
+        height: var(--spacer-16);
+        flex: 0 0 auto;
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: var(--spacer-16);
+        margin-bottom: var(--spacer-48);
+      }
+
+      .summary-card {
+        display: grid;
+        gap: var(--spacer-10);
+        min-height: 108px;
+      }
+
+      .summary-card__top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacer-12);
+      }
+
+      .summary-card__value {
+        color: var(--text-default);
+        font-family: var(--font-family-metric);
+        font-size: var(--heading-md-font-size);
+        line-height: var(--heading-md-line-height);
+        font-weight: var(--font-weight-strong);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .summary-card__value.is-accent {
+        color: var(--text-default);
+      }
+
+      .document-section {
+        padding-bottom: var(--spacer-48);
+      }
+
+      .document-section:last-child {
+        padding-bottom: var(--spacer-0);
+      }
+
+      .section-head {
+        display: flex;
+        align-items: center;
+        gap: var(--spacer-12);
+        margin-bottom: var(--spacer-8);
+      }
+
+      .section-index {
+        display: inline-grid;
+        min-width: var(--spacer-40);
+        height: var(--spacer-32);
+        place-items: center;
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-8);
+        background: var(--bg-overlay-l1);
+        color: var(--text-default);
+        font-family: var(--code-editor-font-family);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+        font-weight: var(--font-weight-code);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      h2 {
+        color: var(--text-default);
+        font-family: var(--heading-xl-font-family);
+        font-size: var(--heading-xl-font-size);
+        line-height: var(--heading-xl-line-height);
+        font-weight: var(--heading-xl-font-weight);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .section-intro {
+        max-width: 720px;
+        margin-bottom: var(--spacer-24);
+        color: var(--text-secondary);
+      }
+
+      .milestones {
+        display: grid;
+        gap: var(--spacer-0);
+      }
+
+      .milestone {
+        display: grid;
+        grid-template-columns: 128px var(--spacer-24) minmax(0, 1fr);
+        column-gap: var(--spacer-16);
+      }
+
+      .milestone__when {
+        padding-top: var(--spacer-4);
+        color: var(--text-tertiary);
+        font-family: var(--body-md-font-family);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+        font-weight: var(--body-md-font-weight);
+        letter-spacing: var(--body-md-letter-spacing);
+        text-align: right;
+      }
+
+      .milestone__rail {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .milestone__dot {
+        width: var(--spacer-16);
+        height: var(--spacer-16);
+        margin-top: var(--spacer-4);
+        border: 2px solid var(--border-neutral-l3);
+        border-radius: var(--radius-full);
+        background: var(--bg-base-default);
+        flex: 0 0 auto;
+      }
+
+      .milestone__dot.is-done {
+        border-color: var(--status-success-default);
+        background: var(--status-success-default);
+      }
+
+      .milestone__line {
+        width: 2px;
+        flex: 1;
+        margin: var(--spacer-4) 0;
+        background: var(--border-neutral-l2);
+      }
+
+      .milestone:last-child .milestone__line {
+        display: none;
+      }
+
+      .milestone__body {
+        display: grid;
+        gap: var(--spacer-8);
+        padding-bottom: var(--spacer-32);
+      }
+
+      .milestone h3 {
+        color: var(--text-default);
+        font-size: var(--heading-sm-font-size);
+        line-height: var(--heading-sm-line-height);
+        font-weight: var(--heading-sm-font-weight);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .milestone p {
+        max-width: 680px;
+        color: var(--text-secondary);
+      }
+
+      .tag-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacer-8);
+      }
+
+      .diagram-card {
+        overflow-x: auto;
+      }
+
+      .flow-diagram {
+        display: block;
+        min-width: 760px;
+        color: var(--text-default);
+      }
+
+      .flow-diagram text {
+        font-family: var(--code-editor-font-family);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .flow-box {
+        fill: var(--bg-base-default);
+        stroke: var(--border-neutral-l2);
+        stroke-width: 1.5;
+      }
+
+      .flow-box--primary {
+        fill: var(--bg-overlay-l1);
+        stroke: var(--border-neutral-l2);
+      }
+
+      .flow-title {
+        fill: var(--text-default);
+        font-size: var(--body-md-font-size);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .flow-subtitle,
+      .flow-label {
+        fill: var(--text-tertiary);
+        font-size: var(--body-sm-font-size);
+      }
+
+      .flow-label--brand,
+      .flow-edge--brand {
+        fill: var(--text-secondary);
+      }
+
+      .flow-edge {
+        fill: none;
+        stroke: var(--icon-tertiary);
+        stroke-width: 1.5;
+      }
+
+      .flow-edge--brand {
+        fill: none;
+        stroke: var(--icon-secondary);
+        stroke-dasharray: 5 4;
+      }
+
+      .flow-arrow {
+        fill: var(--icon-tertiary);
+      }
+
+      .flow-arrow--brand {
+        fill: var(--icon-secondary);
+      }
+
+      .caption {
+        margin-top: var(--spacer-12);
+        color: var(--text-tertiary);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+      }
+
+      .mock-grid,
+      .code-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--spacer-24);
+      }
+
+      .mock-shell {
+        overflow: hidden;
+        padding: var(--spacer-0);
+      }
+
+      .mock-label {
+        border-bottom: 1px solid var(--border-neutral-l1);
+        background: var(--bg-overlay-l1);
+        padding: var(--spacer-12) var(--spacer-16);
+      }
+
+      .mock-body {
+        padding: var(--spacer-16);
+      }
+
+      .task-card {
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-8);
+        background: var(--bg-base-secondary);
+      }
+
+      .task-card {
+        padding: var(--spacer-16);
+      }
+
+      .task-card__title {
+        color: var(--text-default);
+        font-weight: var(--font-weight-medium);
+        font-size: var(--body-base-font-size);
+        line-height: var(--body-base-line-height);
+      }
+
+      .task-card__meta {
+        margin-top: var(--spacer-4);
+        color: var(--text-tertiary);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+      }
+
+      .divider {
+        margin: var(--spacer-16) 0;
+        border-top: 1px dashed var(--border-neutral-l2);
+      }
+
+      .thread {
+        display: grid;
+        gap: var(--spacer-12);
+      }
+
+      .comment {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--spacer-10);
+      }
+
+      .comment.is-nested {
+        margin-left: var(--spacer-0);
+      }
+
+      .comment__body {
+        min-width: 0;
+      }
+
+      .comment__author {
+        color: var(--text-default);
+        font-size: var(--body-base-font-size);
+        line-height: var(--body-base-line-height);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .comment__time {
+        margin-left: var(--spacer-6);
+        color: var(--text-tertiary);
+        font-weight: var(--font-weight-default);
+      }
+
+      .comment__text {
+        margin-top: var(--spacer-2);
+        color: var(--text-secondary);
+        font-size: var(--body-base-font-size);
+        line-height: var(--body-base-line-height);
+      }
+
+      .reply-link {
+        margin-top: var(--spacer-4);
+        color: var(--text-brand);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .composer {
+        display: flex;
+        align-items: stretch;
+        gap: var(--spacer-10);
+        margin-top: var(--spacer-4);
+      }
+
+      .composer .ds-btn {
+        height: auto;
+        min-height: 0;
+        padding: 0 var(--spacer-12);
+      }
+
+      .composer__field {
+        flex: 1;
+        min-width: 0;
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-8);
+        background: var(--bg-base-default);
+        padding: var(--spacer-8) var(--spacer-12);
+        color: var(--text-tertiary);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+      }
+
+      .digest-list {
+        display: grid;
+        gap: var(--spacer-8);
+      }
+
+      .digest-row {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--spacer-10);
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-8);
+        background: var(--bg-base-secondary);
+        padding: var(--spacer-10) var(--spacer-12);
+      }
+
+      .digest-text {
+        color: var(--text-secondary);
+        font-size: var(--body-base-font-size);
+        line-height: var(--body-base-line-height);
+      }
+
+      .digest-text strong {
+        color: var(--text-default);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .digest-text .on {
+        color: var(--text-tertiary);
+      }
+
+      .code-block {
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacer-10);
+        min-width: 0;
+      }
+
+      .code-panel {
+        flex: 1;
+        overflow-x: auto;
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-12);
+        background: var(--bg-base-secondary);
+        padding: var(--spacer-16) var(--spacer-20);
+      }
+
+      .code-panel pre {
+        color: var(--code-text);
+        font-size: var(--code-editor-font-size);
+        line-height: var(--code-editor-line-height);
+        font-weight: var(--code-editor-font-weight);
+        white-space: pre;
+      }
+
+      .code-panel .kw {
+        color: var(--code-action);
+      }
+
+      .code-panel .str {
+        color: var(--code-parameter);
+      }
+
+      .code-panel .cm {
+        color: var(--code-doc);
+      }
+
+      .code-panel .fn {
+        color: var(--code-function);
+      }
+
+      .risk-card {
+        overflow-x: auto;
+      }
+
+      .risk-table {
+        min-width: 760px;
+      }
+
+      .risk-table th,
+      .risk-table td {
+        vertical-align: top;
+      }
+
+      .risk-table__risk,
+      .risk-table__mitigation {
+        width: 42%;
+      }
+
+      .risk-table__sev {
+        width: 16%;
+      }
+
+      .open-questions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--spacer-12);
+      }
+
+      .question-card {
+        display: grid;
+        gap: var(--spacer-6);
+      }
+
+      .question-card__title {
+        color: var(--text-default);
+        font-family: var(--heading-sm-font-family);
+        font-size: var(--heading-sm-font-size);
+        line-height: var(--heading-sm-line-height);
+        font-weight: var(--heading-sm-font-weight);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .question-card__desc {
+        color: var(--text-secondary);
+      }
+
+      .owner-line {
+        margin-top: var(--spacer-4);
+      }
+
+      .icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: var(--spacer-16);
+        height: var(--spacer-16);
+        flex: 0 0 auto;
+        color: var(--icon-tertiary);
+      }
+
+      .icon img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        opacity: 0.58;
+      }
+
+      @media (max-width: 900px) {
+        .summary-grid,
+        .mock-grid,
+        .code-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 720px) {
+        .page-shell {
+          width: min(calc(100% - (var(--spacer-16) * 2)), 1120px);
+          padding-top: var(--spacer-32);
+        }
+
+        .summary-grid,
+        .mock-grid,
+        .code-grid,
+        .open-questions {
+          grid-template-columns: 1fr;
+        }
+
+        .document-section {
+          padding-bottom: var(--spacer-48);
+        }
+
+        .milestone {
+          grid-template-columns: var(--spacer-24) minmax(0, 1fr);
+          column-gap: var(--spacer-12);
+        }
+
+        .milestone__when {
+          grid-column: 2;
+          padding-top: var(--spacer-0);
+          text-align: left;
+        }
+
+        .milestone__rail {
+          grid-column: 1;
+          grid-row: 1 / span 2;
+        }
+
+        .milestone__body {
+          grid-column: 2;
+          padding-bottom: var(--spacer-32);
+        }
+
+        .comment.is-nested {
+          margin-left: var(--spacer-0);
+        }
+
+        .composer {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .composer .ds-btn {
+          width: 100%;
+        }
+
+        .risk-card {
+          overflow: visible;
+        }
+
+        .risk-table {
+          display: block;
+          min-width: 0;
+        }
+
+        .risk-table thead {
+          display: none;
+        }
+
+        .risk-table tbody,
+        .risk-table tr,
+        .risk-table td {
+          display: block;
+          width: 100%;
+        }
+
+        .risk-table tr {
+          border-bottom: 1px solid var(--border-neutral-l1);
+          padding: var(--spacer-12) var(--spacer-0);
+        }
+
+        .risk-table tr:last-child {
+          border-bottom: 0;
+        }
+
+        .risk-table td,
+        .risk-table td:first-child {
+          border-bottom: 0;
+          padding: var(--spacer-6) var(--spacer-0);
+          color: var(--text-secondary);
+        }
+
+        .risk-table td::before {
+          content: attr(data-label);
+          display: block;
+          margin-bottom: var(--spacer-4);
+          color: var(--text-tertiary);
+          font-size: var(--body-sm-font-size);
+          line-height: var(--body-sm-line-height);
+          font-weight: var(--font-weight-medium);
+          text-transform: uppercase;
+        }
+      }
+
+      /* Inline asset icon normalization: keep uploaded HTML independent from external SVG styling. */
+      [data-asset-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent !important;
+        -webkit-mask: none !important;
+        mask: none !important;
+      }
+
+      [data-asset-icon] > svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        flex: 0 0 auto;
+      }
+
+      .asset-inline-icon {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+      }
+    
+
+    /* design-library-creator layout guard */
+    .uikit-shell { width: 100%; max-width: 1184px; margin: 0 auto; overflow: hidden; display: block; }
+    .uikit-sidebar { min-width: 0; overflow: hidden; max-width: 100%; }
+    .uikit-main { min-width: 0; }
+    .uikit-toolbar { min-width: 0; display: flex; align-items: center; gap: var(--spacer-8); }
+    .uikit-responsive-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacer-16); }
+    .uikit-table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+    .uikit-truncate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .uikit-nowrap { white-space: nowrap; flex-shrink: 0; }
+    .uikit-action-cell { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 160px; overflow: hidden; }
+    .uikit-action { min-width: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    [data-component] { min-width: 0; max-width: 100%; overflow: hidden; }
+    @media (max-width: 900px) { .uikit-shell { grid-template-columns: minmax(0, 1fr); } .uikit-responsive-grid { grid-template-columns: minmax(0, 1fr); } }
+    @media (max-width: 640px) { .uikit-toolbar { flex-direction: column; align-items: stretch; } .uikit-responsive-grid { grid-template-columns: minmax(0, 1fr); } }
+  </style>
+  </head>
+  <body data-layout-guard="uikit-v1">
+    <div class="page">
+      <main class="page-shell" aria-labelledby="document-title">
+        <header class="document-head">
+          <div class="eyebrow">
+            <span class="icon" aria-hidden="true">
+              <span class="asset-inline-icon" aria-hidden="true" data-asset-icon="../../assets/icons/document.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM10.333 10.708C10.6781 10.708 10.9578 10.988 10.958 11.333C10.958 11.6782 10.6782 11.958 10.333 11.958H6C5.65482 11.958 5.375 11.6782 5.375 11.333C5.3752 10.988 5.65494 10.708 6 10.708H10.333ZM8 8.04199C8.34518 8.04199 8.625 8.32181 8.625 8.66699C8.6248 9.012 8.34506 9.29199 8 9.29199H6C5.65494 9.29199 5.3752 9.012 5.375 8.66699C5.375 8.32181 5.65482 8.04199 6 8.04199H8ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#737373"/></svg></span>
+            </span>
+            <span>Implementation plan &middot; Acme web client</span>
+          </div>
+          <h1 id="document-title">Comment threads on task cards</h1>
+          <div class="prompt-card">
+            <span class="prompt-card__label">Prompt</span>
+            <p class="prompt-card__body">
+              Create a thorough implementation plan for adding threaded comments to task cards. Include mockups, the data flow from client to persistence, the key code I'll need to write, and a risk table. Make it easy to skim on a phone - I'm going to pass this to the implementer as-is.
+            </p>
+          </div>
+        </header>
+
+        <div class="summary-grid" aria-label="Plan summary">
+          <article class="ds-card summary-card">
+            <div class="summary-card__top">
+              <span class="meta-label">Effort</span>
+              <span class="icon" aria-hidden="true">
+                <span class="asset-inline-icon" aria-hidden="true" data-asset-icon="../../assets/icons/clock_time.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M13.375 8C13.375 5.03147 10.9686 2.625 8 2.625C5.03147 2.625 2.625 5.03147 2.625 8C2.625 10.9686 5.03147 13.375 8 13.375C10.9686 13.375 13.375 10.9686 13.375 8ZM7.375 5.33301C7.37518 4.98798 7.65493 4.70801 8 4.70801C8.34507 4.70801 8.62482 4.98798 8.625 5.33301V7.74023L10.1084 9.22461C10.3525 9.46869 10.3525 9.86432 10.1084 10.1084C9.86432 10.3525 9.46869 10.3525 9.22461 10.1084L7.55762 8.44238C7.44041 8.32517 7.375 8.16576 7.375 8V5.33301ZM14.625 8C14.625 11.6589 11.6589 14.625 8 14.625C4.34112 14.625 1.375 11.6589 1.375 8C1.375 4.34112 4.34112 1.375 8 1.375C11.6589 1.375 14.625 4.34112 14.625 8Z" fill="#737373"/></svg></span>
+              </span>
+            </div>
+            <div class="summary-card__value is-accent">~2 weeks</div>
+          </article>
+          <article class="ds-card summary-card">
+            <div class="summary-card__top">
+              <span class="meta-label">Surfaces touched</span>
+              <span class="icon" aria-hidden="true">
+                <span class="asset-inline-icon" aria-hidden="true" data-asset-icon="../../assets/icons/Branch.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M11.666 2.04163C12.7475 2.04163 13.6248 2.91823 13.625 3.99963C13.625 4.86257 13.0662 5.59404 12.291 5.8551V6.00061C12.2907 7.45013 11.1156 8.62561 9.66602 8.62561H6.33301C5.57372 8.62574 4.95801 9.24128 4.95801 10.0006V10.1451C5.73294 10.4061 6.29185 11.1369 6.29199 11.9996C6.29199 13.0812 5.41457 13.9586 4.33301 13.9586C3.2516 13.9584 2.375 13.0811 2.375 11.9996C2.37514 11.1371 2.93343 10.4062 3.70801 10.1451V5.85413C2.93348 5.59281 2.375 4.86225 2.375 3.99963C2.37518 2.91833 3.25171 2.0418 4.33301 2.04163C5.41446 2.04163 6.29182 2.91823 6.29199 3.99963C6.29199 4.86238 5.73289 5.59291 4.95801 5.85413V7.76721C5.35819 7.52025 5.82824 7.37566 6.33301 7.37561H9.66602C10.4252 7.37561 11.0407 6.75977 11.041 6.00061V5.85413C10.2666 5.59274 9.70801 4.86217 9.70801 3.99963C9.70818 2.91842 10.5848 2.04193 11.666 2.04163ZM4.33301 11.2916C3.94206 11.2918 3.62518 11.6087 3.625 11.9996C3.625 12.3907 3.94196 12.7084 4.33301 12.7086C4.72421 12.7086 5.04199 12.3908 5.04199 11.9996C5.04182 11.6086 4.7241 11.2916 4.33301 11.2916ZM4.33301 3.29163C3.94206 3.2918 3.62518 3.60869 3.625 3.99963C3.625 4.39073 3.94196 4.70844 4.33301 4.70862C4.72421 4.70862 5.04199 4.39084 5.04199 3.99963C5.04182 3.60858 4.7241 3.29163 4.33301 3.29163ZM11.666 3.29163C11.2752 3.29193 10.9582 3.60877 10.958 3.99963C10.958 4.39065 11.2751 4.70831 11.666 4.70862C12.0572 4.70862 12.375 4.39084 12.375 3.99963C12.3748 3.60858 12.0571 3.29163 11.666 3.29163Z" fill="#737373"/></svg></span>
+              </span>
+            </div>
+            <div class="summary-card__value">3 packages</div>
+          </article>
+          <article class="ds-card summary-card">
+            <div class="summary-card__top">
+              <span class="meta-label">New tables</span>
+              <span class="icon" aria-hidden="true">
+                <span class="asset-inline-icon" aria-hidden="true" data-asset-icon="../../assets/icons/Table.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M10.1338 2C10.6825 2 11.1342 1.99934 11.501 2.0293C11.8757 2.05992 12.2203 2.12616 12.5439 2.29102C13.0456 2.54667 13.4533 2.95438 13.709 3.45605C13.8739 3.77961 13.9401 4.1243 13.9707 4.49902C14.0007 4.86583 14 5.31749 14 5.86621V10.1338C14 10.6825 14.0007 11.1342 13.9707 11.501C13.9401 11.8757 13.8739 12.2203 13.709 12.5439C13.4533 13.0456 13.0456 13.4533 12.5439 13.709C12.2203 13.8739 11.8757 13.9401 11.501 13.9707C11.1342 14.0007 10.6825 14 10.1338 14H5.86621C5.31749 14 4.86583 14.0007 4.49902 13.9707C4.1243 13.9401 3.77961 13.8739 3.45605 13.709C2.95438 13.4533 2.54667 13.0456 2.29102 12.5439C2.12616 12.2203 2.05992 11.8757 2.0293 11.501C1.99934 11.1342 2 10.6825 2 10.1338V5.86621C2 5.31749 1.99935 4.86583 2.0293 4.49902C2.05992 4.1243 2.12616 3.77961 2.29102 3.45605C2.54666 2.95439 2.95439 2.54666 3.45605 2.29102C3.77961 2.12616 4.1243 2.05992 4.49902 2.0293C4.86583 1.99935 5.31749 2 5.86621 2H10.1338ZM3.33301 7.29199V10.1338C3.33301 10.7046 3.3339 11.0926 3.3584 11.3926C3.38226 11.6846 3.42544 11.8342 3.47852 11.9385C3.60634 12.1893 3.81064 12.3937 4.06152 12.5215C4.16578 12.5746 4.31533 12.6178 4.60742 12.6416C4.90739 12.6661 5.29545 12.667 5.86621 12.667H6.04199V7.29199H3.33301ZM7.29199 7.29199V12.667H10.1338C10.7046 12.667 11.0926 12.6661 11.3926 12.6416C11.6846 12.6178 11.8342 12.5746 11.9385 12.5215C12.1893 12.3937 12.3937 12.1893 12.5215 11.9385C12.5746 11.8342 12.6178 11.6846 12.6416 11.3926C12.6661 11.0926 12.667 10.7046 12.667 10.1338V7.29199H7.29199ZM5.86621 3.33301C5.29544 3.33301 4.90739 3.3339 4.60742 3.3584C4.31533 3.38226 4.16578 3.42543 4.06152 3.47852C3.81064 3.60634 3.60634 3.81064 3.47852 4.06152C3.42543 4.16578 3.38226 4.31533 3.3584 4.60742C3.3339 4.90739 3.33301 5.29544 3.33301 5.86621V6.04199H6.04199V3.33301H5.86621ZM7.29199 6.04199H12.667V5.86621C12.667 5.29545 12.6661 4.90739 12.6416 4.60742C12.6178 4.31533 12.5746 4.16578 12.5215 4.06152C12.3937 3.81064 12.1893 3.60634 11.9385 3.47852C11.8342 3.42544 11.6846 3.38226 11.3926 3.3584C11.0926 3.3339 10.7046 3.33301 10.1338 3.33301H7.29199V6.04199Z" fill="#737373"/></svg></span>
+              </span>
+            </div>
+            <div class="summary-card__value">2</div>
+          </article>
+          <article class="ds-card summary-card">
+            <div class="summary-card__top">
+              <span class="meta-label">Feature flag</span>
+              <span class="icon" aria-hidden="true">
+                <span class="asset-inline-icon" aria-hidden="true" data-asset-icon="../../assets/icons/check.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M13.7117 2.90824C13.9472 2.656 14.3432 2.64248 14.5955 2.87797C14.8477 3.1135 14.8612 3.50945 14.6257 3.76176L6.38551 12.5909C6.06158 12.9379 5.51701 12.9556 5.17067 12.6309L1.74098 9.41606C1.48925 9.17996 1.47661 8.78405 1.71266 8.53227C1.94875 8.28054 2.34466 8.2679 2.59645 8.50395L5.73903 11.4502L13.7117 2.90824Z" fill="#737373"/></svg></span>
+              </span>
+            </div>
+            <div class="summary-card__value">task_comments_v1</div>
+          </article>
+        </div>
+
+        <section class="document-section" aria-labelledby="milestones-title">
+          <div class="section-head">
+            <span class="section-index">01</span>
+            <h2 id="milestones-title">Milestones</h2>
+          </div>
+          <p class="section-intro">
+            Ship in four slices, each independently reviewable and each behind the flag. Nothing is user-visible until slice 4.
+          </p>
+
+          <div class="milestones">
+            <article class="milestone">
+              <div class="milestone__when">Week 1 &middot; Mon-Tue</div>
+              <div class="milestone__rail" aria-hidden="true">
+                <span class="milestone__dot is-done"></span>
+                <span class="milestone__line"></span>
+              </div>
+              <div class="milestone__body">
+                <h3>Schema &amp; API contract</h3>
+                <p>New <code>comments</code> and <code>comment_reads</code> tables, migrations, and the tRPC router stubs. No UI. Contract reviewed before anything else lands.</p>
+                <div class="tag-row">
+                  <span class="ds-tag">packages/db</span>
+                  <span class="ds-tag">packages/api</span>
+                  <span class="ds-tag">migration 0042</span>
+                </div>
+              </div>
+            </article>
+
+            <article class="milestone">
+              <div class="milestone__when">Week 1 &middot; Wed-Fri</div>
+              <div class="milestone__rail" aria-hidden="true">
+                <span class="milestone__dot"></span>
+                <span class="milestone__line"></span>
+              </div>
+              <div class="milestone__body">
+                <h3>Thread component &amp; composer</h3>
+                <p>Static <code>&lt;CommentThread&gt;</code> rendered from fixtures. Optimistic insert on submit, rollback on failure, one level of nesting only.</p>
+                <div class="tag-row">
+                  <span class="ds-tag">apps/web</span>
+                  <span class="ds-tag">storybook</span>
+                </div>
+              </div>
+            </article>
+
+            <article class="milestone">
+              <div class="milestone__when">Week 2 &middot; Mon-Wed</div>
+              <div class="milestone__rail" aria-hidden="true">
+                <span class="milestone__dot"></span>
+                <span class="milestone__line"></span>
+              </div>
+              <div class="milestone__body">
+                <h3>Realtime fan-out &amp; unread state</h3>
+                <p>Subscribe the open card to its comment channel. Track per-user read cursors so the sidebar can show an unread count without a second query.</p>
+                <div class="tag-row">
+                  <span class="ds-tag">packages/realtime</span>
+                  <span class="ds-tag">apps/web</span>
+                </div>
+              </div>
+            </article>
+
+            <article class="milestone">
+              <div class="milestone__when">Week 2 &middot; Thu-Fri</div>
+              <div class="milestone__rail" aria-hidden="true">
+                <span class="milestone__dot"></span>
+                <span class="milestone__line"></span>
+              </div>
+              <div class="milestone__body">
+                <h3>Notifications, flag ramp, docs</h3>
+                <p>Mention detection into notification rows, email digest fallback, ramp <code>task_comments_v1</code> to internal, then 10% to 100% over three days.</p>
+                <div class="tag-row">
+                  <span class="ds-tag">packages/notify</span>
+                  <span class="ds-tag">growthbook</span>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="document-section" aria-labelledby="flow-title">
+          <div class="section-head">
+            <span class="section-index">02</span>
+            <h2 id="flow-title">Data flow</h2>
+          </div>
+          <p class="section-intro">
+            Optimistic write path on the left, fan-out on the right. The read cursor update is fire-and-forget, so the thread render never waits on it.
+          </p>
+
+          <div class="ds-card diagram-card">
+            <svg class="flow-diagram" viewBox="0 0 860 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="flow-svg-title flow-svg-desc">
+              <title id="flow-svg-title">Threaded comments data flow</title>
+              <desc id="flow-svg-desc">Request response path from composer to cache, API, database, realtime channel, other viewers, and notification worker.</desc>
+              <defs>
+                <marker id="solid-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path class="flow-arrow" d="M0,0 L10,5 L0,10 z"></path>
+                </marker>
+                <marker id="brand-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path class="flow-arrow--brand" d="M0,0 L10,5 L0,10 z"></path>
+                </marker>
+              </defs>
+
+              <g>
+                <rect class="flow-box" x="20" y="20" width="180" height="54" rx="10"></rect>
+                <text class="flow-title" x="110" y="43" text-anchor="middle">&lt;CommentComposer&gt;</text>
+                <text class="flow-subtitle" x="110" y="60" text-anchor="middle">apps/web</text>
+
+                <rect class="flow-box" x="20" y="150" width="180" height="54" rx="10"></rect>
+                <text class="flow-title" x="110" y="173" text-anchor="middle">React Query cache</text>
+                <text class="flow-subtitle" x="110" y="190" text-anchor="middle">optimistic insert</text>
+
+                <rect class="flow-box" x="340" y="150" width="180" height="54" rx="10"></rect>
+                <text class="flow-title" x="430" y="173" text-anchor="middle">comments.create</text>
+                <text class="flow-subtitle" x="430" y="190" text-anchor="middle">tRPC &middot; packages/api</text>
+
+                <rect class="flow-box flow-box--primary" x="340" y="266" width="180" height="54" rx="10"></rect>
+                <text class="flow-title" x="430" y="289" text-anchor="middle">comments table</text>
+                <text class="flow-subtitle" x="430" y="306" text-anchor="middle">postgres &middot; packages/db</text>
+
+                <rect class="flow-box" x="660" y="150" width="180" height="54" rx="10"></rect>
+                <text class="flow-title" x="750" y="173" text-anchor="middle">realtime channel</text>
+                <text class="flow-subtitle" x="750" y="190" text-anchor="middle">task:{id}:comments</text>
+
+                <rect class="flow-box" x="660" y="20" width="180" height="54" rx="10"></rect>
+                <text class="flow-title" x="750" y="43" text-anchor="middle">Other viewers</text>
+                <text class="flow-subtitle" x="750" y="60" text-anchor="middle">subscribed cards</text>
+
+                <rect class="flow-box" x="660" y="266" width="180" height="54" rx="10"></rect>
+                <text class="flow-title" x="750" y="289" text-anchor="middle">notify worker</text>
+                <text class="flow-subtitle" x="750" y="306" text-anchor="middle">@mentions to queue</text>
+              </g>
+
+              <g>
+                <path class="flow-edge" d="M110 74 L110 150" marker-end="url(#solid-arrow)"></path>
+                <path class="flow-edge" d="M200 177 L340 177" marker-end="url(#solid-arrow)"></path>
+                <path class="flow-edge" d="M430 204 L430 266" marker-end="url(#solid-arrow)"></path>
+                <path class="flow-edge" d="M520 293 L660 293" marker-end="url(#solid-arrow)"></path>
+                <path class="flow-edge--brand" d="M520 177 L660 177" marker-end="url(#brand-arrow)"></path>
+                <path class="flow-edge--brand" d="M750 150 L750 74" marker-end="url(#brand-arrow)"></path>
+                <path class="flow-edge--brand" d="M660 162 C540 120 280 120 205 162" marker-end="url(#brand-arrow)"></path>
+              </g>
+
+              <g>
+                <text class="flow-label" x="118" y="118">submit (id=temp)</text>
+                <text class="flow-label" x="240" y="170">mutate</text>
+                <text class="flow-label" x="438" y="240">INSERT + read cursor</text>
+                <text class="flow-label" x="548" y="286">enqueue</text>
+                <text class="flow-label flow-label--brand" x="548" y="172">broadcast row</text>
+                <text class="flow-label flow-label--brand" x="758" y="118">live append</text>
+                <text class="flow-label flow-label--brand" x="360" y="112">reconcile temp id to real id</text>
+              </g>
+            </svg>
+            <p class="caption">Solid = request/response path. Dashed brand line = realtime fan-out. The composer never waits on the dashed path.</p>
+          </div>
+        </section>
+
+        <section class="document-section" aria-labelledby="mockups-title">
+          <div class="section-head">
+            <span class="section-index">03</span>
+            <h2 id="mockups-title">Mockups</h2>
+          </div>
+          <p class="section-intro">
+            Not pixel-final - just enough that the reviewer and implementer agree on nesting depth, composer placement, and what the sidebar digest looks like.
+          </p>
+
+          <div class="mock-grid">
+            <article class="ds-card mock-shell">
+              <div class="mock-label">A &middot; Thread inside an open task card</div>
+              <div class="mock-body">
+                <div class="task-card">
+                  <div class="task-card__title">Ship onboarding empty-state rewrite</div>
+                  <div class="task-card__meta">BIR-1142 &middot; Assigned to Priya &middot; Due Fri</div>
+                  <div class="divider" aria-hidden="true"></div>
+                  <div class="thread">
+                    <div class="comment">
+                      <span class="ds-avatar ds-avatar--sm">JM</span>
+                      <div class="comment__body">
+                        <div class="comment__author">Jonah M. <span class="comment__time">2h ago</span></div>
+                        <div class="comment__text">Should the illustration swap when the workspace already has one project? Feels odd to show the "start here" art twice.</div>
+                        <div class="reply-link">Reply</div>
+                      </div>
+                    </div>
+                    <div class="comment is-nested">
+                      <span class="ds-avatar ds-avatar--sm">PS</span>
+                      <div class="comment__body">
+                        <div class="comment__author">Priya S. <span class="comment__time">40m ago</span></div>
+                        <div class="comment__text">Good catch - I'll gate it on <code>projects.count &gt; 0</code> and fall back to the minimal variant.</div>
+                      </div>
+                    </div>
+                    <div class="composer">
+                      <div class="composer__field">Add a comment...</div>
+                      <button class="ds-btn ds-btn--brand ds-btn--sm" type="button">Post</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="ds-card mock-shell">
+              <div class="mock-label">B &middot; Sidebar unread digest</div>
+              <div class="mock-body">
+                <div class="digest-list">
+                  <div class="digest-row">
+                    <span class="ds-avatar ds-avatar--sm">JM</span>
+                    <div class="digest-text"><strong>Jonah</strong> commented <span class="on">on BIR-1142</span> - "Should the illustration swap when..."</div>
+                  </div>
+                  <div class="digest-row">
+                    <span class="ds-avatar ds-avatar--sm">AK</span>
+                    <div class="digest-text"><strong>Aiko</strong> mentioned you <span class="on">on BIR-1098</span> - "@priya can you confirm the copy here?"</div>
+                  </div>
+                  <div class="digest-row">
+                    <span class="ds-avatar ds-avatar--sm">RW</span>
+                    <div class="digest-text"><strong>Rowan</strong> replied <span class="on">on BIR-0971</span> - "Merged, thanks for the quick turnaround."</div>
+                  </div>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="document-section" aria-labelledby="code-title">
+          <div class="section-head">
+            <span class="section-index">04</span>
+            <h2 id="code-title">Key code</h2>
+          </div>
+          <p class="section-intro">
+            The two pieces most likely to be done wrong: the migration for soft deletes and read cursors, and the optimistic mutation for temp-id reconciliation.
+          </p>
+
+          <div class="code-grid">
+            <article class="code-block">
+              <div class="file-label">
+                <span class="file-icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../../assets/icons/code.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M9.48514 2.06017C9.81988 2.14389 10.0237 2.48323 9.94022 2.81798L7.27323 13.485C7.1895 13.8197 6.85016 14.0236 6.51541 13.9401C6.18054 13.8563 5.97662 13.5161 6.06034 13.1813L8.72733 2.51525C8.81105 2.18038 9.15027 1.97645 9.48514 2.06017ZM3.58475 4.86583C3.84274 4.63659 4.23826 4.66061 4.46756 4.91857C4.69641 5.17648 4.6734 5.57117 4.4158 5.8004L3.09745 6.97228C2.48211 7.51925 2.4821 8.48096 3.09745 9.02794L4.4158 10.1998C4.67332 10.4291 4.69652 10.8238 4.46756 11.0817C4.23824 11.3396 3.84274 11.3627 3.58475 11.1334L2.26639 9.96154C1.09197 8.91727 1.09176 7.08183 2.26639 6.03771L3.58475 4.86583ZM11.533 4.91857C11.7623 4.66058 12.1578 4.63651 12.4158 4.86583L13.7342 6.03771C14.9086 7.0818 14.9084 8.91728 13.7342 9.96154L12.4158 11.1334C12.1578 11.3627 11.7623 11.3396 11.533 11.0817C11.3038 10.8237 11.327 10.4291 11.5848 10.1998L12.9031 9.02794C13.4799 8.5152 13.5161 7.63804 13.0115 7.0797L12.9031 6.97228L11.5848 5.8004C11.327 5.57115 11.304 5.17653 11.533 4.91857Z" fill="#737373"/></svg></span>
+                packages/db/migrations/0042_comments.sql
+              </div>
+              <div class="code-panel"><pre><span class="kw">create table</span> <span class="fn">comments</span> (
+  id          uuid <span class="kw">primary key default</span> gen_random_uuid(),
+  task_id     uuid <span class="kw">not null references</span> tasks(id),
+  parent_id   uuid <span class="kw">references</span> comments(id),   <span class="cm">-- one level only,</span>
+                                                <span class="cm">-- enforced in API</span>
+  author_id   uuid <span class="kw">not null references</span> users(id),
+  body        text <span class="kw">not null</span>,
+  created_at  timestamptz <span class="kw">not null default</span> now(),
+  deleted_at  timestamptz                       <span class="cm">-- soft delete</span>
+);
+
+<span class="kw">create table</span> <span class="fn">comment_reads</span> (
+  task_id    uuid <span class="kw">not null references</span> tasks(id),
+  user_id    uuid <span class="kw">not null references</span> users(id),
+  read_up_to timestamptz <span class="kw">not null</span>,
+  <span class="kw">primary key</span> (task_id, user_id)
+);
+
+<span class="kw">create index</span> <span class="fn">comments_task_created</span>
+  <span class="kw">on</span> comments (task_id, created_at);</pre></div>
+            </article>
+
+            <article class="code-block">
+              <div class="file-label">
+                <span class="file-icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../../assets/icons/code.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M9.48514 2.06017C9.81988 2.14389 10.0237 2.48323 9.94022 2.81798L7.27323 13.485C7.1895 13.8197 6.85016 14.0236 6.51541 13.9401C6.18054 13.8563 5.97662 13.5161 6.06034 13.1813L8.72733 2.51525C8.81105 2.18038 9.15027 1.97645 9.48514 2.06017ZM3.58475 4.86583C3.84274 4.63659 4.23826 4.66061 4.46756 4.91857C4.69641 5.17648 4.6734 5.57117 4.4158 5.8004L3.09745 6.97228C2.48211 7.51925 2.4821 8.48096 3.09745 9.02794L4.4158 10.1998C4.67332 10.4291 4.69652 10.8238 4.46756 11.0817C4.23824 11.3396 3.84274 11.3627 3.58475 11.1334L2.26639 9.96154C1.09197 8.91727 1.09176 7.08183 2.26639 6.03771L3.58475 4.86583ZM11.533 4.91857C11.7623 4.66058 12.1578 4.63651 12.4158 4.86583L13.7342 6.03771C14.9086 7.0818 14.9084 8.91728 13.7342 9.96154L12.4158 11.1334C12.1578 11.3627 11.7623 11.3396 11.533 11.0817C11.3038 10.8237 11.327 10.4291 11.5848 10.1998L12.9031 9.02794C13.4799 8.5152 13.5161 7.63804 13.0115 7.0797L12.9031 6.97228L11.5848 5.8004C11.327 5.57115 11.304 5.17653 11.533 4.91857Z" fill="#737373"/></svg></span>
+                apps/web/hooks/useAddComment.ts
+              </div>
+              <div class="code-panel"><pre><span class="kw">export function</span> <span class="fn">useAddComment</span>(taskId: string) {
+  <span class="kw">const</span> qc = useQueryClient();
+  <span class="kw">return</span> trpc.comments.create.<span class="fn">useMutation</span>({
+    <span class="fn">onMutate</span>: <span class="kw">async</span> (input) =&gt; {
+      <span class="kw">const</span> temp = { ...input, id: <span class="str">`temp-${nanoid()}`</span>,
+                     createdAt: <span class="kw">new</span> Date(), pending: <span class="kw">true</span> };
+      qc.<span class="fn">setQueryData</span>(key(taskId), (prev) =&gt;
+        [...(prev ?? []), temp]);
+      <span class="kw">return</span> { tempId: temp.id };
+    },
+    <span class="fn">onSuccess</span>: (row, _v, ctx) =&gt; {
+      <span class="cm">// reconcile temp id to real id so the</span>
+      <span class="cm">// realtime append does not duplicate it</span>
+      qc.<span class="fn">setQueryData</span>(key(taskId), (prev) =&gt;
+        prev.map((c) =&gt; c.id === ctx.tempId ? row : c));
+    },
+    <span class="fn">onError</span>: (_e, _v, ctx) =&gt; {
+      qc.<span class="fn">setQueryData</span>(key(taskId), (prev) =&gt;
+        prev.filter((c) =&gt; c.id !== ctx.tempId));
+    },
+  });
+}</pre></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="document-section" aria-labelledby="risks-title">
+          <div class="section-head">
+            <span class="section-index">05</span>
+            <h2 id="risks-title">Risks &amp; mitigations</h2>
+          </div>
+
+          <div class="ds-card risk-card">
+            <div class="uikit-table-wrap">
+            <table class="ds-table risk-table">
+              <thead>
+                <tr>
+                  <th class="risk-table__risk">Risk</th>
+                  <th class="risk-table__sev">Sev</th>
+                  <th class="risk-table__mitigation">Mitigation</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td data-label="Risk">Realtime duplicate: socket append races with the HTTP response and the temp-id reconcile.</td>
+                  <td data-label="Sev"><span class="ds-tag ds-tag--danger">HIGH</span></td>
+                  <td data-label="Mitigation">Dedupe on server-assigned <code>id</code> in the cache updater; socket payload carries the real id, temp rows are filtered on reconcile.</td>
+                </tr>
+                <tr>
+                  <td data-label="Risk">Unread counts go stale when a user reads the thread on another device.</td>
+                  <td data-label="Sev"><span class="ds-tag ds-tag--warning">MED</span></td>
+                  <td data-label="Mitigation">Broadcast <code>comment_reads</code> upserts on the same channel; client treats its own cursor as max(local, remote).</td>
+                </tr>
+                <tr>
+                  <td data-label="Risk">Mention detection false-positives on pasted markdown (<code>@media</code>, <code>@2x</code>).</td>
+                  <td data-label="Sev"><span class="ds-tag ds-tag--success">LOW</span></td>
+                  <td data-label="Mitigation">Resolve mentions against workspace members only, at write time, and store the resolved user ids - never re-parse on read.</td>
+                </tr>
+              </tbody>
+            </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="document-section" aria-labelledby="questions-title">
+          <div class="section-head">
+            <span class="section-index">06</span>
+            <h2 id="questions-title">Open questions</h2>
+          </div>
+
+          <div class="open-questions">
+            <article class="ds-card question-card">
+              <div class="question-card__title">Do we allow editing, or only delete-and-repost?</div>
+              <p class="question-card__desc">Editing needs an <code>edited_at</code> column and an "edited" affordance. Delete-and-repost is simpler but loses the reply anchor. Leaning toward delete-only for v1.</p>
+              <div class="owner-line">Decide with &middot; design, before slice 2</div>
+            </article>
+            <article class="ds-card question-card">
+              <div class="question-card__title">Email digest cadence when a user has the app closed</div>
+              <p class="question-card__desc">Immediate-per-mention will be noisy. Proposal: batch on a 15-minute window, collapse to one email per task, and respect quiet hours from the existing settings table.</p>
+              <div class="owner-line">Decide with &middot; platform, before slice 4</div>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+    <div id="traework-interaction-root" aria-hidden="true"></div>
+    <script>
+      (function () {
+        var rootElement = document.getElementById('traework-interaction-root');
+        if (rootElement) rootElement.dataset.interactionMounted = 'true';
+
+        var interactiveSelectors = [
+          '[data-nav]',
+          '[data-screen-trigger]',
+          '[role="tab"]',
+          '.tab',
+          '.nav-item',
+          '.sidebar-nav a',
+          '.sidebar a',
+          '.mobile-nav a'
+        ];
+
+        function getActiveClass(element) {
+          var classes = Array.prototype.slice.call(element.classList || []);
+          return classes.find(function (name) { return name.endsWith('--active'); }) ||
+            classes.find(function (name) { return name === 'is-active' || name === 'active' || name === 'selected'; }) ||
+            (element.classList && element.classList.contains('tab') ? 'tab--active' : null) ||
+            (element.classList && element.classList.contains('nav-item') ? 'nav-item--active' : null);
+        }
+
+        function activateWithinGroup(element, activeClass) {
+          var group = element.closest('[role="tablist"], nav, .sidebar, .sidebar-nav, .mobile-nav') || element.parentElement;
+          if (!group || !activeClass) return;
+
+          group.querySelectorAll(interactiveSelectors.join(',')).forEach(function (item) {
+            item.classList.remove(activeClass);
+            if (item.getAttribute('role') === 'tab') item.setAttribute('aria-selected', 'false');
+          });
+
+          element.classList.add(activeClass);
+          if (element.getAttribute('role') === 'tab') element.setAttribute('aria-selected', 'true');
+        }
+
+        function handleClick(event) {
+          var target = event.currentTarget;
+          var href = target.getAttribute('href');
+          if (href === '#') event.preventDefault();
+          activateWithinGroup(target, getActiveClass(target));
+        }
+
+        Array.prototype.slice.call(document.querySelectorAll(interactiveSelectors.join(','))).forEach(function (element) {
+          if (element.id !== 'traework-interaction-root') element.addEventListener('click', handleClick);
+        });
+      }());
+    </script>
+  </body>
+</html>

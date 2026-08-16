@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 2,
+  "slug": "cards",
+  "name": "Card / List",
+  "category": "layout",
+  "sourceKind": "preview-contract",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    {
+      "type": "Card / List",
+      "evidence": "Inferred from preview/component-cards.html title and component CSS selectors."
+    }
+  ],
+  "variantDimensions": [
+    {
+      "name": "style-state-density",
+      "values": [
+        ".ds-card",
+        ".ds-card__desc"
+      ],
+      "evidence": "Representative selectors from preview/component-cards.html."
+    }
+  ],
+  "coverageMatrix": {
+    "source": "preview/component-cards.html",
+    "representativeSelectors": [
+      ".ds-card",
+      ".ds-card__desc"
+    ],
+    "cssRuleCount": 3
+  },
+  "sizeDeltas": [],
+  "stateCoverage": {
+    "states": []
+  },
+  "representativeVariants": [
+    {
+      "selector": ".ds-card",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-card__desc",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    }
+  ],
+  "anatomy": {
+    "source": "preview/component-cards.html",
+    "selectors": [
+      ".ds-card",
+      ".ds-card__desc"
+    ]
+  },
+  "structurePatterns": [],
+  "usageHints": [
+    "Copy component markup from preview/component-cards.html; keep page/demo-only styles outside shared component CSS.",
+    "Use colors_and_type.css + components.css as the executable rendering contract.",
+    "Use preview/component-cards.html and components.css as the executable rendering contract."
+  ],
+  "doNotInvent": [
+    "Do not add variants or states that are absent from the preview marker block without updating the component contract.",
+    "Do not add visual states or component parts not present in the preview or components.css.",
+    "Do not treat this inferred JSON as original Figma evidence."
+  ],
+  "unknowns": [
+    "Original design evidence was not available during this repair pass."
+  ],
+  "tokensConsumed": [
+    "--bg-base-secondary",
+    "--body-base-font-size",
+    "--body-base-line-height",
+    "--border-neutral-l1",
+    "--heading-sm-font-size",
+    "--heading-sm-font-weight",
+    "--heading-sm-line-height",
+    "--radius-12",
+    "--spacer-20",
+    "--spacer-8",
+    "--text-default",
+    "--text-secondary"
+  ],
+  "domAnatomy": {
+    "root": {
+      "tag": "preview-fragment",
+      "source": "preview/component-cards.html",
+      "classes": [
+        "ds-card",
+        "ds-card__desc",
+        "ds-card__title"
+      ]
+    },
+    "componentCssMarker": {
+      "start": "/* @component-css-start */",
+      "end": "/* @component-css-end */"
+    }
+  },
+  "provenance": {
+    "preview": "preview/component-cards.html",
+    "source": "preview/component-cards.html",
+    "css": {
+      "file": "components.css",
+      "marker": "cards"
+    },
+    "contractBasis": "Derived from the component preview marker block and rendered .ds-* markup; original design evidence was not available."
+  },
+  "assetsConsumed": [
+    "assets/icons/ai_stars.svg",
+    "assets/icons/information_simple.svg",
+    "assets/icons/success_simple.svg",
+    "assets/icons/warning_simple.svg"
+  ]
+}

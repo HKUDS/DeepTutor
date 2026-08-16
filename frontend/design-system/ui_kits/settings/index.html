@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings - TraeWork</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="../../colors_and_type.css">
+  <link rel="stylesheet" href="../../components.css">
+  <style>
+    body { padding: 0; background: var(--bg-base-default); }
+    .settings,
+    .settings *,
+    .settings *::before,
+    .settings *::after { box-sizing: border-box; }
+    .settings { min-height: 100vh; display: grid; grid-template-columns: 260px minmax(0, 1fr); }
+    .side { border-right: 1px solid var(--border-neutral-l1); background: var(--bg-menu); padding: var(--spacer-16); }
+    .side-title { font-family: var(--heading-sm-font-family); font-size: var(--heading-sm-font-size); font-weight: var(--heading-sm-font-weight); margin-bottom: var(--spacer-16); }
+    .sidebar__section-title { font-family: var(--body-sm-strong-font-family); font-size: var(--body-sm-strong-font-size); line-height: var(--body-sm-strong-line-height); letter-spacing: var(--body-sm-strong-letter-spacing); font-weight: var(--body-sm-strong-font-weight); text-transform: uppercase; color: var(--text-tertiary); padding: var(--spacer-8) var(--spacer-8) var(--spacer-4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .nav-item { height: 32px; padding: var(--spacer-8) var(--spacer-10); border-radius: var(--radius-8); display: flex; align-items: center; gap: var(--spacer-10); color: var(--text-secondary); background: transparent; border: 0; width: 100%; font: inherit; cursor: pointer; }
+    .nav-item + .nav-item { margin-top: var(--spacer-2); }
+    .nav-item img { width: 16px; height: 16px; opacity: .76; }
+    .nav-item:hover { background: var(--bg-overlay-l1); color: var(--text-default); }
+    .nav-item.is-active { background: var(--bg-overlay-l2); color: var(--text-default); }
+    .main { padding: var(--spacer-32); max-width: 980px; min-width: 0; }
+    .page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--spacer-24); margin-bottom: var(--spacer-32); }
+    .page-head h1 { font-family: var(--heading-xl-font-family); font-size: var(--heading-xl-font-size); line-height: var(--heading-xl-line-height); }
+    .page-head p { margin-top: var(--spacer-4); color: var(--text-secondary); }
+    .settings-section { margin-bottom: var(--spacer-32); }
+    .section-title { font-size: var(--heading-sm-font-size); line-height: var(--heading-sm-line-height); font-weight: var(--heading-sm-font-weight); margin-bottom: var(--spacer-16); }
+    .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--spacer-24); row-gap: var(--spacer-20); align-items: start; max-width: 760px; }
+    .field { display: flex; flex-direction: column; gap: var(--spacer-6); min-width: 0; }
+    .field label { font-weight: var(--font-weight-medium); }
+    .field small { color: var(--text-tertiary); }
+    .field .ds-input,
+    .field .ds-select-wrap,
+    .field .ds-select { width: 100%; min-width: 0; }
+    .field .ds-input,
+    .field .ds-select { height: 32px; min-height: 32px; }
+    .agents-table { max-width: 100%; }
+    .agents-table .ds-table { min-width: 640px; }
+    .agents-table__col-agent { width: 80%; }
+    .agents-table__col-status { width: 20%; }
+    .agents-table .agents-table__status { text-align: right; }
+    @media (max-width: 820px) { .settings { grid-template-columns: 1fr; } .side { border-right: 0; border-bottom: 1px solid var(--border-neutral-l1); } .main { padding: var(--spacer-16); } .field-grid { grid-template-columns: 1fr; } .page-head { flex-direction: column; } }
+
+      /* Inline asset icon normalization: keep uploaded HTML independent from external SVG styling. */
+      [data-asset-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent !important;
+        -webkit-mask: none !important;
+        mask: none !important;
+      }
+
+      [data-asset-icon] > svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        flex: 0 0 auto;
+      }
+
+      .asset-inline-icon {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+      }
+    
+
+    /* design-library-creator layout guard */
+    .uikit-shell { width: 100%; max-width: 1184px; margin: 0 auto; overflow: hidden; display: block; }
+    .uikit-sidebar { min-width: 0; overflow: hidden; max-width: 100%; }
+    .uikit-main { min-width: 0; }
+    .uikit-toolbar { min-width: 0; display: flex; align-items: center; gap: var(--spacer-8); }
+    .uikit-responsive-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacer-16); }
+    .uikit-table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+    .uikit-truncate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .uikit-nowrap { white-space: nowrap; flex-shrink: 0; }
+    .uikit-action-cell { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 160px; overflow: hidden; }
+    .uikit-action { min-width: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    [data-component] { min-width: 0; max-width: 100%; overflow: hidden; }
+    @media (max-width: 900px) { .uikit-shell { grid-template-columns: minmax(0, 1fr); } .uikit-responsive-grid { grid-template-columns: minmax(0, 1fr); } }
+    @media (max-width: 640px) { .uikit-toolbar { flex-direction: column; align-items: stretch; } .uikit-responsive-grid { grid-template-columns: minmax(0, 1fr); } }
+  </style>
+</head>
+<body data-layout-guard="uikit-v1">
+  <div class="settings">
+    <aside class="side"><div class="side-title">TraeWork</div><div class="sidebar__section-title">Mock</div><button class="nav-item"><span class="asset-inline-icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../../assets/icons/settings.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.375C8.58386 1.375 9.12929 1.66661 9.45312 2.15234L9.7041 2.5293C9.93056 2.86888 10.3434 3.03299 10.7412 2.94141L10.9893 2.88379C11.585 2.74631 12.2093 2.92608 12.6416 3.3584C13.0739 3.7907 13.2537 4.41501 13.1162 5.01074L13.0586 5.25879C12.967 5.65656 13.1311 6.06946 13.4707 6.2959L13.8477 6.54688C14.3334 6.87071 14.625 7.41615 14.625 8C14.625 8.58385 14.3334 9.12929 13.8477 9.45312L13.4707 9.7041C13.1311 9.93055 12.967 10.3434 13.0586 10.7412L13.1162 10.9893L13.1523 11.2139C13.2042 11.7384 13.0198 12.2634 12.6416 12.6416C12.2093 13.0739 11.585 13.2537 10.9893 13.1162L10.7412 13.0586C10.3434 12.967 9.93055 13.1311 9.7041 13.4707L9.45312 13.8477C9.12929 14.3334 8.58385 14.625 8 14.625C7.41615 14.625 6.87071 14.3334 6.54688 13.8477L6.2959 13.4707C6.06946 13.1311 5.65656 12.967 5.25879 13.0586L5.01074 13.1162C4.41501 13.2537 3.7907 13.0739 3.3584 12.6416C2.92608 12.2093 2.74631 11.585 2.88379 10.9893L2.94141 10.7412C3.03299 10.3434 2.86888 9.93056 2.5293 9.7041L2.15234 9.45312C1.6666 9.12929 1.375 8.58386 1.375 8C1.375 7.41614 1.6666 6.87071 2.15234 6.54688L2.5293 6.2959C2.86887 6.06945 3.03299 5.65655 2.94141 5.25879L2.88379 5.01074C2.74631 4.41501 2.92608 3.79072 3.3584 3.3584C3.79072 2.92608 4.41502 2.74631 5.01074 2.88379L5.25879 2.94141C5.65655 3.03299 6.06945 2.86887 6.2959 2.5293L6.54688 2.15234C6.87071 1.6666 7.41614 1.375 8 1.375ZM8 2.625C7.83413 2.625 7.67895 2.70766 7.58691 2.8457L7.33594 3.22266C6.82102 3.99493 5.88197 4.36778 4.97754 4.15918L4.72949 4.10254C4.55371 4.06197 4.36975 4.11463 4.24219 4.24219C4.11463 4.36975 4.06197 4.5537 4.10254 4.72949L4.15918 4.97754C4.36778 5.88197 3.99493 6.82102 3.22266 7.33594L2.8457 7.58691C2.70766 7.67895 2.625 7.83413 2.625 8C2.625 8.16587 2.70766 8.32105 2.8457 8.41309L3.22266 8.66406C3.99493 9.17898 4.36779 10.118 4.15918 11.0225L4.10254 11.2705C4.06198 11.4463 4.11463 11.6303 4.24219 11.7578C4.36977 11.8854 4.55371 11.938 4.72949 11.8975L4.97754 11.8408C5.88195 11.6322 6.82101 12.005 7.33594 12.7773L7.58691 13.1543C7.67894 13.2923 7.83412 13.375 8 13.375C8.16588 13.375 8.32106 13.2923 8.41309 13.1543L8.66406 12.7773C9.17899 12.005 10.118 11.6322 11.0225 11.8408L11.2695 11.8975C11.4453 11.938 11.6302 11.8854 11.7578 11.7578C11.8854 11.6302 11.938 11.4463 11.8975 11.2705V11.2695L11.8408 11.0225C11.6322 10.118 12.005 9.17899 12.7773 8.66406L13.1543 8.41309C13.2923 8.32106 13.375 8.16588 13.375 8C13.375 7.83412 13.2923 7.67894 13.1543 7.58691L12.7773 7.33594C12.005 6.82101 11.6322 5.88195 11.8408 4.97754L11.8975 4.72949C11.938 4.55372 11.8854 4.36977 11.7578 4.24219C11.6303 4.11463 11.4463 4.06198 11.2705 4.10254L11.0225 4.15918C10.118 4.36779 9.17898 3.99493 8.66406 3.22266L8.41309 2.8457C8.32105 2.70767 8.16587 2.625 8 2.625ZM8 5.375C9.44978 5.375 10.625 6.55022 10.625 8C10.625 9.44978 9.44978 10.625 8 10.625C6.55022 10.625 5.375 9.44978 5.375 8C5.375 6.55022 6.55022 5.375 8 5.375ZM8 6.625C7.24058 6.625 6.625 7.24058 6.625 8C6.625 8.75942 7.24058 9.375 8 9.375C8.75942 9.375 9.375 8.75942 9.375 8C9.375 7.24058 8.75942 6.625 8 6.625Z" fill="#404040"/></svg></span>General</button><button class="nav-item is-active"><span class="asset-inline-icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../../assets/icons/agent.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#171717" xmlns="http://www.w3.org/2000/svg"><path d="M13.0417 5.33301C13.0416 4.57376 12.4261 3.95801 11.6667 3.95801H4.33374C3.57446 3.95801 2.95892 4.57377 2.95874 5.33301V10.667C2.95892 11.4263 3.57445 12.042 4.33374 12.042H11.6667C12.4261 12.042 13.0416 11.4263 13.0417 10.667V5.33301ZM9.33374 9.04199C9.67877 9.04217 9.95874 9.32192 9.95874 9.66699C9.95856 10.0119 9.67866 10.2918 9.33374 10.292H6.66675C6.32168 10.292 6.04192 10.012 6.04175 9.66699C6.04175 9.32181 6.32157 9.04199 6.66675 9.04199H9.33374ZM5.66675 5.70801C6.19602 5.70801 6.62476 6.13772 6.62476 6.66699C6.62458 7.19605 6.19594 7.625 5.66675 7.625C5.17054 7.625 4.76271 7.24783 4.71362 6.76465L4.70874 6.66699L4.71362 6.56836C4.76286 6.08528 5.17068 5.70801 5.66675 5.70801ZM10.4314 5.71289C10.9146 5.76195 11.2917 6.17076 11.2917 6.66699C11.2916 7.19598 10.8627 7.62482 10.3337 7.625C9.83756 7.625 9.4287 7.24789 9.37964 6.76465L9.37476 6.66699L9.37964 6.56836C9.42885 6.08522 9.8377 5.70801 10.3337 5.70801L10.4314 5.71289ZM14.2917 5.53711C14.689 5.7574 14.9587 6.18054 14.9587 6.66699C14.9586 7.15327 14.6889 7.57564 14.2917 7.7959V10.667C14.2916 12.1166 13.1164 13.292 11.6667 13.292H4.33374C2.88411 13.292 1.70892 12.1166 1.70874 10.667V7.79688C1.31126 7.57672 1.04187 7.15354 1.04175 6.66699C1.04175 6.18027 1.31109 5.75632 1.70874 5.53613V5.33301C1.70892 3.88341 2.8841 2.70801 4.33374 2.70801H7.37476V2C7.37476 1.65493 7.65473 1.37518 7.99976 1.375C8.34493 1.375 8.62476 1.65482 8.62476 2V2.70801H11.6667C13.1164 2.70801 14.2916 3.88342 14.2917 5.33301V5.53711Z" fill="#171717"/></svg></span>Agents</button><button class="nav-item"><span class="asset-inline-icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../../assets/icons/tool.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M13.3684 6.18066L12.4417 7.1084C11.4612 8.08876 9.8723 8.08877 8.89185 7.1084C7.91136 6.12794 7.91136 4.53808 8.89185 3.55762L9.81763 2.63086C9.76773 2.62887 9.71767 2.62501 9.66724 2.625C7.61926 2.625 5.95843 4.2851 5.95826 6.33301C5.95826 6.8397 6.05963 7.32153 6.24244 7.75977C6.33999 7.99355 6.28674 8.26321 6.10767 8.44238L2.94165 11.6084C2.54163 12.0085 2.54184 12.6574 2.94165 13.0576C3.34191 13.4579 3.99159 13.4579 4.39185 13.0576L7.55689 9.89258L7.62818 9.83105C7.80298 9.70208 8.03486 9.67251 8.23951 9.75781C8.67784 9.94074 9.16037 10.042 9.66724 10.042C11.7151 10.0417 13.3752 8.38094 13.3752 6.33301C13.3752 6.28191 13.3705 6.23122 13.3684 6.18066ZM14.6252 6.33301C14.6252 9.07129 12.4055 11.2917 9.66724 11.292C9.14274 11.292 8.63612 11.2092 8.1604 11.0576L5.27564 13.9424C4.38725 14.8307 2.94625 14.8307 2.05787 13.9424C1.16948 13.054 1.16954 11.613 2.05787 10.7246L4.94263 7.83984C4.79103 7.36409 4.70826 6.85758 4.70826 6.33301C4.70843 3.59475 6.9289 1.375 9.66724 1.375C10.2378 1.37505 10.7873 1.47206 11.2991 1.65039C11.502 1.72122 11.6544 1.8911 11.7024 2.10059C11.7504 2.31026 11.6875 2.53052 11.5354 2.68262L9.77564 4.44238C9.28341 4.93469 9.28335 5.73234 9.77564 6.22461C10.2679 6.71683 11.0656 6.71682 11.5579 6.22461L13.3176 4.46484C13.4697 4.31274 13.69 4.24985 13.8997 4.29785C14.1091 4.34594 14.2791 4.49823 14.3499 4.70117C14.5282 5.21299 14.6252 5.76241 14.6252 6.33301Z" fill="#404040"/></svg></span>MCP</button><div class="sidebar__section-title">Display</div><button class="nav-item"><span class="asset-inline-icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../../assets/icons/rules.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M11 1.70801C12.4497 1.70801 13.6248 2.88344 13.625 4.33301V11.666C13.625 13.1158 12.4498 14.291 11 14.291H5C3.55026 14.291 2.375 13.1158 2.375 11.666V4.33301C2.3752 2.88343 3.55038 1.70801 5 1.70801H11ZM5 2.95801C4.24073 2.95801 3.6252 3.57379 3.625 4.33301V11.666C3.625 12.4254 4.2406 13.041 5 13.041H5.375V2.95801H5ZM6.625 13.041H11C11.7594 13.041 12.375 12.4254 12.375 11.666V4.33301C12.3748 3.57378 11.7593 2.95801 11 2.95801H6.625V13.041ZM10.334 7.375C10.6789 7.37531 10.959 7.65501 10.959 8C10.959 8.34499 10.6789 8.62469 10.334 8.625H8.66699C8.32181 8.625 8.04199 8.34518 8.04199 8C8.04199 7.65482 8.32181 7.375 8.66699 7.375H10.334ZM10.334 4.70801C10.6788 4.70832 10.9588 4.98819 10.959 5.33301C10.959 5.678 10.6789 5.9577 10.334 5.95801H8.66699C8.32181 5.95801 8.04199 5.67819 8.04199 5.33301C8.04219 4.988 8.32194 4.70801 8.66699 4.70801H10.334Z" fill="#404040"/></svg></span>Rules</button><button class="nav-item"><span class="asset-inline-icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../../assets/icons/codeFrame.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M9.48514 2.06017C9.81988 2.14389 10.0237 2.48323 9.94022 2.81798L7.27323 13.485C7.1895 13.8197 6.85016 14.0236 6.51541 13.9401C6.18054 13.8563 5.97662 13.5161 6.06034 13.1813L8.72733 2.51525C8.81105 2.18038 9.15027 1.97645 9.48514 2.06017ZM3.58475 4.86583C3.84274 4.63659 4.23826 4.66061 4.46756 4.91857C4.69641 5.17648 4.6734 5.57117 4.4158 5.8004L3.09745 6.97228C2.48211 7.51925 2.4821 8.48096 3.09745 9.02794L4.4158 10.1998C4.67332 10.4291 4.69652 10.8238 4.46756 11.0817C4.23824 11.3396 3.84274 11.3627 3.58475 11.1334L2.26639 9.96154C1.09197 8.91727 1.09176 7.08183 2.26639 6.03771L3.58475 4.86583ZM11.533 4.91857C11.7623 4.66058 12.1578 4.63651 12.4158 4.86583L13.7342 6.03771C14.9086 7.0818 14.9084 8.91728 13.7342 9.96154L12.4158 11.1334C12.1578 11.3627 11.7623 11.3396 11.533 11.0817C11.3038 10.8237 11.327 10.4291 11.5848 10.1998L12.9031 9.02794C13.4799 8.5152 13.5161 7.63804 13.0115 7.0797L12.9031 6.97228L11.5848 5.8004C11.327 5.57115 11.304 5.17653 11.533 4.91857Z" fill="#404040"/></svg></span>Framework</button></aside>
+    <main class="main">
+      <header class="page-head"><div><h1>Agent Settings</h1><p>Configure builders, MCP tools and workspace rules.</p></div><button class="ds-btn ds-btn--brand"><span class="icon icon--16 icon--plus" aria-hidden="true" data-asset-icon="../../assets/icons/Plus.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#FFFFFF" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M8 4C8.3682 4 8.66667 4.29848 8.66667 4.66667V7.33333H11.3333C11.7015 7.33333 12 7.6318 12 8C12 8.3682 11.7015 8.66667 11.3333 8.66667H8.66667V11.3333C8.66667 11.7015 8.3682 12 8 12C7.6318 12 7.33333 11.7015 7.33333 11.3333V8.66667H4.66667C4.29848 8.66667 4 8.3682 4 8C4 7.6318 4.29848 7.33333 4.66667 7.33333H7.33333V4.66667C7.33333 4.29848 7.6318 4 8 4Z" fill="#FFFFFF"/></svg></span>Add agent</button></header>
+      <section class="settings-section"><h2 class="section-title">Default behavior</h2><div class="field-grid"><div class="field"><label>Workspace name</label><div class="ds-input"><input value="TraeWork Web"></div><small>Visible in shared previews.</small></div><div class="field"><label>Default model</label><div class="ds-select-wrap"><select class="ds-select"><option>Auto</option><option>Claude Sonnet</option><option>GPT-5</option></select><span class="icon-img" aria-hidden="true" data-asset-icon="../../assets/icons/Down.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.2249 6.22429C10.469 5.98059 10.8647 5.98048 11.1087 6.22429C11.3528 6.46837 11.3528 6.86498 11.1087 7.10905L9.14876 9.06804C8.51414 9.70255 7.48548 9.70261 6.8509 9.06804L4.89094 7.10905C4.64687 6.86498 4.64687 6.46837 4.89094 6.22429C5.13502 5.98021 5.53163 5.98021 5.77571 6.22429L7.73469 8.18425C7.88112 8.33067 8.1185 8.3306 8.26497 8.18425L10.2249 6.22429Z" fill="#404040"/></svg></span></div><small>Used for new sessions.</small></div><div class="field"><label>Planning mode</label><label class="ds-switch"><input type="checkbox" checked><span class="ds-switch__thumb"></span></label><small>Ask for implementation plans before broad edits.</small></div></div></section>
+      <section class="settings-section"><h2 class="section-title">Installed agents</h2><div class="ds-card ds-table-card agents-table"><table class="ds-table ds-table--fixed"><colgroup><col class="agents-table__col-agent"><col class="agents-table__col-status"></colgroup><thead><tr><th>Agent</th><th class="agents-table__status">Status</th></tr></thead><tbody><tr><td><div class="ds-table__member"><span class="ds-avatar ds-avatar--lg">Fi</span><div class="ds-table__member-meta"><div class="ds-table__member-name">Figma</div><div class="ds-table__member-email">Design context and component matching.</div></div></div></td><td class="agents-table__status"><span class="ds-tag ds-tag--success">Active</span></td></tr><tr><td><div class="ds-table__member"><span class="ds-avatar ds-avatar--lg">DA</span><div class="ds-table__member-meta"><div class="ds-table__member-name">Data Agent</div><div class="ds-table__member-email">Dashboards, reports and metric diagnostics.</div></div></div></td><td class="agents-table__status"><span class="ds-tag">Ready</span></td></tr><tr><td><div class="ds-table__member"><span class="ds-avatar ds-avatar--lg">BF</span><div class="ds-table__member-meta"><div class="ds-table__member-name">Bug Fixer</div><div class="ds-table__member-email">Focused repair flow for failing checks.</div></div></div></td><td class="agents-table__status"><span class="ds-tag ds-tag--warning">Review</span></td></tr></tbody></table></div></section>
+      <section class="settings-section"><h2 class="section-title">Runtime permissions</h2><div class="ds-alert ds-alert--info"><span class="ds-alert__icon"><span class="icon" style="width: 16px; height: 16px;" aria-hidden="true" data-asset-icon="../../assets/icons/info_fill.svg"><svg focusable="false" width="24" height="25.5" viewBox="0 0 16 17" fill="#2F74FF" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.65039C11.6451 1.65039 14.5996 4.60492 14.5996 8.25C14.5996 11.8951 11.6451 14.8496 8 14.8496C4.35492 14.8496 1.40039 11.8951 1.40039 8.25C1.40039 4.60492 4.35492 1.65039 8 1.65039ZM6.7334 6.9834V8.18262H7.39941V11.5166H8.59961V6.9834H6.7334ZM7.40137 4.98438V6.18262H8.59961V4.98438H7.40137Z" fill="#2F74FF"/></svg></span></span><div><div class="ds-alert__title">Light mode migration is enabled.</div><div class="ds-alert__desc">Existing token names stay available as compatibility aliases.</div></div></div></section>
+    </main>
+  </div>
+    <div id="traework-interaction-root" aria-hidden="true"></div>
+    <script>
+      (function () {
+        var rootElement = document.getElementById('traework-interaction-root');
+        if (rootElement) rootElement.dataset.interactionMounted = 'true';
+
+        var interactiveSelectors = [
+          '[data-nav]',
+          '[data-screen-trigger]',
+          '[role="tab"]',
+          '.tab',
+          '.nav-item',
+          '.sidebar-nav a',
+          '.sidebar a',
+          '.mobile-nav a'
+        ];
+
+        function getActiveClass(element) {
+          var classes = Array.prototype.slice.call(element.classList || []);
+          return classes.find(function (name) { return name.endsWith('--active'); }) ||
+            classes.find(function (name) { return name === 'is-active' || name === 'active' || name === 'selected'; }) ||
+            (element.classList && element.classList.contains('tab') ? 'tab--active' : null) ||
+            (element.classList && element.classList.contains('nav-item') ? 'nav-item--active' : null);
+        }
+
+        function activateWithinGroup(element, activeClass) {
+          var group = element.closest('[role="tablist"], nav, .sidebar, .sidebar-nav, .mobile-nav') || element.parentElement;
+          if (!group || !activeClass) return;
+
+          group.querySelectorAll(interactiveSelectors.join(',')).forEach(function (item) {
+            item.classList.remove(activeClass);
+            if (item.getAttribute('role') === 'tab') item.setAttribute('aria-selected', 'false');
+          });
+
+          element.classList.add(activeClass);
+          if (element.getAttribute('role') === 'tab') element.setAttribute('aria-selected', 'true');
+        }
+
+        function handleClick(event) {
+          var target = event.currentTarget;
+          var href = target.getAttribute('href');
+          if (href === '#') event.preventDefault();
+          activateWithinGroup(target, getActiveClass(target));
+        }
+
+        Array.prototype.slice.call(document.querySelectorAll(interactiveSelectors.join(','))).forEach(function (element) {
+          if (element.id !== 'traework-interaction-root') element.addEventListener('click', handleClick);
+        });
+      }());
+    </script>
+  </body>
+</html>

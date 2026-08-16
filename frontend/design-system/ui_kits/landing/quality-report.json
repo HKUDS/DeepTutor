@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 2,
+  "kitType": "landing",
+  "sourceKind": "preview-contract",
+  "screensGenerated": 7,
+  "coreComponentsUsed": [
+    "buttons",
+    "cards",
+    "tag"
+  ],
+  "supportComponentsUsed": [
+    "buttons",
+    "cards",
+    "tag"
+  ],
+  "previewClassReuseRate": 0.31,
+  "inventedComponents": [],
+  "interactiveStatesRendered": [
+    "active",
+    "disabled",
+    "hover"
+  ],
+  "primaryActionPerScreen": true,
+  "mockDataDensity": {
+    "tableRows": 0,
+    "chartPoints": 0
+  },
+  "warnings": [],
+  "notes": [
+    "Component usage is inferred from .ds-* classes present in the UIKit HTML.",
+    "UIKit pages are visual showcases; consume component markup from preview/ and write product-specific outer layout in downstream apps.",
+    "componentUsageBasis explains whether usage came from shared .ds-* classes or semantic fallback for legacy custom pages."
+  ],
+  "componentUsageBasis": "ds-class"
+}

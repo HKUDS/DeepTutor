@@ -1,0 +1,1452 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TraeWork for Teams - TraeWork</title>
+    <meta
+      name="description"
+      content="A TraeWork product landing page built with the TraeWork design system."
+    >
+    <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../../colors_and_type.css">
+  <link rel="stylesheet" href="../../components.css">
+    <!-- Assumption: this static prototype presents TraeWork as the primary product; CTA buttons are non-navigating prototype controls. -->
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        background: var(--bg-base-default);
+        color: var(--text-default);
+        scroll-behavior: smooth;
+      }
+
+      body {
+        min-width: 320px;
+        margin: var(--spacer-0);
+        background: var(--bg-base-default);
+        color: var(--text-default);
+        font-family: var(--body-base-font-family);
+        font-size: var(--body-base-font-size);
+        font-weight: var(--body-base-font-weight);
+        line-height: var(--body-base-line-height);
+        letter-spacing: var(--body-base-letter-spacing);
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      button {
+        border: 0;
+        cursor: pointer;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: var(--spacer-0);
+      }
+
+      p {
+        margin-bottom: var(--spacer-0);
+      }
+
+      :focus-visible {
+        outline: 2px solid var(--border-brand);
+        outline-offset: var(--spacer-2);
+      }
+
+      .mono,
+      .num,
+      code {
+        font-family: var(--code-editor-font-family);
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum" 1, "lnum" 1;
+      }
+
+      .icon {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+        object-fit: contain;
+        vertical-align: middle;
+      }
+
+      .icon--16 {
+        width: 16px;
+        height: 16px;
+      }
+
+      .icon--20 {
+        width: 20px;
+        height: 20px;
+      }
+
+      .icon--24 {
+        width: 24px;
+        height: 24px;
+      }
+
+
+
+      .label-row {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacer-6);
+        line-height: var(--body-base-line-height);
+      }
+
+      .page {
+        overflow-x: hidden;
+        background: var(--bg-base-default);
+      }
+
+      .page-wrapper {
+        width: min(100% - 64px, 1100px);
+        margin: 0 auto;
+      }
+
+      .floor {
+        background: var(--bg-base-default);
+      }
+
+      .floor--lift {
+        background: var(--bg-base-secondary);
+      }
+
+      .site-header {
+        position: sticky;
+        top: var(--spacer-0);
+        z-index: 40;
+        border-bottom: 1px solid var(--border-neutral-l1);
+        background: var(--bg-menu);
+      }
+
+      .header-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 68px;
+        gap: var(--spacer-20);
+      }
+
+      .wordmark {
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-sm-font-size);
+        line-height: var(--heading-sm-line-height);
+        font-weight: var(--font-weight-strong);
+        letter-spacing: var(--body-md-letter-spacing);
+        text-transform: none;
+      }
+
+      .desktop-nav,
+      .header-actions,
+      .mobile-actions {
+        display: flex;
+        align-items: center;
+      }
+
+      .desktop-nav {
+        gap: var(--spacer-4);
+      }
+
+      .header-actions,
+      .mobile-actions {
+        gap: var(--spacer-8);
+      }
+
+      .desktop-nav a,
+      .mobile-nav a,
+      .mobile-nav button,
+      .mobile-menu-button {
+        min-height: 32px;
+        border-radius: var(--radius-8);
+        padding: 0 var(--spacer-12);
+        background: transparent;
+        color: var(--text-secondary);
+        font-size: var(--body-base-font-size);
+        line-height: var(--body-base-line-height);
+      }
+
+      .desktop-nav a,
+      .mobile-nav a,
+      .mobile-nav button,
+      .mobile-menu-button {
+        display: inline-flex;
+        align-items: center;
+      }
+
+      .desktop-nav a:hover,
+      .mobile-nav a:hover,
+      .mobile-nav button:hover,
+      .mobile-menu-button:hover {
+        background: var(--bg-overlay-l1);
+        color: var(--text-default);
+      }
+
+      .mobile-nav a,
+      .mobile-nav button,
+      .mobile-menu-button {
+        color: var(--text-default);
+      }
+
+      .mobile-menu-button,
+      .mobile-nav {
+        display: none;
+      }
+
+      .ds-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 32px;
+        gap: var(--spacer-8);
+        border-radius: var(--radius-8);
+        padding: 0 var(--spacer-16);
+        color: var(--text-default);
+        font-weight: var(--font-weight-medium);
+        white-space: nowrap;
+        transition:
+          background-color 120ms cubic-bezier(0.2, 0, 0, 1),
+          border-color 120ms cubic-bezier(0.2, 0, 0, 1),
+          color 120ms cubic-bezier(0.2, 0, 0, 1);
+      }
+
+      .ds-btn .icon {
+        display: inline-block;
+        width: var(--icon-size-16);
+        height: var(--icon-size-16);
+        flex: 0 0 auto;
+      }
+
+      .ds-btn .icon--12 { width: var(--icon-size-12); height: var(--icon-size-12); }
+      .ds-btn .icon--14 { width: var(--icon-size-14); height: var(--icon-size-14); }
+      .ds-btn .icon--16 { width: var(--icon-size-16); height: var(--icon-size-16); }
+      .ds-btn .icon--20 { width: var(--icon-size-20); height: var(--icon-size-20); }
+      .ds-btn .icon--24 { width: var(--icon-size-24); height: var(--icon-size-24); }
+
+      .ds-btn--lg {
+        min-height: 40px;
+        border-radius: var(--radius-12);
+        padding: 0 var(--spacer-24);
+      }
+
+      .ds-btn--brand {
+        background: var(--bg-brand);
+        color: var(--text-onbrand);
+      }
+
+      .ds-btn--brand:hover {
+        background: var(--bg-brand-hover);
+      }
+
+      .ds-btn--primary {
+        background: var(--bg-invert);
+        color: var(--bg-base-default);
+      }
+
+      .ds-btn--primary:hover {
+        background: var(--bg-invert-hover);
+      }
+
+      .ds-btn--secondary {
+        border: 1px solid var(--border-neutral-l1);
+        background: var(--bg-overlay-l1);
+        color: var(--text-default);
+      }
+
+      .ds-btn--secondary:hover {
+        border-color: var(--border-neutral-l2);
+        background: var(--bg-overlay-l2);
+      }
+
+      .ds-btn--ghost {
+        background: transparent;
+        color: var(--text-secondary);
+      }
+
+      .ds-btn--ghost:hover {
+        background: var(--bg-overlay-l1);
+        color: var(--text-default);
+      }
+
+      .ds-card {
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-12);
+        background: var(--bg-base-secondary);
+        padding: var(--spacer-20);
+      }
+
+      .floor--lift .ds-card {
+        background: var(--bg-base-default);
+      }
+
+      .ds-tag {
+        display: inline-flex;
+        align-items: center;
+        min-height: 22px;
+        width: fit-content;
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-8);
+        background: var(--bg-overlay-l2);
+        padding: 0 var(--spacer-8);
+        color: var(--text-secondary);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+      }
+
+      .ds-tag--success {
+        border-color: var(--status-success-surface-l2);
+        background: var(--status-success-surface-l1);
+        color: var(--status-success-default);
+      }
+
+      .section {
+        padding: var(--spacer-64) 0;
+      }
+
+      .section-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+        gap: var(--spacer-32);
+        align-items: end;
+        margin-bottom: var(--spacer-40);
+      }
+
+      .eyebrow {
+        margin-bottom: var(--spacer-12);
+        color: var(--text-tertiary);
+        font-family: var(--code-editor-font-family);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+        font-weight: var(--font-weight-code);
+        letter-spacing: var(--body-md-letter-spacing);
+        text-transform: none;
+      }
+
+      .section-title {
+        margin-bottom: var(--spacer-0);
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-3xl-font-size);
+        line-height: var(--heading-3xl-line-height);
+        font-weight: var(--heading-3xl-font-weight);
+        letter-spacing: var(--body-base-letter-spacing);
+      }
+
+      .section-copy {
+        color: var(--text-secondary);
+        font-size: var(--heading-sm-font-size);
+        line-height: var(--heading-sm-line-height);
+      }
+
+      .hero {
+        position: relative;
+        min-height: auto;
+        overflow: hidden;
+        background: var(--bg-base-default);
+      }
+
+      .hero .page-wrapper {
+        position: relative;
+        z-index: 2;
+        display: grid;
+        align-items: start;
+        min-height: auto;
+        padding: var(--spacer-64) 0 var(--spacer-40);
+      }
+
+      .hero-content {
+        display: grid;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        gap: var(--spacer-32) var(--spacer-24);
+      }
+
+      .hero-copy {
+        grid-column: 1 / span 9;
+        display: grid;
+        gap: var(--spacer-20);
+        align-items: start;
+      }
+
+      .hero-copy .eyebrow,
+      .hero-copy .ds-hero-title {
+        max-width: 980px;
+      }
+
+      .ds-hero-title {
+        margin-bottom: var(--spacer-8);
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: clamp(44px, 6vw, 72px);
+        line-height: var(--heading-display-line-height);
+        font-weight: var(--heading-3xl-font-weight);
+        letter-spacing: var(--heading-display-letter-spacing);
+      }
+
+      .ds-hero-title .brand1,
+      .ds-hero-title .brand3 {
+        color: var(--bg-brand);
+      }
+
+      .ds-hero-title .brand2,
+      .ds-hero-title .brand4 {
+        color: var(--text-default);
+      }
+
+      .ds-hero-title__sub {
+        display: block;
+        margin-top: var(--spacer-12);
+        color: var(--text-secondary);
+        font-size: clamp(28px, 3.5vw, 48px);
+        line-height: var(--heading-display-sm-line-height);
+      }
+
+      .hero-lead {
+        max-width: 600px;
+        margin-bottom: var(--spacer-0);
+        color: var(--text-secondary);
+        font-size: var(--heading-sm-font-size);
+        line-height: var(--heading-sm-line-height);
+      }
+
+      .hero-actions,
+      .cta-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacer-8);
+      }
+
+      .hero-copy .hero-actions {
+        justify-content: flex-start;
+      }
+
+      .hero-products {
+        display: grid;
+        grid-column: 1 / -1;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width: 100%;
+        margin-top: var(--spacer-8);
+        border-bottom: 1px solid var(--border-neutral-l1);
+        border-top: 1px solid var(--border-neutral-l1);
+      }
+
+      .hero-product {
+        display: grid;
+        gap: var(--spacer-12);
+        padding: var(--spacer-20) var(--spacer-24) var(--spacer-20) var(--spacer-0);
+      }
+
+      .hero-product + .hero-product {
+        border-left: 1px solid var(--border-neutral-l1);
+        padding-left: var(--spacer-24);
+      }
+
+      .hero-product strong {
+        color: var(--text-default);
+        font-weight: var(--font-weight-strong);
+      }
+
+      .hero-product span {
+        color: var(--text-secondary);
+      }
+
+      .beta-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 420px;
+        gap: var(--spacer-32);
+        align-items: center;
+      }
+
+      .beta-panel {
+        display: grid;
+        gap: var(--spacer-24);
+      }
+
+      .beta-title-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--spacer-12);
+      }
+
+      .beta-panel h2,
+      .cta h2 {
+        margin-bottom: var(--spacer-0);
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-3xl-font-size);
+        line-height: var(--heading-3xl-line-height);
+        font-weight: var(--heading-3xl-font-weight);
+        letter-spacing: var(--body-base-letter-spacing);
+      }
+
+      .availability {
+        display: grid;
+        width: min(100%, 360px);
+        justify-self: center;
+        gap: var(--spacer-16);
+      }
+
+      .availability-row {
+        display: flex;
+        justify-content: space-between;
+        gap: var(--spacer-16);
+        padding-bottom: var(--spacer-12);
+        border-bottom: 1px solid var(--border-neutral-l1);
+      }
+
+      .availability-row:last-child {
+        padding-bottom: var(--spacer-0);
+        border-bottom: 0;
+      }
+
+      .availability-row strong {
+        font-weight: var(--font-weight-medium);
+      }
+
+      .availability-row span {
+        color: var(--text-secondary);
+      }
+
+      .unlock-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        column-gap: var(--spacer-40);
+        row-gap: var(--spacer-32);
+      }
+
+      .value-card {
+        display: grid;
+        grid-template-columns: 72px minmax(0, 1fr);
+        column-gap: var(--spacer-24);
+        row-gap: var(--spacer-8);
+        border-top: 1px solid var(--border-neutral-l1);
+        padding-top: var(--spacer-24);
+        min-height: 156px;
+      }
+
+      .ds-section-title__index {
+        display: block;
+        grid-column: 1;
+        grid-row: 1 / span 2;
+        color: var(--bg-brand);
+        font-family: var(--code-editor-font-family);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-base-line-height);
+        padding-top: var(--spacer-4);
+      }
+
+      .value-card h3 {
+        grid-column: 2;
+        margin: 0;
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: clamp(24px, 2.4vw, 32px);
+        line-height: var(--heading-xl-line-height);
+        font-weight: var(--font-weight-strong);
+        letter-spacing: var(--heading-xl-letter-spacing);
+      }
+
+      .value-card p {
+        grid-column: 2;
+        max-width: 520px;
+      }
+
+      .value-card p,
+      .feature-card p,
+      .proof-card p,
+      .privacy-card p,
+      .cta p {
+        color: var(--text-secondary);
+      }
+
+      .capability-layout {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        gap: var(--spacer-32);
+        align-items: start;
+      }
+
+      .capability-tabs {
+        display: grid;
+        gap: var(--spacer-12);
+        border-left: 1px solid var(--border-neutral-l1);
+        padding-left: var(--spacer-16);
+      }
+
+      .capability-tab {
+        display: grid;
+        gap: var(--spacer-4);
+        min-height: 56px;
+        border-radius: var(--radius-8);
+        background: transparent;
+        padding: var(--spacer-8);
+        color: var(--text-secondary);
+        text-align: left;
+      }
+
+      .capability-tab:hover {
+        background: var(--bg-overlay-l1);
+        color: var(--text-default);
+      }
+
+      .capability-tab[aria-selected="true"] {
+        background: var(--bg-overlay-l2);
+        color: var(--text-default);
+      }
+
+      .capability-tab span {
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+        color: var(--text-tertiary);
+      }
+
+      .feature-panel {
+        display: grid;
+        gap: var(--spacer-24);
+      }
+
+      .feature-card {
+        display: none;
+        min-height: 380px;
+        align-content: space-between;
+        gap: var(--spacer-32);
+      }
+
+      .feature-card[data-active="true"] {
+        display: grid;
+      }
+
+      .feature-card h3,
+      .proof-card h3,
+      .privacy-card h3 {
+        margin-bottom: var(--spacer-12);
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-xl-font-size);
+        line-height: var(--heading-xl-line-height);
+        font-weight: var(--heading-xl-font-weight);
+        letter-spacing: var(--heading-xl-letter-spacing);
+      }
+
+      .feature-stack {
+        display: grid;
+        gap: var(--spacer-12);
+        border-top: 1px solid var(--border-neutral-l1);
+        padding-top: var(--spacer-20);
+      }
+
+      .feature-row {
+        display: grid;
+        grid-template-columns: 28px minmax(0, 1fr) 56px;
+        gap: var(--spacer-16);
+        align-items: center;
+        min-height: 40px;
+        color: var(--text-secondary);
+      }
+
+      .feature-row .icon {
+        color: var(--icon-secondary);
+      }
+
+      .feature-row .num {
+        color: var(--text-tertiary);
+        text-align: right;
+      }
+
+      .proof-grid,
+      .privacy-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--spacer-24);
+      }
+
+      .proof-card,
+      .privacy-card {
+        display: grid;
+        align-content: start;
+        gap: var(--spacer-16);
+        min-height: 220px;
+      }
+
+      .proof-label {
+        color: var(--text-tertiary);
+        font-family: var(--code-editor-font-family);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+      }
+
+      .privacy-card .icon {
+        color: var(--text-brand);
+      }
+
+      .cta {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: var(--spacer-32);
+        align-items: center;
+        padding-top: var(--spacer-0);
+      }
+
+      .cta-copy {
+        display: grid;
+        gap: var(--spacer-16);
+        max-width: 640px;
+      }
+
+      .site-footer {
+        border-top: 1px solid var(--border-neutral-l1);
+        background: var(--bg-base-default);
+        padding: var(--spacer-48) 0 var(--spacer-32);
+      }
+
+      .footer-grid {
+        display: grid;
+        grid-template-columns: 1.4fr repeat(4, minmax(120px, 1fr));
+        gap: var(--spacer-32);
+      }
+
+      .footer-brand,
+      .footer-col {
+        display: grid;
+        align-content: start;
+        gap: var(--spacer-12);
+      }
+
+      .footer-brand p {
+        max-width: 260px;
+        color: var(--text-tertiary);
+      }
+
+      .footer-col h3 {
+        margin-bottom: var(--spacer-0);
+        color: var(--text-default);
+        font-size: var(--body-base-font-size);
+        line-height: var(--body-base-line-height);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .footer-col a,
+      .footer-bottom {
+        color: var(--text-tertiary);
+        font-size: var(--body-base-font-size);
+        line-height: var(--body-base-line-height);
+      }
+
+      .footer-col a:hover {
+        color: var(--text-default);
+      }
+
+      .footer-bottom {
+        display: flex;
+        justify-content: space-between;
+        gap: var(--spacer-24);
+        margin-top: var(--spacer-40);
+        border-top: 1px solid var(--border-neutral-l1);
+        padding-top: var(--spacer-20);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+      }
+
+      @media (max-width: 1080px) {
+        .desktop-nav,
+        .header-actions .hide-tablet {
+          display: none;
+        }
+
+        .mobile-menu-button {
+          display: inline-flex;
+        }
+
+        .mobile-nav {
+          position: absolute;
+          top: 68px;
+          left: var(--spacer-16);
+          right: var(--spacer-16);
+          z-index: 50;
+          display: none;
+          border: 1px solid var(--border-neutral-l1);
+          border-radius: var(--radius-12);
+          background: var(--bg-menu);
+          padding: var(--spacer-12);
+        }
+
+        .mobile-nav[data-open="true"] {
+          display: grid;
+          gap: var(--spacer-4);
+        }
+
+        .unlock-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .footer-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 820px) {
+        .page-wrapper {
+          width: min(100% - 32px, 1100px);
+        }
+
+        .section {
+          padding: var(--spacer-48) 0;
+        }
+
+        .section-head,
+        .beta-grid,
+        .capability-layout,
+        .cta {
+          grid-template-columns: 1fr;
+        }
+
+        .section-head {
+          align-items: start;
+          gap: var(--spacer-16);
+        }
+
+        .hero .page-wrapper {
+          padding: var(--spacer-48) 0;
+        }
+
+        .hero-copy,
+        .hero-products {
+          grid-column: 1 / -1;
+        }
+
+        .hero-copy {
+          grid-template-columns: 1fr;
+        }
+
+        .hero-copy .eyebrow,
+        .hero-copy .ds-hero-title,
+        .hero-lead,
+        .hero-copy .hero-actions {
+          grid-column: 1 / -1;
+        }
+
+        .hero-products {
+          grid-template-columns: 1fr;
+        }
+
+        .hero-product {
+          gap: var(--spacer-8);
+        }
+
+        .hero-product + .hero-product {
+          border-top: 1px solid var(--border-neutral-l1);
+          border-left: 0;
+          padding-left: var(--spacer-0);
+        }
+
+        .proof-grid,
+        .privacy-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .cta-actions {
+          justify-content: flex-start;
+        }
+      }
+
+      @media (max-width: 560px) {
+        .header-inner {
+          min-height: 64px;
+        }
+
+        .mobile-nav {
+          top: 64px;
+        }
+
+        .hero-actions,
+        .cta-actions {
+          display: grid;
+        }
+
+        .hero-copy .hero-actions {
+          justify-content: stretch;
+        }
+
+        .ds-btn {
+          width: 100%;
+        }
+
+        .unlock-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .value-card {
+          grid-template-columns: 1fr;
+          min-height: 0;
+        }
+
+        .value-card .ds-section-title__index,
+        .value-card h3,
+        .value-card p {
+          grid-column: 1;
+        }
+
+        .value-card .ds-section-title__index {
+          grid-row: auto;
+        }
+
+        .feature-row {
+          grid-template-columns: 24px minmax(0, 1fr);
+        }
+
+        .feature-row .num {
+          display: none;
+        }
+
+        .footer-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .footer-bottom {
+          display: grid;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          transition-duration: 0ms !important;
+        }
+      }
+
+      /* Inline asset icon normalization: keep uploaded HTML independent from external SVG styling. */
+      [data-asset-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent !important;
+        -webkit-mask: none !important;
+        mask: none !important;
+      }
+
+      [data-asset-icon] > svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        flex: 0 0 auto;
+      }
+
+      .asset-inline-icon {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+      }
+    
+
+    /* design-library-creator layout guard */
+    .uikit-shell { width: 100%; max-width: 1184px; margin: 0 auto; overflow: hidden; display: block; }
+    .uikit-sidebar { min-width: 0; overflow: hidden; max-width: 100%; }
+    .uikit-main { min-width: 0; }
+    .uikit-toolbar { min-width: 0; display: flex; align-items: center; gap: var(--spacer-8); }
+    .uikit-responsive-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacer-16); }
+    .uikit-table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+    .uikit-truncate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .uikit-nowrap { white-space: nowrap; flex-shrink: 0; }
+    .uikit-action-cell { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 160px; overflow: hidden; }
+    .uikit-action { min-width: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    [data-component] { min-width: 0; max-width: 100%; overflow: hidden; }
+    @media (max-width: 900px) { .uikit-shell { grid-template-columns: minmax(0, 1fr); } .uikit-responsive-grid { grid-template-columns: minmax(0, 1fr); } }
+    @media (max-width: 640px) { .uikit-toolbar { flex-direction: column; align-items: stretch; } .uikit-responsive-grid { grid-template-columns: minmax(0, 1fr); } }
+  </style>
+  </head>
+  <body data-layout-guard="uikit-v1">
+    <div class="page">
+      <header class="site-header">
+        <div class="page-wrapper header-inner">
+          <a class="wordmark" href="#top" aria-label="TraeWork home">TraeWork</a>
+          <nav class="desktop-nav" aria-label="Primary navigation">
+            <a href="#product">Product</a>
+            <a href="#">Pricing</a>
+            <a href="#">Blog</a>
+            <a href="#">Docs</a>
+            <a href="#">Changelog</a>
+            <a href="#community">Community</a>
+          </nav>
+          <div class="header-actions">
+            <button class="ds-btn ds-btn--ghost hide-tablet" type="button">Log in</button>
+            <button class="ds-btn ds-btn--secondary hide-tablet" type="button">Open Workspace</button>
+            <button class="mobile-menu-button" type="button" aria-expanded="false" aria-controls="mobileNav">Menu</button>
+          </div>
+        </div>
+        <nav class="mobile-nav" id="mobileNav" aria-label="Mobile navigation" data-open="false">
+          <a href="#product">Product</a>
+          <a href="#">Pricing</a>
+          <a href="#">Blog</a>
+          <a href="#">Docs</a>
+          <a href="#">Changelog</a>
+          <a href="#community">Community</a>
+          <button type="button">Log in</button>
+          <button type="button">Open Workspace</button>
+        </nav>
+      </header>
+
+      <main id="top">
+        <section class="hero" aria-labelledby="hero-title">
+          <div class="page-wrapper">
+            <div class="hero-content">
+              <div class="hero-copy">
+                <p class="eyebrow">AI workspace for modern teams</p>
+                <h1 class="ds-hero-title" id="hero-title">
+                  <span class="brand1">TraeWork</span> for teams
+                  <span class="ds-hero-title__sub">Plan work, assign owners, review progress.</span>
+                </h1>
+                <p class="hero-lead">
+                  TraeWork brings goals, owners, documents, status, and AI summaries into one readable workspace.
+                </p>
+                <div class="hero-actions">
+                  <button class="ds-btn ds-btn--secondary ds-btn--lg" type="button">View workspace</button>
+                  <button class="ds-btn ds-btn--brand ds-btn--lg" type="button">
+                    <span class="label-row">Start with TraeWork <span class="icon icon--16 icon--arrow-right" aria-hidden="true" data-asset-icon="../../assets/icons/arrow-right.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#FFFFFF" xmlns="http://www.w3.org/2000/svg"><path d="M8.89062 3.55722C9.13461 3.31335 9.53132 3.31348 9.77539 3.55722L13.7754 7.55722C14.0194 7.80126 14.0194 8.1979 13.7754 8.44199L9.77539 12.442C9.53131 12.6861 9.1347 12.6861 8.89062 12.442C8.64685 12.1979 8.64665 11.8012 8.89062 11.5572L11.8232 8.6246H2.66699C2.32181 8.6246 2.04199 8.34478 2.04199 7.9996C2.0422 7.6546 2.32194 7.3746 2.66699 7.3746H11.8232L8.89062 4.44199C8.64685 4.19788 8.64665 3.8012 8.89062 3.55722Z" fill="#FFFFFF"/></svg></span></span>
+                  </button>
+                </div>
+              </div>
+              <div class="hero-products" aria-label="Product paths">
+                <div class="hero-product">
+                  <strong>Plan with context</strong>
+                  <span>Turn goals into scoped work with owners, evidence, and clear checkpoints.</span>
+                </div>
+                <div class="hero-product">
+                  <strong>Review with AI</strong>
+                  <span>Keep progress, risks, decisions, and next steps readable for every stakeholder.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="floor--lift section" id="product" aria-labelledby="beta-title">
+          <div class="page-wrapper beta-grid">
+            <div class="beta-panel">
+              <div>
+                <p class="eyebrow">TraeWork workspace</p>
+                <div class="beta-title-row">
+                  <h2 id="beta-title">A single place for planning, context, and review.</h2>
+                  <span class="ds-tag ds-tag--success">Beta</span>
+                </div>
+              </div>
+              <p class="section-copy">
+                TraeWork helps teams turn goals into owned work, keep decisions attached,
+                and use AI to summarize progress without scattering context across tools.
+              </p>
+              <div class="hero-actions">
+                <button class="ds-btn ds-btn--primary" type="button">Explore TraeWork</button>
+                <button class="ds-btn ds-btn--secondary" type="button">View workspace modes</button>
+              </div>
+            </div>
+            <div class="ds-card availability" aria-label="Availability">
+              <div class="availability-row">
+                <strong>Plan</strong>
+                <span>Goals, scope, owners</span>
+              </div>
+              <div class="availability-row">
+                <strong>Execute</strong>
+                <span>Tasks, deadlines, status</span>
+              </div>
+              <div class="availability-row">
+                <strong>Review</strong>
+                <span>Summaries, risks, next steps</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="floor section" aria-labelledby="unlock-title">
+          <div class="page-wrapper">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">What TraeWork unlocks</p>
+                <h2 class="section-title" id="unlock-title">A calmer way to keep team work moving.</h2>
+              </div>
+              <p class="section-copy">
+                Every workstream keeps its goal, owner, evidence, and decision history
+                in one place, so review starts from shared context instead of memory.
+              </p>
+            </div>
+            <div class="unlock-grid">
+              <article class="value-card">
+                <span class="ds-section-title__index">[00]</span>
+                <h3>Capture the brief</h3>
+                <p>TraeWork turns loose requests into clear goals, constraints, assumptions, and success criteria.</p>
+              </article>
+              <article class="value-card">
+                <span class="ds-section-title__index">[01]</span>
+                <h3>Assign ownership</h3>
+                <p>Map work to owners, deadlines, reviewers, and checkpoints before momentum gets lost.</p>
+              </article>
+              <article class="value-card">
+                <span class="ds-section-title__index">[02]</span>
+                <h3>Keep context visible</h3>
+                <p>Decisions, documents, status, and discussions stay attached to the work they explain.</p>
+              </article>
+              <article class="value-card">
+                <span class="ds-section-title__index">[03]</span>
+                <h3>Review with AI</h3>
+                <p>AI-assisted summaries help teams understand progress, blockers, and next actions quickly.</p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="floor--lift section" aria-labelledby="ide-title">
+          <div class="page-wrapper">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">TraeWork capabilities</p>
+                <h2 class="section-title" id="ide-title">Purpose-built for work that needs context.</h2>
+              </div>
+              <p class="section-copy">
+                Choose the TraeWork capability that matches the current workstream,
+                then keep plans, updates, and reviews moving through the same surface.
+              </p>
+            </div>
+            <div class="capability-layout">
+              <div class="capability-tabs" role="tablist" aria-label="TraeWork capabilities">
+                <button class="capability-tab" type="button" role="tab" aria-selected="true" aria-controls="panel-agents" id="tab-agents" data-tab="agents">
+                  Plan work clearly
+                  <span>Goals, scope, owners</span>
+                </button>
+                <button class="capability-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-tools" id="tab-tools" data-tab="tools">
+                  Document decisions
+                  <span>Briefs, notes, knowledge</span>
+                </button>
+                <button class="capability-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-context" id="tab-context" data-tab="context">
+                  Coordinate execution
+                  <span>Tasks, status, follow-ups</span>
+                </button>
+                <button class="capability-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-cue" id="tab-cue" data-tab="cue">
+                  Review outcomes
+                  <span>Summaries, risks, next steps</span>
+                </button>
+              </div>
+              <div class="feature-panel">
+                <article class="ds-card feature-card" role="tabpanel" id="panel-agents" aria-labelledby="tab-agents" data-panel="agents" data-active="true">
+                  <div>
+                    <h3>Plan work clearly</h3>
+                    <p>TraeWork turns a goal into a readable plan with scope, owners, and checkpoints that everyone can review.</p>
+                  </div>
+                  <div class="feature-stack">
+                    <div class="feature-row">
+                      <span class="icon icon--20 icon--users" aria-hidden="true" data-asset-icon="../../assets/icons/UserCheck.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M13.1265 9.01855C13.3003 8.72062 13.6829 8.61958 13.981 8.79297C14.2791 8.96687 14.3794 9.34932 14.2056 9.64746L11.8726 13.6475C11.775 13.8147 11.6056 13.9281 11.4136 13.9531C11.2216 13.9779 11.0281 13.9121 10.8911 13.7754L9.55811 12.4453C9.31423 12.2016 9.31371 11.8058 9.55713 11.5615C9.80081 11.3173 10.1965 11.3171 10.4409 11.5605L11.2007 12.3184L13.1265 9.01855ZM7.99951 1.70801C9.90931 1.70801 11.4582 3.25629 11.4585 5.16602C11.4585 7.076 9.9095 8.625 7.99951 8.625C5.93278 8.62516 4.60661 9.87001 4.06299 11.5557C3.96968 11.845 4.04306 12.1085 4.23779 12.3223C4.44297 12.5475 4.78228 12.708 5.1665 12.708H7.3335C7.67845 12.7081 7.95832 12.9881 7.9585 13.333C7.9585 13.6781 7.67856 13.9579 7.3335 13.958H5.1665C4.44623 13.958 3.76635 13.6606 3.31396 13.1641C2.85132 12.6562 2.62814 11.9345 2.87354 11.1729C3.34557 9.70899 4.32814 8.45357 5.78076 7.81836C5.02353 7.18379 4.5415 6.23114 4.5415 5.16602C4.54181 3.25644 6.08992 1.70825 7.99951 1.70801ZM7.99951 2.95801C6.78028 2.95825 5.79181 3.9468 5.7915 5.16602C5.7915 6.38549 6.78009 7.37476 7.99951 7.375C9.21914 7.375 10.2085 6.38564 10.2085 5.16602C10.2082 3.94665 9.21895 2.95801 7.99951 2.95801Z" fill="#404040"/></svg></span>
+                      <span>Shared goals, constraints, and success criteria</span>
+                      <span class="num">01</span>
+                    </div>
+                    <div class="feature-row">
+                      <span class="icon icon--20 icon--settings" aria-hidden="true" data-asset-icon="../../assets/icons/settings.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.375C8.58386 1.375 9.12929 1.66661 9.45312 2.15234L9.7041 2.5293C9.93056 2.86888 10.3434 3.03299 10.7412 2.94141L10.9893 2.88379C11.585 2.74631 12.2093 2.92608 12.6416 3.3584C13.0739 3.7907 13.2537 4.41501 13.1162 5.01074L13.0586 5.25879C12.967 5.65656 13.1311 6.06946 13.4707 6.2959L13.8477 6.54688C14.3334 6.87071 14.625 7.41615 14.625 8C14.625 8.58385 14.3334 9.12929 13.8477 9.45312L13.4707 9.7041C13.1311 9.93055 12.967 10.3434 13.0586 10.7412L13.1162 10.9893L13.1523 11.2139C13.2042 11.7384 13.0198 12.2634 12.6416 12.6416C12.2093 13.0739 11.585 13.2537 10.9893 13.1162L10.7412 13.0586C10.3434 12.967 9.93055 13.1311 9.7041 13.4707L9.45312 13.8477C9.12929 14.3334 8.58385 14.625 8 14.625C7.41615 14.625 6.87071 14.3334 6.54688 13.8477L6.2959 13.4707C6.06946 13.1311 5.65656 12.967 5.25879 13.0586L5.01074 13.1162C4.41501 13.2537 3.7907 13.0739 3.3584 12.6416C2.92608 12.2093 2.74631 11.585 2.88379 10.9893L2.94141 10.7412C3.03299 10.3434 2.86888 9.93056 2.5293 9.7041L2.15234 9.45312C1.6666 9.12929 1.375 8.58386 1.375 8C1.375 7.41614 1.6666 6.87071 2.15234 6.54688L2.5293 6.2959C2.86887 6.06945 3.03299 5.65655 2.94141 5.25879L2.88379 5.01074C2.74631 4.41501 2.92608 3.79072 3.3584 3.3584C3.79072 2.92608 4.41502 2.74631 5.01074 2.88379L5.25879 2.94141C5.65655 3.03299 6.06945 2.86887 6.2959 2.5293L6.54688 2.15234C6.87071 1.6666 7.41614 1.375 8 1.375ZM8 2.625C7.83413 2.625 7.67895 2.70766 7.58691 2.8457L7.33594 3.22266C6.82102 3.99493 5.88197 4.36778 4.97754 4.15918L4.72949 4.10254C4.55371 4.06197 4.36975 4.11463 4.24219 4.24219C4.11463 4.36975 4.06197 4.5537 4.10254 4.72949L4.15918 4.97754C4.36778 5.88197 3.99493 6.82102 3.22266 7.33594L2.8457 7.58691C2.70766 7.67895 2.625 7.83413 2.625 8C2.625 8.16587 2.70766 8.32105 2.8457 8.41309L3.22266 8.66406C3.99493 9.17898 4.36779 10.118 4.15918 11.0225L4.10254 11.2705C4.06198 11.4463 4.11463 11.6303 4.24219 11.7578C4.36977 11.8854 4.55371 11.938 4.72949 11.8975L4.97754 11.8408C5.88195 11.6322 6.82101 12.005 7.33594 12.7773L7.58691 13.1543C7.67894 13.2923 7.83412 13.375 8 13.375C8.16588 13.375 8.32106 13.2923 8.41309 13.1543L8.66406 12.7773C9.17899 12.005 10.118 11.6322 11.0225 11.8408L11.2695 11.8975C11.4453 11.938 11.6302 11.8854 11.7578 11.7578C11.8854 11.6302 11.938 11.4463 11.8975 11.2705V11.2695L11.8408 11.0225C11.6322 10.118 12.005 9.17899 12.7773 8.66406L13.1543 8.41309C13.2923 8.32106 13.375 8.16588 13.375 8C13.375 7.83412 13.2923 7.67894 13.1543 7.58691L12.7773 7.33594C12.005 6.82101 11.6322 5.88195 11.8408 4.97754L11.8975 4.72949C11.938 4.55372 11.8854 4.36977 11.7578 4.24219C11.6303 4.11463 11.4463 4.06198 11.2705 4.10254L11.0225 4.15918C10.118 4.36779 9.17898 3.99493 8.66406 3.22266L8.41309 2.8457C8.32105 2.70767 8.16587 2.625 8 2.625ZM8 5.375C9.44978 5.375 10.625 6.55022 10.625 8C10.625 9.44978 9.44978 10.625 8 10.625C6.55022 10.625 5.375 9.44978 5.375 8C5.375 6.55022 6.55022 5.375 8 5.375ZM8 6.625C7.24058 6.625 6.625 7.24058 6.625 8C6.625 8.75942 7.24058 9.375 8 9.375C8.75942 9.375 9.375 8.75942 9.375 8C9.375 7.24058 8.75942 6.625 8 6.625Z" fill="#404040"/></svg></span>
+                      <span>Owners, reviewers, and decision checkpoints</span>
+                      <span class="num">02</span>
+                    </div>
+                    <div class="feature-row">
+                      <span class="icon icon--20 icon--layers" aria-hidden="true" data-asset-icon="../../assets/icons/layer-blur.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M2.71582 3.13184C2.94557 3.13184 3.13184 2.94557 3.13184 2.71582C3.1318 2.4861 2.94555 2.2998 2.71582 2.2998C2.48618 2.29991 2.29984 2.48616 2.2998 2.71582C2.2998 2.94551 2.48616 3.13173 2.71582 3.13184ZM5.38281 3.13184C5.6125 3.13176 5.79883 2.94552 5.79883 2.71582C5.79879 2.48615 5.61248 2.29988 5.38281 2.2998C5.15308 2.2998 4.96683 2.4861 4.9668 2.71582C4.9668 2.94557 5.15306 3.13184 5.38281 3.13184ZM8.0498 3.13184C8.27934 3.13159 8.46582 2.94542 8.46582 2.71582C8.46578 2.48625 8.27932 2.30005 8.0498 2.2998C7.82008 2.2998 7.63382 2.4861 7.63379 2.71582C7.63379 2.94557 7.82005 3.13184 8.0498 3.13184ZM10.7158 3.13184C10.9456 3.13184 11.1318 2.94557 11.1318 2.71582C11.1318 2.4861 10.9455 2.2998 10.7158 2.2998C10.4862 2.29991 10.2998 2.48616 10.2998 2.71582C10.2998 2.94551 10.4862 3.13173 10.7158 3.13184ZM13.3828 3.13184C13.6125 3.13176 13.7988 2.94552 13.7988 2.71582C13.7988 2.48615 13.6125 2.29988 13.3828 2.2998C13.1531 2.2998 12.9668 2.4861 12.9668 2.71582C12.9668 2.94557 13.1531 3.13184 13.3828 3.13184ZM5.38281 6.1416C5.78707 6.14148 6.11523 5.81347 6.11523 5.40918C6.11511 5.005 5.787 4.67688 5.38281 4.67676C4.97853 4.67676 4.65051 5.00492 4.65039 5.40918C4.65039 5.81354 4.97845 6.1416 5.38281 6.1416ZM8.04883 6.1416C8.45319 6.1416 8.78125 5.81354 8.78125 5.40918C8.78113 5.00492 8.45311 4.67676 8.04883 4.67676C7.64474 4.67699 7.31751 5.00507 7.31738 5.40918C7.31738 5.8134 7.64466 6.14137 8.04883 6.1416ZM10.7158 6.1416C11.1202 6.1416 11.4482 5.81354 11.4482 5.40918C11.4481 5.00492 11.1201 4.67676 10.7158 4.67676C10.3116 4.67681 9.98352 5.00496 9.9834 5.40918C9.9834 5.81351 10.3115 6.14155 10.7158 6.1416ZM2.71582 5.8252C2.94557 5.8252 3.13184 5.63893 3.13184 5.40918C3.13167 5.17957 2.94547 4.99316 2.71582 4.99316C2.48626 4.99327 2.29997 5.17963 2.2998 5.40918C2.2998 5.63887 2.48616 5.82509 2.71582 5.8252ZM13.3828 5.8252C13.6125 5.82512 13.7988 5.63888 13.7988 5.40918C13.7987 5.17962 13.6124 4.99324 13.3828 4.99316C13.1532 4.99316 12.967 5.17957 12.9668 5.40918C12.9668 5.63893 13.1531 5.8252 13.3828 5.8252ZM8.04883 9.07422C8.60016 9.07422 9.04773 8.62747 9.04785 8.07617C9.04785 7.52477 8.60023 7.07715 8.04883 7.07715C7.49765 7.07741 7.05078 7.52493 7.05078 8.07617C7.0509 8.62732 7.49772 9.07396 8.04883 9.07422ZM5.38281 8.80762C5.78696 8.8075 6.11505 8.4803 6.11523 8.07617C6.11523 7.67188 5.78707 7.34387 5.38281 7.34375C4.97845 7.34375 4.65039 7.67181 4.65039 8.07617C4.65058 8.48037 4.97857 8.80762 5.38281 8.80762ZM10.7158 8.80859C11.1201 8.80859 11.4481 8.48045 11.4482 8.07617C11.4482 7.67181 11.1202 7.34375 10.7158 7.34375C10.3115 7.34381 9.9834 7.67185 9.9834 8.07617C9.9835 8.48042 10.3116 8.80854 10.7158 8.80859ZM2.71582 8.49219C2.94548 8.49219 3.1317 8.3058 3.13184 8.07617C3.13184 7.84642 2.94557 7.66016 2.71582 7.66016C2.48616 7.66026 2.2998 7.84648 2.2998 8.07617C2.29994 8.30574 2.48624 8.49209 2.71582 8.49219ZM13.3828 8.49219C13.6124 8.49211 13.7987 8.30576 13.7988 8.07617C13.7988 7.84647 13.6125 7.66023 13.3828 7.66016C13.1531 7.66016 12.9668 7.84642 12.9668 8.07617C12.9669 8.3058 13.1531 8.49219 13.3828 8.49219ZM5.38281 11.4746C5.78707 11.4745 6.11523 11.1465 6.11523 10.7422C6.11507 10.338 5.78697 10.0109 5.38281 10.0107C4.97855 10.0107 4.65056 10.338 4.65039 10.7422C4.65039 11.1465 4.97845 11.4746 5.38281 11.4746ZM8.04883 11.4746C8.45319 11.4746 8.78125 11.1465 8.78125 10.7422C8.78108 10.338 8.45309 10.0107 8.04883 10.0107C7.64477 10.011 7.31755 10.3381 7.31738 10.7422C7.31738 11.1464 7.64466 11.4744 8.04883 11.4746ZM10.7158 11.4746C11.1202 11.4746 11.4482 11.1465 11.4482 10.7422C11.4481 10.338 11.1201 10.0107 10.7158 10.0107C10.3116 10.0108 9.98356 10.338 9.9834 10.7422C9.9834 11.1465 10.3115 11.4746 10.7158 11.4746ZM2.71582 11.1582C2.94557 11.1582 3.13184 10.9719 3.13184 10.7422C3.13162 10.5126 2.94544 10.3262 2.71582 10.3262C2.48629 10.3263 2.30002 10.5127 2.2998 10.7422C2.2998 10.9719 2.48616 11.1581 2.71582 11.1582ZM13.3828 11.1582C13.6125 11.1581 13.7988 10.9719 13.7988 10.7422C13.7986 10.5127 13.6124 10.3262 13.3828 10.3262C13.1532 10.3262 12.967 10.5126 12.9668 10.7422C12.9668 10.9719 13.1531 11.1582 13.3828 11.1582ZM2.71582 13.8252C2.94557 13.8252 3.13184 13.6389 3.13184 13.4092C3.1318 13.1795 2.94555 12.9932 2.71582 12.9932C2.48618 12.9933 2.29984 13.1795 2.2998 13.4092C2.2998 13.6389 2.48616 13.8251 2.71582 13.8252ZM5.38281 13.8252C5.6125 13.8251 5.79883 13.6389 5.79883 13.4092C5.79879 13.1795 5.61248 12.9932 5.38281 12.9932C5.15308 12.9932 4.96683 13.1795 4.9668 13.4092C4.9668 13.6389 5.15306 13.8252 5.38281 13.8252ZM8.0498 13.8252C8.27934 13.8249 8.46582 13.6388 8.46582 13.4092C8.46578 13.1796 8.27932 12.9934 8.0498 12.9932C7.82008 12.9932 7.63382 13.1795 7.63379 13.4092C7.63379 13.6389 7.82005 13.8252 8.0498 13.8252ZM10.7158 13.8252C10.9456 13.8252 11.1318 13.6389 11.1318 13.4092C11.1318 13.1795 10.9455 12.9932 10.7158 12.9932C10.4862 12.9933 10.2998 13.1795 10.2998 13.4092C10.2998 13.6389 10.4862 13.8251 10.7158 13.8252ZM13.3828 13.8252C13.6125 13.8251 13.7988 13.6389 13.7988 13.4092C13.7988 13.1795 13.6125 12.9932 13.3828 12.9932C13.1531 12.9932 12.9668 13.1795 12.9668 13.4092C12.9668 13.6389 13.1531 13.8252 13.3828 13.8252Z" fill="#404040"/></svg></span>
+                      <span>Milestones that stay attached to context</span>
+                      <span class="num">03</span>
+                    </div>
+                  </div>
+                </article>
+                <article class="ds-card feature-card" role="tabpanel" id="panel-tools" aria-labelledby="tab-tools" data-panel="tools" data-active="false" hidden>
+                  <div>
+                    <h3>Document decisions</h3>
+                    <p>Keep decision records, notes, references, and rationale close to the work they affect.</p>
+                  </div>
+                  <div class="feature-stack">
+                    <div class="feature-row">
+                      <span class="icon icon--20 icon--link" aria-hidden="true" data-asset-icon="../../assets/icons/Link.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M4.33969 6.11027C5.62511 4.82525 7.70861 4.82519 8.99399 6.11027L9.22348 6.33879V6.33976C9.7606 6.87715 10.0742 7.55549 10.162 8.25578C10.2049 8.59826 9.96148 8.9111 9.61899 8.95402C9.27658 8.99683 8.96465 8.75348 8.92173 8.41105C8.86723 7.9765 8.67278 7.55767 8.33872 7.22355L8.1102 6.99406C7.31298 6.19714 6.02074 6.1972 5.22348 6.99406L2.99399 9.22355C2.19715 10.0208 2.19709 11.3131 2.99399 12.1103L3.22348 12.3388C4.02081 13.1361 5.31289 13.1361 6.1102 12.3388L6.22446 12.2245C6.46858 11.9805 6.8652 11.9804 7.10923 12.2245C7.35325 12.4687 7.35238 12.8653 7.10825 13.1093L6.99399 13.2236C5.70864 14.5085 3.62508 14.5084 2.33969 13.2236L2.1102 12.9941C0.825021 11.7086 0.824818 9.62417 2.1102 8.33879L4.33969 6.11027Z" fill="#404040"/><path d="M9.00565 3.44351C10.2911 2.15811 12.3754 2.1582 13.6609 3.44351L13.8885 3.67203H13.8894C15.1749 4.9575 15.1749 7.04182 13.8894 8.3273L11.6609 10.5568C10.3755 11.842 8.29105 11.8421 7.00565 10.5568L6.77713 10.3273C6.23988 9.78998 5.92643 9.1116 5.83866 8.41128C5.79576 8.06892 6.03836 7.75614 6.38065 7.71304C6.72315 7.67013 7.03598 7.91351 7.07889 8.25601C7.13336 8.69034 7.327 9.10953 7.66092 9.44351L7.88944 9.67203C8.68676 10.4693 9.97981 10.4693 10.7771 9.67203L13.0056 7.44351C13.8029 6.64622 13.8029 5.35411 13.0056 4.55679L12.7771 4.3273C11.9798 3.53014 10.6867 3.53005 9.88944 4.3273L9.77518 4.44156C9.53119 4.68565 9.13553 4.68645 8.89139 4.44253C8.64726 4.19851 8.64736 3.8019 8.89139 3.55777L9.00565 3.44351Z" fill="#404040"/></svg></span>
+                      <span>Meeting notes and brief updates in one timeline</span>
+                      <span class="num">01</span>
+                    </div>
+                    <div class="feature-row">
+                      <span class="icon icon--20 icon--eye" aria-hidden="true" data-asset-icon="../../assets/icons/Eye.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.00024 2.70801C10.5193 2.70815 12.9757 4.10358 14.676 6.76465C15.1564 7.51649 15.1563 8.48249 14.676 9.23438C12.9757 11.8956 10.5194 13.2908 8.00024 13.291C5.48097 13.291 3.02391 11.8957 1.32349 9.23438C0.843361 8.48252 0.843152 7.51641 1.32349 6.76465C3.02391 4.10338 5.48101 2.70809 8.00024 2.70801ZM8.00024 3.95801C5.97515 3.95809 3.8868 5.07506 2.3772 7.4375C2.15902 7.77896 2.15913 8.22002 2.3772 8.56152C3.88682 10.9242 5.97505 12.041 8.00024 12.041C10.0254 12.0408 12.1137 10.9241 13.6233 8.56152C13.8413 8.22007 13.8414 7.7789 13.6233 7.4375C12.1137 5.07505 10.0253 3.95815 8.00024 3.95801ZM8.00024 5.375C9.44993 5.37511 10.6252 6.55029 10.6252 8C10.6252 9.44971 9.44993 10.6249 8.00024 10.625C6.55047 10.625 5.37524 9.44978 5.37524 8C5.37524 6.55022 6.55047 5.375 8.00024 5.375ZM8.00024 6.625C7.24082 6.625 6.62524 7.24058 6.62524 8C6.62524 8.75942 7.24082 9.375 8.00024 9.375C8.75957 9.37489 9.37524 8.75935 9.37524 8C9.37524 7.24065 8.75957 6.62511 8.00024 6.625Z" fill="#404040"/></svg></span>
+                      <span>Shared references attached to each workstream</span>
+                      <span class="num">02</span>
+                    </div>
+                    <div class="feature-row">
+                      <span class="icon icon--20 icon--terminal" aria-hidden="true" data-asset-icon="../../assets/icons/terminal.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M12.7087 4.6665C12.7087 3.90722 12.093 3.29168 11.3337 3.2915H4.66675C3.90736 3.2915 3.29175 3.90712 3.29175 4.6665V11.3335C3.29192 12.0928 3.90746 12.7085 4.66675 12.7085H11.3337C12.0929 12.7083 12.7086 12.0927 12.7087 11.3335V4.6665ZM4.55835 4.89111C4.80244 4.6472 5.19812 4.64709 5.44214 4.89111L6.60913 6.05811C6.85283 6.30216 6.85294 6.69791 6.60913 6.94189L5.44214 8.10889C5.19816 8.35269 4.8024 8.35258 4.55835 8.10889C4.31427 7.86481 4.31427 7.4682 4.55835 7.22412L5.28198 6.49951L4.55835 5.7749C4.31427 5.53082 4.31427 5.13519 4.55835 4.89111ZM9.33374 7.0415C9.67877 7.04168 9.95874 7.32143 9.95874 7.6665C9.95874 8.01157 9.67877 8.29133 9.33374 8.2915H7.99976C7.65473 8.29133 7.37476 8.01157 7.37476 7.6665C7.37476 7.32143 7.65473 7.04168 7.99976 7.0415H9.33374ZM13.9587 11.3335C13.9586 12.783 12.7833 13.9583 11.3337 13.9585H4.66675C3.21712 13.9585 2.04192 12.7831 2.04175 11.3335V4.6665C2.04175 3.21676 3.217 2.0415 4.66675 2.0415H11.3337C12.7834 2.04168 13.9587 3.21687 13.9587 4.6665V11.3335Z" fill="#404040"/></svg></span>
+                      <span>Decision history visible before review</span>
+                      <span class="num">03</span>
+                    </div>
+                  </div>
+                </article>
+                <article class="ds-card feature-card" role="tabpanel" id="panel-context" aria-labelledby="tab-context" data-panel="context" data-active="false" hidden>
+                  <div>
+                    <h3>Coordinate execution</h3>
+                    <p>Track work without turning the page into a noisy dashboard. TraeWork keeps ownership and status legible.</p>
+                  </div>
+                  <div class="feature-stack">
+                    <div class="feature-row">
+                      <span class="icon icon--20 icon--folder" aria-hidden="true" data-asset-icon="../../assets/icons/Folder.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M1.375 10.6666V4.66663C1.375 3.21688 2.55026 2.04163 4 2.04163H5.95312C6.60779 2.04164 7.21883 2.36901 7.58203 2.9137L8.12402 3.7262L8.17773 3.79651C8.31129 3.95105 8.50671 4.04163 8.71387 4.04163H12C13.4498 4.04163 14.625 5.21689 14.625 6.66663V10.6666C14.625 12.1164 13.4498 13.2916 12 13.2916H4C2.55026 13.2916 1.375 12.1164 1.375 10.6666ZM2.625 10.6666C2.625 11.426 3.2406 12.0416 4 12.0416H12C12.7594 12.0416 13.375 11.426 13.375 10.6666V6.66663C13.375 5.90723 12.7594 5.29163 12 5.29163H8.71387C8.05911 5.29163 7.44718 4.9644 7.08398 4.41956L6.54199 3.60706C6.41064 3.41014 6.18988 3.29164 5.95312 3.29163H4C3.24061 3.29163 2.625 3.90724 2.625 4.66663V10.6666Z" fill="#404040"/></svg></span>
+                      <span>Owner-aware task states and work queues</span>
+                      <span class="num">01</span>
+                    </div>
+                    <div class="feature-row">
+                      <span class="icon icon--20 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span>
+                      <span>Due dates, checkpoints, and blockers</span>
+                      <span class="num">02</span>
+                    </div>
+                    <div class="feature-row">
+                      <span class="icon icon--20 icon--settings-tune" aria-hidden="true" data-asset-icon="../../assets/icons/pro-setting.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M9.17139 4.06006C9.51749 4.06006 9.79834 4.34091 9.79834 4.68701C9.79834 5.03311 9.51749 5.31396 9.17139 5.31396H2.10791C1.76181 5.31396 1.48096 5.03311 1.48096 4.68701C1.48096 4.34091 1.76181 4.06006 2.10791 4.06006H9.17139Z" fill="#404040"/><path d="M13.2659 4.6875C13.2659 3.90885 12.6343 3.27754 11.8557 3.27734C11.0769 3.27734 10.4456 3.90873 10.4456 4.6875C10.4457 5.46611 11.0771 6.09766 11.8557 6.09766C12.6342 6.09746 13.2657 5.46599 13.2659 4.6875ZM14.5188 4.6875C14.5186 6.15818 13.3264 7.35039 11.8557 7.35059C10.3849 7.35059 9.19184 6.1583 9.19165 4.6875C9.19165 3.21653 10.3847 2.02344 11.8557 2.02344C13.3265 2.02363 14.5188 3.21665 14.5188 4.6875Z" fill="#404040"/><path d="M7.95972 11.9912C7.61362 11.9912 7.33276 11.7104 7.33276 11.3643C7.33276 11.0182 7.61362 10.7373 7.95972 10.7373L13.8923 10.7373C14.2384 10.7373 14.5193 11.0182 14.5193 11.3643C14.5193 11.7104 14.2384 11.9912 13.8923 11.9912L7.95972 11.9912Z" fill="#404040"/><path d="M2.10815 11.9912C1.76206 11.9912 1.4812 11.7104 1.4812 11.3643C1.4812 11.0182 1.76206 10.7373 2.10815 10.7373H3.8855C4.2316 10.7373 4.51245 11.0182 4.51245 11.3643C4.51245 11.7104 4.2316 11.9912 3.8855 11.9912H2.10815Z" fill="#404040"/><path d="M4.51196 11.3647C4.51196 10.5861 5.14351 9.95478 5.92212 9.95459C6.70089 9.95459 7.33228 10.586 7.33228 11.3647C7.33208 12.1434 6.70077 12.7749 5.92212 12.7749C5.14363 12.7747 4.51216 12.1432 4.51196 11.3647ZM3.25903 11.3647C3.25923 12.8354 4.45144 14.0276 5.92212 14.0278C7.39297 14.0278 8.58599 12.8355 8.58618 11.3647C8.58618 9.89378 7.39309 8.70068 5.92212 8.70068C4.45132 8.70088 3.25903 9.8939 3.25903 11.3647Z" fill="#404040"/></svg></span>
+                      <span>Follow-ups that stay connected to decisions</span>
+                      <span class="num">03</span>
+                    </div>
+                  </div>
+                </article>
+                <article class="ds-card feature-card" role="tabpanel" id="panel-cue" aria-labelledby="tab-cue" data-panel="cue" data-active="false" hidden>
+                  <div>
+                    <h3>Review outcomes</h3>
+                    <p>Use AI assistance to summarize what changed, what is blocked, and what needs a decision next.</p>
+                  </div>
+                  <div class="feature-stack">
+                    <div class="feature-row">
+                      <span class="icon icon--20 icon--key" aria-hidden="true" data-asset-icon="../../assets/icons/explorer-type-key.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M3.90472 11.3945L5.96275 14.0832H4.4594L3.08329 12.2841L2.68485 12.7171L2.66476 12.6981V14.0832H1.46387V9.41687H2.66476V10.9693L4.0978 9.41687H5.73172L3.90472 11.3945Z" fill="#404040"/><path d="M13.2806 12.1999L13.2794 14.0838H12.0785L12.0808 12.201L10.2236 9.41638H11.6656L12.6801 10.9376L13.6935 9.41638H15.1355L13.2806 12.1999Z" fill="#404040"/><path d="M9.94608 9.35474V10.5556H7.4338V11.1505H9.94608V12.3503H7.4338V12.9451H10.013V14.1449H6.23291V9.35474H9.94608Z" fill="#404040"/><path d="M2.88428 7.34816V3.8716C2.88428 2.90905 3.66503 2.1283 4.62758 2.1283H9.61084C10.073 2.12838 10.5162 2.31269 10.843 2.63946L12.8128 4.60932C13.1396 4.93609 13.3239 5.37935 13.324 5.84147V7.34816C13.324 7.67953 13.0549 7.94861 12.7236 7.94861C12.3922 7.94861 12.1231 7.67953 12.1231 7.34816V5.84147C12.123 5.69761 12.0664 5.55926 11.9646 5.45754L9.99477 3.48767C9.89304 3.38594 9.7547 3.32928 9.61084 3.32919H4.62758C4.32777 3.32919 4.08517 3.57179 4.08517 3.8716V7.34816C4.08517 7.67953 3.81609 7.94861 3.48472 7.94861C3.15335 7.94861 2.88428 7.67953 2.88428 7.34816Z" fill="#404040"/><path d="M8.82373 4.88702V2.78992H10.0246V4.88702C10.0246 5.18683 10.2672 5.43054 10.567 5.43054H12.6641V6.63032H10.567C9.60448 6.63032 8.82373 5.84957 8.82373 4.88702Z" fill="#404040"/></svg></span>
+                      <span>Status summaries prepared from live context</span>
+                      <span class="num">01</span>
+                    </div>
+                    <div class="feature-row">
+                      <span class="icon icon--20 icon--edit" aria-hidden="true" data-asset-icon="../../assets/icons/edit.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M9.72461 2.39185C10.7971 1.31933 12.5359 1.31933 13.6084 2.39185C14.6806 3.46437 14.6808 5.20321 13.6084 6.27563L12.4463 7.43677C12.4447 7.43836 12.444 7.44105 12.4424 7.44263C12.4408 7.44426 12.4382 7.44492 12.4365 7.44653L5.63672 14.2473C5.39461 14.4891 5.06596 14.6252 4.72363 14.6252H2C1.65497 14.6252 1.37524 14.3452 1.375 14.0002V11.2766C1.375 10.9342 1.51077 10.6048 1.75293 10.3625L9.72461 2.39185ZM2.63672 11.2473C2.62935 11.255 2.625 11.2658 2.625 11.2766V13.3752H4.72363C4.73452 13.3752 4.74509 13.3703 4.75293 13.3625L11.1152 7.00024L8.99902 4.88403L2.63672 11.2473ZM12.7246 3.27563C12.1403 2.6913 11.1927 2.6913 10.6084 3.27563L9.88379 3.99927L12 6.11548L12.7246 5.39185C13.3089 4.80757 13.3087 3.86 12.7246 3.27563Z" fill="#404040"/></svg></span>
+                      <span>Risk notes and open questions surfaced early</span>
+                      <span class="num">02</span>
+                    </div>
+                    <div class="feature-row">
+                      <span class="icon icon--20 icon--run" aria-hidden="true" data-asset-icon="../../assets/icons/Run.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M3.375 4.04039C3.3753 1.95198 5.696 0.700174 7.44141 1.84703L13.4668 5.80602C15.0445 6.8429 15.0444 9.15678 13.4668 10.1937L7.44141 14.1527C5.69594 15.2997 3.37511 14.048 3.375 11.9593V4.04039ZM4.625 11.9593C4.62511 13.0532 5.84065 13.7091 6.75488 13.1088L12.7803 9.14879C13.6064 8.60562 13.6064 7.39408 12.7803 6.85094L6.75488 2.89196C5.84069 2.29122 4.6253 2.94655 4.625 4.04039V11.9593Z" fill="#404040"/></svg></span>
+                      <span>Next-action suggestions for owners and reviewers</span>
+                      <span class="num">03</span>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="floor section" id="community" aria-labelledby="proof-title">
+          <div class="page-wrapper">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Built for teams</p>
+                <h2 class="section-title" id="proof-title">The signals teams can feel in daily work.</h2>
+              </div>
+              <p class="section-copy">
+                TraeWork is designed around practical team outcomes: less scattered context,
+                clearer ownership, and faster review loops.
+              </p>
+            </div>
+            <div class="proof-grid">
+              <article class="ds-card proof-card">
+                <span class="proof-label">[clarity]</span>
+                <h3>Less scattered context</h3>
+                <p>Plans, decisions, documents, and status updates stay attached to the work they explain.</p>
+              </article>
+              <article class="ds-card proof-card">
+                <span class="proof-label">[ownership]</span>
+                <h3>Clearer handoffs</h3>
+                <p>Owners, reviewers, deadlines, and blockers are visible before work reaches a meeting.</p>
+              </article>
+              <article class="ds-card proof-card">
+                <span class="proof-label">[speed]</span>
+                <h3>Faster review loops</h3>
+                <p>AI-assisted summaries help teams review progress and decide the next action with less ceremony.</p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="floor--lift section" aria-labelledby="privacy-title">
+          <div class="page-wrapper">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Privacy and security</p>
+                <h2 class="section-title" id="privacy-title">Local-first principles with controlled access.</h2>
+              </div>
+              <p class="section-copy">
+                TraeWork keeps work context clear while respecting how teams handle sensitive information.
+              </p>
+            </div>
+            <div class="privacy-grid">
+              <article class="ds-card privacy-card">
+                <span class="icon icon--20 icon--lock" aria-hidden="true" data-asset-icon="../../assets/icons/Lock.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#4B3FE3" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.375C9.81776 1.37518 11.291 2.84916 11.291 4.66699V6.11914C12.4389 6.39965 13.291 7.43272 13.291 8.66699V12C13.2909 13.4497 12.1157 14.625 10.666 14.625H5.33301C3.88346 14.6249 2.70814 13.4496 2.70801 12V8.66699C2.70801 7.43288 3.56042 6.39982 4.70801 6.11914V4.66699C4.70801 2.84914 6.18217 1.37513 8 1.375ZM5.33301 7.29199C4.57372 7.29212 3.95801 7.90766 3.95801 8.66699V12C3.95814 12.7592 4.57381 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.0409 12.7593 12.041 12V8.66699C12.041 7.90757 11.4254 7.29199 10.666 7.29199H5.33301ZM8 8.70801C8.3451 8.70801 8.62487 8.98794 8.625 9.33301V11.333C8.625 11.6782 8.34518 11.958 8 11.958C7.65482 11.958 7.375 11.6782 7.375 11.333V9.33301C7.37513 8.98794 7.6549 8.70801 8 8.70801ZM8 2.625C6.87253 2.62513 5.95801 3.53949 5.95801 4.66699V6.04199H10.041V4.66699C10.041 3.53952 9.12741 2.62518 8 2.625Z" fill="#4B3FE3"/></svg></span>
+                <div>
+                  <h3>Data privacy protection</h3>
+                  <p>Workspace content is handled with minimal collection principles and clear boundaries for AI assistance.</p>
+                </div>
+              </article>
+              <article class="ds-card privacy-card">
+                <span class="icon icon--20 icon--check" aria-hidden="true" data-asset-icon="../../assets/icons/check.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#4B3FE3" xmlns="http://www.w3.org/2000/svg"><path d="M13.7117 2.90824C13.9472 2.656 14.3432 2.64248 14.5955 2.87797C14.8477 3.1135 14.8612 3.50945 14.6257 3.76176L6.38551 12.5909C6.06158 12.9379 5.51701 12.9556 5.17067 12.6309L1.74098 9.41606C1.48925 9.17996 1.47661 8.78405 1.71266 8.53227C1.94875 8.28054 2.34466 8.2679 2.59645 8.50395L5.73903 11.4502L13.7117 2.90824Z" fill="#4B3FE3"/></svg></span>
+                <div>
+                  <h3>Secure data access</h3>
+                  <p>Access controls and encrypted transmission reduce unauthorized access and keep sensitive work bounded.</p>
+                </div>
+              </article>
+              <article class="ds-card privacy-card">
+                <span class="icon icon--20 icon--network" aria-hidden="true" data-asset-icon="../../assets/icons/network.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#4B3FE3" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.40039C11.4429 1.40039 14.2683 4.03641 14.5713 7.40039H14.5996V8.59961H14.5713C14.2683 11.9636 11.4429 14.5996 8 14.5996C4.55709 14.5996 1.73169 11.9636 1.42871 8.59961H1.40039V7.40039H1.42871C1.73169 4.03641 4.55709 1.40039 8 1.40039ZM6.27832 8.59961C6.33276 9.95556 6.5694 11.1517 6.90918 12.0254C7.10444 12.5274 7.32305 12.8924 7.53418 13.1221C7.74453 13.3508 7.90246 13.4003 8 13.4004C8.09758 13.4003 8.25638 13.3509 8.4668 13.1221C8.67782 12.8924 8.89566 12.5272 9.09082 12.0254C9.43058 11.1517 9.66725 9.95551 9.72168 8.59961H6.27832ZM10.9219 8.59961C10.8669 10.0782 10.6107 11.427 10.209 12.46C10.1309 12.6608 10.0441 12.8526 9.95215 13.0342C11.7911 12.3205 13.1418 10.6308 13.3662 8.59961H10.9219ZM2.63379 8.59961C2.85817 10.63 4.20804 12.3191 6.0459 13.0332C5.95411 12.8521 5.86892 12.6603 5.79102 12.46C5.38934 11.427 5.13294 10.0782 5.07812 8.59961H2.63379ZM6.0459 2.96582C4.20787 3.67987 2.85818 5.36989 2.63379 7.40039H5.07812C5.13294 5.92184 5.38934 4.57301 5.79102 3.54004C5.86903 3.33943 5.95396 3.14717 6.0459 2.96582ZM8 2.59961C7.90246 2.59972 7.74453 2.64923 7.53418 2.87793C7.32305 3.10755 7.10444 3.47256 6.90918 3.97461C6.5694 4.84834 6.33276 6.04445 6.27832 7.40039H9.72168C9.66725 6.0445 9.43058 4.84834 9.09082 3.97461C8.89566 3.47284 8.67782 3.10756 8.4668 2.87793C8.25638 2.64908 8.09758 2.59973 8 2.59961ZM9.95215 2.96484C10.0442 3.14664 10.1308 3.3389 10.209 3.54004C10.6107 4.57301 10.8669 5.92184 10.9219 7.40039H13.3662C13.1417 5.36913 11.7912 3.67844 9.95215 2.96484Z" fill="#4B3FE3"/></svg></span>
+                <div>
+                  <h3>Regional deployment</h3>
+                  <p>Team data can be managed according to account location, with regional isolation where required.</p>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="floor section" aria-labelledby="cta-title">
+          <div class="page-wrapper">
+            <div class="cta">
+              <div class="cta-copy">
+                <p class="eyebrow">Get started</p>
+                <h2 id="cta-title">Bring every workstream into TraeWork.</h2>
+                <p>Start with a shared workspace for goals, owners, documents, status, and AI-assisted review.</p>
+              </div>
+              <div class="cta-actions">
+                <button class="ds-btn ds-btn--primary ds-btn--lg" type="button">Start with TraeWork</button>
+                <button class="ds-btn ds-btn--secondary ds-btn--lg" type="button">Open workspace</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <div class="page-wrapper footer-grid">
+          <div class="footer-brand">
+            <a class="wordmark" href="#top">TraeWork</a>
+            <p>AI workspace for planning, assigning, documenting, and reviewing team work.</p>
+          </div>
+          <div class="footer-col">
+            <h3>Terms</h3>
+            <a href="#">Terms of Service</a>
+            <a href="#">Privacy Policy</a>
+            <a href="#">Cookie Policy</a>
+          </div>
+          <div class="footer-col">
+            <h3>Resources</h3>
+            <a href="#">Docs</a>
+            <a href="#">Blog</a>
+            <a href="#">Changelog</a>
+          </div>
+          <div class="footer-col">
+            <h3>Connect</h3>
+            <a href="mailto:feedback@mail.trae.ai">Feedback</a>
+            <a href="#">Discord</a>
+            <a href="#">Reddit</a>
+          </div>
+          <div class="footer-col">
+            <h3>Status</h3>
+            <a href="#">Workspace Center</a>
+            <a href="#">TraeWork Web</a>
+            <a href="#top">Back to top</a>
+          </div>
+        </div>
+        <div class="page-wrapper footer-bottom">
+          <span>&copy; 2026 TraeWork</span>
+          <span>SOC 2 Certified</span>
+        </div>
+      </footer>
+    </div>
+    <script>
+      (function () {
+        var mobileButton = document.querySelector(".mobile-menu-button");
+        var mobileNav = document.getElementById("mobileNav");
+        var tabs = Array.prototype.slice.call(document.querySelectorAll("[data-tab]"));
+        var panels = Array.prototype.slice.call(document.querySelectorAll("[data-panel]"));
+
+        if (mobileButton && mobileNav) {
+          mobileButton.addEventListener("click", function () {
+            var isOpen = mobileNav.getAttribute("data-open") === "true";
+            mobileNav.setAttribute("data-open", isOpen ? "false" : "true");
+            mobileButton.setAttribute("aria-expanded", isOpen ? "false" : "true");
+          });
+
+          mobileNav.addEventListener("click", function (event) {
+            if (event.target.tagName === "A" || event.target.tagName === "BUTTON") {
+              mobileNav.setAttribute("data-open", "false");
+              mobileButton.setAttribute("aria-expanded", "false");
+            }
+          });
+        }
+
+        tabs.forEach(function (tab) {
+          tab.addEventListener("click", function () {
+            var target = tab.dataset.tab;
+            tabs.forEach(function (item) {
+              item.setAttribute("aria-selected", item === tab ? "true" : "false");
+            });
+            panels.forEach(function (panel) {
+              var active = panel.dataset.panel === target;
+              panel.dataset.active = active ? "true" : "false";
+              panel.hidden = !active;
+            });
+          });
+        });
+      })();
+    </script>
+    <div id="traework-interaction-root" aria-hidden="true"></div>
+    <script>
+      (function () {
+        var rootElement = document.getElementById('traework-interaction-root');
+        if (rootElement) rootElement.dataset.interactionMounted = 'true';
+
+        var interactiveSelectors = [
+          '[data-nav]',
+          '[data-screen-trigger]',
+          '[role="tab"]',
+          '.tab',
+          '.nav-item',
+          '.sidebar-nav a',
+          '.sidebar a',
+          '.mobile-nav a'
+        ];
+
+        function getActiveClass(element) {
+          var classes = Array.prototype.slice.call(element.classList || []);
+          return classes.find(function (name) { return name.endsWith('--active'); }) ||
+            classes.find(function (name) { return name === 'is-active' || name === 'active' || name === 'selected'; }) ||
+            (element.classList && element.classList.contains('tab') ? 'tab--active' : null) ||
+            (element.classList && element.classList.contains('nav-item') ? 'nav-item--active' : null);
+        }
+
+        function activateWithinGroup(element, activeClass) {
+          var group = element.closest('[role="tablist"], nav, .sidebar, .sidebar-nav, .mobile-nav') || element.parentElement;
+          if (!group || !activeClass) return;
+
+          group.querySelectorAll(interactiveSelectors.join(',')).forEach(function (item) {
+            item.classList.remove(activeClass);
+            if (item.getAttribute('role') === 'tab') item.setAttribute('aria-selected', 'false');
+          });
+
+          element.classList.add(activeClass);
+          if (element.getAttribute('role') === 'tab') element.setAttribute('aria-selected', 'true');
+        }
+
+        function handleClick(event) {
+          var target = event.currentTarget;
+          var href = target.getAttribute('href');
+          if (href === '#') event.preventDefault();
+          activateWithinGroup(target, getActiveClass(target));
+        }
+
+        Array.prototype.slice.call(document.querySelectorAll(interactiveSelectors.join(','))).forEach(function (element) {
+          if (element.id !== 'traework-interaction-root') element.addEventListener('click', handleClick);
+        });
+      }());
+    </script>
+  </body>
+</html>

@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 2,
+  "tokenSource": "css.json",
+  "uikitPlan": "uikit-plan.json",
+  "componentsIndex": "components/index.json",
+  "componentContractDir": "components",
+  "componentsCss": "components.css",
+  "tokenCss": "colors_and_type.css",
+  "previewDir": "preview",
+  "uiKitsDir": "ui_kits",
+  "consumptionLayers": {
+    "tokens": {
+      "files": [
+        "colors_and_type.css",
+        "css.json"
+      ],
+      "copyable": true,
+      "purpose": "Light-mode design language source: color, typography, radius, spacing, size, and compatibility aliases.",
+      "downstreamRule": "Use canonical --bg-*, --text-*, --icon-*, --border-*, --status-*, --radius-*, and --spacer-* tokens first. Treat --color-* and legacy aliases as compatibility names."
+    },
+    "components": {
+      "files": [
+        "components.css",
+        "preview/component-*.html",
+        "components/{slug}.json"
+      ],
+      "copyable": true,
+      "purpose": "Stable atoms, component-level markup, classes, token consumption, DOM anatomy, assets, and provenance.",
+      "downstreamRule": "Copy markup from preview/component-{slug}.html, link colors_and_type.css + components.css, and keep page-local showcase layout out of shared component CSS."
+    },
+    "icons": {
+      "files": [
+        "assets/icons/*.svg"
+      ],
+      "copyable": true,
+      "purpose": "Bundled TraeWork SVG assets. assets/icons is the only supported icon directory.",
+      "downstreamRule": "Use assets/icons/{name}.svg. Use currentColor-capable SVGs or CSS masks for monochrome icons that must inherit token color; keep hardcoded-color SVGs for brand or multicolor artwork only. No icons.js runtime is shipped."
+    },
+    "uikit": {
+      "files": [
+        "ui_kits/{type}/index.html",
+        "ui_kits/{type}/quality-report.json"
+      ],
+      "copyable": false,
+      "purpose": "Page-level visual showcase and component-composition evidence.",
+      "downstreamRule": "Read UIKit pages for structure and product patterns, but do not copy the outer .uikit-shell/app-shell/solo shell as a production page template. Use component previews for reusable markup."
+    }
+  },
+  "iconUsage": {
+    "canonicalDir": "assets/icons",
+    "iconCount": 671,
+    "modeA_staticImg": {
+      "syntax": "<img src=\"assets/icons/{name}.svg\" width=\"16\" height=\"16\" alt=\"\" />",
+      "useFor": "Static HTML and React where no runtime recoloring is required."
+    },
+    "modeB_currentColorMask": {
+      "syntax": "<span class=\"icon\" style=\"--icon-url:url(assets/icons/{name}.svg)\"></span>",
+      "useFor": "Monochrome icons that must follow CSS color tokens in controls.",
+      "rule": "The parent color must resolve to a token such as var(--icon-default), var(--text-default), var(--status-error-default), or var(--text-onbrand)."
+    },
+    "noRuntimeSprite": true,
+    "colorRule": "Do not edit shipped SVG geometry or invent arbitrary icon colors. Add a semantic token first when a new fixed tint is required."
+  },
+  "downstreamScenarios": {
+    "useTokensOnly": {
+      "read": [
+        "colors_and_type.css",
+        "css.json"
+      ],
+      "consume": "Link the CSS or read css.json for machine consumption."
+    },
+    "buildSingleComponent": {
+      "read": [
+        "components/{slug}.json",
+        "preview/component-{slug}.html",
+        "components.css",
+        "colors_and_type.css"
+      ],
+      "consume": "Copy component markup from preview and keep canonical class names."
+    },
+    "buildFullPageCustomCanvas": {
+      "read": [
+        "ui_kits/{type}/index.html",
+        "ui_kits/{type}/quality-report.json",
+        "components/index.json",
+        "preview/component-{slug}.html"
+      ],
+      "consume": "Use UIKit as structural reference; write your own responsive outer grid for the target canvas."
+    }
+  },
+  "uikitConstraints": {
+    "maxShellWidth": 1184,
+    "fluidInnerComponents": true,
+    "warningForDownstream": "UIKit pages are showcases with an outer shell cap. Do not use them as fixed production templates on wider canvases."
+  },
+  "recommendedReadOrder": [
+    "README.md",
+    "library-consumption.json",
+    "uikit-plan.json",
+    "css.json",
+    "colors_and_type.css",
+    "components/index.json",
+    "components/{slug}.json",
+    "preview/component-{slug}.html",
+    "ui_kits/{type}/index.html"
+  ],
+  "coreComponents": [
+    "buttons",
+    "cards",
+    "forms",
+    "menu",
+    "pagination",
+    "table",
+    "tabs",
+    "tag"
+  ],
+  "supportComponents": [
+    "alert",
+    "avatar",
+    "breadcrumb",
+    "dialog",
+    "progress",
+    "skeleton"
+  ],
+  "uiKits": [
+    "dashboard",
+    "dashboard-2",
+    "dev-explorer",
+    "pricing-doc",
+    "skills-library",
+    "product-overview",
+    "comment-threads-plan",
+    "html-effectiveness-doc",
+    "landing",
+    "settings"
+  ],
+  "standardComparison": {
+    "reference": "TRAE 2",
+    "componentCountParityRequired": false,
+    "reason": "TraeWork has its own component inventory; parity work should focus on library contracts, token readability, icon rules, and reference integrity."
+  }
+}

@@ -1,0 +1,1335 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TraeWork Skills Overview</title>
+    <meta
+      name="description"
+      content="A TraeWork documentation overview page adapted from a blog-index information architecture."
+    >
+    <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../../colors_and_type.css">
+  <link rel="stylesheet" href="../../components.css">
+    <!-- Assumption: this static prototype adapts Claude Blog's index-page structure for TraeWork skills documentation without reusing source copy or brand styling. -->
+    <style>
+      :root {
+        color-scheme: light;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        background: var(--bg-base-default);
+        color: var(--text-default);
+        scroll-behavior: smooth;
+      }
+
+      body {
+        min-width: 320px;
+        margin: var(--spacer-0);
+        background: var(--bg-base-default);
+        color: var(--text-default);
+        font-family: var(--body-base-font-family);
+        font-size: var(--body-base-font-size);
+        font-weight: var(--body-base-font-weight);
+        line-height: var(--body-base-line-height);
+        letter-spacing: var(--body-base-letter-spacing);
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      button {
+        border: 0;
+        cursor: pointer;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: var(--spacer-0);
+      }
+
+      p {
+        margin-bottom: var(--spacer-0);
+      }
+
+      :focus-visible {
+        outline: 2px solid var(--border-brand);
+        outline-offset: var(--spacer-2);
+      }
+
+      .mono,
+      .num,
+      code {
+        font-family: var(--code-editor-font-family);
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum" 1, "lnum" 1;
+      }
+
+      .icon {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+        object-fit: contain;
+        vertical-align: middle;
+      }
+
+      .icon--16 {
+        width: 16px;
+        height: 16px;
+      }
+
+      .icon--20 {
+        width: 20px;
+        height: 20px;
+      }
+
+      .icon--24 {
+        width: 24px;
+        height: 24px;
+      }
+
+      .label-row {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacer-6);
+        line-height: var(--body-base-line-height);
+      }
+
+      .page {
+        overflow-x: hidden;
+        background: var(--bg-base-default);
+        padding-top: var(--spacer-64);
+      }
+
+      .page-wrapper {
+        width: min(calc(100% - (var(--spacer-32) * 2)), 1100px);
+        margin: 0 auto;
+      }
+
+      .floor {
+        background: var(--bg-base-default);
+      }
+
+      .floor--lift {
+        background: var(--bg-base-secondary);
+      }
+
+      .site-header {
+        position: sticky;
+        top: var(--spacer-0);
+        right: var(--spacer-0);
+        left: var(--spacer-0);
+        z-index: 40;
+        border-bottom: 1px solid var(--border-neutral-l1);
+        background: var(--bg-menu);
+      }
+
+      .header-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: var(--spacer-64);
+        gap: var(--spacer-32);
+      }
+
+      .wordmark {
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-sm-font-size);
+        line-height: var(--heading-sm-line-height);
+        font-weight: var(--font-weight-strong);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .desktop-nav {
+        display: flex;
+        align-items: center;
+      }
+
+      .desktop-nav {
+        gap: var(--spacer-4);
+      }
+
+      .mobile-actions {
+        display: none;
+      }
+
+      .desktop-nav a,
+      .mobile-nav a,
+      .mobile-menu-button {
+        min-height: 32px;
+        border-radius: var(--radius-8);
+        padding: 0 var(--spacer-12);
+        background: transparent;
+        color: var(--text-secondary);
+        font-size: var(--body-base-font-size);
+        line-height: var(--body-base-line-height);
+      }
+
+      .desktop-nav a,
+      .mobile-nav a,
+      .mobile-menu-button {
+        display: inline-flex;
+        align-items: center;
+      }
+
+      .desktop-nav a:hover,
+      .mobile-nav a:hover,
+      .mobile-menu-button:hover {
+        background: var(--bg-overlay-l1);
+        color: var(--text-default);
+      }
+
+      .mobile-nav a,
+      .mobile-menu-button {
+        color: var(--text-default);
+      }
+
+
+
+
+      .mobile-menu-button,
+      .mobile-nav {
+        display: none;
+      }
+
+      .ds-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 32px;
+        gap: var(--spacer-8);
+        border-radius: var(--radius-8);
+        padding: 0 var(--spacer-16);
+        color: var(--text-default);
+        font-weight: var(--font-weight-medium);
+        white-space: nowrap;
+        transition:
+          background-color 120ms cubic-bezier(0.2, 0, 0, 1),
+          border-color 120ms cubic-bezier(0.2, 0, 0, 1),
+          color 120ms cubic-bezier(0.2, 0, 0, 1);
+      }
+
+      .ds-btn--lg {
+        min-height: 40px;
+        border-radius: var(--radius-12);
+        padding: 0 var(--spacer-24);
+      }
+
+      .ds-btn--brand {
+        background: var(--bg-brand);
+        color: var(--text-onbrand);
+      }
+
+      .ds-btn--brand:hover {
+        background: var(--bg-brand-hover);
+      }
+
+      .ds-btn--primary {
+        background: var(--bg-invert);
+        color: var(--bg-base-default);
+      }
+
+      .ds-btn--primary:hover {
+        background: var(--bg-invert-hover);
+      }
+
+      .ds-btn--secondary {
+        border: 1px solid var(--border-neutral-l1);
+        background: var(--bg-overlay-l1);
+        color: var(--text-default);
+      }
+
+      .ds-btn--secondary:hover {
+        border-color: var(--border-neutral-l2);
+        background: var(--bg-overlay-l2);
+      }
+
+      .ds-card {
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-12);
+        background: var(--bg-base-secondary);
+        padding: var(--spacer-20);
+      }
+
+      .floor--lift .ds-card {
+        background: var(--bg-base-default);
+      }
+
+      .ds-tag {
+        display: inline-flex;
+        align-items: center;
+        min-height: 22px;
+        width: fit-content;
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-8);
+        background: var(--bg-overlay-l2);
+        padding: 0 var(--spacer-8);
+        color: var(--text-secondary);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+      }
+
+      .ds-tag--success {
+        border-color: var(--status-success-surface-l2);
+        background: var(--status-success-surface-l1);
+        color: var(--status-success-default);
+      }
+
+      .ds-tag--info {
+        border-color: var(--status-primary-surface-l2);
+        background: var(--status-primary-surface-l1);
+        color: var(--status-primary-default);
+      }
+
+      .ds-tag--warning {
+        border-color: var(--status-warning-surface-l2);
+        background: var(--status-warning-surface-l1);
+        color: var(--status-warning-default);
+      }
+
+      .hero {
+        padding: var(--spacer-64) 0 var(--spacer-48);
+      }
+
+      .hero-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+        gap: var(--spacer-48);
+        align-items: end;
+      }
+
+      .eyebrow {
+        margin-bottom: var(--spacer-12);
+        color: var(--text-tertiary);
+        font-family: var(--code-editor-font-family);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+        font-weight: var(--font-weight-code);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .hero h1 {
+        max-width: 780px;
+        margin-bottom: var(--spacer-24);
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-3xl-font-size);
+        line-height: var(--heading-3xl-line-height);
+        font-weight: var(--heading-3xl-font-weight);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .hero-lead {
+        max-width: 660px;
+        margin-bottom: var(--spacer-32);
+        color: var(--text-secondary);
+        font-size: var(--heading-sm-font-size);
+        line-height: var(--heading-sm-line-height);
+      }
+
+      .hero-actions,
+      .cta-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacer-8);
+      }
+
+      .source-card {
+        display: grid;
+        gap: var(--spacer-20);
+        align-content: start;
+      }
+
+      .source-card__line {
+        display: flex;
+        justify-content: space-between;
+        gap: var(--spacer-16);
+        border-bottom: 1px solid var(--border-neutral-l1);
+        padding-bottom: var(--spacer-12);
+      }
+
+      .source-card__line:last-child {
+        border-bottom: 0;
+        padding-bottom: var(--spacer-0);
+      }
+
+      .source-card strong {
+        color: var(--text-default);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .source-card span {
+        color: var(--text-secondary);
+        text-align: right;
+      }
+
+      .section {
+        padding: var(--spacer-64) 0;
+        scroll-margin-top: calc(var(--spacer-64) + var(--spacer-24));
+      }
+
+      .section-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+        gap: var(--spacer-32);
+        align-items: end;
+        margin-bottom: var(--spacer-40);
+      }
+
+      .section-title {
+        margin-bottom: var(--spacer-0);
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-3xl-font-size);
+        line-height: var(--heading-3xl-line-height);
+        font-weight: var(--heading-3xl-font-weight);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .section-copy {
+        color: var(--text-secondary);
+        font-size: var(--heading-sm-font-size);
+        line-height: var(--heading-sm-line-height);
+      }
+
+      .toolbar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+        gap: var(--spacer-16);
+        align-items: center;
+        margin-bottom: var(--spacer-32);
+      }
+
+      .toolbar .ds-search {
+        grid-column: 2;
+        grid-row: 1;
+        justify-self: end;
+        width: 100%;
+      }
+
+      .toolbar .ds-input__icon img {
+        display: block;
+        width: 16px;
+        height: 16px;
+      }
+
+      .filter-tabs {
+        display: flex;
+        grid-column: 1;
+        grid-row: 1;
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        gap: var(--spacer-12);
+      }
+
+      .filter-tab {
+        min-height: 32px;
+        border-bottom: 2px solid transparent;
+        background: transparent;
+        padding: 0 var(--spacer-4);
+        color: var(--text-tertiary);
+      }
+
+      .filter-tab:hover {
+        color: var(--text-default);
+      }
+
+      .filter-tab[aria-selected="true"] {
+        border-bottom-color: var(--icon-default);
+        color: var(--text-default);
+      }
+
+      .featured-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+        gap: var(--spacer-24);
+      }
+
+      .featured-card {
+        display: grid;
+        gap: var(--spacer-32);
+        min-height: 420px;
+      }
+
+      .featured-card h3 {
+        max-width: 620px;
+        margin-bottom: var(--spacer-16);
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-3xl-font-size);
+        line-height: var(--heading-3xl-line-height);
+        font-weight: var(--heading-3xl-font-weight);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .featured-card p,
+      .module-card p,
+      .timeline-item p,
+      .compact-list p,
+      .cta p {
+        color: var(--text-secondary);
+      }
+
+      .composition {
+        display: grid;
+        gap: var(--spacer-16);
+        border-top: 1px solid var(--border-neutral-l1);
+        padding-top: var(--spacer-20);
+      }
+
+      .composition-row {
+        display: grid;
+        grid-template-columns: 96px minmax(0, 1fr) 80px;
+        gap: var(--spacer-16);
+        align-items: center;
+        min-height: 40px;
+        color: var(--text-secondary);
+      }
+
+      .composition-row strong {
+        color: var(--text-default);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .composition-row .num {
+        color: var(--text-tertiary);
+        text-align: right;
+      }
+
+      .compact-list {
+        display: grid;
+        gap: var(--spacer-20);
+      }
+
+      .compact-list__item {
+        display: grid;
+        gap: var(--spacer-8);
+        border-top: 1px solid var(--border-neutral-l1);
+        padding-top: var(--spacer-16);
+      }
+
+      .compact-list__item:first-child {
+        border-top: 0;
+        padding-top: var(--spacer-0);
+      }
+
+      .compact-list h3,
+      .timeline-item h3 {
+        margin-bottom: var(--spacer-0);
+        color: var(--text-default);
+        font-size: var(--heading-sm-font-size);
+        line-height: var(--heading-sm-line-height);
+        font-weight: var(--heading-sm-font-weight);
+      }
+
+      .module-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--spacer-24);
+      }
+
+      .module-card {
+        display: grid;
+        gap: var(--spacer-16);
+        min-height: 260px;
+        align-content: space-between;
+      }
+
+      .module-card[hidden] {
+        display: none;
+      }
+
+      .module-card__top {
+        display: grid;
+        gap: var(--spacer-16);
+      }
+
+      .module-card__meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacer-16);
+      }
+
+      .module-index {
+        color: var(--bg-brand);
+        font-family: var(--code-editor-font-family);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-base-line-height);
+      }
+
+      .module-card h3 {
+        margin-bottom: var(--spacer-0);
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-xl-font-size);
+        line-height: var(--heading-xl-line-height);
+        font-weight: var(--heading-xl-font-weight);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .module-card__footer {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacer-8);
+        border-top: 1px solid var(--border-neutral-l1);
+        padding-top: var(--spacer-16);
+      }
+
+      .empty-state {
+        display: none;
+        border-top: 1px solid var(--border-neutral-l1);
+        padding-top: var(--spacer-24);
+        color: var(--text-secondary);
+      }
+
+      .empty-state[data-visible="true"] {
+        display: block;
+      }
+
+      .timeline {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: var(--spacer-24);
+      }
+
+      .timeline-item {
+        display: grid;
+        gap: var(--spacer-16);
+        border-top: 1px solid var(--border-neutral-l1);
+        padding-top: var(--spacer-24);
+      }
+
+      .timeline-index {
+        color: var(--bg-brand);
+        font-family: var(--code-editor-font-family);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-base-line-height);
+      }
+
+      .cta {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: var(--spacer-32);
+        align-items: center;
+        border-top: 1px solid var(--border-neutral-l1);
+        padding-top: var(--spacer-40);
+      }
+
+      .cta h2 {
+        margin-bottom: var(--spacer-16);
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-3xl-font-size);
+        line-height: var(--heading-3xl-line-height);
+        font-weight: var(--heading-3xl-font-weight);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .site-footer {
+        border-top: 1px solid var(--border-neutral-l1);
+        background: var(--bg-base-default);
+      }
+
+      .footer-grid {
+        display: grid;
+        grid-template-columns: 1.4fr repeat(4, minmax(120px, 1fr));
+        gap: var(--spacer-32);
+        padding: var(--spacer-64) 0;
+      }
+
+      .footer-brand,
+      .footer-col {
+        display: grid;
+        align-content: start;
+        gap: var(--spacer-12);
+      }
+
+      .footer-brand strong,
+      .footer-col h3 {
+        margin-bottom: var(--spacer-0);
+        color: var(--text-default);
+        font-size: var(--body-base-font-size);
+        line-height: var(--body-base-line-height);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .footer-brand p,
+      .footer-col a {
+        color: var(--text-tertiary);
+      }
+
+      .footer-col a:hover {
+        color: var(--text-default);
+      }
+
+      .footer-bottom {
+        display: flex;
+        justify-content: space-between;
+        gap: var(--spacer-16);
+        border-top: 1px solid var(--border-neutral-l1);
+        padding: var(--spacer-20) 0;
+        color: var(--text-tertiary);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+      }
+
+      @media (max-width: 980px) {
+        .page-wrapper {
+          width: min(calc(100% - (var(--spacer-16) * 2)), 840px);
+        }
+
+        .header-inner {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+          justify-content: stretch;
+          gap: var(--spacer-20);
+        }
+
+        .desktop-nav {
+          display: none;
+        }
+
+        .mobile-actions,
+        .mobile-menu-button {
+          display: flex;
+        }
+
+        .mobile-actions {
+          grid-column: 3;
+          justify-self: end;
+        }
+
+        .mobile-nav {
+          border-top: 1px solid var(--border-neutral-l1);
+          padding: var(--spacer-12) 0 var(--spacer-16);
+        }
+
+        .mobile-nav[data-open="true"] {
+          display: grid;
+          gap: var(--spacer-4);
+        }
+
+        .hero-grid,
+        .section-head,
+        .toolbar,
+        .featured-grid,
+        .cta {
+          grid-template-columns: 1fr;
+        }
+
+        .filter-tabs,
+        .toolbar .ds-search {
+          grid-column: 1;
+          justify-self: stretch;
+        }
+
+        .filter-tabs {
+          grid-row: 1;
+        }
+
+        .toolbar .ds-search {
+          grid-row: 2;
+        }
+
+        .filter-tabs {
+          justify-content: flex-start;
+        }
+
+        .module-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .timeline {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .footer-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 640px) {
+        .page {
+          padding-top: var(--spacer-64);
+        }
+
+        .header-inner {
+          min-height: var(--spacer-64);
+        }
+
+        .hero {
+          padding: var(--spacer-48) 0 var(--spacer-40);
+        }
+
+        .hero h1 {
+          font-size: var(--heading-3xl-font-size);
+        }
+
+        .hero-lead,
+        .section-copy {
+          font-size: var(--body-base-font-size);
+          line-height: var(--body-base-line-height);
+        }
+
+        .section {
+          padding: var(--spacer-48) 0;
+        }
+
+        .section-title,
+        .featured-card h3,
+        .cta h2 {
+          font-size: var(--heading-2xl-font-size);
+          line-height: var(--heading-2xl-line-height);
+        }
+
+        .source-card__line,
+        .composition-row,
+        .module-card__meta {
+          grid-template-columns: 1fr;
+          align-items: start;
+        }
+
+        .source-card__line {
+          display: grid;
+        }
+
+        .source-card span,
+        .composition-row .num {
+          text-align: left;
+        }
+
+        .module-grid,
+        .timeline,
+        .footer-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .featured-card,
+        .module-card {
+          min-height: 0;
+        }
+
+        .footer-bottom {
+          flex-direction: column;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          transition-duration: 0s !important;
+        }
+      }
+
+      /* Inline asset icon normalization: keep uploaded HTML independent from external SVG styling. */
+      [data-asset-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent !important;
+        -webkit-mask: none !important;
+        mask: none !important;
+      }
+
+      [data-asset-icon] > svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        flex: 0 0 auto;
+      }
+
+      .asset-inline-icon {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+      }
+    
+
+    /* design-library-creator layout guard */
+    .uikit-shell { width: 100%; max-width: 1184px; margin: 0 auto; overflow: hidden; display: block; }
+    .uikit-sidebar { min-width: 0; overflow: hidden; max-width: 100%; }
+    .uikit-main { min-width: 0; }
+    .uikit-toolbar { min-width: 0; display: flex; align-items: center; gap: var(--spacer-8); }
+    .uikit-responsive-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacer-16); }
+    .uikit-table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+    .uikit-truncate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .uikit-nowrap { white-space: nowrap; flex-shrink: 0; }
+    .uikit-action-cell { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 160px; overflow: hidden; }
+    .uikit-action { min-width: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    [data-component] { min-width: 0; max-width: 100%; overflow: hidden; }
+    @media (max-width: 900px) { .uikit-shell { grid-template-columns: minmax(0, 1fr); } .uikit-responsive-grid { grid-template-columns: minmax(0, 1fr); } }
+    @media (max-width: 640px) { .uikit-toolbar { flex-direction: column; align-items: stretch; } .uikit-responsive-grid { grid-template-columns: minmax(0, 1fr); } }
+  </style>
+  </head>
+  <body data-layout-guard="uikit-v1">
+    <div class="page">
+      <header class="site-header">
+        <div class="page-wrapper header-inner">
+          <a class="wordmark" href="#top" aria-label="TraeWork skills home">TraeWork Skills</a>
+
+          <nav class="desktop-nav" aria-label="Primary navigation">
+            <a href="#featured">Featured</a>
+            <a href="#library">Library</a>
+            <a href="#workflow">Workflow</a>
+            <a href="#handoff">Handoff</a>
+          </nav>
+
+          <div class="mobile-actions">
+            <button class="mobile-menu-button" type="button" aria-expanded="false" aria-controls="mobile-nav">
+              Menu
+            </button>
+          </div>
+        </div>
+        <nav class="page-wrapper mobile-nav" id="mobile-nav" data-open="false" aria-label="Mobile navigation">
+          <a href="#featured">Featured</a>
+          <a href="#library">Library</a>
+          <a href="#workflow">Workflow</a>
+          <a href="#handoff">Handoff</a>
+        </nav>
+      </header>
+
+      <main id="top">
+        <section class="floor hero">
+          <div class="page-wrapper hero-grid">
+            <div>
+              <div class="eyebrow">[00] Documentation</div>
+              <h1>TraeWork Skills Library</h1>
+              <p class="hero-lead">
+                A browsable overview for the skills that turn references, design rules, and implementation context into calm TraeWork-ready pages.
+              </p>
+              <div class="hero-actions">
+                <a class="ds-btn ds-btn--brand ds-btn--lg" href="#library">
+                  Browse modules
+                  <span class="icon icon--16 icon--arrow-right" aria-hidden="true" data-asset-icon="../../assets/icons/arrow-right.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#FFFFFF" xmlns="http://www.w3.org/2000/svg"><path d="M8.89062 3.55722C9.13461 3.31335 9.53132 3.31348 9.77539 3.55722L13.7754 7.55722C14.0194 7.80126 14.0194 8.1979 13.7754 8.44199L9.77539 12.442C9.53131 12.6861 9.1347 12.6861 8.89062 12.442C8.64685 12.1979 8.64665 11.8012 8.89062 11.5572L11.8232 8.6246H2.66699C2.32181 8.6246 2.04199 8.34478 2.04199 7.9996C2.0422 7.6546 2.32194 7.3746 2.66699 7.3746H11.8232L8.89062 4.44199C8.64685 4.19788 8.64665 3.8012 8.89062 3.55722Z" fill="#FFFFFF"/></svg></span>
+                </a>
+                <a class="ds-btn ds-btn--secondary ds-btn--lg" href="#workflow">Review workflow</a>
+              </div>
+            </div>
+
+            <aside class="ds-card source-card" aria-label="Adaptation summary">
+              <div class="source-card__line">
+                <strong>Source pattern</strong>
+                <span>Blog index</span>
+              </div>
+              <div class="source-card__line">
+                <strong>Target archetype</strong>
+                <span>Module overview</span>
+              </div>
+              <div class="source-card__line">
+                <strong>Design language</strong>
+                <span>TraeWork tokens</span>
+              </div>
+              <div class="source-card__line">
+                <strong>Mode support</strong>
+                <span>Light only</span>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="floor--lift section" id="featured">
+          <div class="page-wrapper">
+            <div class="section-head">
+              <div>
+                <div class="eyebrow">[01] Featured</div>
+                <h2 class="section-title">The core skill for page rebuilding</h2>
+              </div>
+              <p class="section-copy">
+                The lead module behaves like the featured story on a publication page: it explains the primary capability, then points into related modules.
+              </p>
+            </div>
+
+            <div class="featured-grid">
+              <article class="ds-card featured-card">
+                <div>
+                  <h3>Rebuild source pages into TraeWork-native module overviews</h3>
+                  <p>
+                    The page rebuilder keeps the useful information architecture from a source URL while replacing color, density, component choices, and interaction patterns with the TraeWork design system.
+                  </p>
+                </div>
+
+                <div class="composition" aria-label="Featured skill capabilities">
+                  <div class="composition-row">
+                    <span class="mono">Input</span>
+                    <strong>URL, screenshot, copied HTML, or local artifact</strong>
+                    <span class="num">01</span>
+                  </div>
+                  <div class="composition-row">
+                    <span class="mono">Translate</span>
+                    <strong>Page type, sections, journey, and module order</strong>
+                    <span class="num">02</span>
+                  </div>
+                  <div class="composition-row">
+                    <span class="mono">Render</span>
+                    <strong>Token-first HTML with responsive light mode</strong>
+                    <span class="num">03</span>
+                  </div>
+                </div>
+              </article>
+
+              <aside class="ds-card compact-list" aria-label="Related skill notes">
+                <div class="compact-list__item">
+                  <span class="ds-tag ds-tag--info">Reference</span>
+                  <h3>TraeWork Design System</h3>
+                  <p>Defines the visual language: typography, spacing, radius, color discipline, TraeWork icon rules, and light-mode behavior.</p>
+                </div>
+                <div class="compact-list__item">
+                  <span class="ds-tag">Workspace README</span>
+                  <h3>Archetype routing</h3>
+                  <p>Routes landing, dashboard, documentation including module overviews, management, and form pages into the right folders.</p>
+                </div>
+                <div class="compact-list__item">
+                  <span class="ds-tag ds-tag--warning">Guardrail</span>
+                  <h3>TraeWork over source fidelity</h3>
+                  <p>When source styling conflicts with TraeWork quality, the adapted page follows TraeWork.</p>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </section>
+
+        <section class="floor section" id="library">
+          <div class="page-wrapper">
+            <div class="section-head">
+              <div>
+                <div class="eyebrow">[02] Library</div>
+                <h2 class="section-title">Browse skill modules</h2>
+              </div>
+              <p class="section-copy">
+                Search and filter the modules that support a TraeWork rebuild. The interaction mirrors a content index while staying useful as a product overview.
+              </p>
+            </div>
+
+            <div class="toolbar" aria-label="Skill filters">
+              <div class="ds-input ds-search">
+                <span class="ds-input__icon"><span class="asset-inline-icon" aria-hidden="true" data-asset-icon="../../assets/icons/Search.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M7.33398 2.04199C10.2562 2.0423 12.625 4.41167 12.625 7.33398C12.6248 8.5697 12.1992 9.70502 11.4893 10.6055L13.7754 12.8916C14.0192 13.1357 14.0193 13.5314 13.7754 13.7754C13.5314 14.0194 13.1357 14.0192 12.8916 13.7754L10.6045 11.4893C9.70413 12.1989 8.56941 12.6249 7.33398 12.625C4.4117 12.625 2.04235 10.2562 2.04199 7.33398C2.04199 4.41148 4.41148 2.04199 7.33398 2.04199ZM7.33398 3.29199C5.10184 3.29199 3.29199 5.10184 3.29199 7.33398C3.29235 9.56583 5.10206 11.375 7.33398 11.375C9.56566 11.3747 11.3746 9.56565 11.375 7.33398C11.375 5.10203 9.56588 3.2923 7.33398 3.29199Z" fill="#404040"/></svg></span></span>
+                <input type="search" data-search aria-label="Search modules" placeholder="Search modules">
+              </div>
+              <div class="filter-tabs" role="tablist" aria-label="Module categories">
+                <button class="filter-tab" type="button" role="tab" aria-selected="true" data-filter="all">All</button>
+                <button class="filter-tab" type="button" role="tab" aria-selected="false" data-filter="design">Design</button>
+                <button class="filter-tab" type="button" role="tab" aria-selected="false" data-filter="content">Content</button>
+                <button class="filter-tab" type="button" role="tab" aria-selected="false" data-filter="quality">Quality</button>
+              </div>
+            </div>
+
+            <div class="module-grid" data-module-grid>
+              <article class="ds-card module-card" data-category="design" data-title="design system translator token rules typography light mode">
+                <div class="module-card__top">
+                  <div class="module-card__meta">
+                    <span class="module-index">[00]</span>
+                    <span class="ds-tag">Design</span>
+                  </div>
+                  <h3>Design system translator</h3>
+                  <p>Converts a source page's visual ideas into TraeWork typography, spacing, surface, radius, color, and icon decisions.</p>
+                </div>
+                <div class="module-card__footer">
+                  <span class="ds-tag">Tokens</span>
+                  <span class="ds-tag">Light mode</span>
+                </div>
+              </article>
+
+              <article class="ds-card module-card" data-category="content" data-title="information architecture source module sequence">
+                <div class="module-card__top">
+                  <div class="module-card__meta">
+                    <span class="module-index">[01]</span>
+                    <span class="ds-tag">Content</span>
+                  </div>
+                  <h3>Information architecture mapper</h3>
+                  <p>Finds the page type, audience, conversion path, section sequence, and repeated content patterns worth preserving.</p>
+                </div>
+                <div class="module-card__footer">
+                  <span class="ds-tag">Sections</span>
+                  <span class="ds-tag">Journey</span>
+                </div>
+              </article>
+
+              <article class="ds-card module-card" data-category="design" data-title="component composer cards tabs search filters">
+                <div class="module-card__top">
+                  <div class="module-card__meta">
+                    <span class="module-index">[02]</span>
+                    <span class="ds-tag">Design</span>
+                  </div>
+                  <h3>Component composer</h3>
+                  <p>Builds large visual regions from TraeWork cards, tags, rows, tabs, rule lines, and copy instead of decorative illustrations.</p>
+                </div>
+                <div class="module-card__footer">
+                  <span class="ds-tag">Cards</span>
+                  <span class="ds-tag">Tabs</span>
+                </div>
+              </article>
+
+              <article class="ds-card module-card" data-category="content" data-title="copy adapter public webpage concise labels">
+                <div class="module-card__top">
+                  <div class="module-card__meta">
+                    <span class="module-index">[03]</span>
+                    <span class="ds-tag">Content</span>
+                  </div>
+                  <h3>Copy adapter</h3>
+                  <p>Keeps short labels and factual structure where appropriate, then rewrites longer source copy into concise product language.</p>
+                </div>
+                <div class="module-card__footer">
+                  <span class="ds-tag">Labels</span>
+                  <span class="ds-tag">Summary</span>
+                </div>
+              </article>
+
+              <article class="ds-card module-card" data-category="quality" data-title="responsive qa mobile overflow light mode focus">
+                <div class="module-card__top">
+                  <div class="module-card__meta">
+                    <span class="module-index">[04]</span>
+                    <span class="ds-tag">Quality</span>
+                  </div>
+                  <h3>Responsive QA pass</h3>
+                  <p>Checks mobile width, clipped text, light-mode states, focus visibility, icon loading, and source-critical content access.</p>
+                </div>
+                <div class="module-card__footer">
+                  <span class="ds-tag">Mobile</span>
+                  <span class="ds-tag">A11y</span>
+                </div>
+              </article>
+
+              <article class="ds-card module-card" data-category="quality" data-title="compatibility output folder static html boundaries">
+                <div class="module-card__top">
+                  <div class="module-card__meta">
+                    <span class="module-index">[05]</span>
+                    <span class="ds-tag">Quality</span>
+                  </div>
+                  <h3>Output boundary checker</h3>
+                  <p>Confirms the page lands in the right archetype folder and avoids unrelated changes to existing prototypes or shared files.</p>
+                </div>
+                <div class="module-card__footer">
+                  <span class="ds-tag">Routing</span>
+                  <span class="ds-tag">Scope</span>
+                </div>
+              </article>
+            </div>
+            <p class="empty-state" data-empty>No modules match the current filter.</p>
+          </div>
+        </section>
+
+        <section class="floor--lift section" id="workflow">
+          <div class="page-wrapper">
+            <div class="section-head">
+              <div>
+                <div class="eyebrow">[03] Workflow</div>
+                <h2 class="section-title">From reference page to TraeWork page</h2>
+              </div>
+              <p class="section-copy">
+                The rebuild flow is intentionally narrow: extract the structure, choose the archetype, adapt the modules, then verify the static output.
+              </p>
+            </div>
+
+            <div class="timeline">
+              <article class="timeline-item">
+                <span class="timeline-index">[00]</span>
+                <h3>Extract</h3>
+                <p>Identify page type, audience, primary task, navigation model, and major sections from the source page.</p>
+              </article>
+              <article class="timeline-item">
+                <span class="timeline-index">[01]</span>
+                <h3>Route</h3>
+                <p>Pick the correct workspace archetype before writing code so the prototype remains easy to find and compare.</p>
+              </article>
+              <article class="timeline-item">
+                <span class="timeline-index">[02]</span>
+                <h3>Adapt</h3>
+                <p>Replace source styling with token-first TraeWork components, light-mode token bindings, and calmer typography.</p>
+              </article>
+              <article class="timeline-item">
+                <span class="timeline-index">[03]</span>
+                <h3>Verify</h3>
+                <p>Open the page, test interactions, and check common layout risks before handing off the file.</p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="floor section" id="handoff">
+          <div class="page-wrapper">
+            <div class="cta">
+              <div>
+                <div class="eyebrow">[04] Handoff</div>
+                <h2>Ready for a focused rebuild</h2>
+                <p>
+                  Give the rebuilder a source page and a target module. The output stays static, editable, and aligned with the TraeWork design language.
+                </p>
+              </div>
+              <div class="cta-actions">
+                <a class="ds-btn ds-btn--primary ds-btn--lg" href="#featured">Review featured module</a>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <div class="page-wrapper footer-grid">
+          <div class="footer-brand">
+            <strong>TraeWork Skills</strong>
+            <p>A calm documentation overview for page rebuilding, design-system translation, and static prototype handoff.</p>
+          </div>
+          <div class="footer-col">
+            <h3>Terms</h3>
+            <a href="#top">Scope</a>
+            <a href="#top">Assumptions</a>
+            <a href="#top">Boundaries</a>
+          </div>
+          <div class="footer-col">
+            <h3>Resources</h3>
+            <a href="#featured">Featured</a>
+            <a href="#library">Library</a>
+            <a href="#workflow">Workflow</a>
+          </div>
+          <div class="footer-col">
+            <h3>Connect</h3>
+            <a href="#top">Design</a>
+            <a href="#top">Content</a>
+            <a href="#top">Quality</a>
+          </div>
+          <div class="footer-col">
+            <h3>Status</h3>
+            <a href="#top">Prototype</a>
+            <a href="#top">Static HTML</a>
+            <a href="#top">Light mode</a>
+          </div>
+        </div>
+        <div class="page-wrapper footer-bottom">
+          <span>2026 TraeWork documentation</span>
+          <span>Built from local TraeWork rules</span>
+        </div>
+      </footer>
+    </div>
+    <script>
+      (function () {
+        var mobileButton = document.querySelector(".mobile-menu-button");
+        var mobileNav = document.querySelector("#mobile-nav");
+        var filterButtons = document.querySelectorAll("[data-filter]");
+        var moduleCards = document.querySelectorAll(".module-card");
+        var searchInput = document.querySelector("[data-search]");
+        var emptyState = document.querySelector("[data-empty]");
+        var currentFilter = "all";
+
+        if (mobileButton && mobileNav) {
+          mobileButton.addEventListener("click", function () {
+            var isOpen = mobileNav.dataset.open === "true";
+            mobileNav.dataset.open = String(!isOpen);
+            mobileButton.setAttribute("aria-expanded", String(!isOpen));
+          });
+
+          mobileNav.querySelectorAll("a").forEach(function (link) {
+            link.addEventListener("click", function () {
+              mobileNav.dataset.open = "false";
+              mobileButton.setAttribute("aria-expanded", "false");
+            });
+          });
+        }
+
+        function applyFilters() {
+          var query = searchInput ? searchInput.value.trim().toLowerCase() : "";
+          var visibleCount = 0;
+
+          moduleCards.forEach(function (card) {
+            var matchesCategory = currentFilter === "all" || card.dataset.category === currentFilter;
+            var haystack = (card.dataset.title || card.textContent).toLowerCase();
+            var matchesSearch = !query || haystack.indexOf(query) !== -1;
+            var isVisible = matchesCategory && matchesSearch;
+
+            card.hidden = !isVisible;
+            if (isVisible) {
+              visibleCount += 1;
+            }
+          });
+
+          if (emptyState) {
+            emptyState.dataset.visible = String(visibleCount === 0);
+          }
+        }
+
+        filterButtons.forEach(function (button) {
+          button.addEventListener("click", function () {
+            currentFilter = button.dataset.filter;
+            filterButtons.forEach(function (candidate) {
+              candidate.setAttribute("aria-selected", String(candidate === button));
+            });
+            applyFilters();
+          });
+        });
+
+        if (searchInput) {
+          searchInput.addEventListener("input", applyFilters);
+        }
+
+        applyFilters();
+      })();
+    </script>
+    <div id="traework-interaction-root" aria-hidden="true"></div>
+    <script>
+      (function () {
+        var rootElement = document.getElementById('traework-interaction-root');
+        if (rootElement) rootElement.dataset.interactionMounted = 'true';
+
+        var interactiveSelectors = [
+          '[data-nav]',
+          '[data-screen-trigger]',
+          '[role="tab"]',
+          '.tab',
+          '.nav-item',
+          '.sidebar-nav a',
+          '.sidebar a',
+          '.mobile-nav a'
+        ];
+
+        function getActiveClass(element) {
+          var classes = Array.prototype.slice.call(element.classList || []);
+          return classes.find(function (name) { return name.endsWith('--active'); }) ||
+            classes.find(function (name) { return name === 'is-active' || name === 'active' || name === 'selected'; }) ||
+            (element.classList && element.classList.contains('tab') ? 'tab--active' : null) ||
+            (element.classList && element.classList.contains('nav-item') ? 'nav-item--active' : null);
+        }
+
+        function activateWithinGroup(element, activeClass) {
+          var group = element.closest('[role="tablist"], nav, .sidebar, .sidebar-nav, .mobile-nav') || element.parentElement;
+          if (!group || !activeClass) return;
+
+          group.querySelectorAll(interactiveSelectors.join(',')).forEach(function (item) {
+            item.classList.remove(activeClass);
+            if (item.getAttribute('role') === 'tab') item.setAttribute('aria-selected', 'false');
+          });
+
+          element.classList.add(activeClass);
+          if (element.getAttribute('role') === 'tab') element.setAttribute('aria-selected', 'true');
+        }
+
+        function handleClick(event) {
+          var target = event.currentTarget;
+          var href = target.getAttribute('href');
+          if (href === '#') event.preventDefault();
+          activateWithinGroup(target, getActiveClass(target));
+        }
+
+        Array.prototype.slice.call(document.querySelectorAll(interactiveSelectors.join(','))).forEach(function (element) {
+          if (element.id !== 'traework-interaction-root') element.addEventListener('click', handleClick);
+        });
+      }());
+    </script>
+  </body>
+</html>

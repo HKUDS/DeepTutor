@@ -1,0 +1,2068 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mosaic Dashboard Case - TraeWork</title>
+    <meta
+      name="description"
+      content="A TraeWork dashboard case study adapted from the Mosaic dashboard information architecture."
+    >
+    <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../../colors_and_type.css">
+  <link rel="stylesheet" href="../../components.css">
+    <!-- Assumption: this is a static dashboard case with mock data; it reproduces layout structure, not Mosaic source assets. -->
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        background: var(--bg-base-default);
+        color: var(--text-default);
+        font-family: var(--font-family-default);
+        font-size: var(--body-base-font-size);
+        line-height: var(--body-base-line-height);
+        font-weight: var(--body-base-font-weight);
+        letter-spacing: var(--body-base-letter-spacing);
+      }
+
+      body {
+        margin: var(--spacer-0);
+        min-width: 320px;
+        background: var(--bg-base-default);
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      svg {
+        display: block;
+      }
+
+      :focus-visible {
+        outline: 2px solid var(--border-brand);
+        outline-offset: var(--spacer-2);
+      }
+
+      .icon {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+        object-fit: contain;
+        vertical-align: middle;
+      }
+
+      .icon--16 {
+        width: 16px;
+        height: 16px;
+      }
+
+      .icon--20 {
+        width: 20px;
+        height: 20px;
+      }
+
+      .icon--24 {
+        width: 24px;
+        height: 24px;
+      }
+
+      /* Icon SVGs are embedded from ../../assets/icons so file:// previews in Chrome can render CSS masks. */
+
+
+      .help-icon path:last-child {
+        stroke-linecap: round;
+      }
+
+      .num,
+      .mono {
+        font-family: var(--font-family-metric);
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum" 1, "lnum" 1;
+      }
+
+      .app-shell {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: var(--spacer-0);
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacer-24);
+        padding: var(--spacer-20) var(--spacer-16);
+        overflow-y: auto;
+        background: var(--bg-menu);
+        border-right: 1px solid var(--border-neutral-l1);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: var(--spacer-12);
+        min-height: 32px;
+      }
+
+      .brand__text {
+        display: grid;
+        gap: var(--spacer-2);
+      }
+
+      .brand__name {
+        font-size: var(--heading-sm-font-size);
+        line-height: var(--heading-sm-line-height);
+        font-weight: var(--heading-sm-font-weight);
+      }
+
+      .brand__meta {
+        color: var(--text-tertiary);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+      }
+
+      .sidebar__section {
+        display: grid;
+        gap: var(--spacer-4);
+      }
+
+      .sidebar__section-title {
+        padding: var(--spacer-8) var(--spacer-8) var(--spacer-4);
+        color: var(--text-tertiary);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+        font-weight: var(--font-weight-medium);
+        text-transform: uppercase;
+        letter-spacing: var(--body-md-letter-spacing);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .nav-item {
+        height: 32px;
+        display: flex;
+        align-items: center;
+        gap: var(--spacer-10);
+        padding: var(--spacer-0) var(--spacer-10);
+        border-radius: var(--radius-8);
+        color: var(--text-secondary);
+        font-size: var(--body-base-font-size);
+        line-height: var(--body-base-line-height);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        transition:
+          background-color 120ms cubic-bezier(0.2, 0, 0, 1),
+          color 120ms cubic-bezier(0.2, 0, 0, 1);
+      }
+
+      .nav-item .icon {
+        color: var(--icon-tertiary);
+      }
+
+      .nav-item:hover {
+        background: var(--bg-overlay-l1);
+        color: var(--text-default-hover);
+      }
+
+      .nav-item:hover .icon {
+        color: var(--icon-secondary-hover);
+      }
+
+      .nav-item--active {
+        background: var(--bg-overlay-l2);
+        color: var(--text-default);
+      }
+
+      .nav-item--active .icon {
+        color: var(--icon-default);
+      }
+
+      .nav-item__label {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .nav-item__count {
+        margin-left: auto;
+        min-width: 18px;
+        height: 18px;
+        display: inline-grid;
+        place-items: center;
+        border-radius: var(--radius-full);
+        background: var(--bg-overlay-l2);
+        color: var(--text-secondary);
+        font-family: var(--font-family-metric);
+        font-size: var(--body-xs-font-size);
+        line-height: var(--body-xs-line-height);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .sidebar__footer {
+        margin-top: auto;
+        display: grid;
+        gap: var(--spacer-8);
+      }
+
+      .workspace {
+        min-width: 0;
+        background: var(--bg-base-default);
+      }
+
+      .topbar {
+        position: sticky;
+        top: var(--spacer-0);
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: var(--spacer-8);
+        min-height: 64px;
+        padding: var(--spacer-16) var(--spacer-32);
+        background: var(--bg-base-default);
+        border-bottom: 1px solid var(--border-neutral-l1);
+      }
+
+      .topbar__divider {
+        width: 1px;
+        height: 24px;
+        background: var(--border-neutral-l1);
+        margin: var(--spacer-0) var(--spacer-4);
+      }
+
+      .user-menu {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacer-8);
+        height: 32px;
+        border: 0;
+        border-radius: var(--radius-8);
+        background: transparent;
+        color: var(--text-secondary);
+        padding: var(--spacer-0) var(--spacer-8);
+      }
+
+      .user-menu:hover {
+        background: var(--bg-overlay-l1);
+        color: var(--text-default-hover);
+      }
+
+      .avatar {
+        width: 28px;
+        height: 28px;
+        display: inline-grid;
+        place-items: center;
+        border-radius: var(--radius-full);
+        background: var(--bg-overlay-l3);
+        color: var(--text-default);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .main {
+        max-width: 1280px;
+        margin: var(--spacer-0) auto;
+        padding: var(--spacer-32);
+      }
+
+      .page-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacer-24);
+        margin-bottom: var(--spacer-32);
+      }
+
+      .page-title {
+        margin: var(--spacer-0);
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-3xl-font-size);
+        line-height: var(--heading-3xl-line-height);
+        font-weight: var(--heading-3xl-font-weight);
+        letter-spacing: var(--body-base-letter-spacing);
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: var(--spacer-8);
+        flex-wrap: wrap;
+      }
+
+      .ds-btn {
+        min-height: 32px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--spacer-6);
+        border: 1px solid transparent;
+        border-radius: var(--radius-8);
+        padding: var(--spacer-0) var(--spacer-16);
+        color: var(--text-default);
+        background: transparent;
+        font-size: var(--body-base-font-size);
+        line-height: var(--body-base-line-height);
+        font-weight: var(--font-weight-medium);
+        letter-spacing: var(--body-base-letter-spacing);
+        transition:
+          background-color 120ms cubic-bezier(0.2, 0, 0, 1),
+          border-color 120ms cubic-bezier(0.2, 0, 0, 1),
+          color 120ms cubic-bezier(0.2, 0, 0, 1);
+      }
+
+      .ds-btn .icon {
+        display: inline-block;
+        width: var(--icon-size-16);
+        height: var(--icon-size-16);
+        flex: 0 0 auto;
+      }
+
+      .ds-btn .icon--12 { width: var(--icon-size-12); height: var(--icon-size-12); }
+      .ds-btn .icon--14 { width: var(--icon-size-14); height: var(--icon-size-14); }
+      .ds-btn .icon--16 { width: var(--icon-size-16); height: var(--icon-size-16); }
+      .ds-btn .icon--20 { width: var(--icon-size-20); height: var(--icon-size-20); }
+      .ds-btn .icon--24 { width: var(--icon-size-24); height: var(--icon-size-24); }
+
+      .ds-btn--icon {
+        width: 32px;
+        padding: var(--spacer-0);
+        color: var(--icon-secondary);
+      }
+
+      .ds-btn--secondary {
+        background: var(--bg-overlay-l1);
+        border-color: var(--border-neutral-l1);
+        color: var(--text-secondary);
+      }
+
+      .ds-btn--secondary:hover,
+      .ds-btn--icon:hover {
+        background: var(--bg-overlay-l2);
+        border-color: var(--border-neutral-l2);
+        color: var(--text-default-hover);
+      }
+
+      .ds-btn--brand {
+        background: var(--bg-brand);
+        border-color: var(--bg-brand);
+        color: var(--text-onbrand);
+      }
+
+      .ds-btn--brand:hover {
+        background: var(--bg-brand-hover);
+        border-color: var(--bg-brand-hover);
+      }
+
+      .ds-card {
+        background: var(--bg-base-secondary);
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-12);
+        padding: var(--spacer-20);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        gap: var(--spacer-24);
+      }
+
+      .span-3 {
+        grid-column: span 4;
+      }
+
+      .span-4 {
+        grid-column: span 4;
+      }
+
+      .span-5 {
+        grid-column: span 5;
+      }
+
+      .span-6 {
+        grid-column: span 6;
+      }
+
+      .span-7 {
+        grid-column: span 7;
+      }
+
+      .span-8 {
+        grid-column: span 8;
+      }
+
+      .span-12 {
+        grid-column: span 12;
+      }
+
+      .card-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: var(--spacer-16);
+        margin-bottom: var(--spacer-16);
+      }
+
+      .card-title {
+        margin: var(--spacer-0);
+        color: var(--text-default);
+        font-size: var(--heading-sm-font-size);
+        line-height: var(--heading-sm-line-height);
+        font-weight: var(--heading-sm-font-weight);
+      }
+
+      .card-subtitle {
+        color: var(--text-secondary);
+        font-size: var(--body-base-font-size);
+        line-height: var(--body-base-line-height);
+      }
+
+      .metric-card {
+        min-height: 254px;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        gap: var(--spacer-16);
+      }
+
+      .metric-label {
+        color: var(--text-tertiary);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+        font-weight: var(--font-weight-medium);
+        text-transform: uppercase;
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .metric-value {
+        display: flex;
+        align-items: center;
+        gap: var(--spacer-8);
+        margin-top: var(--spacer-8);
+      }
+
+      .metric-value__num {
+        color: var(--text-default);
+        font-family: var(--font-family-metric);
+        font-size: var(--heading-3xl-font-size);
+        line-height: var(--heading-3xl-line-height);
+        font-weight: var(--heading-3xl-font-weight);
+        font-variant-numeric: tabular-nums;
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .ds-tag {
+        min-height: 22px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--spacer-4);
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-8);
+        padding: var(--spacer-0) var(--spacer-8);
+        background: var(--bg-overlay-l2);
+        color: var(--text-secondary);
+        font-family: var(--font-family-metric);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+        font-weight: var(--font-weight-medium);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .ds-tag--success {
+        background: var(--status-success-surface-l1);
+        border-color: var(--status-success-surface-l2);
+        color: var(--status-success-default);
+      }
+
+      .ds-tag--danger {
+        background: var(--status-error-surface-l1);
+        border-color: var(--status-error-surface-l2);
+        color: var(--status-error-default);
+      }
+
+      .sparkline {
+        width: 100%;
+        height: 96px;
+        align-self: end;
+        color: var(--viz-series-brand);
+      }
+
+      .sparkline__axis {
+        stroke: var(--border-neutral-l1);
+      }
+
+      .sparkline__muted {
+        fill: none;
+        stroke: var(--border-neutral-l3);
+        stroke-width: 1.25;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .sparkline__main {
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .chart-area-fill {
+        stroke: none;
+        pointer-events: none;
+      }
+
+      .chart-card {
+        min-height: 406px;
+      }
+
+      .chart-meta {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--spacer-16);
+        margin-bottom: var(--spacer-20);
+      }
+
+      .chart-meta--wide {
+        gap: var(--spacer-24);
+      }
+
+      .legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacer-6);
+        color: var(--text-secondary);
+      }
+
+      .legend-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: var(--radius-full);
+        background: currentColor;
+      }
+
+      .legend-dot--sky {
+        color: var(--viz-series-brand-soft);
+      }
+
+      .legend-dot--violet {
+        color: var(--viz-series-brand);
+      }
+
+      .legend-value {
+        color: var(--text-default);
+        font-family: var(--font-family-metric);
+        font-size: var(--heading-2xl-font-size);
+        line-height: var(--heading-2xl-line-height);
+        font-weight: var(--heading-2xl-font-weight);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .legend-value--xl {
+        font-size: var(--heading-3xl-font-size);
+        line-height: var(--heading-3xl-line-height);
+      }
+
+      .axis-label {
+        fill: var(--text-tertiary);
+        font-family: var(--font-family-metric);
+        font-size: var(--body-md-font-size);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .grid-line {
+        stroke: var(--border-neutral-l1);
+        stroke-width: 1;
+      }
+
+      .bar-sky {
+        fill: var(--viz-series-brand-soft);
+      }
+
+      .bar-violet {
+        fill: var(--viz-series-brand);
+      }
+
+      .line-chart {
+        width: 100%;
+        min-height: 248px;
+      }
+
+      .line-chart__path {
+        fill: none;
+        stroke: var(--viz-series-brand);
+        stroke-width: 1.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .line-chart__path--secondary {
+        stroke: var(--border-neutral-l3);
+        stroke-width: 1.25;
+      }
+
+      .data-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .data-table th,
+      .data-table td {
+        padding: var(--spacer-12) var(--spacer-8);
+        border-bottom: 1px solid var(--border-neutral-l1);
+        text-align: left;
+        vertical-align: middle;
+      }
+
+      .data-table th {
+        color: var(--text-tertiary);
+        font-size: var(--body-xs-font-size);
+        line-height: var(--body-xs-line-height);
+        font-weight: var(--font-weight-medium);
+        text-transform: uppercase;
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .data-table td {
+        color: var(--text-secondary);
+        font-size: var(--body-base-font-size);
+        line-height: var(--body-base-line-height);
+      }
+
+      .data-table tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .data-table .num {
+        text-align: left;
+      }
+
+      .data-table td.num {
+        color: var(--text-default);
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+      }
+
+      .source-cell,
+      .customer-cell {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacer-8);
+        color: var(--text-default);
+        line-height: var(--body-base-line-height);
+        white-space: nowrap;
+      }
+
+      .source-mark {
+        width: 28px;
+        height: 28px;
+        display: inline-grid;
+        place-items: center;
+        border-radius: var(--radius-full);
+        background: var(--bg-overlay-l2);
+        color: var(--text-default);
+        font-family: var(--font-family-metric);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+        font-weight: var(--font-weight-code);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .source-mark--blue {
+        color: var(--status-primary-default);
+      }
+
+      .source-mark--coral {
+        color: var(--viz-series-coral);
+      }
+
+      .source-mark--violet {
+        color: var(--viz-series-brand);
+      }
+
+      .donut-layout {
+        display: grid;
+        grid-template-columns: 1fr;
+        align-items: stretch;
+        gap: var(--spacer-20);
+      }
+
+      .donut {
+        width: 100%;
+        max-width: 220px;
+        margin: var(--spacer-0) auto;
+      }
+
+      .donut__base {
+        fill: none;
+        stroke: var(--bg-overlay-l3);
+        stroke-width: 12;
+      }
+
+      .donut__segment {
+        fill: none;
+        stroke-width: 12;
+        stroke-linecap: butt;
+        transform: rotate(-90deg);
+        transform-origin: 50% 50%;
+      }
+
+      .donut__segment--primary {
+        stroke: var(--viz-series-brand);
+        stroke-dasharray: 118 252;
+      }
+
+      .donut__segment--secondary {
+        stroke: var(--viz-series-brand-soft);
+        stroke-dasharray: 74 252;
+        stroke-dashoffset: -118;
+      }
+
+      .donut__segment--tertiary {
+        stroke: var(--border-neutral-l3);
+        stroke-dasharray: 60 252;
+        stroke-dashoffset: -192;
+      }
+
+      .donut__value {
+        fill: var(--text-default);
+        font-family: var(--font-family-metric);
+        font-size: var(--heading-xl-font-size);
+        font-weight: var(--heading-xl-font-weight);
+        font-variant-numeric: tabular-nums;
+        text-anchor: middle;
+        dominant-baseline: middle;
+      }
+
+      .donut__caption {
+        fill: var(--text-tertiary);
+        font-family: var(--font-family-default);
+        font-size: var(--body-sm-font-size);
+        text-anchor: middle;
+      }
+
+      .rank-list {
+        display: grid;
+        gap: var(--spacer-12);
+        margin: var(--spacer-0);
+        padding: var(--spacer-0);
+        list-style: none;
+      }
+
+      .rank-list li,
+      .activity-item,
+      .expense-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacer-16);
+        padding-bottom: var(--spacer-12);
+        border-bottom: 1px solid var(--border-neutral-l1);
+      }
+
+      .rank-list li:last-child,
+      .activity-item:last-child,
+      .expense-item:last-child {
+        padding-bottom: var(--spacer-0);
+        border-bottom: 0;
+      }
+
+      .rank-label {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacer-8);
+        color: var(--text-secondary);
+      }
+
+      .rank-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: var(--radius-full);
+        background: currentColor;
+      }
+
+      .rank-dot--violet {
+        color: var(--viz-series-brand);
+      }
+
+      .rank-dot--sky {
+        color: var(--viz-series-brand-soft);
+      }
+
+      .rank-dot--mint {
+        color: var(--border-neutral-l3);
+      }
+
+      .tab-row {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacer-16);
+        border-bottom: 1px solid var(--border-neutral-l1);
+      }
+
+      .tab {
+        position: relative;
+        border: 0;
+        border-radius: var(--radius-8) var(--radius-8) var(--spacer-0) var(--spacer-0);
+        background: transparent;
+        color: var(--text-tertiary);
+        padding: var(--spacer-8) var(--spacer-0);
+        font-size: var(--body-base-font-size);
+        line-height: var(--body-base-line-height);
+      }
+
+      .tab:hover {
+        color: var(--text-default-hover);
+      }
+
+      .tab--active {
+        color: var(--text-default);
+      }
+
+      .tab--active::after {
+        content: "";
+        position: absolute;
+        right: var(--spacer-0);
+        bottom: -1px;
+        left: var(--spacer-0);
+        height: 2px;
+        background: var(--icon-default);
+      }
+
+      .refund-list {
+        display: grid;
+        gap: var(--spacer-16);
+        margin: var(--spacer-20) var(--spacer-0) var(--spacer-0);
+        padding: var(--spacer-0);
+        list-style: none;
+      }
+
+      .refund-item {
+        display: grid;
+        gap: var(--spacer-8);
+      }
+
+      .refund-item__top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacer-16);
+        color: var(--text-secondary);
+      }
+
+      .ds-progress {
+        height: 6px;
+        overflow: hidden;
+        border-radius: var(--radius-full);
+        background: var(--bg-overlay-l3);
+      }
+
+      .ds-progress__bar {
+        height: 100%;
+        border-radius: var(--radius-full);
+        background: var(--text-default);
+      }
+
+      .activity-group {
+        display: grid;
+        gap: var(--spacer-16);
+      }
+
+      .activity-date {
+        color: var(--text-tertiary);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+        font-weight: var(--font-weight-medium);
+        text-transform: uppercase;
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .activity-list,
+      .expense-list {
+        display: grid;
+        gap: var(--spacer-12);
+        margin: var(--spacer-0);
+        padding: var(--spacer-0);
+        list-style: none;
+      }
+
+      .activity-item,
+      .expense-item {
+        justify-content: flex-start;
+      }
+
+      .activity-text,
+      .expense-text {
+        min-width: 0;
+        color: var(--text-secondary);
+      }
+
+      .activity-text strong,
+      .expense-text strong {
+        color: var(--text-default);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .activity-link {
+        margin-left: auto;
+        color: var(--text-secondary);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+      }
+
+      .activity-link:hover {
+        color: var(--text-default-hover);
+      }
+
+      .expense-amount {
+        margin-left: auto;
+        color: var(--text-default);
+        text-align: right;
+      }
+
+      .expense-amount--negative {
+        color: var(--status-error-default);
+      }
+
+      .expense-amount--positive {
+        color: var(--status-success-default);
+      }
+
+      .mobile-menu {
+        display: none;
+      }
+
+      @media (max-width: 1180px) {
+        .app-shell {
+          grid-template-columns: 72px minmax(0, 1fr);
+        }
+
+        .sidebar {
+          padding: var(--spacer-20) var(--spacer-12);
+        }
+
+        .sidebar > .brand {
+          display: none;
+        }
+
+        .brand__text,
+        .sidebar__section-title,
+        .nav-item__label,
+        .nav-item__count {
+          display: none;
+        }
+
+        .brand {
+          justify-content: center;
+        }
+
+        .nav-item {
+          justify-content: center;
+          padding: var(--spacer-8);
+        }
+      }
+
+      @media (max-width: 980px) {
+        .span-3,
+        .span-4,
+        .span-5,
+        .span-6,
+        .span-7,
+        .span-8 {
+          grid-column: span 12;
+        }
+
+        .page-header {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .toolbar {
+          justify-content: flex-start;
+        }
+
+      }
+
+      @media (max-width: 760px) {
+        .app-shell {
+          display: block;
+        }
+
+        .sidebar {
+          display: none;
+        }
+
+        .topbar {
+          justify-content: space-between;
+          padding: var(--spacer-12) var(--spacer-16);
+        }
+
+        .mobile-menu {
+          display: inline-flex;
+        }
+
+        .topbar__divider,
+        .user-menu__label {
+          display: none;
+        }
+
+        .main {
+          padding: var(--spacer-16);
+        }
+
+        .grid {
+          gap: var(--spacer-16);
+        }
+
+        .page-title {
+          font-size: var(--heading-2xl-font-size);
+          line-height: var(--heading-2xl-line-height);
+        }
+
+        .metric-value__num,
+        .legend-value {
+          font-size: var(--heading-xl-font-size);
+          line-height: var(--heading-xl-line-height);
+        }
+
+        .legend-value--xl {
+          font-size: var(--heading-3xl-font-size);
+          line-height: var(--heading-3xl-line-height);
+        }
+
+        .ds-btn {
+          padding: var(--spacer-0) var(--spacer-12);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          transition-duration: 0ms !important;
+          animation-duration: 0ms !important;
+        }
+      }
+
+      .mobile-nav-dialog {
+        width: min(360px, calc(100vw - var(--spacer-32)));
+        max-width: none;
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-12);
+        padding: var(--spacer-20);
+        background: var(--bg-base-secondary);
+        color: var(--text-default);
+      }
+
+      .mobile-nav-dialog::backdrop {
+        background: color-mix(in srgb, var(--text-default) 50%, transparent);
+      }
+
+      .mobile-nav-dialog__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacer-16);
+        margin-bottom: var(--spacer-20);
+      }
+
+      .mobile-nav-dialog__body {
+        display: grid;
+        gap: var(--spacer-24);
+      }
+
+      .mobile-nav-dialog .brand {
+        justify-content: flex-start;
+      }
+
+      .mobile-nav-dialog .brand__text {
+        display: grid;
+      }
+
+      .mobile-nav-dialog .sidebar__section-title {
+        display: block;
+      }
+
+      .mobile-nav-dialog .nav-item {
+        justify-content: flex-start;
+        padding: var(--spacer-0) var(--spacer-10);
+      }
+
+      .mobile-nav-dialog .nav-item__label {
+        display: inline;
+      }
+
+      .mobile-nav-dialog .nav-item__count {
+        display: inline-grid;
+      }
+
+      /* Inline asset icon normalization: keep uploaded HTML independent from external SVG styling. */
+      [data-asset-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent !important;
+        -webkit-mask: none !important;
+        mask: none !important;
+      }
+
+      [data-asset-icon] > svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        flex: 0 0 auto;
+      }
+
+      .asset-inline-icon {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+      }
+    
+
+    /* design-library-creator layout guard */
+    .uikit-shell { width: 100%; max-width: 1184px; margin: 0 auto; overflow: hidden; display: block; }
+    .uikit-sidebar { min-width: 0; overflow: hidden; max-width: 100%; }
+    .uikit-main { min-width: 0; }
+    .uikit-toolbar { min-width: 0; display: flex; align-items: center; gap: var(--spacer-8); }
+    .uikit-responsive-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacer-16); }
+    .uikit-table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+    .uikit-truncate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .uikit-nowrap { white-space: nowrap; flex-shrink: 0; }
+    .uikit-action-cell { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 160px; overflow: hidden; }
+    .uikit-action { min-width: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    [data-component] { min-width: 0; max-width: 100%; overflow: hidden; }
+    @media (max-width: 900px) { .uikit-shell { grid-template-columns: minmax(0, 1fr); } .uikit-responsive-grid { grid-template-columns: minmax(0, 1fr); } }
+    @media (max-width: 640px) { .uikit-toolbar { flex-direction: column; align-items: stretch; } .uikit-responsive-grid { grid-template-columns: minmax(0, 1fr); } }
+  </style>
+  </head>
+  <body data-layout-guard="uikit-v1">
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Primary navigation">
+        <a class="brand" href="#">
+          <span class="brand__text">
+            <span class="brand__name">TraeWork</span>
+            <span class="brand__meta">Operations suite</span>
+          </span>
+        </a>
+
+        <nav class="sidebar__section" aria-label="Dashboard">
+          <div class="sidebar__section-title">Navigation</div>
+          <a class="nav-item nav-item--active" href="#">
+            <span class="icon icon--16 icon--home" aria-hidden="true" data-asset-icon="../../assets/icons/home.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#262626" xmlns="http://www.w3.org/2000/svg"><path d="M7.72146 1.27382C7.92609 1.17184 8.17381 1.18939 8.36404 1.32558L14.697 5.85976C14.9777 6.0607 15.0425 6.45118 14.8416 6.73183C14.6406 7.01221 14.2501 7.07624 13.9695 6.87538L7.99978 2.60097L2.03103 6.87538C1.75053 7.0762 1.36 7.01208 1.15896 6.73183C0.958144 6.45132 1.02226 6.06079 1.30252 5.85976L7.6365 1.32558L7.72146 1.27382Z" fill="#262626"/><path d="M2.70825 10.1333V5.17432C2.70825 4.82914 2.98807 4.54932 3.33325 4.54932C3.67843 4.54932 3.95825 4.82914 3.95825 5.17432V10.1333C3.95825 10.7036 3.95896 11.0939 3.98364 11.396C4.00771 11.6906 4.05111 11.8464 4.10767 11.9575C4.23948 12.2162 4.4505 12.4263 4.70923 12.5581C4.82034 12.6147 4.9759 12.659 5.27075 12.6831C5.57287 12.7078 5.9632 12.7085 6.53345 12.7085H9.46704C10.0372 12.7085 10.4277 12.7078 10.7297 12.6831C11.0243 12.659 11.1802 12.6147 11.2913 12.5581C11.5498 12.4263 11.7601 12.2161 11.8918 11.9575C11.9484 11.8464 11.9928 11.6907 12.0168 11.396C12.0415 11.0939 12.0413 10.7036 12.0413 10.1333V5.17432C12.0413 4.82925 12.3212 4.54949 12.6663 4.54932C13.0114 4.54932 13.2913 4.82914 13.2913 5.17432V10.1333C13.2913 10.6829 13.2918 11.1328 13.262 11.4976C13.2316 11.8697 13.1665 12.2082 13.0051 12.5249C12.7535 13.0188 12.3525 13.4207 11.8586 13.6724C11.542 13.8337 11.2034 13.8988 10.8313 13.9292C10.4665 13.959 10.0166 13.9585 9.46704 13.9585H6.53345C5.98393 13.9585 5.53397 13.959 5.16919 13.9292C4.79715 13.8988 4.45846 13.8336 4.14185 13.6724C3.64792 13.4207 3.24606 13.0189 2.99439 12.5249C2.83308 12.2082 2.76795 11.8697 2.73755 11.4976C2.70777 11.1328 2.70825 10.6829 2.70825 10.1333Z" fill="#262626"/><path d="M8.70874 13.3335V10.6665C8.70856 10.2754 8.39087 9.9585 7.99976 9.9585C7.60879 9.95867 7.29192 10.2755 7.29175 10.6665V13.3335C7.29175 13.6787 7.01193 13.9585 6.66675 13.9585C6.32157 13.9585 6.04175 13.6787 6.04175 13.3335V10.6665C6.04192 9.58518 6.91844 8.70867 7.99976 8.7085C9.08123 8.7085 9.95856 9.58508 9.95874 10.6665V13.3335C9.95874 13.6786 9.67877 13.9583 9.33374 13.9585C8.98856 13.9585 8.70874 13.6787 8.70874 13.3335Z" fill="#262626"/></svg></span>
+            <span class="nav-item__label">Dashboard</span>
+          </a>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--ecommerce" aria-hidden="true" data-asset-icon="../../assets/icons/Table.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M10.1338 2C10.6825 2 11.1342 1.99934 11.501 2.0293C11.8757 2.05992 12.2203 2.12616 12.5439 2.29102C13.0456 2.54667 13.4533 2.95438 13.709 3.45605C13.8739 3.77961 13.9401 4.1243 13.9707 4.49902C14.0007 4.86583 14 5.31749 14 5.86621V10.1338C14 10.6825 14.0007 11.1342 13.9707 11.501C13.9401 11.8757 13.8739 12.2203 13.709 12.5439C13.4533 13.0456 13.0456 13.4533 12.5439 13.709C12.2203 13.8739 11.8757 13.9401 11.501 13.9707C11.1342 14.0007 10.6825 14 10.1338 14H5.86621C5.31749 14 4.86583 14.0007 4.49902 13.9707C4.1243 13.9401 3.77961 13.8739 3.45605 13.709C2.95438 13.4533 2.54667 13.0456 2.29102 12.5439C2.12616 12.2203 2.05992 11.8757 2.0293 11.501C1.99934 11.1342 2 10.6825 2 10.1338V5.86621C2 5.31749 1.99935 4.86583 2.0293 4.49902C2.05992 4.1243 2.12616 3.77961 2.29102 3.45605C2.54666 2.95439 2.95439 2.54666 3.45605 2.29102C3.77961 2.12616 4.1243 2.05992 4.49902 2.0293C4.86583 1.99935 5.31749 2 5.86621 2H10.1338ZM3.33301 7.29199V10.1338C3.33301 10.7046 3.3339 11.0926 3.3584 11.3926C3.38226 11.6846 3.42544 11.8342 3.47852 11.9385C3.60634 12.1893 3.81064 12.3937 4.06152 12.5215C4.16578 12.5746 4.31533 12.6178 4.60742 12.6416C4.90739 12.6661 5.29545 12.667 5.86621 12.667H6.04199V7.29199H3.33301ZM7.29199 7.29199V12.667H10.1338C10.7046 12.667 11.0926 12.6661 11.3926 12.6416C11.6846 12.6178 11.8342 12.5746 11.9385 12.5215C12.1893 12.3937 12.3937 12.1893 12.5215 11.9385C12.5746 11.8342 12.6178 11.6846 12.6416 11.3926C12.6661 11.0926 12.667 10.7046 12.667 10.1338V7.29199H7.29199ZM5.86621 3.33301C5.29544 3.33301 4.90739 3.3339 4.60742 3.3584C4.31533 3.38226 4.16578 3.42543 4.06152 3.47852C3.81064 3.60634 3.60634 3.81064 3.47852 4.06152C3.42543 4.16578 3.38226 4.31533 3.3584 4.60742C3.3339 4.90739 3.33301 5.29544 3.33301 5.86621V6.04199H6.04199V3.33301H5.86621ZM7.29199 6.04199H12.667V5.86621C12.667 5.29545 12.6661 4.90739 12.6416 4.60742C12.6178 4.31533 12.5746 4.16578 12.5215 4.06152C12.3937 3.81064 12.1893 3.60634 11.9385 3.47852C11.8342 3.42544 11.6846 3.38226 11.3926 3.3584C11.0926 3.3339 10.7046 3.33301 10.1338 3.33301H7.29199V6.04199Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">E-Commerce</span>
+          </a>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--community" aria-hidden="true" data-asset-icon="../../assets/icons/community.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M6.5 8.43506C6.84518 8.43506 7.125 8.71488 7.125 9.06006C7.125 9.40524 6.84518 9.68506 6.5 9.68506H3C2.24061 9.68506 1.625 10.3007 1.625 11.0601C1.625 11.8195 2.24061 12.4351 3 12.4351H13C13.7594 12.4351 14.375 11.8195 14.375 11.0601C14.375 10.3007 13.7594 9.68506 13 9.68506H9.5C9.15482 9.68506 8.875 9.40524 8.875 9.06006C8.875 8.71488 9.15482 8.43506 9.5 8.43506H13C14.4497 8.43506 15.625 9.61031 15.625 11.0601C15.625 12.5098 14.4497 13.6851 13 13.6851H3C1.55025 13.6851 0.375 12.5098 0.375 11.0601C0.375 9.61031 1.55025 8.43506 3 8.43506H6.5ZM4 2.31494C5.44979 2.31494 6.625 3.4902 6.625 4.93994C6.625 6.38972 5.44978 7.56494 4 7.56494C2.55022 7.56494 1.375 6.38972 1.375 4.93994C1.375 3.4902 2.55022 2.31494 4 2.31494ZM12 2.31494C13.4498 2.31494 14.625 3.4902 14.625 4.93994C14.625 6.38972 13.4498 7.56494 12 7.56494C10.5502 7.56494 9.375 6.38972 9.375 4.93994C9.375 3.4902 10.5502 2.31494 12 2.31494ZM4 3.56494C3.24058 3.56494 2.625 4.18055 2.625 4.93994C2.625 5.69936 3.24058 6.31494 4 6.31494C4.75942 6.31494 5.375 5.69936 5.375 4.93994C5.375 4.18055 4.75942 3.56494 4 3.56494ZM12 3.56494C11.2406 3.56494 10.625 4.18055 10.625 4.93994C10.625 5.69936 11.2406 6.31494 12 6.31494C12.7594 6.31494 13.375 5.69936 13.375 4.93994C13.375 4.18055 12.7594 3.56494 12 3.56494Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">Community</span>
+          </a>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--bonus" aria-hidden="true" data-asset-icon="../../assets/icons/bonus.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M13.375 8C13.375 5.03147 10.9686 2.625 8 2.625C5.03147 2.625 2.625 5.03147 2.625 8C2.625 10.9686 5.03147 13.375 8 13.375C10.9686 13.375 13.375 10.9686 13.375 8ZM7.375 11.667V11.2168C6.83464 11.0871 6.35761 10.7919 6.0498 10.3662C5.84756 10.0865 5.91071 9.69541 6.19043 9.49316C6.47008 9.29128 6.86031 9.35432 7.0625 9.63379C7.21628 9.84647 7.55302 10.042 8 10.042H8.12207C8.76717 10.0418 9.04194 9.64519 9.04199 9.43066C9.04199 9.27812 8.92747 9.04424 8.58008 8.90527L6.95508 8.25488C6.25569 7.97498 5.70801 7.35304 5.70801 6.56934V6.51855C5.70801 5.55637 6.50218 4.91502 7.375 4.75098V4.33301C7.37518 3.98798 7.65493 3.70801 8 3.70801C8.34507 3.70801 8.62482 3.98798 8.625 4.33301V4.78223C9.16545 4.91188 9.64236 5.20801 9.9502 5.63379C10.1524 5.91352 10.0893 6.3046 9.80957 6.50684C9.52992 6.70873 9.13969 6.64568 8.9375 6.36621C8.78375 6.15355 8.44698 5.95801 8 5.95801H7.81445C7.20434 5.95815 6.95801 6.33214 6.95801 6.51855V6.56934C6.95801 6.72189 7.07253 6.95576 7.41992 7.09473L9.04492 7.74512C9.74429 8.02502 10.292 8.64695 10.292 9.43066C10.292 10.3989 9.50607 11.0524 8.625 11.2363V11.667C8.62482 12.012 8.34507 12.292 8 12.292C7.65493 12.292 7.37518 12.012 7.375 11.667ZM14.625 8C14.625 11.6589 11.6589 14.625 8 14.625C4.34112 14.625 1.375 11.6589 1.375 8C1.375 4.34112 4.34112 1.375 8 1.375C11.6589 1.375 14.625 4.34112 14.625 8Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">Finance</span>
+          </a>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--job-board" aria-hidden="true" data-asset-icon="../../assets/icons/Table.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M10.1338 2C10.6825 2 11.1342 1.99934 11.501 2.0293C11.8757 2.05992 12.2203 2.12616 12.5439 2.29102C13.0456 2.54667 13.4533 2.95438 13.709 3.45605C13.8739 3.77961 13.9401 4.1243 13.9707 4.49902C14.0007 4.86583 14 5.31749 14 5.86621V10.1338C14 10.6825 14.0007 11.1342 13.9707 11.501C13.9401 11.8757 13.8739 12.2203 13.709 12.5439C13.4533 13.0456 13.0456 13.4533 12.5439 13.709C12.2203 13.8739 11.8757 13.9401 11.501 13.9707C11.1342 14.0007 10.6825 14 10.1338 14H5.86621C5.31749 14 4.86583 14.0007 4.49902 13.9707C4.1243 13.9401 3.77961 13.8739 3.45605 13.709C2.95438 13.4533 2.54667 13.0456 2.29102 12.5439C2.12616 12.2203 2.05992 11.8757 2.0293 11.501C1.99934 11.1342 2 10.6825 2 10.1338V5.86621C2 5.31749 1.99935 4.86583 2.0293 4.49902C2.05992 4.1243 2.12616 3.77961 2.29102 3.45605C2.54666 2.95439 2.95439 2.54666 3.45605 2.29102C3.77961 2.12616 4.1243 2.05992 4.49902 2.0293C4.86583 1.99935 5.31749 2 5.86621 2H10.1338ZM3.33301 7.29199V10.1338C3.33301 10.7046 3.3339 11.0926 3.3584 11.3926C3.38226 11.6846 3.42544 11.8342 3.47852 11.9385C3.60634 12.1893 3.81064 12.3937 4.06152 12.5215C4.16578 12.5746 4.31533 12.6178 4.60742 12.6416C4.90739 12.6661 5.29545 12.667 5.86621 12.667H6.04199V7.29199H3.33301ZM7.29199 7.29199V12.667H10.1338C10.7046 12.667 11.0926 12.6661 11.3926 12.6416C11.6846 12.6178 11.8342 12.5746 11.9385 12.5215C12.1893 12.3937 12.3937 12.1893 12.5215 11.9385C12.5746 11.8342 12.6178 11.6846 12.6416 11.3926C12.6661 11.0926 12.667 10.7046 12.667 10.1338V7.29199H7.29199ZM5.86621 3.33301C5.29544 3.33301 4.90739 3.3339 4.60742 3.3584C4.31533 3.38226 4.16578 3.42543 4.06152 3.47852C3.81064 3.60634 3.60634 3.81064 3.47852 4.06152C3.42543 4.16578 3.38226 4.31533 3.3584 4.60742C3.3339 4.90739 3.33301 5.29544 3.33301 5.86621V6.04199H6.04199V3.33301H5.86621ZM7.29199 6.04199H12.667V5.86621C12.667 5.29545 12.6661 4.90739 12.6416 4.60742C12.6178 4.31533 12.5746 4.16578 12.5215 4.06152C12.3937 3.81064 12.1893 3.60634 11.9385 3.47852C11.8342 3.42544 11.6846 3.38226 11.3926 3.3584C11.0926 3.3339 10.7046 3.33301 10.1338 3.33301H7.29199V6.04199Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">Job Board</span>
+          </a>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--tasks" aria-hidden="true" data-asset-icon="../../assets/icons/todo.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M12.7087 11.3335V4.6665C12.7087 3.90722 12.093 3.29168 11.3337 3.2915H4.66675C3.90736 3.2915 3.29175 3.90712 3.29175 4.6665V11.3335C3.29192 12.0928 3.90746 12.7085 4.66675 12.7085H11.3337C11.6788 12.7087 11.9587 12.9884 11.9587 13.3335C11.9586 13.6784 11.6787 13.9583 11.3337 13.9585H4.66675C3.21712 13.9585 2.04192 12.7831 2.04175 11.3335V4.6665C2.04175 3.21676 3.217 2.0415 4.66675 2.0415H11.3337C12.7834 2.04168 13.9587 3.21687 13.9587 4.6665V11.3335C13.9586 12.783 12.7833 13.9583 11.3337 13.9585H10.6667C10.3217 13.9585 10.0419 13.6785 10.0417 13.3335C10.0417 12.9883 10.3216 12.7085 10.6667 12.7085H11.3337C12.0929 12.7083 12.7086 12.0927 12.7087 11.3335ZM9.32104 6.14111C9.519 5.85837 9.90937 5.78986 10.1921 5.98779C10.4747 6.18573 10.5432 6.57521 10.3455 6.85791L8.01245 10.1919C7.91066 10.3373 7.75114 10.4323 7.57495 10.4536C7.39885 10.4749 7.22212 10.42 7.08862 10.3032L5.75562 9.13721C5.49598 8.91003 5.46913 8.51515 5.69604 8.25537C5.92322 7.99574 6.3181 7.96889 6.57788 8.1958L7.38745 8.90381L9.32104 6.14111Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">Tasks</span>
+          </a>
+        </nav>
+
+        <nav class="sidebar__section" aria-label="Workspace">
+          <div class="sidebar__section-title">Display</div>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--email" aria-hidden="true" data-asset-icon="../../assets/icons/email.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M14.2793 6.22534L9.17383 8.77905C8.43497 9.14838 7.56504 9.14836 6.82617 8.77905V8.77808L1.7207 6.22534L2.2793 5.10815L7.38477 7.66089C7.77188 7.85444 8.22812 7.85444 8.61523 7.66089L13.7207 5.10815L14.2793 6.22534Z" fill="#737373"/><path d="M13.375 5.25C13.375 4.49061 12.7594 3.875 12 3.875H4C3.24061 3.875 2.625 4.49061 2.625 5.25V10.75C2.625 11.5094 3.24061 12.125 4 12.125H12C12.7594 12.125 13.375 11.5094 13.375 10.75V5.25ZM14.625 10.75C14.625 12.1997 13.4497 13.375 12 13.375H4C2.55025 13.375 1.375 12.1997 1.375 10.75V5.25C1.375 3.80025 2.55025 2.625 4 2.625H12C13.4497 2.625 14.625 3.80025 14.625 5.25V10.75Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">Messages</span>
+            <span class="nav-item__count">4</span>
+          </a>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--inbox" aria-hidden="true" data-asset-icon="../../assets/icons/email.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M14.2793 6.22534L9.17383 8.77905C8.43497 9.14838 7.56504 9.14836 6.82617 8.77905V8.77808L1.7207 6.22534L2.2793 5.10815L7.38477 7.66089C7.77188 7.85444 8.22812 7.85444 8.61523 7.66089L13.7207 5.10815L14.2793 6.22534Z" fill="#737373"/><path d="M13.375 5.25C13.375 4.49061 12.7594 3.875 12 3.875H4C3.24061 3.875 2.625 4.49061 2.625 5.25V10.75C2.625 11.5094 3.24061 12.125 4 12.125H12C12.7594 12.125 13.375 11.5094 13.375 10.75V5.25ZM14.625 10.75C14.625 12.1997 13.4497 13.375 12 13.375H4C2.55025 13.375 1.375 12.1997 1.375 10.75V5.25C1.375 3.80025 2.55025 2.625 4 2.625H12C13.4497 2.625 14.625 3.80025 14.625 5.25V10.75Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">Inbox</span>
+          </a>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--calendar" aria-hidden="true" data-asset-icon="../../assets/icons/calendar.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M10.667 1.375C11.0121 1.37513 11.292 1.6549 11.292 2V2.70801H11.334C12.7834 2.70832 13.9589 3.88357 13.959 5.33301V11.333C13.959 12.7826 12.7835 13.9577 11.334 13.958H4.66699C3.21725 13.958 2.04199 12.7828 2.04199 11.333V5.33301C2.04212 3.88338 3.21733 2.70801 4.66699 2.70801H4.70801V2C4.70801 1.6549 4.98794 1.37513 5.33301 1.375C5.67819 1.375 5.95801 1.65482 5.95801 2V2.70801H10.042V2C10.042 1.65482 10.3218 1.375 10.667 1.375ZM3.29199 11.333C3.29199 12.0924 3.9076 12.708 4.66699 12.708H11.334C12.0931 12.7077 12.709 12.0922 12.709 11.333V7.29199H3.29199V11.333ZM4.66699 3.95801C3.90768 3.95801 3.29212 4.57373 3.29199 5.33301V6.04199H12.709V5.33301C12.7089 4.57391 12.0931 3.95832 11.334 3.95801H4.66699Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">Calendar</span>
+          </a>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--chart" aria-hidden="true" data-asset-icon="../../assets/icons/Bar-list.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M14 11.375C14.3452 11.375 14.625 11.6548 14.625 12C14.625 12.3452 14.3452 12.625 14 12.625H2C1.65482 12.625 1.375 12.3452 1.375 12C1.375 11.6548 1.65482 11.375 2 11.375H14ZM8.66699 7.375C9.01202 7.37518 9.29199 7.65493 9.29199 8C9.29199 8.34507 9.01202 8.62482 8.66699 8.625H2C1.65482 8.625 1.375 8.34518 1.375 8C1.375 7.65482 1.65482 7.375 2 7.375H8.66699ZM14 3.375C14.3452 3.375 14.625 3.65482 14.625 4C14.625 4.34518 14.3452 4.625 14 4.625H2C1.65482 4.625 1.375 4.34518 1.375 4C1.375 3.65482 1.65482 3.375 2 3.375H14Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">Campaigns</span>
+          </a>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--settings" aria-hidden="true" data-asset-icon="../../assets/icons/settings.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.375C8.58386 1.375 9.12929 1.66661 9.45312 2.15234L9.7041 2.5293C9.93056 2.86888 10.3434 3.03299 10.7412 2.94141L10.9893 2.88379C11.585 2.74631 12.2093 2.92608 12.6416 3.3584C13.0739 3.7907 13.2537 4.41501 13.1162 5.01074L13.0586 5.25879C12.967 5.65656 13.1311 6.06946 13.4707 6.2959L13.8477 6.54688C14.3334 6.87071 14.625 7.41615 14.625 8C14.625 8.58385 14.3334 9.12929 13.8477 9.45312L13.4707 9.7041C13.1311 9.93055 12.967 10.3434 13.0586 10.7412L13.1162 10.9893L13.1523 11.2139C13.2042 11.7384 13.0198 12.2634 12.6416 12.6416C12.2093 13.0739 11.585 13.2537 10.9893 13.1162L10.7412 13.0586C10.3434 12.967 9.93055 13.1311 9.7041 13.4707L9.45312 13.8477C9.12929 14.3334 8.58385 14.625 8 14.625C7.41615 14.625 6.87071 14.3334 6.54688 13.8477L6.2959 13.4707C6.06946 13.1311 5.65656 12.967 5.25879 13.0586L5.01074 13.1162C4.41501 13.2537 3.7907 13.0739 3.3584 12.6416C2.92608 12.2093 2.74631 11.585 2.88379 10.9893L2.94141 10.7412C3.03299 10.3434 2.86888 9.93056 2.5293 9.7041L2.15234 9.45312C1.6666 9.12929 1.375 8.58386 1.375 8C1.375 7.41614 1.6666 6.87071 2.15234 6.54688L2.5293 6.2959C2.86887 6.06945 3.03299 5.65655 2.94141 5.25879L2.88379 5.01074C2.74631 4.41501 2.92608 3.79072 3.3584 3.3584C3.79072 2.92608 4.41502 2.74631 5.01074 2.88379L5.25879 2.94141C5.65655 3.03299 6.06945 2.86887 6.2959 2.5293L6.54688 2.15234C6.87071 1.6666 7.41614 1.375 8 1.375ZM8 2.625C7.83413 2.625 7.67895 2.70766 7.58691 2.8457L7.33594 3.22266C6.82102 3.99493 5.88197 4.36778 4.97754 4.15918L4.72949 4.10254C4.55371 4.06197 4.36975 4.11463 4.24219 4.24219C4.11463 4.36975 4.06197 4.5537 4.10254 4.72949L4.15918 4.97754C4.36778 5.88197 3.99493 6.82102 3.22266 7.33594L2.8457 7.58691C2.70766 7.67895 2.625 7.83413 2.625 8C2.625 8.16587 2.70766 8.32105 2.8457 8.41309L3.22266 8.66406C3.99493 9.17898 4.36779 10.118 4.15918 11.0225L4.10254 11.2705C4.06198 11.4463 4.11463 11.6303 4.24219 11.7578C4.36977 11.8854 4.55371 11.938 4.72949 11.8975L4.97754 11.8408C5.88195 11.6322 6.82101 12.005 7.33594 12.7773L7.58691 13.1543C7.67894 13.2923 7.83412 13.375 8 13.375C8.16588 13.375 8.32106 13.2923 8.41309 13.1543L8.66406 12.7773C9.17899 12.005 10.118 11.6322 11.0225 11.8408L11.2695 11.8975C11.4453 11.938 11.6302 11.8854 11.7578 11.7578C11.8854 11.6302 11.938 11.4463 11.8975 11.2705V11.2695L11.8408 11.0225C11.6322 10.118 12.005 9.17899 12.7773 8.66406L13.1543 8.41309C13.2923 8.32106 13.375 8.16588 13.375 8C13.375 7.83412 13.2923 7.67894 13.1543 7.58691L12.7773 7.33594C12.005 6.82101 11.6322 5.88195 11.8408 4.97754L11.8975 4.72949C11.938 4.55372 11.8854 4.36977 11.7578 4.24219C11.6303 4.11463 11.4463 4.06198 11.2705 4.10254L11.0225 4.15918C10.118 4.36779 9.17898 3.99493 8.66406 3.22266L8.41309 2.8457C8.32105 2.70767 8.16587 2.625 8 2.625ZM8 5.375C9.44978 5.375 10.625 6.55022 10.625 8C10.625 9.44978 9.44978 10.625 8 10.625C6.55022 10.625 5.375 9.44978 5.375 8C5.375 6.55022 6.55022 5.375 8 5.375ZM8 6.625C7.24058 6.625 6.625 7.24058 6.625 8C6.625 8.75942 7.24058 9.375 8 9.375C8.75942 9.375 9.375 8.75942 9.375 8C9.375 7.24058 8.75942 6.625 8 6.625Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">Settings</span>
+          </a>
+        </nav>
+
+        <div class="sidebar__footer">
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 help-icon icon--help" aria-hidden="true" data-asset-icon="../../assets/icons/Help.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M13.375 8C13.375 5.03147 10.9686 2.625 8 2.625C5.03147 2.625 2.625 5.03147 2.625 8C2.625 10.9686 5.03147 13.375 8 13.375C10.9686 13.375 13.375 10.9686 13.375 8ZM14.625 8C14.625 11.6589 11.6589 14.625 8 14.625C4.34112 14.625 1.375 11.6589 1.375 8C1.375 4.34112 4.34112 1.375 8 1.375C11.6589 1.375 14.625 4.34112 14.625 8Z" fill="#737373"/><path d="M7.375 10.6735V10.6667C7.375 10.3215 7.65482 10.0417 8 10.0417C8.34518 10.0417 8.625 10.3215 8.625 10.6667V10.6735C8.62491 11.0186 8.34512 11.2985 8 11.2985C7.65488 11.2985 7.37509 11.0186 7.375 10.6735Z" fill="#737373"/><path d="M7.37536 8.66635C7.37543 8.24488 7.51131 7.91232 7.7445 7.65463C7.94477 7.43336 8.20662 7.28772 8.34216 7.20541C8.5102 7.10337 8.58294 7.04783 8.62927 6.98764C8.6594 6.94847 8.70837 6.86936 8.70837 6.66635C8.70819 6.27541 8.39131 5.95853 8.00036 5.95834C7.739 5.95834 7.50953 6.09953 7.3861 6.31284C7.21336 6.61147 6.83131 6.7138 6.53259 6.54135C6.2338 6.36852 6.13124 5.98565 6.30407 5.68686C6.64174 5.10323 7.27475 4.70834 8.00036 4.70834C9.08168 4.70853 9.95819 5.58506 9.95837 6.66635C9.95837 7.10731 9.84035 7.46451 9.62048 7.75034C9.41683 8.01497 9.15575 8.17349 8.9906 8.27377C8.79297 8.39378 8.72097 8.43858 8.67126 8.4935C8.65456 8.51193 8.62541 8.54223 8.62536 8.66635C8.62536 9.01142 8.34538 9.29117 8.00036 9.29135C7.65518 9.29135 7.37536 9.01153 7.37536 8.66635Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">Need help</span>
+          </a>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--logout" aria-hidden="true" data-asset-icon="../../assets/icons/logout.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M2.04175 11.3336V4.66663C2.04175 3.21688 3.217 2.04163 4.66675 2.04163H7.49976C7.84493 2.04163 8.12476 2.32145 8.12476 2.66663C8.12476 3.0118 7.84493 3.29163 7.49976 3.29163H4.66675C3.90736 3.29163 3.29175 3.90724 3.29175 4.66663V11.3336C3.29192 12.0929 3.90746 12.7086 4.66675 12.7086H7.49976C7.84493 12.7086 8.12476 12.9884 8.12476 13.3336C8.12458 13.6786 7.84483 13.9586 7.49976 13.9586H4.66675C3.21712 13.9586 2.04192 12.7833 2.04175 11.3336ZM9.89136 4.55823C10.1354 4.31415 10.5311 4.31415 10.7751 4.55823L13.7751 7.55823C14.0192 7.80231 14.0192 8.19794 13.7751 8.44202L10.7751 11.442C10.5311 11.6859 10.1354 11.686 9.89136 11.442C9.64733 11.198 9.64744 10.8023 9.89136 10.5582L11.825 8.62463H5.83374C5.48856 8.62463 5.20874 8.34481 5.20874 7.99963C5.20892 7.65461 5.48867 7.37463 5.83374 7.37463H11.824L9.89136 5.44202C9.64733 5.19799 9.64744 4.80232 9.89136 4.55823Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">Sign out</span>
+          </a>
+        </div>
+      </aside>
+
+      <div class="workspace">
+        <header class="topbar">
+          <button class="ds-btn ds-btn--icon mobile-menu" type="button" id="openMobileNav" aria-label="Open navigation">
+            <span class="icon icon--16 icon--menu" aria-hidden="true" data-asset-icon="../../assets/icons/menu.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M14 11.375C14.3452 11.375 14.625 11.6548 14.625 12C14.625 12.3452 14.3452 12.625 14 12.625H2C1.65482 12.625 1.375 12.3452 1.375 12C1.375 11.6548 1.65482 11.375 2 11.375H14ZM14 7.375C14.3452 7.375 14.625 7.65482 14.625 8C14.625 8.34518 14.3452 8.625 14 8.625H2C1.65482 8.625 1.375 8.34518 1.375 8C1.375 7.65482 1.65482 7.375 2 7.375H14ZM14 3.375C14.3452 3.375 14.625 3.65482 14.625 4C14.625 4.34518 14.3452 4.625 14 4.625H2C1.65482 4.625 1.375 4.34518 1.375 4C1.375 3.65482 1.65482 3.375 2 3.375H14Z" fill="#404040"/></svg></span>
+          </button>
+          <div class="toolbar" aria-label="Global actions">
+            <button class="ds-btn ds-btn--icon" type="button" aria-label="Search">
+              <span class="icon icon--16 icon--search" aria-hidden="true" data-asset-icon="../../assets/icons/Search.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M7.33398 2.04199C10.2562 2.0423 12.625 4.41167 12.625 7.33398C12.6248 8.5697 12.1992 9.70502 11.4893 10.6055L13.7754 12.8916C14.0192 13.1357 14.0193 13.5314 13.7754 13.7754C13.5314 14.0194 13.1357 14.0192 12.8916 13.7754L10.6045 11.4893C9.70413 12.1989 8.56941 12.6249 7.33398 12.625C4.4117 12.625 2.04235 10.2562 2.04199 7.33398C2.04199 4.41148 4.41148 2.04199 7.33398 2.04199ZM7.33398 3.29199C5.10184 3.29199 3.29199 5.10184 3.29199 7.33398C3.29235 9.56583 5.10206 11.375 7.33398 11.375C9.56566 11.3747 11.3746 9.56565 11.375 7.33398C11.375 5.10203 9.56588 3.2923 7.33398 3.29199Z" fill="#404040"/></svg></span>
+            </button>
+            <button class="ds-btn ds-btn--icon" type="button" aria-label="Notifications">
+              <span class="icon icon--16 icon--notification" aria-hidden="true" data-asset-icon="../../assets/icons/Notification.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.375C10.5737 1.37513 12.6957 3.39337 12.8242 5.96387L12.9365 8.21582C12.946 8.40578 12.995 8.59239 13.0801 8.7627L13.8359 10.2734C13.9168 10.4352 13.959 10.6136 13.959 10.7939C13.959 11.4369 13.4369 11.9579 12.7939 11.958H11.2314C10.9396 13.4771 9.60416 14.6248 8 14.625C6.39581 14.6249 5.06051 13.4771 4.76855 11.958H3.20605C2.56315 11.9579 2.04199 11.4369 2.04199 10.7939C2.042 10.6133 2.0842 10.4351 2.16504 10.2734L2.91992 8.7627C3.00502 8.59245 3.05398 8.40584 3.06348 8.21582L3.17676 5.96387C3.30529 3.39342 5.42637 1.37517 8 1.375ZM6.05664 11.958C6.32066 12.7799 7.0905 13.3749 8 13.375C8.90939 13.3749 9.67848 12.7798 9.94238 11.958H6.05664ZM8 2.625C6.09246 2.62517 4.52007 4.12118 4.4248 6.02637L4.3125 8.27832C4.29436 8.64112 4.20046 8.99642 4.03809 9.32129L3.34473 10.708H12.6553L11.9619 9.32129C11.7997 8.99651 11.7066 8.64114 11.6885 8.27832L11.5762 6.02637C11.4809 4.12116 9.90758 2.62513 8 2.625Z" fill="#404040"/></svg></span>
+            </button>
+            <button class="ds-btn ds-btn--icon" type="button" aria-label="Need help">
+              <span class="icon icon--16 help-icon icon--help" aria-hidden="true" data-asset-icon="../../assets/icons/Help.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M13.375 8C13.375 5.03147 10.9686 2.625 8 2.625C5.03147 2.625 2.625 5.03147 2.625 8C2.625 10.9686 5.03147 13.375 8 13.375C10.9686 13.375 13.375 10.9686 13.375 8ZM14.625 8C14.625 11.6589 11.6589 14.625 8 14.625C4.34112 14.625 1.375 11.6589 1.375 8C1.375 4.34112 4.34112 1.375 8 1.375C11.6589 1.375 14.625 4.34112 14.625 8Z" fill="#404040"/><path d="M7.375 10.6735V10.6667C7.375 10.3215 7.65482 10.0417 8 10.0417C8.34518 10.0417 8.625 10.3215 8.625 10.6667V10.6735C8.62491 11.0186 8.34512 11.2985 8 11.2985C7.65488 11.2985 7.37509 11.0186 7.375 10.6735Z" fill="#404040"/><path d="M7.37536 8.66635C7.37543 8.24488 7.51131 7.91232 7.7445 7.65463C7.94477 7.43336 8.20662 7.28772 8.34216 7.20541C8.5102 7.10337 8.58294 7.04783 8.62927 6.98764C8.6594 6.94847 8.70837 6.86936 8.70837 6.66635C8.70819 6.27541 8.39131 5.95853 8.00036 5.95834C7.739 5.95834 7.50953 6.09953 7.3861 6.31284C7.21336 6.61147 6.83131 6.7138 6.53259 6.54135C6.2338 6.36852 6.13124 5.98565 6.30407 5.68686C6.64174 5.10323 7.27475 4.70834 8.00036 4.70834C9.08168 4.70853 9.95819 5.58506 9.95837 6.66635C9.95837 7.10731 9.84035 7.46451 9.62048 7.75034C9.41683 8.01497 9.15575 8.17349 8.9906 8.27377C8.79297 8.39378 8.72097 8.43858 8.67126 8.4935C8.65456 8.51193 8.62541 8.54223 8.62536 8.66635C8.62536 9.01142 8.34538 9.29117 8.00036 9.29135C7.65518 9.29135 7.37536 9.01153 7.37536 8.66635Z" fill="#404040"/></svg></span>
+            </button>
+            <span class="topbar__divider" aria-hidden="true"></span>
+            <button class="user-menu" type="button" aria-label="Open account menu">
+              <span class="avatar">AC</span>
+              <span class="user-menu__label">Acme Inc.</span>
+              <span class="icon icon--16 icon--down" aria-hidden="true" data-asset-icon="../../assets/icons/Down.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.2249 6.22429C10.469 5.98059 10.8647 5.98048 11.1087 6.22429C11.3528 6.46837 11.3528 6.86498 11.1087 7.10905L9.14876 9.06804C8.51414 9.70255 7.48548 9.70261 6.8509 9.06804L4.89094 7.10905C4.64687 6.86498 4.64687 6.46837 4.89094 6.22429C5.13502 5.98021 5.53163 5.98021 5.77571 6.22429L7.73469 8.18425C7.88112 8.33067 8.1185 8.3306 8.26497 8.18425L10.2249 6.22429Z" fill="#404040"/></svg></span>
+            </button>
+          </div>
+        </header>
+
+        <main class="main">
+          <div class="page-header">
+            <h1 class="page-title">Dashboard</h1>
+            <div class="toolbar" aria-label="Dashboard filters">
+              <button class="ds-btn ds-btn--secondary" type="button" aria-label="Filter dashboard">
+                <span class="icon icon--16 icon--filter" aria-hidden="true" data-asset-icon="../../assets/icons/filter.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.70874 12.8717V10.1617C8.70874 9.46557 8.98503 8.79757 9.47729 8.3053L12.3396 5.44397C12.5759 5.20758 12.7087 4.88663 12.7087 4.55237C12.7087 3.8562 12.1441 3.29172 11.448 3.29163H4.55249C3.85627 3.29163 3.29175 3.85615 3.29175 4.55237C3.29178 4.88666 3.4245 5.20758 3.66089 5.44397L6.52319 8.3053C7.01547 8.79758 7.29175 9.4656 7.29175 10.1617V13.3717C7.2918 13.3815 7.29383 13.3868 7.29565 13.3903C7.29815 13.3949 7.30253 13.4012 7.30933 13.4059C7.31616 13.4106 7.32367 13.413 7.32886 13.4137C7.33278 13.4142 7.33896 13.4143 7.34839 13.4108L8.6814 12.9108V12.9098C8.69737 12.9038 8.70857 12.8889 8.70874 12.8717ZM13.9587 4.55237C13.9587 5.21817 13.6941 5.85696 13.2234 6.32776L10.3611 9.18909C10.1032 9.44695 9.95874 9.79711 9.95874 10.1617V12.8717C9.95857 13.4099 9.62399 13.8917 9.11987 14.0807L7.78687 14.5807C6.94257 14.8973 6.04202 14.2733 6.04175 13.3717V10.1617C6.04175 9.79711 5.89725 9.44694 5.6394 9.18909L2.7771 6.32776C2.30629 5.85695 2.04178 5.21818 2.04175 4.55237C2.04175 3.16579 3.16591 2.04163 4.55249 2.04163H11.448C12.8345 2.04172 13.9587 3.16586 13.9587 4.55237Z" fill="#404040"/></svg></span>
+                Filter
+              </button>
+              <button class="ds-btn ds-btn--secondary" type="button">
+                <span class="icon icon--16 icon--calendar" aria-hidden="true" data-asset-icon="../../assets/icons/calendar.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.667 1.375C11.0121 1.37513 11.292 1.6549 11.292 2V2.70801H11.334C12.7834 2.70832 13.9589 3.88357 13.959 5.33301V11.333C13.959 12.7826 12.7835 13.9577 11.334 13.958H4.66699C3.21725 13.958 2.04199 12.7828 2.04199 11.333V5.33301C2.04212 3.88338 3.21733 2.70801 4.66699 2.70801H4.70801V2C4.70801 1.6549 4.98794 1.37513 5.33301 1.375C5.67819 1.375 5.95801 1.65482 5.95801 2V2.70801H10.042V2C10.042 1.65482 10.3218 1.375 10.667 1.375ZM3.29199 11.333C3.29199 12.0924 3.9076 12.708 4.66699 12.708H11.334C12.0931 12.7077 12.709 12.0922 12.709 11.333V7.29199H3.29199V11.333ZM4.66699 3.95801C3.90768 3.95801 3.29212 4.57373 3.29199 5.33301V6.04199H12.709V5.33301C12.7089 4.57391 12.0931 3.95832 11.334 3.95801H4.66699Z" fill="#404040"/></svg></span>
+                <span class="num">Jan 20, 2022 - Feb 09, 2022</span>
+              </button>
+              <button class="ds-btn ds-btn--brand" type="button">
+                <span class="icon icon--16 icon--plus" aria-hidden="true" data-asset-icon="../../assets/icons/Plus.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#FFFFFF" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M8 4C8.3682 4 8.66667 4.29848 8.66667 4.66667V7.33333H11.3333C11.7015 7.33333 12 7.6318 12 8C12 8.3682 11.7015 8.66667 11.3333 8.66667H8.66667V11.3333C8.66667 11.7015 8.3682 12 8 12C7.6318 12 7.33333 11.7015 7.33333 11.3333V8.66667H4.66667C4.29848 8.66667 4 8.3682 4 8C4 7.6318 4.29848 7.33333 4.66667 7.33333H7.33333V4.66667C7.33333 4.29848 7.6318 4 8 4Z" fill="#FFFFFF"/></svg></span>
+                Add View
+              </button>
+            </div>
+          </div>
+
+          <section class="grid" aria-label="Dashboard metrics and reports">
+            <article class="ds-card metric-card span-3">
+              <div>
+                <div class="card-header">
+                  <h2 class="card-title">Acme Plus</h2>
+                  <button class="ds-btn ds-btn--icon" type="button" aria-label="Open Acme Plus menu">
+                    <span class="icon icon--16 icon--more" aria-hidden="true" data-asset-icon="../../assets/icons/More.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M3.05273 6.77539C3.72911 6.77552 4.27821 7.32362 4.27832 8C4.27822 8.67638 3.72911 9.22545 3.05273 9.22559C2.37634 9.22548 1.82822 8.6764 1.82812 8C1.82823 7.32361 2.37634 6.7755 3.05273 6.77539ZM8 6.77539C8.67637 6.77552 9.22548 7.32362 9.22559 8C9.22549 8.67638 8.67638 9.22545 8 9.22559C7.32363 9.22545 6.77549 8.67638 6.77539 8C6.7755 7.32362 7.32363 6.77553 8 6.77539ZM12.9473 6.77539C13.6236 6.77552 14.1727 7.32362 14.1729 8C14.1728 8.67638 13.6236 9.22545 12.9473 9.22559C12.2709 9.22542 11.7228 8.67636 11.7227 8C11.7228 7.32364 12.2709 6.77556 12.9473 6.77539Z" fill="#404040"/></svg></span>
+                  </button>
+                </div>
+                <div class="metric-label">Sales</div>
+                <div class="metric-value">
+                  <span class="metric-value__num">$24,780</span>
+                  <span class="ds-tag ds-tag--success">+49%</span>
+                </div>
+              </div>
+              <svg class="sparkline" viewBox="0 0 360 96" role="img" aria-label="Acme Plus sales trend">
+                <line class="sparkline__axis" x1="0" y1="82" x2="360" y2="82"></line>
+                <path class="sparkline__muted" d="M0 32 L22 48 L42 45 L64 58 L86 56 L108 71 L130 66 L152 76 L174 62 L196 80 L218 67 L240 60 L262 72 L284 64 L306 50 L328 66 L350 34 L360 42"></path>
+                <path class="sparkline__main" d="M0 22 L18 36 L38 35 L58 52 L80 50 L100 68 L122 68 L144 44 L166 70 L188 36 L210 68 L232 78 L254 60 L276 76 L298 62 L320 70 L338 34 L360 52"></path>
+              </svg>
+            </article>
+
+            <article class="ds-card metric-card span-3">
+              <div>
+                <div class="card-header">
+                  <h2 class="card-title">Acme Advanced</h2>
+                  <button class="ds-btn ds-btn--icon" type="button" aria-label="Open Acme Advanced menu">
+                    <span class="icon icon--16 icon--more" aria-hidden="true" data-asset-icon="../../assets/icons/More.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M3.05273 6.77539C3.72911 6.77552 4.27821 7.32362 4.27832 8C4.27822 8.67638 3.72911 9.22545 3.05273 9.22559C2.37634 9.22548 1.82822 8.6764 1.82812 8C1.82823 7.32361 2.37634 6.7755 3.05273 6.77539ZM8 6.77539C8.67637 6.77552 9.22548 7.32362 9.22559 8C9.22549 8.67638 8.67638 9.22545 8 9.22559C7.32363 9.22545 6.77549 8.67638 6.77539 8C6.7755 7.32362 7.32363 6.77553 8 6.77539ZM12.9473 6.77539C13.6236 6.77552 14.1727 7.32362 14.1729 8C14.1728 8.67638 13.6236 9.22545 12.9473 9.22559C12.2709 9.22542 11.7228 8.67636 11.7227 8C11.7228 7.32364 12.2709 6.77556 12.9473 6.77539Z" fill="#404040"/></svg></span>
+                  </button>
+                </div>
+                <div class="metric-label">Sales</div>
+                <div class="metric-value">
+                  <span class="metric-value__num">$17,489</span>
+                  <span class="ds-tag ds-tag--danger">-14%</span>
+                </div>
+              </div>
+              <svg class="sparkline" viewBox="0 0 360 96" role="img" aria-label="Acme Advanced sales trend">
+                <line class="sparkline__axis" x1="0" y1="82" x2="360" y2="82"></line>
+                <path class="sparkline__muted" d="M0 34 L22 50 L44 46 L66 62 L88 42 L110 70 L132 58 L154 66 L176 52 L198 70 L220 72 L242 76 L264 58 L286 62 L308 52 L330 36 L360 58"></path>
+                <path class="sparkline__main" d="M0 42 L20 58 L40 52 L60 70 L82 66 L104 74 L126 70 L148 62 L170 72 L192 54 L214 66 L236 68 L258 78 L280 70 L302 34 L324 30 L342 42 L360 38"></path>
+              </svg>
+            </article>
+
+            <article class="ds-card metric-card span-3">
+              <div>
+                <div class="card-header">
+                  <h2 class="card-title">Acme Professional</h2>
+                  <button class="ds-btn ds-btn--icon" type="button" aria-label="Open Acme Professional menu">
+                    <span class="icon icon--16 icon--more" aria-hidden="true" data-asset-icon="../../assets/icons/More.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M3.05273 6.77539C3.72911 6.77552 4.27821 7.32362 4.27832 8C4.27822 8.67638 3.72911 9.22545 3.05273 9.22559C2.37634 9.22548 1.82822 8.6764 1.82812 8C1.82823 7.32361 2.37634 6.7755 3.05273 6.77539ZM8 6.77539C8.67637 6.77552 9.22548 7.32362 9.22559 8C9.22549 8.67638 8.67638 9.22545 8 9.22559C7.32363 9.22545 6.77549 8.67638 6.77539 8C6.7755 7.32362 7.32363 6.77553 8 6.77539ZM12.9473 6.77539C13.6236 6.77552 14.1727 7.32362 14.1729 8C14.1728 8.67638 13.6236 9.22545 12.9473 9.22559C12.2709 9.22542 11.7228 8.67636 11.7227 8C11.7228 7.32364 12.2709 6.77556 12.9473 6.77539Z" fill="#404040"/></svg></span>
+                  </button>
+                </div>
+                <div class="metric-label">Sales</div>
+                <div class="metric-value">
+                  <span class="metric-value__num">$9,962</span>
+                  <span class="ds-tag ds-tag--success">+49%</span>
+                </div>
+              </div>
+              <svg class="sparkline" viewBox="0 0 360 96" role="img" aria-label="Acme Professional sales trend">
+                <line class="sparkline__axis" x1="0" y1="82" x2="360" y2="82"></line>
+                <path class="sparkline__muted" d="M0 38 L22 56 L44 48 L66 64 L88 58 L110 62 L132 66 L154 72 L176 54 L198 76 L220 74 L242 68 L264 58 L286 70 L308 42 L330 54 L360 66"></path>
+                <path class="sparkline__main" d="M0 54 L20 62 L40 56 L60 64 L82 60 L104 68 L126 64 L148 70 L170 72 L192 68 L214 66 L236 58 L258 78 L280 70 L302 24 L324 66 L346 62 L360 66"></path>
+              </svg>
+            </article>
+
+            <article class="ds-card chart-card span-6">
+              <div class="card-header">
+                <h2 class="card-title">Direct VS Indirect</h2>
+              </div>
+              <div class="chart-meta chart-meta--wide">
+                <span class="legend-item">
+                  <span class="legend-dot legend-dot--sky" aria-hidden="true"></span>
+                  <span class="legend-value legend-value--xl">$8.25K</span>
+                  <span>Direct</span>
+                </span>
+                <span class="legend-item">
+                  <span class="legend-dot legend-dot--violet" aria-hidden="true"></span>
+                  <span class="legend-value legend-value--xl">$27.7K</span>
+                  <span>Indirect</span>
+                </span>
+              </div>
+              <svg class="line-chart" viewBox="0 0 620 260" role="img" aria-label="Direct and indirect sales by month">
+                <line class="grid-line" x1="48" y1="32" x2="600" y2="32"></line>
+                <line class="grid-line" x1="48" y1="92" x2="600" y2="92"></line>
+                <line class="grid-line" x1="48" y1="152" x2="600" y2="152"></line>
+                <line class="grid-line" x1="48" y1="212" x2="600" y2="212"></line>
+                <text class="axis-label" x="0" y="36">$6K</text>
+                <text class="axis-label" x="0" y="96">$4K</text>
+                <text class="axis-label" x="0" y="156">$2K</text>
+                <text class="axis-label" x="8" y="216">$0</text>
+                <rect class="bar-sky" x="92" y="180" width="18" height="32" rx="4"></rect>
+                <rect class="bar-violet" x="116" y="72" width="18" height="140" rx="4"></rect>
+                <rect class="bar-sky" x="188" y="150" width="18" height="62" rx="4"></rect>
+                <rect class="bar-violet" x="212" y="116" width="18" height="96" rx="4"></rect>
+                <rect class="bar-sky" x="284" y="180" width="18" height="32" rx="4"></rect>
+                <rect class="bar-violet" x="308" y="52" width="18" height="160" rx="4"></rect>
+                <rect class="bar-sky" x="380" y="160" width="18" height="52" rx="4"></rect>
+                <rect class="bar-violet" x="404" y="76" width="18" height="136" rx="4"></rect>
+                <rect class="bar-sky" x="476" y="138" width="18" height="74" rx="4"></rect>
+                <rect class="bar-violet" x="500" y="60" width="18" height="152" rx="4"></rect>
+                <rect class="bar-sky" x="556" y="152" width="18" height="60" rx="4"></rect>
+                <rect class="bar-violet" x="580" y="76" width="18" height="136" rx="4"></rect>
+                <text class="axis-label" x="86" y="246">Dec 22</text>
+                <text class="axis-label" x="184" y="246">Jan 23</text>
+                <text class="axis-label" x="280" y="246">Feb 23</text>
+                <text class="axis-label" x="376" y="246">Mar 23</text>
+                <text class="axis-label" x="472" y="246">Apr 23</text>
+                <text class="axis-label" x="552" y="246">May 23</text>
+              </svg>
+            </article>
+
+            <article class="ds-card chart-card span-6">
+              <div class="card-header">
+                <div>
+                  <h2 class="card-title">Real Time Value</h2>
+                  <div class="metric-value">
+                    <span class="metric-value__num">$55.82</span>
+                    <span class="ds-tag ds-tag--danger">-0.21%</span>
+                  </div>
+                </div>
+                <button class="ds-btn ds-btn--icon" type="button" aria-label="Refresh real time value">
+                  <span class="icon icon--16 icon--refresh" aria-hidden="true" data-asset-icon="../../assets/icons/Refresh.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M2.02283 7.99963C2.023 4.7092 4.69039 2.04181 7.98083 2.04163C9.70593 2.04163 10.9485 2.67858 12.0414 3.7135V2.66663C12.0414 2.32156 12.3214 2.0418 12.6664 2.04163C13.0116 2.04163 13.2914 2.32145 13.2914 2.66663V4.66663C13.2914 5.37987 12.7136 5.95844 12.0004 5.95862H10.0004C9.6553 5.95862 9.37554 5.67865 9.37537 5.33362C9.37537 4.98844 9.65519 4.70862 10.0004 4.70862H11.2748C10.3234 3.77588 9.34581 3.29163 7.98083 3.29163C5.38074 3.29181 3.273 5.39955 3.27283 7.99963C3.27283 10.5999 5.38063 12.7084 7.98083 12.7086C10.0298 12.7086 11.7755 11.3993 12.4222 9.56995C12.5372 9.24461 12.8938 9.07329 13.2191 9.18811C13.5446 9.30315 13.715 9.66052 13.6 9.98596C12.7823 12.2992 10.5761 13.9586 7.98083 13.9586C4.69028 13.9584 2.02283 11.2902 2.02283 7.99963Z" fill="#404040"/></svg></span>
+                </button>
+              </div>
+              <svg class="line-chart" viewBox="0 0 620 260" role="img" aria-label="Real time value trend">
+                <line class="grid-line" x1="48" y1="32" x2="600" y2="32"></line>
+                <line class="grid-line" x1="48" y1="92" x2="600" y2="92"></line>
+                <line class="grid-line" x1="48" y1="152" x2="600" y2="152"></line>
+                <line class="grid-line" x1="48" y1="212" x2="600" y2="212"></line>
+                <text class="axis-label" x="0" y="36">$80</text>
+                <text class="axis-label" x="0" y="96">$60</text>
+                <text class="axis-label" x="0" y="156">$40</text>
+                <text class="axis-label" x="0" y="216">$20</text>
+                <path class="line-chart__path" d="M48 78 L70 96 L92 84 L114 118 L136 104 L158 134 L180 142 L202 152 L224 146 L246 158 L268 148 L290 138 L312 126 L334 134 L356 112 L378 130 L400 104 L422 118 L444 102 L466 96 L488 98 L510 92 L532 104 L554 116 L576 96 L600 108"></path>
+                <text class="axis-label" x="48" y="246">21:19:58</text>
+                <text class="axis-label" x="204" y="246">21:20:22</text>
+                <text class="axis-label" x="360" y="246">21:20:46</text>
+                <text class="axis-label" x="516" y="246">21:21:10</text>
+              </svg>
+            </article>
+
+            <article class="ds-card span-4">
+              <div class="card-header">
+                <h2 class="card-title">Top Countries</h2>
+              </div>
+              <div class="donut-layout">
+                <svg class="donut" viewBox="0 0 160 160" role="img" aria-label="Top countries revenue share">
+                  <circle class="donut__base" cx="80" cy="80" r="40"></circle>
+                  <circle class="donut__segment donut__segment--primary" cx="80" cy="80" r="40"></circle>
+                  <circle class="donut__segment donut__segment--secondary" cx="80" cy="80" r="40"></circle>
+                  <circle class="donut__segment donut__segment--tertiary" cx="80" cy="80" r="40"></circle>
+                  <text class="donut__value" x="80" y="76">79%</text>
+                  <text class="donut__caption" x="80" y="98">covered</text>
+                </svg>
+                <ul class="rank-list">
+                  <li>
+                    <span class="rank-label"><span class="rank-dot rank-dot--violet"></span>United States</span>
+                    <span class="num">47%</span>
+                  </li>
+                  <li>
+                    <span class="rank-label"><span class="rank-dot rank-dot--sky"></span>Italy</span>
+                    <span class="num">29%</span>
+                  </li>
+                  <li>
+                    <span class="rank-label"><span class="rank-dot rank-dot--mint"></span>Other</span>
+                    <span class="num">24%</span>
+                  </li>
+                </ul>
+              </div>
+            </article>
+
+            <article class="ds-card span-8">
+              <div class="card-header">
+                <h2 class="card-title">Top Channels</h2>
+              </div>
+              <div class="table-wrap uikit-table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Source</th>
+                      <th class="num">Visitors</th>
+                      <th class="num">Revenues</th>
+                      <th class="num">Sales</th>
+                      <th class="num">Conversion</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><span class="source-cell"><span class="source-mark">GH</span>Github.com</span></td>
+                      <td class="num">2.4K</td>
+                      <td class="num">$3,877</td>
+                      <td class="num">267</td>
+                      <td class="num">4.7%</td>
+                    </tr>
+                    <tr>
+                      <td><span class="source-cell"><span class="source-mark source-mark--blue">FB</span>Facebook</span></td>
+                      <td class="num">2.2K</td>
+                      <td class="num">$3,426</td>
+                      <td class="num">249</td>
+                      <td class="num">4.4%</td>
+                    </tr>
+                    <tr>
+                      <td><span class="source-cell"><span class="source-mark source-mark--coral">GO</span>Google Organic</span></td>
+                      <td class="num">2.0K</td>
+                      <td class="num">$2,444</td>
+                      <td class="num">224</td>
+                      <td class="num">4.2%</td>
+                    </tr>
+                    <tr>
+                      <td><span class="source-cell"><span class="source-mark source-mark--violet">VM</span>Vimeo.com</span></td>
+                      <td class="num">1.9K</td>
+                      <td class="num">$2,236</td>
+                      <td class="num">220</td>
+                      <td class="num">4.2%</td>
+                    </tr>
+                    <tr>
+                      <td><span class="source-cell"><span class="source-mark">IH</span>Indiehackers.com</span></td>
+                      <td class="num">1.7K</td>
+                      <td class="num">$2,034</td>
+                      <td class="num">204</td>
+                      <td class="num">3.9%</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="ds-card chart-card span-8">
+              <div class="card-header">
+                <div>
+                  <h2 class="card-title">Sales Over Time</h2>
+                  <div class="metric-value">
+                    <span class="legend-value">$1,482</span>
+                    <span class="ds-tag ds-tag--danger">-22%</span>
+                  </div>
+                </div>
+                <div class="tab-row" role="tablist" aria-label="Sales comparison period">
+                  <button class="tab tab--active" type="button" role="tab" aria-selected="true">Current</button>
+                  <button class="tab" type="button" role="tab" aria-selected="false">Previous</button>
+                </div>
+              </div>
+              <svg class="line-chart" viewBox="0 0 860 260" role="img" aria-label="Current and previous sales over time">
+                <line class="grid-line" x1="48" y1="32" x2="840" y2="32"></line>
+                <line class="grid-line" x1="48" y1="92" x2="840" y2="92"></line>
+                <line class="grid-line" x1="48" y1="152" x2="840" y2="152"></line>
+                <line class="grid-line" x1="48" y1="212" x2="840" y2="212"></line>
+                <text class="axis-label" x="0" y="36">$8K</text>
+                <text class="axis-label" x="0" y="96">$6K</text>
+                <text class="axis-label" x="0" y="156">$4K</text>
+                <text class="axis-label" x="0" y="216">$2K</text>
+                <path class="line-chart__path line-chart__path--secondary" d="M48 100 L96 88 L144 96 L192 76 L240 86 L288 72 L336 104 L384 92 L432 112 L480 100 L528 118 L576 106 L624 128 L672 112 L720 124 L768 98 L816 108 L840 96"></path>
+                <path class="line-chart__path" d="M48 128 L96 116 L144 140 L192 126 L240 152 L288 138 L336 164 L384 148 L432 168 L480 142 L528 154 L576 132 L624 148 L672 118 L720 126 L768 102 L816 116 L840 98"></path>
+                <text class="axis-label" x="48" y="246">Jan 20</text>
+                <text class="axis-label" x="220" y="246">Jan 25</text>
+                <text class="axis-label" x="392" y="246">Jan 30</text>
+                <text class="axis-label" x="564" y="246">Feb 04</text>
+                <text class="axis-label" x="736" y="246">Feb 09</text>
+              </svg>
+            </article>
+
+            <article class="ds-card chart-card span-4">
+              <div class="card-header">
+                <div>
+                  <h2 class="card-title">Sales VS Refunds</h2>
+                  <div class="metric-value">
+                    <span class="legend-value">+$6,796</span>
+                    <span class="ds-tag ds-tag--danger">-34%</span>
+                  </div>
+                </div>
+                <button class="ds-btn ds-btn--icon" type="button" aria-label="Open sales refunds menu">
+                  <span class="icon icon--16 icon--more" aria-hidden="true" data-asset-icon="../../assets/icons/More.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M3.05273 6.77539C3.72911 6.77552 4.27821 7.32362 4.27832 8C4.27822 8.67638 3.72911 9.22545 3.05273 9.22559C2.37634 9.22548 1.82822 8.6764 1.82812 8C1.82823 7.32361 2.37634 6.7755 3.05273 6.77539ZM8 6.77539C8.67637 6.77552 9.22548 7.32362 9.22559 8C9.22549 8.67638 8.67638 9.22545 8 9.22559C7.32363 9.22545 6.77549 8.67638 6.77539 8C6.7755 7.32362 7.32363 6.77553 8 6.77539ZM12.9473 6.77539C13.6236 6.77552 14.1727 7.32362 14.1729 8C14.1728 8.67638 13.6236 9.22545 12.9473 9.22559C12.2709 9.22542 11.7228 8.67636 11.7227 8C11.7228 7.32364 12.2709 6.77556 12.9473 6.77539Z" fill="#404040"/></svg></span>
+                </button>
+              </div>
+              <svg class="line-chart" viewBox="0 0 420 260" role="img" aria-label="Sales and refunds trend">
+                <line class="grid-line" x1="36" y1="42" x2="404" y2="42"></line>
+                <line class="grid-line" x1="36" y1="102" x2="404" y2="102"></line>
+                <line class="grid-line" x1="36" y1="162" x2="404" y2="162"></line>
+                <line class="grid-line" x1="36" y1="222" x2="404" y2="222"></line>
+                <path class="line-chart__path line-chart__path--secondary" d="M36 110 L66 98 L96 122 L126 94 L156 132 L186 116 L216 140 L246 118 L276 136 L306 102 L336 126 L366 96 L404 112"></path>
+                <path class="line-chart__path" d="M36 146 L66 134 L96 158 L126 142 L156 168 L186 154 L216 176 L246 150 L276 164 L306 136 L336 148 L366 122 L404 140"></path>
+              </svg>
+            </article>
+
+            <article class="ds-card span-7">
+              <div class="card-header">
+                <h2 class="card-title">Customers</h2>
+              </div>
+              <div class="table-wrap uikit-table-wrap">
+                <table class="data-table customer-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Email</th>
+                      <th class="num">Spent</th>
+                      <th>Country</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><span class="customer-cell"><span class="avatar">AS</span>Alex Shatov</span></td>
+                      <td>alexshatov@gmail.com</td>
+                      <td class="num">$2,890.66</td>
+                      <td>United States</td>
+                    </tr>
+                    <tr>
+                      <td><span class="customer-cell"><span class="avatar">PH</span>Philip Harbach</span></td>
+                      <td>philip.h@gmail.com</td>
+                      <td class="num">$2,767.04</td>
+                      <td>Germany</td>
+                    </tr>
+                    <tr>
+                      <td><span class="customer-cell"><span class="avatar">MF</span>Mirko Fisuk</span></td>
+                      <td>mirkofisuk@gmail.com</td>
+                      <td class="num">$2,996.00</td>
+                      <td>France</td>
+                    </tr>
+                    <tr>
+                      <td><span class="customer-cell"><span class="avatar">OS</span>Olga Semklo</span></td>
+                      <td>olga.s@cool.design</td>
+                      <td class="num">$1,220.66</td>
+                      <td>Italy</td>
+                    </tr>
+                    <tr>
+                      <td><span class="customer-cell"><span class="avatar">BL</span>Burak Long</span></td>
+                      <td>longburak@gmail.com</td>
+                      <td class="num">$1,890.66</td>
+                      <td>United Kingdom</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="ds-card span-5">
+              <div class="card-header">
+                <div>
+                  <h2 class="card-title">Reason for Refunds</h2>
+                  <div class="metric-value">
+                    <span class="legend-value">449</span>
+                    <span class="ds-tag ds-tag--danger">-22%</span>
+                  </div>
+                </div>
+              </div>
+              <ul class="refund-list">
+                <li class="refund-item">
+                  <div class="refund-item__top">
+                    <span>Having difficulties using the product</span>
+                    <span class="num">36%</span>
+                  </div>
+                  <div class="ds-progress"><div class="ds-progress__bar" style="width: 36%"></div></div>
+                </li>
+                <li class="refund-item">
+                  <div class="refund-item__top">
+                    <span>Missing features I need</span>
+                    <span class="num">29%</span>
+                  </div>
+                  <div class="ds-progress"><div class="ds-progress__bar" style="width: 29%"></div></div>
+                </li>
+                <li class="refund-item">
+                  <div class="refund-item__top">
+                    <span>Not satisfied about the quality</span>
+                    <span class="num">18%</span>
+                  </div>
+                  <div class="ds-progress"><div class="ds-progress__bar" style="width: 18%"></div></div>
+                </li>
+                <li class="refund-item">
+                  <div class="refund-item__top">
+                    <span>The product differs from the offer</span>
+                    <span class="num">12%</span>
+                  </div>
+                  <div class="ds-progress"><div class="ds-progress__bar" style="width: 12%"></div></div>
+                </li>
+                <li class="refund-item">
+                  <div class="refund-item__top">
+                    <span>Other</span>
+                    <span class="num">5%</span>
+                  </div>
+                  <div class="ds-progress"><div class="ds-progress__bar" style="width: 5%"></div></div>
+                </li>
+              </ul>
+            </article>
+
+            <article class="ds-card span-7">
+              <div class="card-header">
+                <h2 class="card-title">Recent Activity</h2>
+              </div>
+              <div class="activity-group">
+                <div class="activity-date">Today</div>
+                <ul class="activity-list">
+                  <li class="activity-item">
+                    <span class="source-mark source-mark--violet">NM</span>
+                    <span class="activity-text"><strong>Nick Mark</strong> mentioned <strong>Sara Smith</strong> in a new post.</span>
+                    <a class="activity-link" href="#">View</a>
+                  </li>
+                  <li class="activity-item">
+                    <span class="source-mark source-mark--coral">PN</span>
+                    <span class="activity-text">The post <strong>Launch notes</strong> was removed by <strong>Nick Mark</strong>.</span>
+                    <a class="activity-link" href="#">View</a>
+                  </li>
+                  <li class="activity-item">
+                    <span class="source-mark source-mark--blue">PS</span>
+                    <span class="activity-text"><strong>Patrick Sullivan</strong> published a new customer story.</span>
+                    <a class="activity-link" href="#">View</a>
+                  </li>
+                </ul>
+                <div class="activity-date">Yesterday</div>
+                <ul class="activity-list">
+                  <li class="activity-item">
+                    <span class="source-mark">240</span>
+                    <span class="activity-text"><strong>240+</strong> users subscribed to <strong>Newsletter #1</strong>.</span>
+                    <a class="activity-link" href="#">View</a>
+                  </li>
+                  <li class="activity-item">
+                    <span class="source-mark source-mark--coral">PN</span>
+                    <span class="activity-text">The post <strong>Post Name</strong> was suspended by <strong>Nick Mark</strong>.</span>
+                    <a class="activity-link" href="#">View</a>
+                  </li>
+                </ul>
+              </div>
+            </article>
+
+            <article class="ds-card span-5">
+              <div class="card-header">
+                <h2 class="card-title">Income/Expenses</h2>
+              </div>
+              <ul class="expense-list">
+                <li class="expense-item">
+                  <span class="source-mark source-mark--coral">QT</span>
+                  <span class="expense-text"><strong>Qonto</strong> billing</span>
+                  <span class="expense-amount expense-amount--negative num">-$49.88</span>
+                </li>
+                <li class="expense-item">
+                  <span class="source-mark source-mark--blue">CR</span>
+                  <span class="expense-text"><strong>Cruip.com</strong> Market Ltd</span>
+                  <span class="expense-amount expense-amount--positive num">+$249.88</span>
+                </li>
+                <li class="expense-item">
+                  <span class="source-mark">NL</span>
+                  <span class="expense-text"><strong>Notion Labs Inc</strong></span>
+                  <span class="expense-amount expense-amount--positive num">+$99.99</span>
+                </li>
+                <li class="expense-item">
+                  <span class="source-mark source-mark--violet">MC</span>
+                  <span class="expense-text"><strong>Market Cap Ltd</strong></span>
+                  <span class="expense-amount expense-amount--positive num">+$1,200.88</span>
+                </li>
+                <li class="expense-item">
+                  <span class="source-mark">AP</span>
+                  <span class="expense-text"><strong>App.com</strong> Market Ltd</span>
+                  <span class="expense-amount expense-amount--positive num">+$99.99</span>
+                </li>
+                <li class="expense-item">
+                  <span class="source-mark source-mark--coral">AP</span>
+                  <span class="expense-text"><strong>App.com</strong> Market Ltd</span>
+                  <span class="expense-amount expense-amount--negative num">-$49.88</span>
+                </li>
+              </ul>
+            </article>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <dialog class="mobile-nav-dialog" id="mobileNav" aria-label="Navigation">
+      <div class="mobile-nav-dialog__header">
+        <a class="brand" href="#">
+          <span class="brand__text">
+            <span class="brand__name">TraeWork</span>
+            <span class="brand__meta">Operations suite</span>
+          </span>
+        </a>
+        <button class="ds-btn ds-btn--icon" type="button" id="closeMobileNav" aria-label="Close navigation">
+          <span class="icon icon--16 icon--close" aria-hidden="true" data-asset-icon="../../assets/icons/Close.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M12.1956 2.86165C12.456 2.60168 12.8778 2.60157 13.138 2.86165C13.3984 3.122 13.3984 3.54466 13.138 3.80501L8.9427 7.99935L13.138 12.1956C13.3982 12.456 13.3983 12.8777 13.138 13.138C12.8777 13.3983 12.456 13.3982 12.1956 13.138L7.99934 8.94271L3.805 13.138C3.54465 13.3984 3.12199 13.3984 2.86164 13.138C2.60157 12.8778 2.60167 12.456 2.86164 12.1956L7.05696 7.99935L2.86164 3.80501C2.60129 3.54466 2.60129 3.122 2.86164 2.86165C3.12199 2.6013 3.54465 2.6013 3.805 2.86165L7.99934 7.05696L12.1956 2.86165Z" fill="#404040"/></svg></span>
+        </button>
+      </div>
+      <div class="mobile-nav-dialog__body">
+        <nav class="sidebar__section" aria-label="Mobile dashboard">
+          <div class="sidebar__section-title">Navigation</div>
+          <a class="nav-item nav-item--active" href="#">
+            <span class="icon icon--16 icon--home" aria-hidden="true" data-asset-icon="../../assets/icons/home.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#262626" xmlns="http://www.w3.org/2000/svg"><path d="M7.72146 1.27382C7.92609 1.17184 8.17381 1.18939 8.36404 1.32558L14.697 5.85976C14.9777 6.0607 15.0425 6.45118 14.8416 6.73183C14.6406 7.01221 14.2501 7.07624 13.9695 6.87538L7.99978 2.60097L2.03103 6.87538C1.75053 7.0762 1.36 7.01208 1.15896 6.73183C0.958144 6.45132 1.02226 6.06079 1.30252 5.85976L7.6365 1.32558L7.72146 1.27382Z" fill="#262626"/><path d="M2.70825 10.1333V5.17432C2.70825 4.82914 2.98807 4.54932 3.33325 4.54932C3.67843 4.54932 3.95825 4.82914 3.95825 5.17432V10.1333C3.95825 10.7036 3.95896 11.0939 3.98364 11.396C4.00771 11.6906 4.05111 11.8464 4.10767 11.9575C4.23948 12.2162 4.4505 12.4263 4.70923 12.5581C4.82034 12.6147 4.9759 12.659 5.27075 12.6831C5.57287 12.7078 5.9632 12.7085 6.53345 12.7085H9.46704C10.0372 12.7085 10.4277 12.7078 10.7297 12.6831C11.0243 12.659 11.1802 12.6147 11.2913 12.5581C11.5498 12.4263 11.7601 12.2161 11.8918 11.9575C11.9484 11.8464 11.9928 11.6907 12.0168 11.396C12.0415 11.0939 12.0413 10.7036 12.0413 10.1333V5.17432C12.0413 4.82925 12.3212 4.54949 12.6663 4.54932C13.0114 4.54932 13.2913 4.82914 13.2913 5.17432V10.1333C13.2913 10.6829 13.2918 11.1328 13.262 11.4976C13.2316 11.8697 13.1665 12.2082 13.0051 12.5249C12.7535 13.0188 12.3525 13.4207 11.8586 13.6724C11.542 13.8337 11.2034 13.8988 10.8313 13.9292C10.4665 13.959 10.0166 13.9585 9.46704 13.9585H6.53345C5.98393 13.9585 5.53397 13.959 5.16919 13.9292C4.79715 13.8988 4.45846 13.8336 4.14185 13.6724C3.64792 13.4207 3.24606 13.0189 2.99439 12.5249C2.83308 12.2082 2.76795 11.8697 2.73755 11.4976C2.70777 11.1328 2.70825 10.6829 2.70825 10.1333Z" fill="#262626"/><path d="M8.70874 13.3335V10.6665C8.70856 10.2754 8.39087 9.9585 7.99976 9.9585C7.60879 9.95867 7.29192 10.2755 7.29175 10.6665V13.3335C7.29175 13.6787 7.01193 13.9585 6.66675 13.9585C6.32157 13.9585 6.04175 13.6787 6.04175 13.3335V10.6665C6.04192 9.58518 6.91844 8.70867 7.99976 8.7085C9.08123 8.7085 9.95856 9.58508 9.95874 10.6665V13.3335C9.95874 13.6786 9.67877 13.9583 9.33374 13.9585C8.98856 13.9585 8.70874 13.6787 8.70874 13.3335Z" fill="#262626"/></svg></span>
+            <span class="nav-item__label">Dashboard</span>
+          </a>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--ecommerce" aria-hidden="true" data-asset-icon="../../assets/icons/Table.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M10.1338 2C10.6825 2 11.1342 1.99934 11.501 2.0293C11.8757 2.05992 12.2203 2.12616 12.5439 2.29102C13.0456 2.54667 13.4533 2.95438 13.709 3.45605C13.8739 3.77961 13.9401 4.1243 13.9707 4.49902C14.0007 4.86583 14 5.31749 14 5.86621V10.1338C14 10.6825 14.0007 11.1342 13.9707 11.501C13.9401 11.8757 13.8739 12.2203 13.709 12.5439C13.4533 13.0456 13.0456 13.4533 12.5439 13.709C12.2203 13.8739 11.8757 13.9401 11.501 13.9707C11.1342 14.0007 10.6825 14 10.1338 14H5.86621C5.31749 14 4.86583 14.0007 4.49902 13.9707C4.1243 13.9401 3.77961 13.8739 3.45605 13.709C2.95438 13.4533 2.54667 13.0456 2.29102 12.5439C2.12616 12.2203 2.05992 11.8757 2.0293 11.501C1.99934 11.1342 2 10.6825 2 10.1338V5.86621C2 5.31749 1.99935 4.86583 2.0293 4.49902C2.05992 4.1243 2.12616 3.77961 2.29102 3.45605C2.54666 2.95439 2.95439 2.54666 3.45605 2.29102C3.77961 2.12616 4.1243 2.05992 4.49902 2.0293C4.86583 1.99935 5.31749 2 5.86621 2H10.1338ZM3.33301 7.29199V10.1338C3.33301 10.7046 3.3339 11.0926 3.3584 11.3926C3.38226 11.6846 3.42544 11.8342 3.47852 11.9385C3.60634 12.1893 3.81064 12.3937 4.06152 12.5215C4.16578 12.5746 4.31533 12.6178 4.60742 12.6416C4.90739 12.6661 5.29545 12.667 5.86621 12.667H6.04199V7.29199H3.33301ZM7.29199 7.29199V12.667H10.1338C10.7046 12.667 11.0926 12.6661 11.3926 12.6416C11.6846 12.6178 11.8342 12.5746 11.9385 12.5215C12.1893 12.3937 12.3937 12.1893 12.5215 11.9385C12.5746 11.8342 12.6178 11.6846 12.6416 11.3926C12.6661 11.0926 12.667 10.7046 12.667 10.1338V7.29199H7.29199ZM5.86621 3.33301C5.29544 3.33301 4.90739 3.3339 4.60742 3.3584C4.31533 3.38226 4.16578 3.42543 4.06152 3.47852C3.81064 3.60634 3.60634 3.81064 3.47852 4.06152C3.42543 4.16578 3.38226 4.31533 3.3584 4.60742C3.3339 4.90739 3.33301 5.29544 3.33301 5.86621V6.04199H6.04199V3.33301H5.86621ZM7.29199 6.04199H12.667V5.86621C12.667 5.29545 12.6661 4.90739 12.6416 4.60742C12.6178 4.31533 12.5746 4.16578 12.5215 4.06152C12.3937 3.81064 12.1893 3.60634 11.9385 3.47852C11.8342 3.42544 11.6846 3.38226 11.3926 3.3584C11.0926 3.3339 10.7046 3.33301 10.1338 3.33301H7.29199V6.04199Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">E-Commerce</span>
+          </a>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--community" aria-hidden="true" data-asset-icon="../../assets/icons/community.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M6.5 8.43506C6.84518 8.43506 7.125 8.71488 7.125 9.06006C7.125 9.40524 6.84518 9.68506 6.5 9.68506H3C2.24061 9.68506 1.625 10.3007 1.625 11.0601C1.625 11.8195 2.24061 12.4351 3 12.4351H13C13.7594 12.4351 14.375 11.8195 14.375 11.0601C14.375 10.3007 13.7594 9.68506 13 9.68506H9.5C9.15482 9.68506 8.875 9.40524 8.875 9.06006C8.875 8.71488 9.15482 8.43506 9.5 8.43506H13C14.4497 8.43506 15.625 9.61031 15.625 11.0601C15.625 12.5098 14.4497 13.6851 13 13.6851H3C1.55025 13.6851 0.375 12.5098 0.375 11.0601C0.375 9.61031 1.55025 8.43506 3 8.43506H6.5ZM4 2.31494C5.44979 2.31494 6.625 3.4902 6.625 4.93994C6.625 6.38972 5.44978 7.56494 4 7.56494C2.55022 7.56494 1.375 6.38972 1.375 4.93994C1.375 3.4902 2.55022 2.31494 4 2.31494ZM12 2.31494C13.4498 2.31494 14.625 3.4902 14.625 4.93994C14.625 6.38972 13.4498 7.56494 12 7.56494C10.5502 7.56494 9.375 6.38972 9.375 4.93994C9.375 3.4902 10.5502 2.31494 12 2.31494ZM4 3.56494C3.24058 3.56494 2.625 4.18055 2.625 4.93994C2.625 5.69936 3.24058 6.31494 4 6.31494C4.75942 6.31494 5.375 5.69936 5.375 4.93994C5.375 4.18055 4.75942 3.56494 4 3.56494ZM12 3.56494C11.2406 3.56494 10.625 4.18055 10.625 4.93994C10.625 5.69936 11.2406 6.31494 12 6.31494C12.7594 6.31494 13.375 5.69936 13.375 4.93994C13.375 4.18055 12.7594 3.56494 12 3.56494Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">Community</span>
+          </a>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--bonus" aria-hidden="true" data-asset-icon="../../assets/icons/bonus.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M13.375 8C13.375 5.03147 10.9686 2.625 8 2.625C5.03147 2.625 2.625 5.03147 2.625 8C2.625 10.9686 5.03147 13.375 8 13.375C10.9686 13.375 13.375 10.9686 13.375 8ZM7.375 11.667V11.2168C6.83464 11.0871 6.35761 10.7919 6.0498 10.3662C5.84756 10.0865 5.91071 9.69541 6.19043 9.49316C6.47008 9.29128 6.86031 9.35432 7.0625 9.63379C7.21628 9.84647 7.55302 10.042 8 10.042H8.12207C8.76717 10.0418 9.04194 9.64519 9.04199 9.43066C9.04199 9.27812 8.92747 9.04424 8.58008 8.90527L6.95508 8.25488C6.25569 7.97498 5.70801 7.35304 5.70801 6.56934V6.51855C5.70801 5.55637 6.50218 4.91502 7.375 4.75098V4.33301C7.37518 3.98798 7.65493 3.70801 8 3.70801C8.34507 3.70801 8.62482 3.98798 8.625 4.33301V4.78223C9.16545 4.91188 9.64236 5.20801 9.9502 5.63379C10.1524 5.91352 10.0893 6.3046 9.80957 6.50684C9.52992 6.70873 9.13969 6.64568 8.9375 6.36621C8.78375 6.15355 8.44698 5.95801 8 5.95801H7.81445C7.20434 5.95815 6.95801 6.33214 6.95801 6.51855V6.56934C6.95801 6.72189 7.07253 6.95576 7.41992 7.09473L9.04492 7.74512C9.74429 8.02502 10.292 8.64695 10.292 9.43066C10.292 10.3989 9.50607 11.0524 8.625 11.2363V11.667C8.62482 12.012 8.34507 12.292 8 12.292C7.65493 12.292 7.37518 12.012 7.375 11.667ZM14.625 8C14.625 11.6589 11.6589 14.625 8 14.625C4.34112 14.625 1.375 11.6589 1.375 8C1.375 4.34112 4.34112 1.375 8 1.375C11.6589 1.375 14.625 4.34112 14.625 8Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">Finance</span>
+          </a>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--job-board" aria-hidden="true" data-asset-icon="../../assets/icons/Table.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M10.1338 2C10.6825 2 11.1342 1.99934 11.501 2.0293C11.8757 2.05992 12.2203 2.12616 12.5439 2.29102C13.0456 2.54667 13.4533 2.95438 13.709 3.45605C13.8739 3.77961 13.9401 4.1243 13.9707 4.49902C14.0007 4.86583 14 5.31749 14 5.86621V10.1338C14 10.6825 14.0007 11.1342 13.9707 11.501C13.9401 11.8757 13.8739 12.2203 13.709 12.5439C13.4533 13.0456 13.0456 13.4533 12.5439 13.709C12.2203 13.8739 11.8757 13.9401 11.501 13.9707C11.1342 14.0007 10.6825 14 10.1338 14H5.86621C5.31749 14 4.86583 14.0007 4.49902 13.9707C4.1243 13.9401 3.77961 13.8739 3.45605 13.709C2.95438 13.4533 2.54667 13.0456 2.29102 12.5439C2.12616 12.2203 2.05992 11.8757 2.0293 11.501C1.99934 11.1342 2 10.6825 2 10.1338V5.86621C2 5.31749 1.99935 4.86583 2.0293 4.49902C2.05992 4.1243 2.12616 3.77961 2.29102 3.45605C2.54666 2.95439 2.95439 2.54666 3.45605 2.29102C3.77961 2.12616 4.1243 2.05992 4.49902 2.0293C4.86583 1.99935 5.31749 2 5.86621 2H10.1338ZM3.33301 7.29199V10.1338C3.33301 10.7046 3.3339 11.0926 3.3584 11.3926C3.38226 11.6846 3.42544 11.8342 3.47852 11.9385C3.60634 12.1893 3.81064 12.3937 4.06152 12.5215C4.16578 12.5746 4.31533 12.6178 4.60742 12.6416C4.90739 12.6661 5.29545 12.667 5.86621 12.667H6.04199V7.29199H3.33301ZM7.29199 7.29199V12.667H10.1338C10.7046 12.667 11.0926 12.6661 11.3926 12.6416C11.6846 12.6178 11.8342 12.5746 11.9385 12.5215C12.1893 12.3937 12.3937 12.1893 12.5215 11.9385C12.5746 11.8342 12.6178 11.6846 12.6416 11.3926C12.6661 11.0926 12.667 10.7046 12.667 10.1338V7.29199H7.29199ZM5.86621 3.33301C5.29544 3.33301 4.90739 3.3339 4.60742 3.3584C4.31533 3.38226 4.16578 3.42543 4.06152 3.47852C3.81064 3.60634 3.60634 3.81064 3.47852 4.06152C3.42543 4.16578 3.38226 4.31533 3.3584 4.60742C3.3339 4.90739 3.33301 5.29544 3.33301 5.86621V6.04199H6.04199V3.33301H5.86621ZM7.29199 6.04199H12.667V5.86621C12.667 5.29545 12.6661 4.90739 12.6416 4.60742C12.6178 4.31533 12.5746 4.16578 12.5215 4.06152C12.3937 3.81064 12.1893 3.60634 11.9385 3.47852C11.8342 3.42544 11.6846 3.38226 11.3926 3.3584C11.0926 3.3339 10.7046 3.33301 10.1338 3.33301H7.29199V6.04199Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">Job Board</span>
+          </a>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--tasks" aria-hidden="true" data-asset-icon="../../assets/icons/todo.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M12.7087 11.3335V4.6665C12.7087 3.90722 12.093 3.29168 11.3337 3.2915H4.66675C3.90736 3.2915 3.29175 3.90712 3.29175 4.6665V11.3335C3.29192 12.0928 3.90746 12.7085 4.66675 12.7085H11.3337C11.6788 12.7087 11.9587 12.9884 11.9587 13.3335C11.9586 13.6784 11.6787 13.9583 11.3337 13.9585H4.66675C3.21712 13.9585 2.04192 12.7831 2.04175 11.3335V4.6665C2.04175 3.21676 3.217 2.0415 4.66675 2.0415H11.3337C12.7834 2.04168 13.9587 3.21687 13.9587 4.6665V11.3335C13.9586 12.783 12.7833 13.9583 11.3337 13.9585H10.6667C10.3217 13.9585 10.0419 13.6785 10.0417 13.3335C10.0417 12.9883 10.3216 12.7085 10.6667 12.7085H11.3337C12.0929 12.7083 12.7086 12.0927 12.7087 11.3335ZM9.32104 6.14111C9.519 5.85837 9.90937 5.78986 10.1921 5.98779C10.4747 6.18573 10.5432 6.57521 10.3455 6.85791L8.01245 10.1919C7.91066 10.3373 7.75114 10.4323 7.57495 10.4536C7.39885 10.4749 7.22212 10.42 7.08862 10.3032L5.75562 9.13721C5.49598 8.91003 5.46913 8.51515 5.69604 8.25537C5.92322 7.99574 6.3181 7.96889 6.57788 8.1958L7.38745 8.90381L9.32104 6.14111Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">Tasks</span>
+          </a>
+        </nav>
+        <nav class="sidebar__section" aria-label="Mobile workspace">
+          <div class="sidebar__section-title">Display</div>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--email" aria-hidden="true" data-asset-icon="../../assets/icons/email.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M14.2793 6.22534L9.17383 8.77905C8.43497 9.14838 7.56504 9.14836 6.82617 8.77905V8.77808L1.7207 6.22534L2.2793 5.10815L7.38477 7.66089C7.77188 7.85444 8.22812 7.85444 8.61523 7.66089L13.7207 5.10815L14.2793 6.22534Z" fill="#737373"/><path d="M13.375 5.25C13.375 4.49061 12.7594 3.875 12 3.875H4C3.24061 3.875 2.625 4.49061 2.625 5.25V10.75C2.625 11.5094 3.24061 12.125 4 12.125H12C12.7594 12.125 13.375 11.5094 13.375 10.75V5.25ZM14.625 10.75C14.625 12.1997 13.4497 13.375 12 13.375H4C2.55025 13.375 1.375 12.1997 1.375 10.75V5.25C1.375 3.80025 2.55025 2.625 4 2.625H12C13.4497 2.625 14.625 3.80025 14.625 5.25V10.75Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">Messages</span>
+            <span class="nav-item__count">4</span>
+          </a>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--inbox" aria-hidden="true" data-asset-icon="../../assets/icons/email.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M14.2793 6.22534L9.17383 8.77905C8.43497 9.14838 7.56504 9.14836 6.82617 8.77905V8.77808L1.7207 6.22534L2.2793 5.10815L7.38477 7.66089C7.77188 7.85444 8.22812 7.85444 8.61523 7.66089L13.7207 5.10815L14.2793 6.22534Z" fill="#737373"/><path d="M13.375 5.25C13.375 4.49061 12.7594 3.875 12 3.875H4C3.24061 3.875 2.625 4.49061 2.625 5.25V10.75C2.625 11.5094 3.24061 12.125 4 12.125H12C12.7594 12.125 13.375 11.5094 13.375 10.75V5.25ZM14.625 10.75C14.625 12.1997 13.4497 13.375 12 13.375H4C2.55025 13.375 1.375 12.1997 1.375 10.75V5.25C1.375 3.80025 2.55025 2.625 4 2.625H12C13.4497 2.625 14.625 3.80025 14.625 5.25V10.75Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">Inbox</span>
+          </a>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--calendar" aria-hidden="true" data-asset-icon="../../assets/icons/calendar.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M10.667 1.375C11.0121 1.37513 11.292 1.6549 11.292 2V2.70801H11.334C12.7834 2.70832 13.9589 3.88357 13.959 5.33301V11.333C13.959 12.7826 12.7835 13.9577 11.334 13.958H4.66699C3.21725 13.958 2.04199 12.7828 2.04199 11.333V5.33301C2.04212 3.88338 3.21733 2.70801 4.66699 2.70801H4.70801V2C4.70801 1.6549 4.98794 1.37513 5.33301 1.375C5.67819 1.375 5.95801 1.65482 5.95801 2V2.70801H10.042V2C10.042 1.65482 10.3218 1.375 10.667 1.375ZM3.29199 11.333C3.29199 12.0924 3.9076 12.708 4.66699 12.708H11.334C12.0931 12.7077 12.709 12.0922 12.709 11.333V7.29199H3.29199V11.333ZM4.66699 3.95801C3.90768 3.95801 3.29212 4.57373 3.29199 5.33301V6.04199H12.709V5.33301C12.7089 4.57391 12.0931 3.95832 11.334 3.95801H4.66699Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">Calendar</span>
+          </a>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--chart" aria-hidden="true" data-asset-icon="../../assets/icons/Bar-list.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M14 11.375C14.3452 11.375 14.625 11.6548 14.625 12C14.625 12.3452 14.3452 12.625 14 12.625H2C1.65482 12.625 1.375 12.3452 1.375 12C1.375 11.6548 1.65482 11.375 2 11.375H14ZM8.66699 7.375C9.01202 7.37518 9.29199 7.65493 9.29199 8C9.29199 8.34507 9.01202 8.62482 8.66699 8.625H2C1.65482 8.625 1.375 8.34518 1.375 8C1.375 7.65482 1.65482 7.375 2 7.375H8.66699ZM14 3.375C14.3452 3.375 14.625 3.65482 14.625 4C14.625 4.34518 14.3452 4.625 14 4.625H2C1.65482 4.625 1.375 4.34518 1.375 4C1.375 3.65482 1.65482 3.375 2 3.375H14Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">Campaigns</span>
+          </a>
+          <a class="nav-item" href="#">
+            <span class="icon icon--16 icon--settings" aria-hidden="true" data-asset-icon="../../assets/icons/settings.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.375C8.58386 1.375 9.12929 1.66661 9.45312 2.15234L9.7041 2.5293C9.93056 2.86888 10.3434 3.03299 10.7412 2.94141L10.9893 2.88379C11.585 2.74631 12.2093 2.92608 12.6416 3.3584C13.0739 3.7907 13.2537 4.41501 13.1162 5.01074L13.0586 5.25879C12.967 5.65656 13.1311 6.06946 13.4707 6.2959L13.8477 6.54688C14.3334 6.87071 14.625 7.41615 14.625 8C14.625 8.58385 14.3334 9.12929 13.8477 9.45312L13.4707 9.7041C13.1311 9.93055 12.967 10.3434 13.0586 10.7412L13.1162 10.9893L13.1523 11.2139C13.2042 11.7384 13.0198 12.2634 12.6416 12.6416C12.2093 13.0739 11.585 13.2537 10.9893 13.1162L10.7412 13.0586C10.3434 12.967 9.93055 13.1311 9.7041 13.4707L9.45312 13.8477C9.12929 14.3334 8.58385 14.625 8 14.625C7.41615 14.625 6.87071 14.3334 6.54688 13.8477L6.2959 13.4707C6.06946 13.1311 5.65656 12.967 5.25879 13.0586L5.01074 13.1162C4.41501 13.2537 3.7907 13.0739 3.3584 12.6416C2.92608 12.2093 2.74631 11.585 2.88379 10.9893L2.94141 10.7412C3.03299 10.3434 2.86888 9.93056 2.5293 9.7041L2.15234 9.45312C1.6666 9.12929 1.375 8.58386 1.375 8C1.375 7.41614 1.6666 6.87071 2.15234 6.54688L2.5293 6.2959C2.86887 6.06945 3.03299 5.65655 2.94141 5.25879L2.88379 5.01074C2.74631 4.41501 2.92608 3.79072 3.3584 3.3584C3.79072 2.92608 4.41502 2.74631 5.01074 2.88379L5.25879 2.94141C5.65655 3.03299 6.06945 2.86887 6.2959 2.5293L6.54688 2.15234C6.87071 1.6666 7.41614 1.375 8 1.375ZM8 2.625C7.83413 2.625 7.67895 2.70766 7.58691 2.8457L7.33594 3.22266C6.82102 3.99493 5.88197 4.36778 4.97754 4.15918L4.72949 4.10254C4.55371 4.06197 4.36975 4.11463 4.24219 4.24219C4.11463 4.36975 4.06197 4.5537 4.10254 4.72949L4.15918 4.97754C4.36778 5.88197 3.99493 6.82102 3.22266 7.33594L2.8457 7.58691C2.70766 7.67895 2.625 7.83413 2.625 8C2.625 8.16587 2.70766 8.32105 2.8457 8.41309L3.22266 8.66406C3.99493 9.17898 4.36779 10.118 4.15918 11.0225L4.10254 11.2705C4.06198 11.4463 4.11463 11.6303 4.24219 11.7578C4.36977 11.8854 4.55371 11.938 4.72949 11.8975L4.97754 11.8408C5.88195 11.6322 6.82101 12.005 7.33594 12.7773L7.58691 13.1543C7.67894 13.2923 7.83412 13.375 8 13.375C8.16588 13.375 8.32106 13.2923 8.41309 13.1543L8.66406 12.7773C9.17899 12.005 10.118 11.6322 11.0225 11.8408L11.2695 11.8975C11.4453 11.938 11.6302 11.8854 11.7578 11.7578C11.8854 11.6302 11.938 11.4463 11.8975 11.2705V11.2695L11.8408 11.0225C11.6322 10.118 12.005 9.17899 12.7773 8.66406L13.1543 8.41309C13.2923 8.32106 13.375 8.16588 13.375 8C13.375 7.83412 13.2923 7.67894 13.1543 7.58691L12.7773 7.33594C12.005 6.82101 11.6322 5.88195 11.8408 4.97754L11.8975 4.72949C11.938 4.55372 11.8854 4.36977 11.7578 4.24219C11.6303 4.11463 11.4463 4.06198 11.2705 4.10254L11.0225 4.15918C10.118 4.36779 9.17898 3.99493 8.66406 3.22266L8.41309 2.8457C8.32105 2.70767 8.16587 2.625 8 2.625ZM8 5.375C9.44978 5.375 10.625 6.55022 10.625 8C10.625 9.44978 9.44978 10.625 8 10.625C6.55022 10.625 5.375 9.44978 5.375 8C5.375 6.55022 6.55022 5.375 8 5.375ZM8 6.625C7.24058 6.625 6.625 7.24058 6.625 8C6.625 8.75942 7.24058 9.375 8 9.375C8.75942 9.375 9.375 8.75942 9.375 8C9.375 7.24058 8.75942 6.625 8 6.625Z" fill="#737373"/></svg></span>
+            <span class="nav-item__label">Settings</span>
+          </a>
+        </nav>
+      </div>
+    </dialog>
+    <script>
+      function parsePolylinePoints(d) {
+        return d.match(/[ML]\s*-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?/g)
+          .map(function (segment) {
+            var values = segment.slice(1).trim().split(/\s+/).map(Number);
+            return { x: values[0], y: values[1] };
+          });
+      }
+
+      function perpendicularDistance(point, start, end) {
+        var dx = end.x - start.x;
+        var dy = end.y - start.y;
+        if (!dx && !dy) {
+          return Math.sqrt(Math.pow(point.x - start.x, 2) + Math.pow(point.y - start.y, 2));
+        }
+        return Math.abs(dy * point.x - dx * point.y + end.x * start.y - end.y * start.x) /
+          Math.sqrt(dx * dx + dy * dy);
+      }
+
+      function simplifyPolylinePoints(points, tolerance) {
+        if (points.length <= 3) return points;
+
+        var maxDistance = 0;
+        var splitIndex = 0;
+        var start = points[0];
+        var end = points[points.length - 1];
+
+        for (var i = 1; i < points.length - 1; i += 1) {
+          var distance = perpendicularDistance(points[i], start, end);
+          if (distance > maxDistance) {
+            maxDistance = distance;
+            splitIndex = i;
+          }
+        }
+
+        if (maxDistance <= tolerance) {
+          return [start, end];
+        }
+
+        var left = simplifyPolylinePoints(points.slice(0, splitIndex + 1), tolerance);
+        var right = simplifyPolylinePoints(points.slice(splitIndex), tolerance);
+        return left.slice(0, -1).concat(right);
+      }
+
+      function amplifyPolylinePoints(points, factor, minY, maxY) {
+        var centerY = points.reduce(function (sum, point) {
+          return sum + point.y;
+        }, 0) / points.length;
+
+        return points.map(function (point) {
+          var y = centerY + (point.y - centerY) * factor;
+          return {
+            x: point.x,
+            y: Math.max(minY, Math.min(maxY, y))
+          };
+        });
+      }
+
+      function roundedPolylinePath(d, radius, tolerance, maxCorners, amplitude, bounds) {
+        var rawPoints = parsePolylinePoints(d);
+        rawPoints = amplifyPolylinePoints(rawPoints, amplitude, bounds.minY, bounds.maxY);
+        var points = simplifyPolylinePoints(rawPoints, tolerance);
+        var adaptiveTolerance = tolerance;
+        while (points.length - 2 > maxCorners && adaptiveTolerance < 28) {
+          adaptiveTolerance += 2;
+          points = simplifyPolylinePoints(rawPoints, adaptiveTolerance);
+        }
+        if (points.length < 3) return d;
+
+        function pointBetween(from, to, distance) {
+          var dx = to.x - from.x;
+          var dy = to.y - from.y;
+          var length = Math.sqrt(dx * dx + dy * dy);
+          var safeDistance = Math.min(distance, length / 2);
+          if (!length) return { x: from.x, y: from.y };
+          return {
+            x: from.x + (dx / length) * safeDistance,
+            y: from.y + (dy / length) * safeDistance
+          };
+        }
+
+        function fmt(value) {
+          return Number(value.toFixed(2));
+        }
+
+        var commands = ["M" + points[0].x + " " + points[0].y];
+        for (var i = 1; i < points.length - 1; i += 1) {
+          var previous = points[i - 1];
+          var current = points[i];
+          var next = points[i + 1];
+          var start = pointBetween(current, previous, radius);
+          var end = pointBetween(current, next, radius);
+          commands.push("L" + fmt(start.x) + " " + fmt(start.y));
+          commands.push("Q" + current.x + " " + current.y + " " + fmt(end.x) + " " + fmt(end.y));
+        }
+        var last = points[points.length - 1];
+        commands.push("L" + last.x + " " + last.y);
+        return commands.join(" ");
+      }
+
+      function ensureAreaGradient(svg, index) {
+        var id = "chart-area-gradient-" + index;
+        var defs = svg.querySelector("defs");
+        if (!defs) {
+          defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+          svg.insertBefore(defs, svg.firstChild);
+        }
+
+        if (!svg.querySelector("#" + id)) {
+          var gradient = document.createElementNS("http://www.w3.org/2000/svg", "linearGradient");
+          gradient.setAttribute("id", id);
+          gradient.setAttribute("x1", "0");
+          gradient.setAttribute("y1", "0");
+          gradient.setAttribute("x2", "0");
+          gradient.setAttribute("y2", "1");
+
+          [
+            { offset: "0%", opacity: "0.18" },
+            { offset: "58%", opacity: "0.07" },
+            { offset: "100%", opacity: "0" }
+          ].forEach(function (stopConfig) {
+            var stop = document.createElementNS("http://www.w3.org/2000/svg", "stop");
+            stop.setAttribute("offset", stopConfig.offset);
+            stop.setAttribute("stop-color", "var(--viz-series-brand)");
+            stop.setAttribute("stop-opacity", stopConfig.opacity);
+            gradient.appendChild(stop);
+          });
+
+          defs.appendChild(gradient);
+        }
+
+        return id;
+      }
+
+      function chartBaseline(path) {
+        if (path.classList.contains("sparkline__main")) return 82;
+        var svg = path.ownerSVGElement;
+        var width = svg && svg.viewBox && svg.viewBox.baseVal ? svg.viewBox.baseVal.width : 0;
+        return width <= 430 ? 222 : 212;
+      }
+
+      function areaPathFromLine(path, baseline) {
+        var d = path.getAttribute("d");
+        var numbers = (d.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+        if (numbers.length < 4) return "";
+        var firstX = numbers[0];
+        var lastX = numbers[numbers.length - 2];
+        return d + " L" + lastX + " " + baseline + " L" + firstX + " " + baseline + " Z";
+      }
+
+      function addChartAreaFills() {
+        document.querySelectorAll(".sparkline__main, .line-chart__path:not(.line-chart__path--secondary)").forEach(function (line, index) {
+          var svg = line.ownerSVGElement;
+          if (!svg) return;
+          var gradientId = ensureAreaGradient(svg, index);
+          var area = line.previousElementSibling && line.previousElementSibling.classList.contains("chart-area-fill")
+            ? line.previousElementSibling
+            : null;
+          if (!area) {
+            area = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            area.setAttribute("class", "chart-area-fill");
+            line.parentNode.insertBefore(area, line);
+          }
+          area.setAttribute("fill", "url(#" + gradientId + ")");
+          area.setAttribute("d", areaPathFromLine(line, chartBaseline(line)));
+        });
+      }
+
+      function roundChartLines() {
+        document.querySelectorAll(".sparkline__main, .sparkline__muted, .line-chart__path").forEach(function (path) {
+          var raw = path.getAttribute("data-raw-d") || path.getAttribute("d");
+          var isLargeChart = path.classList.contains("line-chart__path");
+          var radius = isLargeChart ? 8 : 6;
+          var tolerance = isLargeChart ? 7 : 6;
+          var maxCorners = isLargeChart ? 16 : 12;
+          var amplitude = isLargeChart ? 1.12 : 1.16;
+          var bounds = isLargeChart ? { minY: 28, maxY: 222 } : { minY: 14, maxY: 84 };
+          path.setAttribute("data-raw-d", raw);
+          path.setAttribute("d", roundedPolylinePath(raw, radius, tolerance, maxCorners, amplitude, bounds));
+        });
+      }
+
+      document.addEventListener("DOMContentLoaded", function () {
+        roundChartLines();
+        addChartAreaFills();
+
+        var mobileNav = document.getElementById("mobileNav");
+        var openMobileNav = document.getElementById("openMobileNav");
+        var closeMobileNav = document.getElementById("closeMobileNav");
+        if (mobileNav && openMobileNav) {
+          openMobileNav.addEventListener("click", function () {
+            mobileNav.showModal();
+          });
+        }
+        if (mobileNav && closeMobileNav) {
+          closeMobileNav.addEventListener("click", function () {
+            mobileNav.close();
+          });
+        }
+        if (mobileNav) {
+          mobileNav.addEventListener("click", function (event) {
+            if (event.target === mobileNav) {
+              mobileNav.close();
+            }
+          });
+        }
+      });
+    </script>
+    <div id="traework-interaction-root" aria-hidden="true"></div>
+    <script>
+      (function () {
+        var rootElement = document.getElementById('traework-interaction-root');
+        if (rootElement) rootElement.dataset.interactionMounted = 'true';
+
+        var interactiveSelectors = [
+          '[data-nav]',
+          '[data-screen-trigger]',
+          '[role="tab"]',
+          '.tab',
+          '.nav-item',
+          '.sidebar-nav a',
+          '.sidebar a',
+          '.mobile-nav a'
+        ];
+
+        function getActiveClass(element) {
+          var classes = Array.prototype.slice.call(element.classList || []);
+          return classes.find(function (name) { return name.endsWith('--active'); }) ||
+            classes.find(function (name) { return name === 'is-active' || name === 'active' || name === 'selected'; }) ||
+            (element.classList && element.classList.contains('tab') ? 'tab--active' : null) ||
+            (element.classList && element.classList.contains('nav-item') ? 'nav-item--active' : null);
+        }
+
+        function activateWithinGroup(element, activeClass) {
+          var group = element.closest('[role="tablist"], nav, .sidebar, .sidebar-nav, .mobile-nav') || element.parentElement;
+          if (!group || !activeClass) return;
+
+          group.querySelectorAll(interactiveSelectors.join(',')).forEach(function (item) {
+            item.classList.remove(activeClass);
+            if (item.getAttribute('role') === 'tab') item.setAttribute('aria-selected', 'false');
+          });
+
+          element.classList.add(activeClass);
+          if (element.getAttribute('role') === 'tab') element.setAttribute('aria-selected', 'true');
+        }
+
+        function handleClick(event) {
+          var target = event.currentTarget;
+          var href = target.getAttribute('href');
+          if (href === '#') event.preventDefault();
+          activateWithinGroup(target, getActiveClass(target));
+        }
+
+        Array.prototype.slice.call(document.querySelectorAll(interactiveSelectors.join(','))).forEach(function (element) {
+          if (element.id !== 'traework-interaction-root') element.addEventListener('click', handleClick);
+        });
+      }());
+    </script>
+  </body>
+</html>

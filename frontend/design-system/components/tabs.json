@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 2,
+  "slug": "tabs",
+  "name": "Tabs",
+  "category": "navigation",
+  "sourceKind": "preview-contract",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    {
+      "type": "Tabs",
+      "evidence": "Inferred from preview/component-tabs.html title and component CSS selectors."
+    }
+  ],
+  "variantDimensions": [
+    {
+      "name": "style-state-density",
+      "values": [
+        ".ds-tabs",
+        ".ds-tab",
+        ".ds-tab:hover",
+        ".ds-tab.is-active",
+        ".ds-tab.is-active::after"
+      ],
+      "evidence": "Representative selectors from preview/component-tabs.html."
+    }
+  ],
+  "coverageMatrix": {
+    "source": "preview/component-tabs.html",
+    "representativeSelectors": [
+      ".ds-tabs",
+      ".ds-tab",
+      ".ds-tab:hover",
+      ".ds-tab.is-active",
+      ".ds-tab.is-active::after"
+    ],
+    "cssRuleCount": 6
+  },
+  "sizeDeltas": [],
+  "stateCoverage": {
+    "states": [
+      "hover",
+      "active"
+    ]
+  },
+  "representativeVariants": [
+    {
+      "selector": ".ds-tabs",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-tab",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-tab:hover",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-tab.is-active",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    }
+  ],
+  "anatomy": {
+    "source": "preview/component-tabs.html",
+    "selectors": [
+      ".ds-tabs",
+      ".ds-tab",
+      ".ds-tab:hover",
+      ".ds-tab.is-active",
+      ".ds-tab.is-active::after"
+    ]
+  },
+  "structurePatterns": [],
+  "usageHints": [
+    "Copy component markup from preview/component-tabs.html; keep page/demo-only styles outside shared component CSS.",
+    "Use colors_and_type.css + components.css as the executable rendering contract.",
+    "Use preview/component-tabs.html and components.css as the executable rendering contract."
+  ],
+  "doNotInvent": [
+    "Do not add variants or states that are absent from the preview marker block without updating the component contract.",
+    "Do not add visual states or component parts not present in the preview or components.css.",
+    "Do not treat this inferred JSON as original Figma evidence."
+  ],
+  "unknowns": [
+    "Original design evidence was not available during this repair pass."
+  ],
+  "tokensConsumed": [
+    "--bg-overlay-l2",
+    "--body-base-font-size",
+    "--body-base-line-height",
+    "--body-xs-font-size",
+    "--body-xs-font-weight",
+    "--body-xs-line-height",
+    "--border-neutral-l1",
+    "--font-family-metric",
+    "--font-weight-medium",
+    "--icon-default",
+    "--radius-full",
+    "--spacer-12",
+    "--spacer-24",
+    "--spacer-6",
+    "--text-default",
+    "--text-tertiary"
+  ],
+  "domAnatomy": {
+    "root": {
+      "tag": "preview-fragment",
+      "source": "preview/component-tabs.html",
+      "classes": [
+        "ds-tab",
+        "ds-tab__count",
+        "ds-tabs",
+        "ds-tag"
+      ]
+    },
+    "componentCssMarker": {
+      "start": "/* @component-css-start */",
+      "end": "/* @component-css-end */"
+    }
+  },
+  "provenance": {
+    "preview": "preview/component-tabs.html",
+    "source": "preview/component-tabs.html",
+    "css": {
+      "file": "components.css",
+      "marker": "tabs"
+    },
+    "contractBasis": "Derived from the component preview marker block and rendered .ds-* markup; original design evidence was not available."
+  },
+  "assetsConsumed": []
+}

@@ -15,6 +15,7 @@ deeptutor/services/rag/eg_only_for_analysis/
 /site/
 .claude
 .agents/
+.grok/
 
 # LaTeX build artifacts
 *.aux
@@ -127,6 +128,7 @@ cache/
 # Written by `npm run audit` (the playwright ui-audit project).
 frontend/test-results/
 frontend/playwright-report/
+frontend/design-system/output/
 
 # Log files
 *.log

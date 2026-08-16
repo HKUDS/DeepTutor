@@ -1,0 +1,1165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TraeWork Product Overview</title>
+    <meta
+      name="description"
+      content="A TraeWork product overview page built with the TraeWork design system."
+    >
+    <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../../colors_and_type.css">
+  <link rel="stylesheet" href="../../components.css">
+    <!-- Assumption: product-overview uses the repository-wide Light-only Colors and Type token sheet so product parsing resolves canonical token names. -->
+    <style>
+      :root {
+        color-scheme: light;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        min-width: 320px;
+        margin: var(--spacer-0);
+        background: var(--bg-base-default);
+        color: var(--text-default);
+        font-family: var(--body-base-font-family);
+        font-size: var(--body-base-font-size);
+        font-weight: var(--body-base-font-weight);
+        line-height: var(--body-base-line-height);
+        letter-spacing: var(--body-base-letter-spacing);
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      button {
+        border: 0;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      :focus-visible {
+        outline: 2px solid var(--border-brand);
+        outline-offset: var(--spacer-2);
+      }
+
+      .mono,
+      .num,
+      code {
+        font-family: var(--code-editor-font-family);
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum" 1, "lnum" 1;
+      }
+
+      .icon {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+        object-fit: contain;
+        vertical-align: middle;
+      }
+
+      .icon--16 {
+        width: var(--spacer-16);
+        height: var(--spacer-16);
+      }
+
+      .icon--20 {
+        width: var(--spacer-20);
+        height: var(--spacer-20);
+      }
+
+      .icon--24 {
+        width: var(--spacer-24);
+        height: var(--spacer-24);
+      }
+
+
+      .label-row {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacer-6);
+        line-height: var(--body-base-line-height);
+      }
+
+      .page-wrapper {
+        width: min(calc(100% - var(--spacer-40)), 1272px);
+        margin: var(--spacer-0) auto;
+      }
+
+      .site-header {
+        position: sticky;
+        top: 0;
+        z-index: 30;
+        background: var(--bg-menu);
+      }
+
+      .header-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: var(--spacer-64);
+        gap: var(--spacer-24);
+      }
+
+      .wordmark {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacer-8);
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-sm-font-size);
+        line-height: var(--heading-sm-line-height);
+        font-weight: var(--font-weight-strong);
+        letter-spacing: var(--body-md-letter-spacing);
+        text-transform: uppercase;
+      }
+
+      .top-nav {
+        display: flex;
+        align-items: center;
+        gap: var(--spacer-4);
+      }
+
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: var(--spacer-8);
+      }
+
+      .top-nav a,
+      .top-nav button {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacer-6);
+        min-height: var(--spacer-32);
+        border-radius: var(--radius-8);
+        padding: 0 var(--spacer-12);
+        background: transparent;
+        color: var(--text-secondary);
+      }
+
+      .top-nav a:hover,
+      .top-nav button:hover {
+        background: var(--bg-overlay-l1);
+        color: var(--text-default);
+      }
+
+      .ds-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: var(--spacer-32);
+        gap: var(--spacer-8);
+        border-radius: var(--radius-8);
+        padding: 0 var(--spacer-16);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .ds-btn .icon {
+        display: inline-block;
+        width: var(--icon-size-16);
+        height: var(--icon-size-16);
+        flex: 0 0 auto;
+      }
+
+      .ds-btn .icon--12 { width: var(--icon-size-12); height: var(--icon-size-12); }
+      .ds-btn .icon--14 { width: var(--icon-size-14); height: var(--icon-size-14); }
+      .ds-btn .icon--16 { width: var(--icon-size-16); height: var(--icon-size-16); }
+      .ds-btn .icon--20 { width: var(--icon-size-20); height: var(--icon-size-20); }
+      .ds-btn .icon--24 { width: var(--icon-size-24); height: var(--icon-size-24); }
+
+      .ds-btn--brand {
+        background: var(--bg-brand);
+        color: var(--text-onbrand);
+      }
+
+      .ds-btn--brand:hover {
+        background: var(--bg-brand-hover);
+      }
+
+      .ds-btn--neutral {
+        background: var(--bg-invert);
+        color: var(--text-white);
+      }
+
+      .ds-btn--neutral:hover {
+        background: var(--bg-invert-hover);
+      }
+
+      .ds-btn--secondary {
+        border: 1px solid var(--border-neutral-l1);
+        background: var(--bg-overlay-l1);
+        color: var(--text-default);
+      }
+
+      .ds-btn--secondary:hover {
+        background: var(--bg-overlay-l2);
+      }
+
+      .hero-section {
+        padding: calc(var(--spacer-64) + var(--spacer-32)) var(--spacer-0) var(--spacer-48);
+      }
+
+      .two-column {
+        display: grid;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        column-gap: var(--spacer-24);
+      }
+
+      .hero-title {
+        grid-column: 1 / span 6;
+      }
+
+      .hero-body {
+        grid-column: 7 / span 6;
+        max-width: 620px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        margin-bottom: 0;
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-3xl-font-size);
+        line-height: var(--heading-3xl-line-height);
+        font-weight: var(--font-weight-strong);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .hero-body p,
+      .feature-copy p,
+      .split-body p,
+      .impact-intro {
+        color: var(--text-secondary);
+        font-size: var(--heading-sm-font-size);
+        line-height: var(--heading-sm-line-height);
+      }
+
+      .hero-body p {
+        margin-bottom: var(--spacer-24);
+      }
+
+      .feature-section {
+        padding-bottom: calc(var(--spacer-64) + var(--spacer-32));
+      }
+
+      .feature-card {
+        display: grid;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        align-items: stretch;
+        min-height: 512px;
+        gap: var(--spacer-24);
+        border-radius: var(--radius-16);
+        background: var(--bg-base-secondary);
+        padding: var(--spacer-32);
+      }
+
+      .feature-copy {
+        grid-column: 1 / span 4;
+        display: flex;
+        align-self: stretch;
+        min-height: 448px;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: var(--spacer-8) 0 var(--spacer-0);
+      }
+
+      .feature-copy h2,
+      .section-heading {
+        margin-bottom: 0;
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-3xl-font-size);
+        line-height: var(--heading-3xl-line-height);
+        font-weight: var(--font-weight-strong);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .feature-copy__body {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--spacer-16);
+        margin-bottom: var(--spacer-64);
+      }
+
+      .feature-copy__body p {
+        max-width: 310px;
+        margin-bottom: var(--spacer-0);
+      }
+
+      .media-frame {
+        grid-column: 5 / span 8;
+        display: flex;
+        align-self: stretch;
+        min-height: 448px;
+        overflow: hidden;
+        border-radius: var(--radius-12);
+        background:
+          linear-gradient(135deg, var(--bg-brand-popup), transparent 52%),
+          var(--bg-overlay-l1);
+        padding: var(--spacer-40);
+      }
+
+      .product-shot {
+        position: relative;
+        flex: 1 1 auto;
+        height: 100%;
+        min-height: 368px;
+        overflow: hidden;
+        border: 1px solid var(--border-neutral-l2);
+        border-radius: var(--radius-12);
+        background: var(--bg-invert-active);
+        color: var(--text-white);
+      }
+
+      .shot-rail {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 27%;
+        border-right: 1px solid var(--border-neutral-l3);
+        background: var(--bg-invert);
+        color: var(--text-white);
+        padding: var(--spacer-20);
+      }
+
+      .shot-rail .rail-line,
+      .code-line {
+        height: var(--spacer-10);
+        border-radius: var(--radius-4);
+        background: currentColor;
+        opacity: 0.16;
+      }
+
+      .shot-rail .rail-line + .rail-line {
+        margin-top: var(--spacer-16);
+      }
+
+      .shot-rail .rail-line:nth-child(1) {
+        width: 64%;
+      }
+
+      .shot-rail .rail-line:nth-child(2) {
+        width: 42%;
+      }
+
+      .shot-rail .rail-line:nth-child(3) {
+        width: 78%;
+      }
+
+      .shot-rail .rail-line:nth-child(4) {
+        width: 56%;
+      }
+
+      .shot-rail .rail-line:nth-child(5) {
+        width: 70%;
+      }
+
+      .shot-main {
+        position: absolute;
+        inset: 0 0 0 27%;
+        display: grid;
+        grid-template-rows: var(--spacer-48) 1fr;
+      }
+
+      .shot-top {
+        display: flex;
+        align-items: center;
+        gap: var(--spacer-12);
+        border-bottom: 1px solid var(--border-neutral-l3);
+        padding: 0 var(--spacer-20);
+        color: var(--text-white);
+      }
+
+      .shot-chip {
+        min-height: calc(var(--spacer-20) + var(--spacer-2));
+        border-radius: var(--radius-8);
+        background: var(--bg-brand);
+        padding: var(--spacer-2) var(--spacer-8);
+        color: var(--text-onbrand);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+      }
+
+      .shot-code {
+        display: grid;
+        align-content: start;
+        gap: var(--spacer-12);
+        padding: var(--spacer-24);
+      }
+
+      .code-line:nth-child(2),
+      .code-line:nth-child(5),
+      .code-line:nth-child(8) {
+        width: 72%;
+      }
+
+      .code-line:nth-child(3),
+      .code-line:nth-child(6) {
+        width: 46%;
+      }
+
+      .code-line:nth-child(4),
+      .code-line:nth-child(7) {
+        width: 88%;
+      }
+
+      .split-section {
+        border-top: 1px solid var(--border-neutral-l1);
+        padding: var(--spacer-48) var(--spacer-0) calc(var(--spacer-64) + var(--spacer-32));
+      }
+
+      .split-heading {
+        grid-column: 1 / span 5;
+      }
+
+      .split-body {
+        grid-column: 7 / span 6;
+        display: grid;
+        gap: var(--spacer-24);
+      }
+
+      .split-body p {
+        margin-bottom: 0;
+      }
+
+      .body-link {
+        width: fit-content;
+        border-bottom: 1px solid currentColor;
+        color: var(--text-default);
+      }
+
+      .use-case-grid,
+      .impact-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--spacer-32) var(--spacer-48);
+      }
+
+      .use-case,
+      .impact-item {
+        display: grid;
+        gap: var(--spacer-12);
+      }
+
+      .case-index {
+        color: var(--text-default);
+        font-family: var(--font-family-mono);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+        font-weight: var(--font-weight-code);
+      }
+
+      .use-case h3,
+      .impact-item h3,
+      .faq-question {
+        margin-bottom: 0;
+        color: var(--text-default);
+        font-size: var(--heading-xl-font-size);
+        line-height: var(--heading-xl-line-height);
+        font-weight: var(--font-weight-strong);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .use-case p,
+      .impact-item p,
+      .faq-answer {
+        margin-bottom: 0;
+        color: var(--text-secondary);
+        font-size: var(--body-base-font-size);
+        line-height: var(--body-base-line-height);
+      }
+
+      .impact-body {
+        display: grid;
+        gap: var(--spacer-32);
+      }
+
+      .faq-list {
+        display: grid;
+        border-top: 1px solid var(--border-neutral-l1);
+      }
+
+      details {
+        border-bottom: 1px solid var(--border-neutral-l1);
+        padding: var(--spacer-20) 0;
+      }
+
+      summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacer-24);
+        cursor: pointer;
+        list-style: none;
+      }
+
+      summary::-webkit-details-marker {
+        display: none;
+      }
+
+      summary .icon {
+        color: var(--icon-default);
+        transition: transform 160ms ease;
+      }
+
+      details[open] summary .icon {
+        transform: rotate(45deg);
+      }
+
+      .faq-answer {
+        max-width: 640px;
+        margin-top: var(--spacer-16);
+      }
+
+      .prefooter {
+        background: var(--bg-invert-active);
+        color: var(--text-white);
+      }
+
+      .prefooter-cta {
+        display: grid;
+        justify-items: center;
+        gap: var(--spacer-24);
+        min-height: 368px;
+        padding: calc(var(--spacer-64) + var(--spacer-48)) var(--spacer-0) calc(var(--spacer-64) + var(--spacer-32));
+        text-align: center;
+      }
+
+      .prefooter-cta h2 {
+        margin-bottom: 0;
+        color: inherit;
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-3xl-font-size);
+        line-height: var(--heading-3xl-line-height);
+        font-weight: var(--font-weight-strong);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .prefooter-cta p {
+        max-width: 620px;
+        margin-bottom: 0;
+        color: currentColor;
+        opacity: 0.72;
+        font-size: var(--heading-sm-font-size);
+        line-height: var(--heading-sm-line-height);
+      }
+
+      .prefooter .ds-btn--secondary {
+        background: var(--bg-base-default);
+        color: var(--text-default);
+      }
+
+      .site-footer {
+        border-top: 1px solid var(--border-neutral-l3);
+        background: var(--bg-invert-active);
+        color: var(--text-white);
+      }
+
+      .footer-grid {
+        display: grid;
+        grid-template-columns: 1.2fr repeat(4, minmax(120px, 1fr));
+        gap: var(--spacer-48);
+        padding: var(--spacer-64) 0;
+      }
+
+      .footer-brand {
+        align-content: start;
+      }
+
+      .footer-col {
+        display: grid;
+        align-content: start;
+        gap: var(--spacer-12);
+      }
+
+      .footer-col h3 {
+        margin-bottom: var(--spacer-8);
+        color: inherit;
+        font-size: var(--body-base-font-size);
+        line-height: var(--body-base-line-height);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .footer-col a {
+        color: currentColor;
+        opacity: 0.68;
+      }
+
+      .footer-col a:hover {
+        opacity: 1;
+      }
+
+      .footer-bottom {
+        display: flex;
+        justify-content: space-between;
+        gap: var(--spacer-16);
+        border-top: 1px solid var(--border-neutral-l3);
+        padding: var(--spacer-20) 0;
+        color: currentColor;
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+        opacity: 0.72;
+      }
+
+      @media (max-width: 1024px) {
+        .page-wrapper {
+          width: min(calc(100% - var(--spacer-32)), 900px);
+        }
+
+        .top-nav,
+        .header-actions .ds-btn {
+          display: none;
+        }
+
+        .hero-section {
+          padding: var(--spacer-64) var(--spacer-0) var(--spacer-40);
+        }
+
+        .two-column,
+        .feature-card {
+          grid-template-columns: 1fr;
+        }
+
+        .hero-title,
+        .hero-body,
+        .feature-copy,
+        .media-frame,
+        .split-heading,
+        .split-body {
+          grid-column: auto;
+        }
+
+        .feature-card {
+          min-height: 0;
+          padding: var(--spacer-24);
+        }
+
+        .feature-copy {
+          min-height: 0;
+          gap: var(--spacer-32);
+        }
+
+        .feature-copy__body {
+          margin-bottom: var(--spacer-0);
+        }
+
+        .media-frame {
+          min-height: 360px;
+          padding: var(--spacer-24);
+        }
+
+        .split-section {
+          padding-bottom: calc(var(--spacer-64) + var(--spacer-8));
+        }
+
+        .split-heading {
+          margin-bottom: var(--spacer-32);
+        }
+
+        .footer-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 720px) {
+        .page-wrapper {
+          width: min(calc(100% - var(--spacer-32)), 560px);
+        }
+
+        .header-inner {
+          min-height: var(--spacer-64);
+        }
+
+        h1 {
+          font-size: var(--heading-2xl-font-size);
+          line-height: var(--heading-2xl-line-height);
+        }
+
+        .hero-body p,
+        .feature-copy p,
+        .split-body p,
+        .impact-intro,
+        .prefooter-cta p {
+          font-size: var(--body-base-font-size);
+          line-height: var(--body-base-line-height);
+        }
+
+        .feature-copy h2,
+        .section-heading {
+          font-size: var(--heading-2xl-font-size);
+          line-height: var(--heading-2xl-line-height);
+        }
+
+      .feature-section {
+          padding-bottom: calc(var(--spacer-64) + var(--spacer-8));
+        }
+
+        .feature-card {
+          border-radius: var(--radius-12);
+          padding: var(--spacer-20);
+        }
+
+        .media-frame {
+          min-height: 280px;
+          padding: var(--spacer-16);
+        }
+
+        .product-shot {
+          min-height: 240px;
+        }
+
+        .shot-rail {
+          width: 34%;
+          padding: var(--spacer-16);
+        }
+
+        .shot-main {
+          left: 34%;
+        }
+
+        .use-case-grid,
+        .impact-grid {
+          grid-template-columns: 1fr;
+          gap: var(--spacer-32);
+        }
+
+        .use-case h3,
+        .impact-item h3,
+        .faq-question {
+          font-size: var(--heading-lg-font-size);
+          line-height: var(--heading-lg-line-height);
+        }
+
+        .prefooter-cta {
+          min-height: 320px;
+          padding: calc(var(--spacer-64) + var(--spacer-24)) var(--spacer-0) calc(var(--spacer-64) + var(--spacer-8));
+        }
+
+        .prefooter-cta h2 {
+          font-size: var(--heading-2xl-font-size);
+          line-height: var(--heading-2xl-line-height);
+        }
+
+        .footer-grid {
+          grid-template-columns: 1fr;
+          gap: var(--spacer-32);
+          padding: var(--spacer-48) 0;
+        }
+
+        .footer-bottom {
+          flex-direction: column;
+        }
+      }
+
+      /* Inline asset icon normalization: keep uploaded HTML independent from external SVG styling. */
+      [data-asset-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent !important;
+        -webkit-mask: none !important;
+        mask: none !important;
+      }
+
+      [data-asset-icon] > svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        flex: 0 0 auto;
+      }
+
+      .asset-inline-icon {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+      }
+    
+
+    /* design-library-creator layout guard */
+    .uikit-shell { width: 100%; max-width: 1184px; margin: 0 auto; overflow: hidden; display: block; }
+    .uikit-sidebar { min-width: 0; overflow: hidden; max-width: 100%; }
+    .uikit-main { min-width: 0; }
+    .uikit-toolbar { min-width: 0; display: flex; align-items: center; gap: var(--spacer-8); }
+    .uikit-responsive-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacer-16); }
+    .uikit-table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+    .uikit-truncate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .uikit-nowrap { white-space: nowrap; flex-shrink: 0; }
+    .uikit-action-cell { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 160px; overflow: hidden; }
+    .uikit-action { min-width: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    [data-component] { min-width: 0; max-width: 100%; overflow: hidden; }
+    @media (max-width: 900px) { .uikit-shell { grid-template-columns: minmax(0, 1fr); } .uikit-responsive-grid { grid-template-columns: minmax(0, 1fr); } }
+    @media (max-width: 640px) { .uikit-toolbar { flex-direction: column; align-items: stretch; } .uikit-responsive-grid { grid-template-columns: minmax(0, 1fr); } }
+  </style>
+  </head>
+  <body data-layout-guard="uikit-v1">
+    <header class="site-header">
+      <div class="page-wrapper header-inner">
+        <a class="wordmark" href="#top" aria-label="TraeWork home">
+          <span>TraeWork</span>
+        </a>
+
+        <nav class="top-nav" aria-label="Primary navigation">
+          <a href="#narrative">Research</a>
+          <a href="#safety">Policy</a>
+          <button type="button">
+            Commitments
+            <span class="icon icon--16 icon--down" aria-hidden="true" data-asset-icon="../../assets/icons/Down.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.2249 6.22429C10.469 5.98059 10.8647 5.98048 11.1087 6.22429C11.3528 6.46837 11.3528 6.86498 11.1087 7.10905L9.14876 9.06804C8.51414 9.70255 7.48548 9.70261 6.8509 9.06804L4.89094 7.10905C4.64687 6.86498 4.64687 6.46837 4.89094 6.22429C5.13502 5.98021 5.53163 5.98021 5.77571 6.22429L7.73469 8.18425C7.88112 8.33067 8.1185 8.3306 8.26497 8.18425L10.2249 6.22429Z" fill="#404040"/></svg></span>
+          </button>
+          <button type="button">
+            Learn
+            <span class="icon icon--16 icon--down" aria-hidden="true" data-asset-icon="../../assets/icons/Down.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.2249 6.22429C10.469 5.98059 10.8647 5.98048 11.1087 6.22429C11.3528 6.46837 11.3528 6.86498 11.1087 7.10905L9.14876 9.06804C8.51414 9.70255 7.48548 9.70261 6.8509 9.06804L4.89094 7.10905C4.64687 6.86498 4.64687 6.46837 4.89094 6.22429C5.13502 5.98021 5.53163 5.98021 5.77571 6.22429L7.73469 8.18425C7.88112 8.33067 8.1185 8.3306 8.26497 8.18425L10.2249 6.22429Z" fill="#404040"/></svg></span>
+          </button>
+          <a href="#impact">News</a>
+        </nav>
+
+        <div class="header-actions">
+          <a class="ds-btn ds-btn--neutral" href="#use-cases">See use cases</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="top">
+      <article>
+        <section class="hero-section">
+          <div class="page-wrapper two-column">
+            <div class="hero-title">
+              <h1>TraeWork for Teams</h1>
+            </div>
+            <div class="hero-body">
+              <p>
+                TraeWork is a calm workspace for planning, documenting, assigning, and reviewing work across teams. It keeps decisions, owners, deadlines, and AI-assisted workflows in one readable system.
+              </p>
+              <a class="ds-btn ds-btn--brand" href="#try">Get started</a>
+            </div>
+          </div>
+        </section>
+
+        <section class="feature-section">
+          <div class="page-wrapper">
+            <div class="feature-card">
+              <div class="feature-copy">
+                <h2>Structured work, not scattered updates</h2>
+                <div class="feature-copy__body">
+                  <p>Describe a goal, attach the right context, and turn it into tracked work with owners, checkpoints, and reviewable outcomes.</p>
+                  <a class="ds-btn ds-btn--secondary" href="#use-cases">
+                    Explore TraeWork
+                    <span class="icon icon--16 icon--arrow-right" aria-hidden="true" data-asset-icon="../../assets/icons/arrow-right.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#171717" xmlns="http://www.w3.org/2000/svg"><path d="M8.89062 3.55722C9.13461 3.31335 9.53132 3.31348 9.77539 3.55722L13.7754 7.55722C14.0194 7.80126 14.0194 8.1979 13.7754 8.44199L9.77539 12.442C9.53131 12.6861 9.1347 12.6861 8.89062 12.442C8.64685 12.1979 8.64665 11.8012 8.89062 11.5572L11.8232 8.6246H2.66699C2.32181 8.6246 2.04199 8.34478 2.04199 7.9996C2.0422 7.6546 2.32194 7.3746 2.66699 7.3746H11.8232L8.89062 4.44199C8.64685 4.19788 8.64665 3.8012 8.89062 3.55722Z" fill="#171717"/></svg></span>
+                  </a>
+                </div>
+              </div>
+
+              <figure class="media-frame" aria-label="Product workflow preview">
+                <div class="product-shot">
+                  <div class="shot-rail" aria-hidden="true">
+                    <div class="rail-line"></div>
+                    <div class="rail-line"></div>
+                    <div class="rail-line"></div>
+                    <div class="rail-line"></div>
+                    <div class="rail-line"></div>
+                  </div>
+                  <div class="shot-main" aria-hidden="true">
+                    <div class="shot-top">
+                      <span class="shot-chip">Plan</span>
+                      <span class="mono">launch-readiness-plan</span>
+                    </div>
+                    <div class="shot-code">
+                      <div class="code-line"></div>
+                      <div class="code-line"></div>
+                      <div class="code-line"></div>
+                      <div class="code-line"></div>
+                      <div class="code-line"></div>
+                      <div class="code-line"></div>
+                      <div class="code-line"></div>
+                      <div class="code-line"></div>
+                    </div>
+                  </div>
+                </div>
+              </figure>
+            </div>
+          </div>
+        </section>
+
+        <section id="narrative" class="split-section">
+          <div class="page-wrapper two-column">
+            <div class="split-heading">
+              <h2 class="section-heading">From context to coordinated action</h2>
+            </div>
+            <div class="split-body">
+              <p>
+                Team work often gets split across chat threads, documents, spreadsheets, tasks, and meetings. TraeWork brings those fragments together so a project can move from discussion to decision without losing the reasoning behind it.
+              </p>
+              <p>
+                Product, operations, design, engineering, and leadership can all work from the same shared page: what changed, who owns it, what is blocked, and what needs to happen next.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section id="use-cases" class="split-section">
+          <div class="page-wrapper two-column">
+            <div class="split-heading">
+              <h2 class="section-heading">Common use cases for TraeWork</h2>
+            </div>
+            <div class="split-body use-case-grid">
+              <div class="use-case">
+                <span class="case-index">01</span>
+                <h3>Run product reviews</h3>
+                <p>Collect scope, evidence, metrics, decisions, and owner notes in one review surface before a roadmap call.</p>
+              </div>
+              <div class="use-case">
+                <span class="case-index">02</span>
+                <h3>Coordinate launch work</h3>
+                <p>Break launch plans into tracks for product, design, engineering, legal, marketing, and support without losing the shared timeline.</p>
+              </div>
+              <div class="use-case">
+                <span class="case-index">03</span>
+                <h3>Turn meetings into plans</h3>
+                <p>Convert meeting notes into decisions, tasks, risks, and follow-ups that remain connected to the original discussion.</p>
+              </div>
+              <div class="use-case">
+                <span class="case-index">04</span>
+                <h3>Track cross-team risks</h3>
+                <p>Surface dependencies, overdue decisions, missing approvals, and unclear ownership before they become release blockers.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="split-section">
+          <div class="page-wrapper two-column">
+            <div class="split-heading">
+              <h2 class="section-heading">Making complex work easier to read</h2>
+            </div>
+            <div class="split-body">
+              <p>
+                TraeWork is designed for teams that need a shared operating layer. Instead of forcing every update into a ticket or every decision into a meeting, it gives each project a living workspace that is structured enough to act on and light enough to keep current.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section id="impact" class="split-section">
+          <div class="page-wrapper two-column">
+            <div class="split-heading">
+              <h2 class="section-heading">How TraeWork impacts teams</h2>
+            </div>
+            <div class="split-body impact-body">
+              <p class="impact-intro">
+                Teams use TraeWork to reduce status drift, shorten handoffs, and make project state easier to inspect. The value is not more dashboards; it is fewer missing links between context and action.
+              </p>
+              <div class="impact-grid">
+                <div class="impact-item">
+                  <h3>Clearer leadership reviews</h3>
+                  <p><strong>Northstar Product</strong> replaced scattered weekly updates with one review page that combines decisions, metrics, risks, and owners.</p>
+                </div>
+                <div class="impact-item">
+                  <h3>Shorter handoff cycles</h3>
+                  <p><strong>FieldOps Studio</strong> moved launch handoffs into TraeWork so design, sales, and support could see the same readiness checklist.</p>
+                </div>
+                <div class="impact-item">
+                  <h3>More durable decisions</h3>
+                  <p><strong>Atlas Cloud</strong> linked decision records to tasks and milestones, making it easier for new teammates to understand why priorities changed.</p>
+                </div>
+                <div class="impact-item">
+                  <h3>Fewer hidden blockers</h3>
+                  <p><strong>Riverline AI</strong> used dependency views to catch missing approvals before a rollout, keeping the team aligned without extra meetings.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="safety" class="split-section">
+          <div class="page-wrapper two-column">
+            <div class="split-heading">
+              <h2 class="section-heading">Control and trust</h2>
+            </div>
+            <div class="split-body">
+              <p>
+                TraeWork keeps permission and ownership visible. Teams decide who can create plans, approve changes, assign work, publish updates, and archive completed project context.
+              </p>
+              <p>
+                Every workspace can show what changed, who changed it, and which decision or project goal it belongs to. That makes AI-assisted summaries useful without turning them into hidden authority.
+              </p>
+              <a class="body-link" href="#faq">
+                Read how TraeWork handles team control
+              </a>
+            </div>
+          </div>
+        </section>
+
+        <section id="faq" class="split-section">
+          <div class="page-wrapper two-column">
+            <div class="split-heading">
+              <h2 class="section-heading">FAQ</h2>
+            </div>
+            <div class="split-body">
+              <div class="faq-list">
+                <details>
+                  <summary>
+                    <span class="faq-question">What is TraeWork?</span>
+                    <span class="icon icon--20 icon--plus" aria-hidden="true" data-asset-icon="../../assets/icons/Plus.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#262626" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M8 4C8.3682 4 8.66667 4.29848 8.66667 4.66667V7.33333H11.3333C11.7015 7.33333 12 7.6318 12 8C12 8.3682 11.7015 8.66667 11.3333 8.66667H8.66667V11.3333C8.66667 11.7015 8.3682 12 8 12C7.6318 12 7.33333 11.7015 7.33333 11.3333V8.66667H4.66667C4.29848 8.66667 4 8.3682 4 8C4 7.6318 4.29848 7.33333 4.66667 7.33333H7.33333V4.66667C7.33333 4.29848 7.6318 4 8 4Z" fill="#262626"/></svg></span>
+                  </summary>
+                  <p class="faq-answer">
+                    TraeWork is a structured work hub for teams. It combines planning, documentation, task ownership, decision records, and AI-assisted summaries into one product workspace.
+                  </p>
+                </details>
+                <details>
+                  <summary>
+                    <span class="faq-question">Who should use TraeWork?</span>
+                    <span class="icon icon--20 icon--plus" aria-hidden="true" data-asset-icon="../../assets/icons/Plus.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#262626" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M8 4C8.3682 4 8.66667 4.29848 8.66667 4.66667V7.33333H11.3333C11.7015 7.33333 12 7.6318 12 8C12 8.3682 11.7015 8.66667 11.3333 8.66667H8.66667V11.3333C8.66667 11.7015 8.3682 12 8 12C7.6318 12 7.33333 11.7015 7.33333 11.3333V8.66667H4.66667C4.29848 8.66667 4 8.3682 4 8C4 7.6318 4.29848 7.33333 4.66667 7.33333H7.33333V4.66667C7.33333 4.29848 7.6318 4 8 4Z" fill="#262626"/></svg></span>
+                  </summary>
+                  <p class="faq-answer">
+                    Product teams, operations teams, design groups, engineering leads, founders, and cross-functional project owners can use it to keep work readable and accountable.
+                  </p>
+                </details>
+                <details>
+                  <summary>
+                    <span class="faq-question">How does TraeWork use AI?</span>
+                    <span class="icon icon--20 icon--plus" aria-hidden="true" data-asset-icon="../../assets/icons/Plus.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#262626" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M8 4C8.3682 4 8.66667 4.29848 8.66667 4.66667V7.33333H11.3333C11.7015 7.33333 12 7.6318 12 8C12 8.3682 11.7015 8.66667 11.3333 8.66667H8.66667V11.3333C8.66667 11.7015 8.3682 12 8 12C7.6318 12 7.33333 11.7015 7.33333 11.3333V8.66667H4.66667C4.29848 8.66667 4 8.3682 4 8C4 7.6318 4.29848 7.33333 4.66667 7.33333H7.33333V4.66667C7.33333 4.29848 7.6318 4 8 4Z" fill="#262626"/></svg></span>
+                  </summary>
+                  <p class="faq-answer">
+                    AI helps summarize meetings, draft plans, extract risks, propose follow-ups, and keep project updates current. Human owners still approve decisions and accountable work.
+                  </p>
+                </details>
+                <details>
+                  <summary>
+                    <span class="faq-question">How does TraeWork keep work controlled?</span>
+                    <span class="icon icon--20 icon--plus" aria-hidden="true" data-asset-icon="../../assets/icons/Plus.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#262626" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M8 4C8.3682 4 8.66667 4.29848 8.66667 4.66667V7.33333H11.3333C11.7015 7.33333 12 7.6318 12 8C12 8.3682 11.7015 8.66667 11.3333 8.66667H8.66667V11.3333C8.66667 11.7015 8.3682 12 8 12C7.6318 12 7.33333 11.7015 7.33333 11.3333V8.66667H4.66667C4.29848 8.66667 4 8.3682 4 8C4 7.6318 4.29848 7.33333 4.66667 7.33333H7.33333V4.66667C7.33333 4.29848 7.6318 4 8 4Z" fill="#262626"/></svg></span>
+                  </summary>
+                  <p class="faq-answer">
+                    It keeps permissions, ownership, decision history, and project status visible. Teams can separate drafts from approved plans and keep sensitive spaces limited to the right people.
+                  </p>
+                </details>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="try" class="prefooter">
+          <div class="page-wrapper">
+            <div class="prefooter-cta">
+              <h2>Try TraeWork</h2>
+              <p>Create a project workspace, turn scattered context into a readable plan, and keep every team moving from the same source of truth.</p>
+              <a class="ds-btn ds-btn--secondary" href="#top">
+                Get started
+                <span class="icon icon--16 icon--arrow-right" aria-hidden="true" data-asset-icon="../../assets/icons/arrow-right.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#171717" xmlns="http://www.w3.org/2000/svg"><path d="M8.89062 3.55722C9.13461 3.31335 9.53132 3.31348 9.77539 3.55722L13.7754 7.55722C14.0194 7.80126 14.0194 8.1979 13.7754 8.44199L9.77539 12.442C9.53131 12.6861 9.1347 12.6861 8.89062 12.442C8.64685 12.1979 8.64665 11.8012 8.89062 11.5572L11.8232 8.6246H2.66699C2.32181 8.6246 2.04199 8.34478 2.04199 7.9996C2.0422 7.6546 2.32194 7.3746 2.66699 7.3746H11.8232L8.89062 4.44199C8.64685 4.19788 8.64665 3.8012 8.89062 3.55722Z" fill="#171717"/></svg></span>
+              </a>
+            </div>
+          </div>
+        </section>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <div class="page-wrapper footer-grid">
+        <div class="footer-brand">
+          <a class="wordmark" href="#top" aria-label="TraeWork home">
+            <span>TraeWork</span>
+          </a>
+        </div>
+        <div class="footer-col">
+          <h3>Products</h3>
+          <a href="#top">Overview</a>
+          <a href="#use-cases">Use cases</a>
+          <a href="#impact">Team impact</a>
+          <a href="#try">Try TraeWork</a>
+        </div>
+        <div class="footer-col">
+          <h3>Solutions</h3>
+          <a href="#narrative">Planning</a>
+          <a href="#use-cases">Launch work</a>
+          <a href="#impact">Reviews</a>
+          <a href="#safety">Governance</a>
+        </div>
+        <div class="footer-col">
+          <h3>Resources</h3>
+          <a href="#faq">FAQ</a>
+          <a href="#narrative">Guide</a>
+          <a href="#use-cases">Templates</a>
+          <a href="#safety">Controls</a>
+        </div>
+        <div class="footer-col">
+          <h3>Company</h3>
+          <a href="#top">About TraeWork</a>
+          <a href="#impact">Customers</a>
+          <a href="#safety">Trust</a>
+          <a href="#faq">FAQ</a>
+        </div>
+      </div>
+      <div class="page-wrapper footer-bottom">
+        <span>© 2026 TraeWork</span>
+        <span>Work context, planning, and execution in one calm system.</span>
+      </div>
+    </footer>
+    <div id="traework-interaction-root" aria-hidden="true"></div>
+    <script>
+      (function () {
+        var rootElement = document.getElementById('traework-interaction-root');
+        if (rootElement) rootElement.dataset.interactionMounted = 'true';
+
+        var interactiveSelectors = [
+          '[data-nav]',
+          '[data-screen-trigger]',
+          '[role="tab"]',
+          '.tab',
+          '.nav-item',
+          '.sidebar-nav a',
+          '.sidebar a',
+          '.mobile-nav a'
+        ];
+
+        function getActiveClass(element) {
+          var classes = Array.prototype.slice.call(element.classList || []);
+          return classes.find(function (name) { return name.endsWith('--active'); }) ||
+            classes.find(function (name) { return name === 'is-active' || name === 'active' || name === 'selected'; }) ||
+            (element.classList && element.classList.contains('tab') ? 'tab--active' : null) ||
+            (element.classList && element.classList.contains('nav-item') ? 'nav-item--active' : null);
+        }
+
+        function activateWithinGroup(element, activeClass) {
+          var group = element.closest('[role="tablist"], nav, .sidebar, .sidebar-nav, .mobile-nav') || element.parentElement;
+          if (!group || !activeClass) return;
+
+          group.querySelectorAll(interactiveSelectors.join(',')).forEach(function (item) {
+            item.classList.remove(activeClass);
+            if (item.getAttribute('role') === 'tab') item.setAttribute('aria-selected', 'false');
+          });
+
+          element.classList.add(activeClass);
+          if (element.getAttribute('role') === 'tab') element.setAttribute('aria-selected', 'true');
+        }
+
+        function handleClick(event) {
+          var target = event.currentTarget;
+          var href = target.getAttribute('href');
+          if (href === '#') event.preventDefault();
+          activateWithinGroup(target, getActiveClass(target));
+        }
+
+        Array.prototype.slice.call(document.querySelectorAll(interactiveSelectors.join(','))).forEach(function (element) {
+          if (element.id !== 'traework-interaction-root') element.addEventListener('click', handleClick);
+        });
+      }());
+    </script>
+  </body>
+</html>

@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 2,
+  "slug": "skeleton",
+  "name": "Skeleton",
+  "category": "feedback",
+  "sourceKind": "preview-contract",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    {
+      "type": "Skeleton",
+      "evidence": "Inferred from preview/component-skeleton.html title and component CSS selectors."
+    }
+  ],
+  "variantDimensions": [
+    {
+      "name": "style-state-density",
+      "values": [
+        ".ds-skeleton",
+        ".ds-skeleton::after",
+        "@keyframes ds-skeleton-shine",
+        ".ds-skeleton--line",
+        ".ds-skeleton--title",
+        ".ds-skeleton--circle"
+      ],
+      "evidence": "Representative selectors from preview/component-skeleton.html."
+    }
+  ],
+  "coverageMatrix": {
+    "source": "preview/component-skeleton.html",
+    "representativeSelectors": [
+      ".ds-skeleton",
+      ".ds-skeleton::after",
+      "@keyframes ds-skeleton-shine",
+      ".ds-skeleton--line",
+      ".ds-skeleton--title",
+      ".ds-skeleton--circle"
+    ],
+    "cssRuleCount": 7
+  },
+  "sizeDeltas": [],
+  "stateCoverage": {
+    "states": []
+  },
+  "representativeVariants": [
+    {
+      "selector": ".ds-skeleton",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-skeleton::after",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": "@keyframes ds-skeleton-shine",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-skeleton--line",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    }
+  ],
+  "anatomy": {
+    "source": "preview/component-skeleton.html",
+    "selectors": [
+      ".ds-skeleton",
+      ".ds-skeleton::after",
+      "@keyframes ds-skeleton-shine",
+      ".ds-skeleton--line",
+      ".ds-skeleton--title",
+      ".ds-skeleton--circle"
+    ]
+  },
+  "structurePatterns": [],
+  "usageHints": [
+    "Copy component markup from preview/component-skeleton.html; keep page/demo-only styles outside shared component CSS.",
+    "Use colors_and_type.css + components.css as the executable rendering contract.",
+    "Use preview/component-skeleton.html and components.css as the executable rendering contract."
+  ],
+  "doNotInvent": [
+    "Do not add variants or states that are absent from the preview marker block without updating the component contract.",
+    "Do not add visual states or component parts not present in the preview or components.css.",
+    "Do not treat this inferred JSON as original Figma evidence."
+  ],
+  "unknowns": [
+    "Original design evidence was not available during this repair pass."
+  ],
+  "tokensConsumed": [
+    "--bg-overlay-l2",
+    "--bg-overlay-l3",
+    "--radius-8",
+    "--radius-full"
+  ],
+  "domAnatomy": {
+    "root": {
+      "tag": "preview-fragment",
+      "source": "preview/component-skeleton.html",
+      "classes": [
+        "ds-skeleton",
+        "ds-skeleton--circle",
+        "ds-skeleton--line",
+        "ds-skeleton--title",
+        "ds-skeleton-shine"
+      ]
+    },
+    "componentCssMarker": {
+      "start": "/* @component-css-start */",
+      "end": "/* @component-css-end */"
+    }
+  },
+  "provenance": {
+    "preview": "preview/component-skeleton.html",
+    "source": "preview/component-skeleton.html",
+    "css": {
+      "file": "components.css",
+      "marker": "skeleton"
+    },
+    "contractBasis": "Derived from the component preview marker block and rendered .ds-* markup; original design evidence was not available."
+  },
+  "assetsConsumed": []
+}

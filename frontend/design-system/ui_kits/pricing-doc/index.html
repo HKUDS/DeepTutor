@@ -1,0 +1,1412 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TraeWork Pricing - TraeWork Documentation</title>
+    <meta
+      name="description"
+      content="A TraeWork documentation page for TraeWork pricing information."
+    >
+    <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../../colors_and_type.css">
+  <link rel="stylesheet" href="../../components.css">
+    <!-- Assumption: this static prototype uses fictional TraeWork model names and sample pricing for parser validation only. -->
+    <style>
+      :root {
+        color-scheme: light;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        background: var(--bg-base-default);
+        color: var(--text-default);
+        scroll-behavior: smooth;
+      }
+
+      body {
+        min-width: 320px;
+        margin: var(--spacer-0);
+        background: var(--bg-base-default);
+        color: var(--text-default);
+        font-family: var(--body-base-font-family);
+        font-size: var(--body-base-font-size);
+        font-weight: var(--body-base-font-weight);
+        line-height: var(--body-base-line-height);
+        letter-spacing: var(--body-base-letter-spacing);
+        text-rendering: optimizeLegibility;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      button {
+        border: 0;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: var(--spacer-0);
+      }
+
+      p {
+        margin-bottom: var(--spacer-0);
+      }
+
+      :focus-visible {
+        outline: 2px solid var(--border-brand);
+        outline-offset: var(--spacer-2);
+      }
+
+      code,
+      .mono {
+        font-family: var(--code-editor-font-family);
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum" 1, "lnum" 1;
+      }
+
+      .num {
+        font-family: var(--font-family-metric);
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum" 1, "lnum" 1;
+        white-space: nowrap;
+      }
+
+      code {
+        border-radius: var(--radius-4);
+        background: var(--bg-overlay-l1);
+        padding: var(--spacer-2) var(--spacer-4);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+      }
+
+      .page {
+        min-height: 100vh;
+        background: var(--bg-base-default);
+      }
+
+      .wrap {
+        width: min(calc(100% - (var(--spacer-32) * 2)), 1280px);
+        margin: var(--spacer-0) auto;
+      }
+
+      .site-header {
+        position: sticky;
+        top: var(--spacer-0);
+        z-index: 30;
+        border-bottom: 1px solid var(--border-neutral-l1);
+        background: var(--bg-menu);
+      }
+
+      .header-inner {
+        display: flex;
+        min-height: 64px;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacer-20);
+      }
+
+      .wordmark {
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-sm-font-size);
+        line-height: var(--heading-sm-line-height);
+        font-weight: var(--font-weight-strong);
+      }
+
+      .top-nav,
+      .header-actions {
+        display: flex;
+        align-items: center;
+      }
+
+      .top-nav {
+        gap: var(--spacer-4);
+      }
+
+      .top-nav a {
+        display: inline-flex;
+        min-height: 32px;
+        align-items: center;
+        border-radius: var(--radius-8);
+        padding: 0 var(--spacer-12);
+        color: var(--text-secondary);
+      }
+
+      .top-nav a:hover {
+        background: var(--bg-overlay-l1);
+        color: var(--text-default);
+      }
+
+      .header-actions {
+        gap: var(--spacer-8);
+      }
+
+      .ds-btn {
+        display: inline-flex;
+        min-height: 32px;
+        align-items: center;
+        justify-content: center;
+        gap: var(--spacer-8);
+        border-radius: var(--radius-8);
+        padding: 0 var(--spacer-16);
+        font-weight: var(--font-weight-medium);
+        white-space: nowrap;
+      }
+
+      .ds-btn--brand {
+        background: var(--bg-brand);
+        color: var(--text-onbrand);
+      }
+
+      .ds-btn--brand:hover {
+        background: var(--bg-brand-hover);
+      }
+
+      .ds-btn--secondary {
+        border: 1px solid var(--border-neutral-l1);
+        background: var(--bg-overlay-l1);
+        color: var(--text-default);
+      }
+
+      .ds-btn--secondary:hover {
+        border-color: var(--border-neutral-l2);
+        background: var(--bg-overlay-l2);
+      }
+
+      .doc-grid {
+        display: grid;
+        grid-template-columns: 208px minmax(0, 1fr);
+        gap: var(--spacer-32);
+        align-items: start;
+        padding: var(--spacer-32) 0 var(--spacer-64);
+      }
+
+      .toc {
+        display: grid;
+        gap: var(--spacer-12);
+        position: sticky;
+        top: 96px;
+        color: var(--text-tertiary);
+      }
+
+      .toc a {
+        display: flex;
+        min-height: 28px;
+        align-items: center;
+        border-left: 2px solid transparent;
+        border-radius: var(--radius-8);
+        padding: 0 var(--spacer-8);
+        color: var(--text-secondary);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+      }
+
+      .toc a:hover {
+        background: var(--bg-overlay-l1);
+        color: var(--text-default);
+      }
+
+      .toc-title {
+        color: var(--text-default);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .toc nav {
+        display: grid;
+        gap: var(--spacer-2);
+      }
+
+      .toc a[aria-current="location"] {
+        border-left-color: var(--text-default);
+        border-radius: 0;
+        background: transparent;
+        color: var(--text-default);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .toc a[aria-current="location"]:hover {
+        background: transparent;
+      }
+
+      .content {
+        min-width: 0;
+        max-width: 920px;
+      }
+
+      .hero {
+        display: grid;
+        gap: var(--spacer-24);
+        padding-bottom: var(--spacer-48);
+      }
+
+      .breadcrumb {
+        color: var(--text-tertiary);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+      }
+
+      .breadcrumb span {
+        color: var(--text-default);
+      }
+
+      h1 {
+        max-width: 760px;
+        margin-bottom: var(--spacer-0);
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-3xl-font-size);
+        line-height: var(--heading-3xl-line-height);
+        font-weight: var(--font-weight-strong);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .lead {
+        max-width: 720px;
+        color: var(--text-secondary);
+        font-size: var(--heading-sm-font-size);
+        line-height: var(--heading-sm-line-height);
+      }
+
+      .source-strip {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--spacer-16);
+      }
+
+      .source-item {
+        display: grid;
+        gap: var(--spacer-8);
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-12);
+        background: var(--bg-base-secondary);
+        padding: var(--spacer-16);
+      }
+
+      .source-label {
+        color: var(--text-tertiary);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+      }
+
+      .source-value {
+        color: var(--text-default);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .section {
+        border-top: 1px solid var(--border-neutral-l1);
+        padding: var(--spacer-48) 0;
+        scroll-margin-top: calc(var(--spacer-64) + var(--spacer-24));
+      }
+
+      .section:first-of-type {
+        padding-top: var(--spacer-0);
+      }
+
+      .section-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(240px, 360px);
+        gap: var(--spacer-32);
+        align-items: start;
+        margin-bottom: var(--spacer-32);
+      }
+
+      .section-title {
+        margin-bottom: var(--spacer-0);
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-2xl-font-size);
+        line-height: var(--heading-2xl-line-height);
+        font-weight: var(--font-weight-strong);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .section-copy {
+        color: var(--text-secondary);
+        justify-self: end;
+        max-width: 360px;
+        line-height: var(--body-base-line-height);
+        text-align: right;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+      }
+
+      .ds-card {
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-12);
+        background: var(--bg-base-secondary);
+        padding: var(--spacer-20);
+      }
+
+      .callout {
+        display: grid;
+        gap: var(--spacer-8);
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-8);
+        background: var(--bg-base-secondary);
+        padding: var(--spacer-16);
+      }
+
+      .callout strong {
+        color: var(--text-default);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .callout p {
+        color: var(--text-secondary);
+      }
+
+      .callout--info {
+        border-color: var(--status-primary-surface-l2);
+        background: var(--status-primary-surface-l1);
+      }
+
+      .callout--warning {
+        border-color: var(--status-alert-surface-l2);
+        background: var(--status-alert-surface-l1);
+      }
+
+      .table-stack {
+        display: grid;
+        gap: var(--spacer-16);
+      }
+
+      .table-wrap {
+        overflow: hidden;
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-12);
+        background: var(--bg-base-secondary);
+      }
+
+      table {
+        width: 100%;
+        min-width: 0;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid var(--border-neutral-l1);
+        padding: var(--spacer-12) var(--spacer-16);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: var(--text-tertiary);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+        font-weight: var(--font-weight-medium);
+        text-transform: uppercase;
+      }
+
+      td {
+        color: var(--text-secondary);
+      }
+
+      td:first-child {
+        word-break: normal;
+        overflow-wrap: anywhere;
+      }
+
+      td:first-child,
+      th:first-child {
+        color: var(--text-default);
+      }
+
+      th:first-child,
+      td:first-child {
+        width: 34%;
+      }
+
+      th:nth-child(2),
+      td:nth-child(2),
+      th:nth-child(3),
+      td:nth-child(3),
+      th:nth-child(4),
+      td:nth-child(4) {
+        width: 22%;
+      }
+
+      .info-table th:first-child,
+      .info-table td:first-child {
+        width: 28%;
+      }
+
+      .info-table th:nth-child(2),
+      .info-table td:nth-child(2) {
+        width: 72%;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .tag {
+        display: inline-flex;
+        min-height: 22px;
+        align-items: center;
+        width: fit-content;
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-8);
+        background: var(--bg-overlay-l2);
+        padding: 0 var(--spacer-8);
+        color: var(--text-secondary);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+      }
+
+      .tag--success {
+        border-color: var(--status-success-surface-l2);
+        background: var(--status-success-surface-l1);
+        color: var(--status-success-default);
+      }
+
+      .tag--info {
+        border-color: var(--status-primary-surface-l2);
+        background: var(--status-primary-surface-l1);
+        color: var(--status-primary-default);
+      }
+
+      .tag--warning {
+        border-color: var(--status-warning-surface-l2);
+        background: var(--status-warning-surface-l1);
+        color: var(--status-warning-default);
+      }
+
+      .pricing-table .unit {
+        color: var(--text-secondary);
+        font-family: var(--body-base-font-family);
+        font-variant-numeric: normal;
+        font-feature-settings: normal;
+      }
+
+      .card-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--spacer-24);
+      }
+
+      .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--spacer-24);
+      }
+
+      .mini-card {
+        display: grid;
+        gap: var(--spacer-16);
+        align-content: start;
+      }
+
+      .mini-card h3 {
+        margin-bottom: var(--spacer-0);
+        color: var(--text-default);
+        font-size: var(--heading-sm-font-size);
+        line-height: var(--heading-sm-line-height);
+        font-weight: var(--font-weight-strong);
+      }
+
+      .mini-card p,
+      .mini-card li {
+        color: var(--text-secondary);
+      }
+
+      .mini-card ul,
+      .plain-list {
+        display: grid;
+        gap: var(--spacer-8);
+        margin: var(--spacer-0);
+        padding-left: var(--spacer-20);
+      }
+
+      .metric-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--spacer-16);
+      }
+
+      .metric {
+        display: grid;
+        gap: var(--spacer-6);
+        border-top: 1px solid var(--border-neutral-l1);
+        padding-top: var(--spacer-16);
+      }
+
+      .metric strong {
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-md-font-size);
+        line-height: var(--heading-md-line-height);
+        font-weight: var(--font-weight-strong);
+      }
+
+      .metric strong.num {
+        font-family: var(--font-family-metric);
+      }
+
+      .metric span {
+        color: var(--text-tertiary);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+      }
+
+      .dimension-note {
+        display: grid;
+        gap: var(--spacer-8);
+        margin-top: var(--spacer-4);
+        border-top: 1px solid var(--border-neutral-l1);
+        padding-top: var(--spacer-16);
+      }
+
+      .dimension-note__row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: var(--spacer-12);
+        align-items: center;
+        border-radius: var(--radius-8);
+        background: var(--bg-overlay-l1);
+        padding: var(--spacer-10) var(--spacer-12);
+      }
+
+      .dimension-note__label {
+        color: var(--text-tertiary);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+      }
+
+      .dimension-note__value {
+        color: var(--text-default);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+        font-weight: var(--font-weight-medium);
+        text-align: right;
+      }
+
+      .calc-card {
+        display: grid;
+        gap: var(--spacer-16);
+      }
+
+      .calc-line {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(120px, auto);
+        gap: var(--spacer-16);
+        border-bottom: 1px solid var(--border-neutral-l1);
+        padding-bottom: var(--spacer-12);
+      }
+
+      .calc-line:last-child {
+        border-bottom: 0;
+        padding-bottom: var(--spacer-0);
+      }
+
+      .calc-line span {
+        color: var(--text-secondary);
+      }
+
+      .calc-line strong {
+        color: var(--text-default);
+        text-align: right;
+      }
+
+      .faq-list {
+        display: grid;
+        margin-top: var(--spacer-8);
+      }
+
+      details.faq {
+        border-top: 1px solid var(--border-neutral-l1);
+        padding: var(--spacer-24) 0;
+      }
+
+      details.faq:last-child {
+        border-bottom: 1px solid var(--border-neutral-l1);
+      }
+
+      details.faq summary {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: var(--spacer-24);
+        align-items: center;
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-lg-font-size);
+        line-height: var(--heading-lg-line-height);
+        font-weight: var(--font-weight-strong);
+        cursor: pointer;
+        list-style: none;
+      }
+
+      details.faq summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .faq__icon {
+        color: var(--icon-default);
+        font-size: var(--heading-xl-font-size);
+        line-height: var(--body-base-line-height);
+        font-weight: var(--font-weight-default);
+        transition: transform 200ms cubic-bezier(0.2, 0, 0, 1);
+      }
+
+      details.faq[open] .faq__icon {
+        transform: rotate(45deg);
+      }
+
+      details.faq p {
+        max-width: 720px;
+        margin-top: var(--spacer-12);
+        color: var(--text-secondary);
+        font-size: var(--body-base-font-size);
+        line-height: var(--body-base-line-height);
+      }
+
+      .footer {
+        border-top: 1px solid var(--border-neutral-l1);
+        padding: var(--spacer-32) 0;
+        color: var(--text-tertiary);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+      }
+
+      .footer-inner {
+        display: flex;
+        justify-content: space-between;
+        gap: var(--spacer-16);
+      }
+
+      .footer a {
+        color: var(--text-secondary);
+      }
+
+      .footer a:hover {
+        color: var(--text-default);
+      }
+
+      @media (max-width: 1320px) {
+        .doc-grid {
+          grid-template-columns: 184px minmax(0, 1fr);
+          gap: var(--spacer-24);
+        }
+
+        .feature-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 900px) {
+        .wrap {
+          width: min(calc(100% - (var(--spacer-16) * 2)), 720px);
+        }
+
+        .top-nav,
+        .header-actions .ds-btn {
+          display: none;
+        }
+
+        .doc-grid {
+          grid-template-columns: 1fr;
+          gap: var(--spacer-24);
+          padding-top: var(--spacer-24);
+        }
+
+        .toc {
+          position: static;
+          border: 1px solid var(--border-neutral-l1);
+          border-radius: var(--radius-8);
+          background: var(--bg-base-secondary);
+          padding: var(--spacer-16);
+        }
+
+        .section-head,
+        .source-strip,
+        .card-grid,
+        .feature-grid,
+        .metric-row {
+          grid-template-columns: 1fr;
+        }
+
+        .section-copy {
+          justify-self: stretch;
+          text-align: left;
+        }
+
+        .hero {
+          padding-bottom: var(--spacer-32);
+        }
+
+        .section {
+          padding: var(--spacer-40) 0;
+        }
+      }
+
+      @media (max-width: 560px) {
+        .header-inner {
+          min-height: 60px;
+        }
+
+        h1 {
+          font-size: var(--heading-2xl-font-size);
+          line-height: var(--heading-2xl-line-height);
+        }
+
+        .lead,
+        .section-copy {
+          font-size: var(--body-base-font-size);
+          line-height: var(--body-base-line-height);
+        }
+
+        details.faq {
+          padding: var(--spacer-20) 0;
+        }
+
+        details.faq summary {
+          gap: var(--spacer-12);
+          font-size: var(--heading-md-font-size);
+          line-height: var(--heading-md-line-height);
+        }
+
+        details.faq p {
+          font-size: var(--body-base-font-size);
+          line-height: var(--body-base-line-height);
+        }
+
+        .footer-inner {
+          flex-direction: column;
+        }
+
+        th,
+        td {
+          padding: var(--spacer-12) var(--spacer-8);
+        }
+
+        .pricing-table th,
+        .pricing-table td {
+          padding: var(--spacer-12) var(--spacer-6);
+        }
+
+        .pricing-table .num {
+          font-size: var(--body-md-font-size);
+          line-height: var(--body-md-line-height);
+        }
+
+        .pricing-table .unit {
+          display: none;
+        }
+      }
+    
+
+    /* design-library-creator layout guard */
+    .uikit-shell { width: 100%; max-width: 1184px; margin: 0 auto; overflow: hidden; display: block; }
+    .uikit-sidebar { min-width: 0; overflow: hidden; max-width: 100%; }
+    .uikit-main { min-width: 0; }
+    .uikit-toolbar { min-width: 0; display: flex; align-items: center; gap: var(--spacer-8); }
+    .uikit-responsive-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacer-16); }
+    .uikit-table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+    .uikit-truncate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .uikit-nowrap { white-space: nowrap; flex-shrink: 0; }
+    .uikit-action-cell { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 160px; overflow: hidden; }
+    .uikit-action { min-width: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    [data-component] { min-width: 0; max-width: 100%; overflow: hidden; }
+    @media (max-width: 900px) { .uikit-shell { grid-template-columns: minmax(0, 1fr); } .uikit-responsive-grid { grid-template-columns: minmax(0, 1fr); } }
+    @media (max-width: 640px) { .uikit-toolbar { flex-direction: column; align-items: stretch; } .uikit-responsive-grid { grid-template-columns: minmax(0, 1fr); } }
+  </style>
+  </head>
+  <body data-layout-guard="uikit-v1">
+    <div class="page">
+      <header class="site-header">
+        <div class="wrap header-inner">
+          <a class="wordmark" href="#top" aria-label="TraeWork documentation home">TraeWork Docs</a>
+          <nav class="top-nav" aria-label="Primary navigation">
+            <a href="#models">Models</a>
+            <a href="#platforms">Platforms</a>
+            <a href="#features">Features</a>
+            <a href="#agents">Managed agents</a>
+          </nav>
+          <div class="header-actions">
+            <a class="ds-btn ds-btn--brand" href="#billing">TraeWork Console</a>
+          </div>
+        </div>
+      </header>
+
+      <div class="wrap doc-grid">
+        <aside class="toc" aria-label="On this page">
+          <div class="toc-title">On this page</div>
+          <nav>
+            <a href="#models">Model pricing</a>
+            <a href="#platforms">Platform plans</a>
+            <a href="#usage-units">Usage units</a>
+            <a href="#features">Feature pricing</a>
+            <a href="#agents">Managed agents</a>
+            <a href="#optimize">Considerations</a>
+            <a href="#faq">FAQ</a>
+          </nav>
+        </aside>
+
+        <main id="top" class="content">
+          <article>
+            <section id="overview" class="hero">
+              <div class="breadcrumb">Models / <span>Pricing</span></div>
+              <h1>Pricing</h1>
+              <p class="lead">
+                A TraeWork-native documentation page for comparing model token rates, platform billing paths,
+                feature multipliers, managed-agent runtime, and billing considerations in one readable view.
+              </p>
+              <div class="source-strip" aria-label="Pricing source summary">
+                <div class="source-item">
+                  <span class="source-label">Source pattern</span>
+                  <strong class="source-value">TraeWork pricing reference</strong>
+                </div>
+                <div class="source-item">
+                  <span class="source-label">Currency</span>
+                  <strong class="source-value">USD, per million tokens unless noted</strong>
+                </div>
+                <div class="source-item">
+                  <span class="source-label">Prototype note</span>
+                  <strong class="source-value">Static snapshot, verify before production</strong>
+                </div>
+              </div>
+            </section>
+
+            <section id="models" class="section">
+              <div class="section-head">
+                <div>
+                  <h2 class="section-title">Model pricing</h2>
+                </div>
+                <p class="section-copy">
+                  Compare model rates, cache hits, and output pricing<br>
+                  for the core TraeWork tiers.
+                </p>
+              </div>
+
+              <div class="table-stack">
+                <div class="table-wrap uikit-table-wrap">
+                  <table class="pricing-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Model</th>
+                        <th scope="col">Input</th>
+                        <th scope="col">Cache hit</th>
+                        <th scope="col">Output</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>TraeWork <span class="num">N-500</span></td>
+                        <td class="num">$10<span class="unit"> / MTok</span></td>
+                        <td class="num">$1<span class="unit"> / MTok</span></td>
+                        <td class="num">$50<span class="unit"> / MTok</span></td>
+                      </tr>
+                      <tr>
+                        <td>TraeWork <span class="num">N-500L</span> <span class="tag tag--info">Limited</span></td>
+                        <td class="num">$10<span class="unit"> / MTok</span></td>
+                        <td class="num">$1<span class="unit"> / MTok</span></td>
+                        <td class="num">$50<span class="unit"> / MTok</span></td>
+                      </tr>
+                      <tr>
+                        <td>TraeWork <span class="num">P-480</span></td>
+                        <td class="num">$5<span class="unit"> / MTok</span></td>
+                        <td class="num">$0.50<span class="unit"> / MTok</span></td>
+                        <td class="num">$25<span class="unit"> / MTok</span></td>
+                      </tr>
+                      <tr>
+                        <td>TraeWork <span class="num">R-460</span></td>
+                        <td class="num">$3<span class="unit"> / MTok</span></td>
+                        <td class="num">$0.30<span class="unit"> / MTok</span></td>
+                        <td class="num">$15<span class="unit"> / MTok</span></td>
+                      </tr>
+                      <tr>
+                        <td>TraeWork <span class="num">R-450</span></td>
+                        <td class="num">$3<span class="unit"> / MTok</span></td>
+                        <td class="num">$0.30<span class="unit"> / MTok</span></td>
+                        <td class="num">$15<span class="unit"> / MTok</span></td>
+                      </tr>
+                      <tr>
+                        <td>TraeWork <span class="num">S-450</span></td>
+                        <td class="num">$1<span class="unit"> / MTok</span></td>
+                        <td class="num">$0.10<span class="unit"> / MTok</span></td>
+                        <td class="num">$5<span class="unit"> / MTok</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="card-grid">
+                  <div class="callout callout--info">
+                    <strong>Cache multipliers</strong>
+                    <p>
+                      Prompt cache writes are <span class="num">1.25x</span> for <span class="num">5m</span> and
+                      <span class="num">2x</span> for <span class="num">1h</span>. Cache hits are
+                      <span class="num">0.1x</span> of base input.
+                    </p>
+                  </div>
+                  <div class="callout callout--warning">
+                    <strong>Older models</strong>
+                    <p>
+                      Deprecated and retired model rows are intentionally omitted here to keep the reference scannable.
+                      Check the TraeWork reference when maintaining legacy integrations.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section id="platforms" class="section">
+              <div class="section-head">
+                <div>
+                  <h2 class="section-title">TraeWork platform pricing</h2>
+                </div>
+                <p class="section-copy">
+                  Review API, routed runtime, regional runtime,<br>
+                  and unit billing options in one place.
+                </p>
+              </div>
+
+              <div class="card-grid">
+                <div class="ds-card mini-card">
+                  <span class="tag tag--success">First-party</span>
+                  <h3>TraeWork API</h3>
+                  <p>
+                    Uses the published token pricing table. Global routing is the default unless a supported data
+                    residency parameter is used.
+                  </p>
+                </div>
+                <div class="ds-card mini-card">
+                  <span class="tag">Workspace invoice</span>
+                  <h3>TraeWork Routed Runtime</h3>
+                  <p>
+                    Pricing is operated by TraeWork. R-series and later distinguish standard and dedicated endpoints, with
+                    dedicated routing carrying a premium in the TraeWork reference.
+                  </p>
+                </div>
+                <div class="ds-card mini-card">
+                  <span class="tag">Workspace invoice</span>
+                  <h3>TraeWork Regional Runtime</h3>
+                  <p>
+                    Pricing is operated by TraeWork. Standard, regional, and dedicated endpoint types are documented
+                    separately in the TraeWork reference.
+                  </p>
+                </div>
+                <div class="ds-card mini-card">
+                  <span class="tag tag--info">Usage unit</span>
+                  <h3>TraeWork Usage Units</h3>
+                  <p>
+                    Usage is rated by TraeWork, converted into TraeWork Units, then shown through TraeWork workspace
+                    billing.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section id="usage-units" class="section">
+              <div class="section-head">
+                <div>
+                  <h2 class="section-title">TraeWork Usage Units</h2>
+                </div>
+                <p class="section-copy">
+                  See how TWUs convert token usage into<br>
+                  workspace billing and monthly reports.
+                </p>
+              </div>
+
+              <div class="table-wrap uikit-table-wrap">
+                <table class="info-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Concept</th>
+                      <th scope="col">Detail</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Billing unit</td>
+                      <td>TraeWork Unit, abbreviated as TWU</td>
+                    </tr>
+                    <tr>
+                      <td>TWU price</td>
+                      <td><span class="num">$0.01</span> per TWU</td>
+                    </tr>
+                    <tr>
+                      <td>Conversion</td>
+                      <td>Token usage is rated in USD, then converted into TWUs for workspace reporting.</td>
+                    </tr>
+                    <tr>
+                      <td>Metering cadence</td>
+                      <td>Hourly TraeWork metering with monthly invoices.</td>
+                    </tr>
+                    <tr>
+                      <td>Payment model</td>
+                      <td>Postpaid only; the TraeWork reference notes no prepaid credits for this path.</td>
+                    </tr>
+                    <tr>
+                      <td>Inference geography</td>
+                      <td>For supported P-series and R-series versions, <code>region_scope: "core"</code> applies a <span class="num">1.1x</span> multiplier.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section id="features" class="section">
+              <div class="section-head">
+                <div>
+                  <h2 class="section-title">Feature-specific pricing</h2>
+                </div>
+                <p class="section-copy">
+                  Scan modifiers for cache, residency, fast mode,<br>
+                  batch jobs, context, and tools.
+                </p>
+              </div>
+
+              <div class="feature-grid">
+                <div class="ds-card mini-card">
+                  <span class="tag tag--success">Cache</span>
+                  <h3>Prompt caching</h3>
+                  <ul>
+                    <li><span class="num">5m</span> write: <span class="num">1.25x</span> base input.</li>
+                    <li><span class="num">1h</span> write: <span class="num">2x</span> base input.</li>
+                    <li>Cache hit: <span class="num">0.1x</span> base input.</li>
+                  </ul>
+                </div>
+                <div class="ds-card mini-card">
+                  <span class="tag">Residency</span>
+                  <h3>Data residency</h3>
+                  <p>
+                    Supported first-party requests with US-only inference carry a <span class="num">1.1x</span> multiplier
+                    across token categories.
+                  </p>
+                </div>
+                <div class="ds-card mini-card">
+                  <span class="tag tag--warning">Preview</span>
+                  <h3>Fast mode</h3>
+                  <p>
+                    TraeWork preview fast mode applies premium input and output rates for supported N-series versions and is
+                    not available with Batch API.
+                  </p>
+                </div>
+                <div class="ds-card mini-card">
+                  <span class="tag tag--success">Discount</span>
+                  <h3>Batch processing</h3>
+                  <p>
+                    Batch API applies a <span class="num">50%</span> discount to input and output token rates for
+                    asynchronous workloads.
+                  </p>
+                </div>
+                <div class="ds-card mini-card">
+                  <span class="tag">Context</span>
+                  <h3>Long context</h3>
+                  <p>
+                    The TraeWork reference states that selected N-series, P-series, and R-series versions include the full
+                    <span class="num">1M</span> token window at standard pricing.
+                  </p>
+                </div>
+                <div class="ds-card mini-card">
+                  <span class="tag">Tools</span>
+                  <h3>Tool use</h3>
+                  <p>
+                    Tool use includes normal input and output tokens, tool definition overhead, tool call/result content,
+                    and server-side tool charges where applicable.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section id="agents" class="section">
+              <div class="section-head">
+                <div>
+                  <h2 class="section-title">TraeWork Managed Agents pricing</h2>
+                </div>
+                <p class="section-copy">
+                  Understand token plus runtime billing<br>
+                  for TraeWork managed-agent sessions.
+                </p>
+              </div>
+
+              <div class="card-grid">
+                <div class="ds-card mini-card">
+                  <h3>Billing dimensions</h3>
+                  <div class="metric-row">
+                    <div class="metric">
+                      <strong>Tokens</strong>
+                      <span>Model rates apply</span>
+                    </div>
+                    <div class="metric">
+                      <strong class="num">$0.08</strong>
+                      <span>Per running session-hour</span>
+                    </div>
+                    <div class="metric">
+                      <strong>Idle</strong>
+                      <span>Not counted as runtime</span>
+                    </div>
+                  </div>
+                  <div class="dimension-note" aria-label="Billing rule summary">
+                    <div class="dimension-note__row">
+                      <span class="dimension-note__label">Runtime rule</span>
+                      <strong class="dimension-note__value">Running hours x <span class="num">$0.08</span></strong>
+                    </div>
+                    <div class="dimension-note__row">
+                      <span class="dimension-note__label">Cost shape</span>
+                      <strong class="dimension-note__value">Tokens + runtime</strong>
+                    </div>
+                  </div>
+                </div>
+                <div class="ds-card calc-card">
+                  <h3>Worked example</h3>
+                  <div class="calc-line">
+                    <span>Input tokens, <span class="num">50,000</span> at TraeWork <span class="num">P-480</span> rate</span>
+                    <strong class="num">$0.25</strong>
+                  </div>
+                  <div class="calc-line">
+                    <span>Output tokens, <span class="num">15,000</span> at TraeWork <span class="num">P-480</span> rate</span>
+                    <strong class="num">$0.375</strong>
+                  </div>
+                  <div class="calc-line">
+                    <span>Session runtime, <span class="num">1.0</span> hour</span>
+                    <strong class="num">$0.08</strong>
+                  </div>
+                  <div class="calc-line">
+                    <span>Total</span>
+                    <strong class="num">$0.705</strong>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section id="optimize" class="section">
+              <div class="section-head">
+                <div>
+                  <h2 class="section-title">Additional considerations</h2>
+                </div>
+                <p class="section-copy">
+                  Use these notes to control cost, capacity,<br>
+                  discounts, and billing setup.
+                </p>
+              </div>
+
+              <div class="card-grid">
+                <div class="ds-card mini-card">
+                  <span class="tag tag--success">Cost</span>
+                  <h3>Optimization strategies</h3>
+                  <ul class="plain-list">
+                    <li>Match model tier to task complexity.</li>
+                    <li>Use prompt caching for repeated context.</li>
+                    <li>Use Batch API for non-urgent volume work.</li>
+                    <li>Watch usage patterns by tokens and tool calls.</li>
+                  </ul>
+                </div>
+                <div class="ds-card mini-card">
+                  <span class="tag">Limits</span>
+                  <h3>Rate limits</h3>
+                  <p>
+                    Usage tiers affect request capacity. The TraeWork reference lists entry, growth, established, maximum
+                    standard, and enterprise paths.
+                  </p>
+                </div>
+                <div class="ds-card mini-card">
+                  <span class="tag">Discounts</span>
+                  <h3>Volume and enterprise</h3>
+                  <p>
+                    High-volume, enterprise, academic, and research arrangements may use negotiated discounts or custom
+                    terms.
+                  </p>
+                </div>
+                <div id="billing" class="ds-card mini-card">
+                  <span class="tag">Billing</span>
+                  <h3>Payment basics</h3>
+                  <p>
+                    Billing is based on monthly usage, paid in USD, with card and invoicing options depending on account
+                    type.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section id="faq" class="section">
+              <div class="section-head">
+                <div>
+                  <h2 class="section-title">Frequently asked questions</h2>
+                </div>
+                <p class="section-copy">
+                  Quick answers for token accounting,<br>
+                  cache discounts, and payment setup.
+                </p>
+              </div>
+
+              <div class="faq-list">
+                <details class="faq">
+                  <summary>
+                    <span>How is token usage calculated?</span>
+                    <span class="faq__icon" aria-hidden="true">+</span>
+                  </summary>
+                  <p>
+                    Tokens are text units processed by a model. The exact count depends on language, content type, and
+                    tokenizer version.
+                  </p>
+                </details>
+                <details class="faq">
+                  <summary>
+                    <span>Can prompt caching and Batch API discounts stack?</span>
+                    <span class="faq__icon" aria-hidden="true">+</span>
+                  </summary>
+                  <p>
+                    The TraeWork reference says they can be combined, with caching multipliers and batch discounts applied to the
+                    relevant token categories.
+                  </p>
+                </details>
+                <details class="faq">
+                  <summary>
+                    <span>What payment methods are supported?</span>
+                    <span class="faq__icon" aria-hidden="true">+</span>
+                  </summary>
+                  <p>
+                    Standard accounts can use major credit cards, while enterprise customers can arrange invoicing or
+                    negotiated billing terms.
+                  </p>
+                </details>
+              </div>
+            </section>
+          </article>
+        </main>
+      </div>
+
+      <footer class="footer">
+        <div class="wrap footer-inner">
+          <span>TraeWork documentation prototype</span>
+          <a href="#top">TraeWork pricing reference</a>
+        </div>
+      </footer>
+    </div>
+
+    <script>
+      (function () {
+        var sectionIds = ["models", "platforms", "usage-units", "features", "agents", "optimize", "faq"];
+        var sections = sectionIds
+          .map(function (id) {
+            return document.getElementById(id);
+          })
+          .filter(Boolean);
+        var anchorLinks = Array.prototype.slice.call(
+          document.querySelectorAll('.toc a[href^="#"]')
+        );
+
+        function setActiveSection(id) {
+          anchorLinks.forEach(function (link) {
+            if (link.getAttribute("href") === "#" + id) {
+              link.setAttribute("aria-current", "location");
+            } else {
+              link.removeAttribute("aria-current");
+            }
+          });
+        }
+
+        function currentSectionId() {
+          var current = sections[0] && sections[0].id;
+          var offset = 128;
+          sections.forEach(function (section) {
+            if (section.getBoundingClientRect().top <= offset) {
+              current = section.id;
+            }
+          });
+          if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) {
+            current = sections[sections.length - 1] && sections[sections.length - 1].id;
+          }
+          return current;
+        }
+
+        function updateActiveSection() {
+          var current = currentSectionId();
+          if (current) {
+            setActiveSection(current);
+          }
+        }
+
+        if ("IntersectionObserver" in window) {
+          var observer = new IntersectionObserver(updateActiveSection, {
+            rootMargin: "-20% 0px -65% 0px",
+            threshold: [0, 0.2, 0.6]
+          });
+          sections.forEach(function (section) {
+            observer.observe(section);
+          });
+        }
+
+        window.addEventListener("scroll", updateActiveSection, { passive: true });
+        window.addEventListener("resize", updateActiveSection);
+        window.addEventListener("hashchange", function () {
+          window.setTimeout(updateActiveSection, 80);
+        });
+        anchorLinks.forEach(function (link) {
+          link.addEventListener("click", function () {
+            window.setTimeout(updateActiveSection, 120);
+          });
+        });
+        updateActiveSection();
+      })();
+    </script>
+    <div id="traework-interaction-root" aria-hidden="true"></div>
+    <script>
+      (function () {
+        var rootElement = document.getElementById('traework-interaction-root');
+        if (rootElement) rootElement.dataset.interactionMounted = 'true';
+
+        var interactiveSelectors = [
+          '[data-nav]',
+          '[data-screen-trigger]',
+          '[role="tab"]',
+          '.tab',
+          '.nav-item',
+          '.sidebar-nav a',
+          '.sidebar a',
+          '.mobile-nav a'
+        ];
+
+        function getActiveClass(element) {
+          var classes = Array.prototype.slice.call(element.classList || []);
+          return classes.find(function (name) { return name.endsWith('--active'); }) ||
+            classes.find(function (name) { return name === 'is-active' || name === 'active' || name === 'selected'; }) ||
+            (element.classList && element.classList.contains('tab') ? 'tab--active' : null) ||
+            (element.classList && element.classList.contains('nav-item') ? 'nav-item--active' : null);
+        }
+
+        function activateWithinGroup(element, activeClass) {
+          var group = element.closest('[role="tablist"], nav, .sidebar, .sidebar-nav, .mobile-nav') || element.parentElement;
+          if (!group || !activeClass) return;
+
+          group.querySelectorAll(interactiveSelectors.join(',')).forEach(function (item) {
+            item.classList.remove(activeClass);
+            if (item.getAttribute('role') === 'tab') item.setAttribute('aria-selected', 'false');
+          });
+
+          element.classList.add(activeClass);
+          if (element.getAttribute('role') === 'tab') element.setAttribute('aria-selected', 'true');
+        }
+
+        function handleClick(event) {
+          var target = event.currentTarget;
+          var href = target.getAttribute('href');
+          if (href === '#') event.preventDefault();
+          activateWithinGroup(target, getActiveClass(target));
+        }
+
+        Array.prototype.slice.call(document.querySelectorAll(interactiveSelectors.join(','))).forEach(function (element) {
+          if (element.id !== 'traework-interaction-root') element.addEventListener('click', handleClick);
+        });
+      }());
+    </script>
+  </body>
+</html>

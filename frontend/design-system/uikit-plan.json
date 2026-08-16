@@ -1,0 +1,304 @@
+{
+  "schemaVersion": 1,
+  "headBoilerplate": "<link rel=\"stylesheet\" href=\"../../colors_and_type.css\">\n<link rel=\"stylesheet\" href=\"../../components.css\">",
+  "corePreviewComponents": [
+    {
+      "slug": "buttons",
+      "reason": "TraeWork current component inventory; slot=button",
+      "evidenceFile": "components/buttons.json",
+      "priority": 1,
+      "slot": "button"
+    },
+    {
+      "slug": "cards",
+      "reason": "TraeWork current component inventory; slot=card",
+      "evidenceFile": "components/cards.json",
+      "priority": 2,
+      "slot": "card"
+    },
+    {
+      "slug": "forms",
+      "reason": "TraeWork current component inventory; slot=form",
+      "evidenceFile": "components/forms.json",
+      "priority": 3,
+      "slot": "form"
+    },
+    {
+      "slug": "menu",
+      "reason": "TraeWork current component inventory; slot=menu",
+      "evidenceFile": "components/menu.json",
+      "priority": 4,
+      "slot": "menu"
+    },
+    {
+      "slug": "pagination",
+      "reason": "TraeWork current component inventory; slot=pagination",
+      "evidenceFile": "components/pagination.json",
+      "priority": 5,
+      "slot": "pagination"
+    },
+    {
+      "slug": "table",
+      "reason": "TraeWork current component inventory; slot=table",
+      "evidenceFile": "components/table.json",
+      "priority": 6,
+      "slot": "table"
+    },
+    {
+      "slug": "tabs",
+      "reason": "TraeWork current component inventory; slot=tabs",
+      "evidenceFile": "components/tabs.json",
+      "priority": 7,
+      "slot": "tabs"
+    },
+    {
+      "slug": "tag",
+      "reason": "TraeWork current component inventory; slot=tag",
+      "evidenceFile": "components/tag.json",
+      "priority": 8,
+      "slot": "tag"
+    }
+  ],
+  "supportEvidenceComponents": [
+    {
+      "slug": "alert",
+      "reason": "TraeWork support component; category=feedback",
+      "evidenceFile": "components/alert.json",
+      "priority": 9,
+      "slot": "feedback"
+    },
+    {
+      "slug": "avatar",
+      "reason": "TraeWork support component; category=data-display",
+      "evidenceFile": "components/avatar.json",
+      "priority": 10,
+      "slot": "avatar"
+    },
+    {
+      "slug": "breadcrumb",
+      "reason": "TraeWork support component; category=navigation",
+      "evidenceFile": "components/breadcrumb.json",
+      "priority": 11,
+      "slot": "breadcrumb"
+    },
+    {
+      "slug": "dialog",
+      "reason": "TraeWork support component; category=overlay",
+      "evidenceFile": "components/dialog.json",
+      "priority": 12,
+      "slot": "dialog"
+    },
+    {
+      "slug": "progress",
+      "reason": "TraeWork support component; category=feedback",
+      "evidenceFile": "components/progress.json",
+      "priority": 13,
+      "slot": "progress"
+    },
+    {
+      "slug": "skeleton",
+      "reason": "TraeWork support component; category=feedback",
+      "evidenceFile": "components/skeleton.json",
+      "priority": 14,
+      "slot": "loading"
+    }
+  ],
+  "allowedComponents": [
+    "alert",
+    "avatar",
+    "breadcrumb",
+    "buttons",
+    "cards",
+    "dialog",
+    "forms",
+    "menu",
+    "pagination",
+    "progress",
+    "skeleton",
+    "table",
+    "tabs",
+    "tag"
+  ],
+  "screenBlueprints": [
+    {
+      "name": "pricing-doc",
+      "componentSlugs": [
+        "buttons",
+        "cards"
+      ],
+      "role": "secondary"
+    },
+    {
+      "name": "skills-library",
+      "componentSlugs": [
+        "buttons",
+        "cards",
+        "forms",
+        "tag"
+      ],
+      "role": "secondary"
+    },
+    {
+      "name": "product-overview",
+      "componentSlugs": [
+        "buttons"
+      ],
+      "role": "secondary"
+    },
+    {
+      "name": "comment-threads-plan",
+      "componentSlugs": [
+        "avatar",
+        "buttons",
+        "cards",
+        "table",
+        "tag"
+      ],
+      "role": "secondary"
+    },
+    {
+      "name": "html-effectiveness-doc",
+      "componentSlugs": [
+        "buttons"
+      ],
+      "role": "secondary"
+    },
+    {
+      "name": "dashboard",
+      "componentSlugs": [
+        "buttons",
+        "cards",
+        "progress",
+        "tag"
+      ],
+      "role": "primary"
+    },
+    {
+      "name": "dashboard-2",
+      "componentSlugs": [
+        "buttons",
+        "cards",
+        "progress",
+        "tag"
+      ],
+      "role": "secondary"
+    },
+    {
+      "name": "dev-explorer",
+      "componentSlugs": [
+        "alert",
+        "avatar",
+        "buttons",
+        "cards",
+        "dialog",
+        "forms",
+        "menu",
+        "progress",
+        "table",
+        "tabs",
+        "tag"
+      ],
+      "role": "primary"
+    },
+    {
+      "name": "landing",
+      "componentSlugs": [
+        "buttons",
+        "cards",
+        "tag"
+      ],
+      "role": "secondary"
+    },
+    {
+      "name": "settings",
+      "componentSlugs": [
+        "alert",
+        "buttons",
+        "forms",
+        "tag"
+      ],
+      "role": "secondary"
+    }
+  ],
+  "productContext": {
+    "kitType": "TraeWork Light",
+    "productType": "AI workspace and work management surfaces",
+    "dominantCopy": [],
+    "pageNames": [
+      "dashboard",
+      "dashboard-2",
+      "dev-explorer",
+      "pricing-doc",
+      "skills-library",
+      "product-overview",
+      "comment-threads-plan",
+      "html-effectiveness-doc",
+      "landing",
+      "settings"
+    ],
+    "selectedFrameNames": [
+      "dashboard",
+      "dashboard-2",
+      "dev-explorer",
+      "pricing-doc",
+      "skills-library",
+      "product-overview",
+      "comment-threads-plan",
+      "html-effectiveness-doc",
+      "landing",
+      "settings"
+    ]
+  },
+  "selectionPolicy": "current-library-contract-first",
+  "slotAssignments": [
+    {
+      "slot": "button",
+      "slug": "buttons",
+      "reason": "current component contract"
+    },
+    {
+      "slot": "card",
+      "slug": "cards",
+      "reason": "current component contract"
+    },
+    {
+      "slot": "form",
+      "slug": "forms",
+      "reason": "current component contract"
+    },
+    {
+      "slot": "menu",
+      "slug": "menu",
+      "reason": "current component contract"
+    },
+    {
+      "slot": "pagination",
+      "slug": "pagination",
+      "reason": "current component contract"
+    },
+    {
+      "slot": "table",
+      "slug": "table",
+      "reason": "current component contract"
+    },
+    {
+      "slot": "tabs",
+      "slug": "tabs",
+      "reason": "current component contract"
+    },
+    {
+      "slot": "tag",
+      "slug": "tag",
+      "reason": "current component contract"
+    }
+  ],
+  "missingFixedSlots": [],
+  "fallbackComponents": [],
+  "needsNarrative": false,
+  "forbiddenInventedComponents": [],
+  "lowConfidence": false,
+  "warnings": [
+    "Component count intentionally differs from TRAE 2; do not infer missing components from the reference library.",
+    "UIKit pages are visual showcases; do not copy outer shell constraints into downstream production pages."
+  ]
+}

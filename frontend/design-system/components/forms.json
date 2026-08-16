@@ -1,0 +1,196 @@
+{
+  "schemaVersion": 2,
+  "slug": "forms",
+  "name": "Form",
+  "category": "input",
+  "sourceKind": "preview-contract",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    {
+      "type": "Form",
+      "evidence": "Inferred from preview/component-forms.html title and component CSS selectors."
+    }
+  ],
+  "variantDimensions": [
+    {
+      "name": "style-state-density",
+      "values": [
+        ".ds-input",
+        ".ds-input:focus-within",
+        ".ds-input input",
+        ".ds-input input[type=\"number\"]",
+        ".ds-input input::placeholder",
+        ".ds-input input:disabled",
+        ".ds-input.is-error",
+        ".ds-input.is-disabled"
+      ],
+      "evidence": "Representative selectors from preview/component-forms.html."
+    }
+  ],
+  "coverageMatrix": {
+    "source": "preview/component-forms.html",
+    "representativeSelectors": [
+      ".ds-input",
+      ".ds-input:focus-within",
+      ".ds-input input",
+      ".ds-input input[type=\"number\"]",
+      ".ds-input input::placeholder",
+      ".ds-input input:disabled",
+      ".ds-input.is-error",
+      ".ds-input.is-disabled",
+      ".ds-input__icon",
+      ".ds-search",
+      ".ds-select",
+      ".ds-select:focus",
+      ".ds-select:disabled",
+      ".ds-select-wrap",
+      ".ds-select-wrap .ds-select",
+      ".ds-select__icon",
+      ".ds-select-wrap > .icon-img",
+      ".icon-img"
+    ],
+    "cssRuleCount": 59
+  },
+  "sizeDeltas": [],
+  "stateCoverage": {
+    "states": [
+      "hover",
+      "focus",
+      "disabled",
+      "selected"
+    ]
+  },
+  "representativeVariants": [
+    {
+      "selector": ".ds-input",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-input:focus-within",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-input input",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-input input[type=\"number\"]",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    }
+  ],
+  "anatomy": {
+    "source": "preview/component-forms.html",
+    "selectors": [
+      ".ds-input",
+      ".ds-input:focus-within",
+      ".ds-input input",
+      ".ds-input input[type=\"number\"]",
+      ".ds-input input::placeholder",
+      ".ds-input input:disabled",
+      ".ds-input.is-error",
+      ".ds-input.is-disabled"
+    ]
+  },
+  "structurePatterns": [],
+  "usageHints": [
+    "Copy component markup from preview/component-forms.html; keep page/demo-only styles outside shared component CSS.",
+    "Use colors_and_type.css + components.css as the executable rendering contract.",
+    "Use preview/component-forms.html and components.css as the executable rendering contract."
+  ],
+  "doNotInvent": [
+    "Do not add variants or states that are absent from the preview marker block without updating the component contract.",
+    "Do not add visual states or component parts not present in the preview or components.css.",
+    "Do not treat this inferred JSON as original Figma evidence."
+  ],
+  "unknowns": [
+    "Original design evidence was not available during this repair pass."
+  ],
+  "tokensConsumed": [
+    "--bg-base-default",
+    "--bg-base-secondary",
+    "--bg-brand",
+    "--bg-overlay-l2",
+    "--bg-overlay-l3",
+    "--body-base-font-family",
+    "--body-base-font-size",
+    "--body-base-line-height",
+    "--border-contrast",
+    "--border-neutral-l1",
+    "--border-neutral-l2",
+    "--border-neutral-l3",
+    "--icon-default",
+    "--icon-onbrand",
+    "--icon-secondary",
+    "--icon-tertiary",
+    "--radius-4",
+    "--radius-8",
+    "--radius-full",
+    "--spacer-10",
+    "--spacer-12",
+    "--spacer-32",
+    "--spacer-4",
+    "--spacer-6",
+    "--spacer-8",
+    "--status-error-default",
+    "--text-default",
+    "--text-disabled",
+    "--text-onbrand",
+    "--text-tertiary"
+  ],
+  "domAnatomy": {
+    "root": {
+      "tag": "preview-fragment",
+      "source": "preview/component-forms.html",
+      "classes": [
+        "ds-check",
+        "ds-check__box",
+        "ds-date-input",
+        "ds-input",
+        "ds-input__icon",
+        "ds-radio",
+        "ds-radio__dot",
+        "ds-search",
+        "ds-select",
+        "ds-select__icon",
+        "ds-select-wrap",
+        "ds-slider",
+        "ds-slider--progress",
+        "ds-switch",
+        "ds-switch__thumb",
+        "ds-textarea"
+      ]
+    },
+    "componentCssMarker": {
+      "start": "/* @component-css-start */",
+      "end": "/* @component-css-end */"
+    }
+  },
+  "provenance": {
+    "preview": "preview/component-forms.html",
+    "source": "preview/component-forms.html",
+    "css": {
+      "file": "components.css",
+      "marker": "forms"
+    },
+    "contractBasis": "Derived from the component preview marker block and rendered .ds-* markup; original design evidence was not available."
+  },
+  "assetsConsumed": [
+    "assets/icons/calendar.svg",
+    "assets/icons/check.svg",
+    "assets/icons/close-small.svg",
+    "assets/icons/Down.svg",
+    "assets/icons/email.svg",
+    "assets/icons/file-upload.svg",
+    "assets/icons/minus.svg",
+    "assets/icons/Plus.svg",
+    "assets/icons/Search.svg"
+  ]
+}

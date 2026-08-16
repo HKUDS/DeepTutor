@@ -1,0 +1,203 @@
+{
+  "schemaVersion": 2,
+  "slug": "alert",
+  "name": "Notifications",
+  "category": "feedback",
+  "sourceKind": "preview-contract",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    {
+      "type": "Notifications",
+      "evidence": "Inferred from preview/component-alert.html title and component CSS selectors."
+    }
+  ],
+  "variantDimensions": [
+    {
+      "name": "style-state-density",
+      "values": [
+        ".ds-notif",
+        ".ds-notif__body",
+        ".ds-notif__title",
+        ".ds-notif__text",
+        ".ds-notif__desc",
+        ".ds-notif__actions",
+        ".ds-notif__close",
+        ".ds-notif__close .icon"
+      ],
+      "evidence": "Representative selectors from preview/component-alert.html."
+    }
+  ],
+  "coverageMatrix": {
+    "source": "preview/component-alert.html",
+    "representativeSelectors": [
+      ".ds-notif",
+      ".ds-notif__body",
+      ".ds-notif__title",
+      ".ds-notif__text",
+      ".ds-notif__desc",
+      ".ds-notif__actions",
+      ".ds-notif__close",
+      ".ds-notif__close .icon",
+      ".ds-notif__close:hover",
+      ".ds-notif--simple",
+      ".ds-notif--error",
+      ".ds-notif--error .ds-notif__icon",
+      ".ds-notif--warning",
+      ".ds-notif--warning .ds-notif__icon",
+      ".ds-notif--alert",
+      ".ds-notif--alert .ds-notif__icon",
+      ".ds-notif--info",
+      ".ds-notif--info .ds-notif__icon"
+    ],
+    "cssRuleCount": 30
+  },
+  "sizeDeltas": [],
+  "stateCoverage": {
+    "states": [
+      "hover"
+    ]
+  },
+  "representativeVariants": [
+    {
+      "selector": ".ds-notif",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-notif__body",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-notif__title",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-notif__text",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    }
+  ],
+  "anatomy": {
+    "source": "preview/component-alert.html",
+    "selectors": [
+      ".ds-notif",
+      ".ds-notif__body",
+      ".ds-notif__title",
+      ".ds-notif__text",
+      ".ds-notif__desc",
+      ".ds-notif__actions",
+      ".ds-notif__close",
+      ".ds-notif__close .icon"
+    ]
+  },
+  "structurePatterns": [],
+  "usageHints": [
+    "Copy component markup from preview/component-alert.html; keep page/demo-only styles outside shared component CSS.",
+    "Use colors_and_type.css + components.css as the executable rendering contract.",
+    "Use preview/component-alert.html and components.css as the executable rendering contract."
+  ],
+  "doNotInvent": [
+    "Do not add variants or states that are absent from the preview marker block without updating the component contract.",
+    "Do not add visual states or component parts not present in the preview or components.css.",
+    "Do not treat this inferred JSON as original Figma evidence."
+  ],
+  "unknowns": [
+    "Original design evidence was not available during this repair pass."
+  ],
+  "tokensConsumed": [
+    "--bg-base-secondary",
+    "--bg-overlay-l2",
+    "--body-md-font-family",
+    "--body-md-font-size",
+    "--body-md-letter-spacing",
+    "--body-md-line-height",
+    "--body-md-strong-font-family",
+    "--body-md-strong-font-size",
+    "--body-md-strong-font-weight",
+    "--body-md-strong-letter-spacing",
+    "--body-md-strong-line-height",
+    "--border-neutral-l1",
+    "--icon-default",
+    "--icon-secondary",
+    "--radius-8",
+    "--spacer-12",
+    "--spacer-16",
+    "--spacer-2",
+    "--spacer-4",
+    "--spacer-8",
+    "--status-alert-default",
+    "--status-alert-surface-l1",
+    "--status-alert-surface-l2",
+    "--status-error-default",
+    "--status-error-surface-l1",
+    "--status-error-surface-l2",
+    "--status-primary-default",
+    "--status-primary-surface-l1",
+    "--status-primary-surface-l2",
+    "--status-success-default",
+    "--status-success-surface-l1",
+    "--status-success-surface-l2",
+    "--status-warning-default",
+    "--status-warning-surface-l1",
+    "--status-warning-surface-l2",
+    "--text-default",
+    "--text-secondary"
+  ],
+  "domAnatomy": {
+    "root": {
+      "tag": "preview-fragment",
+      "source": "preview/component-alert.html",
+      "classes": [
+        "ds-alert",
+        "ds-alert__desc",
+        "ds-alert__icon",
+        "ds-alert__title",
+        "ds-alert--danger",
+        "ds-alert--info",
+        "ds-alert--success",
+        "ds-alert--warning",
+        "ds-notif",
+        "ds-notif__actions",
+        "ds-notif__body",
+        "ds-notif__close",
+        "ds-notif__desc",
+        "ds-notif__icon",
+        "ds-notif__text",
+        "ds-notif__title",
+        "ds-notif--alert",
+        "ds-notif--error",
+        "ds-notif--info",
+        "ds-notif--simple",
+        "ds-notif--success",
+        "ds-notif--warning"
+      ]
+    },
+    "componentCssMarker": {
+      "start": "/* @component-css-start */",
+      "end": "/* @component-css-end */"
+    }
+  },
+  "provenance": {
+    "preview": "preview/component-alert.html",
+    "source": "preview/component-alert.html",
+    "css": {
+      "file": "components.css",
+      "marker": "alert"
+    },
+    "contractBasis": "Derived from the component preview marker block and rendered .ds-* markup; original design evidence was not available."
+  },
+  "assetsConsumed": [
+    "assets/icons/close-small.svg",
+    "assets/icons/Error.svg",
+    "assets/icons/icon-warning-fill.svg",
+    "assets/icons/info_fill.svg",
+    "assets/icons/success-fill.svg",
+    "assets/icons/warning-fill.svg"
+  ]
+}

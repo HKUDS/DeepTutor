@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 2,
+  "slug": "breadcrumb",
+  "name": "Breadcrumb",
+  "category": "navigation",
+  "sourceKind": "preview-contract",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    {
+      "type": "Breadcrumb",
+      "evidence": "Inferred from preview/component-breadcrumb.html title and component CSS selectors."
+    }
+  ],
+  "variantDimensions": [
+    {
+      "name": "style-state-density",
+      "values": [
+        ".ds-breadcrumb",
+        ".ds-breadcrumb a",
+        ".ds-breadcrumb a:hover",
+        ".ds-breadcrumb__sep",
+        ".ds-breadcrumb__current"
+      ],
+      "evidence": "Representative selectors from preview/component-breadcrumb.html."
+    }
+  ],
+  "coverageMatrix": {
+    "source": "preview/component-breadcrumb.html",
+    "representativeSelectors": [
+      ".ds-breadcrumb",
+      ".ds-breadcrumb a",
+      ".ds-breadcrumb a:hover",
+      ".ds-breadcrumb__sep",
+      ".ds-breadcrumb__current"
+    ],
+    "cssRuleCount": 5
+  },
+  "sizeDeltas": [],
+  "stateCoverage": {
+    "states": [
+      "hover"
+    ]
+  },
+  "representativeVariants": [
+    {
+      "selector": ".ds-breadcrumb",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-breadcrumb a",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-breadcrumb a:hover",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-breadcrumb__sep",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    }
+  ],
+  "anatomy": {
+    "source": "preview/component-breadcrumb.html",
+    "selectors": [
+      ".ds-breadcrumb",
+      ".ds-breadcrumb a",
+      ".ds-breadcrumb a:hover",
+      ".ds-breadcrumb__sep",
+      ".ds-breadcrumb__current"
+    ]
+  },
+  "structurePatterns": [],
+  "usageHints": [
+    "Copy component markup from preview/component-breadcrumb.html; keep page/demo-only styles outside shared component CSS.",
+    "Use colors_and_type.css + components.css as the executable rendering contract.",
+    "Use preview/component-breadcrumb.html and components.css as the executable rendering contract."
+  ],
+  "doNotInvent": [
+    "Do not add variants or states that are absent from the preview marker block without updating the component contract.",
+    "Do not add visual states or component parts not present in the preview or components.css.",
+    "Do not treat this inferred JSON as original Figma evidence."
+  ],
+  "unknowns": [
+    "Original design evidence was not available during this repair pass."
+  ],
+  "tokensConsumed": [
+    "--body-base-font-size",
+    "--body-base-line-height",
+    "--spacer-8",
+    "--text-default",
+    "--text-tertiary"
+  ],
+  "domAnatomy": {
+    "root": {
+      "tag": "preview-fragment",
+      "source": "preview/component-breadcrumb.html",
+      "classes": [
+        "ds-breadcrumb",
+        "ds-breadcrumb__current",
+        "ds-breadcrumb__sep"
+      ]
+    },
+    "componentCssMarker": {
+      "start": "/* @component-css-start */",
+      "end": "/* @component-css-end */"
+    }
+  },
+  "provenance": {
+    "preview": "preview/component-breadcrumb.html",
+    "source": "preview/component-breadcrumb.html",
+    "css": {
+      "file": "components.css",
+      "marker": "breadcrumb"
+    },
+    "contractBasis": "Derived from the component preview marker block and rendered .ds-* markup; original design evidence was not available."
+  },
+  "assetsConsumed": [
+    "assets/icons/home.svg"
+  ]
+}

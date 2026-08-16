@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 2,
+  "slug": "pagination",
+  "name": "Pagination",
+  "category": "navigation",
+  "sourceKind": "preview-contract",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    {
+      "type": "Pagination",
+      "evidence": "Inferred from preview/component-pagination.html title and component CSS selectors."
+    }
+  ],
+  "variantDimensions": [
+    {
+      "name": "style-state-density",
+      "values": [
+        ".ds-pagination",
+        ".ds-pagination__item",
+        ".ds-pagination__item:hover",
+        ".ds-pagination__item.is-active",
+        ".ds-pagination__item[disabled]",
+        ".ds-pagination__range"
+      ],
+      "evidence": "Representative selectors from preview/component-pagination.html."
+    }
+  ],
+  "coverageMatrix": {
+    "source": "preview/component-pagination.html",
+    "representativeSelectors": [
+      ".ds-pagination",
+      ".ds-pagination__item",
+      ".ds-pagination__item:hover",
+      ".ds-pagination__item.is-active",
+      ".ds-pagination__item[disabled]",
+      ".ds-pagination__range"
+    ],
+    "cssRuleCount": 6
+  },
+  "sizeDeltas": [],
+  "stateCoverage": {
+    "states": [
+      "hover",
+      "active",
+      "disabled"
+    ]
+  },
+  "representativeVariants": [
+    {
+      "selector": ".ds-pagination",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-pagination__item",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-pagination__item:hover",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-pagination__item.is-active",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    }
+  ],
+  "anatomy": {
+    "source": "preview/component-pagination.html",
+    "selectors": [
+      ".ds-pagination",
+      ".ds-pagination__item",
+      ".ds-pagination__item:hover",
+      ".ds-pagination__item.is-active",
+      ".ds-pagination__item[disabled]",
+      ".ds-pagination__range"
+    ]
+  },
+  "structurePatterns": [],
+  "usageHints": [
+    "Copy component markup from preview/component-pagination.html; keep page/demo-only styles outside shared component CSS.",
+    "Use colors_and_type.css + components.css as the executable rendering contract.",
+    "Use preview/component-pagination.html and components.css as the executable rendering contract."
+  ],
+  "doNotInvent": [
+    "Do not add variants or states that are absent from the preview marker block without updating the component contract.",
+    "Do not add visual states or component parts not present in the preview or components.css.",
+    "Do not treat this inferred JSON as original Figma evidence."
+  ],
+  "unknowns": [
+    "Original design evidence was not available during this repair pass."
+  ],
+  "tokensConsumed": [
+    "--bg-overlay-l2",
+    "--bg-overlay-l3",
+    "--body-base-font-size",
+    "--body-sm-font-family",
+    "--body-sm-font-size",
+    "--body-sm-font-weight",
+    "--body-sm-letter-spacing",
+    "--body-sm-line-height",
+    "--border-neutral-l1",
+    "--border-neutral-l2",
+    "--radius-8",
+    "--spacer-4",
+    "--spacer-8",
+    "--text-default",
+    "--text-secondary",
+    "--text-tertiary"
+  ],
+  "domAnatomy": {
+    "root": {
+      "tag": "preview-fragment",
+      "source": "preview/component-pagination.html",
+      "classes": [
+        "ds-pagination",
+        "ds-pagination__item",
+        "ds-pagination__range"
+      ]
+    },
+    "componentCssMarker": {
+      "start": "/* @component-css-start */",
+      "end": "/* @component-css-end */"
+    }
+  },
+  "provenance": {
+    "preview": "preview/component-pagination.html",
+    "source": "preview/component-pagination.html",
+    "css": {
+      "file": "components.css",
+      "marker": "pagination"
+    },
+    "contractBasis": "Derived from the component preview marker block and rendered .ds-* markup; original design evidence was not available."
+  },
+  "assetsConsumed": [
+    "assets/icons/arrow-right.svg"
+  ]
+}

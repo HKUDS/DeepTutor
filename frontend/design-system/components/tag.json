@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 2,
+  "slug": "tag",
+  "name": "Tag",
+  "category": "feedback",
+  "sourceKind": "preview-contract",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    {
+      "type": "Tag",
+      "evidence": "Inferred from preview/component-tag.html title and component CSS selectors."
+    }
+  ],
+  "variantDimensions": [
+    {
+      "name": "style-state-density",
+      "values": [
+        ".ds-tag",
+        ".ds-tag .icon",
+        ".ds-tag--brand",
+        ".ds-tag--success",
+        ".ds-tag--warning",
+        ".ds-tag--danger"
+      ],
+      "evidence": "Representative selectors from preview/component-tag.html."
+    }
+  ],
+  "coverageMatrix": {
+    "source": "preview/component-tag.html",
+    "representativeSelectors": [
+      ".ds-tag",
+      ".ds-tag .icon",
+      ".ds-tag--brand",
+      ".ds-tag--success",
+      ".ds-tag--warning",
+      ".ds-tag--danger"
+    ],
+    "cssRuleCount": 6
+  },
+  "sizeDeltas": [],
+  "stateCoverage": {
+    "states": []
+  },
+  "representativeVariants": [
+    {
+      "selector": ".ds-tag",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-tag .icon",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-tag--brand",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-tag--success",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    }
+  ],
+  "anatomy": {
+    "source": "preview/component-tag.html",
+    "selectors": [
+      ".ds-tag",
+      ".ds-tag .icon",
+      ".ds-tag--brand",
+      ".ds-tag--success",
+      ".ds-tag--warning",
+      ".ds-tag--danger"
+    ]
+  },
+  "structurePatterns": [],
+  "usageHints": [
+    "Copy component markup from preview/component-tag.html; keep page/demo-only styles outside shared component CSS.",
+    "Use colors_and_type.css + components.css as the executable rendering contract.",
+    "Use preview/component-tag.html and components.css as the executable rendering contract."
+  ],
+  "doNotInvent": [
+    "Do not add variants or states that are absent from the preview marker block without updating the component contract.",
+    "Do not add visual states or component parts not present in the preview or components.css.",
+    "Do not treat this inferred JSON as original Figma evidence."
+  ],
+  "unknowns": [
+    "Original design evidence was not available during this repair pass."
+  ],
+  "tokensConsumed": [
+    "--bg-brand-popup",
+    "--bg-overlay-l2",
+    "--body-sm-font-size",
+    "--body-sm-line-height",
+    "--border-neutral-l1",
+    "--radius-8",
+    "--spacer-4",
+    "--spacer-8",
+    "--status-error-default",
+    "--status-error-surface-l1",
+    "--status-success-default",
+    "--status-success-surface-l1",
+    "--status-warning-default",
+    "--status-warning-surface-l1",
+    "--text-brand",
+    "--text-secondary"
+  ],
+  "domAnatomy": {
+    "root": {
+      "tag": "preview-fragment",
+      "source": "preview/component-tag.html",
+      "classes": [
+        "ds-tag",
+        "ds-tag--brand",
+        "ds-tag--danger",
+        "ds-tag--success",
+        "ds-tag--warning"
+      ]
+    },
+    "componentCssMarker": {
+      "start": "/* @component-css-start */",
+      "end": "/* @component-css-end */"
+    }
+  },
+  "provenance": {
+    "preview": "preview/component-tag.html",
+    "source": "preview/component-tag.html",
+    "css": {
+      "file": "components.css",
+      "marker": "tag"
+    },
+    "contractBasis": "Derived from the component preview marker block and rendered .ds-* markup; original design evidence was not available."
+  },
+  "assetsConsumed": []
+}

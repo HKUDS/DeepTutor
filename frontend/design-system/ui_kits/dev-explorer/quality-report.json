@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 2,
+  "kitType": "dev-explorer",
+  "sourceKind": "preview-contract",
+  "screensGenerated": 4,
+  "coreComponentsUsed": [
+    "alert",
+    "avatar",
+    "buttons",
+    "cards",
+    "dialog",
+    "forms",
+    "menu",
+    "progress",
+    "table",
+    "tabs",
+    "tag"
+  ],
+  "supportComponentsUsed": [
+    "alert",
+    "avatar",
+    "buttons",
+    "cards",
+    "dialog",
+    "forms",
+    "menu",
+    "progress",
+    "table",
+    "tabs",
+    "tag"
+  ],
+  "previewClassReuseRate": 0.01,
+  "inventedComponents": [],
+  "interactiveStatesRendered": [
+    "active",
+    "disabled",
+    "hover"
+  ],
+  "primaryActionPerScreen": true,
+  "mockDataDensity": {
+    "tableRows": 0,
+    "chartPoints": 2
+  },
+  "warnings": [],
+  "notes": [
+    "Component usage is inferred from .ds-* classes present in the UIKit HTML.",
+    "UIKit pages are visual showcases; consume component markup from preview/ and write product-specific outer layout in downstream apps.",
+    "componentUsageBasis explains whether usage came from shared .ds-* classes or semantic fallback for legacy custom pages."
+  ],
+  "componentUsageBasis": "semantic-fallback"
+}

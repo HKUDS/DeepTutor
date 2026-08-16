@@ -1,0 +1,196 @@
+{
+  "schemaVersion": 2,
+  "library": "TraeWork",
+  "sourceKind": "preview-contract",
+  "summary": "Component contracts are derived from TraeWork preview pages. The component set is intentionally TraeWork-specific and is not required to match TRAE 2 component count.",
+  "crossComponentPatterns": [
+    "Light-only TraeWork token surface consumed through colors_and_type.css.",
+    "Preview CSS uses one component marker block per preview and is aggregated into components.css.",
+    "assets/icons/ is the only icon asset source.",
+    "Component contracts include tokensConsumed, domAnatomy, assetsConsumed, and provenance for downstream readers."
+  ],
+  "uiKits": [
+    {
+      "type": "dashboard",
+      "entry": "ui_kits/dashboard/index.html"
+    },
+    {
+      "type": "dashboard-2",
+      "entry": "ui_kits/dashboard-2/index.html"
+    },
+    {
+      "type": "dev-explorer",
+      "entry": "ui_kits/dev-explorer/index.html"
+    },
+    {
+      "type": "pricing-doc",
+      "entry": "ui_kits/pricing-doc/index.html"
+    },
+    {
+      "type": "skills-library",
+      "entry": "ui_kits/skills-library/index.html"
+    },
+    {
+      "type": "product-overview",
+      "entry": "ui_kits/product-overview/index.html"
+    },
+    {
+      "type": "comment-threads-plan",
+      "entry": "ui_kits/comment-threads-plan/index.html"
+    },
+    {
+      "type": "html-effectiveness-doc",
+      "entry": "ui_kits/html-effectiveness-doc/index.html"
+    },
+    {
+      "type": "landing",
+      "entry": "ui_kits/landing/index.html"
+    },
+    {
+      "type": "settings",
+      "entry": "ui_kits/settings/index.html"
+    }
+  ],
+  "components": [
+    {
+      "slug": "alert",
+      "name": "Notifications",
+      "category": "feedback",
+      "preview": "preview/component-alert.html",
+      "contract": "components/alert.json",
+      "sourceKind": "preview-contract",
+      "confidence": "medium",
+      "tokensConsumedCount": 37
+    },
+    {
+      "slug": "avatar",
+      "name": "Avatar",
+      "category": "data-display",
+      "preview": "preview/component-avatar.html",
+      "contract": "components/avatar.json",
+      "sourceKind": "preview-contract",
+      "confidence": "medium",
+      "tokensConsumedCount": 8
+    },
+    {
+      "slug": "breadcrumb",
+      "name": "Breadcrumb",
+      "category": "navigation",
+      "preview": "preview/component-breadcrumb.html",
+      "contract": "components/breadcrumb.json",
+      "sourceKind": "preview-contract",
+      "confidence": "medium",
+      "tokensConsumedCount": 5
+    },
+    {
+      "slug": "buttons",
+      "name": "Button",
+      "category": "action",
+      "preview": "preview/component-buttons.html",
+      "contract": "components/buttons.json",
+      "sourceKind": "preview-contract",
+      "confidence": "medium",
+      "tokensConsumedCount": 48
+    },
+    {
+      "slug": "cards",
+      "name": "Card / List",
+      "category": "layout",
+      "preview": "preview/component-cards.html",
+      "contract": "components/cards.json",
+      "sourceKind": "preview-contract",
+      "confidence": "medium",
+      "tokensConsumedCount": 12
+    },
+    {
+      "slug": "dialog",
+      "name": "Dialog / Modal",
+      "category": "overlay",
+      "preview": "preview/component-dialog.html",
+      "contract": "components/dialog.json",
+      "sourceKind": "preview-contract",
+      "confidence": "medium",
+      "tokensConsumedCount": 25
+    },
+    {
+      "slug": "forms",
+      "name": "Form",
+      "category": "input",
+      "preview": "preview/component-forms.html",
+      "contract": "components/forms.json",
+      "sourceKind": "preview-contract",
+      "confidence": "medium",
+      "tokensConsumedCount": 30
+    },
+    {
+      "slug": "menu",
+      "name": "Menu",
+      "category": "navigation",
+      "preview": "preview/component-menu.html",
+      "contract": "components/menu.json",
+      "sourceKind": "preview-contract",
+      "confidence": "medium",
+      "tokensConsumedCount": 22
+    },
+    {
+      "slug": "pagination",
+      "name": "Pagination",
+      "category": "navigation",
+      "preview": "preview/component-pagination.html",
+      "contract": "components/pagination.json",
+      "sourceKind": "preview-contract",
+      "confidence": "medium",
+      "tokensConsumedCount": 16
+    },
+    {
+      "slug": "progress",
+      "name": "Progress / Slider",
+      "category": "feedback",
+      "preview": "preview/component-progress.html",
+      "contract": "components/progress.json",
+      "sourceKind": "preview-contract",
+      "confidence": "medium",
+      "tokensConsumedCount": 4
+    },
+    {
+      "slug": "skeleton",
+      "name": "Skeleton",
+      "category": "feedback",
+      "preview": "preview/component-skeleton.html",
+      "contract": "components/skeleton.json",
+      "sourceKind": "preview-contract",
+      "confidence": "medium",
+      "tokensConsumedCount": 4
+    },
+    {
+      "slug": "table",
+      "name": "Table",
+      "category": "data-display",
+      "preview": "preview/component-table.html",
+      "contract": "components/table.json",
+      "sourceKind": "preview-contract",
+      "confidence": "medium",
+      "tokensConsumedCount": 15
+    },
+    {
+      "slug": "tabs",
+      "name": "Tabs",
+      "category": "navigation",
+      "preview": "preview/component-tabs.html",
+      "contract": "components/tabs.json",
+      "sourceKind": "preview-contract",
+      "confidence": "medium",
+      "tokensConsumedCount": 16
+    },
+    {
+      "slug": "tag",
+      "name": "Tag",
+      "category": "feedback",
+      "preview": "preview/component-tag.html",
+      "contract": "components/tag.json",
+      "sourceKind": "preview-contract",
+      "confidence": "medium",
+      "tokensConsumedCount": 16
+    }
+  ]
+}

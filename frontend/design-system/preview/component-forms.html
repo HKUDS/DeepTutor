@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Form</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="../colors_and_type.css" />
+  <style data-preview-shell>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html,
+    body {
+      background: var(--bg-base-default);
+      color: var(--text-default);
+      font-family: var(--body-base-font-family);
+      font-size: var(--body-base-font-size);
+      line-height: var(--body-base-line-height);
+      font-weight: var(--body-base-font-weight);
+      letter-spacing: var(--body-base-letter-spacing);
+      min-height: 100%;
+      overflow-x: hidden;
+      max-width: 100%;
+    }
+
+    body { padding: var(--spacer-32); }
+    img, svg, video, canvas { max-width: 100%; }
+    a { color: var(--text-default); text-decoration: none; }
+    a:hover { color: var(--text-default-hover); }
+    hr { border: 0; border-top: 1px solid var(--border-neutral-l1); margin: var(--spacer-24) 0; }
+
+    .h1 { font-family: var(--heading-2xl-font-family); font-size: var(--heading-2xl-font-size); line-height: var(--heading-2xl-line-height); font-weight: var(--heading-2xl-font-weight); color: var(--text-default); }
+    .h2 { font-family: var(--heading-md-font-family); font-size: var(--heading-md-font-size); line-height: var(--heading-md-line-height); font-weight: var(--heading-md-font-weight); color: var(--text-default); }
+    .h3 { font-family: var(--heading-sm-font-family); font-size: var(--heading-sm-font-size); line-height: var(--heading-sm-line-height); font-weight: var(--heading-sm-font-weight); color: var(--text-default); }
+    .eyebrow { font-size: var(--body-xs-font-size); line-height: var(--body-xs-line-height); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: var(--body-xs-letter-spacing); }
+    .text-secondary { color: var(--text-secondary); }
+    .text-tertiary { color: var(--text-tertiary); }
+
+    .row { display: flex; gap: var(--spacer-12); flex-wrap: wrap; align-items: center; }
+    .col { display: flex; flex-direction: column; gap: var(--spacer-12); }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--spacer-24); }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--spacer-24); }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--spacer-24); }
+    .stack-8 { display: flex; flex-direction: column; gap: var(--spacer-8); }
+    .stack-12 { display: flex; flex-direction: column; gap: var(--spacer-12); }
+    .stack-16 { display: flex; flex-direction: column; gap: var(--spacer-16); }
+    .stack-24 { display: flex; flex-direction: column; gap: var(--spacer-24); }
+    .stack-40 { display: flex; flex-direction: column; gap: var(--spacer-40); }
+
+    .pv-header { margin-bottom: var(--spacer-32); padding-bottom: var(--spacer-16); border-bottom: 1px solid var(--border-neutral-l1); }
+    .pv-header h1 { font-size: var(--heading-lg-font-size); line-height: var(--heading-lg-line-height); font-weight: var(--heading-lg-font-weight); margin-bottom: var(--spacer-4); }
+    .pv-header p { color: var(--text-secondary); font-size: var(--body-base-font-size); line-height: var(--body-base-line-height); }
+    .pv-section { margin-bottom: var(--spacer-32); }
+    .pv-section__title { font-size: var(--heading-sm-font-size); line-height: var(--heading-sm-line-height); font-weight: var(--heading-sm-font-weight); margin-bottom: var(--spacer-12); color: var(--text-default); }
+    .pv-section__sub { font-size: var(--body-base-font-size); line-height: var(--body-base-line-height); color: var(--text-tertiary); margin-bottom: var(--spacer-12); }
+
+    @media (max-width: 720px) {
+      body { padding: var(--spacer-16); }
+      .grid-2,
+      .grid-3,
+      .grid-4 { grid-template-columns: 1fr; }
+    }
+  </style>
+  <link rel="stylesheet" href="../components.css" />
+  <style>
+    body { max-width: 1120px; margin: 0 auto; padding: var(--spacer-40) var(--spacer-48) var(--spacer-64); }
+    .pv-header { margin-bottom: var(--spacer-40); padding-bottom: var(--spacer-20); }
+    .pv-header h1 { margin-bottom: var(--spacer-8); }
+    .pv-section { max-width: 760px; margin-bottom: 0; padding: var(--spacer-32) 0; border-top: 1px solid var(--border-neutral-l1); }
+    .pv-header + .pv-section { border-top: 0; padding-top: 0; }
+    .pv-section--wide { max-width: none; }
+    .pv-section__title { margin-bottom: var(--spacer-20); }
+    .pv-section__sub { margin-top: var(--spacer-24); }
+    .grid-2 { gap: var(--spacer-16) var(--spacer-24); }
+    .row { gap: var(--spacer-16) var(--spacer-20); }
+    .stack-8 { gap: var(--spacer-12); }
+    .stack-12 { gap: var(--spacer-12); }
+    .form { max-width: 560px; background: var(--bg-base-default); }
+    .field { display:flex; flex-direction: column; gap: var(--spacer-8); margin-bottom: var(--spacer-20); }
+    .field__label {
+      font-size: var(--body-base-font-size); line-height: var(--body-base-line-height); color: var(--text-default);
+      font-weight: var(--font-weight-medium, 500);
+      display: inline-flex; align-items: center; gap: var(--spacer-6);
+    }
+    .field__hint  { font-size: var(--body-base-font-size); line-height: var(--body-base-line-height); color: var(--text-tertiary); }
+    .field__error { font-size: var(--body-base-font-size); line-height: var(--body-base-line-height); color: var(--status-error-default, var(--status-error-default)); }
+    .field__required { color: var(--status-error-default, var(--status-error-default)); font-weight: var(--font-weight-medium, 500); }
+    .lbl-row { display: inline-flex; align-items: center; gap: var(--spacer-6); line-height: var(--body-base-line-height); }
+
+    /* @component-css-start */
+    /* ===== Input / Search ===== */
+    .ds-input { display: flex; align-items: center; gap: var(--spacer-8); min-height: 32px; padding: 0 var(--spacer-12); background: var(--bg-base-default); border: 1px solid var(--border-neutral-l1); border-radius: var(--radius-8); color: var(--text-default); width: 100%; font-family: var(--body-base-font-family); font-size: var(--body-base-font-size); line-height: var(--body-base-line-height); }
+    .ds-input:focus-within { border-color: var(--border-contrast); background: var(--bg-base-default); }
+    .ds-input input { flex: 1; background: transparent; border: none; outline: none; color: var(--text-default); font: inherit; min-width: 0; }
+    .ds-input input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
+    .ds-input input[type="number"]::-webkit-outer-spin-button,
+    .ds-input input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .ds-input input::placeholder { color: var(--text-tertiary); }
+    .ds-input input:disabled { color: var(--text-disabled); cursor: not-allowed; }
+    .ds-input.is-error { border-color: var(--status-error-default); }
+    .ds-input.is-disabled { background: var(--bg-base-secondary); color: var(--text-disabled); cursor: not-allowed; }
+    .ds-input__icon { color: var(--icon-secondary); display: inline-flex; align-items: center; }
+    .ds-search { position: relative; }
+    .ds-select { width: 100%; height: 32px; padding: 0 var(--spacer-32) 0 var(--spacer-12); background-color: var(--bg-base-default); color: var(--text-default); border: 1px solid var(--border-neutral-l1); border-radius: var(--radius-8); appearance: none; -webkit-appearance: none; font: inherit; font-size: var(--body-base-font-size); }
+    .ds-select:focus { border-color: var(--border-contrast); background-color: var(--bg-base-default); outline: none; }
+    .ds-select:disabled { background-color: var(--bg-base-secondary); color: var(--text-disabled); cursor: not-allowed; opacity: 1; }
+    .ds-select-wrap { position: relative; width: 100%; }
+    .ds-select-wrap .ds-select { padding-right: var(--spacer-32); }
+    .ds-select__icon { position: absolute; right: var(--spacer-12); top: 50%; width: 16px; height: 16px; color: var(--icon-secondary); pointer-events: none; transform: translateY(-50%); object-fit: contain; }
+    .ds-select-wrap > .icon-img { position: absolute; top: 50%; right: var(--spacer-10); transform: translateY(-50%); color: var(--icon-secondary); pointer-events: none; }
+    .icon-img { display: inline-block; width: 16px; height: 16px; flex: 0 0 16px; object-fit: contain; vertical-align: middle; }
+    .icon-img--12 { width: 12px; height: 12px; flex-basis: 12px; }
+    .icon-img--14 { width: 14px; height: 14px; flex-basis: 14px; }
+    .ds-textarea { width: 100%; min-height: 96px; padding: var(--spacer-8) var(--spacer-12); background: var(--bg-base-default); border: 1px solid var(--border-neutral-l1); border-radius: var(--radius-8); color: var(--text-default); font-family: var(--body-base-font-family); font-size: var(--body-base-font-size); line-height: var(--body-base-line-height); resize: none; }
+    .ds-textarea:focus { outline: none; border-color: var(--border-contrast); background: var(--bg-base-default); }
+    .ds-textarea.is-error { border-color: var(--status-error-default); }
+    .ds-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; background: var(--bg-overlay-l3); border-radius: var(--radius-full); outline: none; }
+    .ds-slider--progress { background: var(--bg-overlay-l3); }
+    .ds-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: var(--radius-full); background: var(--bg-base-default); border: 1px solid var(--border-neutral-l3); box-shadow: none; cursor: pointer; }
+    .ds-slider::-moz-range-track { height: 4px; background: var(--bg-overlay-l3); border-radius: var(--radius-full); }
+    .ds-slider--progress::-moz-range-progress { height: 4px; background: var(--bg-brand); border-radius: var(--radius-full); }
+    .ds-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: var(--radius-full); background: var(--bg-base-default); border: 1px solid var(--border-neutral-l3); box-shadow: none; cursor: pointer; }
+    .ds-check, .ds-radio { display: inline-flex; align-items: center; gap: var(--spacer-8); min-height: 40px; font-size: var(--body-base-font-size); color: var(--text-default); cursor: pointer; user-select: none; }
+    .ds-check__box { width: 16px; height: 16px; border: 1px solid var(--border-neutral-l2); background: var(--bg-base-default); border-radius: var(--radius-4); display: inline-flex; align-items: center; justify-content: center; color: var(--text-onbrand); transition: background .12s, border-color .12s; }
+    .ds-check input { display: none; }
+    .ds-check input:checked + .ds-check__box { background: var(--bg-brand); border-color: var(--bg-brand); }
+    .ds-check input:checked + .ds-check__box::after { content: ''; width: 8px; height: 4px; border-left: 2px solid var(--text-onbrand); border-bottom: 2px solid var(--text-onbrand); transform: rotate(-45deg) translate(1px, -1px); }
+    .ds-check input:disabled + .ds-check__box { opacity: .5; cursor: not-allowed; }
+    .ds-radio__dot { width: 16px; height: 16px; border: 1px solid var(--border-neutral-l2); background: var(--bg-base-default); border-radius: var(--radius-full); display: inline-flex; align-items: center; justify-content: center; }
+    .ds-radio input { display: none; }
+    .ds-radio input:checked + .ds-radio__dot { border-color: var(--bg-brand); }
+    .ds-radio input:checked + .ds-radio__dot::after { content: ''; width: 10px; height: 10px; border-radius: var(--radius-full); background: var(--bg-brand); }
+    .ds-switch { position: relative; display: inline-flex; width: 32px; height: 18px; background: var(--bg-overlay-l3); border: 1px solid var(--border-neutral-l1); border-radius: var(--radius-full); cursor: pointer; transition: background .15s, border-color .15s; }
+    .ds-switch input { display: none; }
+    .ds-switch__thumb { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; background: var(--bg-base-default); border-radius: var(--radius-full); transition: left .15s, background .15s; }
+    .ds-switch input:checked ~ .ds-switch__thumb { left: 16px; background: var(--icon-onbrand); }
+    .ds-switch:has(input:checked) { background: var(--bg-brand); border-color: var(--bg-brand); }
+    .input-affix { color: var(--text-tertiary); font-family: var(--body-base-font-family); font-size: var(--body-base-font-size); line-height: var(--body-base-line-height); white-space: nowrap; }
+    .ds-date-input { position: relative; }
+    .ds-date-input input { padding-right: var(--spacer-32); }
+    .ds-date-input input::-webkit-calendar-picker-indicator { opacity: 0; cursor: pointer; }
+    .ds-date-input .icon-img { position: absolute; top: 50%; right: var(--spacer-12); transform: translateY(-50%); color: var(--icon-secondary); pointer-events: none; }
+    .tag-field { display: flex; align-items: center; flex-wrap: wrap; gap: var(--spacer-6); min-height: 32px; padding: var(--spacer-4) var(--spacer-8); border: 1px solid var(--border-neutral-l1); border-radius: var(--radius-8); background: var(--bg-base-default); }
+    .tag-field:focus-within { border-color: var(--border-contrast); }
+    .tag-remove { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border: 0; background: transparent; color: var(--icon-tertiary); cursor: pointer; border-radius: var(--radius-4); }
+    .tag-remove:hover { background: var(--bg-overlay-l2); color: var(--icon-default); }
+    .stepper { display: inline-flex; align-items: center; width: fit-content; border: 1px solid var(--border-neutral-l1); border-radius: var(--radius-8); overflow: hidden; background: var(--bg-base-default); }
+    .stepper button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 0; background: transparent; color: var(--icon-secondary); cursor: pointer; }
+    .stepper button:hover { background: var(--bg-overlay-l2); color: var(--icon-default); }
+    .stepper input { width: 48px; height: 32px; padding: 0; border: 0; border-left: 1px solid var(--border-neutral-l1); border-right: 1px solid var(--border-neutral-l1); background: transparent; color: var(--text-default); text-align: center; font: inherit; line-height: var(--body-base-line-height); appearance: textfield; -moz-appearance: textfield; }
+    .stepper input::-webkit-outer-spin-button,
+    .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    /* @component-css-end */
+
+    /* ===== Form preview composition ===== */
+    .select-popover-demo { position: relative; min-height: 248px; }
+    .select-popover-demo .ds-btn.is-active { background: transparent; border-color: var(--border-neutral-l2); font-family: var(--body-base-font-family); font-weight: var(--body-base-font-weight); letter-spacing: var(--body-base-letter-spacing); }
+    .select-popover-demo .ds-btn.is-active:hover,
+    .select-popover-demo .ds-btn.is-active:active { background: transparent; border-color: var(--border-neutral-l2); }
+    .select-popover-demo .ds-popover { position: absolute; top: 32px; left: 0; margin: 0; }
+    .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacer-16) var(--spacer-20); }
+    .field-grid .field, .form-grid .field { margin-bottom: 0; }
+    .field--full { grid-column: 1 / -1; }
+    .form-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--spacer-20); align-items: start; }
+    .span-12 { grid-column: 1 / -1; }
+    .ds-card__header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--spacer-16); }
+    .card-rule { border: 0; border-top: 1px solid var(--border-neutral-l1); margin: var(--spacer-16) 0; }
+    .form-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--spacer-8); margin-top: var(--spacer-20); }
+    .form-subsection { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacer-16) var(--spacer-20); padding-top: var(--spacer-20); border-top: 1px solid var(--border-neutral-l1); }
+    .form-subsection__head { grid-column: 1 / -1; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--spacer-16); }
+    .form-subsection__title { margin: 0; color: var(--text-default); font-size: var(--body-base-font-size); line-height: var(--body-base-line-height); font-weight: var(--font-weight-medium, 500); }
+    .form-subsection__desc { margin: var(--spacer-4) 0 0; color: var(--text-tertiary); font-size: var(--body-base-font-size); line-height: var(--body-base-line-height); }
+    .segmented { display: inline-flex; flex-wrap: wrap; gap: var(--spacer-2); border: 1px solid var(--border-neutral-l1); border-radius: var(--radius-12); padding: var(--spacer-2); background: var(--bg-overlay-l1); width: fit-content; max-width: 100%; }
+    .segmented label { position: relative; cursor: pointer; }
+    .segmented input { position: absolute; opacity: 0; pointer-events: none; }
+    .segmented span { display: inline-flex; align-items: center; justify-content: center; min-height: 28px; padding: 0 var(--spacer-12); border-radius: var(--radius-8); color: var(--text-secondary); font-family: var(--body-md-strong-font-family); font-size: var(--body-md-strong-font-size); line-height: var(--body-md-strong-line-height); font-weight: var(--body-md-strong-font-weight); letter-spacing: var(--body-md-strong-letter-spacing); white-space: nowrap; }
+    .segmented input:checked + span { background: var(--bg-base-default); color: var(--text-default); box-shadow: 0 1px 2px color-mix(in srgb, var(--text-default) 10%, transparent); }
+    .otp-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 40px)); gap: var(--spacer-8); }
+    .otp-grid .ds-input { justify-content: center; padding: 0; text-align: center; }
+    .otp-grid .ds-input input { text-align: center; }
+    .strength { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--spacer-4); }
+    .strength span { height: 4px; border-radius: var(--radius-full); background: var(--bg-overlay-l3); }
+    .strength span.is-on { background: var(--status-success-default); }
+    .slider-row { display: grid; grid-template-columns: minmax(0, 1fr) 48px; align-items: center; gap: var(--spacer-12); }
+    .slider-value { color: var(--text-secondary); text-align: right; font-family: var(--font-family-metric); font-size: var(--body-sm-font-size); }
+    .color-grid { display: flex; flex-wrap: wrap; gap: var(--spacer-10); }
+    .color-swatch { position: relative; width: 28px; height: 28px; border: 0; border-radius: var(--radius-8); cursor: pointer; box-shadow: none; transition: transform .12s ease, opacity .12s ease; }
+    .color-swatch:hover { transform: translateY(-1px); }
+    .color-swatch[aria-pressed="true"]::after { content: ''; position: absolute; left: 9px; top: 8px; width: 9px; height: 5px; border-left: 2px solid var(--text-onbrand); border-bottom: 2px solid var(--text-onbrand); transform: rotate(-45deg); }
+    .color-swatch:focus-visible { outline: 2px solid var(--border-contrast); outline-offset: 2px; }
+    .swatch-brand { background: var(--bg-brand); }
+    .swatch-teal { background: var(--accent-teal); }
+    .swatch-coral { background: var(--accent-coral); }
+    .swatch-amber { background: var(--accent-amber); }
+    .swatch-cyan { background: var(--accent-cyan); }
+    .swatch-slate { background: var(--accent-slate); }
+    .score-row { display: inline-flex; gap: var(--spacer-6); }
+    .score-btn { width: 28px; height: 28px; border: 0; border-radius: var(--radius-8); background: var(--bg-overlay-l1); color: var(--text-secondary); cursor: pointer; }
+    .score-btn[aria-pressed="true"] { background: var(--bg-brand); color: var(--text-onbrand); }
+    .file-field { display: flex; align-items: center; flex-wrap: wrap; gap: var(--spacer-8); }
+    .file-field input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+    .file-name { color: var(--text-secondary); font-size: var(--body-sm-font-size); }
+    .date-panel { width: 100%; margin-top: var(--spacer-12); padding: var(--spacer-12); border: 1px solid var(--border-neutral-l1); border-radius: var(--radius-8); background: var(--bg-base-default); color: var(--text-default); }
+    .date-panel__head { display: flex; justify-content: space-between; align-items: center; gap: var(--spacer-8); }
+    .date-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--spacer-4); margin-top: var(--spacer-12); }
+    .date-grid span { display: grid; place-items: center; min-height: 28px; border-radius: var(--radius-8); color: var(--text-secondary); font-size: var(--body-md-font-size); line-height: var(--body-md-line-height); }
+    .date-grid .day-name { color: var(--text-tertiary); font-family: var(--code-editor-font-family); font-size: var(--body-sm-font-size); line-height: var(--body-sm-line-height); }
+    .date-grid .is-range { background: var(--bg-overlay-l2); color: var(--text-default); }
+    .date-grid .is-start, .date-grid .is-end { background: var(--bg-invert); color: var(--bg-base-default); }
+    .rich-text { width: 100%; border: 1px solid var(--border-neutral-l1); border-radius: var(--radius-12); background: var(--bg-base-default); color: var(--text-default); overflow: hidden; }
+    .editor-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--spacer-4); padding: var(--spacer-8); border-bottom: 1px solid var(--border-neutral-l1); }
+    .editor-toolbar button { min-width: 32px; min-height: 28px; border: 0; border-radius: var(--radius-8); background: transparent; color: var(--text-secondary); font-weight: var(--font-weight-medium); cursor: pointer; }
+    .editor-toolbar button[aria-pressed="true"], .editor-toolbar button:hover { background: var(--bg-overlay-l2); color: var(--text-default); }
+    .editor-body { min-height: 160px; padding: var(--spacer-16); color: var(--text-default); outline: 0; }
+    .editor-body p { margin: var(--spacer-0) var(--spacer-0) var(--spacer-12); }
+    .editor-body p:last-child { margin-bottom: var(--spacer-0); }
+    @media (max-width: 860px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .span-12 { grid-column: 1 / -1; }
+      .field-grid, .form-subsection { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 720px) {
+      body { padding: var(--spacer-24) var(--spacer-16) var(--spacer-48); }
+      .pv-section { padding: var(--spacer-24) 0; }
+      .grid-2 { gap: var(--spacer-12); }
+      .form-actions { justify-content: flex-start; flex-wrap: wrap; }
+      .otp-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+      .segmented { width: 100%; }
+      .segmented label { flex: 1 1 auto; }
+      .segmented span { width: 100%; }
+    }
+
+    /* Inline asset icon normalization: keep uploaded HTML independent from external SVG styling. */
+    [data-asset-icon] {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent !important;
+      -webkit-mask: none !important;
+      mask: none !important;
+    }
+
+    [data-asset-icon] > svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      flex: 0 0 auto;
+    }
+
+    .asset-inline-icon {
+      width: 16px;
+      height: 16px;
+      flex: 0 0 auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="pv-header">
+    <h1>Form</h1>
+    <p>The single home for action / selection controls - input, textarea, select, checkbox, radio, switch and form layout.</p>
+  </div>
+
+  <!-- ===== Input ===== -->
+  <div class="pv-section">
+    <div class="pv-section__title">Input</div>
+    <div class="grid-2" style="max-width:720px;">
+      <div class="ds-input"><input placeholder="Type something..." /></div>
+      <div class="ds-input"><span class="ds-input__icon"><span class="icon-img" aria-hidden="true" data-asset-icon="../assets/icons/email.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M14.2793 6.22534L9.17383 8.77905C8.43497 9.14838 7.56504 9.14836 6.82617 8.77905V8.77808L1.7207 6.22534L2.2793 5.10815L7.38477 7.66089C7.77188 7.85444 8.22812 7.85444 8.61523 7.66089L13.7207 5.10815L14.2793 6.22534Z" fill="#404040"/><path d="M13.375 5.25C13.375 4.49061 12.7594 3.875 12 3.875H4C3.24061 3.875 2.625 4.49061 2.625 5.25V10.75C2.625 11.5094 3.24061 12.125 4 12.125H12C12.7594 12.125 13.375 11.5094 13.375 10.75V5.25ZM14.625 10.75C14.625 12.1997 13.4497 13.375 12 13.375H4C2.55025 13.375 1.375 12.1997 1.375 10.75V5.25C1.375 3.80025 2.55025 2.625 4 2.625H12C13.4497 2.625 14.625 3.80025 14.625 5.25V10.75Z" fill="#404040"/></svg></span></span><input placeholder="email@example.com" /></div>
+      <div class="ds-input"><input value="Filled value" /></div>
+      <div class="ds-input is-error"><input value="Invalid value" aria-invalid="true" /></div>
+    </div>
+
+    <div style="margin-top: var(--spacer-16);">
+      <div class="ds-input ds-search" style="max-width: 480px;">
+        <span class="ds-input__icon"><span class="icon-img" aria-hidden="true" data-asset-icon="../assets/icons/Search.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M7.33398 2.04199C10.2562 2.0423 12.625 4.41167 12.625 7.33398C12.6248 8.5697 12.1992 9.70502 11.4893 10.6055L13.7754 12.8916C14.0192 13.1357 14.0193 13.5314 13.7754 13.7754C13.5314 14.0194 13.1357 14.0192 12.8916 13.7754L10.6045 11.4893C9.70413 12.1989 8.56941 12.6249 7.33398 12.625C4.4117 12.625 2.04235 10.2562 2.04199 7.33398C2.04199 4.41148 4.41148 2.04199 7.33398 2.04199ZM7.33398 3.29199C5.10184 3.29199 3.29199 5.10184 3.29199 7.33398C3.29235 9.56583 5.10206 11.375 7.33398 11.375C9.56566 11.3747 11.3746 9.56565 11.375 7.33398C11.375 5.10203 9.56588 3.2923 7.33398 3.29199Z" fill="#404040"/></svg></span></span>
+        <input placeholder="Search docs, components, tokens..." />
+        <span class="ds-kbd">⌘ K</span>
+      </div>
+    </div>
+
+    <div class="stack-12" style="max-width: 480px; margin-top: var(--spacer-16);">
+      <div class="ds-input" style="height:24px; min-height:24px; padding:0 var(--spacer-8); font-size: var(--body-xs-font-size);"><input placeholder="Small (24)" /></div>
+      <div class="ds-input" style="height:28px; min-height:28px;"><input placeholder="Default (28)" /></div>
+      <div class="ds-input" style="height:32px; min-height:32px; padding:0 var(--spacer-12);"><input placeholder="Medium (32)" /></div>
+    </div>
+  </div>
+
+  <!-- ===== Textarea ===== -->
+  <div class="pv-section">
+    <div class="pv-section__title">Textarea</div>
+    <textarea class="ds-textarea" style="max-width:720px;" placeholder="Describe your issue...">Our design system helps any agent ship on-brand UI on the first try.</textarea>
+  </div>
+
+  <!-- ===== Select ===== -->
+  <div class="pv-section">
+    <div class="pv-section__title">Select</div>
+
+    <div class="grid-2" style="max-width: 720px;">
+      <div class="field">
+        <label class="field__label" for="region">Region</label>
+        <div class="ds-select-wrap">
+          <select class="ds-select" id="region">
+            <option>United States</option>
+            <option>Singapore</option>
+            <option>Frankfurt</option>
+            <option>Tokyo</option>
+          </select>
+          <span class="icon-img" aria-hidden="true" data-asset-icon="../assets/icons/Down.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.2249 6.22429C10.469 5.98059 10.8647 5.98048 11.1087 6.22429C11.3528 6.46837 11.3528 6.86498 11.1087 7.10905L9.14876 9.06804C8.51414 9.70255 7.48548 9.70261 6.8509 9.06804L4.89094 7.10905C4.64687 6.86498 4.64687 6.46837 4.89094 6.22429C5.13502 5.98021 5.53163 5.98021 5.77571 6.22429L7.73469 8.18425C7.88112 8.33067 8.1185 8.3306 8.26497 8.18425L10.2249 6.22429Z" fill="#404040"/></svg></span>
+        </div>
+      </div>
+      <div class="field">
+        <label class="field__label" for="disabled-select">Disabled</label>
+        <div class="ds-select-wrap">
+          <select class="ds-select" id="disabled-select" disabled>
+            <option>Read-only</option>
+          </select>
+          <span class="icon-img" aria-hidden="true" data-asset-icon="../assets/icons/Down.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.2249 6.22429C10.469 5.98059 10.8647 5.98048 11.1087 6.22429C11.3528 6.46837 11.3528 6.86498 11.1087 7.10905L9.14876 9.06804C8.51414 9.70255 7.48548 9.70261 6.8509 9.06804L4.89094 7.10905C4.64687 6.86498 4.64687 6.46837 4.89094 6.22429C5.13502 5.98021 5.53163 5.98021 5.77571 6.22429L7.73469 8.18425C7.88112 8.33067 8.1185 8.3306 8.26497 8.18425L10.2249 6.22429Z" fill="#404040"/></svg></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pv-section__sub">Custom dropdown (popover) - for richer items.</div>
+    <div class="select-popover-demo">
+      <button class="ds-btn ds-btn--secondary is-active" type="button"><span>Sort by</span><span class="icon icon--down" aria-hidden="true" data-asset-icon="../assets/icons/Down.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#171717" xmlns="http://www.w3.org/2000/svg"><path d="M10.2249 6.22429C10.469 5.98059 10.8647 5.98048 11.1087 6.22429C11.3528 6.46837 11.3528 6.86498 11.1087 7.10905L9.14876 9.06804C8.51414 9.70255 7.48548 9.70261 6.8509 9.06804L4.89094 7.10905C4.64687 6.86498 4.64687 6.46837 4.89094 6.22429C5.13502 5.98021 5.53163 5.98021 5.77571 6.22429L7.73469 8.18425C7.88112 8.33067 8.1185 8.3306 8.26497 8.18425L10.2249 6.22429Z" fill="#171717"/></svg></span></button>
+      <div class="ds-popover">
+        <div class="ds-menu" style="border:none; padding: 0; min-width: 180px;">
+          <div class="ds-menu__item"><span>Most recent</span><span class="icon-img icon-img--14" style="margin-left:auto;" aria-hidden="true" data-asset-icon="../assets/icons/check.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#171717" xmlns="http://www.w3.org/2000/svg"><path d="M13.7117 2.90824C13.9472 2.656 14.3432 2.64248 14.5955 2.87797C14.8477 3.1135 14.8612 3.50945 14.6257 3.76176L6.38551 12.5909C6.06158 12.9379 5.51701 12.9556 5.17067 12.6309L1.74098 9.41606C1.48925 9.17996 1.47661 8.78405 1.71266 8.53227C1.94875 8.28054 2.34466 8.2679 2.59645 8.50395L5.73903 11.4502L13.7117 2.90824Z" fill="#171717"/></svg></span></div>
+          <div class="ds-menu__item"><span>Most viewed</span></div>
+          <div class="ds-menu__item"><span>Alphabetical</span></div>
+          <div class="ds-menu__divider"></div>
+          <div class="ds-menu__item"><span>Custom order...</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pv-section__sub" style="margin-top: var(--spacer-40);">Multi-select chips</div>
+    <div class="ds-input" style="height: auto; min-height: 32px; padding: var(--spacer-4) var(--spacer-8); flex-wrap: wrap; gap: var(--spacer-4); max-width: 480px;">
+      <span class="ds-tag" style="height: 22px;">Design <button class="tag-remove" type="button" aria-label="Remove Design"><span class="icon-img icon-img--12" aria-hidden="true" data-asset-icon="../assets/icons/close-small.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M10.2248 4.70231C10.4689 4.45862 10.8646 4.45851 11.1086 4.70231C11.3527 4.94639 11.3527 5.343 11.1086 5.58708L8.88399 7.81071L11.1086 10.0363C11.3525 10.2804 11.3526 10.6761 11.1086 10.9201C10.8646 11.1641 10.4689 11.164 10.2248 10.9201L7.99922 8.69548L5.77559 10.9201C5.53151 11.1642 5.1349 11.1642 4.89082 10.9201C4.64702 10.6761 4.64712 10.2803 4.89082 10.0363L7.11543 7.81071L4.89082 5.58708C4.64674 5.343 4.64674 4.94639 4.89082 4.70231C5.1349 4.45824 5.53151 4.45824 5.77559 4.70231L7.99922 6.92692L10.2248 4.70231Z" fill="#737373"/></svg></span></button></span>
+      <span class="ds-tag" style="height: 22px;">Engineering <button class="tag-remove" type="button" aria-label="Remove Engineering"><span class="icon-img icon-img--12" aria-hidden="true" data-asset-icon="../assets/icons/close-small.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M10.2248 4.70231C10.4689 4.45862 10.8646 4.45851 11.1086 4.70231C11.3527 4.94639 11.3527 5.343 11.1086 5.58708L8.88399 7.81071L11.1086 10.0363C11.3525 10.2804 11.3526 10.6761 11.1086 10.9201C10.8646 11.1641 10.4689 11.164 10.2248 10.9201L7.99922 8.69548L5.77559 10.9201C5.53151 11.1642 5.1349 11.1642 4.89082 10.9201C4.64702 10.6761 4.64712 10.2803 4.89082 10.0363L7.11543 7.81071L4.89082 5.58708C4.64674 5.343 4.64674 4.94639 4.89082 4.70231C5.1349 4.45824 5.53151 4.45824 5.77559 4.70231L7.99922 6.92692L10.2248 4.70231Z" fill="#737373"/></svg></span></button></span>
+      <span class="ds-tag" style="height: 22px;">Marketing <button class="tag-remove" type="button" aria-label="Remove Marketing"><span class="icon-img icon-img--12" aria-hidden="true" data-asset-icon="../assets/icons/close-small.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M10.2248 4.70231C10.4689 4.45862 10.8646 4.45851 11.1086 4.70231C11.3527 4.94639 11.3527 5.343 11.1086 5.58708L8.88399 7.81071L11.1086 10.0363C11.3525 10.2804 11.3526 10.6761 11.1086 10.9201C10.8646 11.1641 10.4689 11.164 10.2248 10.9201L7.99922 8.69548L5.77559 10.9201C5.53151 11.1642 5.1349 11.1642 4.89082 10.9201C4.64702 10.6761 4.64712 10.2803 4.89082 10.0363L7.11543 7.81071L4.89082 5.58708C4.64674 5.343 4.64674 4.94639 4.89082 4.70231C5.1349 4.45824 5.53151 4.45824 5.77559 4.70231L7.99922 6.92692L10.2248 4.70231Z" fill="#737373"/></svg></span></button></span>
+    </div>
+  </div>
+
+  <!-- ===== Checkbox ===== -->
+  <div class="pv-section">
+    <div class="pv-section__title">Checkbox</div>
+    <div class="row">
+      <label class="ds-check"><input type="checkbox" /><span class="ds-check__box"></span>Default</label>
+      <label class="ds-check"><input type="checkbox" checked /><span class="ds-check__box"></span>Checked</label>
+      <label class="ds-check"><input type="checkbox" disabled /><span class="ds-check__box"></span>Disabled</label>
+      <label class="ds-check"><input type="checkbox" disabled checked /><span class="ds-check__box"></span>Disabled checked</label>
+    </div>
+
+    <div class="stack-8" style="margin-top: var(--spacer-16);">
+      <label class="ds-check"><input type="checkbox" checked /><span class="ds-check__box"></span>Email notifications</label>
+      <label class="ds-check"><input type="checkbox" /><span class="ds-check__box"></span>SMS notifications</label>
+      <label class="ds-check"><input type="checkbox" /><span class="ds-check__box"></span>Slack</label>
+    </div>
+  </div>
+
+  <!-- ===== Radio ===== -->
+  <div class="pv-section">
+    <div class="pv-section__title">Radio</div>
+    <div class="stack-8">
+      <label class="ds-radio"><input type="radio" name="plan" /><span class="ds-radio__dot"></span>Free</label>
+      <label class="ds-radio"><input type="radio" name="plan" checked /><span class="ds-radio__dot"></span>Pro <span class="text-tertiary num" style="margin-left:var(--spacer-6);">$29/mo</span></label>
+      <label class="ds-radio"><input type="radio" name="plan" /><span class="ds-radio__dot"></span>Enterprise</label>
+    </div>
+  </div>
+
+  <!-- ===== Switch ===== -->
+  <div class="pv-section">
+    <div class="pv-section__title">Switch</div>
+    <div class="stack-8">
+      <div class="lbl-row" style="gap: var(--spacer-12);"><label class="ds-switch"><input type="checkbox" /><span class="ds-switch__thumb"></span></label><span>Auto-save drafts</span></div>
+      <div class="lbl-row" style="gap: var(--spacer-12);"><label class="ds-switch"><input type="checkbox" checked /><span class="ds-switch__thumb"></span></label><span>Two-factor authentication</span></div>
+    </div>
+  </div>
+
+  <!-- ===== Form composition ===== -->
+  <div class="pv-section pv-section--wide">
+    <div class="pv-section__title">Form composition</div>
+    <form class="form-grid" id="workspace-form" onsubmit="event.preventDefault();">
+      <section class="ds-card span-12" id="project" aria-labelledby="project-title">
+        <div class="ds-card__header">
+          <div>
+            <h2 class="ds-card__title" id="project-title">New project</h2>
+            <p class="ds-card__desc">Core details and advanced controls for a workspace project.</p>
+          </div>
+          <span class="ds-tag ds-tag--brand">Draft</span>
+        </div>
+        <hr class="card-rule" />
+
+        <div class="field-grid">
+          <div class="field field--full">
+            <label class="field__label" for="project-name">Project name <span class="field__required">*</span></label>
+            <div class="ds-input"><input id="project-name" name="project-name" type="text" placeholder="Acme website redesign" required /></div>
+            <p class="field__hint">Used in project lists, notifications, and shared links.</p>
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="client">Client</label>
+            <div class="ds-select-wrap">
+              <select class="ds-select" id="client" name="client">
+                <option>Acme Corp</option>
+                <option>Globex Inc</option>
+                <option>Initech</option>
+                <option>Umbrella Co</option>
+              </select>
+              <span class="icon-img" aria-hidden="true" data-asset-icon="../assets/icons/Down.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.2249 6.22429C10.469 5.98059 10.8647 5.98048 11.1087 6.22429C11.3528 6.46837 11.3528 6.86498 11.1087 7.10905L9.14876 9.06804C8.51414 9.70255 7.48548 9.70261 6.8509 9.06804L4.89094 7.10905C4.64687 6.86498 4.64687 6.46837 4.89094 6.22429C5.13502 5.98021 5.53163 5.98021 5.77571 6.22429L7.73469 8.18425C7.88112 8.33067 8.1185 8.3306 8.26497 8.18425L10.2249 6.22429Z" fill="#404040"/></svg></span>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="budget">Budget</label>
+            <div class="ds-input">
+              <span class="input-affix">$</span>
+              <input id="budget" name="budget" type="number" placeholder="25000" />
+              <span class="input-affix">USD</span>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="start-date">Start date</label>
+            <div class="ds-input ds-date-input">
+              <input id="start-date" name="start-date" type="date" />
+              <span class="icon-img" aria-hidden="true" data-asset-icon="../assets/icons/calendar.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.667 1.375C11.0121 1.37513 11.292 1.6549 11.292 2V2.70801H11.334C12.7834 2.70832 13.9589 3.88357 13.959 5.33301V11.333C13.959 12.7826 12.7835 13.9577 11.334 13.958H4.66699C3.21725 13.958 2.04199 12.7828 2.04199 11.333V5.33301C2.04212 3.88338 3.21733 2.70801 4.66699 2.70801H4.70801V2C4.70801 1.6549 4.98794 1.37513 5.33301 1.375C5.67819 1.375 5.95801 1.65482 5.95801 2V2.70801H10.042V2C10.042 1.65482 10.3218 1.375 10.667 1.375ZM3.29199 11.333C3.29199 12.0924 3.9076 12.708 4.66699 12.708H11.334C12.0931 12.7077 12.709 12.0922 12.709 11.333V7.29199H3.29199V11.333ZM4.66699 3.95801C3.90768 3.95801 3.29212 4.57373 3.29199 5.33301V6.04199H12.709V5.33301C12.7089 4.57391 12.0931 3.95832 11.334 3.95801H4.66699Z" fill="#404040"/></svg></span>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="end-date">End date</label>
+            <div class="ds-input ds-date-input">
+              <input id="end-date" name="end-date" type="date" />
+              <span class="icon-img" aria-hidden="true" data-asset-icon="../assets/icons/calendar.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M10.667 1.375C11.0121 1.37513 11.292 1.6549 11.292 2V2.70801H11.334C12.7834 2.70832 13.9589 3.88357 13.959 5.33301V11.333C13.959 12.7826 12.7835 13.9577 11.334 13.958H4.66699C3.21725 13.958 2.04199 12.7828 2.04199 11.333V5.33301C2.04212 3.88338 3.21733 2.70801 4.66699 2.70801H4.70801V2C4.70801 1.6549 4.98794 1.37513 5.33301 1.375C5.67819 1.375 5.95801 1.65482 5.95801 2V2.70801H10.042V2C10.042 1.65482 10.3218 1.375 10.667 1.375ZM3.29199 11.333C3.29199 12.0924 3.9076 12.708 4.66699 12.708H11.334C12.0931 12.7077 12.709 12.0922 12.709 11.333V7.29199H3.29199V11.333ZM4.66699 3.95801C3.90768 3.95801 3.29212 4.57373 3.29199 5.33301V6.04199H12.709V5.33301C12.7089 4.57391 12.0931 3.95832 11.334 3.95801H4.66699Z" fill="#404040"/></svg></span>
+            </div>
+          </div>
+
+          <div class="field field--full">
+            <label class="field__label" for="description">Description</label>
+            <textarea class="ds-textarea" id="description" name="description" placeholder="What problem is this project solving?"></textarea>
+          </div>
+
+          <div class="field field--full">
+            <span class="field__label">Visibility</span>
+            <div class="segmented" role="radiogroup" aria-label="Project visibility">
+              <label><input type="radio" name="visibility" value="private" checked /><span>Private</span></label>
+              <label><input type="radio" name="visibility" value="team" /><span>Team</span></label>
+              <label><input type="radio" name="visibility" value="public" /><span>Public</span></label>
+            </div>
+            <p class="field__hint">Private projects stay limited to invited members.</p>
+          </div>
+
+          <div class="field field--full">
+            <label class="field__label" for="tag-input">Tags</label>
+            <div class="tag-field" id="tag-input">
+              <span class="ds-tag">Web <button class="tag-remove" type="button" aria-label="Remove Web tag"><span class="icon-img icon-img--12" aria-hidden="true" data-asset-icon="../assets/icons/close-small.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M10.2248 4.70231C10.4689 4.45862 10.8646 4.45851 11.1086 4.70231C11.3527 4.94639 11.3527 5.343 11.1086 5.58708L8.88399 7.81071L11.1086 10.0363C11.3525 10.2804 11.3526 10.6761 11.1086 10.9201C10.8646 11.1641 10.4689 11.164 10.2248 10.9201L7.99922 8.69548L5.77559 10.9201C5.53151 11.1642 5.1349 11.1642 4.89082 10.9201C4.64702 10.6761 4.64712 10.2803 4.89082 10.0363L7.11543 7.81071L4.89082 5.58708C4.64674 5.343 4.64674 4.94639 4.89082 4.70231C5.1349 4.45824 5.53151 4.45824 5.77559 4.70231L7.99922 6.92692L10.2248 4.70231Z" fill="#737373"/></svg></span></button></span>
+              <span class="ds-tag">Design <button class="tag-remove" type="button" aria-label="Remove Design tag"><span class="icon-img icon-img--12" aria-hidden="true" data-asset-icon="../assets/icons/close-small.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M10.2248 4.70231C10.4689 4.45862 10.8646 4.45851 11.1086 4.70231C11.3527 4.94639 11.3527 5.343 11.1086 5.58708L8.88399 7.81071L11.1086 10.0363C11.3525 10.2804 11.3526 10.6761 11.1086 10.9201C10.8646 11.1641 10.4689 11.164 10.2248 10.9201L7.99922 8.69548L5.77559 10.9201C5.53151 11.1642 5.1349 11.1642 4.89082 10.9201C4.64702 10.6761 4.64712 10.2803 4.89082 10.0363L7.11543 7.81071L4.89082 5.58708C4.64674 5.343 4.64674 4.94639 4.89082 4.70231C5.1349 4.45824 5.53151 4.45824 5.77559 4.70231L7.99922 6.92692L10.2248 4.70231Z" fill="#737373"/></svg></span></button></span>
+              <span class="ds-tag">Q2 <button class="tag-remove" type="button" aria-label="Remove Q2 tag"><span class="icon-img icon-img--12" aria-hidden="true" data-asset-icon="../assets/icons/close-small.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M10.2248 4.70231C10.4689 4.45862 10.8646 4.45851 11.1086 4.70231C11.3527 4.94639 11.3527 5.343 11.1086 5.58708L8.88399 7.81071L11.1086 10.0363C11.3525 10.2804 11.3526 10.6761 11.1086 10.9201C10.8646 11.1641 10.4689 11.164 10.2248 10.9201L7.99922 8.69548L5.77559 10.9201C5.53151 11.1642 5.1349 11.1642 4.89082 10.9201C4.64702 10.6761 4.64712 10.2803 4.89082 10.0363L7.11543 7.81071L4.89082 5.58708C4.64674 5.343 4.64674 4.94639 4.89082 4.70231C5.1349 4.45824 5.53151 4.45824 5.77559 4.70231L7.99922 6.92692L10.2248 4.70231Z" fill="#737373"/></svg></span></button></span>
+            </div>
+          </div>
+
+          <div class="form-subsection">
+            <div class="form-subsection__head">
+              <div>
+                <h3 class="form-subsection__title">Project controls</h3>
+                <p class="form-subsection__desc">Color, staffing, confidence, and final cover asset.</p>
+              </div>
+            </div>
+
+            <div class="field">
+              <span class="field__label">Project color</span>
+              <div class="color-grid" role="group" aria-label="Project color">
+                <button class="color-swatch swatch-brand" type="button" aria-label="Brand" aria-pressed="true"></button>
+                <button class="color-swatch swatch-teal" type="button" aria-label="Teal" aria-pressed="false"></button>
+                <button class="color-swatch swatch-coral" type="button" aria-label="Coral" aria-pressed="false"></button>
+                <button class="color-swatch swatch-amber" type="button" aria-label="Amber" aria-pressed="false"></button>
+                <button class="color-swatch swatch-cyan" type="button" aria-label="Cyan" aria-pressed="false"></button>
+                <button class="color-swatch swatch-slate" type="button" aria-label="Slate" aria-pressed="false"></button>
+              </div>
+            </div>
+
+            <div class="field">
+              <span class="field__label">Team size</span>
+              <div class="stepper">
+                <button type="button" data-step="-1" aria-label="Decrease team size"><span class="icon-img icon-img--12" aria-hidden="true" data-asset-icon="../assets/icons/minus.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M13.3337 7.375C13.6788 7.37518 13.9587 7.65493 13.9587 8C13.9587 8.34507 13.6788 8.62482 13.3337 8.625H2.66675C2.32157 8.625 2.04175 8.34518 2.04175 8C2.04175 7.65482 2.32157 7.375 2.66675 7.375H13.3337Z" fill="#404040"/></svg></span></button>
+                <input type="number" value="6" min="1" max="50" aria-label="Team size" />
+                <button type="button" data-step="1" aria-label="Increase team size"><span class="icon-img icon-img--12" aria-hidden="true" data-asset-icon="../assets/icons/Plus.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M8 4C8.3682 4 8.66667 4.29848 8.66667 4.66667V7.33333H11.3333C11.7015 7.33333 12 7.6318 12 8C12 8.3682 11.7015 8.66667 11.3333 8.66667H8.66667V11.3333C8.66667 11.7015 8.3682 12 8 12C7.6318 12 7.33333 11.7015 7.33333 11.3333V8.66667H4.66667C4.29848 8.66667 4 8.3682 4 8C4 7.6318 4.29848 7.33333 4.66667 7.33333H7.33333V4.66667C7.33333 4.29848 7.6318 4 8 4Z" fill="#404040"/></svg></span></button>
+              </div>
+            </div>
+
+            <div class="field">
+              <span class="field__label">Project score</span>
+              <div class="score-row" role="group" aria-label="Project score">
+                <button class="score-btn" type="button" aria-pressed="true">1</button>
+                <button class="score-btn" type="button" aria-pressed="true">2</button>
+                <button class="score-btn" type="button" aria-pressed="true">3</button>
+                <button class="score-btn" type="button" aria-pressed="true">4</button>
+                <button class="score-btn" type="button" aria-pressed="false">5</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="notification-volume">Notification volume</label>
+              <div class="slider-row">
+                <input class="ds-slider ds-slider--progress" id="notification-volume" type="range" min="0" max="100" value="62" data-display-target="volume-value" />
+                <span class="slider-value" id="volume-value">62%</span>
+              </div>
+            </div>
+
+            <div class="field field--full">
+              <span class="field__label">Cover image</span>
+              <label class="file-field">
+                <span class="ds-btn ds-btn--secondary ds-btn--sm"><span class="icon icon--14 icon--file-upload" aria-hidden="true" data-asset-icon="../assets/icons/file-upload.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#171717" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625C10.3211 14.6247 10.041 14.345 10.041 14C10.041 13.655 10.3211 13.3753 10.666 13.375C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375C5.67819 13.375 5.95801 13.6548 5.95801 14C5.95801 14.3452 5.67819 14.625 5.33301 14.625C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM8.01367 9.37598C8.08632 9.37748 8.15782 9.39187 8.22559 9.41797C8.23319 9.42092 8.24054 9.42448 8.24805 9.42773C8.27917 9.44115 8.30906 9.45706 8.33789 9.47559C8.34047 9.47725 8.34314 9.47876 8.3457 9.48047C8.37975 9.50307 8.41274 9.52797 8.44238 9.55762L10.1084 11.2246C10.3525 11.4687 10.3525 11.8643 10.1084 12.1084C9.86432 12.3525 9.46869 12.3525 9.22461 12.1084L8.625 11.5098V14C8.625 14.3452 8.34518 14.625 8 14.625C7.65482 14.625 7.375 14.3452 7.375 14V11.5088L6.77539 12.1094C6.5313 12.3533 6.13464 12.3534 5.89062 12.1094C5.64661 11.8654 5.64674 11.4687 5.89062 11.2246L7.55762 9.55859C7.56164 9.55457 7.56621 9.55076 7.57031 9.54688C7.5936 9.52481 7.6188 9.50474 7.64551 9.48633C7.65073 9.48272 7.65583 9.47901 7.66113 9.47559C7.69241 9.4554 7.72553 9.43745 7.76074 9.42285V9.42188C7.76836 9.41873 7.77647 9.41689 7.78418 9.41406C7.81121 9.4041 7.83854 9.39573 7.86621 9.38965C7.87784 9.38712 7.88964 9.38565 7.90137 9.38379C7.92671 9.37971 7.9521 9.3779 7.97754 9.37695C7.9896 9.37653 8.00161 9.37571 8.01367 9.37598ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#171717"/></svg></span><span>Choose file</span></span>
+                <span class="file-name" data-file-name>cover-redesign-final.jpg</span>
+                <input type="file" accept="image/*" data-file-input hidden />
+              </label>
+            </div>
+          </div>
+
+
+          <div class="form-subsection">
+            <div class="form-subsection__head">
+              <div>
+                <h3 class="form-subsection__title">Access and validation</h3>
+                <p class="form-subsection__desc">Credentials, one-time code, inline error, and character counter.</p>
+              </div>
+              <span class="ds-tag ds-tag--success">Synced</span>
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="new-password">Access key</label>
+              <div class="ds-input">
+                <input id="new-password" name="new-password" type="password" placeholder="At least 12 characters" autocomplete="new-password" />
+              </div>
+              <div class="strength" aria-label="Access key strength">
+                <span class="is-on"></span>
+                <span class="is-on"></span>
+                <span class="is-on"></span>
+                <span class="is-on"></span>
+              </div>
+              <p class="field__hint">Strength: Strong - 12+ chars, mixed case, number, symbol.</p>
+            </div>
+
+            <div class="field">
+              <span class="field__label">One-time code</span>
+              <div class="otp-grid">
+                <div class="ds-input"><input aria-label="Digit 1 of 6" type="text" inputmode="numeric" maxlength="1" placeholder="0" /></div>
+                <div class="ds-input"><input aria-label="Digit 2 of 6" type="text" inputmode="numeric" maxlength="1" placeholder="0" /></div>
+                <div class="ds-input"><input aria-label="Digit 3 of 6" type="text" inputmode="numeric" maxlength="1" placeholder="0" /></div>
+                <div class="ds-input"><input aria-label="Digit 4 of 6" type="text" inputmode="numeric" maxlength="1" placeholder="0" /></div>
+                <div class="ds-input"><input aria-label="Digit 5 of 6" type="text" inputmode="numeric" maxlength="1" placeholder="0" /></div>
+                <div class="ds-input"><input aria-label="Digit 6 of 6" type="text" inputmode="numeric" maxlength="1" placeholder="0" /></div>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="routing-email">Routing email</label>
+              <div class="ds-input is-error"><input id="routing-email" type="email" value="not-an-email" aria-invalid="true" aria-describedby="routing-email-error" /></div>
+              <p class="field__error" id="routing-email-error">Enter a valid email address.</p>
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="project-id">Project ID</label>
+              <div class="ds-input is-disabled"><input id="project-id" type="text" value="proj_8f3k29df3lkj" disabled /></div>
+              <p class="field__hint">Generated automatically.</p>
+            </div>
+
+            <div class="field field--full">
+              <label class="field__label" for="tagline">Tagline</label>
+              <textarea class="ds-textarea" id="tagline" maxlength="80" data-char-count>The free Bootstrap admin template, redesigned for TraeWork.</textarea>
+              <p class="field__hint"><span data-char-output>0</span><span>/80</span> characters</p>
+            </div>
+          </div>
+
+          <div class="form-subsection">
+            <div class="form-subsection__head">
+              <div>
+                <h3 class="form-subsection__title">Reporting and notes</h3>
+                <p class="form-subsection__desc">Reporting period and launch copy for the project record.</p>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="field__label" for="report-period">Report period</label>
+              <div class="ds-input"><input id="report-period" type="text" value="Jun 16 - Jun 27, 2026" /></div>
+              <div class="date-panel" aria-label="June 2026 calendar preview">
+                <div class="date-panel__head">
+                  <strong>June 2026</strong>
+                  <span class="ds-tag">12 days</span>
+                </div>
+                <div class="date-grid">
+                  <span class="day-name">M</span>
+                  <span class="day-name">T</span>
+                  <span class="day-name">W</span>
+                  <span class="day-name">T</span>
+                  <span class="day-name">F</span>
+                  <span class="day-name">S</span>
+                  <span class="day-name">S</span>
+                  <span>15</span>
+                  <span class="is-start">16</span>
+                  <span class="is-range">17</span>
+                  <span class="is-range">18</span>
+                  <span class="is-range">19</span>
+                  <span class="is-range">20</span>
+                  <span class="is-range">21</span>
+                  <span class="is-range">22</span>
+                  <span class="is-range">23</span>
+                  <span class="is-range">24</span>
+                  <span class="is-range">25</span>
+                  <span class="is-range">26</span>
+                  <span class="is-end">27</span>
+                  <span>28</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="field field--full">
+              <label class="field__label" for="editor-body">About</label>
+              <div class="rich-text">
+                <div class="editor-toolbar" role="toolbar" aria-label="Formatting">
+                  <button type="button" aria-pressed="true"><strong>B</strong></button>
+                  <button type="button" aria-pressed="false"><em>I</em></button>
+                  <button type="button" aria-pressed="false">H2</button>
+                  <button type="button" aria-pressed="false">List</button>
+                  <button type="button" aria-pressed="false">Link</button>
+                  <button type="button" aria-pressed="false">Code</button>
+                </div>
+                <div class="editor-body" id="editor-body" contenteditable="true" role="textbox" aria-multiline="true">
+                  <p><strong>Gentelella</strong> becomes a quieter TraeWork form surface here: fewer colors, wider rhythm, and controls that read as one system.</p>
+                  <p>Use this area for project context, launch notes, or setup instructions that travel with the form submission.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button class="ds-btn ds-btn--secondary" type="reset">Save draft</button>
+          <button class="ds-btn ds-btn--brand" type="submit">Create project</button>
+        </div>
+      </section>
+    </form>
+  </div>
+
+  <script>
+    (function () {
+      document.querySelectorAll(".ds-slider").forEach(function (slider) {
+        var output = document.getElementById(slider.dataset.displayTarget);
+        var unit = slider.dataset.displayUnit || "%";
+        function updateSlider() {
+          var min = Number(slider.min || 0);
+          var max = Number(slider.max || 100);
+          var value = Number(slider.value || 0);
+          var progress = max === min ? 0 : ((value - min) / (max - min)) * 100;
+          slider.style.background = "linear-gradient(to right, var(--bg-brand) 0 " + progress + "%, var(--bg-overlay-l3) " + progress + "% 100%)";
+          if (output) output.textContent = slider.value + unit;
+        }
+        slider.addEventListener("input", updateSlider);
+        updateSlider();
+      });
+
+      document.querySelectorAll(".stepper").forEach(function (stepper) {
+        var input = stepper.querySelector("input");
+        stepper.querySelectorAll("button[data-step]").forEach(function (button) {
+          button.addEventListener("click", function () {
+            var next = Number(input.value || 0) + Number(button.dataset.step);
+            var min = Number(input.min || next);
+            var max = Number(input.max || next);
+            input.value = Math.min(max, Math.max(min, next));
+          });
+        });
+      });
+
+      document.querySelectorAll(".score-row").forEach(function (row) {
+        var buttons = Array.prototype.slice.call(row.querySelectorAll(".score-btn"));
+        buttons.forEach(function (button, index) {
+          button.addEventListener("click", function () {
+            buttons.forEach(function (item, itemIndex) {
+              item.setAttribute("aria-pressed", String(itemIndex <= index));
+            });
+          });
+        });
+      });
+
+      document.querySelectorAll(".color-grid").forEach(function (grid) {
+        grid.querySelectorAll(".color-swatch").forEach(function (button) {
+          button.addEventListener("click", function () {
+            grid.querySelectorAll(".color-swatch").forEach(function (item) {
+              item.setAttribute("aria-pressed", "false");
+            });
+            button.setAttribute("aria-pressed", "true");
+          });
+        });
+      });
+
+      document.querySelectorAll("[data-file-input]").forEach(function (input) {
+        input.addEventListener("change", function () {
+          var name = input.closest(".file-field").querySelector("[data-file-name]");
+          if (name && input.files && input.files[0]) name.textContent = input.files[0].name;
+        });
+      });
+
+      document.querySelectorAll("[data-char-count]").forEach(function (textarea) {
+        var output = textarea.parentElement.querySelector("[data-char-output]");
+        function updateCount() {
+          if (output) output.textContent = String(textarea.value.length);
+        }
+        textarea.addEventListener("input", updateCount);
+        updateCount();
+      });
+
+      document.querySelectorAll(".tag-remove").forEach(function (button) {
+        button.addEventListener("click", function () {
+          var tag = button.closest(".ds-tag");
+          if (tag) tag.remove();
+        });
+      });
+
+      document.querySelectorAll(".editor-toolbar button").forEach(function (button) {
+        button.addEventListener("click", function () {
+          button.setAttribute("aria-pressed", String(button.getAttribute("aria-pressed") !== "true"));
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

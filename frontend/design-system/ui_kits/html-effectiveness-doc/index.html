@@ -1,0 +1,1833 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML Effectiveness Examples - TraeWork Documentation</title>
+    <meta
+    name="description"
+    content="A TraeWork documentation adaptation of the HTML effectiveness examples catalog."
+    >
+    <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../../colors_and_type.css">
+  <link rel="stylesheet" href="../../components.css">
+    <!-- Assumption: html-effectiveness-doc is a static light-only document page that maps the uploaded HTML reference to TraeWork tokens and local component conventions for product parsing. -->
+    <style>
+      :root {
+        color-scheme: light;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        min-width: 320px;
+        margin: var(--spacer-0);
+        background: var(--bg-base-default);
+        color: var(--text-default);
+        font-family: var(--body-base-font-family);
+        font-size: var(--body-base-font-size);
+        font-weight: var(--body-base-font-weight);
+        line-height: var(--body-base-line-height);
+        letter-spacing: var(--body-base-letter-spacing);
+        text-rendering: optimizeLegibility;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      button {
+        border: var(--spacer-0);
+        font: inherit;
+      }
+
+      :focus-visible {
+        outline: 2px solid var(--border-brand);
+        outline-offset: var(--spacer-2);
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: var(--spacer-0);
+      }
+
+      p {
+        margin-bottom: var(--spacer-0);
+      }
+
+      code,
+      .mono,
+      .num {
+        font-family: var(--code-editor-font-family);
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "tnum" 1, "lnum" 1;
+      }
+
+      code {
+        border-radius: var(--radius-4);
+        background: var(--bg-overlay-l1);
+        padding: var(--spacer-2) var(--spacer-4);
+        font-size: var(--body-md-font-size);
+        line-height: var(--body-md-line-height);
+      }
+
+      .icon {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+        object-fit: contain;
+        vertical-align: middle;
+      }
+
+      .icon--16 {
+        width: var(--spacer-16);
+        height: var(--spacer-16);
+      }
+
+      .icon--20 {
+        width: var(--spacer-20);
+        height: var(--spacer-20);
+      }
+
+      .icon--24 {
+        width: var(--spacer-24);
+        height: var(--spacer-24);
+      }
+
+
+      .page {
+        background: var(--bg-base-default);
+      }
+
+      .wrap {
+        width: min(calc(100% - (var(--spacer-32) * 2)), 1100px);
+        margin: var(--spacer-0) auto;
+      }
+
+      .floor--deep {
+        background: var(--bg-base-default);
+      }
+
+      .floor--lift {
+        background: var(--bg-base-secondary);
+      }
+
+      .site-header {
+        position: sticky;
+        top: var(--spacer-0);
+        z-index: 20;
+        border-bottom: 1px solid var(--border-neutral-l1);
+        background: var(--bg-menu);
+      }
+
+      .header-inner {
+        display: flex;
+        min-height: calc(var(--spacer-32) * 2);
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacer-24);
+      }
+
+      .wordmark {
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-sm-font-size);
+        line-height: var(--heading-sm-line-height);
+        font-weight: var(--font-weight-strong);
+      }
+
+      .top-nav {
+        display: flex;
+        align-items: center;
+        gap: var(--spacer-4);
+      }
+
+      .top-nav a {
+        display: inline-flex;
+        min-height: var(--spacer-32);
+        align-items: center;
+        border-radius: var(--radius-8);
+        padding: var(--spacer-0) var(--spacer-12);
+        color: var(--text-secondary);
+      }
+
+      .top-nav a:hover {
+        background: var(--bg-overlay-l1);
+        color: var(--text-default);
+      }
+      .ds-btn {
+        display: inline-flex;
+        min-height: var(--spacer-40);
+        align-items: center;
+        justify-content: center;
+        gap: var(--spacer-8);
+        border-radius: var(--radius-12);
+        padding: var(--spacer-0) var(--spacer-24);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .ds-btn--brand {
+        background: var(--bg-brand);
+        color: var(--text-onbrand);
+      }
+
+      .ds-btn--brand:hover {
+        background: var(--bg-brand-hover);
+      }
+
+      .ds-btn--secondary {
+        border: 1px solid var(--border-neutral-l1);
+        background: var(--bg-overlay-l1);
+        color: var(--text-default);
+      }
+
+      .ds-btn--secondary:hover {
+        background: var(--bg-overlay-l2);
+      }
+
+      .hero {
+        padding: var(--spacer-64) var(--spacer-0) var(--spacer-48);
+      }
+
+      .hero-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+        align-items: end;
+        gap: var(--spacer-48);
+      }
+
+      .eyebrow {
+        margin-bottom: var(--spacer-16);
+        color: var(--text-brand);
+        font-family: var(--code-editor-font-family);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-base-line-height);
+        font-weight: var(--font-weight-code);
+      }
+
+      h1 {
+        max-width: 760px;
+        margin-bottom: var(--spacer-20);
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-3xl-font-size);
+        line-height: var(--heading-3xl-line-height);
+        font-weight: var(--font-weight-strong);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .hero-copy {
+        max-width: 660px;
+        color: var(--text-secondary);
+        font-size: var(--heading-sm-font-size);
+        line-height: var(--heading-sm-line-height);
+      }
+
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacer-8);
+        margin-top: var(--spacer-24);
+      }
+
+      .format-compare {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: end;
+        gap: var(--spacer-16);
+      }
+
+      .format-panel {
+        display: grid;
+        min-height: calc(var(--spacer-64) * 4);
+        align-content: start;
+        gap: var(--spacer-12);
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-12);
+        background: var(--bg-base-secondary);
+        padding: var(--spacer-16);
+      }
+
+      .format-panel--html {
+        border-color: var(--border-neutral-l3);
+        background: var(--bg-base-default);
+      }
+
+      .format-label {
+        width: fit-content;
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-8);
+        background: var(--bg-overlay-l1);
+        padding: var(--spacer-2) var(--spacer-8);
+        color: var(--text-secondary);
+        font-family: var(--code-editor-font-family);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+      }
+
+      .line-stack {
+        display: grid;
+        gap: var(--spacer-8);
+      }
+
+      .sk-line {
+        height: var(--spacer-8);
+        border-radius: var(--radius-4);
+        background: var(--bg-overlay-l3);
+      }
+
+      .sk-line--wide {
+        width: 92%;
+      }
+
+      .sk-line--mid {
+        width: 74%;
+      }
+
+      .sk-line--short {
+        width: 56%;
+      }
+
+      .html-block {
+        display: grid;
+        min-height: 112px;
+        align-content: end;
+        gap: var(--spacer-12);
+        border-top: 1px solid var(--border-neutral-l1);
+        padding-top: var(--spacer-16);
+      }
+
+      .bar-row {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        align-items: end;
+        gap: var(--spacer-6);
+        min-height: 72px;
+      }
+
+      .bar {
+        border-radius: var(--radius-4) var(--radius-4) var(--spacer-0) var(--spacer-0);
+        background: currentColor;
+        color: var(--text-default);
+      }
+
+      .bar:nth-child(1) {
+        height: 32%;
+        opacity: 0.24;
+      }
+
+      .bar:nth-child(2) {
+        height: 62%;
+        color: var(--bg-brand);
+      }
+
+      .bar:nth-child(3) {
+        height: 44%;
+        opacity: 0.18;
+      }
+
+      .bar:nth-child(4) {
+        height: 82%;
+        opacity: 0.42;
+      }
+
+      .catalog {
+        padding: var(--spacer-40) var(--spacer-0) var(--spacer-48);
+      }
+
+      .catalog-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+        gap: var(--spacer-48);
+        margin-bottom: var(--spacer-32);
+      }
+
+      .section-kicker {
+        color: var(--text-brand);
+        font-family: var(--code-editor-font-family);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-base-line-height);
+      }
+
+      .catalog h2,
+      .group-title h2 {
+        margin-bottom: var(--spacer-12);
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-2xl-font-size);
+        line-height: var(--heading-2xl-line-height);
+        font-weight: var(--font-weight-strong);
+        letter-spacing: var(--body-md-letter-spacing);
+      }
+
+      .catalog p,
+      .group-intro,
+      .footer-brand p {
+        color: var(--text-secondary);
+      }
+
+      .toc-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--spacer-12);
+      }
+
+      .toc-link {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacer-12);
+        min-height: var(--spacer-40);
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-8);
+        background: var(--bg-base-default);
+        padding: var(--spacer-8) var(--spacer-12);
+        color: var(--text-secondary);
+      }
+
+      .toc-link:hover {
+        background: var(--bg-overlay-l1);
+        color: var(--text-default);
+      }
+
+      .toc-link .num {
+        color: var(--text-brand);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+      }
+
+      .toc-link .count {
+        color: var(--text-tertiary);
+        font-family: var(--code-editor-font-family);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+      }
+
+      .groups {
+        display: grid;
+        gap: var(--spacer-48);
+        padding: var(--spacer-48) var(--spacer-0) var(--spacer-64);
+      }
+
+      .group {
+        scroll-margin-top: calc(var(--spacer-64) + var(--spacer-24));
+      }
+
+      .group-head {
+        display: grid;
+        grid-template-columns: 72px minmax(0, 1fr);
+        gap: var(--spacer-24);
+        margin-bottom: var(--spacer-24);
+      }
+
+      .group-index {
+        color: var(--text-brand);
+        font-family: var(--code-editor-font-family);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-base-line-height);
+      }
+
+      .group-title {
+        display: grid;
+        gap: var(--spacer-8);
+      }
+
+      .group-meta {
+        display: inline-flex;
+        width: fit-content;
+        align-items: center;
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-8);
+        background: var(--bg-overlay-l1);
+        padding: var(--spacer-2) var(--spacer-8);
+        color: var(--text-secondary);
+        font-family: var(--code-editor-font-family);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+      }
+
+      .demo-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--spacer-16);
+        padding-left: calc(var(--spacer-64) + var(--spacer-32));
+      }
+
+      .demo-card {
+        display: grid;
+        min-height: 220px;
+        align-content: space-between;
+        gap: var(--spacer-20);
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-12);
+        background: var(--bg-base-secondary);
+        padding: var(--spacer-20);
+        transition: background 120ms cubic-bezier(0.2, 0, 0, 1), border-color 120ms cubic-bezier(0.2, 0, 0, 1), transform 120ms cubic-bezier(0.2, 0, 0, 1);
+      }
+
+      .demo-card:hover {
+        border-color: var(--border-neutral-l2);
+        background: var(--bg-overlay-l1);
+        transform: translateY(-2px);
+      }
+
+      .demo-card h3 {
+        margin-bottom: var(--spacer-8);
+        color: var(--text-default);
+        font-size: var(--heading-sm-font-size);
+        line-height: var(--heading-sm-line-height);
+        font-weight: var(--font-weight-strong);
+      }
+
+      .demo-card p {
+        color: var(--text-secondary);
+      }
+
+      .demo-card__foot {
+        display: grid;
+        gap: var(--spacer-12);
+        border-top: 1px solid var(--border-neutral-l1);
+        padding-top: var(--spacer-16);
+      }
+
+      .file-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--spacer-12);
+        color: var(--text-tertiary);
+      }
+
+      .file-row code {
+        overflow-wrap: anywhere;
+      }
+
+      .file-row .icon {
+        color: var(--icon-secondary);
+      }
+
+      .demo-card:hover .file-row {
+        color: var(--text-default);
+      }
+
+      .source-note {
+        padding: var(--spacer-48) var(--spacer-0);
+      }
+
+      .source-panel {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: var(--spacer-24);
+        border-top: 1px solid var(--border-neutral-l1);
+        padding-top: var(--spacer-32);
+      }
+
+      .source-panel h2 {
+        margin-bottom: var(--spacer-8);
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-xl-font-size);
+        line-height: var(--heading-xl-line-height);
+        font-weight: var(--font-weight-strong);
+      }
+
+      .site-footer {
+        border-top: 1px solid var(--border-neutral-l1);
+        background: var(--bg-base-default);
+      }
+
+      .footer-grid {
+        display: grid;
+        grid-template-columns: 1.4fr repeat(4, minmax(120px, 1fr));
+        gap: var(--spacer-32);
+        padding: var(--spacer-48) var(--spacer-0);
+      }
+
+      .footer-brand {
+        display: grid;
+        align-content: start;
+        gap: var(--spacer-12);
+      }
+
+      .footer-col {
+        display: grid;
+        align-content: start;
+        gap: var(--spacer-12);
+      }
+
+      .footer-col h3 {
+        margin: var(--spacer-0) var(--spacer-0) var(--spacer-4);
+        color: var(--text-default);
+        font-size: var(--body-base-font-size);
+        line-height: var(--body-base-line-height);
+        font-weight: var(--font-weight-medium);
+      }
+
+      .footer-col a {
+        color: var(--text-tertiary);
+      }
+
+      .footer-col a:hover {
+        color: var(--text-default);
+      }
+
+      .footer-bottom {
+        display: flex;
+        justify-content: space-between;
+        gap: var(--spacer-16);
+        border-top: 1px solid var(--border-neutral-l1);
+        padding: var(--spacer-20) var(--spacer-0);
+        color: var(--text-tertiary);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto;
+          transition-duration: 0ms;
+        }
+      }
+
+      @media (max-width: 1040px) {
+        .hero-grid,
+        .catalog-head {
+          grid-template-columns: 1fr;
+        }
+
+        .format-compare {
+          max-width: 520px;
+        }
+
+        .toc-grid,
+        .demo-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .demo-grid {
+          padding-left: var(--spacer-0);
+        }
+
+        .group-head {
+          grid-template-columns: 1fr;
+          gap: var(--spacer-12);
+        }
+
+        .footer-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 760px) {
+        .wrap {
+          width: min(calc(100% - (var(--spacer-16) * 2)), 560px);
+        }
+
+        .top-nav {
+          display: none;
+        }
+
+        .header-inner {
+          min-height: calc(var(--spacer-32) + var(--spacer-24));
+        }
+
+        .hero {
+          padding-top: var(--spacer-48);
+        }
+
+        h1 {
+          font-size: var(--heading-2xl-font-size);
+          line-height: var(--heading-2xl-line-height);
+        }
+
+        .hero-copy {
+          font-size: var(--body-base-font-size);
+          line-height: var(--body-base-line-height);
+        }
+
+        .format-compare,
+        .toc-grid,
+        .demo-grid,
+        .source-panel,
+        .footer-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .format-panel {
+          min-height: 220px;
+        }
+
+        .catalog h2,
+        .group-title h2 {
+          font-size: var(--heading-xl-font-size);
+          line-height: var(--heading-xl-line-height);
+        }
+
+        .groups {
+          gap: var(--spacer-40);
+        }
+
+        .source-panel {
+          align-items: start;
+        }
+
+        .footer-bottom {
+          flex-direction: column;
+        }
+      }
+
+      .source-shell .site-header {
+        position: static;
+        border-bottom: var(--spacer-0);
+        background: var(--bg-base-default);
+      }
+
+      .source-shell .header-inner {
+        min-height: 64px;
+      }
+
+      .source-shell .top-nav {
+        display: none;
+      }
+
+      .source-shell .masthead {
+        display: flex;
+        min-height: clamp(620px, 72vh, 760px);
+        align-items: center;
+        padding: var(--spacer-40) var(--spacer-0) var(--spacer-64);
+        border-bottom: 1px solid var(--border-neutral-l2);
+        margin-bottom: var(--spacer-0);
+      }
+
+      .source-hero-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 460px;
+        gap: var(--spacer-64);
+        align-items: center;
+      }
+
+      .source-copy h1 {
+        max-width: 20ch;
+        margin-bottom: var(--spacer-16);
+        font-size: var(--heading-display-font-size);
+        line-height: var(--heading-display-line-height);
+      }
+
+      .source-copy em {
+        color: var(--text-brand);
+        font-style: normal;
+      }
+
+      .source-intro {
+        max-width: 700px;
+        margin-top: var(--spacer-24);
+        color: var(--text-secondary);
+        font-size: var(--body-lg-font-size);
+        line-height: var(--body-lg-line-height);
+      }
+
+      .toc {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacer-8);
+        padding-top: var(--spacer-32);
+      }
+
+      .toc a {
+        display: inline-flex;
+        min-height: var(--spacer-32);
+        align-items: center;
+        gap: var(--spacer-8);
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-8);
+        background: var(--bg-base-default);
+        padding: var(--spacer-0) var(--spacer-12);
+        color: var(--text-secondary);
+      }
+
+      .toc a:hover {
+        border-color: var(--border-neutral-l2);
+        background: var(--bg-overlay-l1);
+        color: var(--text-default);
+      }
+
+      .toc .n {
+        color: var(--text-brand);
+        font-family: var(--code-editor-font-family);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+      }
+
+      .source-shell .format-compare {
+        position: relative;
+        display: block;
+        width: min(100%, 460px);
+        min-height: 370px;
+        max-width: none;
+        justify-self: end;
+        overflow: visible;
+      }
+
+      .source-shell .format-panel {
+        position: absolute;
+        bottom: var(--spacer-20);
+        width: 258px;
+        min-height: 0;
+        aspect-ratio: 4 / 5;
+        gap: var(--spacer-8);
+        border-width: 1.25px;
+        padding: var(--spacer-16);
+        transform-origin: 50% 80%;
+      }
+
+      .source-shell .format-panel:first-child {
+        left: var(--spacer-0);
+        z-index: 1;
+        background: var(--bg-base-secondary);
+        transform: rotate(-2.6deg) translateY(8px);
+      }
+
+      .source-shell .format-panel--html {
+        right: var(--spacer-0);
+        z-index: 2;
+        border-color: var(--border-neutral-l3);
+        background: var(--bg-base-default);
+        box-shadow: 0 22px 56px color-mix(in srgb, var(--text-default) 14%, transparent);
+        transform: rotate(4deg);
+      }
+
+      .source-shell .format-label {
+        position: absolute;
+        top: var(--spacer-16);
+        left: var(--spacer-16);
+        background: var(--bg-base-default);
+      }
+
+      .source-shell .format-panel:first-child .format-label {
+        background: var(--bg-base-default);
+      }
+
+      .source-shell .format-panel .line-stack {
+        margin-top: var(--spacer-48);
+      }
+
+      .source-shell .format-panel--html .html-block {
+        min-height: 148px;
+      }
+
+      .sections {
+        display: grid;
+        gap: var(--spacer-0);
+        padding: var(--spacer-0);
+      }
+
+      .source-section {
+        position: relative;
+        isolation: isolate;
+        margin-top: var(--spacer-0);
+        padding: calc(var(--spacer-40) * 2) var(--spacer-0);
+        scroll-margin-top: var(--spacer-64);
+      }
+
+      .source-section::before {
+        content: "";
+        position: absolute;
+        z-index: -1;
+        inset-block: var(--spacer-0);
+        left: calc((100vw - 100%) / -2);
+        right: calc((100vw - 100%) / -2);
+        background: var(--bg-base-default);
+      }
+
+      .source-section:nth-of-type(even)::before {
+        background: var(--bg-base-secondary);
+      }
+
+      .sec-head {
+        display: flex;
+        align-items: center;
+        gap: var(--spacer-16);
+        margin-bottom: var(--spacer-12);
+      }
+
+      .sec-head .idx {
+        display: inline-flex;
+        width: 34px;
+        min-height: var(--heading-xl-line-height);
+        align-items: center;
+        flex: 0 0 auto;
+        color: var(--text-brand);
+        font-family: var(--code-editor-font-family);
+        font-size: var(--code-editor-font-size);
+        line-height: var(--body-base-line-height);
+        font-weight: var(--font-weight-code);
+      }
+
+      .sec-head h2 {
+        margin-bottom: var(--spacer-0);
+        color: var(--text-default);
+        font-family: var(--font-family-heading);
+        font-size: var(--heading-xl-font-size);
+        line-height: var(--heading-xl-line-height);
+        font-weight: var(--font-weight-strong);
+      }
+
+      .sec-head .count {
+        display: inline-flex;
+        align-items: center;
+        min-height: var(--spacer-24);
+        border: 1px solid var(--border-neutral-l1);
+        border-radius: var(--radius-8);
+        background: var(--bg-overlay-l1);
+        padding: var(--spacer-0) var(--spacer-8);
+        color: var(--text-secondary);
+        font-family: var(--code-editor-font-family);
+        font-size: var(--body-sm-font-size);
+        line-height: var(--body-sm-line-height);
+      }
+
+      .sec-intro {
+        max-width: 700px;
+        margin: var(--spacer-0) var(--spacer-0) var(--spacer-24) calc(var(--spacer-48) + var(--spacer-2));
+        color: var(--text-secondary);
+      }
+
+      .card-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(316px, 1fr));
+        gap: var(--spacer-20);
+        margin-left: calc(var(--spacer-48) + var(--spacer-2));
+      }
+
+      .source-shell .demo-card {
+        display: flex;
+        min-height: 0;
+        flex-direction: column;
+        gap: var(--spacer-0);
+        overflow: hidden;
+        border-color: var(--border-neutral-l2);
+        border-radius: var(--radius-12);
+        background: var(--bg-base-default);
+        padding: var(--spacer-0);
+      }
+
+      .source-shell .demo-card:hover {
+        background: var(--bg-base-default);
+        transform: translateY(-3px);
+      }
+
+      .thumb {
+        display: grid;
+        height: 132px;
+        place-items: center;
+        overflow: hidden;
+        border-bottom: 1px solid var(--border-neutral-l2);
+        background: var(--bg-base-secondary);
+        padding: var(--spacer-8);
+      }
+
+      .thumb svg {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      .thumb svg * {
+        vector-effect: non-scaling-stroke;
+      }
+
+      .thumb svg .paper,
+      .thumb svg .paper-back {
+        fill: var(--bg-base-default);
+        stroke: var(--border-neutral-l2);
+        stroke-width: 1.25;
+        stroke-linejoin: round;
+      }
+
+      .thumb svg .paper-back {
+        fill: var(--bg-base-secondary);
+        stroke: var(--border-neutral-l1);
+      }
+
+      .thumb svg .skel-block,
+      .thumb svg .skel-block-muted,
+      .thumb svg .skel-block-strong,
+      .thumb svg .skel-block-accent {
+        fill: var(--bg-overlay-l3);
+      }
+
+      .thumb svg .skel-block-muted {
+        fill: var(--bg-overlay-l2);
+      }
+
+      .thumb svg .skel-block-strong {
+        fill: var(--border-neutral-l3);
+      }
+
+      .thumb svg .skel-block-accent {
+        fill: var(--bg-brand);
+      }
+
+      .thumb svg .stroke,
+      .thumb svg .stroke-soft,
+      .thumb svg .stroke-accent {
+        stroke: var(--bg-overlay-l3);
+        stroke-width: 5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .thumb svg .stroke-soft {
+        stroke: var(--bg-overlay-l2);
+      }
+
+      .thumb svg .stroke-accent {
+        stroke: var(--bg-brand);
+      }
+
+      .demo-card__body {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        background: var(--bg-base-default);
+        padding: var(--spacer-20);
+      }
+
+      .demo-card__body h3 {
+        margin-bottom: var(--spacer-8);
+      }
+
+      .demo-card__body p {
+        flex: 1;
+      }
+
+      .source-footer {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: var(--spacer-20);
+        margin-top: var(--spacer-48);
+        border-top: 1px solid var(--border-neutral-l2);
+        padding: var(--spacer-32) var(--spacer-0) var(--spacer-64);
+        color: var(--text-tertiary);
+      }
+
+      .source-footer a {
+        color: var(--text-default);
+        text-decoration: underline;
+        text-decoration-color: var(--border-neutral-l3);
+        text-underline-offset: var(--spacer-4);
+      }
+
+      @media (max-width: 880px) {
+        .source-shell .masthead {
+          min-height: auto;
+          padding: var(--spacer-48) var(--spacer-0) calc(var(--spacer-48) + var(--spacer-8));
+        }
+
+        .source-hero-grid {
+          grid-template-columns: 1fr;
+          gap: var(--spacer-32);
+        }
+
+        .source-shell .format-compare {
+          width: min(100%, 420px);
+          min-height: 340px;
+          justify-self: start;
+          margin-top: var(--spacer-8);
+        }
+
+        .source-shell .format-panel {
+          width: 232px;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .source-copy h1 {
+          max-width: 13ch;
+          font-size: var(--heading-display-sm-font-size);
+          line-height: var(--heading-display-sm-line-height);
+        }
+
+        .source-intro {
+          font-size: var(--body-base-font-size);
+          line-height: var(--body-base-line-height);
+        }
+
+        .sec-head {
+          align-items: flex-start;
+          flex-wrap: wrap;
+          gap: var(--spacer-8) var(--spacer-12);
+        }
+
+        .sec-head .idx {
+          width: auto;
+        }
+
+        .sections {
+          gap: var(--spacer-0);
+          padding: var(--spacer-0);
+        }
+
+        .source-section {
+          padding: calc(var(--spacer-48) + var(--spacer-8)) var(--spacer-0);
+        }
+
+        .sec-intro,
+        .card-grid {
+          margin-left: var(--spacer-0);
+        }
+
+        .card-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .source-shell .format-compare {
+          width: min(100%, 320px);
+          min-height: 258px;
+        }
+
+        .source-shell .format-panel {
+          width: 168px;
+          bottom: var(--spacer-8);
+          padding: var(--spacer-12);
+        }
+
+        .source-shell .format-label {
+          top: var(--spacer-12);
+          left: var(--spacer-12);
+        }
+
+        .source-shell .format-panel .line-stack {
+          margin-top: var(--spacer-40);
+        }
+
+        .source-shell .format-panel--html .html-block {
+          min-height: 100px;
+        }
+      }
+
+      /* Inline asset icon normalization: keep uploaded HTML independent from external SVG styling. */
+      [data-asset-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent !important;
+        -webkit-mask: none !important;
+        mask: none !important;
+      }
+
+      [data-asset-icon] > svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        flex: 0 0 auto;
+      }
+
+      .asset-inline-icon {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+      }
+    
+
+    /* design-library-creator layout guard */
+    .uikit-shell { width: 100%; max-width: 1184px; margin: 0 auto; overflow: hidden; display: block; }
+    .uikit-sidebar { min-width: 0; overflow: hidden; max-width: 100%; }
+    .uikit-main { min-width: 0; }
+    .uikit-toolbar { min-width: 0; display: flex; align-items: center; gap: var(--spacer-8); }
+    .uikit-responsive-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacer-16); }
+    .uikit-table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+    .uikit-truncate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .uikit-nowrap { white-space: nowrap; flex-shrink: 0; }
+    .uikit-action-cell { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 160px; overflow: hidden; }
+    .uikit-action { min-width: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    [data-component] { min-width: 0; max-width: 100%; overflow: hidden; }
+    @media (max-width: 900px) { .uikit-shell { grid-template-columns: minmax(0, 1fr); } .uikit-responsive-grid { grid-template-columns: minmax(0, 1fr); } }
+    @media (max-width: 640px) { .uikit-toolbar { flex-direction: column; align-items: stretch; } .uikit-responsive-grid { grid-template-columns: minmax(0, 1fr); } }
+  </style>
+  </head>
+  <body data-layout-guard="uikit-v1">
+    <div class="page source-shell">
+      <header class="site-header">
+        <div class="wrap header-inner">
+          <a class="wordmark" href="#top" aria-label="TraeWork documentation home">TraeWork Docs</a>
+        </div>
+      </header>
+
+      <main id="top">
+        <!-- Thumbnail SVG compositions adapted from the source page; original header: Copyright 2026 Anthropic PBC, SPDX-License-Identifier: Apache-2.0. -->
+        <section class="masthead">
+          <div class="wrap source-hero-grid">
+            <div class="source-copy">
+              <div class="eyebrow">Companion to the blog post</div>
+              <h1>The unreasonable <em>effectiveness</em> of HTML</h1>
+              <p class="source-intro">
+                Twenty self-contained <code>.html</code> files an agent produced instead of a wall of markdown. Each one turns a flat document into something you can open, inspect, and use directly in a browser.
+              </p>
+              <nav class="toc" aria-label="Example groups">
+                <a href="#exploration">Exploration &amp; Planning <span class="n">3</span></a>
+                <a href="#code-review">Code Review <span class="n">3</span></a>
+                <a href="#design">Design <span class="n">2</span></a>
+                <a href="#prototyping">Prototyping <span class="n">2</span></a>
+                <a href="#illustrations">Diagrams <span class="n">2</span></a>
+                <a href="#decks">Decks <span class="n">1</span></a>
+                <a href="#research">Research <span class="n">2</span></a>
+                <a href="#reports">Reports <span class="n">2</span></a>
+                <a href="#editors">Custom Editors <span class="n">3</span></a>
+              </nav>
+            </div>
+
+            <div class="format-compare" aria-label="Markdown and HTML comparison">
+              <div class="format-panel">
+                <span class="format-label">.md</span>
+                <div class="line-stack" aria-hidden="true">
+                  <span class="sk-line sk-line--wide"></span>
+                  <span class="sk-line sk-line--mid"></span>
+                  <span class="sk-line sk-line--wide"></span>
+                  <span class="sk-line sk-line--short"></span>
+                  <span class="sk-line sk-line--mid"></span>
+                  <span class="sk-line sk-line--wide"></span>
+                  <span class="sk-line sk-line--short"></span>
+                  <span class="sk-line sk-line--mid"></span>
+                </div>
+              </div>
+              <div class="format-panel format-panel--html">
+                <span class="format-label">.html</span>
+                <div class="line-stack" aria-hidden="true">
+                  <span class="sk-line sk-line--short"></span>
+                  <span class="sk-line sk-line--mid"></span>
+                </div>
+                <div class="html-block" aria-hidden="true">
+                  <div class="bar-row">
+                    <span class="bar"></span>
+                    <span class="bar"></span>
+                    <span class="bar"></span>
+                    <span class="bar"></span>
+                  </div>
+                  <span class="sk-line sk-line--mid"></span>
+                  <span class="sk-line sk-line--short"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div class="wrap sections">
+          <section id="exploration" class="source-section" aria-labelledby="exploration-title">
+            <div class="sec-head">
+              <span class="idx">01</span>
+              <h2 id="exploration-title">Exploration &amp; Planning</h2>
+              <span class="count">3 demos</span>
+            </div>
+            <p class="sec-intro">
+              When the direction is still open, a browser artifact can fan out alternatives and make the tradeoffs visible together before the chosen path becomes an implementation plan.
+            </p>
+            <div class="card-grid">
+                <article class="demo-card">
+                  <div class="thumb" aria-hidden="true">
+                    <svg viewBox="0 0 120 80">
+                              <rect class="paper" x="6" y="6" width="108" height="68" rx="10"/>
+                              <line class="stroke" x1="20" y1="24" x2="72" y2="24"/>
+                              <line class="stroke-soft" x1="20" y1="36" x2="96" y2="36"/>
+                              <rect class="skel-block" x="20" y="52" width="22" height="12" rx="3"/>
+                              <rect class="skel-block-accent" x="48" y="46" width="26" height="18" rx="3"/>
+                              <rect class="skel-block" x="80" y="52" width="22" height="12" rx="3"/>
+                            </svg>
+                  </div>
+                  <div class="demo-card__body">
+                  <div>
+                    <h3>Three code approaches</h3>
+                    <p>Three implementation paths are compared in one view, with tradeoffs placed beside the code instead of buried in prose.</p>
+                  </div>
+                  <div class="demo-card__foot">
+                    <div class="file-row"><code>01-code.html</code><span class="icon icon--16 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span></div>
+                  </div>
+                  </div>
+                </article>
+                <article class="demo-card">
+                  <div class="thumb" aria-hidden="true">
+                    <svg viewBox="0 0 120 80">
+                              <rect class="paper" x="6" y="6" width="108" height="68" rx="10"/>
+                              <line class="stroke" x1="20" y1="23" x2="84" y2="23"/>
+                              <line class="stroke-soft" x1="20" y1="35" x2="100" y2="35"/>
+                              <line class="stroke-soft" x1="20" y1="47" x2="82" y2="47"/>
+                              <rect class="skel-block-muted" x="20" y="58" width="36" height="8" rx="4"/>
+                              <rect class="skel-block-accent" x="82" y="52" width="24" height="14" rx="3"/>
+                            </svg>
+                  </div>
+                  <div class="demo-card__body">
+                  <div>
+                    <h3>Visual design directions</h3>
+                    <p>Several visual directions are rendered side by side so feedback can point to a concrete interface, not an imagined one.</p>
+                  </div>
+                  <div class="demo-card__foot">
+                    <div class="file-row"><code>02-visual.html</code><span class="icon icon--16 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span></div>
+                  </div>
+                  </div>
+                </article>
+                <article class="demo-card">
+                  <div class="thumb" aria-hidden="true">
+                    <svg viewBox="0 0 120 80">
+                              <rect class="paper" x="6" y="6" width="108" height="68" rx="10"/>
+                              <line class="stroke" x1="22" y1="26" x2="70" y2="26"/>
+                              <line class="stroke-soft" x1="22" y1="38" x2="96" y2="38"/>
+                              <rect class="skel-block" x="22" y="52" width="18" height="12" rx="3"/>
+                              <rect class="skel-block-accent" x="46" y="48" width="22" height="16" rx="3"/>
+                              <rect class="skel-block" x="74" y="52" width="18" height="12" rx="3"/>
+                              <rect class="skel-block-strong" x="98" y="48" width="10" height="16" rx="3"/>
+                            </svg>
+                  </div>
+                  <div class="demo-card__body">
+                  <div>
+                    <h3>Implementation plan</h3>
+                    <p>A plan page brings milestones, data flow, mockups, risky areas, and validation notes into one handoff artifact.</p>
+                  </div>
+                  <div class="demo-card__foot">
+                    <div class="file-row"><code>16-plan.html</code><span class="icon icon--16 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span></div>
+                  </div>
+                  </div>
+                </article>
+            </div>
+          </section>
+
+          <section id="code-review" class="source-section" aria-labelledby="code-review-title">
+            <div class="sec-head">
+              <span class="idx">02</span>
+              <h2 id="code-review-title">Code Review &amp; Understanding</h2>
+              <span class="count">3 demos</span>
+            </div>
+            <p class="sec-intro">
+              Diffs and call graphs are spatial information. Render them as annotated reviews, module maps, and reviewer-facing summaries so the shape of the change is visible.
+            </p>
+            <div class="card-grid">
+                <article class="demo-card">
+                  <div class="thumb" aria-hidden="true">
+                    <svg viewBox="0 0 120 80">
+                              <rect class="paper" x="6" y="6" width="108" height="68" rx="10"/>
+                              <line class="stroke" x1="22" y1="24" x2="58" y2="24"/>
+                              <line class="stroke-soft" x1="22" y1="36" x2="86" y2="36"/>
+                              <rect class="skel-block" x="22" y="52" width="20" height="12" rx="3"/>
+                              <rect class="skel-block-accent" x="50" y="44" width="24" height="20" rx="3"/>
+                              <rect class="skel-block" x="82" y="52" width="24" height="12" rx="3"/>
+                            </svg>
+                  </div>
+                  <div class="demo-card__body">
+                  <div>
+                    <h3>Annotated pull request</h3>
+                    <p>A review surface pairs code changes with severity notes, inline context, and jump points for faster scanning.</p>
+                  </div>
+                  <div class="demo-card__foot">
+                    <div class="file-row"><code>03-review.html</code><span class="icon icon--16 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span></div>
+                  </div>
+                  </div>
+                </article>
+                <article class="demo-card">
+                  <div class="thumb" aria-hidden="true">
+                    <svg viewBox="0 0 120 80">
+                              <rect class="paper" x="6" y="6" width="108" height="68" rx="10"/>
+                              <line class="stroke" x1="20" y1="22" x2="64" y2="22"/>
+                              <line class="stroke-soft" x1="20" y1="34" x2="94" y2="34"/>
+                              <line class="stroke-soft" x1="20" y1="46" x2="76" y2="46"/>
+                              <rect class="skel-block" x="20" y="58" width="20" height="8" rx="4"/>
+                              <rect class="skel-block-accent" x="46" y="54" width="28" height="12" rx="3"/>
+                              <rect class="skel-block-strong" x="82" y="50" width="24" height="16" rx="3"/>
+                            </svg>
+                  </div>
+                  <div class="demo-card__body">
+                  <div>
+                    <h3>PR writeup for reviewers</h3>
+                    <p>The author-side narrative explains motivation, file-level changes, and where a reviewer should spend attention.</p>
+                  </div>
+                  <div class="demo-card__foot">
+                    <div class="file-row"><code>17-writeup.html</code><span class="icon icon--16 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span></div>
+                  </div>
+                  </div>
+                </article>
+                <article class="demo-card">
+                  <div class="thumb" aria-hidden="true">
+                    <svg viewBox="0 0 120 80">
+                              <rect class="paper" x="6" y="6" width="108" height="68" rx="10"/>
+                              <line class="stroke" x1="20" y1="24" x2="72" y2="24"/>
+                              <line class="stroke-soft" x1="20" y1="36" x2="96" y2="36"/>
+                              <rect class="skel-block" x="20" y="52" width="22" height="12" rx="3"/>
+                              <rect class="skel-block-accent" x="48" y="46" width="26" height="18" rx="3"/>
+                              <rect class="skel-block" x="80" y="52" width="22" height="12" rx="3"/>
+                            </svg>
+                  </div>
+                  <div class="demo-card__body">
+                  <div>
+                    <h3>Module map</h3>
+                    <p>A package is mapped as boxes, paths, and entry points so the system shape is visible before reading every file.</p>
+                  </div>
+                  <div class="demo-card__foot">
+                    <div class="file-row"><code>04-understanding.html</code><span class="icon icon--16 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span></div>
+                  </div>
+                  </div>
+                </article>
+            </div>
+          </section>
+
+          <section id="design" class="source-section" aria-labelledby="design-title">
+            <div class="sec-head">
+              <span class="idx">03</span>
+              <h2 id="design-title">Design</h2>
+              <span class="count">2 demos</span>
+            </div>
+            <p class="sec-intro">
+              HTML is the medium design systems ship in. Tokens can become swatches, and component states can become contact sheets that are ready for review.
+            </p>
+            <div class="card-grid">
+                <article class="demo-card">
+                  <div class="thumb" aria-hidden="true">
+                    <svg viewBox="0 0 120 80">
+                              <rect class="paper" x="6" y="6" width="108" height="68" rx="10"/>
+                              <line class="stroke" x1="20" y1="23" x2="84" y2="23"/>
+                              <line class="stroke-soft" x1="20" y1="35" x2="100" y2="35"/>
+                              <line class="stroke-soft" x1="20" y1="47" x2="82" y2="47"/>
+                              <rect class="skel-block-muted" x="20" y="58" width="36" height="8" rx="4"/>
+                              <rect class="skel-block-accent" x="82" y="52" width="24" height="14" rx="3"/>
+                            </svg>
+                  </div>
+                  <div class="demo-card__body">
+                  <div>
+                    <h3>Living design system</h3>
+                    <p>Tokens for color, type, and spacing are presented as inspectable swatches and reference rows.</p>
+                  </div>
+                  <div class="demo-card__foot">
+                    <div class="file-row"><code>05-system.html</code><span class="icon icon--16 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span></div>
+                  </div>
+                  </div>
+                </article>
+                <article class="demo-card">
+                  <div class="thumb" aria-hidden="true">
+                    <svg viewBox="0 0 120 80">
+                              <rect class="paper" x="6" y="6" width="108" height="68" rx="10"/>
+                              <line class="stroke" x1="22" y1="26" x2="70" y2="26"/>
+                              <line class="stroke-soft" x1="22" y1="38" x2="96" y2="38"/>
+                              <rect class="skel-block" x="22" y="52" width="18" height="12" rx="3"/>
+                              <rect class="skel-block-accent" x="46" y="48" width="22" height="16" rx="3"/>
+                              <rect class="skel-block" x="74" y="52" width="18" height="12" rx="3"/>
+                              <rect class="skel-block-strong" x="98" y="48" width="10" height="16" rx="3"/>
+                            </svg>
+                  </div>
+                  <div class="demo-card__body">
+                  <div>
+                    <h3>Component variants</h3>
+                    <p>One component is laid out across sizes, states, and intents so the state matrix can be reviewed at once.</p>
+                  </div>
+                  <div class="demo-card__foot">
+                    <div class="file-row"><code>06-variants.html</code><span class="icon icon--16 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span></div>
+                  </div>
+                  </div>
+                </article>
+            </div>
+          </section>
+
+          <section id="prototyping" class="source-section" aria-labelledby="prototyping-title">
+            <div class="sec-head">
+              <span class="idx">04</span>
+              <h2 id="prototyping-title">Prototyping</h2>
+              <span class="count">2 demos</span>
+            </div>
+            <p class="sec-intro">
+              Motion and interaction are hard to judge as prose. A throwaway HTML page lets timing, easing, and click-throughs become tangible.
+            </p>
+            <div class="card-grid">
+                <article class="demo-card">
+                  <div class="thumb" aria-hidden="true">
+                    <svg viewBox="0 0 120 80">
+                              <rect class="paper" x="6" y="6" width="108" height="68" rx="10"/>
+                              <line class="stroke" x1="22" y1="24" x2="58" y2="24"/>
+                              <line class="stroke-soft" x1="22" y1="36" x2="86" y2="36"/>
+                              <rect class="skel-block" x="22" y="52" width="20" height="12" rx="3"/>
+                              <rect class="skel-block-accent" x="50" y="44" width="24" height="20" rx="3"/>
+                              <rect class="skel-block" x="82" y="52" width="24" height="12" rx="3"/>
+                            </svg>
+                  </div>
+                  <div class="demo-card__body">
+                  <div>
+                    <h3>Animation sandbox</h3>
+                    <p>Motion parameters are isolated with controls for duration and easing before the transition is integrated elsewhere.</p>
+                  </div>
+                  <div class="demo-card__foot">
+                    <div class="file-row"><code>07-animation.html</code><span class="icon icon--16 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span></div>
+                  </div>
+                  </div>
+                </article>
+                <article class="demo-card">
+                  <div class="thumb" aria-hidden="true">
+                    <svg viewBox="0 0 120 80">
+                              <rect class="paper" x="6" y="6" width="108" height="68" rx="10"/>
+                              <line class="stroke" x1="20" y1="22" x2="64" y2="22"/>
+                              <line class="stroke-soft" x1="20" y1="34" x2="94" y2="34"/>
+                              <line class="stroke-soft" x1="20" y1="46" x2="76" y2="46"/>
+                              <rect class="skel-block" x="20" y="58" width="20" height="8" rx="4"/>
+                              <rect class="skel-block-accent" x="46" y="54" width="28" height="12" rx="3"/>
+                              <rect class="skel-block-strong" x="82" y="50" width="24" height="16" rx="3"/>
+                            </svg>
+                  </div>
+                  <div class="demo-card__body">
+                  <div>
+                    <h3>Clickable flow</h3>
+                    <p>A small linked flow lets a reviewer move through the experience and judge whether the sequence holds together.</p>
+                  </div>
+                  <div class="demo-card__foot">
+                    <div class="file-row"><code>08-interaction.html</code><span class="icon icon--16 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span></div>
+                  </div>
+                  </div>
+                </article>
+            </div>
+          </section>
+
+          <section id="illustrations" class="source-section" aria-labelledby="illustrations-title">
+            <div class="sec-head">
+              <span class="idx">05</span>
+              <h2 id="illustrations-title">Illustrations &amp; Diagrams</h2>
+              <span class="count">2 demos</span>
+            </div>
+            <p class="sec-intro">
+              Diagrams and figure sheets can live as editable browser-native artifacts when the page itself needs to carry the process.
+            </p>
+            <div class="card-grid">
+                <article class="demo-card">
+                  <div class="thumb" aria-hidden="true">
+                    <svg viewBox="0 0 120 80">
+                              <rect class="paper" x="6" y="6" width="108" height="68" rx="10"/>
+                              <line class="stroke" x1="20" y1="24" x2="72" y2="24"/>
+                              <line class="stroke-soft" x1="20" y1="36" x2="96" y2="36"/>
+                              <rect class="skel-block" x="20" y="52" width="22" height="12" rx="3"/>
+                              <rect class="skel-block-accent" x="48" y="46" width="26" height="18" rx="3"/>
+                              <rect class="skel-block" x="80" y="52" width="22" height="12" rx="3"/>
+                            </svg>
+                  </div>
+                  <div class="demo-card__body">
+                  <div>
+                    <h3>SVG figure sheet</h3>
+                    <p>Multiple figures are collected as editable browser-native assets for posts, docs, or handoff notes.</p>
+                  </div>
+                  <div class="demo-card__foot">
+                    <div class="file-row"><code>10-illustrations.html</code><span class="icon icon--16 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span></div>
+                  </div>
+                  </div>
+                </article>
+                <article class="demo-card">
+                  <div class="thumb" aria-hidden="true">
+                    <svg viewBox="0 0 120 80">
+                              <rect class="paper" x="6" y="6" width="108" height="68" rx="10"/>
+                              <line class="stroke" x1="20" y1="23" x2="84" y2="23"/>
+                              <line class="stroke-soft" x1="20" y1="35" x2="100" y2="35"/>
+                              <line class="stroke-soft" x1="20" y1="47" x2="82" y2="47"/>
+                              <rect class="skel-block-muted" x="20" y="58" width="36" height="8" rx="4"/>
+                              <rect class="skel-block-accent" x="82" y="52" width="24" height="14" rx="3"/>
+                            </svg>
+                  </div>
+                  <div class="demo-card__body">
+                  <div>
+                    <h3>Annotated flowchart</h3>
+                    <p>A deployment flow is presented as steps, timing, and failure routes that can be explored without leaving the page.</p>
+                  </div>
+                  <div class="demo-card__foot">
+                    <div class="file-row"><code>13-flowchart.html</code><span class="icon icon--16 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span></div>
+                  </div>
+                  </div>
+                </article>
+            </div>
+          </section>
+
+          <section id="decks" class="source-section" aria-labelledby="decks-title">
+            <div class="sec-head">
+              <span class="idx">06</span>
+              <h2 id="decks-title">Decks</h2>
+              <span class="count">1 demo</span>
+            </div>
+            <p class="sec-intro">
+              A short deck can be a single HTML file: portable, editable, and navigable without a separate presentation export.
+            </p>
+            <div class="card-grid">
+                <article class="demo-card">
+                  <div class="thumb" aria-hidden="true">
+                    <svg viewBox="0 0 120 80">
+                              <rect class="paper" x="6" y="6" width="108" height="68" rx="10"/>
+                              <line class="stroke" x1="22" y1="26" x2="70" y2="26"/>
+                              <line class="stroke-soft" x1="22" y1="38" x2="96" y2="38"/>
+                              <rect class="skel-block" x="22" y="52" width="18" height="12" rx="3"/>
+                              <rect class="skel-block-accent" x="46" y="48" width="22" height="16" rx="3"/>
+                              <rect class="skel-block" x="74" y="52" width="18" height="12" rx="3"/>
+                              <rect class="skel-block-strong" x="98" y="48" width="10" height="16" rx="3"/>
+                            </svg>
+                  </div>
+                  <div class="demo-card__body">
+                  <div>
+                    <h3>Arrow-key slide deck</h3>
+                    <p>A lightweight slide document uses plain HTML sections and keyboard navigation for live presentation.</p>
+                  </div>
+                  <div class="demo-card__foot">
+                    <div class="file-row"><code>09-deck.html</code><span class="icon icon--16 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span></div>
+                  </div>
+                  </div>
+                </article>
+            </div>
+          </section>
+
+          <section id="research" class="source-section" aria-labelledby="research-title">
+            <div class="sec-head">
+              <span class="idx">07</span>
+              <h2 id="research-title">Research &amp; Learning</h2>
+              <span class="count">2 demos</span>
+            </div>
+            <p class="sec-intro">
+              Explainers become easier to learn from when summaries, steps, examples, and glossary context have their own places on the page.
+            </p>
+            <div class="card-grid">
+                <article class="demo-card">
+                  <div class="thumb" aria-hidden="true">
+                    <svg viewBox="0 0 120 80">
+                              <rect class="paper" x="6" y="6" width="108" height="68" rx="10"/>
+                              <line class="stroke" x1="22" y1="24" x2="58" y2="24"/>
+                              <line class="stroke-soft" x1="22" y1="36" x2="86" y2="36"/>
+                              <rect class="skel-block" x="22" y="52" width="20" height="12" rx="3"/>
+                              <rect class="skel-block-accent" x="50" y="44" width="24" height="20" rx="3"/>
+                              <rect class="skel-block" x="82" y="52" width="24" height="12" rx="3"/>
+                            </svg>
+                  </div>
+                  <div class="demo-card__body">
+                  <div>
+                    <h3>How a feature works</h3>
+                    <p>A repository feature is explained with a summary, request path, configuration tabs, and practical questions.</p>
+                  </div>
+                  <div class="demo-card__foot">
+                    <div class="file-row"><code>14-feature.html</code><span class="icon icon--16 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span></div>
+                  </div>
+                  </div>
+                </article>
+                <article class="demo-card">
+                  <div class="thumb" aria-hidden="true">
+                    <svg viewBox="0 0 120 80">
+                              <rect class="paper" x="6" y="6" width="108" height="68" rx="10"/>
+                              <line class="stroke" x1="20" y1="22" x2="64" y2="22"/>
+                              <line class="stroke-soft" x1="20" y1="34" x2="94" y2="34"/>
+                              <line class="stroke-soft" x1="20" y1="46" x2="76" y2="46"/>
+                              <rect class="skel-block" x="20" y="58" width="20" height="8" rx="4"/>
+                              <rect class="skel-block-accent" x="46" y="54" width="28" height="12" rx="3"/>
+                              <rect class="skel-block-strong" x="82" y="50" width="24" height="16" rx="3"/>
+                            </svg>
+                  </div>
+                  <div class="demo-card__body">
+                  <div>
+                    <h3>Concept explainer</h3>
+                    <p>A technical concept is made interactive with a live model, comparison table, and context-sensitive glossary.</p>
+                  </div>
+                  <div class="demo-card__foot">
+                    <div class="file-row"><code>15-concept.html</code><span class="icon icon--16 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span></div>
+                  </div>
+                  </div>
+                </article>
+            </div>
+          </section>
+
+          <section id="reports" class="source-section" aria-labelledby="reports-title">
+            <div class="sec-head">
+              <span class="idx">08</span>
+              <h2 id="reports-title">Reports</h2>
+              <span class="count">2 demos</span>
+            </div>
+            <p class="sec-intro">
+              Status updates and postmortems benefit from a readable structure: summary, state, timeline, chart, and next actions.
+            </p>
+            <div class="card-grid">
+                <article class="demo-card">
+                  <div class="thumb" aria-hidden="true">
+                    <svg viewBox="0 0 120 80">
+                              <rect class="paper" x="6" y="6" width="108" height="68" rx="10"/>
+                              <line class="stroke" x1="20" y1="24" x2="72" y2="24"/>
+                              <line class="stroke-soft" x1="20" y1="36" x2="96" y2="36"/>
+                              <rect class="skel-block" x="20" y="52" width="22" height="12" rx="3"/>
+                              <rect class="skel-block-accent" x="48" y="46" width="26" height="18" rx="3"/>
+                              <rect class="skel-block" x="80" y="52" width="22" height="12" rx="3"/>
+                            </svg>
+                  </div>
+                  <div class="demo-card__body">
+                  <div>
+                    <h3>Weekly status</h3>
+                    <p>A weekly update tracks shipped work, slips, and trend context in a format designed for quick Monday reading.</p>
+                  </div>
+                  <div class="demo-card__foot">
+                    <div class="file-row"><code>11-status.html</code><span class="icon icon--16 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span></div>
+                  </div>
+                  </div>
+                </article>
+                <article class="demo-card">
+                  <div class="thumb" aria-hidden="true">
+                    <svg viewBox="0 0 120 80">
+                              <rect class="paper" x="6" y="6" width="108" height="68" rx="10"/>
+                              <line class="stroke" x1="20" y1="23" x2="84" y2="23"/>
+                              <line class="stroke-soft" x1="20" y1="35" x2="100" y2="35"/>
+                              <line class="stroke-soft" x1="20" y1="47" x2="82" y2="47"/>
+                              <rect class="skel-block-muted" x="20" y="58" width="36" height="8" rx="4"/>
+                              <rect class="skel-block-accent" x="82" y="52" width="24" height="14" rx="3"/>
+                            </svg>
+                  </div>
+                  <div class="demo-card__body">
+                  <div>
+                    <h3>Incident timeline</h3>
+                    <p>A post-incident artifact combines event sequence, relevant logs, impact, and follow-up ownership.</p>
+                  </div>
+                  <div class="demo-card__foot">
+                    <div class="file-row"><code>12-incident.html</code><span class="icon icon--16 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span></div>
+                  </div>
+                  </div>
+                </article>
+            </div>
+          </section>
+
+          <section id="editors" class="source-section" aria-labelledby="editors-title">
+            <div class="sec-head">
+              <span class="idx">09</span>
+              <h2 id="editors-title">Custom Editing Interfaces</h2>
+              <span class="count">3 demos</span>
+            </div>
+            <p class="sec-intro">
+              A purpose-built temporary editor can keep the human in the loop, then export the final arrangement back into markdown, code, or agent input.
+            </p>
+            <div class="card-grid">
+                <article class="demo-card">
+                  <div class="thumb" aria-hidden="true">
+                    <svg viewBox="0 0 120 80">
+                              <rect class="paper" x="6" y="6" width="108" height="68" rx="10"/>
+                              <line class="stroke" x1="22" y1="26" x2="70" y2="26"/>
+                              <line class="stroke-soft" x1="22" y1="38" x2="96" y2="38"/>
+                              <rect class="skel-block" x="22" y="52" width="18" height="12" rx="3"/>
+                              <rect class="skel-block-accent" x="46" y="48" width="22" height="16" rx="3"/>
+                              <rect class="skel-block" x="74" y="52" width="18" height="12" rx="3"/>
+                              <rect class="skel-block-strong" x="98" y="48" width="10" height="16" rx="3"/>
+                            </svg>
+                  </div>
+                  <div class="demo-card__body">
+                  <div>
+                    <h3>Ticket triage board</h3>
+                    <p>Thirty tickets can be moved across priority columns, then exported as a final ordered markdown list.</p>
+                  </div>
+                  <div class="demo-card__foot">
+                    <div class="file-row"><code>18-triage.html</code><span class="icon icon--16 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span></div>
+                  </div>
+                  </div>
+                </article>
+                <article class="demo-card">
+                  <div class="thumb" aria-hidden="true">
+                    <svg viewBox="0 0 120 80">
+                              <rect class="paper" x="6" y="6" width="108" height="68" rx="10"/>
+                              <line class="stroke" x1="22" y1="24" x2="58" y2="24"/>
+                              <line class="stroke-soft" x1="22" y1="36" x2="86" y2="36"/>
+                              <rect class="skel-block" x="22" y="52" width="20" height="12" rx="3"/>
+                              <rect class="skel-block-accent" x="50" y="44" width="24" height="20" rx="3"/>
+                              <rect class="skel-block" x="82" y="52" width="24" height="12" rx="3"/>
+                            </svg>
+                  </div>
+                  <div class="demo-card__body">
+                  <div>
+                    <h3>Feature flag editor</h3>
+                    <p>Flags are grouped by area, dependency warnings stay visible, and changed keys can be copied as a focused diff.</p>
+                  </div>
+                  <div class="demo-card__foot">
+                    <div class="file-row"><code>19-flags.html</code><span class="icon icon--16 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span></div>
+                  </div>
+                  </div>
+                </article>
+                <article class="demo-card">
+                  <div class="thumb" aria-hidden="true">
+                    <svg viewBox="0 0 120 80">
+                              <rect class="paper" x="6" y="6" width="108" height="68" rx="10"/>
+                              <line class="stroke" x1="20" y1="22" x2="64" y2="22"/>
+                              <line class="stroke-soft" x1="20" y1="34" x2="94" y2="34"/>
+                              <line class="stroke-soft" x1="20" y1="46" x2="76" y2="46"/>
+                              <rect class="skel-block" x="20" y="58" width="20" height="8" rx="4"/>
+                              <rect class="skel-block-accent" x="46" y="54" width="28" height="12" rx="3"/>
+                              <rect class="skel-block-strong" x="82" y="50" width="24" height="16" rx="3"/>
+                            </svg>
+                  </div>
+                  <div class="demo-card__body">
+                  <div>
+                    <h3>Prompt tuner</h3>
+                    <p>An editable prompt template and sample inputs update together, making the prompt's behavior easier to judge.</p>
+                  </div>
+                  <div class="demo-card__foot">
+                    <div class="file-row"><code>20-prompt.html</code><span class="icon icon--16 icon--file" aria-hidden="true" data-asset-icon="../../assets/icons/File.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M8.11426 1.375C8.63348 1.37505 9.13182 1.58115 9.49902 1.94824L12.7178 5.16797C13.0849 5.53522 13.291 6.03347 13.291 6.55273V12C13.291 13.4498 12.1158 14.625 10.666 14.625H5.33301C3.88338 14.6249 2.70801 13.4497 2.70801 12V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H8.11426ZM5.33301 2.625C4.57373 2.62513 3.95801 3.24069 3.95801 4V12C3.95801 12.7593 4.57372 13.3749 5.33301 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.625H10C8.91857 6.62482 8.04199 5.74746 8.04199 4.66602V2.625H5.33301ZM9.29199 4.66602C9.29199 5.05712 9.60893 5.37482 10 5.375H11.1572L9.29199 3.50879V4.66602Z" fill="#404040"/></svg></span></div>
+                  </div>
+                  </div>
+                </article>
+            </div>
+          </section>
+
+          <footer class="source-footer">
+            <span>Everything on this page is itself a single <code>.html</code> file.</span>
+            <span>Source reference · <span class="mono">thariqs.github.io/html-effectiveness</span></span>
+          </footer>
+        </div>
+      </main>
+    </div>
+    <div id="traework-interaction-root" aria-hidden="true"></div>
+    <script>
+      (function () {
+        var rootElement = document.getElementById('traework-interaction-root');
+        if (rootElement) rootElement.dataset.interactionMounted = 'true';
+
+        var interactiveSelectors = [
+          '[data-nav]',
+          '[data-screen-trigger]',
+          '[role="tab"]',
+          '.tab',
+          '.nav-item',
+          '.sidebar-nav a',
+          '.sidebar a',
+          '.mobile-nav a'
+        ];
+
+        function getActiveClass(element) {
+          var classes = Array.prototype.slice.call(element.classList || []);
+          return classes.find(function (name) { return name.endsWith('--active'); }) ||
+            classes.find(function (name) { return name === 'is-active' || name === 'active' || name === 'selected'; }) ||
+            (element.classList && element.classList.contains('tab') ? 'tab--active' : null) ||
+            (element.classList && element.classList.contains('nav-item') ? 'nav-item--active' : null);
+        }
+
+        function activateWithinGroup(element, activeClass) {
+          var group = element.closest('[role="tablist"], nav, .sidebar, .sidebar-nav, .mobile-nav') || element.parentElement;
+          if (!group || !activeClass) return;
+
+          group.querySelectorAll(interactiveSelectors.join(',')).forEach(function (item) {
+            item.classList.remove(activeClass);
+            if (item.getAttribute('role') === 'tab') item.setAttribute('aria-selected', 'false');
+          });
+
+          element.classList.add(activeClass);
+          if (element.getAttribute('role') === 'tab') element.setAttribute('aria-selected', 'true');
+        }
+
+        function handleClick(event) {
+          var target = event.currentTarget;
+          var href = target.getAttribute('href');
+          if (href === '#') event.preventDefault();
+          activateWithinGroup(target, getActiveClass(target));
+        }
+
+        Array.prototype.slice.call(document.querySelectorAll(interactiveSelectors.join(','))).forEach(function (element) {
+          if (element.id !== 'traework-interaction-root') element.addEventListener('click', handleClick);
+        });
+      }());
+    </script>
+  </body>
+</html>

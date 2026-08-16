@@ -1,0 +1,215 @@
+{
+  "schemaVersion": 2,
+  "slug": "buttons",
+  "name": "Button",
+  "category": "action",
+  "sourceKind": "preview-contract",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    {
+      "type": "Button",
+      "evidence": "Inferred from preview/component-buttons.html title and component CSS selectors."
+    }
+  ],
+  "variantDimensions": [
+    {
+      "name": "style-state-density",
+      "values": [
+        ".ds-btn",
+        ".ds-btn .icon--14",
+        ".ds-btn .icon--16",
+        ".ds-btn .icon--20",
+        ".ds-btn .icon--24",
+        ".ds-btn--md",
+        ".ds-btn--lg",
+        ".ds-btn--primary"
+      ],
+      "evidence": "Representative selectors from preview/component-buttons.html."
+    }
+  ],
+  "coverageMatrix": {
+    "source": "preview/component-buttons.html",
+    "representativeSelectors": [
+      ".ds-btn",
+      ".ds-btn .icon--14",
+      ".ds-btn .icon--16",
+      ".ds-btn .icon--20",
+      ".ds-btn .icon--24",
+      ".ds-btn--md",
+      ".ds-btn--lg",
+      ".ds-btn--primary",
+      ".ds-btn--primary:hover",
+      ".ds-btn--primary:active",
+      ".ds-btn--primary[disabled]",
+      ".ds-btn--secondary",
+      ".ds-btn--secondary:hover",
+      ".ds-btn--secondary:active",
+      ".ds-btn--secondary[disabled]",
+      ".ds-btn--danger-subtle",
+      ".ds-btn--danger-subtle:hover",
+      ".ds-btn--danger-subtle:active"
+    ],
+    "cssRuleCount": 45
+  },
+  "sizeDeltas": [],
+  "stateCoverage": {
+    "states": [
+      "hover",
+      "active",
+      "disabled"
+    ]
+  },
+  "representativeVariants": [
+    {
+      "selector": ".ds-btn",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-btn .icon--14",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-btn .icon--16",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-btn .icon--20",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    }
+  ],
+  "anatomy": {
+    "source": "preview/component-buttons.html",
+    "selectors": [
+      ".ds-btn",
+      ".ds-btn .icon--14",
+      ".ds-btn .icon--16",
+      ".ds-btn .icon--20",
+      ".ds-btn .icon--24",
+      ".ds-btn--md",
+      ".ds-btn--lg",
+      ".ds-btn--primary"
+    ]
+  },
+  "structurePatterns": [],
+  "usageHints": [
+    "Copy component markup from preview/component-buttons.html; keep page/demo-only styles outside shared component CSS.",
+    "Use colors_and_type.css + components.css as the executable rendering contract.",
+    "Use preview/component-buttons.html and components.css as the executable rendering contract."
+  ],
+  "doNotInvent": [
+    "Do not add variants or states that are absent from the preview marker block without updating the component contract.",
+    "Do not add visual states or component parts not present in the preview or components.css.",
+    "Do not treat this inferred JSON as original Figma evidence."
+  ],
+  "unknowns": [
+    "Original design evidence was not available during this repair pass."
+  ],
+  "tokensConsumed": [
+    "--bg-brand",
+    "--bg-brand-active",
+    "--bg-brand-disabled",
+    "--bg-brand-hover",
+    "--bg-invert",
+    "--bg-invert-active",
+    "--bg-invert-disabled",
+    "--bg-invert-hover",
+    "--bg-overlay-l1",
+    "--bg-overlay-l2",
+    "--bg-overlay-l3",
+    "--body-base-font-size",
+    "--body-base-strong-font-family",
+    "--body-base-strong-font-size",
+    "--body-base-strong-font-weight",
+    "--body-base-strong-letter-spacing",
+    "--body-base-strong-line-height",
+    "--body-sm-font-size",
+    "--border-neutral-l1",
+    "--border-neutral-l2",
+    "--border-neutral-l3",
+    "--border-width-default",
+    "--icon-size-12",
+    "--icon-size-14",
+    "--icon-size-16",
+    "--icon-size-20",
+    "--icon-size-24",
+    "--radius-0",
+    "--radius-8",
+    "--spacer-12",
+    "--spacer-16",
+    "--spacer-6",
+    "--spacer-8",
+    "--status-error-active",
+    "--status-error-default",
+    "--status-error-hover",
+    "--status-error-surface-l1",
+    "--status-error-surface-l2",
+    "--status-error-surface-l3",
+    "--status-warning-active",
+    "--status-warning-default",
+    "--status-warning-hover",
+    "--text-default",
+    "--text-default-hover",
+    "--text-disabled",
+    "--text-onaccent",
+    "--text-onbrand",
+    "--text-white"
+  ],
+  "domAnatomy": {
+    "root": {
+      "tag": "preview-fragment",
+      "source": "preview/component-buttons.html",
+      "classes": [
+        "ds-btn",
+        "ds-btn--brand",
+        "ds-btn--danger",
+        "ds-btn--danger-strong",
+        "ds-btn--danger-subtle",
+        "ds-btn--ghost",
+        "ds-btn--icon",
+        "ds-btn--lg",
+        "ds-btn--link",
+        "ds-btn--md",
+        "ds-btn--primary",
+        "ds-btn--secondary",
+        "ds-btn--sm",
+        "ds-btn--tertiary",
+        "ds-btn--warning",
+        "ds-btn-group"
+      ]
+    },
+    "componentCssMarker": {
+      "start": "/* @component-css-start */",
+      "end": "/* @component-css-end */"
+    }
+  },
+  "provenance": {
+    "preview": "preview/component-buttons.html",
+    "source": "preview/component-buttons.html",
+    "css": {
+      "file": "components.css",
+      "marker": "buttons"
+    },
+    "contractBasis": "Derived from the component preview marker block and rendered .ds-* markup; original design evidence was not available."
+  },
+  "assetsConsumed": [
+    "assets/icons/add.svg",
+    "assets/icons/check.svg",
+    "assets/icons/Close.svg",
+    "assets/icons/Copy.svg",
+    "assets/icons/Delete.svg",
+    "assets/icons/download.svg",
+    "assets/icons/layer-blur.svg",
+    "assets/icons/list-filter.svg",
+    "assets/icons/settings.svg",
+    "assets/icons/split.svg",
+    "assets/icons/warning_simple.svg"
+  ]
+}

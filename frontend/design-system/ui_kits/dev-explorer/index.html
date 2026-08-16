@@ -1,0 +1,1429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dev Explorer - TraeWork</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="../../colors_and_type.css">
+  <link rel="stylesheet" href="../../components.css">
+  <style>
+    /*
+     * Static Solo/Home Work-state migration.
+     * Source of visual truth: the running Solo Registry Home preview.
+     * Constraints: no copied assets, no image refs, no runtime scripts,
+     * no project structure changes.
+     */
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      min-width: 0;
+      min-height: 960px;
+      margin: 0;
+      overflow: auto;
+      background: var(--bg-base-secondary);
+      color: var(--text-default);
+      font-family: var(--body-base-font-family);
+      letter-spacing: var(--body-md-letter-spacing);
+    }
+
+    body {
+      padding: 0;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .solo-home-shell {
+      position: relative;
+      display: flex;
+      --task-list-panel-width: calc(var(--spacer-64) * 4 + var(--spacer-40) + var(--spacer-4));
+      --solo-home-main-gutter-y: var(--spacer-8);
+      --solo-home-main-gutter-right: var(--spacer-8);
+      --solo-home-main-content-inset: clamp(var(--spacer-48), 8vw, calc(var(--spacer-64) * 2));
+      width: min(1680px, 100%);
+      min-width: 0;
+      height: 960px;
+      overflow: hidden;
+      border: 1px solid var(--border-neutral-l2);
+      border-radius: var(--radius-8);
+      background: var(--bg-base-secondary);
+      color: var(--text-default);
+      font-family: var(--body-base-font-family);
+      font-size: var(--heading-sm-font-size);
+      line-height: var(--heading-sm-line-height);
+    }
+
+    .solo-home-shell > .task-list-panel {
+      position: relative;
+      z-index: 2;
+      flex: 0 0 var(--task-list-panel-width, 300px);
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    .task-list-panel {
+      --task-list-panel-width: calc(var(--spacer-64) * 4 + var(--spacer-40) + var(--spacer-4));
+      --task-list-content-width: calc(var(--task-list-panel-width) - 24px);
+      position: relative;
+      display: flex;
+      width: var(--task-list-panel-width);
+      height: 960px;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg-base-secondary);
+      color: var(--text-default);
+      font-family: var(--body-base-font-family);
+    }
+
+    .task-list-panel-topbar {
+      display: flex;
+      height: 64px;
+      flex-shrink: 0;
+      align-items: center;
+      gap: var(--spacer-8);
+      padding: var(--spacer-0) var(--spacer-12);
+    }
+
+    .task-list-panel-traffic {
+      display: flex;
+      width: 64px;
+      height: 28px;
+      flex-shrink: 0;
+      align-items: center;
+      justify-content: center;
+      gap: var(--spacer-6);
+    }
+
+    .task-list-panel-traffic-dot {
+      width: 12px;
+      height: 12px;
+      flex-shrink: 0;
+      border-radius: var(--radius-full);
+    }
+
+    .task-list-panel-traffic-dot[data-color="red"] { background: var(--status-error-default); }
+    .task-list-panel-traffic-dot[data-color="yellow"] { background: var(--status-warning-default); }
+    .task-list-panel-traffic-dot[data-color="green"] { background: var(--status-success-default); }
+
+    .task-list-panel-topbar-actions {
+      display: flex;
+      width: 70px;
+      flex-shrink: 0;
+      align-items: flex-start;
+      gap: var(--spacer-6);
+    }
+
+    .task-list-panel-icon-button {
+      display: inline-grid;
+      width: 32px;
+      height: 32px;
+      place-items: center;
+      border: 0;
+      border-radius: var(--radius-6);
+      background: transparent;
+      color: var(--text-default);
+      cursor: default;
+      padding: 0;
+      transition: background-color 160ms ease;
+    }
+
+    .task-list-panel-icon-button:hover {
+      background: var(--bg-overlay-l1);
+    }
+
+    .task-list-panel-mode {
+      display: flex;
+      align-items: center;
+      padding: var(--spacer-0) var(--spacer-12) var(--spacer-12);
+    }
+
+    .mode-switch {
+      position: relative;
+      display: flex;
+      width: 202px;
+      height: 32px;
+      align-items: center;
+      gap: var(--spacer-4);
+      border-radius: var(--radius-8);
+      background: var(--bg-overlay-l2);
+      padding: var(--spacer-2) var(--spacer-10) var(--spacer-2) var(--spacer-2);
+    }
+
+    .mode-switch-active-indicator {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 70px;
+      height: 28px;
+      border: calc(var(--border-width-default) / 2) solid var(--border-neutral-l3);
+      border-radius: var(--radius-6);
+      background: var(--bg-base-default);
+      box-shadow: 0 1px 2px color-mix(in srgb, var(--text-default) 8%, transparent);
+    }
+
+    .mode-switch-segment {
+      position: relative;
+      z-index: 1;
+      display: inline-flex;
+      min-width: 0;
+      height: 28px;
+      align-items: center;
+      justify-content: center;
+      gap: var(--spacer-4);
+      border: 0;
+      border-radius: var(--radius-full);
+      background: transparent;
+      color: var(--text-default);
+      cursor: default;
+      font-size: var(--body-base-font-size);
+      font-weight: var(--body-base-font-weight);
+      letter-spacing: var(--body-base-letter-spacing);
+      line-height: var(--body-base-line-height);
+      padding: var(--spacer-2) var(--spacer-8);
+      white-space: nowrap;
+    }
+
+    .mode-switch-segment:nth-of-type(2) { width: 70px; }
+    .mode-switch-segment:nth-of-type(3) { width: 51px; }
+    .mode-switch-segment:nth-of-type(4) { width: 61px; }
+
+    .mode-switch-icon {
+      display: inline-grid;
+      width: 0;
+      height: 16px;
+      flex: 0 0 auto;
+      place-items: center;
+      overflow: hidden;
+      opacity: 0;
+    }
+
+    .mode-switch-segment.active .mode-switch-icon {
+      width: 16px;
+      opacity: 1;
+    }
+
+    .task-list-panel-quick-actions {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacer-2);
+      padding: var(--spacer-0) var(--spacer-12) var(--spacer-12);
+    }
+
+    .task-list-panel-quick-action {
+      display: flex;
+      height: 34px;
+      align-items: center;
+      gap: var(--spacer-8);
+      border-radius: var(--radius-8);
+      color: var(--text-default);
+      cursor: default;
+      padding: var(--spacer-0) var(--spacer-6);
+      transition: background-color 160ms ease;
+    }
+
+    .task-list-panel-quick-action:hover {
+      background: var(--bg-overlay-l1);
+    }
+
+    .task-list-panel-quick-action.selected,
+    .task-list-panel-quick-action.selected:hover {
+      background: var(--bg-overlay-l2);
+    }
+
+    .task-list-panel-quick-action-icon {
+      display: inline-grid;
+      width: 24px;
+      height: 24px;
+      flex-shrink: 0;
+      place-items: center;
+      color: var(--brand-grey-700);
+    }
+
+    .task-list-panel-quick-action-label {
+      font-size: var(--body-base-font-size);
+      font-weight: var(--body-base-font-weight);
+      letter-spacing: var(--body-base-letter-spacing);
+      line-height: var(--body-base-line-height);
+    }
+
+    .task-list-panel-content {
+      display: flex;
+      min-height: 0;
+      flex: 1 1 auto;
+      flex-direction: column;
+      overflow-y: auto;
+      scrollbar-width: none;
+    }
+
+    .task-list-panel-content::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+    }
+
+    .task-list-panel-section {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacer-2);
+      padding: var(--spacer-4) var(--spacer-12) var(--spacer-12);
+    }
+
+    .task-list-panel-section-header {
+      display: flex;
+      width: 100%;
+      height: 32px;
+      align-items: center;
+      gap: var(--spacer-4);
+    }
+
+    .task-list-panel-section-toggle {
+      display: flex;
+      min-width: 0;
+      height: 32px;
+      flex: 1;
+      align-items: center;
+      gap: var(--spacer-4);
+      border: 0;
+      border-radius: var(--radius-6);
+      background: transparent;
+      color: var(--brand-grey-500);
+      cursor: default;
+      padding: var(--spacer-4) var(--spacer-8);
+    }
+
+    .task-list-panel-section-title {
+      color: currentColor;
+      font-size: var(--body-base-font-size);
+      font-weight: var(--body-base-font-weight);
+      letter-spacing: var(--body-base-letter-spacing);
+      line-height: var(--body-base-line-height);
+    }
+
+    .task-list-panel-section-chevron {
+      display: inline-grid;
+      width: 16px;
+      height: 16px;
+      place-items: center;
+      color: currentColor;
+    }
+
+    .task-list-panel-section-chevron .task-row-svg,
+    .task-list-panel-section-chevron .task-row-svg svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .task-list-panel-section-trailing {
+      display: flex;
+      align-items: center;
+      gap: var(--spacer-4);
+      padding-right: var(--spacer-4);
+    }
+
+    .task-list-panel-section-icon {
+      display: inline-grid;
+      width: 24px;
+      height: 24px;
+      place-items: center;
+      border-radius: var(--radius-6);
+      color: var(--brand-grey-500);
+    }
+
+    .task-list-panel-section-body {
+      display: grid;
+      grid-template-rows: 1fr;
+      overflow: hidden;
+      opacity: 1;
+    }
+
+    .task-list-panel-section-body-inner {
+      display: flex;
+      min-height: 0;
+      flex-direction: column;
+      gap: var(--spacer-2);
+    }
+
+    .task-list-panel-cluster {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacer-2);
+    }
+
+    .task-list-panel-cluster-body {
+      display: grid;
+      grid-template-rows: 1fr;
+      overflow: hidden;
+      opacity: 1;
+    }
+
+    .task-list-panel-cluster-body-inner {
+      display: flex;
+      min-height: 0;
+      flex-direction: column;
+      gap: var(--spacer-2);
+    }
+
+    .task-list-panel .task-row,
+    .task-list-panel .cluster-row-item,
+    .task-list-panel .cluster-row-control {
+      width: var(--task-list-content-width);
+    }
+
+    .cluster-row-item {
+      position: relative;
+      display: grid;
+      gap: var(--spacer-4);
+      margin: 0;
+    }
+
+    .cluster-row-control {
+      display: flex;
+      width: 276px;
+      height: 32px;
+      align-items: center;
+      gap: var(--spacer-4);
+      border-radius: var(--radius-8);
+      color: var(--brand-grey-500);
+      padding: var(--spacer-4);
+    }
+
+    .cluster-row-toggle {
+      display: flex;
+      min-width: 0;
+      flex: 1;
+      align-items: center;
+      gap: var(--spacer-4);
+      border: 0;
+      background: transparent;
+      color: currentColor;
+      cursor: default;
+      font: inherit;
+      padding: 0;
+      text-align: left;
+    }
+
+    .cluster-row-leading,
+    .cluster-row-chat,
+    .cluster-row-more {
+      position: relative;
+      display: grid;
+      width: 24px;
+      height: 24px;
+      flex: 0 0 auto;
+      place-items: center;
+    }
+
+
+    .cluster-row-label {
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+      font-size: var(--body-base-font-size);
+      font-weight: var(--body-base-font-weight);
+      letter-spacing: var(--body-base-letter-spacing);
+      line-height: var(--body-base-line-height);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .cluster-row-kind-icon {
+      position: absolute;
+    }
+
+    .cluster-row-kind-icon-cloud-git {
+      transform-origin: center;
+    }
+
+
+
+    .task-row {
+      display: flex;
+      width: 276px;
+      height: 32px;
+      align-items: center;
+      gap: var(--spacer-4);
+      overflow: hidden;
+      border: 0;
+      border-radius: var(--radius-6);
+      background: transparent;
+      color: var(--text-default);
+      font: inherit;
+      padding: var(--spacer-4);
+      text-align: left;
+      transform-origin: center top;
+    }
+
+    .task-row:hover {
+      background: var(--bg-overlay-l1);
+    }
+
+    .task-row.selected,
+    .task-row.selected:hover {
+      background: var(--bg-overlay-l2);
+    }
+
+    .task-row-pin-slot,
+    .task-row-kind-slot,
+    .task-row-status-slot,
+    .task-row-action {
+      display: grid;
+      width: 24px;
+      height: 24px;
+      flex: 0 0 auto;
+      place-items: center;
+    }
+
+    .task-row-status-slot {
+      width: auto;
+      min-width: 24px;
+    }
+
+    .task-row-kind-slot {
+      color: var(--icon-tertiary);
+    }
+
+    .task-row-pin-slot {
+      border: 0;
+      background: transparent;
+      color: var(--brand-grey-400);
+      cursor: default;
+      opacity: 0;
+      padding: 0;
+    }
+
+    .task-row.pinned .task-row-pin-slot,
+    .task-row:hover .task-row-pin-slot {
+      opacity: 1;
+    }
+
+    .task-row-main {
+      display: flex;
+      min-width: 0;
+      height: 24px;
+      flex: 1;
+      align-items: center;
+      gap: var(--spacer-4);
+      border: 0;
+      background: transparent;
+      color: inherit;
+      cursor: default;
+      font: inherit;
+      padding: 0;
+      text-align: left;
+    }
+
+    .task-row-title {
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+      color: var(--text-default);
+      font-size: var(--body-base-font-size);
+      font-weight: var(--body-base-font-weight);
+      letter-spacing: var(--body-base-letter-spacing);
+      line-height: var(--body-base-line-height);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .task-row-status-slot:empty {
+      display: none;
+    }
+
+    .task-row-actions {
+      display: none;
+      align-items: center;
+      gap: var(--spacer-4);
+    }
+
+    .task-row.selected .task-row-actions {
+      display: flex;
+    }
+
+    .task-row-more {
+      border-radius: var(--radius-6);
+      color: var(--icon-default);
+      transform: rotate(90deg);
+      transform-origin: 50% 50%;
+    }
+
+    .task-row-tree {
+      border: 0.5px solid var(--border-neutral-l3);
+      border-radius: var(--radius-6);
+      background: var(--bg-white);
+      color: var(--icon-default);
+    }
+
+    .loading-icon {
+      display: grid;
+      width: 16px;
+      height: 16px;
+      place-items: center;
+    }
+
+    .loading-icon svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .loading-icon-track,
+    .loading-icon-indicator {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.6;
+    }
+
+    .loading-icon-track {
+      opacity: 0.32;
+    }
+
+    .loading-icon-indicator {
+      stroke-dasharray: 14 24;
+      stroke-linecap: round;
+    }
+
+    .loading-icon-spinner {
+      transform-box: view-box;
+      transform-origin: center;
+      animation: loading-icon-spin 900ms linear infinite;
+    }
+
+    @keyframes loading-icon-spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .task-row-loading-icon {
+      color: color-mix(in srgb, var(--brand-grey-500) 50%, var(--brand-grey-400));
+    }
+
+    .task-list-panel-user-row {
+      position: relative;
+      z-index: 3;
+      display: flex;
+      height: 56px;
+      flex-shrink: 0;
+      align-items: center;
+      background: var(--bg-base-secondary);
+      padding: var(--spacer-12);
+    }
+
+    .task-list-panel-user-trigger {
+      display: flex;
+      width: var(--task-list-content-width);
+      min-width: 0;
+      height: 36px;
+      align-items: center;
+      gap: var(--spacer-8);
+      border: 0;
+      border-radius: var(--radius-6);
+      background: transparent;
+      color: inherit;
+      cursor: default;
+      padding: var(--spacer-4);
+      text-align: left;
+    }
+
+    .task-list-panel-user-trigger:hover {
+      background: var(--bg-overlay-l1);
+    }
+
+    .task-list-panel-user-avatar-wrap {
+      position: relative;
+      display: inline-flex;
+      width: 28px;
+      height: 28px;
+      flex: 0 0 auto;
+    }
+
+    .task-list-panel-user-avatar {
+      display: grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      border-radius: var(--radius-6);
+      background: var(--text-tertiary);
+      color: var(--text-onbrand);
+      flex-shrink: 0;
+      font-size: var(--heading-xs-font-size);
+      font-weight: var(--heading-xs-font-weight);
+    }
+
+    .task-list-panel-user-name {
+      color: var(--text-default);
+      font-size: var(--heading-xs-font-size);
+      font-weight: var(--body-md-strong-font-weight);
+      letter-spacing: var(--body-base-letter-spacing);
+      line-height: var(--body-base-line-height);
+    }
+
+    .task-list-panel-user-tag {
+      display: inline-flex;
+      height: 16px;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-4);
+      background: var(--bg-overlay-l2);
+      color: var(--text-tertiary);
+      font-size: var(--body-sm-strong-font-size);
+      font-weight: var(--body-md-strong-font-weight);
+      letter-spacing: var(--body-md-letter-spacing);
+      line-height: var(--body-sm-strong-line-height);
+      padding: var(--spacer-0) var(--spacer-4);
+    }
+
+    .task-list-panel-resize-handle {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 20;
+      width: 8px;
+      border: 0;
+      background: transparent;
+      pointer-events: none;
+    }
+
+    .task-list-panel-resize-handle::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 1px;
+      background: linear-gradient(180deg, transparent 0%, var(--border-neutral-l1) 16%, var(--border-neutral-l3) 50%, var(--border-neutral-l1) 84%, transparent 100%);
+      opacity: 0;
+    }
+
+    .solo-home-main {
+      position: relative;
+      flex: 1 1 auto;
+      min-width: 0;
+      height: 944px;
+      margin: var(--solo-home-main-gutter-y) var(--solo-home-main-gutter-right) var(--solo-home-main-gutter-y) 0;
+      overflow: hidden;
+      border-radius: var(--radius-8);
+      background: var(--bg-white);
+    }
+
+    .solo-home-corner-action {
+      position: absolute;
+      z-index: 2;
+      top: 18px;
+      right: 22px;
+      display: inline-grid;
+      width: 32px;
+      height: 32px;
+      place-items: center;
+      border: 0;
+      border-radius: var(--radius-8);
+      background: transparent;
+      color: var(--icon-default);
+      cursor: default;
+      padding: 0;
+    }
+
+    .solo-home-corner-action:hover {
+      background: var(--bg-base-secondary);
+    }
+
+    .solo-home-center {
+      position: absolute;
+      z-index: 1;
+      top: 255px;
+      left: 50%;
+      display: flex;
+      width: min(780px, calc(100% - var(--solo-home-main-content-inset)));
+      max-width: calc(100% - 24px);
+      flex-direction: column;
+      align-items: center;
+      transform: translateX(-50%);
+    }
+
+    .solo-home-mode-content {
+      display: flex;
+      width: 100%;
+      flex-direction: column;
+      align-items: center;
+      animation: solo-home-mode-enter 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+      will-change: opacity, transform;
+    }
+
+    @keyframes solo-home-mode-enter {
+      from { opacity: 0; transform: translate3d(0, 6px, 0); }
+      to { opacity: 1; transform: translate3d(0, 0, 0); }
+    }
+
+    .solo-home-title {
+      display: flex;
+      height: 42px;
+      align-items: center;
+      justify-content: center;
+      gap: var(--spacer-12);
+      color: var(--text-default);
+    }
+
+    .solo-home-title .task-row-svg,
+    .solo-home-title .task-row-svg svg {
+      width: 36px;
+      height: 36px;
+    }
+
+    .solo-home-title-text {
+      display: inline-flex;
+      align-items: center;
+      margin: 0;
+      font-size: var(--heading-3xl-font-size);
+      font-weight: var(--body-md-strong-font-weight);
+      letter-spacing: var(--body-md-letter-spacing);
+      line-height: var(--heading-3xl-line-height);
+    }
+
+    .solo-home-title-letter {
+      display: inline-block;
+      height: 41px;
+      overflow: hidden;
+      transform: translateZ(0);
+      vertical-align: top;
+    }
+
+    .solo-home-title-letter-stack {
+      display: flex;
+      flex-direction: column;
+      transform: translate3d(0, 0, 0);
+    }
+
+    .solo-home-title-letter-stack span {
+      display: block;
+      height: 41px;
+      line-height: var(--heading-3xl-line-height);
+    }
+
+    .solo-home-title-space {
+      display: inline-block;
+      width: 0.38em;
+    }
+
+    .solo-chatbox {
+      display: flex;
+      width: 100%;
+      height: 178px;
+      flex-direction: column;
+      align-items: flex-start;
+      overflow: clip;
+      border-radius: var(--radius-16);
+      background: var(--bg-base-secondary);
+      margin-top: var(--spacer-48);
+    }
+
+    .solo-chatbox-input {
+      display: flex;
+      width: 100%;
+      height: 134px;
+      flex: 0 0 auto;
+      flex-direction: column;
+      align-items: flex-start;
+      overflow: clip;
+      border: 1px solid var(--border-neutral-l2);
+      border-radius: var(--radius-16);
+      background: var(--bg-white);
+      box-shadow: 0 2px 8px color-mix(in srgb, var(--text-default) 6%, transparent);
+    }
+
+    .solo-chatbox-prompt {
+      display: flex;
+      width: 100%;
+      height: 82px;
+      flex: 0 0 auto;
+      align-items: flex-start;
+      padding: var(--spacer-16) var(--spacer-16) var(--spacer-2);
+    }
+
+    .solo-chatbox-prompt p {
+      display: -webkit-box;
+      width: 100%;
+      height: 20px;
+      margin: 0;
+      overflow: hidden;
+      color: var(--text-disabled);
+      font-size: var(--body-base-font-size);
+      font-weight: var(--body-base-font-weight);
+      letter-spacing: var(--body-md-letter-spacing);
+      line-height: var(--body-base-line-height);
+      white-space: normal;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 1;
+    }
+
+    .solo-chatbox-action-row {
+      display: flex;
+      width: 100%;
+      height: 52px;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--spacer-8) var(--spacer-12) var(--spacer-12);
+    }
+
+    .solo-chatbox-action-leading {
+      display: flex;
+      min-width: 0;
+      height: 32px;
+      flex: 1 1 0;
+      align-items: center;
+      gap: var(--spacer-4);
+    }
+
+    .solo-chatbox-action-tools {
+      display: flex;
+      height: 32px;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: var(--spacer-8);
+    }
+
+    .solo-chatbox-action-trailing {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: flex-start;
+      gap: var(--spacer-8);
+    }
+
+    .solo-chatbox-action-controls {
+      display: flex;
+      align-items: flex-start;
+    }
+
+    .solo-chatbox button {
+      display: inline-flex;
+      align-items: center;
+      border: 0;
+      border-radius: var(--radius-full);
+      background: transparent;
+      color: var(--icon-default);
+      cursor: default;
+      font-family: var(--body-md-font-family);
+      font-size: var(--body-md-font-size);
+      font-weight: var(--body-base-font-weight);
+      line-height: var(--body-md-line-height);
+      padding: 0;
+    }
+
+    .solo-chatbox button:hover,
+    .solo-chatbox button:focus-visible {
+      background: var(--bg-overlay-l1);
+      outline: none;
+    }
+
+    .solo-chatbox .solo-chatbox-icon-button,
+    .solo-chatbox .solo-chatbox-send-button {
+      width: 32px;
+      height: 32px;
+      justify-content: center;
+    }
+
+    .solo-chatbox .solo-chatbox-tool-button,
+    .solo-chatbox .solo-chatbox-plugin-button {
+      border: 1px solid var(--border-neutral-l1);
+    }
+
+    .solo-chatbox .solo-chatbox-plugin-button {
+      height: 32px;
+      justify-content: center;
+      gap: var(--spacer-4);
+      padding: var(--spacer-0) var(--spacer-8);
+    }
+
+    .solo-chatbox-plugin-count {
+      flex: 0 0 auto;
+      color: var(--text-disabled);
+      font-family: var(--body-md-strong-font-family);
+      font-size: var(--body-md-font-size);
+      font-weight: var(--body-md-strong-font-weight);
+      line-height: var(--body-md-strong-line-height);
+    }
+
+    .solo-chatbox-action-divider {
+      display: flex;
+      width: 8px;
+      height: 12px;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .solo-chatbox-action-divider::before {
+      content: "";
+      width: 1px;
+      height: 11px;
+      border-radius: var(--radius-full);
+      background: var(--border-neutral-l2);
+    }
+
+    .solo-chatbox-fast-pass {
+      display: inline-flex;
+      max-width: 168px;
+      height: 32px;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: var(--spacer-2);
+      border-radius: var(--radius-full);
+      color: var(--text-disabled);
+      font-family: var(--body-md-strong-font-family);
+      font-size: var(--body-md-font-size);
+      font-weight: var(--body-md-strong-font-weight);
+      line-height: var(--body-md-line-height);
+      padding: var(--spacer-0) var(--spacer-3);
+      white-space: nowrap;
+    }
+
+    .solo-chatbox .solo-chatbox-model-button {
+      width: 131px;
+      height: 32px;
+      justify-content: center;
+      gap: var(--spacer-4);
+      color: var(--text-tertiary);
+      font-size: var(--body-md-font-size);
+      font-weight: var(--body-base-font-weight);
+      line-height: var(--body-md-line-height);
+      padding: var(--spacer-0) var(--spacer-6);
+    }
+
+    .solo-chatbox .solo-chatbox-model-button span {
+      flex: 0 0 auto;
+      color: inherit;
+      font-size: inherit;
+      font-weight: inherit;
+      line-height: inherit;
+      white-space: nowrap;
+    }
+
+    .solo-chatbox .solo-chatbox-send-button {
+      background: var(--bg-brand-disabled);
+      color: var(--text-tertiary);
+      cursor: not-allowed;
+    }
+
+    .solo-chatbox .solo-chatbox-send-button:hover,
+    .solo-chatbox .solo-chatbox-send-button:focus-visible {
+      background: var(--bg-brand-disabled);
+      color: var(--text-tertiary);
+    }
+
+    .solo-chatbox-canvas-row {
+      display: flex;
+      width: 100%;
+      height: 44px;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: var(--spacer-8);
+      padding: var(--spacer-6) var(--spacer-12);
+    }
+
+    .solo-chatbox .solo-chatbox-picker-button {
+      height: calc(var(--spacer-32) + var(--spacer-4));
+      justify-content: center;
+      gap: var(--spacer-8);
+      color: var(--text-default);
+      font-size: var(--heading-xs-font-size);
+      font-weight: var(--body-base-font-weight);
+      line-height: var(--heading-xs-line-height);
+      padding: var(--spacer-0) var(--spacer-6);
+    }
+
+    .solo-chatbox-svg,
+    .solo-chatbox-svg svg,
+    .mode-switch-icon svg,
+    .solo-chatbox-waveform-icon,
+    .task-row-svg,
+    .task-row-svg svg,
+    .cluster-row-svg,
+    .cluster-row-svg svg {
+      display: block;
+      width: 16px;
+      height: 16px;
+      flex: 0 0 auto;
+    }
+
+
+    .asset-icon-image {
+      display: block;
+      width: 16px;
+      height: 16px;
+      object-fit: contain;
+    }
+
+    .solo-chatbox-small-icon,
+    .solo-chatbox-small-icon svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .solo-chatbox-fast-pass-icon,
+    .solo-chatbox-fast-pass-icon svg {
+      width: 15px;
+      height: 15px;
+    }
+
+
+    .solo-home-suggestion-row {
+      display: flex;
+      width: min(748px, 100%);
+      min-height: 48px;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: var(--spacer-8);
+      margin-top: var(--spacer-32);
+    }
+
+    .solo-home-suggestion-chip {
+      display: inline-flex;
+      height: 48px;
+      align-items: center;
+      justify-content: center;
+      gap: var(--spacer-4);
+      border: 1px solid var(--border-neutral-l2);
+      border-radius: var(--radius-16);
+      background: var(--bg-white);
+      box-shadow: 0 1px 2px color-mix(in srgb, var(--text-default) 2%, transparent);
+      color: var(--text-default);
+      cursor: default;
+      font-size: var(--body-base-font-size);
+      font-weight: var(--body-base-font-weight);
+      letter-spacing: var(--body-md-letter-spacing);
+      line-height: var(--body-base-line-height);
+      padding: var(--spacer-0) var(--spacer-16);
+      white-space: nowrap;
+    }
+
+    .solo-home-suggestion-chip:hover {
+      border-color: var(--border-neutral-l3);
+      background: var(--bg-base-secondary);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .solo-home-mode-content,
+      .loading-icon-spinner {
+        animation: none;
+      }
+    }
+
+    @media (max-width: 1440px) {
+      .solo-home-shell {
+        --solo-home-main-gutter-y: var(--spacer-6);
+        --solo-home-main-gutter-right: var(--spacer-6);
+        --solo-home-main-content-inset: clamp(var(--spacer-40), 7vw, calc(var(--spacer-64) + var(--spacer-32)));
+      }
+    }
+
+    @media (max-width: 1080px) {
+      .solo-home-shell {
+        --solo-home-main-gutter-y: var(--spacer-4);
+        --solo-home-main-gutter-right: var(--spacer-4);
+        --solo-home-main-content-inset: clamp(var(--spacer-24), 6vw, calc(var(--spacer-48) + var(--spacer-8)));
+      }
+    }
+
+    @media (max-width: 860px) {
+      .solo-home-shell {
+        --solo-home-main-gutter-y: var(--spacer-2);
+        --solo-home-main-gutter-right: var(--spacer-2);
+        --solo-home-main-content-inset: var(--spacer-20);
+      }
+
+      .solo-chatbox-action-row {
+        gap: var(--spacer-6);
+        padding: var(--spacer-8);
+      }
+
+      .solo-chatbox-action-leading {
+        overflow: hidden;
+      }
+
+      .solo-chatbox-fast-pass {
+        display: none;
+      }
+    }
+
+    @media (max-width: 640px) {
+      html,
+      body {
+        min-height: 100%;
+      }
+
+      .solo-home-shell {
+        display: block;
+        height: auto;
+        min-height: 100vh;
+        border-radius: var(--radius-0);
+      }
+
+      .solo-home-shell > .task-list-panel,
+      .task-list-panel {
+        --task-list-panel-width: 100%;
+        --task-list-content-width: calc(100% - var(--spacer-24));
+        width: 100%;
+        height: auto;
+        min-height: 100vh;
+        overflow: visible;
+      }
+
+      .solo-home-main {
+        display: none;
+      }
+    }
+
+      /* Inline asset icon normalization: keep uploaded HTML independent from external SVG styling. */
+      [data-asset-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent !important;
+        -webkit-mask: none !important;
+        mask: none !important;
+      }
+
+      [data-asset-icon] > svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        flex: 0 0 auto;
+      }
+
+      .asset-inline-icon {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 auto;
+      }
+    
+
+    /* design-library-creator layout guard */
+    .uikit-shell { width: 100%; max-width: 1184px; margin: 0 auto; overflow: hidden; display: block; }
+    .uikit-sidebar { min-width: 0; overflow: hidden; max-width: 100%; }
+    .uikit-main { min-width: 0; }
+    .uikit-toolbar { min-width: 0; display: flex; align-items: center; gap: var(--spacer-8); }
+    .uikit-responsive-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacer-16); }
+    .uikit-table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+    .uikit-truncate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .uikit-nowrap { white-space: nowrap; flex-shrink: 0; }
+    .uikit-action-cell { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 160px; overflow: hidden; }
+    .uikit-action { min-width: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    [data-component] { min-width: 0; max-width: 100%; overflow: hidden; }
+    @media (max-width: 900px) { .uikit-shell { grid-template-columns: minmax(0, 1fr); } .uikit-responsive-grid { grid-template-columns: minmax(0, 1fr); } }
+    @media (max-width: 640px) { .uikit-toolbar { flex-direction: column; align-items: stretch; } .uikit-responsive-grid { grid-template-columns: minmax(0, 1fr); } }
+  </style>
+</head>
+<body data-layout-guard="uikit-v1">
+  <div class="solo-home-shell" data-mode="work">
+    <aside class="task-list-panel" data-component="solo-task-list-panel" aria-label="Task list">
+      <div class="task-list-panel-topbar">
+        <div class="task-list-panel-traffic" aria-hidden="true">
+          <span class="task-list-panel-traffic-dot" data-color="red"></span>
+          <span class="task-list-panel-traffic-dot" data-color="yellow"></span>
+          <span class="task-list-panel-traffic-dot" data-color="green"></span>
+        </div>
+        <div class="task-list-panel-topbar-actions">
+          <button class="task-list-panel-icon-button" type="button" aria-label="Toggle sidebar"><span class="task-row-svg" data-asset-icon="../../assets/icons/ViewLeft_line.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#171717" xmlns="http://www.w3.org/2000/svg"><path d="M11.334 2.04199C12.7835 2.04237 13.959 3.21748 13.959 4.66699V11.334C13.9586 12.7832 12.7832 13.9586 11.334 13.959H4.66699C3.21748 13.959 2.04237 12.7835 2.04199 11.334V4.66699C2.04199 3.21725 3.21725 2.04199 4.66699 2.04199H11.334ZM6.625 3.33301V12.666C6.625 12.6804 6.62205 12.6949 6.62109 12.709H11.334C12.0929 12.7086 12.7086 12.0929 12.709 11.334V4.66699C12.709 3.90783 12.0931 3.29237 11.334 3.29199H6.62109C6.62199 3.30561 6.62499 3.31917 6.625 3.33301ZM4.66699 3.29199C3.9076 3.29199 3.29199 3.9076 3.29199 4.66699V11.334C3.29237 12.0931 3.90783 12.709 4.66699 12.709H5.37891C5.37795 12.6949 5.375 12.6804 5.375 12.666V3.33301C5.37501 3.31917 5.37801 3.30561 5.37891 3.29199H4.66699Z" fill="#171717"/></svg></span></button>
+          <button class="task-list-panel-icon-button" type="button" aria-label="Search"><span class="task-row-svg" data-asset-icon="../../assets/icons/Search.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#171717" xmlns="http://www.w3.org/2000/svg"><path d="M7.33398 2.04199C10.2562 2.0423 12.625 4.41167 12.625 7.33398C12.6248 8.5697 12.1992 9.70502 11.4893 10.6055L13.7754 12.8916C14.0192 13.1357 14.0193 13.5314 13.7754 13.7754C13.5314 14.0194 13.1357 14.0192 12.8916 13.7754L10.6045 11.4893C9.70413 12.1989 8.56941 12.6249 7.33398 12.625C4.4117 12.625 2.04235 10.2562 2.04199 7.33398C2.04199 4.41148 4.41148 2.04199 7.33398 2.04199ZM7.33398 3.29199C5.10184 3.29199 3.29199 5.10184 3.29199 7.33398C3.29235 9.56583 5.10206 11.375 7.33398 11.375C9.56566 11.3747 11.3746 9.56565 11.375 7.33398C11.375 5.10203 9.56588 3.2923 7.33398 3.29199Z" fill="#171717"/></svg></span></button>
+        </div>
+      </div>
+
+      <div class="task-list-panel-mode">
+        <div class="mode-switch" aria-label="Mode">
+          <div class="mode-switch-active-indicator" aria-hidden="true"></div>
+          <button class="mode-switch-segment active" type="button" aria-current="true"><span class="mode-switch-icon" data-asset-icon="../../assets/icons/Doc-Default.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#171717" xmlns="http://www.w3.org/2000/svg"><path d="M14.0414 4.6665C14.0412 4.27545 13.7245 3.9585 13.3334 3.9585H10.0004C9.28843 3.9585 8.70263 4.49954 8.6322 5.19287L8.62537 5.3335V12.4517C9.10959 12.1669 9.65106 12.0415 10.1849 12.0415H13.3334C13.7246 12.0415 14.0414 11.7247 14.0414 11.3335V4.6665ZM1.95837 11.3335C1.95837 11.7246 2.27532 12.0413 2.66638 12.0415H5.8158C6.34988 12.0416 6.89104 12.1675 7.37537 12.4526V5.3335C7.37537 4.57421 6.75963 3.95867 6.00037 3.9585H2.66638C2.27544 3.95867 1.95855 4.27556 1.95837 4.6665V11.3335ZM15.2914 11.3335C15.2914 12.4151 14.415 13.2915 13.3334 13.2915H10.1849C9.8312 13.2915 9.50309 13.3769 9.22888 13.5464C8.94185 13.7238 8.7099 13.9779 8.55896 14.2798C8.45312 14.4914 8.23692 14.6254 8.00037 14.6255C7.76363 14.6255 7.54667 14.4915 7.4408 14.2798C7.28983 13.9779 7.05798 13.7238 6.77087 13.5464C6.49679 13.377 6.16935 13.2916 5.8158 13.2915H2.66638C1.58498 13.2913 0.708374 12.415 0.708374 11.3335V4.6665C0.70855 3.5852 1.58508 2.70867 2.66638 2.7085H6.00037C6.80156 2.70859 7.51797 3.06838 7.99939 3.63428C8.48088 3.06793 9.19874 2.7085 10.0004 2.7085H13.3334C14.4148 2.7085 15.2912 3.5851 15.2914 4.6665V11.3335Z" fill="#171717"/></svg></span><span>Work</span></button>
+          <button class="mode-switch-segment" type="button" tabindex="-1"><span>Code</span></button>
+          <button class="mode-switch-segment" type="button" tabindex="-1"><span>Design</span></button>
+        </div>
+      </div>
+
+      <div class="task-list-panel-quick-actions" aria-label="Quick actions">
+        <div class="task-list-panel-quick-action selected" role="button" tabindex="-1" aria-disabled="true"><span class="task-list-panel-quick-action-icon"><span class="task-row-svg" data-asset-icon="../../assets/icons/chatNew.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M13.4075 8C13.4075 5.03147 11.001 2.625 8.03247 2.625C5.06394 2.625 2.65747 5.03147 2.65747 8C2.65747 8.80228 2.83281 9.56195 3.14673 10.2441C3.27815 10.5296 3.31735 10.8695 3.21509 11.1982L2.68384 12.9043C2.59508 13.19 2.86044 13.4592 3.14771 13.375L4.9397 12.8496C5.25595 12.757 5.58045 12.7939 5.85571 12.916L6.10767 13.0205C6.70456 13.2495 7.35325 13.375 8.03247 13.375C11.001 13.375 13.4075 10.9686 13.4075 8ZM14.6575 8C14.6575 11.6589 11.6914 14.625 8.03247 14.625C7.07843 14.625 6.17002 14.4228 5.34888 14.0586C5.31747 14.0447 5.29702 14.0481 5.29126 14.0498L3.49927 14.5752C2.25469 14.9399 1.10501 13.7708 1.49048 12.5322L2.02075 10.8271L2.02271 10.8066C2.02189 10.7965 2.01843 10.7828 2.01099 10.7666C1.62323 9.9239 1.40747 8.98625 1.40747 8C1.40747 4.34112 4.37359 1.375 8.03247 1.375C11.6914 1.375 14.6575 4.34112 14.6575 8Z" fill="#404040"/><path d="M8.02539 5.25C8.37034 5.25026 8.64941 5.52998 8.64941 5.875V7.40039H10.125C10.4702 7.40039 10.75 7.68021 10.75 8.02539C10.7498 8.3704 10.4701 8.65039 10.125 8.65039H8.64941V10.125C8.64941 10.4702 8.36959 10.75 8.02441 10.75C7.67946 10.7497 7.39941 10.47 7.39941 10.125V8.65039H5.875C5.52994 8.65039 5.2502 8.3704 5.25 8.02539C5.25 7.68021 5.52982 7.40039 5.875 7.40039H7.39941V5.875C7.39941 5.52982 7.68021 5.25 8.02539 5.25Z" fill="#404040"/></svg></span></span><span class="task-list-panel-quick-action-label">New Task</span></div>
+        <div class="task-list-panel-quick-action" role="button" tabindex="-1" aria-disabled="true"><span class="task-list-panel-quick-action-icon"><span class="task-row-svg" data-asset-icon="../../assets/icons/skills.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M14.0413 4.25806C14.0411 3.867 13.7244 3.55005 13.3333 3.55005H10.0002C9.28831 3.55005 8.70251 4.09109 8.63208 4.78442L8.62524 4.92505V12.0432C9.00397 11.8205 9.41771 11.6953 9.83545 11.6513C10.0277 11.631 10.1848 11.7898 10.1848 11.9831V12.5331C10.1848 12.7264 10.0269 12.8793 9.83644 12.9122C9.61571 12.9503 9.4104 13.0257 9.22876 13.1379C8.94173 13.3154 8.70977 13.5695 8.55884 13.8713C8.45299 14.0829 8.2368 14.2169 8.00024 14.217C7.76351 14.217 7.54654 14.0831 7.44067 13.8713C7.28971 13.5694 7.05786 13.3154 6.77075 13.1379C6.49667 12.9686 6.16923 12.8831 5.81567 12.8831H2.66626C1.58486 12.8829 0.708252 12.0065 0.708252 10.925V4.25806C0.708428 3.17676 1.58496 2.30022 2.66626 2.30005H6.00024C6.80143 2.30015 7.51785 2.65993 7.99927 3.22583C8.48076 2.65948 9.19862 2.30005 10.0002 2.30005H13.3333C14.4147 2.30005 15.2911 3.17665 15.2913 4.25806V7.24497C15.2913 7.43827 15.1346 7.59497 14.9413 7.59497H14.3913C14.198 7.59497 14.0413 7.43827 14.0413 7.24497V4.25806ZM1.95825 10.925C1.95825 11.3162 2.2752 11.6329 2.66626 11.6331H5.81567C6.34976 11.6331 6.89092 11.7591 7.37524 12.0442V4.92505C7.37524 4.16576 6.75951 3.55022 6.00024 3.55005H2.66626C2.27532 3.55022 1.95843 3.86711 1.95825 4.25806V10.925Z" fill="#404040"/><path d="M13.6256 13.2455C13.9053 13.2455 14.132 13.4723 14.132 13.7519C14.132 14.0316 13.9053 14.2583 13.6256 14.2583H11.408C11.1283 14.2583 10.9016 14.0316 10.9016 13.7519C10.9016 13.4723 11.1283 13.2455 11.408 13.2455H13.6256ZM15.1156 10.996C15.3953 10.996 15.622 11.2227 15.622 11.5024C15.622 11.782 15.3953 12.0087 15.1156 12.0087H11.408C11.1283 12.0087 10.9016 11.782 10.9016 11.5024C10.9016 11.2227 11.1283 10.996 11.408 10.996H15.1156ZM15.1156 8.74731C15.3953 8.74731 15.622 8.97403 15.622 9.25371C15.622 9.53338 15.3953 9.7601 15.1156 9.7601H11.408C11.1283 9.7601 10.9016 9.53338 10.9016 9.25371C10.9016 8.97403 11.1283 8.74731 11.408 8.74731H15.1156Z" fill="#404040"/></svg></span></span><span class="task-list-panel-quick-action-label">Skills</span></div>
+        <div class="task-list-panel-quick-action" role="button" tabindex="-1" aria-disabled="true"><span class="task-list-panel-quick-action-icon"><span class="task-row-svg" data-asset-icon="../../assets/icons/automation.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#404040" xmlns="http://www.w3.org/2000/svg"><path d="M13.373 8C13.373 5.03239 10.9676 2.62695 8 2.62695C5.03239 2.62695 2.62695 5.03239 2.62695 8C2.62695 10.9676 5.03239 13.373 8 13.373C10.9676 13.373 13.373 10.9676 13.373 8ZM7.37305 5.33333C7.37305 4.98723 7.6539 4.70638 8 4.70638C8.3461 4.70638 8.62695 4.98723 8.62695 5.33333V7.74023L10.11 9.22331C10.3548 9.46804 10.3548 9.8653 10.11 10.11C9.8653 10.3548 9.46804 10.3548 9.22331 10.11L7.55664 8.44336C7.43912 8.32584 7.37305 8.1662 7.37305 8V5.33333ZM14.627 8C14.627 11.6598 11.6598 14.627 8 14.627C4.3402 14.627 1.37305 11.6598 1.37305 8C1.37305 4.34019 4.34019 1.37305 8 1.37305C11.6598 1.37305 14.627 4.3402 14.627 8Z" fill="#404040"/><path d="M2.99887 1.05728C3.24354 0.812617 3.64031 0.812292 3.88506 1.05682C4.12979 1.30155 4.12979 1.69874 3.88506 1.94346L1.94328 3.88525C1.69855 4.12997 1.30136 4.12997 1.05663 3.88525C0.812106 3.6405 0.812431 3.24372 1.05709 2.99906L2.99887 1.05728Z" fill="#404040"/><path d="M13.163 1.05728C12.9183 0.812617 12.5216 0.812292 12.2768 1.05682C12.0321 1.30155 12.0321 1.69874 12.2768 1.94346L14.2186 3.88525C14.4633 4.12997 14.8605 4.12997 15.1052 3.88525C15.3498 3.6405 15.3494 3.24372 15.1048 2.99906L13.163 1.05728Z" fill="#404040"/></svg></span></span><span class="task-list-panel-quick-action-label">Automation</span></div>
+      </div>
+
+      <div class="task-list-panel-content">
+        <section class="task-list-panel-section">
+          <div class="task-list-panel-section-header">
+            <button class="task-list-panel-section-toggle open" type="button"><span class="task-list-panel-section-title">Pinned</span><span class="task-list-panel-section-chevron" aria-hidden="true"><span class="task-row-svg" data-asset-icon="../../assets/icons/Down.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M10.2249 6.22429C10.469 5.98059 10.8647 5.98048 11.1087 6.22429C11.3528 6.46837 11.3528 6.86498 11.1087 7.10905L9.14876 9.06804C8.51414 9.70255 7.48548 9.70261 6.8509 9.06804L4.89094 7.10905C4.64687 6.86498 4.64687 6.46837 4.89094 6.22429C5.13502 5.98021 5.53163 5.98021 5.77571 6.22429L7.73469 8.18425C7.88112 8.33067 8.1185 8.3306 8.26497 8.18425L10.2249 6.22429Z" fill="#737373"/></svg></span></span></button>
+          </div>
+          <div class="task-list-panel-section-body task-list-panel-section-body-open">
+            <div class="task-list-panel-section-body-inner">
+              <div class="task-row task-row-normal pinned"><button class="task-row-pin-slot" type="button" aria-label="Unpin task"><span class="task-row-svg" data-asset-icon="../../assets/icons/pin-line.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#A1A1A1" xmlns="http://www.w3.org/2000/svg"><path d="M10.3752 4C10.3752 3.24071 9.75951 2.62518 9.00024 2.625H7.00024C6.24086 2.625 5.62524 3.24061 5.62524 4V4.99902C5.62524 6.23217 5.13487 7.41511 4.26294 8.28711C4.06781 8.48223 3.95825 8.74747 3.95825 9.02344V9.375H12.0413V9.02344C12.0413 8.74747 11.9317 8.48223 11.7366 8.28711C10.8648 7.41513 10.3752 6.2321 10.3752 4.99902V4ZM11.6252 4.99902C11.6252 5.90058 11.983 6.76576 12.6204 7.40332C13.0499 7.83286 13.2913 8.41594 13.2913 9.02344V10C13.2913 10.3452 13.0114 10.625 12.6663 10.625H8.62524V14C8.62524 14.3451 8.34527 14.6248 8.00024 14.625C7.65507 14.625 7.37524 14.3452 7.37524 14V10.625H3.33325C2.98807 10.625 2.70825 10.3452 2.70825 10V9.02344C2.70825 8.41594 2.9496 7.83287 3.37915 7.40332C4.01665 6.76575 4.37524 5.90066 4.37524 4.99902V4C4.37524 2.55026 5.5505 1.375 7.00024 1.375H9.00024C10.4499 1.37518 11.6252 2.55037 11.6252 4V4.99902Z" fill="#A1A1A1"/></svg></span></button><button class="task-row-main" type="button"><span class="task-row-title">Review Q2 market research summary</span></button><span class="task-row-status-slot"></span></div>
+              <div class="task-row task-row-normal pinned"><button class="task-row-pin-slot" type="button" aria-label="Unpin task"><span class="task-row-svg" data-asset-icon="../../assets/icons/pin-line.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#A1A1A1" xmlns="http://www.w3.org/2000/svg"><path d="M10.3752 4C10.3752 3.24071 9.75951 2.62518 9.00024 2.625H7.00024C6.24086 2.625 5.62524 3.24061 5.62524 4V4.99902C5.62524 6.23217 5.13487 7.41511 4.26294 8.28711C4.06781 8.48223 3.95825 8.74747 3.95825 9.02344V9.375H12.0413V9.02344C12.0413 8.74747 11.9317 8.48223 11.7366 8.28711C10.8648 7.41513 10.3752 6.2321 10.3752 4.99902V4ZM11.6252 4.99902C11.6252 5.90058 11.983 6.76576 12.6204 7.40332C13.0499 7.83286 13.2913 8.41594 13.2913 9.02344V10C13.2913 10.3452 13.0114 10.625 12.6663 10.625H8.62524V14C8.62524 14.3451 8.34527 14.6248 8.00024 14.625C7.65507 14.625 7.37524 14.3452 7.37524 14V10.625H3.33325C2.98807 10.625 2.70825 10.3452 2.70825 10V9.02344C2.70825 8.41594 2.9496 7.83287 3.37915 7.40332C4.01665 6.76575 4.37524 5.90066 4.37524 4.99902V4C4.37524 2.55026 5.5505 1.375 7.00024 1.375H9.00024C10.4499 1.37518 11.6252 2.55037 11.6252 4V4.99902Z" fill="#A1A1A1"/></svg></span></button><button class="task-row-main" type="button"><span class="task-row-title">Prepare Excel revenue model</span></button><span class="task-row-status-slot"></span></div>
+              <div class="task-row task-row-normal pinned"><button class="task-row-pin-slot" type="button" aria-label="Unpin task"><span class="task-row-svg" data-asset-icon="../../assets/icons/pin-line.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#A1A1A1" xmlns="http://www.w3.org/2000/svg"><path d="M10.3752 4C10.3752 3.24071 9.75951 2.62518 9.00024 2.625H7.00024C6.24086 2.625 5.62524 3.24061 5.62524 4V4.99902C5.62524 6.23217 5.13487 7.41511 4.26294 8.28711C4.06781 8.48223 3.95825 8.74747 3.95825 9.02344V9.375H12.0413V9.02344C12.0413 8.74747 11.9317 8.48223 11.7366 8.28711C10.8648 7.41513 10.3752 6.2321 10.3752 4.99902V4ZM11.6252 4.99902C11.6252 5.90058 11.983 6.76576 12.6204 7.40332C13.0499 7.83286 13.2913 8.41594 13.2913 9.02344V10C13.2913 10.3452 13.0114 10.625 12.6663 10.625H8.62524V14C8.62524 14.3451 8.34527 14.6248 8.00024 14.625C7.65507 14.625 7.37524 14.3452 7.37524 14V10.625H3.33325C2.98807 10.625 2.70825 10.3452 2.70825 10V9.02344C2.70825 8.41594 2.9496 7.83287 3.37915 7.40332C4.01665 6.76575 4.37524 5.90066 4.37524 4.99902V4C4.37524 2.55026 5.5505 1.375 7.00024 1.375H9.00024C10.4499 1.37518 11.6252 2.55037 11.6252 4V4.99902Z" fill="#A1A1A1"/></svg></span></button><button class="task-row-main" type="button"><span class="task-row-title">Draft literature review outline</span></button><span class="task-row-status-slot"></span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="task-list-panel-section">
+          <div class="task-list-panel-section-header">
+            <button class="task-list-panel-section-toggle open" type="button"><span class="task-list-panel-section-title">Task List</span><span class="task-list-panel-section-chevron" aria-hidden="true"><span class="task-row-svg" data-asset-icon="../../assets/icons/Down.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M10.2249 6.22429C10.469 5.98059 10.8647 5.98048 11.1087 6.22429C11.3528 6.46837 11.3528 6.86498 11.1087 7.10905L9.14876 9.06804C8.51414 9.70255 7.48548 9.70261 6.8509 9.06804L4.89094 7.10905C4.64687 6.86498 4.64687 6.46837 4.89094 6.22429C5.13502 5.98021 5.53163 5.98021 5.77571 6.22429L7.73469 8.18425C7.88112 8.33067 8.1185 8.3306 8.26497 8.18425L10.2249 6.22429Z" fill="#737373"/></svg></span></span></button>
+            <div class="task-list-panel-section-trailing" aria-hidden="true"><span class="task-list-panel-section-icon"><span class="task-row-svg" data-asset-icon="../../assets/icons/arrow-minimize.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M9.33276 8.70767L13.3337 8.70865C13.6787 8.70891 13.9587 8.98863 13.9587 9.33365C13.9586 9.67852 13.6786 9.95838 13.3337 9.95865H10.8425L13.2751 12.3913C13.5192 12.6353 13.5192 13.032 13.2751 13.276C13.031 13.5197 12.6343 13.52 12.3904 13.276L9.95874 10.8444V13.3336C9.95858 13.6785 9.67859 13.9584 9.33374 13.9586C8.98866 13.9586 8.70891 13.6787 8.70874 13.3336L8.70776 9.33365C8.70769 9.17354 8.76851 9.01333 8.89038 8.89127C9.01231 8.76934 9.17274 8.70778 9.33276 8.70767ZM6.66675 2.04166C7.01193 2.04166 7.29175 2.32148 7.29175 2.66666V6.66666C7.29175 6.82682 7.23115 6.987 7.10913 7.10904C6.9871 7.23107 6.8269 7.29164 6.66675 7.29166H2.66675C2.32157 7.29166 2.04175 7.01183 2.04175 6.66666C2.04175 6.32148 2.32157 6.04166 2.66675 6.04166H5.15698L2.72437 3.60904C2.48029 3.36496 2.48029 2.96835 2.72437 2.72427C2.96845 2.48023 3.36506 2.48021 3.60913 2.72427L6.04175 5.15689V2.66666C6.04175 2.32148 6.32157 2.04166 6.66675 2.04166Z" fill="#737373"/></svg></span></span><span class="task-list-panel-section-icon"><span class="task-row-svg" data-asset-icon="../../assets/icons/list-filter.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M10 12.042C10.3452 12.042 10.625 12.3218 10.625 12.667C10.6248 13.012 10.3451 13.292 10 13.292H6C5.65494 13.292 5.3752 13.012 5.375 12.667C5.375 12.3218 5.65482 12.042 6 12.042H10ZM12 7.375C12.3452 7.375 12.625 7.65482 12.625 8C12.625 8.34518 12.3452 8.625 12 8.625H4C3.65482 8.625 3.375 8.34518 3.375 8C3.375 7.65482 3.65482 7.375 4 7.375H12ZM14 2.70801C14.3451 2.70801 14.6248 2.988 14.625 3.33301C14.625 3.67819 14.3452 3.95801 14 3.95801H2C1.65482 3.95801 1.375 3.67819 1.375 3.33301C1.3752 2.988 1.65494 2.70801 2 2.70801H14Z" fill="#737373"/></svg></span></span></div>
+          </div>
+          <div class="task-list-panel-section-body task-list-panel-section-body-open">
+            <div class="task-list-panel-section-body-inner">
+              <div class="task-list-panel-cluster">
+                <div class="cluster-row-item">
+                  <div class="cluster-row-control open"><button class="cluster-row-toggle" type="button"><span class="cluster-row-leading" aria-hidden="true"><span class="cluster-row-svg cluster-row-kind-icon" data-asset-icon="../../assets/icons/cloud.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><g clip-path="url(#uploadicon-14-svg_2b5647815c__svg_51a016bff5__clip0_11073_152)"><path d="M0.706543 9.33325C0.706543 7.45755 2.01038 5.88692 3.76123 5.47713C4.47617 3.84669 6.10425 2.7063 8.00016 2.7063C10.3613 2.7063 12.3077 4.47553 12.59 6.76033C14.1273 7.03841 15.2938 8.3825 15.2938 9.99992C15.2938 11.8187 13.819 13.2935 12.0002 13.2935H4.66683C2.47978 13.2935 0.706543 11.5203 0.706543 9.33325ZM1.96045 9.33325C1.96045 10.8281 3.17198 12.0396 4.66683 12.0396H12.0002C13.1268 12.0396 14.0399 11.1266 14.0399 9.99992C14.0399 8.87328 13.1268 7.9602 12.0002 7.9602C11.6541 7.9602 11.3732 7.67935 11.3732 7.33325C11.3732 5.47021 9.8632 3.9602 8.00016 3.9602C6.52291 3.9602 5.26618 4.91009 4.81006 6.23429C4.73288 6.45821 4.53567 6.61932 4.30094 6.65096C2.97937 6.82915 1.96045 7.96275 1.96045 9.33325Z" fill="#737373"/></g><defs><clipPath id="uploadicon-14-svg_2b5647815c__svg_51a016bff5__clip0_11073_152"><path fill="#737373" d="M0 0H16V16H0z"/></clipPath></defs></svg></span></span><span class="cluster-row-label">Default</span></button></div>
+                </div>
+                <div class="task-list-panel-cluster-body task-list-panel-cluster-body-open">
+                  <div class="task-list-panel-cluster-body-inner">
+                    <div class="task-row task-row-normal"><button class="task-row-pin-slot" type="button" aria-label="Pin task"><span class="task-row-svg" data-asset-icon="../../assets/icons/pin-line.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#A1A1A1" xmlns="http://www.w3.org/2000/svg"><path d="M10.3752 4C10.3752 3.24071 9.75951 2.62518 9.00024 2.625H7.00024C6.24086 2.625 5.62524 3.24061 5.62524 4V4.99902C5.62524 6.23217 5.13487 7.41511 4.26294 8.28711C4.06781 8.48223 3.95825 8.74747 3.95825 9.02344V9.375H12.0413V9.02344C12.0413 8.74747 11.9317 8.48223 11.7366 8.28711C10.8648 7.41513 10.3752 6.2321 10.3752 4.99902V4ZM11.6252 4.99902C11.6252 5.90058 11.983 6.76576 12.6204 7.40332C13.0499 7.83286 13.2913 8.41594 13.2913 9.02344V10C13.2913 10.3452 13.0114 10.625 12.6663 10.625H8.62524V14C8.62524 14.3451 8.34527 14.6248 8.00024 14.625C7.65507 14.625 7.37524 14.3452 7.37524 14V10.625H3.33325C2.98807 10.625 2.70825 10.3452 2.70825 10V9.02344C2.70825 8.41594 2.9496 7.83287 3.37915 7.40332C4.01665 6.76575 4.37524 5.90066 4.37524 4.99902V4C4.37524 2.55026 5.5505 1.375 7.00024 1.375H9.00024C10.4499 1.37518 11.6252 2.55037 11.6252 4V4.99902Z" fill="#A1A1A1"/></svg></span></button><button class="task-row-main" type="button"><span class="task-row-title">Analyze customer interview notes</span></button><span class="task-row-status-slot"><span class="loading-icon task-row-loading-icon"><svg viewBox="0 0 16 16"><circle class="loading-icon-track" cx="8" cy="8" r="5"></circle><circle class="loading-icon-indicator loading-icon-spinner" cx="8" cy="8" r="5"></circle></svg></span></span></div>
+                    <div class="task-row task-row-normal"><button class="task-row-pin-slot" type="button" aria-label="Pin task"><span class="task-row-svg" data-asset-icon="../../assets/icons/pin-line.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#A1A1A1" xmlns="http://www.w3.org/2000/svg"><path d="M10.3752 4C10.3752 3.24071 9.75951 2.62518 9.00024 2.625H7.00024C6.24086 2.625 5.62524 3.24061 5.62524 4V4.99902C5.62524 6.23217 5.13487 7.41511 4.26294 8.28711C4.06781 8.48223 3.95825 8.74747 3.95825 9.02344V9.375H12.0413V9.02344C12.0413 8.74747 11.9317 8.48223 11.7366 8.28711C10.8648 7.41513 10.3752 6.2321 10.3752 4.99902V4ZM11.6252 4.99902C11.6252 5.90058 11.983 6.76576 12.6204 7.40332C13.0499 7.83286 13.2913 8.41594 13.2913 9.02344V10C13.2913 10.3452 13.0114 10.625 12.6663 10.625H8.62524V14C8.62524 14.3451 8.34527 14.6248 8.00024 14.625C7.65507 14.625 7.37524 14.3452 7.37524 14V10.625H3.33325C2.98807 10.625 2.70825 10.3452 2.70825 10V9.02344C2.70825 8.41594 2.9496 7.83287 3.37915 7.40332C4.01665 6.76575 4.37524 5.90066 4.37524 4.99902V4C4.37524 2.55026 5.5505 1.375 7.00024 1.375H9.00024C10.4499 1.37518 11.6252 2.55037 11.6252 4V4.99902Z" fill="#A1A1A1"/></svg></span></button><button class="task-row-main" type="button"><span class="task-row-title">Summarize competitor pricing signals</span></button><span class="task-row-status-slot"><span class="loading-icon task-row-loading-icon"><svg viewBox="0 0 16 16"><circle class="loading-icon-track" cx="8" cy="8" r="5"></circle><circle class="loading-icon-indicator loading-icon-spinner" cx="8" cy="8" r="5"></circle></svg></span></span></div>
+                    <div class="task-row task-row-normal"><button class="task-row-pin-slot" type="button" aria-label="Pin task"><span class="task-row-svg" data-asset-icon="../../assets/icons/pin-line.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#A1A1A1" xmlns="http://www.w3.org/2000/svg"><path d="M10.3752 4C10.3752 3.24071 9.75951 2.62518 9.00024 2.625H7.00024C6.24086 2.625 5.62524 3.24061 5.62524 4V4.99902C5.62524 6.23217 5.13487 7.41511 4.26294 8.28711C4.06781 8.48223 3.95825 8.74747 3.95825 9.02344V9.375H12.0413V9.02344C12.0413 8.74747 11.9317 8.48223 11.7366 8.28711C10.8648 7.41513 10.3752 6.2321 10.3752 4.99902V4ZM11.6252 4.99902C11.6252 5.90058 11.983 6.76576 12.6204 7.40332C13.0499 7.83286 13.2913 8.41594 13.2913 9.02344V10C13.2913 10.3452 13.0114 10.625 12.6663 10.625H8.62524V14C8.62524 14.3451 8.34527 14.6248 8.00024 14.625C7.65507 14.625 7.37524 14.3452 7.37524 14V10.625H3.33325C2.98807 10.625 2.70825 10.3452 2.70825 10V9.02344C2.70825 8.41594 2.9496 7.83287 3.37915 7.40332C4.01665 6.76575 4.37524 5.90066 4.37524 4.99902V4C4.37524 2.55026 5.5505 1.375 7.00024 1.375H9.00024C10.4499 1.37518 11.6252 2.55037 11.6252 4V4.99902Z" fill="#A1A1A1"/></svg></span></button><button class="task-row-main" type="button"><span class="task-row-title">Build weekly KPI tracking sheet</span></button><span class="task-row-status-slot"></span></div>
+                    <div class="task-row task-row-normal"><button class="task-row-pin-slot" type="button" aria-label="Pin task"><span class="task-row-svg" data-asset-icon="../../assets/icons/pin-line.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#A1A1A1" xmlns="http://www.w3.org/2000/svg"><path d="M10.3752 4C10.3752 3.24071 9.75951 2.62518 9.00024 2.625H7.00024C6.24086 2.625 5.62524 3.24061 5.62524 4V4.99902C5.62524 6.23217 5.13487 7.41511 4.26294 8.28711C4.06781 8.48223 3.95825 8.74747 3.95825 9.02344V9.375H12.0413V9.02344C12.0413 8.74747 11.9317 8.48223 11.7366 8.28711C10.8648 7.41513 10.3752 6.2321 10.3752 4.99902V4ZM11.6252 4.99902C11.6252 5.90058 11.983 6.76576 12.6204 7.40332C13.0499 7.83286 13.2913 8.41594 13.2913 9.02344V10C13.2913 10.3452 13.0114 10.625 12.6663 10.625H8.62524V14C8.62524 14.3451 8.34527 14.6248 8.00024 14.625C7.65507 14.625 7.37524 14.3452 7.37524 14V10.625H3.33325C2.98807 10.625 2.70825 10.3452 2.70825 10V9.02344C2.70825 8.41594 2.9496 7.83287 3.37915 7.40332C4.01665 6.76575 4.37524 5.90066 4.37524 4.99902V4C4.37524 2.55026 5.5505 1.375 7.00024 1.375H9.00024C10.4499 1.37518 11.6252 2.55037 11.6252 4V4.99902Z" fill="#A1A1A1"/></svg></span></button><button class="task-row-main" type="button"><span class="task-row-title">Clean survey responses for report</span></button><span class="task-row-status-slot"></span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="task-list-panel-cluster">
+                <div class="cluster-row-item"><div class="cluster-row-control open"><button class="cluster-row-toggle" type="button"><span class="cluster-row-leading" aria-hidden="true"><span class="cluster-row-svg cluster-row-kind-icon" data-asset-icon="../../assets/icons/Folder.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M1.375 10.6666V4.66663C1.375 3.21688 2.55026 2.04163 4 2.04163H5.95312C6.60779 2.04164 7.21883 2.36901 7.58203 2.9137L8.12402 3.7262L8.17773 3.79651C8.31129 3.95105 8.50671 4.04163 8.71387 4.04163H12C13.4498 4.04163 14.625 5.21689 14.625 6.66663V10.6666C14.625 12.1164 13.4498 13.2916 12 13.2916H4C2.55026 13.2916 1.375 12.1164 1.375 10.6666ZM2.625 10.6666C2.625 11.426 3.2406 12.0416 4 12.0416H12C12.7594 12.0416 13.375 11.426 13.375 10.6666V6.66663C13.375 5.90723 12.7594 5.29163 12 5.29163H8.71387C8.05911 5.29163 7.44718 4.9644 7.08398 4.41956L6.54199 3.60706C6.41064 3.41014 6.18988 3.29164 5.95312 3.29163H4C3.24061 3.29163 2.625 3.90724 2.625 4.66663V10.6666Z" fill="#737373"/></svg></span></span><span class="cluster-row-label">SoloWorkSpace</span></button></div></div>
+                <div class="task-list-panel-cluster-body task-list-panel-cluster-body-open"><div class="task-list-panel-cluster-body-inner">
+                  <div class="task-row task-row-normal"><button class="task-row-pin-slot" type="button" aria-label="Pin task"><span class="task-row-svg" data-asset-icon="../../assets/icons/pin-line.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#A1A1A1" xmlns="http://www.w3.org/2000/svg"><path d="M10.3752 4C10.3752 3.24071 9.75951 2.62518 9.00024 2.625H7.00024C6.24086 2.625 5.62524 3.24061 5.62524 4V4.99902C5.62524 6.23217 5.13487 7.41511 4.26294 8.28711C4.06781 8.48223 3.95825 8.74747 3.95825 9.02344V9.375H12.0413V9.02344C12.0413 8.74747 11.9317 8.48223 11.7366 8.28711C10.8648 7.41513 10.3752 6.2321 10.3752 4.99902V4ZM11.6252 4.99902C11.6252 5.90058 11.983 6.76576 12.6204 7.40332C13.0499 7.83286 13.2913 8.41594 13.2913 9.02344V10C13.2913 10.3452 13.0114 10.625 12.6663 10.625H8.62524V14C8.62524 14.3451 8.34527 14.6248 8.00024 14.625C7.65507 14.625 7.37524 14.3452 7.37524 14V10.625H3.33325C2.98807 10.625 2.70825 10.3452 2.70825 10V9.02344C2.70825 8.41594 2.9496 7.83287 3.37915 7.40332C4.01665 6.76575 4.37524 5.90066 4.37524 4.99902V4C4.37524 2.55026 5.5505 1.375 7.00024 1.375H9.00024C10.4499 1.37518 11.6252 2.55037 11.6252 4V4.99902Z" fill="#A1A1A1"/></svg></span></button><button class="task-row-main" type="button"><span class="task-row-title">Convert PDF notes into briefing</span></button><span class="task-row-status-slot"></span></div>
+                  <div class="task-row task-row-normal"><button class="task-row-pin-slot" type="button" aria-label="Pin task"><span class="task-row-svg" data-asset-icon="../../assets/icons/pin-line.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#A1A1A1" xmlns="http://www.w3.org/2000/svg"><path d="M10.3752 4C10.3752 3.24071 9.75951 2.62518 9.00024 2.625H7.00024C6.24086 2.625 5.62524 3.24061 5.62524 4V4.99902C5.62524 6.23217 5.13487 7.41511 4.26294 8.28711C4.06781 8.48223 3.95825 8.74747 3.95825 9.02344V9.375H12.0413V9.02344C12.0413 8.74747 11.9317 8.48223 11.7366 8.28711C10.8648 7.41513 10.3752 6.2321 10.3752 4.99902V4ZM11.6252 4.99902C11.6252 5.90058 11.983 6.76576 12.6204 7.40332C13.0499 7.83286 13.2913 8.41594 13.2913 9.02344V10C13.2913 10.3452 13.0114 10.625 12.6663 10.625H8.62524V14C8.62524 14.3451 8.34527 14.6248 8.00024 14.625C7.65507 14.625 7.37524 14.3452 7.37524 14V10.625H3.33325C2.98807 10.625 2.70825 10.3452 2.70825 10V9.02344C2.70825 8.41594 2.9496 7.83287 3.37915 7.40332C4.01665 6.76575 4.37524 5.90066 4.37524 4.99902V4C4.37524 2.55026 5.5505 1.375 7.00024 1.375H9.00024C10.4499 1.37518 11.6252 2.55037 11.6252 4V4.99902Z" fill="#A1A1A1"/></svg></span></button><button class="task-row-main" type="button"><span class="task-row-title">Create reading list for strategy memo</span></button><span class="task-row-status-slot"></span></div>
+                </div></div>
+              </div>
+
+              <div class="task-list-panel-cluster">
+                <div class="cluster-row-item"><div class="cluster-row-control open"><button class="cluster-row-toggle" type="button"><span class="cluster-row-leading" aria-hidden="true"><span class="cluster-row-svg cluster-row-kind-icon cluster-row-kind-icon-cloud-git" data-asset-icon="../../assets/icons/cloud-git.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 20 20" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M10 4.72949C11.7273 4.72961 13.2307 5.68276 14.0166 7.09082C13.6064 7.171 13.214 7.29968 12.8467 7.47168C12.2398 6.54333 11.1918 5.92882 10 5.92871C8.51129 5.92889 7.24392 6.8873 6.78418 8.22168L6.66406 8.57129L6.29688 8.62012C4.96254 8.80019 3.93282 9.94535 3.93262 11.3291C3.93262 12.8384 5.15678 14.0621 6.66602 14.0625H10.5146C10.7374 14.5046 11.0269 14.9083 11.3691 15.2627H6.66602C4.49404 15.2623 2.7334 13.5012 2.7334 11.3291C2.73359 9.4622 4.03375 7.89898 5.77832 7.49609C6.48619 5.86835 8.11029 4.72966 10 4.72949Z" fill="#737373"/><path d="M15.0004 7.90625C17.2624 7.90625 19.0946 9.73839 19.0946 12.0004C19.0944 12.8582 18.8251 13.6944 18.3248 14.3912C17.8245 15.088 17.1182 15.6104 16.3054 15.8848C16.1007 15.9257 16.024 15.7978 16.024 15.6903C16.024 15.5521 16.0291 15.112 16.0291 14.5644C16.0291 14.1806 15.9011 13.9349 15.7527 13.807C16.6637 13.7046 17.6207 13.3566 17.6207 11.7855C17.6207 11.3351 17.462 10.9718 17.201 10.6852C17.242 10.5828 17.3853 10.1632 17.1601 9.60021C17.1601 9.60021 16.8172 9.48762 16.0342 10.0199C15.7067 9.92774 15.3587 9.88168 15.0107 9.88168C14.6626 9.88168 14.3146 9.92774 13.9871 10.0199C13.2041 9.49274 12.8612 9.60021 12.8612 9.60021C12.636 10.1632 12.7793 10.5828 12.8203 10.6852C12.5593 10.9718 12.4006 11.3402 12.4006 11.7855C12.4006 13.3515 13.3525 13.7046 14.2635 13.807C14.1458 13.9093 14.0383 14.0884 14.0025 14.3546C13.767 14.462 13.1785 14.636 12.81 14.0168C12.7333 13.894 12.503 13.592 12.1806 13.5971C11.8377 13.6023 12.0424 13.7916 12.1857 13.8684C12.3597 13.9656 12.5593 14.329 12.6053 14.4467C12.6872 14.677 12.9533 15.1171 13.982 14.9277C13.982 15.2706 13.9871 15.593 13.9871 15.6903C13.9871 15.7978 13.9103 15.9206 13.7056 15.8848C12.8902 15.6133 12.1809 15.092 11.6785 14.3948C11.176 13.6976 10.9058 12.8598 10.9063 12.0004C10.9063 9.73839 12.7384 7.90625 15.0004 7.90625Z" fill="#737373"/></svg></span></span><span class="cluster-row-label">Zion-Luan/demo</span></button></div></div>
+                <div class="task-list-panel-cluster-body task-list-panel-cluster-body-open"><div class="task-list-panel-cluster-body-inner">
+                  <div class="task-row task-row-normal"><button class="task-row-pin-slot" type="button" aria-label="Pin task"><span class="task-row-svg" data-asset-icon="../../assets/icons/pin-line.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#A1A1A1" xmlns="http://www.w3.org/2000/svg"><path d="M10.3752 4C10.3752 3.24071 9.75951 2.62518 9.00024 2.625H7.00024C6.24086 2.625 5.62524 3.24061 5.62524 4V4.99902C5.62524 6.23217 5.13487 7.41511 4.26294 8.28711C4.06781 8.48223 3.95825 8.74747 3.95825 9.02344V9.375H12.0413V9.02344C12.0413 8.74747 11.9317 8.48223 11.7366 8.28711C10.8648 7.41513 10.3752 6.2321 10.3752 4.99902V4ZM11.6252 4.99902C11.6252 5.90058 11.983 6.76576 12.6204 7.40332C13.0499 7.83286 13.2913 8.41594 13.2913 9.02344V10C13.2913 10.3452 13.0114 10.625 12.6663 10.625H8.62524V14C8.62524 14.3451 8.34527 14.6248 8.00024 14.625C7.65507 14.625 7.37524 14.3452 7.37524 14V10.625H3.33325C2.98807 10.625 2.70825 10.3452 2.70825 10V9.02344C2.70825 8.41594 2.9496 7.83287 3.37915 7.40332C4.01665 6.76575 4.37524 5.90066 4.37524 4.99902V4C4.37524 2.55026 5.5505 1.375 7.00024 1.375H9.00024C10.4499 1.37518 11.6252 2.55037 11.6252 4V4.99902Z" fill="#A1A1A1"/></svg></span></button><button class="task-row-main" type="button"><span class="task-row-title">Compile data analysis appendix</span></button><span class="task-row-status-slot"></span></div>
+                  <div class="task-row task-row-normal"><button class="task-row-pin-slot" type="button" aria-label="Pin task"><span class="task-row-svg" data-asset-icon="../../assets/icons/pin-line.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#A1A1A1" xmlns="http://www.w3.org/2000/svg"><path d="M10.3752 4C10.3752 3.24071 9.75951 2.62518 9.00024 2.625H7.00024C6.24086 2.625 5.62524 3.24061 5.62524 4V4.99902C5.62524 6.23217 5.13487 7.41511 4.26294 8.28711C4.06781 8.48223 3.95825 8.74747 3.95825 9.02344V9.375H12.0413V9.02344C12.0413 8.74747 11.9317 8.48223 11.7366 8.28711C10.8648 7.41513 10.3752 6.2321 10.3752 4.99902V4ZM11.6252 4.99902C11.6252 5.90058 11.983 6.76576 12.6204 7.40332C13.0499 7.83286 13.2913 8.41594 13.2913 9.02344V10C13.2913 10.3452 13.0114 10.625 12.6663 10.625H8.62524V14C8.62524 14.3451 8.34527 14.6248 8.00024 14.625C7.65507 14.625 7.37524 14.3452 7.37524 14V10.625H3.33325C2.98807 10.625 2.70825 10.3452 2.70825 10V9.02344C2.70825 8.41594 2.9496 7.83287 3.37915 7.40332C4.01665 6.76575 4.37524 5.90066 4.37524 4.99902V4C4.37524 2.55026 5.5505 1.375 7.00024 1.375H9.00024C10.4499 1.37518 11.6252 2.55037 11.6252 4V4.99902Z" fill="#A1A1A1"/></svg></span></button><button class="task-row-main" type="button"><span class="task-row-title">Polish final presentation narrative</span></button><span class="task-row-status-slot"></span></div>
+                </div></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="task-list-panel-user-row">
+        <button class="task-list-panel-user-trigger" type="button" aria-label="Account menu">
+          <span class="task-list-panel-user-avatar-wrap" aria-hidden="true"><span class="task-list-panel-user-avatar">Z</span></span>
+          <span class="task-list-panel-user-name">Zion</span>
+          <span class="task-list-panel-user-tag">Free</span>
+        </button>
+      </div>
+      <div class="task-list-panel-resize-handle" aria-hidden="true"></div>
+    </aside>
+
+    <main class="solo-home-main" aria-label="WORK WITH TRAE">
+      <button class="solo-home-corner-action" type="button" aria-label="Toggle right panel"><span class="task-row-svg" data-asset-icon="../../assets/icons/ViewLeft_line.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#262626" xmlns="http://www.w3.org/2000/svg"><path d="M11.334 2.04199C12.7835 2.04237 13.959 3.21748 13.959 4.66699V11.334C13.9586 12.7832 12.7832 13.9586 11.334 13.959H4.66699C3.21748 13.959 2.04237 12.7835 2.04199 11.334V4.66699C2.04199 3.21725 3.21725 2.04199 4.66699 2.04199H11.334ZM6.625 3.33301V12.666C6.625 12.6804 6.62205 12.6949 6.62109 12.709H11.334C12.0929 12.7086 12.7086 12.0929 12.709 11.334V4.66699C12.709 3.90783 12.0931 3.29237 11.334 3.29199H6.62109C6.62199 3.30561 6.62499 3.31917 6.625 3.33301ZM4.66699 3.29199C3.9076 3.29199 3.29199 3.9076 3.29199 4.66699V11.334C3.29237 12.0931 3.90783 12.709 4.66699 12.709H5.37891C5.37795 12.6949 5.375 12.6804 5.375 12.666V3.33301C5.37501 3.31917 5.37801 3.30561 5.37891 3.29199H4.66699Z" fill="#262626"/></svg></span></button>
+      <div class="solo-home-center">
+        <div class="solo-home-mode-content">
+          <div class="solo-home-title">
+            <span class="task-row-svg" data-asset-icon="../../assets/icons/Doc-Default.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#171717" xmlns="http://www.w3.org/2000/svg"><path d="M14.0414 4.6665C14.0412 4.27545 13.7245 3.9585 13.3334 3.9585H10.0004C9.28843 3.9585 8.70263 4.49954 8.6322 5.19287L8.62537 5.3335V12.4517C9.10959 12.1669 9.65106 12.0415 10.1849 12.0415H13.3334C13.7246 12.0415 14.0414 11.7247 14.0414 11.3335V4.6665ZM1.95837 11.3335C1.95837 11.7246 2.27532 12.0413 2.66638 12.0415H5.8158C6.34988 12.0416 6.89104 12.1675 7.37537 12.4526V5.3335C7.37537 4.57421 6.75963 3.95867 6.00037 3.9585H2.66638C2.27544 3.95867 1.95855 4.27556 1.95837 4.6665V11.3335ZM15.2914 11.3335C15.2914 12.4151 14.415 13.2915 13.3334 13.2915H10.1849C9.8312 13.2915 9.50309 13.3769 9.22888 13.5464C8.94185 13.7238 8.7099 13.9779 8.55896 14.2798C8.45312 14.4914 8.23692 14.6254 8.00037 14.6255C7.76363 14.6255 7.54667 14.4915 7.4408 14.2798C7.28983 13.9779 7.05798 13.7238 6.77087 13.5464C6.49679 13.377 6.16935 13.2916 5.8158 13.2915H2.66638C1.58498 13.2913 0.708374 12.415 0.708374 11.3335V4.6665C0.70855 3.5852 1.58508 2.70867 2.66638 2.7085H6.00037C6.80156 2.70859 7.51797 3.06838 7.99939 3.63428C8.48088 3.06793 9.19874 2.7085 10.0004 2.7085H13.3334C14.4148 2.7085 15.2912 3.5851 15.2914 4.6665V11.3335Z" fill="#171717"/></svg></span>
+            <h3 class="solo-home-title-text" aria-label="WORK WITH TRAE">
+              <span class="solo-home-title-letter" aria-hidden="true"><span class="solo-home-title-letter-stack"><span>W</span><span>W</span></span></span><span class="solo-home-title-letter" aria-hidden="true"><span class="solo-home-title-letter-stack"><span>O</span><span>O</span></span></span><span class="solo-home-title-letter" aria-hidden="true"><span class="solo-home-title-letter-stack"><span>R</span><span>R</span></span></span><span class="solo-home-title-letter" aria-hidden="true"><span class="solo-home-title-letter-stack"><span>K</span><span>K</span></span></span><span class="solo-home-title-space" aria-hidden="true"> </span><span class="solo-home-title-letter" aria-hidden="true"><span class="solo-home-title-letter-stack"><span>W</span><span>W</span></span></span><span class="solo-home-title-letter" aria-hidden="true"><span class="solo-home-title-letter-stack"><span>I</span><span>I</span></span></span><span class="solo-home-title-letter" aria-hidden="true"><span class="solo-home-title-letter-stack"><span>T</span><span>T</span></span></span><span class="solo-home-title-letter" aria-hidden="true"><span class="solo-home-title-letter-stack"><span>H</span><span>H</span></span></span><span class="solo-home-title-space" aria-hidden="true"> </span><span class="solo-home-title-letter" aria-hidden="true"><span class="solo-home-title-letter-stack"><span>T</span><span>T</span></span></span><span class="solo-home-title-letter" aria-hidden="true"><span class="solo-home-title-letter-stack"><span>R</span><span>R</span></span></span><span class="solo-home-title-letter" aria-hidden="true"><span class="solo-home-title-letter-stack"><span>A</span><span>A</span></span></span><span class="solo-home-title-letter" aria-hidden="true"><span class="solo-home-title-letter-stack"><span>E</span><span>E</span></span></span>
+            </h3>
+          </div>
+
+          <div class="solo-chatbox" data-mode="work">
+            <section class="solo-chatbox-input" aria-label="work prompt composer">
+              <div class="solo-chatbox-prompt"><p>Help you with literature reviews, PPTs and Excel analysis - delivering professional results.</p></div>
+              <div class="solo-chatbox-action-row">
+                <div class="solo-chatbox-action-leading">
+                  <div class="solo-chatbox-action-tools">
+                    <button class="solo-chatbox-tool-button solo-chatbox-icon-button" type="button" aria-label="Slash command"><span class="solo-chatbox-svg" data-asset-icon="../../assets/icons/slash.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#262626" xmlns="http://www.w3.org/2000/svg"><path d="M12.7062 4.66675C12.7062 3.90827 12.0917 3.2937 11.3332 3.2937H4.6665C3.90804 3.2937 3.29346 3.90828 3.29346 4.66675V11.3334C3.29346 12.0919 3.90803 12.7065 4.6665 12.7065H11.3332C12.0917 12.7065 12.7062 12.0919 12.7062 11.3334V4.66675ZM8.77262 5.05347C8.92736 4.74399 9.30361 4.61829 9.61312 4.77287C9.92259 4.9276 10.0483 5.30385 9.89372 5.61336L7.22705 10.9467C7.07231 11.2562 6.69607 11.3819 6.38656 11.2273C6.07708 11.0726 5.95138 10.6963 6.10596 10.3868L8.77262 5.05347ZM13.9601 11.3334C13.9601 12.7841 12.7839 13.9604 11.3332 13.9604H4.6665C3.21585 13.9604 2.03955 12.7841 2.03955 11.3334V4.66675C2.03955 3.21608 3.21584 2.03979 4.6665 2.03979H11.3332C12.7839 2.03979 13.9601 3.21609 13.9601 4.66675V11.3334Z" fill="#262626"/></svg></span></button>
+                    <button class="solo-chatbox-tool-button solo-chatbox-icon-button" type="button" aria-label="Attach file"><span class="solo-chatbox-svg" data-asset-icon="../../assets/icons/paperclip_attachment_2.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#262626" xmlns="http://www.w3.org/2000/svg"><path d="M3.375 10V7.33301C3.37518 6.98798 3.65493 6.70801 4 6.70801C4.34507 6.70801 4.62482 6.98798 4.625 7.33301V10C4.625 11.864 6.13604 13.375 8 13.375C9.86396 13.375 11.375 11.864 11.375 10V4.66699C11.375 3.53941 10.4606 2.625 9.33301 2.625C8.2056 2.62518 7.29199 3.53952 7.29199 4.66699V10C7.29199 10.3912 7.60878 10.708 8 10.708C8.39122 10.708 8.70801 10.3912 8.70801 10V4.66699C8.70801 4.32192 8.98798 4.04217 9.33301 4.04199C9.67819 4.04199 9.95801 4.32181 9.95801 4.66699V10C9.95801 11.0816 9.08158 11.958 8 11.958C6.91842 11.958 6.04199 11.0816 6.04199 10V4.66699C6.04199 2.84916 7.51525 1.37518 9.33301 1.375C11.1509 1.375 12.625 2.84905 12.625 4.66699V10C12.625 12.5543 10.5543 14.625 8 14.625C5.44568 14.625 3.375 12.5543 3.375 10Z" fill="#262626"/></svg></span></button>
+                    <div class="solo-chatbox-plugin-anchor">
+                      <button aria-expanded="false" aria-haspopup="menu" aria-label="Available plugins" class="solo-chatbox-plugin-button" type="button">
+                        <span class="solo-chatbox-svg" data-asset-icon="../../assets/icons/figma.svg" data-solo-icon="icon.16.figma.brand" aria-hidden="true"><span class="asset-icon-image" aria-hidden="true" data-asset-icon="../../assets/icons/figma.svg"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><g clip-path="url(#svg_70f6b0af24__clip0_12756_24415)"><g clip-path="url(#svg_70f6b0af24__clip1_12756_24415)"><path d="M7.99902 7.99985C7.99902 6.68874 9.06569 5.62207 10.3768 5.62207C11.6879 5.62207 12.7546 6.68874 12.7546 7.99985C12.7546 9.31096 11.6879 10.3776 10.3768 10.3776C9.06569 10.3776 7.99902 9.31096 7.99902 7.99985Z" fill="#1ABCFE"/><path d="M3.26294 12.7332C3.26294 11.4221 4.32961 10.3555 5.64072 10.3555H7.99627V12.7332C7.99627 14.0444 6.92961 15.111 5.61849 15.111C4.30738 15.111 3.26294 14.0444 3.26294 12.7332Z" fill="#0ACF83"/><path d="M7.99902 0.888672V5.62201H10.3768C11.6879 5.62201 12.7546 4.55534 12.7546 3.24423C12.7546 1.93312 11.6879 0.888672 10.3768 0.888672H7.99902Z" fill="#FF7262"/><path d="M3.26294 3.26645C3.26294 4.57756 4.32961 5.64423 5.64072 5.64423H7.99627V0.888672H5.61849C4.30738 0.888672 3.26294 1.95534 3.26294 3.26645Z" fill="#F24E1E"/><path d="M3.26294 7.99985C3.26294 9.31096 4.32961 10.3776 5.64072 10.3776H7.99627V5.62207H5.61849C4.30738 5.62207 3.26294 6.68874 3.26294 7.99985Z" fill="#A259FF"/></g></g><defs><clipPath id="svg_70f6b0af24__clip0_12756_24415"><path fill="#fff" d="M0 0H16V16H0z"/></clipPath><clipPath id="svg_70f6b0af24__clip1_12756_24415"><path fill="#fff" transform="translate(.889 .889)" d="M0 0H14.222V14.222H0z"/></clipPath></defs></svg></span></span>
+                        <span class="solo-chatbox-svg" data-solo-icon="icon.16.google.color" aria-hidden="true"><span class="asset-icon-image" aria-hidden="true" data-asset-icon="../../assets/icons/google-color.svg"><svg focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M4.12 8c0-.43.07-.85.2-1.24L2.03 5.05A6.6 6.6 0 0 0 2.03 10.95l2.29-1.72A3.9 3.9 0 0 1 4.12 8Z" fill="#FBBC05"/>
+  <path d="M8.15 4.06c.96 0 1.83.33 2.51.88L12.65 3A6.56 6.56 0 0 0 2.03 5.05l2.3 1.71a4.02 4.02 0 0 1 3.82-2.7Z" fill="#EA4335"/>
+  <path d="M8.15 11.94a4.02 4.02 0 0 1-3.83-2.7l-2.29 1.72a6.56 6.56 0 0 0 10.57 2.05l-2.18-1.65c-.62.38-1.39.58-2.27.58Z" fill="#34A853"/>
+  <path d="M14.66 8c0-.39-.06-.82-.15-1.21H8.15v2.58h3.66a3.13 3.13 0 0 1-1.39 1.99l2.18 1.65c1.25-1.14 2.06-2.83 2.06-5.01Z" fill="#4285F4"/>
+</svg></span></span>
+                        <span class="solo-chatbox-svg" data-asset-icon="../../assets/icons/Github.svg" data-solo-icon="icon.16.github" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#262626" xmlns="http://www.w3.org/2000/svg"><path d="M7.99992 1.30029C11.6833 1.30029 14.6666 4.28363 14.6666 7.96696C14.6662 9.36379 14.2278 10.7253 13.4131 11.86C12.5984 12.9946 11.4484 13.8452 10.1249 14.292C9.79158 14.3586 9.66658 14.1503 9.66658 13.9753C9.66658 13.7503 9.67492 13.0336 9.67492 12.142C9.67492 11.517 9.46659 11.117 9.22492 10.9086C10.7083 10.742 12.2666 10.1753 12.2666 7.61696C12.2666 6.88363 12.0083 6.29196 11.5833 5.82529C11.6499 5.65863 11.8833 4.97529 11.5166 4.05863C11.5166 4.05863 10.9583 3.87529 9.68325 4.74196C9.14992 4.59196 8.58325 4.51696 8.01659 4.51696C7.44992 4.51696 6.88325 4.59196 6.34992 4.74196C5.07492 3.88363 4.51659 4.05863 4.51659 4.05863C4.14992 4.97529 4.38325 5.65863 4.44992 5.82529C4.02492 6.29196 3.76659 6.89196 3.76659 7.61696C3.76659 10.167 5.31659 10.742 6.79992 10.9086C6.60825 11.0753 6.43325 11.367 6.37492 11.8003C5.99159 11.9753 5.03325 12.2586 4.43325 11.2503C4.30825 11.0503 3.93325 10.5586 3.40825 10.567C2.84992 10.5753 3.18325 10.8836 3.41659 11.0086C3.69992 11.167 4.02492 11.7586 4.09992 11.9503C4.23325 12.3253 4.66659 13.042 6.34159 12.7336C6.34159 13.292 6.34992 13.817 6.34992 13.9753C6.34992 14.1503 6.22492 14.3503 5.89159 14.292C4.56378 13.85 3.40886 13.0011 2.59066 11.8658C1.77246 10.7305 1.33252 9.36638 1.33325 7.96696C1.33325 4.28363 4.31659 1.30029 7.99992 1.30029Z" fill="#262626"/></svg></span>
+                        <span class="solo-chatbox-plugin-count">+9</span>
+                      </button>
+                    </div>
+                  </div>
+                  <span class="solo-chatbox-action-divider" aria-hidden="true"></span>
+                  <span class="solo-chatbox-fast-pass" aria-label="Fast pass enabled"><span class="solo-chatbox-svg solo-chatbox-fast-pass-icon" data-asset-icon="../../assets/icons/fastpass.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#A1A1A1" xmlns="http://www.w3.org/2000/svg"><path d="M9.26658 0.600512C9.44391 0.401742 9.73104 0.343665 9.97165 0.457934C10.2123 0.572272 10.3487 0.83161 10.3066 1.09465L9.56052 5.75286H14C14.2364 5.75286 14.4511 5.89158 14.5478 6.10735C14.6445 6.32315 14.6047 6.57542 14.4472 6.75188L6.73337 15.3993C6.55603 15.5981 6.26891 15.6562 6.02829 15.5419C5.78769 15.4276 5.65127 15.1682 5.69333 14.9052L6.43943 10.247H1.99997C1.76353 10.247 1.54882 10.1083 1.45212 9.8925C1.35545 9.6767 1.39529 9.42443 1.55271 9.24797L9.26658 0.600512ZM3.33982 9.0468H7.14255C7.31826 9.0468 7.48559 9.12404 7.59958 9.25774C7.71351 9.39143 7.7631 9.56867 7.73533 9.74211L7.20115 13.0712L12.6601 6.95305H8.8574C8.68169 6.95305 8.51436 6.87582 8.40036 6.74211C8.28643 6.60842 8.23685 6.43118 8.26462 6.25774L8.79783 2.92766L3.33982 9.0468Z" fill="#A1A1A1"/></svg></span><span>Fast pass</span></span>
+                </div>
+                <div class="solo-chatbox-action-trailing">
+                  <div class="solo-chatbox-action-controls">
+                    <button class="solo-chatbox-model-button" type="button"><span>SOLO Auto Model</span><span class="solo-chatbox-svg solo-chatbox-small-icon" data-asset-icon="../../assets/icons/Down.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M10.2249 6.22429C10.469 5.98059 10.8647 5.98048 11.1087 6.22429C11.3528 6.46837 11.3528 6.86498 11.1087 7.10905L9.14876 9.06804C8.51414 9.70255 7.48548 9.70261 6.8509 9.06804L4.89094 7.10905C4.64687 6.86498 4.64687 6.46837 4.89094 6.22429C5.13502 5.98021 5.53163 5.98021 5.77571 6.22429L7.73469 8.18425C7.88112 8.33067 8.1185 8.3306 8.26497 8.18425L10.2249 6.22429Z" fill="#737373"/></svg></span></button>
+                    <button class="solo-chatbox-icon-button" type="button" aria-label="Voice input"><span class="solo-chatbox-svg" data-asset-icon="../../assets/icons/microphone.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#262626" xmlns="http://www.w3.org/2000/svg"><path d="M7.37588 14V13.2598C5.00179 13.0269 3.56866 11.4947 2.81924 10.3398C2.63161 10.0503 2.71437 9.66342 3.00381 9.47559C3.29332 9.28796 3.68023 9.37072 3.86806 9.66016C4.56507 10.7341 5.84777 12.042 8.00088 12.042C10.154 12.0419 11.4367 10.7341 12.1337 9.66016C12.3216 9.37067 12.7084 9.28785 12.9979 9.47559C13.2874 9.6634 13.3701 10.0503 13.1825 10.3398C12.4331 11.4946 10.9998 13.0268 8.62588 13.2598V14C8.62588 14.3451 8.34601 14.6249 8.00088 14.625C7.6557 14.625 7.37588 14.3452 7.37588 14ZM10.0429 4.66699C10.0429 3.53945 9.12839 2.62506 8.00088 2.625C6.87329 2.625 5.95888 3.53941 5.95888 4.66699V7.33301C5.95888 8.46057 6.87329 9.375 8.00088 9.375C9.12838 9.37494 10.0429 8.46053 10.0429 7.33301V4.66699ZM11.2929 7.33301C11.2929 9.15088 9.81874 10.6249 8.00088 10.625C6.18293 10.625 4.70888 9.15092 4.70888 7.33301V4.66699C4.70888 2.84905 6.18293 1.375 8.00088 1.375C9.81874 1.37506 11.2929 2.84909 11.2929 4.66699V7.33301Z" fill="#262626"/></svg></span></button>
+                    <button class="solo-chatbox-icon-button" type="button" aria-label="Voice mode"><span class="solo-chatbox-svg" data-asset-icon="../../assets/icons/voice-chat.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#262626" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.375C11.6589 1.375 14.625 4.34112 14.625 8C14.625 11.6589 11.6589 14.625 8 14.625C7.04596 14.625 6.13755 14.4228 5.31641 14.0586C5.285 14.0447 5.26455 14.0481 5.25879 14.0498L3.4668 14.5752C2.22222 14.9399 1.07254 13.7708 1.45801 12.5322L1.98828 10.8271L1.99023 10.8066C1.98942 10.7965 1.98596 10.7828 1.97852 10.7666C1.59076 9.9239 1.375 8.98625 1.375 8C1.375 4.34112 4.34112 1.375 8 1.375ZM8 2.625C5.03147 2.625 2.625 5.03147 2.625 8C2.625 8.80228 2.80034 9.56195 3.11426 10.2441C3.24568 10.5296 3.28488 10.8695 3.18262 11.1982L2.65137 12.9043C2.56261 13.19 2.82797 13.4592 3.11523 13.375L4.90723 12.8496C5.22348 12.757 5.54798 12.7939 5.82324 12.916L6.0752 13.0205C6.67209 13.2495 7.32078 13.375 8 13.375C10.9686 13.375 13.375 10.9686 13.375 8C13.375 5.03147 10.9686 2.625 8 2.625ZM7.95312 4.88379C8.2845 4.88379 8.55273 5.15203 8.55273 5.4834V10.8164C8.55273 11.1478 8.2845 11.417 7.95312 11.417C7.62187 11.4169 7.35352 11.1477 7.35352 10.8164V5.4834C7.35352 5.15211 7.62187 4.88392 7.95312 4.88379ZM10.4199 6.08691C10.7512 6.08691 11.0194 6.35527 11.0195 6.68652V9.35352C11.0194 9.68474 10.7512 9.95312 10.4199 9.95312C10.0887 9.95312 9.82049 9.68474 9.82031 9.35352V6.68652C9.82044 6.35527 10.0886 6.08691 10.4199 6.08691ZM5.59961 6.88379C5.93098 6.88379 6.19922 7.15203 6.19922 7.4834V8.81641C6.19922 9.14778 5.93098 9.41699 5.59961 9.41699C5.26835 9.41686 5 9.1477 5 8.81641V7.4834C5 7.15211 5.26835 6.88392 5.59961 6.88379Z" fill="#262626"/></svg></span></button>
+                  </div>
+                  <button class="solo-chatbox-send-button" type="button" aria-label="Send"><span class="solo-chatbox-svg" data-asset-icon="../../assets/icons/arrow_up.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#737373" xmlns="http://www.w3.org/2000/svg"><path d="M7.65576 2.14423C7.89827 1.98431 8.22841 2.01097 8.44189 2.2243L12.4419 6.2243C12.686 6.46838 12.686 6.86499 12.4419 7.10907C12.1978 7.35298 11.8012 7.35309 11.5571 7.10907L8.62451 4.17645V13.3337C8.62434 13.6787 8.34458 13.9587 7.99951 13.9587C7.65461 13.9585 7.37469 13.6786 7.37451 13.3337V4.17645L4.44189 7.10907C4.1978 7.35298 3.80115 7.35309 3.55713 7.10907C3.31326 6.86504 3.31327 6.46834 3.55713 6.2243L7.55713 2.2243L7.65576 2.14423Z" fill="#737373"/></svg></span></button>
+                </div>
+              </div>
+            </section>
+            <section class="solo-chatbox-canvas-row" aria-label="Runtime source">
+              <button class="solo-chatbox-picker-button" type="button"><span class="solo-chatbox-svg" data-asset-icon="../../assets/icons/computer-screen.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#171717" xmlns="http://www.w3.org/2000/svg"><path d="M8 12.54C9.46799 12.54 10.8815 12.7857 12.2031 13.2402C12.5295 13.3525 12.7031 13.7088 12.5908 14.0352C12.4784 14.3612 12.1231 14.5349 11.7969 14.4229C10.6039 14.0125 9.32749 13.79 8 13.79C6.67253 13.79 5.39613 14.0125 4.20312 14.4229C3.87692 14.5349 3.52159 14.3612 3.40918 14.0352C3.29692 13.7088 3.4705 13.3525 3.79688 13.2402C5.11847 12.7857 6.53203 12.54 8 12.54ZM12 2.54004C13.4498 2.54004 14.625 3.7153 14.625 5.16504V9.16504C14.6249 10.6147 13.4497 11.79 12 11.79H4C2.55034 11.79 1.37513 10.6147 1.375 9.16504V5.16504C1.375 3.71529 2.55026 2.54004 4 2.54004H12ZM4 3.79004C3.24061 3.79004 2.625 4.40565 2.625 5.16504V9.16504C2.62513 9.92434 3.24069 10.54 4 10.54H12C12.7593 10.54 13.3749 9.92435 13.375 9.16504V5.16504C13.375 4.40564 12.7594 3.79004 12 3.79004H4Z" fill="#171717"/></svg></span><span>Local</span><span class="solo-chatbox-svg solo-chatbox-small-icon" data-asset-icon="../../assets/icons/Down.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#171717" xmlns="http://www.w3.org/2000/svg"><path d="M10.2249 6.22429C10.469 5.98059 10.8647 5.98048 11.1087 6.22429C11.3528 6.46837 11.3528 6.86498 11.1087 7.10905L9.14876 9.06804C8.51414 9.70255 7.48548 9.70261 6.8509 9.06804L4.89094 7.10905C4.64687 6.86498 4.64687 6.46837 4.89094 6.22429C5.13502 5.98021 5.53163 5.98021 5.77571 6.22429L7.73469 8.18425C7.88112 8.33067 8.1185 8.3306 8.26497 8.18425L10.2249 6.22429Z" fill="#171717"/></svg></span></button>
+              <button class="solo-chatbox-picker-button" type="button"><span class="solo-chatbox-svg" data-asset-icon="../../assets/icons/Folder.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#171717" xmlns="http://www.w3.org/2000/svg"><path d="M1.375 10.6666V4.66663C1.375 3.21688 2.55026 2.04163 4 2.04163H5.95312C6.60779 2.04164 7.21883 2.36901 7.58203 2.9137L8.12402 3.7262L8.17773 3.79651C8.31129 3.95105 8.50671 4.04163 8.71387 4.04163H12C13.4498 4.04163 14.625 5.21689 14.625 6.66663V10.6666C14.625 12.1164 13.4498 13.2916 12 13.2916H4C2.55026 13.2916 1.375 12.1164 1.375 10.6666ZM2.625 10.6666C2.625 11.426 3.2406 12.0416 4 12.0416H12C12.7594 12.0416 13.375 11.426 13.375 10.6666V6.66663C13.375 5.90723 12.7594 5.29163 12 5.29163H8.71387C8.05911 5.29163 7.44718 4.9644 7.08398 4.41956L6.54199 3.60706C6.41064 3.41014 6.18988 3.29164 5.95312 3.29163H4C3.24061 3.29163 2.625 3.90724 2.625 4.66663V10.6666Z" fill="#171717"/></svg></span><span>Solo workspace</span><span class="solo-chatbox-svg solo-chatbox-small-icon" data-asset-icon="../../assets/icons/Down.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#171717" xmlns="http://www.w3.org/2000/svg"><path d="M10.2249 6.22429C10.469 5.98059 10.8647 5.98048 11.1087 6.22429C11.3528 6.46837 11.3528 6.86498 11.1087 7.10905L9.14876 9.06804C8.51414 9.70255 7.48548 9.70261 6.8509 9.06804L4.89094 7.10905C4.64687 6.86498 4.64687 6.46837 4.89094 6.22429C5.13502 5.98021 5.53163 5.98021 5.77571 6.22429L7.73469 8.18425C7.88112 8.33067 8.1185 8.3306 8.26497 8.18425L10.2249 6.22429Z" fill="#171717"/></svg></span></button>
+            </section>
+          </div>
+
+          <div class="solo-home-suggestion-row" aria-label="WORK WITH TRAE suggestions">
+            <button class="solo-home-suggestion-chip" type="button"><span class="task-row-svg" data-asset-icon="../../assets/icons/search-document.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 16 16" fill="#171717" xmlns="http://www.w3.org/2000/svg"><path d="M3.81738 8.70801C5.3496 8.70835 6.59166 9.95113 6.5918 11.4834C6.59172 12.0144 6.43851 12.509 6.17969 12.9307L7.11621 13.8984C7.35599 14.1464 7.34927 14.5422 7.10156 14.7822C6.85352 15.0222 6.45779 15.0156 6.21777 14.7676L5.30273 13.8223C4.87298 14.0958 4.36451 14.2577 3.81738 14.2578C2.28492 14.2578 1.0422 13.0158 1.04199 11.4834C1.04212 9.95092 2.28487 8.70801 3.81738 8.70801ZM7.83789 1.375C8.53398 1.375 9.20207 1.65135 9.69434 2.14355L12.5225 4.97266C13.0145 5.46484 13.2909 6.13212 13.291 6.82812V12C13.291 13.4498 12.1158 14.625 10.666 14.625H10C9.65493 14.6249 9.375 14.3451 9.375 14C9.375 13.6549 9.65493 13.3751 10 13.375H10.666C11.4254 13.375 12.041 12.7594 12.041 12V6.82812C12.041 6.75963 12.0344 6.69192 12.0244 6.625H9.33398C8.6206 6.625 8.04199 6.04636 8.04199 5.33301V2.6416C7.97483 2.63155 7.9066 2.625 7.83789 2.625H5.33301C4.57373 2.62513 3.95801 3.24069 3.95801 4V6.66699C3.95783 7.01202 3.67808 7.29199 3.33301 7.29199C2.98805 7.29186 2.70818 7.01194 2.70801 6.66699V4C2.70801 2.55034 3.88338 1.37513 5.33301 1.375H7.83789ZM3.81738 9.95801C2.97523 9.95801 2.29212 10.6413 2.29199 11.4834C2.2922 12.3255 2.97528 13.0078 3.81738 13.0078C4.24395 13.0076 4.62884 12.8329 4.90625 12.5498C5.17607 12.2742 5.34169 11.8988 5.3418 11.4834C5.34167 10.6415 4.65925 9.95835 3.81738 9.95801ZM9.29199 5.33301C9.29199 5.35602 9.31097 5.375 9.33398 5.375H11.1572L9.29199 3.50879V5.33301Z" fill="#171717"/></svg></span><span>Web Reading</span></button>
+            <button class="solo-home-suggestion-chip" type="button"><span class="task-row-svg" data-asset-icon="../../assets/icons/showcase_icon_research.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 18 18" fill="#171717" xmlns="http://www.w3.org/2000/svg"><path d="M14.375 4.625H3.625V11.5C3.625 12.3975 4.35253 13.125 5.25 13.125H12.75C13.6475 13.125 14.375 12.3975 14.375 11.5V4.625ZM15.625 11.5C15.625 13.0879 14.3379 14.375 12.75 14.375H5.25C3.66219 14.375 2.375 13.0879 2.375 11.5V4.625H1.5C1.15482 4.625 0.875 4.34518 0.875 4C0.875 3.65482 1.15482 3.375 1.5 3.375H16.5C16.8452 3.375 17.125 3.65482 17.125 4C17.125 4.34518 16.8452 4.625 16.5 4.625H15.625V11.5Z" fill="#171717"/><path d="M8.375 10.75V7C8.375 6.65482 8.65482 6.375 9 6.375C9.34518 6.375 9.625 6.65482 9.625 7V10.75C9.625 11.0952 9.34518 11.375 9 11.375C8.65482 11.375 8.375 11.0952 8.375 10.75Z" fill="#171717"/><path d="M5.375 10.75V10C5.375 9.65482 5.65482 9.375 6 9.375C6.34518 9.375 6.625 9.65482 6.625 10V10.75C6.625 11.0952 6.34518 11.375 6 11.375C5.65482 11.375 5.375 11.0952 5.375 10.75Z" fill="#171717"/><path d="M11.375 10.75V8.5C11.375 8.15482 11.6548 7.875 12 7.875C12.3452 7.875 12.625 8.15482 12.625 8.5V10.75C12.625 11.0952 12.3452 11.375 12 11.375C11.6548 11.375 11.375 11.0952 11.375 10.75Z" fill="#171717"/><path d="M8.90141 13.6048C9.18859 13.4135 9.57718 13.4915 9.7686 13.7786L11.0186 15.6536C11.2099 15.9408 11.1319 16.3294 10.8448 16.5208C10.5577 16.712 10.17 16.6339 9.97856 16.347L8.72758 14.472C8.5363 14.1848 8.61428 13.7962 8.90141 13.6048Z" fill="#171717"/><path d="M8.23051 13.7785C8.42198 13.4916 8.80961 13.4135 9.09672 13.6047C9.38385 13.7961 9.46184 14.1847 9.27055 14.4719L8.02055 16.3469C7.82913 16.634 7.44054 16.712 7.15336 16.5207C6.86624 16.3293 6.78826 15.9407 6.97954 15.6535L8.23051 13.7785Z" fill="#171717"/></svg></span><span>Research and Analysis</span></button>
+            <button class="solo-home-suggestion-chip" type="button"><span class="task-row-svg" data-asset-icon="../../assets/icons/showcase_icon_data_mining.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 18 18" fill="#171717" xmlns="http://www.w3.org/2000/svg"><path d="M14.3672 4.125C14.3672 3.84886 14.1433 3.625 13.8672 3.625H12.1201C11.8439 3.625 11.6201 3.84884 11.6201 4.125V14.375H13.8672C14.1433 14.375 14.3672 14.1511 14.3672 13.875V4.125ZM3.625 13.875C3.625 14.1511 3.84886 14.375 4.125 14.375H6.37207V11.875H4.125C3.84886 11.875 3.625 12.0989 3.625 12.375V13.875ZM7.62207 14.375H10.3701V7.75H8.12207C7.84616 7.75023 7.62207 7.97401 7.62207 8.25V14.375ZM15.6172 13.875C15.6172 14.8415 14.8337 15.625 13.8672 15.625H4.125C3.15849 15.625 2.375 14.8415 2.375 13.875V12.375C2.375 11.4085 3.15849 10.625 4.125 10.625H6.37207V8.25C6.37207 7.28368 7.15578 6.50023 8.12207 6.5H10.3701V4.125C10.3701 3.15852 11.1535 2.375 12.1201 2.375H13.8672C14.8337 2.375 15.6172 3.15849 15.6172 4.125V13.875Z" fill="#171717"/></svg></span><span>Data Mining</span></button>
+            <button class="solo-home-suggestion-chip" type="button"><span class="task-row-svg" data-asset-icon="../../assets/icons/showcase_icon_content_creation.svg" aria-hidden="true"><svg focusable="false" width="24" height="24" viewBox="0 0 18 18" fill="#171717" xmlns="http://www.w3.org/2000/svg"><path d="M11.9326 2.9342C12.798 2.0688 14.202 2.06882 15.0674 2.9342C15.9323 3.7996 15.9325 5.20272 15.0674 6.06799L12.3506 8.78381C11.8115 9.32285 11.0806 9.6255 10.3184 9.6256H9C8.65482 9.6256 8.375 9.34578 8.375 9.0006V7.68322C8.375 6.92084 8.6778 6.18915 9.2168 5.65002L11.9326 2.9342ZM9.625 8.3756H10.3184C10.7492 8.3755 11.1622 8.20454 11.4668 7.90002L14.1826 5.1842C14.5599 4.80695 14.5598 4.19522 14.1826 3.81799C13.8054 3.44087 13.1946 3.44086 12.8174 3.81799L10.1006 6.53381C9.79598 6.83855 9.625 7.25241 9.625 7.68322V8.3756Z" fill="#171717"/><path d="M12.875 13.5C12.875 13.0167 12.4833 12.625 12 12.625H4.5C3.3264 12.625 2.375 11.6736 2.375 10.5C2.375 9.32637 3.3264 8.375 4.5 8.375H6C6.34518 8.375 6.625 8.65482 6.625 9C6.625 9.34518 6.34518 9.625 6 9.625H4.5C4.01674 9.625 3.625 10.0167 3.625 10.5C3.625 10.9833 4.01674 11.375 4.5 11.375H12C13.1736 11.375 14.125 12.3264 14.125 13.5C14.125 14.6736 13.1736 15.625 12 15.625H9C8.65482 15.625 8.375 15.3452 8.375 15C8.375 14.6548 8.65482 14.375 9 14.375H12C12.4833 14.375 12.875 13.9833 12.875 13.5Z" fill="#171717"/></svg></span><span>Content Creation</span></button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+    <div id="traework-interaction-root" aria-hidden="true"></div>
+    <script>
+      (function () {
+        var rootElement = document.getElementById('traework-interaction-root');
+        if (rootElement) rootElement.dataset.interactionMounted = 'true';
+
+        var interactiveSelectors = [
+          '[data-nav]',
+          '[data-screen-trigger]',
+          '[role="tab"]',
+          '.tab',
+          '.nav-item',
+          '.sidebar-nav a',
+          '.sidebar a',
+          '.mobile-nav a'
+        ];
+
+        function getActiveClass(element) {
+          var classes = Array.prototype.slice.call(element.classList || []);
+          return classes.find(function (name) { return name.endsWith('--active'); }) ||
+            classes.find(function (name) { return name === 'is-active' || name === 'active' || name === 'selected'; }) ||
+            (element.classList && element.classList.contains('tab') ? 'tab--active' : null) ||
+            (element.classList && element.classList.contains('nav-item') ? 'nav-item--active' : null);
+        }
+
+        function activateWithinGroup(element, activeClass) {
+          var group = element.closest('[role="tablist"], nav, .sidebar, .sidebar-nav, .mobile-nav') || element.parentElement;
+          if (!group || !activeClass) return;
+
+          group.querySelectorAll(interactiveSelectors.join(',')).forEach(function (item) {
+            item.classList.remove(activeClass);
+            if (item.getAttribute('role') === 'tab') item.setAttribute('aria-selected', 'false');
+          });
+
+          element.classList.add(activeClass);
+          if (element.getAttribute('role') === 'tab') element.setAttribute('aria-selected', 'true');
+        }
+
+        function handleClick(event) {
+          var target = event.currentTarget;
+          var href = target.getAttribute('href');
+          if (href === '#') event.preventDefault();
+          activateWithinGroup(target, getActiveClass(target));
+        }
+
+        Array.prototype.slice.call(document.querySelectorAll(interactiveSelectors.join(','))).forEach(function (element) {
+          if (element.id !== 'traework-interaction-root') element.addEventListener('click', handleClick);
+        });
+      }());
+    </script>
+  </body>
+</html>

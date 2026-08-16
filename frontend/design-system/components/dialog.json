@@ -1,0 +1,182 @@
+{
+  "schemaVersion": 2,
+  "slug": "dialog",
+  "name": "Dialog / Modal",
+  "category": "overlay",
+  "sourceKind": "preview-contract",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    {
+      "type": "Dialog / Modal",
+      "evidence": "Inferred from preview/component-dialog.html title and component CSS selectors."
+    }
+  ],
+  "variantDimensions": [
+    {
+      "name": "style-state-density",
+      "values": [
+        ".ds-backdrop",
+        ".ds-dialog",
+        ".ds-dialog--form",
+        ".ds-dialog__head",
+        ".ds-dialog__title",
+        ".ds-dialog__close",
+        ".ds-dialog__close:hover",
+        ".ds-dialog__body"
+      ],
+      "evidence": "Representative selectors from preview/component-dialog.html."
+    }
+  ],
+  "coverageMatrix": {
+    "source": "preview/component-dialog.html",
+    "representativeSelectors": [
+      ".ds-backdrop",
+      ".ds-dialog",
+      ".ds-dialog--form",
+      ".ds-dialog__head",
+      ".ds-dialog__title",
+      ".ds-dialog__close",
+      ".ds-dialog__close:hover",
+      ".ds-dialog__body",
+      ".ds-dialog__foot",
+      ".ds-drawer",
+      ".ds-drawer__head",
+      ".ds-drawer__body",
+      ".dialog-form",
+      ".dialog-field",
+      ".dialog-field__label",
+      ".dialog-field__hint",
+      ".dialog-grid",
+      ".dialog-form .ds-textarea"
+    ],
+    "cssRuleCount": 22
+  },
+  "sizeDeltas": [],
+  "stateCoverage": {
+    "states": [
+      "hover",
+      "focus"
+    ]
+  },
+  "representativeVariants": [
+    {
+      "selector": ".ds-backdrop",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-dialog",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-dialog--form",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-dialog__head",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    }
+  ],
+  "anatomy": {
+    "source": "preview/component-dialog.html",
+    "selectors": [
+      ".ds-backdrop",
+      ".ds-dialog",
+      ".ds-dialog--form",
+      ".ds-dialog__head",
+      ".ds-dialog__title",
+      ".ds-dialog__close",
+      ".ds-dialog__close:hover",
+      ".ds-dialog__body"
+    ]
+  },
+  "structurePatterns": [],
+  "usageHints": [
+    "Copy component markup from preview/component-dialog.html; keep page/demo-only styles outside shared component CSS.",
+    "Use colors_and_type.css + components.css as the executable rendering contract.",
+    "Use preview/component-dialog.html and components.css as the executable rendering contract."
+  ],
+  "doNotInvent": [
+    "Do not add variants or states that are absent from the preview marker block without updating the component contract.",
+    "Do not add visual states or component parts not present in the preview or components.css.",
+    "Do not treat this inferred JSON as original Figma evidence."
+  ],
+  "unknowns": [
+    "Original design evidence was not available during this repair pass."
+  ],
+  "tokensConsumed": [
+    "--bg-base-default",
+    "--bg-overlay-l2",
+    "--bg-overlay-l4",
+    "--body-base-font-size",
+    "--body-base-letter-spacing",
+    "--body-base-line-height",
+    "--border-neutral-l1",
+    "--font-weight-medium",
+    "--heading-sm-font-size",
+    "--heading-sm-font-weight",
+    "--heading-sm-line-height",
+    "--icon-default",
+    "--icon-secondary",
+    "--radius-12",
+    "--radius-8",
+    "--spacer-12",
+    "--spacer-16",
+    "--spacer-20",
+    "--spacer-24",
+    "--spacer-32",
+    "--spacer-6",
+    "--spacer-8",
+    "--text-default",
+    "--text-secondary",
+    "--text-tertiary"
+  ],
+  "domAnatomy": {
+    "root": {
+      "tag": "preview-fragment",
+      "source": "preview/component-dialog.html",
+      "classes": [
+        "ds-backdrop",
+        "ds-dialog",
+        "ds-dialog__body",
+        "ds-dialog__close",
+        "ds-dialog__foot",
+        "ds-dialog__head",
+        "ds-dialog__title",
+        "ds-dialog--form",
+        "ds-drawer",
+        "ds-drawer__body",
+        "ds-drawer__head",
+        "ds-input",
+        "ds-select",
+        "ds-textarea"
+      ]
+    },
+    "componentCssMarker": {
+      "start": "/* @component-css-start */",
+      "end": "/* @component-css-end */"
+    }
+  },
+  "provenance": {
+    "preview": "preview/component-dialog.html",
+    "source": "preview/component-dialog.html",
+    "css": {
+      "file": "components.css",
+      "marker": "dialog"
+    },
+    "contractBasis": "Derived from the component preview marker block and rendered .ds-* markup; original design evidence was not available."
+  },
+  "assetsConsumed": [
+    "assets/icons/calendar.svg",
+    "assets/icons/Close.svg",
+    "assets/icons/Down.svg",
+    "assets/icons/email.svg"
+  ]
+}

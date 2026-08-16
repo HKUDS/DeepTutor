@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 2,
+  "slug": "menu",
+  "name": "Menu",
+  "category": "navigation",
+  "sourceKind": "preview-contract",
+  "confidence": "medium",
+  "semanticTypeCandidates": [
+    {
+      "type": "Menu",
+      "evidence": "Inferred from preview/component-menu.html title and component CSS selectors."
+    }
+  ],
+  "variantDimensions": [
+    {
+      "name": "style-state-density",
+      "values": [
+        ".ds-menu",
+        ".ds-menu__item",
+        ".ds-menu__item .icon",
+        ".ds-menu__icon",
+        ".ds-menu__item:hover",
+        ".ds-menu__item--danger",
+        ".ds-menu__divider",
+        ".ds-menu__shortcut"
+      ],
+      "evidence": "Representative selectors from preview/component-menu.html."
+    }
+  ],
+  "coverageMatrix": {
+    "source": "preview/component-menu.html",
+    "representativeSelectors": [
+      ".ds-menu",
+      ".ds-menu__item",
+      ".ds-menu__item .icon",
+      ".ds-menu__icon",
+      ".ds-menu__item:hover",
+      ".ds-menu__item--danger",
+      ".ds-menu__divider",
+      ".ds-menu__shortcut",
+      ".ds-menu__group-label",
+      ".ds-popover .ds-menu"
+    ],
+    "cssRuleCount": 11
+  },
+  "sizeDeltas": [],
+  "stateCoverage": {
+    "states": [
+      "hover"
+    ]
+  },
+  "representativeVariants": [
+    {
+      "selector": ".ds-menu",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-menu__item",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-menu__item .icon",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    },
+    {
+      "selector": ".ds-menu__icon",
+      "whySelected": "Representative selector present in preview component CSS.",
+      "traits": [],
+      "childrenDigest": []
+    }
+  ],
+  "anatomy": {
+    "source": "preview/component-menu.html",
+    "selectors": [
+      ".ds-menu",
+      ".ds-menu__item",
+      ".ds-menu__item .icon",
+      ".ds-menu__icon",
+      ".ds-menu__item:hover",
+      ".ds-menu__item--danger",
+      ".ds-menu__divider",
+      ".ds-menu__shortcut"
+    ]
+  },
+  "structurePatterns": [],
+  "usageHints": [
+    "Copy component markup from preview/component-menu.html; keep page/demo-only styles outside shared component CSS.",
+    "Use colors_and_type.css + components.css as the executable rendering contract.",
+    "Use preview/component-menu.html and components.css as the executable rendering contract."
+  ],
+  "doNotInvent": [
+    "Do not add variants or states that are absent from the preview marker block without updating the component contract.",
+    "Do not add visual states or component parts not present in the preview or components.css.",
+    "Do not treat this inferred JSON as original Figma evidence."
+  ],
+  "unknowns": [
+    "Original design evidence was not available during this repair pass."
+  ],
+  "tokensConsumed": [
+    "--bg-menu",
+    "--bg-overlay-l2",
+    "--body-base-font-family",
+    "--body-base-font-size",
+    "--body-base-font-weight",
+    "--body-base-line-height",
+    "--body-md-font-family",
+    "--body-md-font-size",
+    "--body-md-font-weight",
+    "--body-md-letter-spacing",
+    "--body-md-line-height",
+    "--border-neutral-l1",
+    "--icon-secondary",
+    "--radius-12",
+    "--radius-8",
+    "--spacer-2",
+    "--spacer-4",
+    "--spacer-6",
+    "--spacer-8",
+    "--status-error-default",
+    "--text-default",
+    "--text-tertiary"
+  ],
+  "domAnatomy": {
+    "root": {
+      "tag": "preview-fragment",
+      "source": "preview/component-menu.html",
+      "classes": [
+        "ds-menu",
+        "ds-menu__divider",
+        "ds-menu__group-label",
+        "ds-menu__icon",
+        "ds-menu__item",
+        "ds-menu__item--danger",
+        "ds-menu__shortcut",
+        "ds-popover"
+      ]
+    },
+    "componentCssMarker": {
+      "start": "/* @component-css-start */",
+      "end": "/* @component-css-end */"
+    }
+  },
+  "provenance": {
+    "preview": "preview/component-menu.html",
+    "source": "preview/component-menu.html",
+    "css": {
+      "file": "components.css",
+      "marker": "menu"
+    },
+    "contractBasis": "Derived from the component preview marker block and rendered .ds-* markup; original design evidence was not available."
+  },
+  "assetsConsumed": [
+    "assets/icons/authentication.svg",
+    "assets/icons/Copy.svg",
+    "assets/icons/cube.svg",
+    "assets/icons/Delete.svg",
+    "assets/icons/edit.svg",
+    "assets/icons/Link.svg",
+    "assets/icons/settings.svg",
+    "assets/icons/Table.svg",
+    "assets/icons/user_add.svg"
+  ]
+}
