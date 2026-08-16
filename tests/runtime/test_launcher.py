@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from deeptutor.runtime import launcher
+from deeptutor.runtime.home import validate_runtime_home
 
 
 class _FakeTty:
@@ -36,6 +37,28 @@ def test_packaged_web_cache_replaces_next_public_placeholders(tmp_path: Path) ->
         "const api='http://localhost:8001';"
     )
     assert "auth='true'" in (runtime / ".next" / "static" / "app.js").read_text(encoding="utf-8")
+
+
+def test_runtime_home_rejects_project_data_paths(monkeypatch, tmp_path: Path) -> None:
+    package_root = tmp_path / "package"
+    monkeypatch.setattr("deeptutor.runtime.home.PACKAGE_ROOT", package_root)
+
+    with pytest.raises(ValueError, match="Invalid DeepTutor runtime home"):
+        validate_runtime_home(package_root / "data")
+    with pytest.raises(ValueError, match="Invalid DeepTutor runtime home"):
+        validate_runtime_home(package_root / "data" / "user")
+
+
+def test_start_does_not_create_nested_data_tree(monkeypatch, tmp_path: Path) -> None:
+    package_root = tmp_path / "package"
+    bad_home = package_root / "data" / "user"
+    monkeypatch.setattr("deeptutor.runtime.home.PACKAGE_ROOT", package_root)
+    monkeypatch.setattr(launcher, "get_runtime_home", lambda _home=None: bad_home)
+
+    with pytest.raises(SystemExit, match="Invalid DeepTutor runtime home"):
+        launcher.start(bad_home)
+
+    assert not bad_home.exists()
 
 
 def test_packaged_web_cache_refreshes_when_public_settings_change(tmp_path: Path) -> None:
@@ -292,3 +315,180 @@ def test_ensure_web_dependencies_surfaces_a_failed_install(
         launcher._ensure_web_dependencies(source, "npm")
 
     assert "npm ci" in str(excinfo.value)
+
+
+def test_source_frontend_defaults_to_cached_production_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "web"
+    (source / "node_modules").mkdir(parents=True)
+    builds: list[tuple[Path, str, str, bool]] = []
+
+    monkeypatch.setattr(launcher, "_packaged_web_dir", lambda: None)
+    monkeypatch.setattr(launcher, "_source_web_dir", lambda _home: source)
+    monkeypatch.setattr(launcher.shutil, "which", lambda name: f"/bin/{name}")
+    monkeypatch.setattr(
+        launcher,
+        "_ensure_source_production_build",
+        lambda path, npm, *, api_base, auth_enabled: builds.append(
+            (path, npm, api_base, auth_enabled)
+        ),
+    )
+
+    runtime = launcher._resolve_frontend(
+        tmp_path,
+        3782,
+        api_base="http://localhost:8001",
+        auth_enabled=True,
+    )
+
+    assert runtime.kind == "source-production"
+    standalone = source / launcher.SOURCE_PRODUCTION_DIST_DIR / "standalone"
+    assert runtime.command == ["/bin/node", str(standalone / "server.js")]
+    assert runtime.cwd == standalone
+    assert builds == [(source, "/bin/npm", "http://localhost:8001", True)]
+
+
+def test_source_frontend_dev_mode_is_explicit_and_skips_production_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "web"
+    (source / "node_modules").mkdir(parents=True)
+
+    monkeypatch.setattr(launcher, "_packaged_web_dir", lambda: None)
+    monkeypatch.setattr(launcher, "_source_web_dir", lambda _home: source)
+    monkeypatch.setattr(launcher.shutil, "which", lambda name: f"/bin/{name}")
+    monkeypatch.setattr(
+        launcher,
+        "_ensure_source_production_build",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("--dev must not build the production frontend")
+        ),
+    )
+
+    runtime = launcher._resolve_frontend(
+        tmp_path,
+        3782,
+        api_base="http://localhost:8001",
+        auth_enabled=False,
+        dev=True,
+    )
+
+    assert runtime.kind == "source"
+    assert runtime.command == ["/bin/npm", "run", "dev", "--", "--port", "3782"]
+
+
+def test_source_production_build_is_reused_until_an_input_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "web"
+    source.mkdir()
+    (source / "package.json").write_text('{"scripts":{"build":"next build"}}', encoding="utf-8")
+    next_env = source / "next-env.d.ts"
+    next_env.write_text("// developer dist types\n", encoding="utf-8")
+    app = source / "app"
+    app.mkdir()
+    page = app / "page.tsx"
+    page.write_text("export default function Page() { return null; }", encoding="utf-8")
+    calls: list[tuple[list[str], Path, str]] = []
+
+    def _run(command, cwd, env, **_kwargs):
+        calls.append((list(command), Path(cwd), env["DEEPTUTOR_NEXT_DIST_DIR"]))
+        next_env.write_text("// production dist types\n", encoding="utf-8")
+        dist = source / launcher.SOURCE_PRODUCTION_DIST_DIR
+        (dist / "standalone").mkdir(parents=True, exist_ok=True)
+        (dist / "BUILD_ID").write_text(f"build-{len(calls)}", encoding="utf-8")
+        (dist / "standalone" / "server.js").write_text("", encoding="utf-8")
+        return _CompletedProcess(0)
+
+    monkeypatch.setattr(launcher.subprocess, "run", _run)
+
+    for _ in range(2):
+        launcher._ensure_source_production_build(
+            source,
+            "npm",
+            api_base="http://localhost:8001",
+            auth_enabled=False,
+        )
+
+    page.write_text("export default function Page() { return <main />; }", encoding="utf-8")
+    launcher._ensure_source_production_build(
+        source,
+        "npm",
+        api_base="http://localhost:8001",
+        auth_enabled=False,
+    )
+
+    assert calls == [
+        (["npm", "run", "build"], source, launcher.SOURCE_PRODUCTION_DIST_DIR),
+        (["npm", "run", "build"], source, launcher.SOURCE_PRODUCTION_DIST_DIR),
+    ]
+    assert next_env.read_text(encoding="utf-8") == "// developer dist types\n"
+
+
+@pytest.mark.parametrize("resolved_backend_port", [8001, 8123])
+def test_start_uses_ipv4_loopback_for_frontend_proxy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    resolved_backend_port: int,
+) -> None:
+    from deeptutor.services import config as config_module
+    from deeptutor.services import setup as setup_module
+
+    settings_dir = tmp_path / "data" / "user" / "settings"
+    settings = config_module.LaunchSettings(
+        backend_port=8001,
+        frontend_port=3782,
+        language="en",
+        source="test",
+        settings_dir=settings_dir,
+        interface_json_path=settings_dir / "interface.json",
+        system_json_path=settings_dir / "system.json",
+    )
+    captured_env: dict[str, str] = {}
+
+    monkeypatch.setattr(launcher, "_relax_console_encoding", lambda: None)
+    monkeypatch.setattr(launcher, "_reset_runtime_singletons", lambda: None)
+    monkeypatch.setattr(config_module, "ensure_runtime_settings_files", lambda: None)
+    monkeypatch.setattr(config_module, "load_launch_settings", lambda _home: settings)
+    monkeypatch.setattr(
+        config_module,
+        "export_runtime_settings_to_env",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(config_module, "load_auth_settings", lambda: {"enabled": False})
+    monkeypatch.setattr(config_module, "get_ws_max_size", lambda: 1024)
+    monkeypatch.setattr(setup_module, "init_user_directories", lambda _home: None)
+    monkeypatch.setattr(launcher, "resolve_language", lambda: "en")
+    monkeypatch.setattr(launcher, "print_banner", lambda **_kwargs: None)
+    monkeypatch.setattr(launcher, "_log", lambda _message: None)
+    monkeypatch.setattr(
+        launcher,
+        "_resolve_frontend",
+        lambda *_args, **_kwargs: launcher.FrontendRuntime("source", ["npm"], tmp_path),
+    )
+    monkeypatch.setattr(launcher, "_detect_existing_source_frontend", lambda _runtime: None)
+    monkeypatch.setattr(
+        launcher,
+        "_resolve_port_conflicts",
+        lambda **_kwargs: (resolved_backend_port, 3782),
+    )
+    monkeypatch.setattr(launcher, "_install_signal_handlers", lambda _callback: None)
+    monkeypatch.setattr(launcher.atexit, "register", lambda _callback: None)
+    monkeypatch.setattr(launcher, "_wait_for_http", lambda **_kwargs: None)
+    monkeypatch.setattr(launcher, "_terminate", lambda _process: None)
+
+    def _capture_spawn(_command, *, cwd, env, name):
+        assert cwd == tmp_path
+        if name == "backend":
+            return launcher.ManagedProcess("backend", object(), None)
+        assert name == "frontend"
+        captured_env.update(env)
+        raise RuntimeError("captured launch environment")
+
+    monkeypatch.setattr(launcher, "_spawn", _capture_spawn)
+
+    with pytest.raises(RuntimeError, match="captured launch environment"):
+        launcher.start(tmp_path)
+
+    assert captured_env["DEEPTUTOR_API_BASE_URL"] == (f"http://127.0.0.1:{resolved_backend_port}")

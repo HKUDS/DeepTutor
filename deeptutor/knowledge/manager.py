@@ -1004,27 +1004,33 @@ class KnowledgeBaseManager:
         except Exception as e:
             logger.warning(f"Failed to save default to centralized config: {e}")
 
-    def get_default(self) -> str | None:
+    def get_default(self, *, available_names: list[str] | None = None) -> str | None:
         """
         Get default knowledge base name.
 
         Priority:
         1. Canonical KB config service (`data/knowledge_bases/kb_config.json`)
         2. First knowledge base in the list (auto-fallback)
+
+        Args:
+            available_names: An already-reconciled knowledge-base list. Passing
+                this avoids rescanning every index when the caller just listed
+                the available knowledge bases.
         """
+        kb_list = available_names if available_names is not None else self.list_knowledge_bases()
+
         # Try centralized config first
         try:
             from deeptutor.services.config import get_kb_config_service
 
             kb_config_service = get_kb_config_service()
             default_kb = kb_config_service.get_default_kb()
-            if default_kb and default_kb in self.list_knowledge_bases():
+            if default_kb and default_kb in kb_list:
                 return default_kb
         except Exception:
             pass
 
         # Fallback to first knowledge base in sorted list
-        kb_list = self.list_knowledge_bases()
         if kb_list:
             return kb_list[0]
 
@@ -1093,7 +1099,13 @@ class KnowledgeBaseManager:
 
         return {}
 
-    def get_info(self, name: str | None = None) -> dict:
+    def get_info(
+        self,
+        name: str | None = None,
+        *,
+        refresh_config: bool = True,
+        default_name: str | None = None,
+    ) -> dict:
         """Get detailed information about a knowledge base.
 
         This method:
@@ -1101,11 +1113,24 @@ class KnowledgeBaseManager:
         2. Reads all config from kb_config.json (authoritative source)
         3. Falls back to metadata.json for legacy KBs
         4. Collects statistics about files and RAG status
+
+        Args:
+            name: Knowledge-base name, or the configured default when omitted.
+            refresh_config: Reload and reconcile the complete configuration.
+                Bulk callers that just invoked :meth:`list_knowledge_bases`
+                can reuse that snapshot by passing ``False``.
+            default_name: A pre-resolved default name for bulk callers. This
+                avoids rescanning the knowledge-base list for every item.
         """
         # Reload config to get latest status
-        self.config = self._load_config()
+        if refresh_config:
+            self.config = self._load_config()
 
-        kb_name = name or self.get_default()
+        resolved_default = default_name
+        if resolved_default is None:
+            resolved_default = self.get_default()
+
+        kb_name = name or resolved_default
         if kb_name is None:
             raise ValueError("No knowledge base name provided and no default set")
 
@@ -1138,7 +1163,9 @@ class KnowledgeBaseManager:
             index_versions = inspect_kb_versions(kb_dir, rag_provider)
             has_ready_provider = any(bool(version.get("ready")) for version in index_versions)
         provider_error_summary = (
-            provider_failure_summary(kb_dir, rag_provider) if dir_exists else ""
+            provider_failure_summary(kb_dir, rag_provider, versions=index_versions)
+            if dir_exists
+            else ""
         )
 
         # For old KBs without status field, determine status from rag_storage
@@ -1225,7 +1252,7 @@ class KnowledgeBaseManager:
         info = {
             "name": kb_name,
             "path": str(kb_dir),
-            "is_default": kb_name == self.get_default(),
+            "is_default": kb_name == resolved_default,
             "metadata": metadata,
             "status": status,
             "progress": progress,
@@ -1279,11 +1306,18 @@ class KnowledgeBaseManager:
                 if (kb_probe_dir and active_signature)
                 else None
             )
-            active_match = (
-                inspect_provider_version(matched_entry, rag_provider).ready
-                if matched_entry
-                else False
-            )
+            active_match = False
+            if matched_entry:
+                # Reuse the probe results already computed for ``index_versions``
+                # instead of probing the matched storage a second time — probing
+                # parses provider-owned files (e.g. the multi-MB LlamaIndex
+                # docstore.json) and is the dominant cost of kb list / the
+                # knowledge API (see issue #859).
+                matched_path = matched_entry.get("storage_path")
+                active_match = any(
+                    entry.get("storage_path") == matched_path and entry.get("ready")
+                    for entry in index_versions
+                )
         else:
             active_match = rag_initialized
 

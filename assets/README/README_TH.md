@@ -17,6 +17,7 @@
 <p align="center">
   <a href="../../README.md"><img alt="English" height="40" src="https://img.shields.io/badge/English-CDCFD4"></a>&nbsp;
   <a href="README_CN.md"><img alt="简体中文" height="40" src="https://img.shields.io/badge/简体中文-CDCFD4"></a>&nbsp;
+  <a href="README_TW.md"><img alt="繁體中文" height="40" src="https://img.shields.io/badge/繁體中文-CDCFD4"></a>&nbsp;
   <a href="README_JA.md"><img alt="日本語" height="40" src="https://img.shields.io/badge/日本語-CDCFD4"></a>&nbsp;
   <a href="README_ES.md"><img alt="Español" height="40" src="https://img.shields.io/badge/Español-CDCFD4"></a>&nbsp;
   <a href="README_FR.md"><img alt="Français" height="40" src="https://img.shields.io/badge/Français-CDCFD4"></a>&nbsp;
@@ -109,10 +110,10 @@ python -m pip install -e .
 ( cd web && npm ci --legacy-peer-deps )
 
 deeptutor init
-deeptutor start
+deeptutor start --dev
 ```
 
-การติดตั้งจากซอร์สจะรัน Next.js ในโหมด dev กับไดเร็กทอรี `web/` ในเครื่อง ทุกอย่างอื่น (layout ของ config, พอร์ต, หยุดด้วย `Ctrl+C`) ตรงกับตัวเลือกที่ 1
+`deeptutor start` จะ build frontend `web/` ในเครื่องสำหรับ production ครั้งเดียวแล้วนำมาใช้ซ้ำ; `--dev` รัน Next.js ด้วย HMR (hot reload) Layout ของ config, พอร์ต และ `Ctrl+C` ตรงกับตัวเลือกที่ 1
 
 <details>
 <summary><b>สภาพแวดล้อม Conda</b> (แทน <code>venv</code>)</summary>
@@ -143,11 +144,11 @@ pip install -e ".[math-animator]"   # Manim addon; ต้องการ LaTeX/f
 
 **การเปลี่ยน dependency ของ frontend:** รัน `npm install --legacy-peer-deps` เพื่อรีเฟรช `web/package-lock.json` จากนั้น commit ทั้ง `web/package.json` และ `web/package-lock.json`
 
-**เซิร์ฟเวอร์ dev ค้าง:** หาก `deeptutor start` รายงาน frontend ที่มีอยู่แต่ไม่ตอบสนอง ให้หยุด PID ที่พิมพ์ออกมา หากไม่มีกระบวนการ Next.js จริง ๆ ที่รันอยู่ ไฟล์ lock จะล้าสมัย — ลบออกแล้วลองใหม่:
+**เซิร์ฟเวอร์ dev ค้าง:** หาก `deeptutor start --dev` รายงาน frontend ที่มีอยู่แต่ไม่ตอบสนอง ให้หยุด PID ที่พิมพ์ออกมา หากไม่มีกระบวนการ Next.js จริง ๆ ที่รันอยู่ ไฟล์ lock จะล้าสมัย — ลบออกแล้วลองใหม่:
 
 ```bash
 rm -f web/.next/dev/lock web/.next/lock
-deeptutor start
+deeptutor start --dev
 ```
 
 </details>
@@ -286,7 +287,7 @@ sandbox ย่อย subprocess ถูกควบคุมโดยการต
 | `system.json` | พอร์ต backend/frontend, public API base, CORS, SSL verification, ไดเร็กทอรีไฟล์แนบ และขีดจำกัดการอัพโหลด/การแยกเนื้อหา |
 | `auth.json` | สวิตช์ auth แบบเสริม, ชื่อผู้ใช้, password hash, การตั้งค่า token/cookie |
 | `integrations.json` | การตั้งค่า PocketBase แบบเสริมและการรวม sidecar |
-| `interface.json` | ความชอบภาษา / ธีม / แถบด้านข้างของ UI |
+| `interface.json` | ความชอบภาษา UI และภาษา output ของ model / ธีม / แถบด้านข้างของ UI |
 | `main.yaml` | ค่าเริ่มต้นพฤติกรรม runtime และการ inject path |
 | `agents.yaml` | การตั้งค่า temperature และ token ของ capability/tool |
 
@@ -425,7 +426,7 @@ Knowledge bases คือคอลเลกชันเอกสารที่�
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="สร้าง knowledge base" width="900">
 </div>
 
-เมื่อสร้าง KB คุณ **สร้างใหม่** (อัพโหลดเอกสารและสร้าง index ใหม่) หรือ **เชื่อมโยงที่มีอยู่** (นำ index ที่สร้างไว้มาใช้ซ้ำ อ่านในที่โดยไม่ต้อง re-index) การ re-indexing จะเขียน directory `version-N` ใหม่และเก็บอันก่อนหน้าไว้ ดังนั้น index ที่ทำงานอยู่จะไม่ถูกทำลายระหว่างการสร้างใหม่ การแยกวิเคราะห์เอกสาร — Text-only, MinerU, Docling, markitdown หรือ PyMuPDF4LLM — ถูกเลือกใน **Settings → Knowledge Base** โดยการดาวน์โหลด local model ปิดโดยค่าเริ่มต้น CLI ครอบคลุม lifecycle ด้วย `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` และ `delete`
+เมื่อสร้าง KB คุณ **สร้างใหม่** (อัพโหลดเอกสารและสร้าง index ใหม่) หรือ **เชื่อมโยงที่มีอยู่** (นำ index ที่สร้างไว้มาใช้ซ้ำ อ่านในที่โดยไม่ต้อง re-index) การ re-indexing จะเขียน directory `version-N` ใหม่และเก็บอันก่อนหน้าไว้ ดังนั้น index ที่ทำงานอยู่จะไม่ถูกทำลายระหว่างการสร้างใหม่ การแยกวิเคราะห์เอกสาร — Text-only, MinerU, Docling, markitdown, PyMuPDF4LLM หรือ LiteParse — ถูกเลือกใน **Settings → Knowledge Base** โดยการดาวน์โหลด local model ปิดโดยค่าเริ่มต้น CLI ครอบคลุม lifecycle ด้วย `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` และ `delete`
 
 </details>
 
@@ -470,7 +471,7 @@ Memory Graph แสดงพีระมิดทั้งหมด — กา�
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="DeepTutor settings hub" width="900">
 </div>
 
-Settings คือ control plane การดำเนินงาน พร้อม live status strip (Backend, LLM, Embedding, Search) และหนึ่งการ์ดต่อพื้นที่: **Appearance** (ธีม, ภาษา UI, การจัดรูปแบบ code block), **Network** (API base, ports, CORS), **Models** (LLM, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (เอ็นจินการแยกวิเคราะห์เอกสาร), **Chat** (เครื่องมือ, พารามิเตอร์ต่อความสามารถ, ขีดจำกัดไฟล์แนบ), **Partners & Agents** (subagents ที่คุณปรึกษาได้จาก turn) และ **Memory** (งบประมาณของ consolidator)
+Settings คือ control plane การดำเนินงาน พร้อม live status strip (สถานะ Backend และ resident memory ที่ใช้งานอยู่ทั่วทั้ง process tree) และหนึ่งการ์ดต่อพื้นที่: **Appearance** (ธีม, ภาษา UI และภาษา output ของ model, การจัดรูปแบบ code block), **Network** (API base, ports, CORS), **Models** (LLM, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (เอ็นจินการแยกวิเคราะห์เอกสาร), **Chat** (เครื่องมือ, พารามิเตอร์ต่อความสามารถ, ขีดจำกัดไฟล์แนบ), **Partners & Agents** (subagents ที่คุณปรึกษาได้จาก turn) และ **Memory** (งบประมาณของ consolidator)
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="DeepTutor appearance settings and themes" width="900">
@@ -478,7 +479,9 @@ Settings คือ control plane การดำเนินงาน พร้�
 
 ส่วนส่วนใหญ่ใช้ draft-and-apply flow เพื่อให้คุณทดสอบ provider ก่อนยืนยัน ธีมสี่แบบมาในกล่อง — Default, Cream, Dark และ Glass ไฟล์ `.env` ที่ root ของโปรเจกต์ถูกเพิกเฉยโดยเจตนา; การกำหนดค่า runtime อยู่ใน `data/user/settings/*.json` เว้นแต่ `DEEPTUTOR_HOME` หรือ `deeptutor start --home` จะชี้แอปไปที่อื่น
 
-**OpenAI Codex OAuth (ทดลอง)** การเลือก **OpenAI Codex** ภายใต้ **Models → LLM** จะแทนที่ช่อง API key ด้วยการลงชื่อเข้าใช้ผ่านเบราว์เซอร์ที่รันกับแผน ChatGPT ของคุณเอง จึงไม่จำเป็นต้องใช้ `OPENAI_API_KEY` Tokens อยู่เฉพาะใน `data/system/user-secrets/<owner>/private/openai-codex/` — อยู่นอกเหนือทุก tree ที่ exec sandbox สามารถเข้าถึงได้ — และ DeepTutor จะไม่อ่านหรือแก้ไข `~/.codex` CLI login ของคุณเลย รายการ model มาจาก catalog แบบสดของบัญชีนั้น; การลงชื่อเข้าใช้จะเผยแพร่โปรไฟล์ แต่จะกลายเป็น model ที่ใช้งานอยู่ก็ต่อเมื่อยังไม่มีการกำหนดค่า LLM ใด ๆ เท่านั้น จึงไม่มีทางเปลี่ยนทิศทางของการปรับใช้โดยที่คุณไม่รู้ตัว เนื่องจาก token อนุญาตให้ใช้แผนของคนคนเดียว โปรไฟล์นี้จึงไม่สามารถแชร์ผ่าน per-user grants ได้ — แต่ละบัญชีต้องลงชื่อเข้าใช้ด้วยตัวเอง และเบราว์เซอร์ต้องเข้าถึงเครื่องที่รัน backend ได้ (บนเซิร์ฟเวอร์ remote ให้รัน `deeptutor provider login openai-codex` ที่นั่นแทน) ข้อผิดพลาดเรื่อง quota และความล้มเหลวของ catalog จะถูกรายงานตามจริงและจะไม่ตกกลับไปใช้ provider แบบเสียเงินแทนเด็ดขาด เส้นทาง compatibility นี้ยังอยู่ในขั้นทดลอง: อินเทอร์เฟซต้นทางอาจเปลี่ยนแปลงได้
+**OpenAI Codex OAuth (ทดลอง)** การเลือก **OpenAI Codex** ภายใต้ **Models → LLM** จะแทนที่ช่อง API key ด้วยการลงชื่อเข้าใช้ผ่านเบราว์เซอร์ที่รันกับแผน ChatGPT ของคุณเอง จึงไม่จำเป็นต้องใช้ `OPENAI_API_KEY` Tokens อยู่เฉพาะใน `data/system/user-secrets/<owner>/private/openai-codex/` — ในการปรับใช้แบบ multi-container ด้วย Compose จะอยู่นอกเหนือทุก tree ที่ exec sandbox สามารถเข้าถึงได้ — และ DeepTutor จะไม่อ่านหรือแก้ไข `~/.codex` CLI login ของคุณเลย รายการ model มาจาก catalog แบบสดของบัญชีนั้น; การลงชื่อเข้าใช้จะเผยแพร่โปรไฟล์ แต่จะกลายเป็น model ที่ใช้งานอยู่ก็ต่อเมื่อยังไม่มีการกำหนดค่า LLM ใด ๆ เท่านั้น จึงไม่มีทางเปลี่ยนทิศทางของการปรับใช้โดยที่คุณไม่รู้ตัว เนื่องจาก token อนุญาตให้ใช้แผนของคนคนเดียว โปรไฟล์นี้จึงไม่สามารถแชร์ผ่าน per-user grants ได้ — แต่ละบัญชีต้องลงชื่อเข้าใช้ด้วยตัวเอง รวมถึงผู้ใช้ทั่วไปด้วย: การ์ดของพวกเขาจะอยู่ภายใต้ **Models → LLM** และ models, catalog และการลงชื่อออกที่ได้จะเป็นส่วนตัวเฉพาะบัญชีนั้นเท่านั้น และเบราว์เซอร์ต้องเข้าถึงเครื่องที่รัน backend ได้ (บนเซิร์ฟเวอร์ remote ให้รัน `deeptutor provider login openai-codex` ที่นั่นแทน) ข้อผิดพลาดเรื่อง quota และความล้มเหลวของ catalog จะถูกรายงานตามจริงและจะไม่ตกกลับไปใช้ provider แบบเสียเงินแทนเด็ดขาด เส้นทาง compatibility นี้ยังอยู่ในขั้นทดลอง: อินเทอร์เฟซต้นทางอาจเปลี่ยนแปลงได้
+
+การปรับใช้ Docker และ Podman บนเครื่อง local แบบเริ่มต้นใช้ loopback network แยกจากกัน และต้องการสะพานเชื่อมชั่วคราวระหว่างการลงชื่อเข้าใช้ ทำตาม [คู่มือสะพานเชื่อม Codex OAuth ชั่วคราวสำหรับเครื่อง local](../../CONTAINERIZATION.md#temporary-local-codex-oauth-bridge) สำหรับคำสั่ง Docker, Compose, Podman และ teardown ที่แน่นอน
 
 สำหรับการปรับใช้แบบ remote `localhost` ของเบราว์เซอร์และ `localhost` ของเซิร์ฟเวอร์คือคนละเครื่องกัน ดังนั้น reverse proxy ธรรมดาเพียงอย่างเดียวไม่สามารถส่ง callback แบบ localhost ของเบราว์เซอร์ไปถึงเซิร์ฟเวอร์ได้ ให้ใช้ SSH tunnel เป็นสะพานเชื่อม callback ตัว tunnel จะไปถึงพอร์ต Web ที่เผยแพร่อยู่แล้ว; Next.js จะ rewrite เฉพาะ callback path ที่ตรงเป๊ะไปยัง public callback broker เท่านั้น และ broker จะตรวจสอบ `state` ก่อนที่จะ route ไปยัง OAuth operation ต้นทาง callback listener ยังคงอยู่ที่ backend loopback พอร์ต `1455` และ `1457` จะไม่ถูกเผยแพร่ และเส้นทางนี้รองรับ Docker bridge network เริ่มต้น
 
@@ -569,7 +572,7 @@ repo มี root [`SKILL.md`](../../SKILL.md) — เอกสาร handover ~1
 | คำสั่ง | คำอธิบาย |
 |:---|:---|
 | `deeptutor init` | สร้างหรืออัพเดต `data/user/settings` สำหรับ workspace ปัจจุบัน |
-| `deeptutor start [--home PATH]` | เปิดตัว backend + frontend ด้วยกัน |
+| `deeptutor start [--home PATH] [--dev]` | เปิดตัว backend + frontend ด้วยกัน |
 | `deeptutor serve [--port PORT]` | เริ่มเฉพาะ FastAPI backend |
 | `deeptutor run <capability> <message>` | รัน capability turn เดียว (`chat`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`); เพิ่ม `--format json` สำหรับ NDJSON output |
 | `deeptutor chat` | Interactive REPL พร้อม capability, tool, KB, notebook และ history controls |
@@ -582,7 +585,7 @@ repo มี root [`SKILL.md`](../../SKILL.md) — เอกสาร handover ~1
 | `deeptutor book list/health/refresh-fingerprints` | ตรวจสอบ books และรีเฟรช source fingerprints |
 | `deeptutor plugin list/info` | ตรวจสอบเครื่องมือและ capabilities ที่ลงทะเบียน |
 | `deeptutor config show` | พิมพ์สรุปการกำหนดค่า |
-| `deeptutor provider login <provider>` | Provider auth (OAuth login สำหรับ `openai-codex`; `github-copilot` ตรวจสอบ session auth Copilot ที่มีอยู่) |
+| `deeptutor provider login <provider>` | Provider auth (OAuth login สำหรับ `openai-codex`; `github-copilot` ตรวจสอบ session auth Copilot ที่มีอยู่; `codebuddy` ตรวจสอบ auth ของ CodeBuddy SDK และเริ่ม login เมื่อจำเป็น) |
 
 </details>
 
@@ -656,6 +659,22 @@ deeptutor skill install clawhub:git-release-notes@1.0.1
 เพิ่ม registries เพิ่มเติมใน `settings/skill_hubs.json`: entry `type: "clawhub"` ชี้ไปที่ HTTP API ที่เข้ากันได้ใด ๆ (ทั้ง EduHub และ ClawHub พูด API นี้), `type: "command"` ห่อ CLI ที่ registry ส่งมา และ `"default"` เลือกฮับที่ใช้สำหรับ slugs เปล่า ทั้งหมดนี้ป้อนข้อมูลผ่านประตูนำเข้าเดียวกัน
 
 </details>
+
+## 🤝 พันธมิตรโอเพนซอร์ส
+
+<p align="center">
+  <a href="https://github.com/VectifyAI/PageIndex" target="_blank">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="../../assets/figs/partners/pageindex-mark-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="../../assets/figs/partners/pageindex-mark.svg">
+      <img src="../../assets/figs/partners/pageindex-mark.svg" alt="PageIndex" height="38">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
+  ใช้โค้ด: <b><code>DEEPTUTOR20</code></b> — รับส่วนลด $20 สำหรับ<a href="https://developer.pageindex.ai/">การสมัครสมาชิก PageIndex</a>ครั้งแรกของคุณ!
+</p>
 
 ## 🌐 ชุมชน
 

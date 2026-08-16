@@ -34,9 +34,7 @@ class SerperAPIError(Exception):
 class SerperProvider(BaseSearchProvider):
     """Serper Google SERP provider"""
 
-    display_name = "Serper"
     description = "Google SERP results"
-    supports_answer = False  # Raw SERP results, no LLM answer
     BASE_URL = "https://google.serper.dev"
 
     def search(
@@ -44,6 +42,7 @@ class SerperProvider(BaseSearchProvider):
         query: str,
         mode: str = "search",  # search, scholar
         num: int = 10,
+        max_results: int | None = None,
         gl: str = "us",  # Country code
         hl: str = "en",  # Language code
         page: int = 1,
@@ -58,6 +57,8 @@ class SerperProvider(BaseSearchProvider):
             query: Search query.
             mode: Search mode - "search" or "scholar".
             num: Number of results (default 10, max 100).
+            max_results: Result cap from the resolved search config; when set it
+                wins over ``num``, which is Serper's own name for the same knob.
             gl: Country code (default "us").
             hl: Language code (default "en").
             page: Page number for pagination.
@@ -68,6 +69,8 @@ class SerperProvider(BaseSearchProvider):
         Returns:
             WebSearchResponse: Standardized search response.
         """
+        if max_results is not None:
+            num = max(1, int(max_results))
         self.logger.debug(f"Calling Serper API mode={mode}, num={num}")
         headers = {
             "X-API-KEY": self.api_key,
@@ -84,7 +87,10 @@ class SerperProvider(BaseSearchProvider):
         }
 
         url = f"{self.BASE_URL}/{mode}"
-        response = requests.post(url, headers=headers, json=payload, timeout=timeout)
+        request_kwargs: dict[str, Any] = {"headers": headers, "json": payload}
+        if self.proxy:
+            request_kwargs["proxies"] = {"http": self.proxy, "https": self.proxy}
+        response = requests.post(url, timeout=timeout, **request_kwargs)
 
         if response.status_code != 200:
             try:

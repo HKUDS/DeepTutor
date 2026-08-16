@@ -5,6 +5,7 @@ import {
   kbCanReindex,
   resolveKnowledgeIndexFailure,
   taskFailureMessage,
+  providerConnectionStatus,
   type KnowledgeBase,
 } from "../lib/knowledge-helpers";
 
@@ -131,5 +132,28 @@ test("taskFailureMessage keeps trace details out of the primary error", () => {
       details: "Traceback: sensitive internal diagnostics",
     }),
     "GraphRAG preflight failed.",
+  );
+});
+
+test("IMA is connected per knowledge base instead of globally ready", () => {
+  assert.equal(
+    providerConnectionStatus({ id: "ima", configured: true }),
+    "per_kb",
+  );
+  assert.equal(
+    providerConnectionStatus({ id: "llamaindex", configured: true }),
+    "ready",
+  );
+  assert.equal(
+    providerConnectionStatus({
+      id: "pageindex",
+      configured: false,
+      requires_api_key: true,
+    }),
+    "needs_key",
+  );
+  assert.equal(
+    providerConnectionStatus({ id: "graphrag", configured: false }),
+    "unavailable",
   );
 });

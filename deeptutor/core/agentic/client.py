@@ -8,9 +8,14 @@ provider gating, Azure detection, SSL bypass, or per-model token caps.
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
 from collections.abc import Callable
+import contextlib
 from dataclasses import dataclass
+import hashlib
+import inspect
 import json
+import threading
 from types import SimpleNamespace
 from typing import Any
 
@@ -37,7 +42,10 @@ _NATIVE_TOOL_BLOCKED_BINDINGS: frozenset[str] = frozenset(
 # backend needs an adapter branch, or tool schemas would be attached to a plain
 # AsyncOpenAI client pointed at a non-OpenAI wire format. github_copilot is
 # adapter-routed but deliberately excluded from this set.
-_NATIVE_TOOL_BACKENDS: frozenset[str] = frozenset({"anthropic", "openai_codex"})
+_NATIVE_TOOL_BACKENDS: frozenset[str] = frozenset({"anthropic", "openai_codex", "codebuddy"})
+_AGENTIC_CLIENT_POOL_MAXSIZE = 2
+_agentic_client_pool: "OrderedDict[tuple[Any, ...], Any]" = OrderedDict()
+_agentic_client_pool_lock = threading.RLock()
 
 
 @dataclass(frozen=True)
@@ -53,8 +61,26 @@ class LLMClientConfig:
     reasoning_effort: str | None = None
 
 
-def build_openai_client(config: LLMClientConfig) -> Any:
-    """Construct an ``AsyncOpenAI`` / ``AsyncAzureOpenAI`` client."""
+def _client_cache_key(
+    config: LLMClientConfig,
+    loop: asyncio.AbstractEventLoop,
+    disable_ssl_verify: bool,
+) -> tuple[Any, ...]:
+    secret = hashlib.sha256((config.api_key or "").encode("utf-8")).hexdigest()[:16]
+    headers = json.dumps(config.extra_headers or {}, sort_keys=True, separators=(",", ":"))
+    return (
+        loop,
+        config.binding,
+        config.model or "",
+        secret,
+        config.base_url or "",
+        config.api_version or "",
+        headers,
+        disable_ssl_verify,
+    )
+
+
+def _build_openai_client(config: LLMClientConfig, *, disable_ssl_verify: bool) -> Any:
     default_headers = config.extra_headers or None
     spec = find_by_name(config.binding)
     if spec:
@@ -63,7 +89,7 @@ def build_openai_client(config: LLMClientConfig) -> Any:
             return native_adapter
 
     http_client = None
-    if load_system_settings()["disable_ssl_verify"]:
+    if disable_ssl_verify:
         http_client = httpx.AsyncClient(verify=False)  # nosec B501
     if config.binding == "azure_openai" or (config.binding == "openai" and config.api_version):
         return AsyncAzureOpenAI(
@@ -79,6 +105,81 @@ def build_openai_client(config: LLMClientConfig) -> Any:
         http_client=http_client,
         default_headers=default_headers,
     )
+
+
+async def _close_client(client: Any) -> None:
+    close = getattr(client, "aclose", None) or getattr(client, "close", None)
+    if not callable(close):
+        return
+    result = close()
+    if inspect.isawaitable(result):
+        await result
+
+
+def _schedule_client_close(client: Any, loop: asyncio.AbstractEventLoop) -> None:
+    async def _close() -> None:
+        with contextlib.suppress(Exception):
+            await _close_client(client)
+
+    loop.create_task(_close())
+
+
+def build_openai_client(config: LLMClientConfig) -> Any:
+    """Return a bounded, event-loop-local OpenAI-compatible client.
+
+    The chat, research and question pipelines build this handle per turn.  The
+    handle itself owns an HTTP connection pool, so reusing it is both faster
+    and prevents a new allocator/socket high-water mark on every turn.
+    """
+    disable_ssl_verify = bool(load_system_settings()["disable_ssl_verify"])
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return _build_openai_client(config, disable_ssl_verify=disable_ssl_verify)
+
+    key = _client_cache_key(config, loop, disable_ssl_verify)
+    with _agentic_client_pool_lock:
+        cached = _agentic_client_pool.get(key)
+        if cached is not None:
+            _agentic_client_pool.move_to_end(key)
+            return cached
+        client = _build_openai_client(config, disable_ssl_verify=disable_ssl_verify)
+        _agentic_client_pool[key] = client
+        _agentic_client_pool.move_to_end(key)
+        while len(_agentic_client_pool) > _AGENTIC_CLIENT_POOL_MAXSIZE:
+            _, evicted = _agentic_client_pool.popitem(last=False)
+            _schedule_client_close(evicted, loop)
+        return client
+
+
+async def close_agentic_client_pool() -> None:
+    with _agentic_client_pool_lock:
+        clients = list(_agentic_client_pool.values())
+        _agentic_client_pool.clear()
+    if clients:
+        await asyncio.gather(*(_close_client(client) for client in clients), return_exceptions=True)
+
+
+def reset_agentic_client_pool() -> None:
+    with _agentic_client_pool_lock:
+        clients = list(_agentic_client_pool.values())
+        _agentic_client_pool.clear()
+    if not clients:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        for client in clients:
+            with contextlib.suppress(Exception):
+                asyncio.run(_close_client(client))
+        return
+    for client in clients:
+        _schedule_client_close(client, loop)
+
+
+def agentic_client_pool_size() -> int:
+    with _agentic_client_pool_lock:
+        return len(_agentic_client_pool)
 
 
 def _build_anthropic_adapter(config: LLMClientConfig, spec: Any) -> Any:
@@ -113,14 +214,52 @@ def _build_copilot_adapter(config: LLMClientConfig, spec: Any) -> Any:
     return _ProviderOpenAIAdapter(copilot_provider)
 
 
+def _build_codebuddy_adapter(config: LLMClientConfig, spec: Any) -> Any:
+    from deeptutor.services.llm.provider_core.codebuddy_http_provider import (
+        build_codebuddy_provider,
+    )
+
+    codebuddy_provider = build_codebuddy_provider(
+        api_key=config.api_key,
+        default_model=config.model or "codebuddy/hy3",
+    )
+    return _ProviderOpenAIAdapter(codebuddy_provider)
+
+
+def _build_direct_openai_adapter(config: LLMClientConfig, spec: Any) -> Any:
+    from deeptutor.services.llm.provider_core import OpenAICompatProvider
+
+    provider = OpenAICompatProvider(
+        api_key=config.api_key,
+        api_base=config.base_url or spec.default_api_base or None,
+        default_model=config.model or "gpt-5",
+        extra_headers=config.extra_headers,
+        spec=spec,
+        provider_name=config.binding,
+    )
+    return _ProviderOpenAIAdapter(provider)
+
+
 _NATIVE_ADAPTER_BUILDERS: dict[str, Callable[[LLMClientConfig, Any], Any]] = {
     "anthropic": _build_anthropic_adapter,
     "openai_codex": _build_codex_adapter,
     "github_copilot": _build_copilot_adapter,
+    "codebuddy": _build_codebuddy_adapter,
 }
 
 
 def _build_native_provider_adapter(config: LLMClientConfig, spec: Any) -> Any | None:
+    endpoint = (config.base_url or spec.default_api_base or "").lower()
+    model = (config.model or "").lower()
+    if (
+        spec.name == "openai"
+        and not config.api_version
+        and "api.openai.com" in endpoint
+        and any(token in model for token in ("gpt-5", "o1", "o3", "o4"))
+    ):
+        # Reuse the services provider: it already converts messages, tools,
+        # streaming events and token limits for the Responses API.
+        return _build_direct_openai_adapter(config, spec)
     builder = _NATIVE_ADAPTER_BUILDERS.get(spec.backend)
     return builder(config, spec) if builder else None
 
@@ -131,6 +270,11 @@ class _ProviderOpenAIAdapter:
     def __init__(self, provider: Any):
         self._provider = provider
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create_completion))
+
+    async def close(self) -> None:
+        close = getattr(self._provider, "aclose", None)
+        if callable(close):
+            await close()
 
     async def _create_completion(self, **kwargs: Any) -> Any:
         stream = bool(kwargs.pop("stream", False))
@@ -178,7 +322,9 @@ class _ProviderOpenAIAdapter:
                             for index, tool_call in enumerate(response.tool_calls or [])
                         ],
                     ),
-                    finish_reason=response.finish_reason or "stop",
+                    finish_reason=(
+                        "tool_calls" if response.tool_calls else response.finish_reason or "stop"
+                    ),
                 )
             ],
             usage=response.usage or None,
@@ -259,7 +405,9 @@ class _ProviderOpenAIStream:
                 await self._queue.put(_openai_stream_chunk(tool_call=tool_call, index=index))
             await self._queue.put(
                 _openai_stream_chunk(
-                    finish_reason=response.finish_reason or "stop",
+                    finish_reason=(
+                        "tool_calls" if response.tool_calls else response.finish_reason or "stop"
+                    ),
                     usage=response.usage or None,
                 )
             )

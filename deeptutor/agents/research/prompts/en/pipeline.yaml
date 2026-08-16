@@ -36,6 +36,7 @@ empty:
 system:
   warning_prefix: "⚠ "
   kb_system_note: "Attached knowledge bases: {kb_name}. When calling rag, kb_name must be {kb_name_repr}."
+  obsidian_kb_system_note: "Attached knowledge base {kb_name} is a read-only Obsidian vault. Gather evidence with obsidian_search, obsidian_list and obsidian_read. Do not call rag."
 
 # --------------------- Notices (stream.progress) -----------------------
 notices:

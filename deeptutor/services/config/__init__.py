@@ -18,8 +18,15 @@ from .loader import (
     parse_language,
     resolve_config_path,
 )
-from .model_catalog import ModelCatalogService, get_model_catalog_service
+from .model_catalog import (
+    CATALOG_SECRET_MASK,
+    ModelCatalogService,
+    get_model_catalog_service,
+    redact_catalog_secrets,
+    restore_catalog_secrets,
+)
 from .runtime_settings import (
+    HTTP_KEEP_ALIVE_TIMEOUT,
     ChatAttachmentLimits,
     RuntimeSettingsService,
     ensure_runtime_settings_files,
@@ -63,14 +70,26 @@ __all__ = [
     "NANOBOT_LLM_PROVIDERS",
     "SUPPORTED_SEARCH_PROVIDERS",
     "DEPRECATED_SEARCH_PROVIDERS",
+    "SEARCH_PROVIDERS",
+    "SEARCH_FALLBACK_PROVIDER",
+    "SearchProviderSpec",
+    "search_provider_spec",
+    "search_provider_credentials",
+    "search_missing_credential",
+    "search_fallback_candidates",
+    "supported_search_providers_hint",
     # From knowledge_base_config.py
     "KnowledgeBaseConfigService",
     "get_kb_config_service",
     "ModelCatalogService",
     "get_model_catalog_service",
+    "CATALOG_SECRET_MASK",
+    "redact_catalog_secrets",
+    "restore_catalog_secrets",
     "ConfigTestRunner",
     "TestRun",
     "get_config_test_runner",
+    "HTTP_KEEP_ALIVE_TIMEOUT",
     "ChatAttachmentLimits",
     "RuntimeSettingsService",
     "ensure_runtime_settings_files",
@@ -93,14 +112,22 @@ def __getattr__(name: str):
     if name in {
         "DEPRECATED_SEARCH_PROVIDERS",
         "NANOBOT_LLM_PROVIDERS",
+        "SEARCH_FALLBACK_PROVIDER",
+        "SEARCH_PROVIDERS",
         "SUPPORTED_SEARCH_PROVIDERS",
         "ResolvedLLMConfig",
         "ResolvedEmbeddingConfig",
         "ResolvedSearchConfig",
+        "SearchProviderSpec",
         "resolve_embedding_runtime_config",
         "resolve_llm_runtime_config",
         "resolve_search_runtime_config",
+        "search_fallback_candidates",
+        "search_missing_credential",
+        "search_provider_credentials",
+        "search_provider_spec",
         "search_provider_state",
+        "supported_search_providers_hint",
     }:
         provider_runtime = importlib.import_module(f"{__name__}.provider_runtime")
 

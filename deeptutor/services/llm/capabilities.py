@@ -29,6 +29,11 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "system_in_messages": True,  # System prompt goes in messages array
         "newer_models_use_max_completion_tokens": True,
     },
+    # Codex uses OpenAI's Responses API and converts image_url message parts
+    # into native input_image blocks before sending the request.
+    "openai_codex": {
+        "supports_vision": True,
+    },
     # Custom / user-defined OpenAI-compatible endpoints
     "custom": {
         "supports_response_format": True,
@@ -85,6 +90,14 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "system_in_messages": False,
         "has_thinking_tags": False,
     },
+    "codebuddy": {
+        "supports_response_format": False,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": False,
+        "system_in_messages": True,
+        "has_thinking_tags": False,
+    },
     # DeepSeek
     "deepseek": {
         "supports_response_format": False,  # DeepSeek doesn't support strict JSON schema yet
@@ -130,6 +143,14 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
     },
     # OpenRouter (aggregator, generally OpenAI-compatible)
     "openrouter": {
+        "supports_response_format": True,  # Depends on underlying model
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": True,  # Depends on underlying model
+        "system_in_messages": True,
+    },
+    # OrcaRouter (aggregator, generally OpenAI-compatible)
+    "orcarouter": {
         "supports_response_format": True,  # Depends on underlying model
         "supports_streaming": True,
         "supports_tools": True,
@@ -259,6 +280,11 @@ MODEL_OVERRIDES: dict[str, dict[str, object]] = {
     # Qwen text models often share the same provider/gateway as Qwen-VL.
     # Keep thinking-tag handling broad, but only mark explicit VL/vision model
     # names as image-capable so RAG image indexing can fail closed.
+    # Qwen3.8-Max is natively multimodal despite not using the historical
+    # ``-vl`` suffix. Keep this override narrow so other Qwen text models remain
+    # fail-closed.
+    # https://help.aliyun.com/zh/model-studio/vision-model
+    "qwen3.8-max": {"supports_vision": True},
     "qwen/qwen2.5-vl": {"has_thinking_tags": True, "supports_vision": True},
     "qwen/qwen3-vl": {"has_thinking_tags": True, "supports_vision": True},
     "qwen/qwen2-vl": {"has_thinking_tags": True, "supports_vision": True},
@@ -298,8 +324,12 @@ MODEL_OVERRIDES: dict[str, dict[str, object]] = {
     "gpt-4o": {"supports_vision": True},
     "gpt-4-turbo": {"supports_vision": True},
     "gpt-4-vision": {"supports_vision": True},
-    "claude-3": {"supports_vision": True},
-    "claude-4": {"supports_vision": True},
+    # Anthropic moved to `claude-<family>-<version>` after Claude 3, so no model id
+    # begins with "claude-4" and that prefix matched nothing. Every Claude model from
+    # 3 onward is multimodal, so match the vendor prefix rather than enumerating
+    # versions that go stale. A future text-only model can be excluded by adding a
+    # longer, more specific key (longest prefix wins in get_capability).
+    "claude-": {"supports_vision": True},
     "gemini": {"supports_vision": True},
     "gemma": {"supports_vision": False, "supports_response_format": False},
     "llava": {"supports_vision": True},
@@ -314,6 +344,7 @@ MODEL_OVERRIDES: dict[str, dict[str, object]] = {
     "moonshot-v1-128k-vision": {"supports_vision": True},
     "kimi-k2.5": {"supports_vision": True},
     "kimi-k2.6": {"supports_vision": True},
+    "kimi-k3": {"supports_vision": True},
 }
 
 
@@ -544,8 +575,22 @@ def get_effective_temperature(
     return requested_temp
 
 
+#: Bindings whose upstream tracks a multi-turn conversation by an id the caller
+#: supplies, so each request carries the turn's own session id. Stated here
+#: rather than tested inline: the chat loop and the explore capability both
+#: need it, and neither should have to name a provider to run a turn.
+SESSION_SCOPED_BINDINGS: frozenset[str] = frozenset({"codebuddy"})
+
+
+def threads_session_id(binding: str | None) -> bool:
+    """Whether *binding* expects ``deeptutor_session_id`` on each request."""
+    return (binding or "").strip().lower() in SESSION_SCOPED_BINDINGS
+
+
 __all__ = [
     "PROVIDER_CAPABILITIES",
+    "SESSION_SCOPED_BINDINGS",
+    "threads_session_id",
     "MODEL_OVERRIDES",
     "DEFAULT_CAPABILITIES",
     "get_capability",

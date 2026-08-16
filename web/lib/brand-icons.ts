@@ -25,7 +25,10 @@ export type BrandNamespace = "mcp" | "cli";
  * (see `brand-slugs.ts`), and a monogram is the designed fallback rather than a
  * degraded one.
  */
-export function brandIconFor(namespace: BrandNamespace, id: string): BrandIcon | null {
+export function brandIconFor(
+  namespace: BrandNamespace,
+  id: string,
+): BrandIcon | null {
   const table = namespace === "mcp" ? MCP_ICON_SLUGS : CLI_ICON_SLUGS;
   for (const key of candidateKeys(id)) {
     const slug = table[key];

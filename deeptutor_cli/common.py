@@ -432,6 +432,8 @@ class TurnStreamRenderer:
         if call_state == "complete":
             call_role = str(metadata.get("call_role") or "")
             if call_role in {"narration", "finish"}:
+                if call_role == "narration" and metadata.get("answer_visible") is True:
+                    call_role = "finish"
                 self._settle_round(str(metadata.get("call_id") or ""), role=call_role)
                 return
             if content.strip():

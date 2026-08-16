@@ -17,6 +17,7 @@
 <p align="center">
   <a href="../../README.md"><img alt="English" height="40" src="https://img.shields.io/badge/English-CDCFD4"></a>&nbsp;
   <a href="README_CN.md"><img alt="简体中文" height="40" src="https://img.shields.io/badge/简体中文-CDCFD4"></a>&nbsp;
+  <a href="README_TW.md"><img alt="繁體中文" height="40" src="https://img.shields.io/badge/繁體中文-CDCFD4"></a>&nbsp;
   <a href="README_JA.md"><img alt="日本語" height="40" src="https://img.shields.io/badge/日本語-CDCFD4"></a>&nbsp;
   <a href="README_ES.md"><img alt="Español" height="40" src="https://img.shields.io/badge/Español-CDCFD4"></a>&nbsp;
   <a href="README_FR.md"><img alt="Français" height="40" src="https://img.shields.io/badge/Français-CDCFD4"></a>&nbsp;
@@ -109,10 +110,10 @@ python -m pip install -e .
 ( cd web && npm ci --legacy-peer-deps )
 
 deeptutor init
-deeptutor start
+deeptutor start --dev
 ```
 
-Instalacje ze źródeł uruchamiają Next.js w trybie deweloperskim względem lokalnego katalogu `web/`; wszystko inne (układ konfiguracji, porty, zatrzymanie za pomocą `Ctrl+C`) odpowiada Opcji 1.
+`deeptutor start` buduje lokalny frontend `web/` na potrzeby produkcji jednorazowo i ponownie go wykorzystuje; `--dev` uruchamia Next.js z automatycznym przeładowywaniem modułów (HMR). Układ konfiguracji, porty i `Ctrl+C` odpowiadają Opcji 1.
 
 <details>
 <summary><b>Środowisko Conda</b> (zamiast <code>venv</code>)</summary>
@@ -143,11 +144,11 @@ pip install -e ".[math-animator]"   # addon Manim; wymaga LaTeX/ffmpeg/bibliotek
 
 **Zmiana zależności frontendowych:** uruchom `npm install --legacy-peer-deps`, aby odświeżyć `web/package-lock.json`, a następnie zatwierdź zarówno `web/package.json`, jak i `web/package-lock.json`.
 
-**Zablokowany serwer deweloperski:** jeśli `deeptutor start` zgłasza istniejący frontend, który nie odpowiada, zatrzymaj PID, który wydrukuje. Jeśli żaden proces Next.js nie jest uruchomiony, pliki blokady są przestarzałe — usuń je i spróbuj ponownie:
+**Zablokowany serwer deweloperski:** jeśli `deeptutor start --dev` zgłasza istniejący frontend, który nie odpowiada, zatrzymaj PID, który wydrukuje. Jeśli żaden proces Next.js nie jest uruchomiony, pliki blokady są przestarzałe — usuń je i spróbuj ponownie:
 
 ```bash
 rm -f web/.next/dev/lock web/.next/lock
-deeptutor start
+deeptutor start --dev
 ```
 
 </details>
@@ -286,7 +287,7 @@ Wszystko w `data/user/settings/` to zwykły JSON/YAML. Strona **Settings** w prz
 | `system.json` | Porty backendu/frontendu, publiczna baza API, CORS, weryfikacja SSL, katalog załączników i limity przesyłania/ekstrakcji |
 | `auth.json` | Opcjonalny przełącznik uwierzytelniania, nazwa użytkownika, hash hasła, ustawienia tokena/cookie |
 | `integrations.json` | Opcjonalne ustawienia PocketBase i integracji sidecar |
-| `interface.json` | Preferencje języka / motywu / paska bocznego interfejsu użytkownika |
+| `interface.json` | Preferencje języka interfejsu i języka odpowiedzi modelu / motywu / paska bocznego |
 | `main.yaml` | Domyślne zachowanie środowiska uruchomieniowego i wstrzykiwanie ścieżek |
 | `agents.yaml` | Ustawienia temperatury i tokenów możliwości/narzędzi |
 
@@ -425,7 +426,7 @@ Bazy wiedzy to kolekcje dokumentów za RAG — ugruntowują tury Chat, edycje Co
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="Tworzenie bazy wiedzy" width="900">
 </div>
 
-Tworząc KB, albo **tworzysz nową** (przesyłasz dokumenty i budujesz świeży indeks) albo **łączysz istniejącą** (ponownie używasz indeksu zbudowanego gdzie indziej, czytasz w miejscu bez ponownego indeksowania). Ponowne indeksowanie zapisuje nowy płaski katalog `version-N` i zachowuje poprzednie, więc działający indeks nigdy nie jest niszczony w trakcie przebudowy. Pojedynczy dokument można usunąć nawet z bazy w stanie **błędu** — usuwając plik, który nie sparsował się poprawnie, bez pełnego usuwania i przebudowy. Parsowanie dokumentów — Tylko tekst, MinerU, Docling, markitdown lub PyMuPDF4LLM — jest wybierane w **Settings → Knowledge Base**, z domyślnie wyłączonymi pobieraniami lokalnego modelu. CLI odzwierciedla cykl życia za pomocą `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` i `delete`.
+Tworząc KB, albo **tworzysz nową** (przesyłasz dokumenty i budujesz świeży indeks) albo **łączysz istniejącą** (ponownie używasz indeksu zbudowanego gdzie indziej, czytasz w miejscu bez ponownego indeksowania). Ponowne indeksowanie zapisuje nowy płaski katalog `version-N` i zachowuje poprzednie, więc działający indeks nigdy nie jest niszczony w trakcie przebudowy. Pojedynczy dokument można usunąć nawet z bazy w stanie **błędu** — usuwając plik, który nie sparsował się poprawnie, bez pełnego usuwania i przebudowy. Parsowanie dokumentów — Tylko tekst, MinerU, Docling, markitdown, PyMuPDF4LLM lub LiteParse — jest wybierane w **Settings → Knowledge Base**, z domyślnie wyłączonymi pobieraniami lokalnego modelu. CLI odzwierciedla cykl życia za pomocą `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` i `delete`.
 
 </details>
 
@@ -470,7 +471,7 @@ Memory Graph pokazuje całą piramidę — synteza L3 w centrum, L2 w środkowym
 <img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="Centrum ustawień DeepTutor" width="900">
 </div>
 
-Settings to operacyjna płaszczyzna kontroli z paskiem statusu na żywo (Backend, LLM, Embedding, Search) i jedną kartą na obszar: **Appearance** (motyw, język UI, stylizacja bloków kodu), **Network** (baza API, porty, CORS), **Models** (LLM, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (silnik parsowania dokumentów), **Chat** (narzędzia, parametry per-możliwość, limity załączników), **Partners & Agents** (subagenty które możesz konsultować z tury) i **Memory** (budżety konsolidatora).
+Settings to operacyjna płaszczyzna kontroli z paskiem statusu na żywo (stan backendu i pamięć rezydentna procesów na żywo w całym drzewie procesów) i jedną kartą na obszar: **Appearance** (motyw, język interfejsu i język odpowiedzi modelu, stylizacja bloków kodu), **Network** (baza API, porty, CORS), **Models** (LLM, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (silnik parsowania dokumentów), **Chat** (narzędzia, parametry per-możliwość, limity załączników), **Partners & Agents** (subagenty które możesz konsultować z tury) i **Memory** (budżety konsolidatora).
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="Ustawienia wyglądu DeepTutor i motywy" width="900">
@@ -478,7 +479,9 @@ Settings to operacyjna płaszczyzna kontroli z paskiem statusu na żywo (Backend
 
 Większość sekcji używa przepływu szkic-i-zastosuj, więc możesz testować dostawcę przed jego zatwierdzeniem. Cztery motywy dostarczane w zestawie — Default, Cream, Dark i Glass. Pliki `.env` katalogu głównego projektu są celowo ignorowane; konfiguracja środowiska uruchomieniowego żyje pod `data/user/settings/*.json` chyba że `DEEPTUTOR_HOME` lub `deeptutor start --home` wskaże aplikację gdzie indziej.
 
-**OpenAI Codex OAuth (eksperymentalne).** Wybranie **OpenAI Codex** w Models → LLM zastępuje pola klucza API logowaniem przez przeglądarkę, które działa względem twojego własnego planu ChatGPT, więc `OPENAI_API_KEY` nie jest potrzebny. Tokeny żyją wyłącznie w `data/system/user-secrets/<owner>/private/openai-codex/` — poza każdym drzewem, do którego ma dostęp piaskownica wykonania kodu — a DeepTutor nigdy nie czyta ani nie modyfikuje twojego logowania CLI `~/.codex`. Lista modeli pochodzi z aktualnego katalogu tego konta; zalogowanie się publikuje profil, ale staje się aktywnym modelem tylko gdy żaden LLM nie jest jeszcze skonfigurowany, więc nigdy nie przekierowuje wdrożenia bez twojej wiedzy. Ponieważ token autoryzuje plan jednej osoby, profilu nie da się współdzielić przez uprawnienia użytkowników — każde konto loguje się osobno, a przeglądarka musi dotrzeć do maszyny, na której działa backend (na zdalnym serwerze uruchom tam zamiast tego `deeptutor provider login openai-codex`). Błędy limitu i awarie katalogu są zgłaszane wprost i nigdy nie powodują przełączenia na płatnego dostawcę. Ta ścieżka kompatybilności jest eksperymentalna: interfejs projektu nadrzędnego może się zmienić.
+**OpenAI Codex OAuth (eksperymentalne).** Wybranie **OpenAI Codex** w Models → LLM zastępuje pola klucza API logowaniem przez przeglądarkę, które działa względem twojego własnego planu ChatGPT, więc `OPENAI_API_KEY` nie jest potrzebny. Tokeny żyją wyłącznie w `data/system/user-secrets/<owner>/private/openai-codex/` — w wielokontenerowym wdrożeniu Compose, poza każdym drzewem, do którego ma dostęp piaskownica wykonania kodu — a DeepTutor nigdy nie czyta ani nie modyfikuje twojego logowania CLI `~/.codex`. Lista modeli pochodzi z aktualnego katalogu tego konta; zalogowanie się publikuje profil, ale staje się aktywnym modelem tylko gdy żaden LLM nie jest jeszcze skonfigurowany, więc nigdy nie przekierowuje wdrożenia bez twojej wiedzy. Ponieważ token autoryzuje plan jednej osoby, profilu nie da się współdzielić przez uprawnienia użytkowników — każde konto loguje się osobno, w tym zwykli użytkownicy: ich karta znajduje się w Models → LLM, a wynikowe modele, katalog i wylogowanie pozostają prywatne dla tego konta, a przeglądarka musi dotrzeć do maszyny, na której działa backend (na zdalnym serwerze uruchom tam zamiast tego `deeptutor provider login openai-codex`). Błędy limitu i awarie katalogu są zgłaszane wprost i nigdy nie powodują przełączenia na płatnego dostawcę. Ta ścieżka kompatybilności jest eksperymentalna: interfejs projektu nadrzędnego może się zmienić.
+
+Domyślne lokalne wdrożenia Docker i Podman używają oddzielnych sieci loopback i podczas logowania wymagają tymczasowego mostu. Postępuj zgodnie z [przewodnikiem po tymczasowym lokalnym moście OAuth Codex](../../CONTAINERIZATION.md#temporary-local-codex-oauth-bridge), aby poznać dokładne komendy dla Docker, Compose, Podman i demontażu.
 
 Dla zdalnego wdrożenia `localhost` przeglądarki i `localhost` serwera to dwie różne maszyny, więc sam zwykły reverse proxy nie może przenieść callbacku localhost przeglądarki do serwera. Użyj tunelu SSH jako mostu callback. Tunel dociera do już opublikowanego portu Web; Next.js przepisuje wyłącznie dokładną ścieżkę callback do publicznego brokera callback, a broker waliduje `state` przed przekierowaniem do pierwotnej operacji OAuth. Nasłuch callback pozostaje na loopbacku backendu, porty `1455` i `1457` nie są publikowane, a ta ścieżka obsługuje domyślną sieć bridge Dockera.
 
@@ -569,7 +572,7 @@ Repozytorium zawiera główny [`SKILL.md`](../../SKILL.md) — około 150-liniow
 | Polecenie | Opis |
 |:---|:---|
 | `deeptutor init` | Utwórz lub zaktualizuj `data/user/settings` dla bieżącego obszaru roboczego |
-| `deeptutor start [--home PATH]` | Uruchom backend + frontend razem |
+| `deeptutor start [--home PATH] [--dev]` | Uruchom backend + frontend razem |
 | `deeptutor serve [--port PORT]` | Uruchom tylko backend FastAPI |
 | `deeptutor run <capability> <message>` | Uruchom jedną turę możliwości (`chat`, `deep_solve`, `deep_question`, `deep_research`, `visualize`, `math_animator`, `mastery_path`); dodaj `--format json` dla wyjścia NDJSON |
 | `deeptutor chat` | Interaktywny REPL z kontrolkami możliwości, narzędzia, KB, notatnika i historii |
@@ -582,7 +585,7 @@ Repozytorium zawiera główny [`SKILL.md`](../../SKILL.md) — około 150-liniow
 | `deeptutor book list/health/refresh-fingerprints` | Inspekcjonuj książki i odświeżaj odciski źródeł |
 | `deeptutor plugin list/info` | Inspekcjonuj zarejestrowane narzędzia i możliwości |
 | `deeptutor config show` | Wydrukuj podsumowanie konfiguracji |
-| `deeptutor provider login <provider>` | Uwierzytelnianie dostawcy (`openai-codex` logowanie OAuth; `github-copilot` weryfikuje istniejącą sesję auth Copilot) |
+| `deeptutor provider login <provider>` | Uwierzytelnianie dostawcy (`openai-codex` logowanie OAuth; `github-copilot` weryfikuje istniejącą sesję auth Copilot; `codebuddy` weryfikuje uwierzytelnianie SDK CodeBuddy i rozpoczyna logowanie w razie potrzeby) |
 
 </details>
 
@@ -656,6 +659,22 @@ deeptutor skill install clawhub:git-release-notes@1.0.1
 Dodaj więcej rejestrów w `settings/skill_hubs.json`: wpis `type: "clawhub"` wskazuje na dowolne kompatybilne HTTP API (EduHub i ClawHub oba je mówią), `type: "command"` opakowuje dowolny CLI pobierania który rejestr dostarcza i `"default"` wybiera hub używany dla gołych slugów. Wszystkie zasilają tę samą bramę importu.
 
 </details>
+
+## 🤝 Partnerzy Open Source
+
+<p align="center">
+  <a href="https://github.com/VectifyAI/PageIndex" target="_blank">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="../../assets/figs/partners/pageindex-mark-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="../../assets/figs/partners/pageindex-mark.svg">
+      <img src="../../assets/figs/partners/pageindex-mark.svg" alt="PageIndex" height="38">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
+  Użyj kodu: <b><code>DEEPTUTOR20</code></b> — zdobądź $20 zniżki na pierwszą <a href="https://developer.pageindex.ai/">subskrypcję PageIndex</a>!
+</p>
 
 ## 🌐 Społeczność
 

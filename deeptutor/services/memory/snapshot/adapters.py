@@ -303,27 +303,40 @@ def read_partner_entities() -> list[Entity]:
     bridges that store into the memory pipeline so partner conversations
     consolidate into L2/L3 like every other surface.
 
-    Partners are anchored to the admin workspace, so we only surface them
-    when the active scope IS the admin's own memory; a regular user's memory
-    view must not see the admin's partner conversations.
+    Admins see the legacy process-wide Partner sessions. Regular users see only
+    their own per-user sessions for Partners that are still assigned to them;
+    neither side scans another user's relationship-state directory.
     """
+    from deeptutor.multi_user.context import get_current_user
+    from deeptutor.multi_user.partner_access import assigned_partner_ids
     from deeptutor.multi_user.paths import get_admin_path_service
 
+    user = get_current_user()
     admin_root = get_admin_path_service().workspace_root.resolve()
-    if get_path_service().workspace_root.resolve() != admin_root:
+    # Read-only adapters are also called directly in maintenance/tests where no
+    # CurrentUser ContextVar is installed. Preserve the older path-scope guard
+    # instead of treating a non-admin workspace as the implicit local admin.
+    if user.is_admin and get_path_service().workspace_root.resolve() != admin_root:
         return []
     partners_root = admin_root / "partners"
     if not partners_root.exists():
         return []
 
+    allowed = None if user.is_admin else assigned_partner_ids(user.id)
     out: list[Entity] = []
     for partner_dir in sorted(partners_root.iterdir()):
         if not partner_dir.is_dir():
             continue
-        sessions_dir = partner_dir / "sessions"
+        partner_id = partner_dir.name
+        if allowed is not None and partner_id not in allowed:
+            continue
+        sessions_dir = (
+            partner_dir / "sessions"
+            if user.is_admin
+            else partner_dir / "users" / user.id / "sessions"
+        )
         if not sessions_dir.is_dir():
             continue
-        partner_id = partner_dir.name
         partner_name = _partner_display_name(partner_dir, partner_id)
         for sess_file in sorted(sessions_dir.glob("*.jsonl")):
             entity = _partner_session_entity(sess_file, partner_id, partner_name)

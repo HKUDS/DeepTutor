@@ -11,11 +11,11 @@ import React, {
   useRef,
 } from "react";
 import {
-  LANGUAGE_EVENT,
-  LANGUAGE_STORAGE_KEY,
+  RESPONSE_LANGUAGE_EVENT,
+  RESPONSE_LANGUAGE_STORAGE_KEY,
   normalizeLanguage,
   readStoredChatResponseTimeout,
-  readStoredLanguage,
+  readStoredResponseLanguage,
   writeStoredActiveSessionId,
 } from "@/context/app-shell-storage";
 import type { StreamEvent, ChatMessage, LLMSelection } from "@/lib/unified-ws";
@@ -30,7 +30,7 @@ import {
 import { normalizeMarkdownForDisplay } from "@/lib/markdown-display";
 import { normalizeMessageContent } from "@/lib/message-content";
 import { buildVisiblePath, tipMessageId } from "@/lib/message-branches";
-import { nextOptimisticId } from "@/lib/optimistic-id";
+import { nextOptimisticId, resolvePersistedMessage } from "@/lib/optimistic-id";
 import { reconcileTurnIds } from "@/lib/turn-reconcile";
 import {
   isNarrationMarker,
@@ -90,6 +90,8 @@ export interface ChatState {
   activeCapability: string | null;
   knowledgeBases: string[];
   llmSelection: LLMSelection | null;
+  /** Persistent mastery state associated with this conversation. */
+  masteryPathId: string | null;
   /** Session-level persona preference; "" = Default (no persona). Applies
    *  to every following message until changed (persisted on the session). */
   personaSelection: string;
@@ -140,6 +142,7 @@ export interface MessageRequestSnapshot {
   historyReferences?: HistoryReferencePayload;
   questionNotebookReferences?: QuestionNotebookReferencePayload;
   bookReferences?: BookReferencePayload[];
+  masteryPathId?: string;
   persona?: string;
   memoryReferences?: MemoryReferencePayload;
   llmSelection?: LLMSelection | null;
@@ -188,6 +191,7 @@ interface SessionSnapshot {
   capability?: string | null;
   knowledgeBases?: string[];
   llmSelection?: LLMSelection | null;
+  masteryPathId?: string | null;
   personaSelection?: string;
   language?: string;
   selectedBranches?: Record<string, number>;
@@ -198,6 +202,7 @@ type Action =
   | { type: "SET_CAPABILITY"; cap: string | null }
   | { type: "SET_KB"; kbs: string[] }
   | { type: "SET_LLM_SELECTION"; selection: LLMSelection | null }
+  | { type: "SET_MASTERY_PATH_ID"; masteryPathId: string | null }
   | { type: "SET_PERSONA_SELECTION"; persona: string }
   | { type: "SET_LANGUAGE"; lang: string }
   | {
@@ -263,11 +268,13 @@ function createSessionEntry(
     activeCapability: null,
     knowledgeBases: [],
     llmSelection: null,
+    masteryPathId: null,
     personaSelection: "",
     messages: [],
     isStreaming: false,
     currentStage: "",
-    language: typeof window === "undefined" ? "en" : readStoredLanguage(),
+    language:
+      typeof window === "undefined" ? "en" : readStoredResponseLanguage(),
     status: "idle",
     activeTurnId: null,
     lastSeq: 0,
@@ -330,6 +337,11 @@ function reducer(state: ProviderState, action: Action): ProviderState {
       return updateSelectedSession(state, (session) => ({
         ...session,
         llmSelection: action.selection,
+      }));
+    case "SET_MASTERY_PATH_ID":
+      return updateSelectedSession(state, (session) => ({
+        ...session,
+        masteryPathId: action.masteryPathId,
       }));
     case "SET_PERSONA_SELECTION":
       return updateSelectedSession(state, (session) => ({
@@ -607,6 +619,10 @@ function reducer(state: ProviderState, action: Action): ProviderState {
               action.llmSelection !== undefined
                 ? action.llmSelection
                 : existing.llmSelection,
+            masteryPathId:
+              action.masteryPathId !== undefined
+                ? action.masteryPathId
+                : existing.masteryPathId,
             personaSelection:
               action.personaSelection !== undefined
                 ? action.personaSelection
@@ -787,6 +803,7 @@ interface ChatContextValue {
   setCapability: (cap: string | null) => void;
   setKBs: (kbs: string[]) => void;
   setLLMSelection: (selection: LLMSelection | null) => void;
+  setMasteryPathId: (masteryPathId: string | null) => void;
   setPersonaSelection: (persona: string) => void;
   setLanguage: (lang: string) => void;
   sendMessage: (
@@ -836,7 +853,7 @@ interface ChatContextValue {
   loadSession: (
     sessionId: string,
     options?: { signal?: AbortSignal; revalidate?: boolean },
-  ) => Promise<void>;
+  ) => Promise<MessageItem[] | undefined>;
   /** Select an already-loaded session without fetching. Returns false when
    *  it isn't in memory, i.e. the caller must load it. */
   showCachedSession: (sessionId: string) => boolean;
@@ -966,6 +983,10 @@ function hydrateRequestSnapshot(
   const memoryReferences = asMemoryReferences(stored.memoryReferences);
   const bookReferences = normalizeBookReferences(stored.bookReferences);
   const llmSelection = asLLMSelection(stored.llmSelection);
+  const masteryPathId =
+    typeof (stored.masteryPathId ?? stored.mastery_path_id) === "string"
+      ? String(stored.masteryPathId ?? stored.mastery_path_id).trim()
+      : "";
 
   if (config && Object.keys(config).length) snapshot.config = config;
   if (notebookReferences.length)
@@ -978,6 +999,7 @@ function hydrateRequestSnapshot(
   if (persona) snapshot.persona = persona;
   if (memoryReferences.length) snapshot.memoryReferences = memoryReferences;
   if (llmSelection) snapshot.llmSelection = llmSelection;
+  if (masteryPathId) snapshot.masteryPathId = masteryPathId;
   return snapshot;
 }
 
@@ -1006,9 +1028,9 @@ export function UnifiedChatProvider({
   // Forward-declared so ``handleRunnerEvent`` (created above
   // ``loadSession`` in source order) can trigger a server refresh after
   // a turn finishes without taking a stale closure of ``loadSession``.
-  const loadSessionRef = useRef<((sessionId: string) => Promise<void>) | null>(
-    null,
-  );
+  const loadSessionRef = useRef<
+    ((sessionId: string) => Promise<MessageItem[] | undefined>) | null
+  >(null);
 
   useLayoutEffect(() => {
     stateRef.current = state;
@@ -1338,12 +1360,13 @@ export function UnifiedChatProvider({
         const local = stateRef.current.sessions[key];
         if (!local || local.isStreaming || local.status === "running") return;
       }
+      const messages = hydrateMessages(session.messages ?? []);
       dispatch({
         type: options?.revalidate ? "REVALIDATE_SESSION" : "LOAD_SESSION",
         key,
         sessionId: key,
         title: session.title || "",
-        messages: hydrateMessages(session.messages ?? []),
+        messages,
         activeTurnId: activeTurn?.turn_id || activeTurn?.id || null,
         status:
           (session.status as SessionRuntimeStatus | undefined) ||
@@ -1356,14 +1379,18 @@ export function UnifiedChatProvider({
           ? session.preferences.knowledge_bases
           : [],
         llmSelection: asLLMSelection(session.preferences?.llm_selection),
+        masteryPathId:
+          typeof session.preferences?.mastery_path_id === "string"
+            ? session.preferences.mastery_path_id
+            : null,
         personaSelection:
           typeof session.preferences?.persona === "string"
             ? session.preferences.persona
             : "",
-        // The Settings language is global UI state. Historical sessions may
-        // have stale persisted preferences, so new turns follow the current
-        // app language rather than the language saved when the session began.
-        language: readStoredLanguage(),
+        // Model output language is account-level state. Historical sessions
+        // may have stale persisted preferences, so new turns follow the
+        // current response-language setting rather than their original value.
+        language: readStoredResponseLanguage(),
         selectedBranches: normalizeSelectedBranches(
           session.preferences?.selected_branches,
         ),
@@ -1378,6 +1405,7 @@ export function UnifiedChatProvider({
           after_seq: 0,
         });
       }
+      return messages;
     },
     [hydrateMessages, sendThroughRunner],
   );
@@ -1400,18 +1428,19 @@ export function UnifiedChatProvider({
     const syncLanguage = (language: string | null | undefined) => {
       dispatch({ type: "SET_LANGUAGE", lang: normalizeLanguage(language) });
     };
-    const onLanguage = (event: Event) => {
+    const onResponseLanguage = (event: Event) => {
       const detail = (event as CustomEvent<{ language?: string }>).detail;
       syncLanguage(detail?.language);
     };
     const onStorage = (event: StorageEvent) => {
-      if (event.key === LANGUAGE_STORAGE_KEY) syncLanguage(event.newValue);
+      if (event.key === RESPONSE_LANGUAGE_STORAGE_KEY)
+        syncLanguage(event.newValue);
     };
 
-    window.addEventListener(LANGUAGE_EVENT, onLanguage);
+    window.addEventListener(RESPONSE_LANGUAGE_EVENT, onResponseLanguage);
     window.addEventListener("storage", onStorage);
     return () => {
-      window.removeEventListener(LANGUAGE_EVENT, onLanguage);
+      window.removeEventListener(RESPONSE_LANGUAGE_EVENT, onResponseLanguage);
       window.removeEventListener("storage", onStorage);
     };
   }, []);
@@ -1507,8 +1536,10 @@ export function UnifiedChatProvider({
         replaySnapshot && "llmSelection" in replaySnapshot
           ? (replaySnapshot.llmSelection ?? null)
           : session.llmSelection;
+      const effectiveMasteryPathId =
+        replaySnapshot?.masteryPathId ?? session.masteryPathId;
       const effectiveLanguage =
-        replaySnapshot?.language ?? readStoredLanguage();
+        replaySnapshot?.language ?? readStoredResponseLanguage();
       // Persona resolution: replay snapshot wins; then an explicit per-call
       // persona (quiz follow-up surface); then the session-level preference.
       // Always a string — "" means Default / no persona.
@@ -1561,6 +1592,9 @@ export function UnifiedChatProvider({
           : {}),
         ...(effectiveBookReferences?.length
           ? { bookReferences: effectiveBookReferences }
+          : {}),
+        ...(effectiveMasteryPathId
+          ? { masteryPathId: effectiveMasteryPathId }
           : {}),
         ...(effectivePersona ? { persona: effectivePersona } : {}),
         ...(effectiveMemoryReferences?.length
@@ -1629,6 +1663,9 @@ export function UnifiedChatProvider({
           : {}),
         ...(effectiveBookReferences?.length
           ? { book_references: effectiveBookReferences }
+          : {}),
+        ...(effectiveMasteryPathId
+          ? { mastery_path_id: effectiveMasteryPathId }
           : {}),
         // Always sent (possibly ""): an explicit key is the backend's signal
         // to persist the value into session.preferences — "" clears back to
@@ -1742,7 +1779,7 @@ export function UnifiedChatProvider({
       type: "regenerate",
       session_id: session.sessionId,
       overrides: {
-        language: readStoredLanguage(),
+        language: readStoredResponseLanguage(),
       },
     });
   }, [sendThroughRunner]);
@@ -1756,6 +1793,7 @@ export function UnifiedChatProvider({
       activeCapability: current.activeCapability,
       knowledgeBases: current.knowledgeBases,
       llmSelection: current.llmSelection,
+      masteryPathId: current.masteryPathId,
       personaSelection: current.personaSelection,
       messages: current.messages,
       isStreaming: current.isStreaming,
@@ -1793,6 +1831,11 @@ export function UnifiedChatProvider({
 
   const setLLMSelection = useCallback((selection: LLMSelection | null) => {
     dispatch({ type: "SET_LLM_SELECTION", selection });
+  }, []);
+
+  const setMasteryPathId = useCallback((masteryPathId: string | null) => {
+    const normalized = masteryPathId?.trim() || null;
+    dispatch({ type: "SET_MASTERY_PATH_ID", masteryPathId: normalized });
   }, []);
 
   const setPersonaSelection = useCallback((persona: string) => {
@@ -1837,35 +1880,21 @@ export function UnifiedChatProvider({
       // already running so we don't queue against an in-flight stream
       // (matches the delete-turn guard).
       if (session.isStreaming) return;
-      const idx = session.messages.findIndex(
-        (m) => m.id === messageId && m.role === "user",
-      );
-      if (idx === -1) return;
-      let original = session.messages[idx];
-      // Optimistic in-flight rows have a negative client-side id — we
-      // need a real server id to hang the new sibling under. Refresh
-      // from the server, then re-resolve the row by its position in the
-      // (now-persisted) thread before continuing.
-      if (typeof original.id === "number" && original.id < 0) {
-        if (!session.sessionId) return;
-        try {
-          await loadSession(session.sessionId);
-        } catch {
-          return;
-        }
-        const refreshed = stateRef.current.sessions[key];
-        const candidate = refreshed?.messages[idx];
-        if (
-          !candidate ||
-          candidate.role !== "user" ||
-          typeof candidate.id !== "number" ||
-          candidate.id < 0
-        ) {
-          return;
-        }
-        original = candidate;
+      let original: MessageItem | undefined;
+      try {
+        original = await resolvePersistedMessage(
+          session.messages,
+          messageId,
+          "user",
+          async () =>
+            session.sessionId
+              ? await loadSession(session.sessionId)
+              : undefined,
+        );
+      } catch {
+        return;
       }
-      if (typeof original.id !== "number" || original.id < 0) return;
+      if (!original) return;
       const parentId = original.parentMessageId ?? null;
       sendMessage(
         trimmed,
@@ -1958,6 +1987,7 @@ export function UnifiedChatProvider({
       setCapability,
       setKBs,
       setLLMSelection,
+      setMasteryPathId,
       setPersonaSelection,
       setLanguage,
       sendMessage,
@@ -1981,6 +2011,7 @@ export function UnifiedChatProvider({
       setCapability,
       setKBs,
       setLLMSelection,
+      setMasteryPathId,
       setPersonaSelection,
       setLanguage,
       sendMessage,

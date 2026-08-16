@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict, List
 
 from deeptutor.services.config.runtime_settings import (
     DOCUMENT_PARSING_ENGINE_DOCLING,
+    DOCUMENT_PARSING_ENGINE_LITEPARSE,
     DOCUMENT_PARSING_ENGINE_MARKITDOWN,
     DOCUMENT_PARSING_ENGINE_MINERU,
     DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM,
@@ -46,6 +47,12 @@ def _markitdown_class():
     return MarkItDownParser
 
 
+def _liteparse_class():
+    from .liteparse.engine import LiteParseParser
+
+    return LiteParseParser
+
+
 def _pymupdf4llm_class():
     from .pymupdf4llm.engine import PyMuPDF4LLMParser
 
@@ -59,6 +66,7 @@ _ENGINE_LOADERS: Dict[str, Callable[[], Any]] = {
     DOCUMENT_PARSING_ENGINE_DOCLING: _docling_class,
     DOCUMENT_PARSING_ENGINE_MARKITDOWN: _markitdown_class,
     DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM: _pymupdf4llm_class,
+    DOCUMENT_PARSING_ENGINE_LITEPARSE: _liteparse_class,
 }
 
 KNOWN_ENGINES = frozenset(_ENGINE_LOADERS)
@@ -84,8 +92,9 @@ _ENGINE_META: Dict[str, Dict[str, Any]] = {
     DOCUMENT_PARSING_ENGINE_DOCLING: {
         "name": "Docling",
         "description": (
-            "Structured document conversion (layout/tables). Downloads local "
-            "models on first run. PDF/Office/HTML/images."
+            "Structured document conversion (layout/tables). Runs the in-process "
+            "docling package (downloads models on first run) or points at a remote "
+            "Docling Serve server. PDF/Office/HTML/images."
         ),
         "needs_local_models": True,
     },
@@ -103,6 +112,15 @@ _ENGINE_META: Dict[str, Dict[str, Any]] = {
             "Lightweight, no model downloads or CUDA — runs on low-end / GPU-less "
             "machines. PDF/e-book → Markdown and can extract images. PDF and "
             "e-book formats only."
+        ),
+        "needs_local_models": False,
+    },
+    DOCUMENT_PARSING_ENGINE_LITEPARSE: {
+        "name": "LiteParse",
+        "description": (
+            "Fast, lightweight PDF parser with spatial text extraction. "
+            "Markdown output, optional image extraction. No model downloads. "
+            "Developed by LlamaIndex."
         ),
         "needs_local_models": False,
     },

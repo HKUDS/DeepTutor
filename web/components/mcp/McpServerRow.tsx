@@ -1,7 +1,14 @@
 "use client";
 
 import { type ReactNode } from "react";
-import { ChevronDown, KeyRound, Pencil, Plug, ShieldCheck, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  KeyRound,
+  Pencil,
+  Plug,
+  ShieldCheck,
+  Trash2,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { BrandGlyph } from "@/components/common/BrandIcon";
@@ -66,7 +73,11 @@ export default function McpServerRow({
           hand-written server has no provenance and keeps the generic plug. */}
       <span className="mt-0.5 shrink-0 text-[var(--muted-foreground)]">
         {brand ? (
-          <BrandGlyph namespace="mcp" id={cfg.catalog_entry || name} size={14} />
+          <BrandGlyph
+            namespace="mcp"
+            id={cfg.catalog_entry || name}
+            size={14}
+          />
         ) : (
           <Plug className="h-3.5 w-3.5" />
         )}

@@ -33,10 +33,17 @@ dependencies = [
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
     "aiosqlite>=0.19.0",
-    "typer[all]>=0.9.0",
+    "typer>=0.9.0",
     "rich>=13.0.0",
     "prompt_toolkit>=3.0.36",
     "pyte>=0.8.1",  # in-memory terminal emulator: scrape Claude Code's /model TUI on sync
+    # MCP client. Core rather than a `partners`-only extra (issue #792): the
+    # connection manager and the built-in PageIndex MCP server are injected on
+    # any turn where a PageIndex API key is configured, so a plain
+    # `pip install deeptutor` has to be able to import `mcp` — otherwise the
+    # connection task dies with ModuleNotFoundError and every turn stalls for
+    # the full connect timeout.
+    "mcp>=1.26.0,<2.0.0",
     # Full app dependencies included by default for `pip install deeptutor`.
     "anthropic>=0.30.0",
     "dashscope>=1.14.0",
@@ -68,6 +75,10 @@ dependencies = [
     "pocketbase>=0.12.0",
     "loguru>=0.7.3,<1.0.0",
     "json-repair>=0.57.0,<1.0.0",
+    # Process-tree memory readings for /api/v1/system/memory. Soft dependency:
+    # deeptutor.runtime.memory_probe imports it lazily and falls back to /proc,
+    # so a missing wheel costs the settings strip, not the app.
+    "psutil>=5.9.0,<8.0.0",
 ]
 
 [project.scripts]
@@ -104,6 +115,15 @@ cli = [
     "defusedxml>=0.7.1",
 ]
 
+# CodeBuddy chat works over HTTP with the login state the IDE plugin / CLI
+# already stores. This extra adds the Agent SDK (a ~130 MB bundled headless
+# CLI) for in-app browser login and CLI-driven agent tools.
+# Upper-bounded on purpose: the provider probes the SDK for its turn-limit
+# and permission-mode kwargs, and a minor bump that renames them would make
+# every options build fail. Not in `all` — it vendors a ~130 MB headless CLI
+# and chat works over plain HTTP without it.
+codebuddy = ["codebuddy-agent-sdk>=0.1.24,<0.2"]
+
 # Compatibility extra for source installs and older docs. These packages are
 # already included in the public `deeptutor` wheel.
 server = [
@@ -118,14 +138,15 @@ server = [
     "loguru>=0.7.3,<1.0.0",
     "json-repair>=0.57.0,<1.0.0",
     "croniter>=6.0.0,<7.0.0",
+    "psutil>=5.9.0,<8.0.0",
 ]
 
-# Partner channel SDKs + MCP client. Mirrors requirements/partners.txt.
+# Partner channel SDKs. Mirrors requirements/partners.txt.
 # Partners run on the chat agent loop, so there is no engine here — just the
-# IM platform SDKs and the MCP client used for deferred tools.
+# IM platform SDKs. The MCP client used for deferred tools is a core dependency
+# (see `mcp` above), not a partners-only one.
 partners = [
     "deeptutor[server]",
-    "mcp>=1.26.0,<2.0.0",
     "python-telegram-bot[socks]>=22.6,<23.0",
     "wecom-aibot-sdk>=1.0.8,<2.0.0",
     "lark-oapi>=1.5.0,<2.0.0",
@@ -162,10 +183,15 @@ parse-docling = ["docling>=2.0.0"]
 # pulls a heavy dep, downloads a model, and can't extract images — defeating the
 # "lightweight, runs on a Pi, extracts images" point of this engine.
 parse-pymupdf4llm = ["pymupdf4llm>=0.0.17,<1.0"]
+# LiteParse ships its parser as a compiled Rust extension, so a major bump
+# can change both the Python API and the Markdown it emits (which the parse
+# cache keys on). Pin the major like parse-pymupdf4llm does.
+parse-liteparse = ["liteparse>=2.11.1,<3.0"]
 parse = [
     "deeptutor[parse-markitdown]",
     "deeptutor[parse-docling]",
     "deeptutor[parse-pymupdf4llm]",
+    "deeptutor[parse-liteparse]",
 ]
 
 # Legacy alias kept for one release: `pip install deeptutor[tutorbot]`.

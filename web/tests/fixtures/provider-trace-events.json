@@ -12,9 +12,7 @@
         "trace_role": "tool",
         "trace_group": "tool_call",
         "args": {
-          "args": [
-            "--help"
-          ]
+          "args": ["--help"]
         }
       }
     },
@@ -60,9 +58,7 @@
         "tool": "cli_mermaid",
         "tool_metadata": {
           "cli_app": "mermaid",
-          "cli_argv": [
-            "--help"
-          ],
+          "cli_argv": ["--help"],
           "exit_code": 0,
           "timed_out": false,
           "sandbox_error": "",

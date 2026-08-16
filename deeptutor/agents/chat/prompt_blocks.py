@@ -163,6 +163,17 @@ class ChatPromptAssembler:
             ),
         )
 
+    def settle_exhausted_instruction(self) -> str:
+        return self._t(
+            "loop.settle_exhausted",
+            default=(
+                "The exploration round budget is exhausted. Do not start new "
+                "searches or optional work. Complete only protocol steps, state "
+                "transitions, or user interactions already made necessary by "
+                "the work above, then provide the final user-facing answer."
+            ),
+        )
+
     def _fallback_empty_tool_list(self) -> str:
         return "- 无" if self.language == "zh" else "- none"
 

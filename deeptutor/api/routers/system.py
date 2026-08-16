@@ -3,6 +3,7 @@ System Status API Router
 Manages system status checks and model connection tests
 """
 
+import asyncio
 from datetime import datetime
 import time
 
@@ -10,7 +11,11 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from deeptutor.multi_user.context import get_current_user
-from deeptutor.services.config import resolve_search_runtime_config
+from deeptutor.runtime import memory_probe
+from deeptutor.services.config import (
+    resolve_search_runtime_config,
+    supported_search_providers_hint,
+)
 from deeptutor.services.embedding import get_embedding_client, get_embedding_config
 from deeptutor.services.llm import complete as llm_complete
 from deeptutor.services.llm import get_llm_config, get_token_limit_kwargs
@@ -108,13 +113,13 @@ async def get_system_status():
                 result["search"]["status"] = "unsupported"
                 result["search"]["error"] = (
                     f"{search_config.requested_provider} is deprecated/unsupported. "
-                    "Switch to brave/tavily/jina/searxng/duckduckgo/perplexity."
+                    f"Switch to {supported_search_providers_hint()}."
                 )
             elif search_config.deprecated_provider:
                 result["search"]["status"] = "deprecated"
                 result["search"]["error"] = (
                     f"{search_config.requested_provider} is deprecated. "
-                    "Switch to brave/tavily/jina/searxng/duckduckgo/perplexity."
+                    f"Switch to {supported_search_providers_hint()}."
                 )
             elif search_config.missing_credentials:
                 result["search"]["status"] = "not_configured"
@@ -143,6 +148,60 @@ async def get_system_status():
         result["search"].pop("provider", None)
 
     return result
+
+
+@router.get("/memory")
+async def get_memory_usage():
+    """Resident memory of the running DeepTutor process tree.
+
+    Deliberately separate from ``/status``: that snapshot resolves the LLM,
+    embedding and search configs and is fetched once per settings mount, while
+    this one is cheap enough for the status strip to poll.
+
+    Admin-only, for the same reason ``/status`` strips model names from
+    non-admins — process composition and host memory are operational detail a
+    tenant has no need for.
+    """
+    if not get_current_user().is_admin:
+        return {"available": False}
+
+    snapshot = await asyncio.to_thread(memory_probe.capture)
+    if not snapshot.processes:
+        return {"available": False}
+
+    # Fold the tree into one row per role, largest first, so the tooltip stays
+    # readable when capabilities have spawned a dozen short-lived sandboxes.
+    grouped: dict[str, dict[str, int]] = {}
+    for proc in snapshot.processes:
+        row = grouped.setdefault(proc.label, {"count": 0, "rss_bytes": 0})
+        row["count"] += 1
+        row["rss_bytes"] += proc.rss_bytes
+    ranked = sorted(grouped.items(), key=lambda item: item[1]["rss_bytes"], reverse=True)
+
+    processes = [
+        {"label": label, "count": row["count"], "rss_bytes": row["rss_bytes"]}
+        for label, row in ranked[: memory_probe.MAX_REPORTED_PROCESSES]
+    ]
+    overflow = ranked[memory_probe.MAX_REPORTED_PROCESSES :]
+    if overflow:
+        processes.append(
+            {
+                "label": "other",
+                "count": sum(row["count"] for _label, row in overflow),
+                "rss_bytes": sum(row["rss_bytes"] for _label, row in overflow),
+            }
+        )
+
+    return {
+        "available": True,
+        "total_rss_bytes": snapshot.total_rss_bytes,
+        "limit_bytes": snapshot.limit_bytes,
+        "available_bytes": snapshot.available_bytes,
+        "limit_source": snapshot.limit_source,
+        "usage_ratio": snapshot.usage_ratio,
+        "partial": snapshot.partial,
+        "processes": processes,
+    }
 
 
 @router.post("/test/llm", response_model=TestResponse)
@@ -288,7 +347,7 @@ async def test_search_connection():
                 message=(
                     f"Search provider `{search_config.requested_provider}` is deprecated/unsupported."
                 ),
-                error="Switch to brave/tavily/jina/searxng/duckduckgo/perplexity",
+                error=f"Switch to {supported_search_providers_hint()}",
             )
         if search_config.missing_credentials:
             return TestResponse(

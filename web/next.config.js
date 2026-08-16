@@ -91,6 +91,12 @@ const APP_VERSION = (() => {
 })();
 
 const nextConfig = {
+  // Keep the production build used by `deeptutor start` separate from the
+  // `.next` development cache used by the explicit `deeptutor start --dev`.
+  // Without separate directories either command can invalidate the other
+  // process while it is running.
+  distDir: process.env.DEEPTUTOR_NEXT_DIST_DIR || ".next",
+
   // Expose the build-time version to the browser so the sidebar badge
   // can compare it against GitHub's latest release.
   env: {
@@ -103,12 +109,10 @@ const nextConfig = {
   // This eliminates the need to copy the full node_modules into Docker production images
   output: "standalone",
 
-  // web/proxy.ts (the Next.js middleware) forwards /api/* and /ws/* to the
-  // backend by buffering and re-issuing the request. Next caps the buffered
-  // request body at 10MB by default, but the backend accepts uploads up to
-  // 200MB (DocumentValidator.MAX_FILE_SIZE). Raise the proxy cap to match (plus
-  // multipart overhead headroom) so knowledge-base document uploads aren't
-  // silently truncated when they pass through the proxy.
+  // web/proxy.ts clones request bodies before rewriting them. Keep enough room
+  // for individual large-body endpoints that still use Proxy. Knowledge-base
+  // create/upload batches use dedicated streaming route handlers instead, so
+  // their total size is not coupled to this in-memory clone limit.
   experimental: {
     proxyClientMaxBodySize: 210 * 1024 * 1024,
   },

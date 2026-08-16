@@ -18,7 +18,7 @@ from ...types import ParserError
 
 
 class TextOnlyParser:
-    """Built-in PDF/Office/text-file extraction with no external engine."""
+    """Built-in PDF/Office/EPUB/text-file extraction with no external engine."""
 
     name = "text_only"
     needs_local_models = False

@@ -87,6 +87,10 @@ _LEGACY_DOCUMENT_PARSING_SETTINGS_NAME = "mineru"
 MINERU_MODE_LOCAL = "local"
 MINERU_MODE_CLOUD = "cloud"
 _MINERU_MODES = frozenset({MINERU_MODE_LOCAL, MINERU_MODE_CLOUD})
+
+DOCLING_MODE_LOCAL = "local"
+DOCLING_MODE_REMOTE = "remote"
+_DOCLING_MODES = frozenset({DOCLING_MODE_LOCAL, DOCLING_MODE_REMOTE})
 _MINERU_MODEL_VERSIONS = frozenset({"pipeline", "vlm"})
 _MINERU_DOWNLOAD_SOURCES = frozenset({"huggingface", "modelscope"})
 
@@ -95,6 +99,7 @@ DOCUMENT_PARSING_ENGINE_MINERU = "mineru"
 DOCUMENT_PARSING_ENGINE_DOCLING = "docling"
 DOCUMENT_PARSING_ENGINE_MARKITDOWN = "markitdown"
 DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM = "pymupdf4llm"
+DOCUMENT_PARSING_ENGINE_LITEPARSE = "liteparse"
 _DOCUMENT_PARSING_ENGINES = frozenset(
     {
         DOCUMENT_PARSING_ENGINE_TEXT_ONLY,
@@ -102,10 +107,14 @@ _DOCUMENT_PARSING_ENGINES = frozenset(
         DOCUMENT_PARSING_ENGINE_DOCLING,
         DOCUMENT_PARSING_ENGINE_MARKITDOWN,
         DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM,
+        DOCUMENT_PARSING_ENGINE_LITEPARSE,
     }
 )
 # Image formats PyMuPDF4LLM can write extracted page images as.
 _PYMUPDF4LLM_IMAGE_FORMATS = frozenset({"png", "jpg", "jpeg", "webp"})
+# How LiteParse presents images in its Markdown. Independent of whether the
+# image bytes are extracted (that is the engine's ``extract_images`` knob).
+LITEPARSE_IMAGE_MODES = frozenset({"off", "placeholder", "embed"})
 # Fresh installs default to the built-in text extractor so parsing works out of
 # the box without optional parser packages or model weights.
 # Migrated v1 installs keep MinerU (see ``_normalize_document_parsing``).
@@ -138,9 +147,14 @@ _DEFAULT_MINERU_ENGINE: dict[str, Any] = {
     "allow_local_model_download": False,
 }
 
-# Docling engine slice. Downloads layout/table models on first run, hence the
-# same ``allow_local_model_download`` gate as MinerU local.
+# Docling engine slice. ``mode`` selects the in-process ``docling`` package
+# ("local") or a Docling Serve HTTP server ("remote"; needs ``api_base_url`` and
+# optionally ``api_token``). Local downloads layout/table models on first run,
+# hence the same ``allow_local_model_download`` gate as MinerU local.
 _DEFAULT_DOCLING_ENGINE: dict[str, Any] = {
+    "mode": DOCLING_MODE_LOCAL,
+    "api_base_url": "http://localhost:5001",
+    "api_token": "",
     "do_ocr": False,
     "do_table_structure": True,
     "allow_local_model_download": False,
@@ -162,6 +176,17 @@ _DEFAULT_PYMUPDF4LLM_ENGINE: dict[str, Any] = {
     "image_dpi": 150,
 }
 
+# LiteParse engine slice. Rust-backed, no model downloads. Like PyMuPDF4LLM it
+# can extract embedded images into the parse's images/ dir. Output format and
+# image directory are fixed by the workdir contract, so neither is a knob here
+# (see engines/liteparse/engine.py). ``max_pages`` 0 means the whole document.
+_DEFAULT_LITEPARSE_ENGINE: dict[str, Any] = {
+    "image_mode": "placeholder",
+    "extract_links": True,
+    "extract_images": False,
+    "max_pages": 0,
+}
+
 # Built-in text-only engine slice. It deliberately has no knobs: it reuses
 # DeepTutor's legacy text extractors for PDF / Office / text-like files.
 _DEFAULT_TEXT_ONLY_ENGINE: dict[str, Any] = {}
@@ -179,6 +204,7 @@ DEFAULT_DOCUMENT_PARSING_SETTINGS: dict[str, Any] = {
         DOCUMENT_PARSING_ENGINE_DOCLING: _DEFAULT_DOCLING_ENGINE,
         DOCUMENT_PARSING_ENGINE_MARKITDOWN: _DEFAULT_MARKITDOWN_ENGINE,
         DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM: _DEFAULT_PYMUPDF4LLM_ENGINE,
+        DOCUMENT_PARSING_ENGINE_LITEPARSE: _DEFAULT_LITEPARSE_ENGINE,
     },
 }
 
@@ -405,6 +431,9 @@ class RuntimeSettingsService:
             engines[DOCUMENT_PARSING_ENGINE_MINERU] = self._apply_mineru_process_overrides(
                 dict(engines[DOCUMENT_PARSING_ENGINE_MINERU])
             )
+            engines[DOCUMENT_PARSING_ENGINE_DOCLING] = self._apply_docling_process_overrides(
+                dict(engines[DOCUMENT_PARSING_ENGINE_DOCLING])
+            )
             payload = {**payload, "engines": engines}
         return payload
 
@@ -526,10 +555,16 @@ class RuntimeSettingsService:
             # so the two deployment paths stay in sync. DEEPTUTOR_API_BASE_URL is
             # the address the frontend *server* uses to reach the backend; the
             # browser itself only ever talks to the frontend origin.
+            #
+            # The fallback is the IPv4 loopback, not "localhost": on a dual-stack
+            # host that name resolves to ::1 first, while uvicorn binds 0.0.0.0
+            # (IPv4 only), so every rewritten /api/* request fails to connect.
+            # The launcher passes the same literal (see runtime/launcher.py), so
+            # both deployment paths agree.
             "DEEPTUTOR_API_BASE_URL": (
                 system["next_public_api_base"]
                 or system["next_public_api_base_external"]
-                or f"http://localhost:{system['backend_port']}"
+                or f"http://127.0.0.1:{system['backend_port']}"
             ),
             "DEEPTUTOR_AUTH_ENABLED": _bool_env(auth["enabled"]),
             "POCKETBASE_URL": integrations["pocketbase_url"],
@@ -795,6 +830,9 @@ class RuntimeSettingsService:
             DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM: self._normalize_pymupdf4llm_engine(
                 engines_in.get(DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM) or {}
             ),
+            DOCUMENT_PARSING_ENGINE_LITEPARSE: self._normalize_liteparse_engine(
+                engines_in.get(DOCUMENT_PARSING_ENGINE_LITEPARSE) or {}
+            ),
         }
 
         engine = _string(settings.get("engine")).lower().replace("-", "_").replace(" ", "_")
@@ -835,7 +873,14 @@ class RuntimeSettingsService:
         }
 
     def _normalize_docling_engine(self, settings: dict[str, Any]) -> dict[str, Any]:
+        mode = _string(settings.get("mode")).lower()
+        if mode not in _DOCLING_MODES:
+            mode = DOCLING_MODE_LOCAL
         return {
+            "mode": mode,
+            "api_base_url": _string(settings.get("api_base_url")).rstrip("/")
+            or "http://localhost:5001",
+            "api_token": _string(settings.get("api_token")),
             "do_ocr": _coerce_bool(settings.get("do_ocr"), False),
             "do_table_structure": _coerce_bool(settings.get("do_table_structure"), True),
             "allow_local_model_download": _coerce_bool(
@@ -843,11 +888,32 @@ class RuntimeSettingsService:
             ),
         }
 
+    def _apply_docling_process_overrides(self, settings: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(settings)
+        if value := self._process_env_value("DOCLING_MODE"):
+            payload["mode"] = value
+        if value := self._process_env_value("DOCLING_API_BASE_URL"):
+            payload["api_base_url"] = value
+        if value := self._process_env_value("DOCLING_API_TOKEN"):
+            payload["api_token"] = value
+        return self._normalize_docling_engine(payload)
+
     def _normalize_markitdown_engine(self, settings: dict[str, Any]) -> dict[str, Any]:
         return {
             "enable_llm_image_description": _coerce_bool(
                 settings.get("enable_llm_image_description"), False
             ),
+        }
+
+    def _normalize_liteparse_engine(self, settings: dict[str, Any]) -> dict[str, Any]:
+        image_mode = _string(settings.get("image_mode")).lower() or "placeholder"
+        if image_mode not in LITEPARSE_IMAGE_MODES:
+            image_mode = "placeholder"
+        return {
+            "image_mode": image_mode,
+            "extract_links": _coerce_bool(settings.get("extract_links"), True),
+            "extract_images": _coerce_bool(settings.get("extract_images"), False),
+            "max_pages": _coerce_clamped_int(settings.get("max_pages"), 0, 0, 100_000),
         }
 
     def _normalize_pymupdf4llm_engine(self, settings: dict[str, Any]) -> dict[str, Any]:
@@ -1010,6 +1076,21 @@ def get_ws_max_size() -> int:
     return compute_ws_max_size(get_chat_attachment_limits().max_total_bytes)
 
 
+# Idle keep-alive window for backend HTTP connections — wire into every uvicorn
+# launch. The browser never reaches the backend directly: `web/proxy.ts` rewrites
+# `/api/*` and Next.js forwards over Node's `http.globalAgent`, which pools idle
+# sockets and reaps them on its own 5s `timeout`. uvicorn's `timeout_keep_alive`
+# also defaults to 5s, so both ends armed an identical idle timer on the same
+# socket and raced to close it: when the server's FIN landed on a socket the pool
+# was simultaneously handing to a new request, the request died with `ECONNRESET`
+# and the proxy turned it into a 500 ("Failed to proxy ... socket hang up" ->
+# "Failed to load sessions" in the UI). Any value comfortably above the proxy's
+# 5s reaper leaves the client as the only side that closes an idle connection,
+# which is the safe direction — a pool retiring its own socket removes it before
+# any request can be assigned to it, so the collision cannot happen at all.
+HTTP_KEEP_ALIVE_TIMEOUT = 300
+
+
 def load_auth_settings() -> dict[str, Any]:
     return get_runtime_settings_service().load_auth()
 
@@ -1056,10 +1137,14 @@ __all__ = [
     "DEFAULT_PAGEINDEX_SETTINGS",
     "DEFAULT_SYSTEM_SETTINGS",
     "DOCUMENT_PARSING_ENGINE_DOCLING",
+    "DOCUMENT_PARSING_ENGINE_LITEPARSE",
     "DOCUMENT_PARSING_ENGINE_MARKITDOWN",
     "DOCUMENT_PARSING_ENGINE_MINERU",
     "DOCUMENT_PARSING_ENGINE_PYMUPDF4LLM",
     "DOCUMENT_PARSING_ENGINE_TEXT_ONLY",
+    "DOCLING_MODE_LOCAL",
+    "DOCLING_MODE_REMOTE",
+    "LITEPARSE_IMAGE_MODES",
     "MINERU_MODE_CLOUD",
     "MINERU_MODE_LOCAL",
     "ChatAttachmentLimits",

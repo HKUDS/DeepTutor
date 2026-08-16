@@ -47,7 +47,7 @@ else:
 from deeptutor.partners.bus.events import OutboundMessage
 from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.partners.channels.base import BaseChannel
-from deeptutor.partners.config.paths import get_data_dir, get_media_dir
+from deeptutor.partners.config.paths import get_data_dir
 from deeptutor.partners.config.schema import DeliveryOverrides
 from deeptutor.partners.helpers import safe_filename
 
@@ -603,7 +603,7 @@ class MatrixChannel(BaseChannel):
         return False
 
     def _media_dir(self) -> Path:
-        return get_media_dir("matrix")
+        return self.media_dir()
 
     @staticmethod
     def _event_source_content(event: RoomMessage) -> dict[str, Any]:

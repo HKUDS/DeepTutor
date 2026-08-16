@@ -35,6 +35,7 @@ MemoryReference = Literal["recent", "profile", "scope", "preferences", "summary"
 # finish round (and forced-finish) are the answer, narration rounds are
 # filtered back out via their ``call_role`` marker (see _narration_marker_call_id).
 _ANSWER_CONTENT_CALL_KINDS = frozenset({"llm_final_response", "agent_loop_round"})
+_FINAL_TURN_STATUSES = frozenset({"completed", "failed", "cancelled", "rejected"})
 
 
 def _should_capture_assistant_content(event: StreamEvent) -> bool:
@@ -47,19 +48,65 @@ def _should_capture_assistant_content(event: StreamEvent) -> bool:
     return metadata.get("call_kind") in _ANSWER_CONTENT_CALL_KINDS
 
 
+def _resolve_turn_outcome(
+    assistant_events: Sequence[dict[str, Any]],
+    done_event: StreamEvent | None,
+) -> tuple[str, str]:
+    """Resolve the persisted turn status and error from the terminal protocol."""
+    done_metadata = (done_event.metadata or {}) if done_event is not None else {}
+    status = str(done_metadata.get("status") or "completed")
+    if status not in _FINAL_TURN_STATUSES:
+        status = "completed"
+
+    error = ""
+    for event in reversed(assistant_events):
+        metadata = event.get("metadata")
+        metadata = metadata if isinstance(metadata, dict) else {}
+        if event.get("type") != StreamEventType.ERROR.value or not metadata.get("turn_terminal"):
+            continue
+        terminal_status = str(metadata.get("status") or "failed")
+        status = terminal_status if terminal_status in _FINAL_TURN_STATUSES else "failed"
+        if status == "completed":
+            status = "failed"
+        error = str(event.get("content") or "")
+        break
+
+    return status, error
+
+
 def _narration_marker_call_id(event: StreamEvent) -> str | None:
     """call_id of a chat-loop round that resolved as narration (a short
     preamble streamed alongside a tool call). Its text belongs to the trace,
-    not the persisted answer, so it is excluded when assembling content."""
+    not the persisted answer, so it is excluded when assembling content.
+
+    A round may explicitly keep learner-facing prose surrounding a call via
+    ``answer_visible`` (for example DSML or mastery tutoring); that narrow
+    exception remains part of the persisted answer.
+    """
     metadata = event.metadata or {}
     if (
         metadata.get("trace_kind") == "call_status"
         and metadata.get("call_state") == "complete"
         and metadata.get("call_role") == "narration"
+        and metadata.get("answer_visible") is not True
     ):
         call_id = metadata.get("call_id")
         return str(call_id) if call_id else None
     return None
+
+
+def _assemble_persisted_answer(
+    content_segments: Sequence[tuple[str | None, str]],
+    narration_call_ids: set[str],
+) -> str:
+    """Replay visible content bytes, excluding trace-only narration rounds."""
+    return clean_thinking_tags(
+        "".join(
+            text
+            for call_id, text in content_segments
+            if not (call_id and call_id in narration_call_ids)
+        )
+    )
 
 
 def _clip_text(value: str, limit: int = 4000) -> str:
@@ -148,6 +195,11 @@ def _string_list(value: Any) -> list[str]:
     return [item for item in value if isinstance(item, str) and item]
 
 
+def _mastery_path_id(value: Any) -> str:
+    """Normalize the optional session-to-mastery-path association."""
+    return str(value or "").strip()
+
+
 def _llm_selection_dict(value: Any) -> dict[str, str] | None:
     from deeptutor.services.model_selection import LLMSelection
 
@@ -190,6 +242,9 @@ def _request_snapshot_metadata(
         snapshot["questionNotebookReferences"] = question_notebook_references
     if book_references:
         snapshot["bookReferences"] = book_references
+    mastery_path_id = _mastery_path_id(payload.get("mastery_path_id"))
+    if mastery_path_id:
+        snapshot["masteryPathId"] = mastery_path_id
     if persona:
         snapshot["persona"] = persona
     if memory_references:
@@ -627,6 +682,12 @@ class TurnRuntimeManager:
 
     async def start_turn(self, payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         capability = str(payload.get("capability") or "chat")
+        if not payload.get("language"):
+            from deeptutor.services.settings.interface_settings import (
+                get_response_language,
+            )
+
+            payload = {**payload, "language": get_response_language(default="en")}
         raw_config = dict(payload.get("config", {}) or {})
         runtime_only_keys = (
             "_persist_user_message",
@@ -656,6 +717,16 @@ class TurnRuntimeManager:
         }
         session = await self.store.ensure_session(payload.get("session_id"))
         preferences = session.get("preferences") or {}
+        # A mastery path has a longer lifetime than any one conversation.
+        # Persist the explicit association on the session, and restore it on
+        # later turns whose frontend payload omits the field.
+        mastery_path_explicit = "mastery_path_id" in payload
+        mastery_path_id = _mastery_path_id(
+            payload.get("mastery_path_id")
+            if mastery_path_explicit
+            else preferences.get("mastery_path_id")
+        )
+        payload = {**payload, "mastery_path_id": mastery_path_id}
         # Persona is a session-level preference (mirrors llm_selection): an
         # explicit ``persona`` key in the payload — including an empty string,
         # which means "Default" / no persona — wins and is persisted below; an
@@ -711,6 +782,7 @@ class TurnRuntimeManager:
                     "model_id": assigned_llms[0].get("model_id"),
                 }
         if llm_selection:
+            from deeptutor.multi_user.personal_models import merge_personal_llm_profiles
             from deeptutor.services.config import get_model_catalog_service
             from deeptutor.services.model_selection import (
                 LLMSelection,
@@ -718,8 +790,12 @@ class TurnRuntimeManager:
             )
 
             try:
+                # Personal (owner-bound) profiles live in the user's own
+                # catalog, so validating against the shared one alone would
+                # reject a Codex model the user signed in for themselves —
+                # the same merge the resolution path performs (#781).
                 apply_llm_selection_to_catalog(
-                    get_model_catalog_service().load(),
+                    merge_personal_llm_profiles(get_model_catalog_service().load()),
                     LLMSelection.from_payload(llm_selection),
                 )
             except ValueError as exc:
@@ -762,6 +838,9 @@ class TurnRuntimeManager:
         if persona_explicit:
             # Persist explicit set AND explicit clear ("" = back to Default).
             preference_update["persona"] = persona_pref
+        if mastery_path_explicit:
+            # Like persona, an explicit empty string clears the association.
+            preference_update["mastery_path_id"] = mastery_path_id
         await self.store.update_session_preferences(session["id"], preference_update)
         turn = await self.store.create_turn(session["id"], capability=capability)
         execution = _TurnExecution(
@@ -875,6 +954,11 @@ class TurnRuntimeManager:
             if overrides.get("llm_selection") is not None
             else snapshot.get("llmSelection") or preferences.get("llm_selection")
         )
+        mastery_path_id = _mastery_path_id(
+            overrides.get("mastery_path_id")
+            if "mastery_path_id" in overrides
+            else snapshot.get("masteryPathId") or preferences.get("mastery_path_id")
+        )
 
         payload: dict[str, Any] = {
             "session_id": session_id,
@@ -899,6 +983,7 @@ class TurnRuntimeManager:
                 if overrides.get("book_references") is not None
                 else snapshot.get("bookReferences") or []
             ),
+            "mastery_path_id": mastery_path_id,
             "config": config,
         }
         if llm_selection:
@@ -1132,13 +1217,7 @@ class TurnRuntimeManager:
             # inline <think> in the content channel are split at streaming
             # time by the agent loop, but anything that slips through must
             # never be persisted as the user-facing answer.
-            return clean_thinking_tags(
-                "".join(
-                    text
-                    for call_id, text in content_segments
-                    if not (call_id and call_id in narration_call_ids)
-                )
-            )
+            return _assemble_persisted_answer(content_segments, narration_call_ids)
 
         # Files the model generated this turn (exec/code_execution artifacts),
         # persisted as assistant-message attachments so the UI shows openable
@@ -1598,6 +1677,7 @@ class TurnRuntimeManager:
                     "history_references": history_references,
                     "question_notebook_references": question_notebook_references,
                     "book_references": book_references,
+                    "mastery_path_id": _mastery_path_id(payload.get("mastery_path_id")),
                     "book_context": book_context,
                     "book_context_warnings": book_context_result.warnings,
                     "memory_references": memory_references,
@@ -1687,14 +1767,22 @@ class TurnRuntimeManager:
                     events=assistant_events,
                     attachments=generated_attachments or None,
                 )
-            await self._flush_buffered_events(execution)
-            await self.store.update_turn_status(turn_id, "completed")
+            turn_status, turn_error = _resolve_turn_outcome(
+                assistant_events,
+                pending_done_event,
+            )
+            await self.store.update_turn_status(turn_id, turn_status, turn_error)
             if pending_done_event is None:
                 pending_done_event = StreamEvent(
                     type=StreamEventType.DONE,
                     source=capability_name,
-                    metadata={"status": "completed"},
+                    metadata={"status": turn_status},
                 )
+            else:
+                pending_done_event.metadata = {
+                    **pending_done_event.metadata,
+                    "status": turn_status,
+                }
             # Attach the persisted row ids so the frontend can reconcile its
             # optimistic (negative) message ids with a targeted in-place swap
             # instead of refetching and re-rendering the whole session.
@@ -1710,7 +1798,7 @@ class TurnRuntimeManager:
                 pending_done_event.metadata = {**pending_done_event.metadata, **persisted_ids}
             await self._publish_live_event(execution, pending_done_event)
             stream_done_sent = True
-            if not is_regenerate:
+            if not is_regenerate and turn_status == "completed":
                 # Title generation is post-turn metadata. Keep it after DONE
                 # so the composer and duration clock stop as soon as the
                 # assistant answer is saved; the frontend keeps this socket
@@ -1724,6 +1812,17 @@ class TurnRuntimeManager:
                     )
                 except Exception:
                     logger.debug("Failed to generate session title", exc_info=True)
+            # Flush once every terminal/post-turn event (DONE, and the title
+            # ``session_meta`` above) has been published, not before: a
+            # client that reconnects after this task's ``finally`` pops
+            # ``execution`` from ``_executions`` falls back entirely to this
+            # persisted backlog, and ``subscribe_turn`` synthesises an
+            # id-less DONE when it finds none there -- permanently orphaning
+            # the just-persisted assistant reply from that client's
+            # reconcile path (it can still see the message after a full
+            # session reload, since the row itself is fine; only the
+            # targeted in-place swap is unreachable).
+            await self._flush_buffered_events(execution)
         except asyncio.CancelledError:
             if not stream_done_sent:
                 await self._publish_live_event(
@@ -1819,6 +1918,12 @@ class TurnRuntimeManager:
                         with contextlib.suppress(asyncio.QueueFull):
                             subscriber.queue.put_nowait(None)
                     self._executions.pop(turn_id, None)
+            # A turn may have parsed large attachments or built substantial
+            # temporary prompts/results. Reclaim after this coroutine returns,
+            # outside the user-visible streaming path.
+            from deeptutor.runtime.memory_reclaim import schedule_memory_reclaim
+
+            schedule_memory_reclaim()
 
     async def _publish_live_event(
         self,

@@ -4,10 +4,20 @@ import path from "node:path";
 import test from "node:test";
 import { createInstance } from "i18next";
 
+import {
+  CODEX_MANAGED_BY,
+  isBoundManagedCodexProfile,
+} from "../components/settings/codex-profile";
+
 const EDITOR = path.resolve(
   process.cwd(),
   "components/settings/ServiceConfigEditor.tsx",
 );
+const CARD = path.resolve(
+  process.cwd(),
+  "components/settings/CodexOAuthCard.tsx",
+);
+const CLIENT = path.resolve(process.cwd(), "lib/codex-oauth.ts");
 const HELPER = path.resolve(
   process.cwd(),
   "components/settings/codex-profile.ts",
@@ -35,12 +45,48 @@ test("the Codex profile predicates live in one place", () => {
   );
 });
 
-test("managed Codex profiles cannot expose profile or model editing", () => {
+test("managed Codex reasoning controls require a current account binding", () => {
+  const editor = readFileSync(EDITOR, "utf8");
+
+  assert.equal(
+    isBoundManagedCodexProfile({
+      managed_by: CODEX_MANAGED_BY,
+      codex_account_binding: "account-binding",
+    }),
+    true,
+  );
+  assert.equal(
+    isBoundManagedCodexProfile({ managed_by: CODEX_MANAGED_BY }),
+    false,
+  );
+  assert.match(editor, /isBoundManagedCodexProfile\(activeProfile\)/);
+});
+
+test("managed Codex profiles expose only provider-supported reasoning effort", () => {
   const source = readFileSync(EDITOR, "utf8");
 
   assert.match(source, /isManagedCodexProfile\(/);
   assert.match(source, /disabled=\{isManagedCodex\}/);
   assert.match(source, /!isCodexOAuth/);
+  assert.match(source, /activeModel\.codex_supported_reasoning_levels/);
+  assert.match(source, /!isCodexOAuth \|\| isBoundManagedCodex/);
+});
+
+test("ordinary users can edit only their owner-scoped Codex reasoning overrides", () => {
+  const card = readFileSync(CARD, "utf8");
+  const client = readFileSync(CLIENT, "utf8");
+
+  assert.match(client, /models: CodexReasoningModel\[\]/);
+  assert.match(card, /catalogEditable === false/);
+  assert.match(card, /status\.models\.map\(\(model\)/);
+  assert.match(
+    card,
+    /reasoningEffortOptionsFromSupportedLevels\(\s*model\.supported_reasoning_levels/,
+  );
+  assert.match(
+    card,
+    /setCodexReasoningEffort\(\s*model\.model,\s*value \|\| null,?\s*\)/,
+  );
 });
 
 test("Codex OAuth copy stays in sync across locales", () => {
@@ -67,6 +113,11 @@ test("Codex OAuth copy stays in sync across locales", () => {
     "codex.oauth.callbackMissingUnknown",
     "codex.oauth.callbackUnavailable",
     "codex.oauth.invalidResponse",
+    "codex.oauth.reasoningTitle",
+    "codex.oauth.reasoningDescription",
+    "codex.oauth.reasoningSaved",
+    "codex.oauth.reasoningUnsupported",
+    "codex.oauth.reasoningCatalogChanged",
   ]) {
     assert.ok(codexKeys(en).includes(key));
     assert.equal(typeof en[key], "string");

@@ -83,7 +83,11 @@ test("setGroupSelected flattens back to tool names and leaves others alone", () 
 
   // Clearing a group drops exactly its names.
   assert.deepEqual(
-    setGroupSelected(ALL.map((tool) => tool.name), NOTION, false),
+    setGroupSelected(
+      ALL.map((tool) => tool.name),
+      NOTION,
+      false,
+    ),
     ["mcp_github_issues"],
   );
   assert.deepEqual(setGroupSelected(["mcp_github_issues"], NOTION, false), [

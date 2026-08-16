@@ -52,8 +52,9 @@ export interface McpCategoryChip {
 export function catalogCategoryChips(
   counts: Record<string, number>,
 ): McpCategoryChip[] {
-  const known = MCP_CATALOG_CATEGORIES.filter((category) => counts[category] > 0)
-    .map((category) => ({ category, count: counts[category] }));
+  const known = MCP_CATALOG_CATEGORIES.filter(
+    (category) => counts[category] > 0,
+  ).map((category) => ({ category, count: counts[category] }));
   const extra = Object.keys(counts)
     .filter(
       (category) =>

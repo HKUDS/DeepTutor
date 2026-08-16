@@ -23,7 +23,9 @@ import {
   kbHasLiveProgress,
   kbNeedsReindex,
   kbProvider,
+  providerConnectionStatus,
   resolveKbStatus,
+  type ProviderConnectionStatus,
   type KnowledgeBase,
 } from "@/lib/knowledge-helpers";
 import type { RagProviderSummary } from "@/lib/knowledge-api";
@@ -46,21 +48,20 @@ const ENGINE_ICONS: Record<string, LucideIcon> = {
   "lightrag-server": Server,
 };
 
-type EngineStatus = "ready" | "needs_key" | "unavailable";
-
-function engineStatus(p: RagProviderSummary): EngineStatus {
-  if (p.requires_api_key && p.configured === false) return "needs_key";
-  if (p.configured === false) return "unavailable";
-  return "ready";
-}
-
-function EngineStatusBadge({ status }: { status: EngineStatus }) {
+function EngineStatusBadge({ status }: { status: ProviderConnectionStatus }) {
   const { t } = useTranslation();
   if (status === "ready") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
         <Check className="h-3 w-3" />
         {t("Ready")}
+      </span>
+    );
+  }
+  if (status === "per_kb") {
+    return (
+      <span className="inline-flex items-center rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-950/30 dark:text-sky-300">
+        {t("Connect per knowledge base")}
       </span>
     );
   }
@@ -156,7 +157,7 @@ export default function KnowledgeHome({
           </h2>
           <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2">
             {providers.map((p) => {
-              const status = engineStatus(p);
+              const status = providerConnectionStatus(p);
               const Icon = ENGINE_ICONS[p.id] ?? Boxes;
               const count = kbCountByProvider[p.id] ?? 0;
               return (

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from deeptutor.agents.chat.dsml_tool_calls import (
+    DSMLStreamFilter,
     extract_dsml_tool_calls,
     has_dsml_tool_calls,
 )
@@ -75,6 +76,81 @@ def test_non_string_parameter_is_json_coerced() -> None:
     assert args["label"] == "3"  # string="true" kept verbatim
 
 
+def test_string_marked_json_containers_follow_tool_schema() -> None:
+    text = (
+        '<｜DSML｜invoke name="ask_user">'
+        '<｜DSML｜parameter name="questions" string="true">'
+        '[{"id":"q1","prompt":"Pick one"}]'
+        "</｜DSML｜parameter>"
+        '<｜DSML｜parameter name="context" string="true">'
+        '{"source":"lesson"}'
+        "</｜DSML｜parameter>"
+        '<｜DSML｜parameter name="literal" string="true">[not JSON]</｜DSML｜parameter>'
+        "</｜DSML｜invoke>"
+    )
+    schemas = [
+        {
+            "type": "function",
+            "function": {
+                "name": "ask_user",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "questions": {"type": "array", "items": {"type": "object"}},
+                        "context": {"type": "object"},
+                        "literal": {"type": "string"},
+                    },
+                },
+            },
+        }
+    ]
+
+    calls, _ = extract_dsml_tool_calls(text, schemas)
+    args = json.loads(calls[0]["arguments"])
+
+    assert args["questions"] == [{"id": "q1", "prompt": "Pick one"}]
+    assert args["context"] == {"source": "lesson"}
+    assert args["literal"] == "[not JSON]"
+
+
+def test_string_marked_json_container_stays_string_without_schema() -> None:
+    text = (
+        '<｜DSML｜invoke name="ask_user">'
+        '<｜DSML｜parameter name="questions" string="true">["A", "B"]'
+        "</｜DSML｜parameter>"
+        "</｜DSML｜invoke>"
+    )
+
+    calls, _ = extract_dsml_tool_calls(text)
+
+    assert json.loads(calls[0]["arguments"])["questions"] == '["A", "B"]'
+
+
+def test_schema_container_type_must_match_parsed_value() -> None:
+    text = (
+        '<｜DSML｜invoke name="ask_user">'
+        '<｜DSML｜parameter name="questions" string="true">{"not":"a list"}'
+        "</｜DSML｜parameter>"
+        "</｜DSML｜invoke>"
+    )
+    schemas = [
+        {
+            "type": "function",
+            "function": {
+                "name": "ask_user",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"questions": {"type": "array"}},
+                },
+            },
+        }
+    ]
+
+    calls, _ = extract_dsml_tool_calls(text, schemas)
+
+    assert json.loads(calls[0]["arguments"])["questions"] == '{"not":"a list"}'
+
+
 def test_plain_text_is_untouched() -> None:
     text = "Here is your answer. No tools needed."
     assert has_dsml_tool_calls(text) is False
@@ -98,3 +174,52 @@ def test_malformed_envelope_without_close_yields_no_calls() -> None:
     calls, cleaned = extract_dsml_tool_calls(text)
     assert calls == []
     assert cleaned == text
+
+
+class TestDSMLStreamFilter:
+    @staticmethod
+    def _run(chunks: list[str]) -> str:
+        stream_filter = DSMLStreamFilter()
+        visible = "".join(stream_filter.feed(chunk) for chunk in chunks)
+        return visible + stream_filter.flush()
+
+    def test_preserves_prose_before_and_after_call(self) -> None:
+        text = (
+            "Great job! "
+            '<｜DSML｜tool_calls><｜DSML｜invoke name="ask_user">'
+            '<｜DSML｜parameter name="questions" string="true">[]'
+            "</｜DSML｜parameter></｜DSML｜invoke></｜DSML｜tool_calls>"
+            " Choose what to study next."
+        )
+
+        assert self._run([text]) == "Great job!  Choose what to study next."
+
+    def test_handles_every_split_boundary(self) -> None:
+        text = (
+            "Before "
+            '<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name="exec">'
+            '<｜｜DSML｜｜parameter name="command" string="true">echo hi'
+            "</｜｜DSML｜｜parameter></｜｜DSML｜｜invoke>"
+            "</｜｜DSML｜｜tool_calls> after"
+        )
+
+        for split_at in range(len(text) + 1):
+            assert self._run([text[:split_at], text[split_at:]]) == "Before  after"
+
+        tiny_chunks = [text[index : index + 3] for index in range(0, len(text), 3)]
+        assert self._run(tiny_chunks) == "Before  after"
+
+    def test_incomplete_invoke_is_not_silently_discarded(self) -> None:
+        text = '<｜DSML｜invoke name="exec">unterminated'
+        assert self._run([text[:8], text[8:]]) == text
+
+    def test_malformed_envelope_is_not_partially_discarded(self) -> None:
+        text = "before <｜DSML｜tool_calls>not an invoke after"
+        assert self._run([text[:20], text[20:]]) == text
+
+    def test_envelope_without_close_still_cleans_complete_invoke(self) -> None:
+        text = 'before <｜DSML｜tool_calls><｜DSML｜invoke name="exec"></｜DSML｜invoke> after'
+        assert self._run([text[:20], text[20:]]) == "before  after"
+
+    def test_plain_angle_brackets_are_untouched(self) -> None:
+        assert self._run(["1 < 2 and <b>", "bold</b>"]) == "1 < 2 and <b>bold</b>"

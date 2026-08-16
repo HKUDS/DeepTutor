@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
+from deeptutor.core.agentic import client as agentic_client
 from deeptutor.core.agentic.client import (
     _NATIVE_ADAPTER_BUILDERS,
     _NATIVE_TOOL_BACKENDS,
@@ -173,6 +176,114 @@ def test_build_openai_client_routes_github_copilot_backend_through_adapter(monke
     assert captured["default_model"] == "github-copilot/gpt-4.1"
 
 
+def test_build_openai_client_routes_codebuddy_backend_through_adapter(monkeypatch) -> None:
+    captured = {}
+
+    class FakeProvider:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(
+        "deeptutor.services.llm.provider_core.codebuddy_http_provider.CodeBuddyHTTPProvider",
+        FakeProvider,
+    )
+
+    client = build_openai_client(
+        LLMClientConfig(
+            binding="codebuddy",
+            model="codebuddy/hy3",
+            api_key="sk-codebuddy",
+            base_url=None,
+        )
+    )
+
+    assert isinstance(client, _ProviderOpenAIAdapter)
+    assert captured["api_key"] == "sk-codebuddy"
+    assert captured["default_model"] == "codebuddy/hy3"
+
+
+@pytest.mark.asyncio
+async def test_direct_openai_gpt5_agentic_tools_use_provider_adapter(monkeypatch) -> None:
+    captured: dict = {}
+
+    class FakeResponses:
+        async def create(self, **kwargs):
+            captured["request"] = kwargs
+            item = SimpleNamespace(
+                type="function_call",
+                id="fc_123",
+                call_id="call_123",
+                name="web_search",
+                arguments='{"query":"DeepTutor"}',
+            )
+
+            async def events():
+                yield SimpleNamespace(type="response.output_item.added", item=item)
+                yield SimpleNamespace(type="response.output_item.done", item=item)
+                yield SimpleNamespace(
+                    type="response.completed",
+                    response=SimpleNamespace(status="completed", usage=None),
+                )
+
+            return events()
+
+    class UnexpectedChatCompletions:
+        async def create(self, **_kwargs):
+            raise AssertionError("GPT-5 agentic calls must use the Responses API")
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            captured["init"] = kwargs
+            self.responses = FakeResponses()
+            self.chat = SimpleNamespace(completions=UnexpectedChatCompletions())
+
+        async def close(self):
+            pass
+
+    monkeypatch.setattr(
+        "deeptutor.services.llm.provider_core.openai_compat_provider.AsyncOpenAI",
+        FakeOpenAI,
+    )
+    await agentic_client.close_agentic_client_pool()
+    client = build_openai_client(
+        LLMClientConfig(
+            binding="openai",
+            model="gpt-5.6-luna",
+            api_key="sk-test",
+            base_url="https://api.openai.com/v1",
+        )
+    )
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    ]
+
+    stream = await client.chat.completions.create(
+        model="gpt-5.6-luna",
+        messages=[{"role": "user", "content": "Search"}],
+        tools=tools,
+        tool_choice="auto",
+        max_completion_tokens=512,
+        stream=True,
+    )
+    chunks = [chunk async for chunk in stream]
+
+    assert isinstance(client, _ProviderOpenAIAdapter)
+    assert captured["init"]["base_url"] == "https://api.openai.com/v1"
+    assert captured["request"]["stream"] is True
+    assert captured["request"]["tools"][0]["name"] == "web_search"
+    assert "messages" not in captured["request"]
+    tool_call = chunks[-2].choices[0].delta.tool_calls[0]
+    assert tool_call.function.name == "web_search"
+    assert chunks[-1].choices[0].finish_reason == "tool_calls"
+    await agentic_client.close_agentic_client_pool()
+
+
 def test_anthropic_backend_can_use_native_tool_calling() -> None:
     assert can_use_native_tool_calling(binding="custom_anthropic", model="claude-test") is True
     assert can_use_native_tool_calling(binding="minimax_anthropic", model="MiniMax-M3") is True
@@ -209,6 +320,7 @@ def test_registered_cloud_openai_compat_providers_enable_native_tools() -> None:
         "aihubmix",
         "atlascloud",
         "edenai",
+        "novita",
         "volcengine_coding_plan",
         "byteplus_coding_plan",
     ):
@@ -223,6 +335,10 @@ def test_openai_codex_backend_can_use_native_tool_calling() -> None:
         )
         is True
     )
+
+
+def test_codebuddy_backend_can_use_native_tool_calling() -> None:
+    assert can_use_native_tool_calling(binding="codebuddy", model="codebuddy/hy3") is True
 
 
 def test_local_and_github_copilot_backends_stay_opted_out_of_native_tools() -> None:
@@ -320,3 +436,53 @@ async def test_anthropic_adapter_emits_final_tool_call_delta() -> None:
     assert tool_delta.function.name == "read_file"
     assert '"SOUL.md"' in tool_delta.function.arguments
     assert chunks[-1].choices[0].finish_reason == "tool_calls"
+
+
+@pytest.mark.asyncio
+async def test_agentic_client_pool_reuses_and_bounds_clients(monkeypatch) -> None:
+    await agentic_client.close_agentic_client_pool()
+    built = []
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.closed = 0
+
+        async def close(self) -> None:
+            self.closed += 1
+
+    def _build(config, *, disable_ssl_verify):
+        client = FakeClient()
+        built.append(client)
+        return client
+
+    monkeypatch.setattr(agentic_client, "_build_openai_client", _build)
+    monkeypatch.setattr(
+        agentic_client, "load_system_settings", lambda: {"disable_ssl_verify": False}
+    )
+    base = LLMClientConfig(
+        binding="openai",
+        model="model-0",
+        api_key="secret",
+        base_url="https://example.test/v1",
+    )
+
+    first = build_openai_client(base)
+    assert build_openai_client(base) is first
+    for index in range(1, agentic_client._AGENTIC_CLIENT_POOL_MAXSIZE + 1):
+        build_openai_client(
+            LLMClientConfig(
+                binding="openai",
+                model=f"model-{index}",
+                api_key="secret",
+                base_url="https://example.test/v1",
+            )
+        )
+
+    import asyncio
+
+    await asyncio.sleep(0)
+    assert agentic_client.agentic_client_pool_size() == (
+        agentic_client._AGENTIC_CLIENT_POOL_MAXSIZE
+    )
+    assert built[0].closed == 1
+    await agentic_client.close_agentic_client_pool()

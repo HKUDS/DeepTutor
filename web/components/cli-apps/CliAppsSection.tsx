@@ -398,7 +398,10 @@ function Store({
       if (queryKeyRef.current !== requestedFor) return;
       setEntries((prev) => {
         const seen = new Set(prev.map((entry) => entry.id));
-        return [...prev, ...page.entries.filter((entry) => !seen.has(entry.id))];
+        return [
+          ...prev,
+          ...page.entries.filter((entry) => !seen.has(entry.id)),
+        ];
       });
       setCursor(page.next_cursor);
     } catch (err) {
@@ -732,8 +735,8 @@ function EntryDetail({
       ) : (
         <div className="space-y-3 rounded-xl border border-[var(--border)]/60 bg-[var(--card)]/40 px-5 py-5">
           {error !== null && (
-        <Banner tone="error">{error || t("Something went wrong.")}</Banner>
-      )}
+            <Banner tone="error">{error || t("Something went wrong.")}</Banner>
+          )}
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
@@ -752,7 +755,9 @@ function EntryDetail({
             </button>
             <span className="text-[11.5px] text-[var(--muted-foreground)]">
               {installing
-                ? t("This can take a few minutes — it builds a fresh environment.")
+                ? t(
+                    "This can take a few minutes — it builds a fresh environment.",
+                  )
                 : t("Runs on this server as the application user.")}
             </span>
           </div>
@@ -790,13 +795,7 @@ const warnChip =
  * "should this run on our server?" — and "installs whatever that repository's
  * default branch holds today" is invisible otherwise.
  */
-function TrustChip({
-  trust,
-  pinned,
-}: {
-  trust: string;
-  pinned: boolean;
-}) {
+function TrustChip({ trust, pinned }: { trust: string; pinned: boolean }) {
   const { t } = useTranslation();
   if (trust === "first-party") {
     return (
@@ -873,8 +872,7 @@ function Banner({
 }) {
   const styles = {
     error: "border-red-500/40 bg-red-500/5 text-red-500",
-    warn:
-      "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+    warn: "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-400",
     info: "border-[var(--border)] bg-[var(--muted)]/40 text-[var(--muted-foreground)]",
   }[tone];
   return (
@@ -908,7 +906,9 @@ function Empty({
       <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--muted)]/60 text-[var(--muted-foreground)]">
         <Terminal size={18} />
       </div>
-      <p className="text-[14px] font-medium text-[var(--foreground)]">{title}</p>
+      <p className="text-[14px] font-medium text-[var(--foreground)]">
+        {title}
+      </p>
       <p className="mx-auto mt-1 max-w-md text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
         {body}
       </p>

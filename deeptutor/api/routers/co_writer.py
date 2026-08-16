@@ -26,7 +26,7 @@ from deeptutor.co_writer.storage import (
 from deeptutor.core.stream_bus import StreamBus
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
 from deeptutor.services.llm import clean_thinking_tags
-from deeptutor.services.settings.interface_settings import get_ui_language
+from deeptutor.services.settings.interface_settings import get_response_language
 
 router = APIRouter()
 
@@ -40,7 +40,7 @@ _edit_agent: EditAgent | None = None
 
 def _current_language() -> str:
     # Prefer UI settings, fall back to main.yaml system.language
-    return get_ui_language(default=config.get("system", {}).get("language", "en"))
+    return get_response_language(default=config.get("system", {}).get("language", "en"))
 
 
 def get_edit_agent() -> EditAgent:

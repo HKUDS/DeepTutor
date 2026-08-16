@@ -47,10 +47,14 @@ services:
       - "${DEEPTUTOR_DOCKER_FRONTEND_PORT:-3782}:${DEEPTUTOR_DOCKER_FRONTEND_PORT:-3782}"
 
     volumes:
-      # Persistent data (created automatically on first start)
-      - ./data/user:/app/data/user
-      - ./data/memory:/app/data/memory
-      - ./data/knowledge_bases:/app/data/knowledge_bases
+      # Persist every workspace and deployment secret across recreation.
+      # This used to mount only data/user, data/memory and data/knowledge_bases,
+      # which left data/system (auth secret, accounts, grants, per-owner Codex
+      # tokens), data/users, data/partners and data/cli-apps in the container's
+      # writable layer — discarded on every recreate. Upgrading from that
+      # layout needs a one-time copy out of the running container first; see
+      # CONTAINERIZATION.md → "One-time migration".
+      - ./data:/app/data
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${DEEPTUTOR_DOCKER_BACKEND_PORT:-8001}/"]

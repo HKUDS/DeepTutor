@@ -11,6 +11,7 @@ import {
   getDayGroupKey,
   type DayGroupKey,
 } from "@/lib/relative-time";
+import { isPlaceholderSessionTitle } from "@/lib/session-title";
 
 type SessionRuntimeStatus =
   | "idle"
@@ -87,10 +88,6 @@ export default function SessionList({
   // "New chat" string with a breathing animation so the sidebar shows
   // something "alive" while the title is being generated in the
   // background instead of a literal English sentinel.
-  const isPlaceholderTitle = (raw: string | null | undefined): boolean => {
-    const value = (raw ?? "").trim();
-    return value === "" || value === "New conversation";
-  };
   const placeholderLabel = t("New chat");
 
   // The group-key tokens stay stable; only the translated labels change.
@@ -221,7 +218,7 @@ export default function SessionList({
                   onClick={(event) => event.stopPropagation()}
                   className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--background)] px-1.5 py-px text-[12px] text-[var(--foreground)] outline-none focus:ring-1 focus:ring-[var(--primary)]/40"
                 />
-              ) : isPlaceholderTitle(session.title) ? (
+              ) : isPlaceholderSessionTitle(session.title) ? (
                 <span
                   className={`dt-breathing-text min-w-0 flex-1 truncate text-[13px] italic text-[var(--muted-foreground)] ${active ? "font-medium" : ""}`}
                 >
@@ -331,7 +328,7 @@ export default function SessionList({
                         />
                       ) : (
                         <div className="flex items-center">
-                          {isPlaceholderTitle(session.title) ? (
+                          {isPlaceholderSessionTitle(session.title) ? (
                             <span
                               className={`dt-breathing-text line-clamp-1 min-w-0 flex-1 text-[12px] italic leading-snug text-[var(--muted-foreground)] ${
                                 active ? "font-medium" : "font-normal"

@@ -29,6 +29,7 @@ empty:
 system:
   warning_prefix: "⚠️ "
   kb_system_note: "用户已挂载知识库：{kb_name}。调用 rag 时，kb_name 必须填 {kb_name_repr}。"
+  obsidian_kb_system_note: "用户已挂载知识库 {kb_name}，这是一个只读 Obsidian vault。请使用 obsidian_search、obsidian_list 和 obsidian_read 收集证据。不要调用 rag。"
 
 notices:
   protocol_retry: "模型未遵循标签协议，正在重试。"

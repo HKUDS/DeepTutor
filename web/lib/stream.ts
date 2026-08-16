@@ -5,6 +5,7 @@ type ContentMeta = {
   call_kind?: string;
   call_state?: string;
   call_role?: string;
+  answer_visible?: boolean;
   trace_kind?: string;
 };
 
@@ -18,8 +19,8 @@ export function shouldAppendEventContent(event: StreamEvent): boolean {
   if (!meta.call_id) return true;
   // The chat agent loop streams every round's text as `content`. The
   // tool-less finish round (and the forced-finish round) are the
-  // user-facing answer; narration rounds are filtered back out via their
-  // call_role marker (see collectNarrationCallIds).
+  // user-facing answer; trace-only narration rounds are filtered back out via
+  // their call_role marker (see collectNarrationCallIds).
   return (
     meta.call_kind === "llm_final_response" ||
     meta.call_kind === "agent_loop_round"
@@ -30,6 +31,8 @@ export function shouldAppendEventContent(event: StreamEvent): boolean {
  * call_ids whose round resolved as "narration" — a short preamble the chat
  * loop streamed alongside a tool call. That text belongs to the trace, not
  * the answer, so it is excluded once the round's call_status marker arrives.
+ * Interactive rounds can explicitly preserve learner-facing prose that
+ * surrounded a call with `answer_visible`.
  */
 export function collectNarrationCallIds(events: StreamEvent[]): Set<string> {
   const ids = new Set<string>();
@@ -39,6 +42,7 @@ export function collectNarrationCallIds(events: StreamEvent[]): Set<string> {
       meta.trace_kind === "call_status" &&
       meta.call_state === "complete" &&
       meta.call_role === "narration" &&
+      meta.answer_visible !== true &&
       meta.call_id
     ) {
       ids.add(meta.call_id);
@@ -47,13 +51,14 @@ export function collectNarrationCallIds(events: StreamEvent[]): Set<string> {
   return ids;
 }
 
-/** True for the per-round marker that flips a round to "narration". */
+/** True for a per-round marker that demotes its content to narration. */
 export function isNarrationMarker(event: StreamEvent): boolean {
   const meta = eventMeta(event);
   return (
     meta.trace_kind === "call_status" &&
     meta.call_state === "complete" &&
-    meta.call_role === "narration"
+    meta.call_role === "narration" &&
+    meta.answer_visible !== true
   );
 }
 

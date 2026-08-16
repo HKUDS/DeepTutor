@@ -26,9 +26,13 @@ dependencies = [
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
     "aiosqlite>=0.19.0",
-    "typer[all]>=0.9.0",
+    "typer>=0.9.0",
     "rich>=13.0.0",
     "prompt_toolkit>=3.0.36",
+    # MCP client. This distribution ships `deeptutor.services.mcp`, including the
+    # built-in PageIndex MCP server that is injected whenever a PageIndex API key
+    # is configured, so it needs the client too (issue #792).
+    "mcp>=1.26.0,<2.0.0",
     "anthropic>=0.30.0",
     "dashscope>=1.14.0",
     "perplexityai>=0.1.0",
@@ -63,3 +67,17 @@ version = {attr = "deeptutor.__version__.__version__"}
 where = ["../.."]
 include = ["deeptutor*", "deeptutor_cli*"]
 exclude = ["deeptutor_web*"]
+
+# This distribution includes the shared agent implementations. Keep their
+# runtime prompt/config assets in the wheel as the full distribution does.
+[tool.setuptools.package-data]
+deeptutor = [
+    "**/*.yaml",
+    "**/*.yml",
+    "**/*.md",
+    "**/*.json",
+    "**/*.sh",
+    "**/*.j2",
+    "**/*.jinja",
+]
+deeptutor_cli = ["**/*.md"]

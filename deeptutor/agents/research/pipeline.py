@@ -97,8 +97,18 @@ SOURCE = "deep_research"
 # (``compose_enabled_tools``), then narrows the result to tools that can
 # produce evidence for a block-level research summary.
 RESEARCH_OPTIONAL_TOOLS: list[str] = default_optional_tools()
+
+# Read-only Obsidian tools a research block may use when the selected KB is a
+# connected Obsidian vault. Write tools stay out of research blocks — the
+# block loop only retrieves evidence, never mutates the vault. The vault root
+# is injected server-side as ``_vault_path`` (see ``_augment_tool_kwargs``).
+RESEARCH_OBSIDIAN_READ_TOOLS: tuple[str, ...] = (
+    "obsidian_search",
+    "obsidian_read",
+    "obsidian_list",
+)
 RESEARCH_BLOCK_TOOL_ALLOWLIST: frozenset[str] = frozenset(
-    {"rag", "web_search", "paper_search", "code_execution"}
+    {"rag", "web_search", "paper_search", "code_execution", *RESEARCH_OBSIDIAN_READ_TOOLS}
 )
 
 # ---------------------------------------------------------------------------
@@ -195,7 +205,15 @@ _PROTOCOL_NOTE = LabelProtocol(
 # Tools whose results get summarised + recorded in the citation manager.
 # Any tool whose results carry source documents / external evidence
 # should be added here.
-CITABLE_TOOLS: frozenset[str] = frozenset({"rag", "web_search", "paper_search", "code_execution"})
+CITABLE_TOOLS: frozenset[str] = frozenset(
+    {
+        "rag",
+        "web_search",
+        "paper_search",
+        "code_execution",
+        *RESEARCH_OBSIDIAN_READ_TOOLS,
+    }
+)
 
 # Token budget for the note summarization sidecar.
 DEFAULT_NOTE_MAX_TOKENS = 1500
@@ -285,6 +303,29 @@ class ResearchPipeline:
         self.kb_name = (kb_name or "").strip() or None
         self.enabled_tools = list(enabled_tools or [])
         self.runtime_config: dict[str, Any] = dict(runtime_config or {})
+
+        # Resolve whether the attached KB is a connected Obsidian vault. The
+        # metadata comes from the access-controlled resolver (never the model),
+        # and the resolution is a pure read with no RAG usage audit. Unresolvable
+        # references / ordinary KBs behave exactly as before (``rag``-style KB).
+        self._is_obsidian_kb = False
+        self._vault_path: str | None = None
+        if self.kb_name:
+            try:
+                from deeptutor.knowledge.kb_types import OBSIDIAN_KB_TYPE
+                from deeptutor.multi_user.knowledge_access import resolve_kb_metadata
+
+                meta = resolve_kb_metadata(self.kb_name)
+                if meta and meta.get("type") == OBSIDIAN_KB_TYPE:
+                    self._is_obsidian_kb = True
+                    vault_path = str(meta.get("vault_path") or "").strip()
+                    if vault_path:
+                        self._vault_path = vault_path
+            except Exception:
+                logger.warning(
+                    "Failed to resolve KB metadata for %r; treating as non-Obsidian.",
+                    self.kb_name,
+                )
 
         # Read structured policy sub-dicts produced by
         # :func:`build_research_runtime_config`. All keys are best-effort —
@@ -952,6 +993,16 @@ class ResearchPipeline:
     def _kb_system_note(self) -> str:
         if not self.kb_name:
             return ""
+        if self._is_obsidian_kb:
+            return self._t(
+                "system.obsidian_kb_system_note",
+                default=(
+                    f"Attached knowledge base {self.kb_name!r} is a read-only "
+                    f"Obsidian vault. Gather evidence with obsidian_search, "
+                    f"obsidian_list and obsidian_read. Do not call rag."
+                ),
+                kb_name=self.kb_name,
+            )
         return self._t(
             "system.kb_system_note",
             default=(
@@ -1755,18 +1806,25 @@ class ResearchPipeline:
             requested_tools=self.enabled_tools,
             optional_whitelist=RESEARCH_OPTIONAL_TOOLS,
             mount_flags=ToolMountFlags(
-                has_kb=bool(self.kb_name),
+                has_kb=bool(self.kb_name and not self._is_obsidian_kb),
                 has_sources=False,
                 has_memory=user_has_memory(),
                 has_notebooks=user_has_notebooks(),
                 has_code=exec_capability_available(),
             ),
         )
-        return [
+        names = [
             name
             for name in composed
             if name in RESEARCH_BLOCK_TOOL_ALLOWLIST and self._tool_in_registry(name)
         ]
+        if self._vault_path:
+            names.extend(
+                name
+                for name in RESEARCH_OBSIDIAN_READ_TOOLS
+                if name in RESEARCH_BLOCK_TOOL_ALLOWLIST and self._tool_in_registry(name)
+            )
+        return names
 
     def _build_block_tool_schemas(
         self,
@@ -1807,6 +1865,11 @@ class ResearchPipeline:
             kwargs.setdefault("mode", "hybrid")
             if self.kb_name:
                 kwargs.setdefault("kb_name", self.kb_name)
+        elif tool_name in RESEARCH_OBSIDIAN_READ_TOOLS:
+            if self._vault_path:
+                # Server-owned: overwrite any model-supplied value so the path
+                # can't be forged to read outside the connected vault.
+                kwargs["_vault_path"] = self._vault_path
         elif tool_name == "code_execution":
             from deeptutor.services.sandbox import Mount
 
@@ -2383,7 +2446,13 @@ class _BlockLoopHost:
             if not raw_answer.strip():
                 continue
             try:
-                query = str(tool_args.get("query") or "")
+                query_key = {
+                    "obsidian_read": "note",
+                    "obsidian_list": "folder",
+                }.get(tool_name, "query")
+                query = str(tool_args.get(query_key) or "")
+                if tool_name == "obsidian_list" and not query:
+                    query = "/"
                 summary = await self._pipeline._summarise_tool_result(
                     tool_name=tool_name,
                     query=query,
@@ -2791,6 +2860,8 @@ __all__ = [
     "LABEL_SECTION",
     "LABEL_THINK",
     "LABEL_TOOL",
+    "RESEARCH_BLOCK_TOOL_ALLOWLIST",
+    "RESEARCH_OBSIDIAN_READ_TOOLS",
     "ResearchPipeline",
     "ResearchedBlock",
     "ReportOutline",

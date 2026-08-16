@@ -30,7 +30,7 @@ class ProviderSpec:
     display_name: str = ""
 
     # Which provider implementation to use:
-    # "openai_compat" | "anthropic" | "azure_openai" | "openai_codex" | "github_copilot"
+    # "openai_compat" | "anthropic" | "azure_openai" | "openai_codex" | "github_copilot" | "codebuddy"
     backend: str = "openai_compat"
 
     env_extras: tuple[tuple[str, str], ...] = ()
@@ -91,11 +91,17 @@ PROVIDER_ALIASES = {
     "byteplusCodingPlan": "byteplus_coding_plan",
     "github-copilot": "github_copilot",
     "openai-codex": "openai_codex",
+    "codebuddy-code": "codebuddy",
+    "codebuddy_code": "codebuddy",
+    "workbuddy": "codebuddy",
     "lm-studio": "lm_studio",
     "atlas": "atlascloud",
     "atlas_cloud": "atlascloud",
     "atlas-cloud": "atlascloud",
     "eden_ai": "edenai",
+    "novita_ai": "novita",
+    "orca_router": "orcarouter",
+    "orca-router": "orcarouter",
 }
 
 
@@ -154,6 +160,17 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         supports_prompt_caching=True,
     ),
     ProviderSpec(
+        name="orcarouter",
+        keywords=("orcarouter", "orca_router", "orca router"),
+        env_key="ORCAROUTER_API_KEY",
+        display_name="OrcaRouter",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_key_prefix="sk-orca-",
+        detect_by_base_keyword="orcarouter",
+        default_api_base="https://api.orcarouter.ai/v1",
+    ),
+    ProviderSpec(
         name="edenai",
         keywords=("edenai",),
         env_key="EDENAI_API_KEY",
@@ -183,6 +200,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         is_gateway=True,
         detect_by_base_keyword="siliconflow",
         default_api_base="https://api.siliconflow.cn/v1",
+    ),
+    ProviderSpec(
+        name="novita",
+        keywords=("novita", "novita-ai", "novita ai"),
+        env_key="NOVITA_API_KEY",
+        display_name="Novita AI",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_base_keyword="novita",
+        default_api_base="https://api.novita.ai/openai",
     ),
     ProviderSpec(
         name="atlascloud",
@@ -279,6 +306,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         supports_max_completion_tokens=True,
     ),
     ProviderSpec(
+        name="codebuddy",
+        keywords=("codebuddy", "workbuddy"),
+        env_key="CODEBUDDY_API_KEY",
+        display_name="CodeBuddy/WorkBuddy",
+        backend="codebuddy",
+        is_oauth=True,
+        strip_model_prefix=True,
+        supports_stream_options=False,
+    ),
+    ProviderSpec(
         name="deepseek",
         keywords=("deepseek",),
         env_key="DEEPSEEK_API_KEY",
@@ -330,13 +367,19 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         # not contain "kimi" and keeps the caller's temperature.
         model_overrides=(("kimi", {"temperature": None}),),
     ),
+    # MiniMax runs two separate platforms: global (platform.minimax.io /
+    # api.minimax.io) and mainland China (platform.minimaxi.com /
+    # api.minimaxi.com). Keys are issued per platform and are NOT
+    # interchangeable. The global endpoint is the default here; China-platform
+    # users must override base_url to https://api.minimaxi.com/v1 (or
+    # https://api.minimaxi.com/anthropic) *and* use a China-platform key.
     ProviderSpec(
         name="minimax",
         keywords=("minimax",),
         env_key="MINIMAX_API_KEY",
         display_name="MiniMax",
         backend="openai_compat",
-        default_api_base="https://api.minimaxi.com/v1",
+        default_api_base="https://api.minimax.io/v1",
         thinking_style="reasoning_split",
     ),
     ProviderSpec(
@@ -345,7 +388,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         env_key="MINIMAX_API_KEY",
         display_name="MiniMax (Anthropic)",
         backend="anthropic",
-        default_api_base="https://api.minimaxi.com/anthropic",
+        default_api_base="https://api.minimax.io/anthropic",
     ),
     ProviderSpec(
         name="mistral",
