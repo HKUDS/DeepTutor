@@ -4,8 +4,10 @@
 html, body, #root {
   background: var(--bg-bg-base-secondary, #262626);
   height: 100%;
+  max-height: 100%;
   overflow: hidden;
   width: 100%;
+  max-width: 100%;
 }
 body {
   -webkit-font-smoothing: antialiased;

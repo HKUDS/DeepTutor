@@ -29,6 +29,8 @@ import {
 import { listToggleableTools, type ToolItem } from '../api/tools'
 import { UnifiedWSClient, type StreamEvent } from '../api/ws'
 import { AssistantMarkdown } from './AssistantMarkdown'
+import { SettingsModal } from './SettingsModal'
+import { LS_LANGUAGE, LanguageId, persistInterfaceSettings } from './settings'
 import { deleteSession as deleteSessionApi, renameSession as renameSessionApi } from '../api/sessions'
 import copySvg from '../assets/icons/Copy.svg?raw'
 import moreSvg from '../../design-system/assets/icons/More.svg?raw'
@@ -973,6 +975,8 @@ function Sidebar({
   onPinTask, onRenameTask, onDeleteTask,
   activeNavItem, onNavigate,
   theme, onToggleTheme,
+  language,
+  onOpenSettings,
   searchDocs = [],
   hideSessions = false,
 }: {
@@ -992,6 +996,8 @@ function Sidebar({
   onNavigate?: (id: string) => void
   theme: 'light' | 'dark'
   onToggleTheme: () => void
+  language: LanguageId
+  onOpenSettings: () => void
   searchDocs?: { id: string; title: string; snippet: string }[]
   hideSessions?: boolean
 }) {
@@ -1305,7 +1311,7 @@ function Sidebar({
                         <button type="button" className="accountMenuItem-NXEKcd">
                           <span className="accountMenuIcon-mCju4M"><OfficialIcon svg={domainSvg} size={16} className="trae-icon-domain accountMenuIconSvg-Y56ze8" /></span>
                           <span className="accountMenuLabel-VsH45r">语言</span>
-                          <span className="accountMenuValue-iTOf2H">中文</span>
+                          <span className="accountMenuValue-iTOf2H">{language === 'en' ? 'English' : '中文'}</span>
                           <OfficialIcon svg={rightSvg} size={14} className="trae-icon-Right accountMenuArrow-fbYuZj" />
                         </button>
                         <button type="button" className="accountMenuItem-NXEKcd" onClick={onToggleTheme}>
@@ -1316,7 +1322,11 @@ function Sidebar({
                         </button>
                       </section>
                       <section className="accountSection-gqAsGh">
-                        <button type="button" className="accountMenuItem-NXEKcd">
+                        <button
+                          type="button"
+                          className="accountMenuItem-NXEKcd"
+                          onClick={() => { setAccountOpen(false); onOpenSettings() }}
+                        >
                           <span className="accountMenuIcon-mCju4M"><OfficialIcon svg={settingsSvg} size={16} className="trae-icon-settings accountMenuIconSvg-Y56ze8" /></span>
                           <span className="accountMenuLabel-VsH45r">设置</span>
                         </button>
@@ -2542,28 +2552,6 @@ function readStrLs(key: string, fallback: string): string {
   try { return localStorage.getItem(key) ?? fallback } catch { return fallback }
 }
 
-function useVirtuosoParentHeight() {
-  const ref = useRef<HTMLDivElement>(null)
-  useLayoutEffect(() => {
-    const el = ref.current
-    const parent = el?.parentElement
-    if (!el || !parent) return
-    const apply = () => {
-      const h = Math.round(parent.getBoundingClientRect().height)
-      if (h > 0) el.style.height = `${h}px`
-    }
-    apply()
-    const ro = new ResizeObserver(apply)
-    ro.observe(parent)
-    window.addEventListener('resize', apply)
-    return () => {
-      ro.disconnect()
-      window.removeEventListener('resize', apply)
-    }
-  })
-  return ref
-}
-
 export default function App() {
   // --- Theme ---
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -2571,11 +2559,19 @@ export default function App() {
     if (saved) return saved
     return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
   })
+  const [language, setLanguage] = useState<LanguageId>(() => (
+    readStrLs(LS_LANGUAGE, 'zh') === 'en' ? 'en' : 'zh'
+  ))
+  const [settingsOpen, setSettingsOpen] = useState(false)
   useEffect(() => {
     const html = document.documentElement
     html.setAttribute('data-theme', theme)
     try { localStorage.setItem(LS_THEME, theme) } catch { /* ignore storage errors */ }
   }, [theme])
+  useEffect(() => {
+    document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en'
+    try { localStorage.setItem(LS_LANGUAGE, language) } catch { /* ignore storage errors */ }
+  }, [language])
 
   // --- Layout state ---
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => readBoolLs(LS_LEFT, true))
@@ -2735,9 +2731,11 @@ export default function App() {
   const capabilityRef = useRef(capability)
   const selectedToolsRef = useRef(selectedTools)
   const attachmentsRef = useRef(attachments)
+  const languageRef = useRef(language)
   useEffect(() => { capabilityRef.current = capability }, [capability])
   useEffect(() => { selectedToolsRef.current = selectedTools }, [selectedTools])
   useEffect(() => { attachmentsRef.current = attachments }, [attachments])
+  useEffect(() => { languageRef.current = language }, [language])
 
   const remapSessionId = useCallback((fromId: string, toId: string) => {
     sessionsRef.current = sessionsRef.current.map((s) => (
@@ -2927,7 +2925,7 @@ export default function App() {
         mime_type: f.mime_type,
         base64: f.base64,
       })),
-      language: 'zh',
+      language: languageRef.current,
     })
     if (!sent) {
       turnRef.current.blocks = [{ type: 'status', title: '错误', content: CREATE_SESSION_ERROR }]
@@ -2987,8 +2985,6 @@ export default function App() {
     return () => { ro.disconnect(); window.removeEventListener('resize', measure); clearInterval(t) }
   }, [debug, sidebarOpen, statusOpen])
 
-  const virtuosoRef = useVirtuosoParentHeight()
-
   const layoutClasses = ['layout-kZA4Q1']
   if (!sidebarOpen) layoutClasses.push('layoutCollapsed-_ACuDn')
 
@@ -3035,7 +3031,15 @@ export default function App() {
                 else if (id === 'design-system') setView('design-system')
               }}
               theme={theme}
-              onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+              language={language}
+              onToggleTheme={() => {
+                setTheme((t) => {
+                  const next = t === 'dark' ? 'light' : 'dark'
+                  persistInterfaceSettings({ theme: next })
+                  return next
+                })
+              }}
+              onOpenSettings={() => setSettingsOpen(true)}
               hideSessions={mode !== 'code'}
               searchDocs={sessions.map((s) => ({
                 id: s.id,
@@ -3131,7 +3135,7 @@ export default function App() {
                             <div className="virtualized-message-list-view">
                               <div className="virtualized-message-list-view__content">
                                 <div className="virtualized-message-list-view__scroller virtualized-message-list-view__scroller--hide-scrollbar">
-                                  <div ref={virtuosoRef} className="virtualized-message-list-view__virtuoso" style={{ position: 'relative' }}>
+                                  <div className="virtualized-message-list-view__virtuoso" style={{ position: 'relative' }}>
                                     <ConversationView messages={messages} streaming={streaming} />
                                     <div ref={chatEndRef} />
                                   </div>
@@ -3250,6 +3254,17 @@ export default function App() {
           )}
         </main>
       </div>
+
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        theme={theme}
+        onThemeChange={setTheme}
+        language={language}
+        onLanguageChange={setLanguage}
+        accountName="Xike"
+        accountPlan="Free"
+      />
 
       {debug && (
         <DebugOverlay

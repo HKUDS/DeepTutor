@@ -21,6 +21,7 @@ html, body {
   display: flex;
   flex-direction: column;
   height: 100%;
+  max-height: 100%;
   min-height: 100%;
   overflow: hidden;
   width: 100%;
@@ -30,7 +31,8 @@ html, body {
   display: flex;
   flex: 1 1 auto;
   height: 100%;
-  min-height: 100%;
+  max-height: 100%;
+  min-height: 0;
   overflow: hidden;
   position: relative;
   transition: background var(--transition-normal);
@@ -3609,3 +3611,342 @@ body.dragging-resize * {
 .designCardTitle { font-size: 14px; padding: 10px 12px 0; }
 .designCardDesc { color: var(--text-text-tertiary); font-size: 12px; padding: 4px 12px 12px; }
 .headerRight-QHfr9M { align-items: center; display: flex; justify-content: flex-end; }
+
+/* ---- DeepTutor settings (Mac TraeWork 通用 format) ---- */
+.dtSettingsMask {
+  align-items: center;
+  background: rgba(24, 24, 24, 0.36);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  position: fixed;
+  z-index: 1200;
+}
+.dtSettings {
+  background: var(--bg-bg-base-default, #fff);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
+  display: flex;
+  height: min(760px, calc(100vh - 72px));
+  max-width: calc(100vw - 72px);
+  overflow: hidden;
+  width: min(1040px, calc(100vw - 72px));
+}
+.dtSettingsNav {
+  background: #f3f3f3;
+  box-sizing: border-box;
+  display: flex;
+  flex: 0 0 232px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 12px;
+  width: 232px;
+}
+[data-theme="dark"] .dtSettingsNav,
+[data-theme="dark-blue"] .dtSettingsNav {
+  background: var(--bg-bg-base-secondary, #1f1f1f);
+}
+.dtSettingsAccount {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  padding: 4px 8px 10px;
+}
+.dtSettingsAvatar {
+  align-items: center;
+  background: var(--bg-bg-overlay-l3, rgba(115, 115, 115, 0.16));
+  border-radius: 6px;
+  color: var(--text-text-default);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+.dtSettingsAccountMeta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.dtSettingsAccountNameRow {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+.dtSettingsAccountName {
+  color: var(--text-text-default);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dtSettingsProduct {
+  color: var(--text-text-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+}
+.dtSettingsNavItem {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: var(--text-text-default);
+  cursor: pointer;
+  display: flex;
+  font-size: 13px;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px;
+  text-align: left;
+  width: 100%;
+}
+.dtSettingsNavItem.is-active {
+  background: var(--bg-bg-overlay-l2, rgba(115, 115, 115, 0.12));
+}
+.dtSettingsMain {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: auto;
+  padding: 28px 36px 36px;
+  position: relative;
+}
+.dtSettingsClose {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: var(--icon-icon-secondary, #404040);
+  cursor: pointer;
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  width: 32px;
+}
+.dtSettingsClose:hover { background: var(--bg-bg-overlay-l1); }
+.dtSettingsTitle {
+  color: var(--text-text-default);
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 28px;
+  margin: 0 0 20px;
+}
+.dtSettingsSection {
+  color: var(--text-text-default);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  margin: 0 0 8px;
+}
+.dtSettingsCard {
+  background: var(--bg-bg-base-secondary, #f5f5f5);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+.dtSettingsRow {
+  align-items: center;
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  min-height: 64px;
+  padding: 14px 16px;
+}
+.dtSettingsRow + .dtSettingsRow {
+  border-top: 1px solid var(--border-border-neutral-l1, rgba(23, 23, 23, 0.06));
+}
+.dtSettingsRowCopy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.dtSettingsRowTitle {
+  color: var(--text-text-default);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+.dtSettingsRowHint {
+  color: var(--text-text-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+  margin-top: 2px;
+}
+.dtSettingsSelect { position: relative; }
+.dtSettingsSelectTrigger {
+  align-items: center;
+  background: var(--bg-bg-overlay-l1, rgba(115, 115, 115, 0.08));
+  border: 0;
+  border-radius: 8px;
+  color: var(--text-text-default);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  gap: 8px;
+  height: 32px;
+  justify-content: space-between;
+  min-width: 112px;
+  padding: 0 10px 0 12px;
+}
+.dtSettingsSelectChevron { color: var(--icon-icon-tertiary); }
+.dtSettingsSelectMenu {
+  background: var(--bg-bg-menu, var(--bg-bg-base-default));
+  border: 1px solid var(--border-border-neutral-l1, rgba(229, 229, 229, 0.12));
+  border-radius: 8px;
+  box-shadow: var(--shadow-elevation-200-menu-panel, 0 6px 24px -1px rgba(0, 0, 0, 0.16));
+  min-width: 100%;
+  padding: 4px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 2;
+}
+.dtSettingsSelectOption {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-text-default);
+  cursor: pointer;
+  display: block;
+  font-size: 13px;
+  padding: 6px 10px;
+  text-align: left;
+  white-space: nowrap;
+  width: 100%;
+}
+.dtSettingsSelectOption:hover,
+.dtSettingsSelectOption.is-selected { background: var(--bg-bg-overlay-l2); }
+.dtSettingsShortcut {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+.dtSettingsSwitch {
+  background: var(--bg-bg-overlay-l3, rgba(115, 115, 115, 0.28));
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  height: 20px;
+  padding: 2px;
+  position: relative;
+  width: 36px;
+}
+.dtSettingsSwitch.is-on { background: #34c759; }
+.dtSettingsSwitchThumb {
+  background: #fff;
+  border-radius: 50%;
+  display: block;
+  height: 16px;
+  transform: translateX(0);
+  transition: transform 120ms ease;
+  width: 16px;
+}
+.dtSettingsSwitch.is-on .dtSettingsSwitchThumb { transform: translateX(16px); }
+.dtSettingsKeys {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+}
+.dtSettingsKey {
+  align-items: center;
+  background: var(--bg-bg-overlay-l1, rgba(115, 115, 115, 0.08));
+  border-radius: 6px;
+  color: var(--text-text-default);
+  display: inline-flex;
+  font-size: 12px;
+  height: 24px;
+  justify-content: center;
+  min-width: 24px;
+  padding: 0 6px;
+}
+.dtSettingsKeyWide { min-width: 84px; }
+.dtSettingsKeyPlus { color: var(--text-text-tertiary); font-size: 12px; }
+.dtSettingsGearWrap { position: relative; }
+.dtSettingsGear {
+  align-items: center;
+  background: var(--bg-bg-overlay-l1, rgba(115, 115, 115, 0.08));
+  border: 0;
+  border-radius: 6px;
+  color: var(--icon-icon-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+.dtSettingsGearMenu {
+  background: var(--bg-bg-menu, var(--bg-bg-base-default));
+  border: 1px solid var(--border-border-neutral-l1, rgba(229, 229, 229, 0.12));
+  border-radius: 8px;
+  box-shadow: var(--shadow-elevation-200-menu-panel, 0 6px 24px -1px rgba(0, 0, 0, 0.16));
+  min-width: 132px;
+  padding: 4px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 3;
+}
+.dtSettingsGearItem {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-text-default);
+  cursor: pointer;
+  display: block;
+  font-size: 13px;
+  padding: 6px 10px;
+  text-align: left;
+  white-space: nowrap;
+  width: 100%;
+}
+.dtSettingsGearItem:hover { background: var(--bg-bg-overlay-l2); }
+.dtSettingsPath {
+  align-items: center;
+  display: flex;
+  flex: 0 1 auto;
+  gap: 8px;
+  max-width: 360px;
+  min-width: 0;
+}
+.dtSettingsPathValue,
+.dtSettingsPathInput {
+  background: var(--bg-bg-overlay-l1, rgba(115, 115, 115, 0.08));
+  border: 0;
+  border-radius: 8px;
+  box-sizing: border-box;
+  color: var(--text-text-default);
+  font-size: 13px;
+  height: 32px;
+  line-height: 32px;
+  max-width: 240px;
+  min-width: 160px;
+  overflow: hidden;
+  padding: 0 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dtSettingsPathInput { outline: none; }
+.dtSettingsPathBtn {
+  background: var(--bg-bg-overlay-l1, rgba(115, 115, 115, 0.08));
+  border: 0;
+  border-radius: 8px;
+  color: var(--text-text-default);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-size: 13px;
+  height: 32px;
+  padding: 0 12px;
+}
+.dtSettingsPathBtn:hover,
+.dtSettingsSelectTrigger:hover,
+.dtSettingsGear:hover { background: var(--bg-bg-overlay-l2); }
