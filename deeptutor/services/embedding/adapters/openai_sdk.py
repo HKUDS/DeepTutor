@@ -28,11 +28,7 @@ logger = logging.getLogger(__name__)
 class OpenAISDKEmbeddingAdapter(BaseEmbeddingAdapter):
     """Embedding adapter using the official ``AsyncOpenAI`` client."""
 
-    def _should_send_dimensions(
-        self,
-        model_name: str | None,
-        dimension: int | None = None,
-    ) -> bool:
+    def _should_send_dimensions(self, model_name: str | None) -> bool:
         """Mirror of the heuristic in :mod:`openai_compatible`.
 
         Tri-state ``self.send_dimensions``: ``True`` always send, ``False``
@@ -41,7 +37,7 @@ class OpenAISDKEmbeddingAdapter(BaseEmbeddingAdapter):
         return should_send_embedding_dimensions(
             binding=None,
             model=model_name,
-            dimension=dimension or self.dimensions,
+            dimension=self.dimensions or 1,
             send_dimensions=self.send_dimensions,
         )
 
@@ -78,7 +74,7 @@ class OpenAISDKEmbeddingAdapter(BaseEmbeddingAdapter):
             "encoding_format": request.encoding_format or "float",
         }
         dim_value = request.dimensions or self.dimensions
-        if dim_value and self._should_send_dimensions(model, dim_value):
+        if dim_value and self._should_send_dimensions(model):
             kwargs["dimensions"] = dim_value
 
         client = self._build_client()

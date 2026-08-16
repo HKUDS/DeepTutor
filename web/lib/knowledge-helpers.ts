@@ -94,7 +94,10 @@ export interface KnowledgeBase {
 }
 
 export type ProviderConnectionStatus =
-  "ready" | "per_kb" | "needs_key" | "unavailable";
+  | "ready"
+  | "per_kb"
+  | "needs_key"
+  | "unavailable";
 
 export const providerConnectionStatus = (provider: {
   id: string;

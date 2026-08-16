@@ -229,6 +229,7 @@ def test_build_settings_preserves_embedding_request_options(
             "https://generativelanguage.googleapis.com/v1beta/openai",
         ),
         ("openrouter", "https://openrouter.ai/api/v1/embeddings", "https://openrouter.ai/api/v1"),
+        ("orcarouter", "https://api.orcarouter.ai/v1/embeddings", "https://api.orcarouter.ai/v1"),
         ("vllm", "http://localhost:8000/v1/embeddings", "http://localhost:8000/v1"),
         ("jina", "https://api.jina.ai/v1/embeddings", "https://api.jina.ai/v1"),
         ("custom", "https://gateway.test/v1/embeddings", "https://gateway.test/v1"),
@@ -262,6 +263,11 @@ def test_graphrag_embedding_api_base_only_normalizes_openai_compatible_operation
             "https://example.openai.azure.com/openai/deployments/embed/embeddings"
             "?api-version=2024-02-01",
         ),
+        (
+            "gemini",
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            "gemini-embedding-2:batchEmbedContents",
+        ),
     ],
 )
 def test_graphrag_settings_reject_native_embedding_transports_without_mutating_them(
@@ -276,6 +282,21 @@ def test_graphrag_settings_reject_native_embedding_transports_without_mutating_t
         )
 
     assert embedding_cfg.effective_url == endpoint
+
+
+def test_graphrag_settings_accept_gemini_openai_compatible_endpoint() -> None:
+    settings = gr_config.build_settings(
+        llm_cfg=_Cfg("gpt-4o-mini", "https://api.example.com/v1", "sk-llm"),
+        embedding_cfg=_Cfg(
+            "gemini-embedding-001",
+            "https://generativelanguage.googleapis.com/v1beta/openai/embeddings",
+            "sk-emb",
+            binding="gemini",
+        ),
+    )
+
+    embedding = settings["embedding_models"][gr_config.EMBEDDING_MODEL_ID]
+    assert embedding["api_base"] == ("https://generativelanguage.googleapis.com/v1beta/openai")
 
 
 def test_build_settings_normalizes_embedding_endpoint_only_in_graphrag_payload() -> None:
@@ -620,6 +641,33 @@ def test_embedding_preflight_uses_graphrag_client_and_checks_dimension(monkeypat
     }
 
 
+def test_completion_preflight_uses_persisted_settings_client(monkeypatch, tmp_path) -> None:
+    captured: dict[str, object] = {}
+
+    class _CommunityReportResponse:
+        pass
+
+    class _Response:
+        formatted_response = _CommunityReportResponse()
+
+    class _Completion:
+        async def completion_async(self, **kwargs):
+            captured.update(kwargs)
+            return _Response()
+
+    monkeypatch.setattr(engine, "_load_config", lambda _root: object())
+    monkeypatch.setattr(
+        engine,
+        "_create_configured_probe_completion",
+        lambda _config: (_Completion(), _CommunityReportResponse),
+    )
+
+    asyncio.run(engine._preflight_completion_impl(tmp_path))
+
+    assert captured["response_format"] is _CommunityReportResponse
+    assert captured["stream"] is False
+
+
 def test_embedding_preflight_reports_dimension_mismatch_without_indexing(monkeypatch) -> None:
     class _Response:
         first_embedding = [0.1, 0.2]
@@ -898,6 +946,7 @@ def _stub_build(monkeypatch) -> list[dict]:
     async def fake_preflight(_root_dir):
         return None
 
+    monkeypatch.setattr(engine, "preflight_completion", fake_preflight, raising=False)
     monkeypatch.setattr(engine, "preflight_embedding", fake_preflight, raising=False)
 
     # initialize() -> write_settings() resolves the active chat + embedding
@@ -913,6 +962,25 @@ def _stub_build(monkeypatch) -> list[dict]:
         lambda: _Cfg("emb-model", "https://emb.test/v1", "sk-emb"),
     )
     return calls
+
+
+def test_incremental_preflight_checks_both_models_before_mutation(monkeypatch) -> None:
+    calls: list[str] = []
+
+    async def preflight_embedding(root_dir: Path) -> None:
+        assert (root_dir / gr_config.SETTINGS_FILENAME).exists()
+        calls.append("embedding")
+
+    async def preflight_completion(root_dir: Path) -> None:
+        assert (root_dir / gr_config.SETTINGS_FILENAME).exists()
+        calls.append("completion")
+
+    monkeypatch.setattr(engine, "preflight_embedding", preflight_embedding)
+    monkeypatch.setattr(engine, "preflight_completion", preflight_completion)
+
+    asyncio.run(GraphRagPipeline()._preflight_settings({"models": {}}))
+
+    assert calls == ["embedding", "completion"]
 
 
 def test_initialize_requires_graphrag(tmp_path, monkeypatch) -> None:

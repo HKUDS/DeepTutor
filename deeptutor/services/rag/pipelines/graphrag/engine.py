@@ -17,7 +17,12 @@ import logging
 from pathlib import Path
 from typing import Any, TypeVar
 
-from .config import DEFAULT_MODE, normalize_mode, query_config_from_settings
+from .config import (
+    COMPLETION_MODEL_ID,
+    DEFAULT_MODE,
+    normalize_mode,
+    query_config_from_settings,
+)
 from .errors import (
     EMBEDDING_RESPONSE_MESSAGE,
     GraphRagEmbeddingDimensionError,
@@ -136,9 +141,21 @@ def _create_probe_completion(llm_cfg: Any):
     return create_completion(model_config), CommunityReportResponse
 
 
-async def _probe_completion_model_impl(llm_cfg: Any) -> None:
+def _create_configured_probe_completion(config: Any):
+    """Create a probe from a loaded settings snapshot used by real indexing."""
+    from graphrag.index.operations.summarize_communities.community_reports_extractor import (
+        CommunityReportResponse,
+    )
+    from graphrag_llm.completion import create_completion
+
+    return (
+        create_completion(config.completion_models[COMPLETION_MODEL_ID]),
+        CommunityReportResponse,
+    )
+
+
+async def _validate_probe_completion(completion: Any, response_model: type) -> None:
     """Request and validate one minimal GraphRAG community-report response."""
-    completion, response_model = _create_probe_completion(llm_cfg)
     response = await completion.completion_async(
         messages=(
             "Return one concise community report for a graph containing one topic named "
@@ -152,6 +169,11 @@ async def _probe_completion_model_impl(llm_cfg: Any) -> None:
     )
     if not isinstance(getattr(response, "formatted_response", None), response_model):
         raise GraphRagStructuredOutputError("GraphRAG structured response validation failed.")
+
+
+async def _probe_completion_model_impl(llm_cfg: Any) -> None:
+    """Probe a resolved DeepTutor model through the GraphRAG adapter."""
+    await _validate_probe_completion(*_create_probe_completion(llm_cfg))
 
 
 def _failed_probe_result(llm_cfg: Any, error: Exception) -> dict[str, Any]:
@@ -241,6 +263,23 @@ async def _probe_embedding_model_impl(config: Any) -> None:
 async def preflight_embedding(root_dir: Path) -> None:
     """Validate one settings snapshot through GraphRAG's real embedding client."""
     await _run_isolated(lambda: _preflight_embedding_impl(root_dir))
+
+
+async def preflight_completion(root_dir: Path) -> None:
+    """Validate the completion model from the exact persisted settings snapshot."""
+    try:
+        await _run_isolated(lambda: _preflight_completion_impl(root_dir))
+    except Exception as error:
+        classified = classify_model_error(error)
+        if classified is not None and classified is not error:
+            raise classified from error
+        raise
+
+
+async def _preflight_completion_impl(root_dir: Path) -> None:
+    config = _load_config(root_dir)
+    logger.info("GraphRAG: validating the active completion model before indexing")
+    await _validate_probe_completion(*_create_configured_probe_completion(config))
 
 
 async def _preflight_embedding_impl(root_dir: Path) -> None:
@@ -409,6 +448,7 @@ __all__ = [
     "build",
     "search",
     "probe_completion_model",
+    "preflight_completion",
     "RESPONSE_TYPE",
     "DEFAULT_COMMUNITY_LEVEL",
 ]

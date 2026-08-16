@@ -77,7 +77,10 @@ class GraphRagPipeline:
         with tempfile.TemporaryDirectory(prefix="deeptutor-graphrag-preflight-") as temp_dir:
             probe_root = Path(temp_dir)
             gr_config.write_settings_payload(probe_root, settings)
+            # Check the cheaper embedding request first so an invalid endpoint
+            # does not trigger a structured completion call unnecessarily.
             await engine.preflight_embedding(probe_root)
+            await engine.preflight_completion(probe_root)
 
     # ----- indexing -------------------------------------------------------
 

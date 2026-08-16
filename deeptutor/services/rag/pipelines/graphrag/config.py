@@ -67,6 +67,7 @@ OPENAI_COMPATIBLE_EMBEDDING_BINDINGS = frozenset(
         "jina",
         "openai",
         "openrouter",
+        "orcarouter",
         "siliconflow",
         "vllm",
     }
@@ -140,10 +141,20 @@ def graphrag_embedding_api_base(binding: str | None, endpoint: str | None) -> st
     return urlunsplit(parsed._replace(path=api_path))
 
 
-def ensure_graphrag_embedding_transport(binding: str | None) -> None:
+def ensure_graphrag_embedding_transport(
+    binding: str | None,
+    endpoint: str | None,
+) -> None:
     """Reject native embedding transports that GraphRAG cannot call safely."""
     provider = canonical_embedding_provider_name(binding)
     if provider not in OPENAI_COMPATIBLE_EMBEDDING_BINDINGS:
+        raise GraphRagEmbeddingProviderUnsupportedError()
+    # Gemini can use either DeepTutor's native ``batchEmbedContents`` adapter
+    # or its legacy OpenAI-compatible endpoint. GraphRAG only supports the
+    # latter; a provider name alone is no longer enough after Gemini 2 support.
+    if provider == "gemini" and not urlsplit(str(endpoint or "")).path.rstrip("/").endswith(
+        "/embeddings"
+    ):
         raise GraphRagEmbeddingProviderUnsupportedError()
 
 
@@ -261,12 +272,11 @@ def build_settings(*, llm_cfg: Any = None, embedding_cfg: Any = None) -> dict[st
         )
 
     embedding_binding = str(getattr(embedding_cfg, "binding", "") or "")
-    ensure_graphrag_embedding_transport(embedding_binding)
-
     llm_base = getattr(llm_cfg, "effective_url", None) or getattr(llm_cfg, "base_url", None)
     embed_endpoint = getattr(embedding_cfg, "effective_url", None) or getattr(
         embedding_cfg, "base_url", None
     )
+    ensure_graphrag_embedding_transport(embedding_binding, embed_endpoint)
     embed_base = graphrag_embedding_api_base(embedding_binding, embed_endpoint)
 
     return {

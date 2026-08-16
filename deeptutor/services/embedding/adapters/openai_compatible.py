@@ -118,11 +118,7 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
     _RETRY_BACKOFF = 1.0
     _RATE_LIMIT_BACKOFF = 5.0
 
-    def _should_send_dimensions(
-        self,
-        model_name: str | None,
-        dimension: int | None = None,
-    ) -> bool:
+    def _should_send_dimensions(self, model_name: str | None) -> bool:
         """Decide whether to attach `dimensions` to the request payload.
 
         Tri-state semantics driven by `self.send_dimensions`:
@@ -135,7 +131,10 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
         return should_send_embedding_dimensions(
             binding=None,
             model=model_name,
-            dimension=dimension or self.dimensions,
+            # ``embed`` only calls this hook when a request dimension exists.
+            # Keep the historical one-argument override contract used by
+            # provider adapters such as Gemini.
+            dimension=self.dimensions or 1,
             send_dimensions=self.send_dimensions,
         )
 
@@ -179,7 +178,7 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
         # supports the param — other providers (e.g. Qwen text-embedding-v4 via
         # litellm gateway) return HTTP 400 if we send it.
         dim_value = request.dimensions or self.dimensions
-        if dim_value and self._should_send_dimensions(model, dim_value):
+        if dim_value and self._should_send_dimensions(model):
             payload["dimensions"] = dim_value
 
         # URL transparency: hit `base_url` verbatim. Azure's `?api-version=...`
