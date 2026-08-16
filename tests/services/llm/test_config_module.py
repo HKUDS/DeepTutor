@@ -171,3 +171,28 @@ def test_resolver_missing_model_raises(monkeypatch) -> None:
     )
     with pytest.raises(LLMConfigError):
         config_module.get_llm_config()
+
+
+def test_official_openai_without_real_key_raises(monkeypatch) -> None:
+    _reset_config_cache()
+    monkeypatch.setattr(
+        config_module,
+        "resolve_llm_runtime_config",
+        lambda: ResolvedLLMConfig(
+            model="gpt-4o-mini",
+            provider_name="openai",
+            provider_mode="standard",
+            binding_hint="openai",
+            binding="openai",
+            api_key="",
+            base_url="https://api.openai.com/v1",
+            effective_url="https://api.openai.com/v1",
+            api_version=None,
+            extra_headers={},
+            reasoning_effort=None,
+            context_window=None,
+        ),
+    )
+
+    with pytest.raises(LLMConfigError, match="OpenAI API key is not configured"):
+        config_module.get_llm_config()

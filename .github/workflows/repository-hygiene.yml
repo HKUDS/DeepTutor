@@ -1,0 +1,23 @@
+name: Repository Hygiene
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+
+jobs:
+  hygiene:
+    name: Check tracked generated files
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run repository hygiene check
+        run: python3 scripts/check_workspace_hygiene.py

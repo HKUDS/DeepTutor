@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 from deeptutor.services.rag.index_probe import (
+    _llamaindex_doc_count,
     has_ready_provider_index,
     inspect_kb_versions,
     inspect_provider_index,
@@ -151,3 +155,84 @@ def test_provider_mismatch_is_not_ready(tmp_path: Path) -> None:
 
     assert probe.ready is False
     assert probe.diagnostics["provider_mismatch"] is True
+
+
+def test_llamaindex_doc_count_cached_until_file_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Repeated probes must not re-parse docstore.json (issue #859)."""
+    from deeptutor.services.rag.index_probe import _read_json
+
+    docstore = tmp_path / "docstore.json"
+    docstore.write_text(
+        json.dumps({"docstore/data": {"doc-1": {}, "doc-2": {}}}),
+        encoding="utf-8",
+    )
+
+    real_read = _read_json
+    reads: list[str] = []
+
+    def counting_read(path: Path) -> dict[str, Any] | None:
+        reads.append(str(path))
+        return real_read(path)
+
+    monkeypatch.setattr("deeptutor.services.rag.index_probe._read_json", counting_read)
+
+    assert _llamaindex_doc_count(docstore) == 2
+    # Second probe on an unchanged file must be served from the cache.
+    assert _llamaindex_doc_count(docstore) == 2
+    assert reads == [str(docstore)]
+
+    # A real file change must invalidate the cache entry.
+    docstore.write_text(
+        json.dumps({"docstore/data": {"doc-1": {}}}),
+        encoding="utf-8",
+    )
+    assert _llamaindex_doc_count(docstore) == 1
+    assert reads == [str(docstore), str(docstore)]
+
+
+def test_llamaindex_doc_count_missing_file_is_not_cached(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A missing docstore must not poison the cache for a later-created file."""
+    from deeptutor.services.rag.index_probe import _read_json
+
+    docstore = tmp_path / "docstore.json"
+
+    real_read = _read_json
+    reads: list[str] = []
+
+    def counting_read(path: Path) -> dict[str, Any] | None:
+        reads.append(str(path))
+        return real_read(path)
+
+    monkeypatch.setattr("deeptutor.services.rag.index_probe._read_json", counting_read)
+
+    assert _llamaindex_doc_count(docstore) is None
+    # A missing docstore short-circuits on stat() — no parse is attempted, and
+    # no cache entry is created that could shadow a later-created file.
+    assert reads == []
+    docstore.write_text(
+        json.dumps({"docstore/data": {"doc-1": {}}}),
+        encoding="utf-8",
+    )
+    assert _llamaindex_doc_count(docstore) == 1
+    assert reads == [str(docstore)]
+
+
+def test_provider_failure_summary_reuses_precomputed_versions(tmp_path: Path) -> None:
+    """Pre-annotated versions must not trigger another on-disk scan (#859)."""
+    versions = [
+        {"storage_path": str(tmp_path / "version-1"), "ready": True},
+        {
+            "storage_path": str(tmp_path / "version-2"),
+            "ready": False,
+            "failure_summary": "Missing LlamaIndex docstore.json.",
+        },
+    ]
+    # Nothing exists on disk under tmp_path; the precomputed list is the only
+    # source of failure text and must be honored without a rescan.
+    assert provider_failure_summary(tmp_path, "llamaindex", versions=versions) == (
+        "Missing LlamaIndex docstore.json."
+    )

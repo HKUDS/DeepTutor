@@ -24,6 +24,7 @@ class DocumentType(Enum):
     DOCX = "docx"
     SPREADSHEET = "spreadsheet"
     PRESENTATION = "presentation"
+    EPUB = "epub"
     IMAGE = "image"
     UNKNOWN = "unknown"
 
@@ -42,14 +43,15 @@ class FileTypeRouter:
     """File type router for the RAG pipeline.
 
     Classifies files before processing to route them to appropriate handlers:
-    - PDF / Office files -> parser-based text extraction
+    - PDF / Office / EPUB files -> parser-based text extraction
     - Text files -> Direct read (fast, simple)
     - Unsupported -> Skip with warning
     """
 
     PDF_EXTENSIONS = {".pdf"}
     OFFICE_EXTENSIONS = {".docx", ".xlsx", ".pptx"}
-    PARSER_EXTENSIONS = PDF_EXTENSIONS | OFFICE_EXTENSIONS
+    EPUB_EXTENSIONS = {".epub"}
+    PARSER_EXTENSIONS = PDF_EXTENSIONS | OFFICE_EXTENSIONS | EPUB_EXTENSIONS
 
     TEXT_EXTENSIONS = {
         # Plain text & docs
@@ -191,6 +193,8 @@ class FileTypeRouter:
             return DocumentType.SPREADSHEET
         elif ext == ".pptx":
             return DocumentType.PRESENTATION
+        elif ext in cls.EPUB_EXTENSIONS:
+            return DocumentType.EPUB
         elif ext in cls.IMAGE_EXTENSIONS:
             return DocumentType.IMAGE
         else:
@@ -229,6 +233,7 @@ class FileTypeRouter:
                 DocumentType.DOCX,
                 DocumentType.SPREADSHEET,
                 DocumentType.PRESENTATION,
+                DocumentType.EPUB,
             ):
                 parser_files.append(path)
             elif doc_type in (DocumentType.TEXT, DocumentType.MARKDOWN):
@@ -297,6 +302,7 @@ class FileTypeRouter:
             DocumentType.DOCX,
             DocumentType.SPREADSHEET,
             DocumentType.PRESENTATION,
+            DocumentType.EPUB,
             DocumentType.IMAGE,
         )
 

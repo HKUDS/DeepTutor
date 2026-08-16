@@ -419,6 +419,43 @@ class TestContextAssembly:
         # (deny) rather than no filter (unrestricted).
         assert context.metadata["mcp_tools_filter"] == []
 
+    @staticmethod
+    def _write_admin_enabled_tools(partners_root, names: list[str]) -> None:
+        """Persist the admin's Settings → Chat → Tools toggles under the
+        isolated admin workspace, using the same path the runtime reads."""
+        import json
+
+        from deeptutor.multi_user.paths import get_admin_path_service
+
+        path = get_admin_path_service().get_settings_file("interface")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"enabled_optional_tools": names}), encoding="utf-8")
+
+    def test_globally_disabled_tool_dropped_from_explicit_config(self, partners_root):
+        # web_search is turned off in Settings → Chat → Tools, so even though
+        # the partner config saved it, it must not surface at runtime.
+        self._write_admin_enabled_tools(partners_root, ["reason"])
+        runner = _runner(
+            partners_root,
+            PartnerConfig(name="Ada", enabled_tools=["web_search", "reason"]),
+        )
+        assert runner._resolved_enabled_tools() == ["reason"]
+
+    def test_globally_disabled_tool_dropped_from_default_config(self, partners_root):
+        # The default (None = fully equipped) config still bows to the global
+        # toggle: only the tools the admin left on survive.
+        self._write_admin_enabled_tools(partners_root, ["reason"])
+        runner = _runner(partners_root)  # enabled_tools=None
+        assert runner._resolved_enabled_tools() == ["reason"]
+
+    def test_missing_admin_settings_fall_open_to_full_set(self, partners_root):
+        from deeptutor.agents._shared.tool_composition import default_optional_tools
+
+        # No interface.json → fail-open: the partner's saved selection stands.
+        runner = _runner(partners_root, PartnerConfig(name="Ada", enabled_tools=["web_search"]))
+        assert runner._resolved_enabled_tools() == ["web_search"]
+        assert _runner(partners_root)._resolved_enabled_tools() == default_optional_tools()
+
     @pytest.mark.asyncio
     async def test_owner_can_opt_partner_into_all_mcp_tools(self, partners_root, fake_orchestrator):
         """``mcp_tools=None`` is still the deliberate unrestricted state: it
