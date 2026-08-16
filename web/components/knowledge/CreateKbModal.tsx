@@ -138,8 +138,7 @@ export default function CreateKbModal({
   const [serverProbing, setServerProbing] = useState(false);
   const [imaClientId, setImaClientId] = useState("");
   const [imaApiKey, setImaApiKey] = useState("");
-  const [imaMode, setImaMode] =
-    useState<ImaConnectionMode>("automatic");
+  const [imaMode, setImaMode] = useState<ImaConnectionMode>("automatic");
   const [imaKnowledgeBaseId, setImaKnowledgeBaseId] = useState("");
   const [imaLookup, setImaLookup] = useState(emptyImaLookupState);
   const [imaManualProbe, setImaManualProbe] = useState<ImaProbe | null>(null);
@@ -373,8 +372,7 @@ export default function CreateKbModal({
   };
 
   const handleSelectIma = (item: ImaKnowledgeBaseOption) => {
-    const shouldAutoFill =
-      !name.trim() || name === imaLookup.lastAutoName;
+    const shouldAutoFill = !name.trim() || name === imaLookup.lastAutoName;
     setName(nextAutoName(name, imaLookup.lastAutoName, item.name));
     setImaLookup((current) => ({
       ...current,

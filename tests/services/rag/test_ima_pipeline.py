@@ -223,9 +223,7 @@ class TestClientKnowledgeBaseList:
             seen["body"] = json.loads(request.content)
             return _ok({"info_list": [], "is_end": True, "next_cursor": ""})
 
-        page = asyncio.run(
-            _client(handler).search_knowledge_bases(query="", cursor="", limit=20)
-        )
+        page = asyncio.run(_client(handler).search_knowledge_bases(query="", cursor="", limit=20))
 
         assert seen == {
             "url": f"{API_BASE_URL}/openapi/wiki/v1/search_knowledge_base",
@@ -299,9 +297,7 @@ class TestClientKnowledgeBaseList:
 
         page = asyncio.run(_client(handler).search_knowledge_bases())
 
-        assert page["knowledge_bases"] == [
-            {"id": "kb-1", "name": "Alpha", "description": None}
-        ]
+        assert page["knowledge_bases"] == [{"id": "kb-1", "name": "Alpha", "description": None}]
 
     def test_get_knowledge_bases_batches_up_to_twenty_ids(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:

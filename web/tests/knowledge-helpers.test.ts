@@ -56,8 +56,14 @@ test("kbCanReindex preserves mismatch and needs-reindex behavior", () => {
 });
 
 test("IMA is connected per knowledge base instead of globally ready", () => {
-  assert.equal(providerConnectionStatus({ id: "ima", configured: true }), "per_kb");
-  assert.equal(providerConnectionStatus({ id: "llamaindex", configured: true }), "ready");
+  assert.equal(
+    providerConnectionStatus({ id: "ima", configured: true }),
+    "per_kb",
+  );
+  assert.equal(
+    providerConnectionStatus({ id: "llamaindex", configured: true }),
+    "ready",
+  );
   assert.equal(
     providerConnectionStatus({
       id: "pageindex",

@@ -1726,9 +1726,7 @@ async def list_ima_route(payload: ListImaRequest):
     if not client_id or not api_key:
         raise HTTPException(status_code=400, detail="Client ID and API key are required.")
 
-    client = ImaClient(
-        ImaConfig(client_id=client_id, api_key=api_key, knowledge_base_id="")
-    )
+    client = ImaClient(ImaConfig(client_id=client_id, api_key=api_key, knowledge_base_id=""))
     try:
         return await client.search_knowledge_bases(
             query="",
@@ -1736,13 +1734,9 @@ async def list_ima_route(payload: ListImaRequest):
             limit=payload.limit,
         )
     except ImaAuthError:
-        raise HTTPException(
-            status_code=401, detail="IMA rejected the supplied credentials."
-        )
+        raise HTTPException(status_code=401, detail="IMA rejected the supplied credentials.")
     except ImaRateLimitError:
-        raise HTTPException(
-            status_code=429, detail="IMA rate limit reached. Try again shortly."
-        )
+        raise HTTPException(status_code=429, detail="IMA rate limit reached. Try again shortly.")
     except ImaAPIError:
         raise HTTPException(status_code=502, detail="IMA returned an invalid response.")
     except Exception:

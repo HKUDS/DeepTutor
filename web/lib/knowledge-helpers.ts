@@ -83,10 +83,7 @@ export interface KnowledgeBase {
 }
 
 export type ProviderConnectionStatus =
-  | "ready"
-  | "per_kb"
-  | "needs_key"
-  | "unavailable";
+  "ready" | "per_kb" | "needs_key" | "unavailable";
 
 export const providerConnectionStatus = (provider: {
   id: string;
@@ -94,7 +91,8 @@ export const providerConnectionStatus = (provider: {
   requires_api_key?: boolean;
 }): ProviderConnectionStatus => {
   if (provider.id === "ima") return "per_kb";
-  if (provider.requires_api_key && provider.configured === false) return "needs_key";
+  if (provider.requires_api_key && provider.configured === false)
+    return "needs_key";
   if (provider.configured === false) return "unavailable";
   return "ready";
 };

@@ -746,7 +746,10 @@ export async function connectImaKnowledgeBase(payload: {
   });
   if (!res.ok) {
     throw new Error(
-      await readErrorDetail(res, "Failed to connect Tencent IMA knowledge base"),
+      await readErrorDetail(
+        res,
+        "Failed to connect Tencent IMA knowledge base",
+      ),
     );
   }
   invalidateKnowledgeCaches();

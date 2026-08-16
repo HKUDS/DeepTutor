@@ -189,9 +189,7 @@ class ImaClient:
         knowledge_bases = []
         for kb_id, name in entries:
             raw_description = details.get(kb_id, {}).get("description")
-            description = (
-                str(raw_description).strip() if raw_description is not None else ""
-            )
+            description = str(raw_description).strip() if raw_description is not None else ""
             knowledge_bases.append(
                 {
                     "id": kb_id,
@@ -206,9 +204,7 @@ class ImaClient:
             "is_end": bool(data.get("is_end")),
         }
 
-    async def get_knowledge_bases(
-        self, ids: list[str]
-    ) -> dict[str, dict[str, Any]]:
+    async def get_knowledge_bases(self, ids: list[str]) -> dict[str, dict[str, Any]]:
         """Return details for at most 20 knowledge base ids."""
         normalized: list[str] = []
         for item in ids:
@@ -224,11 +220,7 @@ class ImaClient:
         infos = data.get("infos")
         if not isinstance(infos, dict):
             return {}
-        return {
-            str(kb_id): info
-            for kb_id, info in infos.items()
-            if isinstance(info, dict)
-        }
+        return {str(kb_id): info for kb_id, info in infos.items() if isinstance(info, dict)}
 
     async def get_knowledge_base(self) -> dict[str, Any]:
         """Return the bound knowledge base's info, or ``{}`` when unknown.

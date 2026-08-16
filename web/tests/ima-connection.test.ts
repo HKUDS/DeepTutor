@@ -26,10 +26,7 @@ test("IMA belongs only to link-existing provider choices", () => {
   );
   assert.equal(linkSourceEnabled(providers[0]), true);
   assert.equal(linkSourceEnabled({ ...providers[2], linkable: false }), false);
-  assert.equal(
-    linkSourceEnabled({ ...providers[1], linkable: true }),
-    true,
-  );
+  assert.equal(linkSourceEnabled({ ...providers[1], linkable: true }), true);
 });
 
 test("leaving the IMA source clears credentials from the mounted modal", () => {

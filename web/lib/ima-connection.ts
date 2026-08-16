@@ -2,12 +2,7 @@ export const IMA_PROVIDER = "ima";
 
 export type ImaConnectionMode = "automatic" | "manual";
 export type ImaLookupStatus =
-  | "idle"
-  | "loading"
-  | "ready"
-  | "empty"
-  | "error"
-  | "manual_verified";
+  "idle" | "loading" | "ready" | "empty" | "error" | "manual_verified";
 
 export interface ImaKnowledgeBaseOption {
   id: string;
@@ -37,8 +32,9 @@ interface ProviderChoice {
   linkable?: boolean;
 }
 
-export const createProviders = <T extends ProviderChoice>(providers: T[]): T[] =>
-  providers.filter((provider) => provider.id !== IMA_PROVIDER);
+export const createProviders = <T extends ProviderChoice>(
+  providers: T[],
+): T[] => providers.filter((provider) => provider.id !== IMA_PROVIDER);
 
 export const linkSourceEnabled = (provider: ProviderChoice): boolean =>
   provider.id === IMA_PROVIDER || Boolean(provider.linkable);
@@ -48,7 +44,9 @@ export const nextAutoName = (
   lastAutoName: string | null,
   selectedName: string,
 ): string =>
-  !currentName.trim() || currentName === lastAutoName ? selectedName : currentName;
+  !currentName.trim() || currentName === lastAutoName
+    ? selectedName
+    : currentName;
 
 export const mergeImaKnowledgeBases = (
   existing: ImaKnowledgeBaseOption[],
@@ -88,9 +86,9 @@ export const canConnectIma = (input: {
   const verified = input.manualVerification;
   return Boolean(
     knowledgeBaseId &&
-      verified?.ok &&
-      verified.clientId === clientId &&
-      verified.apiKey === apiKey &&
-      verified.knowledgeBaseId === knowledgeBaseId,
+    verified?.ok &&
+    verified.clientId === clientId &&
+    verified.apiKey === apiKey &&
+    verified.knowledgeBaseId === knowledgeBaseId,
   );
 };

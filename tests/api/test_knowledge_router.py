@@ -193,9 +193,7 @@ def test_list_ima_returns_normalized_page(monkeypatch) -> None:
     captured: dict = {}
     stub = _ImaListStub(
         result={
-            "knowledge_bases": [
-                {"id": "kb-1", "name": "My Library", "description": "notes"}
-            ],
+            "knowledge_bases": [{"id": "kb-1", "name": "My Library", "description": "notes"}],
             "next_cursor": "cursor-2",
             "is_end": False,
         }
