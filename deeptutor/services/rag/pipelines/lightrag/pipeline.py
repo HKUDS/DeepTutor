@@ -260,7 +260,7 @@ class LightRagPipeline:
         try:
             self._ensure_available()
             rag = engine.build_rag(storage.working_dir(root_dir))
-            answer = await engine.query(rag, query, mode)
+            answer, sources = await engine.query_with_sources(rag, query, mode)
         except lr_config.LightRagNotAvailableError as exc:
             return self._error_result(query, exc, error_type="not_configured")
         except Exception as exc:
@@ -272,7 +272,7 @@ class LightRagPipeline:
             "query": query,
             "answer": answer,
             "content": answer,
-            "sources": [],
+            "sources": sources,
             "provider": storage.PROVIDER,
             "mode": mode,
         }
