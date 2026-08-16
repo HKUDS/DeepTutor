@@ -49,6 +49,8 @@
 
 ### 📦 發行版本
 
+> **[2026.8.13]** [v1.5.12](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.12) — Web 搜尋以六個新供應商（**Doubao**、**Bocha**、**Zhipu**、**Firecrawl**、**Qianfan**、**Aliyun IQS**）重建，新增 **LiteParse** 解析引擎、會在憑證變更時重新連線的 MCP 伺服器，以及 **CodeBuddy** 與 **OrcaRouter**。
+
 > **[2026.8.10]** [v1.5.11](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.11) — DSML 工具呼叫前後的文字不再消失、遭截斷的回覆會繼續生成而非直接結束、設定中可查看即時記憶體用量，且 LightRAG 索引作業不再阻塞事件迴圈。
 
 > **[2026.8.7]** [v1.5.10](https://github.com/HKUDS/DeepTutor/releases/tag/v1.5.10) — 每個帳號都能登入自己的 **Codex**、模型輸出語言成為獨立設定、空白工具呼叫會被拒絕而非重試，且上傳作業不再阻塞事件迴圈。
