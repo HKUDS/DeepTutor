@@ -11,6 +11,7 @@ Covers:
 
 from __future__ import annotations
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 import pytest
 
@@ -21,6 +22,19 @@ from deeptutor.api.routers._partners_channel_schema import (
     inline_refs,
     resolve_config_model,
 )
+from deeptutor.api.routers.partners import _validate_channels_payload
+
+
+class TestChannelPayloadValidation:
+    def test_rejects_enabled_channel_with_empty_allow_list(self) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            _validate_channels_payload({"weixin": {"enabled": True, "allow_from": [], "token": ""}})
+
+        assert exc_info.value.status_code == 422
+        assert exc_info.value.detail["channels"] == ["weixin"]
+
+    def test_allows_disabled_channel_with_empty_allow_list(self) -> None:
+        _validate_channels_payload({"weixin": {"enabled": False, "allow_from": []}})
 
 
 class TestResolveConfigModel:

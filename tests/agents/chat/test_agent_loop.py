@@ -502,6 +502,87 @@ async def test_tool_round_then_finish(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_mastery_tool_round_keeps_teaching_markdown_visible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mastery teaching may share a native tool round with quiz setup.
+
+    The prose must stay in the answer surface after the round resolves instead
+    of being demoted into the compact reasoning trace (issue #855).
+    """
+
+    class _MasteryRegistry(_Registry):
+        def build_openai_schemas(self, enabled):
+            schemas = super().build_openai_schemas(enabled)
+            schemas.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "mastery_quiz",
+                        "description": "Register a mastery quiz",
+                        "parameters": {"type": "object", "properties": {}},
+                    },
+                }
+            )
+            return schemas
+
+    explanation = (
+        "### Binary addition\n\n"
+        "| Carry | Sum |\n"
+        "| --- | --- |\n"
+        "| 1 | 0 |\n\n"
+        "Use the carry column to work through the next question."
+    )
+    registry = _MasteryRegistry()
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(content=explanation),
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "id": "quiz-1",
+                            "name": "mastery_quiz",
+                            "arguments": "{}",
+                        }
+                    ]
+                ),
+            ],
+            [_llm_chunk(content="Choose the answer when you are ready.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry
+    monkeypatch.setattr(
+        pipeline,
+        "_compose_enabled_tools",
+        lambda _context: ["mastery_quiz"],
+    )
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(
+            session_id="s1",
+            user_message="Teach me binary addition",
+            enabled_tools=["mastery_quiz"],
+            metadata={"mastery_mode": True, "mastery_path_id": "path-1"},
+        ),
+    )
+
+    markers = [
+        event.metadata
+        for event in events
+        if event.type == StreamEventType.PROGRESS
+        and event.metadata.get("call_state") == "complete"
+        and "call_role" in event.metadata
+    ]
+    assert markers[0]["call_role"] == "narration"
+    assert markers[0]["answer_visible"] is True
+    assert "".join(_contents(events)) == explanation + "Choose the answer when you are ready."
+
+
+@pytest.mark.asyncio
 async def test_dsml_round_keeps_clean_prose_visible_and_decodes_container_args(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

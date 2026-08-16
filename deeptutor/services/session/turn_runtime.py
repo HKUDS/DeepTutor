@@ -79,8 +79,9 @@ def _narration_marker_call_id(event: StreamEvent) -> str | None:
     preamble streamed alongside a tool call). Its text belongs to the trace,
     not the persisted answer, so it is excluded when assembling content.
 
-    DSML rounds may explicitly keep the cleaned prose surrounding a call; that
-    narrow exception remains part of the persisted answer.
+    A round may explicitly keep learner-facing prose surrounding a call via
+    ``answer_visible`` (for example DSML or mastery tutoring); that narrow
+    exception remains part of the persisted answer.
     """
     metadata = event.metadata or {}
     if (
@@ -1766,7 +1767,6 @@ class TurnRuntimeManager:
                     events=assistant_events,
                     attachments=generated_attachments or None,
                 )
-            await self._flush_buffered_events(execution)
             turn_status, turn_error = _resolve_turn_outcome(
                 assistant_events,
                 pending_done_event,
@@ -1812,6 +1812,17 @@ class TurnRuntimeManager:
                     )
                 except Exception:
                     logger.debug("Failed to generate session title", exc_info=True)
+            # Flush once every terminal/post-turn event (DONE, and the title
+            # ``session_meta`` above) has been published, not before: a
+            # client that reconnects after this task's ``finally`` pops
+            # ``execution`` from ``_executions`` falls back entirely to this
+            # persisted backlog, and ``subscribe_turn`` synthesises an
+            # id-less DONE when it finds none there -- permanently orphaning
+            # the just-persisted assistant reply from that client's
+            # reconcile path (it can still see the message after a full
+            # session reload, since the row itself is fine; only the
+            # targeted in-place swap is unreachable).
+            await self._flush_buffered_events(execution)
         except asyncio.CancelledError:
             if not stream_done_sent:
                 await self._publish_live_event(

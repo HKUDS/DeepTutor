@@ -230,17 +230,30 @@ class LearningService:
         *,
         passed: bool,
         evidence: str = "",
+        scheduler: SpacedRepetitionScheduler | None = None,
     ) -> None:
         """Record the qualitative (CONCEPT / DESIGN) gate outcome.
 
         The boolean is the gate of record; ``mastery_levels`` is nudged only so
         the map's colour matches the gate (full on pass, capped on fail).
+
+        A first pass starts spaced repetition at the type's first configured
+        interval. Later assessments advance or shorten that existing schedule.
+        An initial failure is not reviewable mastery, so it creates no state.
         """
         progress.qualitative_mastery[kp_id] = bool(passed)
         current = progress.mastery_levels.get(kp_id, 0.0)
         progress.mastery_levels[kp_id] = max(current, 1.0) if passed else min(current, 0.4)
         if evidence:
             progress.feynman_explanations[kp_id] = evidence
+        kp_type = progress.knowledge_types.get(kp_id)
+        if kp_type is not None and scheduler is not None:
+            state = progress.repetition_states.get(kp_id)
+            if state is not None and state.next_review_at <= time.time():
+                scheduler.schedule_next(state, kp_type, passed)
+            elif state is None and passed:
+                progress.repetition_states[kp_id] = scheduler.get_initial_state(kp_type)
+            progress.review_queue = scheduler.build_review_queue(progress)
         progress.updated_at = time.time()
         self.save(progress)
 

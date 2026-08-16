@@ -532,6 +532,8 @@ class MasteryAssessTool(BaseTool):
         path_id = _resolve_path_id(kwargs)
         if not path_id:
             return _no_path_result()
+        from deeptutor.learning.scheduler import SpacedRepetitionScheduler
+
         kp_id = str(kwargs.get("knowledge_point_id") or "").strip()
         if not kp_id:
             return ToolResult(content="mastery_assess needs a knowledge_point_id.", success=False)
@@ -554,7 +556,13 @@ class MasteryAssessTool(BaseTool):
                 ),
                 success=False,
             )
-        service.record_qualitative(progress, kp_id, passed=passed, evidence=feedback)
+        service.record_qualitative(
+            progress,
+            kp_id,
+            passed=passed,
+            evidence=feedback,
+            scheduler=SpacedRepetitionScheduler(),
+        )
         payload = {
             "knowledge_point_id": kp_id,
             "passed": passed,

@@ -27,7 +27,6 @@ from websockets.asyncio.client import connect as ws_connect
 from deeptutor.partners.bus.events import OutboundMessage
 from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.partners.channels.base import BaseChannel
-from deeptutor.partners.config.paths import get_media_dir
 from deeptutor.partners.config.schema import DeliveryOverrides
 from deeptutor.partners.helpers import safe_filename
 from deeptutor.partners.network import validate_url_target
@@ -573,7 +572,7 @@ class NapcatChannel(BaseChannel):
             name = f"{int(time.time() * 1000)}.jpg"
         # Resolved lazily (not in __init__) so constructing the channel never
         # touches the partners data tree.
-        path = get_media_dir("napcat") / name
+        path = self.media_dir() / name
         try:
             await asyncio.to_thread(path.write_bytes, data)
         except OSError as e:

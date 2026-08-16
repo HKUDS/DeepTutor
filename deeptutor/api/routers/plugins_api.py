@@ -300,11 +300,13 @@ async def _execute_capability_stream(
             _ensure_running_partner,
             _partner_chat_stream,
         )
+        from deeptutor.multi_user.partner_access import assert_partner_allowed
 
         if not body.content.strip():
             yield _sse("error", {"detail": "content is required"})
             return
         try:
+            assert_partner_allowed(partner_id)
             await _ensure_running_partner(partner_id)
         except HTTPException as exc:
             yield _sse("error", {"detail": exc.detail, "status_code": exc.status_code})

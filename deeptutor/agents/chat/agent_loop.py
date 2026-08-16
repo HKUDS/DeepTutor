@@ -5,8 +5,9 @@ One chat turn = ONE agent loop over a single growing conversation:
 * each round is one LLM call; its text streams to the user as a ``content``
   block, and its tool calls are dispatched with their ``role=tool`` results
   appended back into the conversation;
-* a round that DOES call tools is "narration" — its text is a preamble to
-  the tool work — and the loop continues;
+* a round that DOES call tools is "narration" by default — its text is a
+  preamble to the tool work — and the loop continues; modes that intentionally
+  combine learner-facing prose with a tool call mark that prose answer-visible;
 * a round that calls NO tools is the ``finish``: its text IS the final
   user-facing answer and the loop ends (the model deciding it is done; a
   first round without tool calls is the "no exploration needed" fast path);
@@ -766,12 +767,15 @@ class AgentLoop:
             # output remains visible but is not terminal: the loop continues.
             "call_role": "narration" if tool_calls or truncated_round else "finish",
         }
-        if (dsml_calls or truncated_round) and answer_content_emitted:
+        mastery_tool_round = bool(tool_calls) and bool(self.context.metadata.get("mastery_mode"))
+        if (dsml_calls or truncated_round or mastery_tool_round) and answer_content_emitted:
             # DSML providers may intentionally combine tutor feedback and an
             # ask_user/tool call in the same round. Preserve only that cleaned
             # surrounding prose in the answer surfaces. Truncated rounds also
             # keep their partial answer visible while retaining a truthful
-            # non-terminal ``narration`` role.
+            # non-terminal ``narration`` role. Mastery rounds likewise combine
+            # learner-facing teaching with state/quiz tools; that teaching is
+            # answer content, not an internal tool preamble.
             completion_metadata["answer_visible"] = True
 
         await self.stream.progress(

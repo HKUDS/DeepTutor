@@ -28,9 +28,12 @@ from deeptutor.services.codex_auth import (
     reconcile_codex_catalog_update,
 )
 from deeptutor.services.config import (
+    CATALOG_SECRET_MASK,
     get_config_test_runner,
     get_model_catalog_service,
     get_runtime_settings_service,
+    redact_catalog_secrets,
+    restore_catalog_secrets,
 )
 from deeptutor.services.config.origins import normalize_origins
 from deeptutor.services.config.runtime_settings import (
@@ -185,6 +188,7 @@ class FetchModelsPayload(BaseModel):
     binding: str = ""
     base_url: str = ""
     api_key: Optional[str] = None
+    profile_id: Optional[str] = None
 
 
 class NetworkSettingsUpdate(BaseModel):
@@ -597,7 +601,7 @@ async def get_settings():
         return {"ui": load_ui_settings()}
     return {
         "ui": load_ui_settings(),
-        "catalog": get_model_catalog_service().load(),
+        "catalog": redact_catalog_secrets(get_model_catalog_service().load()),
         "providers": _provider_choices(),
     }
 
@@ -693,7 +697,7 @@ async def update_openai_codex_reasoning_effort(
 @router.get("/catalog")
 async def get_catalog():
     _require_settings_admin()
-    return {"catalog": get_model_catalog_service().load()}
+    return {"catalog": redact_catalog_secrets(get_model_catalog_service().load())}
 
 
 @router.get("/network")
@@ -1178,10 +1182,12 @@ async def get_llm_options():
 async def update_catalog(payload: CatalogPayload):
     _require_settings_admin()
     service = get_model_catalog_service()
-    proposed = reconcile_codex_catalog_update(service.load(), payload.catalog)
+    current = service.load()
+    restored = restore_catalog_secrets(payload.catalog, current)
+    proposed = reconcile_codex_catalog_update(current, restored)
     catalog = service.save(proposed)
     _invalidate_runtime_caches()
-    return {"catalog": catalog}
+    return {"catalog": redact_catalog_secrets(catalog)}
 
 
 @router.post("/apply")
@@ -1190,13 +1196,18 @@ async def apply_catalog(payload: CatalogPayload | None = None):
     service = get_model_catalog_service()
     current = service.load()
     catalog = (
-        reconcile_codex_catalog_update(current, payload.catalog) if payload is not None else current
+        reconcile_codex_catalog_update(
+            current,
+            restore_catalog_secrets(payload.catalog, current),
+        )
+        if payload is not None
+        else current
     )
     applied = service.apply(catalog)
     _invalidate_runtime_caches()
     return {
         "message": "Catalog applied to runtime settings.",
-        "catalog": service.load(),
+        "catalog": redact_catalog_secrets(service.load()),
         "runtime": applied,
     }
 
@@ -1220,8 +1231,21 @@ async def fetch_models_from_provider(payload: FetchModelsPayload):
             detail="base_url is required for this provider.",
         )
 
+    api_key = payload.api_key
+    if api_key == CATALOG_SECRET_MASK and payload.profile_id:
+        llm_service = get_model_catalog_service().load().get("services", {}).get("llm", {})
+        profile = next(
+            (
+                item
+                for item in llm_service.get("profiles", [])
+                if item.get("id") == payload.profile_id
+            ),
+            None,
+        )
+        api_key = profile.get("api_key") if profile else None
+
     try:
-        model_ids = await fetch_llm_models(binding, base_url, payload.api_key)
+        model_ids = await fetch_llm_models(binding, base_url, api_key)
     except Exception as exc:  # noqa: BLE001 — surface any provider error as 502
         logger.exception("Failed to fetch models from %s", base_url)
         raise HTTPException(
@@ -1371,7 +1395,11 @@ async def update_enabled_tools(update: EnabledToolsUpdate):
 @router.post("/tests/{service}/start")
 async def start_service_test(service: str, payload: CatalogPayload | None = None):
     _require_settings_admin()
-    run = get_config_test_runner().start(service, payload.catalog if payload else None)
+    catalog = None
+    if payload is not None:
+        current = get_model_catalog_service().load()
+        catalog = restore_catalog_secrets(payload.catalog, current)
+    run = get_config_test_runner().start(service, catalog)
     return {"run_id": run.id}
 
 
@@ -1432,8 +1460,14 @@ class TourCompletePayload(BaseModel):
 @router.post("/tour/complete")
 async def complete_tour(payload: TourCompletePayload | None = None):
     _require_settings_admin()
-    catalog = payload.catalog if payload and payload.catalog else get_model_catalog_service().load()
-    applied = get_model_catalog_service().apply(catalog)
+    service = get_model_catalog_service()
+    current = service.load()
+    catalog = (
+        restore_catalog_secrets(payload.catalog, current)
+        if payload and payload.catalog
+        else current
+    )
+    applied = service.apply(catalog)
     _invalidate_runtime_caches()
     now = int(time.time())
     launch_at = now + 3

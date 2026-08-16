@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "services": {
+    "llm": {
+      "active_profile_id": "ci-llm-profile",
+      "active_model_id": "ci-llm-model",
+      "profiles": [
+        {
+          "id": "ci-llm-profile",
+          "name": "CI LLM",
+          "binding": "openai",
+          "base_url": "https://api.openai.com/v1",
+          "api_key": "sk-test-not-a-real-key",
+          "api_version": "",
+          "extra_headers": {},
+          "models": [
+            {
+              "id": "ci-llm-model",
+              "name": "CI Test Model",
+              "model": "gpt-4o-mini"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
