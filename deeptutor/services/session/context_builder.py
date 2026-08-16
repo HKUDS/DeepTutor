@@ -1,6 +1,4 @@
-"""
-Build bounded conversation history for unified chat sessions.
-"""
+"""Build budgeted conversation history for unified chat sessions."""
 
 from __future__ import annotations
 
@@ -11,13 +9,26 @@ from deeptutor.agents.base_agent import BaseAgent
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.core.trace import build_trace_metadata, merge_trace_metadata, new_call_id
 from deeptutor.services.llm.config import LLMConfig
-from deeptutor.services.llm.context_window import resolve_effective_context_window
+from deeptutor.services.llm.context_window import (
+    coerce_positive_int,
+    resolve_effective_context_window,
+)
 
 from .protocol import SessionStoreProtocol
 
 #: When the summarizer's output lands within this fraction of its hard token
 #: cap, assume the provider cut it mid-sentence and trim the partial tail.
 TRUNCATION_GUARD_RATIO = 0.95
+
+# Ratio-only budgets become impractical for models with very large context
+# windows: a 1M-token window would otherwise reserve hundreds of thousands of
+# tokens for chat history and ask the summarizer for a six-figure response.
+# Keep the rolling-summary strategy, but bound its history plan, summary
+# output, and raw-rebuild eligibility threshold. The summary ceiling is also
+# constrained by the active generation limit when that setting is lower.
+MAX_HISTORY_PLAN_TOKENS = 131_072
+MAX_SUMMARY_OUTPUT_TOKENS = 16_384
+MAX_RAW_REBUILD_TOKENS = 131_072
 
 
 def count_tokens(text: str) -> int:
@@ -102,7 +113,11 @@ class _ContextSummaryAgent(BaseAgent):
 
 
 class ContextBuilder:
-    """Construct a bounded conversation history plus optional summary trace."""
+    """Construct history against a bounded plan plus optional summary trace.
+
+    The budget is a planning target, not destructive truncation: the newest
+    non-empty message is retained even when that single message exceeds it.
+    """
 
     def __init__(
         self,
@@ -123,18 +138,29 @@ class ContextBuilder:
 
     def _history_budget(self, llm_config: LLMConfig) -> int:
         effective_context_window = self._effective_context_window(llm_config)
-        return max(256, int(effective_context_window * self.history_budget_ratio))
+        ratio_budget = max(256, int(effective_context_window * self.history_budget_ratio))
+        return min(ratio_budget, MAX_HISTORY_PLAN_TOKENS)
 
-    def _summary_budget(self, budget: int) -> int:
-        return max(96, int(budget * self.summary_target_ratio))
+    def _summary_budget(self, budget: int, llm_config: LLMConfig | None = None) -> int:
+        ratio_budget = max(96, int(budget * self.summary_target_ratio))
+        output_cap = MAX_SUMMARY_OUTPUT_TOKENS
+        if llm_config is not None:
+            generation_limit = coerce_positive_int(getattr(llm_config, "max_tokens", None))
+            if generation_limit is not None:
+                output_cap = min(output_cap, generation_limit)
+        return min(ratio_budget, output_cap)
 
     def _recent_budget(self, budget: int) -> int:
-        return max(128, budget - self._summary_budget(budget))
+        # Keep the original ratio-based split independent of the summarizer's
+        # output cap. Otherwise lowering that cap expands the verbatim tail and
+        # leaves almost no headroom before the next compaction.
+        return max(128, int(budget * (1 - self.summary_target_ratio)))
 
     def _rebuild_source_budget(self, llm_config: LLMConfig) -> int:
-        # Raw-rebuild input may use up to half the effective context window;
-        # beyond that we degrade to fold-in (existing summary + new turns).
-        return max(1024, self._effective_context_window(llm_config) // 2)
+        # A raw prefix is eligible for drift-free rebuild up to this threshold;
+        # beyond it we degrade to fold-in (existing summary + new turns).
+        ratio_budget = max(1024, self._effective_context_window(llm_config) // 2)
+        return min(ratio_budget, MAX_RAW_REBUILD_TOKENS)
 
     def _build_history(self, summary: str, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         history: list[dict[str, Any]] = []
@@ -282,7 +308,7 @@ class ContextBuilder:
         )
         # The instruction targets ~80% of the hard cap so the model's own
         # length control — not the max_tokens cut — is the binding limit.
-        target_tokens = max(96, int(summary_budget * 0.8))
+        target_tokens = max(1, int(summary_budget * 0.8))
         system_prompt = (
             "You maintain a running summary of a conversation so future turns can "
             "continue seamlessly. Rewrite the summary from the material provided, "
@@ -365,7 +391,7 @@ class ContextBuilder:
             return ContextBuildResult([], "", "", [], 0, self._history_budget(llm_config))
 
         budget = self._history_budget(llm_config)
-        summary_budget = self._summary_budget(budget)
+        summary_budget = self._summary_budget(budget, llm_config)
         recent_budget = self._recent_budget(budget)
 
         stored_summary = str(session.get("compressed_summary", "") or "").strip()
