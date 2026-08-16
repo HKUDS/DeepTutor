@@ -1,5 +1,6 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 import { invalidateClientCache, withClientCache } from "@/lib/client-cache";
+import type { ImaKnowledgeBaseOption } from "@/lib/ima-connection";
 
 const KNOWLEDGE_CACHE_PREFIX = "knowledge:";
 
@@ -656,6 +657,105 @@ export interface LightRagServerProbe {
   api_version: string | null;
   /** Set when the server can't be connected (unreachable, bad key, …). */
   error: string | null;
+}
+
+export interface ImaKnowledgeBasePage {
+  knowledge_bases: ImaKnowledgeBaseOption[];
+  next_cursor: string;
+  is_end: boolean;
+}
+
+export interface ImaProbe {
+  knowledge_base_id: string;
+  ok: boolean;
+  credentials_ok: boolean;
+  knowledge_base_name: string | null;
+  description: string | null;
+  error: string | null;
+}
+
+export async function listImaKnowledgeBases(payload: {
+  clientId: string;
+  apiKey: string;
+  cursor?: string;
+  limit?: number;
+}): Promise<ImaKnowledgeBasePage> {
+  const res = await apiFetch(apiUrl("/api/v1/knowledge/list-ima"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id: payload.clientId,
+      api_key: payload.apiKey,
+      cursor: payload.cursor ?? "",
+      limit: payload.limit ?? 20,
+    }),
+    skipAuthRedirect: true,
+  });
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, "Failed to read Tencent IMA knowledge bases"),
+    );
+  }
+  return (await res.json()) as ImaKnowledgeBasePage;
+}
+
+export async function probeImaKnowledgeBase(payload: {
+  clientId: string;
+  apiKey: string;
+  knowledgeBaseId: string;
+}): Promise<ImaProbe> {
+  const res = await apiFetch(apiUrl("/api/v1/knowledge/probe-ima"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id: payload.clientId,
+      api_key: payload.apiKey,
+      knowledge_base_id: payload.knowledgeBaseId,
+    }),
+    skipAuthRedirect: true,
+  });
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, "Failed to verify Tencent IMA knowledge base"),
+    );
+  }
+  return (await res.json()) as ImaProbe;
+}
+
+export async function connectImaKnowledgeBase(payload: {
+  name: string;
+  clientId: string;
+  apiKey: string;
+  knowledgeBaseId: string;
+}): Promise<{
+  status: string;
+  name: string;
+  knowledge_base_id: string;
+  rag_provider: string;
+}> {
+  const res = await apiFetch(apiUrl("/api/v1/knowledge/connect-ima"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: payload.name,
+      client_id: payload.clientId,
+      api_key: payload.apiKey,
+      knowledge_base_id: payload.knowledgeBaseId,
+    }),
+    skipAuthRedirect: true,
+  });
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, "Failed to connect Tencent IMA knowledge base"),
+    );
+  }
+  invalidateKnowledgeCaches();
+  return (await res.json()) as {
+    status: string;
+    name: string;
+    knowledge_base_id: string;
+    rag_provider: string;
+  };
 }
 
 export async function probeLightRagServer(payload: {
