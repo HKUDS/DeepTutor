@@ -320,6 +320,7 @@ from deeptutor.api.routers import (
     dashboard,
     imports,
     knowledge,
+    marginnote4,
     mastery_path,
     mcp_settings,
     memory,
@@ -469,6 +470,14 @@ app.include_router(
     prefix="/api/attachments",
     tags=["attachments"],
     dependencies=_auth,
+)
+
+# MarginNote 4 device bridge — pairing/management routes carry _auth in-router;
+# sync/heartbeat use device-token auth (the Add-on has no session).
+app.include_router(
+    marginnote4.router,
+    prefix="/api/v1/marginnote4",
+    tags=["marginnote4"],
 )
 
 # Unified WebSocket endpoint — auth is checked inside the handler (WebSockets
