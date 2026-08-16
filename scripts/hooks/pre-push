@@ -1,0 +1,5 @@
+#!/bin/sh
+
+# Keep this hook dependency-free so fresh checkouts can reject dangerous or
+# generated-output pushes before contributors install the full toolchain.
+python3 scripts/check_push_policy.py "$@"
