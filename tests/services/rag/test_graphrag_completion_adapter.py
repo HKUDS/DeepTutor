@@ -482,6 +482,7 @@ def test_native_validation_failure_retries_once_without_caching(
 
 
 def test_old_settings_are_adapted_in_memory_without_rewrite(tmp_path: Path) -> None:
+    pytest.importorskip("graphrag")
     import yaml
 
     gr_config.write_settings(
