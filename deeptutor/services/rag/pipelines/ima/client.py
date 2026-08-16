@@ -3,10 +3,12 @@
 Every IMA call is ``POST https://ima.qq.com/openapi/wiki/v1/<method>`` with a
 JSON body, authenticated by two headers, and answers with a
 ``{"code", "msg", "data"}`` envelope where ``code == 0`` means success. Only the
-two read-only calls DeepTutor needs are wrapped:
+three read-only calls DeepTutor needs are wrapped:
 
 * ``search_knowledge`` — retrieval inside one knowledge base. Returns matching
   items with a ``highlight_content`` snippet, cursor-paginated.
+* ``search_knowledge_base`` — lists knowledge bases available to the supplied
+  credentials so users do not need to copy an internal id by hand.
 * ``get_knowledge_base`` — a KB's name/description, used to confirm at connect
   time that the credentials work and the id resolves.
 
@@ -136,6 +138,97 @@ class ImaClient:
 
     # ----- probing --------------------------------------------------------
 
+    async def search_knowledge_bases(
+        self,
+        query: str = "",
+        *,
+        cursor: str = "",
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        """Return one page of knowledge bases available to these credentials.
+
+        IMA's list endpoint returns only ids and names. A single batch details
+        request enriches the page with descriptions when possible; that
+        optional request never prevents a usable name list from being returned.
+        """
+        if not 1 <= limit <= 20:
+            raise ValueError("IMA knowledge base list limit must be between 1 and 20.")
+
+        data = await self._post(
+            "search_knowledge_base",
+            {
+                "query": str(query or "").strip(),
+                "cursor": str(cursor or "").strip(),
+                "limit": limit,
+            },
+        )
+        entries: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        page = data.get("info_list")
+        if isinstance(page, list):
+            for raw in page:
+                if not isinstance(raw, dict):
+                    continue
+                kb_id = str(raw.get("id") or "").strip()
+                name = str(raw.get("name") or "").strip()
+                if not kb_id or not name or kb_id in seen:
+                    continue
+                seen.add(kb_id)
+                entries.append((kb_id, name))
+
+        details: dict[str, dict[str, Any]] = {}
+        if entries:
+            try:
+                details = await self.get_knowledge_bases([kb_id for kb_id, _ in entries])
+            except Exception:
+                # Names from search_knowledge_base are sufficient for selection;
+                # description lookup is intentionally best-effort.
+                details = {}
+
+        knowledge_bases = []
+        for kb_id, name in entries:
+            raw_description = details.get(kb_id, {}).get("description")
+            description = (
+                str(raw_description).strip() if raw_description is not None else ""
+            )
+            knowledge_bases.append(
+                {
+                    "id": kb_id,
+                    "name": name,
+                    "description": description or None,
+                }
+            )
+
+        return {
+            "knowledge_bases": knowledge_bases,
+            "next_cursor": str(data.get("next_cursor") or ""),
+            "is_end": bool(data.get("is_end")),
+        }
+
+    async def get_knowledge_bases(
+        self, ids: list[str]
+    ) -> dict[str, dict[str, Any]]:
+        """Return details for at most 20 knowledge base ids."""
+        normalized: list[str] = []
+        for item in ids:
+            kb_id = str(item or "").strip()
+            if kb_id and kb_id not in normalized:
+                normalized.append(kb_id)
+        if not normalized:
+            return {}
+        if len(normalized) > 20:
+            raise ValueError("IMA accepts at most 20 knowledge base IDs per request.")
+
+        data = await self._post("get_knowledge_base", {"ids": normalized})
+        infos = data.get("infos")
+        if not isinstance(infos, dict):
+            return {}
+        return {
+            str(kb_id): info
+            for kb_id, info in infos.items()
+            if isinstance(info, dict)
+        }
+
     async def get_knowledge_base(self) -> dict[str, Any]:
         """Return the bound knowledge base's info, or ``{}`` when unknown.
 
@@ -144,12 +237,7 @@ class ImaClient:
         no entry for it.
         """
         kb_id = self._config.knowledge_base_id
-        data = await self._post("get_knowledge_base", {"ids": [kb_id]})
-        infos = data.get("infos")
-        if not isinstance(infos, dict):
-            return {}
-        info = infos.get(kb_id)
-        return info if isinstance(info, dict) else {}
+        return (await self.get_knowledge_bases([kb_id])).get(kb_id, {})
 
 
 __all__ = [
