@@ -3712,7 +3712,7 @@ body.dragging-resize * {
   flex: 1 1 auto;
   min-width: 0;
   overflow: auto;
-  padding: 28px 36px 36px;
+  padding: 28px 36px 48px;
   position: relative;
 }
 .dtSettingsClose {
@@ -3795,6 +3795,7 @@ body.dragging-resize * {
   justify-content: space-between;
   min-width: 112px;
   padding: 0 10px 0 12px;
+  white-space: nowrap;
 }
 .dtSettingsSelectChevron { color: var(--icon-icon-tertiary); }
 .dtSettingsSelectMenu {
@@ -3802,12 +3803,9 @@ body.dragging-resize * {
   border: 1px solid var(--border-border-neutral-l1, rgba(229, 229, 229, 0.12));
   border-radius: 8px;
   box-shadow: var(--shadow-elevation-200-menu-panel, 0 6px 24px -1px rgba(0, 0, 0, 0.16));
-  min-width: 100%;
   padding: 4px;
-  position: absolute;
-  right: 0;
-  top: calc(100% + 4px);
-  z-index: 2;
+  position: fixed;
+  z-index: 1300;
 }
 .dtSettingsSelectOption {
   background: transparent;
@@ -3842,6 +3840,23 @@ body.dragging-resize * {
   width: 36px;
 }
 .dtSettingsSwitch.is-on { background: #34c759; }
+.dtSettingsSwitch:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.dtSettingsRow.is-locked { opacity: 0.78; }
+.dtSettingsBadge {
+  background: var(--bg-bg-overlay-l2, rgba(115, 115, 115, 0.12));
+  border-radius: 4px;
+  color: var(--text-text-tertiary);
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  margin-left: 6px;
+  padding: 0 5px;
+  vertical-align: 1px;
+}
 .dtSettingsSwitchThumb {
   background: #fff;
   border-radius: 50%;
@@ -3889,12 +3904,9 @@ body.dragging-resize * {
   border: 1px solid var(--border-border-neutral-l1, rgba(229, 229, 229, 0.12));
   border-radius: 8px;
   box-shadow: var(--shadow-elevation-200-menu-panel, 0 6px 24px -1px rgba(0, 0, 0, 0.16));
-  min-width: 132px;
   padding: 4px;
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  z-index: 3;
+  position: fixed;
+  z-index: 1300;
 }
 .dtSettingsGearItem {
   background: transparent;

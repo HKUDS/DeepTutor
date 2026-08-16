@@ -26,11 +26,23 @@ import {
   PluginDetailModal,
   SkillDetailModal,
 } from './pages'
-import { listToggleableTools, type ToolItem } from '../api/tools'
+import { listToggleableTools, setEnabledOptionalTools, type ToolItem } from '../api/tools'
+import { speakReply, stopSpeech } from '../api/voice'
 import { UnifiedWSClient, type StreamEvent } from '../api/ws'
 import { AssistantMarkdown } from './AssistantMarkdown'
+import { PRODUCT_NAME } from './brand'
 import { SettingsModal } from './SettingsModal'
-import { LS_LANGUAGE, LanguageId, persistInterfaceSettings } from './settings'
+import {
+  DEFAULT_CHAT_TIMEOUT,
+  LS_CHAT_TIMEOUT,
+  LS_LANGUAGE,
+  LS_RESPONSE_LANGUAGE,
+  LS_VOICE_AUTOPLAY,
+  LanguageId,
+  clampChatTimeout,
+  loadRuntimeUiSettings,
+  persistInterfaceSettings,
+} from './settings'
 import { deleteSession as deleteSessionApi, renameSession as renameSessionApi } from '../api/sessions'
 import copySvg from '../assets/icons/Copy.svg?raw'
 import moreSvg from '../../design-system/assets/icons/More.svg?raw'
@@ -58,6 +70,7 @@ import {
   ViewId,
   eventsToBlocks,
   studentVisibleBlocks,
+  visibleAnswerFromEvents,
   deriveSessionTitle,
   fileToAttachment,
   formatClock,
@@ -1673,7 +1686,7 @@ function ConversationView({ messages }: { messages: ChatMessage[]; streaming?: b
    ============================================================= */
 const PLACEHOLDER_BY_MODE: Record<ModeTabId, string> = {
   work: '帮你整理论文综述、编写 PPT、分析 Excel 等日常工作，输出专业级工作成果。',
-  code: '围绕你的资料开始学习，DeepTutor 会决定下一步。',
+  code: `围绕你的资料开始学习，${PRODUCT_NAME} 会决定下一步。`,
   design: '从想法到设计，生成可交付的页面原型',
 }
 
@@ -2562,6 +2575,14 @@ export default function App() {
   const [language, setLanguage] = useState<LanguageId>(() => (
     readStrLs(LS_LANGUAGE, 'zh') === 'en' ? 'en' : 'zh'
   ))
+  const [responseLanguage, setResponseLanguage] = useState<LanguageId>(() => (
+    readStrLs(LS_RESPONSE_LANGUAGE, readStrLs(LS_LANGUAGE, 'zh')) === 'en' ? 'en' : 'zh'
+  ))
+  const [voiceAutoplay, setVoiceAutoplay] = useState(() => readBoolLs(LS_VOICE_AUTOPLAY, false))
+  const [chatTimeout, setChatTimeout] = useState(() => {
+    const raw = parseInt(readStrLs(LS_CHAT_TIMEOUT, String(DEFAULT_CHAT_TIMEOUT)), 10)
+    return clampChatTimeout(Number.isNaN(raw) ? DEFAULT_CHAT_TIMEOUT : raw)
+  })
   const [settingsOpen, setSettingsOpen] = useState(false)
   useEffect(() => {
     const html = document.documentElement
@@ -2572,6 +2593,30 @@ export default function App() {
     document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en'
     try { localStorage.setItem(LS_LANGUAGE, language) } catch { /* ignore storage errors */ }
   }, [language])
+  useEffect(() => {
+    try { localStorage.setItem(LS_RESPONSE_LANGUAGE, responseLanguage) } catch { /* ignore */ }
+  }, [responseLanguage])
+  useEffect(() => {
+    try { localStorage.setItem(LS_VOICE_AUTOPLAY, voiceAutoplay ? '1' : '0') } catch { /* ignore */ }
+    if (!voiceAutoplay) stopSpeech()
+  }, [voiceAutoplay])
+  useEffect(() => {
+    try { localStorage.setItem(LS_CHAT_TIMEOUT, String(chatTimeout)) } catch { /* ignore */ }
+  }, [chatTimeout])
+  useEffect(() => {
+    let cancelled = false
+    void loadRuntimeUiSettings().then((ui) => {
+      if (cancelled) return
+      if (ui.response_language === 'zh' || ui.response_language === 'en') {
+        setResponseLanguage(ui.response_language)
+      }
+      if (typeof ui.voice_autoplay === 'boolean') setVoiceAutoplay(ui.voice_autoplay)
+      if (typeof ui.chat_response_timeout === 'number') {
+        setChatTimeout(clampChatTimeout(ui.chat_response_timeout))
+      }
+    })
+    return () => { cancelled = true }
+  }, [])
 
   // --- Layout state ---
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => readBoolLs(LS_LEFT, true))
@@ -2731,11 +2776,23 @@ export default function App() {
   const capabilityRef = useRef(capability)
   const selectedToolsRef = useRef(selectedTools)
   const attachmentsRef = useRef(attachments)
-  const languageRef = useRef(language)
+  const responseLanguageRef = useRef(responseLanguage)
+  const voiceAutoplayRef = useRef(voiceAutoplay)
+  const chatTimeoutRef = useRef(chatTimeout)
+  const turnIdleTimerRef = useRef<number | null>(null)
   useEffect(() => { capabilityRef.current = capability }, [capability])
   useEffect(() => { selectedToolsRef.current = selectedTools }, [selectedTools])
   useEffect(() => { attachmentsRef.current = attachments }, [attachments])
-  useEffect(() => { languageRef.current = language }, [language])
+  useEffect(() => { responseLanguageRef.current = responseLanguage }, [responseLanguage])
+  useEffect(() => { voiceAutoplayRef.current = voiceAutoplay }, [voiceAutoplay])
+  useEffect(() => { chatTimeoutRef.current = chatTimeout }, [chatTimeout])
+
+  const clearTurnIdleTimer = useCallback(() => {
+    if (turnIdleTimerRef.current != null) {
+      window.clearTimeout(turnIdleTimerRef.current)
+      turnIdleTimerRef.current = null
+    }
+  }, [])
 
   const remapSessionId = useCallback((fromId: string, toId: string) => {
     sessionsRef.current = sessionsRef.current.map((s) => (
@@ -2760,25 +2817,53 @@ export default function App() {
     setSessions(sessionsRef.current)
   }, [])
 
+  const failTurnIdle = useCallback(() => {
+    const turn = turnRef.current
+    if (!turn) return
+    const turnId = turn.turnId
+    if (turnId) wsRef.current?.send({ type: 'cancel_turn', turn_id: turnId })
+    turn.blocks = [{
+      type: 'status',
+      title: '错误',
+      content: '等待回复超时，请稍后重试或在设置中延长等待时间。',
+    }]
+    patchAssistantBlocks(turn.sessionId, turn.assistantId, turn.blocks)
+    setStreaming(false)
+  }, [patchAssistantBlocks])
+
+  const armTurnIdleTimer = useCallback(() => {
+    clearTurnIdleTimer()
+    turnIdleTimerRef.current = window.setTimeout(failTurnIdle, chatTimeoutRef.current * 1000)
+  }, [clearTurnIdleTimer, failTurnIdle])
+
   const handleStreamEvent = useCallback((event: StreamEvent) => {
     const turn = turnRef.current
     if (!turn) return
     const sid = sessionIdFromEvent(event)
     if (sid && sid !== turn.sessionId) remapSessionId(turn.sessionId, sid)
     if (event.turn_id) turn.turnId = event.turn_id
+    armTurnIdleTimer()
     if (event.type === 'session' || event.type === 'session_meta') return
     if (event.type === 'done') {
+      clearTurnIdleTimer()
       turn.blocks = eventsToBlocks(turn.events, '')
       patchAssistantBlocks(turn.sessionId, turn.assistantId, turn.blocks)
       setStreaming(false)
+      if (voiceAutoplayRef.current) {
+        const spoken = visibleAnswerFromEvents(turn.events)
+        if (spoken.trim()) void speakReply(spoken)
+      }
       return
     }
     turn.events.push(event)
     const next = eventsToBlocks(turn.events, '')
     turn.blocks = next
     patchAssistantBlocks(turn.sessionId, turn.assistantId, turn.blocks)
-    if (event.type === 'error') setStreaming(false)
-  }, [patchAssistantBlocks, remapSessionId])
+    if (event.type === 'error') {
+      clearTurnIdleTimer()
+      setStreaming(false)
+    }
+  }, [armTurnIdleTimer, clearTurnIdleTimer, patchAssistantBlocks, remapSessionId])
 
   useEffect(() => {
     const client = new UnifiedWSClient(
@@ -2789,10 +2874,12 @@ export default function App() {
     wsRef.current = client
     client.connect()
     return () => {
+      clearTurnIdleTimer()
+      stopSpeech()
       client.disconnect()
       wsRef.current = null
     }
-  }, [handleStreamEvent])
+  }, [clearTurnIdleTimer, handleStreamEvent])
 
   useEffect(() => {
     let cancelled = false
@@ -2808,9 +2895,27 @@ export default function App() {
   useEffect(() => {
     void listToggleableTools().then((items) => {
       setTools(items)
-      setSelectedTools(items.filter((item) => item.enabled).map((item) => item.name))
+      setSelectedTools(items.filter((item) => item.enabled && !item.comingSoon).map((item) => item.name))
     })
   }, [])
+
+  const handleSettingToolToggle = useCallback((name: string) => {
+    const target = tools.find((tool) => tool.name === name)
+    if (!target || target.comingSoon || !target.toggleable) return
+    const nextEnabled = !target.enabled
+    const nextTools = tools.map((tool) => (
+      tool.name === name ? { ...tool, enabled: nextEnabled } : tool
+    ))
+    setTools(nextTools)
+    setSelectedTools((cur) => {
+      if (nextEnabled) return cur.includes(name) ? cur : [...cur, name]
+      return cur.filter((item) => item !== name)
+    })
+    const names = nextTools
+      .filter((tool) => tool.toggleable && !tool.comingSoon && tool.enabled)
+      .map((tool) => tool.name)
+    void setEnabledOptionalTools(names).catch(() => { /* keep optimistic state */ })
+  }, [tools])
 
   useEffect(() => {
     if (!activeTaskId || activeTaskId.startsWith('pending-')) return
@@ -2858,7 +2963,7 @@ export default function App() {
     const pendingAssistant: ChatMessage = {
       id: assistantId,
       role: 'assistant',
-      author: 'DeepTutor',
+      author: PRODUCT_NAME,
       time,
       blocks: [],
     }
@@ -2912,6 +3017,8 @@ export default function App() {
     }
     setStreaming(true)
     setConnectError('')
+    stopSpeech()
+    armTurnIdleTimer()
 
     const sent = wsRef.current?.send({
       type: 'start_turn',
@@ -2925,20 +3032,23 @@ export default function App() {
         mime_type: f.mime_type,
         base64: f.base64,
       })),
-      language: languageRef.current,
+      language: responseLanguageRef.current,
     })
     if (!sent) {
+      clearTurnIdleTimer()
       turnRef.current.blocks = [{ type: 'status', title: '错误', content: CREATE_SESSION_ERROR }]
       patchAssistantBlocks(titleBox.id, assistantId, turnRef.current.blocks)
       setStreaming(false)
     }
-  }, [patchAssistantBlocks, persistSessions, streaming])
+  }, [armTurnIdleTimer, clearTurnIdleTimer, patchAssistantBlocks, persistSessions, streaming])
 
   const handleCancel = useCallback(() => {
     const turnId = turnRef.current?.turnId
     if (turnId) wsRef.current?.send({ type: 'cancel_turn', turn_id: turnId })
+    clearTurnIdleTimer()
+    stopSpeech()
     setStreaming(false)
-  }, [])
+  }, [clearTurnIdleTimer])
 
   const handleAddFiles = useCallback((list: FileList) => {
     void Promise.all(Array.from(list).map(fileToAttachment)).then((next) => {
@@ -2993,6 +3103,8 @@ export default function App() {
 
   const mainClasses = ['main-KqevMo']
   if (statusOpen) mainClasses.push('mainPinned-mHr1bw')
+
+  const composerTools = tools.filter((tool) => tool.enabled && !tool.comingSoon)
 
   return (
     <div className={`app-root ${debug ? 'debug-root' : ''}`}>
@@ -3158,7 +3270,7 @@ export default function App() {
                           autoFocus
                           capability={capability}
                           onCapabilityChange={setCapability}
-                          tools={tools}
+                          tools={composerTools}
                           selectedTools={selectedTools}
                           onToggleTool={(name) => setSelectedTools((cur) => (
                             cur.includes(name) ? cur.filter((n) => n !== name) : [...cur, name]
@@ -3207,7 +3319,7 @@ export default function App() {
                     autoFocus
                     capability={capability}
                     onCapabilityChange={setCapability}
-                    tools={tools}
+                    tools={composerTools}
                     selectedTools={selectedTools}
                     onToggleTool={(name) => setSelectedTools((cur) => (
                       cur.includes(name) ? cur.filter((n) => n !== name) : [...cur, name]
@@ -3262,6 +3374,14 @@ export default function App() {
         onThemeChange={setTheme}
         language={language}
         onLanguageChange={setLanguage}
+        responseLanguage={responseLanguage}
+        onResponseLanguageChange={setResponseLanguage}
+        voiceAutoplay={voiceAutoplay}
+        onVoiceAutoplayChange={setVoiceAutoplay}
+        chatTimeout={chatTimeout}
+        onChatTimeoutChange={setChatTimeout}
+        tools={tools}
+        onToggleTool={handleSettingToolToggle}
         accountName="Xike"
         accountPlan="Free"
       />
