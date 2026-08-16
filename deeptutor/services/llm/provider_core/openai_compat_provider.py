@@ -19,6 +19,7 @@ import json_repair
 from openai import AsyncOpenAI
 
 from deeptutor.services.llm.capabilities import disable_response_format_at_runtime
+from deeptutor.services.llm.exceptions import LLMConfigError
 from deeptutor.services.llm.openai_http_client import openai_client_kwargs
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, ToolCallRequest
 from deeptutor.services.llm.provider_core.openai_responses import (
@@ -130,6 +131,17 @@ class OpenAICompatProvider(LLMProvider):
 
         effective_base = api_base or (spec.default_api_base if spec else None) or None
         self._effective_base = effective_base
+        endpoint = (effective_base or "").rstrip("/")
+        placeholder_key = api_key in {None, "", "no-key", "sk-no-key-required"}
+        if (
+            provider_name == "openai"
+            and (not endpoint or endpoint == "https://api.openai.com/v1")
+            and placeholder_key
+        ):
+            raise LLMConfigError(
+                "OpenAI API key is not configured. Set it in Settings > Catalog, "
+                "or select a local provider such as Ollama."
+            )
         default_headers: dict[str, str] = {"x-session-affinity": uuid.uuid4().hex}
         if _uses_openrouter(spec, effective_base):
             default_headers.update(_DEFAULT_OPENROUTER_HEADERS)
