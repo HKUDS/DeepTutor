@@ -565,6 +565,10 @@ async def test_assess_passes_concept(path_id):
     )
     assert result["mastered"] is True
     assert result["next"]["action"] == "complete"
+    progress = LearningStore().load(path_id)
+    assert progress is not None
+    assert progress.repetition_states[concept_kp].interval_index == 0
+    assert [task.knowledge_point_id for task in progress.review_queue] == [mem_kp, concept_kp]
 
 
 @pytest.mark.asyncio
