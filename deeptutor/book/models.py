@@ -285,6 +285,52 @@ class ConceptGraph(BaseModel):
         return any(e.src == src and e.dst == dst for e in self.edges)
 
 
+class CharacterNode(BaseModel):
+    """One character (or group) in a chapter-scoped relationship graph."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = ""  # stable slug, e.g. "elizabeth_bennet"
+    name: str = ""  # primary display name
+    aliases: list[str] = Field(default_factory=list)  # other names / nicknames
+    description: str = ""  # 1-2 sentence role description
+    evidence_chapter_ids: list[str] = Field(default_factory=list)
+    confidence: float = 1.0  # 0-1, how confident the LLM is this is a real character
+
+
+class CharacterEdge(BaseModel):
+    """Directed or undirected relationship between two characters."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    source: str = ""  # CharacterNode.id
+    target: str = ""  # CharacterNode.id
+    relation: str = ""  # short label: "friend", "rival", "parent_of", ...
+    description: str = ""  # optional one-sentence elaboration
+    evidence_chapter_ids: list[str] = Field(default_factory=list)
+    confidence: float = 1.0
+
+
+class CharacterGraph(BaseModel):
+    """Chapter-scoped character relationship graph."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    book_id: str = ""
+    chapter_id: str = ""  # the chapter the graph was generated for
+    scope: str = "current"  # "current" | "through_current"
+    nodes: list[CharacterNode] = Field(default_factory=list)
+    edges: list[CharacterEdge] = Field(default_factory=list)
+    content_hash: str = ""  # hash of the source text used to generate
+    generated_at: float = Field(default_factory=_now)
+
+    def node_by_id(self, node_id: str) -> CharacterNode | None:
+        for n in self.nodes:
+            if n.id == node_id:
+                return n
+        return None
+
+
 class Spine(BaseModel):
     """Full chapter tree of a book."""
 
@@ -511,4 +557,7 @@ __all__ = [
     "QuizAttempt",
     "Progress",
     "Book",
+    "CharacterNode",
+    "CharacterEdge",
+    "CharacterGraph",
 ]

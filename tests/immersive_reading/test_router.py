@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from deeptutor.book.models import CharacterGraph, CharacterNode
 from deeptutor.immersive_reading.models import DictionaryResult
 from deeptutor.services.llm.exceptions import LLMAPIError, LLMTimeoutError
 from tests.immersive_reading.epub_fixtures import build_epub
@@ -98,6 +99,70 @@ def test_missing_document_returns_not_found(client: TestClient) -> None:
     response = client.get("/api/v1/immersive-reading/documents/missing")
 
     assert response.status_code == 404
+
+
+def test_character_graph_current_scope_uses_only_selected_section(
+    client: TestClient, imported_document: dict, monkeypatch
+) -> None:
+    import deeptutor.book.character_graph as graph_module
+
+    captured: dict = {}
+
+    async def fake_extract_character_graph(**kwargs):
+        captured.update(kwargs)
+        return CharacterGraph(nodes=[CharacterNode(id="ada", name="Ada")])
+
+    monkeypatch.setattr(graph_module, "extract_character_graph", fake_extract_character_graph)
+    section_id = imported_document["sections"][2]["id"]
+
+    response = client.post(
+        f"/api/v1/immersive-reading/documents/{imported_document['id']}/character-graph",
+        json={"section_id": section_id, "scope": "current"},
+    )
+
+    assert response.status_code == 200
+    assert captured["included_chapter_ids"] == [section_id]
+    assert "old harbor" in captured["text"]
+    assert "old observatory" not in captured["text"]
+    assert response.json()["graph"]["nodes"][0]["name"] == "Ada"
+
+
+def test_character_graph_through_current_includes_prior_sections(
+    client: TestClient, imported_document: dict, monkeypatch
+) -> None:
+    import deeptutor.book.character_graph as graph_module
+
+    captured: dict = {}
+
+    async def fake_extract_character_graph(**kwargs):
+        captured.update(kwargs)
+        return CharacterGraph()
+
+    monkeypatch.setattr(graph_module, "extract_character_graph", fake_extract_character_graph)
+    section_id = imported_document["sections"][2]["id"]
+
+    response = client.post(
+        f"/api/v1/immersive-reading/documents/{imported_document['id']}/character-graph",
+        json={"section_id": section_id, "scope": "through_current", "force_refresh": True},
+    )
+
+    expected_ids = [section["id"] for section in imported_document["sections"][:3]]
+    assert response.status_code == 200
+    assert captured["included_chapter_ids"] == expected_ids
+    assert "old observatory" in captured["text"]
+    assert "old harbor" in captured["text"]
+
+
+def test_character_graph_rejects_unknown_section(
+    client: TestClient, imported_document: dict
+) -> None:
+    response = client.post(
+        f"/api/v1/immersive-reading/documents/{imported_document['id']}/character-graph",
+        json={"section_id": "missing-section", "scope": "current"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Section not found"
 
 
 def test_original_epub_is_served_inline_with_epub_mime(client: TestClient, reading_service) -> None:
