@@ -214,6 +214,136 @@ class TestClientWire:
         assert asyncio.run(_client(handler).get_knowledge_base()) == {}
 
 
+class TestClientKnowledgeBaseList:
+    def test_list_posts_empty_query_cursor_and_limit(self) -> None:
+        seen: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["url"] = str(request.url)
+            seen["body"] = json.loads(request.content)
+            return _ok({"info_list": [], "is_end": True, "next_cursor": ""})
+
+        page = asyncio.run(
+            _client(handler).search_knowledge_bases(query="", cursor="", limit=20)
+        )
+
+        assert seen == {
+            "url": f"{API_BASE_URL}/openapi/wiki/v1/search_knowledge_base",
+            "body": {"query": "", "cursor": "", "limit": 20},
+        }
+        assert page == {"knowledge_bases": [], "next_cursor": "", "is_end": True}
+
+    @pytest.mark.parametrize("limit", [0, 21])
+    def test_list_rejects_limits_outside_ima_bounds(self, limit: int) -> None:
+        with pytest.raises(ValueError, match="between 1 and 20"):
+            asyncio.run(_client(lambda _request: _ok({})).search_knowledge_bases(limit=limit))
+
+    def test_list_deduplicates_and_enriches_descriptions(self) -> None:
+        seen_bodies: list[dict] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content)
+            seen_bodies.append(body)
+            if request.url.path.endswith("/search_knowledge_base"):
+                return _ok(
+                    {
+                        "info_list": [
+                            {"id": "kb-1", "name": "Alpha"},
+                            {"id": "kb-1", "name": "Alpha duplicate"},
+                            {"id": "", "name": "Missing id"},
+                            {"id": "kb-2", "name": ""},
+                            {"id": "kb-3", "name": "Gamma"},
+                        ],
+                        "is_end": False,
+                        "next_cursor": "cursor-2",
+                    }
+                )
+            assert request.url.path.endswith("/get_knowledge_base")
+            return _ok(
+                {
+                    "infos": {
+                        "kb-1": {"name": "Alpha", "description": "First notes"},
+                        "kb-3": {"name": "Gamma", "description": ""},
+                    }
+                }
+            )
+
+        page = asyncio.run(
+            _client(handler).search_knowledge_bases(query="notes", cursor="cursor-1", limit=7)
+        )
+
+        assert seen_bodies == [
+            {"query": "notes", "cursor": "cursor-1", "limit": 7},
+            {"ids": ["kb-1", "kb-3"]},
+        ]
+        assert page == {
+            "knowledge_bases": [
+                {"id": "kb-1", "name": "Alpha", "description": "First notes"},
+                {"id": "kb-3", "name": "Gamma", "description": None},
+            ],
+            "next_cursor": "cursor-2",
+            "is_end": False,
+        }
+
+    def test_description_enrichment_failure_keeps_search_results(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith("/search_knowledge_base"):
+                return _ok(
+                    {
+                        "info_list": [{"id": "kb-1", "name": "Alpha"}],
+                        "is_end": True,
+                        "next_cursor": "",
+                    }
+                )
+            return httpx.Response(200, text="not-json")
+
+        page = asyncio.run(_client(handler).search_knowledge_bases())
+
+        assert page["knowledge_bases"] == [
+            {"id": "kb-1", "name": "Alpha", "description": None}
+        ]
+
+    def test_get_knowledge_bases_batches_up_to_twenty_ids(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert json.loads(request.content) == {"ids": ["kb-1", "kb-2"]}
+            return _ok(
+                {
+                    "infos": {
+                        "kb-1": {"name": "Alpha"},
+                        "kb-2": {"name": "Beta"},
+                    }
+                }
+            )
+
+        infos = asyncio.run(_client(handler).get_knowledge_bases(["kb-1", "kb-2"]))
+
+        assert set(infos) == {"kb-1", "kb-2"}
+
+    def test_get_knowledge_bases_rejects_more_than_twenty_ids(self) -> None:
+        with pytest.raises(ValueError, match="at most 20"):
+            asyncio.run(
+                _client(lambda _request: _ok({})).get_knowledge_bases(
+                    [f"kb-{index}" for index in range(21)]
+                )
+            )
+
+    @pytest.mark.parametrize(
+        ("response", "error_type"),
+        [
+            (httpx.Response(200, json={"code": 20004, "msg": "bad key"}), ImaAuthError),
+            (
+                httpx.Response(200, json={"code": 110021, "msg": "slow down"}),
+                ImaRateLimitError,
+            ),
+        ],
+    )
+    def test_list_preserves_auth_and_rate_limit_error_types(
+        self, response: httpx.Response, error_type: type[Exception]
+    ) -> None:
+        with pytest.raises(error_type):
+            asyncio.run(_client(lambda _request: response).search_knowledge_bases())
+
+
 # ---------------------------------------------------------------------------
 # probe
 # ---------------------------------------------------------------------------
