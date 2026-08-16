@@ -171,6 +171,33 @@ jobs:
           logging:
             level: WARNING
           YAML
+          cat > data/user/settings/model_catalog.json <<'JSON'
+          {
+            "version": 1,
+            "services": {
+              "llm": {
+                "active_profile_id": "ci-llm-profile",
+                "active_model_id": "ci-llm-model",
+                "profiles": [
+                  {
+                    "id": "ci-llm-profile",
+                    "name": "CI OpenAI",
+                    "binding": "openai",
+                    "base_url": "https://api.openai.com/v1",
+                    "api_key": "ci-test-key",
+                    "models": [
+                      {
+                        "id": "ci-llm-model",
+                        "name": "CI model",
+                        "model": "gpt-4o-mini"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+          JSON
 
       - name: Run Python tests
         run: |
