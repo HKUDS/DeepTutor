@@ -14,10 +14,7 @@ from . import register_provider
 class DuckDuckGoProvider(BaseSearchProvider):
     """DuckDuckGo provider using `ddgs`."""
 
-    display_name = "DuckDuckGo"
     description = "DuckDuckGo search (no API key required)"
-    supports_answer = False
-    requires_api_key = False
     API_KEY_ENV_VARS = ()
 
     def search(

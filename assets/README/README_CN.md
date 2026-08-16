@@ -425,7 +425,7 @@ Book 将选定的来源转化为交互式**活书** — 不是静态 PDF，而�
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="创建知识库" width="900">
 </div>
 
-创建 KB 时，可以选择**新建**（上传文档并构建全新索引）或**链接已有**（复用在其他地方构建的索引，原位读取无需重新索引）。重新索引会写入新的平铺 `version-N` 目录并保留旧版本，因此重建过程中现有索引不会被破坏。即使知识库处于 **error** 状态，也可以单独移除其中一份文档 — 无需完整地删除重建，就能丢弃解析失败的文件。文档解析 — 纯文本、MinerU、Docling、markitdown 或 PyMuPDF4LLM — 在 **Settings → Knowledge Base** 中选择，本地模型下载默认关闭。CLI 通过 `deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default` 和 `delete` 来管理完整生命周期。
+创建 KB 时，可以选择**新建**（上传文档并构建全新索引）或**链接已有**（复用在其他地方构建的索引，原位读取无需重新索引）。重新索引会写入新的平铺 `version-N` 目录并保留旧版本，因此重建过程中现有索引不会被破坏。即使知识库处于 **error** 状态，也可以单独移除其中一份文档 — 无需完整地删除重建，就能丢弃解析失败的文件。文档解析 — 纯文本、MinerU、Docling、markitdown、PyMuPDF4LLM 或 LiteParse — 在 **Settings → Knowledge Base** 中选择，本地模型下载默认关闭。CLI 通过 `deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default` 和 `delete` 来管理完整生命周期。
 
 </details>
 
@@ -584,7 +584,7 @@ deeptutor run deep_question "就那篇调研测验我" --session "$SID" --format
 | `deeptutor book list/health/refresh-fingerprints` | 查看书籍并刷新来源指纹 |
 | `deeptutor plugin list/info` | 查看已注册的工具和能力 |
 | `deeptutor config show` | 打印配置摘要 |
-| `deeptutor provider login <provider>` | 提供商认证（`openai-codex` OAuth 登录；`github-copilot` 验证现有 Copilot 认证会话） |
+| `deeptutor provider login <provider>` | 提供商认证（`openai-codex` OAuth 登录；`github-copilot` 验证现有 Copilot 认证会话；`codebuddy` 验证 CodeBuddy SDK 认证并在需要时启动登录） |
 
 </details>
 
@@ -658,6 +658,22 @@ deeptutor skill install clawhub:git-release-notes@1.0.1
 在 `settings/skill_hubs.json` 中添加更多注册表：`type: "clawhub"` 条目指向任何兼容的 HTTP API（EduHub 和 ClawHub 都支持），`type: "command"` 包装注册表自带的任何获取 CLI，`"default"` 选择用于裸 slug 的 Hub。所有这些来源都经过同一个导入安全门。
 
 </details>
+
+## 🤝 开源伙伴
+
+<p align="center">
+  <a href="https://github.com/VectifyAI/PageIndex" target="_blank">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="../../assets/figs/partners/pageindex-mark-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="../../assets/figs/partners/pageindex-mark.svg">
+      <img src="../../assets/figs/partners/pageindex-mark.svg" alt="PageIndex" height="38">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
+  使用优惠码 <b><code>DEEPTUTOR20</code></b> — 首次订阅 <a href="https://developer.pageindex.ai/">PageIndex</a> 立减 $20！
+</p>
 
 ## 🌐 社区
 

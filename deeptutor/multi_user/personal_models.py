@@ -34,6 +34,17 @@ from deeptutor.services.config.model_catalog import ModelCatalogService
 
 from .paths import get_owner_path_service
 
+_CODEX_MANAGED_BY = "openai_codex_oauth"
+
+
+def _codex_profile_is_current(profile: dict[str, Any]) -> bool:
+    try:
+        from deeptutor.services.codex_auth import get_codex_oauth_service
+
+        return get_codex_oauth_service().profile_matches_current_account(profile)
+    except Exception:
+        return False
+
 
 def owner_catalog_service() -> ModelCatalogService:
     """Model catalog of the account that owns the current scope.
@@ -69,7 +80,11 @@ def _personal_catalog_profiles() -> list[dict[str, Any]]:
         return []
     profiles = service.load().get("services", {}).get("llm", {}).get("profiles", []) or []
     return [
-        profile for profile in profiles if isinstance(profile, dict) and is_owner_bound(profile)
+        profile
+        for profile in profiles
+        if isinstance(profile, dict)
+        and is_owner_bound(profile)
+        and (profile.get("managed_by") != _CODEX_MANAGED_BY or _codex_profile_is_current(profile))
     ]
 
 

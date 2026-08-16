@@ -447,7 +447,7 @@ Les bases de connaissances sont les collections de documents derrière le RAG �
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="Créer une base de connaissances" width="900">
 </div>
 
-En créant une KB, vous choisissez soit de **créer nouvelle** (uploadez des documents et construisez un index frais) soit de **lier une existante** (réutilisez un index construit ailleurs, lu en place sans re-indexation). La re-indexation écrit un nouveau répertoire plat `version-N` et conserve les précédents, donc un index fonctionnel n'est jamais détruit en milieu de reconstruction. Un seul document peut être supprimé même d'une base en état d'**erreur** — retirer un fichier dont l'analyse a échoué sans devoir tout supprimer et reconstruire. L'analyse de documents — Text-only, MinerU, Docling, markitdown ou PyMuPDF4LLM — est choisie dans **Paramètres → Base de Connaissances**, avec les téléchargements de modèles locaux désactivés par défaut. La CLI reprend le cycle de vie avec `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` et `delete`.
+En créant une KB, vous choisissez soit de **créer nouvelle** (uploadez des documents et construisez un index frais) soit de **lier une existante** (réutilisez un index construit ailleurs, lu en place sans re-indexation). La re-indexation écrit un nouveau répertoire plat `version-N` et conserve les précédents, donc un index fonctionnel n'est jamais détruit en milieu de reconstruction. Un seul document peut être supprimé même d'une base en état d'**erreur** — retirer un fichier dont l'analyse a échoué sans devoir tout supprimer et reconstruire. L'analyse de documents — Text-only, MinerU, Docling, markitdown, PyMuPDF4LLM ou LiteParse — est choisie dans **Paramètres → Base de Connaissances**, avec les téléchargements de modèles locaux désactivés par défaut. La CLI reprend le cycle de vie avec `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` et `delete`.
 
 </details>
 
@@ -606,7 +606,7 @@ Le dépôt inclut un [`SKILL.md`](SKILL.md) racine — un document de passation 
 | `deeptutor book list/health/refresh-fingerprints` | Inspecter les livres et actualiser les empreintes des sources |
 | `deeptutor plugin list/info` | Inspecter les outils et capacités enregistrés |
 | `deeptutor config show` | Afficher le résumé de configuration |
-| `deeptutor provider login <fournisseur>` | Auth du fournisseur (OAuth login `openai-codex` ; `github-copilot` valide une session auth Copilot existante) |
+| `deeptutor provider login <fournisseur>` | Auth du fournisseur (OAuth login `openai-codex` ; `github-copilot` valide une session auth Copilot existante ; `codebuddy` valide l'auth du SDK CodeBuddy et lance la connexion si nécessaire) |
 
 </details>
 
@@ -680,6 +680,22 @@ deeptutor skill install clawhub:git-release-notes@1.0.1
 Ajoutez d'autres registres dans `settings/skill_hubs.json` : une entrée `type: "clawhub"` pointe vers n'importe quelle API HTTP compatible (EduHub et ClawHub parlent tous deux ce protocole), `type: "command"` enveloppe n'importe quelle CLI de récupération qu'un registre fournit, et `"default"` choisit le hub utilisé pour les slugs nus. Tous alimentent la même porte d'importation.
 
 </details>
+
+## 🤝 Partenaires Open Source
+
+<p align="center">
+  <a href="https://github.com/VectifyAI/PageIndex" target="_blank">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="../../assets/figs/partners/pageindex-mark-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="../../assets/figs/partners/pageindex-mark.svg">
+      <img src="../../assets/figs/partners/pageindex-mark.svg" alt="PageIndex" height="38">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
+  Avec le code : <b><code>DEEPTUTOR20</code></b> — obtenez 20 $ de réduction sur votre premier <a href="https://developer.pageindex.ai/">abonnement PageIndex</a> !
+</p>
 
 ## 🌐 Communauté
 

@@ -39,17 +39,87 @@ from .embedding_endpoint import (
 from .loader import load_config_with_main
 from .model_catalog import ModelCatalogService, get_model_catalog_service
 
-SUPPORTED_SEARCH_PROVIDERS = {
-    "brave",
-    "tavily",
-    "jina",
-    "searxng",
-    "duckduckgo",
-    "perplexity",
-    "serper",
-    "none",
+
+@dataclass(frozen=True)
+class SearchProviderSpec:
+    """Single web-search-provider metadata entry.
+
+    This table is the ONE place that decides what a search provider is: which
+    connection fields it consumes (``requires_api_key`` / ``requires_base_url``),
+    what happens when one is missing (``soft_fallback``), and whether it writes
+    its own answer or needs :mod:`deeptutor.services.search.consolidation` to
+    synthesize one (``supports_answer``).
+
+    ``soft_fallback=False`` marks the paid providers: when their credentials are
+    missing we raise instead of quietly running the query through a different
+    search engine, so a configured-and-billed provider never turns into
+    DuckDuckGo behind the user's back. It also marks the China-hosted providers,
+    where the fallback is not merely surprising but unreachable — DuckDuckGo is
+    blocked on the networks those are chosen for, so a silent fallback would
+    turn "no API key" into a mystery timeout.
+
+    The provider registry (``deeptutor/services/search/providers``), the
+    Settings dropdown (``deeptutor/api/routers/settings.py``) and the web
+    connection-field form all derive from this table — keep new providers here
+    and they show up everywhere at once.
+    """
+
+    label: str
+    requires_api_key: bool = False
+    requires_base_url: bool = False
+    soft_fallback: bool = True
+    supports_answer: bool = False
+
+
+# Insertion order is the Settings dropdown order.
+SEARCH_PROVIDERS: dict[str, SearchProviderSpec] = {
+    "none": SearchProviderSpec(label="None"),
+    "brave": SearchProviderSpec(label="Brave", requires_api_key=True),
+    "tavily": SearchProviderSpec(label="Tavily", requires_api_key=True, supports_answer=True),
+    "jina": SearchProviderSpec(label="Jina", requires_api_key=True),
+    "searxng": SearchProviderSpec(label="SearXNG", requires_base_url=True),
+    "duckduckgo": SearchProviderSpec(label="DuckDuckGo"),
+    "perplexity": SearchProviderSpec(
+        label="Perplexity",
+        requires_api_key=True,
+        soft_fallback=False,
+        supports_answer=True,
+    ),
+    "serper": SearchProviderSpec(label="Serper", requires_api_key=True, soft_fallback=False),
+    "firecrawl": SearchProviderSpec(label="Firecrawl", requires_api_key=True, soft_fallback=False),
+    # China-hosted engines. Doubao is the one that writes its own answer: Ark
+    # exposes web search only as a tool on a Doubao model, never standalone.
+    "doubao": SearchProviderSpec(
+        label="Doubao",
+        requires_api_key=True,
+        soft_fallback=False,
+        supports_answer=True,
+    ),
+    "bocha": SearchProviderSpec(label="Bocha", requires_api_key=True, soft_fallback=False),
+    "zhipu": SearchProviderSpec(label="Zhipu", requires_api_key=True, soft_fallback=False),
+    "qianfan": SearchProviderSpec(
+        label="Baidu Qianfan", requires_api_key=True, soft_fallback=False
+    ),
+    "aliyun_iqs": SearchProviderSpec(
+        label="Aliyun IQS", requires_api_key=True, soft_fallback=False
+    ),
 }
-DEPRECATED_SEARCH_PROVIDERS = {"exa", "baidu", "openrouter"}
+
+# The credential-free provider every soft fallback lands on.
+SEARCH_FALLBACK_PROVIDER = "duckduckgo"
+
+SUPPORTED_SEARCH_PROVIDERS = frozenset(SEARCH_PROVIDERS)
+DEPRECATED_SEARCH_PROVIDERS = frozenset({"exa", "baidu", "openrouter"})
+
+
+def search_provider_spec(provider: str | None) -> SearchProviderSpec | None:
+    """Look up a provider's spec, or ``None`` for unknown/deprecated names."""
+    return SEARCH_PROVIDERS.get((provider or "").strip().lower())
+
+
+def supported_search_providers_hint() -> str:
+    """Human-readable provider list for error messages and CLI output."""
+    return ", ".join(name for name in SEARCH_PROVIDERS if name != "none")
 
 
 LLM_LOCALHOST_PROVIDERS = ("ollama", "vllm")
@@ -192,6 +262,15 @@ EMBEDDING_PROVIDERS: dict[str, EmbeddingProviderSpec] = {
         default_api_base=EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS["openrouter"],
         keywords=("openrouter",),
         is_local=False,
+    ),
+    "orcarouter": EmbeddingProviderSpec(
+        label="OrcaRouter",
+        adapter="openai_compat",
+        default_api_base=EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS["orcarouter"],
+        keywords=("orcarouter", "orca_router"),
+        is_local=False,
+        default_model="openai/text-embedding-3-large",
+        default_dim=3072,
     ),
 }
 
@@ -649,8 +728,6 @@ def resolve_llm_runtime_config(
 
     profile, model = _active_profile_and_model(loaded, catalog_service, "llm")
     resolved_model = _as_str((model or {}).get("model"))
-    if not resolved_model:
-        resolved_model = "gpt-4o-mini"
 
     binding_hint_raw = _as_str((profile or {}).get("binding"))
     binding_hint = canonical_provider_name(binding_hint_raw)
@@ -1091,6 +1168,82 @@ def _resolve_search_max_results(catalog: dict[str, Any], default: int = 5) -> in
         return default
 
 
+def _search_profiles(catalog: dict[str, Any]) -> list[dict[str, Any]]:
+    profiles = catalog.get("services", {}).get("search", {}).get("profiles", [])
+    return [profile for profile in profiles if isinstance(profile, dict)]
+
+
+def search_provider_credentials(
+    provider: str,
+    catalog: dict[str, Any] | None = None,
+    *,
+    service: ModelCatalogService | None = None,
+) -> tuple[str, str]:
+    """Return ``(api_key, base_url)`` from the search profile targeting *provider*.
+
+    Search profiles are a list, so several providers can stay configured side by
+    side with only one active. Looking credentials up by provider is what keeps a
+    non-active provider from reaching for whatever key the active profile holds
+    (which used to send e.g. a Brave key to Tavily). The active profile wins when
+    it matches; otherwise the first profile naming the provider supplies them.
+    """
+    name = (provider or "").strip().lower()
+    if not name:
+        return "", ""
+    catalog_service = service or get_model_catalog_service()
+    loaded = _load_catalog(catalog)
+    active = catalog_service.get_active_profile(loaded, "search") or {}
+    for profile in (active, *_search_profiles(loaded)):
+        if _as_str(profile.get("provider")).lower() == name:
+            return _as_str(profile.get("api_key")), _as_str(profile.get("base_url"))
+    return "", ""
+
+
+def search_missing_credential(provider: str, api_key: str, base_url: str) -> str | None:
+    """Name the connection field *provider* needs but does not have."""
+    spec = search_provider_spec(provider)
+    if spec is None:
+        return None
+    if spec.requires_api_key and not api_key:
+        return "api_key"
+    if spec.requires_base_url and not base_url:
+        return "base_url"
+    return None
+
+
+def search_fallback_candidates(
+    requested: str,
+    catalog: dict[str, Any] | None = None,
+    *,
+    service: ModelCatalogService | None = None,
+) -> list[str]:
+    """Ordered providers to try after *requested* fails at runtime.
+
+    A rate-limited or unreachable search engine should cost the query its first
+    choice, not the whole turn. Candidates are the user's other fully-configured
+    search profiles (they opted into those providers by configuring them), then
+    the credential-free fallback. Providers whose credentials are missing never
+    enter the chain, and ``none`` — an explicit "search is off" — is excluded.
+    """
+    name = (requested or "").strip().lower()
+    catalog_service = service or get_model_catalog_service()
+    loaded = _load_catalog(catalog)
+    candidates: list[str] = []
+    for profile in _search_profiles(loaded):
+        provider = _as_str(profile.get("provider")).lower()
+        spec = search_provider_spec(provider)
+        if spec is None or provider in {"none", name} or provider in candidates:
+            continue
+        if search_missing_credential(
+            provider, _as_str(profile.get("api_key")), _as_str(profile.get("base_url"))
+        ):
+            continue
+        candidates.append(provider)
+    if name != SEARCH_FALLBACK_PROVIDER and SEARCH_FALLBACK_PROVIDER not in candidates:
+        candidates.append(SEARCH_FALLBACK_PROVIDER)
+    return candidates
+
+
 def resolve_search_runtime_config(
     catalog: dict[str, Any] | None = None,
     *,
@@ -1101,17 +1254,25 @@ def resolve_search_runtime_config(
     loaded = _load_catalog(catalog)
     profile = catalog_service.get_active_profile(loaded, "search") or {}
 
-    requested_provider = (_as_str(profile.get("provider")) or "duckduckgo").lower()
+    requested_provider = (_as_str(profile.get("provider")) or SEARCH_FALLBACK_PROVIDER).lower()
     provider = requested_provider
     api_key = _as_str(profile.get("api_key"))
     base_url = _as_str(profile.get("base_url"))
     proxy = _as_str(profile.get("proxy")) or None
     max_results = _resolve_search_max_results(loaded)
 
-    deprecated = provider in DEPRECATED_SEARCH_PROVIDERS
-    unsupported = provider not in SUPPORTED_SEARCH_PROVIDERS
-    fallback_reason: str | None = None
-    missing_credentials = False
+    spec = search_provider_spec(provider)
+    if spec is None:
+        return ResolvedSearchConfig(
+            provider=provider,
+            requested_provider=requested_provider,
+            api_key=api_key,
+            base_url=base_url,
+            max_results=max_results,
+            proxy=proxy,
+            unsupported_provider=True,
+            deprecated_provider=provider in DEPRECATED_SEARCH_PROVIDERS,
+        )
 
     if provider == "none":
         return ResolvedSearchConfig(
@@ -1123,28 +1284,13 @@ def resolve_search_runtime_config(
             proxy=proxy,
         )
 
-    if provider in {"perplexity", "serper"} and not api_key:
-        missing_credentials = True
-
-    if unsupported:
-        return ResolvedSearchConfig(
-            provider=provider,
-            requested_provider=requested_provider,
-            api_key=api_key,
-            base_url=base_url,
-            max_results=max_results,
-            proxy=proxy,
-            unsupported_provider=True,
-            deprecated_provider=deprecated,
-            missing_credentials=missing_credentials,
+    missing = search_missing_credential(provider, api_key, base_url)
+    fallback_reason: str | None = None
+    if missing and spec.soft_fallback:
+        fallback_reason = (
+            f"{provider} requires {missing}, falling back to {SEARCH_FALLBACK_PROVIDER}"
         )
-
-    if provider in {"brave", "tavily", "jina"} and not api_key:
-        fallback_reason = f"{provider} requires api_key, falling back to duckduckgo"
-        provider = "duckduckgo"
-    elif provider == "searxng" and not base_url:
-        fallback_reason = "searxng requires base_url, falling back to duckduckgo"
-        provider = "duckduckgo"
+        provider = SEARCH_FALLBACK_PROVIDER
 
     return ResolvedSearchConfig(
         provider=provider,
@@ -1154,8 +1300,8 @@ def resolve_search_runtime_config(
         max_results=max_results,
         proxy=proxy,
         unsupported_provider=False,
-        deprecated_provider=deprecated,
-        missing_credentials=missing_credentials,
+        deprecated_provider=False,
+        missing_credentials=bool(missing) and not spec.soft_fallback,
         fallback_reason=fallback_reason,
     )
 
@@ -1175,6 +1321,14 @@ def search_provider_state(provider: str | None) -> str:
 __all__ = [
     "SUPPORTED_SEARCH_PROVIDERS",
     "DEPRECATED_SEARCH_PROVIDERS",
+    "SEARCH_PROVIDERS",
+    "SEARCH_FALLBACK_PROVIDER",
+    "SearchProviderSpec",
+    "search_provider_spec",
+    "search_provider_credentials",
+    "search_missing_credential",
+    "search_fallback_candidates",
+    "supported_search_providers_hint",
     "NANOBOT_LLM_PROVIDERS",
     "EmbeddingProviderSpec",
     "EMBEDDING_PROVIDERS",

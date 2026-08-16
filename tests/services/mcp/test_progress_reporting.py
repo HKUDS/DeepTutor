@@ -208,6 +208,25 @@ async def test_progress_reaches_the_sink_end_to_end() -> None:
     assert result.content == "done"
 
 
+@pytest.mark.asyncio
+async def test_image_content_is_omitted_without_serializing_base64() -> None:
+    class _ImageSession(_Session):
+        async def call_tool(self, tool_name, arguments, progress_callback=None):  # type: ignore[no-untyped-def]
+            from mcp import types
+
+            return types.CallToolResult(
+                content=[
+                    types.TextContent(type="text", text="page image"),
+                    types.ImageContent(type="image", data="QUJD", mimeType="image/jpeg"),
+                ]
+            )
+
+    result = await _adapter(MCPConnectionManager(), _ImageSession()).execute()
+
+    assert result.content == "page image\n[MCP image omitted]"
+    assert "QUJD" not in result.content
+
+
 # ── why a connection failed ────────────────────────────────────────────────
 
 

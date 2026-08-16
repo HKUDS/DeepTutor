@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from deeptutor.services.config.provider_runtime import (
+    SEARCH_PROVIDERS,
     resolve_llm_runtime_config,
     resolve_search_runtime_config,
+    search_fallback_candidates,
+    search_missing_credential,
+    search_provider_credentials,
 )
 
 
@@ -13,6 +17,7 @@ def _build_catalog(
     llm_profile: dict | None = None,
     llm_model: dict | None = None,
     search_profile: dict | None = None,
+    search_profiles: list[dict] | None = None,
 ) -> dict:
     llm_profile = llm_profile or {
         "id": "llm-p",
@@ -49,7 +54,7 @@ def _build_catalog(
             },
             "search": {
                 "active_profile_id": search_profile["id"],
-                "profiles": [search_profile],
+                "profiles": search_profiles or [search_profile],
             },
         },
     }
@@ -112,6 +117,63 @@ def test_llm_api_base_keyword_gateway() -> None:
     assert resolved.provider_mode == "gateway"
     assert resolved.effective_url == "https://api.aihubmix.com/v1"
     assert resolved.extra_headers == {"APP-Code": "x"}
+
+
+def test_llm_orcarouter_binding_uses_default_endpoint() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "OrcaRouter",
+            "binding": "orcarouter",
+            "base_url": "",
+            "api_key": "sk-orca-test-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [{"id": "llm-m", "name": "m", "model": "orcarouter/auto"}],
+        }
+    )
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+    assert resolved.provider_name == "orcarouter"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.effective_url == "https://api.orcarouter.ai/v1"
+
+
+def test_llm_orcarouter_key_prefix_gateway() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "LLM",
+            "binding": "",
+            "base_url": "",
+            "api_key": "sk-orca-test-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [{"id": "llm-m", "name": "m", "model": "anthropic/claude-sonnet-4.6"}],
+        }
+    )
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+    assert resolved.provider_name == "orcarouter"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.effective_url == "https://api.orcarouter.ai/v1"
+
+
+def test_llm_orcarouter_base_keyword_gateway() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "LLM",
+            "binding": "",
+            "base_url": "https://api.orcarouter.ai/v1",
+            "api_key": "k",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [{"id": "llm-m", "name": "m", "model": "deepseek/deepseek-v4-pro"}],
+        }
+    )
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+    assert resolved.provider_name == "orcarouter"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.effective_url == "https://api.orcarouter.ai/v1"
 
 
 def test_llm_atlascloud_binding_uses_default_openai_compatible_endpoint() -> None:
@@ -286,6 +348,19 @@ def test_llm_local_fallback() -> None:
     assert resolved.api_key == "sk-no-key-required"
 
 
+def test_llm_empty_catalog_does_not_fallback_to_openai() -> None:
+    catalog = _build_catalog()
+    catalog["services"]["llm"] = {
+        "active_profile_id": None,
+        "active_model_id": None,
+        "profiles": [],
+    }
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.model == ""
+
+
 def test_llm_minimax_binding_uses_global_endpoint() -> None:
     catalog = _build_catalog(
         llm_profile={
@@ -363,6 +438,27 @@ def test_llm_lm_studio_alias_resolves_to_local_provider() -> None:
     assert resolved.provider_mode == "local"
     assert resolved.effective_url == "http://localhost:1234/v1"
     assert resolved.api_key == "sk-no-key-required"
+
+
+def test_llm_codebuddy_resolves_without_endpoint() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "CodeBuddy",
+            "binding": "codebuddy",
+            "base_url": "",
+            "api_key": "",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [{"id": "llm-m", "name": "CodeBuddy Default", "model": "codebuddy/default"}],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "codebuddy"
+    assert resolved.provider_mode == "oauth"
+    assert resolved.effective_url is None
 
 
 def test_llm_context_window_passes_through_from_catalog() -> None:
@@ -563,3 +659,69 @@ def test_search_searxng_without_url_fallback() -> None:
     resolved = resolve_search_runtime_config(catalog=catalog)
     assert resolved.provider == "duckduckgo"
     assert resolved.fallback_reason is not None
+
+
+def _search_profile(pid: str, provider: str, **overrides) -> dict:
+    profile = {
+        "id": pid,
+        "name": provider,
+        "provider": provider,
+        "base_url": "",
+        "api_key": "",
+        "proxy": "",
+        "models": [],
+    }
+    profile.update(overrides)
+    return profile
+
+
+def test_search_missing_credential_names_the_field() -> None:
+    assert search_missing_credential("brave", "", "") == "api_key"
+    assert search_missing_credential("searxng", "", "") == "base_url"
+    assert search_missing_credential("searxng", "", "https://searx.example.com") is None
+    assert search_missing_credential("duckduckgo", "", "") is None
+    assert search_missing_credential("exa", "", "") is None
+
+
+def test_search_credentials_come_from_the_matching_profile() -> None:
+    catalog = _build_catalog(
+        search_profile=_search_profile("p-brave", "brave", api_key="brave-key"),
+        search_profiles=[
+            _search_profile("p-brave", "brave", api_key="brave-key"),
+            _search_profile("p-tavily", "tavily", api_key="tavily-key"),
+            _search_profile("p-searx", "searxng", base_url="https://searx.example.com"),
+        ],
+    )
+    assert search_provider_credentials("brave", catalog=catalog) == ("brave-key", "")
+    assert search_provider_credentials("tavily", catalog=catalog) == ("tavily-key", "")
+    assert search_provider_credentials("searxng", catalog=catalog) == (
+        "",
+        "https://searx.example.com",
+    )
+    # A provider with no profile of its own gets nothing rather than borrowing
+    # the active profile's key.
+    assert search_provider_credentials("serper", catalog=catalog) == ("", "")
+
+
+def test_search_fallback_candidates_skip_unconfigured_providers() -> None:
+    catalog = _build_catalog(
+        search_profile=_search_profile("p-brave", "brave", api_key="brave-key"),
+        search_profiles=[
+            _search_profile("p-brave", "brave", api_key="brave-key"),
+            _search_profile("p-tavily", "tavily", api_key="tavily-key"),
+            _search_profile("p-serper", "serper"),  # no key -> never a candidate
+            _search_profile("p-none", "none"),  # explicit off -> never a candidate
+        ],
+    )
+    assert search_fallback_candidates("brave", catalog=catalog) == ["tavily", "duckduckgo"]
+    # The credential-free fallback is not appended when it is the requested
+    # provider itself — the remaining configured providers are the chain.
+    assert search_fallback_candidates("duckduckgo", catalog=catalog) == ["brave", "tavily"]
+
+
+def test_every_search_provider_has_a_registered_implementation() -> None:
+    from deeptutor.services.search.providers import list_providers
+
+    registered = set(list_providers())
+    expected = {name for name in SEARCH_PROVIDERS if name != "none"}
+    assert registered == expected

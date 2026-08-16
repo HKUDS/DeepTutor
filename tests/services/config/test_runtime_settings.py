@@ -351,6 +351,7 @@ def test_document_parsing_v1_to_v2_migration(tmp_path: Path) -> None:
         "docling",
         "markitdown",
         "pymupdf4llm",
+        "liteparse",
     }
     # Migration is persisted to the renamed file (v2, no top-level flat keys);
     # the legacy mineru.json is gone.

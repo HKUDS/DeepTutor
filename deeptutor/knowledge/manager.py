@@ -1163,7 +1163,9 @@ class KnowledgeBaseManager:
             index_versions = inspect_kb_versions(kb_dir, rag_provider)
             has_ready_provider = any(bool(version.get("ready")) for version in index_versions)
         provider_error_summary = (
-            provider_failure_summary(kb_dir, rag_provider) if dir_exists else ""
+            provider_failure_summary(kb_dir, rag_provider, versions=index_versions)
+            if dir_exists
+            else ""
         )
 
         # For old KBs without status field, determine status from rag_storage
@@ -1304,11 +1306,18 @@ class KnowledgeBaseManager:
                 if (kb_probe_dir and active_signature)
                 else None
             )
-            active_match = (
-                inspect_provider_version(matched_entry, rag_provider).ready
-                if matched_entry
-                else False
-            )
+            active_match = False
+            if matched_entry:
+                # Reuse the probe results already computed for ``index_versions``
+                # instead of probing the matched storage a second time — probing
+                # parses provider-owned files (e.g. the multi-MB LlamaIndex
+                # docstore.json) and is the dominant cost of kb list / the
+                # knowledge API (see issue #859).
+                matched_path = matched_entry.get("storage_path")
+                active_match = any(
+                    entry.get("storage_path") == matched_path and entry.get("ready")
+                    for entry in index_versions
+                )
         else:
             active_match = rag_initialized
 

@@ -304,7 +304,7 @@ class CitationManager:
 
             if tool_type_lower in ("rag", "rag_naive", "rag_hybrid"):
                 citation_info = self._extract_rag_citation(
-                    citation_id, "rag", raw_answer, tool_trace
+                    citation_id, "rag", raw_answer, tool_trace, tool_metadata
                 )
             elif tool_type_lower == "web_search":
                 citation_info = self._extract_web_citation(
@@ -330,9 +330,22 @@ class CitationManager:
             return False
 
     def _extract_rag_citation(
-        self, citation_id: str, tool_type: str, raw_answer: str, tool_trace: Any
+        self,
+        citation_id: str,
+        tool_type: str,
+        raw_answer: str,
+        tool_trace: Any,
+        tool_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Extract citation information for RAG retrieval with source documents"""
+        """Extract citation information for RAG retrieval with source documents.
+
+        Prefers the structured ``ToolResult.metadata`` for the same reason
+        :meth:`_extract_web_citation` does: ``raw_answer`` is the textual
+        answer surfaced to the LLM, not a JSON payload, so parsing it usually
+        yields no sources at all. Every RAG pipeline normalises what it
+        retrieved into ``metadata["sources"]`` (see ``tools/builtin``), which
+        is already the shape ``_rag_source_payload`` reads.
+        """
         citation_info = {
             "citation_id": citation_id,
             "tool_type": tool_type,
@@ -343,9 +356,14 @@ class CitationManager:
         }
 
         try:
-            # Parse raw_answer to extract source information
-            answer_data = parse_json_response(raw_answer)
-            source_documents, kb_name = _rag_source_payload(answer_data)
+            source_documents, kb_name = _rag_source_payload(tool_metadata)
+            if not source_documents:
+                # No metadata (older traces, or a tool that only returns text):
+                # fall back to parsing the answer, which is what this did before
+                # the structured payload reached here.
+                documents, answer_kb_name = _rag_source_payload(parse_json_response(raw_answer))
+                source_documents = documents
+                kb_name = kb_name or answer_kb_name
             sources = [
                 source_info
                 for index, document in enumerate(source_documents[:5])

@@ -90,6 +90,14 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "system_in_messages": False,
         "has_thinking_tags": False,
     },
+    "codebuddy": {
+        "supports_response_format": False,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": False,
+        "system_in_messages": True,
+        "has_thinking_tags": False,
+    },
     # DeepSeek
     "deepseek": {
         "supports_response_format": False,  # DeepSeek doesn't support strict JSON schema yet
@@ -135,6 +143,14 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
     },
     # OpenRouter (aggregator, generally OpenAI-compatible)
     "openrouter": {
+        "supports_response_format": True,  # Depends on underlying model
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": True,  # Depends on underlying model
+        "system_in_messages": True,
+    },
+    # OrcaRouter (aggregator, generally OpenAI-compatible)
+    "orcarouter": {
         "supports_response_format": True,  # Depends on underlying model
         "supports_streaming": True,
         "supports_tools": True,
@@ -559,8 +575,22 @@ def get_effective_temperature(
     return requested_temp
 
 
+#: Bindings whose upstream tracks a multi-turn conversation by an id the caller
+#: supplies, so each request carries the turn's own session id. Stated here
+#: rather than tested inline: the chat loop and the explore capability both
+#: need it, and neither should have to name a provider to run a turn.
+SESSION_SCOPED_BINDINGS: frozenset[str] = frozenset({"codebuddy"})
+
+
+def threads_session_id(binding: str | None) -> bool:
+    """Whether *binding* expects ``deeptutor_session_id`` on each request."""
+    return (binding or "").strip().lower() in SESSION_SCOPED_BINDINGS
+
+
 __all__ = [
     "PROVIDER_CAPABILITIES",
+    "SESSION_SCOPED_BINDINGS",
+    "threads_session_id",
     "MODEL_OVERRIDES",
     "DEFAULT_CAPABILITIES",
     "get_capability",
