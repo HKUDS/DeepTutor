@@ -190,7 +190,13 @@ export interface VocabEntry {
   document_id: string;
   document_title: string;
   section_title: string;
+  pairing_id?: string;
+  chapter_id?: string;
+  chapter_index?: number;
+  group_index?: number;
   created_at: number;
+  updated_at?: number;
+  occurrence_count?: number;
   mn4_exported: boolean;
 }
 
@@ -412,17 +418,29 @@ export const immersiveReadingApi = {
       "/query",
       { method: "POST", body: JSON.stringify({ text, question, language }) },
     ),
-  vocabulary: (documentId?: string) =>
-    request<{ entries: VocabEntry[] }>(
-      `/vocabulary${documentId ? `?document_id=${encodeURIComponent(documentId)}` : ""}`,
-    ),
+  vocabulary: (documentId?: string, pairingId?: string) => {
+    const query = new URLSearchParams(
+      Object.entries({ document_id: documentId, pairing_id: pairingId }).filter(
+        ([, value]) => Boolean(value),
+      ) as Array<[string, string]>,
+    ).toString();
+    return request<{ entries: VocabEntry[] }>(
+      `/vocabulary${query ? `?${query}` : ""}`,
+    );
+  },
   addWord: (
     word: string,
     context: string,
     documentId: string,
     documentTitle: string,
     sectionTitle: string,
- ) =>
+    source?: {
+      pairing_id?: string;
+      chapter_id?: string;
+      chapter_index?: number;
+      group_index?: number;
+    },
+  ) =>
    request<{ entry: VocabEntry; lookup_warning?: string }>("/vocabulary", {
      method: "POST",
      body: JSON.stringify({
@@ -431,6 +449,7 @@ export const immersiveReadingApi = {
        document_id: documentId,
        document_title: documentTitle,
        section_title: sectionTitle,
+       ...source,
       }),
     }),
   deleteWord: (entryId: string) =>

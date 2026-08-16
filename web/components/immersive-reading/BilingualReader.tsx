@@ -52,6 +52,11 @@ import { apiFetch } from "@/lib/api";
 interface BilingualReaderProps {
   pairingId: string;
   onBack: () => void;
+  initialChapterId?: string;
+  initialGroupIndex?: number;
+  onVocabularyAdded: () => void;
+  onToast: (message: string) => void;
+  onErrorToast: (message: string) => void;
 }
 
 type IssueType = "misalignment" | "wrong_chapter" | "missing_translation" | "translation_error" | "other";
@@ -89,7 +94,22 @@ function normalizeFingerprint(text: string): string {
     .trim();
 }
 
-export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
+function groupIndexFromNode(node: Node | null, fallback: number): number {
+  const element = node instanceof Element ? node : node?.parentElement;
+  const group = element?.closest<HTMLElement>("[data-group-index]");
+  const value = Number(group?.dataset.groupIndex);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+export function BilingualReader({
+  pairingId,
+  onBack,
+  initialChapterId,
+  initialGroupIndex = 0,
+  onVocabularyAdded,
+  onToast,
+  onErrorToast,
+}: BilingualReaderProps) {
   const { t } = useTranslation();
   const [pairing, setPairing] = useState<BilingualPairing | null>(null);
   const [section, setSection] = useState<BilingualSection | null>(null);
@@ -108,17 +128,20 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
   const [chapterTaskSummaries, setChapterTaskSummaries] = useState<Array<{ chapter_id: string; completed: boolean }>>([]);
   const contentRef = useRef<HTMLDivElement>(null);
   const pendingPositionRef = useRef<BilingualReadingPosition | null>(null);
+  const pendingGroupJumpRef = useRef(false);
   const scrollPercentRef = useRef(0);
   const visibleGroupRef = useRef(0);
   const saveTimerRef = useRef<number | null>(null);
   const sectionRequestRef = useRef(0);
-  const [dictPopover, setDictPopover] = useState<{ word: string; context: string; anchor: DictionaryAnchorRect; selectedText: string; initialMode: "dictionary" | "translate" } | null>(null);
+  const [dictPopover, setDictPopover] = useState<{ word: string; context: string; anchor: DictionaryAnchorRect; selectedText: string; initialMode: "dictionary" | "translate"; groupIndex: number } | null>(null);
   const [dictResult, setDictResult] = useState<DictionaryResult | null>(null);
   const [dictLoading, setDictLoading] = useState(false);
   const [dictError, setDictError] = useState<string | null>(null);
+  const [savingWord, setSavingWord] = useState(false);
   const dictReqIdRef = useRef(0);
   const dictAbortRef = useRef<AbortController | null>(null);
   const lastSelectionRef = useRef("");
+  const lastCompletedChapterCountRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,7 +154,27 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
       .then(([pairingData, positionData, navigationData, bookmarkData]) => {
         if (cancelled) return;
         setPairing(pairingData);
-        pendingPositionRef.current = positionData.position;
+        const saved = positionData.position;
+        const targetIndex = initialChapterId
+          ? (pairingData.chapter_map || []).findIndex((chapter) => chapter.id === initialChapterId)
+          : -1;
+        const target = targetIndex >= 0 ? pairingData.chapter_map?.[targetIndex] : undefined;
+        if (targetIndex >= 0 && target) {
+          pendingPositionRef.current = {
+            pairing_id: pairingId,
+            chapter_id: target.id,
+            chapter_index: targetIndex,
+            group_index: Math.max(0, initialGroupIndex),
+            epub_cfi: "",
+            section_href: target.english,
+            scroll_percent: 0,
+            text_fingerprint: "",
+            updated_at: saved?.updated_at || 0,
+          };
+          pendingGroupJumpRef.current = true;
+        } else {
+          pendingPositionRef.current = saved;
+        }
         setNavigation(navigationData.navigation);
         setBookmarks(bookmarkData.bookmarks);
         setLoading(false);
@@ -145,13 +188,16 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
     return () => {
       cancelled = true;
     };
-  }, [pairingId]);
+  }, [initialChapterId, initialGroupIndex, pairingId]);
 
   useEffect(() => {
     let cancelled = false;
     translationTaskApi.list({ sourceType: "bilingual", sourceId: pairingId })
       .then((board) => {
         if (!cancelled) setChapterTaskSummaries(board.chapters || []);
+        lastCompletedChapterCountRef.current = (board.chapters || []).filter(
+          (chapter) => chapter.completed,
+        ).length;
       })
       .catch(() => undefined);
     return () => {
@@ -206,6 +252,20 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
     }
   }, [pairing, loadChapter]);
 
+  const handleTaskBoardChange = useCallback(
+    (board: { chapters?: Array<{ chapter_id: string; completed: boolean }> }) => {
+      const summaries = board.chapters || [];
+      setChapterTaskSummaries(summaries);
+      const completedCount = summaries.filter((chapter) => chapter.completed).length;
+      const previousCount = lastCompletedChapterCountRef.current;
+      lastCompletedChapterCountRef.current = completedCount;
+      if (previousCount !== null && completedCount > previousCount) {
+        loadChapter(chapterIndex, { recordHistory: false });
+      }
+    },
+    [chapterIndex, loadChapter],
+  );
+
   useEffect(() => {
     const content = contentRef.current;
     const saved = pendingPositionRef.current;
@@ -226,6 +286,22 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
       if (matched >= 0) groupIndex = matched;
     }
     visibleGroupRef.current = groupIndex;
+    if (pendingGroupJumpRef.current && sameChapter) {
+      const groupElement = content.querySelector<HTMLElement>(
+        `[data-group-index="${groupIndex}"]`,
+      );
+      if (groupElement) {
+        content.scrollTop = Math.max(0, groupElement.offsetTop - 24);
+        const maxScroll = Math.max(1, content.scrollHeight - content.clientHeight);
+        scrollPercentRef.current = Math.max(
+          0,
+          Math.min(100, (content.scrollTop / maxScroll) * 100),
+        );
+        pendingGroupJumpRef.current = false;
+        pendingPositionRef.current = null;
+        return;
+      }
+    }
     const maxScroll = Math.max(1, content.scrollHeight - content.clientHeight);
     scrollPercentRef.current = sameChapter ? saved.scroll_percent : 0;
     content.scrollTop = (maxScroll * scrollPercentRef.current) / 100;
@@ -537,11 +613,13 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
     if (!selectedText.trim()) return;
     const context = fullText.slice(0, 2000);
     const initialMode: "dictionary" | "translate" = isSingleWord ? "dictionary" : "translate";
+    const groupIndex = groupIndexFromNode(anchor, visibleGroupRef.current);
     setDictPopover({
       word: isSingleWord ? word : selectedText,
       context,
       selectedText,
       initialMode,
+      groupIndex,
       anchor: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
     });
     if (isSingleWord) {
@@ -590,6 +668,7 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
       context: text.slice(0, 2000),
       selectedText: sentence,
       initialMode: "translate",
+      groupIndex: groupIndexFromNode(paragraph, visibleGroupRef.current),
       anchor: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
     });
     void handleTranslateText(sentence);
@@ -623,6 +702,52 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
   const handleTranslateSelection = async () => {
     if (!dictPopover) return;
     handleTranslateText(dictPopover.selectedText || dictPopover.word);
+  };
+
+  const closeDictionary = () => {
+    lastSelectionRef.current = "";
+    dictAbortRef.current?.abort();
+    dictReqIdRef.current++;
+    setDictPopover(null);
+    setDictResult(null);
+    setDictError(null);
+    setDictLoading(false);
+  };
+
+  const handleSaveVocabulary = async () => {
+    if (!dictPopover || !pairing || savingWord) return;
+    const chapter = pairing.chapter_map?.[chapterIndex];
+    if (!chapter) return;
+    setSavingWord(true);
+    try {
+      const word = extractDictionaryWord(dictPopover.selectedText) || dictPopover.word;
+      const { lookup_warning } = await immersiveReadingApi.addWord(
+        word,
+        dictPopover.context,
+        pairing.en_document_id,
+        pairing.en_title,
+        chapter.en_title || chapter.english,
+        {
+          pairing_id: pairingId,
+          chapter_id: chapter.id,
+          chapter_index: chapterIndex,
+          group_index: dictPopover.groupIndex,
+        },
+      );
+      onVocabularyAdded();
+      onToast(
+        lookup_warning
+          ? `${t("Added to vocabulary")} — ${t("Definition unavailable")}`
+          : t("Added to vocabulary"),
+      );
+      closeDictionary();
+    } catch (cause) {
+      onErrorToast(
+        cause instanceof Error ? cause.message : String(cause),
+      );
+    } finally {
+      setSavingWord(false);
+    }
   };
 
   if (loading) {
@@ -815,7 +940,9 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
             initialMode={dictPopover.initialMode}
             onLookup={handleDictLookupClick}
             onTranslate={handleTranslateSelection}
-            onClose={() => { lastSelectionRef.current = ""; dictAbortRef.current?.abort(); dictReqIdRef.current++; setDictPopover(null); setDictResult(null); setDictError(null); setDictLoading(false); }}
+            onClose={closeDictionary}
+            saveBusy={savingWord}
+            onSaveToVocabulary={() => void handleSaveVocabulary()}
           />
         )}
       </div>
@@ -854,7 +981,7 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
               sourceType="bilingual"
               sourceId={pairingId}
               chapterId={currentChapter?.id}
-              onBoardLoaded={(board) => setChapterTaskSummaries(board.chapters || [])}
+              onBoardLoaded={handleTaskBoardChange}
             />
           </div>
         </div>

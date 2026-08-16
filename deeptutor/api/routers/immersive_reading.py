@@ -88,6 +88,10 @@ class VocabRequest(BaseModel):
     document_id: str = Field(default="", max_length=80)
     document_title: str = Field(default="", max_length=500)
     section_title: str = Field(default="", max_length=500)
+    pairing_id: str = Field(default="", max_length=80)
+    chapter_id: str = Field(default="", max_length=80)
+    chapter_index: int = Field(default=0, ge=0)
+    group_index: int = Field(default=0, ge=0)
 
 
 class FocusCheckRequest(BaseModel):
@@ -536,6 +540,10 @@ async def add_vocabulary_word(request: VocabRequest) -> dict:
             document_id=request.document_id,
             document_title=request.document_title,
             section_title=request.section_title,
+            pairing_id=request.pairing_id,
+            chapter_id=request.chapter_id,
+            chapter_index=request.chapter_index,
+            group_index=request.group_index,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -550,8 +558,10 @@ async def add_vocabulary_word(request: VocabRequest) -> dict:
 
 
 @router.get("/vocabulary")
-async def list_vocabulary(document_id: str | None = None) -> dict:
-    entries = get_immersive_reading_service().list_vocabulary(document_id)
+async def list_vocabulary(
+    document_id: str | None = None, pairing_id: str | None = None
+) -> dict:
+    entries = get_immersive_reading_service().list_vocabulary(document_id, pairing_id)
     return {"entries": [item.model_dump(mode="json") for item in entries]}
 
 
