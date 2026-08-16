@@ -10,6 +10,8 @@ export async function mockDialogApi(page: Page, opts?: {
   streamError?: string
   noisy?: boolean
   delayMs?: number
+  chunks?: string[]
+  chunkDelayMs?: number
 }) {
   const createStatus = opts?.createStatus ?? 200
   const reply = opts?.reply ?? MOCK_REPLY
@@ -107,7 +109,7 @@ export async function mockDialogApi(page: Page, opts?: {
     })
   })
 
-  await page.addInitScript(({ createStatus: status, reply: mockReply, streamError, noisy, delayMs }) => {
+  await page.addInitScript(({ createStatus: status, reply: mockReply, streamError, noisy, delayMs, chunks, chunkDelayMs }) => {
     const event = (type: string, extra: Record<string, unknown> = {}) => JSON.stringify({
       type,
       source: 'chat',
@@ -159,8 +161,15 @@ export async function mockDialogApi(page: Page, opts?: {
             this.onmessage?.({ data: event('tool_call', { content: '', session_id: sessionId, metadata: { tool_name: 'mastery_status' } }) })
             this.onmessage?.({ data: event('tool_result', { content: '{"status":"active"}', session_id: sessionId, metadata: { tool_name: 'mastery_status' } }) })
           }
-          this.onmessage?.({ data: event('content', { content: mockReply, session_id: sessionId }) })
-          this.onmessage?.({ data: event('done', { session_id: sessionId }) })
+          const pieces = chunks.length ? chunks : [mockReply]
+          pieces.forEach((piece, index) => {
+            window.setTimeout(() => {
+              this.onmessage?.({ data: event('content', { content: piece, session_id: sessionId }) })
+              if (index === pieces.length - 1) {
+                this.onmessage?.({ data: event('done', { session_id: sessionId }) })
+              }
+            }, index * chunkDelayMs)
+          })
         }
         if (delayMs > 0) window.setTimeout(emitReply, delayMs)
         else emitReply()
@@ -173,5 +182,13 @@ export async function mockDialogApi(page: Page, opts?: {
       removeEventListener() { /* noop */ }
     }
     window.WebSocket = MockWebSocket as unknown as typeof WebSocket
-  }, { createStatus, reply, streamError: opts?.streamError ?? '', noisy: opts?.noisy ?? false, delayMs: opts?.delayMs ?? 0 })
+  }, {
+    createStatus,
+    reply,
+    streamError: opts?.streamError ?? '',
+    noisy: opts?.noisy ?? false,
+    delayMs: opts?.delayMs ?? 0,
+    chunks: opts?.chunks ?? [],
+    chunkDelayMs: opts?.chunkDelayMs ?? 40,
+  })
 }

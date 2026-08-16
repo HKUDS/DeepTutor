@@ -1,7 +1,12 @@
 /* Minimal CSS reset to avoid Vite default bias */
 *, *::before, *::after { box-sizing: border-box; }
 * { margin: 0; }
-#root, body, html { height: 100%; overflow: hidden; width: 100%; }
+html, body, #root {
+  background: var(--bg-bg-base-secondary, #262626);
+  height: 100%;
+  overflow: hidden;
+  width: 100%;
+}
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

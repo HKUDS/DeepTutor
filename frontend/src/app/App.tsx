@@ -13,11 +13,14 @@ import {
   TaskNode,
   contextUsage,
   modeTabs,
-  navItems,
+  navItemsByMode,
   taskTree,
 } from '../mock/data'
 import {
   NewTaskPage,
+  WorkHomePage,
+  DesignHomePage,
+  ModeShellPage,
   AutomationPage,
   MarketplacePage,
   PluginDetailModal,
@@ -25,8 +28,24 @@ import {
 } from './pages'
 import { listToggleableTools, type ToolItem } from '../api/tools'
 import { UnifiedWSClient, type StreamEvent } from '../api/ws'
+import { AssistantMarkdown } from './AssistantMarkdown'
 import { deleteSession as deleteSessionApi, renameSession as renameSessionApi } from '../api/sessions'
 import copySvg from '../assets/icons/Copy.svg?raw'
+import moreSvg from '../../design-system/assets/icons/More.svg?raw'
+import moreActionSvg from '../../design-system/assets/icons/more-action.svg?raw'
+import arrowLeftSvg from '../../design-system/assets/icons/ArrowLeft.svg?raw'
+import treeSvg from '../../design-system/assets/icons/tree.svg?raw'
+import downSvg from '../../design-system/assets/icons/Down.svg?raw'
+import fileUploadSvg from '../../design-system/assets/icons/file-upload.svg?raw'
+import profileSvg from '../../design-system/assets/icons/profile.svg?raw'
+import notificationSvg from '../../design-system/assets/icons/Notification.svg?raw'
+import domainSvg from '../../design-system/assets/icons/domain.svg?raw'
+import moonSvg from '../../design-system/assets/icons/Moon.svg?raw'
+import settingsSvg from '../../design-system/assets/icons/settings.svg?raw'
+import feedbackSvg from '../../design-system/assets/icons/feedback.svg?raw'
+import downloadSvg from '../../design-system/assets/icons/download.svg?raw'
+import mobileSvg from '../../design-system/assets/icons/mobile.svg?raw'
+import rightSvg from '../../design-system/assets/icons/Right.svg?raw'
 import {
   CAPABILITIES,
   ChassisSession,
@@ -64,6 +83,24 @@ type IconProps = {
   onClick?: (e: React.MouseEvent<SVGElement>) => void
   style?: React.CSSProperties
 }
+const OfficialIcon: React.FC<{
+  svg: string
+  size?: number
+  className?: string
+  style?: React.CSSProperties
+}> = ({ svg, size = 16, className = '', style }) => (
+  <span
+    className={`trae-icon ${className}`.trim()}
+    aria-hidden
+    style={{ display: 'inline-flex', width: size, height: size, color: 'currentColor', ...style }}
+    dangerouslySetInnerHTML={{
+      __html: svg
+        .replace('width="24"', `width="${size}"`)
+        .replace('height="24"', `height="${size}"`),
+    }}
+  />
+)
+
 const Icon: React.FC<IconProps> = ({
   name, size = 16, className = '', onClick, style,
 }) => {
@@ -100,9 +137,7 @@ const Icon: React.FC<IconProps> = ({
       )
     case 'more-action':
       return (
-        <svg {...common} className={className} fill="currentColor" stroke="none">
-          <path d="M4 6.667a1.333 1.333 0 1 1 0 2.666 1.333 1.333 0 0 1 0-2.666Zm4 0a1.333 1.333 0 1 1 0 2.666 1.333 1.333 0 0 1 0-2.666Zm4 0a1.333 1.333 0 1 1 0 2.666 1.333 1.333 0 0 1 0-2.666Z" />
-        </svg>
+        <OfficialIcon svg={moreActionSvg} size={size} className={`trae-icon-more-action ${className}`.trim()} style={style} />
       )
     case 'chevron-right':
       return <svg {...common} className={className}><path d="m6 12 4-4-4-4" /></svg>
@@ -615,6 +650,7 @@ function TaskList({
   items, selectedId, onSelect,
   expandedTreeId, onToggleTree,
   onPin, onRename, onDelete,
+  listClassName = 'taskList-TYOoT1',
 }: {
   items: TaskItem[]
   selectedId: string
@@ -624,6 +660,7 @@ function TaskList({
   onPin: (id: string) => void
   onRename: (id: string, label: string) => void
   onDelete: (id: string) => void
+  listClassName?: string
 }) {
   const [menuId, setMenuId] = useState<string | null>(null)
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
@@ -667,7 +704,7 @@ function TaskList({
   const menuItem = items.find((t) => t.id === menuId)
 
   return (
-    <div className="taskList-TYOoT1">
+    <div className={listClassName}>
       {items.map((t) => {
         const selected = t.id === selectedId
         const menuOpen = menuId === t.id
@@ -676,7 +713,7 @@ function TaskList({
           <div key={t.id} data-session-id={t.id}>
             <div className="taskItemWrapper">
               <div
-                className={`taskItem ${selected ? 'taskItemSelected' : ''} ${expandedTreeId === t.id || menuOpen || renaming ? 'taskItemActive' : ''} ${t.pinned ? 'taskItemPinned' : ''}`}
+                className={`taskItem ${selected ? 'taskItemSelected' : ''} ${expandedTreeId === t.id || menuOpen || renaming ? 'taskItemActive' : ''} ${t.pinned ? 'pinnedTaskItem' : ''}`}
                 role="button"
                 tabIndex={0}
                 onClick={() => onSelect(t.id)}
@@ -688,7 +725,7 @@ function TaskList({
                       type="button"
                       aria-label={t.pinned ? '取消置顶' : '置顶'}
                       aria-pressed={!!t.pinned}
-                      className="iconButton-abHesq tertiary-J9WelI small-MVjdue pinIconDefault"
+                      className={`iconButton-abHesq tertiary-J9WelI small-MVjdue pinIconDefault${t.pinned ? ' pinIconAlways' : ''}`}
                       onClick={(e) => { e.stopPropagation(); closeMenu(); onPin(t.id) }}
                     >
                       <span className="icon-V7eOa6">
@@ -741,28 +778,28 @@ function TaskList({
                         }}
                       >
                         <span className="icon-V7eOa6">
-                          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Icon name="more-action" size={14} />
+                          <span data-testid="chat-icon-more" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <OfficialIcon svg={moreSvg} size={16} className="trae-icon-More" style={{ transform: 'rotate(90deg)' }} />
                           </span>
                         </span>
                       </button>
                     </HoverTooltip>
-                    <span className="trigger-jIoLhZ">
-                      <button
-                        type="button"
-                        aria-label="任务树"
-                        className={`iconButton-abHesq tertiary-J9WelI default-yRVfZ2 taskIconBtn taskTreeBtn taskTreeBtnCode`}
-                        style={{ border: '0.5px solid var(--border-border-neutral-l3, rgba(115, 115, 115, 0.36))', backgroundColor: 'var(--bg-bg-base-default)' }}
-                        onClick={(e) => { e.stopPropagation(); closeMenu(); onToggleTree(t.id) }}
-                      >
-                        <span className="icon-V7eOa6">
-                          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Icon name="tree" size={14} />
-                          </span>
-                        </span>
-                      </button>
-                    </span>
                   </div>
+                  <span className={`taskTreeWrap${selected || menuOpen ? ' taskTreeWrapVisible' : ''}`}>
+                    <button
+                      type="button"
+                      aria-label="任务树"
+                      className="iconButton-abHesq tertiary-J9WelI default-yRVfZ2 taskIconBtn taskTreeBtn taskTreeBtnCode"
+                      style={{ border: '0.5px solid var(--border-border-neutral-l3, rgba(115, 115, 115, 0.36))', backgroundColor: 'var(--bg-bg-base-default)' }}
+                      onClick={(e) => { e.stopPropagation(); closeMenu(); onToggleTree(t.id) }}
+                    >
+                      <span className="icon-V7eOa6">
+                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Icon name="tree" size={14} />
+                        </span>
+                      </span>
+                    </button>
+                  </span>
                 </div>
               </div>
             </div>
@@ -936,6 +973,8 @@ function Sidebar({
   onPinTask, onRenameTask, onDeleteTask,
   activeNavItem, onNavigate,
   theme, onToggleTheme,
+  searchDocs = [],
+  hideSessions = false,
 }: {
   mode: ModeTabId
   onModeChange: (m: ModeTabId) => void
@@ -953,20 +992,39 @@ function Sidebar({
   onNavigate?: (id: string) => void
   theme: 'light' | 'dark'
   onToggleTheme: () => void
+  searchDocs?: { id: string; title: string; snippet: string }[]
+  hideSessions?: boolean
 }) {
+  const [pinnedOpen, setPinnedOpen] = useState(true)
+  const [listOpen, setListOpen] = useState(true)
+  const [viewMode, setViewMode] = useState<'list' | 'group'>('list')
+  const [groupOpen, setGroupOpen] = useState(true)
+  const [viewMenuOpen, setViewMenuOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [accountOpen, setAccountOpen] = useState(false)
+  const viewMenuRef = useRef<HTMLDivElement>(null)
+  const accountRef = useRef<HTMLDivElement>(null)
+  useDismiss(viewMenuOpen, () => setViewMenuOpen(false), viewMenuRef)
+  useDismiss(accountOpen, () => setAccountOpen(false), accountRef)
+  const pinnedItems = hideSessions ? [] : items.filter((item) => item.pinned)
+  const restItems = hideSessions ? [] : items.filter((item) => !item.pinned)
+  const nav = navItemsByMode[mode] || navItemsByMode.code
+  const q = searchQuery.trim()
+  const searchHits = !q ? searchDocs : searchDocs.filter((doc) => {
+    const hay = `${doc.title}\n${doc.snippet}`.toLowerCase()
+    return hay.includes(q.toLowerCase())
+  })
   return (
     <aside className={`sidebar-IlIa2h ${collapsed ? 'sidebarCollapsed-uQ9tUw' : ''}`} aria-label="Primary sidebar">
-      {/* Sidebar header: collapse + search */}
       <div className="header-WLyHO4">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
           <div style={{ display: 'inline-flex' }}>
             <IconBtn icon="view-left" label="收起侧边栏" title="收起侧边栏" onClick={onToggleCollapse} />
           </div>
-          <IconBtn icon="search" label="搜索" title="搜索" />
+          <IconBtn icon="search" label="搜索" title="搜索" onClick={() => setSearchOpen(true)} />
         </div>
-        <div className="headerRight-zKtKVX">
-          <IconBtn icon={theme === 'dark' ? 'theme-light' : 'theme-dark'} label="切换主题" title="切换主题" onClick={onToggleTheme} />
-        </div>
+        <div className="headerRight-zKtKVX" />
       </div>
 
       <div className="content-ltxS9m">
@@ -981,7 +1039,7 @@ function Sidebar({
 
         {/* Primary nav */}
         <div className="primarySection-RxL7j6">
-          {navItems.map((item) => (
+          {nav.map((item) => (
             <div
               key={item.id}
               className={`navItem-r4wswG${activeNavItem === item.id ? ' navItemActive-FMVRXn' : ''}`}
@@ -1008,25 +1066,29 @@ function Sidebar({
 
         {/* Task list */}
         <div className="projectsSection-NbGP3T">
-          <div className="projectsSectionInner-SNZ8_p">
+          <div className={`projectsSectionInner-SNZ8_p${expandedTreeId ? ' showFileTree-jePiGe' : ''}`}>
             <div className="projectsContent-JKZ_CZ">
-              <div className="projectsHeader-Zw_C6i">
-                <span className="projectsHeading-UVr4Aj">
-                  <span> 任务列表</span>
-                </span>
-                <div className="headerActions-cWB0ey">
-                  <span className="wrapper-RV5xqM">
-                    <IconBtn icon="filter" size="default" label="筛选" title="筛选" />
-                  </span>
-                </div>
-              </div>
-              <div className="taskListCollapsible-Pi1Ab7">
-                <div className="taskListCollapsibleInner-B5Kefm">
-                  <div className="scrollbarContainer-RAntmd projectsList-_cGMQr">
-                    <div className="shadowTop-ytqHYT" />
-                    <div className="scrollbarContent-qrtDFj scrollY-I6nZoQ projectsListContent-n9sJMQ">
+              {pinnedItems.length > 0 && (
+                <div className="pinnedSection pinnedSectionWrapper-Y0D1fl">
+                  <div
+                    className="pinnedSectionHeading"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setPinnedOpen((v) => !v)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPinnedOpen((v) => !v) } }}
+                  >
+                    <span className="pinnedSectionHeadingText">置顶</span>
+                    <span className="pinnedSectionCollapseIcon">
+                      <span data-testid="chat-icon-down" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Icon name="chevron-down" size={16} />
+                      </span>
+                    </span>
+                  </div>
+                  <div className={`pinnedSectionCollapsible${pinnedOpen ? ' pinnedSectionExpanded' : ''}`}>
+                    <div className="pinnedSectionCollapsibleInner">
                       <TaskList
-                        items={items}
+                        listClassName="pinnedSectionList"
+                        items={pinnedItems}
                         selectedId={selectedTask}
                         onSelect={onSelectTask}
                         expandedTreeId={expandedTreeId}
@@ -1036,28 +1098,171 @@ function Sidebar({
                         onDelete={onDeleteTask}
                       />
                     </div>
+                  </div>
+                </div>
+              )}
+              <div className="projectsHeader-Zw_C6i">
+                <span
+                  className={`projectsHeading-UVr4Aj${pinnedItems.length > 0 || restItems.length > 0 ? ' headingClickable-jMWykt' : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setListOpen((v) => !v)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setListOpen((v) => !v) } }}
+                >
+                  <span> 任务列表</span>
+                  {(pinnedItems.length > 0 || restItems.length > 0) && (
+                    <span className={`pinnedSectionCollapseIcon${listOpen ? '' : ' isCollapsed'}`}>
+                      <Icon name="chevron-down" size={16} />
+                    </span>
+                  )}
+                </span>
+                <div className="headerActions-cWB0ey" ref={viewMenuRef}>
+                  <HoverTooltip text="视图" disabled={viewMenuOpen}>
+                    <IconBtn
+                      icon="filter"
+                      size="default"
+                      label="视图"
+                      title="视图"
+                      onClick={() => setViewMenuOpen((v) => !v)}
+                    />
+                  </HoverTooltip>
+                  {viewMenuOpen && (
+                    <div className="popover-HaNsn7 portal-ThLRPV visible-Uwmjga viewMenuPopover" role="dialog">
+                      <div className="viewMenuLabel">视图</div>
+                      <button
+                        type="button"
+                        className={`headerViewMenu__item${viewMode === 'group' ? ' headerViewMenu__item--active' : ''}`}
+                        onClick={() => { setViewMode('group'); setViewMenuOpen(false); setGroupOpen(true) }}
+                      >
+                        <Icon name="tree" size={16} />
+                        <span>分组视图</span>
+                        {viewMode === 'group' && <span className="viewMenuCheck">✓</span>}
+                      </button>
+                      <button
+                        type="button"
+                        className={`headerViewMenu__item${viewMode === 'list' ? ' headerViewMenu__item--active' : ''}`}
+                        onClick={() => { setViewMode('list'); setViewMenuOpen(false) }}
+                      >
+                        <Icon name="filter" size={16} />
+                        <span>列表视图</span>
+                        {viewMode === 'list' && <span className="viewMenuCheck">✓</span>}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="taskListCollapsible-Pi1Ab7">
+                <div className="taskListCollapsibleInner-B5Kefm">
+                  <div className="scrollbarContainer-RAntmd projectsList-_cGMQr">
+                    <div className="shadowTop-ytqHYT" />
+                    <div className="scrollbarContent-qrtDFj scrollY-I6nZoQ projectsListContent-n9sJMQ">
+                      {hideSessions || (restItems.length === 0 && pinnedItems.length === 0) ? (
+                        <div className="taskListEmpty">
+                          <Icon name="chat" size={20} />
+                          <span>暂无任务</span>
+                        </div>
+                      ) : listOpen && viewMode === 'group' ? (
+                        <div className="repoGroup-WLCKPf">
+                          <div
+                            className="repoGroupHeader-koHGc6"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => setGroupOpen((v) => !v)}
+                          >
+                            <span className="icon-ot1yE3 default-n2KhWI repoGroupIconCloud-CWvMTN">
+                              <Icon name="cloud" size={14} />
+                            </span>
+                            <span className="repoGroupName-XgnRBs">默认</span>
+                          </div>
+                          {groupOpen && (
+                            <div className="repoGroupCollapsible-iarCwm repoGroupExpanded-kkme7z">
+                              <div className="repoGroupSessions-D58HUE">
+                                <TaskList
+                                  listClassName="pinnedSectionList"
+                                  items={restItems.map((item) => ({ ...item }))}
+                                  selectedId={selectedTask}
+                                  onSelect={onSelectTask}
+                                  expandedTreeId={expandedTreeId}
+                                  onToggleTree={onToggleTree}
+                                  onPin={onPinTask}
+                                  onRename={onRenameTask}
+                                  onDelete={onDeleteTask}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : listOpen ? (
+                        <TaskList
+                          items={restItems}
+                          selectedId={selectedTask}
+                          onSelect={onSelectTask}
+                          expandedTreeId={expandedTreeId}
+                          onToggleTree={onToggleTree}
+                          onPin={onPinTask}
+                          onRename={onRenameTask}
+                          onDelete={onDeleteTask}
+                        />
+                      ) : null}
+                    </div>
                     <div className="shadowBottom-RqEvWr" />
                   </div>
                 </div>
               </div>
-              {expandedTreeId && (
-                <TaskTreeView
-                  nodes={taskTree}
-                  selectedId={selectedTask}
-                  onSelect={onSelectTask}
-                />
-              )}
+            </div>
+            <div className="fileTreePane-trae">
+              <div className="fileTreeHeader-mzolDr">
+                <button
+                  type="button"
+                  className="backButton-I05EhZ"
+                  onClick={() => expandedTreeId && onToggleTree(expandedTreeId)}
+                >
+                  <span className="icon-ot1yE3 default-n2KhWI">
+                    <OfficialIcon svg={arrowLeftSvg} size={16} className="trae-icon-ArrowLeft" />
+                  </span>
+                  <span className="backText-h7H9t6">返回任务列表</span>
+                </button>
+                <div className="headerRight-WE7XKb">
+                  <div className="headerRightContainer-RfZbks">
+                    <button type="button" className="modeDropdownTrigger-fdfYvV" aria-haspopup="menu" aria-expanded="false">
+                      <OfficialIcon svg={treeSvg} size={16} className="trae-icon-tree" />
+                      <OfficialIcon svg={downSvg} size={16} className="trae-icon-Down modeDropdownArrow-maSp63" />
+                    </button>
+                    <div className="headerDivider-rQ8pED" />
+                    <button
+                      type="button"
+                      className="iconButton-abHesq secondary-KGAeS8 default-yRVfZ2 addButton-v7P7th"
+                      title="更多操作"
+                    >
+                      <span className="icon-V7eOa6">
+                        <OfficialIcon svg={moreActionSvg} size={16} className="trae-icon-more-action" />
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="emptyState-U4vZr4">
+                <div className="emptyStateInner-PPJcjY">
+                  <OfficialIcon svg={fileUploadSvg} size={24} className="trae-icon-file-upload emptyStateIcon-IhwRgG" />
+                  <div className="emptyStateText-c88itD">
+                    <pre>{`工作区为空
+点击上传或拖拽文件到面板`}</pre>
+                  </div>
+                  <button type="button" className="button-muTeiY secondary-J0eGRO default-siL9wr">
+                    <span className="label-RSUjZl">上传文件</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Sidebar footer: account */}
       <div className="footer-XkUaYe">
         <div className="footerContent-HUuOfB">
-          <div className="accountRoot-ZwG0Il accountVariantSidebar-zK2D0X">
+          <div className="accountRoot-ZwG0Il accountVariantSidebar-zK2D0X" ref={accountRef}>
             <span className="wrapper-RV5xqM">
-              <button type="button" className="accountTrigger-y5IeNi">
+              <button type="button" className="accountTrigger-y5IeNi" onClick={() => setAccountOpen((v) => !v)}>
                 <span className="accountTriggerAvatar-S_uGoG">
                   <span className="avatar-fallback">X</span>
                 </span>
@@ -1067,10 +1272,144 @@ function Sidebar({
                 </span>
               </button>
             </span>
+            <span className="downloadChip-trae footerDownloadChip">下载桌面端</span>
+            {accountOpen && (
+              <div className="popover-HaNsn7 portal-ThLRPV visible-Uwmjga accountPopover-FbNGEo" data-side="top" role="dialog">
+                <div className="content-NiU62c accountPopoverContent-LrhkkF">
+                  <div className="accountCard-nHQV96">
+                    <div className="accountHeader-qkAtYX">
+                      <div className="accountHeaderAvatar-exbsGo">
+                        <span className="avatar-fallback">X</span>
+                      </div>
+                      <div className="accountIdentity-s6_M5c">
+                        <div className="accountIdentityNameRow-CclHxH">
+                          <span className="accountIdentityName-czXO_D" title="Xike">Xike</span>
+                          <span className="accountHostTag-Hli3r_">Free</span>
+                        </div>
+                      </div>
+                    </div>
+                    <button type="button" className="accountUpgradeButton-Bwlmtr">升级会员</button>
+                    <div className="accountSections-bHnP71">
+                      <section className="accountSection-gqAsGh">
+                        <button type="button" className="accountMenuItem-NXEKcd">
+                          <span className="accountMenuIcon-mCju4M"><OfficialIcon svg={profileSvg} size={16} className="trae-icon-profile accountMenuIconSvg-Y56ze8" /></span>
+                          <span className="accountMenuLabel-VsH45r">管理账户</span>
+                          <OfficialIcon svg={rightSvg} size={14} className="trae-icon-Right accountMenuArrow-fbYuZj" />
+                        </button>
+                        <button type="button" className="accountMenuItem-NXEKcd">
+                          <span className="accountMenuIcon-mCju4M"><OfficialIcon svg={notificationSvg} size={16} className="trae-icon-Notification accountMenuIconSvg-Y56ze8" /></span>
+                          <span className="accountMenuLabel-VsH45r">消息</span>
+                        </button>
+                      </section>
+                      <section className="accountSection-gqAsGh">
+                        <button type="button" className="accountMenuItem-NXEKcd">
+                          <span className="accountMenuIcon-mCju4M"><OfficialIcon svg={domainSvg} size={16} className="trae-icon-domain accountMenuIconSvg-Y56ze8" /></span>
+                          <span className="accountMenuLabel-VsH45r">语言</span>
+                          <span className="accountMenuValue-iTOf2H">中文</span>
+                          <OfficialIcon svg={rightSvg} size={14} className="trae-icon-Right accountMenuArrow-fbYuZj" />
+                        </button>
+                        <button type="button" className="accountMenuItem-NXEKcd" onClick={onToggleTheme}>
+                          <span className="accountMenuIcon-mCju4M"><OfficialIcon svg={moonSvg} size={16} className="trae-icon-Moon accountMenuIconSvg-Y56ze8" /></span>
+                          <span className="accountMenuLabel-VsH45r">主题</span>
+                          <span className="accountMenuValue-iTOf2H">{theme === 'dark' ? '暗色' : '浅色'}</span>
+                          <OfficialIcon svg={rightSvg} size={14} className="trae-icon-Right accountMenuArrow-fbYuZj" />
+                        </button>
+                      </section>
+                      <section className="accountSection-gqAsGh">
+                        <button type="button" className="accountMenuItem-NXEKcd">
+                          <span className="accountMenuIcon-mCju4M"><OfficialIcon svg={settingsSvg} size={16} className="trae-icon-settings accountMenuIconSvg-Y56ze8" /></span>
+                          <span className="accountMenuLabel-VsH45r">设置</span>
+                        </button>
+                        <button type="button" className="accountMenuItem-NXEKcd">
+                          <span className="accountMenuIcon-mCju4M"><OfficialIcon svg={feedbackSvg} size={16} className="trae-icon-feedback accountMenuIconSvg-Y56ze8" /></span>
+                          <span className="accountMenuLabel-VsH45r">报告问题</span>
+                        </button>
+                        <button type="button" className="accountMenuItem-NXEKcd">
+                          <span className="accountMenuIcon-mCju4M"><OfficialIcon svg={downloadSvg} size={16} className="trae-icon-download accountMenuIconSvg-Y56ze8" /></span>
+                          <span className="accountMenuLabel-VsH45r">下载 TraeWork 桌面版</span>
+                        </button>
+                        <button type="button" className="accountMenuItem-NXEKcd">
+                          <span className="accountMenuIcon-mCju4M"><OfficialIcon svg={mobileSvg} size={16} className="trae-icon-mobile accountMenuIconSvg-Y56ze8" /></span>
+                          <span className="accountMenuLabel-VsH45r">下载 TRAE 移动端</span>
+                          <OfficialIcon svg={rightSvg} size={14} className="trae-icon-Right accountMenuArrow-fbYuZj" />
+                        </button>
+                      </section>
+                    </div>
+                    <button type="button" className="accountLogoutButton-MqoPgT"><span>退出登录</span></button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
+      {searchOpen && (
+        <div className="searchModalMask" onClick={() => setSearchOpen(false)}>
+          <div className="dialog-W20BR0 modal-E7v43t searchDialog" role="dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="searchDialogHead">
+              <Icon name="search" size={16} />
+              <input
+                className="searchInput-B4HMSr"
+                placeholder="搜索任务名称及内容"
+                value={searchQuery}
+                autoFocus
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Escape') setSearchOpen(false) }}
+              />
+              {q && (
+                <button type="button" className="searchClearBtn" aria-label="清除" onClick={() => setSearchQuery('')}>×</button>
+              )}
+            </div>
+            <div className="searchDialogBody">
+              {searchHits.length === 0 ? (
+                <div className="searchEmpty">
+                  <Icon name="search" size={20} />
+                  <div>无匹配结果</div>
+                  <div className="searchEmptyHint">试试其他关键词，或清除搜索内容</div>
+                </div>
+              ) : searchHits.map((hit) => {
+                const snippet = q && hit.snippet ? hit.snippet : ''
+                return (
+                  <button
+                    key={hit.id}
+                    type="button"
+                    className="searchHitRow"
+                    onClick={() => { setSearchOpen(false); onSelectTask(hit.id) }}
+                  >
+                    <Icon name="code" size={16} />
+                    <span className="searchHitMain">
+                      <span className="searchHitTitle">{hit.title}</span>
+                      {snippet && (
+                        <span className="searchHitSnippet">{highlightQuery(snippet, q)}</span>
+                      )}
+                    </span>
+                    <span className="searchHitBadge">Default</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
+  )
+}
+
+function highlightQuery(text: string, query: string) {
+  if (!query) return text
+  const idx = text.toLowerCase().indexOf(query.toLowerCase())
+  if (idx < 0) return text.slice(0, 80)
+  const start = Math.max(0, idx - 12)
+  const end = Math.min(text.length, idx + query.length + 36)
+  const before = text.slice(start, idx)
+  const match = text.slice(idx, idx + query.length)
+  const after = text.slice(idx + query.length, end)
+  return (
+    <>
+      {start > 0 ? '…' : ''}{before}
+      <mark className="searchHitMark">{match}</mark>
+      {after}
+    </>
   )
 }
 
@@ -1080,28 +1419,7 @@ function Sidebar({
 function renderBlock(block: MessageBlock, idx: number) {
   switch (block.type) {
     case 'text':
-      return (
-        <div key={idx} style={{ whiteSpace: 'pre-wrap' }}>
-          {block.content.split('\n\n').map((p, i) => {
-            const parts: React.ReactNode[] = []
-            const regex = /(\*\*[^*]+\*\*|`[^`]+`)/g
-            let last = 0; let m: RegExpExecArray | null
-            let j = 0
-            while ((m = regex.exec(p)) !== null) {
-              if (m.index > last) parts.push(p.slice(last, m.index))
-              const raw = m[0]
-              if (raw.startsWith('**')) {
-                parts.push(<strong key={j++}>{raw.slice(2, -2)}</strong>)
-              } else {
-                parts.push(<code key={j++}>{raw.slice(1, -1)}</code>)
-              }
-              last = m.index + raw.length
-            }
-            if (last < p.length) parts.push(p.slice(last))
-            return <p key={i} className="markdown-p">{parts.length ? parts : p}</p>
-          })}
-        </div>
-      )
+      return <AssistantMarkdown key={idx} content={block.content} />
     case 'code':
       return (
         <pre key={idx}><code className={`lang-${block.lang || 'text'}`}>{block.content}</code></pre>
@@ -1344,9 +1662,9 @@ function ConversationView({ messages }: { messages: ChatMessage[]; streaming?: b
    Composer – chat-input-v2
    ============================================================= */
 const PLACEHOLDER_BY_MODE: Record<ModeTabId, string> = {
-  work: '围绕你的资料开始学习，DeepTutor 会决定下一步。',
+  work: '帮你整理论文综述、编写 PPT、分析 Excel 等日常工作，输出专业级工作成果。',
   code: '围绕你的资料开始学习，DeepTutor 会决定下一步。',
-  design: '围绕你的资料开始学习，DeepTutor 会决定下一步。',
+  design: '从想法到设计，生成可交付的页面原型',
 }
 
 const EMPTY_EDITOR_HTML = '<p class="chat-input-v2__paragraph" dir="auto"><br></p>'
@@ -1739,6 +2057,27 @@ function Composer({
                         </div>
                       </div>
                     )}
+                    {plusOpen && plusHover === '插件' && (
+                      <div className="cascadeMenu-vEfgk4 plusPluginFlyout" role="menu" style={{ top: plusPos.top, left: plusPos.left + 188 }}>
+                        <div className="cascadeMenuContent-tUO2DP">
+                          <div className="availablePluginsHeader-P_cU8B">可用插件</div>
+                          {tools.slice(0, 4).map((tool) => (
+                            <button key={tool.name} type="button" className="cascadeMenuItem-MYlrAy" onClick={() => { onToggleTool?.(tool.name); closePlus() }}>
+                              <span className="cascadeMenuItemInner-K6B214">
+                                <span className="cascadeMenuItemContent-edbTCu"><span className="cascadeMenuItemTitle-k1Reti">{tool.label}</span></span>
+                              </span>
+                            </button>
+                          ))}
+                          <div className="cascadeMenuDivider-hnyI7h" />
+                          <button type="button" className="cascadeMenuItem-MYlrAy" onClick={closePlus}>
+                            <span className="cascadeMenuItemInner-K6B214"><span className="cascadeMenuItemTitle-k1Reti">管理插件</span></span>
+                          </button>
+                          <button type="button" className="cascadeMenuItem-MYlrAy" onClick={closePlus}>
+                            <span className="cascadeMenuItemInner-K6B214"><span className="cascadeMenuItemTitle-k1Reti">探索更多插件</span></span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </span>
                   <span ref={pluginMenuRef} className="trigger-jIoLhZ" style={{ position: 'relative' }}>
                     <HoverTooltip text="调用插件" disabled={toolsOpen}>
@@ -1918,11 +2257,7 @@ function Composer({
   return (
     <>
       <div className="channelContainer-m36aPB sessionToastContainer-hJoxUa" />
-      <div style={{ display: 'contents' }}>
-        <div style={{ display: 'contents' }}>
-          {editor}
-        </div>
-      </div>
+      {editor}
     </>
   )
 }
@@ -2067,10 +2402,8 @@ function RightPanel({
                                     <Icon name="task" size={16} />
                                   </div>
                                   <div className="context-status_empty-state-content">
-                                    <div className="context-status_empty-state-title">{session?.label || '暂无待办'}</div>
-                                    <div className="context-status_empty-state-description">
-                                      {session?.status ? `状态：${session.status}` : '复杂任务的进展会显示在这里'}
-                                    </div>
+                                    <div className="context-status_empty-state-title">暂无待办</div>
+                                    <div className="context-status_empty-state-description">复杂任务的进展会显示在这里</div>
                                     {attachments.length > 0 && (
                                       <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-text-secondary)' }}>
                                         附件：{attachments.join('、')}
@@ -2130,7 +2463,7 @@ function RightPanel({
                                       </div>
                                       <div className="context-status_empty-state-content">
                                         <div className="context-status_empty-state-title">暂未使用上下文</div>
-                                        <div className="context-status_empty-state-description">追踪 Askora 工作时使用的工具和文件</div>
+                                        <div className="context-status_empty-state-description">追踪 TraeWork 工作时使用的工具和文件</div>
                                       </div>
                                     </div>
                                   </div>
@@ -2209,6 +2542,28 @@ function readStrLs(key: string, fallback: string): string {
   try { return localStorage.getItem(key) ?? fallback } catch { return fallback }
 }
 
+function useVirtuosoParentHeight() {
+  const ref = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const el = ref.current
+    const parent = el?.parentElement
+    if (!el || !parent) return
+    const apply = () => {
+      const h = Math.round(parent.getBoundingClientRect().height)
+      if (h > 0) el.style.height = `${h}px`
+    }
+    apply()
+    const ro = new ResizeObserver(apply)
+    ro.observe(parent)
+    window.addEventListener('resize', apply)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', apply)
+    }
+  })
+  return ref
+}
+
 export default function App() {
   // --- Theme ---
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -2248,6 +2603,7 @@ export default function App() {
   const [mode, setMode] = useState<ModeTabId>('code')
   const [sessions, setSessions] = useState<ChassisSession[]>(() => readSessions())
   const [expandedTreeId, setExpandedTreeId] = useState<string | null>(null)
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
   const [capability, setCapability] = useState('chat')
   const [tools, setTools] = useState<ToolItem[]>([])
   const [selectedTools, setSelectedTools] = useState<string[]>([])
@@ -2260,7 +2616,7 @@ export default function App() {
     if (typeof window !== 'undefined' && window.location.hash) return initialHash.view
     try {
       const saved = sessionStorage.getItem('trae:view') as ViewId | null
-      if (saved && ['chat', 'new-task', 'automation', 'marketplace'].includes(saved)) return saved
+      if (saved && ['chat', 'new-task', 'automation', 'marketplace', 'my-files', 'design-system'].includes(saved)) return saved
     } catch { /* ignore */ }
     return 'chat'
   })
@@ -2631,6 +2987,8 @@ export default function App() {
     return () => { ro.disconnect(); window.removeEventListener('resize', measure); clearInterval(t) }
   }, [debug, sidebarOpen, statusOpen])
 
+  const virtuosoRef = useVirtuosoParentHeight()
+
   const layoutClasses = ['layout-kZA4Q1']
   if (!sidebarOpen) layoutClasses.push('layoutCollapsed-_ACuDn')
 
@@ -2651,7 +3009,13 @@ export default function App() {
           >
             <Sidebar
               mode={mode}
-              onModeChange={setMode}
+              onModeChange={(next) => {
+                setMode(next)
+                if (next === 'work' || next === 'design') {
+                  setSelectedTask('')
+                  setView('new-task')
+                }
+              }}
               collapsed={!sidebarOpen}
               onToggleCollapse={() => setSidebarOpen((s) => !s)}
               items={taskItems}
@@ -2662,14 +3026,22 @@ export default function App() {
               onPinTask={handlePinTask}
               onRenameTask={handleRenameTask}
               onDeleteTask={handleDeleteTask}
-              activeNavItem={view === 'new-task' ? 'create-task' : view === 'marketplace' ? 'plugin' : view === 'automation' ? 'automation' : undefined}
+              activeNavItem={view === 'new-task' ? 'create-task' : view === 'marketplace' ? 'plugin' : view === 'automation' ? 'automation' : view === 'my-files' ? 'my-files' : view === 'design-system' ? 'design-system' : undefined}
               onNavigate={(id) => {
                 if (id === 'create-task') openNewConversation()
                 else if (id === 'plugin') setView('marketplace')
                 else if (id === 'automation') setView('automation')
+                else if (id === 'my-files') setView('my-files')
+                else if (id === 'design-system') setView('design-system')
               }}
               theme={theme}
               onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+              hideSessions={mode !== 'code'}
+              searchDocs={sessions.map((s) => ({
+                id: s.id,
+                title: s.label,
+                snippet: (s.messages || []).map((m) => m.blocks?.map((b) => b.content).join(' ') || '').join(' '),
+              }))}
             />
           </div>
 
@@ -2687,7 +3059,7 @@ export default function App() {
         >
           {view === 'chat' && (
             <>
-              <div className="contentWrapper-U1GjQr" style={{ minWidth: '392px', left: '852px', bottom: '8px' }}>
+              <div className="contentWrapper-U1GjQr" style={{ minWidth: '392px' }}>
                 <div className="selectionTopBarSlot-ZSaIcZ" />
                 <header className="header-fId8VF">
                   {!sidebarOpen && (
@@ -2712,16 +3084,38 @@ export default function App() {
                           </div>
                         </div>
                       </span>
-                      <div className="moreBtn-h2uOKe">
+                      <div
+                        className="moreBtn-h2uOKe"
+                        role="button"
+                        tabIndex={0}
+                        aria-label="更多"
+                        onClick={() => setHeaderMenuOpen((v) => !v)}
+                      >
                         <Icon name="more-action" size={16} />
+                        {headerMenuOpen && selectedSession && (
+                          <div className="taskMenu headerTaskMenu" role="menu">
+                            <button type="button" className="taskMenuItem" onClick={() => { handlePinTask(selectedSession.id); setHeaderMenuOpen(false) }}>
+                              <Icon name="pin-line" size={16} className="taskMenuIcon" />
+                              <span>{selectedSession.pinned ? '取消置顶' : '置顶任务'}</span>
+                            </button>
+                            <button type="button" className="taskMenuItem" onClick={() => setHeaderMenuOpen(false)}>
+                              <Icon name="edit" size={16} className="taskMenuIcon" />
+                              <span>重命名</span>
+                            </button>
+                            <button type="button" className="taskMenuItem taskMenuItemDelete" onClick={() => { handleDeleteTask(selectedSession.id); setHeaderMenuOpen(false) }}>
+                              <Icon name="delete" size={16} className="taskMenuIconDelete" />
+                              <span>删除</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
                   <div className="headerRight-A9O9pk">
                     <IconBtn
                       icon={statusOpen ? 'pin-line' : 'right-off'}
-                      label={statusOpen ? '收起右栏' : '展开右栏'}
-                      title="右栏"
+                      label={statusOpen ? '隐藏工具面板' : '展开面板'}
+                      tooltip={statusOpen ? '隐藏工具面板 ⌘⌃B' : '展开面板 ⌘⌃B'}
                       onClick={() => setStatusOpen((s) => !s)}
                       style={statusOpen ? { background: 'var(--bg-bg-overlay-l1)', color: 'var(--icon-icon-default)' } : undefined}
                     />
@@ -2737,7 +3131,7 @@ export default function App() {
                             <div className="virtualized-message-list-view">
                               <div className="virtualized-message-list-view__content">
                                 <div className="virtualized-message-list-view__scroller virtualized-message-list-view__scroller--hide-scrollbar">
-                                  <div className="virtualized-message-list-view__virtuoso" style={{ position: 'relative', height: '269px' }}>
+                                  <div ref={virtuosoRef} className="virtualized-message-list-view__virtuoso" style={{ position: 'relative' }}>
                                     <ConversationView messages={messages} streaming={streaming} />
                                     <div ref={chatEndRef} />
                                   </div>
@@ -2798,8 +3192,8 @@ export default function App() {
 
           {view === 'new-task' && (
             <div className="contentWrapper-U1GjQr">
-              <NewTaskPage
-                composer={
+              {(() => {
+                const homeComposer = (
                   <Composer
                     value={composerText}
                     onChange={setDraft}
@@ -2820,10 +3214,16 @@ export default function App() {
                     streaming={streaming}
                     onCancel={handleCancel}
                   />
-                }
-              />
+                )
+                if (mode === 'work') return <WorkHomePage composer={homeComposer} />
+                if (mode === 'design') return <DesignHomePage composer={homeComposer} />
+                return <NewTaskPage composer={homeComposer} />
+              })()}
             </div>
           )}
+
+          {view === 'my-files' && <ModeShellPage title="我的文件" />}
+          {view === 'design-system' && <ModeShellPage title="设计系统" />}
 
           {view === 'automation' && (
             <div className="contentWrapper-U1GjQr">

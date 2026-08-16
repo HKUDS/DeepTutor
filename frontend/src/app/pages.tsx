@@ -80,6 +80,142 @@ export function NewTaskPage({ composer }: { composer: React.ReactNode }) {
   )
 }
 
+const WORK_PPT_SUB = ['经验分享', '活动复盘', '商业计划'] as const
+
+export function WorkHomePage({ composer }: { composer: React.ReactNode }) {
+  const [pptOpen, setPptOpen] = useState(false)
+  return (
+    <>
+      <header className="header-x7rPuS">
+        <div className="headerCenter-cba9zB" />
+        <div className="headerRight-QHfr9M">
+          <span className="downloadChip-trae">下载桌面端</span>
+        </div>
+      </header>
+      <div className="workspace-sBvxKr" style={{ ['--input-center-offset' as any]: '331px' }}>
+        <div className="welcomeTitleWrapper-WfrDR6">
+          <div className="traeWorkTitle-NJggA3">
+            <div className="animationContainer-umIyNq" style={{ opacity: 1 }}>
+              <div className="mainTextContainer-pXscK4">
+                <span className="icon-rzUsCL" style={{ opacity: 1 }}>
+                  <PageIcon name="plugin" size={36} />
+                </span>
+                <span className="titleText-H3MNV2 codeText-Lcyw9U" style={{ opacity: 1, transform: 'translateX(5px)' }}>Work</span>
+                <span className="withTraeText-dLQCwg" style={{ width: 'auto', opacity: 1 }}>
+                  <span className="withTraeInner-hAXYMl">with TRAE</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="homeMessageInput-bhe4cx">{composer}</div>
+        <div className="showcaseWrapper-kvK9FF" style={{ opacity: 1, transform: 'none' }}>
+          <div className="showcaseSection-pTXHyZ">
+            <div className="chipContainer-Wo8qmB">
+              <div
+                className="chip-Fx63TH"
+                onMouseEnter={() => setPptOpen(true)}
+              >
+                <span className="chipIcon-AN8sSU"><PageIcon name="showcase_app" size={16} /></span>
+                <span className="chipText-YMz4j8">生成 PPT</span>
+              </div>
+              <div className="chip-Fx63TH">
+                <span className="chipIcon-AN8sSU"><PageIcon name="showcase_project" size={16} /></span>
+                <span className="chipText-YMz4j8">数据分析</span>
+              </div>
+              <div className="chip-Fx63TH">
+                <span className="chipIcon-AN8sSU"><PageIcon name="showcase_tools" size={16} /></span>
+                <span className="chipText-YMz4j8">深度研究</span>
+              </div>
+              <div className="chip-Fx63TH">
+                <span className="chipIcon-AN8sSU"><PageIcon name="showcase_game" size={16} /></span>
+                <span className="chipText-YMz4j8">生成文档</span>
+              </div>
+            </div>
+            {pptOpen && (
+              <div className="workChipSubRow">
+                <span className="workChipSubTitle">生成 PPT</span>
+                <button type="button" className="workChipSubClose" aria-label="关闭" onClick={() => setPptOpen(false)}>×</button>
+                <div className="workChipSubItems">
+                  {WORK_PPT_SUB.map((label) => (
+                    <span key={label} className="workChipSubItem">{label}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+const DESIGN_CARDS = [
+  { title: '设计还原', desc: '设计还原：上传 UI 参考截图，还原同款电商详情页' },
+  { title: '概念成稿', desc: '概念成稿：一句话描述想法，直出完整小程序原型' },
+  { title: '规范出图', desc: '规范出图：对齐设计规范，产出高保真 SaaS 系统' },
+] as const
+
+export function DesignHomePage({ composer }: { composer: React.ReactNode }) {
+  return (
+    <>
+      <header className="header-x7rPuS">
+        <div className="headerCenter-cba9zB" />
+        <div className="headerRight-QHfr9M">
+          <span className="downloadChip-trae">下载桌面端</span>
+        </div>
+      </header>
+      <div className="workspace-sBvxKr" style={{ ['--input-center-offset' as any]: '331px' }}>
+        <div className="welcomeTitleWrapper-WfrDR6">
+          <div className="traeWorkTitle-NJggA3">
+            <div className="animationContainer-umIyNq" style={{ opacity: 1 }}>
+              <div className="mainTextContainer-pXscK4">
+                <span className="icon-rzUsCL" style={{ opacity: 1 }}>
+                  <PageIcon name="plugin" size={36} />
+                </span>
+                <span className="titleText-H3MNV2 codeText-Lcyw9U" style={{ opacity: 1, transform: 'translateX(5px)' }}>Design</span>
+                <span className="withTraeText-dLQCwg" style={{ width: 'auto', opacity: 1 }}>
+                  <span className="withTraeInner-hAXYMl">with TRAE</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="homeMessageInput-bhe4cx">{composer}</div>
+        <div className="showcaseWrapper-kvK9FF" style={{ opacity: 1 }}>
+          <div className="designCardRow">
+            {DESIGN_CARDS.map((card) => (
+              <div key={card.title} className="designCard">
+                <div className="designCardPreview" aria-hidden />
+                <div className="designCardTitle">{card.title}</div>
+                <div className="designCardDesc">{card.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+export function ModeShellPage({ title }: { title: string }) {
+  return (
+    <div className="contentWrapper-U1GjQr">
+      <header className="header-x7rPuS">
+        <div className="headerCenter-cba9zB" />
+        <div className="headerRight-QHfr9M" />
+      </header>
+      <div className="workspace-sBvxKr">
+        <div className="welcomeTitleWrapper-WfrDR6">
+          <div className="traeWorkTitle-NJggA3">
+            <span className="titleText-H3MNV2">{title}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ============ Automation Page ============ */
 
 const AutomationIcon: React.FC<{ iconKey: string }> = ({ iconKey }) => {
@@ -859,7 +995,7 @@ export function WorkspacePage() {
                   <div className="virtualized-message-list-view">
                     <div className="virtualized-message-list-view__content">
                       <div className="virtualized-message-list-view__scroller virtualized-message-list-view__scroller--hide-scrollbar">
-                        <div className="virtualized-message-list-view__virtuoso" style={{ position: 'relative', height: '269px' }}>
+                        <div className="virtualized-message-list-view__virtuoso" style={{ position: 'relative' }}>
                           <div className="turn turn--last" data-turn-id="m-2">
                             <div className="turn__agent-row">
                               <div className="turn__agent-message" data-role="assistant">
