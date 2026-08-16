@@ -13,13 +13,13 @@ from rich.panel import Panel
 from rich.text import Text
 
 from deeptutor.__version__ import __version__
+from deeptutor.brand import PRODUCT_NAME
 
-_ASCII_LOGO = r""" ____                  _____      _
-|  _ \  ___  ___ _ __ |_   _|   _| |_ ___  _ __
-| | | |/ _ \/ _ \ '_ \  | || | | | __/ _ \| '__|
-| |_| |  __/  __/ |_) | | || |_| | || (_) | |
-|____/ \___|\___| .__/  |_| \__,_|\__\___/|_|
-                |_|"""
+_ASCII_LOGO = r""" _     _   _ __  __ _____ _   _
+| |   | | | |  \/  | ____| \ | |
+| |   | | | | |\/| |  _| |  \| |
+| |___| |_| | |  | | |___| |\  |
+|_____|\___/|_|  |_|_____|_| \_|"""
 
 
 LABELS: dict[str, dict[str, str]] = {
@@ -85,7 +85,7 @@ LABELS: dict[str, dict[str, str]] = {
         "init.review_ports_value": "backend {backend}, frontend {frontend}",
         "init.confirm_save": "Save these settings?",
         "init.saved": "Settings saved. You can edit them later in the Web Settings page or data/user/settings/.",
-        "init.next_step": "Run `deeptutor start` to launch DeepTutor.",
+        "init.next_step": f"Run `deeptutor start` to launch {PRODUCT_NAME}.",
         "init.choice": "Choice",
         "init.choice_invalid": "Invalid choice. Try again.",
         # start (launcher)
@@ -114,7 +114,7 @@ LABELS: dict[str, dict[str, str]] = {
         "start.exited": "{name} exited with code {code}",
         "start.not_ready": "{name} did not become ready within {timeout}s",
         "start.port_in_use": (
-            "DeepTutor cannot start because port(s) already in use: {ports}. "
+            f"{PRODUCT_NAME} cannot start because port(s) already in use: {{ports}}. "
             "Stop the existing process or change data/user/settings/system.json."
         ),
         "start.port_conflict_title": "Port conflict detected:",
@@ -191,7 +191,7 @@ LABELS: dict[str, dict[str, str]] = {
         "init.review_ports_value": "后端 {backend},前端 {frontend}",
         "init.confirm_save": "确认保存以上配置?",
         "init.saved": "配置已保存。后续可在 Web 设置页或 data/user/settings/ 中修改。",
-        "init.next_step": "运行 `deeptutor start` 启动 DeepTutor。",
+        "init.next_step": f"运行 `deeptutor start` 启动 {PRODUCT_NAME}。",
         "init.choice": "请选择",
         "init.choice_invalid": "无效选项,请重新输入。",
         # start (launcher)
@@ -218,7 +218,7 @@ LABELS: dict[str, dict[str, str]] = {
         "start.exited": "{name} 已退出 (退出码 {code})",
         "start.not_ready": "{name} 在 {timeout} 秒内未就绪",
         "start.port_in_use": (
-            "无法启动 DeepTutor,端口已被占用: {ports}。"
+            f"无法启动 {PRODUCT_NAME},端口已被占用: {{ports}}。"
             "请先停止占用进程,或修改 data/user/settings/system.json 中的端口设置。"
         ),
         "start.port_conflict_title": "检测到端口被占用:",
@@ -293,7 +293,7 @@ def render_banner(language: str | None, *, mode_key: str | None = None) -> Panel
 
     return Panel(
         Align.left(body),
-        title="[bold bright_cyan]DeepTutor[/]",
+        title=f"[bold bright_cyan]{PRODUCT_NAME}[/]",
         border_style="bright_cyan",
         padding=(1, 2),
     )

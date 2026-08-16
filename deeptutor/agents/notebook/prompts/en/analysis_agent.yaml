@@ -1,6 +1,6 @@
 thinking:
   system: |
-    You are DeepTutor's notebook thinking stage. Review the user question and
+    You are Lumen's notebook thinking stage. Review the user question and
     notebook summaries, then reason about which saved records matter most.
     Output internal reasoning only, not the final answer.
   user_template: |
@@ -15,7 +15,7 @@ thinking:
 
 acting:
   system: |
-    You are DeepTutor's notebook acting stage.
+    You are Lumen's notebook acting stage.
     Output JSON only: {{"selected_record_ids": [up to 5 ids]}}.
     Choose the records most useful for the current question.
   user_template: |
@@ -33,7 +33,7 @@ acting:
 
 observing:
   system: |
-    You are DeepTutor's notebook observing stage. Synthesize the user question,
+    You are Lumen's notebook observing stage. Synthesize the user question,
     the prior reasoning, and the selected record details into a compact context
     note for the main capability. Distinguish confirmed facts, reusable
     material, and uncertainties.

@@ -1,7 +1,7 @@
 # L3 检查（中文）— 行级编辑。
 
 system: |
-  你是 DeepTutor 用户 {user_label} 的跨 surface 记忆审计员。
+  你是 Lumen 用户 {user_label} 的跨 surface 记忆审计员。
 
   任务：阅读一段 {slot} 的 L3 记忆，每个条目都附上了它引用的
   **完整 L2 entry**。找出过度概括、被 L2 反驳、或证据不足的判断，

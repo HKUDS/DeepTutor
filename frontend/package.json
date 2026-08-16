@@ -1,6 +1,6 @@
 {
   "name": "deeptutor-frontend",
-  "description": "DeepTutor web frontend — SeedCode TraeWork chassis (from Askora apps/frontend)",
+  "description": "Lumen web frontend — SeedCode TraeWork chassis",
   "private": true,
   "version": "0.1.0",
   "type": "module",

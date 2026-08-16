@@ -18,6 +18,7 @@ import uuid
 import json_repair
 from openai import AsyncOpenAI
 
+from deeptutor.brand import PRODUCT_NAME
 from deeptutor.services.llm.capabilities import disable_response_format_at_runtime
 from deeptutor.services.llm.openai_http_client import openai_client_kwargs
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, ToolCallRequest
@@ -50,7 +51,7 @@ _ALNUM = string.ascii_letters + string.digits
 
 _DEFAULT_OPENROUTER_HEADERS = {
     "HTTP-Referer": "https://github.com/HKUDS/DeepTutor",
-    "X-OpenRouter-Title": "DeepTutor",
+    "X-OpenRouter-Title": PRODUCT_NAME,
 }
 _RESPONSES_FAILURE_THRESHOLD = 2
 _RESPONSES_PROBE_INTERVAL_S = 300.0

@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "deeptutor"
 dynamic = ["version"]
-description = "An agent-native intelligent learning companion with multi-agent collaboration and RAG"
+description = "Lumen — an agent-native intelligent learning companion with multi-agent collaboration and RAG"
 # Capped below 3.14 on purpose (issue #664): on 3.14 pip can't find wheels for
 # some compiled base deps (e.g. faiss-cpu) and silently backtracks into a
 # doomed source build that dies with "subprocess-exited-with-error". The heavy

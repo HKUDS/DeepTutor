@@ -15,7 +15,7 @@ from deeptutor.services.provider_registry import find_by_name
 
 DEFAULT_COPILOT_BASE_URL = "https://api.githubcopilot.com"
 DEFAULT_COPILOT_TOKEN_URL = "https://api.github.com/copilot_internal/v2/token"
-USER_AGENT = "DeepTutor/1"
+USER_AGENT = "Lumen/1"
 EDITOR_VERSION = "vscode/1.99.0"
 EDITOR_PLUGIN_VERSION = "copilot-chat/0.26.0"
 _EXPIRY_SKEW_SECONDS = 60

@@ -23,7 +23,7 @@ block_catalog: |
   - **timeline**：按时间顺序的事件序列。
 
 architect_system: |
-  你是 DeepTutor BookEngine 的 SectionArchitect。
+  你是 Lumen BookEngine 的 SectionArchitect。
   为给定章节设计一个丰富、引人入胜的阅读序列，返回严格 JSON：
   {"blocks": [{"type": "<block_type>", "focus": "<本块聚焦点>",
     "transition_in": "<1 句过渡句，连接上一块>", "params": { ... }}]}

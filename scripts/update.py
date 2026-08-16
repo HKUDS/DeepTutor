@@ -397,13 +397,13 @@ def run_update(repo_root: Path, *, assume_yes: bool) -> int:
         print(f"Changed files: {len(changed_files)}")
     for hint in dependency_hints(changed_files):
         print(f"Next step: {hint}")
-    print("Restart DeepTutor if it is currently running.")
+    print("Restart Lumen if it is currently running.")
     return 0
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Fetch, review, and fast-forward update a local DeepTutor checkout."
+        description="Fetch, review, and fast-forward update a local Lumen checkout."
     )
     parser.add_argument(
         "--yes",
@@ -415,7 +415,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--repo",
         type=Path,
         default=PROJECT_ROOT,
-        help="Path to the git checkout to update. Defaults to this DeepTutor repository.",
+        help="Path to the git checkout to update. Defaults to this Lumen repository.",
     )
     return parser.parse_args(argv)
 

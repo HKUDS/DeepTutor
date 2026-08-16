@@ -1,6 +1,6 @@
 # deeptutor-cli
 
-CLI-only DeepTutor distribution. It installs the `deeptutor` command and the
+CLI-only Lumen distribution. It installs the `deeptutor` command and the
 Python modules required for terminal workflows, RAG, document parsing, and model
 provider integrations, but it does not ship the packaged Next.js Web assets or
 FastAPI/Uvicorn server dependencies used by `deeptutor start`.

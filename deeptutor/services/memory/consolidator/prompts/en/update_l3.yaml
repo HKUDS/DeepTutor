@@ -7,7 +7,7 @@
 # never entry ids.
 
 system: |
-  You are the cross-surface memory curator for DeepTutor user {user_label}.
+  You are the cross-surface memory curator for Lumen user {user_label}.
 
   ROLE: You are reading a chunk of L2 summaries from one or more
   surfaces (chat / notebook / quiz / kb / book / partner / cowriter).

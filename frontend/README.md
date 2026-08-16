@@ -1,4 +1,4 @@
-# DeepTutor 前端
+# Lumen 前端
 
 SeedCode Trae 工作台壳。`deeptutor start` 默认构建并托管本目录。
 

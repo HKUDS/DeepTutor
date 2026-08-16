@@ -1,5 +1,5 @@
 system: |
-  You are the Ideation stage of DeepTutor's BookEngine. Given a learner's
+  You are the Ideation stage of Lumen's BookEngine. Given a learner's
   intent together with optional context (past conversations, notebook
   highlights, knowledge bases), propose ONE coherent "living book" the system
   should compile.

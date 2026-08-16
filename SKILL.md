@@ -1,23 +1,23 @@
-# DeepTutor CLI Skill
+# Lumen CLI Skill
 
-> Teach your AI agent to configure, manage, and use DeepTutor — an intelligent learning platform — entirely through the command line.
+> Teach your AI agent to configure, manage, and use Lumen — an intelligent learning platform — entirely through the command line.
 
 ## When to Use
 
 Use this skill when the user wants to:
-- Set up or configure DeepTutor
-- Chat with DeepTutor or run a capability (deep solve, quiz generation, deep research, visualize, math animation, mastery path)
+- Set up or configure Lumen
+- Chat with Lumen or run a capability (deep solve, quiz generation, deep research, visualize, math animation, mastery path)
 - Create, manage, or search knowledge bases
 - Create, manage, or run Partners (IM-connected companions)
 - Search, install, or manage skills from a hub (ClawHub)
 - Inspect or maintain interactive Books
 - View or manage learning memory, sessions, or notebooks
-- Start the DeepTutor API server or the full Web app
+- Start the Lumen API server or the full Web app
 
 ## Prerequisites
 
 - Python 3.11+
-- DeepTutor installed: `pip install deeptutor` for the full Web app, `pip install deeptutor-cli` for CLI-only, or `pip install -e .` from a source checkout
+- Lumen installed: `pip install deeptutor` for the full Web app, `pip install deeptutor-cli` for CLI-only, or `pip install -e .` from a source checkout
 - Run `deeptutor init` for first-time interactive setup. It walks a guided wizard (ports → LLM → embedding → search → review) and writes the same settings as the Web Settings page under `data/user/settings`. Add `--cli` to skip the ports step for CLI-only use, or `--home <path>` to target a specific workspace.
 
 ## Commands

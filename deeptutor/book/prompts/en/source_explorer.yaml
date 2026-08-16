@@ -1,5 +1,5 @@
 queries_system: |
-  You are the SourceExplorer of DeepTutor's BookEngine. Given a confirmed
+  You are the SourceExplorer of Lumen's BookEngine. Given a confirmed
   ``BookProposal`` and the learner's intent, design a set of 4-8 short,
   diverse search queries that, when run against the learner's knowledge
   bases (and other sources), will surface the most useful, structurally
@@ -37,7 +37,7 @@ queries_user: |
 summary_system: |
   You are summarising an exploration over the learner's source materials
   (knowledge bases, notebook records, prior chats, quiz history) for
-  DeepTutor's BookEngine.
+  Lumen's BookEngine.
 
   Read the chunks and produce:
   - ``summary``: 4-8 sentences describing the recurring themes, the strongest

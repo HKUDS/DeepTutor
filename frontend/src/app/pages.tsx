@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import ReactDOM from 'react-dom'
+import { PRODUCT_NAME } from './brand'
 
 type IconSvgProps = { name: string; size?: number }
 const PageIcon: React.FC<IconSvgProps> = ({ name, size = 16 }) => {
@@ -56,7 +57,7 @@ export function NewTaskPage({ composer }: { composer: React.ReactNode }) {
                 </span>
                 <span className="titleText-H3MNV2 codeText-Lcyw9U" style={{ opacity: 1, transform: 'translateX(5px)' }}>Learn</span>
                 <span className="withTraeText-dLQCwg" style={{ width: 'auto', opacity: 1 }}>
-                  <span className="withTraeInner-hAXYMl">with Askora</span>
+                  <span className="withTraeInner-hAXYMl">with {PRODUCT_NAME}</span>
                 </span>
               </div>
             </div>
@@ -626,30 +627,30 @@ const categories = ['全部', '推荐', '开发工具', '调研分析', '界面�
 
 type PluginState = 'installed' | 'available'
 const plugins: PluginData[] = [
-  { name: '飞书', description: '连接你的飞书账号，让 Askora 操作云文档、多维表格、日历、消息等飞书功能', publisher: 'Askora', color: '📱', icon: '📱', category: '推荐', state: 'installed' },
-  { name: '企业微信', description: '企业微信插件：消息、通讯录、会议、日程、待办、文档、在线表格、智能表格、智能文档。通过 wecom-cli 与企业微信交互。', publisher: 'Askora', color: '💼', icon: '💼', category: '推荐', state: 'installed' },
-  { name: '钉钉', description: '钉钉协作工作流，支持企业消息、文档、日历、审批和组织效率场景。', publisher: 'Askora', color: '🔧', icon: '🔧', category: '推荐', state: 'available' },
-  { name: 'tencent-docs', description: 'Access Tencent Docs through the official MCP server.', publisher: 'Askora', color: '📄', icon: '📄', category: '推荐', state: 'available' },
-  { name: 'CodeRabbit', description: '在 Agent 中使用由 CodeRabbit 提供支持的 AI 代码审查。', publisher: 'Askora', color: '🐰', icon: '🐰', category: '开发工具', state: 'available' },
-  { name: 'Langfuse 可观测性', description: 'Langfuse 可观测性集成，支持查询追踪、调试异常、分析会话，并通过 MCP 工具管理提示词。', publisher: 'Askora', color: '📊', icon: '📊', category: '开发工具', state: 'available' },
-  { name: 'Cloudflare', description: '面向 Cloudflare 平台的插件，集成了适用于 Workers、Wrangler、Agents SDK 和官方 Cloudflare API MCP Server 的精选技能。', publisher: 'Askora', color: '☁️', icon: '☁️', category: '开发工具', state: 'available' },
-  { name: 'Chrome Dev Tools', description: '一键接入的 chrome-devtools-mcp 插件封装，聚焦浏览器调试与性能优化技能。', publisher: 'Askora', color: '🌐', icon: '🌐', category: '开发工具', state: 'available' },
-  { name: 'NVIDIA生态开发', description: '面向 NVIDIA 生态的技能，覆盖 GPU 加速、CUDA、AI Agent、推理、机器人、Physical AI、Omniverse 与仿真。', publisher: 'Askora', color: '🎮', icon: '🎮', category: '开发工具', state: 'available' },
-  { name: "Writer's Loop", description: 'A portable writing workflow for planning, critique, revision, style distillation, translation, and local preference learning.', publisher: 'Askora', color: '✍️', icon: '✍️', category: '开发工具', state: 'available' },
-  { name: 'Zotero', description: '通过 Agent 与 Zotero 协作：搜索你的文献库、导出 BibTeX、插入引文，并通过 Zotero 桌面应用导入参考文献。', publisher: 'Askora', color: '📚', icon: '📚', category: '调研分析', state: 'available' },
-  { name: 'X Twitter Scraper', description: 'X (Twitter) data and automation skill for agents using Xquik REST API, MCP, webhooks, SDKs, and confirmation-gated actions.', publisher: 'Askora', color: '🐦', icon: '🐦', category: '调研分析', state: 'available' },
-  { name: 'ngs-analysis', description: 'Guided NGS intake, local execution, and public-pipeline routing for BCL, FASTQ, DNA variant, RNA-seq, single-cell, epigenomics, amplicon, and metagenomics analyses.', publisher: 'Askora', color: '🧬', icon: '🧬', category: '调研分析', state: 'available' },
-  { name: 'Mixpanel', description: '借助 mixpanel_headless Python SDK 和相关技能分析 Mixpanel 数据。', publisher: 'Askora', color: '📈', icon: '📈', category: '调研分析', state: 'available' },
-  { name: '浏览器游戏开发', description: '提供面向浏览器游戏的设计、原型开发与发布工作流，支持引导式 2D / 3D 流程、资源管线和试玩测试。', publisher: 'Askora', color: '🎲', icon: '🎲', category: '界面设计', state: 'available' },
-  { name: 'Web 数据可视化', description: '提供 Agent 内的 Web 数据可视化工作流，支持从设计、评审到实现、测试和导出，覆盖图表、地图、仪表盘、甘特图、UML、叙事滚动、报告、幻灯片、移动端视图、可分享状态和高级 WebGL 能力。', publisher: 'Askora', color: '📉', icon: '📉', category: '界面设计', state: 'available' },
-  { name: 'Remotion', description: '面向 Remotion 视频创作的技能，涵盖最佳实践、动画、音频、字幕、3D 等能力，帮助你用 React 构建程序化视频。', publisher: 'Askora', color: '🎬', icon: '🎬', category: '内容创作', state: 'available' },
-  { name: 'HyperFrames', description: '面向 HyperFrames 的视频创作能力，支持用 HTML 生成视频，并实现合成编排、GSAP 动画、字幕、配音、音频响应式视觉效果和网页转视频。', publisher: 'Askora', color: '🎞️', icon: '🎞️', category: '内容创作', state: 'available' },
-  { name: '飞书', description: '连接你的飞书账号，让 Askora 操作云文档、多维表格、日历、消息等飞书功能', publisher: 'Askora', color: '📱', icon: '📱', category: '效率提升', state: 'available' },
-  { name: '企业微信', description: '企业微信插件：消息、通讯录、会议、日程、待办、文档、在线表格、智能表格、智能文档。通过 wecom-cli 与企业微信交互。', publisher: 'Askora', color: '💼', icon: '💼', category: '效率提升', state: 'available' },
-  { name: '钉钉', description: '钉钉协作工作流，支持企业消息、文档、日历、审批和组织效率场景。', publisher: 'Askora', color: '🔧', icon: '🔧', category: '效率提升', state: 'available' },
-  { name: 'tencent-docs', description: 'Access Tencent Docs through the official MCP server.', publisher: 'Askora', color: '📄', icon: '📄', category: '效率提升', state: 'available' },
-  { name: 'notion', description: 'Notion workflows for implementation planning, research synthesis, meeting preparation, and knowledge capture.', publisher: 'Askora', color: '🗒️', icon: '🗒️', category: '效率提升', state: 'available' },
-  { name: 'Superpowers', description: '一套经过验证的 Agentic 技能框架与软件开发方法，帮助团队更好地完成规划、TDD、调试和协作。', publisher: 'Askora', color: '⚡', icon: '⚡', category: '效率提升', state: 'available' },
+  { name: '飞书', description: '连接你的飞书账号，让 Lumen 操作云文档、多维表格、日历、消息等飞书功能', publisher: 'Lumen', color: '📱', icon: '📱', category: '推荐', state: 'installed' },
+  { name: '企业微信', description: '企业微信插件：消息、通讯录、会议、日程、待办、文档、在线表格、智能表格、智能文档。通过 wecom-cli 与企业微信交互。', publisher: 'Lumen', color: '💼', icon: '💼', category: '推荐', state: 'installed' },
+  { name: '钉钉', description: '钉钉协作工作流，支持企业消息、文档、日历、审批和组织效率场景。', publisher: 'Lumen', color: '🔧', icon: '🔧', category: '推荐', state: 'available' },
+  { name: 'tencent-docs', description: 'Access Tencent Docs through the official MCP server.', publisher: 'Lumen', color: '📄', icon: '📄', category: '推荐', state: 'available' },
+  { name: 'CodeRabbit', description: '在 Agent 中使用由 CodeRabbit 提供支持的 AI 代码审查。', publisher: 'Lumen', color: '🐰', icon: '🐰', category: '开发工具', state: 'available' },
+  { name: 'Langfuse 可观测性', description: 'Langfuse 可观测性集成，支持查询追踪、调试异常、分析会话，并通过 MCP 工具管理提示词。', publisher: 'Lumen', color: '📊', icon: '📊', category: '开发工具', state: 'available' },
+  { name: 'Cloudflare', description: '面向 Cloudflare 平台的插件，集成了适用于 Workers、Wrangler、Agents SDK 和官方 Cloudflare API MCP Server 的精选技能。', publisher: 'Lumen', color: '☁️', icon: '☁️', category: '开发工具', state: 'available' },
+  { name: 'Chrome Dev Tools', description: '一键接入的 chrome-devtools-mcp 插件封装，聚焦浏览器调试与性能优化技能。', publisher: 'Lumen', color: '🌐', icon: '🌐', category: '开发工具', state: 'available' },
+  { name: 'NVIDIA生态开发', description: '面向 NVIDIA 生态的技能，覆盖 GPU 加速、CUDA、AI Agent、推理、机器人、Physical AI、Omniverse 与仿真。', publisher: 'Lumen', color: '🎮', icon: '🎮', category: '开发工具', state: 'available' },
+  { name: "Writer's Loop", description: 'A portable writing workflow for planning, critique, revision, style distillation, translation, and local preference learning.', publisher: 'Lumen', color: '✍️', icon: '✍️', category: '开发工具', state: 'available' },
+  { name: 'Zotero', description: '通过 Agent 与 Zotero 协作：搜索你的文献库、导出 BibTeX、插入引文，并通过 Zotero 桌面应用导入参考文献。', publisher: 'Lumen', color: '📚', icon: '📚', category: '调研分析', state: 'available' },
+  { name: 'X Twitter Scraper', description: 'X (Twitter) data and automation skill for agents using Xquik REST API, MCP, webhooks, SDKs, and confirmation-gated actions.', publisher: 'Lumen', color: '🐦', icon: '🐦', category: '调研分析', state: 'available' },
+  { name: 'ngs-analysis', description: 'Guided NGS intake, local execution, and public-pipeline routing for BCL, FASTQ, DNA variant, RNA-seq, single-cell, epigenomics, amplicon, and metagenomics analyses.', publisher: 'Lumen', color: '🧬', icon: '🧬', category: '调研分析', state: 'available' },
+  { name: 'Mixpanel', description: '借助 mixpanel_headless Python SDK 和相关技能分析 Mixpanel 数据。', publisher: 'Lumen', color: '📈', icon: '📈', category: '调研分析', state: 'available' },
+  { name: '浏览器游戏开发', description: '提供面向浏览器游戏的设计、原型开发与发布工作流，支持引导式 2D / 3D 流程、资源管线和试玩测试。', publisher: 'Lumen', color: '🎲', icon: '🎲', category: '界面设计', state: 'available' },
+  { name: 'Web 数据可视化', description: '提供 Agent 内的 Web 数据可视化工作流，支持从设计、评审到实现、测试和导出，覆盖图表、地图、仪表盘、甘特图、UML、叙事滚动、报告、幻灯片、移动端视图、可分享状态和高级 WebGL 能力。', publisher: 'Lumen', color: '📉', icon: '📉', category: '界面设计', state: 'available' },
+  { name: 'Remotion', description: '面向 Remotion 视频创作的技能，涵盖最佳实践、动画、音频、字幕、3D 等能力，帮助你用 React 构建程序化视频。', publisher: 'Lumen', color: '🎬', icon: '🎬', category: '内容创作', state: 'available' },
+  { name: 'HyperFrames', description: '面向 HyperFrames 的视频创作能力，支持用 HTML 生成视频，并实现合成编排、GSAP 动画、字幕、配音、音频响应式视觉效果和网页转视频。', publisher: 'Lumen', color: '🎞️', icon: '🎞️', category: '内容创作', state: 'available' },
+  { name: '飞书', description: '连接你的飞书账号，让 Lumen 操作云文档、多维表格、日历、消息等飞书功能', publisher: 'Lumen', color: '📱', icon: '📱', category: '效率提升', state: 'available' },
+  { name: '企业微信', description: '企业微信插件：消息、通讯录、会议、日程、待办、文档、在线表格、智能表格、智能文档。通过 wecom-cli 与企业微信交互。', publisher: 'Lumen', color: '💼', icon: '💼', category: '效率提升', state: 'available' },
+  { name: '钉钉', description: '钉钉协作工作流，支持企业消息、文档、日历、审批和组织效率场景。', publisher: 'Lumen', color: '🔧', icon: '🔧', category: '效率提升', state: 'available' },
+  { name: 'tencent-docs', description: 'Access Tencent Docs through the official MCP server.', publisher: 'Lumen', color: '📄', icon: '📄', category: '效率提升', state: 'available' },
+  { name: 'notion', description: 'Notion workflows for implementation planning, research synthesis, meeting preparation, and knowledge capture.', publisher: 'Lumen', color: '🗒️', icon: '🗒️', category: '效率提升', state: 'available' },
+  { name: 'Superpowers', description: '一套经过验证的 Agentic 技能框架与软件开发方法，帮助团队更好地完成规划、TDD、调试和协作。', publisher: 'Lumen', color: '⚡', icon: '⚡', category: '效率提升', state: 'available' },
 ]
 
 type SkillData = {
@@ -743,7 +744,7 @@ export function MarketplacePage({ onSelectPlugin, onSelectSkill }: MarketplacePa
             <div className="headerRail-GfhRry">
               <div className="titleGroup-R6DD_m">
                 <h1 className="title-yQrHui">资料库</h1>
-                <p className="subtitle-Gi_Tjb">发现并管理学习资料和知识内容，扩展 Askora 的学习能力。</p>
+                <p className="subtitle-Gi_Tjb">发现并管理学习资料和知识内容，扩展 Lumen 的学习能力。</p>
               </div>
               <div className="headerActions-TKXare">
                 <button className="button-muTeiY secondary-J0eGRO large-psSWuL" style={{
@@ -1004,11 +1005,11 @@ export function WorkspacePage() {
                                     <div className="agent-avatar agent-avatar--solo-code" style={{ width: 18, height: 18 }}>
                                       <PageIcon name="code" size={12} />
                                     </div>
-                                    <span className="agent-message__title">Askora</span>
+                                    <span className="agent-message__title">Lumen</span>
                                   </div>
                                 </div>
                                 <div className="markdown-renderer">
-                                  <p className="markdown-p">你好！我是 Askora，有什么可以帮你的？</p>
+                                  <p className="markdown-p">你好！我是 Lumen，有什么可以帮你的？</p>
                                 </div>
                               </div>
                             </div>

@@ -42,6 +42,8 @@ import re
 import stat
 from typing import TYPE_CHECKING, Any
 
+from deeptutor.brand import PRODUCT_NAME
+
 if TYPE_CHECKING:  # pragma: no cover - import-time typing only
     import httpx
     from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
@@ -56,8 +58,8 @@ _OAUTH_SUBDIR = ("private", "mcp-oauth")
 #: Same rule as the static secret store: the server name becomes a filename.
 _SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 
-#: How DeepTutor introduces itself on a consent screen.
-CLIENT_NAME = "DeepTutor"
+#: How the product introduces itself on a consent screen.
+CLIENT_NAME = PRODUCT_NAME
 CLIENT_URI = "https://deeptutor.info"
 
 

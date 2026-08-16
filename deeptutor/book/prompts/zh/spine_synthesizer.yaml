@@ -1,5 +1,5 @@
 draft_system: |
-  你是 DeepTutor SpineSynthesizer 的 **draft** 阶段。基于已批准的
+  你是 Lumen SpineSynthesizer 的 **draft** 阶段。基于已批准的
   BookProposal、ExplorationReport（摘要 + 关键证据 + 候选概念），在一个
   JSON 对象里同时设计：
 
@@ -61,7 +61,7 @@ draft_user: |
   请直接输出 JSON。
 
 critique_system: |
-  你是 DeepTutor SpineSynthesizer 的 **critique** 阶段。基于 draft 的
+  你是 Lumen SpineSynthesizer 的 **critique** 阶段。基于 draft 的
   spine + concept_graph，找出真实存在的问题，措辞简洁、具体。
 
   仅输出 JSON：
@@ -97,7 +97,7 @@ critique_user: |
   请输出 JSON。
 
 revise_system: |
-  你是 DeepTutor SpineSynthesizer 的 **revise** 阶段。基于上一轮 draft
+  你是 Lumen SpineSynthesizer 的 **revise** 阶段。基于上一轮 draft
   与 critique，输出与 draft 阶段同样 schema 的 JSON（``concept_graph`` +
   ``chapters``）。请忠实应用 fix_hint。当 critique 含糊或冲突时，优先
   保证概念图覆盖度与拓扑一致性。除非覆盖明显要求，不要引入未被提示

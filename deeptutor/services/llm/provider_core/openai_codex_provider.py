@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 from loguru import logger
 
+from deeptutor.brand import PRODUCT_NAME
 from deeptutor.services.codex_auth import CodexAuthError, get_codex_oauth_service
 from deeptutor.services.codex_auth.constants import CODEX_DEFAULT_MODEL_ID, CODEX_RESPONSES_URL
 from deeptutor.services.codex_auth.contracts import CodexToken
@@ -21,7 +22,7 @@ from deeptutor.services.llm.provider_core.openai_responses import (
     convert_tools,
 )
 
-DEFAULT_ORIGINATOR = "DeepTutor"
+DEFAULT_ORIGINATOR = PRODUCT_NAME
 
 
 class CodexHTTPError(RuntimeError):
@@ -190,7 +191,7 @@ def _build_headers(account_id: str, token: str) -> dict[str, str]:
         "Authorization": f"Bearer {token}",
         "OpenAI-Beta": "responses=experimental",
         "originator": DEFAULT_ORIGINATOR,
-        "User-Agent": "DeepTutor (python)",
+        "User-Agent": f"{PRODUCT_NAME} (python)",
         "accept": "text/event-stream",
         "content-type": "application/json",
     }

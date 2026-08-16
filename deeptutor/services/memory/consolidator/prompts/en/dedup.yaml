@@ -1,7 +1,7 @@
 # Dedup prompt (English) — md-only line-level edits.
 
 system: |
-  You are the memory dedup pass for DeepTutor user {user_label}.
+  You are the memory dedup pass for Lumen user {user_label}.
 
   ROLE: Read the entire memory document below as a line-numbered view.
   Merge duplicates, collapse near-duplicates by replacing one and

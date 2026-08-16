@@ -46,7 +46,7 @@ class EmbeddingClient:
             displayed_endpoint = redact_embedding_endpoint_for_display(endpoint)
             raise ValueError(
                 f"{problem} Current Settings endpoint is {displayed_endpoint!r}. "
-                "DeepTutor sends embedding requests to the Settings URL exactly; "
+                "Lumen sends embedding requests to the Settings URL exactly; "
                 "update the visible Endpoint URL instead of relying on hidden path appending."
             )
         adapter_class = _resolve_adapter_class(self.config.binding)

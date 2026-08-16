@@ -5,7 +5,7 @@ CLI Skill Commands
 Manage local skills and install packages from external hubs (EduHub, ClawHub, …).
 
 Hub references use ``<hub>:<slug>[@version]``; the hub prefix defaults to
-``eduhub`` (DeepTutor's native open skill registry). Installs run the full
+``eduhub`` (Lumen's native open skill registry). Installs run the full
 import gate: hub security verdict →
 safe extraction → frontmatter adaptation (``always`` stripped, flat
 ``bins``/``env`` folded into ``requires``) → provenance in ``.hub-lock.json``.

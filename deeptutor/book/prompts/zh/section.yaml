@@ -1,5 +1,5 @@
 outline_system: |
-  你是 DeepTutor BookEngine 的 Section Architect。请基于章节信息以及检索证据，
+  你是 Lumen BookEngine 的 Section Architect。请基于章节信息以及检索证据，
   规划 1 个 section 的结构。输出严格 JSON：
   {
     "intro": "≤ 80 字的开场短段",
@@ -24,7 +24,7 @@ outline_user: |
   请直接输出 JSON outline。
 
 subsection_system: |
-  你是 DeepTutor 的 Section Subsection 写作者。请输出一段紧凑、有信息密度的
+  你是 Lumen 的 Section Subsection 写作者。请输出一段紧凑、有信息密度的
   Markdown 讲解，符合给定的标题、定位、字数目标。可以使用列表/`代码`/$math$。
   不要再输出任何 H1/H2 标题，只能从 H3 (###) 开始；不要重复整章标题；不要
   输出 JSON 或代码块包裹。

@@ -13,6 +13,8 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 
 import httpx
 
+from deeptutor.brand import PRODUCT_NAME
+
 from .constants import (
     CODEX_CALLBACK_PATH,
     CODEX_OAUTH_CLIENT_ID,
@@ -23,6 +25,8 @@ from .constants import (
     CODEX_TOKEN_URL,
 )
 from .contracts import CodexAuthError, CodexCredentials
+
+_CODEX_PAGE_TITLE = f"<!doctype html><title>{PRODUCT_NAME} Codex</title>"
 
 
 @dataclass(frozen=True)
@@ -119,7 +123,7 @@ class LoopbackCallback:
         async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
             status = "404 Not Found"
             body = (
-                "<!doctype html><title>DeepTutor Codex</title>"
+                f"{_CODEX_PAGE_TITLE}"
                 "<p>This callback path is not available.</p>"
             )
             try:
@@ -135,7 +139,7 @@ class LoopbackCallback:
                     ):
                         status = "400 Bad Request"
                         body = (
-                            "<!doctype html><title>DeepTutor Codex</title>"
+                            f"{_CODEX_PAGE_TITLE}"
                             "<p>The authentication callback was invalid.</p>"
                         )
                     else:
@@ -149,19 +153,19 @@ class LoopbackCallback:
                         except CodexAuthError:
                             status = "409 Conflict"
                             body = (
-                                "<!doctype html><title>DeepTutor Codex</title>"
+                                f"{_CODEX_PAGE_TITLE}"
                                 "<p>Authentication could not be received.</p>"
                             )
                         else:
                             status = "200 OK"
                             body = (
-                                "<!doctype html><title>DeepTutor Codex</title>"
-                                "<p>Authentication received. You can return to DeepTutor.</p>"
+                                f"{_CODEX_PAGE_TITLE}"
+                                f"<p>Authentication received. You can return to {PRODUCT_NAME}.</p>"
                             )
             except (ValueError, UnicodeDecodeError, asyncio.IncompleteReadError, TimeoutError):
                 status = "400 Bad Request"
                 body = (
-                    "<!doctype html><title>DeepTutor Codex</title>"
+                    f"{_CODEX_PAGE_TITLE}"
                     "<p>The authentication callback was invalid.</p>"
                 )
 
@@ -208,7 +212,7 @@ class LoopbackCallback:
         if server is None or not server.sockets:
             raise CodexAuthError(
                 "callback_unavailable",
-                "DeepTutor could not start the local Codex sign-in callback.",
+                f"{PRODUCT_NAME} could not start the local Codex sign-in callback.",
                 503,
             )
         bound_port = int(server.sockets[0].getsockname()[1])
@@ -239,7 +243,7 @@ class LoopbackCallback:
             raise CodexAuthError(
                 "login_timeout",
                 (
-                    "The DeepTutor server did not receive the Codex OAuth callback "
+                    f"The {PRODUCT_NAME} server did not receive the Codex OAuth callback "
                     f"on localhost:{self.port}. For a remote deployment, keep the "
                     "SSH port-forwarding tunnel open and try again."
                 ),

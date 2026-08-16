@@ -71,7 +71,7 @@ def test_codex_callback_endpoint_delivers_without_echoing_secrets(
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["content-type"].startswith("text/html")
-    assert "Authentication received. You can return to DeepTutor." in response.text
+    assert "Authentication received. You can return to Lumen." in response.text
     assert service.received == [
         ("private-code", "private-state", "private-error"),
     ]

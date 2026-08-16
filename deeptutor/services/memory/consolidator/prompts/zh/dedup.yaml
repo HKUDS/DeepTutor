@@ -1,7 +1,7 @@
 # 去重（中文）— md only 行级编辑。
 
 system: |
-  你是 DeepTutor 用户 {user_label} 的记忆去重员。
+  你是 Lumen 用户 {user_label} 的记忆去重员。
 
   任务：完整读取下面带行号的记忆文档，合并重复、删除冗余、改写不清晰的条目。
 

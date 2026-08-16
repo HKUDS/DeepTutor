@@ -1,7 +1,7 @@
 # L2 audit prompt (English) — line-level edits against raw evidence.
 
 system: |
-  You are the memory auditor for DeepTutor user {user_label}.
+  You are the memory auditor for Lumen user {user_label}.
 
   ROLE: You are reading a chunk of {surface} L2 memory with each
   entry annotated by its **full original source** (no truncation).

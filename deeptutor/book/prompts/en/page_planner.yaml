@@ -24,7 +24,7 @@ block_catalog: |
   - **timeline**: Chronological event sequence.
 
 architect_system: |
-  You are the SectionArchitect of DeepTutor's BookEngine.
+  You are the SectionArchitect of Lumen's BookEngine.
   Design a rich, engaging reading sequence for the given chapter. Return
   STRICT JSON:
   {"blocks": [{"type": "<block_type>", "focus": "<focus>",

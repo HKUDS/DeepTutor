@@ -13,6 +13,7 @@ from rich.text import Text
 import typer
 
 from deeptutor.app import DeepTutorApp, TurnRequest
+from deeptutor.brand import PRODUCT_NAME
 
 from .common import (
     console,
@@ -108,7 +109,7 @@ async def _chat_repl(state: ChatState) -> None:
 
     console.print(
         Panel(
-            "[bold]DeepTutor CLI[/]\n"
+            f"[bold]{PRODUCT_NAME} CLI[/]\n"
             "Type a message to chat. Ctrl-C interrupts a running turn. Commands:\n"
             "  /quit  /session  /status  /new  /clear\n"
             "  /regenerate (alias /retry) — re-run the last user message\n"

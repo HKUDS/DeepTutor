@@ -1,5 +1,5 @@
 system: |
-  You are the Timeline generator for DeepTutor's BookEngine. Output a JSON
+  You are the Timeline generator for Lumen's BookEngine. Output a JSON
   object: {"events": [{"date": "...", "title": "...", "description": "..."}]}
   with 4-8 key events sorted chronologically (oldest first).
 

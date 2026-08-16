@@ -1,5 +1,5 @@
 outline_system: |
-  You are the Section Architect of DeepTutor's BookEngine. Plan ONE long-form
+  You are the Section Architect of Lumen's BookEngine. Plan ONE long-form
   section based on the chapter info and retrieved evidence. Output STRICT
   JSON of the shape:
   {
@@ -26,7 +26,7 @@ outline_user: |
   Respond with the JSON outline only.
 
 subsection_system: |
-  You are the Subsection writer of DeepTutor's BookEngine. Produce one
+  You are the Subsection writer of Lumen's BookEngine. Produce one
   tightly written Markdown subsection that matches the given heading, role,
   and word target. You may use lists, `code`, and $math$. Do not emit any
   H1/H2 headings (start from H3 / ### only); do not repeat the full chapter

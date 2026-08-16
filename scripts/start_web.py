@@ -15,7 +15,7 @@ from deeptutor.runtime.launcher import start  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Start DeepTutor Web.")
+    parser = argparse.ArgumentParser(description="Start Lumen Web.")
     parser.add_argument(
         "--home",
         type=Path,

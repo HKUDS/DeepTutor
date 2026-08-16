@@ -8,6 +8,7 @@ import sys
 from typing import Any
 import uuid
 
+from deeptutor.brand import PRODUCT_NAME
 from deeptutor.services.cron.service import CronJob
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,7 @@ async def _maybe_send_desktop_notification(job: CronJob, text: str) -> None:
     if job.owner.kind == "partner" and (job.owner.channel or "web") != "web":
         return
 
-    title = f"DeepTutor: {job.name or 'Reminder'}"
+    title = f"{PRODUCT_NAME}: {job.name or 'Reminder'}"
     body = _notification_text(text)
     try:
         proc = await asyncio.create_subprocess_exec(

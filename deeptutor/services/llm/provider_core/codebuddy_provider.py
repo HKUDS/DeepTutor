@@ -472,7 +472,7 @@ def _build_tool_options(sdk: ModuleType, tools: list[dict[str, Any]] | None) -> 
                     {
                         "type": "text",
                         "text": (
-                            "DeepTutor accepted this tool call and will provide its result next."
+                            "Lumen accepted this tool call and will provide its result next."
                         ),
                     }
                 ]

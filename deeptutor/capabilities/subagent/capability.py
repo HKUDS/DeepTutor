@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from deeptutor.brand import PRODUCT_NAME
 from deeptutor.capabilities.protocol import KnowledgeCapability, PromptBlock
 from deeptutor.capabilities.subagent.binding import connection_for_turn, subagent_refs
 from deeptutor.capabilities.subagent.tools import SUBAGENT_TOOL_NAMES
@@ -125,7 +126,7 @@ class SubagentCapability(KnowledgeCapability):
 # behaves like a delegate, not an interactive session, when the user hasn't set
 # their own in /settings.
 _DEFAULT_CONSULT_INSTRUCTION = (
-    "You are being consulted programmatically by DeepTutor on the user's behalf, "
+    f"You are being consulted programmatically by {PRODUCT_NAME} on the user's behalf, "
     "not in an interactive terminal. Answer the question directly, concisely, and "
     "self-contained. Do not ask the user follow-up questions or wait for input; "
     "if something is ambiguous, state your assumption and proceed."

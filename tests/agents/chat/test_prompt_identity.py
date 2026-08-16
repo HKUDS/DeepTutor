@@ -10,7 +10,7 @@ from deeptutor.agents.chat.prompt_blocks import ChatPromptAssembler
 from deeptutor.core.context import UnifiedContext
 
 PROMPTS = {
-    "general": "You are DeepTutor, an interactive tutor.",
+    "general": "You are Lumen, an interactive tutor.",
     "general_partner": 'You are a companion created by the user. The name the user gave you is "{name}".',
     "general_partner_description": "The user's description of you: {description}",
     "partner_turn_policy": "Partner tutoring policy.",
@@ -27,7 +27,7 @@ def _general_block(context: UnifiedContext) -> str:
 
 def test_chat_turn_keeps_product_identity():
     content = _general_block(UnifiedContext(user_message="hi"))
-    assert content == "You are DeepTutor, an interactive tutor."
+    assert content == "You are Lumen, an interactive tutor."
 
 
 def test_partner_identity_replaces_general():
@@ -36,7 +36,7 @@ def test_partner_identity_replaces_general():
         metadata={"agent_identity": {"name": "frank", "description": "study buddy"}},
     )
     content = _general_block(context)
-    assert "DeepTutor" not in content
+    assert "Lumen" not in content
     assert 'The name the user gave you is "frank"' in content
     assert "The user's description of you: study buddy" in content
 
@@ -74,7 +74,7 @@ def test_blank_identity_falls_back_to_product():
         user_message="hi",
         metadata={"agent_identity": {"name": "  "}},
     )
-    assert _general_block(context) == "You are DeepTutor, an interactive tutor."
+    assert _general_block(context) == "You are Lumen, an interactive tutor."
 
 
 def test_shipped_yaml_carries_partner_templates():

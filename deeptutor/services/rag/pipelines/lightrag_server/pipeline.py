@@ -102,7 +102,7 @@ class LightRagServerPipeline:
     async def initialize(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         raise RuntimeError(
             "LightRAG Server knowledge bases are indexed on the external server; "
-            "DeepTutor does not build or store their index. Add documents on the "
+            "Lumen does not build or store their index. Add documents on the "
             "LightRAG server directly."
         )
 

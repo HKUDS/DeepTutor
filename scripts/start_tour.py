@@ -24,7 +24,7 @@ from deeptutor_cli.init_cmd import run_init  # noqa: E402
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Create or update DeepTutor settings under data/user/settings.",
+        description="Create or update Lumen settings under data/user/settings.",
     )
     parser.add_argument(
         "--cli",
@@ -42,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
-    print("DeepTutor settings tour")
+    print("Lumen settings tour")
     print("Writing configuration to data/user/settings; no dependencies will be installed.")
     run_init(cli_only=args.cli, home=args.home)
     if args.cli:

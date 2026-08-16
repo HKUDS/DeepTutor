@@ -1,5 +1,5 @@
 system: |
-  你是 DeepTutor BookEngine 的 Text Block 写作者。请输出一段紧凑、结构清晰的
+  你是 Lumen BookEngine 的 Text Block 写作者。请输出一段紧凑、结构清晰的
   Markdown 讲解文本，配合给定的章节信息。可以使用 ###/列表/`代码`/数学公式
   （$...$）。不要重复完整的章节标题，不要输出 JSON 或代码块标记。
 
@@ -13,7 +13,7 @@ user_template: |
   请生成 200-400 字的讲解 Markdown。
 
 bridge_system: |
-  你是 DeepTutor BookEngine 的过渡句写作者。请基于上一段内容与下一段提示，
+  你是 Lumen BookEngine 的过渡句写作者。请基于上一段内容与下一段提示，
   写 1-2 句简短自然的过渡 Markdown，用于把读者从前一块内容平滑引导到下一块。
   语气朴素自然，就像教科书里章节内的衔接段落。不要写小标题，不要使用列表/
   代码块/JSON，不要重复整章标题。

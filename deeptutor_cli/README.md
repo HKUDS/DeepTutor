@@ -1,4 +1,4 @@
-# DeepTutor CLI
+# Lumen CLI
 
 Agent-first 的命令行界面。两条核心路径：
 
@@ -229,7 +229,7 @@ deeptutor provider login github-copilot    # 校验现有 GitHub Copilot 认证�
 deeptutor provider login codebuddy         # 校验 CodeBuddy SDK 登录；未登录时打开登录入口
 ```
 
-`openai-codex` 使用 DeepTutor 自己的独立 OAuth 流程登录。它不需要 `OPENAI_API_KEY`，也不会读取或同步本机 `~/.codex`；凭据保存在 `data/system/user-secrets/<owner>/private/openai-codex/`（沙箱访问不到的目录），与 Web 设置页共用。
+`openai-codex` 使用 Lumen 自己的独立 OAuth 流程登录。它不需要 `OPENAI_API_KEY`，也不会读取或同步本机 `~/.codex`；凭据保存在 `data/system/user-secrets/<owner>/private/openai-codex/`（沙箱访问不到的目录），与 Web 设置页共用。
 
 远程部署时，浏览器的 `localhost` 和服务器的 `localhost` 不是同一台机器，仅有普通反向代理无法把浏览器的 localhost callback 送到服务器，必须用 SSH 隧道建立 callback 桥。隧道通向已发布的 Web 端口；Next.js 只把精确的 callback 路径改写到 public callback broker，broker 校验 `state` 后才路由到原 OAuth operation。callback listener 仍位于后端 loopback，不发布 `1455`/`1457`，并支持默认 Docker bridge 网络。
 
@@ -237,13 +237,13 @@ deeptutor provider login codebuddy         # 校验 CodeBuddy SDK 登录；未�
 ssh -N -L 1455:127.0.0.1:3782 <ssh-user>@<server-host>
 ```
 
-若 DeepTutor 显示 fallback callback 端口 `1457`，则使用：
+若 Lumen 显示 fallback callback 端口 `1457`，则使用：
 
 ```bash
 ssh -N -L 1457:127.0.0.1:3782 <ssh-user>@<server-host>
 ```
 
-只运行与实际 callback 端口对应的其中一条命令，不能两条都运行。`3782` 只是示例 Web 端口：它是 DeepTutor 配置并作为 `callback_forward_port` 显示的 frontend/container 端口，不保证 SSH 主机的 `127.0.0.1` 正在监听同一端口。若 Docker/Podman 映射到不同宿主机端口，或反向代理监听不同端口，只替换 SSH 命令右侧的目标端口（上例中的 `3782`）为 SSH 主机 `127.0.0.1` 实际监听的 Web 端口；左侧 callback 端口仍保持 `1455` 或 `1457`。`<server-host>` 是该 loopback 监听端口所在的 SSH 主机；若浏览器域名指向反向代理或负载均衡器，请替换为正确的 SSH 前端主机。
+只运行与实际 callback 端口对应的其中一条命令，不能两条都运行。`3782` 只是示例 Web 端口：它是 Lumen 配置并作为 `callback_forward_port` 显示的 frontend/container 端口，不保证 SSH 主机的 `127.0.0.1` 正在监听同一端口。若 Docker/Podman 映射到不同宿主机端口，或反向代理监听不同端口，只替换 SSH 命令右侧的目标端口（上例中的 `3782`）为 SSH 主机 `127.0.0.1` 实际监听的 Web 端口；左侧 callback 端口仍保持 `1455` 或 `1457`。`<server-host>` 是该 loopback 监听端口所在的 SSH 主机；若浏览器域名指向反向代理或负载均衡器，请替换为正确的 SSH 前端主机。
 
 CLI 会先打印隧道命令，随后立即尝试打开浏览器。远程用户应先保持授权页打开但不要完成授权，在另一终端建立所显示的隧道，然后再继续授权。
 

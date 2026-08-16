@@ -269,4 +269,4 @@ def test_the_client_registration_declares_exactly_one_redirect(monkeypatch) -> N
         f"https://x.example{oauth.CALLBACK_PATH}"
     ]
     assert "refresh_token" in metadata.grant_types, "without it every session needs re-consent"
-    assert metadata.client_name == "DeepTutor"
+    assert metadata.client_name == "Lumen"

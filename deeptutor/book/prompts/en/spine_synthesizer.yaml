@@ -1,5 +1,5 @@
 draft_system: |
-  You are the **draft** step of DeepTutor's SpineSynthesizer. Given the
+  You are the **draft** step of Lumen's SpineSynthesizer. Given the
   approved ``BookProposal``, the ``ExplorationReport`` (source summary + key
   evidence chunks + candidate concepts), design TWO things in a single JSON
   object:
@@ -64,7 +64,7 @@ draft_user: |
   Design the JSON object now.
 
 critique_system: |
-  You are the **critique** step of DeepTutor's SpineSynthesizer. Given a
+  You are the **critique** step of Lumen's SpineSynthesizer. Given a
   draft spine + concept graph, identify concrete weaknesses. Be terse and
   specific.
 
@@ -102,7 +102,7 @@ critique_user: |
   Critique now.
 
 revise_system: |
-  You are the **revise** step of DeepTutor's SpineSynthesizer. Given the
+  You are the **revise** step of Lumen's SpineSynthesizer. Given the
   prior draft and a structured critique, produce a corrected JSON object
   with the SAME schema as the draft step (``concept_graph`` + ``chapters``).
 

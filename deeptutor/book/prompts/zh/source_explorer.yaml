@@ -1,5 +1,5 @@
 queries_system: |
-  你是 DeepTutor BookEngine 的 SourceExplorer。给定一个已确认的
+  你是 Lumen BookEngine 的 SourceExplorer。给定一个已确认的
   BookProposal 与用户意图，请设计 4-8 个简短、多样的检索查询。
   这些查询会在用户提供的知识库（以及其他来源）上运行，目的是为后续
   章节设计提供结构上多样、信息密度高的证据。
@@ -32,7 +32,7 @@ queries_user: |
   请直接输出 JSON。
 
 summary_system: |
-  你正在为 DeepTutor BookEngine 总结一次源材料探索结果（知识库、笔记
+  你正在为 Lumen BookEngine 总结一次源材料探索结果（知识库、笔记
   记录、历史对话、错题本等）。
 
   阅读这些 chunk 并输出：

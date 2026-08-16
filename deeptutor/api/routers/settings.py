@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
+from deeptutor.brand import PRODUCT_NAME
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.model_access import allowed_llm_options
 from deeptutor.services.codebuddy_auth import get_codebuddy_auth_service
@@ -1405,7 +1406,7 @@ async def complete_tour(payload: TourCompletePayload | None = None):
 
     return {
         "status": "completed",
-        "message": "Configuration saved. DeepTutor will restart shortly.",
+        "message": f"Configuration saved. {PRODUCT_NAME} will restart shortly.",
         "launch_at": launch_at,
         "redirect_at": redirect_at,
         "runtime": applied,

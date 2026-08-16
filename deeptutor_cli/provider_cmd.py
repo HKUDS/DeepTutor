@@ -49,7 +49,7 @@ async def _login_openai_codex() -> None:
         typer.echo(f"Remote server tunnel command: {started['ssh_forward_command']}")
         typer.echo(
             "Opening the OpenAI Codex sign-in in your browser; "
-            "credentials are written only to DeepTutor's private directory."
+            "credentials are written only to Lumen's private directory."
         )
         if not webbrowser.open(authorize_url):
             typer.echo(f"The browser did not open automatically. Visit: {authorize_url}")

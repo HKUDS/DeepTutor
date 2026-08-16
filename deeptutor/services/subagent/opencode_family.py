@@ -35,6 +35,7 @@ from typing import Any
 
 import httpx
 
+from deeptutor.brand import PRODUCT_NAME
 from deeptutor.services.subagent.base import OnEvent, SubagentBackend
 from deeptutor.services.subagent.config import BackendConfig
 from deeptutor.services.subagent.opencode_server import acquire_server
@@ -189,7 +190,7 @@ class OpencodeFamilyBackend(SubagentBackend):
         return result
 
     async def _create_session(self, client: httpx.AsyncClient) -> str:
-        response = await client.post("/session", json={"title": "DeepTutor consult"})
+        response = await client.post("/session", json={"title": f"{PRODUCT_NAME} consult"})
         response.raise_for_status()
         data = response.json()
         sid = str(data.get("id") or "") if isinstance(data, dict) else ""

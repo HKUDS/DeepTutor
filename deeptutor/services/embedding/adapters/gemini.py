@@ -177,7 +177,7 @@ class GeminiEmbeddingAdapter(OpenAICompatibleEmbeddingAdapter):
             )
         if request.contents:
             raise ValueError(
-                "DeepTutor's Gemini embedding adapter currently supports text only; "
+                "Lumen's Gemini embedding adapter currently supports text only; "
                 "multimodal `contents` require a dedicated native content mapper."
             )
 

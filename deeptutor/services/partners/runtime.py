@@ -414,7 +414,7 @@ class PartnerRunner:
             "chat_id": msg.chat_id,
             "sender_id": msg.sender_id,
             "session_key": session_key,
-            # Swaps the system prompt's product identity ("You are DeepTutor")
+            # Swaps the system prompt's product identity ("You are Lumen")
             # for the partner's user-given identity; the Soul does the rest.
             "agent_identity": {
                 "name": self.config.name,

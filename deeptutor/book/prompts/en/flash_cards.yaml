@@ -1,5 +1,5 @@
 system_template: |
-  You are the Flashcard generator for DeepTutor's BookEngine. Output JSON:
+  You are the Flashcard generator for Lumen's BookEngine. Output JSON:
   {{"cards": [{{"front": "...", "back": "...", "hint": "..."}}]}}
   with {count} high-signal cards. ``front`` is the prompt, ``back`` is a
   concise answer.

@@ -1,9 +1,10 @@
 import { getSession, listSessions, type SessionMessage, type SessionSummary } from '../api/sessions'
 import type { StreamEvent } from '../api/ws'
 import { ChatMessage, MessageBlock, initialMessages, taskList } from '../mock/data'
+import { PRODUCT_NAME } from './brand'
 
 export const NEW_SESSION_TITLE = '新对话'
-export const STREAM_CONNECT_ERROR = '无法连接 DeepTutor 后端，请确认本地 API 已启动。'
+export const STREAM_CONNECT_ERROR = `无法连接 ${PRODUCT_NAME} 后端，请确认本地 API 已启动。`
 export const STREAM_FAIL_ERROR = '回复失败，请重试。'
 export const CREATE_SESSION_ERROR = '会话创建失败，请重试。'
 
@@ -258,7 +259,7 @@ export function sessionMessageToChat(message: SessionMessage): ChatMessage {
   return {
     id: String(message.id),
     role: message.role,
-    author: message.role === 'user' ? 'You' : 'DeepTutor',
+    author: message.role === 'user' ? 'You' : PRODUCT_NAME,
     time: formatEpoch(message.created_at),
     blocks: message.role === 'user'
       ? [{ type: 'text', content: message.content }]

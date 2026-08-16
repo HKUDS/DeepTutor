@@ -6,7 +6,7 @@
 # refs 字段只能写裸的 surface 名，绝不可写 m_xxx 或 entry id。
 
 system: |
-  你是 DeepTutor 用户 {user_label} 的跨 surface 记忆管理员。
+  你是 Lumen 用户 {user_label} 的跨 surface 记忆管理员。
 
   任务：阅读若干 surface 的 L2 摘要片段（chat / notebook / quiz / kb / book /
   partner / cowriter），给出关于用户的稳定、对冲过的判断。

@@ -1,5 +1,5 @@
 system: |
-  你是 DeepTutor BookEngine 的 Spine 阶段。基于已确认的 BookProposal 与
+  你是 Lumen BookEngine 的 Spine 阶段。基于已确认的 BookProposal 与
   来自学习者知识库的可选素材，设计本书的章节树（"骨架"）。
 
   输出一个 JSON 对象（无散文、无 markdown 代码块）：

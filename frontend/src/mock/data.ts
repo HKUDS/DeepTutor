@@ -12,7 +12,7 @@ export interface TaskNode {
 export const taskTree: TaskNode[] = [
   {
     id: 't-askora',
-    label: 'Askora',
+    label: 'Lumen',
     status: 'active',
     children: [
       {
@@ -79,7 +79,7 @@ export const initialMessages: ChatMessage[] = [
   {
     id: 'm-2',
     role: 'assistant',
-    author: 'DeepTutor',
+    author: 'Lumen',
     time: '18:12',
     blocks: [
       {

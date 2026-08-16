@@ -5,6 +5,7 @@ import sys
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from deeptutor.brand import PRODUCT_NAME
 from deeptutor.logging import configure_logging
 from deeptutor.services.config import (
     ensure_runtime_settings_files,
@@ -232,7 +233,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="DeepTutor API",
+    title=f"{PRODUCT_NAME} API",
     version="1.0.0",
     lifespan=lifespan,
     # Disable automatic trailing slash redirects to prevent protocol downgrade issues
@@ -482,7 +483,7 @@ app.include_router(quiz_judge.router, prefix="/api/v1", tags=["quiz-judge"])
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to DeepTutor API"}
+    return {"message": f"Welcome to {PRODUCT_NAME} API"}
 
 
 if __name__ == "__main__":

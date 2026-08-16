@@ -6,6 +6,7 @@ from pathlib import Path
 
 import typer
 
+from deeptutor.brand import PRODUCT_NAME
 from deeptutor.logging import configure_logging
 from deeptutor.runtime.mode import RunMode, set_mode
 
@@ -28,7 +29,7 @@ configure_logging()
 
 app = typer.Typer(
     name="deeptutor",
-    help="DeepTutor CLI – agent-first interface for capabilities, tools, and knowledge.",
+    help=f"{PRODUCT_NAME} CLI – agent-first interface for capabilities, tools, and knowledge.",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -135,7 +136,7 @@ def serve(
     port: int | None = typer.Option(None, help="Port number."),
     reload: bool = typer.Option(False, help="Enable auto-reload for development."),
 ) -> None:
-    """Start the DeepTutor API server."""
+    """Start the Lumen API server."""
     import asyncio
     import sys
 

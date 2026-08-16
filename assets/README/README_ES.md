@@ -1,8 +1,8 @@
 <div align="center">
 
-<p align="center"><img src="../../assets/figs/logo/logo.png" alt="DeepTutor logo" height="56" style="vertical-align: middle;">&nbsp;<img src="../../assets/figs/logo/banner.png" alt="DeepTutor" height="48" style="vertical-align: middle;"></p>
+<p align="center"><img src="../../assets/figs/logo/logo.png" alt="Lumen logo" height="56" style="vertical-align: middle;">&nbsp;<img src="../../assets/figs/logo/banner.png" alt="Lumen" height="48" style="vertical-align: middle;"></p>
 
-# DeepTutor: Tutoría Personalizada de Por Vida
+# Lumen: Tutoría Personalizada de Por Vida
 
 <p align="center">
   <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
@@ -50,14 +50,14 @@
 
 - **2026-05-22** 🌐 Sitio de documentación oficial disponible en [**deeptutor.info**](https://deeptutor.info/) — guías, referencias y tours de capacidades, todo en un solo lugar.
 - **2026-04-19** 🎉 ¡20k estrellas en 111 días! Gracias por el apoyo hacia una tutoría verdaderamente personalizada e inteligente.
-- **2026-04-10** 📄 Nuestro artículo ya está en arXiv — lee el [preprint](https://arxiv.org/abs/2604.26962) para conocer el diseño y las ideas detrás de DeepTutor.
+- **2026-04-10** 📄 Nuestro artículo ya está en arXiv — lee el [preprint](https://arxiv.org/abs/2604.26962) para conocer el diseño y las ideas detrás de Lumen.
 - **2026-02-06** 🚀 ¡10k estrellas en solo 39 días! Un enorme agradecimiento a nuestra increíble comunidad.
-- **2026-01-01** 🎊 ¡Feliz Año Nuevo! Únete a nuestro [Discord](https://discord.gg/eRsjPgMU4t), [WeChat](https://github.com/HKUDS/DeepTutor/issues/78) o [Discussions](https://github.com/HKUDS/DeepTutor/discussions) — juntos demos forma al futuro de DeepTutor.
-- **2025-12-29** 🎓 ¡DeepTutor está oficialmente lanzado!
+- **2026-01-01** 🎊 ¡Feliz Año Nuevo! Únete a nuestro [Discord](https://discord.gg/eRsjPgMU4t), [WeChat](https://github.com/HKUDS/DeepTutor/issues/78) o [Discussions](https://github.com/HKUDS/DeepTutor/discussions) — juntos demos forma al futuro de Lumen.
+- **2025-12-29** 🎓 ¡Lumen está oficialmente lanzado!
 
 ## ✨ Características Principales
 
-DeepTutor es un espacio de trabajo de aprendizaje nativo de agentes que conecta tutoría, resolución de problemas, generación de cuestionarios, investigación, visualización y práctica de dominio en un sistema extensible.
+Lumen es un espacio de trabajo de aprendizaje nativo de agentes que conecta tutoría, resolución de problemas, generación de cuestionarios, investigación, visualización y práctica de dominio en un sistema extensible.
 
 - **Un runtime para todos los modos** — Chat, Quiz, Research, Visualize, Solve y Mastery Path corren en el mismo bucle de agente, de modo que cambias el objetivo, no el motor, y el contexto acompaña al estudiante.
 - **Contexto de aprendizaje conectado** — Bases de conocimiento, libros, borradores de Co-Writer, cuadernos, bancos de preguntas, personas y Memory están disponibles en todos los flujos de trabajo en lugar de vivir en herramientas aisladas.
@@ -70,7 +70,7 @@ DeepTutor es un espacio de trabajo de aprendizaje nativo de agentes que conecta 
 
 ## 🚀 Comenzar
 
-DeepTutor incluye cuatro rutas de instalación. Todas comparten un diseño de espacio de trabajo: la configuración vive en `data/user/settings/` bajo el directorio desde el que se inicia (o bajo `DEEPTUTOR_HOME` / `deeptutor start --home` si se establece explícitamente). Para la aplicación completa, el flujo recomendado es **elegir un directorio de espacio de trabajo → instalar → `deeptutor init` → `deeptutor start`**.
+Lumen incluye cuatro rutas de instalación. Todas comparten un diseño de espacio de trabajo: la configuración vive en `data/user/settings/` bajo el directorio desde el que se inicia (o bajo `DEEPTUTOR_HOME` / `deeptutor start --home` si se establece explícitamente). Para la aplicación completa, el flujo recomendado es **elegir un directorio de espacio de trabajo → instalar → `deeptutor init` → `deeptutor start`**.
 
 <details>
 <summary><b>Opción 1 — Instalar desde PyPI</b> · aplicación web local completa + CLI, sin necesidad de clonar</summary>
@@ -185,7 +185,7 @@ Abre [http://127.0.0.1:3782](http://127.0.0.1:3782). El contenedor crea `/app/da
 }
 ```
 
-`next_public_api_base_external` (y su alias `public_api_base`) se aceptan como alternativas de menor precedencia. CORS usa **orígenes** de frontend, no URLs de API. Con la autenticación deshabilitada, DeepTutor permite los orígenes normales de navegador HTTP/HTTPS por defecto. Con la autenticación habilitada, agrega los orígenes exactos del frontend:
+`next_public_api_base_external` (y su alias `public_api_base`) se aceptan como alternativas de menor precedencia. CORS usa **orígenes** de frontend, no URLs de API. Con la autenticación deshabilitada, Lumen permite los orígenes normales de navegador HTTP/HTTPS por defecto. Con la autenticación habilitada, agrega los orígenes exactos del frontend:
 
 ```json
 {
@@ -305,19 +305,19 @@ El `.env` de la raíz del proyecto **no** se lee como archivo de configuración 
 
 </details>
 
-## 📖 Explorar DeepTutor
+## 📖 Explorar Lumen
 
 Comienza con las superficies principales que usarás día a día: Chat, Partners, Mis Agentes, Co-Writer, Book, Centro de Conocimiento, Espacio de Aprendizaje, Memory y Settings. El tour luego cubre los despliegues Multi-Usuario para espacios de trabajo compartidos y aislados.
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/OVERVIEW.png" alt="Inicio de DeepTutor — el espacio de trabajo Chat con todas las superficies en la barra lateral" width="900">
+<img src="../../assets/figs/web-1.4.6+/OVERVIEW.png" alt="Inicio de Lumen — el espacio de trabajo Chat con todas las superficies en la barra lateral" width="900">
 </div>
 
 <details>
 <summary><b>🏗️ Arquitectura del sistema</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/system/system%20architecture.png" alt="Arquitectura del sistema DeepTutor" width="900">
+<img src="../../assets/figs/system/system%20architecture.png" alt="Arquitectura del sistema Lumen" width="900">
 </div>
 
 </details>
@@ -328,13 +328,13 @@ Comienza con las superficies principales que usarás día a día: Chat, Partners
 Chat es la capacidad predeterminada y el lugar donde comienza la mayor parte del trabajo. Un único hilo puede conversar normalmente, llamar herramientas, fundamentarse en bases de conocimiento seleccionadas, leer adjuntos, generar imágenes, consultar subagentes, escribir registros de notebook y continuar con el mismo contexto entre turnos.
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/home/00-overview.png" alt="Espacio de trabajo de chat DeepTutor" width="900">
+<img src="../../assets/figs/web-1.4.6+/home/00-overview.png" alt="Espacio de trabajo de chat Lumen" width="900">
 </div>
 
 El bucle es deliberadamente simple: el modelo piensa en rondas, llama herramientas cuando es útil, observa los resultados y termina con un mensaje sin herramientas. `ask_user` es especial — en lugar de adivinar, el agente puede pausar el turno, hacer una pregunta de aclaración estructurada y reanudar una vez que respondes.
 
 <div align="center">
-<img src="../../assets/figs/system/chat-agent-loop.png" alt="Bucle de agente de chat DeepTutor" width="900">
+<img src="../../assets/figs/system/chat-agent-loop.png" alt="Bucle de agente de chat Lumen" width="900">
 </div>
 
 Las herramientas activables por el usuario son `brainstorm`, `web_search`, `paper_search`, `reason` y `geogebra_analysis` — más `imagegen` y `videogen` una vez que configures el modelo de generación correspondiente. Las herramientas contextuales como `rag`, `kb_files`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_notebook`, `write_note`, `github` y `consult_subagent` se montan automáticamente cuando el turno tiene el contexto adecuado.
@@ -349,13 +349,13 @@ Chat es también el punto de lanzamiento para capacidades más profundas: **Quiz
 <summary><b>🤝 Partner — Compañeros Persistentes con el Mismo Cerebro</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/partners/00-partners%20overview.png" alt="Espacio de trabajo de partners DeepTutor" width="900">
+<img src="../../assets/figs/web-1.4.6+/partners/00-partners%20overview.png" alt="Espacio de trabajo de partners Lumen" width="900">
 </div>
 
 Los Partners son compañeros persistentes con su propio alma, política de modelo, biblioteca, memoria y canales. No son un motor de bot separado: cada mensaje web o IM entrante se convierte en un turno normal de `ChatOrchestrator` dentro de un espacio de trabajo con alcance de partner. Un partner es "un chat que tiene personalidad y número de teléfono."
 
 <div align="center">
-<img src="../../assets/figs/system/partners-architecture.png" alt="Arquitectura de partners DeepTutor" width="900">
+<img src="../../assets/figs/system/partners-architecture.png" alt="Arquitectura de partners Lumen" width="900">
 </div>
 
 Cada partner tiene un `SOUL.md`, selección de modelo, canales, política de herramientas y biblioteca asignada. Las bases de conocimiento, skills y notebooks se copian en `data/partners/<id>/workspace/`, por lo que las mismas herramientas de RAG, skill, notebook y memoria funcionan sin casos especiales. Un partner lee la memoria de su propietario pero solo escribe en la suya propia.
@@ -372,16 +372,16 @@ La capa de canales está impulsada por esquema y puede conectarse a plataformas 
 <summary><b>🧑‍🚀 Mis Agentes — Consultar e Importar Otros Agentes</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/myagents/00-overview.png" alt="Espacio de trabajo de Mis Agentes DeepTutor" width="900">
+<img src="../../assets/figs/web-1.4.6+/myagents/00-overview.png" alt="Espacio de trabajo de Mis Agentes Lumen" width="900">
 </div>
 
-Mis Agentes convierte a otros agentes en contexto para DeepTutor y hace dos cosas distintas. **Conectar un agente en vivo** — una CLI de Claude Code, Codex, Gemini, Kimi, opencode o MiMo Code en tu máquina, o uno de tus Partners — y consultarlo desde dentro de un turno de chat: DeepTutor realmente *ejecuta* el otro agente y transmite su trabajo al panel de Activity a través de la herramienta `consult_subagent`. Selecciónalo con el chip de Agente (o escribe `@`), y establece cuántas rondas puede tomar la consulta.
+Mis Agentes convierte a otros agentes en contexto para Lumen y hace dos cosas distintas. **Conectar un agente en vivo** — una CLI de Claude Code, Codex, Gemini, Kimi, opencode o MiMo Code en tu máquina, o uno de tus Partners — y consultarlo desde dentro de un turno de chat: Lumen realmente *ejecuta* el otro agente y transmite su trabajo al panel de Activity a través de la herramienta `consult_subagent`. Selecciónalo con el chip de Agente (o escribe `@`), y establece cuántas rondas puede tomar la consulta.
 
 <div align="center">
 <img src="../../assets/figs/web-1.4.6+/home/08-subagent%20demo%20with%20claude%20code.png" alt="Consultando un subagente Claude Code en vivo" width="900">
 </div>
 
-**Importar conversaciones pasadas** — trae tu historial existente de Claude Code y Codex como agentes nombrados, buscables y reanudables. Elige qué días importar; actualizar los vuelve a sincronizar. Referencia una conversación importada desde cualquier turno de chat a través de `+` → Mis Agentes, y DeepTutor la lee como un transcript de terceros — sigue siendo *su* conversación, no la voz propia de DeepTutor.
+**Importar conversaciones pasadas** — trae tu historial existente de Claude Code y Codex como agentes nombrados, buscables y reanudables. Elige qué días importar; actualizar los vuelve a sincronizar. Referencia una conversación importada desde cualquier turno de chat a través de `+` → Mis Agentes, y Lumen la lee como un transcript de terceros — sigue siendo *su* conversación, no la voz propia de Lumen.
 
 </details>
 
@@ -389,7 +389,7 @@ Mis Agentes convierte a otros agentes en contexto para DeepTutor y hace dos cosa
 <summary><b>✍️ Co-Writer — Redacción Markdown con Conciencia de Selección</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/co-writer/00-overview.png" alt="Espacio de trabajo Co-Writer DeepTutor" width="900">
+<img src="../../assets/figs/web-1.4.6+/co-writer/00-overview.png" alt="Espacio de trabajo Co-Writer Lumen" width="900">
 </div>
 
 Co-Writer es un espacio de trabajo Markdown de vista dividida para informes, tutoriales, notas y artefactos de aprendizaje de formato largo. Los documentos se guardan automáticamente y renderizan una vista previa en vivo (matemáticas KaTeX, cercas de diagramas), y se pueden guardar de vuelta en cuadernos cuando un borrador se convierte en contexto reutilizable.
@@ -398,7 +398,7 @@ Co-Writer es un espacio de trabajo Markdown de vista dividida para informes, tut
 <img src="../../assets/figs/web-1.4.6+/co-writer/01-edit%20panel.png" alt="Editor Co-Writer con vista previa en vivo" width="900">
 </div>
 
-Su idea definitoria es la **edición quirúrgica**: selecciona un fragmento y pide a DeepTutor que lo reescriba, expanda o acorte. El agente de edición puede fundamentar el cambio en una base de conocimiento o evidencia web, mantiene un rastro de sus llamadas a herramientas y muestra cada cambio como un diff de aceptar/rechazar — de modo que nada se aplica hasta que lo apruebes.
+Su idea definitoria es la **edición quirúrgica**: selecciona un fragmento y pide a Lumen que lo reescriba, expanda o acorte. El agente de edición puede fundamentar el cambio en una base de conocimiento o evidencia web, mantiene un rastro de sus llamadas a herramientas y muestra cada cambio como un diff de aceptar/rechazar — de modo que nada se aplica hasta que lo apruebes.
 
 </details>
 
@@ -406,7 +406,7 @@ Su idea definitoria es la **edición quirúrgica**: selecciona un fragmento y pi
 <summary><b>📖 Book — Libros Vivos de tus Materiales</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/book/00-book_overview.png" alt="Biblioteca de libros DeepTutor" width="900">
+<img src="../../assets/figs/web-1.4.6+/book/00-book_overview.png" alt="Biblioteca de libros Lumen" width="900">
 </div>
 
 Book convierte las fuentes seleccionadas en un **libro vivo** interactivo — no un PDF estático, sino un entorno de lectura construido a partir de bloques tipados. Un libro puede comenzar desde bases de conocimiento, cuadernos, bancos de preguntas o historial de chat; el flujo de creación propone un esquema de capítulos antes de que se genere el contenido, así revisas la estructura en lugar de aceptar una salida de un solo intento sin verla antes.
@@ -427,7 +427,7 @@ Cada capítulo se compila en bloques tipados — texto, callouts, quizzes, tarje
 <summary><b>📚 Centro de Conocimiento — Bibliotecas RAG Multi-Motor</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="Centro de Conocimiento DeepTutor" width="900">
+<img src="../../assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="Centro de Conocimiento Lumen" width="900">
 </div>
 
 Las bases de conocimiento son las colecciones de documentos detrás del RAG — fundamentan los turnos de Chat, las ediciones de Co-Writer, la generación de Book y las conversaciones de Partner. Lo que las distingue es la **elección de motores de recuperación**: **LlamaIndex** (el predeterminado, vector local + BM25), **PageIndex** (hospedado, recuperación por razonamiento con citas a nivel de página), **GraphRAG** y **LightRAG** (recuperación por grafo de conocimiento), **LightRAG Server** (recuperación delegada a una instancia externa de LightRAG a la que te conectas por HTTP), **Tencent IMA** (una biblioteca que curas en IMA, consultada a través de su OpenAPI), o un vault **Obsidian** vinculado que el tutor lee y escribe en el lugar. Cada KB está vinculada a un motor.
@@ -444,7 +444,7 @@ Al crear una KB, puedes **crear nueva** (subir documentos y construir un índice
 <summary><b>🌐 Espacio de Aprendizaje — Skills, Personas y Contexto Reutilizable</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="Hub del Espacio de Aprendizaje DeepTutor" width="900">
+<img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="Hub del Espacio de Aprendizaje Lumen" width="900">
 </div>
 
 El Espacio de Aprendizaje es la capa de biblioteca y personalización — donde viven las cosas que persisten. **Conversaciones y Materiales** guarda tu historial de chat, cuadernos y un banco de preguntas (cada pregunta guardada conserva tu respuesta, la respuesta de referencia y una explicación). **Personalización** guarda rutas de dominio, personas (preajustes de comportamiento como *compañero*, *asistente de investigación*, *profesor*), skills (guías `SKILL.md` que el modelo lee bajo demanda), **Servicios MCP** — una tienda curada de servidores MCP alojados que instalas para ti mismo con un clic, además de cualquier servidor remoto que configures por URL — y **Aplicaciones CLI**, herramientas de línea de comandos del catálogo [CLI-Anything](https://github.com/HKUDS/CLI-Anything) que el agente de chat invoca directamente, con la guía de uso propia de cada aplicación cargada bajo demanda. Todo aquí se puede reutilizar desde Chat, Partners, Co-Writer y Book.
@@ -461,13 +461,13 @@ No tienes que escribir cada skill tú mismo — **Importar desde EduHub** navega
 <summary><b>🧠 Memory — Personalización Inspectable</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/memory/00-overview.png" alt="Vista general de Memory DeepTutor" width="900">
+<img src="../../assets/figs/web-1.4.6+/memory/00-overview.png" alt="Vista general de Memory Lumen" width="900">
 </div>
 
 Memory es un sistema de tres capas respaldado por archivos que puedes leer, curar y auditar — deliberadamente *no* un almacén de vectores oculto. **L1** es el espejo del espacio de trabajo más un rastro de eventos de solo adición (`trace/<surface>/<date>.jsonl`); **L2** son hechos curados por superficie (`L2/<surface>.md`); **L3** es síntesis entre superficies (`L3/<profile|recent|scope|preferences>.md`). Como L2 cita a L1 y L3 cita a L2, nada en tu perfil queda sin rendir cuentas.
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/memory/01-3%20layer%20memory%20graph.png" alt="Gráfico de memoria DeepTutor" width="900">
+<img src="../../assets/figs/web-1.4.6+/memory/01-3%20layer%20memory%20graph.png" alt="Gráfico de memoria Lumen" width="900">
 </div>
 
 El Memory Graph muestra toda la pirámide — síntesis L3 en el centro, L2 en el anillo intermedio, trazas L1 en el exterior — de modo que puedes rastrear cualquier afirmación sintetizada hasta el evento bruto exacto detrás de ella. La memoria se rastrea en las superficies `chat`, `notebook`, `quiz`, `kb`, `book`, partner y `cowriter`; los presupuestos de Actualización / Auditoría / Deduplicación del consolidador se ajustan en **Settings → Memory**.
@@ -478,18 +478,18 @@ El Memory Graph muestra toda la pirámide — síntesis L3 en el centro, L2 en e
 <summary><b>⚙️ Settings — Un Panel de Control</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="Hub de configuración DeepTutor" width="900">
+<img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="Hub de configuración Lumen" width="900">
 </div>
 
 Settings es el panel de control operativo, con una tira de estado en vivo (estado del backend y memoria residente en todo el árbol de procesos) y una tarjeta por área: **Apariencia** (tema, idioma de UI y de salida del modelo, estilo de bloques de código), **Red** (base de API, puertos, CORS), **Modelos** (LLM, Embedding, Search, Text-to-Speech, Speech-to-Text, Image Generation, Video Generation), **Knowledge Base** (motor de análisis de documentos), **Chat** (herramientas, parámetros por capacidad, límites de adjuntos), **Partners & Agents** (los subagentes que puedes consultar desde un turno), y **Memory** (los presupuestos del consolidador).
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="Configuración de apariencia de DeepTutor y temas" width="900">
+<img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="Configuración de apariencia de Lumen y temas" width="900">
 </div>
 
 La mayoría de las secciones usan un flujo de borrador y aplicación, de modo que puedes probar un proveedor antes de confirmarlo. Cuatro temas se incluyen por defecto — Default, Cream, Dark y Glass. Los archivos `.env` de la raíz del proyecto se ignoran intencionalmente; la configuración de runtime vive bajo `data/user/settings/*.json` a menos que `DEEPTUTOR_HOME` o `deeptutor start --home` apunten la app en otro lugar.
 
-**OpenAI Codex OAuth (experimental).** Elegir **OpenAI Codex** bajo Models → LLM reemplaza los campos de clave API por un inicio de sesión en el navegador que se ejecuta contra tu propio plan de ChatGPT, de modo que no se necesita `OPENAI_API_KEY`. Los tokens viven solo en `data/system/user-secrets/<owner>/private/openai-codex/` — en el despliegue multi-contenedor con Compose, fuera de cualquier árbol al que el sandbox de ejecución pueda acceder — y DeepTutor nunca lee ni modifica tu inicio de sesión de la CLI `~/.codex`. La lista de modelos proviene del catálogo en vivo de esa cuenta; iniciar sesión publica el perfil, pero este solo se convierte en el modelo activo cuando todavía no hay ningún LLM configurado, de modo que nunca redirige un despliegue a tus espaldas. Como un token autoriza el plan de una sola persona, el perfil no se puede compartir a través de permisos de usuario — cada cuenta inicia sesión por sí misma, incluidos los usuarios comunes: su tarjeta se encuentra bajo Models → LLM, y los modelos, el catálogo y el cierre de sesión resultantes permanecen privados para esa cuenta, y el navegador debe poder alcanzar la máquina que ejecuta el backend (en un servidor remoto, ejecuta `deeptutor provider login openai-codex` allí en su lugar). Los errores de cuota y las fallas del catálogo se reportan tal cual y nunca recurren a un proveedor de pago. Esta ruta de compatibilidad es experimental: la interfaz upstream puede cambiar.
+**OpenAI Codex OAuth (experimental).** Elegir **OpenAI Codex** bajo Models → LLM reemplaza los campos de clave API por un inicio de sesión en el navegador que se ejecuta contra tu propio plan de ChatGPT, de modo que no se necesita `OPENAI_API_KEY`. Los tokens viven solo en `data/system/user-secrets/<owner>/private/openai-codex/` — en el despliegue multi-contenedor con Compose, fuera de cualquier árbol al que el sandbox de ejecución pueda acceder — y Lumen nunca lee ni modifica tu inicio de sesión de la CLI `~/.codex`. La lista de modelos proviene del catálogo en vivo de esa cuenta; iniciar sesión publica el perfil, pero este solo se convierte en el modelo activo cuando todavía no hay ningún LLM configurado, de modo que nunca redirige un despliegue a tus espaldas. Como un token autoriza el plan de una sola persona, el perfil no se puede compartir a través de permisos de usuario — cada cuenta inicia sesión por sí misma, incluidos los usuarios comunes: su tarjeta se encuentra bajo Models → LLM, y los modelos, el catálogo y el cierre de sesión resultantes permanecen privados para esa cuenta, y el navegador debe poder alcanzar la máquina que ejecuta el backend (en un servidor remoto, ejecuta `deeptutor provider login openai-codex` allí en su lugar). Los errores de cuota y las fallas del catálogo se reportan tal cual y nunca recurren a un proveedor de pago. Esta ruta de compatibilidad es experimental: la interfaz upstream puede cambiar.
 
 Los despliegues locales predeterminados de Docker y Podman usan redes de loopback separadas y necesitan un puente temporal durante el inicio de sesión. Sigue la [guía del puente temporal local de OAuth de Codex](../../CONTAINERIZATION.md#temporary-local-codex-oauth-bridge) para conocer los comandos exactos de Docker, Compose, Podman y desmontaje.
 
@@ -499,7 +499,7 @@ Para un despliegue remoto, el `localhost` del navegador y el `localhost` del ser
 ssh -N -L 1455:127.0.0.1:3782 <ssh-user>@<server-host>
 ```
 
-Si DeepTutor reporta el puerto de devolución de llamada de reserva `1457`, usa:
+Si Lumen reporta el puerto de devolución de llamada de reserva `1457`, usa:
 
 ```bash
 ssh -N -L 1457:127.0.0.1:3782 <ssh-user>@<server-host>
@@ -516,7 +516,7 @@ La detección de topología remota tiene un límite de localhost. Si Web mismo s
 <details>
 <summary><b>👥 Multi-Usuario — Despliegues Compartidos</b> · autenticación opcional, espacios de trabajo aislados por usuario</summary>
 
-La autenticación está **desactivada por defecto** — DeepTutor corre en modo monousuario. Actívala y un árbol `data/` aloja un espacio de trabajo de administrador, espacios de trabajo aislados por usuario y espacios de trabajo de partner en paralelo:
+La autenticación está **desactivada por defecto** — Lumen corre en modo monousuario. Actívala y un árbol `data/` aloja un espacio de trabajo de administrador, espacios de trabajo aislados por usuario y espacios de trabajo de partner en paralelo:
 
 ```text
 data/
@@ -535,9 +535,9 @@ El **primer usuario registrado se convierte en administrador** y es dueño de ca
 
 </details>
 
-## ⌨️ DeepTutor CLI — Interfaz Nativa de Agentes
+## ⌨️ Lumen CLI — Interfaz Nativa de Agentes
 
-Un binario `deeptutor`, dos formas de entrar: un **REPL** interactivo para quienes viven en la terminal, y **JSON** estructurado para otros agentes que manejan DeepTutor como herramienta. Las mismas capacidades, herramientas y bases de conocimiento de cualquier manera.
+Un binario `deeptutor`, dos formas de entrar: un **REPL** interactivo para quienes viven en la terminal, y **JSON** estructurado para otros agentes que manejan Lumen como herramienta. Las mismas capacidades, herramientas y bases de conocimiento de cualquier manera.
 
 <details>
 <summary><b>Manejarlo tú mismo</b></summary>
@@ -559,7 +559,7 @@ Todo lo que hace la aplicación Web también está aquí — bases de conocimien
 <details>
 <summary><b>Dejar que un agente lo maneje</b></summary>
 
-DeepTutor está construido para ser *operado por otro agente*. Agrega `--format json` a cualquier `run` y cada turno transmite **NDJSON — un evento por línea** (`content`, `tool_call`, `tool_result`, `done`, …), cada línea etiquetada con su `session_id`. Las ejecuciones son seguras sin TTY: una pausa `ask_user` sin TTY se resuelve automáticamente con una respuesta vacía en lugar de bloquearse.
+Lumen está construido para ser *operado por otro agente*. Agrega `--format json` a cualquier `run` y cada turno transmite **NDJSON — un evento por línea** (`content`, `tool_call`, `tool_result`, `done`, …), cada línea etiquetada con su `session_id`. Las ejecuciones son seguras sin TTY: una pausa `ask_user` sin TTY se resuelve automáticamente con una respuesta vacía en lugar de bloquearse.
 
 ```bash
 # Disparo único, legible por máquina
@@ -614,12 +614,12 @@ Aún no está publicado en PyPI, así que la sección principal de [Comenzar](#-
 
 ## 🧩 Ecosistema — EduHub y la Comunidad de Skills
 
-Las skills de DeepTutor usan el formato abierto **Agent-Skills** — una carpeta con una guía `SKILL.md` (frontmatter YAML + Markdown) y archivos de referencia opcionales. No hay nada específico de DeepTutor en ello, así que cualquier registro que hable el formato se convierte en una fuente para tu biblioteca. DeepTutor incluye **[EduHub](https://eduhub.deeptutor.info/)** — nuestro propio registro de skills enfocado en educación — conectado como hub predeterminado.
+Las skills de Lumen usan el formato abierto **Agent-Skills** — una carpeta con una guía `SKILL.md` (frontmatter YAML + Markdown) y archivos de referencia opcionales. No hay nada específico de Lumen en ello, así que cualquier registro que hable el formato se convierte en una fuente para tu biblioteca. Lumen incluye **[EduHub](https://eduhub.deeptutor.info/)** — nuestro propio registro de skills enfocado en educación — conectado como hub predeterminado.
 
 <details>
-<summary><b>EduHub — el ecosistema de skills de DeepTutor</b></summary>
+<summary><b>EduHub — el ecosistema de skills de Lumen</b></summary>
 
-[**EduHub**](https://eduhub.deeptutor.info/) es el hub comunitario que DeepTutor lanzó para compartir skills de agentes orientadas a la enseñanza — tutores socráticos, constructores de tarjetas flash, retroalimentación de ensayos, planos de examen, explicadores de conceptos y más. Está integrado en DeepTutor, así que no hay nada que configurar: un slug simple o un prefijo `eduhub:` se resuelve a él.
+[**EduHub**](https://eduhub.deeptutor.info/) es el hub comunitario que Lumen lanzó para compartir skills de agentes orientadas a la enseñanza — tutores socráticos, constructores de tarjetas flash, retroalimentación de ensayos, planos de examen, explicadores de conceptos y más. Está integrado en Lumen, así que no hay nada que configurar: un slug simple o un prefijo `eduhub:` se resuelve a él.
 
 **Encontrar e instalar** — en el navegador, abre **Learning Space → Skills → Import from EduHub** para navegar el catálogo y descargar una skill directamente en tu biblioteca. Desde la terminal:
 
@@ -638,7 +638,7 @@ deeptutor skill publish ./my-skill                    # interactivo: elige una p
 deeptutor skill update                                # revertir o lanzar una nueva versión
 ```
 
-EduHub también es un registro independiente compatible con ClawHub, así que los agentes que no son DeepTutor (Claude Code, Codex, …) pueden usarlo directamente a través del CLI `eduhub` — `npx eduhub install socratic-tutor`.
+EduHub también es un registro independiente compatible con ClawHub, así que los agentes que no son Lumen (Claude Code, Codex, …) pueden usarlo directamente a través del CLI `eduhub` — `npx eduhub install socratic-tutor`.
 
 </details>
 
@@ -649,7 +649,7 @@ Sea cual sea la fuente, cada importación pasa la **misma puerta de seguridad** 
 
 - el **veredicto de seguridad** del registro se verifica primero — los paquetes marcados se rechazan a menos que pases `--allow-unverified`;
 - los archivos se extraen defensivamente (guardas contra zip-slip / zip-bomb) detrás de una **lista blanca de sufijos** de texto/script, de modo que los binarios nunca aterrizan en el espacio de trabajo;
-- el frontmatter se normaliza al esquema de DeepTutor y `always:` se **elimina**, de modo que una skill descargada nunca puede forzarse en cada prompt del sistema;
+- el frontmatter se normaliza al esquema de Lumen y `always:` se **elimina**, de modo que una skill descargada nunca puede forzarse en cada prompt del sistema;
 - la proveniencia — hub, versión, veredicto y tiempo de instalación — se escribe en `.hub-lock.json` para auditorías y actualizaciones.
 
 En despliegues multi-usuario, la instalación es solo para administradores: una nueva skill aterriza en el catálogo del administrador y permanece invisible para otros usuarios hasta que un permiso la asigne, de modo que un administrador puede verificarla antes de distribuirla.
@@ -659,7 +659,7 @@ En despliegues multi-usuario, la instalación es solo para administradores: una 
 <details>
 <summary><b>También compatible con ClawHub</b></summary>
 
-Como DeepTutor habla el formato abierto Agent-Skills, **[ClawHub](https://clawhub.ai/)** también funciona como fuente de primera clase — está integrado junto con EduHub. Selecciónalo con el prefijo del hub:
+Como Lumen habla el formato abierto Agent-Skills, **[ClawHub](https://clawhub.ai/)** también funciona como fuente de primera clase — está integrado junto con EduHub. Selecciónalo con el prefijo del hub:
 
 ```bash
 deeptutor skill search "git release notes" --hub clawhub
@@ -690,13 +690,13 @@ Agrega más registros en `settings/skill_hubs.json`: una entrada `type: "clawhub
 
 ### 📮 Contacto
 
-DeepTutor es un proyecto de código abierto liderado por [Bingxi Zhao](https://github.com/pancacake) dentro del grupo [HKUDS](https://github.com/HKUDS), y se itera en **forma completamente de código abierto**, construido junto con la comunidad. Hasta ahora, **NO** tenemos productos en línea de pago de ningún tipo. No dudes en contactarnos en **bingxizhao39@gmail.com** para discusiones, ideas o colaboración.
+Lumen es un proyecto de código abierto liderado por [Bingxi Zhao](https://github.com/pancacake) dentro del grupo [HKUDS](https://github.com/HKUDS), y se itera en **forma completamente de código abierto**, construido junto con la comunidad. Hasta ahora, **NO** tenemos productos en línea de pago de ningún tipo. No dudes en contactarnos en **bingxizhao39@gmail.com** para discusiones, ideas o colaboración.
 
 ### 🙏 Agradecimientos
 
-Un agradecimiento de corazón a [**Chao Huang**](https://sites.google.com/view/chaoh), director del Data Intelligence Lab @ HKU, y a nuestros compañeros de HKUDS por su cálido apoyo — especialmente [**Jiahao Zhang**](https://github.com/zzhtx258), [**Zirui Guo**](https://github.com/LarFii) y [**Xubin Ren**](https://github.com/Re-bin). También estamos profundamente agradecidos a la **comunidad de código abierto**: tus estrellas, issues, pull requests y discusiones dan forma a DeepTutor todos los días.
+Un agradecimiento de corazón a [**Chao Huang**](https://sites.google.com/view/chaoh), director del Data Intelligence Lab @ HKU, y a nuestros compañeros de HKUDS por su cálido apoyo — especialmente [**Jiahao Zhang**](https://github.com/zzhtx258), [**Zirui Guo**](https://github.com/LarFii) y [**Xubin Ren**](https://github.com/Re-bin). También estamos profundamente agradecidos a la **comunidad de código abierto**: tus estrellas, issues, pull requests y discusiones dan forma a Lumen todos los días.
 
-DeepTutor también se apoya en los hombros de destacados proyectos de código abierto que nos dieron herramientas e inspiración:
+Lumen también se apoya en los hombros de destacados proyectos de código abierto que nos dieron herramientas e inspiración:
 
 | Proyecto | Rol / Inspiración |
 |:---|:---|
@@ -707,16 +707,16 @@ DeepTutor también se apoya en los hombros de destacados proyectos de código ab
 | [**AI-Researcher**](https://github.com/HKUDS/AI-Researcher) | Pipeline de investigación automatizada *(HKUDS)* |
 | [**OpenClaw**](https://github.com/openclaw/openclaw) | Pasarela de agentes abierta y ecosistema de skills detrás de ClawHub |
 | [**Codex**](https://github.com/openai/codex) | CLI de codificación nativo de agentes que inspiró nuestro flujo de trabajo CLI |
-| [**Claude Code**](https://github.com/anthropics/claude-code) | CLI de codificación agéntica que inspiró el bucle de agentes de DeepTutor |
+| [**Claude Code**](https://github.com/anthropics/claude-code) | CLI de codificación agéntica que inspiró el bucle de agentes de Lumen |
 | [**ManimCat**](https://github.com/Wing900/ManimCat) | Generación de animaciones matemáticas impulsada por IA para Math Animator |
 
 ### 🗺️ Roadmap y Contribuir
 
-Queremos que DeepTutor siga iterando y mejorando — y en última instancia se convierta en un regalo que devolvamos a la comunidad de código abierto. Nuestro [**roadmap**](https://github.com/HKUDS/DeepTutor/issues/498) se actualiza continuamente; vota en los elementos allí o propone nuevos. Si deseas contribuir, consulta la [**Guía de Contribución**](../../CONTRIBUTING.md) para la estrategia de ramas, estándares de código y cómo comenzar.
+Queremos que Lumen siga iterando y mejorando — y en última instancia se convierta en un regalo que devolvamos a la comunidad de código abierto. Nuestro [**roadmap**](https://github.com/HKUDS/DeepTutor/issues/498) se actualiza continuamente; vota en los elementos allí o propone nuevos. Si deseas contribuir, consulta la [**Guía de Contribución**](../../CONTRIBUTING.md) para la estrategia de ramas, estándares de código y cómo comenzar.
 
 <div align="center">
 
-Esperamos que DeepTutor se convierta en un regalo para la comunidad. 🎁
+Esperamos que Lumen se convierta en un regalo para la comunidad. 🎁
 
 <a href="https://github.com/HKUDS/DeepTutor/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=HKUDS/DeepTutor&max=999" alt="Contribuidores" />

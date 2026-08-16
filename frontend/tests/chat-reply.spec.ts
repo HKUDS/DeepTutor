@@ -13,7 +13,7 @@ async function openNewConversation(page: Page) {
   return editable
 }
 
-test.describe('chat reply from DeepTutor API', () => {
+test.describe('chat reply from Lumen API', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('trae:sidebarOpen', '1')
@@ -44,7 +44,7 @@ test.describe('chat reply from DeepTutor API', () => {
     await expect(assistant).not.toContainText('这个词')
   })
 
-  test('助手回复来自 DeepTutor WS，不是本地 echo', async ({ page }) => {
+  test('助手回复来自 Lumen WS，不是本地 echo', async ({ page }) => {
     await mockDialogApi(page)
     const editable = await openNewConversation(page)
     await editable.pressSequentially('Hello Askora')
@@ -86,7 +86,7 @@ test.describe('chat reply from DeepTutor API', () => {
 
     const assistant = page.locator('[data-role="assistant"]').last()
     await expect(page.locator('.user-message-query-text').filter({ hasText: '纱线是什么' })).toHaveCount(1)
-    await expect(assistant.locator('.agent-message__title')).toHaveText('DeepTutor')
+    await expect(assistant.locator('.agent-message__title')).toHaveText('Lumen')
     await expect(assistant.locator('.markdown-renderer')).toHaveCount(0)
     await expect(assistant.locator('.latest-assistant-bar')).toHaveCount(0)
     await expect(page.getByText('正在连接')).toHaveCount(0)

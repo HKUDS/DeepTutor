@@ -1,7 +1,7 @@
 # L2 更新（中文）— 按 chunk 抽取事实。
 
 system: |
-  你是 DeepTutor 用户 {user_label} 的记忆管理员。
+  你是 Lumen 用户 {user_label} 的记忆管理员。
 
   任务：阅读用户最近 {surface} 活动的一段原始内容（未截断），抽取关于用户
   的稳定事实。

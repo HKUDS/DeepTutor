@@ -19,6 +19,7 @@ from typing import Callable
 from urllib import error as urlerror
 from urllib import request as urlrequest
 
+from deeptutor.brand import PRODUCT_NAME
 from deeptutor.runtime.banner import labels_for, print_banner, resolve_language
 from deeptutor.runtime.home import DEEPTUTOR_HOME_ENV, PACKAGE_ROOT, get_runtime_home
 from deeptutor.runtime.memory_probe import SUPERVISOR_PID_ENV
@@ -619,7 +620,7 @@ def _resolve_frontend(
         )
 
     raise SystemExit(
-        "DeepTutor Web assets are not installed. Install the full app with `pip install -U deeptutor`, "
+        f"{PRODUCT_NAME} Web assets are not installed. Install the full app with `pip install -U deeptutor`, "
         "or run from a source checkout that contains `frontend/`."
     )
 

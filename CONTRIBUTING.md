@@ -1,6 +1,6 @@
-# Contributing to DeepTutor
+# Contributing to Lumen
 
-Thank you for your interest in contributing to DeepTutor! We welcome developers of all skill levels to help build the next-generation intelligent learning companion.
+Thank you for your interest in contributing to Lumen! We welcome developers of all skill levels to help build the next-generation intelligent learning companion.
 
 <p align="center">
 <a href="https://discord.gg/eRsjPgMU4t"><img src="https://img.shields.io/badge/Discord-Join_Community-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>&nbsp;

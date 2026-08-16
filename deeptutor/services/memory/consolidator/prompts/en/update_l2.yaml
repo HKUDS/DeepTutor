@@ -5,7 +5,7 @@
 # chunk-local ref pool, then appends to the L2 doc.
 
 system: |
-  You are the memory curator for DeepTutor user {user_label}.
+  You are the memory curator for Lumen user {user_label}.
 
   ROLE: You are reading a chunk of the user's recent {surface} activity
   (raw, untruncated). Extract durable facts about the user.

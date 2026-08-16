@@ -1,8 +1,8 @@
-# DeepTutor — Agent-Native Architecture
+# Lumen — Agent-Native Architecture
 
 ## Overview
 
-DeepTutor is an **agent-native** intelligent learning companion organized
+Lumen is an **agent-native** intelligent learning companion organized
 around a two-layer plugin model — single-shot **Tools** invoked by the
 LLM, and multi-stage **Capabilities** that take over a turn — exposed
 through three entry points: CLI, WebSocket API, and Python SDK.
@@ -112,7 +112,7 @@ deeptutor start                   # backend + frontend together
 | `deeptutor/core/context.py`                | `UnifiedContext` dataclass            |
 | `deeptutor/tools/builtin/__init__.py`      | All built-in tool wrappers           |
 | `deeptutor/capabilities/`                  | Built-in capability implementations  |
-| `deeptutor/app.py`                         | `DeepTutorApp` — Python SDK facade    |
+| `deeptutor/app.py`                         | `LumenApp` — Python SDK facade    |
 | `deeptutor_cli/main.py`                    | Typer CLI entry point                |
 | `deeptutor/api/routers/unified_ws.py`      | Unified WebSocket endpoint           |
 

@@ -23,6 +23,8 @@ from starlette.staticfiles import StaticFiles
 from starlette.types import Receive, Scope, Send
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from deeptutor.brand import PRODUCT_NAME
+
 CODEX_CALLBACK_PATH = "/auth/callback"
 CODEX_CALLBACK_API_PATH = "/api/v1/auth/openai-codex/callback"
 DEFAULT_API_BASE = "http://127.0.0.1:8001"
@@ -232,7 +234,7 @@ _HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
 
 
 async def _missing_assets(_request: Request) -> Response:
-    return Response("DeepTutor Web assets are not installed.", status_code=503)
+    return Response(f"{PRODUCT_NAME} Web assets are not installed.", status_code=503)
 
 
 class _LazyApp:
