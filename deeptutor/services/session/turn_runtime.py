@@ -79,8 +79,9 @@ def _narration_marker_call_id(event: StreamEvent) -> str | None:
     preamble streamed alongside a tool call). Its text belongs to the trace,
     not the persisted answer, so it is excluded when assembling content.
 
-    DSML rounds may explicitly keep the cleaned prose surrounding a call; that
-    narrow exception remains part of the persisted answer.
+    A round may explicitly keep learner-facing prose surrounding a call via
+    ``answer_visible`` (for example DSML or mastery tutoring); that narrow
+    exception remains part of the persisted answer.
     """
     metadata = event.metadata or {}
     if (
