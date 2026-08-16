@@ -346,6 +346,75 @@ def test_supported_file_types_returns_upload_policy() -> None:
     assert "image/png" in payload["accept"]
 
 
+def test_graphrag_model_compatibility_probes_candidate_without_switching(
+    monkeypatch,
+) -> None:
+    captured: dict[str, str] = {}
+
+    async def _probe(profile_id: str, model_id: str) -> dict:
+        captured.update({"profile_id": profile_id, "model_id": model_id})
+        return {
+            "status": "compatible",
+            "compatible": True,
+            "code": "graphrag_model_compatible",
+            "message": "The model returned valid GraphRAG structured output.",
+            "model": "gpt-4o-mini",
+            "binding": "openai",
+            "retryable": False,
+        }
+
+    monkeypatch.setattr(
+        knowledge_router_module,
+        "_probe_graphrag_model_compatibility",
+        _probe,
+        raising=False,
+    )
+
+    with TestClient(_build_app()) as client:
+        response = client.post(
+            "/api/v1/knowledge/rag-pipelines/graphrag/model-compatibility",
+            json={"profile_id": "profile-a", "model_id": "model-b"},
+        )
+
+    assert response.status_code == 200
+    assert captured == {"profile_id": "profile-a", "model_id": "model-b"}
+    assert response.json() == {
+        "status": "compatible",
+        "compatible": True,
+        "code": "graphrag_model_compatible",
+        "message": "The model returned valid GraphRAG structured output.",
+        "model": "gpt-4o-mini",
+        "binding": "openai",
+        "retryable": False,
+    }
+
+
+def test_graphrag_model_compatibility_hides_unexpected_provider_details(
+    monkeypatch,
+) -> None:
+    async def _probe(_profile_id: str, _model_id: str) -> dict:
+        raise RuntimeError("provider leaked sk-secret-must-not-reach-client")
+
+    monkeypatch.setattr(
+        knowledge_router_module,
+        "_probe_graphrag_model_compatibility",
+        _probe,
+        raising=False,
+    )
+
+    with TestClient(_build_app()) as client:
+        response = client.post(
+            "/api/v1/knowledge/rag-pipelines/graphrag/model-compatibility",
+            json={"profile_id": "profile-a", "model_id": "model-b"},
+        )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == (
+        "GraphRAG compatibility could not be tested because of an internal error."
+    )
+    assert "sk-secret" not in response.text
+
+
 def test_create_kb_does_not_require_llm_precheck(monkeypatch, tmp_path: Path) -> None:
     manager = _FakeKBManager(tmp_path / "knowledge_bases")
     monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
