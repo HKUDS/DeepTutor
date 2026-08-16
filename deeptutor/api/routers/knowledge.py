@@ -6,7 +6,7 @@ Handles knowledge base CRUD operations, file uploads, and initialization.
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import logging
 import mimetypes
@@ -27,7 +27,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
 from deeptutor.api.utils.progress_broadcaster import ProgressBroadcaster
@@ -80,6 +80,11 @@ log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+_WEB_SYNC_JOBS: dict[str, dict] = {}
+_WEB_SYNC_TASKS: dict[str, asyncio.Task] = {}
+_WEB_SYNC_ACTIVE: set[str] = set()
+_WEB_SYNC_JOB_LIMIT = 50
 
 # Constants for byte conversions
 BYTES_PER_GB = 1024**3
@@ -195,6 +200,60 @@ def _build_unique_task_id(task_type: str, task_key_prefix: str) -> str:
     task_manager = TaskIDManager.get_instance()
     task_key = f"{task_key_prefix}_{datetime.now().isoformat()}_{uuid4().hex[:8]}"
     return task_manager.generate_task_id(task_type, task_key)
+
+
+def _web_sync_job_path(kb_base_dir: Path, kb_name: str) -> Path:
+    return Path(kb_base_dir) / kb_name / ".web_sync_jobs.json"
+
+
+def _load_web_sync_jobs(kb_base_dir: Path, kb_name: str) -> dict[str, dict]:
+    path = _web_sync_job_path(kb_base_dir, kb_name)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _save_web_sync_job(kb_base_dir: Path, job: dict) -> dict:
+    jobs = _load_web_sync_jobs(kb_base_dir, job["kb_name"])
+    jobs[job["job_id"]] = job
+    ordered = dict(sorted(jobs.items(), key=lambda item: item[1].get("created_at", "")))
+    while len(ordered) > _WEB_SYNC_JOB_LIMIT:
+        ordered.pop(next(iter(ordered)))
+    atomic_write_json(_web_sync_job_path(kb_base_dir, job["kb_name"]), ordered)
+    _WEB_SYNC_JOBS[job["job_id"]] = job
+    return job
+
+
+def _new_web_sync_job(kb_name: str) -> dict:
+    now = datetime.now(timezone.utc).isoformat()
+    return {
+        "job_id": f"web-sync-{uuid4().hex[:16]}",
+        "kb_name": kb_name,
+        "status": "queued",
+        "progress": 0,
+        "message": "Queued",
+        "result": None,
+        "error": None,
+        "created_at": now,
+        "started_at": "",
+        "finished_at": "",
+        "pid": os.getpid(),
+    }
+
+
+def _update_web_sync_job(
+    kb_base_dir: Path,
+    kb_name: str,
+    job_id: str,
+    **fields,
+) -> dict:
+    job = _WEB_SYNC_JOBS.get(job_id) or _load_web_sync_jobs(kb_base_dir, kb_name).get(job_id)
+    if not job:
+        raise KeyError(job_id)
+    job.update(fields)
+    return _save_web_sync_job(kb_base_dir, job)
 
 
 def _mark_kb_queued_for_processing(
@@ -3019,6 +3078,8 @@ class AddWebSourceRequest(BaseModel):
     url: str
     max_depth: int = 3
     max_pages: int = 200
+    language: str = "auto"
+    paired_url: str = ""
 
 
 class WebSourceInfo(BaseModel):
@@ -3036,6 +3097,23 @@ class WebSourceInfo(BaseModel):
     language: str = ""
     pair_key: str = ""
     pair_status: str = ""
+    paired_source_id: str = ""
+    paired_url: str = ""
+    coverage: float | None = None
+    latest_sync_job: str = ""
+
+
+class WebSyncJobInfo(BaseModel):
+    job_id: str
+    kb_name: str
+    status: str
+    progress: int = 0
+    message: str = ""
+    result: dict | None = None
+    error: str | None = None
+    created_at: str = ""
+    started_at: str = ""
+    finished_at: str = ""
 
 
 class WebNavNode(BaseModel):
@@ -3149,7 +3227,12 @@ async def add_web_source(kb_name: str, request: AddWebSourceRequest):
     try:
         manager, resolved_name, _ = _writable_kb(kb_name)
         info = manager.add_web_source(
-            resolved_name, request.url, request.max_depth, request.max_pages
+            resolved_name,
+            request.url,
+            request.max_depth,
+            request.max_pages,
+            language=request.language,
+            paired_url=request.paired_url,
         )
         return WebSourceInfo(**info)
     except HTTPException:
@@ -3190,63 +3273,247 @@ async def remove_web_source(kb_name: str, source_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _web_sync_result_payload(kb_result, enabled_count: int) -> dict:
+    pair_summaries = []
+    for pr in kb_result.pair_results:
+        pair_summaries.append(
+            {
+                "pair_key": pr.pair_key,
+                "origin": pr.origin,
+                "status": pr.status,
+                "en_pages": pr.en_pages,
+                "zh_pages": pr.zh_pages,
+                "paired_pages": pr.paired_pages,
+                "en_only_pages": pr.en_only_pages,
+                "zh_only_pages": pr.zh_only_pages,
+                "low_confidence": pr.low_confidence,
+                "error": pr.error or None,
+                "source_results": pr.source_results,
+            }
+        )
+    return {
+        "message": f"Synced {enabled_count} source(s) in {len(pair_summaries)} pair(s)",
+        "ok": kb_result.ok,
+        "pair_results": pair_summaries,
+        "index_rebuilt": kb_result.index_rebuilt,
+        "index_error": kb_result.index_error or None,
+        "total_pages": kb_result.total_pages,
+    }
+
+
+async def _run_web_sync_job(
+    job_id: str,
+    kb_name: str,
+    sources: list[dict],
+    kb_base_dir: Path,
+) -> None:
+    from deeptutor.services.web_source.orchestrator import sync_kb_sources_safe
+
+    _WEB_SYNC_ACTIVE.add(job_id)
+
+    def report_progress(percent: int, message: str) -> None:
+        current = _WEB_SYNC_JOBS.get(job_id, {})
+        _update_web_sync_job(
+            kb_base_dir,
+            kb_name,
+            job_id,
+            status="running",
+            progress=max(0, min(int(percent), 99)),
+            message=message,
+            started_at=current.get("started_at") or datetime.now(timezone.utc).isoformat(),
+        )
+
+    try:
+        _update_web_sync_job(
+            kb_base_dir,
+            kb_name,
+            job_id,
+            status="running",
+            progress=2,
+            message="Starting web source sync",
+            started_at=datetime.now(timezone.utc).isoformat(),
+        )
+        kb_result = await sync_kb_sources_safe(
+            kb_name=kb_name,
+            sources=sources,
+            base_dir=str(kb_base_dir),
+            progress=report_progress,
+        )
+        payload = _web_sync_result_payload(kb_result, len(sources))
+        failed = bool(not kb_result.ok or kb_result.index_error)
+        _update_web_sync_job(
+            kb_base_dir,
+            kb_name,
+            job_id,
+            status="failed" if failed else "succeeded",
+            progress=100,
+            message=payload["message"],
+            result=payload,
+            error=kb_result.index_error or None,
+            finished_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+        manager = KnowledgeBaseManager(base_dir=str(kb_base_dir))
+        for source in sources:
+            manager.update_web_source_state(kb_name, source.get("id", ""), latest_sync_job=job_id)
+    except asyncio.CancelledError:
+        _update_web_sync_job(
+            kb_base_dir,
+            kb_name,
+            job_id,
+            status="cancelled",
+            progress=_WEB_SYNC_JOBS.get(job_id, {}).get("progress", 0),
+            message="Web source sync cancelled",
+            finished_at=datetime.now(timezone.utc).isoformat(),
+        )
+        raise
+    except Exception as exc:
+        logger.exception("Web source sync job failed KB=%s job=%s", kb_name, job_id)
+        _update_web_sync_job(
+            kb_base_dir,
+            kb_name,
+            job_id,
+            status="failed",
+            progress=100,
+            message="Web source sync failed",
+            error=str(exc),
+            finished_at=datetime.now(timezone.utc).isoformat(),
+        )
+    finally:
+        _WEB_SYNC_ACTIVE.discard(job_id)
+
+
 @router.post("/{kb_name}/sync-web")
 async def sync_web_sources(kb_name: str):
-    """Sync all web sources for a KB using bilingual-aware orchestration.
-
-    Groups sources into language pairs, crawls, aligns paired pages, and
-    rebuilds the index once after all sources are processed.
-    """
+    """Queue bilingual web-source sync and return a durable job handle."""
     try:
         manager, resolved_name, kb_base_dir = _writable_kb(kb_name)
         sources = manager.get_web_sources(resolved_name)
-        if not sources:
-            return {
-                "message": "No web sources",
-                "results": [],
-                "pair_results": [],
-                "index_rebuilt": False,
-            }
-        from deeptutor.services.web_source.orchestrator import sync_kb_sources_safe
-
         enabled = [s for s in sources if s.get("enabled", True)]
-        if not enabled:
-            return {
+
+        for job in _WEB_SYNC_JOBS.values():
+            if job.get("kb_name") == resolved_name and job.get("status") in {"queued", "running"}:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "message": "A web source sync is already running",
+                        "job_id": job["job_id"],
+                    },
+                )
+
+        job = _new_web_sync_job(resolved_name)
+        job["result"] = (
+            None
+            if enabled
+            else {
                 "message": "No enabled web sources",
-                "results": [],
+                "ok": True,
                 "pair_results": [],
                 "index_rebuilt": False,
+                "index_error": None,
+                "total_pages": 0,
             }
-        kb_result = await sync_kb_sources_safe(
-            kb_name=resolved_name,
-            sources=enabled,
-            base_dir=str(kb_base_dir),
         )
-        pair_summaries = []
-        for pr in kb_result.pair_results:
-            pair_summaries.append(
-                {
-                    "pair_key": pr.pair_key,
-                    "origin": pr.origin,
-                    "status": pr.status,
-                    "en_pages": pr.en_pages,
-                    "zh_pages": pr.zh_pages,
-                    "paired_pages": pr.paired_pages,
-                    "en_only_pages": pr.en_only_pages,
-                    "zh_only_pages": pr.zh_only_pages,
-                    "low_confidence": pr.low_confidence,
-                    "error": pr.error or None,
-                    "source_results": pr.source_results,
-                }
+        if not enabled:
+            job.update(
+                status="succeeded",
+                progress=100,
+                message="No enabled web sources",
+                finished_at=job["created_at"],
             )
-        return {
-            "message": f"Synced {len(enabled)} source(s) in {len(pair_summaries)} pair(s)",
-            "ok": kb_result.ok,
-            "pair_results": pair_summaries,
-            "index_rebuilt": kb_result.index_rebuilt,
-            "index_error": kb_result.index_error or None,
-            "total_pages": kb_result.total_pages,
-        }
+
+        _save_web_sync_job(Path(kb_base_dir), job)
+        if enabled:
+            task = asyncio.create_task(
+                _run_web_sync_job(job["job_id"], resolved_name, enabled, Path(kb_base_dir)),
+                name=job["job_id"],
+            )
+            _WEB_SYNC_TASKS[job["job_id"]] = task
+            task.add_done_callback(
+                lambda done, job_id=job["job_id"]: _WEB_SYNC_TASKS.pop(job_id, None)
+            )
+
+        return JSONResponse(
+            status_code=202,
+            content={
+                **job,
+                "status_url": f"/api/v1/knowledge/{resolved_name}/web-sync-jobs/{job['job_id']}",
+            },
+        )
+    except HTTPException:
+        raise
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"KB '{kb_name}' not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{kb_name}/web-sync-jobs/{job_id}", response_model=WebSyncJobInfo)
+async def get_web_sync_job(kb_name: str, job_id: str):
+    try:
+        _, resolved_name, kb_base_dir = _writable_kb(kb_name)
+        job = _WEB_SYNC_JOBS.get(job_id) or _load_web_sync_jobs(kb_base_dir, resolved_name).get(
+            job_id
+        )
+        if not job or job.get("kb_name") != resolved_name:
+            raise HTTPException(status_code=404, detail=f"Web sync job '{job_id}' not found")
+
+        if (
+            job.get("status") in {"queued", "running"}
+            and int(job.get("pid") or 0) != os.getpid()
+            and job_id not in _WEB_SYNC_TASKS
+            and job_id not in _WEB_SYNC_ACTIVE
+        ):
+            job = _update_web_sync_job(
+                kb_base_dir,
+                resolved_name,
+                job_id,
+                status="interrupted",
+                message="Web source sync was interrupted by a server restart",
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+        return WebSyncJobInfo(**job)
+    except HTTPException:
+        raise
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"KB '{kb_name}' not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{kb_name}/web-sync-jobs/{job_id}/cancel", response_model=WebSyncJobInfo)
+async def cancel_web_sync_job(kb_name: str, job_id: str):
+    try:
+        _, resolved_name, kb_base_dir = _writable_kb(kb_name)
+        job = _WEB_SYNC_JOBS.get(job_id) or _load_web_sync_jobs(kb_base_dir, resolved_name).get(
+            job_id
+        )
+        if not job or job.get("kb_name") != resolved_name:
+            raise HTTPException(status_code=404, detail=f"Web sync job '{job_id}' not found")
+        if job.get("status") not in {"queued", "running"}:
+            return WebSyncJobInfo(**job)
+
+        task = _WEB_SYNC_TASKS.get(job_id)
+        if task is None:
+            job = _update_web_sync_job(
+                kb_base_dir,
+                resolved_name,
+                job_id,
+                status="cancelled",
+                message="Web source sync cancelled",
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+            return WebSyncJobInfo(**job)
+
+        job = _update_web_sync_job(
+            kb_base_dir,
+            resolved_name,
+            job_id,
+            status="cancelling",
+            message="Cancelling web source sync",
+        )
+        task.cancel()
+        return WebSyncJobInfo(**job)
     except HTTPException:
         raise
     except ValueError:

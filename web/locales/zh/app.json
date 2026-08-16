@@ -3142,5 +3142,14 @@
   "Delete this bilingual pairing?": "删除这组双语配对？",
   "Bilingual Pairings": "双语配对",
   "aligned": "已对齐",
-  "not aligned": "未对齐"
+  "not aligned": "未对齐",
+  "Crawl paired documentation sites and keep bilingual pages aligned.": "抓取成对文档站点，并保持双语页面对应。",
+  "Cancel sync": "取消同步",
+  "Detect automatically": "自动识别",
+  "Paired source URL": "配对来源 URL",
+  "Auto": "自动",
+  "Paired": "已配对",
+  "Offline dictionary": "离线词典",
+  "Import ECDICT CSV": "导入 ECDICT CSV",
+  "https://example.com/docs/": "https://example.com/docs/"
 }

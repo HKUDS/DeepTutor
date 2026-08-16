@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 import hashlib
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from deeptutor.knowledge.add_documents import DEFAULT_BASE_DIR
 from deeptutor.services.web_source import bilingual_store, index_rebuild
@@ -116,6 +116,7 @@ async def sync_kb_sources_safe(
     base_dir: str = DEFAULT_BASE_DIR,
     max_depth: int | None = None,
     max_pages: int | None = None,
+    progress: Callable[[int, str], None] | None = None,
 ) -> KBSyncResult:
     """Sync all web sources for a KB using async-safe index rebuild."""
     kb_dir = Path(base_dir) / kb_name
@@ -126,8 +127,15 @@ async def sync_kb_sources_safe(
     pairs = group_sources_by_origin(sources)
 
     any_pages_changed = False
+    if progress:
+        progress(5, f"Preparing {len(pairs)} language pair(s)")
 
-    for pair in pairs:
+    for index, pair in enumerate(pairs):
+        if progress:
+            progress(
+                10 + int(75 * index / max(len(pairs), 1)),
+                f"Syncing language pair {index + 1}/{len(pairs)}",
+            )
         pair_result = await _sync_pair(
             kb_name,
             kb_dir,
@@ -142,11 +150,18 @@ async def sync_kb_sources_safe(
         for sr in pair_result.source_results:
             if sr.get("pages_added", 0) or sr.get("pages_updated", 0) or sr.get("pages_removed", 0):
                 any_pages_changed = True
+        if progress:
+            progress(
+                10 + int(75 * (index + 1) / max(len(pairs), 1)),
+                f"Completed language pair {index + 1}/{len(pairs)}",
+            )
 
     result.total_pages = sum(pr.en_pages + pr.zh_pages for pr in result.pair_results)
 
     # Rebuild index once if any pages changed.
     if any_pages_changed or index_rebuild.needs_initial_index(kb_dir):
+        if progress:
+            progress(88, "Rebuilding knowledge base index")
         try:
             await index_rebuild.rebuild_index_async(kb_name, base_dir, raw_dir)
             result.index_rebuilt = True
@@ -155,6 +170,8 @@ async def sync_kb_sources_safe(
             result.index_error = str(exc)
 
     _persist_sync_state(kb_name, base_dir, sources, pairs, result)
+    if progress:
+        progress(100, "Web source sync complete")
     return result
 
 
@@ -262,7 +279,13 @@ def _sync_bilingual_pair(
     pr.status = "bilingual"
     en_pages = en_crawl.get("page_files", [])
     zh_pages = zh_crawl.get("page_files", [])
-    file_pairs = pair_file_paths(en_pages, zh_pages, pair.zh_lang_prefix)
+    file_pairs = pair_file_paths(
+        en_pages,
+        zh_pages,
+        pair.zh_lang_prefix,
+        pair.manual_path_pairs,
+    )
+    paired_zh_files = {zh_file for _, zh_file in file_pairs if zh_file}
 
     # Build set of changed file names for incremental alignment.
     changed_names: set[str] = set()
@@ -273,7 +296,10 @@ def _sync_bilingual_pair(
         file_changed = en_file in changed_names or (zh_file and zh_file in changed_names)
         if not file_changed:
             existing = bilingual_store.load_alignment(kb_dir, pr.pair_key, en_file)
-            if existing:
+            manual_pair_changed = en_file in pair.manual_path_pairs and existing.get(
+                "page_class"
+            ) != "bilingual"
+            if existing and not manual_pair_changed:
                 pr.paired_pages += 1
                 pr.low_confidence += existing.get("review_count", 0)
                 continue
@@ -299,6 +325,8 @@ def _sync_bilingual_pair(
     # Handle ZH-only pages.
     en_set = set(en_pages)
     for zf in zh_pages:
+        if zf in paired_zh_files:
+            continue
         base = strip_lang_prefix_from_path(zf, pair.zh_lang_prefix)
         if base not in en_set:
             zh_path = raw_dir / zf
@@ -314,8 +342,8 @@ def _sync_bilingual_pair(
                 pr.zh_only_pages += 1
 
     # Remove stale sidecars for pages no longer on the site.
-    all_current = set(en_pages) | set(zh_pages)
-    stale = bilingual_store.cleanup_stale_sidecars(kb_dir, pr.pair_key, all_current)
+    canonical_current = set(en_pages) | (set(zh_pages) - paired_zh_files)
+    stale = bilingual_store.cleanup_stale_sidecars(kb_dir, pr.pair_key, canonical_current)
     if stale:
         logger.info("Cleaned up %d stale sidecar(s) for pair %s", stale, pr.pair_key)
 
@@ -465,4 +493,8 @@ def _persist_sync_state(
                 language=sr.get("language", ""),
                 pair_key=pr.pair_key,
                 pair_status=pr.status,
+                paired_pages=pr.paired_pages,
+                coverage=round(min(pr.paired_pages / sr.get("page_count", 1), 1.0), 4)
+                if sr.get("page_count")
+                else None,
             )

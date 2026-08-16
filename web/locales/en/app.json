@@ -3142,5 +3142,14 @@
   "Delete this bilingual pairing?": "Delete this bilingual pairing?",
   "Bilingual Pairings": "Bilingual Pairings",
   "aligned": "aligned",
-  "not aligned": "not aligned"
+  "not aligned": "not aligned",
+  "Crawl paired documentation sites and keep bilingual pages aligned.": "Crawl paired documentation sites and keep bilingual pages aligned.",
+  "Cancel sync": "Cancel sync",
+  "Detect automatically": "Detect automatically",
+  "Paired source URL": "Paired source URL",
+  "Auto": "Auto",
+  "Paired": "Paired",
+  "Offline dictionary": "Offline dictionary",
+  "Import ECDICT CSV": "Import ECDICT CSV",
+  "https://example.com/docs/": "https://example.com/docs/"
 }

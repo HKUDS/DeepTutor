@@ -19,6 +19,7 @@ from collections import deque
 from dataclasses import dataclass, field
 import hashlib
 import logging
+import os
 from pathlib import Path
 import re
 from urllib.parse import urldefrag, urljoin, urlparse
@@ -41,6 +42,30 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_DEPTH = 3
 DEFAULT_MAX_PAGES = 200
 DEFAULT_CONCURRENCY = 8
+
+# Operators can explicitly name hosts that resolve to loopback/private
+# addresses (for example, a local documentation server). This is a narrow
+# exception to the SSRF guard: no wildcards, ports, URL paths, or blanket
+# private-network bypass.
+ALLOWED_HOSTS_ENV = "DEEPTUTOR_WEB_CRAWL_ALLOWED_HOSTS"
+
+
+def _configured_allowed_hosts() -> frozenset[str]:
+    """Return normalized hosts explicitly opted in by the deployment."""
+    value = os.environ.get(ALLOWED_HOSTS_ENV, "")
+    return frozenset(
+        host.strip("[]").lower()
+        for host in value.replace(";", ",").replace(" ", ",").split(",")
+        if host.strip("[]")
+    )
+
+
+def _is_crawler_disallowed_host(host: str) -> bool:
+    """Apply the crawler-specific explicit host allowlist, then SSRF checks."""
+    candidate = host.strip().strip("[]").lower()
+    if candidate in _configured_allowed_hosts():
+        return False
+    return _is_disallowed_host(candidate)
 
 
 @dataclass(frozen=True)
@@ -170,7 +195,7 @@ async def _fetch_page(
             ) as response:
                 final_url = str(response.url)
                 final_host = (urlparse(final_url).hostname or "").strip()
-                if final_host and _is_disallowed_host(final_host):
+                if final_host and _is_crawler_disallowed_host(final_host):
                     logger.warning("Crawl: redirect to disallowed host %s blocked", final_host)
                     return None
 
@@ -293,7 +318,7 @@ async def crawl_docs_site(
     if not base_host:
         result.errors.append("Missing host in base URL")
         return result
-    if _is_disallowed_host(base_host):
+    if _is_crawler_disallowed_host(base_host):
         result.errors.append(f"Disallowed host: {base_host}")
         return result
 

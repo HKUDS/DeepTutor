@@ -2,13 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Globe, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Globe, Loader2, Plus, RefreshCw, Square, Trash2 } from "lucide-react";
 import {
   addWebSource,
+  cancelWebSync,
+  getWebSyncJob,
   listWebSources,
   removeWebSource,
-  syncWebSources,
+  startWebSync,
   type WebSource,
+  type WebSyncJob,
 } from "@/lib/knowledge-api";
 import { formatKnowledgeTimestamp } from "@/lib/knowledge-helpers";
 
@@ -24,10 +27,13 @@ export default function KbWebSourcesSection({
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncJob, setSyncJob] = useState<WebSyncJob | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [urlInput, setUrlInput] = useState("");
   const [maxDepth, setMaxDepth] = useState(3);
+  const [language, setLanguage] = useState<"auto" | "en" | "zh">("auto");
+  const [pairedUrl, setPairedUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -58,9 +64,16 @@ export default function KbWebSourcesSection({
     setSubmitting(true);
     setError(null);
     try {
-      await addWebSource(kbName, { url, max_depth: maxDepth });
+      await addWebSource(kbName, {
+        url,
+        max_depth: maxDepth,
+        language,
+        paired_url: pairedUrl.trim(),
+      });
       setUrlInput("");
       setMaxDepth(3);
+      setLanguage("auto");
+      setPairedUrl("");
       setShowForm(false);
       await refresh();
     } catch (err) {
@@ -84,12 +97,49 @@ export default function KbWebSourcesSection({
     setSyncing(true);
     setError(null);
     try {
-      await syncWebSources(kbName);
-      await refresh();
+      setSyncJob(await startWebSync(kbName));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-    } finally {
       setSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!syncJob || !["queued", "running", "cancelling"].includes(syncJob.status)) return;
+    let stopped = false;
+    const poll = async () => {
+      try {
+        const next = await getWebSyncJob(kbName, syncJob.job_id);
+        if (stopped) return;
+        setSyncJob(next);
+        if (!["queued", "running", "cancelling"].includes(next.status)) {
+          if (next.status === "failed" || next.status === "interrupted") {
+            setError(next.error || next.message);
+          }
+          await refresh();
+          setSyncing(false);
+        }
+      } catch (err) {
+        if (!stopped) {
+          setError(err instanceof Error ? err.message : String(err));
+          setSyncing(false);
+        }
+      }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 1_000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [kbName, refresh, syncJob]);
+
+  const handleCancelSync = async () => {
+    if (!syncJob) return;
+    try {
+      setSyncJob(await cancelWebSync(kbName, syncJob.job_id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -128,7 +178,7 @@ export default function KbWebSourcesSection({
           </div>
           <p className="mt-0.5 text-[11.5px] text-[var(--muted-foreground)]">
             {t(
-              "Crawl a documentation website and auto-sync pages daily. Add one source per language.",
+              "Crawl paired documentation sites and keep bilingual pages aligned.",
             )}
           </p>
         </div>
@@ -146,6 +196,16 @@ export default function KbWebSourcesSection({
             )}
             {syncing ? t("Syncing…") : t("Sync now")}
           </button>
+          {syncing && syncJob && (
+            <button
+              type="button"
+              onClick={() => void handleCancelSync()}
+              title={t("Cancel sync")}
+              className="rounded-md border border-[var(--border)] p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-red-600"
+            >
+              <Square className="h-3 w-3" />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setShowForm((v) => !v)}
@@ -163,6 +223,23 @@ export default function KbWebSourcesSection({
         </div>
       )}
 
+      {syncJob && (
+        <div className="rounded-md border border-[var(--border)] bg-[var(--card)] p-2.5">
+          <div className="flex items-center justify-between gap-3 text-[11.5px]">
+            <span className="min-w-0 truncate text-[var(--foreground)]">{syncJob.message}</span>
+            <span className="shrink-0 tabular-nums text-[var(--muted-foreground)]">
+              {Math.round(syncJob.progress)}%
+            </span>
+          </div>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--muted)]">
+            <div
+              className="h-full rounded-full bg-[var(--primary)] transition-[width]"
+              style={{ width: `${Math.max(2, Math.min(syncJob.progress, 100))}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       {showForm && (
         <div className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
           <label className="block">
@@ -173,7 +250,7 @@ export default function KbWebSourcesSection({
               type="url"
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
-              placeholder="https://example.com/docs/"
+              placeholder={t("https://example.com/docs/")}
               className="w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2.5 py-1.5 text-[12.5px] text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
             />
           </label>
@@ -190,6 +267,34 @@ export default function KbWebSourcesSection({
               className="w-24 rounded-md border border-[var(--border)] bg-[var(--card)] px-2.5 py-1.5 text-[12.5px] text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
             />
           </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-medium text-[var(--muted-foreground)]">
+                {t("Language")}
+              </span>
+              <select
+                value={language}
+                onChange={(event) => setLanguage(event.target.value as typeof language)}
+                className="h-[34px] w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2.5 text-[12.5px] text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
+              >
+                <option value="auto">{t("Detect automatically")}</option>
+                <option value="en">{t("English")}</option>
+                <option value="zh">{t("Chinese")}</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-medium text-[var(--muted-foreground)]">
+                {t("Paired source URL")}
+              </span>
+              <input
+                type="url"
+                value={pairedUrl}
+                onChange={(event) => setPairedUrl(event.target.value)}
+                placeholder={t("https://example.com/docs/")}
+                className="h-[34px] w-full rounded-md border border-[var(--border)] bg-[var(--card)] px-2.5 text-[12.5px] text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
+              />
+            </label>
+          </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -258,6 +363,12 @@ function WebSourceCard({
           <span>
             {t("Depth")}: {source.max_depth}
           </span>
+          <span>{source.language ? source.language.toUpperCase() : t("Auto")}</span>
+          {source.coverage != null && (
+            <span>
+              {t("Paired")}: {Math.round(source.coverage * 100)}%
+            </span>
+          )}
           <span className={statusColor}>
             {t("Status")}: {source.last_sync_status}
           </span>
