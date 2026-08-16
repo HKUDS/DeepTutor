@@ -34,7 +34,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-from deeptutor.services.subagent.process import probe_version
+from deeptutor.services.subagent.process import probe_version, resolve_cli_command
 from deeptutor.services.subagent.registry import get_backend
 
 logger = logging.getLogger(__name__)
@@ -241,6 +241,7 @@ async def _list_cli_models(cli_command: str, *, refresh: bool = False) -> list[M
     cmd = [cli_command, "models"]
     if refresh:
         cmd.append("--refresh")
+    cmd = resolve_cli_command(cmd)
     try:
         process = await asyncio.create_subprocess_exec(
             *cmd,

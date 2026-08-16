@@ -52,8 +52,8 @@ repos:
     rev: v0.14.7
     hooks:
       - id: ruff
-        # Added --quiet to suppress logs; --exit-zero makes it a "soft fail" if desired
-        args: [--fix, --quiet, --exit-zero]
+        # Keep local fixes, but fail the hook when Ruff reports remaining violations.
+        args: [--fix, --quiet]
 
       - id: ruff-format
         args: [--quiet]

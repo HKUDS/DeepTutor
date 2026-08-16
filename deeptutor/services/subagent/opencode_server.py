@@ -31,6 +31,8 @@ import time
 
 import httpx
 
+from deeptutor.services.subagent.process import resolve_cli_command
+
 logger = logging.getLogger(__name__)
 
 # How long a server may sit unused before the next acquire() reaps it.
@@ -102,8 +104,9 @@ async def _spawn(cli_command: str, *, cwd: str, env_prefix: str, username: str) 
         f"{env_prefix}_SERVER_PASSWORD": password,
         f"{env_prefix}_SERVER_USERNAME": username,
     }
+    cli = resolve_cli_command([cli_command], path=env.get("PATH"))[0]
     process = await asyncio.create_subprocess_exec(
-        cli_command,
+        cli,
         "serve",
         "--port",
         str(port),

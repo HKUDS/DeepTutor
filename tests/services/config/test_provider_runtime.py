@@ -348,6 +348,19 @@ def test_llm_local_fallback() -> None:
     assert resolved.api_key == "sk-no-key-required"
 
 
+def test_llm_empty_catalog_does_not_fallback_to_openai() -> None:
+    catalog = _build_catalog()
+    catalog["services"]["llm"] = {
+        "active_profile_id": None,
+        "active_model_id": None,
+        "profiles": [],
+    }
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.model == ""
+
+
 def test_llm_minimax_binding_uses_global_endpoint() -> None:
     catalog = _build_catalog(
         llm_profile={
