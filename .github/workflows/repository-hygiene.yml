@@ -20,4 +20,4 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run repository hygiene check
-        run: python3 scripts/check_repo_hygiene.py
+        run: python3 scripts/check_workspace_hygiene.py
