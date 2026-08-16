@@ -18,6 +18,8 @@ body:
       options:
         - label: I have searched the existing issues and this is not already filed.
         - label: I have read the usage guide at https://eduhub.deeptutor.info/how-to-use
+    validations:
+      required: true
   - type: dropdown
     id: area
     attributes:
@@ -60,13 +62,16 @@ body:
     id: logs
     attributes:
       label: Logs and screenshots
-      description: Paste the full command output or browser console errors.
+      description: Paste the full command output or browser console errors. Redact API keys, tokens, private URLs, and local paths.
       render: shell
+    validations:
+      required: true
   - type: textarea
     id: environment
     attributes:
       label: Environment
       description: |
+        Enter "Not applicable" for website content reports. Redact private registry URLs and credentials.
         - eduhub CLI Version: run `eduhub --version` (CLI issues only)
         - Operating System: e.g., macOS 14.0, Windows 11, Ubuntu 22.04
         - Node.js Version: e.g., 20.x
@@ -76,3 +81,5 @@ body:
         - Operating System:
         - Node.js Version:
         - Registry:
+    validations:
+      required: true

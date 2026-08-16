@@ -9,7 +9,7 @@ export const CO_WRITER_SAMPLE_TEMPLATE = `# DeepTutor Co-Writer
 - Support Standard Markdown / CommonMark / GFM for everyday writing
 - Real-time preview for headings, tables, code, math, flowchart, and sequence diagrams
 - AI editing workflows for rewrite, shorten, and expand
-- HTML tag decoding for tags like <sub>, <sup>, <abbr>, and <mark>
+- Safe inline HTML for tags like <sub>, <sup>, <abbr>, and <mark>
 - A practical starter draft for DeepTutor product docs and learning content
 
 ## Headers (Underline)
@@ -82,16 +82,13 @@ async def run_demo() -> str:
     return result.get("response", "")
 ${FENCE}
 
-#### JSON config
+#### JSON message
 
 ${FENCE}json
 {
-  "app_name": "DeepTutor",
-  "default_capability": "chat",
-  "enabled_tools": ["rag", "web_search", "code_execution", "reason"],
-  "ui": {
-    "co_writer_template": true
-  }
+  "capability": "chat",
+  "message": "Explain Newton's second law with one worked example.",
+  "tools": ["rag", "web_search"]
 }
 ${FENCE}
 
@@ -133,6 +130,9 @@ Research      | Build structured multi-step reports
 | \`chat\`       | General tutoring and guidance        |
 | \`deep_solve\` | Structured problem solving           |
 | \`deep_question\` | Question generation and validation |
+| \`deep_research\` | Multi-source research reports |
+| \`visualize\` | Charts, diagrams, and interactive visuals |
+| \`math_animator\` | Mathematical animations |
 
 ### Markdown extras
 
@@ -152,31 +152,27 @@ $$\\sqrt{3x-1}+(1+x)^2$$
 
 $$ \\sin(\\alpha)^{\\theta}=\\sum_{i=0}^{n}(x^i + \\cos(f))$$
 
-### FlowChart
+### Mermaid Flowchart
 
-${FENCE}flow
-st=>start: Student asks a question
-op=>operation: DeepTutor analyzes intent
-cond=>condition: Need deep workflow?
-chat=>operation: Answer with chat capability
-solve=>operation: Route to deep solve
-e=>end: Return structured response
-
-st->op->cond
-cond(no)->chat
-cond(yes)->solve
-chat->e
-solve->e
+${FENCE}mermaid
+flowchart TD
+  question[Student asks a question] --> intent[DeepTutor analyzes intent]
+  intent --> workflow{Need a deep workflow?}
+  workflow -->|No| chat[Answer with chat]
+  workflow -->|Yes| capability[Route to a capability]
+  chat --> response[Return a structured response]
+  capability --> response
 ${FENCE}
 
 ### Sequence Diagram
 
-${FENCE}seq
-Student->DeepTutor: Ask for help
-DeepTutor->KnowledgeBase: Load context
-Note right of DeepTutor: Collect memory\\nand relevant knowledge
-DeepTutor-->Student: Return guided response
-Student->>DeepTutor: Request rewrite in co-writer
+${FENCE}mermaid
+sequenceDiagram
+  Student->>DeepTutor: Ask for help
+  DeepTutor->>KnowledgeBase: Load context
+  Note right of DeepTutor: Collect memory and relevant knowledge
+  DeepTutor-->>Student: Return a guided response
+  Student->>DeepTutor: Request a rewrite in Co-Writer
 ${FENCE}
 
 ### End

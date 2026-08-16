@@ -85,6 +85,13 @@ test("ordinary users can edit only their owner-scoped Codex reasoning overrides"
   );
   assert.match(
     card,
+<<<<<<< HEAD
+=======
+    /updateReasoningEffort\(\s*model,\s*event\.target\.value,?\s*\)/,
+  );
+  assert.match(
+    card,
+>>>>>>> 5acae7d1 (chore: preserve verified workspace WIP)
     /setCodexReasoningEffort\(\s*model\.model,\s*value \|\| null,?\s*\)/,
   );
 });

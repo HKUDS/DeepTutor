@@ -12,12 +12,16 @@ body:
       options:
         - label: I have searched the existing issues and this bug is not already filed.
         - label: I believe this is a legitimate bug, not just a question or feature request.
+    validations:
+      required: true
   - type: textarea
     id: description
     attributes:
       label: Describe the bug
       description: A clear and concise description of what the bug is.
       placeholder: What went wrong?
+    validations:
+      required: true
   - type: textarea
     id: reproduce
     attributes:
@@ -28,12 +32,16 @@ body:
         2. Click on '....'
         3. Scroll down to '....'
         4. See error
+    validations:
+      required: true
   - type: textarea
     id: expected_behavior
     attributes:
       label: Expected Behavior
       description: A clear and concise description of what you expected to happen.
       placeholder: What should have happened?
+    validations:
+      required: true
   - type: dropdown
     id: module
     attributes:
@@ -41,10 +49,13 @@ body:
       description: Which module is this bug related to?
       options:
         - Dashboard
+        - Chat
         - Knowledge Base Management
         - Smart Solver
         - Question Generator
         - Deep Research
+        - Visualize
+        - Math Animator
         - Co-Writer
         - Book
         - Notebook
@@ -53,8 +64,14 @@ body:
         - Memory
         - Skills / MCP
         - Idea Generation
+        - Memory
+        - Partners
+        - Tools / Skills
+        - Provider Integrations
+        - CLI
         - API/Backend
         - Frontend/Web
+        - Installation/Setup
         - Other
     validations:
       required: true
@@ -62,29 +79,32 @@ body:
     id: configused
     attributes:
       label: Configuration Used
-      description: The DeepTutor configuration used (if applicable).
+      description: Public DeepTutor settings used, if applicable. Redact API keys, tokens, and private URLs.
       placeholder: |
-        # Paste your config here or describe the settings
+        - Deployment: source / Docker / PyPI package
+        - Relevant model, provider, KB, or partner settings
   - type: textarea
     id: screenshotslogs
     attributes:
       label: Logs and screenshots
-      description: If applicable, add screenshots and logs to help explain your problem.
+      description: If applicable, add screenshots and logs. Redact API keys, tokens, private URLs, and local paths.
       placeholder: Add logs and screenshots here
   - type: textarea
     id: additional_information
     attributes:
       label: Additional Information
       description: |
-        - DeepTutor Version: e.g., v0.5.0
+        - DeepTutor Version: e.g., vX.Y.Z
+        - Deployment: source commit, Docker image, or PyPI package
         - Operating System: e.g., macOS 14.0, Windows 11, Ubuntu 22.04
         - Python Version: e.g., 3.11.0
-        - Node.js Version: e.g., 18.17.0
+        - Node.js Version: e.g., 20.x
         - Browser (if applicable): e.g., Chrome 120, Firefox 121
         - Related Issues: e.g., #1
         - Any other relevant information.
       value: |
         - DeepTutor Version:
+        - Deployment:
         - Operating System:
         - Python Version:
         - Node.js Version:

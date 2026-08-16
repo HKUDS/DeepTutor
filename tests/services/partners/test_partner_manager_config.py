@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 
 import yaml
 
-from deeptutor.services.partners.manager import PartnerConfig, PartnerManager
+from deeptutor.services.partners.manager import (
+    DEFAULT_SOUL_TEMPLATES,
+    PartnerConfig,
+    PartnerManager,
+)
 from deeptutor.services.partners.workspace import DEFAULT_SOUL, read_soul
 
 
@@ -263,3 +268,61 @@ class TestSoulLibraryRefresh:
         mgr._save_souls([dict(self._TUTORBOT_ENTRY)])
         first = mgr.list_souls()
         assert mgr.list_souls() == first
+
+    def test_default_templates_have_a_chat_response_contract(self):
+        expected_ids = {
+            "companion",
+            "math-tutor",
+            "coding-assistant",
+            "research-helper",
+            "language-tutor",
+        }
+
+        assert {entry["id"] for entry in DEFAULT_SOUL_TEMPLATES} == expected_ids
+        for entry in DEFAULT_SOUL_TEMPLATES:
+            content = entry["content"]
+            assert "# Soul" in content
+            assert "## Response contract" in content
+            assert "chat" in content.lower()
+            assert "uncertain" in content.lower() or "don't know" in content.lower()
+            assert "credentials" in content or "private" in content.lower()
+            assert len(content) <= 5000
+
+    def test_untouched_previous_default_library_upgrades(self, partners_root, monkeypatch):
+        """The v1.5.12 seed set should refresh as safely as TutorBot-era seeds."""
+        from deeptutor.services.partners import manager
+
+        previous_hashes = {
+            "companion": "50f749437f9944f071e3e9a552c3964e82b5637b220d0285e0e93beedf8f7a60",
+            "math-tutor": "42b45a31346e9c7dfc8217b03372f4706798c4aec91ba0a6e9952d31a0c9e94a",
+            "coding-assistant": "c44fba609a2f6d9cd1d37bba90ff34980b132804270a02eb29c72e3eb5ea6083",
+            "research-helper": "ce67d384dc83283f531cbddb69974c553e7748b244de50bc70e5b010b1dd08f5",
+            "language-tutor": "f68142f0c015df4761419b339e3e863cf37042e1af22f5bfde792c9feafc672b",
+        }
+        # The mapping is pinned to the exact pre-contract seed contents.
+        assert previous_hashes == manager._SUPERSEDED_SOUL_CONTENT_HASHES
+
+        current = {entry["id"]: entry for entry in DEFAULT_SOUL_TEMPLATES}
+        stale_content = "untouched v1.5.12 seed"
+        stale_digest = hashlib.sha256(stale_content.encode()).hexdigest()
+        monkeypatch.setattr(
+            manager,
+            "_SUPERSEDED_SOUL_CONTENT_HASHES",
+            {soul_id: stale_digest for soul_id in previous_hashes},
+        )
+
+        previous = []
+        for soul_id in previous_hashes:
+            previous.append(
+                {
+                    "id": soul_id,
+                    "name": current[soul_id]["name"],
+                    "content": stale_content,
+                }
+            )
+        mgr = _mgr()
+        mgr._save_souls(previous)
+
+        refreshed = mgr.list_souls()
+
+        assert refreshed == [dict(current[entry["id"]]) for entry in previous]

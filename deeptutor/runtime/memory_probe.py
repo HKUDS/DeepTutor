@@ -141,8 +141,10 @@ def _scan_psutil(psutil: Any) -> tuple[list[ProcessMemory], bool]:
     try:
         root = psutil.Process(root_pid if root_pid is not None else os.getpid())
         candidates = [root, *root.children(recursive=True)]
-    except psutil.Error:
-        return [], True
+    except (psutil.Error, OSError):
+        # macOS can deny process enumeration even though this process's own
+        # usage remains readable. Treat that as a partial snapshot, not a 500.
+        return _scan_psutil_self(psutil)
 
     found: list[ProcessMemory] = []
     for proc in candidates:
@@ -161,7 +163,7 @@ def _scan_psutil(psutil: Any) -> tuple[list[ProcessMemory], bool]:
                     rss_bytes=rss,
                 )
             )
-        except psutil.Error:
+        except (psutil.Error, OSError):
             # The tree is live; a child exiting mid-walk is expected, not an error.
             continue
     if not any(p.pid == os.getpid() for p in found):
@@ -177,7 +179,7 @@ def _scan_psutil_self(psutil: Any) -> tuple[list[ProcessMemory], bool]:
         return [
             ProcessMemory(pid=proc.pid, label="backend", rss_bytes=int(proc.memory_info().rss))
         ], True
-    except psutil.Error:
+    except (psutil.Error, OSError):
         return [], True
 
 

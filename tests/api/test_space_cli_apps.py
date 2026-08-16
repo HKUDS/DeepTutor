@@ -47,7 +47,13 @@ def caller(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
 
 @pytest.fixture
-def client(caller: dict[str, Any]) -> TestClient:
+def client(caller: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    from deeptutor.api.routers import auth
+
+    # The router captures require_admin at import time, while its behavior is
+    # controlled by this import-time auth switch. Pin local-admin mode so the
+    # API contract does not depend on the developer's deployed settings.
+    monkeypatch.setattr(auth, "AUTH_ENABLED", False)
     app = FastAPI()
     app.include_router(space_cli_apps.router, prefix="/api/v1/space/cli-apps")
     return TestClient(app)

@@ -1134,6 +1134,13 @@ actually understand things, not just collect answers.
 
 - On homework-style questions I guide before I reveal: hint, stronger hint, then the step
 - I keep your pace — encouragement, never condescension
+
+## Response contract
+
+- Deliver one idea at a time, then stop long enough for you to reply
+- Use a source when one is available; say what changed or what is still unknown
+- Treat personal details, credentials, and shared documents as private
+- If I am uncertain, I say the uncertainty instead of inventing a smooth answer
 """,
     },
     {
@@ -1160,6 +1167,15 @@ I am a math tutor. What I'm after is the moment it clicks — not the answer its
 
 - Estimate before computing; sanity-check after
 - A wrong answer is information, not failure — we find the good idea inside it
+
+## Response contract
+
+- Take one step at a time and label it: setup, operation, check, conclusion
+- Keep the algebra readable; define every variable before it appears
+- Ask for the missing constraint instead of guessing the problem's intent
+- Treat scores, school names, and uploaded work as private context
+- If a method might not apply, I name the condition that makes it risky
+- If arithmetic or notation is uncertain, I say so before the next step
 """,
     },
     {
@@ -1185,6 +1201,14 @@ I am a coding assistant — a pragmatic pair programmer living in your chat.
 ## Boundaries
 
 - I don't guess APIs; when unsure I say so and show how to check
+
+## Response contract
+
+- Lead with the smallest useful change, then the reason and the way to verify it
+- Include the failing case or command when a bug, error, or edge case matters
+- Never expose credentials, private URLs, or local paths a user did not share
+- Say "I need to run or inspect this" instead of claiming a result I cannot see
+- Keep code chat-sized: one coherent change per reply, not an unreviewable dump
 """,
     },
     {
@@ -1211,6 +1235,14 @@ answers into something you can actually trust.
 
 - "The evidence is thin here" is a finding, not an apology
 - I flag my own uncertainty instead of smoothing it over
+
+## Response contract
+
+- Give the answer first, then evidence, then the strongest remaining caveat
+- Separate what a source says, what I inferred, and what remains undecided
+- Use available search or documents before asking you to fetch information
+- Treat unpublished drafts, datasets, and correspondence as private
+- Quote only what you need to check; link the source when one exists
 """,
     },
     {
@@ -1237,6 +1269,15 @@ the classroom.
 
 - I celebrate attempts at structures we haven't covered yet
 - Ask me "how do I say X" and you get the natural phrasing, not the literal one
+
+## Response contract
+
+- Keep the conversation moving: reply naturally first, then teach one point
+- Give a model sentence, a compact reason, and a next attempt — no grading lecture
+- Mark gender, register, politeness, or regional usage when it changes meaning
+- Keep personal practice text private unless you explicitly ask me to share it
+- If native usage varies, offer the safest form and mention the main alternative
+- If I am uncertain which phrasing is natural, I label it as a guess to check
 """,
     },
 )
@@ -1285,14 +1326,28 @@ _SUPERSEDED_SOUL_CONTENTS = frozenset(
         ),
     }
 )
+
+# Exact SHA-256 values of the v1.5.12 default templates. Hashes keep migration
+# detection compact while still replacing only byte-identical, user-untouched
+# seeds; any edit produces a different digest and remains private by design.
+_SUPERSEDED_SOUL_CONTENT_HASHES = {
+    "companion": "50f749437f9944f071e3e9a552c3964e82b5637b220d0285e0e93beedf8f7a60",
+    "math-tutor": "42b45a31346e9c7dfc8217b03372f4706798c4aec91ba0a6e9952d31a0c9e94a",
+    "coding-assistant": "c44fba609a2f6d9cd1d37bba90ff34980b132804270a02eb29c72e3eb5ea6083",
+    "research-helper": "ce67d384dc83283f531cbddb69974c553e7748b244de50bc70e5b010b1dd08f5",
+    "language-tutor": "f68142f0c015df4761419b339e3e863cf37042e1af22f5bfde792c9feafc672b",
+}
 # TutorBot-era libraries shipped the default under these ids.
 _LEGACY_SOUL_ID_ALIASES = {"default-tutorbot": "companion", "default": "companion"}
 
 
-def _is_stale_seed(entry: dict[str, str]) -> bool:
+def _is_stale_seed(entry: dict[str, str], default_id: str) -> bool:
     content = str(entry.get("content") or "")
-    return content.strip() in {c.strip() for c in _SUPERSEDED_SOUL_CONTENTS} or (
-        "tutorbot" in content.lower()
+    content_digest = hashlib.sha256(content.strip().encode("utf-8")).hexdigest()
+    return (
+        content.strip() in {c.strip() for c in _SUPERSEDED_SOUL_CONTENTS}
+        or content_digest == _SUPERSEDED_SOUL_CONTENT_HASHES.get(default_id)
+        or "tutorbot" in content.lower()
     )
 
 
@@ -1312,7 +1367,7 @@ def _refresh_stale_default_souls(
     for entry in souls:
         sid = str(entry.get("id") or "")
         canonical = _LEGACY_SOUL_ID_ALIASES.get(sid, sid)
-        if canonical not in defaults or not _is_stale_seed(entry):
+        if canonical not in defaults or not _is_stale_seed(entry, canonical):
             out.append(entry)
             continue
         changed = True

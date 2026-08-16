@@ -11,6 +11,8 @@ body:
       options:
         - label: I have searched the existing docs issues and this report is not already filed.
         - label: This is about the docs at https://deeptutor.info — not a product bug.
+    validations:
+      required: true
   - type: input
     id: page
     attributes:
@@ -45,14 +47,18 @@ body:
     id: expected
     attributes:
       label: What did you expect?
-      description: Optional — what should the docs say or show instead?
+      description: What should the docs say or show instead?
       placeholder: e.g. "The PyPI install path should be the recommended entry, matching the README."
+    validations:
+      required: true
   - type: textarea
     id: environment
     attributes:
-      label: Environment (optional)
-      description: Only if relevant to the issue (browser, OS, DeepTutor version).
+      label: Environment
+      description: Only if relevant to the issue (browser, OS, DeepTutor version). Enter "Not applicable" for pure content errors.
       placeholder: |
         - Browser:
         - DeepTutor version (if checked locally):
         - OS:
+    validations:
+      required: true
