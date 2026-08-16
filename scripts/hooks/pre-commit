@@ -1,0 +1,8 @@
+#!/bin/sh
+
+set -eu
+
+# Keep this hook dependency-free so a fresh checkout can reject generated
+# files before contributors install the full pre-commit environment.
+python3 scripts/check_repo_hygiene.py
+python3 scripts/check_branch_policy.py

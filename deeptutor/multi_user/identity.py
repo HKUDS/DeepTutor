@@ -121,6 +121,44 @@ def _migrate_secret() -> None:
         logger.warning("Failed to migrate legacy auth secret: %s", exc)
 
 
+def _env_bootstrap_admin() -> tuple[str, str]:
+    """Return ``(username, password_hash)`` for the ``auth.json`` bootstrap admin.
+
+    Both halves are required: the shipped default seeds a username with an
+    empty hash, which cannot authenticate and therefore is not an admin. An
+    empty tuple entry means "no bootstrap admin configured".
+
+    :mod:`deeptutor.services.auth` is imported lazily because it imports this
+    module. Its resolved globals — rather than a fresh settings read — are the
+    source of truth on purpose: they are exactly the credentials
+    ``authenticate()`` accepts, so the promotion gate in :func:`save_user` and
+    the login path can never disagree about whether an admin already exists.
+    """
+    try:
+        from deeptutor.services import auth as auth_service
+
+        username = str(getattr(auth_service, "AUTH_USERNAME", "") or "")
+        password_hash = str(getattr(auth_service, "AUTH_PASSWORD_HASH", "") or "")
+    except Exception as exc:  # pragma: no cover - auth settings unavailable
+        logger.warning("Could not resolve the bootstrap admin credentials: %s", exc)
+        return "", ""
+    if not username or not password_hash:
+        return "", ""
+    return username, password_hash
+
+
+def _env_admin_record(password_hash: str) -> dict[str, Any]:
+    """Build the in-memory record representing the bootstrap admin."""
+    return {
+        "id": "env-admin",
+        "hash": password_hash,
+        "role": "admin",
+        "created_at": "",
+        "disabled": False,
+        "avatar": "",
+    }
+
+
 def load_users(  # nosec B107 - empty defaults mean "no env fallback supplied".
     env_username: str = "",
     env_password_hash: str = "",
@@ -152,21 +190,20 @@ def load_users(  # nosec B107 - empty defaults mean "no env fallback supplied".
     if USERS_FILE.exists() and changed:
         _write_users(canonical)
 
-    if canonical:
-        return canonical
+    # The bootstrap admin is merged in whenever it is configured, not only when
+    # the store is empty. Falling back to it only for an empty store locked the
+    # operator who bootstrapped the deployment out of their own instance the
+    # moment the first real account was written (#849). A stored record with the
+    # same username wins, so the account can later be adopted into the store.
+    # The merge is deliberately in-memory only; no write path passes the env
+    # arguments, so the bootstrap hash is never persisted into ``users.json``
+    # where a rotation of ``auth.json`` could no longer supersede it.
+    if env_username and env_password_hash and env_username not in canonical:
+        merged = {env_username: _env_admin_record(env_password_hash)}
+        merged.update(canonical)
+        return merged
 
-    if env_username and env_password_hash:
-        return {
-            env_username: {
-                "id": "env-admin",
-                "hash": env_password_hash,
-                "role": "admin",
-                "created_at": "",
-                "disabled": False,
-            }
-        }
-
-    return {}
+    return canonical
 
 
 def save_user(username: str, hashed_password: str, role: Role = "user") -> dict[str, Any]:
@@ -174,8 +211,17 @@ def save_user(username: str, hashed_password: str, role: Role = "user") -> dict[
     # Read-modify-write must be atomic so concurrent first-time registrations
     # cannot each see an empty store and each promote themselves to admin.
     with _USERS_WRITE_LOCK:
+        # Called without the env arguments on purpose: ``users`` is written back
+        # to disk below, and the bootstrap admin must stay an in-memory overlay.
         users = load_users()
-        effective_role: Role = "admin" if not users else role
+        env_username, _ = _env_bootstrap_admin()
+        # A configured bootstrap admin counts as an existing account, so the
+        # first account an operator creates from /admin/users is not silently
+        # promoted — that endpoint documents role="user" (#849). Re-saving the
+        # bootstrap admin's own username adopts it into the store instead, and
+        # must keep the admin role.
+        account_exists = bool(users) or (bool(env_username) and env_username != username)
+        effective_role: Role = role if account_exists else "admin"
         existing = users.get(username) or {}
         record = {
             "id": str(existing.get("id") or new_user_id()),
