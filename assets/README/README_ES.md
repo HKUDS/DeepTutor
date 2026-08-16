@@ -29,7 +29,7 @@
 </p>
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![Vite](https://img.shields.io/badge/Vite-6-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vite.dev/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
 [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962)
@@ -106,13 +106,13 @@ python -m pip install --upgrade pip
 
 # Instalar dependencias de backend + frontend
 python -m pip install -e .
-( cd web && npm ci --legacy-peer-deps )
+( cd frontend && npm ci )
 
 deeptutor init
 deeptutor start --dev
 ```
 
-`deeptutor start` compila el frontend `web/` local para producción una vez y lo reutiliza; `--dev` ejecuta Next.js con HMR (recarga en caliente de módulos). El diseño de configuración, los puertos y `Ctrl+C` coinciden con la Opción 1.
+`deeptutor start` compila el frontend `frontend/` local para producción una vez y lo reutiliza; `--dev` ejecuta Next.js con HMR (recarga en caliente de módulos). El diseño de configuración, los puertos y `Ctrl+C` coinciden con la Opción 1.
 
 <details>
 <summary><b>Entorno Conda</b> (en lugar de <code>venv</code>)</summary>
@@ -141,12 +141,11 @@ pip install -e ".[math-animator]"   # complemento Manim; requiere LaTeX/ffmpeg/l
 <details>
 <summary><b>Ajustes de dependencias del frontend y solución de problemas del servidor de desarrollo</b></summary>
 
-**Cambiar dependencias del frontend:** ejecuta `npm install --legacy-peer-deps` para actualizar `web/package-lock.json`, luego confirma tanto `web/package.json` como `web/package-lock.json`.
+**Cambiar dependencias del frontend:** ejecuta `npm install --legacy-peer-deps` para actualizar `frontend/package-lock.json`, luego confirma tanto `frontend/package.json` como `frontend/package-lock.json`.
 
 **Servidor de desarrollo atascado:** si `deeptutor start --dev` informa de un frontend existente que no responde, detén el PID que imprime. Si no hay ningún proceso Next.js en ejecución, los archivos de bloqueo están obsoletos — elimínalos y vuelve a intentarlo:
 
 ```bash
-rm -f web/.next/dev/lock web/.next/lock
 deeptutor start --dev
 ```
 
@@ -171,7 +170,7 @@ docker run --rm --name deeptutor \
   ghcr.io/hkuds/deeptutor:latest
 ```
 
-> **Solo se necesita publicar `3782`.** El navegador habla exclusivamente con el origen del frontend; el middleware de Next.js (`web/proxy.ts`) reenvía `/api/*` y `/ws/*` al backend FastAPI **dentro del contenedor**. Publicar `8001` (`-p 127.0.0.1:8001:8001`) es opcional — útil solo para acceder a la API directamente con curl o scripts.
+> **Solo se necesita publicar `3782`.** El navegador habla exclusivamente con el origen del frontend; el middleware de Next.js (the SPA server) reenvía `/api/*` y `/ws/*` al backend FastAPI **dentro del contenedor**. Publicar `8001` (`-p 127.0.0.1:8001:8001`) es opcional — útil solo para acceder a la API directamente con curl o scripts.
 
 Abre [http://127.0.0.1:3782](http://127.0.0.1:3782). El contenedor crea `/app/data/user/settings/*.json` en el primer arranque; configura los proveedores de modelos desde la página de Settings web. La configuración, las claves API, los registros, los archivos del espacio de trabajo, la memoria y las bases de conocimiento persisten en el volumen `deeptutor-data`.
 

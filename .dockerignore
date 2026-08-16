@@ -74,16 +74,15 @@ dmypy.json
 # ============================================
 node_modules/
 **/node_modules/
-web/node_modules/
+frontend/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Next.js
+# Frontend build output
 .next/
-web/.next/
 out/
-web/out/
+frontend/dist/
 
 # ============================================
 # IDE and Editor

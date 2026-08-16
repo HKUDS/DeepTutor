@@ -17,7 +17,6 @@ import threading
 import time
 from typing import Callable
 from urllib import error as urlerror
-from urllib import parse as urlparse
 from urllib import request as urlrequest
 
 from deeptutor.runtime.banner import labels_for, print_banner, resolve_language
@@ -26,10 +25,8 @@ from deeptutor.runtime.memory_probe import SUPERVISOR_PID_ENV
 
 BACKEND_READY_TIMEOUT = 60
 FRONTEND_READY_TIMEOUT = 120
-FRONTEND_REUSE_PROBE_TIMEOUT = 2
 KILL_SIGNAL = getattr(signal, "SIGKILL", signal.SIGTERM)
-WEB_CACHE_DIR = Path("data") / "user" / "runtime" / "web"
-SOURCE_PRODUCTION_DIST_DIR = ".next-deeptutor"
+SOURCE_PRODUCTION_DIST_DIR = "dist"
 SOURCE_BUILD_MARKER = ".deeptutor-build.json"
 SOURCE_BUILD_EXCLUDED_DIRS = {
     "node_modules",
@@ -74,14 +71,7 @@ class FrontendRuntime:
     kind: str
     command: list[str]
     cwd: Path
-
-
-@dataclass(frozen=True, slots=True)
-class ExistingFrontendRuntime:
-    url: str
-    port: int
-    pid: int | None
-    lock_path: Path
+    spa_dir: Path | None = None
 
 
 def _log(message: str) -> None:
@@ -117,18 +107,6 @@ def _get_pgid(pid: int | None) -> int | None:
         return os.getpgid(pid)
     except OSError:
         return None
-
-
-def _is_pid_alive(pid: int | None) -> bool:
-    if pid is None:
-        return False
-    try:
-        os.kill(pid, 0)
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
 
 
 def _send_tree_signal(pid: int | None, pgid: int | None, sig: signal.Signals | int) -> None:
@@ -169,7 +147,7 @@ def _relax_console_encoding(streams: tuple[object, ...] | None = None) -> None:
     Child pipes are already decoded with ``errors="replace"`` (see ``_spawn``)
     and the children themselves get ``PYTHONIOENCODING=utf-8:replace``, but the
     parent process re-encodes every relayed line with the console's own codec.
-    On a legacy Windows code page (cp950/cp936/cp932) an ordinary Next.js
+    On a legacy Windows code page (cp950/cp936/cp932) an ordinary Vite
     banner character like ``✓`` then raises ``UnicodeEncodeError`` inside
     ``_stream_output``, killing the relay thread — the app keeps running but
     goes silent for the rest of the session (issue #702).
@@ -475,115 +453,37 @@ def _wait_for_http(
     raise RuntimeError(_t("start.not_ready", name=name, timeout=timeout))
 
 
-def _http_ready(url: str, *, timeout: float) -> bool:
-    try:
-        with urlrequest.urlopen(url, timeout=timeout):  # noqa: S310  # nosec B310 - launcher health check
-            return True
-    except (urlerror.URLError, TimeoutError, OSError):
-        return False
-
-
 def _packaged_web_dir() -> Path | None:
     try:
         import deeptutor_web
     except ImportError:
         return None
     path = Path(deeptutor_web.__file__).resolve().parent
-    return path if (path / "server.js").exists() else None
-
-
-def _copy_packaged_web_if_needed(
-    packaged: Path,
-    *,
-    home: Path,
-    api_base: str,
-    auth_enabled: bool,
-) -> Path:
-    """Copy packaged Next.js standalone files into a writable runtime cache.
-
-    Next public variables are inlined at build time, so placeholders must be
-    replaced before ``server.js`` starts. The installed package may live in a
-    read-only site-packages directory; the cache keeps mutation local to the
-    active workspace.
-    """
-
-    cache = home / WEB_CACHE_DIR
-    marker = cache / ".deeptutor-web-runtime.json"
-    source_server = packaged / "server.js"
-    marker_payload = {
-        "source": str(packaged),
-        "source_mtime_ns": source_server.stat().st_mtime_ns,
-        "api_base": api_base,
-        "auth_enabled": bool(auth_enabled),
-    }
-    if (cache / "server.js").exists():
-        try:
-            if json.loads(marker.read_text(encoding="utf-8")) == marker_payload:
-                return cache
-        except Exception:
-            pass
-
-    if cache.exists():
-        shutil.rmtree(cache)
-    shutil.copytree(packaged, cache)
-    _patch_packaged_web_placeholders(
-        cache,
-        api_base=api_base,
-        auth_enabled="true" if auth_enabled else "false",
-    )
-    marker.write_text(json.dumps(marker_payload, indent=2), encoding="utf-8")
-    return cache
-
-
-def _patch_packaged_web_placeholders(
-    web_dir: Path,
-    *,
-    api_base: str,
-    auth_enabled: str,
-) -> None:
-    replacements = {
-        "__NEXT_PUBLIC_API_BASE_PLACEHOLDER__": api_base,
-        "__NEXT_PUBLIC_AUTH_ENABLED_PLACEHOLDER__": auth_enabled,
-    }
-    roots = [web_dir / ".next", web_dir / "server.js"]
-    for root in roots:
-        paths = [root] if root.is_file() else root.rglob("*") if root.exists() else []
-        for path in paths:
-            if not path.is_file() or path.suffix not in {".js", ".json", ".html", ".txt"}:
-                continue
-            try:
-                text = path.read_text(encoding="utf-8")
-            except UnicodeDecodeError:
-                continue
-            updated = text
-            for placeholder, value in replacements.items():
-                updated = updated.replace(placeholder, value)
-            if updated != text:
-                path.write_text(updated, encoding="utf-8")
+    return path if (path / "index.html").is_file() else None
 
 
 def _source_web_dir(home: Path) -> Path | None:
-    candidates = [home / "web", PACKAGE_ROOT / "web"]
+    candidates = [home / "frontend", PACKAGE_ROOT / "frontend"]
     for path in candidates:
-        if (path / "package.json").exists():
+        if (path / "package.json").exists() and (path / "index.html").exists():
             return path
     return None
 
 
 def _ensure_web_dependencies(source: Path, npm: str) -> None:
-    """Install ``web/node_modules`` on a source checkout that has none.
+    """Install ``frontend/node_modules`` on a source checkout that has none.
 
     ``pip install -e ".[cli]"`` never touches npm, so a fresh clone would hand
-    the dev server a missing ``next`` binary and die on Node's MODULE_NOT_FOUND
-    (#709). Prefer ``npm ci`` — reproducible and faster — and fall back to
-    ``npm install`` when the checkout has no lockfile. Output is left on the
-    terminal so a failing install explains itself. No-op once installed, which
-    keeps it cheap on the launcher's repeated resolve path.
+    the Vite dev server a missing ``vite`` binary and die on Node's
+    MODULE_NOT_FOUND. Prefer ``npm ci`` — reproducible and faster — and fall
+    back to ``npm install`` when the checkout has no lockfile. Output is left
+    on the terminal so a failing install explains itself. No-op once
+    installed, which keeps it cheap on the launcher's repeated resolve path.
     """
     if (source / "node_modules").exists():
         return
     action = "ci" if (source / "package-lock.json").exists() else "install"
-    _log(f"web/node_modules not found — running `npm {action}` in {source} ...")
+    _log(f"frontend/node_modules not found — running `npm {action}` in {source} ...")
     result = subprocess.run([npm, action], cwd=source)
     if result.returncode != 0:
         raise SystemExit(
@@ -592,37 +492,17 @@ def _ensure_web_dependencies(source: Path, npm: str) -> None:
         )
 
 
-def _source_production_env(*, api_base: str, auth_enabled: bool) -> dict[str, str]:
-    """Environment shared by the source production build and server."""
-
-    env = os.environ.copy()
-    env["DEEPTUTOR_NEXT_DIST_DIR"] = SOURCE_PRODUCTION_DIST_DIR
-    env["NEXT_PUBLIC_API_BASE"] = api_base
-    env["NEXT_PUBLIC_AUTH_ENABLED"] = "true" if auth_enabled else "false"
-    return env
-
-
-def _source_build_fingerprint(source: Path, env: dict[str, str]) -> str:
-    """Hash source inputs and build-time public settings for build reuse."""
+def _source_build_fingerprint(source: Path) -> str:
+    """Hash source inputs so a production build can be reused."""
 
     digest = hashlib.sha256()
-    for key in (
-        "DEEPTUTOR_NEXT_DIST_DIR",
-        "NEXT_PUBLIC_API_BASE",
-        "NEXT_PUBLIC_AUTH_ENABLED",
-    ):
-        digest.update(key.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(env.get(key, "").encode("utf-8"))
-        digest.update(b"\0")
-
     version_file = PACKAGE_ROOT / "deeptutor" / "__version__.py"
     candidates: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(source):
         dirnames[:] = sorted(
             name
             for name in dirnames
-            if name not in SOURCE_BUILD_EXCLUDED_DIRS and not name.startswith(".next")
+            if name not in SOURCE_BUILD_EXCLUDED_DIRS and not name.startswith(".")
         )
         root = Path(dirpath)
         candidates.extend(root / name for name in sorted(filenames))
@@ -644,80 +524,48 @@ def _source_build_fingerprint(source: Path, env: dict[str, str]) -> str:
     return digest.hexdigest()
 
 
-def _ensure_source_production_build(
-    source: Path,
-    npm: str,
-    *,
-    api_base: str,
-    auth_enabled: bool,
-) -> None:
-    """Build source installs once, then reuse them until an input changes.
+def _ensure_source_production_build(source: Path, npm: str) -> Path:
+    """Build source installs once, then reuse them until an input changes."""
 
-    Long-running ``deeptutor start`` processes must not use ``next dev``: its
-    compiler and HMR caches are development machinery, and a v1.5.7 deployment
-    grew past 14 GB before V8 aborted.  A dedicated dist directory lets an
-    explicit ``--dev`` server keep using ``.next`` without either mode erasing
-    the other's output.
-    """
-
-    env = _source_production_env(api_base=api_base, auth_enabled=auth_enabled)
     dist = source / SOURCE_PRODUCTION_DIST_DIR
     marker = dist / SOURCE_BUILD_MARKER
-    payload = {"fingerprint": _source_build_fingerprint(source, env)}
-    if (dist / "BUILD_ID").is_file() and (dist / "standalone" / "server.js").is_file():
+    payload = {"fingerprint": _source_build_fingerprint(source)}
+    if (dist / "index.html").is_file():
         try:
             if json.loads(marker.read_text(encoding="utf-8")) == payload:
-                _prepare_source_standalone(source)
-                return
+                return dist
         except Exception:
             pass
 
     _log(f"Building the source frontend for production in {source} ...")
-    # Next rewrites these source-controlled files to point at whichever dist
-    # directory was built most recently. Preserve the developer's versions so
-    # a production launch neither dirties the checkout nor breaks the next
-    # explicit ``--dev`` typecheck.
-    generated_config = [source / "next-env.d.ts", source / "tsconfig.json"]
-    snapshots = {path: path.read_bytes() if path.is_file() else None for path in generated_config}
-    try:
-        result = subprocess.run([npm, "run", "build"], cwd=source, env=env)
-    finally:
-        for path, original in snapshots.items():
-            if original is None:
-                path.unlink(missing_ok=True)
-            elif not path.is_file() or path.read_bytes() != original:
-                path.write_bytes(original)
+    result = subprocess.run([npm, "run", "build"], cwd=source)
     if result.returncode != 0:
         raise SystemExit(
             f"`npm run build` failed (exit {result.returncode}). "
             "Fix the error above, then retry `deeptutor start`."
         )
-    if not (dist / "BUILD_ID").is_file():
-        raise SystemExit(f"`npm run build` completed without creating {dist / 'BUILD_ID'}.")
-    _prepare_source_standalone(source)
+    if not (dist / "index.html").is_file():
+        raise SystemExit(f"`npm run build` completed without creating {dist / 'index.html'}.")
     marker.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return dist
 
 
-def _prepare_source_standalone(source: Path) -> Path:
-    """Add static/public assets omitted from Next's standalone directory."""
+def _spa_server_command(frontend_port: int) -> list[str]:
+    from deeptutor.services.config import HTTP_KEEP_ALIVE_TIMEOUT
 
-    dist = source / SOURCE_PRODUCTION_DIST_DIR
-    standalone = dist / "standalone"
-    if not (standalone / "server.js").is_file():
-        raise SystemExit(
-            f"`npm run build` did not create the standalone server at {standalone / 'server.js'}."
-        )
-    static = dist / "static"
-    if static.is_dir():
-        shutil.copytree(
-            static,
-            standalone / SOURCE_PRODUCTION_DIST_DIR / "static",
-            dirs_exist_ok=True,
-        )
-    public = source / "public"
-    if public.is_dir():
-        shutil.copytree(public, standalone / "public", dirs_exist_ok=True)
-    return standalone
+    return [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "deeptutor.runtime.spa_server:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        str(frontend_port),
+        "--no-access-log",
+        "--timeout-keep-alive",
+        str(HTTP_KEEP_ALIVE_TIMEOUT),
+    ]
 
 
 def _resolve_frontend(
@@ -728,120 +576,52 @@ def _resolve_frontend(
     auth_enabled: bool,
     dev: bool = False,
 ) -> FrontendRuntime:
+    del api_base, auth_enabled
     packaged = _packaged_web_dir()
-    node = shutil.which("node")
     if packaged is not None:
-        if not node:
-            raise SystemExit("Node.js 20+ is required to run the packaged DeepTutor Web app.")
-        runtime_web = _copy_packaged_web_if_needed(
+        return FrontendRuntime(
+            "packaged",
+            _spa_server_command(frontend_port),
             packaged,
-            home=home,
-            api_base=api_base,
-            auth_enabled=auth_enabled,
+            packaged,
         )
-        return FrontendRuntime("packaged", [node, str(runtime_web / "server.js")], runtime_web)
 
     source = _source_web_dir(home)
     if source is not None:
         npm = shutil.which("npm")
         if not npm:
             raise SystemExit(
-                "npm not found. Source installs require Node.js/npm and `cd web && npm install`."
+                "npm not found. Source installs require Node.js/npm and "
+                "`cd frontend && npm install`."
             )
         _ensure_web_dependencies(source, npm)
         if not dev:
-            if not node:
-                raise SystemExit("Node.js 20+ is required to run the source production build.")
-            _ensure_source_production_build(
-                source,
-                npm,
-                api_base=api_base,
-                auth_enabled=auth_enabled,
-            )
-            standalone = source / SOURCE_PRODUCTION_DIST_DIR / "standalone"
+            dist = _ensure_source_production_build(source, npm)
             return FrontendRuntime(
                 "source-production",
-                [node, str(standalone / "server.js")],
-                standalone,
+                _spa_server_command(frontend_port),
+                source,
+                dist,
             )
         return FrontendRuntime(
-            "source", [npm, "run", "dev", "--", "--port", str(frontend_port)], source
+            "source",
+            [
+                npm,
+                "run",
+                "dev",
+                "--",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                str(frontend_port),
+            ],
+            source,
         )
 
     raise SystemExit(
         "DeepTutor Web assets are not installed. Install the full app with `pip install -U deeptutor`, "
-        "or run from a source checkout that contains `web/`."
+        "or run from a source checkout that contains `frontend/`."
     )
-
-
-def _coerce_pid(value: object) -> int | None:
-    if isinstance(value, bool) or not isinstance(value, int | str):
-        return None
-    try:
-        pid = int(value)
-    except (TypeError, ValueError):
-        return None
-    return pid if pid > 0 else None
-
-
-def _coerce_port(value: object) -> int | None:
-    if isinstance(value, bool) or not isinstance(value, int | str):
-        return None
-    try:
-        port = int(value)
-    except (TypeError, ValueError):
-        return None
-    return port if 1 <= port <= 65535 else None
-
-
-def _local_app_url(value: object, port: int) -> str:
-    fallback = f"http://localhost:{port}"
-    if not isinstance(value, str) or not value.strip():
-        return fallback
-    raw = value.strip().rstrip("/")
-    try:
-        parsed = urlparse.urlparse(raw)
-    except ValueError:
-        return fallback
-    if parsed.scheme not in {"http", "https"}:
-        return fallback
-    if parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
-        return fallback
-    if parsed.port != port:
-        return fallback
-    return raw
-
-
-def _detect_existing_source_frontend(frontend: FrontendRuntime) -> ExistingFrontendRuntime | None:
-    """Return an already-running Next dev server for this source checkout."""
-
-    if frontend.kind != "source":
-        return None
-
-    lock_candidates = [
-        frontend.cwd / ".next" / "dev" / "lock",
-        frontend.cwd / ".next" / "lock",
-    ]
-    for lock_path in lock_candidates:
-        try:
-            payload = json.loads(lock_path.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        if not isinstance(payload, dict):
-            continue
-        port = _coerce_port(payload.get("port"))
-        if port is None:
-            continue
-        pid = _coerce_pid(payload.get("pid"))
-        if not _is_pid_alive(pid) and not _port_accepts_connection(port):
-            continue
-        return ExistingFrontendRuntime(
-            url=_local_app_url(payload.get("appUrl"), port),
-            port=port,
-            pid=pid,
-            lock_path=lock_path,
-        )
-    return None
 
 
 def _process_command(pid: int | None) -> str:
@@ -861,52 +641,6 @@ def _process_command(pid: int | None) -> str:
     except Exception:
         return ""
     return completed.stdout.strip()
-
-
-def _looks_like_next_process(pid: int | None) -> bool:
-    command = _process_command(pid).lower()
-    return bool(
-        command
-        and ("next-server" in command or "next/dist/bin/next" in command or " next dev" in command)
-    )
-
-
-def _stop_unhealthy_source_frontend(frontend: ExistingFrontendRuntime) -> bool:
-    """Stop a locked Next dev server only when the lock points at Next itself."""
-
-    if frontend.pid is None:
-        return False
-    if not _is_pid_alive(frontend.pid):
-        try:
-            frontend.lock_path.unlink(missing_ok=True)
-        except OSError:
-            pass
-        return True
-    if not _looks_like_next_process(frontend.pid):
-        return False
-
-    pgid = _get_pgid(frontend.pid)
-    try:
-        _send_tree_signal(frontend.pid, pgid, signal.SIGTERM)
-    except Exception:
-        return False
-
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline and _is_pid_alive(frontend.pid):
-        time.sleep(0.2)
-
-    if _is_pid_alive(frontend.pid):
-        try:
-            _send_tree_signal(frontend.pid, pgid, KILL_SIGNAL)
-        except Exception:
-            return False
-        time.sleep(0.5)
-
-    try:
-        frontend.lock_path.unlink(missing_ok=True)
-    except OSError:
-        pass
-    return not _http_ready(frontend.url, timeout=0.5)
 
 
 def _install_signal_handlers(request_shutdown: Callable[[str | None], None]) -> None:
@@ -969,24 +703,11 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
         auth_enabled=auth_enabled,
         dev=dev,
     )
-    existing_frontend = _detect_existing_source_frontend(frontend)
-    if existing_frontend is not None and not _http_ready(
-        existing_frontend.url, timeout=FRONTEND_REUSE_PROBE_TIMEOUT
-    ):
-        pid = existing_frontend.pid if existing_frontend.pid is not None else "unknown"
-        _log(_t("start.restarting_frontend", url=existing_frontend.url, pid=pid))
-        if not _stop_unhealthy_source_frontend(existing_frontend):
-            raise SystemExit(
-                _t("start.frontend_restart_failed", url=existing_frontend.url, pid=pid)
-            )
-        existing_frontend = None
-    if existing_frontend is not None:
-        frontend_port = existing_frontend.port
 
     resolved_backend, resolved_frontend = _resolve_port_conflicts(
         backend_port=backend_port,
         frontend_port=frontend_port,
-        check_frontend=existing_frontend is None,
+        check_frontend=True,
         settings_dir=settings.settings_dir,
     )
     if (resolved_backend, resolved_frontend) != (backend_port, frontend_port):
@@ -1006,11 +727,7 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
             dev=dev,
         )
 
-    frontend_url = (
-        existing_frontend.url
-        if existing_frontend is not None
-        else f"http://localhost:{frontend_port}"
-    )
+    frontend_url = f"http://localhost:{frontend_port}"
 
     print_banner(language=language, mode_key="start.mode")
     _log(f"{_t('start.backend'):<10} {backend_url}")
@@ -1030,13 +747,14 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
     common_env["HOSTNAME"] = "0.0.0.0"
     common_env["NEXT_PUBLIC_API_BASE"] = api_base
     common_env["NEXT_PUBLIC_AUTH_ENABLED"] = "true" if auth_enabled else "false"
-    # The Next.js middleware (web/proxy.ts) runs in the frontend's Node runtime
-    # and reads these at request time to forward /api/* and /ws/* to the backend
-    # and to gate the login redirect. The browser uses relative paths, so the
-    # frontend server reaches the backend on the IPv4 loopback at the resolved port —
-    # use backend_url (not api_base, which may be an external browser URL).
+    # The SPA server (and Vite in --dev) read these at request time to forward
+    # /api/* and /ws/* to the backend. The browser uses relative paths, so the
+    # frontend server reaches the backend on the IPv4 loopback at the resolved
+    # port — use backend_url (not api_base, which may be an external browser URL).
     common_env["DEEPTUTOR_API_BASE_URL"] = backend_url
     common_env["DEEPTUTOR_AUTH_ENABLED"] = "true" if auth_enabled else "false"
+    if frontend.spa_dir is not None:
+        common_env["DEEPTUTOR_SPA_DIR"] = str(frontend.spa_dir)
     common_env["PYTHONUNBUFFERED"] = "1"
     common_env["PYTHONIOENCODING"] = "utf-8:replace"
     # Anchor for deeptutor.runtime.memory_probe: the backend and the frontend
@@ -1045,8 +763,6 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
     # backend itself.
     common_env[SUPERVISOR_PID_ENV] = str(os.getpid())
     _apply_single_user_allocator_env(common_env)
-    if frontend.kind == "source-production":
-        common_env["DEEPTUTOR_NEXT_DIST_DIR"] = SOURCE_PRODUCTION_DIST_DIR
 
     backend_cmd = [
         sys.executable,
@@ -1070,11 +786,9 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
         # the attachment limits therefore takes a restart to fully apply.
         "--ws-max-size",
         str(get_ws_max_size()),
-        # Outlast the frontend proxy's idle socket pool. web/proxy.ts forwards
-        # over Node's http.globalAgent, which reaps idle sockets on its own 5s
-        # timer — the same value as uvicorn's default, so both ends raced to
-        # close the same socket and a FIN landing on a reuse surfaced as
-        # ECONNRESET ("Failed to proxy ... socket hang up" -> 500).
+        # Outlast the frontend proxy's idle socket pool. The SPA server
+        # forwards over httpx, which reaps idle sockets on a 60s timer; stay
+        # well above that so the client is the only side retiring connections.
         "--timeout-keep-alive",
         str(HTTP_KEEP_ALIVE_TIMEOUT),
     ]
@@ -1117,27 +831,16 @@ def start(home: str | Path | None = None, *, dev: bool = False) -> None:
             should_stop=lambda: shutdown_requested,
         )
 
-        if existing_frontend is not None:
-            pid = existing_frontend.pid if existing_frontend.pid is not None else "unknown"
-            _log(_t("start.reusing_frontend", url=frontend_url, pid=pid))
-            _wait_for_http(
-                name=_t("start.frontend"),
-                url=frontend_url,
-                process=None,
-                timeout=FRONTEND_READY_TIMEOUT,
-                should_stop=lambda: shutdown_requested,
-            )
-        else:
-            _log(_t("start.starting_frontend"))
-            web = _spawn(frontend.command, cwd=frontend.cwd, env=common_env, name="frontend")
-            processes.append(web)
-            _wait_for_http(
-                name=_t("start.frontend"),
-                url=f"http://127.0.0.1:{frontend_port}/",
-                process=web,
-                timeout=FRONTEND_READY_TIMEOUT,
-                should_stop=lambda: shutdown_requested,
-            )
+        _log(_t("start.starting_frontend"))
+        web = _spawn(frontend.command, cwd=frontend.cwd, env=common_env, name="frontend")
+        processes.append(web)
+        _wait_for_http(
+            name=_t("start.frontend"),
+            url=f"http://127.0.0.1:{frontend_port}/",
+            process=web,
+            timeout=FRONTEND_READY_TIMEOUT,
+            should_stop=lambda: shutdown_requested,
+        )
         _log(_t("start.open_in_browser", url=frontend_url))
 
         while not shutdown_requested:

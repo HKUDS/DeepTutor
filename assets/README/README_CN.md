@@ -29,7 +29,7 @@
 </p>
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![Vite](https://img.shields.io/badge/Vite-6-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vite.dev/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
 [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962)
@@ -75,7 +75,7 @@ DeepTutor 提供四种安装方式，共享同一个工作区布局：设置存�
 <details>
 <summary><b>方式一 — 从 PyPI 安装</b> · 完整本地 Web 应用 + CLI，无需克隆仓库</summary>
 
-完整本地 Web 应用 + CLI，无需克隆仓库。需要 **Python 3.11–3.13** 以及 PATH 中的 **Node.js 20+** 运行时（打包的 Next.js 独立服务器由 `deeptutor start` 启动）。
+完整本地 Web 应用 + CLI，无需克隆仓库。需要 **Python 3.11–3.13**。PyPI 安装后由 `deeptutor start` 托管打包好的 Vite 前端（无需 Node.js）。
 
 ```bash
 mkdir -p my-deeptutor && cd my-deeptutor
@@ -106,13 +106,13 @@ python -m pip install --upgrade pip
 
 # 安装后端 + 前端依赖
 python -m pip install -e .
-( cd web && npm ci --legacy-peer-deps )
+( cd frontend && npm ci )
 
 deeptutor init
 deeptutor start --dev
 ```
 
-`deeptutor start` 会为本地 `web/` 前端构建一次生产版本并复用；`--dev` 则以热更新（HMR）方式运行 Next.js。配置布局、端口和 `Ctrl+C` 停止均与方式一相同。
+`deeptutor start` 会为本地 `frontend/` 前端构建一次生产版本并复用；`--dev` 则以热更新（HMR）方式运行 Vite。配置布局、端口和 `Ctrl+C` 停止均与方式一相同。
 
 <details>
 <summary><b>Conda 环境</b>（替代 <code>venv</code>）</summary>
@@ -141,12 +141,11 @@ pip install -e ".[math-animator]"   # Manim 插件；需要 LaTeX/ffmpeg/系统�
 <details>
 <summary><b>前端依赖调整与开发服务器故障排查</b></summary>
 
-**修改前端依赖：** 运行 `npm install --legacy-peer-deps` 以刷新 `web/package-lock.json`，然后同时提交 `web/package.json` 和 `web/package-lock.json`。
+**修改前端依赖：** 在 `frontend/` 中运行 `npm install` 以刷新 `frontend/package-lock.json`，然后同时提交 `frontend/package.json` 和 `frontend/package-lock.json`。
 
-**开发服务器卡住：** 如果 `deeptutor start --dev` 报告有已存在但无响应的前端进程，停止它打印的 PID。如果实际上没有 Next.js 进程在运行，则锁文件已过时 — 删除后重试：
+**开发服务器卡住：** 如果 `deeptutor start --dev` 报告前端端口已被占用，停止该端口上的进程后重试：
 
 ```bash
-rm -f web/.next/dev/lock web/.next/lock
 deeptutor start --dev
 ```
 
@@ -171,14 +170,14 @@ docker run --rm --name deeptutor \
   ghcr.io/hkuds/deeptutor:latest
 ```
 
-> **只需发布 `3782` 端口。** 浏览器只与前端源通信；Next.js 中间件（`web/proxy.ts`）在**容器内部**将 `/api/*` 和 `/ws/*` 转发给 FastAPI 后端。发布 `8001`（`-p 127.0.0.1:8001:8001`）是可选的 — 仅在需要用 curl 或脚本直接访问 API 时才有用。
+> **只需发布 `3782` 端口。** 浏览器只与前端源通信；容器内的 SPA 服务在**容器内部**将 `/api/*` 和 `/ws/*` 转发给 FastAPI 后端。发布 `8001`（`-p 127.0.0.1:8001:8001`）是可选的 — 仅在需要用 curl 或脚本直接访问 API 时才有用。
 
 打开 [http://127.0.0.1:3782](http://127.0.0.1:3782)。容器首次启动时会创建 `/app/data/user/settings/*.json`；通过 Web Settings 页面配置模型提供商。配置、API Key、日志、工作区文件、记忆和知识库均持久化在 `deeptutor-data` 卷中。
 
 - **不同宿主机端口：** 修改每个 `-p host:container` 映射的左侧（例如 `-p 127.0.0.1:8088:3782`）。如果修改了 `/app/data/user/settings/system.json` 中容器侧的端口，重启并更新映射右侧以匹配。
 - **后台运行：** 添加 `-d`，然后用 `docker logs -f deeptutor` 查看日志，`docker stop deeptutor` 停止，重用名称前执行 `docker rm deeptutor`。`deeptutor-data` 卷在重启之间保留设置和工作区。
 
-**远程 Docker / 反向代理：** 浏览器只与前端源（`:3782`）通信；容器内的 Next.js 中间件在服务端将 `/api/*` 和 `/ws/*` 转发给后端服务器。对于常见的单容器场景，完全不需要配置 API base — 只需将反向代理 / TLS 终止器指向 `:3782` 即可。只有在**拆分部署**（后端在独立容器/主机上）时才需要设置 API base：将 `data/user/settings/system.json` 中的 `next_public_api_base` 设置为前端服务器用于访问后端的内网地址（它在服务端读取，永远不会发送到浏览器）。
+**远程 Docker / 反向代理：** 浏览器只与前端源（`:3782`）通信；容器内的 SPA 服务在服务端将 `/api/*` 和 `/ws/*` 转发给后端服务器。对于常见的单容器场景，完全不需要配置 API base — 只需将反向代理 / TLS 终止器指向 `:3782` 即可。只有在**拆分部署**（后端在独立容器/主机上）时才需要设置 API base：将 `data/user/settings/system.json` 中的 `next_public_api_base` 设置为前端服务器用于访问后端的内网地址（它在服务端读取，永远不会发送到浏览器）。
 
 ```json
 {

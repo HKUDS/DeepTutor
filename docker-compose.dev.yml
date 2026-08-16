@@ -25,14 +25,10 @@ services:
       - ./scripts:/app/scripts:ro
 
       # Mount frontend source for hot-reload
-      - ./web/app:/app/web/app:ro
-      - ./web/components:/app/web/components:ro
-      - ./web/lib:/app/web/lib:ro
-      - ./web/hooks:/app/web/hooks:ro
-      - ./web/context:/app/web/context:ro
-      - ./web/i18n:/app/web/i18n:ro
-      - ./web/locales:/app/web/locales:ro
-      - ./web/public:/app/web/public:ro
+      - ./frontend/src:/app/frontend/src:ro
+      - ./frontend/index.html:/app/frontend/index.html:ro
+      - ./frontend/vite.config.ts:/app/frontend/vite.config.ts:ro
+      - ./frontend/package.json:/app/frontend/package.json:ro
 
       # Mount data directories (writable) - output to local ./data
       - ./data/user:/app/data/user

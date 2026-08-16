@@ -105,8 +105,7 @@ def test_render_environment_uses_json_backed_runtime_names(monkeypatch, tmp_path
     assert env["DISABLE_SSL_VERIFY"] == "true"
     assert env["AUTH_ENABLED"] == "true"
     assert env["NEXT_PUBLIC_AUTH_ENABLED"] == "true"
-    # Server-side proxy contract consumed by web/proxy.ts (the Next.js
-    # middleware). DEEPTUTOR_AUTH_ENABLED gates the login redirect;
+    # Server-side proxy contract consumed by the SPA server.
     # DEEPTUTOR_API_BASE_URL is where the frontend server reaches the backend
     # (falls back to the IPv4 loopback on <backend_port> when no in-network /
     # external base is configured — see the dedicated test below for why).
@@ -121,7 +120,7 @@ def test_api_base_url_falls_back_to_ipv4_loopback(monkeypatch, tmp_path: Path) -
     """The server-side backend address must never be spelled "localhost".
 
     On a dual-stack host that name resolves to ::1 first, while uvicorn binds
-    0.0.0.0 (IPv4 only) — so every /api/* rewrite issued by web/proxy.ts fails
+    0.0.0.0 (IPv4 only) — so every /api/* rewrite issued by the SPA server fails
     to connect. The launcher was fixed in #784; this is the Docker entrypoint
     path, which renders the same variable and must agree with it.
     """

@@ -29,7 +29,7 @@
 </p>
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![Vite](https://img.shields.io/badge/Vite-6-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vite.dev/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
 [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962)
@@ -210,7 +210,7 @@ DeepTutor ships four installation paths. They all share one workspace layout: se
 <details>
 <summary><b>Option 1 — Install From PyPI</b> · full local Web app + CLI, no clone required</summary>
 
-Full local Web app + CLI, no clone required. Needs **Python 3.11–3.13** and a **Node.js 20+** runtime on PATH (the packaged Next.js standalone server is spawned by `deeptutor start`).
+Full local Web app + CLI, no clone required. Needs **Python 3.11–3.13**. The packaged Vite frontend is served by `deeptutor start` (no Node.js required for the PyPI install).
 
 ```bash
 mkdir -p my-deeptutor && cd my-deeptutor
@@ -241,13 +241,13 @@ python -m pip install --upgrade pip
 
 # Install backend + frontend deps
 python -m pip install -e .
-( cd web && npm ci --legacy-peer-deps )
+( cd frontend && npm ci )
 
 deeptutor init
 deeptutor start --dev
 ```
 
-`deeptutor start` builds the local `web/` frontend for production once and reuses it; `--dev` runs Next.js with HMR. Config layout, ports, and `Ctrl+C` match Option 1.
+`deeptutor start` builds the local `frontend/` app for production once and reuses it; `--dev` runs Vite with HMR. Config layout, ports, and `Ctrl+C` match Option 1.
 
 <details>
 <summary><b>Conda environment</b> (instead of <code>venv</code>)</summary>
@@ -276,12 +276,11 @@ pip install -e ".[math-animator]"   # Manim addon; requires LaTeX/ffmpeg/system 
 <details>
 <summary><b>Frontend dependency tweaks & dev-server troubleshooting</b></summary>
 
-**Changing frontend dependencies:** run `npm install --legacy-peer-deps` to refresh `web/package-lock.json`, then commit both `web/package.json` and `web/package-lock.json`.
+**Changing frontend dependencies:** run `npm install` in `frontend/` to refresh `frontend/package-lock.json`, then commit both `frontend/package.json` and `frontend/package-lock.json`.
 
-**Stuck dev server:** if `deeptutor start --dev` reports an existing frontend that isn't responding, stop the PID it prints. If no Next.js process is actually running, the lock files are stale — remove them and retry:
+**Stuck dev server:** if `deeptutor start --dev` reports the frontend port is already in use, stop the process listening on that port and retry:
 
 ```bash
-rm -f web/.next/dev/lock web/.next/lock
 deeptutor start --dev
 ```
 
@@ -306,7 +305,7 @@ docker run --rm --name deeptutor \
   ghcr.io/hkuds/deeptutor:latest
 ```
 
-> **Only `3782` needs to be published.** The browser talks exclusively to the frontend origin; the Next.js middleware (`web/proxy.ts`) forwards `/api/*` and `/ws/*` to the FastAPI backend **inside the container**. Publishing `8001` (`-p 127.0.0.1:8001:8001`) is optional — handy only for hitting the API directly with curl or scripts.
+> **Only `3782` needs to be published.** The browser talks exclusively to the frontend origin; the in-container SPA server forwards `/api/*` and `/ws/*` to the FastAPI backend **inside the container**. Publishing `8001` (`-p 127.0.0.1:8001:8001`) is optional — handy only for hitting the API directly with curl or scripts.
 
 Open [http://127.0.0.1:3782](http://127.0.0.1:3782). The container creates `/app/data/user/settings/*.json` on first boot; configure model providers from the Web Settings page. Config, API keys, logs, workspace files, memory, and knowledge bases persist in the `deeptutor-data` volume.
 
@@ -314,7 +313,7 @@ Open [http://127.0.0.1:3782](http://127.0.0.1:3782). The container creates `/app
 - **Detached:** add `-d`, then `docker logs -f deeptutor` to follow, `docker stop deeptutor` to stop, `docker rm deeptutor` before reusing the name. The `deeptutor-data` volume keeps your settings and workspace across restarts.
 
 **Remote Docker / reverse proxy:** the browser only talks to the frontend
-origin (`:3782`); the in-container Next.js middleware forwards `/api/*` and
+origin (`:3782`); the in-container SPA server forwards `/api/*` and
 `/ws/*` to the backend server-side. For the common single-container case you
 don't configure an API base at all — just point your reverse proxy / TLS
 terminator at `:3782`. You only need an API base for a **split deployment**
@@ -639,7 +638,7 @@ Most sections use a draft-and-apply flow, so you can test a provider before comm
 
 Default local Docker and Podman deployments use separate loopback networks and need a temporary bridge during sign-in. Follow the [temporary local Codex OAuth bridge guide](./CONTAINERIZATION.md#temporary-local-codex-oauth-bridge) for the exact Docker, Compose, Podman, and teardown commands.
 
-For a remote deployment, the browser's `localhost` and the server's `localhost` are different machines, so an ordinary reverse proxy alone cannot carry the browser's localhost callback to the server. Use an SSH tunnel as the callback bridge. The tunnel reaches the already-published Web port; Next.js rewrites only the exact callback path to the public callback broker, and the broker validates `state` before routing to the original OAuth operation. The callback listener remains on the backend loopback, ports `1455` and `1457` are not published, and this path supports the default Docker bridge network.
+For a remote deployment, the browser's `localhost` and the server's `localhost` are different machines, so an ordinary reverse proxy alone cannot carry the browser's localhost callback to the server. Use an SSH tunnel as the callback bridge. The tunnel reaches the already-published Web port; the SPA server rewrites only the exact callback path to the public callback broker, and the broker validates `state` before routing to the original OAuth operation. The callback listener remains on the backend loopback, ports `1455` and `1457` are not published, and this path supports the default Docker bridge network.
 
 ```bash
 ssh -N -L 1455:127.0.0.1:3782 <ssh-user>@<server-host>

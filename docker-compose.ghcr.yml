@@ -22,8 +22,9 @@
 # ============================================
 # IMPORTANT: Frontend-to-Backend API URL
 # ============================================
-# The frontend (Next.js) runs entirely in the user's browser — not in the container.
-# This means "localhost" in the browser refers to the USER'S MACHINE, not the Docker host.
+# The browser talks only to the frontend origin. The in-container SPA server
+# forwards /api/* and /ws/* to the backend. "localhost" in the browser refers
+# to the USER'S MACHINE, not the Docker host.
 #
 # LOCAL deployment (Docker on the same machine you browse from):
 #   Leave system.next_public_api_base_external blank. The default http://localhost:8001 works

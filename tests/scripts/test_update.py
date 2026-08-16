@@ -116,7 +116,7 @@ def test_dependency_hints_cover_backend_and_frontend_manifests() -> None:
     update = _load_update_module()
 
     hints = update.dependency_hints(
-        ["pyproject.toml", "requirements/server.txt", "web/package-lock.json"]
+        ["pyproject.toml", "requirements/server.txt", "frontend/package-lock.json"]
     )
 
     assert len(hints) == 2

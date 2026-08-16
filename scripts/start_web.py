@@ -25,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dev",
         action="store_true",
-        help="Use the Next.js development server for frontend work.",
+        help="Use the Vite development server for frontend work.",
     )
     return parser
 

@@ -151,8 +151,8 @@ def test_dockerfile_is_json_driven_without_bundle_sed() -> None:
     """The image no longer rewrites the built bundle at startup (the runtime
     ``sed -i`` broke under a read-only rootfs). URL/auth knowledge is JSON-driven:
     the entrypoint re-exports runtime settings from data/user/settings/*.json
-    (including DEEPTUTOR_API_BASE_URL / DEEPTUTOR_AUTH_ENABLED) and web/proxy.ts
-    forwards /api/* and /ws/* to the backend at request time."""
+    (including DEEPTUTOR_API_BASE_URL / DEEPTUTOR_AUTH_ENABLED) and the SPA
+    server forwards /api/* and /ws/* to the backend at request time."""
     root = Path(__file__).resolve().parents[2]
     content = (root / "Dockerfile").read_text(encoding="utf-8")
     # The build-time placeholder + runtime bundle sed mechanism is gone.
@@ -195,13 +195,13 @@ def test_supervisord_runs_as_root_with_unprivileged_children() -> None:
 
 
 def test_frontend_api_is_url_agnostic_passthrough() -> None:
-    """web/lib/api.ts no longer carries a build-time API base or a placeholder
-    token; apiUrl/wsUrl are pass-throughs and the Next.js middleware
-    (web/proxy.ts) performs the forwarding at request time."""
+    """frontend/src/api/http.ts does not bake an API host into the bundle;
+    apiUrl/wsUrl are pass-throughs and the SPA server forwards at request time."""
     root = Path(__file__).resolve().parents[2]
-    api_ts = (root / "web" / "lib" / "api.ts").read_text(encoding="utf-8")
+    api_ts = (root / "frontend" / "src" / "api" / "http.ts").read_text(encoding="utf-8")
     assert "NEXT_PUBLIC_API_BASE_PLACEHOLDER" not in api_ts
     assert "process.env.NEXT_PUBLIC_API_BASE" not in api_ts
-    proxy_ts = (root / "web" / "proxy.ts").read_text(encoding="utf-8")
-    assert "DEEPTUTOR_API_BASE_URL" in proxy_ts
-    assert "NextResponse.rewrite" in proxy_ts
+    assert "VITE_API" not in api_ts
+    spa = (root / "deeptutor" / "runtime" / "spa_server.py").read_text(encoding="utf-8")
+    assert "DEEPTUTOR_API_BASE_URL" in spa
+    assert "backend_path" in spa

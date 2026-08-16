@@ -12,7 +12,7 @@ on:
       - "requirements/**"
       - "requirements.txt"
       - "pyproject.toml"
-      - "web/**"
+      - "frontend/**"
       - ".github/workflows/tests.yml"
   pull_request:
     branches:
@@ -25,7 +25,7 @@ on:
       - "requirements/**"
       - "requirements.txt"
       - "pyproject.toml"
-      - "web/**"
+      - "frontend/**"
       - ".github/workflows/tests.yml"
 
 jobs:
@@ -54,7 +54,7 @@ jobs:
         run: ruff format --check .
 
   web-tests:
-    name: Web Node Tests
+    name: Frontend Typecheck
     runs-on: ubuntu-latest
 
     steps:
@@ -66,15 +66,15 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
-        working-directory: web
-        run: npm ci --legacy-peer-deps
+        working-directory: frontend
+        run: npm ci
 
-      - name: Run frontend node tests
-        working-directory: web
-        run: npm run test:node
+      - name: Typecheck frontend
+        working-directory: frontend
+        run: npm run typecheck
 
   import-check:
     name: Import Check (Python ${{ matrix.python-version }})

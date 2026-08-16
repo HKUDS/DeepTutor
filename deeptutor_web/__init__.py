@@ -1,9 +1,8 @@
-"""Packaged DeepTutor Web standalone assets.
+"""Packaged DeepTutor Web static assets.
 
-Release builds populate this package with Next.js standalone output:
-``server.js``, ``.next/static``, ``public``, and the minimal Node runtime files
-emitted by ``next build``. Source checkouts normally leave it empty and the
-launcher falls back to ``web/``.
+Release builds populate this package with the Vite ``dist`` output
+(``index.html`` plus hashed ``assets/``). Source checkouts normally leave it
+empty and the launcher falls back to ``frontend/``.
 """
 
 from __future__ import annotations

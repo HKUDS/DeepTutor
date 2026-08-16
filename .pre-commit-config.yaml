@@ -57,8 +57,8 @@ repos:
     hooks:
       - id: prettier
         args: [--log-level, warn]
-        files: ^web/.*\.(css|scss|json|jsonc|yaml|yml|md|graphql|html|ts|tsx|js|jsx)$
-        exclude: ^web/(node_modules|\.next|out|dist|build)/
+        files: ^frontend/.*\.(css|scss|json|jsonc|yaml|yml|md|graphql|html|ts|tsx|js|jsx)$
+        exclude: ^frontend/(node_modules|dist|build|test-results|playwright-report)/
 
   # ============================================
   # Security checks

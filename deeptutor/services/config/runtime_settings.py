@@ -535,12 +535,11 @@ class RuntimeSettingsService:
             "AUTH_TOKEN_EXPIRE_HOURS": str(auth["token_expire_hours"]),
             "AUTH_COOKIE_SECURE": _bool_env(auth["cookie_secure"]),
             "NEXT_PUBLIC_AUTH_ENABLED": _bool_env(auth["enabled"]),
-            # Consumed server-side by the Next.js middleware (web/proxy.ts) at
-            # request time — NOT inlined into the browser bundle. The proxy
-            # rewrites /api/* and /ws/* to DEEPTUTOR_API_BASE_URL and uses
-            # DEEPTUTOR_AUTH_ENABLED to gate the login redirect. The launcher and
-            # the Docker entrypoint both export these through render_environment,
-            # so the two deployment paths stay in sync. DEEPTUTOR_API_BASE_URL is
+            # Consumed server-side by the SPA server at request time — NOT
+            # inlined into the browser bundle. The proxy rewrites /api/* and
+            # /ws/* to DEEPTUTOR_API_BASE_URL. The launcher and the Docker
+            # entrypoint both export these through render_environment, so the
+            # two deployment paths stay in sync. DEEPTUTOR_API_BASE_URL is
             # the address the frontend *server* uses to reach the backend; the
             # browser itself only ever talks to the frontend origin.
             #
@@ -1048,17 +1047,12 @@ def get_ws_max_size() -> int:
 
 
 # Idle keep-alive window for backend HTTP connections — wire into every uvicorn
-# launch. The browser never reaches the backend directly: `web/proxy.ts` rewrites
-# `/api/*` and Next.js forwards over Node's `http.globalAgent`, which pools idle
-# sockets and reaps them on its own 5s `timeout`. uvicorn's `timeout_keep_alive`
-# also defaults to 5s, so both ends armed an identical idle timer on the same
-# socket and raced to close it: when the server's FIN landed on a socket the pool
-# was simultaneously handing to a new request, the request died with `ECONNRESET`
-# and the proxy turned it into a 500 ("Failed to proxy ... socket hang up" ->
-# "Failed to load sessions" in the UI). Any value comfortably above the proxy's
-# 5s reaper leaves the client as the only side that closes an idle connection,
-# which is the safe direction — a pool retiring its own socket removes it before
-# any request can be assigned to it, so the collision cannot happen at all.
+# launch. The browser never reaches the backend directly: the SPA server
+# rewrites `/api/*` and forwards over httpx, which pools idle sockets and
+# reaps them on its own keepalive timer. uvicorn's `timeout_keep_alive`
+# defaults to 5s, so both ends can race to close the same socket. Any value
+# comfortably above the proxy's reaper leaves the client as the only side
+# that closes an idle connection.
 HTTP_KEEP_ALIVE_TIMEOUT = 300
 
 

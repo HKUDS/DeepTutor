@@ -29,7 +29,7 @@
 </p>
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![Vite](https://img.shields.io/badge/Vite-6-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vite.dev/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
 [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962)
@@ -106,13 +106,13 @@ python -m pip install --upgrade pip
 
 # ติดตั้ง backend + frontend deps
 python -m pip install -e .
-( cd web && npm ci --legacy-peer-deps )
+( cd frontend && npm ci )
 
 deeptutor init
 deeptutor start --dev
 ```
 
-`deeptutor start` จะ build frontend `web/` ในเครื่องสำหรับ production ครั้งเดียวแล้วนำมาใช้ซ้ำ; `--dev` รัน Next.js ด้วย HMR (hot reload) Layout ของ config, พอร์ต และ `Ctrl+C` ตรงกับตัวเลือกที่ 1
+`deeptutor start` จะ build frontend `frontend/` ในเครื่องสำหรับ production ครั้งเดียวแล้วนำมาใช้ซ้ำ; `--dev` รัน Next.js ด้วย HMR (hot reload) Layout ของ config, พอร์ต และ `Ctrl+C` ตรงกับตัวเลือกที่ 1
 
 <details>
 <summary><b>สภาพแวดล้อม Conda</b> (แทน <code>venv</code>)</summary>
@@ -141,12 +141,11 @@ pip install -e ".[math-animator]"   # Manim addon; ต้องการ LaTeX/f
 <details>
 <summary><b>การปรับแก้ dependency ของ frontend และการแก้ปัญหาเซิร์ฟเวอร์ dev</b></summary>
 
-**การเปลี่ยน dependency ของ frontend:** รัน `npm install --legacy-peer-deps` เพื่อรีเฟรช `web/package-lock.json` จากนั้น commit ทั้ง `web/package.json` และ `web/package-lock.json`
+**การเปลี่ยน dependency ของ frontend:** รัน `npm install --legacy-peer-deps` เพื่อรีเฟรช `frontend/package-lock.json` จากนั้น commit ทั้ง `frontend/package.json` และ `frontend/package-lock.json`
 
 **เซิร์ฟเวอร์ dev ค้าง:** หาก `deeptutor start --dev` รายงาน frontend ที่มีอยู่แต่ไม่ตอบสนอง ให้หยุด PID ที่พิมพ์ออกมา หากไม่มีกระบวนการ Next.js จริง ๆ ที่รันอยู่ ไฟล์ lock จะล้าสมัย — ลบออกแล้วลองใหม่:
 
 ```bash
-rm -f web/.next/dev/lock web/.next/lock
 deeptutor start --dev
 ```
 
@@ -171,7 +170,7 @@ docker run --rm --name deeptutor \
   ghcr.io/hkuds/deeptutor:latest
 ```
 
-> **จำเป็นต้อง publish เฉพาะ `3782`** เบราว์เซอร์คุยกับ frontend origin เท่านั้น; Next.js middleware (`web/proxy.ts`) ส่งต่อ `/api/*` และ `/ws/*` ไปยัง FastAPI backend **ภายใน container** การ publish `8001` (`-p 127.0.0.1:8001:8001`) เป็นทางเลือก — มีประโยชน์เฉพาะเมื่อต้องการเรียก API โดยตรงด้วย curl หรือ scripts
+> **จำเป็นต้อง publish เฉพาะ `3782`** เบราว์เซอร์คุยกับ frontend origin เท่านั้น; Next.js middleware (the SPA server) ส่งต่อ `/api/*` และ `/ws/*` ไปยัง FastAPI backend **ภายใน container** การ publish `8001` (`-p 127.0.0.1:8001:8001`) เป็นทางเลือก — มีประโยชน์เฉพาะเมื่อต้องการเรียก API โดยตรงด้วย curl หรือ scripts
 
 เปิด [http://127.0.0.1:3782](http://127.0.0.1:3782) Container จะสร้าง `/app/data/user/settings/*.json` เมื่อบูตครั้งแรก กำหนดค่า model providers จากหน้า Web Settings Config, API keys, logs, ไฟล์ workspace, memory และ knowledge bases จะคงอยู่ใน volume `deeptutor-data`
 

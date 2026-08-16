@@ -78,25 +78,18 @@ node_modules/
 **/node_modules
 **/node_modules/
 
-# Next.js build output
+# Frontend build output
 .next/
-web/.next/
-web/.next-deeptutor/
 out/
-web/out/
 .vercel/
 **/.vercel/
 .turbo/
 **/.turbo/
 
-# Auto-generated env.local (created by start_web.py / start_tour.py)
-web/.env.local
-
 # Frontend build artifacts
 dist/
-web/dist/
+frontend/dist/
 build/
-web/build/
 .open-next/
 **/.open-next/
 .wrangler/
@@ -132,8 +125,6 @@ cache/
 .ruff_cache
 .playwright-cli/
 # Written by `npm run audit` (the playwright ui-audit project).
-web/test-results/
-web/playwright-report/
 frontend/test-results/
 frontend/playwright-report/
 

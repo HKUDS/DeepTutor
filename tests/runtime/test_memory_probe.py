@@ -69,6 +69,13 @@ def test_classify_maps_roles_and_falls_back_to_the_executable_name() -> None:
 
     assert memory_probe._classify(self_pid, "python3.11", "uvicorn") == "backend"
     assert memory_probe._classify(other, "python", "-m uvicorn deeptutor.api.main:app") == "backend"
+    assert (
+        memory_probe._classify(
+            other, "python", "-m uvicorn deeptutor.runtime.spa_server:app"
+        )
+        == "web"
+    )
+    assert memory_probe._classify(other, "node", "vite --port 3782") == "web"
     assert memory_probe._classify(other, "pocketbase", "serve") == "pocketbase"
     assert memory_probe._classify(other, "bwrap", "sandbox runner") == "sandbox"
     assert memory_probe._classify(other, "mineru-worker", "") == "mineru-worker"

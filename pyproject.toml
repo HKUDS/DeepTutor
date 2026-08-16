@@ -279,7 +279,7 @@ deeptutor = [
     "**/*.jinja",
 ]
 deeptutor_cli = ["**/*.md"]
-deeptutor_web = ["**/*", ".next/**/*"]
+deeptutor_web = ["**/*"]
 
 # ============================================
 # Black code formatter configuration

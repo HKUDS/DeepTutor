@@ -29,7 +29,7 @@
 </p>
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![Vite](https://img.shields.io/badge/Vite-6-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vite.dev/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
 [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962)
@@ -106,13 +106,13 @@ python -m pip install --upgrade pip
 
 # バックエンド + フロントエンドの依存関係をインストール
 python -m pip install -e .
-( cd web && npm ci --legacy-peer-deps )
+( cd frontend && npm ci )
 
 deeptutor init
 deeptutor start --dev
 ```
 
-`deeptutor start`はローカルの`web/`フロントエンドを一度だけ本番用にビルドして再利用し、`--dev`はNext.jsをHMR（ホットリロード）付きで実行します。その他（設定レイアウト、ポート、`Ctrl+C`での停止）はオプション1と同じです。
+`deeptutor start`はローカルの`frontend/`フロントエンドを一度だけ本番用にビルドして再利用し、`--dev`はNext.jsをHMR（ホットリロード）付きで実行します。その他（設定レイアウト、ポート、`Ctrl+C`での停止）はオプション1と同じです。
 
 <details>
 <summary><b>Conda環境</b>（<code>venv</code>の代わり）</summary>
@@ -141,12 +141,11 @@ pip install -e ".[math-animator]"   # Maninアドオン; LaTeX/ffmpeg/システ�
 <details>
 <summary><b>フロントエンド依存関係の調整とdevサーバーのトラブルシューティング</b></summary>
 
-**フロントエンド依存関係の変更：** `npm install --legacy-peer-deps`を実行して`web/package-lock.json`を更新し、`web/package.json`と`web/package-lock.json`の両方をコミットしてください。
+**フロントエンド依存関係の変更：** `npm install --legacy-peer-deps`を実行して`frontend/package-lock.json`を更新し、`frontend/package.json`と`frontend/package-lock.json`の両方をコミットしてください。
 
 **devサーバーが動かない場合：** `deeptutor start --dev`が応答しない既存のフロントエンドを報告する場合は、表示されたPIDを停止してください。実際にNext.jsプロセスが実行されていない場合、ロックファイルが古くなっています — それらを削除して再試行してください：
 
 ```bash
-rm -f web/.next/dev/lock web/.next/lock
 deeptutor start --dev
 ```
 
@@ -171,7 +170,7 @@ docker run --rm --name deeptutor \
   ghcr.io/hkuds/deeptutor:latest
 ```
 
-> **公開が必要なのは`3782`のみです。** ブラウザはフロントエンドオリジンのみと通信し、Next.jsミドルウェア（`web/proxy.ts`）が`/api/*`と`/ws/*`をコンテナ**内部の**FastAPIバックエンドに転送します。`8001`を公開（`-p 127.0.0.1:8001:8001`）するのはオプションで、curlやスクリプトでAPIに直接アクセスする場合にのみ便利です。
+> **公開が必要なのは`3782`のみです。** ブラウザはフロントエンドオリジンのみと通信し、Next.jsミドルウェア（the SPA server）が`/api/*`と`/ws/*`をコンテナ**内部の**FastAPIバックエンドに転送します。`8001`を公開（`-p 127.0.0.1:8001:8001`）するのはオプションで、curlやスクリプトでAPIに直接アクセスする場合にのみ便利です。
 
 [http://127.0.0.1:3782](http://127.0.0.1:3782)を開いてください。コンテナは初回起動時に`/app/data/user/settings/*.json`を作成します。Web Settingsページからモデルプロバイダーを設定してください。設定、APIキー、ログ、ワークスペースファイル、メモリ、知識ベースは`deeptutor-data`ボリュームに永続化されます。
 

@@ -211,8 +211,7 @@ def _mark_kb_queued_for_processing(
     without this pre-dispatch update the KB keeps reporting ``ready`` between
     the accepted upload/sync response and the task's first progress write.
     Mirrors the pre-dispatch update ``create_knowledge_base`` already does.
-    ``stage`` must be a member of the frontend's ``LIVE_PROGRESS_STAGES`` set
-    (web/lib/knowledge-helpers.ts).
+    ``stage`` must be a member of the frontend's ``LIVE_PROGRESS_STAGES`` set.
     """
     manager.update_kb_status(
         name=kb_name,

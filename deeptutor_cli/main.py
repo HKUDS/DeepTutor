@@ -169,7 +169,7 @@ def serve(
         host=host,
         port=port,
         reload=reload,
-        reload_excludes=["web/*", "data/*"] if reload else None,
+        reload_excludes=["frontend/*", "data/*"] if reload else None,
         ws_max_size=get_ws_max_size(),
         timeout_keep_alive=HTTP_KEEP_ALIVE_TIMEOUT,
     )

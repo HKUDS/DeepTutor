@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 # activity lane; the dedicated stage gives it its own labelled group. The
 # frontend keys its "Exploring your context…" status and "Context exploration"
 # row header off ``call_kind="context_exploration"`` / ``stage`` — see
-# ``web/components/chat/home/TracePanels.tsx``.
+# the frontend activity lane.
 EXPLORE_STAGE = "context_exploration"
 EXPLORE_SOURCE = "chat"
 

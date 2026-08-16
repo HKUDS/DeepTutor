@@ -29,7 +29,7 @@
 </p>
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![Vite](https://img.shields.io/badge/Vite-6-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vite.dev/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
 [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962)
@@ -106,13 +106,13 @@ python -m pip install --upgrade pip
 
 # Backend + frontend deps install करें
 python -m pip install -e .
-( cd web && npm ci --legacy-peer-deps )
+( cd frontend && npm ci )
 
 deeptutor init
 deeptutor start --dev
 ```
 
-`deeptutor start` local `web/` frontend को production के लिए एक बार build करता है और उसे reuse करता है; `--dev` Next.js को HMR के साथ run करता है। Config layout, ports, और `Ctrl+C` Option 1 से match करते हैं।
+`deeptutor start` local `frontend/` frontend को production के लिए एक बार build करता है और उसे reuse करता है; `--dev` Next.js को HMR के साथ run करता है। Config layout, ports, और `Ctrl+C` Option 1 से match करते हैं।
 
 <details>
 <summary><b>Conda environment</b> (<code>venv</code> की बजाय)</summary>
@@ -141,12 +141,11 @@ pip install -e ".[math-animator]"   # Manim addon; LaTeX/ffmpeg/system libs च�
 <details>
 <summary><b>Frontend dependency tweaks और dev-server troubleshooting</b></summary>
 
-**Frontend dependencies बदलना:** `web/package-lock.json` refresh करने के लिए `npm install --legacy-peer-deps` run करें, फिर `web/package.json` और `web/package-lock.json` दोनों को commit करें।
+**Frontend dependencies बदलना:** `frontend/package-lock.json` refresh करने के लिए `npm install --legacy-peer-deps` run करें, फिर `frontend/package.json` और `frontend/package-lock.json` दोनों को commit करें।
 
 **Stuck dev server:** अगर `deeptutor start --dev` एक existing frontend report करता है जो respond नहीं कर रहा, तो उस PID को stop करें जो वह print करता है। अगर कोई Next.js process actually नहीं चल रही, तो lock files stale हैं — उन्हें remove करें और retry करें:
 
 ```bash
-rm -f web/.next/dev/lock web/.next/lock
 deeptutor start --dev
 ```
 
@@ -171,7 +170,7 @@ docker run --rm --name deeptutor \
   ghcr.io/hkuds/deeptutor:latest
 ```
 
-> **केवल `3782` publish करना जरूरी है।** Browser exclusively frontend origin से बात करता है; Next.js middleware (`web/proxy.ts`) **container के अंदर** `/api/*` और `/ws/*` को FastAPI backend पर forward करता है। `8001` publish करना (`-p 127.0.0.1:8001:8001`) optional है — केवल curl या scripts से API directly hit करने के लिए उपयोगी।
+> **केवल `3782` publish करना जरूरी है।** Browser exclusively frontend origin से बात करता है; Next.js middleware (the SPA server) **container के अंदर** `/api/*` और `/ws/*` को FastAPI backend पर forward करता है। `8001` publish करना (`-p 127.0.0.1:8001:8001`) optional है — केवल curl या scripts से API directly hit करने के लिए उपयोगी।
 
 [http://127.0.0.1:3782](http://127.0.0.1:3782) खोलें। Container पहले boot पर `/app/data/user/settings/*.json` बनाता है; Web Settings page से model providers configure करें। Config, API keys, logs, workspace files, memory, और knowledge bases `deeptutor-data` volume में persist करते हैं।
 

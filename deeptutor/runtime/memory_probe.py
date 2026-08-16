@@ -8,7 +8,7 @@ Two things make "how much memory does DeepTutor use" more than one ``getrusage``
 call:
 
 * The backend is only one of the processes. ``deeptutor.runtime.launcher``
-  spawns the Next.js frontend as a *sibling* (see ``_spawn``), and capabilities
+  spawns the web frontend as a *sibling* (see ``_spawn``), and capabilities
   spawn sandboxes and subagent CLIs below it. Answering honestly means walking
   the supervisor's process tree, which is why the launcher stamps its own pid
   into :data:`SUPERVISOR_PID_ENV` — without that anchor a bare
@@ -123,7 +123,12 @@ def _classify(pid: int, name: str, cmdline: str, root_pid: int | None = None) ->
     if root_pid is not None and pid == root_pid:
         return "supervisor"
     lowered = f"{name} {cmdline}".lower()
-    if "next" in lowered or "node" in lowered:
+    if (
+        "spa_server" in lowered
+        or "vite" in lowered
+        or "next" in lowered
+        or "node" in lowered
+    ):
         return "web"
     if "uvicorn" in lowered or "deeptutor.api" in lowered:
         return "backend"

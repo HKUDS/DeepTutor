@@ -50,7 +50,7 @@
 #     `next_public_api_base` for the typical case, or
 #     `next_public_api_base_external` for cloud/external). The entrypoint
 #     reads the JSON on every start and exports `DEEPTUTOR_API_BASE_URL`,
-#     which `web/proxy.ts` reads to rewrite `/api/*` and `/ws/*` to the
+#     which the SPA server reads to rewrite `/api/*` and `/ws/*` to the
 #     configured backend at request time. There is no build-time
 #     placeholder, no runtime `sed -i` on the bundle, and no compose env
 #     var for the API base.
@@ -110,7 +110,7 @@ services:
       start_period: 10s
 
   # ----------------------------------------------------------
-  # DeepTutor — backend (FastAPI :8001) + frontend (Next.js :3782)
+  # DeepTutor — backend (FastAPI :8001) + frontend (Vite SPA :3782)
   # ----------------------------------------------------------
   # Both run inside the same image, supervised by supervisord under the
   # unprivileged `deeptutor` user (UID 1000). The image's entrypoint loads

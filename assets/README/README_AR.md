@@ -29,7 +29,7 @@
 </p>
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![Vite](https://img.shields.io/badge/Vite-6-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vite.dev/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
 [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962)
@@ -106,13 +106,13 @@ python -m pip install --upgrade pip
 
 # تثبيت تبعيات الخلفية والواجهة الأمامية
 python -m pip install -e .
-( cd web && npm ci --legacy-peer-deps )
+( cd frontend && npm ci )
 
 deeptutor init
 deeptutor start --dev
 ```
 
-يبني أمر `deeptutor start` واجهة `web/` المحلية للإنتاج مرة واحدة ويعيد استخدامها؛ بينما يشغّل `--dev` تطبيق Next.js مع إعادة التحميل الفوري للوحدات (HMR). تخطيط التهيئة، والمنافذ، والإيقاف بـ `Ctrl+C` يطابق الخيار 1.
+يبني أمر `deeptutor start` واجهة `frontend/` المحلية للإنتاج مرة واحدة ويعيد استخدامها؛ بينما يشغّل `--dev` تطبيق Next.js مع إعادة التحميل الفوري للوحدات (HMR). تخطيط التهيئة، والمنافذ، والإيقاف بـ `Ctrl+C` يطابق الخيار 1.
 
 <details>
 <summary><b>بيئة Conda</b> (بديلاً عن <code>venv</code>)</summary>
@@ -141,12 +141,11 @@ pip install -e ".[math-animator]"   # إضافة Manim؛ تتطلب LaTeX/ffmpeg
 <details>
 <summary><b>تعديلات تبعيات الواجهة الأمامية وحل مشاكل خادم التطوير</b></summary>
 
-**تغيير تبعيات الواجهة الأمامية:** شغّل `npm install --legacy-peer-deps` لتحديث `web/package-lock.json`، ثم ارفع كلاً من `web/package.json` و`web/package-lock.json`.
+**تغيير تبعيات الواجهة الأمامية:** شغّل `npm install --legacy-peer-deps` لتحديث `frontend/package-lock.json`، ثم ارفع كلاً من `frontend/package.json` و`frontend/package-lock.json`.
 
 **خادم تطوير متوقف:** إذا أبلغ `deeptutor start --dev` عن واجهة أمامية موجودة لا تستجيب، أوقف الـ PID الذي يطبعه. إذا لم يكن هناك أي عملية Next.js تعمل فعلياً، فملفات القفل قديمة — احذفها وأعد المحاولة:
 
 ```bash
-rm -f web/.next/dev/lock web/.next/lock
 deeptutor start --dev
 ```
 
@@ -171,7 +170,7 @@ docker run --rm --name deeptutor \
   ghcr.io/hkuds/deeptutor:latest
 ```
 
-> **يكفي نشر `3782` فقط.** يتحدث المتصفح حصرياً إلى أصل الواجهة الأمامية؛ يقوم وسيط Next.js (`web/proxy.ts`) بإعادة توجيه `/api/*` و`/ws/*` إلى خلفية FastAPI **داخل الحاوية**. نشر `8001` (`-p 127.0.0.1:8001:8001`) اختياري — مفيد فقط لاستدعاء واجهة برمجة التطبيقات مباشرةً باستخدام curl أو نصوص.
+> **يكفي نشر `3782` فقط.** يتحدث المتصفح حصرياً إلى أصل الواجهة الأمامية؛ يقوم وسيط Next.js (the SPA server) بإعادة توجيه `/api/*` و`/ws/*` إلى خلفية FastAPI **داخل الحاوية**. نشر `8001` (`-p 127.0.0.1:8001:8001`) اختياري — مفيد فقط لاستدعاء واجهة برمجة التطبيقات مباشرةً باستخدام curl أو نصوص.
 
 افتح [http://127.0.0.1:3782](http://127.0.0.1:3782). تُنشئ الحاوية `/app/data/user/settings/*.json` عند الإقلاع الأول؛ قم بتهيئة مزودي النماذج من صفحة إعدادات الويب. تبقى التهيئة ومفاتيح API والسجلات وملفات مساحة العمل والذاكرة وقواعد المعرفة في وحدة تخزين `deeptutor-data`.
 

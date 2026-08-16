@@ -2,7 +2,7 @@
 # DeepTutor Multi-Stage Dockerfile
 # ============================================
 # This Dockerfile builds a production-ready image for DeepTutor
-# containing both the FastAPI backend and Next.js frontend
+# containing both the FastAPI backend and the Vite frontend
 #
 # Build/run:
 #   docker build -t deeptutor:local .
@@ -22,38 +22,28 @@
 # so there is no need to cross-compile this stage.
 FROM --platform=$BUILDPLATFORM node:22-slim AS frontend-builder
 
-WORKDIR /app/web
+WORKDIR /app/frontend
 
 # Copy package files first for better caching
-COPY web/package.json web/package-lock.json* ./
+COPY frontend/package.json frontend/package-lock.json* ./
 
 # Install dependencies with generous timeout for CI environments
 RUN npm config set fetch-timeout 600000 && \
     npm config set fetch-retries 5 && \
-    npm ci --legacy-peer-deps
+    npm ci
 
 # Copy frontend source code
-COPY web/ ./
+COPY frontend/ ./
 
-# Provide the single source of truth for the app version so next.config.js
-# can read it during ``npm run build`` and inline it into the bundle.
-COPY deeptutor/__version__.py /app/deeptutor/__version__.py
-
-# Create .env.local with the single env var the build needs (the app version,
-# exposed to the browser via next.config.js). URL knowledge is no longer baked
-# into the bundle: `apiUrl`/`wsUrl` in web/lib/api.ts are pass-throughs and
-# the actual backend host is read at request time by web/proxy.ts from
-# DEEPTUTOR_API_BASE_URL (exported by the entrypoint on every start).
-RUN printf 'NEXT_PUBLIC_APP_VERSION=\n' > .env.local
-
-# Build Next.js for production with standalone output
-# This allows runtime environment variable injection
+# Vite emits a static SPA. URL knowledge is not baked into the bundle:
+# `apiUrl`/`wsUrl` are pass-throughs and the SPA server reads
+# DEEPTUTOR_API_BASE_URL at request time (exported by the entrypoint).
 RUN npm run build
 
 # ============================================
 # Stage 1b: Node Runtime for Target Platform
 # ============================================
-# Provides the correctly-architected node binary for the final image.
+# Provides the correctly-architected node binary for the development image.
 # Unlike frontend-builder (pinned to BUILDPLATFORM), this stage pulls
 # the node image matching each target platform (amd64 / arm64).
 FROM node:22-slim AS node-runtime
@@ -145,23 +135,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Node.js from node-runtime stage (platform-matched binary)
-COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
-COPY --from=node-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
-RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
-    && ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
-    && node --version && npm --version
-
 # Copy Python packages from builder stage
 COPY --from=python-base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=python-base /usr/local/bin /usr/local/bin
 
-# Copy built frontend from frontend-builder stage (standalone mode)
-# The standalone output contains a self-contained server.js + minimal node_modules
-# Static assets and public/ must be copied alongside standalone manually
-COPY --from=frontend-builder /app/web/.next/standalone/ ./web/
-COPY --from=frontend-builder /app/web/.next/static/ ./web/.next/static/
-COPY --from=frontend-builder /app/web/public/ ./web/public/
+# Copy built frontend from frontend-builder stage (Vite static SPA)
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # Copy application source code
 COPY deeptutor/ ./deeptutor/
@@ -197,7 +176,7 @@ RUN mkdir -p \
 # keep-id with a bind mount on ./data.
 RUN groupadd --system --gid 1000 deeptutor \
     && useradd --system --uid 1000 --gid 1000 --no-create-home --shell /usr/sbin/nologin deeptutor \
-    && chown -R deeptutor:deeptutor /app/data /app/web/.next
+    && chown -R deeptutor:deeptutor /app/data /app/frontend/dist
 
 # supervisord config is split into two files so the production and development
 # images share one daemon-level [supervisord] section instead of duplicating it:
@@ -246,7 +225,7 @@ environment=PYTHONPATH="/app",PYTHONUNBUFFERED="1"
 
 [program:frontend]
 command=/bin/bash /app/start-frontend.sh
-directory=/app/web
+directory=/app
 user=deeptutor
 autostart=true
 autorestart=true
@@ -255,7 +234,7 @@ stdout_logfile=/dev/fd/1
 stdout_logfile_maxbytes=0
 stderr_logfile=/dev/fd/2
 stderr_logfile_maxbytes=0
-environment=NODE_ENV="production"
+environment=PYTHONPATH="/app",PYTHONUNBUFFERED="1"
 EOF
 
 RUN sed -i 's/\r$//' /etc/supervisor/conf.d/programs.conf
@@ -282,11 +261,9 @@ echo "[Backend]  🚀 Starting FastAPI backend on ${BACKEND_HOST}:${BACKEND_PORT
 # the frame cap from the configured attachment policy (system.json) so uploads
 # the policy allows are not severed by uvicorn's 16MB default.
 #
-# --timeout-keep-alive: the frontend proxy (web/proxy.ts) forwards over Node's
-# http.globalAgent, which reaps idle sockets on a 5s timer — identical to
-# uvicorn's default, so both ends raced to close the same socket and the loser's
-# request died with ECONNRESET (a 500 in the UI). Stay well above the proxy's
-# reaper so the client is the only side retiring idle connections.
+# --timeout-keep-alive: the SPA server forwards over httpx, which reaps idle
+# sockets on a 60s timer. Stay well above the proxy's reaper so the client is
+# the only side retiring idle connections.
 WS_MAX_SIZE=$(python -c "from deeptutor.services.config import get_ws_max_size; print(get_ws_max_size())" 2>/dev/null || echo 16777216)
 KEEP_ALIVE=$(python -c "from deeptutor.services.config import HTTP_KEEP_ALIVE_TIMEOUT; print(HTTP_KEEP_ALIVE_TIMEOUT)" 2>/dev/null || echo 300)
 exec python -m uvicorn deeptutor.api.main:app --host ${BACKEND_HOST} --port ${BACKEND_PORT} --no-access-log --ws-max-size ${WS_MAX_SIZE} --timeout-keep-alive ${KEEP_ALIVE}
@@ -295,21 +272,20 @@ EOF
 RUN sed -i 's/\r$//' /app/start-backend.sh && chmod +x /app/start-backend.sh
 
 # Create frontend startup script
-# This script starts the Next.js standalone server. URL knowledge is no
-# longer baked into the bundle: web/proxy.ts rewrites /api/* and /ws/* to
-# the configured backend at request time, reading DEEPTUTOR_API_BASE_URL
-# (exported by the entrypoint from data/user/settings/system.json).
+# Serves the Vite SPA and rewrites /api/* and /ws/* to the configured
+# backend at request time, reading DEEPTUTOR_API_BASE_URL (exported by the
+# entrypoint from data/user/settings/system.json).
 RUN cat > /app/start-frontend.sh <<'EOF'
 #!/bin/bash
 set -e
 
 FRONTEND_PORT=${FRONTEND_PORT:-3782}
 FRONTEND_HOST=${FRONTEND_HOST:-0.0.0.0}
-echo "[Frontend] 🚀 Starting Next.js frontend on ${FRONTEND_HOST}:${FRONTEND_PORT}..."
+echo "[Frontend] 🚀 Starting frontend on ${FRONTEND_HOST}:${FRONTEND_PORT}..."
 
-export PORT=${FRONTEND_PORT}
-export HOSTNAME=${FRONTEND_HOST}
-exec node /app/web/server.js
+export DEEPTUTOR_SPA_DIR=${DEEPTUTOR_SPA_DIR:-/app/frontend/dist}
+KEEP_ALIVE=$(python -c "from deeptutor.services.config import HTTP_KEEP_ALIVE_TIMEOUT; print(HTTP_KEEP_ALIVE_TIMEOUT)" 2>/dev/null || echo 300)
+exec python -m uvicorn deeptutor.runtime.spa_server:app --host ${FRONTEND_HOST} --port ${FRONTEND_PORT} --no-access-log --timeout-keep-alive ${KEEP_ALIVE}
 EOF
 
 RUN sed -i 's/\r$//' /app/start-frontend.sh && chmod +x /app/start-frontend.sh
@@ -381,10 +357,10 @@ export FRONTEND_PORT=${FRONTEND_PORT:-3782}
 
 # DEEPTUTOR_API_BASE_URL and DEEPTUTOR_AUTH_ENABLED are exported by the
 # export_runtime_settings_to_env eval above (see render_environment in
-# deeptutor/services/config/runtime_settings.py). web/proxy.ts reads them at
-# request time to rewrite /api/* and /ws/* to the backend and to gate the login
-# redirect. Keeping them in the single JSON-backed exporter means the Docker and
-# `deeptutor start` paths stay in sync.
+# deeptutor/services/config/runtime_settings.py). The SPA server reads them at
+# request time to rewrite /api/* and /ws/* to the backend. Keeping them in the
+# single JSON-backed exporter means the Docker and `deeptutor start` paths
+# stay in sync.
 echo "📌 API Base URL (proxy): ${DEEPTUTOR_API_BASE_URL:-http://localhost:${BACKEND_PORT}}"
 echo "📌 Auth enabled: ${DEEPTUTOR_AUTH_ENABLED:-false}"
 
@@ -443,17 +419,20 @@ ENTRYPOINT ["/app/entrypoint.sh"]
 # ============================================
 FROM production AS development
 
-# Re-add full node_modules for development hot-reload
-# (Production uses standalone output which doesn't include full node_modules)
-COPY --from=frontend-builder /app/web/node_modules ./web/node_modules
-COPY --from=frontend-builder /app/web/package.json ./web/package.json
-COPY --from=frontend-builder /app/web/next.config.js ./web/next.config.js
+# Re-add Node and the frontend source for development hot-reload.
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
+COPY --from=node-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && node --version && npm --version
+COPY --from=frontend-builder /app/frontend/node_modules ./frontend/node_modules
+COPY frontend/ ./frontend/
 
-# `next dev` runs as the unprivileged deeptutor user (via `user=deeptutor` in
-# the supervisord config) and must create/write its build cache under
-# /app/web/.next, so give that user ownership of the web dir and the cache.
-RUN mkdir -p /app/web/.next \
-    && chown deeptutor:deeptutor /app/web /app/web/.next
+# Vite runs as the unprivileged deeptutor user (via `user=deeptutor` in the
+# supervisord config) and must write its cache under /app/frontend, so give
+# that user ownership of the frontend dir.
+RUN mkdir -p /app/frontend/node_modules/.vite \
+    && chown -R deeptutor:deeptutor /app/frontend
 
 # Install development tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -468,7 +447,7 @@ RUN pip install --no-cache-dir \
     ruff
 
 # Development overrides only the program definitions (uvicorn --reload and
-# `next dev`); the shared daemon-level /etc/supervisor/supervisord.conf from
+# `vite`); the shared daemon-level /etc/supervisor/supervisord.conf from
 # the production stage is reused as-is.
 RUN cat > /etc/supervisor/conf.d/programs.conf <<'EOF'
 [program:backend]
@@ -484,8 +463,8 @@ stderr_logfile_maxbytes=0
 environment=PYTHONPATH="/app",PYTHONUNBUFFERED="1"
 
 [program:frontend]
-command=/bin/bash -c "cd /app/web && node scripts/dev.mjs -H 0.0.0.0 -p ${FRONTEND_PORT:-3782}"
-directory=/app/web
+command=/bin/bash -c "cd /app/frontend && npm run dev -- --host 0.0.0.0 --port ${FRONTEND_PORT:-3782}"
+directory=/app/frontend
 user=deeptutor
 autostart=true
 autorestart=true

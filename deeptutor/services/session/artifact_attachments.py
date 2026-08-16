@@ -34,7 +34,7 @@ _OUTPUTS_URL_PREFIX = "/api/outputs/"
 
 # Extensions whose preview drawer has no in-browser renderer and therefore
 # falls back to the extractor's plain text (mirrors the frontend's
-# ``OFFICE_BINARY_EXTS`` in ``web/components/chat/preview/previewerFor.ts``).
+# ``OFFICE_BINARY_EXTS`` in the frontend preview drawer).
 # Uploads get their ``extracted_text`` from the upload path; generated files
 # never went through it, so a produced .pptx would otherwise open to an empty
 # preview. Formats the browser *can* render (.docx via docx-preview, .xlsx via

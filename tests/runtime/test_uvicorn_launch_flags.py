@@ -1,12 +1,11 @@
 """Guards that every uvicorn launch point wires the shared serving flags.
 
-The browser never reaches the backend directly: ``web/proxy.ts`` rewrites
-``/api/*`` and Next.js forwards over Node's ``http.globalAgent``, which reaps
-idle pooled sockets on its own 5s timer. uvicorn's ``timeout_keep_alive``
-defaults to the same 5s, so both ends armed an identical idle timer on the same
-socket and raced to close it; a FIN landing on a socket the pool was handing to
-a new request killed it with ``ECONNRESET``, which the proxy turned into a 500
-("Failed to proxy ... socket hang up" -> "Failed to load sessions" in the UI).
+The browser never reaches the backend directly: the SPA server rewrites
+``/api/*`` and forwards over httpx, which reaps idle pooled sockets on its own
+timer. uvicorn's ``timeout_keep_alive`` must stay well above that pool so both
+ends do not race to close the same socket. A FIN landing on a socket the pool
+was handing to a new request used to kill it with ``ECONNRESET``, which the
+proxy turned into a 500 ("Failed to load sessions" in the UI).
 ``--timeout-keep-alive`` fixes it, and ``--ws-max-size`` has the same shape:
 correct only if *every* launch point passes it, and DeepTutor has five (two
 Dockerfile stages, the ``deeptutor start`` launcher, the CLI, run_server). A
@@ -56,10 +55,10 @@ def test_dockerfile_launch_points_wire_serving_flags() -> None:
 
 
 def test_keep_alive_outlasts_the_proxy_socket_reaper() -> None:
-    """Must stay clear of the 5s idle timer on Node's ``http.globalAgent``.
+    """Must stay clear of the frontend proxy's idle socket reaper.
 
-    Matching it is what caused the collision, so a value anywhere near 5s puts
-    the two timers back in contention.
+    Matching it is what caused the collision, so a value anywhere near the
+    proxy pool timeout puts the two timers back in contention.
     """
     from deeptutor.services.config import HTTP_KEEP_ALIVE_TIMEOUT
 

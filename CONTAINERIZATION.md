@@ -13,7 +13,7 @@ file is only about running the published image.
 ## Overview
 
 The published `ghcr.io/hkuds/deeptutor` image runs both the FastAPI
-backend (`:8001`) and the Next.js frontend (`:3782`) under `supervisord`
+backend (`:8001`) and the Vite frontend (`:3782`) under `supervisord`
 inside a single container, on top of `python:3.11-slim`. There is one
 data tree (`/app/data` inside the container) that holds settings,
 workspaces, memory, knowledge bases, and logs. Bind-mount that tree to
@@ -33,16 +33,16 @@ The image is built so it works under three deployment shapes:
 The architectural change that makes shape 3 work is that URL knowledge
 no longer lives in the frontend bundle. Concretely:
 
-- The bundle is built with no `NEXT_PUBLIC_API_BASE` placeholder and no
-  `sed -i` of the build output. `web/lib/api.ts` exports `apiUrl` and
+- The bundle is built with no API-host placeholder and no `sed -i` of
+  the build output. `frontend/src/api/http.ts` exports `apiUrl` and
   `wsUrl` as one-line pass-throughs, so the browser fetches relative
   paths through the frontend (`:3782/api/...`).
-- `web/proxy.ts` catches `/api/*` and `/ws/*` and rewrites them to
+- The SPA server catches `/api/*` and `/ws/*` and rewrites them to
   `DEEPTUTOR_API_BASE_URL` at request time. That env var is set by the
   container entrypoint on every start, read from
   `data/user/settings/system.json`.
-- `start-frontend.sh` is now 12 lines: it sets `PORT`/`HOSTNAME` and
-  `exec`s `node /app/web/server.js`. No mutations of the bundle.
+- `start-frontend.sh` serves the Vite `dist` with
+  `deeptutor.runtime.spa_server`. No mutations of the bundle.
 - `supervisord` runs as root (PID 1) and drops each program (backend,
   frontend) to a non-root `deeptutor` user (UID 1000) via its per-program
   `user=` directive, so the app processes stay non-root. With
@@ -74,8 +74,8 @@ Notes:
 
 - **Only `3782` needs to be published.** The browser talks exclusively to
   the frontend origin (`:3782`); all `/api/*` and `/ws/*` traffic is
-  forwarded to the FastAPI backend **inside the container** by the Next.js
-  middleware (`web/proxy.ts`), which reads `DEEPTUTOR_API_BASE_URL`
+  forwarded to the FastAPI backend **inside the container** by the SPA
+  server, which reads `DEEPTUTOR_API_BASE_URL`
   (`http://localhost:8001` by default) at request time. You do **not** need
   to expose `:8001` to the host for the UI to work. Publishing `:8001`
   (`-p 127.0.0.1:8001:8001`) is optional — handy only for hitting the API
@@ -173,7 +173,7 @@ whole tree.
 For the common **single-container** case (this image), you do **not** need
 to configure an API base at all. The browser issues relative `/api/*` and
 `/ws/*` requests against whatever origin serves the UI
-(`https://deeptutor.example.com`), and the in-container Next.js middleware
+(`https://deeptutor.example.com`), and the in-container SPA server
 forwards them to the backend on `localhost:8001`. Just point your reverse
 proxy / TLS terminator at the published `:3782` and you're done.
 
@@ -241,7 +241,7 @@ host services can be reached with normal localhost URLs.
 In host-network mode the processes bind directly on the host interfaces
 (there is no `-p 127.0.0.1:` prefix to scope them). To keep them off the
 LAN, set `BACKEND_HOST=127.0.0.1` and `FRONTEND_HOST=127.0.0.1` — they
-override uvicorn's `--host` and Next.js's `HOSTNAME` (both default to
+override uvicorn's `--host` for both the backend and the SPA server (both default to
 `0.0.0.0`). Only use these with `--network=host`: in bridge mode binding
 to loopback breaks the published `-p` port forward.
 
@@ -366,7 +366,7 @@ The two settings most relevant to a fresh install:
 - **`system.json` → `next_public_api_base`** (in-network) and
   **`next_public_api_base_external`** (cloud/external override). The
   entrypoint reads these and exports `DEEPTUTOR_API_BASE_URL`, which
-  `web/proxy.ts` consumes. `public_api_base` is accepted as a
+  the SPA server consumes. `public_api_base` is accepted as a
   compatibility alias and is normalized into
   `next_public_api_base_external` on save.
 - **`system.json` → `backend_port` / `frontend_port`**. The container
@@ -459,9 +459,8 @@ renormalized on save.
   the restricted subprocess backend controlled by
   `sandbox_allow_subprocess`.
 - Auth (`data/user/settings/auth.json` → `auth_enabled = true`) gates
-  `/api/*` and `/ws/*` via the `dt_token` cookie. `web/proxy.ts` reads
-  `DEEPTUTOR_AUTH_ENABLED` (exported by the entrypoint on every start)
-  to decide whether to require the cookie.
+  `/api/*` and `/ws/*` via the `dt_token` cookie. The backend enforces
+  that gate; the SPA server only forwards `/api/*` and `/ws/*` to it.
 - CORS uses frontend **origins**, not API URLs. With auth enabled, set
   `cors_origins` in `system.json` to the exact frontend origins the
   deployment serves.

@@ -2,7 +2,7 @@ name: PyPI Release
 
 # Triggered when a GitHub Release is published.
 # Publishes the full app package with the version derived from the release tag:
-#   - deeptutor (Python backend/CLI + packaged Next.js standalone assets)
+#   - deeptutor (Python backend/CLI + packaged Vite frontend assets)
 #
 # The CLI-only package is intentionally not published to PyPI; install it from
 # a local checkout with `python -m pip install -e ./packaging/deeptutor-cli`.
@@ -62,7 +62,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install build tools
         run: |
@@ -106,14 +106,11 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
 
       - name: Install frontend dependencies
-        working-directory: web
-        run: npm ci --legacy-peer-deps
+        working-directory: frontend
+        run: npm ci
 
       - name: Build packaged Web assets
         run: python scripts/prepare_web_package.py
-        env:
-          NEXT_PUBLIC_API_BASE: __NEXT_PUBLIC_API_BASE_PLACEHOLDER__
-          NEXT_PUBLIC_AUTH_ENABLED: __NEXT_PUBLIC_AUTH_ENABLED_PLACEHOLDER__
 
       - name: Build distributions
         shell: bash
@@ -123,7 +120,7 @@ jobs:
           # Run from /tmp so any repository-local build/ directory cannot shadow
           # PyPA's `build` module during repeated package builds.
           # Wheels are the supported public install artifacts. The full app
-          # wheel contains packaged Next.js assets; source distributions would
+          # wheel contains packaged Vite assets; source distributions would
           # either duplicate those large assets or require a frontend build.
           (cd /tmp && python -m build --wheel --outdir "$GITHUB_WORKSPACE/dist/deeptutor" "$GITHUB_WORKSPACE")
 
