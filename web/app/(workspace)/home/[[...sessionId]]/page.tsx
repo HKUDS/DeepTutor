@@ -2098,6 +2098,9 @@ export default function ChatPage() {
               llmSelection={state.llmSelection}
               llmOptionsLoading={llmOptionsLoading}
               llmOptionsError={llmOptionsError}
+              onRefreshLLMOptions={() =>
+                void refreshLLMOptions({ force: true })
+              }
               contextBudget={contextBudget}
               selectedBookReferences={selectedBookReferences}
               selectedNotebookRecords={selectedNotebookRecords}
