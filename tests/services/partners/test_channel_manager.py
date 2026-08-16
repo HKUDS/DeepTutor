@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -10,6 +11,27 @@ import pytest
 from deeptutor.partners.bus.events import OutboundMessage
 from deeptutor.partners.channels.manager import ChannelManager
 from deeptutor.partners.config.schema import ChannelsConfig
+
+
+def test_empty_allow_list_skips_only_misconfigured_channel(monkeypatch):
+    class _Channel:
+        display_name = "Test"
+
+        def __init__(self, config, _bus):
+            self.config = SimpleNamespace(allow_from=config["allow_from"])
+
+    monkeypatch.setattr(
+        "deeptutor.partners.channels.registry.discover_all",
+        lambda: {"invalid": _Channel, "valid": _Channel},
+    )
+    config = ChannelsConfig(
+        invalid={"enabled": True, "allow_from": []},
+        valid={"enabled": True, "allow_from": ["user-1"]},
+    )
+
+    manager = ChannelManager(config, _MultiShotBus([]))  # type: ignore[arg-type]
+
+    assert list(manager.channels) == ["valid"]
 
 
 class _OneShotBus:
