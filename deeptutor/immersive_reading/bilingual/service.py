@@ -10,6 +10,7 @@ from __future__ import annotations
 from difflib import SequenceMatcher
 import html
 import json
+import logging
 from pathlib import Path
 import re
 import shutil
@@ -23,6 +24,8 @@ from deeptutor.immersive_reading.bilingual.align import extract_align_pairs
 from deeptutor.immersive_reading.bilingual.merge_epub import build_bilingual_epub
 from deeptutor.services.path_service import get_path_service
 
+logger = logging.getLogger(__name__)
+
 
 def _strip_tags(markup: str) -> str:
     """Strip HTML tags and decode entities."""
@@ -30,9 +33,12 @@ def _strip_tags(markup: str) -> str:
 
 
 def _read_json(path: Path, default: Any = None) -> Any:
-    if not path.exists():
+    try:
+        if not path.exists():
+            return default
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
         return default
-    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _write_json(path: Path, data: Any) -> None:
@@ -587,13 +593,22 @@ class BilingualPairingService:
     def list_pairings(self) -> list[dict[str, Any]]:
         root = self._root()
         result = []
-        for child in sorted(root.iterdir()):
-            if not child.is_dir() or not child.name.startswith("pairing_"):
+        try:
+            children = sorted(root.iterdir())
+        except OSError as exc:
+            logger.warning("Failed to iterate bilingual pairings dir: %s", exc)
+            return []
+        for child in children:
+            try:
+                if not child.is_dir() or not child.name.startswith("pairing_"):
+                    continue
+                pairing_id = child.name[len("pairing_") :]
+                data = _read_json(self._pairing_path(pairing_id))
+                if data:
+                    result.append(self._summary(pairing_id, data))
+            except OSError as exc:
+                logger.warning("Skipping unreadable pairing %s: %s", child.name, exc)
                 continue
-            pairing_id = child.name[len("pairing_") :]
-            data = _read_json(self._pairing_path(pairing_id))
-            if data:
-                result.append(self._summary(pairing_id, data))
         return result
 
     def _summary(self, pairing_id: str, data: dict[str, Any]) -> dict[str, Any]:

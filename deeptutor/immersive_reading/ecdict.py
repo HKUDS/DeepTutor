@@ -64,6 +64,51 @@ class ECDictionary:
             exchange=str(row["exchange"] or ""),
         )
 
+    @staticmethod
+    def _morphological_candidates(word: str) -> list[str]:
+        """Generate common base-form candidates for an English inflection."""
+        normalized = normalize_word(word)
+        candidates: list[str] = []
+
+        if normalized.endswith("'s") or normalized.endswith("’s"):
+            candidates.append(normalized[:-2])
+        if normalized.endswith("ies") and len(normalized) > 4:
+            candidates.append(normalized[:-3] + "y")
+        if normalized.endswith("ves") and len(normalized) > 4:
+            candidates.append(normalized[:-3] + "f")
+            candidates.append(normalized[:-3] + "fe")
+        for suffix in ("es", "s", "ed", "ing", "er", "est"):
+            if normalized.endswith(suffix) and len(normalized) > len(suffix) + 2:
+                candidates.append(normalized[: -len(suffix)])
+        if normalized.endswith("ed") and len(normalized) > 4:
+            candidates.append(normalized[:-2] + "e")
+        if normalized.endswith("ing") and len(normalized) > 5:
+            candidates.append(normalized[:-3] + "e")
+        if normalized.endswith("ied") and len(normalized) > 4:
+            candidates.append(normalized[:-3] + "y")
+        if len(normalized) > 3 and normalized[-1] == normalized[-2]:
+            candidates.append(normalized[:-1])
+
+        return list(dict.fromkeys(candidate for candidate in candidates if candidate))
+
+    @staticmethod
+    def _exchange_words(entry: ECDictEntry) -> list[str]:
+        """Extract explicit base/inflected forms from ECDICT's exchange field."""
+        candidates: list[str] = []
+        for item in entry.exchange.split("/"):
+            _, separator, value = item.partition(":")
+            if separator and value:
+                candidates.extend(candidate for candidate in value.split("/") if candidate)
+        return list(dict.fromkeys(candidates))
+
+    def _lookup_exact(self, connection: sqlite3.Connection, word: str) -> ECDictEntry | None:
+        row = connection.execute(
+            "SELECT word, phonetic, definition, translation, pos, exchange "
+            "FROM entries WHERE word = ? LIMIT 1",
+            (word,),
+        ).fetchone()
+        return self._entry(row) if row is not None else None
+
     def lookup(self, word: str) -> ECDictEntry | None:
         """Look up a word, including common spelling and punctuation variants."""
         normalized = normalize_word(word)
@@ -71,13 +116,21 @@ class ECDictionary:
             return None
 
         connection = self._connect()
-        row = connection.execute(
-            "SELECT word, phonetic, definition, translation, pos, exchange "
-            "FROM entries WHERE word = ? LIMIT 1",
-            (normalized,),
-        ).fetchone()
-        if row is not None:
-            return self._entry(row)
+        exact = self._lookup_exact(connection, normalized)
+        if exact is not None:
+            entry = exact
+            if entry.definition or entry.translation:
+                return entry
+            for exchange_word in self._exchange_words(entry):
+                exchanged = self._lookup_exact(connection, exchange_word)
+                if exchanged is not None and (exchanged.definition or exchanged.translation):
+                    return exchanged
+            return entry
+
+        for candidate in self._morphological_candidates(normalized):
+            entry = self._lookup_exact(connection, candidate)
+            if entry is not None:
+                return entry
 
         stripped = strip_word(word)
         if not stripped or stripped == normalized:

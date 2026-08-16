@@ -5,7 +5,6 @@ import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
-  Baby,
   BookCheck,
   BookMarked,
   BookOpen,
@@ -66,9 +65,7 @@ const MarkdownRenderer = dynamic(
   { ssr: false },
 );
 const Mermaid = dynamic(() => import("@/components/Mermaid"), { ssr: false });
-const KidsEpubReader = dynamic(() => import("./components/KidsEpubReader"), { ssr: false, loading: () => null });
 const OriginalEpubReader = dynamic(() => import("./components/OriginalEpubReader"), { ssr: false, loading: () => null });
-const KidsManagementPanel = dynamic(() => import("./components/KidsManagementPanel"), { ssr: false });
 const BilingualReader = dynamic(
   () => import("@/components/immersive-reading/BilingualReader").then((module) => module.BilingualReader),
   { ssr: false, loading: () => null },
@@ -994,9 +991,6 @@ function Reader({
   const dictSeqRef = useRef(0);
 
   const [focusOpen, setFocusOpen] = useState(false);
-  const [kidsMode, setKidsMode] = useState(false);
-  const [kidsToggling, setKidsToggling] = useState(false);
-  const [kidsMgmtOpen, setKidsMgmtOpen] = useState(false);
   const [focusSummary, setFocusSummary] = useState("");
   const [focusReflection, setFocusReflection] = useState("");
   const [focusBusy, setFocusBusy] = useState(false);
@@ -1547,16 +1541,6 @@ const closeDictPopup = useCallback(() => {
 
   if (loading || !document || !progress) {
     return <div className="flex h-full items-center justify-center text-[var(--muted-foreground)]">{error ? error : <Loader2 className="animate-spin" />}</div>;
-  }
-
-  if ((kidsMode || document.experience_mode === "kids") && document.source_format === "epub") {
-    return (
-      <KidsEpubReader
-        document={document}
-        onBack={onBack}
-        onError={onErrorToast}
-      />
-    );
   }
 
   const readingView = defaultReadingView({

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
 import mimetypes
+from pathlib import Path
 import time
 from typing import Any, Literal
 import uuid
@@ -485,6 +487,45 @@ async def dictionary_lookup(request: DictionaryRequest) -> dict:
     return result.model_dump(mode="json")
 
 
+@router.get("/dictionary/status")
+async def dictionary_status() -> dict:
+    return get_immersive_reading_service().dictionary_status()
+
+
+@router.post("/dictionary/ecdict/import")
+async def import_ecdict_csv(file: UploadFile):
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Upload an ECDICT CSV export.")
+
+    import tempfile
+
+    max_bytes = 2 * 1024 * 1024 * 1024
+    written = 0
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(prefix="ecdict-", suffix=".csv", delete=False) as target:
+            temporary = Path(target.name)
+            while chunk := await file.read(1024 * 1024):
+                written += len(chunk)
+                if written > max_bytes:
+                    raise HTTPException(status_code=413, detail="ECDICT CSV exceeds 2 GB.")
+                target.write(chunk)
+        await file.close()
+        count = await asyncio.to_thread(
+            get_immersive_reading_service().import_ecdict_csv,
+            temporary,
+        )
+        return {"imported": True, "entries": count}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("ECDICT import failed")
+        raise HTTPException(status_code=500, detail=f"ECDICT import failed: {exc}") from exc
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
 @router.post("/vocabulary")
 async def add_vocabulary_word(request: VocabRequest) -> dict:
     """Save a word to the global vocabulary book with dictionary lookup."""
@@ -631,8 +672,6 @@ async def character_graph(document_id: str, request: CharacterGraphRequest) -> d
 
 
 # ── Bilingual paired reading ────────────────────────────────────────────
-
-import asyncio
 
 from deeptutor.immersive_reading.bilingual.service import get_pairing_service
 

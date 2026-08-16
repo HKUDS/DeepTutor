@@ -10,6 +10,7 @@ import {
   Loader2,
   BookPlus,
   RotateCw,
+  Upload,
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -18,13 +19,82 @@ import {
   positionDictionaryPopover,
   type DictionaryAnchorRect,
 } from "@/lib/dictionary-ui";
-import type { DictionaryResult } from "@/lib/immersive-reading-api";
+import {
+  immersiveReadingApi,
+  type DictionaryResult,
+  type DictionaryStatus,
+} from "@/lib/immersive-reading-api";
 import {
   useResponsiveLayout,
   useDynamicViewportHeight,
 } from "@/hooks/useResponsiveLayout";
 
 type DictMode = "dictionary" | "translate";
+
+function OfflineDictionarySetup() {
+  const { t } = useTranslation();
+  const [status, setStatus] = useState<DictionaryStatus | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [error, setError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    let stopped = false;
+    void immersiveReadingApi
+      .dictionaryStatus()
+      .then((next) => {
+        if (!stopped) setStatus(next);
+      })
+      .catch(() => undefined);
+    return () => {
+      stopped = true;
+    };
+  }, []);
+
+  if (!status || status.installed) return null;
+
+  const importFile = async (file: File) => {
+    setImporting(true);
+    setError("");
+    try {
+      const result = await immersiveReadingApi.importDictionaryCsv(file);
+      setStatus({ ...status, installed: true, entries: result.entries, error: "" });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-dashed border-[var(--border)] p-3">
+      <div className="flex items-center gap-2 text-xs font-medium text-[var(--foreground)]">
+        <Upload size={13} />
+        {t("Offline dictionary")}
+      </div>
+      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void importFile(file);
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={importing}
+        className="mt-2 inline-flex min-h-[30px] items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1 text-xs font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] disabled:opacity-50"
+      >
+        {importing && <Loader2 className="size-3 animate-spin" />}
+        {importing ? t("Importing...") : t("Import ECDICT CSV")}
+      </button>
+    </div>
+  );
+}
 
 /** Attach a click-outside listener that fires only after a short delay so
  *  the gesture that opened the sheet doesn't immediately close it. */
@@ -336,6 +406,8 @@ function PanelContent({
             </div>
           </div>
         )}
+
+        {!loading && mode === "dictionary" && <OfflineDictionarySetup />}
 
         {!loading && !error && mode === "dictionary" && isDictResult && (
           expanded ? (
