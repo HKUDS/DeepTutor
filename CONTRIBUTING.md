@@ -160,6 +160,11 @@ Fresh checkouts can enable the dependency-free safety hook with:
 git config core.hooksPath scripts/hooks
 ```
 
+The hook also blocks accidental direct commits on `main`. Release maintainers who
+deliberately need a local `main` commit may opt in once with
+`git config deeptutor.allowMainCommit true`, then remove the setting immediately
+afterward.
+
 Use a separate Git worktree for each feature (`git worktree add ../DeepTutor-<task>
 -b <branch> dev`) and keep the primary checkout clean. This lets builds, tests,
 and long-running agents operate independently without rewriting one another's
