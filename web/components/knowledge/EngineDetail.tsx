@@ -48,8 +48,10 @@ import {
 import {
   kbDocCount,
   kbProvider,
+  providerConnectionStatus,
   resolveKbStatus,
   type KnowledgeBase,
+  type ProviderConnectionStatus,
 } from "@/lib/knowledge-helpers";
 
 interface EngineDetailProps {
@@ -140,24 +142,24 @@ const ENGINE_PREREQUISITES: Record<string, string> = {
     "Local knowledge-graph retrieval. Needs the optional dependency installed; indexing is LLM-heavy. Requires an active chat model and embedding model.",
   lightrag:
     "Graph + vector retrieval with multimodal parsing. Needs the optional dependency installed; indexing is LLM-heavy. Requires active chat and embedding models; multimodal also needs a vision model.",
+  ima:
+    "Connect each Tencent IMA knowledge base with its own Client ID and API key. Retrieval is read-only and uses only titles and matched snippets returned by IMA.",
 };
 
-type EngineStatus = "ready" | "needs_key" | "unavailable";
-
-function resolveStatus(provider: RagProviderSummary): EngineStatus {
-  if (provider.requires_api_key && provider.configured === false)
-    return "needs_key";
-  if (provider.configured === false) return "unavailable";
-  return "ready";
-}
-
-function StatusBadge({ status }: { status: EngineStatus }) {
+function StatusBadge({ status }: { status: ProviderConnectionStatus }) {
   const { t } = useTranslation();
   if (status === "ready") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10.5px] font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
         <Check className="h-3 w-3" />
         {t("Ready")}
+      </span>
+    );
+  }
+  if (status === "per_kb") {
+    return (
+      <span className="inline-flex items-center rounded-full bg-sky-100 px-2 py-0.5 text-[10.5px] font-medium text-sky-700 dark:bg-sky-950/30 dark:text-sky-300">
+        {t("Connect per knowledge base")}
       </span>
     );
   }
@@ -1158,7 +1160,11 @@ function EnvRequirements({
                     : "text-amber-600 dark:text-amber-400"
                 }`}
               >
-                {report.ok ? t("Ready to use") : t("Not ready")}
+                {report.ok
+                  ? providerId === "ima"
+                    ? t("Configured per knowledge base")
+                    : t("Ready to use")
+                  : t("Not ready")}
               </span>
             )}
           </div>
@@ -1193,7 +1199,7 @@ export default function EngineDetail({
   onError,
 }: EngineDetailProps) {
   const { t } = useTranslation();
-  const status = resolveStatus(provider);
+  const status = providerConnectionStatus(provider);
   const Icon = ENGINE_ICONS[provider.id] ?? Boxes;
   const installHint = INSTALL_HINTS[provider.id];
   const hasModes = (provider.modes?.length ?? 0) > 0;

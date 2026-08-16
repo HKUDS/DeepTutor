@@ -15,6 +15,7 @@ from typing import Any
 from .factory import (
     DEFAULT_PROVIDER,
     GRAPHRAG_PROVIDER,
+    IMA_PROVIDER,
     LIGHTRAG_PROVIDER,
     PAGEINDEX_PROVIDER,
     normalize_provider_name,
@@ -179,6 +180,19 @@ def _lightrag_preflight() -> dict:
     )
 
 
+def _ima_preflight() -> dict:
+    return _finalize(
+        [
+            _check(
+                "per_kb_credentials",
+                "Credentials supplied when connecting a knowledge base",
+                True,
+                "Enter the IMA Client ID and API key in the link-existing flow.",
+            )
+        ]
+    )
+
+
 def _finalize(checks: list[dict]) -> dict:
     ok = all(c["ok"] for c in checks if not c["optional"])
     return {"ok": ok, "checks": checks}
@@ -189,6 +203,7 @@ _PREFLIGHTS = {
     PAGEINDEX_PROVIDER: _pageindex_preflight,
     GRAPHRAG_PROVIDER: _graphrag_preflight,
     LIGHTRAG_PROVIDER: _lightrag_preflight,
+    IMA_PROVIDER: _ima_preflight,
 }
 
 
