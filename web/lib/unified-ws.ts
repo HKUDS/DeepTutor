@@ -75,6 +75,8 @@ export interface StartTurnMessage {
     book_id: string;
     page_ids: string[];
   }[];
+  /** Persistent mastery state to use independently of this chat session. */
+  mastery_path_id?: string;
   persona?: string;
   llm_selection?: LLMSelection | null;
   /** Edit-branching: when present (even as ``null``) the new user message

@@ -30,7 +30,7 @@ class ProviderSpec:
     display_name: str = ""
 
     # Which provider implementation to use:
-    # "openai_compat" | "anthropic" | "azure_openai" | "openai_codex" | "github_copilot"
+    # "openai_compat" | "anthropic" | "azure_openai" | "openai_codex" | "github_copilot" | "codebuddy"
     backend: str = "openai_compat"
 
     env_extras: tuple[tuple[str, str], ...] = ()
@@ -91,12 +91,17 @@ PROVIDER_ALIASES = {
     "byteplusCodingPlan": "byteplus_coding_plan",
     "github-copilot": "github_copilot",
     "openai-codex": "openai_codex",
+    "codebuddy-code": "codebuddy",
+    "codebuddy_code": "codebuddy",
+    "workbuddy": "codebuddy",
     "lm-studio": "lm_studio",
     "atlas": "atlascloud",
     "atlas_cloud": "atlascloud",
     "atlas-cloud": "atlascloud",
     "eden_ai": "edenai",
     "novita_ai": "novita",
+    "orca_router": "orcarouter",
+    "orca-router": "orcarouter",
 }
 
 
@@ -153,6 +158,17 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         detect_by_base_keyword="openrouter",
         default_api_base="https://openrouter.ai/api/v1",
         supports_prompt_caching=True,
+    ),
+    ProviderSpec(
+        name="orcarouter",
+        keywords=("orcarouter", "orca_router", "orca router"),
+        env_key="ORCAROUTER_API_KEY",
+        display_name="OrcaRouter",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_key_prefix="sk-orca-",
+        detect_by_base_keyword="orcarouter",
+        default_api_base="https://api.orcarouter.ai/v1",
     ),
     ProviderSpec(
         name="edenai",
@@ -288,6 +304,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_api_base="https://api.githubcopilot.com",
         strip_model_prefix=True,
         supports_max_completion_tokens=True,
+    ),
+    ProviderSpec(
+        name="codebuddy",
+        keywords=("codebuddy", "workbuddy"),
+        env_key="CODEBUDDY_API_KEY",
+        display_name="CodeBuddy/WorkBuddy",
+        backend="codebuddy",
+        is_oauth=True,
+        strip_model_prefix=True,
+        supports_stream_options=False,
     ),
     ProviderSpec(
         name="deepseek",

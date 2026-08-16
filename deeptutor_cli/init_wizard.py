@@ -74,6 +74,12 @@ LLM_FALLBACK_MODELS: dict[str, tuple[str, ...]] = {
         "anthropic/claude-sonnet-4-6",
         "deepseek/deepseek-chat",
     ),
+    "orcarouter": (
+        "orcarouter/auto",
+        "anthropic/claude-sonnet-4-6",
+        "deepseek/deepseek-v4-pro",
+        "openai/gpt-4o",
+    ),
     "ollama": ("llama3.2", "qwen2.5", "mistral"),
 }
 
@@ -109,6 +115,7 @@ EMBEDDING_FALLBACK_MODELS: dict[str, tuple[str, ...]] = {
     "jina": ("jina-embeddings-v3", "jina-embeddings-v2-base-en"),
     "cohere": ("embed-v4.0", "embed-multilingual-v3.0", "embed-english-v3.0"),
     "openrouter": ("openai/text-embedding-3-large",),
+    "orcarouter": ("openai/text-embedding-3-large",),
     "vllm": ("BAAI/bge-m3",),
     "ollama": ("nomic-embed-text", "mxbai-embed-large", "snowflake-arctic-embed"),
 }
@@ -168,6 +175,51 @@ SEARCH_PROVIDERS: tuple[SearchProviderSpec, ...] = (
         requires_api_key=True,
         env_keys=("PERPLEXITY_API_KEY", "SEARCH_API_KEY"),
         hint="answer-style search",
+    ),
+    SearchProviderSpec(
+        name="firecrawl",
+        label="Firecrawl",
+        requires_api_key=True,
+        env_keys=("FIRECRAWL_API_KEY", "SEARCH_API_KEY"),
+        hint="search + full-page markdown",
+    ),
+    # China-hosted engines. Worth calling out separately in the wizard: they are
+    # the ones that stay reachable on mainland networks, where the DuckDuckGo
+    # default does not.
+    SearchProviderSpec(
+        name="doubao",
+        label="Doubao (豆包)",
+        requires_api_key=True,
+        env_keys=("ARK_API_KEY", "DOUBAO_API_KEY", "SEARCH_API_KEY"),
+        hint="writes its own answer · Toutiao/Douyin sources",
+    ),
+    SearchProviderSpec(
+        name="bocha",
+        label="Bocha (博查)",
+        requires_api_key=True,
+        env_keys=("BOCHA_API_KEY", "SEARCH_API_KEY"),
+        hint="China-hosted SERP · paid",
+    ),
+    SearchProviderSpec(
+        name="zhipu",
+        label="Zhipu GLM (智谱)",
+        requires_api_key=True,
+        env_keys=("ZHIPU_API_KEY", "ZHIPUAI_API_KEY", "SEARCH_API_KEY"),
+        hint="China-hosted · four engine tiers",
+    ),
+    SearchProviderSpec(
+        name="qianfan",
+        label="Baidu Qianfan (百度千帆)",
+        requires_api_key=True,
+        env_keys=("QIANFAN_API_KEY", "BAIDU_API_KEY", "SEARCH_API_KEY"),
+        hint="Baidu index · China-hosted",
+    ),
+    SearchProviderSpec(
+        name="aliyun_iqs",
+        label="Aliyun IQS (阿里云)",
+        requires_api_key=True,
+        env_keys=("ALIYUN_IQS_API_KEY", "IQS_API_KEY", "SEARCH_API_KEY"),
+        hint="China-hosted · reranked results",
     ),
     SearchProviderSpec(
         name="duckduckgo",

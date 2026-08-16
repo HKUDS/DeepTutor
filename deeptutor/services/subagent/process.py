@@ -20,8 +20,35 @@ from collections.abc import AsyncIterator, Mapping, Sequence
 import contextlib
 import logging
 import os
+import shutil
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_cli_command(cmd: Sequence[str], *, path: str | None = None) -> list[str]:
+    """Resolve ``cmd[0]`` to a full path via PATH/PATHEXT before spawning.
+
+    On Windows, ``asyncio.create_subprocess_exec`` (and the underlying
+    ``CreateProcess``) only appends ``.exe`` when resolving a bare command
+    name, so CLIs installed by npm ship as ``.cmd``/``.bat``/``.ps1`` shims
+    (e.g. ``claude``/``codex``) are invisible and the spawn raises
+    ``FileNotFoundError`` — the backend then reports "not installed" even
+    though the CLI is on PATH. ``shutil.which`` honors ``PATHEXT`` (and a
+    caller-supplied PATH) and returns the shim's full path, so the spawn
+    finds it.
+
+    Returns the command unchanged when ``cmd`` is empty, when ``cmd[0]`` is
+    already an absolute path (resolved back to itself), or when nothing on
+    PATH matches — in that last case the OS spawn behaves exactly as before,
+    preserving the existing ``FileNotFoundError`` semantics callers handle.
+    """
+    if not cmd:
+        return list(cmd)
+    resolved = shutil.which(cmd[0], path=path)
+    if resolved:
+        return [resolved, *list(cmd[1:])]
+    return list(cmd)
+
 
 # (channel, text) where channel is "stdout", "stderr", or "exit" (the final
 # item, whose text is the integer return code as a string).
@@ -43,8 +70,9 @@ async def stream_process_lines(
     arrival order via a shared queue.
     """
     full_env = {**os.environ, **(env or {})}
+    resolved_cmd = resolve_cli_command(cmd, path=full_env.get("PATH"))
     process = await asyncio.create_subprocess_exec(
-        *cmd,
+        *resolved_cmd,
         cwd=cwd or None,
         env=full_env,
         stdin=asyncio.subprocess.DEVNULL,
@@ -117,8 +145,9 @@ async def probe_version(cmd: Sequence[str], *, timeout: float = 8.0) -> tuple[bo
     the no-timeout consult semantics — a probe that hangs is a failed probe.
     """
     try:
+        resolved_cmd = resolve_cli_command(cmd)
         process = await asyncio.create_subprocess_exec(
-            *cmd,
+            *resolved_cmd,
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
@@ -136,4 +165,4 @@ async def probe_version(cmd: Sequence[str], *, timeout: float = 8.0) -> tuple[bo
     return process.returncode == 0, text
 
 
-__all__ = ["ProcessLine", "stream_process_lines", "probe_version"]
+__all__ = ["ProcessLine", "resolve_cli_command", "stream_process_lines", "probe_version"]

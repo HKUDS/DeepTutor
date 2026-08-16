@@ -71,10 +71,8 @@ def parse_json_response(
     """
     Safely parse JSON from LLM responses with automatic repair.
 
-    Implements a three-tier parsing strategy:
-    1. Extract JSON from markdown code blocks if present
-    2. Direct JSON parsing
-    3. Automated repair using json-repair library with fallback
+    Implements a parsing strategy that preserves valid JSON first, then tries
+    markdown extraction, embedded values, and automated repair.
 
     Args:
         response: Raw string response from LLM
@@ -102,7 +100,14 @@ def parse_json_response(
         log.warning("LLM returned empty response")
         return fallback
 
-    # Extract from markdown code blocks if present
+    # Parse the complete response before looking for markdown fences. A valid
+    # JSON string value can itself contain fenced source code (#825).
+    try:
+        return json.loads(response)
+    except (json.JSONDecodeError, TypeError) as parse_error:
+        log.debug(f"Complete response JSON parse failed: {parse_error}")
+
+    # Extract from markdown code blocks if present.
     extracted_response = response
     if "```" in response:
         json_match = re.search(r"```(?:json)?\s*\n?(.*?)```", response, re.DOTALL)
@@ -110,9 +115,7 @@ def parse_json_response(
             extracted_response = json_match.group(1).strip()
             log.debug("Extracted JSON from markdown code block")
 
-    # Strategy 1: Direct parsing. Done before any <think> stripping so a valid
-    # JSON payload whose string values legitimately contain "<think>" is
-    # preserved exactly.
+    # Parse an extracted fence before any <think> stripping.
     try:
         return json.loads(extracted_response)
     except (json.JSONDecodeError, TypeError) as parse_error:

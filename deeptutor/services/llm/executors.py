@@ -16,9 +16,26 @@ from deeptutor.services.llm.provider_registry import find_by_name, strip_provide
 from deeptutor.services.llm.reasoning_params import default_reasoning_effort_for
 
 from .config import get_token_limit_kwargs
+from .exceptions import LLMConfigError
 from .utils import extract_response_content
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_openai_sdk_credentials(
+    *, provider_name: str | None, api_key: str | None, base_url: str | None
+) -> None:
+    """Keep placeholder keys from reaching the official OpenAI API."""
+
+    provider = (provider_name or "").lower()
+    endpoint = (base_url or "").rstrip("/")
+    official_openai = not endpoint or endpoint == "https://api.openai.com/v1"
+    placeholder = api_key in {None, "", "no-key", "sk-no-key-required"}
+    if provider == "openai" and official_openai and placeholder:
+        raise LLMConfigError(
+            "OpenAI API key is not configured. Set it in Settings > Catalog, "
+            "or select a local provider such as Ollama."
+        )
 
 
 def _is_unsupported_response_format_error(exc: BaseException) -> bool:
@@ -148,6 +165,11 @@ async def sdk_complete(
         api_key,
         base_url,
     )
+    _validate_openai_sdk_credentials(
+        provider_name=provider_name,
+        api_key=effective_key,
+        base_url=effective_base,
+    )
 
     default_headers: dict[str, str] = {"x-session-affinity": uuid.uuid4().hex}
     if extra_headers:
@@ -217,6 +239,11 @@ async def sdk_stream(
         model,
         api_key,
         base_url,
+    )
+    _validate_openai_sdk_credentials(
+        provider_name=provider_name,
+        api_key=effective_key,
+        base_url=effective_base,
     )
 
     default_headers: dict[str, str] = {"x-session-affinity": uuid.uuid4().hex}

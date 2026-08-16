@@ -43,6 +43,7 @@ from deeptutor.core.trace import build_trace_metadata, merge_trace_metadata, new
 from deeptutor.runtime.registry.tool_registry import get_tool_registry
 from deeptutor.services.llm import clean_thinking_tags, get_llm_config, get_token_limit_kwargs
 from deeptutor.services.llm import stream as llm_stream
+from deeptutor.services.llm.capabilities import threads_session_id
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +209,12 @@ class ContextExplorer:
                     messages.append({"role": "user", "content": self._forced_finish_instruction()})
                 total_in += sum(_content_chars(m) for m in messages)
                 result = await self._call_llm(
-                    client, messages, tool_schemas if not is_last else None, chunk_meta, stream
+                    client,
+                    messages,
+                    tool_schemas if not is_last else None,
+                    chunk_meta,
+                    stream,
+                    context.session_id,
                 )
                 total_out += result.output_chars
                 if not result.tool_calls:
@@ -247,6 +253,7 @@ class ContextExplorer:
         tool_schemas: list[dict[str, Any]] | None,
         chunk_meta: dict[str, Any],
         stream: StreamBus,
+        session_id: str,
     ) -> _CallResult:
         """One streamed LLM call. All output streams to the *thinking* channel
         (never CONTENT — that is the answer loop's channel); the returned text
@@ -263,6 +270,8 @@ class ContextExplorer:
                 reasoning_effort=self.reasoning_effort,
             ),
         }
+        if threads_session_id(self.binding):
+            kwargs["deeptutor_session_id"] = f"{session_id}:explore"
         if tool_schemas:
             kwargs["tools"] = tool_schemas
             kwargs["tool_choice"] = "auto"

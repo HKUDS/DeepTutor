@@ -194,6 +194,11 @@ def _string_list(value: Any) -> list[str]:
     return [item for item in value if isinstance(item, str) and item]
 
 
+def _mastery_path_id(value: Any) -> str:
+    """Normalize the optional session-to-mastery-path association."""
+    return str(value or "").strip()
+
+
 def _llm_selection_dict(value: Any) -> dict[str, str] | None:
     from deeptutor.services.model_selection import LLMSelection
 
@@ -236,6 +241,9 @@ def _request_snapshot_metadata(
         snapshot["questionNotebookReferences"] = question_notebook_references
     if book_references:
         snapshot["bookReferences"] = book_references
+    mastery_path_id = _mastery_path_id(payload.get("mastery_path_id"))
+    if mastery_path_id:
+        snapshot["masteryPathId"] = mastery_path_id
     if persona:
         snapshot["persona"] = persona
     if memory_references:
@@ -708,6 +716,16 @@ class TurnRuntimeManager:
         }
         session = await self.store.ensure_session(payload.get("session_id"))
         preferences = session.get("preferences") or {}
+        # A mastery path has a longer lifetime than any one conversation.
+        # Persist the explicit association on the session, and restore it on
+        # later turns whose frontend payload omits the field.
+        mastery_path_explicit = "mastery_path_id" in payload
+        mastery_path_id = _mastery_path_id(
+            payload.get("mastery_path_id")
+            if mastery_path_explicit
+            else preferences.get("mastery_path_id")
+        )
+        payload = {**payload, "mastery_path_id": mastery_path_id}
         # Persona is a session-level preference (mirrors llm_selection): an
         # explicit ``persona`` key in the payload — including an empty string,
         # which means "Default" / no persona — wins and is persisted below; an
@@ -819,6 +837,9 @@ class TurnRuntimeManager:
         if persona_explicit:
             # Persist explicit set AND explicit clear ("" = back to Default).
             preference_update["persona"] = persona_pref
+        if mastery_path_explicit:
+            # Like persona, an explicit empty string clears the association.
+            preference_update["mastery_path_id"] = mastery_path_id
         await self.store.update_session_preferences(session["id"], preference_update)
         turn = await self.store.create_turn(session["id"], capability=capability)
         execution = _TurnExecution(
@@ -932,6 +953,11 @@ class TurnRuntimeManager:
             if overrides.get("llm_selection") is not None
             else snapshot.get("llmSelection") or preferences.get("llm_selection")
         )
+        mastery_path_id = _mastery_path_id(
+            overrides.get("mastery_path_id")
+            if "mastery_path_id" in overrides
+            else snapshot.get("masteryPathId") or preferences.get("mastery_path_id")
+        )
 
         payload: dict[str, Any] = {
             "session_id": session_id,
@@ -956,6 +982,7 @@ class TurnRuntimeManager:
                 if overrides.get("book_references") is not None
                 else snapshot.get("bookReferences") or []
             ),
+            "mastery_path_id": mastery_path_id,
             "config": config,
         }
         if llm_selection:
@@ -1649,6 +1676,7 @@ class TurnRuntimeManager:
                     "history_references": history_references,
                     "question_notebook_references": question_notebook_references,
                     "book_references": book_references,
+                    "mastery_path_id": _mastery_path_id(payload.get("mastery_path_id")),
                     "book_context": book_context,
                     "book_context_warnings": book_context_result.warnings,
                     "memory_references": memory_references,

@@ -58,6 +58,14 @@ class _Service:
         self.calls.append("refresh")
         return {"connection": "connected"}
 
+    async def set_reasoning_effort(
+        self,
+        model: str,
+        reasoning_effort: str | None,
+    ) -> dict[str, Any]:
+        self.calls.append(f"reasoning:{model}:{reasoning_effort}")
+        return {"connection": "connected"}
+
 
 def _user(uid: str, *, role: str, root) -> CurrentUser:
     return CurrentUser(
@@ -92,6 +100,18 @@ def test_an_ordinary_user_drives_their_own_codex_lifecycle(client, method, path)
     assert service.calls, "the request must reach the owner-scoped service"
 
 
+def test_an_ordinary_user_sets_their_own_codex_reasoning_effort(client) -> None:
+    test_client, service, _current = client
+
+    response = test_client.post(
+        "/api/v1/settings/providers/openai-codex/models/reasoning-effort",
+        json={"model": "gpt-5.6-sol", "reasoning_effort": "high"},
+    )
+
+    assert response.status_code == 200
+    assert service.calls == ["reasoning:gpt-5.6-sol:high"]
+
+
 @pytest.mark.parametrize(("method", "path"), CODEX_ROUTES)
 def test_a_partner_is_refused(client, tmp_path, method, path) -> None:
     """A partner inherits its owner's login at call time; letting it in here
@@ -100,6 +120,19 @@ def test_a_partner_is_refused(client, tmp_path, method, path) -> None:
     current["user"] = _user(f"{PARTNER_USER_PREFIX}ada", role="user", root=tmp_path / "partner-ada")
 
     response = getattr(test_client, method)(path)
+
+    assert response.status_code == 403
+    assert service.calls == []
+
+
+def test_a_partner_cannot_change_their_owners_reasoning_effort(client, tmp_path) -> None:
+    test_client, service, current = client
+    current["user"] = _user(f"{PARTNER_USER_PREFIX}ada", role="user", root=tmp_path / "partner-ada")
+
+    response = test_client.post(
+        "/api/v1/settings/providers/openai-codex/models/reasoning-effort",
+        json={"model": "gpt-5.6-sol", "reasoning_effort": "high"},
+    )
 
     assert response.status_code == 403
     assert service.calls == []

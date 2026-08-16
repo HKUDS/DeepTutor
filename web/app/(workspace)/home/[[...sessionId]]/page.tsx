@@ -353,6 +353,7 @@ export default function ChatPage() {
     setCapability,
     setKBs,
     setLLMSelection,
+    setMasteryPathId,
     setPersonaSelection,
     sendMessage,
     cancelStreamingTurn,
@@ -981,6 +982,26 @@ export default function ChatPage() {
           if (!ctrl.signal.aborted) {
             loadAbortRef.current = null;
             setSessionLoading(false);
+            // Settle at the bottom once the transcript is really laid out.
+            // The layout-effect pin runs as the messages first render, when
+            // lazily-loaded images (ChatMessages `loading="lazy"`) and the
+            // `next/dynamic` capability viewers have not contributed their
+            // heights yet, so its `scrollHeight` is short and the viewport
+            // stops above the true bottom. One frame later those are in.
+            //
+            // Only on a cold open. A cached session is already painted at
+            // the bottom and this resolves after a background revalidate —
+            // re-arming there would yank a reader who had scrolled up.
+            if (!cached) {
+              shouldAutoScrollRef.current = true;
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  // A newer session may have superseded this one while the
+                  // two frames elapsed; that load owns the viewport now.
+                  if (!ctrl.signal.aborted) scrollToBottom("instant");
+                });
+              });
+            }
           }
         })
         .catch(() => {
@@ -993,7 +1014,13 @@ export default function ChatPage() {
           }
         });
     },
-    [loadSession, navigateToHome, showCachedSession],
+    [
+      loadSession,
+      navigateToHome,
+      showCachedSession,
+      scrollToBottom,
+      shouldAutoScrollRef,
+    ],
   );
 
   // Initial mount — load the session from the URL.
@@ -1120,12 +1147,14 @@ export default function ChatPage() {
     setCapabilityConfigs(loadCapabilityPlaygroundConfigs());
   }, []);
 
-  /* URL query params (capability, tool) */
+  /* URL query params (capability, tool, persistent mastery path) */
   useEffect(() => {
     if (typeof window === "undefined") return;
     const p = new URLSearchParams(window.location.search);
     const qc = p.get("capability");
     const qt = p.getAll("tool");
+    const masteryPathId = p.get("mastery_path_id")?.trim();
+    if (masteryPathId) setMasteryPathId(masteryPathId);
     if (qc !== null) handleSelectCapability(qc || "");
     else if (qt.length) {
       const valid = qt.filter((t): t is ToolName =>

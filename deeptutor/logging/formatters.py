@@ -46,4 +46,9 @@ class ConsoleFormatter(logging.Formatter):
         context = getattr(record, "log_context", {}) or {}
         stage = f" @{context['stage']}" if context.get("stage") else ""
         task = f" #{context['task_id']}" if context.get("task_id") else ""
-        return f"{record.levelname:<7} {record.name}{stage}{task} - {record.getMessage()}"
+        message = f"{record.levelname:<7} {record.name}{stage}{task} - {record.getMessage()}"
+        if record.exc_info:
+            # Without this the console loses the traceback that exc_info=True
+            # recorded; only the message would print, hiding the real cause.
+            message = f"{message}\n{self.formatException(record.exc_info)}"
+        return message

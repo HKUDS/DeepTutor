@@ -5,15 +5,13 @@
 # Keep in sync with pyproject.toml when adding/updating dependencies.
 #
 # Partners run on the chat agent loop (no separate engine), so this set is
-# the IM channel SDKs plus MCP client support.
+# the IM channel SDKs. The MCP client is a core dependency (see cli.txt),
+# pulled in via server.txt below.
 #
 # Preferred install (from a source clone): pip install -e ".[partners]"
 # Use this file for Docker/CI when pyproject.toml/source code aren't yet available.
 
 -r server.txt
-
-# --- MCP client (deferred tools for chat + partners) ---
-mcp>=1.26.0,<2.0.0
 
 # --- Channel SDKs ---
 python-telegram-bot[socks]>=22.6,<23.0

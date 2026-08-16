@@ -90,6 +90,8 @@ export interface ChatState {
   activeCapability: string | null;
   knowledgeBases: string[];
   llmSelection: LLMSelection | null;
+  /** Persistent mastery state associated with this conversation. */
+  masteryPathId: string | null;
   /** Session-level persona preference; "" = Default (no persona). Applies
    *  to every following message until changed (persisted on the session). */
   personaSelection: string;
@@ -140,6 +142,7 @@ export interface MessageRequestSnapshot {
   historyReferences?: HistoryReferencePayload;
   questionNotebookReferences?: QuestionNotebookReferencePayload;
   bookReferences?: BookReferencePayload[];
+  masteryPathId?: string;
   persona?: string;
   memoryReferences?: MemoryReferencePayload;
   llmSelection?: LLMSelection | null;
@@ -188,6 +191,7 @@ interface SessionSnapshot {
   capability?: string | null;
   knowledgeBases?: string[];
   llmSelection?: LLMSelection | null;
+  masteryPathId?: string | null;
   personaSelection?: string;
   language?: string;
   selectedBranches?: Record<string, number>;
@@ -198,6 +202,7 @@ type Action =
   | { type: "SET_CAPABILITY"; cap: string | null }
   | { type: "SET_KB"; kbs: string[] }
   | { type: "SET_LLM_SELECTION"; selection: LLMSelection | null }
+  | { type: "SET_MASTERY_PATH_ID"; masteryPathId: string | null }
   | { type: "SET_PERSONA_SELECTION"; persona: string }
   | { type: "SET_LANGUAGE"; lang: string }
   | {
@@ -263,6 +268,7 @@ function createSessionEntry(
     activeCapability: null,
     knowledgeBases: [],
     llmSelection: null,
+    masteryPathId: null,
     personaSelection: "",
     messages: [],
     isStreaming: false,
@@ -331,6 +337,11 @@ function reducer(state: ProviderState, action: Action): ProviderState {
       return updateSelectedSession(state, (session) => ({
         ...session,
         llmSelection: action.selection,
+      }));
+    case "SET_MASTERY_PATH_ID":
+      return updateSelectedSession(state, (session) => ({
+        ...session,
+        masteryPathId: action.masteryPathId,
       }));
     case "SET_PERSONA_SELECTION":
       return updateSelectedSession(state, (session) => ({
@@ -608,6 +619,10 @@ function reducer(state: ProviderState, action: Action): ProviderState {
               action.llmSelection !== undefined
                 ? action.llmSelection
                 : existing.llmSelection,
+            masteryPathId:
+              action.masteryPathId !== undefined
+                ? action.masteryPathId
+                : existing.masteryPathId,
             personaSelection:
               action.personaSelection !== undefined
                 ? action.personaSelection
@@ -788,6 +803,7 @@ interface ChatContextValue {
   setCapability: (cap: string | null) => void;
   setKBs: (kbs: string[]) => void;
   setLLMSelection: (selection: LLMSelection | null) => void;
+  setMasteryPathId: (masteryPathId: string | null) => void;
   setPersonaSelection: (persona: string) => void;
   setLanguage: (lang: string) => void;
   sendMessage: (
@@ -967,6 +983,10 @@ function hydrateRequestSnapshot(
   const memoryReferences = asMemoryReferences(stored.memoryReferences);
   const bookReferences = normalizeBookReferences(stored.bookReferences);
   const llmSelection = asLLMSelection(stored.llmSelection);
+  const masteryPathId =
+    typeof (stored.masteryPathId ?? stored.mastery_path_id) === "string"
+      ? String(stored.masteryPathId ?? stored.mastery_path_id).trim()
+      : "";
 
   if (config && Object.keys(config).length) snapshot.config = config;
   if (notebookReferences.length)
@@ -979,6 +999,7 @@ function hydrateRequestSnapshot(
   if (persona) snapshot.persona = persona;
   if (memoryReferences.length) snapshot.memoryReferences = memoryReferences;
   if (llmSelection) snapshot.llmSelection = llmSelection;
+  if (masteryPathId) snapshot.masteryPathId = masteryPathId;
   return snapshot;
 }
 
@@ -1358,6 +1379,10 @@ export function UnifiedChatProvider({
           ? session.preferences.knowledge_bases
           : [],
         llmSelection: asLLMSelection(session.preferences?.llm_selection),
+        masteryPathId:
+          typeof session.preferences?.mastery_path_id === "string"
+            ? session.preferences.mastery_path_id
+            : null,
         personaSelection:
           typeof session.preferences?.persona === "string"
             ? session.preferences.persona
@@ -1511,6 +1536,8 @@ export function UnifiedChatProvider({
         replaySnapshot && "llmSelection" in replaySnapshot
           ? (replaySnapshot.llmSelection ?? null)
           : session.llmSelection;
+      const effectiveMasteryPathId =
+        replaySnapshot?.masteryPathId ?? session.masteryPathId;
       const effectiveLanguage =
         replaySnapshot?.language ?? readStoredResponseLanguage();
       // Persona resolution: replay snapshot wins; then an explicit per-call
@@ -1565,6 +1592,9 @@ export function UnifiedChatProvider({
           : {}),
         ...(effectiveBookReferences?.length
           ? { bookReferences: effectiveBookReferences }
+          : {}),
+        ...(effectiveMasteryPathId
+          ? { masteryPathId: effectiveMasteryPathId }
           : {}),
         ...(effectivePersona ? { persona: effectivePersona } : {}),
         ...(effectiveMemoryReferences?.length
@@ -1633,6 +1663,9 @@ export function UnifiedChatProvider({
           : {}),
         ...(effectiveBookReferences?.length
           ? { book_references: effectiveBookReferences }
+          : {}),
+        ...(effectiveMasteryPathId
+          ? { mastery_path_id: effectiveMasteryPathId }
           : {}),
         // Always sent (possibly ""): an explicit key is the backend's signal
         // to persist the value into session.preferences — "" clears back to
@@ -1760,6 +1793,7 @@ export function UnifiedChatProvider({
       activeCapability: current.activeCapability,
       knowledgeBases: current.knowledgeBases,
       llmSelection: current.llmSelection,
+      masteryPathId: current.masteryPathId,
       personaSelection: current.personaSelection,
       messages: current.messages,
       isStreaming: current.isStreaming,
@@ -1797,6 +1831,11 @@ export function UnifiedChatProvider({
 
   const setLLMSelection = useCallback((selection: LLMSelection | null) => {
     dispatch({ type: "SET_LLM_SELECTION", selection });
+  }, []);
+
+  const setMasteryPathId = useCallback((masteryPathId: string | null) => {
+    const normalized = masteryPathId?.trim() || null;
+    dispatch({ type: "SET_MASTERY_PATH_ID", masteryPathId: normalized });
   }, []);
 
   const setPersonaSelection = useCallback((persona: string) => {
@@ -1948,6 +1987,7 @@ export function UnifiedChatProvider({
       setCapability,
       setKBs,
       setLLMSelection,
+      setMasteryPathId,
       setPersonaSelection,
       setLanguage,
       sendMessage,
@@ -1971,6 +2011,7 @@ export function UnifiedChatProvider({
       setCapability,
       setKBs,
       setLLMSelection,
+      setMasteryPathId,
       setPersonaSelection,
       setLanguage,
       sendMessage,

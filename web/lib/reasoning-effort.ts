@@ -166,6 +166,15 @@ export function reasoningEffortOptions(
   return options([], current);
 }
 
+export function reasoningEffortOptionsFromSupportedLevels(
+  values: readonly string[],
+): ReasoningEffortOption[] {
+  const supported = [
+    ...new Set(values.map((value) => value.trim()).filter(Boolean)),
+  ];
+  return options(supported, "");
+}
+
 export function setModelReasoningEffort(
   model: { reasoning_effort?: string },
   value: string,
