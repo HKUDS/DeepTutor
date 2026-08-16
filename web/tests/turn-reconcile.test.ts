@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  latestAssistantNeedsHydration,
   reconcileTurnIds,
   type ReconcilableMessage,
 } from "../lib/turn-reconcile";
@@ -169,4 +170,24 @@ test("returns original references when there is nothing to reconcile", () => {
   assert.equal(result.changed, false);
   assert.equal(result.messages, messages);
   assert.equal(result.selectedBranches, branches);
+});
+
+test("detects a completed turn whose local assistant body was missed", () => {
+  assert.equal(
+    latestAssistantNeedsHydration([
+      { id: 50, role: "user", content: "question" },
+      { id: -5001, role: "assistant", content: "" },
+    ]),
+    true,
+  );
+});
+
+test("does not rehydrate a completed turn that already has content", () => {
+  assert.equal(
+    latestAssistantNeedsHydration([
+      { id: 51, role: "user", content: "question" },
+      { id: 52, role: "assistant", content: "answer" },
+    ]),
+    false,
+  );
 });

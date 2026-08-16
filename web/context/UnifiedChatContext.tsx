@@ -31,7 +31,10 @@ import { normalizeMarkdownForDisplay } from "@/lib/markdown-display";
 import { normalizeMessageContent } from "@/lib/message-content";
 import { buildVisiblePath, tipMessageId } from "@/lib/message-branches";
 import { nextOptimisticId, resolvePersistedMessage } from "@/lib/optimistic-id";
-import { reconcileTurnIds } from "@/lib/turn-reconcile";
+import {
+  latestAssistantNeedsHydration,
+  reconcileTurnIds,
+} from "@/lib/turn-reconcile";
 import {
   isNarrationMarker,
   recomputeAnswerContent,
@@ -1186,6 +1189,19 @@ export function UnifiedChatProvider({
               userMessageId: doneMeta?.user_message_id ?? null,
               assistantMessageId,
             });
+            const finishedSession = stateRef.current.sessions[effectiveKey];
+            const sessionId = finishedSession?.sessionId;
+            if (
+              sessionId &&
+              latestAssistantNeedsHydration(finishedSession?.messages ?? [])
+            ) {
+              // The id-only fast path is safe when live content arrived. If
+              // it did not, rehydrate the persisted assistant row instead of
+              // leaving a completed turn visibly blank.
+              loadSessionRef.current?.(sessionId).catch(() => {
+                /* non-fatal — the live state remains usable */
+              });
+            }
           } else {
             // Older backend without ids on ``done`` — fall back to the
             // full session refetch.
@@ -1274,6 +1290,15 @@ export function UnifiedChatProvider({
                 key: record.key,
                 status: "failed",
               });
+              const sessionId = session.sessionId;
+              if (sessionId) {
+                // A close can happen after the backend has persisted the
+                // answer but before the final stream event reaches the UI.
+                // Reload the session so a completed turn is not left blank.
+                loadSessionRef.current?.(sessionId).catch(() => {
+                  /* non-fatal — the failed state remains visible */
+                });
+              }
               // Surface the disconnect to the user. The WS client already
               // logs to console — we add a toast so non-debugging users
               // don't see streaming silently flatline.

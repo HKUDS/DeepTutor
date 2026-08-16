@@ -17,6 +17,7 @@
 export interface ReconcilableMessage {
   id?: number;
   role: "user" | "assistant" | "system";
+  content?: string;
   parentMessageId?: number | null;
   events?: Array<{ turn_id?: string }>;
 }
@@ -34,6 +35,21 @@ export interface ReconcileResult<T> {
   messages: T[];
   selectedBranches: Record<string, number>;
   changed: boolean;
+}
+
+/**
+ * The completed-turn event carries persisted row ids, but the assistant body
+ * still arrives through the live event stream. If that stream was interrupted
+ * or a client/backend version mismatch filtered the content event, the local
+ * assistant row can be empty even though the server has persisted the answer.
+ */
+export function latestAssistantNeedsHydration(
+  messages: ReconcilableMessage[],
+): boolean {
+  const assistant = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant");
+  return Boolean(assistant && !(assistant.content ?? "").trim());
 }
 
 function isOptimisticId(id: unknown): id is number {
