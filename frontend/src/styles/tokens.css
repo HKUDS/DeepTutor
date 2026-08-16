@@ -1,0 +1,178 @@
+/* =========================================================
+   Design Tokens – Geometry, Typography, Motion, Layer
+   Source: Extracted from TraeWork MHTML CSS Parts (main.css,
+   session/layout.css, session/page.css, async chunks)
+   ========================================================= */
+
+:root {
+  /* ---- Layout / Geometry (Confirmed from MHTML) ---- */
+  --shell-padding: 8px;
+  --workspace-gap: 4px;
+  --workspace-gap-width: 4px;
+
+  --sidebar-width: 300px;
+  --right-panel-default-width: 395px;
+  --right-panel-min-width: 392px;
+  --right-panel-max-width: 800px;
+
+  --workspace-panel-radius: 16px;
+  --header-height: 48px;
+  --sidebar-header-height: 64px;
+  --composer-max-width: 860px;
+
+  --control-height-default: 28px;
+  --nav-item-height: 34px;
+  --task-item-height: 24px;
+
+  /* ---- Radius (--radius-* from MHTML :root) ---- */
+  --radius-2: 2px;
+  --radius-4: 4px;
+  --radius-6: 6px;
+  --radius-8: 8px;
+  --radius-12: 12px;
+  --radius-16: 16px;
+  --radius-20: 20px;
+  --radius-24: 24px;
+  --radius-32: 32px;
+  --radius-full: 9999px;
+
+  --radius-sm: var(--radius-4);
+  --radius-md: var(--radius-8);
+  --radius-lg: var(--radius-12);
+  --radius-xl: var(--radius-16);
+  --radius-2xl: var(--radius-20);
+
+  --radius-radius-2xs-4: var(--radius-4);
+  --radius-radius-xs-6:  var(--radius-6);
+  --radius-radius-sm-8:  var(--radius-8);
+  --radius-radius-md-12: var(--radius-12);
+  --radius-radius-lg-16: var(--radius-16);
+  --radius-radius-xl-20: var(--radius-20);
+  --radius-radius-2xl-24: var(--radius-24);
+  --radius-radius-3xl-32: var(--radius-32);
+  --radius-radius-full: var(--radius-full);
+
+  /* ---- Spacing (--spacer-* / --spacing-* from MHTML) ---- */
+  --spacer-0: 0px;
+  --spacer-2: 2px;
+  --spacer-4: 4px;
+  --spacer-6: 6px;
+  --spacer-8: 8px;
+  --spacer-12: 12px;
+  --spacer-16: 16px;
+  --spacer-20: 20px;
+  --spacer-24: 24px;
+  --spacer-32: 32px;
+  --spacer-40: 40px;
+  --spacer-48: 48px;
+  --spacer-64: 64px;
+
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+  --spacing-xxl: 32px;
+
+  /* ---- Typography (from MHTML :root) ---- */
+  --font-family-default: "SF Pro Text",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"PingFang SC","Microsoft YaHei","Hiragino Sans GB",Roboto,sans-serif;
+  --font-family-heading: var(--font-family-default);
+  --font-family-code: "SFMono-Regular", ui-monospace, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --font-size-2xs: 10px;
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 14px;
+  --font-size-md: 14px;
+  --font-size-lg: 15px;
+  --font-size-xl: 16px;
+  --font-size-2xl: 20px;
+  --font-size-3xl: 24px;
+  --font-size-4xl: 32px;
+
+  --font-weight-default: 400;
+  --font-weight-code: 450;
+  --font-weight-medium: 500;
+  --font-weight-strong: 600;
+
+  --line-height-tight: 1.2;
+  --line-height-default: 1.4;
+  --line-height-relaxed: 1.6;
+
+  --letter-spacing-tight: -0.02em;
+  --letter-spacing-default: 0;
+
+  /* Body font tokens */
+  --body-body-base: 14px/1.5 var(--font-family-default);
+  --body-body-base-strong: 14px/1.5 var(--font-family-default);
+  --body-body-md: 12px/1.5 var(--font-family-default);
+  --body-body-sm: 11px/1.5 var(--font-family-default);
+  --body-body-lg: 14px/1.5 var(--font-family-default);
+
+  /* Chat-specific font tokens */
+  --chat-body-base: 14px/20px var(--font-family-default);
+  --chat-body-base-strong: 14px/20px var(--font-family-default);
+
+  /* ---- Motion / Transition (from MHTML :root) ---- */
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+  --duration-segmented: 220ms;
+
+  --ease-default: ease;
+  --ease-in-out: ease-in-out;
+  --ease-out: ease-out;
+  --ease-spring: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.2s ease;
+  --transition-slow: 0.3s ease;
+
+  /* ---- Shadow / Elevation (MHTML confirmed) ---- */
+  --shadow-elevation-50: 0 1px 2px -1px #00000073;
+  --shadow-elevation-100: 0 3px 9px 0 #00000040;
+  --shadow-elevation-100-tooltip: var(--shadow-elevation-100);
+  --shadow-elevation-200: 0 6px 24px -1px #00000040;
+  --shadow-elevation-200-menu-panel: var(--shadow-elevation-200);
+  --shadow-elevation-300: 0 2px 8px -1px #0000002e, 0 10px 24px -1px #0000004d;
+  --shadow-segmented-indicator: rgba(24, 24, 24, 0.08) 0px 1px 2px -1px;
+
+  /* ---- Z-Index Layer (MHTML :root confirmed) ---- */
+  --z-base: 0;
+  --z-above: 1;
+  --z-above-2: 2;
+  --z-sticky: 10;
+  --z-local-overlay: 100;
+  --z-dropdown: 1000;
+  --z-popover: 1010;
+  --z-modal: 1100;
+  --z-modal-backdrop: 1090;
+  --z-modal-popover: 1110;
+  --z-drawer: 1120;
+  --z-confirm: 1150;
+  --z-notification: 1200;
+  --z-tooltip: 1300;
+  --z-fullscreen: 1400;
+  --z-max: 9999;
+
+  /* ---- Inputs ---- */
+  --query-tag-height: 20px;
+  --query-tag-font-size: 14px;
+  --query-tag-radius: 0px;
+  --query-tag-gap: 2px;
+  --query-tag-icon-size: 16px;
+  --query-tag-icon-slot-size: 20px;
+  --query-tag-padding: 0px 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-fast: 0s ease;
+    --transition-normal: 0s ease;
+    --transition-slow: 0s ease;
+    --duration-fast: 0ms;
+    --duration-normal: 0ms;
+    --duration-slow: 0ms;
+    --duration-segmented: 0ms;
+  }
+}

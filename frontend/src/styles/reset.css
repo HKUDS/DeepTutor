@@ -1,0 +1,17 @@
+/* Minimal CSS reset to avoid Vite default bias */
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; }
+#root, body, html { height: 100%; overflow: hidden; width: 100%; }
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+button { font: inherit; color: inherit; background: none; border: none; padding: 0; cursor: pointer; }
+input, textarea { font: inherit; color: inherit; }
+textarea { resize: none; }
+img, svg { display: block; max-width: 100%; }
+ul, ol { list-style: none; padding: 0; margin: 0; }
+a { color: inherit; text-decoration: none; }
+:focus-visible { outline: 1px solid var(--status-primary-default); outline-offset: 1px; }
+::selection { background: var(--status-primary-surface-l2); }

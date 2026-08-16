@@ -134,6 +134,8 @@ cache/
 # Written by `npm run audit` (the playwright ui-audit project).
 web/test-results/
 web/playwright-report/
+frontend/test-results/
+frontend/playwright-report/
 
 # Log files
 *.log
