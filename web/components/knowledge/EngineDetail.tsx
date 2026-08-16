@@ -1076,7 +1076,7 @@ function CheckRow({
         )}
         {detail && (
           <div className="text-[11px] leading-snug text-[var(--muted-foreground)]">
-            {detail}
+            {t(detail)}
           </div>
         )}
       </div>
