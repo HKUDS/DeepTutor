@@ -17,6 +17,7 @@
 <p align="center">
   <a href="../../README.md"><img alt="English" height="40" src="https://img.shields.io/badge/English-CDCFD4"></a>&nbsp;
   <a href="README_CN.md"><img alt="简体中文" height="40" src="https://img.shields.io/badge/简体中文-CDCFD4"></a>&nbsp;
+  <a href="README_TW.md"><img alt="繁體中文" height="40" src="https://img.shields.io/badge/繁體中文-CDCFD4"></a>&nbsp;
   <a href="README_JA.md"><img alt="日本語" height="40" src="https://img.shields.io/badge/日本語-CDCFD4"></a>&nbsp;
   <a href="README_ES.md"><img alt="Español" height="40" src="https://img.shields.io/badge/Español-CDCFD4"></a>&nbsp;
   <a href="README_FR.md"><img alt="Français" height="40" src="https://img.shields.io/badge/Français-CDCFD4"></a>&nbsp;
@@ -425,7 +426,7 @@ Knowledge bases คือคอลเลกชันเอกสารที่�
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="สร้าง knowledge base" width="900">
 </div>
 
-เมื่อสร้าง KB คุณ **สร้างใหม่** (อัพโหลดเอกสารและสร้าง index ใหม่) หรือ **เชื่อมโยงที่มีอยู่** (นำ index ที่สร้างไว้มาใช้ซ้ำ อ่านในที่โดยไม่ต้อง re-index) การ re-indexing จะเขียน directory `version-N` ใหม่และเก็บอันก่อนหน้าไว้ ดังนั้น index ที่ทำงานอยู่จะไม่ถูกทำลายระหว่างการสร้างใหม่ การแยกวิเคราะห์เอกสาร — Text-only, MinerU, Docling, markitdown หรือ PyMuPDF4LLM — ถูกเลือกใน **Settings → Knowledge Base** โดยการดาวน์โหลด local model ปิดโดยค่าเริ่มต้น CLI ครอบคลุม lifecycle ด้วย `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` และ `delete`
+เมื่อสร้าง KB คุณ **สร้างใหม่** (อัพโหลดเอกสารและสร้าง index ใหม่) หรือ **เชื่อมโยงที่มีอยู่** (นำ index ที่สร้างไว้มาใช้ซ้ำ อ่านในที่โดยไม่ต้อง re-index) การ re-indexing จะเขียน directory `version-N` ใหม่และเก็บอันก่อนหน้าไว้ ดังนั้น index ที่ทำงานอยู่จะไม่ถูกทำลายระหว่างการสร้างใหม่ การแยกวิเคราะห์เอกสาร — Text-only, MinerU, Docling, markitdown, PyMuPDF4LLM หรือ LiteParse — ถูกเลือกใน **Settings → Knowledge Base** โดยการดาวน์โหลด local model ปิดโดยค่าเริ่มต้น CLI ครอบคลุม lifecycle ด้วย `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` และ `delete`
 
 </details>
 
@@ -584,7 +585,7 @@ repo มี root [`SKILL.md`](../../SKILL.md) — เอกสาร handover ~1
 | `deeptutor book list/health/refresh-fingerprints` | ตรวจสอบ books และรีเฟรช source fingerprints |
 | `deeptutor plugin list/info` | ตรวจสอบเครื่องมือและ capabilities ที่ลงทะเบียน |
 | `deeptutor config show` | พิมพ์สรุปการกำหนดค่า |
-| `deeptutor provider login <provider>` | Provider auth (OAuth login สำหรับ `openai-codex`; `github-copilot` ตรวจสอบ session auth Copilot ที่มีอยู่) |
+| `deeptutor provider login <provider>` | Provider auth (OAuth login สำหรับ `openai-codex`; `github-copilot` ตรวจสอบ session auth Copilot ที่มีอยู่; `codebuddy` ตรวจสอบ auth ของ CodeBuddy SDK และเริ่ม login เมื่อจำเป็น) |
 
 </details>
 
@@ -658,6 +659,22 @@ deeptutor skill install clawhub:git-release-notes@1.0.1
 เพิ่ม registries เพิ่มเติมใน `settings/skill_hubs.json`: entry `type: "clawhub"` ชี้ไปที่ HTTP API ที่เข้ากันได้ใด ๆ (ทั้ง EduHub และ ClawHub พูด API นี้), `type: "command"` ห่อ CLI ที่ registry ส่งมา และ `"default"` เลือกฮับที่ใช้สำหรับ slugs เปล่า ทั้งหมดนี้ป้อนข้อมูลผ่านประตูนำเข้าเดียวกัน
 
 </details>
+
+## 🤝 พันธมิตรโอเพนซอร์ส
+
+<p align="center">
+  <a href="https://github.com/VectifyAI/PageIndex" target="_blank">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="../../assets/figs/partners/pageindex-mark-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="../../assets/figs/partners/pageindex-mark.svg">
+      <img src="../../assets/figs/partners/pageindex-mark.svg" alt="PageIndex" height="38">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
+  ใช้โค้ด: <b><code>DEEPTUTOR20</code></b> — รับส่วนลด $20 สำหรับ<a href="https://developer.pageindex.ai/">การสมัครสมาชิก PageIndex</a>ครั้งแรกของคุณ!
+</p>
 
 ## 🌐 ชุมชน
 

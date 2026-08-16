@@ -30,12 +30,8 @@ import { useSettings } from "./SettingsContext";
 
 export function CodexOAuthCard() {
   const { t } = useTranslation();
-  const {
-    catalogEditable,
-    reloadSettings,
-    hasUnsavedChanges,
-    setToast,
-  } = useSettings();
+  const { catalogEditable, reloadSettings, hasUnsavedChanges, setToast } =
+    useSettings();
   const [status, setStatus] = useState<CodexOAuthStatus | null>(null);
   const [pending, setPending] = useState(false);
   const [errorKey, setErrorKey] = useState<string | null>(null);
@@ -292,7 +288,10 @@ export function CodexOAuthCard() {
     invalidateStatusRequests();
     setPending(true);
     try {
-      const nextStatus = await setCodexReasoningEffort(model.model, value || null);
+      const nextStatus = await setCodexReasoningEffort(
+        model.model,
+        value || null,
+      );
       invalidateStatusRequests();
       recordStatus(nextStatus);
       setErrorKey(null);
@@ -376,11 +375,17 @@ export function CodexOAuthCard() {
                           value={model.reasoning_effort || ""}
                           disabled={pending}
                           onChange={(event) =>
-                            void updateReasoningEffort(model, event.target.value)
+                            void updateReasoningEffort(
+                              model,
+                              event.target.value,
+                            )
                           }
                         >
                           {options.map((option) => (
-                            <option key={option.value || "auto"} value={option.value}>
+                            <option
+                              key={option.value || "auto"}
+                              value={option.value}
+                            >
                               {t(option.label)}
                             </option>
                           ))}

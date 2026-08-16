@@ -9,6 +9,22 @@ DEEPTUTOR_HOME_ENV = "DEEPTUTOR_HOME"
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 
 
+def validate_runtime_home(home: str | Path) -> None:
+    """Reject runtime homes that point inside this checkout's data tree."""
+
+    resolved = Path(home).expanduser().resolve()
+    invalid_homes = {
+        PACKAGE_ROOT / "data",
+        PACKAGE_ROOT / "data" / "user",
+    }
+    if resolved in invalid_homes:
+        raise ValueError(
+            f"Invalid DeepTutor runtime home: {resolved}. Runtime data must live under "
+            f"{PACKAGE_ROOT / 'data'} without nesting. Start DeepTutor with "
+            f"DEEPTUTOR_HOME={PACKAGE_ROOT} from {PACKAGE_ROOT}."
+        )
+
+
 def get_runtime_home(home: str | Path | None = None) -> Path:
     """Return the directory that owns runtime data for this process.
 
@@ -38,4 +54,5 @@ __all__ = [
     "PACKAGE_ROOT",
     "get_runtime_home",
     "get_runtime_data_root",
+    "validate_runtime_home",
 ]

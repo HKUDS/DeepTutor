@@ -30,10 +30,7 @@ from . import register_provider
 class JinaProvider(BaseSearchProvider):
     """Jina Reader search provider"""
 
-    display_name = "Jina"
     description = "SERP with content extraction (free tier)"
-    supports_answer = False  # Returns raw content, not LLM answers
-    requires_api_key = True
     API_KEY_ENV_VARS = ("JINA_API_KEY", "SEARCH_API_KEY")
     BASE_URL = "https://s.jina.ai"
 
@@ -41,6 +38,7 @@ class JinaProvider(BaseSearchProvider):
         self,
         query: str,
         enrich: bool = True,
+        max_results: int | None = None,
         timeout: int = 60,
         **kwargs: Any,
     ) -> WebSearchResponse:
@@ -50,6 +48,10 @@ class JinaProvider(BaseSearchProvider):
         Args:
             query: Search query.
             enrich: If True, fetch full content + images. If False, basic SERP only.
+            max_results: Result cap from the resolved search config. The search
+                endpoint takes no count parameter, so the response is truncated
+                here — otherwise every result Jina returns (with full page
+                content when ``enrich`` is on) lands in the model's context.
             timeout: Request timeout in seconds.
             **kwargs: Additional options.
 
@@ -86,7 +88,10 @@ class JinaProvider(BaseSearchProvider):
             raise Exception(f"Jina API error: {response.status_code} - {response.text}")
 
         data = response.json()
-        self.logger.debug(f"Jina returned {len(data.get('data', []))} results")
+        rows = data.get("data", []) or []
+        self.logger.debug(f"Jina returned {len(rows)} results")
+        if max_results is not None:
+            rows = rows[: max(1, int(max_results))]
 
         # Extract search results
         citations: list[Citation] = []
@@ -95,7 +100,7 @@ class JinaProvider(BaseSearchProvider):
         # Jina Search API returns results in 'data' array
         # Basic fields: title, url, description, date, content, usage
         # Enriched fields (enrich=true): images, publishedTime, metadata, external
-        for i, result in enumerate(data.get("data", []), 1):
+        for i, result in enumerate(rows, 1):
             # Build attributes dict for enriched fields
             attributes: dict[str, Any] = {}
             if result.get("images"):

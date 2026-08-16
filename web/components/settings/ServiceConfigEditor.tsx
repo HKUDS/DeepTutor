@@ -44,13 +44,11 @@ import { nextProfileName } from "./profile-naming";
 import { searchProviderFields } from "./search-providers";
 import {
   activeProfileDetail,
-  deprecatedSearchProviders,
   formatContextWindowSource,
   inputClass,
   selectClass,
   selectOptionClass,
   stringifyExtraHeaders,
-  supportedSearchProviders,
 } from "./shared";
 
 const SERVICE_LABEL: Record<ServiceName, string> = {
@@ -134,14 +132,28 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
       : "";
   const showSearchProviderWarning =
     service === "search" && Boolean(searchProviderRaw);
-  const isDeprecatedSearchProvider =
-    deprecatedSearchProviders.has(searchProviderRaw);
-  const isSupportedSearchProvider = supportedSearchProviders.includes(
-    searchProviderRaw as (typeof supportedSearchProviders)[number],
+  // Every judgement below reads the backend's own provider list, so the web app
+  // never keeps a second (and drifting) copy of what is supported.
+  const searchProviderOption = (providers.search || []).find(
+    (option) => option.value === searchProviderRaw,
   );
-  const isPerplexityMissingKey =
+  const isDeprecatedSearchProvider =
+    searchProviderOption?.status === "deprecated";
+  const isSupportedSearchProvider =
+    Boolean(searchProviderOption) && !isDeprecatedSearchProvider;
+  const supportedSearchProviderNames = (providers.search || [])
+    .filter(
+      (option) => option.status !== "deprecated" && option.value !== "none",
+    )
+    .map((option) => option.value)
+    .join("/");
+  // Providers that fail hard rather than falling back need their key before the
+  // first query — say so while the user is still on this screen.
+  const searchProviderMissingKey =
     service === "search" &&
-    searchProviderRaw === "perplexity" &&
+    isSupportedSearchProvider &&
+    searchProviderOption?.requires_api_key === true &&
+    searchProviderOption?.soft_fallback === false &&
     !String(activeProfile?.api_key || "").trim();
   const activeLlmDetection =
     service === "llm" &&
@@ -472,7 +484,8 @@ export function ServiceConfigEditor({ service }: { service: ServiceName }) {
                 showSearchProviderWarning={showSearchProviderWarning}
                 isSupportedSearchProvider={isSupportedSearchProvider}
                 isDeprecatedSearchProvider={isDeprecatedSearchProvider}
-                isPerplexityMissingKey={isPerplexityMissingKey}
+                searchProviderMissingKey={searchProviderMissingKey}
+                supportedSearchProviderNames={supportedSearchProviderNames}
                 onProviderChanged={(provider, previousProvider) => {
                   if (service !== "llm" || !activeProfile) return;
                   const crossesCodeBuddyBoundary =
@@ -1154,7 +1167,8 @@ function ProfileFields({
   showSearchProviderWarning,
   isSupportedSearchProvider,
   isDeprecatedSearchProvider,
-  isPerplexityMissingKey,
+  searchProviderMissingKey,
+  supportedSearchProviderNames,
   onProviderChanged,
 }: {
   service: ServiceName;
@@ -1164,7 +1178,8 @@ function ProfileFields({
   showSearchProviderWarning: boolean;
   isSupportedSearchProvider: boolean;
   isDeprecatedSearchProvider: boolean;
-  isPerplexityMissingKey: boolean;
+  searchProviderMissingKey: boolean;
+  supportedSearchProviderNames: string;
   onProviderChanged: (
     provider: ProviderOption,
     previousProvider: string,
@@ -1192,9 +1207,9 @@ function ProfileFields({
     isCodexOAuth || isCodeBuddyAuth
       ? { apiKey: false, baseUrl: false, baseUrlRequired: false }
       : service === "search"
-        ? searchProviderFields(profile.provider)
+        ? searchProviderFields(profile.provider, providerOption)
         : { apiKey: true, baseUrl: true, baseUrlRequired: false };
-  const searxngMissingBaseUrl =
+  const missingRequiredBaseUrl =
     fields.baseUrlRequired && !String(profile.base_url || "").trim();
 
   return (
@@ -1261,15 +1276,17 @@ function ProfileFields({
             <option className={selectOptionClass} value="">
               {t("Select provider...")}
             </option>
-            {(providers[service] || []).map((p) => (
-              <option
-                className={selectOptionClass}
-                key={p.value}
-                value={p.value}
-              >
-                {p.label}
-              </option>
-            ))}
+            {(providers[service] || [])
+              .filter((p) => p.status !== "deprecated")
+              .map((p) => (
+                <option
+                  className={selectOptionClass}
+                  key={p.value}
+                  value={p.value}
+                >
+                  {p.label}
+                </option>
+              ))}
           </select>
           <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
         </div>
@@ -1284,18 +1301,19 @@ function ProfileFields({
             }`}
           >
             {isSupportedSearchProvider
-              ? isPerplexityMissingKey
+              ? searchProviderMissingKey
                 ? t(
-                    "Perplexity requires API key. It will fail hard without credentials.",
+                    "{{provider}} requires an API key. It will fail hard without credentials.",
+                    { provider: providerOption?.label ?? providerValue },
                   )
                 : t("Supported provider.")
               : isDeprecatedSearchProvider
-                ? t(
-                    "Deprecated provider. Switch to brave/tavily/jina/searxng/duckduckgo/perplexity.",
-                  )
-                : t(
-                    "Unsupported provider. Use brave/tavily/jina/searxng/duckduckgo/perplexity.",
-                  )}
+                ? t("Deprecated provider. Switch to one of: {{providers}}.", {
+                    providers: supportedSearchProviderNames,
+                  })
+                : t("Unsupported provider. Use one of: {{providers}}.", {
+                    providers: supportedSearchProviderNames,
+                  })}
           </p>
         )}
       </div>
@@ -1335,7 +1353,7 @@ function ProfileFields({
               )}
             </p>
           )}
-          {searxngMissingBaseUrl && (
+          {missingRequiredBaseUrl && (
             <p className="mt-1.5 text-[11px] text-amber-600 dark:text-amber-400">
               {t("Required — without it, search falls back to DuckDuckGo.")}
             </p>

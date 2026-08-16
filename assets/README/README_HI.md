@@ -17,6 +17,7 @@
 <p align="center">
   <a href="../../README.md"><img alt="English" height="40" src="https://img.shields.io/badge/English-CDCFD4"></a>&nbsp;
   <a href="README_CN.md"><img alt="简体中文" height="40" src="https://img.shields.io/badge/简体中文-CDCFD4"></a>&nbsp;
+  <a href="README_TW.md"><img alt="繁體中文" height="40" src="https://img.shields.io/badge/繁體中文-CDCFD4"></a>&nbsp;
   <a href="README_JA.md"><img alt="日本語" height="40" src="https://img.shields.io/badge/日本語-CDCFD4"></a>&nbsp;
   <a href="README_ES.md"><img alt="Español" height="40" src="https://img.shields.io/badge/Español-CDCFD4"></a>&nbsp;
   <a href="README_FR.md"><img alt="Français" height="40" src="https://img.shields.io/badge/Français-CDCFD4"></a>&nbsp;
@@ -425,7 +426,7 @@ Knowledge bases RAG के पीछे document collections हैं — व�
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="एक knowledge base बनाएं" width="900">
 </div>
 
-KB बनाते समय, आप either **नया create** करते हैं (documents upload करें और fresh index build करें) या **existing link** करते हैं (कहीं और बना index reuse करें, re-index के बिना in-place पढ़ें)। Re-indexing एक नई flat `version-N` directory लिखता है और prior ones रखता है, इसलिए एक working index rebuild के दौरान कभी destroy नहीं होता। एक single document को **error**-state base से भी remove किया जा सकता है — पूरी delete-and-rebuild के बिना parse होने में failed हुई file को drop करना। Document parsing — Text-only, MinerU, Docling, markitdown, या PyMuPDF4LLM — **Settings → Knowledge Base** में choose किया जाता है, local model downloads default रूप से off हैं। CLI lifecycle को `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default`, और `delete` से mirror करता है।
+KB बनाते समय, आप either **नया create** करते हैं (documents upload करें और fresh index build करें) या **existing link** करते हैं (कहीं और बना index reuse करें, re-index के बिना in-place पढ़ें)। Re-indexing एक नई flat `version-N` directory लिखता है और prior ones रखता है, इसलिए एक working index rebuild के दौरान कभी destroy नहीं होता। एक single document को **error**-state base से भी remove किया जा सकता है — पूरी delete-and-rebuild के बिना parse होने में failed हुई file को drop करना। Document parsing — Text-only, MinerU, Docling, markitdown, PyMuPDF4LLM, या LiteParse — **Settings → Knowledge Base** में choose किया जाता है, local model downloads default रूप से off हैं। CLI lifecycle को `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default`, और `delete` से mirror करता है।
 
 </details>
 
@@ -584,7 +585,7 @@ Repo एक root [`SKILL.md`](../../SKILL.md) ship करता है — ए�
 | `deeptutor book list/health/refresh-fingerprints` | Books inspect करें और source fingerprints refresh करें |
 | `deeptutor plugin list/info` | Registered tools और capabilities inspect करें |
 | `deeptutor config show` | Configuration summary print करें |
-| `deeptutor provider login <provider>` | Provider auth (`openai-codex` OAuth login; `github-copilot` existing Copilot auth session validate करता है) |
+| `deeptutor provider login <provider>` | Provider auth (`openai-codex` OAuth login; `github-copilot` existing Copilot auth session validate करता है; `codebuddy` CodeBuddy SDK auth validate करता है और ज़रूरत पड़ने पर login शुरू करता है) |
 
 </details>
 
@@ -658,6 +659,22 @@ deeptutor skill install clawhub:git-release-notes@1.0.1
 `settings/skill_hubs.json` में और registries add करें: एक `type: "clawhub"` entry किसी भी compatible HTTP API पर point करती है (EduHub और ClawHub दोनों इसे बोलते हैं), `type: "command"` जो fetch CLI एक registry ship करती है उसे wrap करता है, और `"default"` bare slugs के लिए उपयोग होने वाला hub choose करता है। सभी same import gate feed करते हैं।
 
 </details>
+
+## 🤝 ओपन सोर्स पार्टनर्स
+
+<p align="center">
+  <a href="https://github.com/VectifyAI/PageIndex" target="_blank">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="../../assets/figs/partners/pageindex-mark-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="../../assets/figs/partners/pageindex-mark.svg">
+      <img src="../../assets/figs/partners/pageindex-mark.svg" alt="PageIndex" height="38">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
+  कोड का उपयोग करें: <b><code>DEEPTUTOR20</code></b> — अपनी पहली <a href="https://developer.pageindex.ai/">PageIndex subscription</a> पर $20 की छूट पाएं!
+</p>
 
 ## 🌐 समुदाय
 

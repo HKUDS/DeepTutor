@@ -171,6 +171,13 @@ export type ProviderOption = {
   default_model?: string;
   default_voice?: string;
   auth_mode?: "api_key" | "oauth";
+  // Search providers only, from the backend SEARCH_PROVIDERS spec table:
+  // which connection fields the provider consumes, whether missing ones fall
+  // back to a free provider or fail hard, and whether it is still offered.
+  requires_api_key?: boolean;
+  requires_base_url?: boolean;
+  soft_fallback?: boolean;
+  status?: "supported" | "deprecated";
 };
 
 export type SystemStatus = {

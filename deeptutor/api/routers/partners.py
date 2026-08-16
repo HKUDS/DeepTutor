@@ -436,9 +436,13 @@ async def tool_options():
     mandatory ``partner_read`` / ``partner_memorize`` / ``partner_search`` tools
     instead, which are always on and not owner-configurable.
     """
+    from deeptutor.agents._shared.tool_composition import admin_enabled_optional_tools
     from deeptutor.api.utils.tool_options import build_tool_options
 
-    return await build_tool_options(exclude_builtin={"read_memory", "write_memory"})
+    return await build_tool_options(
+        exclude_builtin={"read_memory", "write_memory"},
+        optional_tools=admin_enabled_optional_tools(),
+    )
 
 
 # ── Create / read / update / lifecycle ─────────────────────────

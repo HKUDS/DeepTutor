@@ -17,6 +17,7 @@
 <p align="center">
   <a href="../../README.md"><img alt="English" height="40" src="https://img.shields.io/badge/English-CDCFD4"></a>&nbsp;
   <a href="README_CN.md"><img alt="简体中文" height="40" src="https://img.shields.io/badge/简体中文-CDCFD4"></a>&nbsp;
+  <a href="README_TW.md"><img alt="繁體中文" height="40" src="https://img.shields.io/badge/繁體中文-CDCFD4"></a>&nbsp;
   <a href="README_JA.md"><img alt="日本語" height="40" src="https://img.shields.io/badge/日本語-CDCFD4"></a>&nbsp;
   <a href="README_ES.md"><img alt="Español" height="40" src="https://img.shields.io/badge/Español-CDCFD4"></a>&nbsp;
   <a href="README_FR.md"><img alt="Français" height="40" src="https://img.shields.io/badge/Français-CDCFD4"></a>&nbsp;
@@ -425,7 +426,7 @@ Bazy wiedzy to kolekcje dokumentów za RAG — ugruntowują tury Chat, edycje Co
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="Tworzenie bazy wiedzy" width="900">
 </div>
 
-Tworząc KB, albo **tworzysz nową** (przesyłasz dokumenty i budujesz świeży indeks) albo **łączysz istniejącą** (ponownie używasz indeksu zbudowanego gdzie indziej, czytasz w miejscu bez ponownego indeksowania). Ponowne indeksowanie zapisuje nowy płaski katalog `version-N` i zachowuje poprzednie, więc działający indeks nigdy nie jest niszczony w trakcie przebudowy. Pojedynczy dokument można usunąć nawet z bazy w stanie **błędu** — usuwając plik, który nie sparsował się poprawnie, bez pełnego usuwania i przebudowy. Parsowanie dokumentów — Tylko tekst, MinerU, Docling, markitdown lub PyMuPDF4LLM — jest wybierane w **Settings → Knowledge Base**, z domyślnie wyłączonymi pobieraniami lokalnego modelu. CLI odzwierciedla cykl życia za pomocą `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` i `delete`.
+Tworząc KB, albo **tworzysz nową** (przesyłasz dokumenty i budujesz świeży indeks) albo **łączysz istniejącą** (ponownie używasz indeksu zbudowanego gdzie indziej, czytasz w miejscu bez ponownego indeksowania). Ponowne indeksowanie zapisuje nowy płaski katalog `version-N` i zachowuje poprzednie, więc działający indeks nigdy nie jest niszczony w trakcie przebudowy. Pojedynczy dokument można usunąć nawet z bazy w stanie **błędu** — usuwając plik, który nie sparsował się poprawnie, bez pełnego usuwania i przebudowy. Parsowanie dokumentów — Tylko tekst, MinerU, Docling, markitdown, PyMuPDF4LLM lub LiteParse — jest wybierane w **Settings → Knowledge Base**, z domyślnie wyłączonymi pobieraniami lokalnego modelu. CLI odzwierciedla cykl życia za pomocą `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` i `delete`.
 
 </details>
 
@@ -584,7 +585,7 @@ Repozytorium zawiera główny [`SKILL.md`](../../SKILL.md) — około 150-liniow
 | `deeptutor book list/health/refresh-fingerprints` | Inspekcjonuj książki i odświeżaj odciski źródeł |
 | `deeptutor plugin list/info` | Inspekcjonuj zarejestrowane narzędzia i możliwości |
 | `deeptutor config show` | Wydrukuj podsumowanie konfiguracji |
-| `deeptutor provider login <provider>` | Uwierzytelnianie dostawcy (`openai-codex` logowanie OAuth; `github-copilot` weryfikuje istniejącą sesję auth Copilot) |
+| `deeptutor provider login <provider>` | Uwierzytelnianie dostawcy (`openai-codex` logowanie OAuth; `github-copilot` weryfikuje istniejącą sesję auth Copilot; `codebuddy` weryfikuje uwierzytelnianie SDK CodeBuddy i rozpoczyna logowanie w razie potrzeby) |
 
 </details>
 
@@ -658,6 +659,22 @@ deeptutor skill install clawhub:git-release-notes@1.0.1
 Dodaj więcej rejestrów w `settings/skill_hubs.json`: wpis `type: "clawhub"` wskazuje na dowolne kompatybilne HTTP API (EduHub i ClawHub oba je mówią), `type: "command"` opakowuje dowolny CLI pobierania który rejestr dostarcza i `"default"` wybiera hub używany dla gołych slugów. Wszystkie zasilają tę samą bramę importu.
 
 </details>
+
+## 🤝 Partnerzy Open Source
+
+<p align="center">
+  <a href="https://github.com/VectifyAI/PageIndex" target="_blank">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="../../assets/figs/partners/pageindex-mark-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="../../assets/figs/partners/pageindex-mark.svg">
+      <img src="../../assets/figs/partners/pageindex-mark.svg" alt="PageIndex" height="38">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
+  Użyj kodu: <b><code>DEEPTUTOR20</code></b> — zdobądź $20 zniżki na pierwszą <a href="https://developer.pageindex.ai/">subskrypcję PageIndex</a>!
+</p>
 
 ## 🌐 Społeczność
 

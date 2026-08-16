@@ -224,7 +224,10 @@ export function codexErrorMessageKey(code: string | null): string {
   if (code === "reasoning_effort_unsupported") {
     return "codex.oauth.reasoningUnsupported";
   }
-  if (code === "codex_model_not_found" || code === "codex_catalog_unavailable") {
+  if (
+    code === "codex_model_not_found" ||
+    code === "codex_catalog_unavailable"
+  ) {
     return "codex.oauth.reasoningCatalogChanged";
   }
   if (code === "login_cancelled") return "codex.oauth.cancelled";

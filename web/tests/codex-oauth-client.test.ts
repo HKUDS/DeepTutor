@@ -277,9 +277,16 @@ test("ordinary users send a scoped Codex reasoning effort update", async () => {
 
   await setCodexReasoningEffort("gpt-5.6-sol", "high", fetchImpl);
 
-  assert.match(capturedUrl, /\/providers\/openai-codex\/models\/reasoning-effort$/);
+  assert.match(
+    capturedUrl,
+    /\/providers\/openai-codex\/models\/reasoning-effort$/,
+  );
   assert.equal(capturedInit?.method, "POST");
-  assert.equal(capturedInit?.headers && new Headers(capturedInit.headers).get("content-type"), "application/json");
+  assert.equal(
+    capturedInit?.headers &&
+      new Headers(capturedInit.headers).get("content-type"),
+    "application/json",
+  );
   assert.equal(
     capturedInit?.body,
     JSON.stringify({ model: "gpt-5.6-sol", reasoning_effort: "high" }),

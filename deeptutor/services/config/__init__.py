@@ -64,6 +64,14 @@ __all__ = [
     "NANOBOT_LLM_PROVIDERS",
     "SUPPORTED_SEARCH_PROVIDERS",
     "DEPRECATED_SEARCH_PROVIDERS",
+    "SEARCH_PROVIDERS",
+    "SEARCH_FALLBACK_PROVIDER",
+    "SearchProviderSpec",
+    "search_provider_spec",
+    "search_provider_credentials",
+    "search_missing_credential",
+    "search_fallback_candidates",
+    "supported_search_providers_hint",
     # From knowledge_base_config.py
     "KnowledgeBaseConfigService",
     "get_kb_config_service",
@@ -95,14 +103,22 @@ def __getattr__(name: str):
     if name in {
         "DEPRECATED_SEARCH_PROVIDERS",
         "NANOBOT_LLM_PROVIDERS",
+        "SEARCH_FALLBACK_PROVIDER",
+        "SEARCH_PROVIDERS",
         "SUPPORTED_SEARCH_PROVIDERS",
         "ResolvedLLMConfig",
         "ResolvedEmbeddingConfig",
         "ResolvedSearchConfig",
+        "SearchProviderSpec",
         "resolve_embedding_runtime_config",
         "resolve_llm_runtime_config",
         "resolve_search_runtime_config",
+        "search_fallback_candidates",
+        "search_missing_credential",
+        "search_provider_credentials",
+        "search_provider_spec",
         "search_provider_state",
+        "supported_search_providers_hint",
     }:
         provider_runtime = importlib.import_module(f"{__name__}.provider_runtime")
 

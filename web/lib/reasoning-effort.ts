@@ -169,7 +169,9 @@ export function reasoningEffortOptions(
 export function reasoningEffortOptionsFromSupportedLevels(
   values: readonly string[],
 ): ReasoningEffortOption[] {
-  const supported = [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+  const supported = [
+    ...new Set(values.map((value) => value.trim()).filter(Boolean)),
+  ];
   return options(supported, "");
 }
 

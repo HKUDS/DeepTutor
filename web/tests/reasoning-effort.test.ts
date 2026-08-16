@@ -115,9 +115,12 @@ test("managed profiles use only the provider-supported reasoning levels", () => 
     ["", "medium", "high"],
   );
   assert.deepEqual(
-    reasoningEffortOptionsFromSupportedLevels(["high", "", "high", "medium"]).map(
-      (option) => option.value,
-    ),
+    reasoningEffortOptionsFromSupportedLevels([
+      "high",
+      "",
+      "high",
+      "medium",
+    ]).map((option) => option.value),
     ["", "high", "medium"],
   );
 });

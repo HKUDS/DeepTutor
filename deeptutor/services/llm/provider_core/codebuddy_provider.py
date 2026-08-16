@@ -801,8 +801,11 @@ async def fetch_codebuddy_models(api_key: str | None = None) -> list[str]:
     process_kwargs: dict[str, Any] = {}
     if os.name == "nt":
         command = ["cmd.exe", "/d", "/s", "/c", subprocess.list2cmdline(cli_args)]
+        # Windows-only constants; the stubs omit them off-Windows, and mypy
+        # cannot narrow on os.name the way it narrows on sys.platform.
         process_kwargs["creationflags"] = (
-            subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+            subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+            | subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
         )
     else:
         command = cli_args

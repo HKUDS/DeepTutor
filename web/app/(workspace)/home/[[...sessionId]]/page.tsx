@@ -1014,7 +1014,13 @@ export default function ChatPage() {
           }
         });
     },
-    [loadSession, navigateToHome, showCachedSession, scrollToBottom, shouldAutoScrollRef],
+    [
+      loadSession,
+      navigateToHome,
+      showCachedSession,
+      scrollToBottom,
+      shouldAutoScrollRef,
+    ],
   );
 
   // Initial mount — load the session from the URL.

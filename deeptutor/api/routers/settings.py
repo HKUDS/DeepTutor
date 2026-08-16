@@ -395,8 +395,10 @@ def _codex_http_exception(error: CodexAuthError) -> HTTPException:
 def _provider_choices() -> dict[str, list[dict[str, Any]]]:
     """Build dropdown options for provider selection, keyed by service type."""
     from deeptutor.services.config.provider_runtime import (
+        DEPRECATED_SEARCH_PROVIDERS,
         EMBEDDING_PROVIDERS,
         IMAGEGEN_PROVIDERS,
+        SEARCH_PROVIDERS,
         STT_PROVIDERS,
         TTS_PROVIDERS,
         VIDEOGEN_PROVIDERS,
@@ -434,15 +436,36 @@ def _provider_choices() -> dict[str, list[dict[str, Any]]]:
         ],
         key=lambda p: p["label"].lower(),
     )
+    # Derived from SEARCH_PROVIDERS so the dropdown, the connection-field form
+    # and the provider warnings the web app renders all follow the backend spec
+    # table. No search provider ships a default base_url — only SearXNG takes
+    # one, and it is the user's own instance.
     search = [
-        {"value": "none", "label": "None", "base_url": ""},
-        {"value": "brave", "label": "Brave", "base_url": ""},
-        {"value": "tavily", "label": "Tavily", "base_url": ""},
-        {"value": "jina", "label": "Jina", "base_url": ""},
-        {"value": "searxng", "label": "SearXNG", "base_url": ""},
-        {"value": "duckduckgo", "label": "DuckDuckGo", "base_url": ""},
-        {"value": "perplexity", "label": "Perplexity", "base_url": ""},
-        {"value": "serper", "label": "Serper", "base_url": ""},
+        {
+            "value": name,
+            "label": spec.label,
+            "base_url": "",
+            "requires_api_key": spec.requires_api_key,
+            "requires_base_url": spec.requires_base_url,
+            "soft_fallback": spec.soft_fallback,
+            "status": "supported",
+        }
+        for name, spec in SEARCH_PROVIDERS.items()
+    ]
+    # Retired providers ride along marked rather than offered, so a stale
+    # catalog can be told apart from a typo without a second name table in the
+    # web app. The dropdown filters them out; only the warning text uses them.
+    search += [
+        {
+            "value": name,
+            "label": name,
+            "base_url": "",
+            "requires_api_key": False,
+            "requires_base_url": False,
+            "soft_fallback": True,
+            "status": "deprecated",
+        }
+        for name in sorted(DEPRECATED_SEARCH_PROVIDERS)
     ]
     tts = sorted(
         [

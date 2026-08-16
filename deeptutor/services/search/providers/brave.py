@@ -16,10 +16,7 @@ from . import register_provider
 class BraveProvider(BaseSearchProvider):
     """Brave web search provider."""
 
-    display_name = "Brave Search"
     description = "Brave web search API"
-    supports_answer = False
-    requires_api_key = True
     BASE_URL = "https://api.search.brave.com/res/v1/web/search"
     API_KEY_ENV_VARS = ("BRAVE_API_KEY", "SEARCH_API_KEY")
 
