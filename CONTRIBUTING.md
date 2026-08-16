@@ -165,6 +165,16 @@ deliberately need a local `main` commit may opt in once with
 `git config deeptutor.allowMainCommit true`, then remove the setting immediately
 afterward.
 
+The same hook path installs a pre-push guard. It blocks direct pushes of `main`
+to the upstream repository and checks every commit tree sent upstream for
+tracked generated output. For an explicit release exception, set
+`deeptutor.allowUpstreamMainPush=true`, then remove the setting immediately
+afterward. Configure personal pushes to avoid the upstream by default with:
+
+```bash
+git config remote.pushDefault myfork
+```
+
 Use a separate Git worktree for each feature (`git worktree add ../DeepTutor-<task>
 -b <branch> dev`) and keep the primary checkout clean. This lets builds, tests,
 and long-running agents operate independently without rewriting one another's
