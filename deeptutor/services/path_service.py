@@ -384,8 +384,20 @@ class PathService:
         """Root directory for imported, source-faithful reading documents."""
         return self.get_workspace_feature_dir("immersive_reading")
 
+    def get_immersive_reading_bilingual_dir(self) -> Path:
+        """Root directory for bilingual reading pairings."""
+        return self.get_immersive_reading_dir() / "bilingual"
+
     def get_immersive_reading_document_root(self, document_id: str) -> Path:
         return self.get_immersive_reading_dir() / f"document_{document_id}"
+
+    def get_immersive_reading_pairing_root(self, pairing_id: str) -> Path:
+        return self.get_immersive_reading_bilingual_dir() / f"pairing_{pairing_id}"
+
+    def ensure_immersive_reading_pairing_root(self, pairing_id: str) -> Path:
+        root = self.get_immersive_reading_pairing_root(pairing_id)
+        (root / "sections").mkdir(parents=True, exist_ok=True)
+        return root
 
     def ensure_immersive_reading_document_root(self, document_id: str) -> Path:
         root = self.get_immersive_reading_document_root(document_id)

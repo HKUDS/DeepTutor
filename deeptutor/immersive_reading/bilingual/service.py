@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 import shutil
 import time
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import unquote
 import uuid
 import zipfile
@@ -41,6 +41,7 @@ def _write_json(path: Path, data: Any) -> None:
 
 
 # ── Chapter map normalization ──────────────────────────────────────────
+
 
 def _chapter_entry_to_dict(entry: list | dict) -> dict[str, Any]:
     """Normalize a chapter map entry (list or dict) to dict form for the API."""
@@ -100,7 +101,9 @@ def _read_epub_chapters(epub_path: Path) -> tuple[str, list[dict[str, str]]]:
 
         # Extract book title.
         title = ""
-        title_match = re.search(r"<dc:title[^>]*>(.*?)</dc:title>", opf_text, re.DOTALL | re.IGNORECASE)
+        title_match = re.search(
+            r"<dc:title[^>]*>(.*?)</dc:title>", opf_text, re.DOTALL | re.IGNORECASE
+        )
         if title_match:
             title = _strip_tags(title_match.group(1))
 
@@ -140,7 +143,9 @@ def _read_epub_chapters(epub_path: Path) -> tuple[str, list[dict[str, str]]]:
                 continue
             # Extract first heading as chapter title.
             chap_title = ""
-            for hmatch in re.finditer(r"<h[1-4][^>]*>(.*?)</h[1-4]>", chapter_text, re.DOTALL | re.IGNORECASE):
+            for hmatch in re.finditer(
+                r"<h[1-4][^>]*>(.*?)</h[1-4]>", chapter_text, re.DOTALL | re.IGNORECASE
+            ):
                 chap_title = _strip_tags(hmatch.group(1))
                 if chap_title:
                     break
@@ -155,14 +160,16 @@ def _read_epub_chapters(epub_path: Path) -> tuple[str, list[dict[str, str]]]:
             p_count = len(re.findall(r"<p\b", chapter_text, re.IGNORECASE))
             text_len = len(_strip_tags(chapter_text))
             is_content = p_count >= 1 or text_len >= 200
-            chapters.append({
-                "title": chap_title,
-                "href": full_path,
-                "first_p": first_p,
-                "p_count": p_count,
-                "text_len": text_len,
-                "is_content": is_content,
-            })
+            chapters.append(
+                {
+                    "title": chap_title,
+                    "href": full_path,
+                    "first_p": first_p,
+                    "p_count": p_count,
+                    "text_len": text_len,
+                    "is_content": is_content,
+                }
+            )
 
         # Resolve content hrefs for split-chapter EPUBs where a title-only
         # page (heading but no <p> tags) is immediately followed by a separate
@@ -183,19 +190,31 @@ def _read_epub_chapters(epub_path: Path) -> tuple[str, list[dict[str, str]]]:
             for name in names:
                 if name.endswith(".ncx"):
                     ncx_text = archive.read(name).decode("utf-8", errors="replace")
-                    for nmatch in re.finditer(r"<navPoint\b.*?</navPoint>", ncx_text, re.DOTALL | re.IGNORECASE):
-                        label_match = re.search(r"<text[^>]*>(.*?)</text>", nmatch.group(0), re.DOTALL | re.IGNORECASE)
-                        content_match = re.search(r'<content\b[^>]*src\s*=\s*["\']([^"\']+)["\']', nmatch.group(0), re.IGNORECASE)
+                    for nmatch in re.finditer(
+                        r"<navPoint\b.*?</navPoint>", ncx_text, re.DOTALL | re.IGNORECASE
+                    ):
+                        label_match = re.search(
+                            r"<text[^>]*>(.*?)</text>", nmatch.group(0), re.DOTALL | re.IGNORECASE
+                        )
+                        content_match = re.search(
+                            r'<content\b[^>]*src\s*=\s*["\']([^"\']+)["\']',
+                            nmatch.group(0),
+                            re.IGNORECASE,
+                        )
                         if label_match and content_match:
-                            chapters.append({
-                                "title": _strip_tags(label_match.group(1)),
-                                "href": (opf_dir / unquote(content_match.group(1))).as_posix(),
-                                "first_p": "",
-                                "p_count": 0,
-                                "text_len": 0,
-                                "is_content": True,
-                                "content_href": (opf_dir / unquote(content_match.group(1))).as_posix(),
-                            })
+                            chapters.append(
+                                {
+                                    "title": _strip_tags(label_match.group(1)),
+                                    "href": (opf_dir / unquote(content_match.group(1))).as_posix(),
+                                    "first_p": "",
+                                    "p_count": 0,
+                                    "text_len": 0,
+                                    "is_content": True,
+                                    "content_href": (
+                                        opf_dir / unquote(content_match.group(1))
+                                    ).as_posix(),
+                                }
+                            )
 
     return title, chapters
 
@@ -203,10 +222,31 @@ def _read_epub_chapters(epub_path: Path) -> tuple[str, list[dict[str, str]]]:
 # ── Chapter map building ────────────────────────────────────────────────
 
 # Chinese numeral mapping for 第N章 detection.
-_ZH_NUMS = {"〇": 0, "零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4,
-            "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
-            "１": 1, "２": 2, "３": 3, "４": 4, "５": 5, "６": 6,
-            "７": 7, "８": 8, "９": 9, "０": 0}
+_ZH_NUMS = {
+    "〇": 0,
+    "零": 0,
+    "一": 1,
+    "二": 2,
+    "两": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+    "十": 10,
+    "１": 1,
+    "２": 2,
+    "３": 3,
+    "４": 4,
+    "５": 5,
+    "６": 6,
+    "７": 7,
+    "８": 8,
+    "９": 9,
+    "０": 0,
+}
 
 
 def _parse_zh_number(s: str) -> int | None:
@@ -286,11 +326,28 @@ def _extract_chapter_ordinal(chapter: dict[str, Any]) -> tuple[int | None, str]:
         return int(en_ch.group(1)), "chapter"
 
     # Check for "Chapter One" style (English word numbers).
-    _EN_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
-                 "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
-                 "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
-                 "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
-                 "nineteen": 19, "twenty": 20}
+    _EN_WORDS = {
+        "one": 1,
+        "two": 2,
+        "three": 3,
+        "four": 4,
+        "five": 5,
+        "six": 6,
+        "seven": 7,
+        "eight": 8,
+        "nine": 9,
+        "ten": 10,
+        "eleven": 11,
+        "twelve": 12,
+        "thirteen": 13,
+        "fourteen": 14,
+        "fifteen": 15,
+        "sixteen": 16,
+        "seventeen": 17,
+        "eighteen": 18,
+        "nineteen": 19,
+        "twenty": 20,
+    }
     en_word = re.search(r"chapter\s+(\w+)", title, re.IGNORECASE)
     if en_word and en_word.group(1).lower() in _EN_WORDS:
         return _EN_WORDS[en_word.group(1).lower()], "chapter"
@@ -306,17 +363,38 @@ def _extract_chapter_ordinal(chapter: dict[str, Any]) -> tuple[int | None, str]:
     # Front-matter indicators.
     if any(w in combined for w in ["contents", "目錄", "目录", "index", "索引"]):
         return None, "front"
-    if any(w in combined for w in ["copyright", "版權", "版权", "praise", "讚譽", "赞誉",
-                                    "acknowledge", "誌謝", "志谢", "about the author",
-                                    "作者簡介", "作者简介", "also by", "其他著作",
-                                    "dedication", "獻", "献", "brand page"]):
+    if any(
+        w in combined
+        for w in [
+            "copyright",
+            "版權",
+            "版权",
+            "praise",
+            "讚譽",
+            "赞誉",
+            "acknowledge",
+            "誌謝",
+            "志谢",
+            "about the author",
+            "作者簡介",
+            "作者简介",
+            "also by",
+            "其他著作",
+            "dedication",
+            "獻",
+            "献",
+            "brand page",
+        ]
+    ):
         return None, "back"
 
     # No signal found.
     return None, ""
 
 
-def _auto_chapter_map(en_chapters: list[dict[str, Any]], zh_chapters: list[dict[str, Any]]) -> list[list[Any]]:
+def _auto_chapter_map(
+    en_chapters: list[dict[str, Any]], zh_chapters: list[dict[str, Any]]
+) -> list[list[Any]]:
     """Build a chapter map using content-aware matching.
 
     Strategy:
@@ -359,12 +437,16 @@ def _auto_chapter_map(en_chapters: list[dict[str, Any]], zh_chapters: list[dict[
         zh_ch = zh_chapters[zh_idx]
         chapter_id = f"ch{len(pairs) + 1:03d}"
         confidence = 1.0 if ordinal != 0 and ordinal != -1 else 0.8
-        pairs.append([
-            chapter_id,
-            en_ch.get("content_href") or en_ch["href"],
-            zh_ch.get("content_href") or zh_ch["href"],
-            en_ch["title"], zh_ch["title"], confidence,
-        ])
+        pairs.append(
+            [
+                chapter_id,
+                en_ch.get("content_href") or en_ch["href"],
+                zh_ch.get("content_href") or zh_ch["href"],
+                en_ch["title"],
+                zh_ch["title"],
+                confidence,
+            ]
+        )
         matched_en.add(en_idx)
         matched_zh.add(zh_idx)
 
@@ -375,12 +457,16 @@ def _auto_chapter_map(en_chapters: list[dict[str, Any]], zh_chapters: list[dict[
     for (en_i, en_ch), (zh_i, zh_ch) in zip(remaining_en, remaining_zh):
         chapter_id = f"ch{len(pairs) + 1:03d}"
         confidence = round(_title_similarity(en_ch["title"], zh_ch["title"]), 2)
-        pairs.append([
-            chapter_id,
-            en_ch.get("content_href") or en_ch["href"],
-            zh_ch.get("content_href") or zh_ch["href"],
-            en_ch["title"], zh_ch["title"], confidence,
-        ])
+        pairs.append(
+            [
+                chapter_id,
+                en_ch.get("content_href") or en_ch["href"],
+                zh_ch.get("content_href") or zh_ch["href"],
+                en_ch["title"],
+                zh_ch["title"],
+                confidence,
+            ]
+        )
 
     return pairs
 
@@ -388,7 +474,11 @@ def _auto_chapter_map(en_chapters: list[dict[str, Any]], zh_chapters: list[dict[
 def _normalize_title(title: str) -> str:
     """Strip common prefixes/suffixes for fuzzy title comparison."""
     t = _strip_tags(title).lower()
-    t = re.sub(r"^(chapter|ch|第[〇零一二三四五六七八九十百千两\d]+[章节回部卷]|book|part)\s*[\d.:：\-–—]*\s*", "", t)
+    t = re.sub(
+        r"^(chapter|ch|第[〇零一二三四五六七八九十百千两\d]+[章节回部卷]|book|part)\s*[\d.:：\-–—]*\s*",
+        "",
+        t,
+    )
     t = re.sub(r"[^\w\s]", "", t).strip()
     return t
 
@@ -465,6 +555,15 @@ class BilingualPairingService:
     def _annotations_path(self, pairing_id: str) -> Path:
         return self._pairing_root(pairing_id) / "annotations.json"
 
+    def _reading_position_path(self, pairing_id: str) -> Path:
+        return self._pairing_root(pairing_id) / "reading_position.json"
+
+    def _bookmarks_path(self, pairing_id: str) -> Path:
+        return self._pairing_root(pairing_id) / "bookmarks.json"
+
+    def _navigation_path(self, pairing_id: str) -> Path:
+        return self._pairing_root(pairing_id) / "navigation.json"
+
     def _review_export_path(self, pairing_id: str) -> Path:
         return self._pairing_root(pairing_id) / "review_export.md"
 
@@ -491,7 +590,7 @@ class BilingualPairingService:
         for child in sorted(root.iterdir()):
             if not child.is_dir() or not child.name.startswith("pairing_"):
                 continue
-            pairing_id = child.name[len("pairing_"):]
+            pairing_id = child.name[len("pairing_") :]
             data = _read_json(self._pairing_path(pairing_id))
             if data:
                 result.append(self._summary(pairing_id, data))
@@ -504,6 +603,7 @@ class BilingualPairingService:
         if chapter_count is None:
             chapter_map = _read_json(self._chapter_map_path(pairing_id), [])
             chapter_count = len(chapter_map)
+        reading_position = _read_json(self._reading_position_path(pairing_id))
         return {
             "pairing_id": pairing_id,
             "en_document_id": data["en_document_id"],
@@ -517,6 +617,7 @@ class BilingualPairingService:
             "review_count": review_count,
             "created_at": data.get("created_at", 0),
             "updated_at": data.get("updated_at", 0),
+            "last_read_at": (reading_position or {}).get("updated_at", 0),
         }
 
     def get_pairing(self, pairing_id: str) -> dict[str, Any]:
@@ -527,14 +628,20 @@ class BilingualPairingService:
         return summary
 
     def pair_documents(
-        self, en_document_id: str, zh_document_id: str, target_lang: str | None = None, translator: str = ""
+        self,
+        en_document_id: str,
+        zh_document_id: str,
+        target_lang: str | None = None,
+        translator: str = "",
     ) -> dict[str, Any]:
         """Create a bilingual pairing from two imported reading documents."""
         # Deduplicate: reuse an existing pairing for the same document pair
         # instead of creating a second (or third, …) copy.
         for existing in self.list_pairings():
-            if (existing["en_document_id"] == en_document_id
-                    and existing["zh_document_id"] == zh_document_id):
+            if (
+                existing["en_document_id"] == en_document_id
+                and existing["zh_document_id"] == zh_document_id
+            ):
                 return self.get_pairing(existing["pairing_id"])
 
         en_epub = self._original_epub_path(en_document_id)
@@ -617,14 +724,23 @@ class BilingualPairingService:
                 except KeyError:
                     continue
                 chapter_overrides = overrides.get(chapter_id, [])
-                result = extract_align_pairs(en_xml, zh_xml, overrides={chapter_id: chapter_overrides} if chapter_overrides else {}, chapter=chapter_id)
+                result = extract_align_pairs(
+                    en_xml,
+                    zh_xml,
+                    overrides={chapter_id: chapter_overrides} if chapter_overrides else {},
+                    chapter=chapter_id,
+                )
                 _write_json(self._section_path(pairing_id, chapter_id), result)
                 review = result.get("review", [])
                 total_review += len(review)
                 if review:
-                    report_lines.append(f"## {chapter_id}: pairs={result['pairs']}, review={len(review)}")
+                    report_lines.append(
+                        f"## {chapter_id}: pairs={result['pairs']}, review={len(review)}"
+                    )
                     for item in review:
-                        report_lines.append(f"- {item['shape']} cost={item['cost']} | EN: {item.get('en_preview', '')[:80]}")
+                        report_lines.append(
+                            f"- {item['shape']} cost={item['cost']} | EN: {item.get('en_preview', '')[:80]}"
+                        )
                     report_lines.append("")
 
         self._report_path(pairing_id).write_text("\n".join(report_lines), encoding="utf-8")
@@ -642,6 +758,175 @@ class BilingualPairingService:
         if not section:
             raise ValueError(f"Section {chapter_id} not found")
         return section
+
+    # ── Reading position, bookmarks, and navigation history ──────────
+
+    def _normalize_chapter_index(self, pairing_id: str, chapter_index: int) -> tuple[int, str]:
+        chapter_map = _read_json(self._chapter_map_path(pairing_id), [])
+        if not chapter_map:
+            raise ValueError("Bilingual pairing has no chapter map")
+        index = max(0, min(int(chapter_index), len(chapter_map) - 1))
+        return index, str(chapter_map[index][0])
+
+    def _validate_position(
+        self, pairing_id: str, position: dict[str, Any], *, validate_group: bool = True
+    ) -> dict[str, Any]:
+        self._load_pairing(pairing_id)
+        chapter_index, chapter_id = self._normalize_chapter_index(
+            pairing_id, position.get("chapter_index", 0)
+        )
+        group_index = max(0, int(position.get("group_index", 0)))
+        if validate_group:
+            section = _read_json(self._section_path(pairing_id, chapter_id), {})
+            groups = section.get("groups", [])
+            if groups:
+                group_index = min(group_index, len(groups) - 1)
+        return {
+            "pairing_id": pairing_id,
+            "chapter_id": chapter_id,
+            "chapter_index": chapter_index,
+            "group_index": group_index,
+            "epub_cfi": str(position.get("epub_cfi", ""))[:2000],
+            "section_href": str(position.get("section_href", ""))[:500],
+            "scroll_percent": max(0.0, min(100.0, float(position.get("scroll_percent", 0.0)))),
+            "text_fingerprint": str(position.get("text_fingerprint", ""))[:500],
+            "updated_at": time.time(),
+        }
+
+    def load_reading_position(self, pairing_id: str) -> dict[str, Any] | None:
+        self._load_pairing(pairing_id)
+        return _read_json(self._reading_position_path(pairing_id))
+
+    def update_reading_position(self, pairing_id: str, position: dict[str, Any]) -> dict[str, Any]:
+        normalized = self._validate_position(pairing_id, position)
+        _write_json(self._reading_position_path(pairing_id), normalized)
+        return normalized
+
+    def list_bookmarks(self, pairing_id: str) -> list[dict[str, Any]]:
+        self._load_pairing(pairing_id)
+        bookmarks = _read_json(self._bookmarks_path(pairing_id), [])
+        return sorted(bookmarks, key=lambda item: item.get("created_at", 0), reverse=True)
+
+    def add_bookmark(
+        self,
+        pairing_id: str,
+        position: dict[str, Any],
+        *,
+        title: str = "",
+        preview: str = "",
+    ) -> dict[str, Any]:
+        normalized = self._validate_position(pairing_id, position)
+        section = _read_json(self._section_path(pairing_id, normalized["chapter_id"]), {})
+        groups = section.get("groups", [])
+        group = groups[normalized["group_index"]] if normalized["group_index"] < len(groups) else {}
+        bookmark = {
+            "id": uuid.uuid4().hex[:12],
+            **normalized,
+            "title": title.strip()[:200]
+            or f"{section.get('en_title') or normalized['chapter_id']} #{normalized['group_index'] + 1}",
+            "chapter_title": str(section.get("en_title", normalized["chapter_id"])),
+            "preview": preview.strip()[:300] or " ".join(group.get("en", []))[:300],
+            "created_at": time.time(),
+        }
+        bookmarks = _read_json(self._bookmarks_path(pairing_id), [])
+        bookmarks.append(bookmark)
+        _write_json(self._bookmarks_path(pairing_id), bookmarks)
+        return bookmark
+
+    def rename_bookmark(self, pairing_id: str, bookmark_id: str, title: str) -> dict[str, Any]:
+        self._load_pairing(pairing_id)
+        bookmarks = _read_json(self._bookmarks_path(pairing_id), [])
+        for bookmark in bookmarks:
+            if bookmark.get("id") == bookmark_id:
+                clean_title = title.strip()[:200]
+                if not clean_title:
+                    raise ValueError("Bookmark title cannot be empty")
+                bookmark["title"] = clean_title
+                bookmark["updated_at"] = time.time()
+                _write_json(self._bookmarks_path(pairing_id), bookmarks)
+                return bookmark
+        raise ValueError("Bookmark not found")
+
+    def delete_bookmark(self, pairing_id: str, bookmark_id: str) -> None:
+        self._load_pairing(pairing_id)
+        bookmarks = _read_json(self._bookmarks_path(pairing_id), [])
+        remaining = [bookmark for bookmark in bookmarks if bookmark.get("id") != bookmark_id]
+        if len(remaining) == len(bookmarks):
+            raise ValueError("Bookmark not found")
+        _write_json(self._bookmarks_path(pairing_id), remaining)
+
+    def _load_navigation(self, pairing_id: str) -> dict[str, Any]:
+        state = _read_json(
+            self._navigation_path(pairing_id),
+            {"current": None, "back_stack": [], "forward_stack": []},
+        )
+        state.setdefault("current", None)
+        state.setdefault("back_stack", [])
+        state.setdefault("forward_stack", [])
+        return state
+
+    @staticmethod
+    def _position_identity(position: dict[str, Any] | None) -> tuple | None:
+        if not position:
+            return None
+        return (
+            position.get("chapter_id"),
+            position.get("group_index"),
+            round(float(position.get("scroll_percent", 0.0)), 1),
+        )
+
+    def get_navigation(self, pairing_id: str) -> dict[str, Any]:
+        self._load_pairing(pairing_id)
+        state = self._load_navigation(pairing_id)
+        return {
+            **state,
+            "can_back": bool(state["back_stack"]),
+            "can_forward": bool(state["forward_stack"]),
+        }
+
+    def record_navigation(self, pairing_id: str, destination: dict[str, Any]) -> dict[str, Any]:
+        normalized = self._validate_position(pairing_id, destination)
+        state = self._load_navigation(pairing_id)
+        current = state.get("current")
+        if self._position_identity(current) != self._position_identity(normalized):
+            if current:
+                state["back_stack"].append(current)
+                state["back_stack"] = state["back_stack"][-100:]
+            state["forward_stack"] = []
+            state["current"] = normalized
+            _write_json(self._navigation_path(pairing_id), state)
+        return {
+            **state,
+            "can_back": bool(state["back_stack"]),
+            "can_forward": bool(state["forward_stack"]),
+        }
+
+    def _pop_navigation(
+        self, pairing_id: str, direction: Literal["back", "forward"]
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        self._load_pairing(pairing_id)
+        state = self._load_navigation(pairing_id)
+        source = state["back_stack"] if direction == "back" else state["forward_stack"]
+        if not source:
+            raise ValueError(f"No {direction} navigation destination")
+        destination = source.pop()
+        current = state.get("current")
+        if current:
+            target = state["forward_stack"] if direction == "back" else state["back_stack"]
+            target.append(current)
+        state["current"] = destination
+        _write_json(self._navigation_path(pairing_id), state)
+        return destination, {
+            **state,
+            "can_back": bool(state["back_stack"]),
+            "can_forward": bool(state["forward_stack"]),
+        }
+
+    def navigate_back(self, pairing_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        return self._pop_navigation(pairing_id, "back")
+
+    def navigate_forward(self, pairing_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        return self._pop_navigation(pairing_id, "forward")
 
     def get_report(self, pairing_id: str) -> str:
         """Return the alignment review report as markdown text."""
@@ -661,10 +946,21 @@ class BilingualPairingService:
         zh_epub = self._original_epub_path(data["zh_document_id"])
 
         # Determine a label based on target language.
-        summary_label = "\u5c55\u5f00\u4e2d\u6587" if data["target_lang"] == "zh-Hans" else "\u5c55\u958b\u4e2d\u6587"
-        title_suffix = " (\u53cc\u8bed\u53ef\u5c55\u5f00)" if data["target_lang"] == "zh-Hans" else " (\u96d9\u8a9e\u53ef\u5c55\u958b)"
+        summary_label = (
+            "\u5c55\u5f00\u4e2d\u6587"
+            if data["target_lang"] == "zh-Hans"
+            else "\u5c55\u958b\u4e2d\u6587"
+        )
+        title_suffix = (
+            " (\u53cc\u8bed\u53ef\u5c55\u5f00)"
+            if data["target_lang"] == "zh-Hans"
+            else " (\u96d9\u8a9e\u53ef\u5c55\u958b)"
+        )
 
-        output = self._pairing_root(pairing_id) / f"{Path(data.get('en_title', 'book')).stem}_bilingual.epub"
+        output = (
+            self._pairing_root(pairing_id)
+            / f"{Path(data.get('en_title', 'book')).stem}_bilingual.epub"
+        )
         build_bilingual_epub(
             english_epub=en_epub,
             translation_epub=zh_epub,
@@ -728,7 +1024,9 @@ class BilingualPairingService:
             annotations = [a for a in annotations if a.get("status") == status]
         return annotations
 
-    def resolve_annotation(self, pairing_id: str, annotation_id: str, resolved: bool = True) -> dict[str, Any]:
+    def resolve_annotation(
+        self, pairing_id: str, annotation_id: str, resolved: bool = True
+    ) -> dict[str, Any]:
         annotations = _read_json(self._annotations_path(pairing_id), [])
         for ann in annotations:
             if ann["id"] == annotation_id:
@@ -772,9 +1070,9 @@ class BilingualPairingService:
             "Each issue below is a paragraph-group the user flagged while reading.",
             "To fix, create alignment overrides in JSON format:",
             "",
-            '```json',
+            "```json",
             '{"overrides": [{"chapter": "<chapter_id>", "english_ids": ["<id>"], "translation_ids": ["<id>"]}]}',
-            '```',
+            "```",
             "",
             "Then call `POST /api/v1/immersive-reading/bilingual/{pairing_id}/align?force=true`",
             "with the overrides applied, or re-run with a corrected chapter map.",

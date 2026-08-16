@@ -124,7 +124,7 @@ def test_split_sentences_abbreviation():
 
 def test_fragment_inner_preserves_inline_tags():
     """Splitting should reopen inline tags in each fragment."""
-    inner = '<em>Hello</em> world. <strong>Goodbye</strong> friend.'
+    inner = "<em>Hello</em> world. <strong>Goodbye</strong> friend."
     ends = [len("Hello world")]  # boundary after first sentence chars
     parts = fragment_inner(inner, [0, ends[0], 100])
     # Each part should be valid (balanced tags)
@@ -146,12 +146,12 @@ def test_sentence_partitions_proportional():
 
 def _make_epub_with_text(path: Path, title: str, body_text: str) -> None:
     """Build a minimal EPUB with custom body text for language detection."""
-    xhtml = f'''<?xml version="1.0" encoding="UTF-8"?>
+    xhtml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head><title>{title}</title></head>
 <body>{body_text}</body>
-</html>'''
-    opf = f'''<?xml version="1.0" encoding="UTF-8"?>
+</html>"""
+    opf = f"""<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="bookid">test</dc:identifier>
@@ -162,7 +162,7 @@ def _make_epub_with_text(path: Path, title: str, body_text: str) -> None:
     <item id="ch0" href="chapter0.xhtml" media-type="application/xhtml+xml"/>
   </manifest>
   <spine><itemref idref="ch0"/></spine>
-</package>'''
+</package>"""
     with zipfile.ZipFile(path, "w") as zf:
         zf.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
         zf.writestr("META-INF/container.xml", _container_xml())
@@ -202,7 +202,7 @@ def test_detect_target_lang_no_discriminative_chars(tmp_path: Path):
 def test_read_epub_chapters_paired_item_tags(tmp_path: Path):
     """EPUBs with <item ...></item> (not self-closing) should parse correctly."""
     path = tmp_path / "paired.epub"
-    opf = '''<?xml version="1.0" encoding="UTF-8"?>
+    opf = """<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:title>Paired Tags Book</dc:title>
@@ -216,7 +216,7 @@ def test_read_epub_chapters_paired_item_tags(tmp_path: Path):
     <itemref idref="ch0"/>
     <itemref idref="ch1"/>
   </spine>
-</package>'''
+</package>"""
     with zipfile.ZipFile(path, "w") as zf:
         zf.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
         zf.writestr("META-INF/container.xml", _container_xml())
@@ -254,10 +254,26 @@ def test_auto_chapter_map_includes_confidence():
 
 def test_auto_chapter_map_matches_by_ordinal_across_scripts():
     """EN 'Chapter 1' and ZH '第一章' should match by chapter ordinal."""
-    en_chapters = [{"title": "Chapter 1: The Beginning", "href": "ch0.xhtml",
-                    "first_p": "", "p_count": 5, "text_len": 2000, "is_content": True}]
-    zh_chapters = [{"title": "第一章：開始", "href": "ch0.xhtml",
-                    "first_p": "", "p_count": 5, "text_len": 2000, "is_content": True}]
+    en_chapters = [
+        {
+            "title": "Chapter 1: The Beginning",
+            "href": "ch0.xhtml",
+            "first_p": "",
+            "p_count": 5,
+            "text_len": 2000,
+            "is_content": True,
+        }
+    ]
+    zh_chapters = [
+        {
+            "title": "第一章：開始",
+            "href": "ch0.xhtml",
+            "first_p": "",
+            "p_count": 5,
+            "text_len": 2000,
+            "is_content": True,
+        }
+    ]
     result = _auto_chapter_map(en_chapters, zh_chapters)
     assert len(result) == 1
     assert len(result[0]) == 6
@@ -269,12 +285,40 @@ def test_auto_chapter_map_matches_by_ordinal_across_scripts():
 def test_auto_chapter_map_front_matter_skipped():
     """Front-matter files (TOC, copyright) should be excluded from matching."""
     en_chapters = [
-        {"title": "Contents", "href": "toc.xhtml", "first_p": "", "p_count": 0, "text_len": 200, "is_content": False},
-        {"title": "1", "href": "ch1.xhtml", "first_p": "1", "p_count": 10, "text_len": 5000, "is_content": True},
+        {
+            "title": "Contents",
+            "href": "toc.xhtml",
+            "first_p": "",
+            "p_count": 0,
+            "text_len": 200,
+            "is_content": False,
+        },
+        {
+            "title": "1",
+            "href": "ch1.xhtml",
+            "first_p": "1",
+            "p_count": 10,
+            "text_len": 5000,
+            "is_content": True,
+        },
     ]
     zh_chapters = [
-        {"title": "目錄", "href": "toc.xhtml", "first_p": "", "p_count": 0, "text_len": 100, "is_content": False},
-        {"title": "第一章", "href": "zh1.xhtml", "first_p": "", "p_count": 8, "text_len": 4000, "is_content": True},
+        {
+            "title": "目錄",
+            "href": "toc.xhtml",
+            "first_p": "",
+            "p_count": 0,
+            "text_len": 100,
+            "is_content": False,
+        },
+        {
+            "title": "第一章",
+            "href": "zh1.xhtml",
+            "first_p": "",
+            "p_count": 8,
+            "text_len": 4000,
+            "is_content": True,
+        },
     ]
     result = _auto_chapter_map(en_chapters, zh_chapters)
     # Only 1 content chapter should be matched, skipping the TOC.
@@ -398,11 +442,13 @@ def test_export_epub_uses_overrides(tmp_path: Path, monkeypatch):
     svc.export_epub(result["pairing_id"])
     assert "ch001" in captured["alignment_overrides"]
 
+
 # ── Smart chapter mapping (OPT-1 through OPT-4) ─────────────────────────
 
 
 def test_parse_zh_number_simple():
     from deeptutor.immersive_reading.bilingual.service import _parse_zh_number
+
     assert _parse_zh_number("一") == 1
     assert _parse_zh_number("九") == 9
 
@@ -410,6 +456,7 @@ def test_parse_zh_number_simple():
 def test_parse_zh_number_compound():
     """Compound numerals like 二十(20), 十九(19), 二十四(24)."""
     from deeptutor.immersive_reading.bilingual.service import _parse_zh_number
+
     assert _parse_zh_number("十") == 10
     assert _parse_zh_number("十一") == 11
     assert _parse_zh_number("十九") == 19
@@ -420,6 +467,7 @@ def test_parse_zh_number_compound():
 
 def test_parse_zh_number_fullwidth():
     from deeptutor.immersive_reading.bilingual.service import _parse_zh_number
+
     assert _parse_zh_number("１") == 1
     assert _parse_zh_number("５") == 5
     assert _parse_zh_number("10") == 10
@@ -427,6 +475,7 @@ def test_parse_zh_number_fullwidth():
 
 def test_extract_chapter_ordinal_en_number():
     from deeptutor.immersive_reading.bilingual.service import _extract_chapter_ordinal
+
     ch = {"title": "index_split_004", "first_p": "1", "is_content": True}
     ordinal, label = _extract_chapter_ordinal(ch)
     assert ordinal == 1
@@ -435,6 +484,7 @@ def test_extract_chapter_ordinal_en_number():
 
 def test_extract_chapter_ordinal_en_chapter_word():
     from deeptutor.immersive_reading.bilingual.service import _extract_chapter_ordinal
+
     ch = {"title": "Chapter 5", "first_p": "", "is_content": True}
     ordinal, label = _extract_chapter_ordinal(ch)
     assert ordinal == 5
@@ -443,6 +493,7 @@ def test_extract_chapter_ordinal_en_chapter_word():
 
 def test_extract_chapter_ordinal_zh():
     from deeptutor.immersive_reading.bilingual.service import _extract_chapter_ordinal
+
     ch = {"title": "第二十四章", "first_p": "", "is_content": True}
     ordinal, label = _extract_chapter_ordinal(ch)
     assert ordinal == 24
@@ -452,6 +503,7 @@ def test_extract_chapter_ordinal_zh():
 def test_extract_chapter_ordinal_zh_no_suffix():
     """第十九 without 章 suffix should still be detected."""
     from deeptutor.immersive_reading.bilingual.service import _extract_chapter_ordinal
+
     ch = {"title": "第十九", "first_p": "", "is_content": True}
     ordinal, label = _extract_chapter_ordinal(ch)
     assert ordinal == 19
@@ -460,6 +512,7 @@ def test_extract_chapter_ordinal_zh_no_suffix():
 
 def test_extract_chapter_ordinal_prologue():
     from deeptutor.immersive_reading.bilingual.service import _extract_chapter_ordinal
+
     ch = {"title": "開場白", "first_p": "", "is_content": True}
     ordinal, label = _extract_chapter_ordinal(ch)
     assert label == "prologue"
@@ -467,6 +520,7 @@ def test_extract_chapter_ordinal_prologue():
 
 def test_extract_chapter_ordinal_front_matter():
     from deeptutor.immersive_reading.bilingual.service import _extract_chapter_ordinal
+
     ch = {"title": "Contents", "first_p": "", "is_content": True}
     ordinal, label = _extract_chapter_ordinal(ch)
     assert label == "front"
@@ -476,22 +530,79 @@ def test_smart_chapter_map_matches_by_ordinal():
     """EN files with chapter numbers should match ZH files with 第N章,
     skipping front-matter on both sides."""
     from deeptutor.immersive_reading.bilingual.service import _auto_chapter_map
+
     en = [
-        {"title": "Praise", "href": "praise.html", "first_p": "", "p_count": 5, "text_len": 2000, "is_content": True},
-        {"title": "Contents", "href": "toc.html", "first_p": "", "p_count": 0, "text_len": 200, "is_content": False},
-        {"title": "split_004", "href": "ch1.html", "first_p": "1", "p_count": 30, "text_len": 26000, "is_content": True},
-        {"title": "split_005", "href": "ch2.html", "first_p": "2", "p_count": 32, "text_len": 30000, "is_content": True},
-        {"title": "Copyright", "href": "cr.html", "first_p": "", "p_count": 2, "text_len": 500, "is_content": True},
+        {
+            "title": "Praise",
+            "href": "praise.html",
+            "first_p": "",
+            "p_count": 5,
+            "text_len": 2000,
+            "is_content": True,
+        },
+        {
+            "title": "Contents",
+            "href": "toc.html",
+            "first_p": "",
+            "p_count": 0,
+            "text_len": 200,
+            "is_content": False,
+        },
+        {
+            "title": "split_004",
+            "href": "ch1.html",
+            "first_p": "1",
+            "p_count": 30,
+            "text_len": 26000,
+            "is_content": True,
+        },
+        {
+            "title": "split_005",
+            "href": "ch2.html",
+            "first_p": "2",
+            "p_count": 32,
+            "text_len": 30000,
+            "is_content": True,
+        },
+        {
+            "title": "Copyright",
+            "href": "cr.html",
+            "first_p": "",
+            "p_count": 2,
+            "text_len": 500,
+            "is_content": True,
+        },
     ]
     zh = [
-        {"title": "title", "href": "t.html", "first_p": "", "p_count": 0, "text_len": 50, "is_content": False},
-        {"title": "第一章", "href": "z1.html", "first_p": "", "p_count": 0, "text_len": 8000, "is_content": True},
-        {"title": "第二章", "href": "z2.html", "first_p": "", "p_count": 0, "text_len": 13000, "is_content": True},
+        {
+            "title": "title",
+            "href": "t.html",
+            "first_p": "",
+            "p_count": 0,
+            "text_len": 50,
+            "is_content": False,
+        },
+        {
+            "title": "第一章",
+            "href": "z1.html",
+            "first_p": "",
+            "p_count": 0,
+            "text_len": 8000,
+            "is_content": True,
+        },
+        {
+            "title": "第二章",
+            "href": "z2.html",
+            "first_p": "",
+            "p_count": 0,
+            "text_len": 13000,
+            "is_content": True,
+        },
     ]
     result = _auto_chapter_map(en, zh)
     assert len(result) == 2  # only 2 content chapters match
     assert result[0][1] == "ch1.html"  # EN chapter 1
-    assert result[0][2] == "z1.html"   # ZH 第一章
-    assert result[0][5] == 1.0         # high confidence
+    assert result[0][2] == "z1.html"  # ZH 第一章
+    assert result[0][5] == 1.0  # high confidence
     assert result[1][1] == "ch2.html"
     assert result[1][2] == "z2.html"
