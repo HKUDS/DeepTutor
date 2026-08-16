@@ -239,6 +239,8 @@ function ImmersiveReadingContent() {
   const searchParams = useSearchParams();
   const documentId = searchParams.get("book");
   const pairingId = searchParams.get("pairing");
+  const pairingChapterId = searchParams.get("chapter");
+  const pairingGroupIndex = Number(searchParams.get("group"));
   const [documents, setDocuments] = useState<ReadingDocument[]>([]);
   const [capabilities, setCapabilities] = useState<ReadingCapabilities | null>(null);
  const [citations, setCitations] = useState<ReadingCitation[]>([]);
@@ -374,6 +376,11 @@ function ImmersiveReadingContent() {
       <>
         <BilingualReader
           pairingId={pairingId}
+          initialChapterId={pairingChapterId || undefined}
+          initialGroupIndex={Number.isFinite(pairingGroupIndex) ? Math.max(0, pairingGroupIndex) : 0}
+          onVocabularyAdded={() => void refreshVocabulary()}
+          onToast={setToast}
+          onErrorToast={(message) => setErrorToast({ id: Date.now(), message })}
           onBack={() => {
             router.push("/immersive-reading");
             void refreshPairings();
@@ -531,6 +538,13 @@ function ImmersiveReadingContent() {
             entries={vocabulary}
             documents={documents}
             onOpen={(entry) => {
+              if (entry.pairing_id) {
+                const params = new URLSearchParams({ pairing: entry.pairing_id });
+                if (entry.chapter_id) params.set("chapter", entry.chapter_id);
+                if (entry.group_index) params.set("group", String(entry.group_index));
+                router.push(`/immersive-reading?${params.toString()}`);
+                return;
+              }
               if (entry.document_id) {
                 router.push(`/immersive-reading?book=${encodeURIComponent(entry.document_id)}`);
               }
@@ -810,6 +824,14 @@ function VocabularyView({
                   {entry.document_title && (
                     <p className="mt-0.5 truncate text-xs text-[var(--muted-foreground)]">{entry.document_title}{entry.section_title ? ` · ${entry.section_title}` : ""}</p>
                   )}
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[var(--muted-foreground)]">
+                    {entry.pairing_id && (
+                      <span className="rounded bg-[var(--primary)]/10 px-1.5 py-0.5 text-[var(--primary)]">{t("Bilingual source")}</span>
+                    )}
+                    {(entry.occurrence_count ?? 1) > 1 && (
+                      <span>{t("Seen {{count}} times", { count: entry.occurrence_count })}</span>
+                    )}
+                  </div>
                 </div>
                 <button type="button" aria-label={t("Delete")} onClick={() => void onDelete(entry)} className="rounded-lg p-2 text-[var(--muted-foreground)] hover:bg-red-500/10 hover:text-red-500">
                   <Trash2 size={15} />

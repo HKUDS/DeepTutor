@@ -129,6 +129,8 @@ export interface DictionaryPanelProps {
   onModeChange?: (mode: DictMode) => void;
   /** Optional "Save to vocabulary" action (immersive reading page). */
   onSaveToVocabulary?: () => void;
+  /** Disables the save action while a save request is in flight. */
+  saveBusy?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -292,6 +294,7 @@ interface ContentProps {
   onClose: () => void;
   onRetry?: () => void;
   onSaveToVocabulary?: () => void;
+  saveBusy?: boolean;
 }
 
 function PanelContent({
@@ -308,6 +311,7 @@ function PanelContent({
   onClose,
   onRetry,
   onSaveToVocabulary,
+  saveBusy,
 }: ContentProps) {
   const { t } = useTranslation();
 
@@ -446,11 +450,13 @@ function PanelContent({
           )}
           {onSaveToVocabulary && (
             <button
+              type="button"
               onClick={onSaveToVocabulary}
-              className="inline-flex min-h-[32px] items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1 text-xs font-medium text-[var(--primary-foreground)] hover:opacity-90"
+              disabled={saveBusy}
+              className="inline-flex min-h-[32px] items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1 text-xs font-medium text-[var(--primary-foreground)] hover:opacity-90 disabled:opacity-60"
             >
-              <BookPlus size={13} />
-              {t("Save to vocabulary")}
+              {saveBusy ? <Loader2 className="animate-spin" size={13} /> : <BookPlus size={13} />}
+              {saveBusy ? t("Saving…") : t("Save to vocabulary")}
             </button>
           )}
         </div>
@@ -512,6 +518,7 @@ function MobileSheet(props: DictionaryPanelProps) {
           onClose={onClose}
           onRetry={() => {}}
           onSaveToVocabulary={props.onSaveToVocabulary}
+          saveBusy={props.saveBusy}
         />
       </div>
     </div>,
@@ -576,6 +583,7 @@ function DesktopPanel(props: DictionaryPanelProps) {
       onClose={onClose}
       onRetry={() => {}}
       onSaveToVocabulary={props.onSaveToVocabulary}
+      saveBusy={props.saveBusy}
     />
   );
 

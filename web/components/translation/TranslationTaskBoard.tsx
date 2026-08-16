@@ -35,19 +35,23 @@ export default function TranslationTaskBoardPanel({
     boardLoadedRef.current = onBoardLoaded;
   }, [onBoardLoaded]);
 
+  const applyBoard = useCallback((next: Board) => {
+    setBoard(next);
+    boardLoadedRef.current?.(next);
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const next = await translationTaskApi.list({ sourceType, sourceId, chapterId });
-      setBoard(next);
-      boardLoadedRef.current?.(next);
+      applyBoard(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, [chapterId, sourceId, sourceType]);
+  }, [applyBoard, chapterId, sourceId, sourceType]);
 
   useEffect(() => {
     void load();
@@ -59,13 +63,12 @@ export default function TranslationTaskBoardPanel({
       void translationTaskApi
         .list({ sourceType, sourceId, chapterId })
         .then((next) => {
-          setBoard(next);
-          boardLoadedRef.current?.(next);
+          applyBoard(next);
         })
         .catch(() => undefined);
     }, 2000);
     return () => window.clearTimeout(timer);
-  }, [board, chapterId, sourceId, sourceType]);
+  }, [applyBoard, board, chapterId, sourceId, sourceType]);
 
   const handlePlanAndRun = async () => {
     setRunning(true);
@@ -75,7 +78,7 @@ export default function TranslationTaskBoardPanel({
         await translationTaskApi.plan(sourceType, sourceId);
       }
       const result = await translationTaskApi.run({ sourceType, sourceId, chapterId, limit: compact ? 4 : 8 });
-      setBoard(result);
+      applyBoard(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -86,7 +89,7 @@ export default function TranslationTaskBoardPanel({
   const handleRetryFailed = async () => {
     setRunning(true);
     try {
-      setBoard(await translationTaskApi.retryFailed(sourceType, sourceId));
+      applyBoard(await translationTaskApi.retryFailed(sourceType, sourceId));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -188,7 +191,7 @@ export default function TranslationTaskBoardPanel({
                     <div className="flex shrink-0 items-center gap-2">
                       {statusIcon(task.status)}
                       {task.status === "failed" && (
-                        <button type="button" onClick={() => void translationTaskApi.retry(task.id).then(setBoard)} className="rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px]">
+                        <button type="button" onClick={() => void translationTaskApi.retry(task.id).then(applyBoard)} className="rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px]">
                           {t("Retry")}
                         </button>
                       )}

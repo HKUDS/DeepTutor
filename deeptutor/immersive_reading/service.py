@@ -1834,6 +1834,10 @@ class ImmersiveReadingService:
         document_id: str = "",
         document_title: str = "",
         section_title: str = "",
+        pairing_id: str = "",
+        chapter_id: str = "",
+        chapter_index: int = 0,
+        group_index: int = 0,
     ) -> VocabEntry:
         """Look up a word and save it to the global vocabulary book.
 
@@ -1852,23 +1856,53 @@ class ImmersiveReadingService:
         except Exception as exc:
             logger.warning("Dictionary lookup failed for %r: %s", word, exc)
             result = DictionaryResult(word=word)
-        entry = VocabEntry(
-            id=uuid.uuid4().hex[:12],
-            word=result.word or word,
-            phonetic=result.phonetic,
-            definitions=result.definitions,
-            chinese=result.chinese,
-            context_note=result.context_note,
-            document_id=document_id,
-            document_title=document_title,
-            section_title=section_title,
-        )
+        now = time.time()
         entries = self.list_vocabulary()
-        entries.append(entry)
+        existing = next(
+            (item for item in entries if item.word.casefold() == (result.word or word).casefold()),
+            None,
+        )
+        is_new = existing is None
+        if existing is None:
+            existing = VocabEntry(
+                id=uuid.uuid4().hex[:12],
+                word=result.word or word,
+                created_at=now,
+            )
+            entries.append(existing)
+
+        updates: dict[str, Any] = {
+            "updated_at": now,
+            "occurrence_count": 1 if is_new else existing.occurrence_count + 1,
+        }
+        if result.phonetic:
+            updates["phonetic"] = result.phonetic
+        if result.definitions:
+            updates["definitions"] = result.definitions
+        if result.chinese:
+            updates["chinese"] = result.chinese
+        if result.context_note:
+            updates["context_note"] = result.context_note
+        if document_id or pairing_id:
+            updates.update(
+                {
+                    "document_id": document_id,
+                    "document_title": document_title,
+                    "section_title": section_title,
+                    "pairing_id": pairing_id,
+                    "chapter_id": chapter_id,
+                    "chapter_index": max(0, chapter_index),
+                    "group_index": max(0, group_index),
+                }
+            )
+        entry = existing.model_copy(update=updates)
+        entries[entries.index(existing)] = entry
         _write_json(self._vocabulary_path(), [e.model_dump(mode="json") for e in entries])
         return entry
 
-    def list_vocabulary(self, document_id: str | None = None) -> list[VocabEntry]:
+    def list_vocabulary(
+        self, document_id: str | None = None, pairing_id: str | None = None
+    ) -> list[VocabEntry]:
         data = _read_json(self._vocabulary_path(), [])
         entries: list[VocabEntry] = []
         for item in data:
@@ -1878,6 +1912,8 @@ class ImmersiveReadingService:
                 continue
         if document_id:
             entries = [e for e in entries if e.document_id == document_id]
+        if pairing_id:
+            entries = [e for e in entries if e.pairing_id == pairing_id]
         entries.sort(key=lambda e: e.created_at, reverse=True)
         return entries
 

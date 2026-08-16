@@ -196,7 +196,13 @@ class VocabEntry(BaseModel):
     document_id: str = ""
     document_title: str = ""
     section_title: str = ""
+    pairing_id: str = ""
+    chapter_id: str = ""
+    chapter_index: int = Field(default=0, ge=0)
+    group_index: int = Field(default=0, ge=0)
     created_at: float = Field(default_factory=time.time)
+    updated_at: float = 0
+    occurrence_count: int = Field(default=1, ge=1)
     mn4_exported: bool = False
 
 
