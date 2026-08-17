@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+
 from deeptutor.services.mcp import pageindex_server
 from deeptutor.services.mcp.config import MCPConfig, MCPServerConfig
-from deeptutor.services.mcp.manager import wrapped_tool_name
+from deeptutor.services.mcp.manager import MCPToolAdapter, wrapped_tool_name
 from deeptutor.services.rag.pipelines.pageindex.config import (
     PageIndexConfig,
     PageIndexNotConfiguredError,
@@ -66,3 +69,28 @@ def test_disabled_tools_blocklist_beats_wildcard() -> None:
     cfg = MCPServerConfig(url="https://x/mcp", disabled_tools=["bad_tool"])
     assert not cfg.tool_allowed("bad_tool", wrapped_tool_name("x", "bad_tool"))
     assert cfg.tool_allowed("good_tool", wrapped_tool_name("x", "good_tool"))
+
+
+def test_cloud_page_read_emits_structured_sources() -> None:
+    class Manager:
+        async def call_tool(self, *_args, **_kwargs):
+            return json.dumps(
+                {
+                    "success": True,
+                    "doc_name": "report.pdf",
+                    "content": [{"page": 7, "text": "evidence"}],
+                }
+            )
+
+    tool = MCPToolAdapter(
+        manager=Manager(),
+        server_name="pageindex",
+        original_name="get_page_content",
+        description="read",
+        input_schema={},
+        tool_timeout=30,
+    )
+    result = asyncio.run(tool.execute(doc_name="report.pdf", pages="7"))
+    assert result.sources[0]["provider"] == "pageindex"
+    assert result.sources[0]["document_name"] == "report.pdf"
+    assert result.sources[0]["page"] == 7

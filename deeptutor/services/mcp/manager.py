@@ -165,9 +165,21 @@ class MCPToolAdapter(BaseTool):
             timeout=self._tool_timeout,
             on_progress=_progress_reporter(event_sink, self._server_name) if event_sink else None,
         )
+        sources = []
+        if self._server_name == "pageindex" and self._original_name == "get_page_content":
+            from deeptutor.services.rag.pipelines.pageindex.sources import (
+                pageindex_sources_from_text,
+            )
+
+            sources = pageindex_sources_from_text(text, provider="pageindex")
         return ToolResult(
             content=text,
-            metadata={"mcp_server": self._server_name, "mcp_tool": self._original_name},
+            sources=sources,
+            metadata={
+                "mcp_server": self._server_name,
+                "mcp_tool": self._original_name,
+                **({"sources": sources} if sources else {}),
+            },
         )
 
 
