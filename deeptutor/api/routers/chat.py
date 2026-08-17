@@ -11,6 +11,9 @@ import logging
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from deeptutor.agents.chat import ChatAgent, SessionManager
+from deeptutor.core.context import UnifiedContext
+from deeptutor.core.stream import StreamEventType
+from deeptutor.runtime.orchestrator import ChatOrchestrator
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
 from deeptutor.services.llm.config import get_llm_config
 from deeptutor.services.settings.interface_settings import get_response_language
@@ -20,6 +23,54 @@ log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _is_pageindex_kb(kb_name: str) -> bool:
+    try:
+        from deeptutor.multi_user.knowledge_access import resolve_kb
+        from deeptutor.services.rag.factory import PAGEINDEX_OSS_PROVIDER, PAGEINDEX_PROVIDER
+        from deeptutor.services.rag.provider_binding import resolve_bound_provider
+
+        resource = resolve_kb(kb_name, require_write=False)
+        return resolve_bound_provider(str(resource.base_dir), resource.name) in {
+            PAGEINDEX_PROVIDER,
+            PAGEINDEX_OSS_PROVIDER,
+        }
+    except Exception:
+        return False
+
+
+async def _run_pageindex_chat(
+    websocket: WebSocket,
+    *,
+    message: str,
+    history: list[dict],
+    session_id: str,
+    kb_name: str,
+    language: str,
+    enable_web_search: bool,
+) -> tuple[str, dict]:
+    full_response = ""
+    sources = {"rag": [], "web": []}
+    context = UnifiedContext(
+        session_id=session_id,
+        user_message=message,
+        conversation_history=history,
+        enabled_tools=["web_search"] if enable_web_search else [],
+        knowledge_bases=[kb_name],
+        language=language,
+    )
+    async for event in ChatOrchestrator().handle(context):
+        if event.type is StreamEventType.CONTENT and event.content:
+            full_response += event.content
+            await websocket.send_json({"type": "stream", "content": event.content})
+        elif event.type is StreamEventType.SOURCES:
+            rows = event.metadata.get("sources")
+            if isinstance(rows, list):
+                sources["rag"].extend(rows)
+        elif event.type is StreamEventType.ERROR:
+            raise RuntimeError(event.content or "PageIndex chat failed")
+    return full_response, sources
 
 
 def _get_session_manager() -> SessionManager:
@@ -140,6 +191,34 @@ async def websocket_chat(websocket: WebSocket):
                     role="user",
                     content=message,
                 )
+
+                if enable_rag and kb_name and _is_pageindex_kb(kb_name):
+                    await websocket.send_json(
+                        {
+                            "type": "status",
+                            "stage": "generating",
+                            "message": "Generating response...",
+                        }
+                    )
+                    full_response, sources = await _run_pageindex_chat(
+                        websocket,
+                        message=message,
+                        history=history,
+                        session_id=session_id,
+                        kb_name=kb_name,
+                        language=language,
+                        enable_web_search=enable_web_search,
+                    )
+                    if sources["rag"] or sources["web"]:
+                        await websocket.send_json({"type": "sources", **sources})
+                    await websocket.send_json({"type": "result", "content": full_response})
+                    sm.add_message(
+                        session_id=session_id,
+                        role="assistant",
+                        content=full_response,
+                        sources=sources if (sources["rag"] or sources["web"]) else None,
+                    )
+                    continue
 
                 try:
                     llm_config = get_llm_config()

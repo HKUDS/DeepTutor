@@ -8,9 +8,11 @@ and injects the KB's document list into the system prompt.
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 from deeptutor.core.context import UnifiedContext
+from deeptutor.core.stream_bus import StreamBus
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolResult
 
 
@@ -101,3 +103,50 @@ def test_rag_kbs_excludes_pageindex(monkeypatch) -> None:
     note = pipe._kb_system_note(ctx)
     assert "Attached knowledge bases: kb2." in note
     assert "kb1" in note  # listed in the PageIndex MCP block instead
+
+
+def test_pageindex_kb_is_never_preseeded(monkeypatch) -> None:
+    pipe = _prepare(monkeypatch, {"kb1": {"a.pdf": "pi-1"}})
+    called: list[str] = []
+
+    async def seed(kb, _query, _stream):
+        called.append(kb)
+        return "context", []
+
+    monkeypatch.setattr(pipe, "_seed_search_one_kb", seed)
+    context = UnifiedContext(user_message="question", knowledge_bases=["kb1", "kb2"])
+    asyncio.run(pipe._retrieve_kb_seed_block(context, StreamBus()))
+    assert called == ["kb2"]
+
+
+def test_oss_tools_are_turn_scoped_preloaded_and_excluded_from_rag(monkeypatch) -> None:
+    pipe = AgenticChatPipeline(language="en")
+    pipe.registry = FakeRegistry([])
+    oss_tool = FakeMCPTool("pageindex_oss", "get_page_content")
+    oss_tool._name = "pageindex_oss_get_page_content"
+    oss_tool.server_name = ""
+
+    monkeypatch.setattr("deeptutor.services.mcp.get_mcp_manager", lambda: FakeManager())
+    monkeypatch.setattr("deeptutor.services.mcp.load_loaded_tools", lambda _sid: set())
+    monkeypatch.setattr("deeptutor.multi_user.tool_access.allowed_mcp_tools", lambda: set())
+    monkeypatch.setattr(pipe, "_pageindex_doc_maps", lambda _ctx: {})
+
+    async def bundle(_ctx):
+        return "oss-kb", SimpleNamespace(
+            tools=(oss_tool,),
+            documents={"manual.pdf": "pi-local"},
+            instructions="Read structure, then pages.",
+        )
+
+    monkeypatch.setattr(pipe, "_pageindex_oss_tool_bundle", bundle)
+    ctx = UnifiedContext(knowledge_bases=["oss-kb", "vectors"])
+    asyncio.run(pipe._prepare_deferred_tools(ctx))
+
+    assert pipe.tool_lookup.get("pageindex_oss_get_page_content") is oss_tool
+    assert pipe._rag_kbs(ctx) == ["vectors"]
+    assert "pageindex_oss_get_page_content" in {
+        schema["function"]["name"] for schema in pipe._deferred_loader.initial_schemas()
+    }
+    note = pipe._pageindex_system_note()
+    assert "manual.pdf (doc_id: pi-local)" in note
+    assert "Read structure, then pages." in note
