@@ -14,6 +14,7 @@ from .chat import register as register_chat
 from .common import build_turn_request, console, maybe_run
 from .config_cmd import register as register_config
 from .init_cmd import register as register_init
+from .companion import register as register_companion
 from .kb import register as register_kb
 from .memory import register as register_memory
 from .notebook import register as register_notebook
@@ -70,6 +71,7 @@ register_notebook(notebook_app)
 register_provider(provider_app)
 register_book(book_app)
 register_init(app)
+register_companion(app)
 
 
 @app.command("run")
