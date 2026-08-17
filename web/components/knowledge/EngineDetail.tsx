@@ -74,6 +74,7 @@ interface EngineDetailProps {
 const ENGINE_ICONS: Record<string, LucideIcon> = {
   llamaindex: Boxes,
   pageindex: Cloud,
+  "pageindex-oss": Database,
   graphrag: Network,
   lightrag: Workflow,
   "lightrag-server": Server,
@@ -118,6 +119,7 @@ const MODE_DESCRIPTIONS: Record<string, string> = {
 const ENGINE_MODEL_KINDS: Record<string, ("llm" | "embedding")[]> = {
   llamaindex: ["embedding"],
   pageindex: [],
+  "pageindex-oss": ["llm"],
   graphrag: ["llm", "embedding"],
   lightrag: ["llm", "embedding"],
   "lightrag-server": [],
@@ -144,6 +146,8 @@ const ENGINE_PREREQUISITES: Record<string, string> = {
     "Local vector engine — works out of the box. Retrieval uses your active embedding model; install the optional BM25 package to enable hybrid retrieval.",
   pageindex:
     "Hosted engine: documents are uploaded to PageIndex's servers and the chat agent reads them through the PageIndex MCP tools. Requires an API key; PDF, Office, text and Markdown formats.",
+  "pageindex-oss":
+    "Local chunkless and vectorless indexing. Accepts PDF files and uses the globally active chat model credential for indexing; the index remains readable after model changes.",
   graphrag:
     "Local knowledge-graph retrieval. Needs the optional dependency installed; indexing is LLM-heavy. Requires an active chat model and embedding model.",
   lightrag:
@@ -527,8 +531,6 @@ function LlamaIndexForm({
 
 /* -------------------------- PageIndex config form ------------------------- */
 
-const PAGEINDEX_DEFAULT_BASE_URL = "https://api.pageindex.ai";
-
 function PageIndexForm({
   onChanged,
   onError,
@@ -539,7 +541,6 @@ function PageIndexForm({
   const { t } = useTranslation();
   const [config, setConfig] = useState<PageIndexConfig | null>(null);
   const [apiKey, setApiKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -548,7 +549,6 @@ function PageIndexForm({
       .then((cfg) => {
         if (cancelled) return;
         setConfig(cfg);
-        setBaseUrl(cfg.api_base_url || "");
       })
       .catch((err) =>
         onError(err instanceof Error ? err.message : String(err)),
@@ -559,10 +559,7 @@ function PageIndexForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const persist = async (payload: {
-    api_key?: string;
-    api_base_url?: string;
-  }) => {
+  const persist = async (payload: { api_key?: string }) => {
     setSaving(true);
     try {
       const next = await updatePageIndexConfig(payload);
@@ -614,19 +611,6 @@ function PageIndexForm({
         )}
       </div>
 
-      <div>
-        <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-          {t("API base URL")}
-        </label>
-        <input
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)}
-          disabled={saving}
-          placeholder={PAGEINDEX_DEFAULT_BASE_URL}
-          className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
-        />
-      </div>
-
       <div className="flex items-center justify-between gap-2">
         <a
           href="https://dash.pageindex.ai/api-keys"
@@ -641,7 +625,6 @@ function PageIndexForm({
           type="button"
           onClick={() =>
             void persist({
-              api_base_url: baseUrl.trim() || undefined,
               ...(apiKey.trim() ? { api_key: apiKey.trim() } : {}),
             })
           }

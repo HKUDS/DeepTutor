@@ -26,6 +26,8 @@ export interface RagProviderSummary {
   description: string;
   /** Whether the engine is ready to use (e.g. its API key is set). */
   configured?: boolean;
+  /** Actionable reason when configured is false. */
+  readiness_reason?: string;
   /** Whether the engine needs an API key configured before use. */
   requires_api_key?: boolean;
   /** Retrieval modes this engine supports (empty for mode-less engines). */
@@ -37,7 +39,6 @@ export interface RagProviderSummary {
 }
 
 export interface PageIndexConfig {
-  api_base_url: string;
   api_key_set: boolean;
   configured: boolean;
 }
@@ -269,7 +270,6 @@ export async function getPageIndexConfig(options?: {
 export async function updatePageIndexConfig(payload: {
   /** Omit to keep the stored key, "" to clear it, any value to replace it. */
   api_key?: string;
-  api_base_url?: string;
 }): Promise<PageIndexConfig> {
   const res = await apiFetch(apiUrl(PAGEINDEX_CONFIG_PATH), {
     method: "PUT",
@@ -615,10 +615,14 @@ export async function createKnowledgeBase(payload: {
   name: string;
   provider: string;
   files: File[];
+  pageindexMode?: "flash" | "standard";
 }): Promise<KnowledgeTaskResponse> {
   const form = new FormData();
   form.append("name", payload.name);
   form.append("rag_provider", payload.provider);
+  if (payload.pageindexMode) {
+    form.append("pageindex_mode", payload.pageindexMode);
+  }
   appendFilesWithPaths(form, payload.files);
 
   const res = await apiFetch(apiUrl("/api/v1/knowledge/create"), {

@@ -3070,5 +3070,12 @@
   "Generate a chapter on this": "就此生成一章",
   "This book was written without reading your sources.": "这本书生成时没有读取你的资料来源。",
   "Retrieval failed while planning it, so the chapters come from the proposal alone. Rebuilding will try your knowledge bases again.": "规划阶段检索失败，因此各章仅基于方案生成。重建会重新尝试读取你的知识库。",
-  "Source sweep failed": "来源扫描失败"
+  "Source sweep failed": "来源扫描失败",
+  "Index mode": "索引模式",
+  "Default — Flash, summaries and full optimization": "默认 — Flash、摘要与完整优化",
+  "Uses the globally active LLM credential. Leaving this unset delegates to the PageIndex SDK default.": "使用全局当前启用的 LLM 凭据。留空时采用 PageIndex SDK 默认配置。",
+  "PDF only — use PageIndex Cloud for Office, Markdown or CSV": "仅支持 PDF；Office、Markdown 或 CSV 请使用 PageIndex Cloud",
+  "This engine isn't ready on the server. Check its requirements before creating.": "此引擎尚未就绪，请先检查其运行要求。",
+  "Local chunkless and vectorless indexing. Accepts PDF files and uses the globally active chat model credential for indexing; the index remains readable after model changes.": "本地无分块、无向量索引。支持 PDF，并使用全局当前聊天模型凭据构建索引；切换模型后旧索引仍可读取。",
+  "PageIndex API plans": "PageIndex API 套餐"
 }

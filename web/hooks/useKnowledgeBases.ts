@@ -176,6 +176,7 @@ export function useKnowledgeBases() {
       name: string;
       provider: string;
       files: File[];
+      pageindexMode?: "flash" | "standard";
     }): Promise<KnowledgeTaskResponse> => {
       const result = await createKbApi(params);
       invalidateKnowledgeCaches();

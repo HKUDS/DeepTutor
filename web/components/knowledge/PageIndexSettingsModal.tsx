@@ -10,8 +10,6 @@ import {
   type PageIndexConfig,
 } from "@/lib/knowledge-api";
 
-const DEFAULT_BASE_URL = "https://api.pageindex.ai";
-
 interface PageIndexSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -27,7 +25,6 @@ export default function PageIndexSettingsModal({
   const { t } = useTranslation();
   const [config, setConfig] = useState<PageIndexConfig | null>(null);
   const [apiKey, setApiKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +39,6 @@ export default function PageIndexSettingsModal({
       .then((cfg) => {
         if (cancelled) return;
         setConfig(cfg);
-        setBaseUrl(cfg.api_base_url || "");
       })
       .catch((err) => {
         if (!cancelled)
@@ -56,10 +52,7 @@ export default function PageIndexSettingsModal({
     };
   }, [isOpen]);
 
-  const persist = async (payload: {
-    api_key?: string;
-    api_base_url?: string;
-  }) => {
+  const persist = async (payload: { api_key?: string }) => {
     setSaving(true);
     setError(null);
     try {
@@ -78,9 +71,7 @@ export default function PageIndexSettingsModal({
 
   const handleSave = async () => {
     // Blank key keeps the stored one; a typed value replaces it.
-    const payload: { api_key?: string; api_base_url?: string } = {
-      api_base_url: baseUrl.trim() || undefined,
-    };
+    const payload: { api_key?: string } = {};
     if (apiKey.trim()) payload.api_key = apiKey.trim();
     const next = await persist(payload);
     if (next) onClose();
@@ -171,18 +162,6 @@ export default function PageIndexSettingsModal({
               )}
             </div>
 
-            <div>
-              <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-                {t("API base URL")}
-              </label>
-              <input
-                value={baseUrl}
-                onChange={(event) => setBaseUrl(event.target.value)}
-                disabled={saving}
-                placeholder={DEFAULT_BASE_URL}
-                className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
-              />
-            </div>
           </>
         )}
 
