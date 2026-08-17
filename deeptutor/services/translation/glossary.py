@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
+import json
 import re
 from typing import Any
 
@@ -14,7 +16,18 @@ _API_TOKEN = re.compile(
     r"`([^`\n]{2,120})`|\b([A-Za-z][A-Za-z0-9]*(?:[._][A-Za-z0-9]+)+(?:\(\))?)\b"
 )
 _PROPER_NOUN = re.compile(r"\b[A-Z][a-z]{2,}(?:[ -][A-Z][a-z]{2,}){0,4}\b")
+_CAMEL_NAME = re.compile(r"\b[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+\b")
 _ENGLISH_STOPWORDS = {
+    "the",
+    "a",
+    "an",
+    "and",
+    "but",
+    "if",
+    "no",
+    "not",
+    "one",
+    "two",
     "about",
     "after",
     "again",
@@ -58,7 +71,7 @@ def extract_glossary_candidates(
     kinds: dict[str, str] = {}
 
     for match in _API_TOKEN.finditer(corpus):
-        term = (match.group(1) or match.group(2) or "").strip("`")
+        term = (match.group(1) or match.group(2) or "").strip("`$")
         if not term or any(char.isspace() for char in term) and "`" not in match.group(0):
             continue
         term = term.strip()
@@ -71,6 +84,12 @@ def extract_glossary_candidates(
         term = " ".join(match.group(0).split())
         if term.casefold() in _ENGLISH_STOPWORDS or term.istitle() is False:
             continue
+        if 3 <= len(term) <= 120:
+            frequencies[term] += 1
+            kinds.setdefault(term, "proper_noun")
+
+    for match in _CAMEL_NAME.finditer(prose):
+        term = match.group(0)
         if 3 <= len(term) <= 120:
             frequencies[term] += 1
             kinds.setdefault(term, "proper_noun")
@@ -91,6 +110,7 @@ def extract_glossary_candidates(
             "frequency": count,
             "protected": kinds.get(term) == "api_identifier",
             "approved": False,
+            "decision": "candidate",
         }
         for term, count in ranked[: max(1, min(limit, 500))]
         if count >= 2 or kinds.get(term) == "api_identifier"
@@ -114,7 +134,11 @@ def merge_glossary(
             frequency=max(0, int(entry.get("frequency", 0))),
             protected=bool(entry.get("protected")),
             approved=bool(entry.get("approved")),
+            decision=str(entry.get("decision") or ("approved" if entry.get("approved") else "candidate")),
         )
+        if current["decision"] not in {"candidate", "approved", "rejected"}:
+            current["decision"] = "candidate"
+        current["approved"] = current["decision"] == "approved"
         merged[term.casefold()] = current
 
     for candidate in candidates:
@@ -131,6 +155,7 @@ def merge_glossary(
                 "frequency": 0,
                 "protected": False,
                 "approved": False,
+                "decision": "candidate",
             },
         )
         current["frequency"] = max(
@@ -144,6 +169,91 @@ def merge_glossary(
     return sorted(merged.values(), key=lambda item: item["term"].casefold())
 
 
+async def review_glossary_candidates(
+    candidates: Iterable[Mapping[str, Any]], target_language: str
+) -> list[dict[str, Any]]:
+    """Ask an LLM to supplement deterministic terminology candidates.
+
+    The model is deliberately optional. Every failure path returns the bounded
+    deterministic input so planning and translation remain usable offline.
+    """
+    rule_candidates = [
+        {
+            "term": str(entry.get("term", ""))[:300],
+            "translation": str(entry.get("translation", ""))[:500],
+            "kind": str(entry.get("kind", "proper_noun"))[:50],
+            "protected": bool(entry.get("protected")),
+        }
+        for entry in candidates
+        if str(entry.get("term", "")).strip()
+    ][:200]
+    if not rule_candidates:
+        return []
+
+    async def call_model() -> list[dict[str, Any]]:
+        from deeptutor.services.llm import clean_thinking_tags, complete
+
+        raw = await complete(
+            prompt=(
+                "Review translation terminology. Return JSON only. Schema: "
+                '{"entries":[{"term":str,"translation":str,"kind":str,'
+                '"protected":bool,"aliases":[str]}]}. Include the supplied entries '
+                "after correcting translations, and add recurring Chinese role/domain "
+                f"names visible in the excerpts. Target language: {target_language}. "
+                "Never translate API identifiers or code identifiers.\n\n"
+                + json.dumps(rule_candidates, ensure_ascii=False, separators=(",", ":"))
+            ),
+            system_prompt="You are a precise bilingual terminology editor.",
+            temperature=0.1,
+            max_tokens=2000,
+            response_format={"type": "json_object"},
+        )
+        parsed = json.loads(clean_thinking_tags(raw).strip())
+        entries = parsed.get("entries") if isinstance(parsed, dict) else None
+        if not isinstance(entries, list):
+            raise ValueError("Invalid glossary response")
+        result: list[dict[str, Any]] = []
+        for item in entries[:500]:
+            if not isinstance(item, dict):
+                continue
+            terms = [str(item.get("term", "")).strip()]
+            terms.extend(
+                str(alias).strip()
+                for alias in (item.get("aliases") or [])
+                if str(alias).strip()
+            )
+            for term in terms:
+                if not term or len(term) > 300:
+                    continue
+                translation = str(item.get("translation") or term).strip()[:500]
+                result.append(
+                    {
+                        "term": term,
+                        "translation": translation or term,
+                        "kind": str(item.get("kind") or "proper_noun")[:50],
+                        "frequency": 1,
+                        "protected": bool(item.get("protected")),
+                        "approved": False,
+                        "decision": "candidate",
+                    }
+                )
+        return result[:500]
+
+    try:
+        reviewed = await asyncio.wait_for(call_model(), timeout=25.0)
+    except Exception:
+        return [
+            {
+                **entry,
+                "frequency": 1,
+                "approved": False,
+                "decision": "candidate",
+            }
+            for entry in rule_candidates
+        ]
+    return merge_glossary(reviewed, rule_candidates)
+
+
 def terms_for_text(
     glossary: Iterable[Mapping[str, Any]], text: str, *, limit: int = 120
 ) -> list[dict[str, Any]]:
@@ -152,6 +262,8 @@ def terms_for_text(
         dict(entry)
         for entry in glossary
         if str(entry.get("term", "")).strip().casefold() in haystack
+        and str(entry.get("decision") or ("approved" if entry.get("approved") else "candidate"))
+        != "rejected"
     ]
     return sorted(
         selected,
@@ -181,13 +293,23 @@ def build_translation_guardrail(
         for entry in (glossary or [])
         if str(entry.get("term", "")).strip()
         and str(entry.get("translation", "")).strip()
+        and str(entry.get("decision") or ("approved" if entry.get("approved") else "candidate"))
+        != "rejected"
     ]
     if terms:
-        lines = ["", "Glossary (source => required translation; protected=yes means unchanged):"]
-        for entry in terms:
-            marker = "yes" if entry.get("protected") else "no"
-            lines.append(
-                f"- {entry['term']} => {entry['translation']} [protected={marker}]"
-            )
-        parts.extend(lines)
+        payload = [
+            {
+                "source": entry["term"],
+                "translation": entry["translation"],
+                "protected": bool(entry.get("protected")),
+            }
+            for entry in terms
+        ]
+        parts.extend(
+            [
+                "",
+                "Glossary JSON (source, translation, protected; obey each entry):",
+                json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            ]
+        )
     return "\n".join(parts)

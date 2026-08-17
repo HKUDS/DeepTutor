@@ -4,7 +4,8 @@ export type BilingualFontSize = "sm" | "base" | "lg" | "xl" | "2xl";
 export type BilingualFontFamily = "sans" | "serif";
 
 export const BILINGUAL_READER_MODE_STORAGE_KEY = "deeptutor.bilingual-reader.mode";
-export const BILINGUAL_DUAL_PANE_MEDIA_QUERY = "(min-width: 1180px)";
+export const BILINGUAL_DUAL_PANE_MIN_CONTAINER_WIDTH_PX = 960;
+export const BILINGUAL_DUAL_SCROLL_MANUAL_DRAG_PX = 8;
 export const BILINGUAL_CLICK_LOOKUP_STORAGE_KEY = "deeptutor.bilingual-reader.click-lookup";
 export const BILINGUAL_THEME_STORAGE_KEY = "deeptutor.bilingual-reader.theme";
 export const BILINGUAL_FONT_SIZE_STORAGE_KEY = "deeptutor.bilingual-reader.font-size";
@@ -28,6 +29,21 @@ export function parseBilingualFontFamily(value: string | null): BilingualFontFam
 
 export function parseStoredBoolean(value: string | null): boolean {
   return value === "true";
+}
+
+export function supportsDualPaneAtContainerWidth(width: number | null | undefined): boolean {
+  return typeof width === "number" && Number.isFinite(width) && width >= BILINGUAL_DUAL_PANE_MIN_CONTAINER_WIDTH_PX;
+}
+
+export function breaksDualScrollLink(input: {
+  type?: string;
+  dx?: number;
+  dy?: number;
+}): boolean {
+  if (input.type === "wheel") return true;
+  const dx = input.dx || 0;
+  const dy = input.dy || 0;
+  return Math.sqrt(dx * dx + dy * dy) >= BILINGUAL_DUAL_SCROLL_MANUAL_DRAG_PX;
 }
 
 export function visibleGroupFromElements(
@@ -64,6 +80,45 @@ export function shouldIgnoreLookupTarget(target: EventTarget | null): boolean {
     target instanceof Element &&
     !!target.closest("button, a, input, textarea, select, summary, details, [data-reader-control]")
   );
+}
+
+export function isParagraphSideTap(
+  point: { x: number; y: number },
+  line: { left: number; right: number; top: number; bottom: number },
+  gap = 4,
+): boolean {
+  const inLine = point.y >= line.top - 4 && point.y <= line.bottom + 4;
+  return inLine && point.x >= line.right + gap;
+}
+
+export type ParagraphSwipeDirection = "previous" | "next";
+
+export function paragraphSwipeFromPoints(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  viewportWidth: number,
+  options: { edgeInset?: number; minDistance?: number; maxVertical?: number } = {},
+): ParagraphSwipeDirection | null {
+  const edgeInset = options.edgeInset ?? 46;
+  const minDistance = options.minDistance ?? 52;
+  const maxVertical = options.maxVertical ?? 30;
+  if (start.x <= edgeInset || start.x >= viewportWidth - edgeInset) return null;
+
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  if (Math.abs(dx) < minDistance || Math.abs(dy) > maxVertical) return null;
+  if (Math.abs(dy) > Math.abs(dx)) return null;
+  return dx < 0 ? "next" : "previous";
+}
+
+export function nextReaderToolbarVisible(
+  current: boolean,
+  scrollDelta: number,
+  threshold = 6,
+): boolean {
+  if (scrollDelta <= -threshold) return true;
+  if (scrollDelta >= threshold) return false;
+  return current;
 }
 
 export type BilingualReaderShortcut =

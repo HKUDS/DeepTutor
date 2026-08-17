@@ -730,6 +730,7 @@ export interface BilingualExportOptions {
   style?: BilingualExportStyle;
   font_family?: string;
   custom_css?: string;
+  font_asset_id?: string;
 }
 
 export interface BilingualReadingPosition {
@@ -846,6 +847,15 @@ export const bilingualApi = {
     ),
   exportUrl: (pairingId: string) =>
     apiUrl(`${BASE}/bilingual/${encodeURIComponent(pairingId)}/export`),
+  uploadFont: (pairingId: string, file: File, family?: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (family) form.append("family", family);
+    return request<{ font_asset_id: string; family: string }>(
+      `${BASE}/bilingual/${encodeURIComponent(pairingId)}/fonts`,
+      { method: "POST", body: form },
+    );
+  },
   delete: (pairingId: string) =>
     request<{ status: string }>(`/bilingual/${encodeURIComponent(pairingId)}`, {
       method: "DELETE",

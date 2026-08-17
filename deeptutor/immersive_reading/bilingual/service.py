@@ -8,12 +8,15 @@ for in-app rendering, and export a bilingual EPUB.
 from __future__ import annotations
 
 from difflib import SequenceMatcher
+import hashlib
 import html
 import json
 import logging
+import os
 from pathlib import Path
 import re
 import shutil
+import threading
 import time
 from typing import Any, Literal
 from urllib.parse import unquote
@@ -24,10 +27,19 @@ from deeptutor.immersive_reading.bilingual.align import extract_align_pairs
 from deeptutor.immersive_reading.bilingual.merge_epub import (
     BilingualExportStyle,
     build_bilingual_epub,
+    validate_custom_css,
 )
 from deeptutor.services.path_service import get_path_service
 
 logger = logging.getLogger(__name__)
+_export_lock = threading.Lock()
+_FONT_LIMIT = 10 * 1024 * 1024
+_FONT_TYPES = {
+    ".woff2": ("font/woff2", b"wOF2"),
+    ".woff": ("font/woff", b"wOFF"),
+    ".otf": ("font/otf", b"OTTO"),
+    ".ttf": ("font/ttf", b"\x00\x01\x00\x00"),
+}
 
 
 def _strip_tags(markup: str) -> str:
@@ -47,6 +59,27 @@ def _read_json(path: Path, default: Any = None) -> Any:
 def _write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _atomic_write_json(path: Path, data: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for block in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 # ── Chapter map normalization ──────────────────────────────────────────
@@ -960,12 +993,20 @@ class BilingualPairingService:
         style: BilingualExportStyle = "folded",
         font_family: str = "",
         custom_css: str = "",
+        font_asset_id: str = "",
     ) -> Path:
         """Build and return a bilingual EPUB file path."""
         data = self._load_pairing(pairing_id)
         chapter_map = _read_json(self._chapter_map_path(pairing_id), [])
         # Convert to the format expected by build_bilingual_epub: [id, en, zh].
         chapter_map_data = [[e[0], e[1], e[2]] for e in chapter_map]
+
+        custom_css = validate_custom_css(custom_css)
+        font_asset = (
+            self.get_font_asset(pairing_id, font_asset_id) if font_asset_id else None
+        )
+        if font_asset:
+            font_family = font_asset["family"]
 
         en_epub = self._original_epub_path(data["en_document_id"])
         zh_epub = self._original_epub_path(data["zh_document_id"])
@@ -998,22 +1039,98 @@ class BilingualPairingService:
                 else None
                 for group in section.get("groups", [])
             ]
-        build_bilingual_epub(
-            english_epub=en_epub,
-            translation_epub=zh_epub,
-            chapter_map_data=chapter_map_data,
-            output=output,
-            target_lang=data.get("target_lang", "zh-Hant"),
-            translator=data.get("translator", ""),
-            title_suffix=title_suffix,
-            summary_label=summary_label,
-            alignment_overrides=self.load_alignment_overrides(pairing_id),
-            style=style,
-            font_family=font_family,
-            custom_css=custom_css,
-            translation_overrides=translation_overrides,
-        )
+        fingerprint_payload = {
+            "style": style,
+            "font_family": font_family,
+            "custom_css": custom_css,
+            "font": font_asset["sha256"] if font_asset else "",
+            "alignment_overrides": self.load_alignment_overrides(pairing_id),
+            "translation_overrides": translation_overrides,
+            "english": _file_sha256(en_epub),
+            "translation": _file_sha256(zh_epub),
+        }
+        fingerprint = hashlib.sha256(
+            json.dumps(fingerprint_payload, ensure_ascii=False, sort_keys=True).encode()
+        ).hexdigest()
+        cache_path = self._pairing_root(pairing_id) / "exports" / "cache.json"
+        cache = _read_json(cache_path, {})
+        cached = cache.get(output.name) if isinstance(cache, dict) else None
+        if cached and cached.get("fingerprint") == fingerprint and output.exists():
+            return output
+
+        with _export_lock:
+            cache = _read_json(cache_path, {})
+            cached = cache.get(output.name) if isinstance(cache, dict) else None
+            if cached and cached.get("fingerprint") == fingerprint and output.exists():
+                return output
+            build_bilingual_epub(
+                english_epub=en_epub,
+                translation_epub=zh_epub,
+                chapter_map_data=chapter_map_data,
+                output=output,
+                target_lang=data.get("target_lang", "zh-Hant"),
+                translator=data.get("translator", ""),
+                title_suffix=title_suffix,
+                summary_label=summary_label,
+                alignment_overrides=self.load_alignment_overrides(pairing_id),
+                style=style,
+                font_family=font_family,
+                custom_css=custom_css,
+                translation_overrides=translation_overrides,
+                font_path=Path(font_asset["path"]) if font_asset else None,
+                font_media_type=font_asset["media_type"] if font_asset else "",
+            )
+            cache[output.name] = {
+                "fingerprint": fingerprint,
+                "output": str(output),
+                "updated_at": time.time(),
+            }
+            _atomic_write_json(cache_path, cache)
         return output
+
+    def upload_font(
+        self, pairing_id: str, filename: str, content: bytes, family: str = ""
+    ) -> dict[str, Any]:
+        self._load_pairing(pairing_id)
+        suffix = Path(filename).suffix.lower()
+        if suffix not in _FONT_TYPES or "/" in filename or "\\" in filename or filename.startswith("."):
+            raise ValueError("Only WOFF2, WOFF, OTF, and TTF fonts are supported")
+        if not content or len(content) > _FONT_LIMIT:
+            raise ValueError("Font file must be between 1 byte and 10 MB")
+        media_type, signature = _FONT_TYPES[suffix]
+        if not content.startswith(signature):
+            raise ValueError("Font file signature does not match its extension")
+        digest = hashlib.sha256(content).hexdigest()
+        asset_id = f"font-{digest[:24]}"
+        fonts_root = self._pairing_root(pairing_id) / "fonts"
+        fonts_root.mkdir(parents=True, exist_ok=True)
+        target = fonts_root / f"{asset_id}{suffix}"
+        target.write_bytes(content)
+        safe_family = re.sub(r'["\\\x00-\x1f]', "", family).strip()[:200]
+        metadata_path = fonts_root / "fonts.json"
+        metadata = _read_json(metadata_path, {"assets": {}})
+        metadata.setdefault("assets", {})[asset_id] = {
+            "font_asset_id": asset_id,
+            "family": safe_family or f"DeepTutor Font {digest[:6]}",
+            "filename": target.name,
+            "media_type": media_type,
+            "size": len(content),
+            "sha256": digest,
+            "created_at": time.time(),
+            "path": str(target),
+        }
+        _atomic_write_json(metadata_path, metadata)
+        return {key: value for key, value in metadata["assets"][asset_id].items() if key != "path"}
+
+    def get_font_asset(self, pairing_id: str, font_asset_id: str) -> dict[str, Any]:
+        self._load_pairing(pairing_id)
+        metadata = _read_json(
+            self._pairing_root(pairing_id) / "fonts" / "fonts.json", {"assets": {}}
+        )
+        asset = metadata.get("assets", {}).get(font_asset_id)
+        if not asset or not Path(asset.get("path", "")).is_file():
+            raise ValueError("Font asset not found")
+        return asset
 
     # ── Annotations (review feedback loop) ───────────────────────────
 

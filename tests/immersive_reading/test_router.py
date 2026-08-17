@@ -32,6 +32,45 @@ def test_health_returns_service_identity(client: TestClient) -> None:
     assert response.json() == {"status": "healthy", "service": "immersive-reading"}
 
 
+def test_bilingual_export_accepts_style_and_customization(
+    client: TestClient, monkeypatch, tmp_path
+) -> None:
+    import deeptutor.api.routers.immersive_reading as router_module
+
+    output = tmp_path / "custom.epub"
+    output.write_bytes(b"epub")
+    captured = {}
+
+    class FakePairingService:
+        def export_epub(self, pairing_id, **kwargs):
+            captured["pairing_id"] = pairing_id
+            captured.update(kwargs)
+            return output
+
+    monkeypatch.setattr(
+        router_module, "get_pairing_service", lambda: FakePairingService()
+    )
+
+    response = client.post(
+        "/api/v1/immersive-reading/bilingual/pair-1/export",
+        json={
+            "style": "two_column",
+            "font_family": "Reader Serif",
+            "custom_css": ".zh-column { color: red; }",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/epub+zip")
+    assert captured == {
+        "pairing_id": "pair-1",
+        "style": "two_column",
+        "font_family": "Reader Serif",
+        "custom_css": ".zh-column { color: red; }",
+        "font_asset_id": "",
+    }
+
+
 def test_get_section_returns_source_content(client: TestClient, imported_document: dict) -> None:
     document_id = imported_document["id"]
     section_id = imported_document["sections"][1]["id"]

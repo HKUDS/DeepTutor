@@ -8,14 +8,16 @@ CSS, rewrite OPF metadata, and repackage. The English package stays intact
 
 from __future__ import annotations
 
-import os
 from dataclasses import replace
 import html
+import os
 from pathlib import Path
 import re
 import shutil
+import tempfile
 from typing import Any, List, Literal, Sequence, Tuple
 from urllib.parse import unquote
+import xml.etree.ElementTree as ET
 import zipfile
 
 from deeptutor.immersive_reading.bilingual.align import (
@@ -49,7 +51,7 @@ div.zh-footnotes { margin-top: 2em; padding-top: 1em; border-top: 1px solid #cbd
 # reader customization additive and avoids replacing a book's existing CSS.
 STYLE_EXTENSION_CSS = """
 :root { --dt-bilingual-font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Heiti TC", "Microsoft JhengHei", "Noto Serif CJK TC", serif; }
-.details.zh-details .zh-content p, .details.zh-details .zh-content blockquote, .zh-alternate, .zh-column { font-family: var(--dt-bilingual-font-family); }
+details.zh-details .zh-content p, details.zh-details .zh-content blockquote, .zh-alternate, .zh-column { font-family: var(--dt-bilingual-font-family); }
 .zh-alternate { margin: .35em 0 1.1em; padding: .45em .75em; background: #f8f9fa; border-left: 3px solid #0066cc; border-radius: 4px; line-height: 1.7; color: #1e293b; }
 .bilingual-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1em; align-items: start; margin: 0 0 1.1em; break-inside: avoid; }
 .bilingual-row > .en-column { line-height: 1.65; }
@@ -278,7 +280,23 @@ def _css_string(value: str) -> str:
 
 
 def _safe_custom_css(value: str) -> str:
-    return re.sub(r"</\s*style\s*>", "", value, flags=re.IGNORECASE).replace("\x00", "")
+    return (
+        re.sub(r"</\s*style\s*>", "", value, flags=re.IGNORECASE)
+        .replace("\x00", "")
+        .replace("]]>", "\\5d \\5d \\3e ")
+        .replace("&", "\\26 ")
+        .replace("<", "\\3c ")
+    )
+
+
+def validate_custom_css(value: str) -> str:
+    if "\x00" in value:
+        raise ValueError("Custom CSS contains NUL")
+    if re.search(r"(?i)\b@import\b", value):
+        raise ValueError("Custom CSS cannot use @import")
+    if re.search(r"(?i)url\s*\(\s*['\"]?\s*(?:https?:|//)", value):
+        raise ValueError("Custom CSS cannot reference external network URLs")
+    return value
 
 
 def _style_css(font_family: str = "", custom_css: str = "") -> str:
@@ -301,42 +319,49 @@ def _inject_css(
     *,
     font_family: str = "",
     custom_css: str = "",
+    font_path: Path | None = None,
+    font_media_type: str = "",
 ) -> None:
-    linked: set[Path] = set()
-    inline: List[Tuple[Path, str]] = []
     root = work.resolve()
+    css_path = root / "bilingual.css"
+    css = _style_css(font_family, validate_custom_css(custom_css))
+    font_href = ""
+    if font_path is not None and font_path.is_file():
+        font_dir = root / "fonts"
+        font_dir.mkdir(exist_ok=True)
+        embedded_font = font_dir / font_path.name
+        shutil.copyfile(font_path, embedded_font)
+        font_href = f"fonts/{embedded_font.name}"
+        css = (
+            f'@font-face {{ font-family: "{_css_string(font_family or "DeepTutor Reader")}"; '
+            f'src: url("{font_href}") format("{_font_format(font_media_type)}"); }}\n'
+            + css
+        )
+    css_path.write_text(css, encoding="utf-8")
+
+    xhtml_ns = "http://www.w3.org/1999/xhtml"
+    ET.register_namespace("", xhtml_ns)
     for chapter_path in chapter_paths:
-        xml = chapter_path.read_text(encoding="utf-8")
-        chapter_css: List[Path] = []
-        for href in _stylesheet_hrefs(xml):
-            if not href or href.startswith(("http:", "https:", "data:")):
-                continue
-            candidate = (chapter_path.parent / unquote(href)).resolve()
-            try:
-                candidate.relative_to(root)
-            except ValueError:
-                continue
-            if candidate.is_file() and candidate.suffix.lower() == ".css":
-                chapter_css.append(candidate)
-                linked.add(candidate)
-        if not chapter_css:
-            inline.append((chapter_path, xml))
-    for css_path in sorted(linked):
-        css = css_path.read_text(encoding="utf-8")
-        if _CSS_TAG_MARKER not in css:
-            css_path.write_text(
-                css.rstrip() + "\n\n" + _style_css(font_family, custom_css),
-                encoding="utf-8",
-            )
-    for chapter_path, xml in inline:
-        if _CSS_TAG_MARKER in xml:
+        tree = ET.parse(chapter_path)
+        head = tree.getroot().find(f"{{{xhtml_ns}}}head")
+        if head is None:
             continue
-        style = f'<style type="text/css">{_style_css(font_family, custom_css)}</style>'
-        if re.search(r"</head\s*>", xml, flags=re.IGNORECASE):
-            xml = re.sub(r"</head\s*>", style + "\n</head>", xml, count=1, flags=re.IGNORECASE)
-        else:
-            xml = style + "\n" + xml
-        chapter_path.write_text(xml, encoding="utf-8")
+        href = Path(os.path.relpath(css_path, chapter_path.parent)).as_posix()
+        link = ET.Element(f"{{{xhtml_ns}}}link")
+        link.set("rel", "stylesheet")
+        link.set("type", "text/css")
+        link.set("href", href)
+        head.append(link)
+        tree.write(chapter_path, encoding="utf-8", xml_declaration=True)
+
+
+def _font_format(media_type: str) -> str:
+    return {
+        "font/woff2": "woff2",
+        "font/woff": "woff",
+        "font/otf": "opentype",
+        "font/ttf": "truetype",
+    }.get(media_type, "truetype")
 
 
 def _find_package_opf(work: Path) -> Path:
@@ -351,6 +376,79 @@ def _find_package_opf(work: Path) -> Path:
     if not candidates:
         raise FileNotFoundError(f"No OPF package found under {work}")
     return candidates[0]
+
+
+def _direct_child(element: ET.Element, local_name: str) -> ET.Element | None:
+    for child in element:
+        if child.tag.split("}", 1)[-1] == local_name:
+            return child
+    return None
+
+
+def _update_opf(
+    work: Path,
+    *,
+    source_lang: str,
+    target_lang: str,
+    translator: str,
+    title_suffix: str,
+    font_path: Path | None,
+    font_media_type: str,
+) -> None:
+    opf_path = _find_package_opf(work)
+    ET.register_namespace("dc", "http://purl.org/dc/elements/1.1/")
+    tree = ET.parse(opf_path)
+    root = tree.getroot()
+    metadata = _direct_child(root, "metadata")
+    manifest = _direct_child(root, "manifest")
+    if metadata is None or manifest is None:
+        raise ValueError("Invalid EPUB OPF package")
+
+    title = _direct_child(metadata, "title")
+    if title is not None and title_suffix and title_suffix not in (title.text or ""):
+        title.text = f"{title.text or ''}{title_suffix}"
+    languages = {
+        (child.text or "").strip()
+        for child in metadata
+        if child.tag.split("}", 1)[-1] == "language"
+    }
+    dc_ns = "http://purl.org/dc/elements/1.1/"
+    if source_lang not in languages:
+        ET.SubElement(metadata, f"{{{dc_ns}}}language").text = source_lang
+    if target_lang not in languages:
+        ET.SubElement(metadata, f"{{{dc_ns}}}language").text = target_lang
+    if translator and not any(
+        child.tag.split("}", 1)[-1] == "contributor" and child.text == translator
+        for child in metadata
+    ):
+        contributor = ET.SubElement(metadata, f"{{{dc_ns}}}contributor")
+        contributor.set("id", "deep-tutor-translator")
+        contributor.text = translator
+        role = ET.SubElement(metadata, "meta")
+        role.set("property", "role")
+        role.set("refines", "#deep-tutor-translator")
+        role.set("scheme", "marc:relators")
+        role.text = "trl"
+
+    existing_hrefs = {item.get("href") for item in manifest}
+    css_href = Path(os.path.relpath(work / "bilingual.css", opf_path.parent)).as_posix()
+    if css_href not in existing_hrefs:
+        css_item = ET.SubElement(manifest, "item")
+        css_item.set("id", "deep-tutor-bilingual-css")
+        css_item.set("href", css_href)
+        css_item.set("media-type", "text/css")
+    if font_path is not None and font_path.is_file():
+        font_href = Path(
+            os.path.relpath(work / "fonts" / font_path.name, opf_path.parent)
+        ).as_posix()
+        if font_href not in existing_hrefs:
+            font_item = ET.SubElement(manifest, "item")
+            font_item.set("id", "deep-tutor-reader-font")
+            font_item.set("href", font_href)
+            font_item.set("media-type", font_media_type)
+
+    ET.indent(tree, space="  ")
+    tree.write(opf_path, encoding="utf-8", xml_declaration=True)
 
 
 def build_bilingual_epub(
@@ -370,6 +468,8 @@ def build_bilingual_epub(
     custom_css: str = "",
     translation_overrides: dict[str, Sequence[str | None]] | None = None,
     work_dir: Path | None = None,
+    font_path: Path | None = None,
+    font_media_type: str = "",
 ) -> List[dict]:
     """Build a bilingual EPUB from an English base + official translation.
 
@@ -385,80 +485,99 @@ def build_bilingual_epub(
     """
     overrides = alignment_overrides or {}
     group_translations = translation_overrides or {}
-    work = work_dir or Path(output.parent) / f".bilingual_work_{output.stem}"
-    if work.exists():
-        shutil.rmtree(work)
-    work.mkdir(parents=True)
+    owned_work = work_dir is None
+    work_parent = work_dir or Path(tempfile.mkdtemp(
+        prefix=f".bilingual-{output.stem}-", dir=output.parent
+    ))
+    work = Path(work_parent)
+    output.parent.mkdir(parents=True, exist_ok=True)
 
-    with zipfile.ZipFile(english_epub) as archive:
-        archive.extractall(work)
-
-    processed_paths: List[Path] = []
-    stats: List[dict] = []
-    with zipfile.ZipFile(translation_epub) as zh_archive:
-        for entry in chapter_map_data:
-            if isinstance(entry, dict):
-                chapter, en_file, zh_file = entry["id"], entry["english"], entry["translation"]
-            else:
-                chapter, en_file, zh_file = entry[0], entry[1], entry[2]
-            path = work / en_file
-            if not path.exists():
-                continue
+    def extract_safe(archive: zipfile.ZipFile) -> None:
+        root = work.resolve()
+        for member in archive.infolist():
+            destination = (work / member.filename).resolve()
             try:
-                zh_content = zh_archive.read(zh_file).decode("utf-8")
-            except KeyError:
+                destination.relative_to(root)
+            except ValueError as exc:
+                raise ValueError(f"Unsafe EPUB entry: {member.filename}") from exc
+            if member.is_dir():
+                destination.mkdir(parents=True, exist_ok=True)
                 continue
-            xml, stat = _process_chapter(
-                path.read_text(encoding="utf-8"),
-                zh_content,
-                chapter,
-                overrides,
-                summary_label,
-                style,
-                group_translations.get(str(chapter)),
-            )
-            path.write_text(xml, encoding="utf-8")
-            processed_paths.append(path)
-            stats.append(stat)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(member) as source, destination.open("wb") as target:
+                shutil.copyfileobj(source, target)
 
-    _inject_css(
-        work,
-        processed_paths,
-        font_family=font_family,
-        custom_css=custom_css,
-    )
+    try:
+        with zipfile.ZipFile(english_epub) as archive:
+            extract_safe(archive)
 
-    # Update OPF metadata.
-    opf_path = _find_package_opf(work)
-    opf = opf_path.read_text(encoding="utf-8")
-    if f"<dc:language>{target_lang}</dc:language>" not in opf:
-        source = f"<dc:language>{source_lang}</dc:language>"
-        if source in opf:
-            opf = opf.replace(source, source + f"\n    <dc:language>{target_lang}</dc:language>")
-        else:
-            opf = opf.replace("</metadata>", f"<dc:language>{source_lang}</dc:language>\n<dc:language>{target_lang}</dc:language>\n</metadata>")
-    if translator and translator not in opf:
-        opf = opf.replace(
-            "</metadata>",
-            f'  <dc:contributor id="trans1">{translator}</dc:contributor>\n  <meta property="role" refines="#trans1" scheme="marc:relators">trl</meta>\n</metadata>',
+        processed_paths: List[Path] = []
+        stats: List[dict] = []
+        with zipfile.ZipFile(translation_epub) as zh_archive:
+            for entry in chapter_map_data:
+                if isinstance(entry, dict):
+                    chapter, en_file, zh_file = entry["id"], entry["english"], entry["translation"]
+                else:
+                    chapter, en_file, zh_file = entry[0], entry[1], entry[2]
+                path = work / en_file
+                if not path.exists():
+                    continue
+                try:
+                    zh_content = zh_archive.read(zh_file).decode("utf-8")
+                except KeyError:
+                    continue
+                xml, stat = _process_chapter(
+                    path.read_text(encoding="utf-8"),
+                    zh_content,
+                    chapter,
+                    overrides,
+                    summary_label,
+                    style,
+                    group_translations.get(str(chapter)),
+                )
+                path.write_text(xml, encoding="utf-8")
+                processed_paths.append(path)
+                stats.append(stat)
+
+        _inject_css(
+            work,
+            processed_paths,
+            font_family=font_family,
+            custom_css=custom_css,
+            font_path=font_path,
+            font_media_type=font_media_type,
         )
-    if title_suffix and title_suffix not in opf:
-        opf = re.sub(r"(<dc:title[^>]*>)(.*?)(</dc:title>)", rf"\1\2{title_suffix}\3", opf, count=1)
-    opf_path.write_text(opf, encoding="utf-8")
+        _update_opf(
+            work,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            translator=translator,
+            title_suffix=title_suffix,
+            font_path=font_path,
+            font_media_type=font_media_type,
+        )
 
-    # Repackage EPUB.
-    if output.exists():
-        output.unlink()
-    with zipfile.ZipFile(output, "w") as archive:
-        mimetype = work / "mimetype"
-        if mimetype.exists():
-            archive.write(mimetype, "mimetype", compress_type=zipfile.ZIP_STORED)
-        for root, _, names in os.walk(work):
-            for name in names:
-                p = Path(root) / name
-                relative = p.relative_to(work).as_posix()
-                if relative != "mimetype":
-                    archive.write(p, relative, compress_type=zipfile.ZIP_DEFLATED)
-
-    shutil.rmtree(work, ignore_errors=True)
-    return stats
+        fd, temporary_name = tempfile.mkstemp(
+            prefix=f".{output.name}.", suffix=".tmp", dir=output.parent
+        )
+        os.close(fd)
+        temporary = Path(temporary_name)
+        try:
+            with zipfile.ZipFile(temporary, "w") as archive:
+                mimetype = work / "mimetype"
+                if mimetype.exists():
+                    archive.write(mimetype, "mimetype", compress_type=zipfile.ZIP_STORED)
+                for root, _, names in os.walk(work):
+                    for name in names:
+                        p = Path(root) / name
+                        relative = p.relative_to(work).as_posix()
+                        if relative != "mimetype":
+                            archive.write(p, relative, compress_type=zipfile.ZIP_DEFLATED)
+            os.replace(temporary, output)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+        return stats
+    finally:
+        if owned_work:
+            shutil.rmtree(work, ignore_errors=True)

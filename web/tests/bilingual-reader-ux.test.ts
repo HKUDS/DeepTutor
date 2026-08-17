@@ -2,13 +2,19 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  BILINGUAL_DUAL_PANE_MIN_CONTAINER_WIDTH_PX,
+  breaksDualScrollLink,
+  isParagraphSideTap,
+  nextReaderToolbarVisible,
   parseBilingualFontFamily,
   parseBilingualFontSize,
   parseBilingualReaderMode,
   parseBilingualTheme,
+  paragraphSwipeFromPoints,
   parseStoredBoolean,
   readerShortcutFromKeyboardEvent,
   scrollPaneToGroup,
+  supportsDualPaneAtContainerWidth,
   visibleGroupFromElements,
 } from "../lib/bilingual-reader-ux";
 
@@ -60,6 +66,44 @@ test("click lookup preference parses only explicit true", () => {
   assert.equal(parseStoredBoolean("true"), true);
   assert.equal(parseStoredBoolean("false"), false);
   assert.equal(parseStoredBoolean(null), false);
+});
+
+test("dual pane support follows actual reader container width", () => {
+  assert.equal(BILINGUAL_DUAL_PANE_MIN_CONTAINER_WIDTH_PX, 960);
+  assert.equal(supportsDualPaneAtContainerWidth(899), false);
+  assert.equal(supportsDualPaneAtContainerWidth(960), true);
+  assert.equal(supportsDualPaneAtContainerWidth(1024), true);
+  assert.equal(supportsDualPaneAtContainerWidth(null), false);
+  assert.equal(supportsDualPaneAtContainerWidth(Number.NaN), false);
+});
+
+test("manual drag breaks dual-pane scroll linkage", () => {
+  assert.equal(breaksDualScrollLink({ dx: 7, dy: 0 }), false);
+  assert.equal(breaksDualScrollLink({ dx: 0, dy: 8 }), true);
+  assert.equal(breaksDualScrollLink({ dx: 6, dy: 6 }), true);
+  assert.equal(breaksDualScrollLink({ type: "wheel" }), true);
+});
+
+test("paragraph side tap accepts only same-line space right of text", () => {
+  const line = { left: 16, right: 260, top: 100, bottom: 128 };
+  assert.equal(isParagraphSideTap({ x: 285, y: 114 }, line), true);
+  assert.equal(isParagraphSideTap({ x: 260, y: 114 }, line), false);
+  assert.equal(isParagraphSideTap({ x: 285, y: 90 }, line), false);
+});
+
+test("center swipes navigate paragraphs while iOS edges stay reserved", () => {
+  assert.equal(paragraphSwipeFromPoints({ x: 200, y: 300 }, { x: 120, y: 306 }, 390), "next");
+  assert.equal(paragraphSwipeFromPoints({ x: 200, y: 300 }, { x: 280, y: 306 }, 390), "previous");
+  assert.equal(paragraphSwipeFromPoints({ x: 20, y: 300 }, { x: 100, y: 306 }, 390), null);
+  assert.equal(paragraphSwipeFromPoints({ x: 370, y: 300 }, { x: 290, y: 306 }, 390), null);
+  assert.equal(paragraphSwipeFromPoints({ x: 200, y: 300 }, { x: 260, y: 350 }, 390), null);
+});
+
+test("mobile toolbar hides on downward scroll and returns on upward scroll", () => {
+  assert.equal(nextReaderToolbarVisible(true, 12), false);
+  assert.equal(nextReaderToolbarVisible(false, -12), true);
+  assert.equal(nextReaderToolbarVisible(true, 2), true);
+  assert.equal(nextReaderToolbarVisible(false, -2), false);
 });
 
 test("visible group follows the first group entering the reading threshold", () => {

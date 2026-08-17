@@ -1,6 +1,6 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 
-export type TranslationTaskStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
+export type TranslationTaskStatus = "queued" | "running" | "completed" | "failed";
 export type TranslationSourceType = "bilingual" | "kb_document";
 export type TranslationGlossaryDecision = "candidate" | "approved" | "rejected";
 
@@ -32,13 +32,11 @@ export interface TranslationTaskSummary {
   running: number;
   completed: number;
   failed: number;
-  cancelled: number;
   filtered_total: number;
   filtered_queued: number;
   filtered_running: number;
   filtered_completed: number;
   filtered_failed: number;
-  filtered_cancelled: number;
   is_running: boolean;
   last_run_at: number;
 }
@@ -105,7 +103,6 @@ export interface TranslationTaskEvent {
   type:
     | "snapshot"
     | "run_started"
-    | "run_cancelled"
     | "group_translated"
     | "task_updated"
     | "run_completed"
@@ -179,7 +176,6 @@ async function readEventStream(
 const KNOWN_TRANSLATION_EVENTS = new Set<TranslationTaskEvent["type"]>([
   "snapshot",
   "run_started",
-  "run_cancelled",
   "group_translated",
   "task_updated",
   "run_completed",
@@ -254,10 +250,6 @@ export const translationTaskApi = {
     request<TranslationTaskBoard>("/api/v1/translation/tasks/retry-failed", {
       method: "POST",
       body: JSON.stringify({ source_type: sourceType, source_id: sourceId }),
-    }),
-  cancelRun: (runId: string) =>
-    request<TranslationTaskBoard>(`/api/v1/translation/tasks/runs/${encodeURIComponent(runId)}/cancel`, {
-      method: "POST",
     }),
   streamRun: async (
     runId: string,

@@ -12,6 +12,7 @@ import {
 import {
   chineseRevealClassName,
   extractDictionaryWord,
+  nextDictionarySheetExpanded,
   positionDictionaryPopover,
 } from "../lib/dictionary-ui";
 
@@ -85,6 +86,13 @@ test("dictionary popover chooses available side and clamps to viewport", () => {
   assert.equal(below.placement, "below");
   assert.equal(below.left, 8);
   assert.equal(below.top, 38);
+});
+
+test("dictionary sheet drag expands upward and collapses downward", () => {
+  assert.equal(nextDictionarySheetExpanded(false, -48, 600), true);
+  assert.equal(nextDictionarySheetExpanded(true, 48, 600), false);
+  assert.equal(nextDictionarySheetExpanded(false, -24, 600), false);
+  assert.equal(nextDictionarySheetExpanded(true, 24, 600), true);
 });
 
 test("dictionary Chinese starts visually hidden and becomes clear after reveal", () => {

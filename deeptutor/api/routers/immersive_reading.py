@@ -939,6 +939,15 @@ class BilingualExportRequest(BaseModel):
     style: Literal["folded", "alternating", "two_column"] = "folded"
     font_family: str = Field(default="", max_length=300)
     custom_css: str = Field(default="", max_length=100_000)
+    font_asset_id: str = Field(default="", max_length=100)
+
+
+class BilingualFontUploadResponse(BaseModel):
+    font_asset_id: str
+    family: str
+    filename: str
+    media_type: str
+    size: int
 
 
 @router.post("/bilingual/pair")
@@ -1057,6 +1066,7 @@ async def bilingual_export(
             style=options.style,
             font_family=options.font_family,
             custom_css=options.custom_css,
+            font_asset_id=options.font_asset_id,
         )
         return FileResponse(
             path=str(epub_path),
@@ -1067,6 +1077,31 @@ async def bilingual_export(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception:
         logger.exception("Bilingual API error")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/bilingual/{pairing_id}/fonts")
+async def bilingual_upload_font(
+    pairing_id: str,
+    file: UploadFile = File(...),
+    family: str = "",
+) -> BilingualFontUploadResponse:
+    try:
+        content = await file.read(10 * 1024 * 1024 + 1)
+        if len(content) > 10 * 1024 * 1024:
+            raise ValueError("Font file exceeds 10 MB")
+        result = await asyncio.to_thread(
+            get_pairing_service().upload_font,
+            pairing_id,
+            file.filename or "font.ttf",
+            content,
+            family,
+        )
+        return BilingualFontUploadResponse(**result)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Bilingual font upload failed")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

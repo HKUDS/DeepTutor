@@ -17,9 +17,6 @@ test("translation stream parsing flags malformed and unknown events", () => {
       .parse_error,
     true,
   );
-  assert.deepEqual(safeParseEvent(JSON.stringify({ type: "run_cancelled" }), "run-1"), {
-    type: "run_cancelled",
-  });
 
   assert.deepEqual(safeParseEvent(JSON.stringify({ type: "heartbeat" }), "run-1"), {
     type: "heartbeat",
