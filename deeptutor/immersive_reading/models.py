@@ -378,7 +378,61 @@ class KidsQuizGradeResult(BaseModel):
     encouragements: list[str] = Field(default_factory=list)
 
 
+class TranslationMemoryEntry(BaseModel):
+    cache_key: str
+    source_hash: str
+    normalized_source: str
+    target_language: str
+    provider_name: str
+    model_name: str
+    prompt_version: str
+    glossary_version: str
+    translation: str
+    created_at: float = Field(default_factory=time.time)
+    updated_at: float = Field(default_factory=time.time)
+    hit_count: int = 1
+
+class OfflineBookPackage(BaseModel):
+    document_id: str
+    title: str
+    author: str
+    size_bytes: int
+    version: str
+    generated_at: float = Field(default_factory=time.time)
+
+class QueuedLearningOperation(BaseModel):
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    operation_type: Literal["add_word", "translate", "focus_check"]
+    idempotency_key: str
+    payload: dict[str, Any]
+    status: Literal["queued", "processing", "completed", "failed"] = "queued"
+    error: str = ""
+    created_at: float = Field(default_factory=time.time)
+    updated_at: float = Field(default_factory=time.time)
+
+class MN4WriteReceipt(BaseModel):
+    remote_object_id: str
+    content_hash: str
+    written_at: float = Field(default_factory=time.time)
+
+class MN4WritebackItem(BaseModel):
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    source_type: Literal["word", "translation"]
+    source_object_id: str
+    content_hash: str
+    idempotency_key: str
+    model: str
+    status: Literal["pending_confirmation", "approved", "applying", "applied", "failed", "conflicted", "rejected"] = "pending_confirmation"
+    receipt: MN4WriteReceipt | None = None
+    created_at: float = Field(default_factory=time.time)
+    updated_at: float = Field(default_factory=time.time)
+
 __all__ = [
+    "TranslationMemoryEntry",
+    "OfflineBookPackage",
+    "QueuedLearningOperation",
+    "MN4WriteReceipt",
+    "MN4WritebackItem",
     "ChapterSearchCard",
     "FastSearchIndex",
     "FocusAttempt",

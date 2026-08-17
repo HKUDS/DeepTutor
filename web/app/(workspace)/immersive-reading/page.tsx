@@ -43,6 +43,8 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
+import { getCachedTranslation, setCachedTranslation } from "@/lib/dictionary-cache";
+
 import {
   ApiRequestError,
   immersiveReadingApi,
@@ -1241,17 +1243,75 @@ function Reader({
 
   const runTranslation = async () => {
     if (!selectionMenu) return;
+    dictAbortRef.current?.abort();
+    const targetLanguage = "Chinese";
     setSelectionAction("translate");
     setSelectionResult("");
     setSelectionBusy(true);
+    let jobId: string | null = null;
+    const controller = new AbortController();
+    dictAbortRef.current = controller;
+    const requestId = ++dictSeqRef.current;
+
     try {
-      const result = await immersiveReadingApi.translate(
+      const cached = getCachedTranslation(selectionMenu.text, targetLanguage);
+      if (cached) {
+        setSelectionResult(cached);
+        return;
+      }
+
+      const job = await immersiveReadingApi.translateJob(
         selectionMenu.text,
-        i18n.language.startsWith("zh") ? "Chinese" : "English",
+        targetLanguage,
+        [],
+        documentId || "",
+        currentSection?.id || "",
+        controller.signal,
       );
-      setSelectionResult(result.translation);
+      jobId = job.job_id;
+
+      let translation = "";
+      let jobError: ApiRequestError | null = null;
+      await immersiveReadingApi.translateJobStream(
+        jobId,
+        (event) => {
+          if (requestId !== dictSeqRef.current || controller.signal.aborted) return;
+          if (event.type === "delta" && event.delta) {
+            translation += event.delta;
+            setSelectionResult(translation);
+            return;
+          }
+          if (event.type === "completed") {
+            translation = event.translation || translation;
+            return;
+          }
+          if (event.type === "failed" || event.type === "cancelled") {
+            jobError = new ApiRequestError(
+              event.error || "Translation failed.",
+              event.type === "failed" ? 500 : 499,
+            );
+          }
+        },
+        controller.signal,
+      );
+      if (jobError) throw jobError;
+      if (translation) {
+        setCachedTranslation(selectionMenu.text, targetLanguage, translation);
+      }
+      setSelectionResult(translation || t("Translation failed."));
     } catch (cause) {
-      setSelectionResult(errorMessage(cause));
+      if (dictSeqRef.current !== requestId) return;
+      if (cause instanceof DOMException && cause.name === "AbortError" && jobId) {
+        void immersiveReadingApi.translateJobCancel(jobId).catch(() => undefined);
+        return;
+      }
+      if (cause instanceof ApiRequestError && cause.status === 503) {
+        setSelectionResult(cause.message || t("Local translation service unavailable. Start Ollama to enable translation."));
+      } else if (cause instanceof ApiRequestError && cause.status === 504) {
+        setSelectionResult(t("Translation timed out. The model may still be loading."));
+      } else {
+        setSelectionResult(errorMessage(cause));
+      }
     } finally {
       setSelectionBusy(false);
       setSelectionMenu(null);
@@ -1359,20 +1419,78 @@ const closeDictPopup = useCallback(() => {
 
  const translateDictWord = useCallback(async () => {
    if (!dictPopup) return;
-   dictSeqRef.current += 1;
+   const seq = dictSeqRef.current + 1;
+   dictSeqRef.current = seq;
+   const targetLanguage = "zh";
    setDictBusy(true);
    setDictError(null);
    setDictResult(null);
+   const controller = new AbortController();
+   dictAbortRef.current = controller;
+   let jobId: string | null = null;
    try {
-     const { translation } = await immersiveReadingApi.translate(dictPopup.word, "Chinese");
-     setDictResult({
-       word: dictPopup.word,
-       phonetic: "",
-       definitions: [],
-       context_note: translation,
-     });
+     const cached = getCachedTranslation(dictPopup.word, targetLanguage);
+     if (cached) {
+       setDictResult({
+         word: dictPopup.word,
+         phonetic: "",
+         definitions: [],
+         context_note: cached,
+       });
+       return;
+     }
+
+     const job = await immersiveReadingApi.translateJob(dictPopup.word, targetLanguage, []);
+     jobId = job.job_id;
+     let translation = "";
+     let jobError: ApiRequestError | null = null;
+
+     await immersiveReadingApi.translateJobStream(
+       jobId,
+       (event) => {
+         if (seq !== dictSeqRef.current || controller.signal.aborted) return;
+         if (event.type === "delta" && event.delta) {
+           translation += event.delta;
+           setDictResult({
+             word: dictPopup.word,
+             phonetic: "",
+             definitions: [],
+             context_note: translation,
+           });
+         }
+         if (event.type === "completed") {
+           translation = event.translation || translation;
+         }
+         if (event.type === "failed" || event.type === "cancelled") {
+           jobError = new ApiRequestError(
+             event.error || "Translation failed.",
+             event.type === "failed" ? 500 : 499,
+           );
+         }
+       },
+       controller.signal,
+     );
+
+     if (jobError) throw jobError;
+     if (translation) {
+       setCachedTranslation(dictPopup.word, targetLanguage, translation);
+       setDictResult({
+         word: dictPopup.word,
+         phonetic: "",
+         definitions: [],
+         context_note: translation,
+       });
+       return;
+     }
+     throw new ApiRequestError("Translation produced no content.", 500);
    } catch (cause) {
-     setDictError(cause instanceof Error ? cause.message : t("Lookup failed."));
+     if (seq === dictSeqRef.current) {
+       if (cause instanceof DOMException && cause.name === "AbortError" && jobId) {
+         void immersiveReadingApi.translateJobCancel(jobId).catch(() => undefined);
+         return;
+       }
+       setDictError(cause instanceof Error ? cause.message : t("Lookup failed."));
+     }
    } finally {
      setDictBusy(false);
    }

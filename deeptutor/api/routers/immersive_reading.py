@@ -13,7 +13,7 @@ from typing import Any, Literal
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from deeptutor.immersive_reading import get_immersive_reading_service
@@ -69,6 +69,17 @@ class CitationRequest(BaseModel):
 class TranslateRequest(BaseModel):
     text: str = Field(min_length=1, max_length=12_000)
     target_language: str = Field(default="Chinese", max_length=80)
+    glossary: list[dict[str, Any]] = Field(default_factory=list, max_length=120)
+    document_id: str = Field(default="", max_length=80)
+    source_object_id: str = Field(default="", max_length=80)
+
+
+class TranslateStartRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=12_000)
+    target_language: str = Field(default="Chinese", max_length=80)
+    glossary: list[dict[str, Any]] = Field(default_factory=list, max_length=120)
+    document_id: str = Field(default="", max_length=80)
+    source_object_id: str = Field(default="", max_length=80)
 
 
 class QuerySelectionRequest(BaseModel):
@@ -440,9 +451,23 @@ async def delete_citation(citation_id: str) -> dict:
 @router.post("/translate")
 async def translate(request: TranslateRequest) -> dict:
     try:
-        translated = await get_immersive_reading_service().translate(
-            request.text, request.target_language
+        service = get_immersive_reading_service()
+        translated = await service.translate(
+            request.text, request.target_language, request.glossary
         )
+        if request.document_id and "mn4" in request.document_id.lower():
+            import hashlib
+            from deeptutor.services.llm import get_llm_config
+            cfg = get_llm_config()
+            model_name = str(getattr(cfg, "model", ""))
+            content_hash = hashlib.sha256(request.text.encode("utf-8")).hexdigest()
+            service.create_mn4_writeback(
+                source_type="translation",
+                source_object_id=request.source_object_id or request.document_id,
+                content_hash=content_hash,
+                idempotency_key=f"translate_{request.source_object_id}_{content_hash}",
+                model=model_name
+            )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except LLMConfigError as exc:
@@ -465,6 +490,133 @@ async def translate(request: TranslateRequest) -> dict:
             status_code=500, detail="Translation failed. Please try again."
         ) from exc
     return {"translation": translated}
+
+
+def _ndjson_event(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
+
+
+@router.post("/translate/job")
+async def start_translate_job(request: TranslateStartRequest) -> dict:
+    service = get_immersive_reading_service()
+    try:
+        job_id = await service.start_translation_job(
+            request.text,
+            request.target_language,
+            request.glossary,
+        )
+        if request.document_id and "mn4" in request.document_id.lower():
+            import hashlib
+            from deeptutor.services.llm import get_llm_config
+            cfg = get_llm_config()
+            model_name = str(getattr(cfg, "model", ""))
+            content_hash = hashlib.sha256(request.text.encode("utf-8")).hexdigest()
+            service.create_mn4_writeback(
+                source_type="translation",
+                source_object_id=request.source_object_id or request.document_id,
+                content_hash=content_hash,
+                idempotency_key=f"translate_job_{request.source_object_id}_{content_hash}",
+                model=model_name
+            )
+        status = await service.get_translation_job_status(job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except LLMConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except LLMTimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except LLMModelNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except LLMAuthenticationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except LLMRateLimitError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except LLMError as exc:
+        if getattr(exc, "status_code", None) == 503:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Translation job start failed")
+        raise HTTPException(
+            status_code=500, detail="Translation start failed. Please try again."
+        ) from exc
+    return {"job_id": job_id, **status}
+
+
+@router.get("/translate/{job_id}/status")
+async def get_translate_job_status(job_id: str) -> dict:
+    try:
+        status = await get_immersive_reading_service().get_translation_job_status(job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return status
+
+
+@router.post("/translate/{job_id}/cancel")
+async def cancel_translate_job(job_id: str) -> dict:
+    try:
+        result = await get_immersive_reading_service().cancel_translation_job(job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return result
+
+
+@router.get("/translate/{job_id}/stream")
+async def stream_translate_job(job_id: str) -> StreamingResponse:
+    service = get_immersive_reading_service()
+    try:
+        status = await service.get_translation_job_status(job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    initial_type = (
+        "completed"
+        if status["status"] == "completed"
+        else "failed"
+        if status["status"] == "failed"
+        else "cancelled" if status["status"] == "cancelled" else None
+    )
+    queue = service._subscribe_translation_job(job_id)
+
+    async def events() -> Any:
+        try:
+            yield _ndjson_event(
+                {
+                    "type": initial_type
+                    if initial_type is not None
+                    else "snapshot",
+                    **{k: status[k] for k in ("job_id", "status")},
+                    "translation": status.get("result"),
+                    "error": status.get("error"),
+                }
+            )
+            if status["status"] in {"completed", "failed", "cancelled"}:
+                return
+            latest = await service.get_translation_job_status(job_id)
+            if latest["status"] in {"completed", "failed", "cancelled"}:
+                yield _ndjson_event(
+                    {
+                        "type": latest["status"],
+                        "job_id": job_id,
+                        "status": latest["status"],
+                        "translation": latest.get("result"),
+                        "error": latest.get("error"),
+                    }
+                )
+                return
+            while True:
+                event = await queue.get()
+                yield _ndjson_event(event)
+                if event.get("type") in {"completed", "failed", "cancelled"}:
+                    return
+        finally:
+            await service._unsubscribe_translation_job(job_id, queue)
+
+    return StreamingResponse(
+        events(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/query")
@@ -1177,3 +1329,62 @@ async def update_kids_progress(document_id: str, request: KidsProgressRequest):
         return {"progress": progress.model_dump(mode="json")}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+# ── MN4 Writeback and Offline Packages ────────────────────────────────────
+
+
+@router.post("/offline-packages/{document_id}/export")
+async def export_offline_package(document_id: str) -> dict:
+    service = get_immersive_reading_service()
+    try:
+        path = await service.export_offline_package(document_id)
+        return {"exported": True, "package_path": str(path), "document_id": document_id}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@router.get("/offline-packages")
+async def list_offline_packages() -> dict:
+    raise HTTPException(status_code=501, detail="Offline package management not fully implemented")
+
+@router.post("/offline-packages/sync")
+async def sync_offline_operations(request: dict) -> dict:
+    raise HTTPException(status_code=501, detail="Offline sync not fully implemented")
+
+@router.post("/mn4/device/pair")
+async def pair_mn4_device() -> dict:
+    raise HTTPException(status_code=501, detail="MN4 device pairing not fully implemented")
+
+@router.post("/mn4/sync")
+async def sync_mn4_data(request: dict) -> dict:
+    raise HTTPException(status_code=501, detail="MN4 sync not fully implemented")
+
+@router.get("/mn4/writebacks")
+async def list_mn4_writebacks() -> dict:
+    service = get_immersive_reading_service()
+    items = service.list_mn4_writebacks()
+    return {"writebacks": [w.model_dump(mode="json") for w in items]}
+
+@router.post("/mn4/writebacks/preview")
+async def preview_mn4_writebacks(request: dict) -> dict:
+    # Stub for preview logic: returns empty for now
+    return {"previews": {}}
+
+@router.post("/mn4/writebacks/approve")
+async def approve_mn4_writebacks(request: dict) -> dict:
+    writeback_ids = request.get("writeback_ids", [])
+    service = get_immersive_reading_service()
+    count = service.update_mn4_writeback_status(writeback_ids, "approved")
+    return {"approved_count": count}
+
+@router.post("/mn4/writebacks/pull")
+async def pull_mn4_writebacks() -> dict:
+    service = get_immersive_reading_service()
+    items = service.pull_mn4_writebacks()
+    return {"pending_items": [w.model_dump(mode="json") for w in items]}
+
+@router.post("/mn4/writebacks/receipt")
+async def submit_mn4_receipt(request: dict) -> dict:
+    receipts = request.get("receipts", [])
+    service = get_immersive_reading_service()
+    count = service.submit_mn4_receipts(receipts)
+    return {"processed_count": count}

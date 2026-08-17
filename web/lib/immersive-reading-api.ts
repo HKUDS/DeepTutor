@@ -174,10 +174,36 @@ export interface DictionaryResult {
 
 export interface DictionaryStatus {
   installed: boolean;
+  frequency_fields?: boolean;
   path: string;
   entries: number | null;
   size_bytes: number;
+  version: string | null;
+  checksum: string | null;
+  license: string | null;
+  import_progress: number | null;
   error: string;
+}
+
+export interface ImmersiveTranslationJob {
+  job_id: string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  created_at: number;
+  updated_at: number;
+  result: string | null;
+  error: string;
+  cache_key: string;
+  target_language: string;
+}
+
+export interface ImmersiveTranslationJobEvent {
+  type: "snapshot" | "started" | "delta" | "completed" | "failed" | "cancelled";
+  job_id: string;
+  status: ImmersiveTranslationJob["status"];
+  delta?: string;
+  translation?: string | null;
+  error?: string;
+  sequence?: number;
 }
 
 export interface VocabEntry {
@@ -311,6 +337,42 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function readTranslationJobEvents(
+  body: ReadableStream<Uint8Array>,
+  onEvent: (event: ImmersiveTranslationJobEvent) => void,
+) {
+  const decoder = new TextDecoder();
+  const reader = body.getReader();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    buffer += decoder.decode(value, { stream: true });
+    let index = buffer.indexOf("\n");
+    while (index >= 0) {
+      const raw = buffer.slice(0, index).trim();
+      buffer = buffer.slice(index + 1);
+      if (raw) {
+        try {
+          onEvent(JSON.parse(raw));
+        } catch {
+          // Ignore parse errors from partial frames.
+        }
+      }
+      index = buffer.indexOf("\n");
+    }
+  }
+  const tail = buffer.trim();
+  if (tail) {
+    try {
+      onEvent(JSON.parse(tail));
+    } catch {
+      // Ignore parse errors from malformed tail frames.
+    }
+  }
+}
+
 export class ApiRequestError extends Error {
   readonly status: number;
 
@@ -375,12 +437,54 @@ export const immersiveReadingApi = {
         body: JSON.stringify({ reset_focus_checks: resetFocusChecks }),
       },
     ),
-  translate: (text: string, targetLanguage: string, signal?: AbortSignal) =>
+  translate: (text: string, targetLanguage: string, documentId?: string, sourceObjectId?: string, signal?: AbortSignal) =>
     request<{ translation: string }>("/translate", {
       method: "POST",
-      body: JSON.stringify({ text, target_language: targetLanguage }),
+      body: JSON.stringify({ text, target_language: targetLanguage, document_id: documentId || "", source_object_id: sourceObjectId || "" }),
       signal,
     }),
+  translateJob: (
+    text: string,
+    targetLanguage: string,
+    glossary: Array<Record<string, unknown>> = [],
+    documentId?: string,
+    sourceObjectId?: string,
+    signal?: AbortSignal,
+  ) =>
+    request<ImmersiveTranslationJob>("/translate/job", {
+      method: "POST",
+      body: JSON.stringify({ text, target_language: targetLanguage, glossary, document_id: documentId || "", source_object_id: sourceObjectId || "" }),
+      signal,
+    }),
+  translateJobStatus: (jobId: string) =>
+    request<ImmersiveTranslationJob>(`/translate/${encodeURIComponent(jobId)}/status`),
+  translateJobCancel: (jobId: string) =>
+    request<{ job_id: string; status: string; cancelled: boolean }>(
+      `/translate/${encodeURIComponent(jobId)}/cancel`,
+      { method: "POST" },
+    ),
+  translateJobStream: async (
+    jobId: string,
+    onEvent: (event: ImmersiveTranslationJobEvent) => void,
+    signal?: AbortSignal,
+  ) => {
+    const response = await apiFetch(
+      apiUrl(`${BASE}/translate/${encodeURIComponent(jobId)}/stream`),
+      { headers: new Headers(), signal },
+    );
+    if (!response.ok) {
+      let detail = response.statusText;
+      try {
+        const body = await response.json();
+        detail = body?.detail || body?.message || detail;
+      } catch {
+        // Keep HTTP status text.
+      }
+      throw new ApiRequestError(String(detail), response.status);
+    }
+    if (!response.body) return;
+    await readTranslationJobEvents(response.body, onEvent);
+  },
   dictionary: (word: string, context = "", signal?: AbortSignal) =>
     request<DictionaryResult>("/dictionary", {
       method: "POST",
@@ -803,4 +907,96 @@ export const annotationApi = {
       `/bilingual/${encodeURIComponent(pairingId)}/alignment-overrides`,
       { method: "PUT", body: JSON.stringify({ overrides_json: overridesJson }) },
     ),
+};
+
+export interface TranslationMemoryEntry {
+  cache_key: string;
+  source_hash: string;
+  normalized_source: string;
+  target_language: string;
+  provider_name: string;
+  model_name: string;
+  prompt_version: string;
+  glossary_version: string;
+  translation: string;
+  created_at: number;
+  updated_at: number;
+  hit_count: number;
+}
+
+export interface OfflineBookPackage {
+  document_id: string;
+  title: string;
+  author: string;
+  size_bytes: number;
+  version: string;
+  generated_at: number;
+}
+
+export interface QueuedLearningOperation {
+  id: string;
+  operation_type: "add_word" | "translate" | "focus_check";
+  idempotency_key: string;
+  payload: Record<string, unknown>;
+  status: "queued" | "processing" | "completed" | "failed";
+  error: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface MN4WriteReceipt {
+  remote_object_id: string;
+  content_hash: string;
+  written_at: number;
+}
+
+export interface MN4WritebackItem {
+  id: string;
+  source_type: "word" | "translation";
+  source_object_id: string;
+  content_hash: string;
+  idempotency_key: string;
+  model: string;
+  status: "pending_confirmation" | "approved" | "applying" | "applied" | "failed" | "conflicted" | "rejected";
+  receipt: MN4WriteReceipt | null;
+  created_at: number;
+  updated_at: number;
+}
+
+// ── MN4 Writeback and Offline Packages ─────────────────────────────────
+
+export const offlinePackagesApi = {
+
+  export: (documentId: string) =>
+    request<{ exported: boolean; package_path: string; document_id: string }>(`/offline-packages/${encodeURIComponent(documentId)}/export`, {
+      method: "POST"
+    }),
+  list: () => request<{ packages: OfflineBookPackage[] }>("/offline-packages"),
+  sync: (operations: QueuedLearningOperation[]) => 
+    request<{ synced_count: number }>("/offline-packages/sync", {
+      method: "POST",
+      body: JSON.stringify({ operations }),
+    }),
+};
+
+export const mn4WritebackApi = {
+  pairDevice: () => request<{ pairing_code: string, expires_at: number }>("/mn4/device/pair", { method: "POST" }),
+  syncData: (payload: Record<string, unknown>) => request<{ sync_status: string }>("/mn4/sync", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }),
+  list: () => request<{ writebacks: MN4WritebackItem[] }>("/mn4/writebacks"),
+  preview: (writebackIds: string[]) => request<{ previews: Record<string, unknown> }>("/mn4/writebacks/preview", {
+    method: "POST",
+    body: JSON.stringify({ writeback_ids: writebackIds }),
+  }),
+  approve: (writebackIds: string[]) => request<{ approved_count: number }>("/mn4/writebacks/approve", {
+    method: "POST",
+    body: JSON.stringify({ writeback_ids: writebackIds }),
+  }),
+  pull: () => request<{ pending_items: MN4WritebackItem[] }>("/mn4/writebacks/pull", { method: "POST" }),
+  submitReceipt: (receipts: MN4WriteReceipt[]) => request<{ processed_count: number }>("/mn4/writebacks/receipt", {
+    method: "POST",
+    body: JSON.stringify({ receipts }),
+  }),
 };
