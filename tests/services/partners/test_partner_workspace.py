@@ -178,8 +178,24 @@ class TestInventoryAndRemoval:
 
 class TestStripFrontmatter:
     def test_strips_yaml_block(self):
+        """Strip a frontmatter block closed by a full-line fence."""
         text = "---\nname: x\ndescription: y\n---\n\n# Body\ncontent"
         assert strip_frontmatter(text) == "# Body\ncontent"
 
     def test_passthrough_without_frontmatter(self):
+        """Preserve content that has no opening frontmatter fence."""
         assert strip_frontmatter("# Plain") == "# Plain"
+
+    def test_ignores_triple_dash_prefix_that_is_not_a_fence(self):
+        """Reject a close-fence prefix with trailing non-whitespace text."""
+        text = "---\nname: Ada\n---not-a-fence\nactual: keep\n"
+        assert strip_frontmatter(text) == text
+
+    def test_preserves_horizontal_rule_in_body(self):
+        """Strip only the leading block and preserve later horizontal rules."""
+        text = "---\ntitle: T\n---\nIntro\n\n---\n\nSection\n"
+        assert strip_frontmatter(text) == "Intro\n\n---\n\nSection\n"
+
+    def test_strips_empty_frontmatter_block(self):
+        """Treat adjacent full-line fences as valid empty frontmatter."""
+        assert strip_frontmatter("---\n---\nbody") == "body"
