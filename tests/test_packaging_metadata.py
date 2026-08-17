@@ -82,3 +82,22 @@ def test_pageindex_sdk_pin_matches_every_install_surface() -> None:
     assert (REPOSITORY_ROOT / "requirements" / "cli.txt").read_text(
         encoding="utf-8"
     ).splitlines().count(expected) == 1
+
+
+def test_pageindex_flash_pins_compatible_pypdfium2() -> None:
+    expected = "pypdfium2>=4.30.0,<5.0.0"
+    with (REPOSITORY_ROOT / "pyproject.toml").open("rb") as file:
+        root = tomllib.load(file)["project"]
+    with (REPOSITORY_ROOT / "packaging" / "deeptutor-cli" / "pyproject.toml").open("rb") as file:
+        cli_package = tomllib.load(file)["project"]
+
+    assert root["dependencies"].count(expected) == 1
+    assert root["optional-dependencies"]["cli"].count(expected) == 1
+    assert cli_package["dependencies"].count(expected) == 1
+    cli_lines = [
+        line.split("#", 1)[0].strip()
+        for line in (REPOSITORY_ROOT / "requirements" / "cli.txt")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert cli_lines.count(expected) == 1

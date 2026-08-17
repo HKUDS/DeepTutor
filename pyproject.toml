@@ -45,6 +45,7 @@ dependencies = [
     # the full connect timeout.
     "mcp>=1.26.0,<2.0.0",
     "pageindex==0.2.10.dev5",
+    "pypdfium2>=4.30.0,<5.0.0",  # PageIndex Flash uses a raw API removed in pypdfium2 5.x.
     # Full app dependencies included by default for `pip install deeptutor`.
     "anthropic>=0.30.0",
     "dashscope>=1.14.0",
@@ -96,6 +97,7 @@ cli = [
     "perplexityai>=0.1.0",
     "oauth-cli-kit>=0.1.1",
     "pageindex==0.2.10.dev5",
+    "pypdfium2>=4.30.0,<5.0.0",
     # RAG (LlamaIndex)
     "llama-index>=0.14.12",
     "llama-index-retrievers-bm25>=0.7.1,<0.8.0",
