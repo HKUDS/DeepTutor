@@ -14,9 +14,8 @@ Decoupling notes:
   model id, so the workflow/search sections pick it up automatically.
 * Built-in prompts are used (every ``prompt`` field defaults to ``None`` in
   GraphRAG), so we never scaffold prompt files.
-* GraphRAG talks to its models via LiteLLM with ``model_provider: openai`` + a
-  custom ``api_base`` — which is exactly how DeepTutor reaches any
-  OpenAI-compatible endpoint.
+* Completion calls use DeepTutor's registered GraphRAG compatibility adapter,
+  while embeddings retain GraphRAG's stock LiteLLM path.
 
 This is the single spot to touch if GraphRAG's config schema shifts between
 releases; pin the dependency to the 3.x line (see ``pyproject`` extra).
@@ -28,6 +27,18 @@ from dataclasses import dataclass
 import logging
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
+
+from deeptutor.services.config.embedding_endpoint import canonical_embedding_provider_name
+from deeptutor.services.embedding.request_options import should_send_embedding_dimensions
+
+from .errors import GraphRagEmbeddingProviderUnsupportedError
+from .provider import (
+    COMPLETION_TYPE,
+    resolve_completion_call_args,
+    resolve_completion_model,
+    resolve_completion_provider,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +53,25 @@ EMBEDDING_MODEL_ID = "default_embedding_model"
 # default (entity-centric, cheaper than global map-reduce).
 SUPPORTED_MODES = ("local", "global", "drift", "basic")
 DEFAULT_MODE = "local"
+
+# GraphRAG's stock LiteLLM embedding client uses an OpenAI-style transport and
+# appends the ``/embeddings`` operation path to ``api_base``. DeepTutor stores a
+# complete operation URL for these bindings, so only this explicitly compatible
+# set can be translated safely. Native Cohere, Ollama, DashScope, and Azure
+# transports require separate provider adapters and must not be guessed here.
+OPENAI_COMPATIBLE_EMBEDDING_BINDINGS = frozenset(
+    {
+        "custom",
+        "custom_openai_sdk",
+        "gemini",
+        "jina",
+        "openai",
+        "openrouter",
+        "orcarouter",
+        "siliconflow",
+        "vllm",
+    }
+)
 
 
 class GraphRagNotAvailableError(RuntimeError):
@@ -75,6 +105,59 @@ def normalize_mode(mode: str | None) -> str:
     return candidate if candidate in SUPPORTED_MODES else DEFAULT_MODE
 
 
+def graphrag_embedding_api_base(binding: str | None, endpoint: str | None) -> str:
+    """Translate a DeepTutor embedding endpoint into GraphRAG ``api_base``.
+
+    DeepTutor's public embedding contract stores and calls the complete
+    operation URL. GraphRAG's LiteLLM client expects the API root and appends
+    ``/embeddings`` itself. Strip exactly one terminal path segment only for
+    known OpenAI-compatible transports. Query-bearing URLs are left untouched
+    because the OpenAI SDK does not preserve operation semantics reliably when
+    query parameters are embedded in ``base_url``.
+
+    Args:
+        binding: Active DeepTutor embedding binding.
+        endpoint: Fully qualified endpoint saved in the model catalog.
+
+    Returns:
+        The API base GraphRAG should pass to LiteLLM.
+    """
+    value = str(endpoint or "").strip()
+    provider = canonical_embedding_provider_name(binding)
+    if not value or provider not in OPENAI_COMPATIBLE_EMBEDDING_BINDINGS:
+        return value
+
+    parsed = urlsplit(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return value
+    if parsed.query or parsed.fragment:
+        return value
+
+    path = parsed.path.rstrip("/")
+    if not path.endswith("/embeddings"):
+        return value
+
+    api_path = path[: -len("/embeddings")] or "/"
+    return urlunsplit(parsed._replace(path=api_path))
+
+
+def ensure_graphrag_embedding_transport(
+    binding: str | None,
+    endpoint: str | None,
+) -> None:
+    """Reject native embedding transports that GraphRAG cannot call safely."""
+    provider = canonical_embedding_provider_name(binding)
+    if provider not in OPENAI_COMPATIBLE_EMBEDDING_BINDINGS:
+        raise GraphRagEmbeddingProviderUnsupportedError()
+    # Gemini can use either DeepTutor's native ``batchEmbedContents`` adapter
+    # or its legacy OpenAI-compatible endpoint. GraphRAG only supports the
+    # latter; a provider name alone is no longer enough after Gemini 2 support.
+    if provider == "gemini" and not urlsplit(str(endpoint or "")).path.rstrip("/").endswith(
+        "/embeddings"
+    ):
+        raise GraphRagEmbeddingProviderUnsupportedError()
+
+
 @dataclass(frozen=True)
 class GraphRagQueryConfig:
     """Query-time knobs read from the persisted ``graphrag.json`` slice."""
@@ -99,9 +182,18 @@ def query_config_from_settings() -> GraphRagQueryConfig:
         return GraphRagQueryConfig()
 
 
-def _model_entry(*, model: str, api_base: str | None, api_key: str | None) -> dict[str, Any]:
+def _embedding_model_entry(
+    *,
+    model: str,
+    api_base: str | None,
+    api_key: str | None,
+    binding: str | None,
+    dimension: int,
+    send_dimensions: bool | None,
+    extra_headers: dict[str, str] | None,
+) -> dict[str, Any]:
     entry: dict[str, Any] = {
-        "model_provider": "openai",  # LiteLLM provider for any OpenAI-compatible API
+        "model_provider": "openai",
         "model": model,
         "auth_method": "api_key",
     }
@@ -110,6 +202,37 @@ def _model_entry(*, model: str, api_base: str | None, api_key: str | None) -> di
     # GraphRAG validates that a key is present for ``auth_method: api_key``; local
     # OpenAI-compatible servers accept a placeholder.
     entry["api_key"] = api_key or "sk-no-key-required"
+    call_args: dict[str, Any] = {}
+    if isinstance(extra_headers, dict) and extra_headers:
+        call_args["extra_headers"] = dict(extra_headers)
+    if should_send_embedding_dimensions(
+        binding=binding,
+        model=model,
+        dimension=dimension,
+        send_dimensions=send_dimensions,
+    ):
+        call_args["dimensions"] = dimension
+    if call_args:
+        entry["call_args"] = call_args
+    return entry
+
+
+def _completion_model_entry(llm_cfg: Any, *, api_base: str | None) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "type": COMPLETION_TYPE,
+        "model_provider": resolve_completion_provider(llm_cfg),
+        "model": resolve_completion_model(llm_cfg),
+        "auth_method": "api_key",
+        "api_key": getattr(llm_cfg, "api_key", None) or "sk-no-key-required",
+    }
+    if api_base:
+        entry["api_base"] = api_base
+    api_version = getattr(llm_cfg, "api_version", None)
+    if api_version:
+        entry["api_version"] = api_version
+    call_args = resolve_completion_call_args(llm_cfg)
+    if call_args:
+        entry["call_args"] = call_args
     return entry
 
 
@@ -148,24 +271,27 @@ def build_settings(*, llm_cfg: Any = None, embedding_cfg: Any = None) -> dict[st
             "Settings → Catalog before creating a GraphRAG knowledge base."
         )
 
+    embedding_binding = str(getattr(embedding_cfg, "binding", "") or "")
     llm_base = getattr(llm_cfg, "effective_url", None) or getattr(llm_cfg, "base_url", None)
-    embed_base = getattr(embedding_cfg, "effective_url", None) or getattr(
+    embed_endpoint = getattr(embedding_cfg, "effective_url", None) or getattr(
         embedding_cfg, "base_url", None
     )
+    ensure_graphrag_embedding_transport(embedding_binding, embed_endpoint)
+    embed_base = graphrag_embedding_api_base(embedding_binding, embed_endpoint)
 
     return {
         "completion_models": {
-            COMPLETION_MODEL_ID: _model_entry(
-                model=chat_model,
-                api_base=llm_base,
-                api_key=getattr(llm_cfg, "api_key", None),
-            ),
+            COMPLETION_MODEL_ID: _completion_model_entry(llm_cfg, api_base=llm_base),
         },
         "embedding_models": {
-            EMBEDDING_MODEL_ID: _model_entry(
+            EMBEDDING_MODEL_ID: _embedding_model_entry(
                 model=embed_model,
                 api_base=embed_base,
                 api_key=getattr(embedding_cfg, "api_key", None),
+                binding=embedding_binding,
+                dimension=embed_dim,
+                send_dimensions=getattr(embedding_cfg, "send_dimensions", None),
+                extra_headers=getattr(embedding_cfg, "extra_headers", None),
             ),
         },
         # Plain-text input: DeepTutor's ingestion writes parsed ``.txt`` files
@@ -192,17 +318,22 @@ def build_settings(*, llm_cfg: Any = None, embedding_cfg: Any = None) -> dict[st
     }
 
 
-def write_settings(root_dir: Path, *, llm_cfg: Any = None, embedding_cfg: Any = None) -> Path:
-    """Write ``settings.yaml`` into ``root_dir`` and return its path."""
+def write_settings_payload(root_dir: Path, settings: dict[str, Any]) -> Path:
+    """Write a previously-built settings snapshot into ``root_dir``."""
     import yaml
 
     root_dir = Path(root_dir)
     root_dir.mkdir(parents=True, exist_ok=True)
-    settings = build_settings(llm_cfg=llm_cfg, embedding_cfg=embedding_cfg)
     path = root_dir / SETTINGS_FILENAME
     with open(path, "w", encoding="utf-8") as handle:
         yaml.safe_dump(settings, handle, sort_keys=False, allow_unicode=True)
     return path
+
+
+def write_settings(root_dir: Path, *, llm_cfg: Any = None, embedding_cfg: Any = None) -> Path:
+    """Build and write ``settings.yaml`` into ``root_dir``."""
+    settings = build_settings(llm_cfg=llm_cfg, embedding_cfg=embedding_cfg)
+    return write_settings_payload(root_dir, settings)
 
 
 __all__ = [
@@ -211,12 +342,16 @@ __all__ = [
     "EMBEDDING_MODEL_ID",
     "SUPPORTED_MODES",
     "DEFAULT_MODE",
+    "OPENAI_COMPATIBLE_EMBEDDING_BINDINGS",
     "GraphRagNotAvailableError",
     "GraphRagNotConfiguredError",
     "GraphRagQueryConfig",
+    "ensure_graphrag_embedding_transport",
+    "graphrag_embedding_api_base",
     "is_graphrag_available",
     "normalize_mode",
     "query_config_from_settings",
     "build_settings",
     "write_settings",
+    "write_settings_payload",
 ]

@@ -17,6 +17,7 @@
 <p align="center">
   <a href="../../README.md"><img alt="English" height="40" src="https://img.shields.io/badge/English-CDCFD4"></a>&nbsp;
   <a href="README_CN.md"><img alt="简体中文" height="40" src="https://img.shields.io/badge/简体中文-CDCFD4"></a>&nbsp;
+  <a href="README_TW.md"><img alt="繁體中文" height="40" src="https://img.shields.io/badge/繁體中文-CDCFD4"></a>&nbsp;
   <a href="README_JA.md"><img alt="日本語" height="40" src="https://img.shields.io/badge/日本語-CDCFD4"></a>&nbsp;
   <a href="README_ES.md"><img alt="Español" height="40" src="https://img.shields.io/badge/Español-CDCFD4"></a>&nbsp;
   <a href="README_FR.md"><img alt="Français" height="40" src="https://img.shields.io/badge/Français-CDCFD4"></a>&nbsp;
@@ -408,7 +409,7 @@ Book selected sources को एक interactive **living book** में बद
 <img src="../../assets/figs/web-1.4.6+/book/03-book-demo%20interactive%20module.png" alt="Book interactive widget block" width="31%">
 </p>
 
-हर chapter typed blocks में compile होती है — text, callouts, quizzes, flash cards, timelines, code, figures, interactive HTML, animations, concept graphs, deep dives, और user notes — और हर page का अपना Page Chat है। Blocks editable हैं: chapter rewrite किए बिना किसी block को insert, move, regenerate, या उसका type switch करें। Maintenance commands जैसे `deeptutor book health` और `deeptutor book refresh-fingerprints` तब detect करने में मदद करते हैं जब source knowledge compiled pages से drift हो गया हो।
+हर chapter typed blocks में compile होती है — text, callouts, quizzes, flash cards, timelines, code, figures, interactive HTML, animations, concept graphs, deep dives, और user notes — और हर page का अपना Page Chat है। Blocks editable हैं: किसी block को insert, move, regenerate, body rewrite करें, या chapter दोबारा किए बिना उसका type switch करें। Visited pages, bookmarks, और quiz attempts मिलकर एक completion score और weak chapters में roll up होते हैं; कोई भी book Markdown में export होती है। एक लंबी compile pause और resume होती है; `deeptutor book health` और `refresh-fingerprints` उस source knowledge को flag करते हैं जो drift हो गई हो।
 
 </details>
 
@@ -425,7 +426,7 @@ Knowledge bases RAG के पीछे document collections हैं — व�
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="एक knowledge base बनाएं" width="900">
 </div>
 
-KB बनाते समय, आप either **नया create** करते हैं (documents upload करें और fresh index build करें) या **existing link** करते हैं (कहीं और बना index reuse करें, re-index के बिना in-place पढ़ें)। Re-indexing एक नई flat `version-N` directory लिखता है और prior ones रखता है, इसलिए एक working index rebuild के दौरान कभी destroy नहीं होता। एक single document को **error**-state base से भी remove किया जा सकता है — पूरी delete-and-rebuild के बिना parse होने में failed हुई file को drop करना। Document parsing — Text-only, MinerU, Docling, markitdown, PyMuPDF4LLM, या LiteParse — **Settings → Knowledge Base** में choose किया जाता है, local model downloads default रूप से off हैं। CLI lifecycle को `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default`, और `delete` से mirror करता है।
+KB बनाते समय, आप either **नया create** करते हैं (documents upload करें और fresh index build करें) या **existing link** करते हैं (कहीं और बना index reuse करें, re-index के बिना in-place पढ़ें)। Re-indexing एक नई flat `version-N` directory लिखता है और prior ones रखता है, इसलिए एक working index rebuild के दौरान कभी destroy नहीं होता। एक single document को **error**-state base से भी remove किया जा सकता है — पूरी delete-and-rebuild के बिना parse होने में failed हुई file को drop करना। Document parsing — Text-only, MinerU, Docling, markitdown, PyMuPDF4LLM, या LiteParse — **Settings → Knowledge Base** में choose किया जाता है, local model downloads default रूप से off हैं। Docling को **remote** mode में भी एक Docling Serve server के विरुद्ध चलाया जा सकता है (कोई local install या models की जरूरत नहीं), जिसे **Settings → Document Parsing** (`mode=remote`, एक server base URL, और एक optional API key) या `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` environment variables के जरिए configure किया जाता है। CLI lifecycle को `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default`, और `delete` से mirror करता है।
 
 </details>
 

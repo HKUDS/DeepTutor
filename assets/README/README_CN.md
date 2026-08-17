@@ -17,6 +17,7 @@
 <p align="center">
   <a href="../../README.md"><img alt="English" height="40" src="https://img.shields.io/badge/English-CDCFD4"></a>&nbsp;
   <a href="README_CN.md"><img alt="简体中文" height="40" src="https://img.shields.io/badge/简体中文-BCDCF7"></a>&nbsp;
+  <a href="README_TW.md"><img alt="繁體中文" height="40" src="https://img.shields.io/badge/繁體中文-CDCFD4"></a>&nbsp;
   <a href="README_JA.md"><img alt="日本語" height="40" src="https://img.shields.io/badge/日本語-CDCFD4"></a>&nbsp;
   <a href="README_ES.md"><img alt="Español" height="40" src="https://img.shields.io/badge/Español-CDCFD4"></a>&nbsp;
   <a href="README_FR.md"><img alt="Français" height="40" src="https://img.shields.io/badge/Français-CDCFD4"></a>&nbsp;
@@ -408,7 +409,7 @@ Book 将选定的来源转化为交互式**活书** — 不是静态 PDF，而�
 <img src="../../assets/figs/web-1.4.6+/book/03-book-demo%20interactive%20module.png" alt="Book 交互式组件块" width="31%">
 </p>
 
-每章编译为类型化块 — 文本、标注、测验、闪卡、时间轴、代码、图形、交互式 HTML、动画、概念图、深度解析和用户笔记 — 每页都有独立的 Page Chat。块可编辑：插入、移动、重新生成或切换块类型，无需重写整章。维护命令如 `deeptutor book health` 和 `deeptutor book refresh-fingerprints` 有助于检测来源知识库与已编译页面的漂移情况。
+每章编译为类型化块 — 文本、标注、测验、闪卡、时间轴、代码、图形、交互式 HTML、动画、概念图、深度解析和用户笔记 — 每页都有独立的 Page Chat。块可编辑：插入、移动、重新生成、改写正文或切换类型，无需重做整章。访问过的页面、书签和测验作答会汇总为完成度分数和薄弱章节；任何书籍都可导出为 Markdown。长时间编译可暂停并恢复；`deeptutor book health` 和 `refresh-fingerprints` 会标记出已漂移的来源知识。
 
 </details>
 
@@ -425,7 +426,7 @@ Book 将选定的来源转化为交互式**活书** — 不是静态 PDF，而�
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="创建知识库" width="900">
 </div>
 
-创建 KB 时，可以选择**新建**（上传文档并构建全新索引）或**链接已有**（复用在其他地方构建的索引，原位读取无需重新索引）。重新索引会写入新的平铺 `version-N` 目录并保留旧版本，因此重建过程中现有索引不会被破坏。即使知识库处于 **error** 状态，也可以单独移除其中一份文档 — 无需完整地删除重建，就能丢弃解析失败的文件。文档解析 — 纯文本、MinerU、Docling、markitdown、PyMuPDF4LLM 或 LiteParse — 在 **Settings → Knowledge Base** 中选择，本地模型下载默认关闭。CLI 通过 `deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default` 和 `delete` 来管理完整生命周期。
+创建 KB 时，可以选择**新建**（上传文档并构建全新索引）或**链接已有**（复用在其他地方构建的索引，原位读取无需重新索引）。重新索引会写入新的平铺 `version-N` 目录并保留旧版本，因此重建过程中现有索引不会被破坏。即使知识库处于 **error** 状态，也可以单独移除其中一份文档 — 无需完整地删除重建，就能丢弃解析失败的文件。文档解析 — 纯文本、MinerU、Docling、markitdown、PyMuPDF4LLM 或 LiteParse — 在 **Settings → Knowledge Base** 中选择，本地模型下载默认关闭。Docling 也可以以 **remote** 模式运行，对接 Docling Serve 服务器（无需本地安装或模型），可在 **Settings → Document Parsing** 中配置（`mode=remote`、服务器 Base URL 和可选的 API Key），或通过 `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` 环境变量配置。CLI 通过 `deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default` 和 `delete` 来管理完整生命周期。
 
 </details>
 

@@ -31,6 +31,7 @@ class BaseChannel(ABC):
     # them from the channel's own config at init time.
     send_progress: bool = True
     send_tool_hints: bool = True
+    partner_id: str = ""
 
     def __init__(self, config: Any, bus: MessageBus):
         """
@@ -43,6 +44,16 @@ class BaseChannel(ABC):
         self.config = config
         self.bus = bus
         self._running = False
+
+    def media_dir(self, channel: str | None = None) -> Path:
+        """Download directory isolated to this channel's owning Partner."""
+        from deeptutor.partners.config.paths import get_media_dir, get_partner_media_dir
+
+        if self.partner_id:
+            return get_partner_media_dir(self.partner_id, channel or self.name)
+        # Plugin/tests may construct a channel outside PartnerManager. Preserve
+        # the legacy location in that standalone case.
+        return get_media_dir(channel or self.name)
 
     async def transcribe_audio(self, file_path: str | Path) -> str:
         """Transcribe an audio file via Groq Whisper. Returns empty string on failure."""

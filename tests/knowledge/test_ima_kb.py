@@ -46,10 +46,23 @@ def test_register_keeps_the_probed_description(tmp_path) -> None:
     assert entry["description"] == "My notes"
 
 
+def test_register_without_credentials_defers_to_the_account_pair(tmp_path) -> None:
+    # Omitting both halves means "use the engine's account credentials"; storing
+    # a copy would pin the KB to today's key and break the next rotation.
+    manager = KnowledgeBaseManager(base_dir=str(tmp_path / "kbs"))
+
+    entry = manager.register_ima_kb("IMA", "", "", "kb-1")
+
+    assert entry["knowledge_base_id"] == "kb-1"
+    assert "client_id" not in entry
+    assert "api_key" not in entry
+
+
 @pytest.mark.parametrize(
     "args",
     [
         ("", "cid", "secret", "kb-1"),
+        # Half a credential pair is a mistake, not an account-level fallback.
         ("IMA", "", "secret", "kb-1"),
         ("IMA", "cid", "", "kb-1"),
         ("IMA", "cid", "secret", ""),

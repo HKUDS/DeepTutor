@@ -17,6 +17,7 @@
 <p align="center">
   <a href="../../README.md"><img alt="English" height="40" src="https://img.shields.io/badge/English-CDCFD4"></a>&nbsp;
   <a href="README_CN.md"><img alt="简体中文" height="40" src="https://img.shields.io/badge/简体中文-CDCFD4"></a>&nbsp;
+  <a href="README_TW.md"><img alt="繁體中文" height="40" src="https://img.shields.io/badge/繁體中文-CDCFD4"></a>&nbsp;
   <a href="README_JA.md"><img alt="日本語" height="40" src="https://img.shields.io/badge/日本語-CDCFD4"></a>&nbsp;
   <a href="README_ES.md"><img alt="Español" height="40" src="https://img.shields.io/badge/Español-CDCFD4"></a>&nbsp;
   <a href="README_FR.md"><img alt="Français" height="40" src="https://img.shields.io/badge/Français-CDCFD4"></a>&nbsp;
@@ -408,7 +409,7 @@ Co-Writer هو مساحة عمل Markdown ذات عرض مقسَّم للتقا�
 <img src="../../assets/figs/web-1.4.6+/book/03-book-demo%20interactive%20module.png" alt="كتلة ودجت تفاعلية في الكتاب" width="31%">
 </p>
 
-يُجمِّع كل فصل إلى كتل مكتوبة — نصوص وأقسام وتنبيهات واختبارات وبطاقات فلاش وجداول زمنية ورمز وأشكال وHTML تفاعلية ورسوم متحركة وأشكال مفاهيم وغوص عميق وملاحظات مستخدم — وكل صفحة لها Page Chat الخاصة بها. الكتل قابلة للتحرير: أدرج أو حرّك أو أعد التوليد أو غيّر نوع الكتلة بدون إعادة كتابة الفصل. أوامر الصيانة مثل `deeptutor book health` و`deeptutor book refresh-fingerprints` تساعد في الكشف عن انجراف معرفة المصدر من الصفحات المُجمَّعة.
+يُجمِّع كل فصل إلى كتل مكتوبة — نصوص وأقسام وتنبيهات واختبارات وبطاقات فلاش وجداول زمنية ورمز وأشكال وHTML تفاعلية ورسوم متحركة وأشكال مفاهيم وغوص عميق وملاحظات مستخدم — وكل صفحة لها Page Chat الخاصة بها. الكتل قابلة للتحرير: أدرج أو حرّك أو أعد التوليد أو أعد كتابة المحتوى أو غيّر النوع دون إعادة عمل الفصل. تتجمّع الصفحات التي زُرتها والإشارات المرجعية ومحاولات الاختبار في نتيجة إتمام وفصول ضعيفة؛ ويمكن تصدير أي كتاب إلى Markdown. التجميع الطويل يتوقف مؤقتاً ويستأنف؛ ويُبلِّغ `deeptutor book health` و`refresh-fingerprints` عن انجراف معرفة المصدر.
 
 </details>
 
@@ -425,7 +426,7 @@ Co-Writer هو مساحة عمل Markdown ذات عرض مقسَّم للتقا�
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="إنشاء قاعدة معرفة" width="900">
 </div>
 
-عند إنشاء قاعدة معرفة، إما أن **تنشئ جديدة** (تحميل مستندات وبناء فهرس جديد) أو **تربط موجودة** (إعادة استخدام فهرس مبني في مكان آخر، قراءة في مكانه بدون إعادة فهرسة). تكتب إعادة الفهرسة دليل `version-N` مسطحاً جديداً وتحتفظ بالسابقة، لذا لا يُدمَّر فهرس عامل أبداً أثناء إعادة البناء. يمكن إزالة مستند واحد حتى من قاعدة في حالة **خطأ** — إسقاط ملف فشل تحليله بدون حذف وإعادة بناء كاملين. تحليل المستندات — نص فقط أو MinerU أو Docling أو markitdown أو PyMuPDF4LLM أو LiteParse — يُختار في **الإعدادات ← قاعدة المعرفة**، مع إيقاف تنزيلات النماذج المحلية افتراضياً. تعكس واجهة CLI دورة الحياة مع `deeptutor kb list` و`info` و`create` و`add` و`search` و`set-default` و`delete`.
+عند إنشاء قاعدة معرفة، إما أن **تنشئ جديدة** (تحميل مستندات وبناء فهرس جديد) أو **تربط موجودة** (إعادة استخدام فهرس مبني في مكان آخر، قراءة في مكانه بدون إعادة فهرسة). تكتب إعادة الفهرسة دليل `version-N` مسطحاً جديداً وتحتفظ بالسابقة، لذا لا يُدمَّر فهرس عامل أبداً أثناء إعادة البناء. يمكن إزالة مستند واحد حتى من قاعدة في حالة **خطأ** — إسقاط ملف فشل تحليله بدون حذف وإعادة بناء كاملين. تحليل المستندات — نص فقط أو MinerU أو Docling أو markitdown أو PyMuPDF4LLM أو LiteParse — يُختار في **الإعدادات ← قاعدة المعرفة**، مع إيقاف تنزيلات النماذج المحلية افتراضياً. يمكن لـ Docling أيضاً العمل في وضع **بعيد** مقابل خادم Docling Serve (بلا حاجة إلى تثبيت محلي أو نماذج)، يُهيَّأ عبر **الإعدادات ← تحليل المستندات** (`mode=remote`، وعنوان URL أساسي للخادم، ومفتاح API اختياري) أو متغيرات البيئة `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN`. تعكس واجهة CLI دورة الحياة مع `deeptutor kb list` و`info` و`create` و`add` و`search` و`set-default` و`delete`.
 
 </details>
 

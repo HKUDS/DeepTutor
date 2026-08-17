@@ -28,7 +28,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from deeptutor.api.utils.progress_broadcaster import ProgressBroadcaster
 from deeptutor.api.utils.task_id_manager import TaskIDManager
@@ -39,6 +39,7 @@ from deeptutor.knowledge.kb_types import is_connected_kb, supports_local_raw_fil
 from deeptutor.knowledge.manager import KnowledgeBaseManager
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
+from deeptutor.logging import PROCESS_LOG_PRIVATE_ATTR
 from deeptutor.multi_user.context import get_current_user
 from deeptutor.multi_user.knowledge_access import (
     assert_writable,
@@ -65,6 +66,17 @@ from deeptutor.services.rag.linked_kb import (
     LINKABLE_PROVIDERS,
     assert_path_allowed,
     probe_linked_folder,
+)
+from deeptutor.services.rag.pipelines.ima.client import (
+    ImaAPIError,
+    ImaAuthError,
+    ImaClient,
+    ImaRateLimitError,
+)
+from deeptutor.services.rag.pipelines.ima.config import (
+    ImaConfig,
+    ImaCredentials,
+    get_account_credentials,
 )
 from deeptutor.utils.document_extractor import (
     MAX_EXTRACTED_CHARS_PER_DOC,
@@ -587,6 +599,28 @@ def _task_log(task_id: str, message: str, level: str = "info") -> None:
         logger.info(f"[{task_id}] {message}")
 
 
+def _server_task_trace(task_id: str, trace: str) -> None:
+    """Keep a traceback in server logs while excluding it from browser streams."""
+    logger.error(
+        "[%s] Stack trace:\n%s",
+        task_id,
+        trace,
+        extra={PROCESS_LOG_PRIVATE_ATTR: True},
+    )
+
+
+def _exception_failure_metadata(exc: Exception) -> dict:
+    """Extract stable, user-facing failure metadata from a typed exception."""
+    metadata = {}
+    error_code = getattr(exc, "code", None)
+    retryable = getattr(exc, "retryable", None)
+    if isinstance(error_code, str) and error_code:
+        metadata["error_code"] = error_code
+    if isinstance(retryable, bool):
+        metadata["retryable"] = retryable
+    return metadata
+
+
 def _validate_registered_provider(raw_provider: str | None) -> str:
     """Resolve a requested provider to a known engine.
 
@@ -628,6 +662,24 @@ def _assert_provider_ready(provider: str) -> None:
                     "`pip install 'deeptutor[graphrag]'` on the server before "
                     "creating a GraphRAG knowledge base."
                 ),
+            )
+
+        from deeptutor.services.rag.preflight import engine_preflight
+
+        report = engine_preflight(provider)
+        failed_checks = [
+            check
+            for check in report.get("checks", [])
+            if not check.get("optional") and not check.get("ok")
+        ]
+        if failed_checks:
+            failure_details = "; ".join(
+                str(check.get("detail") or check.get("label") or "Requirement not met")
+                for check in failed_checks
+            )
+            raise HTTPException(
+                status_code=409,
+                detail=f"GraphRAG preflight failed: {failure_details}",
             )
 
     if provider == LIGHTRAG_PROVIDER:
@@ -813,9 +865,10 @@ async def run_initialization_task(initializer: KnowledgeBaseInitializer, task_id
 
             error_msg = str(e)
             trace = _tb.format_exc()
+            failure_metadata = _exception_failure_metadata(e)
 
             _task_log(task_id, f"Initialization failed: {error_msg}", level="error")
-            _task_log(task_id, f"Stack trace:\n{trace}", level="error")
+            _server_task_trace(task_id, trace)
 
             task_manager.update_task_status(task_id, "error", error=error_msg)
 
@@ -828,6 +881,7 @@ async def run_initialization_task(initializer: KnowledgeBaseInitializer, task_id
                     "message": f"Initialization failed: {error_msg}",
                     "percent": 0,
                     "error": error_msg,
+                    **failure_metadata,
                     "task_id": task_id,
                     "timestamp": datetime.now().isoformat(),
                 },
@@ -835,9 +889,12 @@ async def run_initialization_task(initializer: KnowledgeBaseInitializer, task_id
 
             if initializer.progress_tracker:
                 initializer.progress_tracker.update(
-                    ProgressStage.ERROR, f"Initialization failed: {error_msg}", error=error_msg
+                    ProgressStage.ERROR,
+                    f"Initialization failed: {error_msg}",
+                    error=error_msg,
+                    **failure_metadata,
                 )
-            task_stream_manager.emit_failed(task_id, error_msg, details=trace)
+            task_stream_manager.emit_failed(task_id, error_msg, **failure_metadata)
 
 
 async def run_upload_processing_task(
@@ -979,15 +1036,19 @@ async def run_upload_processing_task(
 
             error_msg = f"Upload processing failed (KB '{kb_name}'): {e}"
             trace = _tb.format_exc()
+            failure_metadata = _exception_failure_metadata(e)
             _task_log(task_id, error_msg, level="error")
-            _task_log(task_id, f"Stack trace:\n{trace}", level="error")
+            _server_task_trace(task_id, trace)
 
             task_manager.update_task_status(task_id, "error", error=error_msg)
 
             progress_tracker.update(
-                ProgressStage.ERROR, f"Processing failed: {error_msg}", error=error_msg
+                ProgressStage.ERROR,
+                f"Processing failed: {error_msg}",
+                error=error_msg,
+                **failure_metadata,
             )
-            task_stream_manager.emit_failed(task_id, error_msg, details=trace)
+            task_stream_manager.emit_failed(task_id, error_msg, **failure_metadata)
 
 
 @router.get("/health")
@@ -1126,6 +1187,62 @@ async def update_pageindex_pipeline_config(payload: PageIndexConfigUpdate):
         return _pageindex_config_payload()
     except Exception as e:
         logger.error(f"Error updating PageIndex config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ImaConfigUpdate(BaseModel):
+    # Same tri-state as PageIndex for the secret half of the pair: omit/None
+    # keeps the stored key, "" clears it, any other value replaces it. The
+    # Client ID is not a secret and round-trips in the clear.
+    client_id: str | None = None
+    api_key: str | None = None
+
+
+def _ima_config_payload() -> dict:
+    """Account-level IMA credential state for the UI, with the key redacted."""
+    from deeptutor.services.config import get_runtime_settings_service
+
+    settings = get_runtime_settings_service().load_ima()
+    client_id = str(settings.get("client_id") or "")
+    api_key_set = bool(settings.get("api_key"))
+    return {
+        "client_id": client_id,
+        "api_key_set": api_key_set,
+        "configured": bool(client_id) and api_key_set,
+    }
+
+
+@router.get("/rag-pipelines/ima/config")
+async def get_ima_pipeline_config():
+    """Read the account-level IMA credentials (key redacted to a boolean)."""
+    try:
+        return _ima_config_payload()
+    except Exception as e:
+        logger.error(f"Error reading IMA config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/rag-pipelines/ima/config")
+async def update_ima_pipeline_config(payload: ImaConfigUpdate):
+    """Persist the account-level IMA Client ID / API key."""
+    try:
+        from deeptutor.services.config import get_runtime_settings_service
+
+        service = get_runtime_settings_service()
+        current = service.load_ima(include_process_overrides=False)
+
+        client_id = current.get("client_id", "")
+        if payload.client_id is not None:
+            client_id = payload.client_id.strip()
+
+        api_key = current.get("api_key", "")
+        if payload.api_key is not None:
+            api_key = payload.api_key.strip()
+
+        service.save_ima({"client_id": client_id, "api_key": api_key})
+        return _ima_config_payload()
+    except Exception as e:
+        logger.error(f"Error updating IMA config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1315,6 +1432,37 @@ async def get_rag_model_options(kinds: str = "llm,embedding"):
     except Exception as e:
         logger.error(f"Error reading model options: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class GraphRagModelCompatibilityRequest(BaseModel):
+    """Configured chat-model candidate to test without activating it."""
+
+    profile_id: str
+    model_id: str
+
+
+async def _probe_graphrag_model_compatibility(profile_id: str, model_id: str) -> dict:
+    """Resolve and probe a configured GraphRAG chat-model candidate."""
+    from deeptutor.services.rag.pipelines.graphrag.compatibility import (
+        probe_configured_completion_model,
+    )
+
+    return await probe_configured_completion_model(profile_id, model_id)
+
+
+@router.post("/rag-pipelines/graphrag/model-compatibility")
+async def test_graphrag_model_compatibility(payload: GraphRagModelCompatibilityRequest):
+    """Test GraphRAG structured output without changing the active chat model."""
+    try:
+        return await _probe_graphrag_model_compatibility(payload.profile_id, payload.model_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        logger.exception("Unexpected error testing GraphRAG model compatibility")
+        raise HTTPException(
+            status_code=500,
+            detail="GraphRAG compatibility could not be tested because of an internal error.",
+        ) from e
 
 
 class ActiveModelUpdate(BaseModel):
@@ -1692,16 +1840,80 @@ async def connect_lightrag_server_route(payload: ConnectLightRagServerRequest):
     }
 
 
+class ListImaRequest(BaseModel):
+    # Empty means "use the account-level credentials from the engine settings",
+    # so the connect flow never has to re-send what is already stored.
+    client_id: str = ""
+    api_key: str = ""
+    cursor: str = ""
+    limit: int = Field(default=20, ge=1, le=20)
+
+
+class ImaKnowledgeBaseSummary(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+
+
+class ListImaResponse(BaseModel):
+    knowledge_bases: list[ImaKnowledgeBaseSummary]
+    next_cursor: str
+    is_end: bool
+
+
+def _resolve_ima_credentials(client_id: str, api_key: str) -> ImaCredentials:
+    """A request's credentials, falling back to the account-level pair.
+
+    A request that supplies only one half is not silently completed from the
+    account pair: mixing two accounts' halves would fail at IMA with a confusing
+    verdict.
+    """
+    supplied = ImaCredentials(client_id=(client_id or "").strip(), api_key=(api_key or "").strip())
+    if supplied.client_id or supplied.api_key:
+        return supplied
+    return get_account_credentials()
+
+
+@router.post("/list-ima", response_model=ListImaResponse)
+async def list_ima_route(payload: ListImaRequest):
+    """List IMA knowledge bases without storing or echoing credentials."""
+    credentials = _resolve_ima_credentials(payload.client_id, payload.api_key)
+    if not credentials.complete:
+        raise HTTPException(status_code=400, detail="Client ID and API key are required.")
+
+    client = ImaClient(
+        ImaConfig(
+            client_id=credentials.client_id,
+            api_key=credentials.api_key,
+            knowledge_base_id="",
+        )
+    )
+    try:
+        return await client.search_knowledge_bases(
+            query="",
+            cursor=payload.cursor.strip(),
+            limit=payload.limit,
+        )
+    except ImaAuthError:
+        raise HTTPException(status_code=401, detail="IMA rejected the supplied credentials.")
+    except ImaRateLimitError:
+        raise HTTPException(status_code=429, detail="IMA rate limit reached. Try again shortly.")
+    except ImaAPIError:
+        raise HTTPException(status_code=502, detail="IMA returned an invalid response.")
+    except Exception:
+        raise HTTPException(status_code=502, detail="Could not reach Tencent IMA.")
+
+
 class ProbeImaRequest(BaseModel):
-    client_id: str
-    api_key: str
+    client_id: str = ""
+    api_key: str = ""
     knowledge_base_id: str
 
 
 class ConnectImaRequest(BaseModel):
     name: str
-    client_id: str
-    api_key: str
+    client_id: str = ""
+    api_key: str = ""
     knowledge_base_id: str
 
 
@@ -1715,9 +1927,10 @@ async def probe_ima_route(payload: ProbeImaRequest):
     """
     from deeptutor.services.rag.pipelines.ima.probe import probe_knowledge_base
 
+    credentials = _resolve_ima_credentials(payload.client_id, payload.api_key)
     result = await probe_knowledge_base(
-        payload.client_id,
-        payload.api_key,
+        credentials.client_id,
+        credentials.api_key,
         payload.knowledge_base_id,
     )
     return result.to_dict()
@@ -1730,6 +1943,9 @@ async def connect_ima_route(payload: ConnectImaRequest):
     Re-probes server-side (never trusts the client's verdict), then registers a
     pointer (``type: ima``). Retrieval is offloaded to IMA's ``search_knowledge``
     OpenAPI — no copy, no local index.
+
+    Credentials the request omits come from the account-level settings and are
+    *not* copied onto the KB, so rotating them there keeps this KB working.
     """
     from deeptutor.services.rag.pipelines.ima.probe import probe_knowledge_base
 
@@ -1737,9 +1953,14 @@ async def connect_ima_route(payload: ConnectImaRequest):
     if not name:
         raise HTTPException(status_code=400, detail="Knowledge base name is required.")
 
+    overrides = ImaCredentials(
+        client_id=payload.client_id.strip(),
+        api_key=payload.api_key.strip(),
+    )
+    credentials = _resolve_ima_credentials(payload.client_id, payload.api_key)
     result = await probe_knowledge_base(
-        payload.client_id,
-        payload.api_key,
+        credentials.client_id,
+        credentials.api_key,
         payload.knowledge_base_id,
     )
     if not result.ok:
@@ -1752,8 +1973,8 @@ async def connect_ima_route(payload: ConnectImaRequest):
         manager = get_kb_manager()
         entry = manager.register_ima_kb(
             name,
-            payload.client_id,
-            payload.api_key,
+            overrides.client_id,
+            overrides.api_key,
             payload.knowledge_base_id,
             description=result.description or "",
         )
@@ -1761,9 +1982,11 @@ async def connect_ima_route(payload: ConnectImaRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error connecting IMA knowledge base: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        # Never echo or log an upstream message from this credential-bearing
+        # flow. The exception class is enough for server-side diagnosis.
+        logger.error("Error connecting IMA knowledge base (%s)", type(exc).__name__)
+        raise HTTPException(status_code=500, detail="Could not connect the IMA knowledge base.")
 
     return {
         "status": "connected",
@@ -2516,18 +2739,20 @@ async def run_reindex_task(kb_name: str, base_dir: str, task_id: str, signature_
 
             error_msg = str(e)
             trace = _tb.format_exc()
+            failure_metadata = _exception_failure_metadata(e)
             _task_log(task_id, f"Re-index failed: {error_msg}", level="error")
-            _task_log(task_id, f"Stack trace:\n{trace}", level="error")
+            _server_task_trace(task_id, trace)
             task_manager.update_task_status(task_id, "error", error=error_msg)
             try:
                 ProgressTracker(kb_name, Path(base_dir)).update(
                     ProgressStage.ERROR,
                     f"Re-index failed: {error_msg}",
                     error=error_msg,
+                    **failure_metadata,
                 )
             except Exception:
                 pass
-            task_stream_manager.emit_failed(task_id, error_msg, details=trace)
+            task_stream_manager.emit_failed(task_id, error_msg, **failure_metadata)
 
 
 @router.post("/{kb_name}/reindex")

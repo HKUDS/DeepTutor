@@ -38,6 +38,8 @@ import type { ContextBudget } from "@/components/chat/home/ContextBudgetChip";
 import { ChatMessageList } from "@/components/chat/home/ChatMessages";
 import { TurnNavigator } from "@/components/chat/home/TurnNavigator";
 import SessionLoadingView from "@/components/chat/home/SessionLoadingView";
+import StarterSuggestions from "@/components/chat/home/StarterSuggestions";
+import MasteryPathStrip from "@/components/chat/home/MasteryPathStrip";
 // Imported eagerly so the drawer shell is always mounted off-screen —
 // clicking a chip becomes a single CSS class flip, no chunk fetch + double
 // render. The heavy renderers inside still load lazily.
@@ -69,6 +71,7 @@ import {
   readFileAsDataUrl,
 } from "@/lib/file-attachments";
 import { classifyFile, isSvgFilename } from "@/lib/doc-attachments";
+import { readChatLaunchIntent } from "@/lib/chat-launch-intent";
 import { useAttachmentLimits } from "@/lib/attachment-limits";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
@@ -1147,17 +1150,16 @@ export default function ChatPage() {
     setCapabilityConfigs(loadCapabilityPlaygroundConfigs());
   }, []);
 
-  /* URL query params (capability, tool, persistent mastery path) */
+  /* Composer setup requested by the URL that opened this page (capability,
+     tools, persistent mastery path). Runs once: from here on the composer is
+     the user's to change. */
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const p = new URLSearchParams(window.location.search);
-    const qc = p.get("capability");
-    const qt = p.getAll("tool");
-    const masteryPathId = p.get("mastery_path_id")?.trim();
-    if (masteryPathId) setMasteryPathId(masteryPathId);
-    if (qc !== null) handleSelectCapability(qc || "");
-    else if (qt.length) {
-      const valid = qt.filter((t): t is ToolName =>
+    const intent = readChatLaunchIntent(window.location.search);
+    if (intent.masteryPathId) setMasteryPathId(intent.masteryPathId);
+    if (intent.capability !== null) handleSelectCapability(intent.capability);
+    else if (intent.tools.length) {
+      const valid = intent.tools.filter((t): t is ToolName =>
         ALL_TOOLS.some((d) => d.name === t),
       );
       if (valid.length) setTools(Array.from(new Set(valid)));
@@ -2073,6 +2075,14 @@ export default function ChatPage() {
               </div>
             )}
 
+            {/* Anchors the conversation to the path it is advancing. Only when
+                the mastery capability is actually driving this turn — a stale
+                path id on a plain chat would be a lie. */}
+            {state.activeCapability === "mastery_path" &&
+              state.masteryPathId && (
+                <MasteryPathStrip pathId={state.masteryPathId} />
+              )}
+
             <ChatComposer
               composerRef={composerRef}
               capMenuRef={capMenuRef}
@@ -2098,6 +2108,9 @@ export default function ChatPage() {
               llmSelection={state.llmSelection}
               llmOptionsLoading={llmOptionsLoading}
               llmOptionsError={llmOptionsError}
+              onRefreshLLMOptions={() =>
+                void refreshLLMOptions({ force: true })
+              }
               contextBudget={contextBudget}
               selectedBookReferences={selectedBookReferences}
               selectedNotebookRecords={selectedNotebookRecords}
@@ -2149,6 +2162,18 @@ export default function ChatPage() {
               onCancelStreaming={cancelStreamingTurn}
               prefillInputRef={prefillInputRef}
             />
+            {/* Starter chips sit between the composer and the spacer, so they
+                ride up with the composer on the empty screen and disappear the
+                moment the conversation has a first message. Clicking one sends
+                it through the normal send path: this page is already a draft
+                session when it has no messages, so that both creates the
+                session and starts it on the topic. */}
+            {!hasMessages ? (
+              <StarterSuggestions
+                onPick={(prompt) => void handleSend(prompt)}
+                disabled={state.isStreaming}
+              />
+            ) : null}
             <div
               aria-hidden="true"
               className="shrink-0"

@@ -31,7 +31,7 @@ from pydantic import Field
 from deeptutor.partners.bus.events import OutboundMessage
 from deeptutor.partners.bus.queue import MessageBus
 from deeptutor.partners.channels.base import BaseChannel
-from deeptutor.partners.config.paths import get_media_dir, get_runtime_subdir
+from deeptutor.partners.config.paths import get_runtime_subdir
 from deeptutor.partners.config.schema import DeliveryOverrides
 from deeptutor.partners.helpers import safe_filename, split_message
 
@@ -881,7 +881,7 @@ class WeixinChannel(BaseChannel):
             if not data:
                 return None
 
-            media_dir = get_media_dir("weixin")
+            media_dir = self.media_dir()
             ext = _ext_for_type(media_type)
             if not filename:
                 ts = int(time.time())

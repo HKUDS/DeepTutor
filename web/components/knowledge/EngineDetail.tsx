@@ -30,26 +30,34 @@ import {
   getEnginePreflight,
   getGraphRagConfig,
   getLightRagConfig,
+  getImaConfig,
   getLlamaIndexConfig,
   getPageIndexConfig,
   setEngineActiveModel,
+  testGraphRagModelCompatibility,
   updateGraphRagConfig,
+  updateImaConfig,
   updateLightRagConfig,
   updateLlamaIndexConfig,
   updatePageIndexConfig,
   type EnginePreflight,
+  type GraphRagModelCompatibility,
   type GraphRagConfig,
+  type ImaAccountConfig,
   type LightRagConfig,
   type LlamaIndexConfig,
   type ModelOptionsByKind,
   type PageIndexConfig,
   type RagProviderSummary,
 } from "@/lib/knowledge-api";
+import { canApplyGraphRagModelCandidate } from "@/lib/graphrag-model-compatibility";
 import {
   kbDocCount,
   kbProvider,
+  providerConnectionStatus,
   resolveKbStatus,
   type KnowledgeBase,
+  type ProviderConnectionStatus,
 } from "@/lib/knowledge-helpers";
 
 interface EngineDetailProps {
@@ -140,18 +148,10 @@ const ENGINE_PREREQUISITES: Record<string, string> = {
     "Local knowledge-graph retrieval. Needs the optional dependency installed; indexing is LLM-heavy. Requires an active chat model and embedding model.",
   lightrag:
     "Graph + vector retrieval with multimodal parsing. Needs the optional dependency installed; indexing is LLM-heavy. Requires active chat and embedding models; multimodal also needs a vision model.",
+  ima: "Hosted engine: the library lives in Tencent IMA and DeepTutor keeps no copy. Requires an IMA Client ID and API key; retrieval is read-only and loads bounded source text when IMA omits a matched snippet.",
 };
 
-type EngineStatus = "ready" | "needs_key" | "unavailable";
-
-function resolveStatus(provider: RagProviderSummary): EngineStatus {
-  if (provider.requires_api_key && provider.configured === false)
-    return "needs_key";
-  if (provider.configured === false) return "unavailable";
-  return "ready";
-}
-
-function StatusBadge({ status }: { status: EngineStatus }) {
+function StatusBadge({ status }: { status: ProviderConnectionStatus }) {
   const { t } = useTranslation();
   if (status === "ready") {
     return (
@@ -656,6 +656,135 @@ function PageIndexForm({
   );
 }
 
+/* ------------------------- Tencent IMA credentials ------------------------ */
+
+function ImaForm({
+  onChanged,
+  onError,
+}: {
+  onChanged: () => void;
+  onError: (message: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [config, setConfig] = useState<ImaAccountConfig | null>(null);
+  const [clientId, setClientId] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getImaConfig({ force: true })
+      .then((cfg) => {
+        if (cancelled) return;
+        setConfig(cfg);
+        setClientId(cfg.client_id || "");
+      })
+      .catch((err) =>
+        onError(err instanceof Error ? err.message : String(err)),
+      );
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const persist = async (payload: { client_id?: string; api_key?: string }) => {
+    setSaving(true);
+    try {
+      const next = await updateImaConfig(payload);
+      setConfig(next);
+      setClientId(next.client_id || "");
+      setApiKey("");
+      onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const keySet = config?.api_key_set ?? false;
+
+  return (
+    <div className="space-y-4 rounded-2xl border border-[var(--border)] p-4">
+      <p className="text-[12px] leading-relaxed text-[var(--muted-foreground)]">
+        {t(
+          "One IMA account reaches every library in it, so this pair is shared by all your Tencent IMA knowledge bases. Connecting one then only asks which library to point at. A knowledge base can still carry its own credentials to reach a second account.",
+        )}
+      </p>
+
+      <div>
+        <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
+          {t("Client ID")}
+        </label>
+        <input
+          value={clientId}
+          onChange={(e) => setClientId(e.target.value)}
+          disabled={saving}
+          autoComplete="off"
+          placeholder={t("Enter your IMA Client ID")}
+          className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 font-mono text-[13px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
+        />
+      </div>
+
+      <div>
+        <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
+          {t("API key")}
+        </label>
+        <input
+          type="password"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          disabled={saving}
+          autoComplete="off"
+          placeholder={
+            keySet
+              ? t("•••••••• (configured — leave blank to keep)")
+              : t("Enter your IMA API key")
+          }
+          className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[13px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
+        />
+        {keySet && (
+          <button
+            type="button"
+            onClick={() => void persist({ api_key: "" })}
+            disabled={saving}
+            className="mt-1.5 text-[11px] font-medium text-red-600 transition-colors hover:text-red-700 disabled:opacity-40 dark:text-red-400"
+          >
+            {t("Remove stored key")}
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <a
+          href="https://ima.qq.com/agent-interface"
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 text-[11.5px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+        >
+          {t("Get an API key")}
+          <ExternalLink className="h-3 w-3" />
+        </a>
+        <button
+          type="button"
+          onClick={() =>
+            void persist({
+              client_id: clientId.trim(),
+              ...(apiKey.trim() ? { api_key: apiKey.trim() } : {}),
+            })
+          }
+          disabled={saving}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3.5 py-1.5 text-[12.5px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          {t("Save changes")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* --------------------------- Shared form controls ------------------------- */
 
 function ResponseTypeSelect({
@@ -933,10 +1062,22 @@ function ModelsSection({
   const [data, setData] = useState<ModelOptionsByKind | null>(null);
   const [failed, setFailed] = useState(false);
   const [busyKind, setBusyKind] = useState<string | null>(null);
+  const [testingKind, setTestingKind] = useState<string | null>(null);
+  const [draftSelections, setDraftSelections] = useState<
+    Record<string, string>
+  >({});
+  const [compatibility, setCompatibility] = useState<{
+    testedKey: string;
+    result: GraphRagModelCompatibility;
+  } | null>(null);
 
   useEffect(() => {
     if (kinds.length === 0) return;
     let cancelled = false;
+    setData(null);
+    setFailed(false);
+    setDraftSelections({});
+    setCompatibility(null);
     getEngineModelOptions(kinds)
       .then((d) => !cancelled && setData(d))
       .catch(() => !cancelled && setFailed(true));
@@ -955,6 +1096,22 @@ function ModelsSection({
         onError(err instanceof Error ? err.message : String(err));
       } finally {
         setBusyKind(null);
+      }
+    },
+    [onError],
+  );
+
+  const testCandidate = useCallback(
+    async (kind: string, candidateKey: string) => {
+      const [profileId, modelId] = candidateKey.split("::");
+      setTestingKind(kind);
+      try {
+        const result = await testGraphRagModelCompatibility(profileId, modelId);
+        setCompatibility({ testedKey: candidateKey, result });
+      } catch (err) {
+        onError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setTestingKind(null);
       }
     },
     [onError],
@@ -985,8 +1142,20 @@ function ModelsSection({
         <div className="space-y-4 rounded-2xl border border-[var(--border)] p-4">
           {kinds.map((kind) => {
             const entry = data[kind];
-            const value = `${entry?.active.profile_id ?? ""}::${entry?.active.model_id ?? ""}`;
+            const activeKey = `${entry?.active.profile_id ?? ""}::${entry?.active.model_id ?? ""}`;
+            const value = draftSelections[kind] ?? activeKey;
             const hasOptions = (entry?.options.length ?? 0) > 0;
+            const isGraphRagChat = providerId === "graphrag" && kind === "llm";
+            const visibleCompatibility =
+              isGraphRagChat && compatibility?.testedKey === value
+                ? compatibility.result
+                : null;
+            const canApply = canApplyGraphRagModelCandidate({
+              activeKey,
+              candidateKey: value,
+              testedKey: compatibility?.testedKey ?? null,
+              result: compatibility?.result ?? null,
+            });
             return (
               <div key={kind} className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
@@ -1000,9 +1169,18 @@ function ModelsSection({
                 {hasOptions ? (
                   <select
                     value={value}
-                    disabled={busyKind === kind}
+                    disabled={busyKind === kind || testingKind === kind}
                     onChange={(e) => {
-                      const [pid, mid] = e.target.value.split("::");
+                      const candidateKey = e.target.value;
+                      if (isGraphRagChat) {
+                        setDraftSelections((prev) => ({
+                          ...prev,
+                          [kind]: candidateKey,
+                        }));
+                        setCompatibility(null);
+                        return;
+                      }
+                      const [pid, mid] = candidateKey.split("::");
                       void select(kind, pid, mid);
                     }}
                     className="w-full cursor-pointer rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 text-[13px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--foreground)]/25 disabled:opacity-50"
@@ -1025,6 +1203,85 @@ function ModelsSection({
                     {t("No models configured — open catalog")}
                     <ExternalLink className="h-3 w-3" />
                   </Link>
+                )}
+                {hasOptions && isGraphRagChat && (
+                  <div className="mt-1.5 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void testCandidate(kind, value)}
+                        disabled={testingKind === kind || busyKind === kind}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:border-[var(--ring)] disabled:opacity-50"
+                      >
+                        {testingKind === kind ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <ShieldCheck className="h-3.5 w-3.5" />
+                        )}
+                        {t(
+                          testingKind === kind
+                            ? "Testing compatibility…"
+                            : "Test compatibility",
+                        )}
+                      </button>
+                      {canApply && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const [pid, mid] = value.split("::");
+                            void select(kind, pid, mid);
+                          }}
+                          disabled={busyKind === kind}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-1.5 text-[12px] font-medium text-[var(--background)] transition-opacity hover:opacity-90 disabled:opacity-50"
+                        >
+                          {busyKind === kind ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Check className="h-3.5 w-3.5" />
+                          )}
+                          {t("Use this model")}
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+                      {t(
+                        "Runs one small structured-output request and may incur provider charges. The global active chat model changes only after you choose Use this model.",
+                      )}
+                    </p>
+                    {visibleCompatibility && (
+                      <div
+                        className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-[11.5px] leading-relaxed ${
+                          visibleCompatibility.status === "compatible"
+                            ? "border-emerald-500/25 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300"
+                            : visibleCompatibility.status === "incompatible"
+                              ? "border-red-500/25 bg-red-500/5 text-red-700 dark:text-red-300"
+                              : "border-amber-500/25 bg-amber-500/5 text-amber-700 dark:text-amber-300"
+                        }`}
+                      >
+                        {visibleCompatibility.status === "compatible" ? (
+                          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        ) : visibleCompatibility.status === "incompatible" ? (
+                          <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        ) : (
+                          <CircleSlash className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        )}
+                        <div>
+                          <p className="font-medium">
+                            {t(
+                              visibleCompatibility.status === "compatible"
+                                ? "Compatible with GraphRAG"
+                                : visibleCompatibility.status === "incompatible"
+                                  ? "Incompatible with GraphRAG"
+                                  : "Compatibility could not be verified",
+                            )}
+                          </p>
+                          <p className="mt-0.5 opacity-90">
+                            {t(visibleCompatibility.message)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
                 {kind === "llm" && providerId === "lightrag" && (
                   <span className="text-[11px] text-[var(--muted-foreground)]">
@@ -1074,7 +1331,7 @@ function CheckRow({
         )}
         {detail && (
           <div className="text-[11px] leading-snug text-[var(--muted-foreground)]">
-            {detail}
+            {t(detail)}
           </div>
         )}
       </div>
@@ -1193,7 +1450,7 @@ export default function EngineDetail({
   onError,
 }: EngineDetailProps) {
   const { t } = useTranslation();
-  const status = resolveStatus(provider);
+  const status = providerConnectionStatus(provider);
   const Icon = ENGINE_ICONS[provider.id] ?? Boxes;
   const installHint = INSTALL_HINTS[provider.id];
   const hasModes = (provider.modes?.length ?? 0) > 0;
@@ -1279,6 +1536,13 @@ export default function EngineDetail({
         {provider.id === "pageindex" && (
           <Section label={t("Credentials")} icon={KeyRound}>
             <PageIndexForm onChanged={onChanged} onError={onError} />
+          </Section>
+        )}
+
+        {/* Tencent IMA credentials */}
+        {provider.id === "ima" && (
+          <Section label={t("Credentials")} icon={KeyRound}>
+            <ImaForm onChanged={onChanged} onError={onError} />
           </Section>
         )}
 

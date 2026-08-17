@@ -111,6 +111,8 @@ class ProgressTracker:
                     "total": progress.get("total", 0),
                     "file_name": progress.get("file_name"),
                     "error": progress.get("error"),
+                    "error_code": progress.get("error_code"),
+                    "retryable": progress.get("retryable"),
                     "timestamp": progress.get("timestamp"),
                     "task_id": progress.get("task_id"),
                     "indexed_count": progress.get("indexed_count"),
@@ -138,6 +140,8 @@ class ProgressTracker:
         total: int = 0,
         file_name: str = "",
         error: str | None = None,
+        error_code: str | None = None,
+        retryable: bool | None = None,
         indexed_count: int | None = None,
         index_changed: bool | None = None,
         index_action: str | None = None,
@@ -164,6 +168,10 @@ class ProgressTracker:
         if error:
             progress["error"] = error
             progress["stage"] = ProgressStage.ERROR.value
+        if error_code:
+            progress["error_code"] = error_code
+        if retryable is not None:
+            progress["retryable"] = retryable
 
         # Output to logger (terminal and log file)
         try:

@@ -140,10 +140,36 @@ detect-secrets scan > .secrets.baseline
 
 | Task | Command |
 |---|---|
+| Check clean workspace + tracked hygiene | `python3 scripts/check_workspace_hygiene.py` |
+| Check repository hygiene | `python3 scripts/check_repo_hygiene.py` |
 | Check all files | `pre-commit run --all-files` |
 | Check quietly | `pre-commit run --all-files -q` |
 | Update tools | `pre-commit autoupdate` |
 | Emergency skip | `git commit --no-verify -m "message"` *(not recommended)* |
+
+### Generated Files and Worktrees
+
+Keep build outputs out of Git. `web/.next*`, `node_modules`, test reports, and
+bytecode caches are regeneratable and must remain untracked. If a build output
+is already tracked, remove it from the index with `git rm --cached` rather than
+deleting the local file needed by an application run.
+
+Fresh checkouts can enable the dependency-free safety hook with:
+
+```bash
+git config core.hooksPath scripts/hooks
+```
+
+The hook also blocks accidental direct commits on `main`. Release maintainers who
+deliberately need a local `main` commit may opt in once with
+`git config deeptutor.allowMainCommit true`, then remove the setting immediately
+afterward.
+
+Use a separate Git worktree for each feature (`git worktree add ../DeepTutor-<task>
+-b <branch> dev`) and keep the primary checkout clean. This lets builds, tests,
+and long-running agents operate independently without rewriting one another's
+outputs. Before removing a worktree, commit or explicitly preserve its changes;
+do not use `git reset --hard` or `git clean` as a routine cleanup shortcut.
 ---
 
 ## Code Quality & Security

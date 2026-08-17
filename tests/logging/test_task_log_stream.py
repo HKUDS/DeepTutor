@@ -8,6 +8,7 @@ from deeptutor.api.utils.task_log_stream import (
     capture_task_logs,
     get_task_stream_manager,
 )
+from deeptutor.logging import PROCESS_LOG_PRIVATE_ATTR
 
 
 @pytest.mark.asyncio
@@ -29,6 +30,26 @@ async def test_knowledge_task_stream_emits_process_log_sse_event():
     assert payload["type"] == "process_log"
     assert payload["message"] == "Indexing started"
     assert payload["context"]["task_id"] == "task-1"
+
+
+def test_knowledge_task_stream_emits_structured_failure_metadata():
+    manager = KnowledgeTaskStreamManager()
+    manager.ensure_task("task-failed")
+
+    manager.emit_failed(
+        "task-failed",
+        "Choose a compatible chat model.",
+        details="internal traceback",
+        error_code="graphrag_model_incompatible",
+        retryable=False,
+    )
+
+    event = list(manager._buffers["task-failed"])[-1]
+    assert event["event"] == "failed"
+    assert event["payload"]["detail"] == "Choose a compatible chat model."
+    assert event["payload"]["details"] == "internal traceback"
+    assert event["payload"]["error_code"] == "graphrag_model_incompatible"
+    assert event["payload"]["retryable"] is False
 
 
 def test_capture_task_logs_forwards_lightrag_non_propagating_logger():
@@ -95,6 +116,35 @@ def test_capture_task_logs_forwards_graphrag_propagating_logger_once():
         and event["payload"]["context"]["task_id"] == "task-graphrag"
     ]
     assert len(matches) == 1
+
+
+def test_capture_task_logs_excludes_private_non_propagating_library_diagnostics():
+    original_instance = KnowledgeTaskStreamManager._instance
+    graphrag_logger = logging.getLogger("graphrag")
+    original_handlers = list(graphrag_logger.handlers)
+    original_propagate = graphrag_logger.propagate
+    original_level = graphrag_logger.level
+    try:
+        KnowledgeTaskStreamManager._instance = KnowledgeTaskStreamManager()
+        graphrag_logger.handlers = []
+        graphrag_logger.propagate = False
+        graphrag_logger.setLevel(logging.INFO)
+
+        with capture_task_logs("task-private"):
+            graphrag_logger.error(
+                "Stack trace contains sk-secret-must-not-leak",
+                extra={PROCESS_LOG_PRIVATE_ATTR: True},
+            )
+
+        manager = get_task_stream_manager()
+        events = list(manager._buffers["task-private"])
+    finally:
+        KnowledgeTaskStreamManager._instance = original_instance
+        graphrag_logger.handlers = original_handlers
+        graphrag_logger.propagate = original_propagate
+        graphrag_logger.setLevel(original_level)
+
+    assert events == []
 
 
 def test_completed_task_buffers_are_bounded_and_restore_terminal_event():

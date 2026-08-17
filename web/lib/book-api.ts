@@ -5,9 +5,11 @@ import {
 } from "@/lib/book-ws-operation";
 import type {
   Book,
+  BookDepth,
   BookDetail,
   BookProposal,
   Page,
+  Progress,
   Spine,
   Block,
 } from "@/lib/book-types";
@@ -53,12 +55,41 @@ export interface CreateBookPayload {
   question_categories?: number[];
   question_entries?: number[];
   language?: string;
+  depth?: BookDepth;
+}
+
+/** Per-chapter generation cost, keyed by content type. */
+export interface EstimateBasis {
+  [contentType: string]: { blocks: number; words: number; seconds: number };
 }
 
 export const bookApi = {
   list: () => request<{ books: Book[] }>("/books"),
-  get: (book_id: string) =>
-    request<BookDetail>(`/books/${encodeURIComponent(book_id)}`),
+
+  /**
+   * Cost of one chapter of each content type, at a given depth.
+   *
+   * Fetched once; the spine editor sums it locally so the estimate stays live
+   * while chapters are edited. The numbers derive from the same templates the
+   * architect plans from, so they cannot drift from reality.
+   */
+  estimateBasis: (depth: BookDepth = "standard") =>
+    request<{ depth: string; basis: EstimateBasis }>(
+      `/estimate-basis?depth=${encodeURIComponent(depth)}`,
+    ),
+  /**
+   * Load a book.
+   *
+   * `includeBlocks: false` returns chapter metadata without block payloads —
+   * a compiled book's blocks carry their whole rendered content, so the full
+   * response runs to hundreds of kilobytes. Views that only need the chapter
+   * list should ask for summaries.
+   */
+  get: (book_id: string, options?: { includeBlocks?: boolean }) =>
+    request<BookDetail>(
+      `/books/${encodeURIComponent(book_id)}` +
+        (options?.includeBlocks === false ? "?include_blocks=false" : ""),
+    ),
   delete: (book_id: string) =>
     request<{ deleted: boolean; book_id: string }>(
       `/books/${encodeURIComponent(book_id)}`,
@@ -147,6 +178,35 @@ export const bookApi = {
       }),
     }),
 
+  /** Edit a block's prose in place. Title/body only — see the backend note. */
+  updateBlock: (params: {
+    book_id: string;
+    page_id: string;
+    block_id: string;
+    title?: string;
+    body?: string;
+  }) =>
+    request<{ block: Block }>("/books/update-block", {
+      method: "POST",
+      body: JSON.stringify(params),
+    }),
+
+  markVisited: (book_id: string, page_id: string) =>
+    request<{ progress: Progress }>("/books/progress/visit", {
+      method: "POST",
+      body: JSON.stringify({ book_id, page_id }),
+    }),
+
+  toggleBookmark: (book_id: string, page_id: string) =>
+    request<{ progress: Progress }>("/books/progress/bookmark", {
+      method: "POST",
+      body: JSON.stringify({ book_id, page_id }),
+    }),
+
+  /** Href for the Markdown download — a plain link, so the browser saves it. */
+  exportUrl: (book_id: string) =>
+    apiUrl(`${BASE}/books/${encodeURIComponent(book_id)}/export`),
+
   deleteBlock: (book_id: string, page_id: string, block_id: string) =>
     request<{ ok: boolean }>("/books/delete-block", {
       method: "POST",
@@ -194,9 +254,10 @@ export const bookApi = {
     block_id: string;
     question_id?: string;
     user_answer?: string;
-    is_correct: boolean;
+    /** Omit for a written answer the reader revealed but didn't self-grade. */
+    is_correct?: boolean;
   }) =>
-    request<{ progress: Record<string, unknown> }>("/books/quiz-attempt", {
+    request<{ progress: Progress }>("/books/quiz-attempt", {
       method: "POST",
       body: JSON.stringify(params),
     }),
@@ -213,6 +274,14 @@ export const bookApi = {
       body: JSON.stringify({ book_id, page_id, session_id }),
     }),
 
+  /** Re-queue unfinished pages, keeping everything already compiled. */
+  resume: (book_id: string) =>
+    request<{ pages: Page[] }>("/books/resume", {
+      method: "POST",
+      body: JSON.stringify({ book_id }),
+    }),
+
+  /** Destructive: discards every page and regenerates from the spine. */
   rebuild: (book_id: string, auto_compile = true) =>
     request<{ pages: Page[] }>("/books/rebuild", {
       method: "POST",

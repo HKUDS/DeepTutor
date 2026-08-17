@@ -17,6 +17,7 @@
 <p align="center">
   <a href="../../README.md"><img alt="English" height="40" src="https://img.shields.io/badge/English-CDCFD4"></a>&nbsp;
   <a href="README_CN.md"><img alt="简体中文" height="40" src="https://img.shields.io/badge/简体中文-CDCFD4"></a>&nbsp;
+  <a href="README_TW.md"><img alt="繁體中文" height="40" src="https://img.shields.io/badge/繁體中文-CDCFD4"></a>&nbsp;
   <a href="README_JA.md"><img alt="日本語" height="40" src="https://img.shields.io/badge/日本語-CDCFD4"></a>&nbsp;
   <a href="README_ES.md"><img alt="Español" height="40" src="https://img.shields.io/badge/Español-BCDCF7"></a>&nbsp;
   <a href="README_FR.md"><img alt="Français" height="40" src="https://img.shields.io/badge/Français-CDCFD4"></a>&nbsp;
@@ -420,7 +421,7 @@ Book convierte las fuentes seleccionadas en un **libro vivo** interactivo — no
 <img src="../../assets/figs/web-1.4.6+/book/03-book-demo%20interactive%20module.png" alt="Bloque de widget interactivo en Book" width="31%">
 </p>
 
-Cada capítulo se compila en bloques tipados — texto, callouts, quizzes, tarjetas flash, líneas de tiempo, código, figuras, HTML interactivo, animaciones, gráficos de conceptos, profundizaciones y notas de usuario — y cada página tiene su propio Page Chat. Los bloques son editables: inserta, mueve, regenera o cambia el tipo de un bloque sin reescribir el capítulo. Los comandos de mantenimiento como `deeptutor book health` y `deeptutor book refresh-fingerprints` ayudan a detectar cuándo el conocimiento fuente ha divergido de las páginas compiladas.
+Cada capítulo se compila en bloques tipados — texto, callouts, quizzes, tarjetas flash, líneas de tiempo, código, figuras, HTML interactivo, animaciones, gráficos de conceptos, profundizaciones y notas de usuario — y cada página tiene su propio Page Chat. Los bloques son editables: inserta, mueve, regenera, reescribe un cuerpo o cambia el tipo sin rehacer el capítulo. Las páginas visitadas, los marcadores y los intentos de quiz se acumulan en una puntuación de finalización y los capítulos débiles; cualquier libro se exporta a Markdown. Una compilación larga se pausa y se reanuda; `deeptutor book health` y `refresh-fingerprints` señalan cuándo el conocimiento fuente ha divergido.
 
 </details>
 
@@ -437,7 +438,7 @@ Las bases de conocimiento son las colecciones de documentos detrás del RAG — 
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="Crear una base de conocimiento" width="900">
 </div>
 
-Al crear una KB, puedes **crear nueva** (subir documentos y construir un índice nuevo) o **vincular existente** (reutilizar un índice construido en otro lugar, leer en el lugar sin re-indexar). La re-indexación escribe un nuevo directorio `version-N` plano y conserva los anteriores, de modo que un índice funcional nunca se destruye a mitad de la reconstrucción. Un solo documento puede eliminarse incluso de una base en estado de **error** — descartando un archivo que no se pudo analizar sin necesidad de borrar y reconstruir todo. El análisis de documentos — Text-only, MinerU, Docling, markitdown, PyMuPDF4LLM o LiteParse — se elige en **Settings → Knowledge Base**, con descargas de modelos locales desactivadas por defecto. La CLI refleja el ciclo de vida con `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` y `delete`.
+Al crear una KB, puedes **crear nueva** (subir documentos y construir un índice nuevo) o **vincular existente** (reutilizar un índice construido en otro lugar, leer en el lugar sin re-indexar). La re-indexación escribe un nuevo directorio `version-N` plano y conserva los anteriores, de modo que un índice funcional nunca se destruye a mitad de la reconstrucción. Un solo documento puede eliminarse incluso de una base en estado de **error** — descartando un archivo que no se pudo analizar sin necesidad de borrar y reconstruir todo. El análisis de documentos — Text-only, MinerU, Docling, markitdown, PyMuPDF4LLM o LiteParse — se elige en **Settings → Knowledge Base**, con descargas de modelos locales desactivadas por defecto. Docling también puede ejecutarse en modo **remoto** contra un servidor Docling Serve (sin necesidad de instalación local ni modelos), configurado a través de **Settings → Document Parsing** (`mode=remote`, una URL base de servidor y una clave API opcional) o las variables de entorno `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN`. La CLI refleja el ciclo de vida con `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` y `delete`.
 
 </details>
 

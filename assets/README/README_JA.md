@@ -17,6 +17,7 @@
 <p align="center">
   <a href="../../README.md"><img alt="English" height="40" src="https://img.shields.io/badge/English-CDCFD4"></a>&nbsp;
   <a href="README_CN.md"><img alt="简体中文" height="40" src="https://img.shields.io/badge/简体中文-CDCFD4"></a>&nbsp;
+  <a href="README_TW.md"><img alt="繁體中文" height="40" src="https://img.shields.io/badge/繁體中文-CDCFD4"></a>&nbsp;
   <a href="README_JA.md"><img alt="日本語" height="40" src="https://img.shields.io/badge/日本語-BCDCF7"></a>&nbsp;
   <a href="README_ES.md"><img alt="Español" height="40" src="https://img.shields.io/badge/Español-CDCFD4"></a>&nbsp;
   <a href="README_FR.md"><img alt="Français" height="40" src="https://img.shields.io/badge/Français-CDCFD4"></a>&nbsp;
@@ -408,7 +409,7 @@ Bookは選択したソースをインタラクティブな**生きている本**
 <img src="../../assets/figs/web-1.4.6+/book/03-book-demo%20interactive%20module.png" alt="Bookインタラクティブウィジェットブロック" width="31%">
 </p>
 
-各章はタイプ指定されたブロックにコンパイルされます — テキスト、コールアウト、クイズ、フラッシュカード、タイムライン、コード、図、インタラクティブHTML、アニメーション、概念グラフ、詳細解説、ユーザーノート — 各ページには独自のPage Chatがあります。ブロックは編集可能です：章全体を書き直すことなく、挿入、移動、再生成、またはブロックの種類を変更できます。`deeptutor book health`や`deeptutor book refresh-fingerprints`などのメンテナンスコマンドは、ソース知識がコンパイル済みページからドリフトした場合に検出するのに役立ちます。
+各章はタイプ指定されたブロックにコンパイルされます — テキスト、コールアウト、クイズ、フラッシュカード、タイムライン、コード、図、インタラクティブHTML、アニメーション、概念グラフ、詳細解説、ユーザーノート — 各ページには独自のPage Chatがあります。ブロックは編集可能です：章をやり直すことなく、挿入、移動、再生成、本文の書き直し、ブロックの種類の変更ができます。訪問したページ、ブックマーク、クイズの受験結果は完了スコアと弱点章に集約され、どの本もMarkdownにエクスポートできます。長時間のコンパイルは一時停止と再開が可能で、`deeptutor book health`と`refresh-fingerprints`はソース知識がドリフトした場合にフラグを立てます。
 
 </details>
 
@@ -425,7 +426,7 @@ Bookは選択したソースをインタラクティブな**生きている本**
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="知識ベースの作成" width="900">
 </div>
 
-KBを作成する際は、**新規作成**（ドキュメントをアップロードして新しいインデックスを構築）または**既存をリンク**（再インデックスなしで既に構築されたインデックスを再利用）を選択します。再インデックスは新しいフラットな`version-N`ディレクトリを書き込み、以前のものを保持するため、再構築中に作業中のインデックスが破壊されることはありません。解析に失敗したファイルを完全な削除・再構築なしで取り除けるよう、**error**状態のベースからでも単一のドキュメントを削除できます。ドキュメント解析（Text-only、MinerU、Docling、markitdown、PyMuPDF4LLM、LiteParse）は**Settings → Knowledge Base**で選択し、ローカルモデルのダウンロードはデフォルトでオフです。CLIは`deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default`、`delete`でライフサイクルをミラーします。
+KBを作成する際は、**新規作成**（ドキュメントをアップロードして新しいインデックスを構築）または**既存をリンク**（再インデックスなしで既に構築されたインデックスを再利用）を選択します。再インデックスは新しいフラットな`version-N`ディレクトリを書き込み、以前のものを保持するため、再構築中に作業中のインデックスが破壊されることはありません。解析に失敗したファイルを完全な削除・再構築なしで取り除けるよう、**error**状態のベースからでも単一のドキュメントを削除できます。ドキュメント解析（Text-only、MinerU、Docling、markitdown、PyMuPDF4LLM、LiteParse）は**Settings → Knowledge Base**で選択し、ローカルモデルのダウンロードはデフォルトでオフです。Docling は、Docling Serve サーバーに対して**remote**モードで実行することもできます（ローカルインストールやモデルは不要）。この設定は**Settings → Document Parsing**（`mode=remote`、サーバーのベースURL、オプションのAPIキー）または `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` 環境変数で行います。CLIは`deeptutor kb list`、`info`、`create`、`add`、`search`、`set-default`、`delete`でライフサイクルをミラーします。
 
 </details>
 
