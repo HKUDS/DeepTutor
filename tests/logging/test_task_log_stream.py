@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 
@@ -30,6 +31,25 @@ async def test_knowledge_task_stream_emits_process_log_sse_event():
     assert payload["type"] == "process_log"
     assert payload["message"] == "Indexing started"
     assert payload["context"]["task_id"] == "task-1"
+
+
+@pytest.mark.asyncio
+async def test_knowledge_task_stream_keeps_idle_sse_connection_alive():
+    manager = KnowledgeTaskStreamManager()
+    manager._HEARTBEAT_SECONDS = 0.01
+    manager.ensure_task("task-idle")
+
+    stream = manager.stream("task-idle")
+    try:
+        heartbeat = await asyncio.wait_for(anext(stream), timeout=0.2)
+        assert heartbeat == ": keep-alive\n\n"
+
+        manager.emit_log("task-idle", "Indexing resumed")
+        event = await asyncio.wait_for(anext(stream), timeout=0.2)
+        assert "event: process_log" in event
+        assert "Indexing resumed" in event
+    finally:
+        await stream.aclose()
 
 
 def test_knowledge_task_stream_emits_structured_failure_metadata():
