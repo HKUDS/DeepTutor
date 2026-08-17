@@ -8,9 +8,9 @@ is optional but recommended — it lifts the unauthenticated rate limit from
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 import os
-from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -80,9 +80,7 @@ class GitHubClient:
         self._client_factory = client_factory
 
     async def _request_json(self, method: str, url: str, **kw: Any) -> Any:
-        factory = self._client_factory or (
-            lambda: httpx.AsyncClient(timeout=self._timeout_s)
-        )
+        factory = self._client_factory or (lambda: httpx.AsyncClient(timeout=self._timeout_s))
         async with factory() as client:
             resp = await client.request(method, url, headers=_headers(), **kw)
         if resp.status_code >= 400:
@@ -95,9 +93,7 @@ class GitHubClient:
         return resp.json()
 
     async def _request_bytes(self, url: str, **kw: Any) -> bytes:
-        factory = self._client_factory or (
-            lambda: httpx.AsyncClient(timeout=self._timeout_s)
-        )
+        factory = self._client_factory or (lambda: httpx.AsyncClient(timeout=self._timeout_s))
         async with factory() as client:
             resp = await client.get(url, headers=_headers(), **kw)
         if resp.status_code >= 400:
@@ -109,9 +105,7 @@ class GitHubClient:
         return data.get("default_branch", "main")
 
     async def get_latest_commit_sha(self, repo: str, branch: str) -> str:
-        data = await self._request_json(
-            "GET", f"{GITHUB_API_BASE}/repos/{repo}/commits/{branch}"
-        )
+        data = await self._request_json("GET", f"{GITHUB_API_BASE}/repos/{repo}/commits/{branch}")
         return data["sha"]
 
     async def get_tree(
@@ -137,14 +131,10 @@ class GitHubClient:
                 continue
             if not _match_glob(p, glob):
                 continue
-            entries.append(
-                TreeEntry(path=p, sha=item.get("sha", ""), type="blob")
-            )
+            entries.append(TreeEntry(path=p, sha=item.get("sha", ""), type="blob"))
         return entries
 
-    async def compare_commits(
-        self, repo: str, base: str, head: str
-    ) -> list[FileChange]:
+    async def compare_commits(self, repo: str, base: str, head: str) -> list[FileChange]:
         data = await self._request_json(
             "GET",
             f"{GITHUB_API_BASE}/repos/{repo}/compare/{base}...{head}",
@@ -171,6 +161,4 @@ class GitHubClient:
 def _match_glob(path: str, glob: str) -> bool:
     import fnmatch
 
-    return fnmatch.fnmatch(path, glob) or fnmatch.fnmatch(
-        path.rsplit("/", 1)[-1], glob
-    )
+    return fnmatch.fnmatch(path, glob) or fnmatch.fnmatch(path.rsplit("/", 1)[-1], glob)

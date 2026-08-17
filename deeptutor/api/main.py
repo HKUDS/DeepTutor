@@ -3,8 +3,8 @@ import logging
 import sys
 
 from fastapi import Depends, FastAPI, Request
-from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from deeptutor.logging import configure_logging
 from deeptutor.services.config import (
@@ -148,12 +148,14 @@ async def lifespan(app: FastAPI):
     # Start GitHub + web source sync services
     try:
         from deeptutor.services.github_source.sync_service import get_sync_service
+
         await get_sync_service().start()
     except Exception as e:
         logger.warning(f"Failed to start GitHub source sync: {e}")
 
     try:
         from deeptutor.services.web_source.sync_service import get_web_sync_service
+
         await get_web_sync_service().start()
     except Exception as e:
         logger.warning(f"Failed to start web source sync: {e}")
@@ -199,12 +201,14 @@ async def lifespan(app: FastAPI):
     # Stop GitHub + web source sync services
     try:
         from deeptutor.services.github_source.sync_service import get_sync_service
+
         await get_sync_service().stop()
     except Exception as e:
         logger.warning(f"Failed to stop GitHub source sync: {e}")
 
     try:
         from deeptutor.services.web_source.sync_service import get_web_sync_service
+
         await get_web_sync_service().stop()
     except Exception as e:
         logger.warning(f"Failed to stop web source sync: {e}")
@@ -287,6 +291,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
             "type": type(exc).__name__,
         },
     )
+
 
 # Access logging is funneled through this one middleware. uvicorn's own
 # per-request access log is disabled on every launch path (run_server.py via

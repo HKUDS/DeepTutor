@@ -3244,12 +3244,16 @@ class GitHubSourceInfo(BaseModel):
 async def add_github_source(kb_name: str, request: AddGitHubSourceRequest):
     try:
         manager, resolved_name, _ = _writable_kb(kb_name)
-        info = manager.add_github_source(resolved_name, request.repo, request.branch, request.path, request.glob)
+        info = manager.add_github_source(
+            resolved_name, request.repo, request.branch, request.path, request.glob
+        )
         return GitHubSourceInfo(**info)
     except HTTPException:
         raise
     except ValueError as e:
-        raise HTTPException(status_code=400 if "not found" not in str(e).lower() else 404, detail=str(e))
+        raise HTTPException(
+            status_code=400 if "not found" not in str(e).lower() else 404, detail=str(e)
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -3290,13 +3294,24 @@ async def sync_github_sources(kb_name: str):
         if not sources:
             return {"message": "No GitHub sources", "results": []}
         from deeptutor.services.github_source.sync import sync_source
+
         results = []
         for src in sources:
             if not src.get("enabled", True):
                 continue
             r = await sync_source(kb_name=resolved_name, source=src, base_dir=str(kb_base_dir))
-            results.append({"source_id": src.get("id"), "repo": src.get("repo"), "ok": r.ok, "skipped": r.skipped,
-                           "files_added": r.files_added, "files_updated": r.files_updated, "files_removed": r.files_removed, "error": r.error or None})
+            results.append(
+                {
+                    "source_id": src.get("id"),
+                    "repo": src.get("repo"),
+                    "ok": r.ok,
+                    "skipped": r.skipped,
+                    "files_added": r.files_added,
+                    "files_updated": r.files_updated,
+                    "files_removed": r.files_removed,
+                    "error": r.error or None,
+                }
+            )
         return {"message": f"Synced {len(results)} source(s)", "results": results}
     except HTTPException:
         raise
