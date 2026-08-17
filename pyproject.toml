@@ -79,6 +79,7 @@ dependencies = [
     # deeptutor.runtime.memory_probe imports it lazily and falls back to /proc,
     # so a missing wheel costs the settings strip, not the app.
     "psutil>=5.9.0,<8.0.0",
+    "pip>=26.2.1",
 ]
 
 [project.scripts]
@@ -122,7 +123,7 @@ cli = [
 # and permission-mode kwargs, and a minor bump that renames them would make
 # every options build fail. Not in `all` — it vendors a ~130 MB headless CLI
 # and chat works over plain HTTP without it.
-codebuddy = ["codebuddy-agent-sdk>=0.1.24,<0.2"]
+codebuddy = ["codebuddy-agent-sdk>0.2"]
 
 # Compatibility extra for source installs and older docs. These packages are
 # already included in the public `deeptutor` wheel.
