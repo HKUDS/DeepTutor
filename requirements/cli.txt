@@ -68,3 +68,4 @@ prompt_toolkit>=3.0.36
 # Core, not partners-only: the connection manager injects the built-in
 # pageindex server whenever a PageIndex API key is configured (issue #792).
 mcp>=1.26.0,<2.0.0
+pageindex==0.2.10.dev5

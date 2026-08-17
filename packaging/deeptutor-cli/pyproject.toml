@@ -33,6 +33,7 @@ dependencies = [
     # built-in PageIndex MCP server that is injected whenever a PageIndex API key
     # is configured, so it needs the client too (issue #792).
     "mcp>=1.26.0,<2.0.0",
+    "pageindex==0.2.10.dev5",
     "anthropic>=0.30.0",
     "dashscope>=1.14.0",
     "perplexityai>=0.1.0",

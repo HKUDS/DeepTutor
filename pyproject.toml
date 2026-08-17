@@ -44,6 +44,7 @@ dependencies = [
     # connection task dies with ModuleNotFoundError and every turn stalls for
     # the full connect timeout.
     "mcp>=1.26.0,<2.0.0",
+    "pageindex==0.2.10.dev5",
     # Full app dependencies included by default for `pip install deeptutor`.
     "anthropic>=0.30.0",
     "dashscope>=1.14.0",
@@ -94,6 +95,7 @@ cli = [
     "dashscope>=1.14.0",
     "perplexityai>=0.1.0",
     "oauth-cli-kit>=0.1.1",
+    "pageindex==0.2.10.dev5",
     # RAG (LlamaIndex)
     "llama-index>=0.14.12",
     "llama-index-retrievers-bm25>=0.7.1,<0.8.0",

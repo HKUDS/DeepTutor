@@ -67,3 +67,18 @@ def test_requirements_mirror_the_core_mcp_client() -> None:
     # ...and partners.txt inherits it transitively rather than redeclaring it.
     assert "-r server.txt" in partners_text
     assert "mcp>=" not in partners_text
+
+
+def test_pageindex_sdk_pin_matches_every_install_surface() -> None:
+    expected = "pageindex==0.2.10.dev5"
+    with (REPOSITORY_ROOT / "pyproject.toml").open("rb") as file:
+        root = tomllib.load(file)["project"]
+    with (REPOSITORY_ROOT / "packaging" / "deeptutor-cli" / "pyproject.toml").open("rb") as file:
+        cli_package = tomllib.load(file)["project"]
+
+    assert root["dependencies"].count(expected) == 1
+    assert root["optional-dependencies"]["cli"].count(expected) == 1
+    assert cli_package["dependencies"].count(expected) == 1
+    assert (REPOSITORY_ROOT / "requirements" / "cli.txt").read_text(
+        encoding="utf-8"
+    ).splitlines().count(expected) == 1
