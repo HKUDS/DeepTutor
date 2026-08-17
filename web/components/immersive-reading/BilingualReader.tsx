@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  Bookmark,
+  BookmarkPlus,
   ChevronLeft,
   ChevronRight,
   ChevronsDownUp,
@@ -11,7 +15,10 @@ import {
   Download,
   Flag,
   Languages,
+  ListChecks,
   Loader2,
+  Pencil,
+  Trash2,
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -21,7 +28,10 @@ import {
   bilingualApi,
   immersiveReadingApi,
   type BilingualAnnotation,
+  type BilingualBookmark,
+  type BilingualNavigation,
   type BilingualPairing,
+  type BilingualReadingPosition,
   type BilingualSection,
   type ChapterMapEntry,
   type DictionaryResult,
@@ -35,6 +45,8 @@ import {
   setCachedTranslation,
 } from "@/lib/dictionary-cache";
 import DictionaryPanel from "@/components/common/DictionaryPanel";
+import TranslationTaskBoardPanel from "@/components/translation/TranslationTaskBoard";
+import { translationTaskApi } from "@/lib/translation-tasks-api";
 import { apiFetch } from "@/lib/api";
 
 interface BilingualReaderProps {
@@ -43,6 +55,39 @@ interface BilingualReaderProps {
 }
 
 type IssueType = "misalignment" | "wrong_chapter" | "missing_translation" | "translation_error" | "other";
+
+function rangePointFromOffsets(container: HTMLElement, start: number, end: number): Range | null {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let cursor = 0;
+  let currentNode: Node | null;
+  let rangeStart: { node: Node; offset: number } | null = null;
+  let rangeEnd: { node: Node; offset: number } | null = null;
+  while ((currentNode = walker.nextNode())) {
+    const text = currentNode.textContent || "";
+    const nodeEnd = cursor + text.length;
+    if (!rangeStart && start >= cursor && start <= nodeEnd) {
+      rangeStart = { node: currentNode, offset: start - cursor };
+    }
+    if (end >= cursor && end <= nodeEnd) {
+      rangeEnd = { node: currentNode, offset: end - cursor };
+      break;
+    }
+    cursor = nodeEnd;
+  }
+  if (!rangeStart || !rangeEnd) return null;
+  const range = document.createRange();
+  range.setStart(rangeStart.node, rangeStart.offset);
+  range.setEnd(rangeEnd.node, rangeEnd.offset);
+  return range;
+}
+
+function normalizeFingerprint(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/<[^>]+>/g, " ")
+    .replace(/[\s\u200b]+/g, " ")
+    .trim();
+}
 
 export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
   const { t } = useTranslation();
@@ -54,9 +99,19 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
   const [expandAll, setExpandAll] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [annotations, setAnnotations] = useState<BilingualAnnotation[]>([]);
+  const [bookmarks, setBookmarks] = useState<BilingualBookmark[]>([]);
+  const [navigation, setNavigation] = useState<BilingualNavigation | null>(null);
   const [flagTarget, setFlagTarget] = useState<number | null>(null);
   const [showReview, setShowReview] = useState(false);
+  const [showBookmarks, setShowBookmarks] = useState(false);
+  const [showTaskBoard, setShowTaskBoard] = useState(false);
+  const [chapterTaskSummaries, setChapterTaskSummaries] = useState<Array<{ chapter_id: string; completed: boolean }>>([]);
   const contentRef = useRef<HTMLDivElement>(null);
+  const pendingPositionRef = useRef<BilingualReadingPosition | null>(null);
+  const scrollPercentRef = useRef(0);
+  const visibleGroupRef = useRef(0);
+  const saveTimerRef = useRef<number | null>(null);
+  const sectionRequestRef = useRef(0);
   const [dictPopover, setDictPopover] = useState<{ word: string; context: string; anchor: DictionaryAnchorRect; selectedText: string; initialMode: "dictionary" | "translate" } | null>(null);
   const [dictResult, setDictResult] = useState<DictionaryResult | null>(null);
   const [dictLoading, setDictLoading] = useState(false);
@@ -66,36 +121,175 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
   const lastSelectionRef = useRef("");
 
   useEffect(() => {
-    bilingualApi.get(pairingId).then((data) => {
-      setPairing(data);
-      setLoading(false);
-    });
+    let cancelled = false;
+    Promise.all([
+      bilingualApi.get(pairingId),
+      bilingualApi.readingPosition(pairingId),
+      bilingualApi.navigation(pairingId),
+      bilingualApi.bookmarks(pairingId),
+    ])
+      .then(([pairingData, positionData, navigationData, bookmarkData]) => {
+        if (cancelled) return;
+        setPairing(pairingData);
+        pendingPositionRef.current = positionData.position;
+        setNavigation(navigationData.navigation);
+        setBookmarks(bookmarkData.bookmarks);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false);
+      });
     annotationApi.list(pairingId, "open").then((data) => {
-      setAnnotations(data.annotations);
+      if (!cancelled) setAnnotations(data.annotations);
     });
+    return () => {
+      cancelled = true;
+    };
+  }, [pairingId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    translationTaskApi.list({ sourceType: "bilingual", sourceId: pairingId })
+      .then((board) => {
+        if (!cancelled) setChapterTaskSummaries(board.chapters || []);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, [pairingId]);
 
   const loadChapter = useCallback(
-    (index: number) => {
+    (index: number, options?: { recordHistory?: boolean }) => {
       if (!pairing?.chapter_map?.length) return;
       const clamped = Math.max(0, Math.min(index, pairing.chapter_map.length - 1));
-      setChapterIndex(clamped);
       const entry = pairing.chapter_map[clamped];
+      if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+      const requestId = ++sectionRequestRef.current;
+      if (options?.recordHistory !== false) {
+        void bilingualApi
+          .recordNavigation(pairingId, {
+            chapter_index: clamped,
+            group_index: 0,
+            epub_cfi: "",
+            section_href: entry.english,
+            scroll_percent: 0,
+            text_fingerprint: "",
+          })
+          .then((result) => setNavigation(result.navigation))
+          .catch(() => undefined);
+      }
+      setChapterIndex(clamped);
       setSectionLoading(true);
       bilingualApi
         .section(pairingId, entry.id)
-        .then(setSection)
-        .catch(() => setSection(null))
-        .finally(() => setSectionLoading(false));
+        .then((nextSection) => {
+          if (sectionRequestRef.current !== requestId) return;
+          setSection(nextSection);
+        })
+        .catch(() => {
+          if (sectionRequestRef.current !== requestId) return;
+          setSection(null);
+        })
+        .finally(() => {
+          if (sectionRequestRef.current !== requestId) return;
+          setSectionLoading(false);
+        });
     },
     [pairing, pairingId],
   );
 
   useEffect(() => {
     if (pairing?.aligned && pairing.chapter_map?.length) {
-      loadChapter(0);
+      const saved = pendingPositionRef.current;
+      loadChapter(saved?.chapter_index ?? 0, { recordHistory: false });
     }
   }, [pairing, loadChapter]);
+
+  useEffect(() => {
+    const content = contentRef.current;
+    const saved = pendingPositionRef.current;
+    if (!content || sectionLoading || !section) return;
+    if (!saved) {
+      content.scrollTop = 0;
+      scrollPercentRef.current = 0;
+      visibleGroupRef.current = 0;
+      return;
+    }
+    const sameChapter = saved.chapter_id === section.chapter;
+    let groupIndex = sameChapter ? saved.group_index : 0;
+    if (sameChapter && saved.text_fingerprint) {
+      const fingerprint = normalizeFingerprint(saved.text_fingerprint);
+      const matched = section.groups.findIndex((group) =>
+        normalizeFingerprint(group.en.join(" ")) === fingerprint,
+      );
+      if (matched >= 0) groupIndex = matched;
+    }
+    visibleGroupRef.current = groupIndex;
+    const maxScroll = Math.max(1, content.scrollHeight - content.clientHeight);
+    scrollPercentRef.current = sameChapter ? saved.scroll_percent : 0;
+    content.scrollTop = (maxScroll * scrollPercentRef.current) / 100;
+    pendingPositionRef.current = null;
+  }, [section, sectionLoading]);
+
+  const currentPositionInput = useCallback(() => {
+    const entry = pairing?.chapter_map?.[chapterIndex];
+    const group = section?.groups?.[visibleGroupRef.current];
+    return {
+      chapter_index: chapterIndex,
+      group_index: visibleGroupRef.current,
+      epub_cfi: "",
+      section_href: entry?.english || "",
+      scroll_percent: scrollPercentRef.current,
+      text_fingerprint: normalizeFingerprint(group?.en?.join(" ") || "").slice(0, 500),
+    };
+  }, [chapterIndex, pairing, section]);
+
+  const savePosition = useCallback(() => {
+    const entry = pairing?.chapter_map?.[chapterIndex];
+    if (!pairing || !section || !entry || section.chapter !== entry.id) return;
+    void bilingualApi.updateReadingPosition(pairingId, currentPositionInput()).catch(() => {
+      // Position restoration is best-effort; reading remains usable if persistence fails.
+    });
+  }, [chapterIndex, currentPositionInput, pairing, pairingId, section]);
+
+  const savePositionRef = useRef(savePosition);
+
+  useEffect(() => {
+    savePositionRef.current = savePosition;
+  }, [savePosition]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+      savePositionRef.current();
+    };
+  }, []);
+
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    const handleScroll = () => {
+      const maxScroll = Math.max(1, content.scrollHeight - content.clientHeight);
+      scrollPercentRef.current = Math.max(0, Math.min(100, (content.scrollTop / maxScroll) * 100));
+      const elements = content.querySelectorAll<HTMLElement>("[data-group-index]");
+      let visible = visibleGroupRef.current;
+      for (const element of elements) {
+        if (element.offsetTop + element.offsetHeight >= content.scrollTop + 24) {
+          visible = Number(element.dataset.groupIndex || 0);
+          break;
+        }
+      }
+      visibleGroupRef.current = visible;
+      if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = window.setTimeout(savePosition, 1000);
+    };
+    content.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      content.removeEventListener("scroll", handleScroll);
+      if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+    };
+  }, [savePosition, section]);
 
   // Cancel any pending dictionary lookup when chapter changes.
   useEffect(() => {
@@ -131,6 +325,73 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
       // ignore
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleAddBookmark = async () => {
+    try {
+      const input = currentPositionInput();
+      const group = section?.groups?.[input.group_index];
+      const bookmark = await bilingualApi.addBookmark(
+        pairingId,
+        input,
+        "",
+        group?.en?.join(" ") || "",
+      );
+      setBookmarks((prev) => [bookmark, ...prev]);
+      setShowBookmarks(true);
+    } catch {
+      // Keep reading if bookmark persistence fails.
+    }
+  };
+
+  const handleJumpBookmark = async (bookmark: BilingualBookmark) => {
+    pendingPositionRef.current = bookmark;
+    try {
+      const result = await bilingualApi.recordNavigation(pairingId, {
+        chapter_index: bookmark.chapter_index,
+        group_index: bookmark.group_index,
+        epub_cfi: bookmark.epub_cfi,
+        section_href: bookmark.section_href,
+        scroll_percent: bookmark.scroll_percent,
+        text_fingerprint: bookmark.text_fingerprint,
+      });
+      setNavigation(result.navigation);
+    } catch {
+      // Navigation history is best-effort.
+    }
+    loadChapter(bookmark.chapter_index, { recordHistory: false });
+  };
+
+  const handleNavigateHistory = async (direction: "back" | "forward") => {
+    try {
+      const result =
+        direction === "back"
+          ? await bilingualApi.navigateBack(pairingId)
+          : await bilingualApi.navigateForward(pairingId);
+      setNavigation(result.navigation);
+      pendingPositionRef.current = result.position;
+      loadChapter(result.position.chapter_index, { recordHistory: false });
+    } catch {
+      // Disabled buttons normally prevent this path.
+    }
+  };
+
+  const handleRenameBookmark = async (bookmarkId: string, title: string) => {
+    try {
+      const updated = await bilingualApi.renameBookmark(pairingId, bookmarkId, title);
+      setBookmarks((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    } catch {
+      // Keep the old title if rename fails.
+    }
+  };
+
+  const handleDeleteBookmark = async (bookmarkId: string) => {
+    try {
+      await bilingualApi.deleteBookmark(pairingId, bookmarkId);
+      setBookmarks((prev) => prev.filter((item) => item.id !== bookmarkId));
+    } catch {
+      // Ignore delete failures.
     }
   };
 
@@ -188,7 +449,7 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
       const msg = err instanceof Error ? err.message : String(err);
       const status = err instanceof ApiRequestError ? err.status : undefined;
       if (status === 503) {
-        setDictError(msg || t("Local dictionary unavailable. Run `ollama serve` then `ollama pull qwen3.5:2b`."));
+        setDictError(msg || t("Dictionary service unavailable. Check the active model in settings."));
       } else if (status === 504) {
         setDictError(t("Dictionary lookup timed out. The local model may still be loading."));
       } else {
@@ -290,6 +551,50 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
     }
   }, [handleDictionaryLookup, handleTranslateText]);
 
+  const handleSentenceClick = useCallback((event: MouseEvent) => {
+    if (event.detail !== 3) return;
+    const target = event.target as Node | null;
+    const paragraph = target instanceof Element ? target.closest("p") : null;
+    const caretRange = document.caretRangeFromPoint?.(event.clientX, event.clientY);
+    if (!paragraph || !caretRange) return;
+    const text = paragraph.textContent || "";
+    const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+    let cursor = 0;
+    let offset = 0;
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      const content = node.textContent || "";
+      if (node === caretRange.startContainer) {
+        offset = cursor + Math.min(caretRange.startOffset, content.length);
+        break;
+      }
+      cursor += content.length;
+    }
+    let start = 0;
+    for (const match of text.slice(0, offset).matchAll(/[.!?。！？]+["'”’]?\s+/g)) {
+      start = (match.index ?? 0) + match[0].length;
+    }
+    const boundary = text.slice(offset).match(/[^.!?。！？]+[.!?。！？]+["'”’]?/);
+    const end = boundary ? Math.min(text.length, offset + boundary[0].length) : text.length;
+    start = Math.max(0, Math.min(start, end));
+    const range = rangePointFromOffsets(paragraph, start, end);
+    const sentence = text.slice(start, end).trim();
+    if (!range || !sentence) return;
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    const rect = range.getBoundingClientRect();
+    lastSelectionRef.current = sentence;
+    setDictPopover({
+      word: sentence.length > 30 ? sentence.slice(0, 30) + "…" : sentence,
+      context: text.slice(0, 2000),
+      selectedText: sentence,
+      initialMode: "translate",
+      anchor: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
+    });
+    void handleTranslateText(sentence);
+  }, [handleTranslateText]);
+
   useEffect(() => {
     const ref = contentRef.current;
     if (!ref) return;
@@ -300,13 +605,15 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
       timer = window.setTimeout(handleTextSelection, 80);
     };
     ref.addEventListener("pointerup", scheduleSelection);
+    ref.addEventListener("click", handleSentenceClick);
     document.addEventListener("selectionchange", scheduleSelection);
     return () => {
       ref.removeEventListener("pointerup", scheduleSelection);
+      ref.removeEventListener("click", handleSentenceClick);
       document.removeEventListener("selectionchange", scheduleSelection);
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [handleTextSelection, sectionLoading]);
+  }, [handleSentenceClick, handleTextSelection, sectionLoading]);
 
   const handleDictLookupClick = () => {
     if (!dictPopover) return;
@@ -341,6 +648,9 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
 
   const chapters: ChapterMapEntry[] = pairing.chapter_map || [];
   const currentChapter = chapters[chapterIndex];
+  const currentChapterCompleted = chapterTaskSummaries.find(
+    (item) => item.chapter_id === currentChapter?.id,
+  )?.completed;
   const flaggedGroups = new Set(
     annotations
       .filter((a) => a.chapter_id === currentChapter?.id)
@@ -361,9 +671,51 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
           <span className="truncate text-sm font-medium">{pairing.en_title}</span>
           <span className="truncate text-xs text-[var(--muted-foreground)]">
             {currentChapter?.en_title || currentChapter?.id} · {chapterIndex + 1}/{chapters.length}
+            {currentChapterCompleted ? ` · ${t("Chapter translated")}` : ""}
             {annotations.length > 0 && ` · ${annotations.length} ${t("flagged")}`}
           </span>
         </div>
+        <button
+          onClick={() => void handleNavigateHistory("back")}
+          disabled={!navigation?.can_back}
+          className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-30"
+          title={t("Back")}
+        >
+          <ArrowLeft size={16} />
+        </button>
+        <button
+          onClick={() => void handleNavigateHistory("forward")}
+          disabled={!navigation?.can_forward}
+          className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-30"
+          title={t("Forward")}
+        >
+          <ArrowRight size={16} />
+        </button>
+        <button
+          onClick={() => void handleAddBookmark()}
+          className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+          title={t("Bookmark this position")}
+        >
+          <BookmarkPlus size={16} />
+        </button>
+        <button
+          onClick={() => setShowBookmarks((value) => !value)}
+          className={`rounded-md p-1.5 hover:bg-[var(--muted)] ${
+            showBookmarks
+              ? "text-[var(--primary)]"
+              : "text-[var(--muted-foreground)]"
+          }`}
+          title={t("Bookmarks")}
+        >
+          <Bookmark size={16} />
+        </button>
+        <button
+          onClick={() => setShowTaskBoard((value) => !value)}
+          className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+          title={t("Translate this chapter")}
+        >
+          <ListChecks size={16} />
+        </button>
         <button
           onClick={() => setExpandAll((v) => !v)}
           className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
@@ -407,6 +759,7 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
         >
           {chapters.map((ch, i) => (
             <option key={ch.id} value={i}>
+              {chapterTaskSummaries.find((item) => item.chapter_id === ch.id)?.completed ? "✓ " : ""}
               {ch.en_title || ch.id}
             </option>
           ))}
@@ -485,6 +838,137 @@ export function BilingualReader({ pairingId, onBack }: BilingualReaderProps) {
           pairingId={pairingId}
         />
       )}
+      {showBookmarks && (
+        <BookmarkPanel
+          bookmarks={bookmarks}
+          onClose={() => setShowBookmarks(false)}
+          onJump={handleJumpBookmark}
+          onRename={handleRenameBookmark}
+          onDelete={handleDeleteBookmark}
+        />
+      )}
+      {showTaskBoard && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
+          <div className="flex h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-[var(--background)] shadow-2xl">
+            <TranslationTaskBoardPanel
+              sourceType="bilingual"
+              sourceId={pairingId}
+              chapterId={currentChapter?.id}
+              onBoardLoaded={(board) => setChapterTaskSummaries(board.chapters || [])}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BookmarkPanel({
+  bookmarks,
+  onClose,
+  onJump,
+  onRename,
+  onDelete,
+}: {
+  bookmarks: BilingualBookmark[];
+  onClose: () => void;
+  onJump: (bookmark: BilingualBookmark) => void;
+  onRename: (id: string, title: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = useState("");
+
+  const commitRename = (bookmarkId: string) => {
+    if (editingId !== bookmarkId) return;
+    const title = draftTitle.trim();
+    setEditingId(null);
+    if (title) onRename(bookmarkId, title);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="flex max-h-[80vh] w-full max-w-[560px] flex-col rounded-xl bg-[var(--background)] shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-3">
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            <Bookmark size={16} />
+            {t("Bookmarks")} ({bookmarks.length})
+          </h3>
+          <button
+            onClick={onClose}
+            aria-label={t("Close")}
+            className="rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5">
+          {bookmarks.length === 0 ? (
+            <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">
+              {t("No bookmarks yet.")}
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {bookmarks.map((bookmark) => (
+                <div key={bookmark.id} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
+                  {editingId === bookmark.id ? (
+                    <input
+                      autoFocus
+                      value={draftTitle}
+                      onChange={(event) => setDraftTitle(event.target.value)}
+                      onBlur={() => commitRename(bookmark.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") commitRename(bookmark.id);
+                        if (event.key === "Escape") setEditingId(null);
+                      }}
+                      className="mb-2 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-sm"
+                    />
+                  ) : (
+                    <div className="flex items-start justify-between gap-2">
+                      <button
+                        onClick={() => onJump(bookmark)}
+                        className="min-w-0 flex-1 text-left"
+                        title={t("Jump to bookmark")}
+                      >
+                        <span className="block truncate text-sm font-medium">{bookmark.title}</span>
+                        <span className="block truncate text-xs text-[var(--muted-foreground)]">
+                          {bookmark.chapter_title} · #{bookmark.group_index + 1} · {Math.round(bookmark.scroll_percent)}%
+                        </span>
+                      </button>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          onClick={() => {
+                            setEditingId(bookmark.id);
+                            setDraftTitle(bookmark.title);
+                          }}
+                          aria-label={t("Rename bookmark")}
+                          className="rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          onClick={() => onDelete(bookmark.id)}
+                          aria-label={t("Delete bookmark")}
+                          className="rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-red-600"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {bookmark.preview && (
+                    <p className="mt-2 line-clamp-2 text-xs text-[var(--muted-foreground)]">{bookmark.preview}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -511,7 +995,7 @@ function BilingualGroup({
 
   if (group.zh.length === 0) {
     return (
-      <div className="group/para relative space-y-1">
+      <div className="group/para relative space-y-1" data-group-index={index}>
         {group.en.map((para, pi) => (
           <p key={pi} className="leading-7 text-[var(--foreground)]">
             {para}
@@ -529,7 +1013,7 @@ function BilingualGroup({
   }
 
   return (
-    <div className="group/para relative space-y-0.5">
+    <div className="group/para relative space-y-0.5" data-group-index={index}>
       {group.en.map((para, pi) => (
         <p key={pi} className="leading-7 text-[var(--foreground)]">
           {para}
@@ -738,10 +1222,10 @@ function ReviewPanel({
                   )}
                   <div className="mt-2 space-y-1">
                     <p className="line-clamp-2 text-xs text-[var(--muted-foreground)]">
-                      {t("English")}: {ann.en_text}
+                      {t("EN")}: {ann.en_text}
                     </p>
                     <p className="line-clamp-2 text-xs text-[var(--muted-foreground)]">
-                      {t("Chinese")}: {ann.zh_text}
+                      {t("ZH")}: {ann.zh_text}
                     </p>
                   </div>
                 </div>
