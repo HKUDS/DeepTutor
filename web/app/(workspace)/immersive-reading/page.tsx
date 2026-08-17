@@ -7,6 +7,8 @@ import {
   ArrowLeft,
   BookCheck,
   BookMarked,
+  BookOpen,
+  BookPlus,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -19,6 +21,7 @@ import {
   MessageCircleQuestion,
   MoreHorizontal,
   Plus,
+  Network,
   Quote,
   RotateCcw,
   Search,
@@ -48,16 +51,28 @@ import {
   type ReadingProgress,
   type SearchHit,
   type SearchResponse,
+  bilingualApi,
+  type BilingualPairing,
+  type VocabEntry,
+  type DictionaryResult,
+  ApiRequestError,
 } from "@/lib/immersive-reading-api";
+import { defaultReadingView, immersiveReadingPath } from "@/lib/epub-reader";
+import DictionaryPanel from "@/components/common/DictionaryPanel";
 
 const MarkdownRenderer = dynamic(
   () => import("@/components/common/MarkdownRenderer"),
   { ssr: false },
 );
+const Mermaid = dynamic(() => import("@/components/Mermaid"), { ssr: false });
+const OriginalEpubReader = dynamic(() => import("./components/OriginalEpubReader"), { ssr: false, loading: () => null });
+const BilingualReader = dynamic(() => import("@/components/immersive-reading/BilingualReader").then((m) => m.BilingualReader), { ssr: false, loading: () => null });
+const BilingualPairDialog = dynamic(() => import("@/components/immersive-reading/BilingualPairDialog").then((m) => m.BilingualPairDialog), { ssr: false });
 
 type SearchMode = "exact" | "fuzzy" | "description_fast" | "description_fine";
-type ShelfView = "library" | "citations" | "focus-history";
+type ShelfView = "library" | "citations" | "focus-history" | "vocabulary";
 type SelectionAction = "translate" | "query";
+type CharacterScope = "current" | "through_current";
 
 interface SelectionMenuState {
   text: string;
@@ -140,7 +155,7 @@ function BookCover({ document, compact = false }: { document: ReadingDocument; c
           src={document.cover_url}
           alt={document.title}
           fill
-          sizes={compact ? "80px" : "240px"}
+          sizes={compact ? "80px" : "320px"}
           unoptimized
           className="object-cover"
         />
@@ -217,41 +232,75 @@ function ImmersiveReadingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const documentId = searchParams.get("book");
+  const pairingId = searchParams.get("pairing");
   const [documents, setDocuments] = useState<ReadingDocument[]>([]);
   const [capabilities, setCapabilities] = useState<ReadingCapabilities | null>(null);
-  const [citations, setCitations] = useState<ReadingCitation[]>([]);
+ const [citations, setCitations] = useState<ReadingCitation[]>([]);
   const [shelfView, setShelfView] = useState<ShelfView>("library");
+  const [vocabulary, setVocabulary] = useState<VocabEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [errorToast, setErrorToast] = useState<{ id: number; message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pairings, setPairings] = useState<BilingualPairing[]>([]);
+  const [showPairDialog, setShowPairDialog] = useState(false);
 
   const refreshLibrary = useCallback(async () => {
     const data = await immersiveReadingApi.list();
     setDocuments(data.documents || []);
   }, []);
 
-  const refreshCitations = useCallback(async () => {
-    const data = await immersiveReadingApi.citations();
-    setCitations(data.citations || []);
+ const refreshPairings = useCallback(async () => {
+   try {
+     const data = await bilingualApi.list();
+     setPairings(data.pairings || []);
+   } catch { /* pairings endpoint may not exist yet */ }
+ }, []);
+
+  const handleDeletePairing = useCallback(
+    async (pairing: BilingualPairing, event: ReactMouseEvent) => {
+      event.stopPropagation();
+      if (!window.confirm(t("Delete this bilingual pairing?"))) return;
+      try {
+        await bilingualApi.delete(pairing.pairing_id);
+        await refreshPairings();
+      } catch (cause) {
+        setError(errorMessage(cause));
+      }
+    },
+    [refreshPairings, setError, t],
+  );
+
+ const refreshCitations = useCallback(async () => {
+   const data = await immersiveReadingApi.citations();
+   setCitations(data.citations || []);
+ }, []);
+
+  const refreshVocabulary = useCallback(async () => {
+    const data = await immersiveReadingApi.vocabulary();
+    setVocabulary(data.entries || []);
   }, []);
 
-  useEffect(() => {
+ useEffect(() => {
     let mounted = true;
     setLoading(true);
-    Promise.all([
-      immersiveReadingApi.list(),
-      immersiveReadingApi.capabilities().catch(() => null),
-      immersiveReadingApi.citations(),
-    ])
-      .then(([library, caps, saved]) => {
-        if (!mounted) return;
-        setDocuments(library.documents || []);
-        setCapabilities(caps);
-        setCitations(saved.citations || []);
-      })
+   Promise.all([
+     immersiveReadingApi.list(),
+     immersiveReadingApi.capabilities().catch(() => null),
+     immersiveReadingApi.citations(),
+      immersiveReadingApi.vocabulary(),
+     bilingualApi.list().catch(() => ({ pairings: [] })),
+   ])
+      .then(([library, caps, saved, vocab, bilData]) => {
+       if (!mounted) return;
+       setDocuments(library.documents || []);
+       setCapabilities(caps);
+       setCitations(saved.citations || []);
+        setVocabulary(vocab.entries || []);
+       setPairings(bilData.pairings || []);
+     })
       .catch((cause) => mounted && setError(errorMessage(cause)))
       .finally(() => mounted && setLoading(false));
     return () => {
@@ -310,6 +359,28 @@ function ImmersiveReadingContent() {
     }
   };
 
+  if (pairingId) {
+    return (
+      <>
+        <BilingualReader
+          pairingId={pairingId}
+          onBack={() => {
+            router.push("/immersive-reading");
+            void refreshPairings();
+          }}
+        />
+        {toast && <div className="fixed bottom-6 left-1/2 z-[120] -translate-x-1/2 rounded-xl bg-[var(--foreground)] px-4 py-2.5 text-sm text-[var(--background)] shadow-xl">{toast}</div>}
+        {errorToast && (
+          <ErrorNotification
+            message={errorToast.message}
+            closeLabel={t("Dismiss error notification")}
+            onClose={() => setErrorToast(null)}
+          />
+        )}
+      </>
+    );
+  }
+
   if (documentId) {
     return (
       <>
@@ -320,8 +391,9 @@ function ImmersiveReadingContent() {
             router.push("/immersive-reading");
             void refreshLibrary();
           }}
-          onCitationAdded={() => void refreshCitations()}
-          onToast={setToast}
+         onCitationAdded={() => void refreshCitations()}
+          onVocabularyAdded={() => void refreshVocabulary()}
+         onToast={setToast}
           onErrorToast={(message) => setErrorToast({ id: Date.now(), message })}
         />
         {toast && <div className="fixed bottom-6 left-1/2 z-[120] -translate-x-1/2 rounded-xl bg-[var(--foreground)] px-4 py-2.5 text-sm text-[var(--background)] shadow-xl">{toast}</div>}
@@ -348,15 +420,25 @@ function ImmersiveReadingContent() {
             <p className="text-sm text-[var(--muted-foreground)]">{t("Read closely, remember deeply, and keep the passages that matter.")}</p>
           </div>
         </div>
-        <button
-          type="button"
-          disabled={importing}
-          onClick={() => fileInputRef.current?.click()}
-          className="inline-flex items-center gap-2 rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-medium text-[var(--primary-foreground)] shadow-sm transition hover:brightness-105 disabled:opacity-60"
-        >
-          {importing ? <Loader2 size={16} className="animate-spin" /> : <Plus size={17} />}
-          {importing ? t("Importing…") : t("Import book")}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowPairDialog(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-2.5 text-sm font-medium text-[var(--foreground)] shadow-sm transition hover:bg-[var(--muted)]"
+          >
+            <Languages size={17} />
+            {t("Pair Bilingual")}
+          </button>
+          <button
+            type="button"
+            disabled={importing}
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex items-center gap-2 rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-medium text-[var(--primary-foreground)] shadow-sm transition hover:brightness-105 disabled:opacity-60"
+          >
+            {importing ? <Loader2 size={16} className="animate-spin" /> : <Plus size={17} />}
+            {importing ? t("Importing…") : t("Import book")}
+          </button>
+        </div>
         <input
           ref={fileInputRef}
           type="file"
@@ -368,7 +450,7 @@ function ImmersiveReadingContent() {
 
       <main className="mx-auto w-full max-w-[1500px] px-8 py-7">
         <div className="mb-7 flex items-center gap-1 rounded-xl border border-[var(--border)] bg-[var(--card)] p-1.5 w-fit">
-          {(["library", "citations", "focus-history"] as const).map((view) => {
+          {(["library", "citations", "vocabulary", "focus-history"] as const).map((view) => {
             const attemptCount = documents.reduce(
               (total, document) => total + Object.values(document.progress.focus_history || {}).reduce(
                 (subtotal, records) => subtotal + records.length,
@@ -387,12 +469,22 @@ function ImmersiveReadingContent() {
                   : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
               }`}
             >
-              {view === "library" ? <Library size={15} /> : view === "citations" ? <Quote size={15} /> : <BookCheck size={15} />}
-              {view === "library" ? t("Library") : view === "citations" ? t("Citations") : t("Answer history")}
-              {view === "citations" && citations.length > 0 && (
-                <span className="rounded-full bg-current/10 px-1.5 text-[10px]">{citations.length}</span>
+             {view === "library" ? <Library size={15} /> : view === "citations" ? <Quote size={15} /> : <BookCheck size={15} />}
+              {view === "library"
+                ? <Library size={15} />
+                : view === "citations"
+                  ? <Quote size={15} />
+                  : view === "vocabulary"
+                    ? <BookMarked size={15} />
+                    : <BookCheck size={15} />}
+              {view === "library" ? t("Library") : view === "citations" ? t("Citations") : view === "vocabulary" ? t("Vocabulary") : t("Answer history")}
+             {view === "citations" && citations.length > 0 && (
+               <span className="rounded-full bg-current/10 px-1.5 text-[10px]">{citations.length}</span>
+             )}
+              {view === "vocabulary" && vocabulary.length > 0 && (
+                <span className="rounded-full bg-current/10 px-1.5 text-[10px]">{vocabulary.length}</span>
               )}
-              {view === "focus-history" && attemptCount > 0 && (
+             {view === "focus-history" && attemptCount > 0 && (
                 <span className="rounded-full bg-current/10 px-1.5 text-[10px]">{attemptCount}</span>
               )}
             </button>
@@ -418,6 +510,20 @@ function ImmersiveReadingContent() {
             onDelete={async (citation) => {
               await immersiveReadingApi.deleteCitation(citation.id);
               await refreshCitations();
+           }}
+          />
+        ) : shelfView === "vocabulary" ? (
+          <VocabularyView
+            entries={vocabulary}
+            documents={documents}
+            onOpen={(entry) => {
+              if (entry.document_id) {
+                router.push(`/immersive-reading?book=${encodeURIComponent(entry.document_id)}`);
+              }
+            }}
+            onDelete={async (entry) => {
+              await immersiveReadingApi.deleteWord(entry.id);
+              await refreshVocabulary();
             }}
           />
         ) : shelfView === "focus-history" ? (
@@ -443,7 +549,7 @@ function ImmersiveReadingContent() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-x-7 gap-y-10 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          <div className={`grid gap-x-10 gap-y-12 ${documents.length <= 3 ? "grid-cols-1 sm:grid-cols-2 max-w-4xl mx-auto" : documents.length <= 6 ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4" : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"}`}>
             {documents.map((document) => (
               <article
                 key={document.id}
@@ -455,7 +561,7 @@ function ImmersiveReadingContent() {
                 }}
                 className="group cursor-pointer outline-none"
               >
-                <div className="relative mx-auto max-w-[230px]">
+                <div className="relative mx-auto max-w-[360px]">
                   <BookCover document={document} />
                   <button
                     type="button"
@@ -466,7 +572,7 @@ function ImmersiveReadingContent() {
                     <Trash2 size={15} />
                   </button>
                 </div>
-                <div className="mx-auto mt-4 max-w-[230px]">
+                <div className="mx-auto mt-4 max-w-[360px]">
                   <h2 className="line-clamp-2 text-[15px] font-semibold leading-snug text-[var(--foreground)]">{document.title}</h2>
                   <p className="mt-1 truncate text-xs text-[var(--muted-foreground)]">
                     {document.author || document.source_filename}
@@ -508,7 +614,70 @@ function ImmersiveReadingContent() {
               : t("Description matching needs a default model with at least 50k context; exact and fuzzy search still work.")}
           </p>
         )}
+        {pairings.length > 0 && shelfView === "library" && (
+          <div className="mt-12">
+            <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
+              <Languages size={20} className="text-[var(--primary)]" />
+              {t("Bilingual Pairings")}
+            </h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+             {pairings.map((pairing) => (
+                <div
+                  key={pairing.pairing_id}
+                  onClick={() => router.push(`/immersive-reading?pairing=${encodeURIComponent(pairing.pairing_id)}`)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      router.push(`/immersive-reading?pairing=${encodeURIComponent(pairing.pairing_id)}`);
+                    }
+                  }}
+                  className="group relative flex cursor-pointer items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 text-left transition hover:border-[var(--primary)]/30 hover:shadow-md"
+                >
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[var(--primary)]/10 text-[var(--primary)]">
+                    <Languages size={22} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">{pairing.en_title}</p>
+                    <p className="truncate text-xs text-[var(--muted-foreground)]">{pairing.zh_title}</p>
+                    <div className="mt-1 flex items-center gap-2 text-[11px] text-[var(--muted-foreground)]">
+                      <span>{pairing.chapter_count} {t("chapters")}</span>
+                      {pairing.aligned ? (
+                        <span className="flex items-center gap-0.5 text-emerald-500"><Check size={11} /> {t("aligned")}</span>
+                      ) : (
+                        <span className="text-amber-500">{t("not aligned")}</span>
+                      )}
+                      {pairing.review_count > 0 && (
+                        <span className="flex items-center gap-0.5 text-amber-500"><CircleAlert size={11} /> {pairing.review_count} {t("review")}</span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={t("Delete")}
+                    onClick={(event) => void handleDeletePairing(pairing, event)}
+                    className="absolute right-1.5 top-1.5 rounded-lg p-1.5 text-[var(--muted-foreground)] opacity-0 transition hover:bg-red-500/10 hover:text-red-500 group-hover:opacity-100"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                  <ChevronRight size={16} className="shrink-0 text-[var(--muted-foreground)] group-hover:text-[var(--foreground)]" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </main>
+
+      {showPairDialog && (
+        <BilingualPairDialog
+          isOpen={showPairDialog}
+          onClose={() => setShowPairDialog(false)}
+          onPaired={() => {
+            void refreshPairings();
+          }}
+        />
+      )}
 
       {toast && <div className="fixed bottom-6 left-1/2 z-[120] -translate-x-1/2 rounded-xl bg-[var(--foreground)] px-4 py-2.5 text-sm text-[var(--background)] shadow-xl">{toast}</div>}
       {errorToast && (
@@ -572,6 +741,97 @@ function CitationsView({
           {citation.note && <p className="mt-3 text-sm text-[var(--muted-foreground)]">{citation.note}</p>}
         </article>
       ))}
+    </div>
+  );
+}
+
+function VocabularyView({
+  entries,
+  documents,
+  onOpen,
+  onDelete,
+}: {
+  entries: VocabEntry[];
+  documents: ReadingDocument[];
+  onOpen: (entry: VocabEntry) => void;
+  onDelete: (entry: VocabEntry) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [filterBook, setFilterBook] = useState<string>("all");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const bookOptions = documents.filter((d) => entries.some((e) => e.document_id === d.id));
+  const filtered = filterBook === "all" ? entries : entries.filter((e) => e.document_id === filterBook);
+
+  if (!entries.length) {
+    return (
+      <div className="flex min-h-[420px] flex-col items-center justify-center rounded-3xl border border-dashed border-[var(--border)] text-center">
+        <BookMarked size={34} className="mb-4 text-[var(--muted-foreground)]" />
+        <h2 className="font-semibold">{t("No vocabulary yet")}</h2>
+        <p className="mt-2 max-w-md text-sm text-[var(--muted-foreground)]">{t("Select a word while reading and choose Vocab to save it here.")}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-xs text-[var(--muted-foreground)]">{t("{{count}} words", { count: entries.length })}</span>
+        {bookOptions.length > 1 && (
+          <select value={filterBook} onChange={(e) => setFilterBook(e.target.value)} className="rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 text-xs text-[var(--foreground)]">
+            <option value="all">{t("All books")}</option>
+            {bookOptions.map((d) => <option key={d.id} value={d.id}>{d.title}</option>)}
+          </select>
+        )}
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        {filtered.map((entry) => {
+          const firstDef = entry.definitions[0];
+          const isExpanded = expandedId === entry.id;
+          return (
+            <article key={entry.id} className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-5 shadow-sm">
+              <div className="mb-3 flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <button type="button" onClick={() => onOpen(entry)} className="text-left">
+                    <span className="text-lg font-semibold text-[var(--foreground)]">{entry.word}</span>
+                    {entry.phonetic && <span className="ml-2 text-sm text-[var(--muted-foreground)]">{entry.phonetic}</span>}
+                  </button>
+                  {entry.document_title && (
+                    <p className="mt-0.5 truncate text-xs text-[var(--muted-foreground)]">{entry.document_title}{entry.section_title ? ` · ${entry.section_title}` : ""}</p>
+                  )}
+                </div>
+                <button type="button" aria-label={t("Delete")} onClick={() => void onDelete(entry)} className="rounded-lg p-2 text-[var(--muted-foreground)] hover:bg-red-500/10 hover:text-red-500">
+                  <Trash2 size={15} />
+                </button>
+              </div>
+              {firstDef ? (
+                <div className="text-sm leading-6 text-[var(--foreground)]/90">
+                  {firstDef.part_of_speech && <span className="text-xs italic text-[var(--muted-foreground)]">{firstDef.part_of_speech} </span>}
+                  {firstDef.definition}
+                </div>
+              ) : (
+                <p className="text-sm text-[var(--muted-foreground)]">{entry.context_note || t("No definition available")}</p>
+              )}
+              {entry.definitions.length > 1 && (
+                <button type="button" onClick={() => setExpandedId(isExpanded ? null : entry.id)} className="mt-2 text-xs text-[var(--primary)] hover:underline">
+                  {isExpanded ? t("Show less") : t("{{count}} more definitions", { count: entry.definitions.length - 1 })}
+                </button>
+              )}
+              {isExpanded && (
+                <div className="mt-3 space-y-2 border-t border-[var(--border)] pt-3">
+                  {entry.definitions.slice(1).map((def, i) => (
+                    <div key={i} className="text-sm leading-6 text-[var(--foreground)]/85">
+                      {def.part_of_speech && <span className="text-xs italic text-[var(--muted-foreground)]">{def.part_of_speech} </span>}
+                      {def.definition}
+                      {def.example && <p className="mt-0.5 text-xs italic text-[var(--muted-foreground)]">&ldquo;{def.example}&rdquo;</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </article>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -673,6 +933,7 @@ function Reader({
   capabilities,
   onBack,
   onCitationAdded,
+  onVocabularyAdded,
   onToast,
   onErrorToast,
 }: {
@@ -680,6 +941,7 @@ function Reader({
   capabilities: ReadingCapabilities | null;
   onBack: () => void;
   onCitationAdded: () => void;
+  onVocabularyAdded: () => void;
   onToast: (message: string) => void;
   onErrorToast: (message: string) => void;
 }) {
@@ -704,6 +966,19 @@ function Reader({
   const [selectionResult, setSelectionResult] = useState("");
   const [selectionQuestion, setSelectionQuestion] = useState("");
   const [selectionBusy, setSelectionBusy] = useState(false);
+
+  // Dictionary popup state
+  const [dictPopup, setDictPopup] = useState<{
+    word: string;
+    anchorRect: DOMRect;
+    context: string;
+  } | null>(null);
+  const [dictResult, setDictResult] = useState<DictionaryResult | null>(null);
+  const [dictBusy, setDictBusy] = useState(false);
+  const [dictError, setDictError] = useState<string | null>(null);
+  const dictAbortRef = useRef<AbortController | null>(null);
+  const dictSeqRef = useRef(0);
+
   const [focusOpen, setFocusOpen] = useState(false);
   const [focusSummary, setFocusSummary] = useState("");
   const [focusReflection, setFocusReflection] = useState("");
@@ -713,7 +988,16 @@ function Reader({
   const [restartMenu, setRestartMenu] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [, forceSidebarUpdate] = useState(0);
+  const [charGraphOpen, setCharGraphOpen] = useState(false);
+  const [charGraphScope, setCharGraphScope] = useState<CharacterScope>("current");
+  const [charGraphMermaid, setCharGraphMermaid] = useState("");
+  const [charGraphNodes, setCharGraphNodes] = useState<
+    Array<{ id: string; name: string; aliases: string[]; description: string }>
+  >([]);
+  const [charGraphLoading, setCharGraphLoading] = useState(false);
+  const [charGraphError, setCharGraphError] = useState<string | null>(null);
   const articleRef = useRef<HTMLDivElement>(null);
+  const selectionDebounceRef = useRef<number | null>(null);
   const lastProgressSentRef = useRef({ at: 0, value: -1 });
   const progressRef = useRef<ReadingProgress | null>(null);
   const sectionTransitionRef = useRef(false);
@@ -756,6 +1040,13 @@ function Reader({
     setLoadingSection(true);
     setSelectionMenu(null);
     setSearchOpen(false);
+    // Cancel any in-flight dictionary lookup on section change
+    dictAbortRef.current?.abort();
+    dictSeqRef.current += 1;
+    setDictPopup(null);
+    setDictResult(null);
+    setDictError(null);
+    setDictBusy(false);
     immersiveReadingApi
       .section(documentId, sectionId)
       .then((result) => {
@@ -875,9 +1166,28 @@ function Reader({
     setSelectionMenu({
       text: text.slice(0, 12_000),
       left: Math.max(12, Math.min(window.innerWidth - 310, rect.left + rect.width / 2 - 150)),
-      top: Math.max(12, rect.top - 52),
-    });
-  }, []);
+     top: Math.max(12, rect.top - 52),
+   });
+ }, []);
+
+  useEffect(() => {
+    const debouncedCheck = () => {
+      if (selectionDebounceRef.current !== null) {
+        window.clearTimeout(selectionDebounceRef.current);
+      }
+      selectionDebounceRef.current = window.setTimeout(() => {
+        handleSelection();
+        selectionDebounceRef.current = null;
+      }, 300);
+    };
+    window.document.addEventListener("selectionchange", debouncedCheck);
+    return () => {
+      window.document.removeEventListener("selectionchange", debouncedCheck);
+      if (selectionDebounceRef.current !== null) {
+        window.clearTimeout(selectionDebounceRef.current);
+      }
+    };
+  }, [handleSelection]);
 
   const runTranslation = async () => {
     if (!selectionMenu) return;
@@ -911,7 +1221,112 @@ function Reader({
       setSelectionMenu(null);
       window.getSelection()?.removeAllRanges();
     }
-  };
+ };
+
+ const saveWord = () => {
+   if (!selectionMenu || !articleRef.current) return;
+   const range = window.getSelection()?.getRangeAt(0);
+   const rect = range?.getBoundingClientRect();
+   if (!rect) return;
+   const word = selectionMenu.text.trim();
+   if (!word) return;
+   const startIdx = content.indexOf(word);
+   const context = content.slice(Math.max(0, startIdx - 200), startIdx + word.length + 200);
+   // Cancel any in-flight dictionary lookup
+   dictAbortRef.current?.abort();
+   dictSeqRef.current += 1;
+   setDictResult(null);
+   setDictError(null);
+   setDictPopup({ word, anchorRect: rect, context });
+   setSelectionMenu(null);
+   window.getSelection()?.removeAllRanges();
+ };
+
+ const lookupDictionary = useCallback(async (word: string, context: string) => {
+   const seq = dictSeqRef.current;
+   const controller = new AbortController();
+   dictAbortRef.current = controller;
+   setDictBusy(true);
+   setDictError(null);
+   setDictResult(null);
+   try {
+     const result = await immersiveReadingApi.dictionary(word, context, controller.signal);
+     // Only update if this is still the latest request
+     if (seq === dictSeqRef.current) {
+       setDictResult(result);
+       setDictBusy(false);
+     }
+   } catch (cause) {
+     if (cause instanceof DOMException && cause.name === "AbortError") return;
+     if (seq === dictSeqRef.current) {
+       if (cause instanceof ApiRequestError) {
+         const status = cause.status;
+        if (status === 503) setDictError(cause.message || t("Local dictionary unavailable. Run `ollama serve` then `ollama pull qwen3.5:2b`."));
+        else if (status === 504) setDictError(t("Dictionary lookup timed out. The local model may still be loading."));
+        else setDictError(cause.message || t("Lookup failed."));
+       } else {
+         setDictError(errorMessage(cause));
+       }
+       setDictBusy(false);
+     }
+   }
+ }, [t]);
+
+ // Trigger dictionary lookup when popup opens
+ useEffect(() => {
+   if (!dictPopup) return;
+   void lookupDictionary(dictPopup.word, dictPopup.context);
+ }, [dictPopup, lookupDictionary]);
+
+ const saveDictWord = useCallback(async () => {
+   if (!dictPopup || !currentSection) return;
+   try {
+     const { lookup_warning } = await immersiveReadingApi.addWord(
+       dictPopup.word,
+       dictPopup.context,
+       documentId,
+       document?.title || "",
+       currentSection.title,
+     );
+     onVocabularyAdded();
+     onToast(lookup_warning ? t("Added to vocabulary") + " — " + t("Definition unavailable") : t("Added to vocabulary"));
+   } catch (cause) {
+     onErrorToast(errorMessage(cause));
+   }
+   setDictPopup(null);
+   setDictResult(null);
+   setDictError(null);
+ }, [dictPopup, currentSection, documentId, document, onVocabularyAdded, onToast, onErrorToast, t]);
+
+const closeDictPopup = useCallback(() => {
+  dictAbortRef.current?.abort();
+  dictSeqRef.current += 1;
+  setDictPopup(null);
+  setDictResult(null);
+  setDictError(null);
+  setDictBusy(false);
+}, []);
+
+ const translateDictWord = useCallback(async () => {
+   if (!dictPopup) return;
+   dictSeqRef.current += 1;
+   setDictBusy(true);
+   setDictError(null);
+   setDictResult(null);
+   try {
+     const { translation } = await immersiveReadingApi.translate(dictPopup.word, "Chinese");
+     setDictResult({
+       word: dictPopup.word,
+       phonetic: "",
+       definitions: [],
+       context_note: translation,
+     });
+   } catch (cause) {
+     setDictError(cause instanceof Error ? cause.message : t("Lookup failed."));
+   } finally {
+     setDictBusy(false);
+   }
+ }, [dictPopup, t]);
 
   const openQuery = () => {
     if (selectionMenu?.text) queryTextRef.current = selectionMenu.text;
@@ -1019,6 +1434,61 @@ function Reader({
     }
   };
 
+  // --- Character Graph ---
+  const fetchCharGraph = useCallback(
+    async (scope: CharacterScope, force = false) => {
+      if (!currentSection) return;
+      setCharGraphLoading(true);
+      setCharGraphError(null);
+      try {
+        const result = await immersiveReadingApi.characterGraph(
+          documentId,
+          currentSection.id,
+          scope,
+          force,
+        );
+        setCharGraphMermaid(result.mermaid);
+        setCharGraphNodes(result.graph.nodes);
+      } catch (err) {
+        setCharGraphError(
+          err instanceof Error ? err.message : String(t("Failed to generate graph")),
+        );
+      } finally {
+        setCharGraphLoading(false);
+      }
+    },
+    [currentSection, documentId, t],
+  );
+
+  useEffect(() => {
+    if (charGraphOpen && currentSection) {
+      void fetchCharGraph(charGraphScope);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [charGraphOpen, charGraphScope, currentSection?.id]);
+
+  const handleCharGraphRefresh = async () => {
+    if (!currentSection) return;
+    setCharGraphLoading(true);
+    setCharGraphError(null);
+    try {
+      const result = await immersiveReadingApi.characterGraph(
+        documentId,
+        currentSection.id,
+        charGraphScope,
+        true,
+      );
+      setCharGraphMermaid(result.mermaid);
+      setCharGraphNodes(result.graph.nodes);
+    } catch (err) {
+      setCharGraphError(
+        err instanceof Error ? err.message : String(t("Failed to generate graph")),
+      );
+    } finally {
+      setCharGraphLoading(false);
+    }
+  };
+
   const continueAfterFocus = () => {
     if (!document || !currentSection) return;
     const next = document.sections[currentSection.index + 1];
@@ -1060,6 +1530,27 @@ function Reader({
 
   if (loading || !document || !progress) {
     return <div className="flex h-full items-center justify-center text-[var(--muted-foreground)]">{error ? error : <Loader2 className="animate-spin" />}</div>;
+  }
+
+  const readingView = defaultReadingView({
+    sourceFormat: document.source_format,
+    viewParam: searchParams.get("view"),
+    experienceMode: document.experience_mode,
+  });
+  if (readingView === "original") {
+    return (
+      <OriginalEpubReader
+        document={document}
+        progress={progress}
+        requestedSectionId={sectionId}
+        onBack={onBack}
+        onOpenStudy={(nextSectionId) => {
+          setSectionId(nextSectionId);
+          router.replace(immersiveReadingPath(documentId, { view: "study", section: nextSectionId }));
+        }}
+        onProgress={setProgress}
+      />
+    );
   }
 
   const previous = document.sections[currentIndex - 1];
@@ -1125,7 +1616,10 @@ function Reader({
                 onClick={() => {
                   if (hasChildren) { toggleParent(section.id); return; }
                   openSection(section.id);
-                  router.replace(`/immersive-reading?book=${encodeURIComponent(documentId)}&section=${encodeURIComponent(section.id)}`);
+                  router.replace(immersiveReadingPath(documentId, {
+                    view: document.source_format === "epub" ? "study" : null,
+                    section: section.id,
+                  }));
                 }}
                 className={`mb-1 flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition ${
                   active ? "bg-[var(--primary)]/12 text-[var(--foreground)]" : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
@@ -1241,7 +1735,26 @@ function Reader({
                 </button>
               );
             })}
-          </div>
+         </div>
+          <button
+            type="button"
+            onClick={() => setCharGraphOpen((v) => !v)}
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-[var(--border)] px-3 py-2 text-xs font-medium transition ${charGraphOpen ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
+            title={t("Character relationships")}
+          >
+            <Network size={15} />
+            {t("Characters")}
+          </button>
+          {document.source_format === "epub" && (
+            <button
+              type="button"
+              onClick={() => router.replace(immersiveReadingPath(documentId, { view: "original", section: sectionId }))}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+            >
+              <BookOpen size={15} />
+              {t("Original reading")}
+            </button>
+          )}
           {searchOpen && (
             <div className="absolute left-5 right-5 top-[58px] max-h-[430px] overflow-y-auto rounded-2xl border border-[var(--border)] bg-[var(--popover)] p-2 shadow-2xl">
               {searching ? (
@@ -1279,7 +1792,12 @@ function Reader({
         )}
 
         <div ref={scrollRef} onScroll={handleScroll} className="min-h-0 flex-1 overflow-y-auto" style={{ scrollBehavior: "smooth" }}>
-          <article ref={articleRef} onMouseUp={handleSelection} className="mx-auto w-full max-w-[860px] px-10 pb-24 pt-12">
+          <article
+            ref={articleRef}
+            onMouseUp={handleSelection}
+            className="mx-auto w-full max-w-[860px] px-10 pb-24 pt-12"
+            style={{ WebkitTouchCallout: "none", userSelect: "text" } as CSSProperties}
+          >
             <div className="mb-10 border-b border-[var(--border)] pb-8 text-center">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--primary)]">{t("Section {{current}} of {{total}}", { current: currentIndex + 1, total: document.sections.length })}</p>
               <h2 className="mt-3 font-serif text-3xl font-semibold leading-tight text-[var(--foreground)]">{currentSection?.title}</h2>
@@ -1333,7 +1851,96 @@ function Reader({
             </div>
           </article>
         </div>
-      </section>
+     </section>
+
+      {charGraphOpen && (
+        <aside className="flex h-full w-[400px] shrink-0 flex-col border-l border-[var(--border)] bg-[var(--card)]/40 backdrop-blur">
+          <header className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Network className="h-4 w-4 text-[var(--primary)]" />
+              {t("Character Relationships")}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={charGraphLoading}
+                onClick={() => void handleCharGraphRefresh()}
+                className="rounded-lg p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                title={t("Refresh")}
+              >
+                {charGraphLoading ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setCharGraphOpen(false)}
+                className="rounded-lg p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </header>
+
+          <div className="flex gap-1 border-b border-[var(--border)] px-3 py-2">
+            <button
+              type="button"
+              onClick={() => setCharGraphScope("current")}
+              className={`rounded-lg px-3 py-1.5 text-xs transition ${charGraphScope === "current" ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
+            >
+              {t("This chapter")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setCharGraphScope("through_current")}
+              className={`rounded-lg px-3 py-1.5 text-xs transition ${charGraphScope === "through_current" ? "bg-[var(--primary)] text-[var(--primary-foreground)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
+            >
+              {t("All chapters so far")}
+            </button>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            {charGraphError ? (
+              <div className="flex items-start gap-2 rounded-xl border border-red-500/25 bg-red-500/8 p-3 text-sm text-red-500">
+                <CircleAlert size={15} className="mt-0.5 shrink-0" />
+                <span>{charGraphError}</span>
+              </div>
+            ) : charGraphLoading && !charGraphMermaid ? (
+              <div className="flex items-center justify-center gap-2 py-12 text-sm text-[var(--muted-foreground)]">
+                <Loader2 size={16} className="animate-spin" /> {t("Generating character map…")}
+              </div>
+            ) : (
+              <>
+                {charGraphMermaid && (
+                  <div className="mb-4 overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-3">
+                    <Mermaid chart={charGraphMermaid} />
+                  </div>
+                )}
+                {charGraphNodes.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+                      {t("Characters")} ({charGraphNodes.length})
+                    </p>
+                    <div className="space-y-2">
+                      {charGraphNodes.map((node) => (
+                        <div key={node.id} className="rounded-lg border border-[var(--border)] bg-[var(--background)] p-3">
+                          <div className="text-sm font-medium">{node.name}</div>
+                          {node.aliases.length > 0 && (
+                            <div className="mt-0.5 text-[11px] text-[var(--muted-foreground)]">
+                              {t("Also known as")}: {node.aliases.join(", ")}
+                            </div>
+                          )}
+                          {node.description && (
+                            <p className="mt-1 text-xs leading-5 text-[var(--muted-foreground)]">{node.description}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </aside>
+      )}
 
       {selectionMenu && (
         <div
@@ -1343,9 +1950,29 @@ function Reader({
         >
           <button type="button" onClick={() => void runTranslation()} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs hover:bg-white/10"><Languages size={14} /> {t("Translate")}</button>
           <button type="button" onClick={() => void recordSelection()} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs hover:bg-white/10"><Quote size={14} /> {t("Record")}</button>
+          <button type="button" disabled={selectionBusy} onClick={() => void saveWord()} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs hover:bg-white/10 disabled:opacity-50">{selectionBusy ? <Loader2 size={14} className="animate-spin" /> : <BookPlus size={14} />} {t("Vocab")}</button>
           <button type="button" onClick={openQuery} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs hover:bg-white/10"><MessageCircleQuestion size={14} /> {t("Query")}</button>
           <button type="button" onClick={() => setSelectionMenu(null)} className="rounded-lg p-1.5 hover:bg-white/10"><X size={13} /></button>
         </div>
+      )}
+
+      {dictPopup && (
+        <DictionaryPanel
+          word={dictPopup.word}
+          anchor={{
+            left: dictPopup.anchorRect.left,
+            right: dictPopup.anchorRect.right,
+            top: dictPopup.anchorRect.top,
+            bottom: dictPopup.anchorRect.bottom,
+          }}
+          loading={dictBusy}
+          result={dictResult}
+          error={dictError}
+          onLookup={() => void lookupDictionary(dictPopup.word, dictPopup.context)}
+          onTranslate={() => void translateDictWord()}
+          onClose={closeDictPopup}
+          onSaveToVocabulary={() => void saveDictWord()}
+        />
       )}
 
       {selectionAction && (
