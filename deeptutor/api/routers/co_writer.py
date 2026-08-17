@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from deeptutor.co_writer.edit_agent import (
     EditAgent,
     append_history,
+    is_pageindex_kb,
     load_history,
     print_stats,
     tool_calls_dir,
@@ -245,9 +246,13 @@ async def _run_react_edit(
     query = instruction or selected_text[:400]
     context_blocks: list[str] = []
     tools_used: list[str] = []
+    pageindex_source = "rag" in tools and is_pageindex_kb(request.kb_name)
     for tool in tools:
         kb_name = request.kb_name if tool == "rag" else None
         if tool == "rag" and not kb_name:
+            continue
+        if tool == "rag" and pageindex_source:
+            # The edit loop below receives PageIndex tools directly.
             continue
         if stream is not None:
             await stream.tool_call(
@@ -287,8 +292,33 @@ async def _run_react_edit(
     )
 
     response_chunks: list[str] = []
+    pageindex_sources: list[dict[str, object]] = []
 
     async def _consume() -> None:
+        if pageindex_source and request.kb_name:
+            from deeptutor.services.rag.pipelines.pageindex.reasoning import (
+                read_pageindex_with_agent,
+            )
+
+            reading = await read_pageindex_with_agent(
+                kb_name=request.kb_name,
+                system_prompt=system_prompt,
+                user_prompt=prompt,
+                stream=stream,
+                source="co_writer_react_edit",
+                stage="responding",
+            )
+            if reading.text:
+                response_chunks.append(reading.text)
+                pageindex_sources.extend(reading.sources)
+                tools_used.append("rag")
+                if stream is not None:
+                    await stream.content(
+                        reading.text,
+                        source="co_writer_react_edit",
+                        stage="responding",
+                    )
+            return
         async for chunk in agent.stream_llm(
             user_prompt=prompt,
             system_prompt=system_prompt,
@@ -329,6 +359,7 @@ async def _run_react_edit(
                 "instruction": instruction,
             },
             "output": {"edited_text": edited_text},
+            "sources": pageindex_sources,
             "model": agent.get_model(),
         }
     )

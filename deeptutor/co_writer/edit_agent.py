@@ -91,6 +91,23 @@ def save_tool_call(call_id: str, tool_type: str, data: dict[str, Any]) -> str:
     return str(filepath)
 
 
+def is_pageindex_kb(kb_name: str | None) -> bool:
+    if not kb_name:
+        return False
+    try:
+        from deeptutor.multi_user.knowledge_access import resolve_kb
+        from deeptutor.services.rag.factory import PAGEINDEX_OSS_PROVIDER, PAGEINDEX_PROVIDER
+        from deeptutor.services.rag.provider_binding import resolve_bound_provider
+
+        resource = resolve_kb(kb_name, require_write=False)
+        return resolve_bound_provider(str(resource.base_dir), resource.name) in {
+            PAGEINDEX_PROVIDER,
+            PAGEINDEX_OSS_PROVIDER,
+        }
+    except Exception:
+        return False
+
+
 class EditAgent(BaseAgent):
     """Co-writer editing agent using unified BaseAgent."""
 
@@ -140,7 +157,8 @@ class EditAgent(BaseAgent):
         context = ""
         tool_call_file = None
 
-        if source:
+        pageindex_source = source == "rag" and is_pageindex_kb(kb_name)
+        if source and not pageindex_source:
             context, tool_call_file = await self.gather_context(
                 source=source,
                 query=instruction,
@@ -181,16 +199,42 @@ class EditAgent(BaseAgent):
         )
         user_prompt += text_template.format(text=text)
 
-        # Call LLM using inherited method
+        # PageIndex reading belongs inside the edit reasoning loop; traditional
+        # RAG and web sources keep the existing prefetch path above.
         self.logger.info(f"Calling LLM for {action}...")
-        _chunks: list[str] = []
-        async for _c in self.stream_llm(
-            user_prompt=user_prompt,
-            system_prompt=system_prompt,
-            stage=f"edit_{action}",
-        ):
-            _chunks.append(_c)
-        response = clean_thinking_tags("".join(_chunks), self.binding, self.get_model())
+        if pageindex_source and kb_name:
+            from deeptutor.services.rag.pipelines.pageindex.reasoning import (
+                read_pageindex_with_agent,
+            )
+
+            reading = await read_pageindex_with_agent(
+                kb_name=kb_name,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                source="co_writer",
+                stage=f"edit_{action}",
+            )
+            response = clean_thinking_tags(reading.text, self.binding, self.get_model())
+            tool_call_file = save_tool_call(
+                operation_id,
+                "pageindex",
+                {
+                    "type": "pageindex",
+                    "timestamp": datetime.now().isoformat(),
+                    "operation_id": operation_id,
+                    "kb_name": kb_name,
+                    "sources": reading.sources,
+                },
+            )
+        else:
+            _chunks: list[str] = []
+            async for _c in self.stream_llm(
+                user_prompt=user_prompt,
+                system_prompt=system_prompt,
+                stage=f"edit_{action}",
+            ):
+                _chunks.append(_c)
+            response = clean_thinking_tags("".join(_chunks), self.binding, self.get_model())
 
         # Record operation history
         append_history(
