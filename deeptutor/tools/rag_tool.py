@@ -42,7 +42,25 @@ async def rag_search(
         kb_base_dir = str(resource.base_dir)
         kb_name = resource.name
 
-    service = RAGService(kb_base_dir=kb_base_dir, provider=provider)
+    from deeptutor.services.rag.factory import PAGEINDEX_OSS_PROVIDER, PAGEINDEX_PROVIDER
+    from deeptutor.services.rag.provider_binding import resolve_bound_provider
+
+    resolved_provider = provider or resolve_bound_provider(kb_base_dir, kb_name)
+    if resolved_provider in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}:
+        message = (
+            "PageIndex uses Reasoning as Retrieval. This knowledge base must be read "
+            "with PageIndex tools inside an agent loop, not through rag_search()."
+        )
+        return {
+            "query": query,
+            "answer": message,
+            "content": "",
+            "sources": [],
+            "provider": resolved_provider,
+            "error_type": "reasoning_as_retrieval_required",
+        }
+
+    service = RAGService(kb_base_dir=kb_base_dir, provider=resolved_provider)
     return await service.search(
         query=query,
         kb_name=kb_name,

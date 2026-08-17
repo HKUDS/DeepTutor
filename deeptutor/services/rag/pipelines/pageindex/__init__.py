@@ -1,10 +1,8 @@
-"""PageIndex cloud-backed RAG pipeline.
+"""PageIndex Cloud and OSS knowledge-base lifecycle.
 
-A KB indexed with the ``pageindex`` provider ships its documents to the hosted
-PageIndex service (https://pageindex.ai), which builds a hierarchical tree per
-document and serves reasoning-based, vectorless retrieval. DeepTutor's own chat
-LLM still writes the final answer — only retrieval is delegated. The pipeline
-talks to PageIndex's documented REST API directly (see ``client``).
+Both providers use the PageIndex SDK. Cloud reading stays on DeepTutor's built-in
+PageIndex MCP connection; OSS reading uses SDK tools bound to the KB's Local
+Library. Neither provider answers through ``RAGPipeline.search``.
 """
 
 from __future__ import annotations

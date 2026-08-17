@@ -57,6 +57,7 @@ from deeptutor.services.rag.factory import (
     DEFAULT_PROVIDER,
     GRAPHRAG_PROVIDER,
     LIGHTRAG_PROVIDER,
+    PAGEINDEX_OSS_PROVIDER,
     PAGEINDEX_PROVIDER,
     normalize_provider_name,
     provider_uses_embedding_versions,
@@ -651,6 +652,24 @@ def _assert_provider_ready(provider: str) -> None:
                 ),
             )
 
+    if provider == PAGEINDEX_OSS_PROVIDER:
+        from deeptutor.services.rag.preflight import engine_preflight
+
+        report = engine_preflight(provider)
+        failed_checks = [
+            check
+            for check in report.get("checks", [])
+            if not check.get("optional") and not check.get("ok")
+        ]
+        if failed_checks:
+            details = "; ".join(
+                str(check.get("detail") or check.get("label") or "Requirement not met")
+                for check in failed_checks
+            )
+            raise HTTPException(
+                status_code=409, detail=f"PageIndex OSS preflight failed: {details}"
+            )
+
     if provider == GRAPHRAG_PROVIDER:
         from deeptutor.services.rag.pipelines.graphrag.config import is_graphrag_available
 
@@ -698,19 +717,26 @@ def _assert_provider_ready(provider: str) -> None:
 
 def _enforce_provider_formats(provider: str, files: list[UploadFile]) -> None:
     """Reject files PageIndex's document endpoint does not accept, up front."""
-    if provider != PAGEINDEX_PROVIDER:
+    if provider not in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}:
         return
-    from deeptutor.services.rag.pipelines.pageindex.pipeline import SUPPORTED_EXTENSIONS
+    from deeptutor.services.rag.pipelines.pageindex.pipeline import (
+        OSS_SUPPORTED_EXTENSIONS,
+        SUPPORTED_EXTENSIONS,
+    )
+
+    extensions = (
+        OSS_SUPPORTED_EXTENSIONS if provider == PAGEINDEX_OSS_PROVIDER else SUPPORTED_EXTENSIONS
+    )
 
     unsupported = [
         f.filename
         for f in files
         if f.filename
-        and not f.filename.lower().endswith(".zip")
-        and Path(f.filename).suffix.lower() not in SUPPORTED_EXTENSIONS
+        and not (provider == PAGEINDEX_PROVIDER and f.filename.lower().endswith(".zip"))
+        and Path(f.filename).suffix.lower() not in extensions
     ]
     if unsupported:
-        supported = ", ".join(sorted(SUPPORTED_EXTENSIONS))
+        supported = ", ".join(sorted(extensions))
         raise HTTPException(
             status_code=400,
             detail=(
@@ -1130,7 +1156,6 @@ class PageIndexConfigUpdate(BaseModel):
     # Tri-state api_key: omit/None keeps the stored key, "" clears it, any other
     # value replaces it — so the masked UI never round-trips the real secret.
     api_key: str | None = None
-    api_base_url: str | None = None
 
 
 def _pageindex_config_payload() -> dict:
@@ -1139,7 +1164,6 @@ def _pageindex_config_payload() -> dict:
 
     settings = get_runtime_settings_service().load_pageindex()
     return {
-        "api_base_url": settings.get("api_base_url") or "",
         "api_key_set": bool(settings.get("api_key")),
         "configured": bool(settings.get("api_key")),
     }
@@ -1157,10 +1181,9 @@ async def get_pageindex_pipeline_config():
 
 @router.put("/rag-pipelines/pageindex/config")
 async def update_pageindex_pipeline_config(payload: PageIndexConfigUpdate):
-    """Persist the PageIndex API key / base URL for this user's account."""
+    """Persist the deployment-level PageIndex Cloud credential."""
     try:
         from deeptutor.services.config import get_runtime_settings_service
-        from deeptutor.services.rag.pipelines.pageindex.config import DEFAULT_API_BASE_URL
 
         service = get_runtime_settings_service()
         current = service.load_pageindex(include_process_overrides=False)
@@ -1169,11 +1192,7 @@ async def update_pageindex_pipeline_config(payload: PageIndexConfigUpdate):
         if payload.api_key is not None:
             api_key = payload.api_key.strip()
 
-        api_base_url = current.get("api_base_url") or DEFAULT_API_BASE_URL
-        if payload.api_base_url is not None and payload.api_base_url.strip():
-            api_base_url = payload.api_base_url.strip()
-
-        service.save_pageindex({"api_key": api_key, "api_base_url": api_base_url})
+        service.save_pageindex({"api_key": api_key})
 
         # The built-in pageindex MCP server derives its URL/Bearer header from
         # these settings — resync connections so key changes apply immediately.
@@ -2396,10 +2415,19 @@ async def delete_kb_file(kb_name: str, filename: str):
     whether a re-index is needed to purge the file from retrieval.
     """
     manager, kb_name, _ = _writable_kb(kb_name)
-    _assert_kb_writable_or_409(kb_name, _load_kb_entry_or_404(manager, kb_name))
+    kb_entry = _load_kb_entry_or_404(manager, kb_name)
+    _assert_kb_writable_or_409(kb_name, kb_entry)
     target = _resolve_kb_raw_file_or_404(kb_name, filename)
 
     kb_dir = manager.get_knowledge_base_path(kb_name)
+    provider = _validate_registered_provider(kb_entry.get("rag_provider") or DEFAULT_PROVIDER)
+    if provider in {PAGEINDEX_PROVIDER, PAGEINDEX_OSS_PROVIDER}:
+        from deeptutor.services.rag.factory import get_pipeline
+
+        await get_pipeline(provider, kb_base_dir=str(manager.base_dir)).remove_document(
+            kb_name,
+            target.name,
+        )
     removal = remove_raw_document(Path(kb_dir), target)
     return {
         "status": "ok",
@@ -2520,6 +2548,7 @@ async def create_knowledge_base(
     name: str = Form(...),
     files: list[UploadFile] = File(...),
     rag_provider: str = Form(DEFAULT_PROVIDER),
+    pageindex_mode: str = Form(""),
     rel_paths: list[str] = Form(None),
 ):
     """Create a new knowledge base and initialize it with files."""
@@ -2535,6 +2564,16 @@ async def create_knowledge_base(
             raise HTTPException(status_code=400, detail=f"Knowledge base '{name}' already exists")
 
         rag_provider = _validate_registered_provider(rag_provider)
+        pageindex_mode = str(pageindex_mode or "").strip().lower()
+        if rag_provider == PAGEINDEX_OSS_PROVIDER and pageindex_mode not in {
+            "",
+            "flash",
+            "standard",
+        }:
+            raise HTTPException(
+                status_code=400,
+                detail="PageIndex OSS mode must be 'flash', 'standard', or omitted.",
+            )
         _assert_provider_ready(rag_provider)
         _enforce_provider_formats(rag_provider, files)
         allowed_extensions = FileTypeRouter.get_supported_extensions()
@@ -2563,6 +2602,8 @@ async def create_knowledge_base(
         if name in manager.config.get("knowledge_bases", {}):
             manager.config["knowledge_bases"][name]["rag_provider"] = rag_provider
             manager.config["knowledge_bases"][name]["needs_reindex"] = False
+            if rag_provider == PAGEINDEX_OSS_PROVIDER and pageindex_mode:
+                manager.config["knowledge_bases"][name]["pageindex_mode"] = pageindex_mode
             manager._save_config()
 
         progress_tracker = ProgressTracker(name, kb_base_dir)

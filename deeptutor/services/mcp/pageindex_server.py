@@ -15,6 +15,7 @@ from __future__ import annotations
 from deeptutor.services.mcp.config import MCPConfig, MCPServerConfig
 
 PAGEINDEX_SERVER_NAME = "pageindex"
+PAGEINDEX_MCP_URL = "https://api.pageindex.ai/mcp"
 
 
 def builtin_pageindex_server() -> MCPServerConfig | None:
@@ -27,7 +28,7 @@ def builtin_pageindex_server() -> MCPServerConfig | None:
         return None
     return MCPServerConfig(
         type="streamableHttp",
-        url=cfg.api_base_url.rstrip("/") + "/mcp",
+        url=PAGEINDEX_MCP_URL,
         headers={"Authorization": f"Bearer {cfg.api_key}"},
         tool_timeout=120,
         # remove_document is the one api-proxy tool DeepTutor blocks: an agent
@@ -47,4 +48,9 @@ def with_builtin_servers(config: MCPConfig) -> MCPConfig:
     return MCPConfig(servers={**config.servers, PAGEINDEX_SERVER_NAME: entry})
 
 
-__all__ = ["PAGEINDEX_SERVER_NAME", "builtin_pageindex_server", "with_builtin_servers"]
+__all__ = [
+    "PAGEINDEX_MCP_URL",
+    "PAGEINDEX_SERVER_NAME",
+    "builtin_pageindex_server",
+    "with_builtin_servers",
+]

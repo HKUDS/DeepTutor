@@ -83,6 +83,27 @@ def test_pageindex_ready_requires_doc_ids(tmp_path: Path) -> None:
     assert probe.doc_count == 1
 
 
+def test_pageindex_oss_requires_local_sdk_artifacts(tmp_path: Path) -> None:
+    version_dir = tmp_path / "version-1"
+    version_dir.mkdir()
+    _write_meta(version_dir, provider="pageindex-oss")
+    manifest = pageindex_storage.read_manifest(version_dir, provider="pageindex-oss")
+    pageindex_storage.upsert_doc(manifest, "lesson.pdf", "pi-local")
+    pageindex_storage.write_manifest(version_dir, manifest)
+
+    probe = inspect_provider_index("pageindex-oss", version_dir)
+    assert probe.ready is False
+
+    doc_dir = pageindex_storage.sdk_storage_path(version_dir) / "docs" / "pi-local"
+    doc_dir.mkdir(parents=True)
+    for name in ("doc.json", "tree.json", "pages.json"):
+        (doc_dir / name).write_text("{}", encoding="utf-8")
+
+    probe = inspect_provider_index("pageindex-oss", version_dir)
+    assert probe.ready is True
+    assert probe.doc_count == 1
+
+
 def test_graphrag_ready_requires_core_output_table(tmp_path: Path) -> None:
     version_dir = tmp_path / "version-1"
     version_dir.mkdir()

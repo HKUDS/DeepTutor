@@ -14,7 +14,7 @@ from deeptutor.services.rag.pipelines.pageindex.config import (
 def _configured(monkeypatch, key: str = "sk-test") -> None:
     monkeypatch.setattr(
         "deeptutor.services.rag.pipelines.pageindex.config.get_pageindex_config",
-        lambda **_: PageIndexConfig(api_key=key, api_base_url="https://api.pageindex.ai"),
+        lambda **_: PageIndexConfig(api_key=key),
     )
 
 
