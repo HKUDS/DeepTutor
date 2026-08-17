@@ -188,6 +188,9 @@ export async function listKnowledgeBases(options?: { force?: boolean }) {
       const response = await apiFetch(apiUrl("/api/v1/knowledge/list"), {
         cache: "no-store",
       });
+      if (!response.ok) {
+        throw new Error(await readErrorDetail(response, "Failed to list knowledge bases"));
+      }
       const data = await response.json();
       return Array.isArray(data)
         ? data
@@ -211,6 +214,9 @@ export async function listRagProviders(options?: { force?: boolean }) {
           cache: "no-store",
         },
       );
+      if (!response.ok) {
+        throw new Error(await readErrorDetail(response, "Failed to list RAG providers"));
+      }
       const data = await response.json();
       return Array.isArray(data?.providers) ? data.providers : [];
     },
@@ -230,6 +236,9 @@ export async function getKnowledgeUploadPolicy(options?: { force?: boolean }) {
           cache: "no-store",
         },
       );
+      if (!response.ok) {
+        throw new Error(await readErrorDetail(response, "Failed to load upload policy"));
+      }
       const data = await response.json();
       return normalizeUploadPolicy(data);
     },
@@ -1039,4 +1048,311 @@ export async function deleteKnowledgeBase(name: string): Promise<void> {
     );
   }
   invalidateKnowledgeCaches();
+}
+
+// ── GitHub sources ───────────────────────────────────────────────────
+
+export interface GitHubSource {
+  id: string;
+  repo: string;
+  branch: string;
+  path: string;
+  glob: string;
+  enabled: boolean;
+  last_synced_sha: string;
+  last_synced_at: string;
+  last_sync_status: string;
+  last_sync_error: string | null;
+  files_synced: number;
+  added_at: string;
+}
+
+export interface AddGitHubSourcePayload {
+  repo: string;
+  branch?: string;
+  path?: string;
+  glob?: string;
+}
+
+export interface GitHubSyncResult {
+  source_id: string;
+  repo: string;
+  ok: boolean;
+  skipped: boolean;
+  files_added: number;
+  files_updated: number;
+  files_removed: number;
+  error: string | null;
+}
+
+export async function listGitHubSources(
+  kbName: string,
+): Promise<GitHubSource[]> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/v1/knowledge/${encodeURIComponent(kbName)}/github-sources`,
+    ),
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to list GitHub sources (${res.status})`),
+    );
+  }
+  return (await res.json()) as GitHubSource[];
+}
+
+export async function addGitHubSource(
+  kbName: string,
+  payload: AddGitHubSourcePayload,
+): Promise<GitHubSource> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/v1/knowledge/${encodeURIComponent(kbName)}/github-source`,
+    ),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        repo: payload.repo,
+        branch: payload.branch ?? "main",
+        path: payload.path ?? "",
+        glob: payload.glob ?? "*.md",
+      }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to add GitHub source (${res.status})`),
+    );
+  }
+  invalidateKnowledgeCaches();
+  return (await res.json()) as GitHubSource;
+}
+
+export async function removeGitHubSource(
+  kbName: string,
+  sourceId: string,
+): Promise<void> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/v1/knowledge/${encodeURIComponent(kbName)}/github-source/${encodeURIComponent(sourceId)}`,
+    ),
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `Failed to remove GitHub source (${res.status})`),
+    );
+  }
+  invalidateKnowledgeCaches();
+}
+
+export async function syncGitHubSources(
+  kbName: string,
+): Promise<GitHubSyncResult[]> {
+  const res = await apiFetch(
+    apiUrl(
+      `/api/v1/knowledge/${encodeURIComponent(kbName)}/sync-github`,
+    ),
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    throw new Error(
+      await readErrorDetail(res, `GitHub sync failed (${res.status})`),
+    );
+  }
+  const body = await res.json();
+  return (body.results ?? []) as GitHubSyncResult[];
+}
+
+// ── Web sources ──────────────────────────────────────────────────────
+
+export interface WebSource {
+  id: string;
+  url: string;
+  max_depth: number;
+  max_pages: number;
+  enabled: boolean;
+  page_count: number;
+  last_synced_at: string;
+  last_sync_status: string;
+  last_sync_error: string | null;
+  added_at: string;
+  language?: string;
+  pair_key?: string;
+  pair_status?: string;
+}
+
+export interface AddWebSourcePayload {
+  url: string;
+  max_depth?: number;
+  max_pages?: number;
+}
+
+export interface WebSyncSourceResult {
+  source_id: string;
+  url: string;
+  language: string;
+  ok: boolean;
+  page_count?: number;
+  pages_added: number;
+  pages_updated: number;
+  pages_removed: number;
+  pages_unchanged: number;
+  error: string | null;
+  changed_files?: string[];
+}
+
+export interface WebSyncPairResult {
+  pair_key: string;
+  origin: string;
+  status: string;
+  en_pages: number;
+  zh_pages: number;
+  paired_pages: number;
+  en_only_pages: number;
+  zh_only_pages: number;
+  low_confidence: number;
+  error: string | null;
+  source_results: WebSyncSourceResult[];
+}
+
+export interface WebSyncResult {
+  ok: boolean;
+  pair_results: WebSyncPairResult[];
+  index_rebuilt: boolean;
+  index_error: string | null;
+  total_pages: number;
+  message: string;
+}
+
+export async function listWebSources(
+  kbName: string,
+  options?: { signal?: AbortSignal },
+): Promise<WebSource[]> {
+  const res = await apiFetch(
+    apiUrl(`/api/v1/knowledge/${encodeURIComponent(kbName)}/web-sources`),
+    { signal: options?.signal },
+  );
+  if (!res.ok) throw new Error(await readErrorDetail(res, `Failed (${res.status})`));
+  return (await res.json()) as WebSource[];
+}
+
+export async function addWebSource(
+  kbName: string,
+  payload: AddWebSourcePayload,
+): Promise<WebSource> {
+  const res = await apiFetch(
+    apiUrl(`/api/v1/knowledge/${encodeURIComponent(kbName)}/web-source`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url: payload.url,
+        max_depth: payload.max_depth ?? 3,
+        max_pages: payload.max_pages ?? 200,
+      }),
+    },
+  );
+  if (!res.ok) throw new Error(await readErrorDetail(res, `Failed (${res.status})`));
+  invalidateKnowledgeCaches();
+  return (await res.json()) as WebSource;
+}
+
+export async function removeWebSource(kbName: string, sourceId: string): Promise<void> {
+  const res = await apiFetch(
+    apiUrl(`/api/v1/knowledge/${encodeURIComponent(kbName)}/web-source/${encodeURIComponent(sourceId)}`),
+    { method: "DELETE" },
+  );
+  if (!res.ok) throw new Error(await readErrorDetail(res, `Failed (${res.status})`));
+  invalidateKnowledgeCaches();
+}
+
+export async function syncWebSources(kbName: string): Promise<WebSyncResult> {
+  const res = await apiFetch(
+    apiUrl(`/api/v1/knowledge/${encodeURIComponent(kbName)}/sync-web`),
+    { method: "POST" },
+  );
+  if (!res.ok) throw new Error(await readErrorDetail(res, `Failed (${res.status})`));
+  return (await res.json()) as WebSyncResult;
+}
+
+// ── Web navigation ──────────────────────────────────────────────────
+
+export interface WebNavNode {
+  id: string;
+  title: string;
+  url: string;
+  file_path: string;
+  children: WebNavNode[];
+  title_zh?: string;
+  file_path_zh?: string;
+  page_class?: string;
+  pair_key?: string;
+}
+
+export interface WebNavigationSource {
+  source_id: string;
+  source_url: string;
+  kind: string;
+  nodes: WebNavNode[];
+  language?: string;
+  pair_key?: string;
+  pair_status?: string;
+}
+
+export async function getWebNavigation(
+  kbName: string,
+  options?: { force?: boolean },
+): Promise<WebNavigationSource[]> {
+  const cacheKey = `knowledge:web-nav:${kbName}`;
+  if (options?.force) invalidateClientCache(cacheKey);
+  const res = await apiFetch(
+    apiUrl(`/api/v1/knowledge/${encodeURIComponent(kbName)}/web-navigation`),
+  );
+  if (!res.ok) throw new Error(await readErrorDetail(res, `Failed (${res.status})`));
+  return (await res.json()) as WebNavigationSource[];
+}
+
+
+// ── Bilingual page alignment ─────────────────────────────────────────
+
+export interface BilingualAlignGroup {
+  group_id: string;
+  en_content: string;
+  zh_content: string;
+  shape: string;
+  confidence: number;
+  show_once: string[];
+  low_confidence: boolean;
+}
+
+export interface BilingualPage {
+  file_path?: string;
+  page_class: string; // "bilingual" | "en_only" | "zh_only"
+  groups: BilingualAlignGroup[];
+  review_count: number;
+  en_hash?: string;
+  zh_hash?: string;
+  note?: string;
+}
+
+export async function getBilingualPage(
+  kbName: string,
+  filePath: string,
+  options?: { signal?: AbortSignal },
+): Promise<BilingualPage | null> {
+  const params = new URLSearchParams({ file_path: filePath });
+  try {
+    const res = await apiFetch(
+      apiUrl(
+        `/api/v1/knowledge/${encodeURIComponent(kbName)}/bilingual-page?${params}`,
+      ),
+      { signal: options?.signal },
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as BilingualPage;
+  } catch {
+    return null;
+  }
 }

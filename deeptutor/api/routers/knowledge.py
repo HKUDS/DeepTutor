@@ -2518,7 +2518,7 @@ async def upload_files(
 async def create_knowledge_base(
     background_tasks: BackgroundTasks,
     name: str = Form(...),
-    files: list[UploadFile] = File(...),
+    files: list[UploadFile] = File(default=[]),
     rag_provider: str = Form(DEFAULT_PROVIDER),
     rel_paths: list[str] = Form(None),
 ):
@@ -2581,6 +2581,37 @@ async def create_knowledge_base(
         if name not in manager.list_knowledge_bases():
             logger.warning(f"KB {name} not found in config, registering manually")
             initializer._register_to_config()
+
+        # Fast path: no files uploaded — create an empty KB ready for web
+        # sources, GitHub sources, or later document uploads.
+        if not files:
+            progress_tracker.update(
+                ProgressStage.COMPLETED,
+                "Knowledge base created (no documents yet).",
+                current=0,
+                total=0,
+            )
+            manager.update_kb_status(
+                name=name,
+                status="ready",
+                progress={
+                    "stage": "completed",
+                    "message": "Knowledge base created (no documents yet).",
+                    "percent": 100,
+                    "current": 0,
+                    "total": 0,
+                    "timestamp": datetime.now().isoformat(),
+                    "index_changed": True,
+                    "index_action": "create",
+                },
+            )
+            logger.info(f"KB '{name}' created (no documents yet)")
+            return {
+                "message": f"Knowledge base '{name}' created (no documents yet).",
+                "name": name,
+                "files": [],
+                "task_id": None,
+            }
 
         uploaded_files, _ = await _save_uploaded_files_off_loop(
             files, initializer.raw_dir, allowed_extensions=allowed_extensions, rel_paths=rel_paths
@@ -3183,5 +3214,316 @@ async def sync_folder(kb_name: str, folder_id: str, background_tasks: Background
         raise
     except ValueError:
         raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class AddGitHubSourceRequest(BaseModel):
+    repo: str
+    branch: str = "main"
+    path: str = ""
+    glob: str = "*.md"
+
+
+class GitHubSourceInfo(BaseModel):
+    id: str
+    repo: str
+    branch: str
+    path: str
+    glob: str
+    enabled: bool = True
+    last_synced_sha: str = ""
+    last_synced_at: str = ""
+    last_sync_status: str = "pending"
+    last_sync_error: str | None = None
+    files_synced: int = 0
+    added_at: str = ""
+
+
+class AddWebSourceRequest(BaseModel):
+    url: str
+    max_depth: int = 3
+    max_pages: int = 200
+
+
+class WebSourceInfo(BaseModel):
+    id: str
+    url: str
+    max_depth: int = 3
+    max_pages: int = 200
+    enabled: bool = True
+    page_count: int = 0
+    last_synced_at: str = ""
+    last_sync_status: str = "pending"
+    last_sync_error: str | None = None
+    added_at: str = ""
+    navigation: dict | None = None
+    language: str = ""
+    pair_key: str = ""
+    pair_status: str = ""
+
+
+class WebNavNode(BaseModel):
+    id: str = ""
+    title: str = ""
+    url: str = ""
+    file_path: str = ""
+    children: list["WebNavNode"] = []
+    title_zh: str = ""
+    file_path_zh: str = ""
+    page_class: str = ""
+    pair_key: str = ""
+
+
+WebNavNode.model_rebuild()
+
+
+class WebNavigationSource(BaseModel):
+    source_id: str = ""
+    source_url: str = ""
+    kind: str = ""
+    nodes: list[WebNavNode] = []
+    language: str = ""
+    pair_key: str = ""
+    pair_status: str = ""
+
+
+@router.post("/{kb_name}/github-source", response_model=GitHubSourceInfo)
+async def add_github_source(kb_name: str, request: AddGitHubSourceRequest):
+    try:
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        info = manager.add_github_source(resolved_name, request.repo, request.branch, request.path, request.glob)
+        return GitHubSourceInfo(**info)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400 if "not found" not in str(e).lower() else 404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{kb_name}/github-sources", response_model=list[GitHubSourceInfo])
+async def get_github_sources(kb_name: str):
+    try:
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        return [GitHubSourceInfo(**s) for s in manager.get_github_sources(resolved_name)]
+    except HTTPException:
+        raise
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"KB '{kb_name}' not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{kb_name}/github-source/{source_id}")
+async def remove_github_source(kb_name: str, source_id: str):
+    try:
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        if not manager.remove_github_source(resolved_name, source_id):
+            raise HTTPException(status_code=404, detail=f"Source '{source_id}' not found")
+        return {"message": "Removed", "source_id": source_id}
+    except HTTPException:
+        raise
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"KB '{kb_name}' not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{kb_name}/sync-github")
+async def sync_github_sources(kb_name: str):
+    try:
+        manager, resolved_name, kb_base_dir = _writable_kb(kb_name)
+        sources = manager.get_github_sources(resolved_name)
+        if not sources:
+            return {"message": "No GitHub sources", "results": []}
+        from deeptutor.services.github_source.sync import sync_source
+        results = []
+        for src in sources:
+            if not src.get("enabled", True):
+                continue
+            r = await sync_source(kb_name=resolved_name, source=src, base_dir=str(kb_base_dir))
+            results.append({"source_id": src.get("id"), "repo": src.get("repo"), "ok": r.ok, "skipped": r.skipped,
+                           "files_added": r.files_added, "files_updated": r.files_updated, "files_removed": r.files_removed, "error": r.error or None})
+        return {"message": f"Synced {len(results)} source(s)", "results": results}
+    except HTTPException:
+        raise
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"KB '{kb_name}' not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{kb_name}/web-source", response_model=WebSourceInfo)
+async def add_web_source(kb_name: str, request: AddWebSourceRequest):
+    try:
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        info = manager.add_web_source(resolved_name, request.url, request.max_depth, request.max_pages)
+        return WebSourceInfo(**info)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400 if "not found" not in str(e).lower() else 404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{kb_name}/web-sources", response_model=list[WebSourceInfo])
+async def get_web_sources(kb_name: str):
+    try:
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        return [WebSourceInfo(**s) for s in manager.get_web_sources(resolved_name)]
+    except HTTPException:
+        raise
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"KB '{kb_name}' not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{kb_name}/web-source/{source_id}")
+async def remove_web_source(kb_name: str, source_id: str):
+    try:
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        if not manager.remove_web_source(resolved_name, source_id):
+            raise HTTPException(status_code=404, detail=f"Source '{source_id}' not found")
+        return {"message": "Removed", "source_id": source_id}
+    except HTTPException:
+        raise
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"KB '{kb_name}' not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{kb_name}/sync-web")
+async def sync_web_sources(kb_name: str):
+    """Sync all web sources for a KB using bilingual-aware orchestration.
+
+    Groups sources into language pairs, crawls, aligns paired pages, and
+    rebuilds the index once after all sources are processed.
+    """
+    try:
+        manager, resolved_name, kb_base_dir = _writable_kb(kb_name)
+        sources = manager.get_web_sources(resolved_name)
+        if not sources:
+            return {"message": "No web sources", "results": [], "pair_results": [], "index_rebuilt": False}
+        from deeptutor.services.web_source.orchestrator import sync_kb_sources_safe
+        enabled = [s for s in sources if s.get("enabled", True)]
+        if not enabled:
+            return {"message": "No enabled web sources", "results": [], "pair_results": [], "index_rebuilt": False}
+        kb_result = await sync_kb_sources_safe(
+            kb_name=resolved_name,
+            sources=enabled,
+            base_dir=str(kb_base_dir),
+        )
+        pair_summaries = []
+        for pr in kb_result.pair_results:
+            pair_summaries.append({
+                "pair_key": pr.pair_key,
+                "origin": pr.origin,
+                "status": pr.status,
+                "en_pages": pr.en_pages,
+                "zh_pages": pr.zh_pages,
+                "paired_pages": pr.paired_pages,
+                "en_only_pages": pr.en_only_pages,
+                "zh_only_pages": pr.zh_only_pages,
+                "low_confidence": pr.low_confidence,
+                "error": pr.error or None,
+                "source_results": pr.source_results,
+            })
+        return {
+            "message": f"Synced {len(enabled)} source(s) in {len(pair_summaries)} pair(s)",
+            "ok": kb_result.ok,
+            "pair_results": pair_summaries,
+            "index_rebuilt": kb_result.index_rebuilt,
+            "index_error": kb_result.index_error or None,
+            "total_pages": kb_result.total_pages,
+        }
+    except HTTPException:
+        raise
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"KB '{kb_name}' not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{kb_name}/web-navigation", response_model=list[WebNavigationSource])
+async def get_web_navigation(kb_name: str):
+    """Return navigation manifests for all web sources in a KB.
+
+    When bilingual alignment data exists, the merged English-primary tree
+    (with ZH titles and page-class annotations) is returned from the
+    sidecar index.  Otherwise falls back to per-source navigation.
+    """
+    try:
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        # Try merged bilingual navigation first.
+        try:
+            from pathlib import Path
+            from deeptutor.services.web_source import bilingual_store
+            kb_dir = Path(manager.base_dir) / resolved_name
+            merged = []
+            for pk in bilingual_store.list_pair_keys(kb_dir):
+                idx = bilingual_store.load_pair_index(kb_dir, pk)
+                if idx and idx.get("navigation", {}).get("nodes"):
+                    merged.append({
+                        "source_id": pk,
+                        "source_url": idx.get("origin", ""),
+                        "kind": idx["navigation"].get("kind", "inferred"),
+                        "nodes": idx["navigation"]["nodes"],
+                        "language": "en+zh" if idx.get("status") == "bilingual" else "en",
+                        "pair_key": pk,
+                        "pair_status": idx.get("status", ""),
+                    })
+            if merged:
+                return [WebNavigationSource(**item) for item in merged]
+        except Exception:
+            pass  # fall through to legacy per-source navigation
+
+        nav_data = manager.get_web_navigation(resolved_name)
+        return [WebNavigationSource(**item) for item in nav_data]
+    except HTTPException:
+        raise
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"KB '{kb_name}' not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{kb_name}/bilingual-page")
+async def get_bilingual_page(kb_name: str, file_path: str):
+    """Return the structured bilingual alignment for one page.
+
+    Query parameter ``file_path`` is relative to the KB's ``raw/`` directory
+    (e.g. ``explore/book.md``).
+
+    Returns the alignment sidecar JSON with content groups, page class,
+    confidence, and hashes.  Returns ``{"page_class": "en_only", "groups": []}``
+    when no alignment exists (non-web-source KBs, unpaired pages, etc.).
+    """
+    try:
+        manager, resolved_name, _ = _writable_kb(kb_name)
+        from pathlib import Path
+        from deeptutor.services.web_source import bilingual_store
+        kb_dir = Path(manager.base_dir) / resolved_name
+
+        # Search all pair keys for this file.
+        alignment = bilingual_store.load_alignment_for_any_pair(kb_dir, file_path)
+        if alignment is not None:
+            return alignment
+
+        # No alignment sidecar — this is a regular KB file.
+        # Check if the raw file exists and return its content as en_only.
+        raw_path = kb_dir / "raw" / file_path
+        if raw_path.exists():
+            return {"page_class": "en_only", "groups": [], "review_count": 0,
+                    "file_path": file_path, "note": "No bilingual alignment for this file."}
+
+        raise HTTPException(status_code=404, detail=f"File '{file_path}' not found in KB '{kb_name}'")
+    except HTTPException:
+        raise
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"KB '{kb_name}' not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
