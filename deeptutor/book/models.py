@@ -30,6 +30,10 @@ class BookStatus(str, Enum):
     DRAFT = "draft"  # ideation only, no spine yet
     SPINE_READY = "spine_ready"  # spine confirmed, compilation pending
     COMPILING = "compiling"
+    # Compilation stopped itself after repeated provider-level failures (quota
+    # exhausted, credentials revoked, provider down). Everything generated so
+    # far is intact; ``resume_book`` continues from here.
+    PAUSED = "paused"
     READY = "ready"
     ERROR = "error"
     ARCHIVED = "archived"
@@ -77,6 +81,35 @@ class BlockType(str, Enum):
     ERROR_DIAGNOSIS = "error_diagnosis"
     MODULE_TEST = "module_test"
     PROGRESS_DASHBOARD = "progress_dashboard"
+
+
+class BookDepth(str, Enum):
+    """How much prose the reader wants per chapter.
+
+    Scales the ``target_words`` baked into the Section Architect's templates,
+    which were previously fixed — a reference book and a weekend primer got the
+    same 3,600 words per chapter.
+    """
+
+    BRIEF = "brief"
+    STANDARD = "standard"
+    DEEP = "deep"
+
+
+#: Multiplier applied to every template's ``target_words``.
+DEPTH_WORD_SCALE: dict[BookDepth, float] = {
+    BookDepth.BRIEF: 0.5,
+    BookDepth.STANDARD: 1.0,
+    BookDepth.DEEP: 1.6,
+}
+
+
+def depth_scale(depth: str | None) -> float:
+    """Word-count multiplier for *depth*, tolerant of unknown values."""
+    try:
+        return DEPTH_WORD_SCALE[BookDepth(str(depth or "standard"))]
+    except (ValueError, KeyError):
+        return 1.0
 
 
 class ContentType(str, Enum):
@@ -399,7 +432,10 @@ class QuizAttempt(BaseModel):
     page_id: str
     question_id: str = ""
     user_answer: str = ""
-    is_correct: bool = False
+    # ``None`` = revealed but ungraded. Written answers can only be graded by
+    # the reader, and folding "not graded" into "wrong" would both understate
+    # their score and mark the chapter weak on nothing but a reveal.
+    is_correct: bool | None = None
     timestamp: float = Field(default_factory=_now)
 
 
@@ -435,6 +471,7 @@ class Book(BaseModel):
     proposal: BookProposal | None = None
     knowledge_bases: list[str] = Field(default_factory=list)
     language: str = "en"
+    depth: BookDepth = BookDepth.STANDARD
     page_count: int = 0
     chapter_count: int = 0
     created_at: float = Field(default_factory=_now)
@@ -448,6 +485,9 @@ class Book(BaseModel):
 
 __all__ = [
     "BookStatus",
+    "BookDepth",
+    "DEPTH_WORD_SCALE",
+    "depth_scale",
     "PageStatus",
     "BlockStatus",
     "BlockType",

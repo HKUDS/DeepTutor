@@ -22,6 +22,7 @@ import {
 } from "@/lib/knowledge-helpers";
 import type { TaskState } from "@/hooks/useKnowledgeProgress";
 import ProcessLogs from "@/components/common/ProcessLogs";
+import KbIndexFailureBanner from "./KbIndexFailureBanner";
 
 interface KbIndexVersionsSectionProps {
   kb: KnowledgeBase;
@@ -114,24 +115,13 @@ export default function KbIndexVersionsSection({
         )}
       </div>
 
-      {(isError || needsReindex || mismatch) && (
-        <div
-          className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-[12px] ${
-            isError
-              ? "border-red-200 bg-red-50/80 text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-300"
-              : "border-amber-200 bg-amber-50/80 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300"
-          }`}
-        >
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>
-            {isError
-              ? t(
-                  "Previous indexing failed. Retry will rebuild the index from the existing source documents.",
-                )
-              : t(
-                  "The active embedding configuration doesn't match any ready index version. Re-index to rebuild against the current embedding model.",
-                )}
-          </span>
+      {isError && <KbIndexFailureBanner kb={kb} />}
+
+      {!isError && (needsReindex || mismatch) && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-[12px] text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
+          {t(
+            "The active embedding configuration doesn't match any ready index version. Re-index to rebuild against the current embedding model.",
+          )}
         </div>
       )}
 

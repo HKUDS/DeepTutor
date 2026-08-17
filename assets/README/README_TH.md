@@ -17,6 +17,7 @@
 <p align="center">
   <a href="../../README.md"><img alt="English" height="40" src="https://img.shields.io/badge/English-CDCFD4"></a>&nbsp;
   <a href="README_CN.md"><img alt="简体中文" height="40" src="https://img.shields.io/badge/简体中文-CDCFD4"></a>&nbsp;
+  <a href="README_TW.md"><img alt="繁體中文" height="40" src="https://img.shields.io/badge/繁體中文-CDCFD4"></a>&nbsp;
   <a href="README_JA.md"><img alt="日本語" height="40" src="https://img.shields.io/badge/日本語-CDCFD4"></a>&nbsp;
   <a href="README_ES.md"><img alt="Español" height="40" src="https://img.shields.io/badge/Español-CDCFD4"></a>&nbsp;
   <a href="README_FR.md"><img alt="Français" height="40" src="https://img.shields.io/badge/Français-CDCFD4"></a>&nbsp;
@@ -408,7 +409,7 @@ Book แปลงแหล่งที่มาที่เลือกให้
 <img src="../../assets/figs/web-1.4.6+/book/03-book-demo%20interactive%20module.png" alt="Book interactive widget block" width="31%">
 </p>
 
-แต่ละบทคอมไพล์เป็น typed blocks — text, callouts, quizzes, flash cards, timelines, code, figures, interactive HTML, animations, concept graphs, deep dives และ user notes — และทุกหน้ามี Page Chat ของตัวเอง Blocks สามารถแก้ไขได้: แทรก, ย้าย, สร้างใหม่ หรือเปลี่ยนประเภทของ block โดยไม่ต้องเขียนบทใหม่ คำสั่ง maintenance เช่น `deeptutor book health` และ `deeptutor book refresh-fingerprints` ช่วยตรวจจับว่าเมื่อใดที่ความรู้ต้นทางเปลี่ยนแปลงไปจากหน้าที่คอมไพล์แล้ว
+แต่ละบทคอมไพล์เป็น typed blocks — text, callouts, quizzes, flash cards, timelines, code, figures, interactive HTML, animations, concept graphs, deep dives และ user notes — และทุกหน้ามี Page Chat ของตัวเอง Blocks สามารถแก้ไขได้: แทรก, ย้าย, สร้างใหม่, เขียนเนื้อหาใหม่ หรือเปลี่ยนประเภท โดยไม่ต้องทำบททั้งบทใหม่ หน้าที่เข้าชมแล้ว, bookmarks และการทำ quiz จะรวมกันเป็นคะแนนความสำเร็จและบทที่ยังอ่อนอยู่ หนังสือเล่มใดก็ export เป็น Markdown ได้ การคอมไพล์ที่ใช้เวลานานจะหยุดพักและทำต่อได้ในภายหลัง; `deeptutor book health` และ `refresh-fingerprints` ช่วยตรวจจับความรู้ต้นทางที่เปลี่ยนแปลงไป
 
 </details>
 
@@ -425,7 +426,7 @@ Knowledge bases คือคอลเลกชันเอกสารที่�
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="สร้าง knowledge base" width="900">
 </div>
 
-เมื่อสร้าง KB คุณ **สร้างใหม่** (อัพโหลดเอกสารและสร้าง index ใหม่) หรือ **เชื่อมโยงที่มีอยู่** (นำ index ที่สร้างไว้มาใช้ซ้ำ อ่านในที่โดยไม่ต้อง re-index) การ re-indexing จะเขียน directory `version-N` ใหม่และเก็บอันก่อนหน้าไว้ ดังนั้น index ที่ทำงานอยู่จะไม่ถูกทำลายระหว่างการสร้างใหม่ การแยกวิเคราะห์เอกสาร — Text-only, MinerU, Docling, markitdown, PyMuPDF4LLM หรือ LiteParse — ถูกเลือกใน **Settings → Knowledge Base** โดยการดาวน์โหลด local model ปิดโดยค่าเริ่มต้น CLI ครอบคลุม lifecycle ด้วย `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` และ `delete`
+เมื่อสร้าง KB คุณ **สร้างใหม่** (อัพโหลดเอกสารและสร้าง index ใหม่) หรือ **เชื่อมโยงที่มีอยู่** (นำ index ที่สร้างไว้มาใช้ซ้ำ อ่านในที่โดยไม่ต้อง re-index) การ re-indexing จะเขียน directory `version-N` ใหม่และเก็บอันก่อนหน้าไว้ ดังนั้น index ที่ทำงานอยู่จะไม่ถูกทำลายระหว่างการสร้างใหม่ การแยกวิเคราะห์เอกสาร — Text-only, MinerU, Docling, markitdown, PyMuPDF4LLM หรือ LiteParse — ถูกเลือกใน **Settings → Knowledge Base** โดยการดาวน์โหลด local model ปิดโดยค่าเริ่มต้น Docling ยังสามารถรันในโหมด **remote** กับเซิร์ฟเวอร์ Docling Serve ได้ (ไม่ต้องติดตั้ง local หรือใช้ model ใด ๆ) โดยถูกกำหนดค่าผ่าน **Settings → Document Parsing** (`mode=remote`, server base URL และ API key ที่เป็นทางเลือก) หรือผ่าน environment variables `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN` CLI ครอบคลุม lifecycle ด้วย `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` และ `delete`
 
 </details>
 

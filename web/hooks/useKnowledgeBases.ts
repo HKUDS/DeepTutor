@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  connectImaKnowledgeBase as connectImaApi,
   connectLightRagServer as connectLightRagServerApi,
   connectLinkedFolder as connectLinkedFolderApi,
   connectObsidianVault as connectObsidianApi,
@@ -340,6 +341,20 @@ export function useKnowledgeBases() {
     [load],
   );
 
+  const connectIma = useCallback(
+    async (params: {
+      name: string;
+      clientId: string;
+      apiKey: string;
+      knowledgeBaseId: string;
+    }) => {
+      await connectImaApi(params);
+      invalidateKnowledgeCaches();
+      await load({ force: true, showSpinner: false });
+    },
+    [load],
+  );
+
   return {
     kbs: combinedKbs,
     rawKbs: kbs,
@@ -363,6 +378,7 @@ export function useKnowledgeBases() {
     connectObsidian,
     connectLinkedFolder,
     connectLightRagServer,
+    connectIma,
   };
 }
 

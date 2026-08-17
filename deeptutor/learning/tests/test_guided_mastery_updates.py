@@ -280,3 +280,68 @@ def test_record_qualitative_pass_and_fail_drive_display_mastery(tmp_path):
     service.record_qualitative(progress, "kp1", passed=False)
     assert progress.qualitative_mastery["kp1"] is False
     assert progress.mastery_levels["kp1"] <= 0.4
+
+
+@pytest.mark.parametrize(
+    ("knowledge_type", "first_interval_days"),
+    [
+        (KnowledgeType.CONCEPT, 3),
+        (KnowledgeType.DESIGN, 14),
+    ],
+)
+def test_record_qualitative_starts_at_first_review_interval(
+    tmp_path, monkeypatch, knowledge_type, first_interval_days
+):
+    store = LearningStore(root=tmp_path)
+    service = LearningService(store)
+    scheduler = SpacedRepetitionScheduler()
+    progress = _make_progress()
+    progress.knowledge_types["kp1"] = knowledge_type
+    now = 1_700_000_000.0
+    monkeypatch.setattr("deeptutor.learning.scheduler.time.time", lambda: now)
+
+    service.record_qualitative(progress, "kp1", passed=True, scheduler=scheduler)
+
+    state = progress.repetition_states["kp1"]
+    assert state.interval_index == 0
+    assert state.next_review_at == now + first_interval_days * 86400
+    assert [task.knowledge_point_id for task in progress.review_queue] == ["kp1"]
+    assert progress.review_queue[0].due_at == state.next_review_at
+
+
+def test_record_qualitative_updates_existing_review_state(tmp_path, monkeypatch):
+    store = LearningStore(root=tmp_path)
+    service = LearningService(store)
+    scheduler = SpacedRepetitionScheduler()
+    progress = _make_progress()
+    now = [1_700_000_000.0]
+    monkeypatch.setattr("deeptutor.learning.scheduler.time.time", lambda: now[0])
+
+    service.record_qualitative(progress, "kp1", passed=True, scheduler=scheduler)
+    first_due = progress.repetition_states["kp1"].next_review_at
+    service.record_qualitative(progress, "kp1", passed=True, scheduler=scheduler)
+    assert progress.repetition_states["kp1"].interval_index == 0
+    assert progress.repetition_states["kp1"].next_review_at == first_due
+
+    now[0] = first_due
+    service.record_qualitative(progress, "kp1", passed=True, scheduler=scheduler)
+    assert progress.repetition_states["kp1"].interval_index == 1
+    second_due = now[0] + 7 * 86400
+    assert progress.repetition_states["kp1"].next_review_at == second_due
+
+    now[0] = second_due
+    service.record_qualitative(progress, "kp1", passed=False, scheduler=scheduler)
+    assert progress.repetition_states["kp1"].interval_index == 0
+    assert progress.repetition_states["kp1"].next_review_at == now[0] + 3 * 86400
+
+
+def test_record_qualitative_initial_failure_does_not_schedule_review(tmp_path):
+    store = LearningStore(root=tmp_path)
+    service = LearningService(store)
+    scheduler = SpacedRepetitionScheduler()
+    progress = _make_progress()
+
+    service.record_qualitative(progress, "kp1", passed=False, scheduler=scheduler)
+
+    assert progress.repetition_states == {}
+    assert progress.review_queue == []

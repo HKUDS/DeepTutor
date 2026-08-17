@@ -92,8 +92,9 @@ _ENGINE_META: Dict[str, Dict[str, Any]] = {
     DOCUMENT_PARSING_ENGINE_DOCLING: {
         "name": "Docling",
         "description": (
-            "Structured document conversion (layout/tables). Downloads local "
-            "models on first run. PDF/Office/HTML/images."
+            "Structured document conversion (layout/tables). Runs the in-process "
+            "docling package (downloads models on first run) or points at a remote "
+            "Docling Serve server. PDF/Office/HTML/images."
         ),
         "needs_local_models": True,
     },

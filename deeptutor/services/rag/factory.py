@@ -189,6 +189,13 @@ def list_pipelines() -> List[Dict[str, Any]]:
         pageindex_ready = False
 
     try:
+        from .pipelines.ima.config import is_ima_configured
+
+        ima_ready = is_ima_configured()
+    except Exception:
+        ima_ready = False
+
+    try:
         from .pipelines.graphrag import config as graphrag_config
 
         graphrag_ready = graphrag_config.is_graphrag_available()
@@ -264,13 +271,14 @@ def list_pipelines() -> List[Dict[str, Any]]:
             "description": (
                 "Retrieval offloaded to a knowledge base you keep in Tencent IMA. "
                 "No local index and no copy — connect a KB to its IMA library and "
-                "query it over IMA's OpenAPI. Documents are added in IMA itself."
+                "query it over IMA's OpenAPI. Documents are added in IMA itself. "
+                "Requires an IMA Client ID and API key."
             ),
-            # Always available: a thin HTTPS client with no install and no global
-            # credential. Client ID, API key and library id are per-KB, set at
-            # connect time.
-            "configured": True,
-            "requires_api_key": False,
+            # A thin HTTPS client with no install; readiness is only about the
+            # account credentials. The library id stays per-KB, set at connect
+            # time, and a KB may pin its own credentials to reach another account.
+            "configured": ima_ready,
+            "requires_api_key": True,
         },
     ]
 

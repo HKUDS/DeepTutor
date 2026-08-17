@@ -196,6 +196,7 @@ export default memo(function ChatComposer({
   llmSelection,
   llmOptionsLoading,
   llmOptionsError,
+  onRefreshLLMOptions,
   contextBudget = null,
   selectedNotebookRecords,
   selectedBookReferences,
@@ -276,6 +277,7 @@ export default memo(function ChatComposer({
   llmSelection: LLMSelection | null;
   llmOptionsLoading: boolean;
   llmOptionsError: boolean;
+  onRefreshLLMOptions?: () => void;
   /**
    * Context-window breakdown measured on the last turn that reported one.
    * Omitted by surfaces that don't track it (quiz follow-up) and null until
@@ -1070,6 +1072,7 @@ export default memo(function ChatComposer({
                   loading={llmOptionsLoading}
                   error={llmOptionsError}
                   onChange={onSelectLLM}
+                  onRefresh={onRefreshLLMOptions}
                 />
                 {contextBudget ? (
                   <ContextBudgetChip budget={contextBudget} />

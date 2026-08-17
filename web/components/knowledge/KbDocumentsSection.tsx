@@ -16,6 +16,7 @@ import type { TaskState } from "@/hooks/useKnowledgeProgress";
 import type { HistoryEntry } from "@/hooks/useKnowledgeHistory";
 import ProcessLogs from "@/components/common/ProcessLogs";
 import FileDropZone from "./FileDropZone";
+import KbIndexFailureBanner from "./KbIndexFailureBanner";
 import KbUpdateHistory from "./KbUpdateHistory";
 
 interface KbDocumentsSectionProps {
@@ -143,30 +144,28 @@ export default function KbDocumentsSection({
       )}
 
       {isError && !blockedReason && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
-          <span>
-            {t(
-              "The last indexing run failed. Remove the file(s) that failed in the Files tab, upload replacements below, or retry to rebuild from the current documents.",
-            )}
-          </span>
-          {onRetry && (
-            <button
-              type="button"
-              onClick={handleRetry}
-              disabled={!canRetry || retrySubmitting}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-100 px-2 py-1 text-[11.5px] font-medium text-amber-800 transition-colors hover:bg-amber-200 disabled:opacity-50 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200"
-            >
-              {retrySubmitting || isRetryingHere ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3 w-3" />
-              )}
-              {retrySubmitting || isRetryingHere
-                ? t("Retrying…")
-                : t("Retry indexing")}
-            </button>
-          )}
-        </div>
+        <KbIndexFailureBanner
+          kb={kb}
+          action={
+            onRetry ? (
+              <button
+                type="button"
+                onClick={handleRetry}
+                disabled={!canRetry || retrySubmitting}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-red-300 bg-red-100 px-2 py-1 text-[11.5px] font-medium text-red-800 transition-colors hover:bg-red-200 disabled:opacity-50 dark:border-red-800 dark:bg-red-950/50 dark:text-red-200"
+              >
+                {retrySubmitting || isRetryingHere ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3 w-3" />
+                )}
+                {retrySubmitting || isRetryingHere
+                  ? t("Retrying…")
+                  : t("Retry indexing")}
+              </button>
+            ) : undefined
+          }
+        />
       )}
 
       <FileDropZone

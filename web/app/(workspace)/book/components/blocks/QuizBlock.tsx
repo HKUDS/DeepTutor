@@ -1,11 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, Eye, EyeOff, XCircle } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  Loader2,
+  Sparkles,
+  XCircle,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
-import type { Block } from "@/lib/book-types";
+import type { Block, QuizAttempt } from "@/lib/book-types";
 import {
   isChoiceQuizQuestion,
   normalizeQuizQuestionType,
@@ -15,7 +22,8 @@ import {
 export interface QuizAttemptArgs {
   questionId?: string;
   userAnswer?: string;
-  isCorrect: boolean;
+  /** `undefined` when the reader revealed a written answer without self-grading. */
+  isCorrect?: boolean;
 }
 
 interface QuizQuestion {
@@ -31,12 +39,41 @@ interface QuizQuestion {
 export interface QuizBlockProps {
   block: Block;
   onAttempt?: (block: Block, args: QuizAttemptArgs) => void;
+  /** Previous attempts, so answering survives a page switch or a refresh. */
+  attempts?: QuizAttempt[];
+  onRequestSupplement?: () => void;
+  supplementing?: boolean;
 }
 
-export default function QuizBlock({ block, onAttempt }: QuizBlockProps) {
+export default function QuizBlock({
+  block,
+  onAttempt,
+  attempts,
+  onRequestSupplement,
+  supplementing = false,
+}: QuizBlockProps) {
   const { t } = useTranslation();
   const questions =
     (block.payload?.questions as QuizQuestion[] | undefined) || [];
+
+  // Latest attempt per question — what the reader last did here.
+  const lastAttempts = useMemo(() => {
+    const byQuestion = new Map<string, QuizAttempt>();
+    for (const attempt of attempts ?? []) {
+      if (attempt.block_id !== block.id) continue;
+      byQuestion.set(attempt.question_id, attempt);
+    }
+    return byQuestion;
+  }, [attempts, block.id]);
+
+  const [gotSomethingWrong, setGotSomethingWrong] = useState(false);
+  const hasRecordedMiss = useMemo(
+    () => [...lastAttempts.values()].some((a) => a.is_correct === false),
+    [lastAttempts],
+  );
+  const offerSupplement =
+    !!onRequestSupplement && (gotSomethingWrong || hasRecordedMiss);
+
   if (questions.length === 0) {
     return (
       <div className="text-sm text-[var(--muted-foreground)]">
@@ -44,6 +81,7 @@ export default function QuizBlock({ block, onAttempt }: QuizBlockProps) {
       </div>
     );
   }
+
   return (
     <section>
       <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--primary)]">
@@ -57,10 +95,35 @@ export default function QuizBlock({ block, onAttempt }: QuizBlockProps) {
             key={q.question_id || idx}
             index={idx}
             question={q}
-            onAttempt={(args) => onAttempt?.(block, args)}
+            previous={lastAttempts.get(q.question_id || "")}
+            onAttempt={(args) => {
+              if (args.isCorrect === false) setGotSomethingWrong(true);
+              onAttempt?.(block, args);
+            }}
           />
         ))}
       </div>
+
+      {offerSupplement && (
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-dashed border-[var(--primary)]/40 bg-[var(--primary)]/[0.04] px-3 py-2">
+          <span className="text-xs text-[var(--muted-foreground)]">
+            {t("Missed one? I can add a worked explanation and an easier set.")}
+          </span>
+          <button
+            type="button"
+            onClick={onRequestSupplement}
+            disabled={supplementing}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] px-2.5 py-1 text-xs font-medium text-[var(--muted-foreground)] hover:border-[var(--primary)]/40 hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {supplementing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+            {supplementing ? t("Adding…") : t("Add extra practice")}
+          </button>
+        </div>
+      )}
     </section>
   );
 }
@@ -68,45 +131,66 @@ export default function QuizBlock({ block, onAttempt }: QuizBlockProps) {
 function QuizQuestionCard({
   index,
   question,
+  previous,
   onAttempt,
 }: {
   index: number;
   question: QuizQuestion;
+  previous?: QuizAttempt;
   onAttempt?: (args: QuizAttemptArgs) => void;
 }) {
   const { t } = useTranslation();
-  const [selected, setSelected] = useState<string | null>(null);
-  const [revealed, setRevealed] = useState(false);
-  const reportedRef = useRef<string | null>(null);
   const normalizedType = normalizeQuizQuestionType(question.question_type);
   const options = question.options || {};
   const isChoice = isChoiceQuizQuestion(normalizedType);
   const correct = String(question.correct_answer || "").trim();
   const correctChoiceKey = resolveChoiceAnswerKey(correct, options);
-  const reportKey = `${question.question_id || index}:${selected || ""}`;
 
+  // Restore what the reader last did, so leaving and coming back doesn't wipe
+  // their answers — the attempts were always persisted, just never read back.
+  const [selected, setSelected] = useState<string | null>(
+    previous && isChoice ? previous.user_answer || null : null,
+  );
+  const [revealed, setRevealed] = useState(!!previous);
+  const [selfGraded, setSelfGraded] = useState<boolean | null>(
+    previous && !isChoice ? previous.is_correct : null,
+  );
+
+  const reportedRef = useRef<string | null>(
+    previous
+      ? `${question.question_id || index}:${previous.user_answer || ""}`
+      : null,
+  );
+
+  // Choice questions grade themselves the moment the answer is revealed.
   useEffect(() => {
-    if (
-      revealed &&
-      selected &&
-      reportedRef.current !== reportKey &&
-      onAttempt
-    ) {
-      reportedRef.current = reportKey;
-      onAttempt({
-        questionId: question.question_id,
-        userAnswer: selected,
-        isCorrect: selected.toUpperCase() === correctChoiceKey,
-      });
-    }
+    if (!isChoice || !revealed || !selected || !onAttempt) return;
+    const reportKey = `${question.question_id || index}:${selected}`;
+    if (reportedRef.current === reportKey) return;
+    reportedRef.current = reportKey;
+    onAttempt({
+      questionId: question.question_id,
+      userAnswer: selected,
+      isCorrect: selected.toUpperCase() === correctChoiceKey,
+    });
   }, [
-    reportKey,
+    isChoice,
     revealed,
     selected,
     onAttempt,
     question.question_id,
     correctChoiceKey,
+    index,
   ]);
+
+  const recordSelfGrade = (isCorrect: boolean) => {
+    setSelfGraded(isCorrect);
+    onAttempt?.({
+      questionId: question.question_id,
+      userAnswer: isCorrect ? "self:correct" : "self:incorrect",
+      isCorrect,
+    });
+  };
 
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-3">
@@ -207,6 +291,30 @@ function QuizQuestionCard({
         </div>
       )}
 
+      {/* Written answers can only be graded by the reader. Without this they
+          were invisible to progress entirely — practice chapters scored zero. */}
+      {revealed && !isChoice && (
+        <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-[var(--muted)]/30 px-2.5 py-1.5">
+          <span className="text-xs text-[var(--muted-foreground)]">
+            {t("How did you do?")}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <SelfGradeButton
+              active={selfGraded === true}
+              tone="correct"
+              label={t("Got it right")}
+              onClick={() => recordSelfGrade(true)}
+            />
+            <SelfGradeButton
+              active={selfGraded === false}
+              tone="incorrect"
+              label={t("Missed it")}
+              onClick={() => recordSelfGrade(false)}
+            />
+          </div>
+        </div>
+      )}
+
       {revealed && question.explanation && (
         <div className="mt-2 rounded-lg border border-[var(--border)] bg-[var(--muted)]/40 p-2">
           <MarkdownRenderer
@@ -216,5 +324,40 @@ function QuizQuestionCard({
         </div>
       )}
     </div>
+  );
+}
+
+function SelfGradeButton({
+  active,
+  tone,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  tone: "correct" | "incorrect";
+  label: string;
+  onClick: () => void;
+}) {
+  const activeClass =
+    tone === "correct"
+      ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200"
+      : "border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors ${
+        active
+          ? activeClass
+          : "border-[var(--border)] bg-[var(--card)] text-[var(--muted-foreground)] hover:border-[var(--primary)]/40 hover:text-[var(--foreground)]"
+      }`}
+    >
+      {tone === "correct" ? (
+        <CheckCircle2 className="h-3 w-3" />
+      ) : (
+        <XCircle className="h-3 w-3" />
+      )}
+      {label}
+    </button>
   );
 }

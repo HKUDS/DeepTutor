@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+import threading
 
 import pytest
 
@@ -66,6 +67,46 @@ def test_loader_routes_parser_files_through_active_parse_engine(
     assert by_name["notes.docx"] == "Docx body text"
     assert "Block one" in by_name["paper.pdf"]
     assert "Block two" in by_name["paper.pdf"]
+
+
+def test_loader_keeps_event_loop_responsive_while_parser_blocks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("llama_index.core")
+    import deeptutor.services.parsing as parsing
+    from deeptutor.services.parsing.types import ParsedDocument
+    from deeptutor.services.rag.pipelines.llamaindex.document_loader import (
+        LlamaIndexDocumentLoader,
+    )
+
+    pdf_path = tmp_path / "slow.pdf"
+    pdf_path.write_bytes(b"stub")
+    parse_started = threading.Event()
+    allow_parse_to_finish = threading.Event()
+
+    class _BlockingService:
+        def parse(self, _source_path, **_kwargs):
+            parse_started.set()
+            assert allow_parse_to_finish.wait(timeout=2)
+            return ParsedDocument(markdown="Parsed without blocking the loop")
+
+    monkeypatch.setattr(parsing, "get_parse_service", lambda: _BlockingService())
+
+    async def _exercise() -> list[object]:
+        load_task = asyncio.create_task(LlamaIndexDocumentLoader().load([str(pdf_path)]))
+        deadline = asyncio.get_running_loop().time() + 1
+        while not parse_started.is_set():
+            assert asyncio.get_running_loop().time() < deadline
+            await asyncio.sleep(0.001)
+
+        # Reaching this line while parse() is still waiting proves that the
+        # parser is not occupying the event-loop thread.
+        assert not load_task.done()
+        allow_parse_to_finish.set()
+        return await asyncio.wait_for(load_task, timeout=1)
+
+    documents = asyncio.run(_exercise())
+    assert [document.text for document in documents] == ["Parsed without blocking the loop"]
 
 
 def test_loader_skips_document_when_active_engine_cannot_parse(

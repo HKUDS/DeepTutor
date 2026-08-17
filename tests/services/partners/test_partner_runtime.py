@@ -419,6 +419,43 @@ class TestContextAssembly:
         # (deny) rather than no filter (unrestricted).
         assert context.metadata["mcp_tools_filter"] == []
 
+    @staticmethod
+    def _write_admin_enabled_tools(partners_root, names: list[str]) -> None:
+        """Persist the admin's Settings → Chat → Tools toggles under the
+        isolated admin workspace, using the same path the runtime reads."""
+        import json
+
+        from deeptutor.multi_user.paths import get_admin_path_service
+
+        path = get_admin_path_service().get_settings_file("interface")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"enabled_optional_tools": names}), encoding="utf-8")
+
+    def test_globally_disabled_tool_dropped_from_explicit_config(self, partners_root):
+        # web_search is turned off in Settings → Chat → Tools, so even though
+        # the partner config saved it, it must not surface at runtime.
+        self._write_admin_enabled_tools(partners_root, ["reason"])
+        runner = _runner(
+            partners_root,
+            PartnerConfig(name="Ada", enabled_tools=["web_search", "reason"]),
+        )
+        assert runner._resolved_enabled_tools() == ["reason"]
+
+    def test_globally_disabled_tool_dropped_from_default_config(self, partners_root):
+        # The default (None = fully equipped) config still bows to the global
+        # toggle: only the tools the admin left on survive.
+        self._write_admin_enabled_tools(partners_root, ["reason"])
+        runner = _runner(partners_root)  # enabled_tools=None
+        assert runner._resolved_enabled_tools() == ["reason"]
+
+    def test_missing_admin_settings_fall_open_to_full_set(self, partners_root):
+        from deeptutor.agents._shared.tool_composition import default_optional_tools
+
+        # No interface.json → fail-open: the partner's saved selection stands.
+        runner = _runner(partners_root, PartnerConfig(name="Ada", enabled_tools=["web_search"]))
+        assert runner._resolved_enabled_tools() == ["web_search"]
+        assert _runner(partners_root)._resolved_enabled_tools() == default_optional_tools()
+
     @pytest.mark.asyncio
     async def test_owner_can_opt_partner_into_all_mcp_tools(self, partners_root, fake_orchestrator):
         """``mcp_tools=None`` is still the deliberate unrestricted state: it
@@ -546,6 +583,47 @@ class TestBuiltinToolsAndMemory:
         assert memory_root() == before
 
     @pytest.mark.asyncio
+    async def test_authenticated_users_get_isolated_session_history(
+        self, partners_root, fake_orchestrator
+    ):
+        from deeptutor.multi_user.models import CurrentUser
+        from deeptutor.multi_user.paths import scope_for_user
+        from deeptutor.partners.config.paths import get_partner_user_sessions_dir
+
+        alice = CurrentUser("u_alice", "alice", "user", scope_for_user("u_alice", is_admin=False))
+        bob = CurrentUser("u_bob", "bob", "user", scope_for_user("u_bob", is_admin=False))
+        fake_orchestrator.script = _finish("ok")
+        runner = _runner(partners_root)
+
+        first = _msg("alice one")
+        first.actor = alice
+        second = _msg("bob one")
+        second.actor = bob
+        third = _msg("alice two")
+        third.actor = alice
+
+        await runner.process_message(first)
+        await runner.process_message(second)
+        await runner.process_message(third)
+
+        assert fake_orchestrator.seen_contexts[0].conversation_history == []
+        assert fake_orchestrator.seen_contexts[1].conversation_history == []
+        assert fake_orchestrator.seen_contexts[2].conversation_history == [
+            {"role": "user", "content": "alice one"},
+            {"role": "assistant", "content": "ok"},
+        ]
+        alice_store = PartnerSessionStore(get_partner_user_sessions_dir("ada", alice.id))
+        bob_store = PartnerSessionStore(get_partner_user_sessions_dir("ada", bob.id))
+        assert [m["content"] for m in alice_store.messages("telegram:42")] == [
+            "alice one",
+            "ok",
+            "alice two",
+            "ok",
+        ]
+        assert [m["content"] for m in bob_store.messages("telegram:42")] == ["bob one", "ok"]
+        assert runner.store.list_sessions() == []
+
+    @pytest.mark.asyncio
     async def test_turn_trace_persisted_for_rehydration(self, partners_root, fake_orchestrator):
         fake_orchestrator.script = _narration_round("c1", "let me check") + _finish("4.")
         runner = _runner(partners_root)
@@ -658,6 +736,32 @@ class TestLiveTurn:
             assert mgr.subscribe_web_turn("ada", "web-x") is None
             # The completed turn persisted to the session store.
             assert mgr.session_store("ada").messages("web-x")[-1]["content"] == "done!"
+        finally:
+            await mgr.stop_partner("ada")
+
+    @pytest.mark.asyncio
+    async def test_manager_captures_authenticated_actor_for_private_history(
+        self, partners_root, fake_orchestrator
+    ):
+        from deeptutor.multi_user.models import CurrentUser
+        from deeptutor.multi_user.paths import scope_for_user, user_context
+        from deeptutor.partners.config.paths import get_partner_user_sessions_dir
+        from deeptutor.services.partners.manager import PartnerManager
+
+        fake_orchestrator.script = _finish("private reply")
+        mgr = PartnerManager()
+        mgr.save_config("ada", PartnerConfig(name="Ada"), auto_start=True)
+        await mgr.start_partner("ada")
+        actor = CurrentUser("u_alice", "alice", "user", scope_for_user("u_alice", is_admin=False))
+        try:
+            with user_context(actor):
+                assert await mgr.send_message("ada", "private question") == "private reply"
+            private = PartnerSessionStore(get_partner_user_sessions_dir("ada", actor.id))
+            assert [item["content"] for item in private.merged_messages()] == [
+                "private question",
+                "private reply",
+            ]
+            assert mgr.session_store("ada").list_sessions() == []
         finally:
             await mgr.stop_partner("ada")
 

@@ -182,6 +182,65 @@ class PendingQuestion(BaseModel):
     created_at: float = Field(default_factory=time.time)
 
 
+class InteractionStatus(str, Enum):
+    """Durable lifecycle for one learner-facing mastery interaction.
+
+    The chat runtime may disappear at any point; this state is the source of
+    truth for whether a question still needs an answer or has already been
+    graded.  Terminal interactions are retained for idempotent retries and
+    audit history.
+    """
+
+    REGISTERED = "registered"
+    AWAITING_INPUT = "awaiting_input"
+    ANSWERED = "answered"
+    GRADED = "graded"
+    ABANDONED = "abandoned"
+
+
+class MasteryInteraction(BaseModel):
+    """A persisted question/answer transaction for a mastery path."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    interaction_id: str
+    path_id: str
+    question: PendingQuestion
+    status: InteractionStatus = InteractionStatus.REGISTERED
+    session_id: str = ""
+    turn_id: str = ""
+    user_answer: str = ""
+    result: dict[str, Any] = Field(default_factory=dict)
+    created_at: float = Field(default_factory=time.time)
+    updated_at: float = Field(default_factory=time.time)
+
+
+class MasteryEvent(BaseModel):
+    """Committed path event consumed by recovery and future live UIs."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: int = 0
+    path_id: str
+    revision: int
+    event_type: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    session_id: str = ""
+    turn_id: str = ""
+    created_at: float = Field(default_factory=time.time)
+
+
+class MasteryPathLease(BaseModel):
+    """The one active mutating turn allowed for a mastery path."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    path_id: str
+    session_id: str
+    turn_id: str
+    acquired_at: float = Field(default_factory=time.time)
+
+
 class LearningProgress(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -226,5 +285,9 @@ __all__ = [
     "RepetitionState",
     "ReviewTask",
     "PendingQuestion",
+    "InteractionStatus",
+    "MasteryInteraction",
+    "MasteryEvent",
+    "MasteryPathLease",
     "LearningProgress",
 ]

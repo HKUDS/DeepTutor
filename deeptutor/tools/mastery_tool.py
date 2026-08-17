@@ -12,16 +12,22 @@ from deeptutor.capabilities.mastery.tools import (
     MasteryAssessTool,
     MasteryBuildTool,
     MasteryGradeTool,
+    MasteryLeaveTool,
+    MasteryPathsTool,
     MasteryQuizTool,
     MasteryStatusTool,
+    MasterySwitchTool,
 )
 
 __all__ = [
     "MASTERY_TOOL_NAMES",
     "MASTERY_TOOL_TYPES",
-    "MasteryStatusTool",
-    "MasteryQuizTool",
-    "MasteryGradeTool",
     "MasteryAssessTool",
     "MasteryBuildTool",
+    "MasteryGradeTool",
+    "MasteryLeaveTool",
+    "MasteryPathsTool",
+    "MasteryQuizTool",
+    "MasteryStatusTool",
+    "MasterySwitchTool",
 ]

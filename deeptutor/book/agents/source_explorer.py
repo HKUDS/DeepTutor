@@ -45,6 +45,54 @@ from ..models import (
 
 logger = logging.getLogger(__name__)
 
+# The sweep runs one retrieval per (knowledge base x query) pair, and each is a
+# vector search plus — on most backends — an LLM synthesis call. Left ungated,
+# eight KBs against a dozen queries fired ~100 concurrent provider calls.
+RETRIEVAL_CONCURRENCY = 6
+MAX_RETRIEVAL_CALLS = 48
+
+
+def _balanced_slice(chunks: list[SourceChunk], *, limit: int) -> list[SourceChunk]:
+    """Pick ``limit`` chunks with every source represented.
+
+    Ranking is only meaningful *within* one engine, so we rank inside each
+    source and then take round-robin across them. A global sort by ``score``
+    handed the whole slice to whichever backend happened to emit the largest
+    numbers, which silently dropped notebooks, chat excerpts and any KB on a
+    different scoring scale out of the synthesis input entirely.
+    """
+    if len(chunks) <= limit:
+        return list(chunks)
+
+    by_source: dict[str, list[SourceChunk]] = {}
+    for chunk in chunks:
+        by_source.setdefault(f"{chunk.source}/{chunk.kb_name or ''}", []).append(chunk)
+    for group in by_source.values():
+        group.sort(key=lambda c: -c.score)
+
+    picked: list[SourceChunk] = []
+    groups = list(by_source.values())
+    depth = 0
+    while len(picked) < limit and any(depth < len(g) for g in groups):
+        for group in groups:
+            if depth < len(group):
+                picked.append(group[depth])
+                if len(picked) == limit:
+                    break
+        depth += 1
+    return picked
+
+
+# Retrieval queries should follow the *sources*, not the book. Say so explicitly
+# rather than leaving the model to guess from the prompt's own language.
+_QUERY_LANGUAGE_HINT = (
+    "\n\n[Query language] Write each query in the language the source material is "
+    "most likely written in — usually the language of the user's intent or the "
+    "knowledge base itself. Where a concept has a widely used English term "
+    "(model names, algorithms, APIs), include it verbatim. These queries are "
+    "matched against documents, never shown to the reader."
+)
+
 
 def _clip(text: str, limit: int) -> str:
     text = (text or "").strip()
@@ -103,7 +151,11 @@ class SourceExplorer(BaseAgent):
         base_url: str | None = None,
         api_version: str | None = None,
         language: str = "en",
-        binding: str = "openai",
+        # None, not "openai": BaseAgent falls back to the configured
+        # provider only when this is falsy. Hard-coding it forced every
+        # user onto the OpenAI wire format. Matches the pattern in
+        # deeptutor/agents/research/pipeline.py:403.
+        binding: str | None = None,
         *,
         max_queries: int = 8,
         chunks_per_query: int = 4,
@@ -118,6 +170,7 @@ class SourceExplorer(BaseAgent):
             binding=binding,
         )
         self.max_queries = max_queries
+        self.skipped_knowledge_bases: list[str] = []
         self.chunks_per_query = chunks_per_query
 
     # ------------------------------------------------------------------ #
@@ -164,6 +217,16 @@ class SourceExplorer(BaseAgent):
             coverage=coverage,
         )
 
+        # Connected KBs contributed nothing because nothing could read them.
+        # Say so in the report rather than letting an empty contribution look
+        # like a source with no relevant content.
+        if self.skipped_knowledge_bases:
+            notes = [
+                *notes,
+                "Not swept (no local index — these need their own capability): "
+                + ", ".join(self.skipped_knowledge_bases),
+            ]
+
         return ExplorationReport(
             book_id=book_id,
             queries=queries,
@@ -184,10 +247,12 @@ class SourceExplorer(BaseAgent):
         proposal: BookProposal,
         inputs: BookInputs,
     ) -> list[str]:
-        from ..blocks._language import language_directive
-
         system_prompt = self.get_prompt("queries_system") or _FALLBACK_QUERIES_SYSTEM
-        system_prompt = system_prompt.rstrip() + language_directive(self.language)
+        # Deliberately no language directive here. These strings are matched
+        # against document text, not shown to anyone: pinning them to the book's
+        # language starves retrieval whenever the sources are written in a
+        # different one. The summary below *is* reader-facing and does get it.
+        system_prompt = system_prompt.rstrip() + _QUERY_LANGUAGE_HINT
         user_template = self.get_prompt("queries_user") or _FALLBACK_QUERIES_USER
 
         intent = (inputs.user_intent or proposal.description or "").strip() or "(empty)"
@@ -264,6 +329,31 @@ class SourceExplorer(BaseAgent):
     # Step 2 — parallel RAG retrieval
     # ------------------------------------------------------------------ #
 
+    @staticmethod
+    def partition_knowledge_bases(kb_list: list[str]) -> tuple[list[str], list[str]]:
+        """Split *kb_list* into (retrievable, connected).
+
+        Connected KBs are pointers — an Obsidian vault, a subagent CLI, a remote
+        LightRAG or IMA library — with no local index for ``rag_search`` to hit.
+        Sweeping them anyway returned nothing and looked identical to a source
+        that simply had no relevant content, so the reader never learned their
+        vault contributed zero. Reaching them properly means driving each
+        capability, which is a separate piece of work; naming them is the
+        honest interim.
+        """
+        retrievable: list[str] = []
+        connected: list[str] = []
+        for kb in kb_list:
+            try:
+                from deeptutor.knowledge.kb_types import is_connected_kb
+                from deeptutor.multi_user.knowledge_access import resolve_kb_metadata
+
+                meta = resolve_kb_metadata(kb)
+            except Exception:  # noqa: BLE001 - unresolvable → treat as ordinary
+                meta = None
+            (connected if meta and is_connected_kb(meta) else retrievable).append(kb)
+        return retrievable, connected
+
     async def _retrieve_kb_chunks(
         self,
         queries: list[str],
@@ -274,6 +364,15 @@ class SourceExplorer(BaseAgent):
         except Exception as exc:  # pragma: no cover - import guard
             logger.warning(f"rag_tool unavailable: {exc}")
             return []
+
+        kb_list, connected = self.partition_knowledge_bases(kb_list)
+        if connected:
+            self.skipped_knowledge_bases = list(connected)
+            logger.info(
+                "source exploration skipped %d connected KB(s) with no local index: %s",
+                len(connected),
+                ", ".join(connected),
+            )
 
         async def _one_query(kb: str, query: str) -> list[SourceChunk]:
             try:
@@ -333,10 +432,34 @@ class SourceExplorer(BaseAgent):
                 )
             return out
 
-        coros = [_one_query(kb, q) for kb in kb_list for q in queries]
-        if not coros:
+        # Query-major, not KB-major: the pair list gets trimmed below, and
+        # trimming a KB-major list would starve the last knowledge bases of
+        # every query. Interleaving keeps coverage even when the budget bites.
+        pairs = [(kb, q) for q in queries for kb in kb_list]
+        if not pairs:
             return []
-        gathered = await asyncio.gather(*coros, return_exceptions=False)
+
+        dropped = 0
+        if len(pairs) > MAX_RETRIEVAL_CALLS:
+            dropped = len(pairs) - MAX_RETRIEVAL_CALLS
+            pairs = pairs[:MAX_RETRIEVAL_CALLS]
+            logger.info(
+                f"source exploration capped at {MAX_RETRIEVAL_CALLS} retrievals "
+                f"({len(kb_list)} KBs x {len(queries)} queries); {dropped} skipped"
+            )
+
+        # Every pair is a retrieval plus, on most backends, an LLM synthesis
+        # call. Firing all of them at once trips provider rate limits and
+        # spikes memory; a gate keeps the sweep fast without the stampede.
+        gate = asyncio.Semaphore(RETRIEVAL_CONCURRENCY)
+
+        async def _guarded(kb: str, query: str) -> list[SourceChunk]:
+            async with gate:
+                return await _one_query(kb, query)
+
+        gathered = await asyncio.gather(
+            *(_guarded(kb, q) for kb, q in pairs), return_exceptions=False
+        )
         chunks: list[SourceChunk] = []
         for batch in gathered:
             chunks.extend(batch)
@@ -440,8 +563,11 @@ class SourceExplorer(BaseAgent):
         system_prompt = system_prompt.rstrip() + language_directive(self.language)
         user_template = self.get_prompt("summary_user") or _FALLBACK_SUMMARY_USER
 
-        # Send only the most informative slice to the synthesiser.
-        slice_chunks = sorted(chunks, key=lambda c: -c.score)[:24]
+        # Send only the most informative slice to the synthesiser — but pick it
+        # per source, not by a global sort. Scores come from different engines
+        # (cosine, BM25, a remote service's own scale) and are not comparable,
+        # so ranking them together let one KB's numbers crowd out every other.
+        slice_chunks = _balanced_slice(chunks, limit=24)
         chunks_block = "\n".join(
             f"- [{c.source}/{c.kb_name or 'n/a'}] (q={c.query!r}) {_clip(c.text, 320)}"
             for c in slice_chunks

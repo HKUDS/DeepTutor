@@ -18,6 +18,47 @@ from ._prompts import get_book_prompt, load_book_prompts
 from .base import BlockContext, BlockGenerator, GenerationFailure
 
 
+def _check_python(code: str) -> str | None:
+    import ast
+
+    try:
+        ast.parse(code)
+    except SyntaxError as exc:
+        return f"line {exc.lineno}: {exc.msg}"
+    return None
+
+
+def _check_json(code: str) -> str | None:
+    import json
+
+    try:
+        json.loads(code)
+    except ValueError as exc:
+        return str(exc)
+    return None
+
+
+# Languages we can validate for free, in-process, with no side effects. Parsing
+# only — never execution: a generated snippet may open files or hit the network,
+# and the point is to catch truncation and malformed output, not to run it.
+_CHECKABLE = {
+    "python": _check_python,
+    "py": _check_python,
+    "json": _check_json,
+}
+
+
+def _syntax_error(code: str, language: str) -> str | None:
+    """Return a human-readable syntax error, or None if it parses / is unchecked."""
+    checker = _CHECKABLE.get((language or "").strip().lower())
+    if checker is None:
+        return None
+    try:
+        return checker(code)
+    except Exception:  # noqa: BLE001 - a checker must never break generation
+        return None
+
+
 class CodeGenerator(BlockGenerator):
     block_type = BlockType.CODE
 
@@ -53,15 +94,25 @@ class CodeGenerator(BlockGenerator):
             raise GenerationFailure("LLM did not return any code.")
         if "<think" in code.lower() or "</think" in code.lower():
             raise GenerationFailure("prompt leak detected in generated code.")
+
+        code_language = str(data.get("language") or language).strip() or language
+        syntax_error = _syntax_error(code, code_language)
+        if syntax_error:
+            # A truncated or malformed snippet is worse than none: the reader
+            # copies it, it fails, and nothing said it was never checked. Fail
+            # the block so the compiler's retry path gets a second attempt.
+            raise GenerationFailure(f"generated code does not parse: {syntax_error}")
+
+        metadata = data.get("_metadata") if isinstance(data.get("_metadata"), dict) else {}
         return (
             {
-                "language": str(data.get("language") or language).strip() or language,
+                "language": code_language,
                 "code": code,
                 "explanation": str(data.get("explanation") or "").strip(),
                 "intent": intent,
             },
             [],
-            data.get("_metadata") if isinstance(data.get("_metadata"), dict) else {},
+            {**metadata, "syntax_checked": _CHECKABLE.get(code_language.lower()) is not None},
         )
 
 

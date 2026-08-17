@@ -17,6 +17,7 @@
 <p align="center">
   <a href="../../README.md"><img alt="English" height="40" src="https://img.shields.io/badge/English-CDCFD4"></a>&nbsp;
   <a href="README_CN.md"><img alt="简体中文" height="40" src="https://img.shields.io/badge/简体中文-CDCFD4"></a>&nbsp;
+  <a href="README_TW.md"><img alt="繁體中文" height="40" src="https://img.shields.io/badge/繁體中文-CDCFD4"></a>&nbsp;
   <a href="README_JA.md"><img alt="日本語" height="40" src="https://img.shields.io/badge/日本語-CDCFD4"></a>&nbsp;
   <a href="README_ES.md"><img alt="Español" height="40" src="https://img.shields.io/badge/Español-CDCFD4"></a>&nbsp;
   <a href="README_FR.md"><img alt="Français" height="40" src="https://img.shields.io/badge/Français-CDCFD4"></a>&nbsp;
@@ -408,7 +409,7 @@ Book zamienia wybrane źródła w interaktywną **żywą książkę** — nie st
 <img src="../../assets/figs/web-1.4.6+/book/03-book-demo%20interactive%20module.png" alt="Blok interaktywnego widżetu w książce" width="31%">
 </p>
 
-Każdy rozdział kompiluje się do typowanych bloków — tekst, callouts, quizy, fiszki, osie czasu, kod, figury, interaktywny HTML, animacje, grafy konceptów, dogłębne analizy i notatki użytkownika — a każda strona ma swój własny Page Chat. Bloki są edytowalne: wstawiaj, przenoś, regeneruj lub zmieniaj typ bloku bez przepisywania rozdziału. Polecenia konserwacyjne takie jak `deeptutor book health` i `deeptutor book refresh-fingerprints` pomagają wykryć kiedy wiedza źródłowa odbiega od skompilowanych stron.
+Każdy rozdział kompiluje się do typowanych bloków — tekst, callouts, quizy, fiszki, osie czasu, kod, figury, interaktywny HTML, animacje, grafy konceptów, dogłębne analizy i notatki użytkownika — a każda strona ma swój własny Page Chat. Bloki są edytowalne: wstawiaj, przenoś, regeneruj, przepisuj treść lub zmieniaj typ bez ponownego wykonywania rozdziału. Odwiedzone strony, zakładki i próby quizów sumują się w wynik ukończenia i słabe rozdziały; każdą książkę można wyeksportować do Markdown. Długa kompilacja pauzuje się i wznawia; `deeptutor book health` i `refresh-fingerprints` sygnalizują, gdy wiedza źródłowa uległa dryfowi.
 
 </details>
 
@@ -425,7 +426,7 @@ Bazy wiedzy to kolekcje dokumentów za RAG — ugruntowują tury Chat, edycje Co
 <img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="Tworzenie bazy wiedzy" width="900">
 </div>
 
-Tworząc KB, albo **tworzysz nową** (przesyłasz dokumenty i budujesz świeży indeks) albo **łączysz istniejącą** (ponownie używasz indeksu zbudowanego gdzie indziej, czytasz w miejscu bez ponownego indeksowania). Ponowne indeksowanie zapisuje nowy płaski katalog `version-N` i zachowuje poprzednie, więc działający indeks nigdy nie jest niszczony w trakcie przebudowy. Pojedynczy dokument można usunąć nawet z bazy w stanie **błędu** — usuwając plik, który nie sparsował się poprawnie, bez pełnego usuwania i przebudowy. Parsowanie dokumentów — Tylko tekst, MinerU, Docling, markitdown, PyMuPDF4LLM lub LiteParse — jest wybierane w **Settings → Knowledge Base**, z domyślnie wyłączonymi pobieraniami lokalnego modelu. CLI odzwierciedla cykl życia za pomocą `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` i `delete`.
+Tworząc KB, albo **tworzysz nową** (przesyłasz dokumenty i budujesz świeży indeks) albo **łączysz istniejącą** (ponownie używasz indeksu zbudowanego gdzie indziej, czytasz w miejscu bez ponownego indeksowania). Ponowne indeksowanie zapisuje nowy płaski katalog `version-N` i zachowuje poprzednie, więc działający indeks nigdy nie jest niszczony w trakcie przebudowy. Pojedynczy dokument można usunąć nawet z bazy w stanie **błędu** — usuwając plik, który nie sparsował się poprawnie, bez pełnego usuwania i przebudowy. Parsowanie dokumentów — Tylko tekst, MinerU, Docling, markitdown, PyMuPDF4LLM lub LiteParse — jest wybierane w **Settings → Knowledge Base**, z domyślnie wyłączonymi pobieraniami lokalnego modelu. Docling może też działać w trybie **zdalnym** względem serwera Docling Serve (bez lokalnej instalacji czy modeli), konfigurowanym przez **Settings → Document Parsing** (`mode=remote`, bazowy URL serwera i opcjonalny klucz API) lub zmienne środowiskowe `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN`. CLI odzwierciedla cykl życia za pomocą `deeptutor kb list`, `info`, `create`, `add`, `search`, `set-default` i `delete`.
 
 </details>
 

@@ -98,6 +98,19 @@ async def optional_rag_lookup(*, query: str, ctx) -> RagLookup:
     if not isinstance(result, dict):
         return RagLookup()
 
+    # RAGService reports failure in-band: it fills `answer` with an error
+    # message ("RAG search failed.", "needs re-index", …) and flags it with
+    # `error_type` / `needs_reindex`. Reading `answer` unconditionally fed that
+    # message into the generator as if it were retrieved evidence, so a broken
+    # index quietly became source material in the finished book.
+    if result.get("error_type") or result.get("needs_reindex"):
+        logger.debug(
+            f"RAG lookup unusable ({ctx.primary_kb}): "
+            f"error_type={result.get('error_type')!r} "
+            f"needs_reindex={bool(result.get('needs_reindex'))}"
+        )
+        return RagLookup()
+
     answer = str(result.get("answer") or result.get("content") or "").strip()
     sources = result.get("sources")
     return RagLookup(

@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "node ./scripts/dev.mjs",
     "dev:turbo": "node ./scripts/dev.mjs --turbopack",
-    "build": "next build",
+    "build": "node ./scripts/build.mjs",
     "start": "next start",
     "lint": "eslint .",
     "test:node": "node ./scripts/run-node-tests.mjs",

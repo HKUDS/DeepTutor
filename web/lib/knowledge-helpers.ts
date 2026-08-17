@@ -23,6 +23,17 @@ export interface ProgressInfo {
   indexed_count?: number;
   index_changed?: boolean;
   index_action?: string;
+  error?: string;
+  error_code?: string;
+  retryable?: boolean;
+}
+
+export interface KnowledgeIndexFailure {
+  code?: string;
+  message?: string;
+  retryable?: boolean;
+  requiresModelChange: boolean;
+  settingsHref?: string;
 }
 
 export interface IndexVersion {
@@ -81,6 +92,19 @@ export interface KnowledgeBase {
   provenance_label?: string;
   available?: boolean;
 }
+
+export type ProviderConnectionStatus = "ready" | "needs_key" | "unavailable";
+
+export const providerConnectionStatus = (provider: {
+  id: string;
+  configured?: boolean;
+  requires_api_key?: boolean;
+}): ProviderConnectionStatus => {
+  if (provider.requires_api_key && provider.configured === false)
+    return "needs_key";
+  if (provider.configured === false) return "unavailable";
+  return "ready";
+};
 
 export interface ValidatedSelectionFile {
   id: string;
@@ -157,6 +181,58 @@ export const kbDocCount = (kb: KnowledgeBase): number | null => {
 
 export const resolveKbStatus = (kb: KnowledgeBase): string =>
   kb.status ?? kb.statistics?.status ?? "unknown";
+
+export const resolveKnowledgeIndexFailure = (
+  kb: KnowledgeBase,
+): KnowledgeIndexFailure | null => {
+  if (resolveKbStatus(kb) !== "error") return null;
+
+  const progress = kb.progress;
+  const storedProgress = kb.statistics?.progress;
+  const code =
+    progress?.error_code?.trim() ||
+    storedProgress?.error_code?.trim() ||
+    undefined;
+  const message =
+    progress?.error?.trim() ||
+    storedProgress?.error?.trim() ||
+    progress?.message?.trim() ||
+    storedProgress?.message?.trim() ||
+    undefined;
+
+  const embeddingConfigurationCodes = new Set([
+    "graphrag_embedding_authentication_failed",
+    "graphrag_embedding_dimension_mismatch",
+    "graphrag_embedding_endpoint_failed",
+    "graphrag_embedding_incompatible",
+    "graphrag_embedding_provider_unsupported",
+  ]);
+  const completionConfigurationCodes = new Set([
+    "graphrag_model_incompatible",
+    "graphrag_provider_unsupported",
+    "graphrag_model_authentication_failed",
+    "graphrag_model_endpoint_failed",
+  ]);
+  const requiresEmbeddingChange = embeddingConfigurationCodes.has(code ?? "");
+  const requiresCompletionChange = completionConfigurationCodes.has(code ?? "");
+
+  return {
+    code,
+    message,
+    retryable: progress?.retryable ?? storedProgress?.retryable,
+    requiresModelChange: requiresEmbeddingChange || requiresCompletionChange,
+    settingsHref: requiresEmbeddingChange
+      ? "/settings/embedding"
+      : requiresCompletionChange
+        ? "/settings/models"
+        : undefined,
+  };
+};
+
+export const taskFailureMessage = (payload: {
+  detail?: string;
+  details?: string;
+}): string => payload.detail?.trim() || "Task failed";
 
 export const kbNeedsReindex = (kb: KnowledgeBase): boolean =>
   Boolean(kb.statistics?.needs_reindex) ||

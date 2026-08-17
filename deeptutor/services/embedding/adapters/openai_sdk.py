@@ -12,6 +12,7 @@ from typing import Any, Dict
 
 from openai import APIConnectionError, APIError, APIStatusError, AsyncOpenAI
 
+from deeptutor.services.embedding.request_options import should_send_embedding_dimensions
 from deeptutor.services.llm.openai_http_client import openai_client_kwargs
 
 from .base import (
@@ -33,18 +34,12 @@ class OpenAISDKEmbeddingAdapter(BaseEmbeddingAdapter):
         Tri-state ``self.send_dimensions``: ``True`` always send, ``False``
         never send, ``None`` auto by model family.
         """
-        if self.send_dimensions is True:
-            return True
-        if self.send_dimensions is False:
-            return False
-        if not model_name:
-            return False
-        lname = model_name.lower()
-        if lname.startswith("text-embedding-3"):
-            return True
-        if "qwen3-embedding" in lname or "qwen3-vl-embedding" in lname:
-            return True
-        return False
+        return should_send_embedding_dimensions(
+            binding=None,
+            model=model_name,
+            dimension=self.dimensions or 1,
+            send_dimensions=self.send_dimensions,
+        )
 
     def _build_client(self) -> AsyncOpenAI:
         # OpenRouter / custom gateways often don't validate the key, but the
