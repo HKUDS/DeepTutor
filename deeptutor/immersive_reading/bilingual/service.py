@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 import shutil
 import time
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import unquote
 import uuid
 import zipfile
@@ -557,6 +557,15 @@ class BilingualPairingService:
     def _annotations_path(self, pairing_id: str) -> Path:
         return self._pairing_root(pairing_id) / "annotations.json"
 
+    def _reading_position_path(self, pairing_id: str) -> Path:
+        return self._pairing_root(pairing_id) / "reading_position.json"
+
+    def _bookmarks_path(self, pairing_id: str) -> Path:
+        return self._pairing_root(pairing_id) / "bookmarks.json"
+
+    def _navigation_path(self, pairing_id: str) -> Path:
+        return self._pairing_root(pairing_id) / "navigation.json"
+
     def _review_export_path(self, pairing_id: str) -> Path:
         return self._pairing_root(pairing_id) / "review_export.md"
 
@@ -596,6 +605,7 @@ class BilingualPairingService:
         if chapter_count is None:
             chapter_map = _read_json(self._chapter_map_path(pairing_id), [])
             chapter_count = len(chapter_map)
+        reading_position = _read_json(self._reading_position_path(pairing_id))
         return {
             "pairing_id": pairing_id,
             "en_document_id": data["en_document_id"],
@@ -609,6 +619,7 @@ class BilingualPairingService:
             "review_count": review_count,
             "created_at": data.get("created_at", 0),
             "updated_at": data.get("updated_at", 0),
+            "last_read_at": (reading_position or {}).get("updated_at", 0),
         }
 
     def get_pairing(self, pairing_id: str) -> dict[str, Any]:
@@ -749,6 +760,175 @@ class BilingualPairingService:
         if not section:
             raise ValueError(f"Section {chapter_id} not found")
         return section
+
+    # ── Reading position, bookmarks, and navigation history ──────────
+
+    def _normalize_chapter_index(self, pairing_id: str, chapter_index: int) -> tuple[int, str]:
+        chapter_map = _read_json(self._chapter_map_path(pairing_id), [])
+        if not chapter_map:
+            raise ValueError("Bilingual pairing has no chapter map")
+        index = max(0, min(int(chapter_index), len(chapter_map) - 1))
+        return index, str(chapter_map[index][0])
+
+    def _validate_position(
+        self, pairing_id: str, position: dict[str, Any], *, validate_group: bool = True
+    ) -> dict[str, Any]:
+        self._load_pairing(pairing_id)
+        chapter_index, chapter_id = self._normalize_chapter_index(
+            pairing_id, position.get("chapter_index", 0)
+        )
+        group_index = max(0, int(position.get("group_index", 0)))
+        if validate_group:
+            section = _read_json(self._section_path(pairing_id, chapter_id), {})
+            groups = section.get("groups", [])
+            if groups:
+                group_index = min(group_index, len(groups) - 1)
+        return {
+            "pairing_id": pairing_id,
+            "chapter_id": chapter_id,
+            "chapter_index": chapter_index,
+            "group_index": group_index,
+            "epub_cfi": str(position.get("epub_cfi", ""))[:2000],
+            "section_href": str(position.get("section_href", ""))[:500],
+            "scroll_percent": max(0.0, min(100.0, float(position.get("scroll_percent", 0.0)))),
+            "text_fingerprint": str(position.get("text_fingerprint", ""))[:500],
+            "updated_at": time.time(),
+        }
+
+    def load_reading_position(self, pairing_id: str) -> dict[str, Any] | None:
+        self._load_pairing(pairing_id)
+        return _read_json(self._reading_position_path(pairing_id))
+
+    def update_reading_position(self, pairing_id: str, position: dict[str, Any]) -> dict[str, Any]:
+        normalized = self._validate_position(pairing_id, position)
+        _write_json(self._reading_position_path(pairing_id), normalized)
+        return normalized
+
+    def list_bookmarks(self, pairing_id: str) -> list[dict[str, Any]]:
+        self._load_pairing(pairing_id)
+        bookmarks = _read_json(self._bookmarks_path(pairing_id), [])
+        return sorted(bookmarks, key=lambda item: item.get("created_at", 0), reverse=True)
+
+    def add_bookmark(
+        self,
+        pairing_id: str,
+        position: dict[str, Any],
+        *,
+        title: str = "",
+        preview: str = "",
+    ) -> dict[str, Any]:
+        normalized = self._validate_position(pairing_id, position)
+        section = _read_json(self._section_path(pairing_id, normalized["chapter_id"]), {})
+        groups = section.get("groups", [])
+        group = groups[normalized["group_index"]] if normalized["group_index"] < len(groups) else {}
+        bookmark = {
+            "id": uuid.uuid4().hex[:12],
+            **normalized,
+            "title": title.strip()[:200]
+            or f"{section.get('en_title') or normalized['chapter_id']} #{normalized['group_index'] + 1}",
+            "chapter_title": str(section.get("en_title", normalized["chapter_id"])),
+            "preview": preview.strip()[:300] or " ".join(group.get("en", []))[:300],
+            "created_at": time.time(),
+        }
+        bookmarks = _read_json(self._bookmarks_path(pairing_id), [])
+        bookmarks.append(bookmark)
+        _write_json(self._bookmarks_path(pairing_id), bookmarks)
+        return bookmark
+
+    def rename_bookmark(self, pairing_id: str, bookmark_id: str, title: str) -> dict[str, Any]:
+        self._load_pairing(pairing_id)
+        bookmarks = _read_json(self._bookmarks_path(pairing_id), [])
+        for bookmark in bookmarks:
+            if bookmark.get("id") == bookmark_id:
+                clean_title = title.strip()[:200]
+                if not clean_title:
+                    raise ValueError("Bookmark title cannot be empty")
+                bookmark["title"] = clean_title
+                bookmark["updated_at"] = time.time()
+                _write_json(self._bookmarks_path(pairing_id), bookmarks)
+                return bookmark
+        raise ValueError("Bookmark not found")
+
+    def delete_bookmark(self, pairing_id: str, bookmark_id: str) -> None:
+        self._load_pairing(pairing_id)
+        bookmarks = _read_json(self._bookmarks_path(pairing_id), [])
+        remaining = [bookmark for bookmark in bookmarks if bookmark.get("id") != bookmark_id]
+        if len(remaining) == len(bookmarks):
+            raise ValueError("Bookmark not found")
+        _write_json(self._bookmarks_path(pairing_id), remaining)
+
+    def _load_navigation(self, pairing_id: str) -> dict[str, Any]:
+        state = _read_json(
+            self._navigation_path(pairing_id),
+            {"current": None, "back_stack": [], "forward_stack": []},
+        )
+        state.setdefault("current", None)
+        state.setdefault("back_stack", [])
+        state.setdefault("forward_stack", [])
+        return state
+
+    @staticmethod
+    def _position_identity(position: dict[str, Any] | None) -> tuple | None:
+        if not position:
+            return None
+        return (
+            position.get("chapter_id"),
+            position.get("group_index"),
+            round(float(position.get("scroll_percent", 0.0)), 1),
+        )
+
+    def get_navigation(self, pairing_id: str) -> dict[str, Any]:
+        self._load_pairing(pairing_id)
+        state = self._load_navigation(pairing_id)
+        return {
+            **state,
+            "can_back": bool(state["back_stack"]),
+            "can_forward": bool(state["forward_stack"]),
+        }
+
+    def record_navigation(self, pairing_id: str, destination: dict[str, Any]) -> dict[str, Any]:
+        normalized = self._validate_position(pairing_id, destination)
+        state = self._load_navigation(pairing_id)
+        current = state.get("current")
+        if self._position_identity(current) != self._position_identity(normalized):
+            if current:
+                state["back_stack"].append(current)
+                state["back_stack"] = state["back_stack"][-100:]
+            state["forward_stack"] = []
+            state["current"] = normalized
+            _write_json(self._navigation_path(pairing_id), state)
+        return {
+            **state,
+            "can_back": bool(state["back_stack"]),
+            "can_forward": bool(state["forward_stack"]),
+        }
+
+    def _pop_navigation(
+        self, pairing_id: str, direction: Literal["back", "forward"]
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        self._load_pairing(pairing_id)
+        state = self._load_navigation(pairing_id)
+        source = state["back_stack"] if direction == "back" else state["forward_stack"]
+        if not source:
+            raise ValueError(f"No {direction} navigation destination")
+        destination = source.pop()
+        current = state.get("current")
+        if current:
+            target = state["forward_stack"] if direction == "back" else state["back_stack"]
+            target.append(current)
+        state["current"] = destination
+        _write_json(self._navigation_path(pairing_id), state)
+        return destination, {
+            **state,
+            "can_back": bool(state["back_stack"]),
+            "can_forward": bool(state["forward_stack"]),
+        }
+
+    def navigate_back(self, pairing_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        return self._pop_navigation(pairing_id, "back")
+
+    def navigate_forward(self, pairing_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        return self._pop_navigation(pairing_id, "forward")
 
     def get_report(self, pairing_id: str) -> str:
         """Return the alignment review report as markdown text."""
