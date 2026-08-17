@@ -6,6 +6,8 @@ import {
   ArrowLeft,
   Database,
   FileText,
+  Github,
+  Globe,
   Layers,
   Loader2,
   RefreshCw,
@@ -26,8 +28,10 @@ import KbFilesTab from "./KbFilesTab";
 import KbDocumentsSection from "./KbDocumentsSection";
 import KbIndexVersionsSection from "./KbIndexVersionsSection";
 import KbSettingsSection from "./KbSettingsSection";
+import KbGitHubSourcesSection from "./KbGitHubSourcesSection";
+import KbWebSourcesSection from "./KbWebSourcesSection";
 
-type DetailSection = "files" | "add" | "versions" | "settings";
+type DetailSection = "files" | "add" | "github" | "web" | "versions" | "settings";
 
 interface KnowledgeBaseDetailProps {
   kb: KnowledgeBase | null;
@@ -51,6 +55,8 @@ const SECTIONS: {
 }[] = [
   { key: "files", label: "Files", Icon: FileText },
   { key: "add", label: "Add documents", Icon: Upload },
+  { key: "github", label: "GitHub", Icon: Github },
+  { key: "web", label: "Web", Icon: Globe },
   { key: "versions", label: "Index versions", Icon: Layers },
   { key: "settings", label: "Settings", Icon: SettingsIcon },
 ];
@@ -252,6 +258,12 @@ export default function KnowledgeBaseDetail({
                         : onReindex(kb.name)
                   }
                 />
+              )}
+              {section === "github" && (
+                <KbGitHubSourcesSection kbName={kb.name} />
+              )}
+              {section === "web" && (
+                <KbWebSourcesSection kbName={kb.name} />
               )}
               {section === "settings" && (
                 <KbSettingsSection
